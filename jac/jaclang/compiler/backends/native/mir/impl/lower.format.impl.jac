@@ -207,10 +207,6 @@ impl MirLowering.object_text(
             for (sub_name, sub) in self.archetypes.items()
             if sub_name != value.type.name
                 and self.obj_extends(sub_name, value.type.name)
-                and (
-                    self.find_method(sub, method) is not None
-                    or not (method == "__str__" and self.is_exception_arch(sub))
-                )
         ];
         if carriers {
             return self.subclass_text(value, method, carriers, site);
@@ -325,6 +321,8 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
     }
     symbol = f"{self.mir.prefix}.__repr.{self.text_serial}";
     self.text_serial += 1;
+    started = len(self.nested);
+    known = set(self.text_fns);
     self.text_fns[value_type.key] = symbol;
     fn = MirFunction(
         name=f"__repr.{value_type.render()}",
@@ -344,7 +342,14 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
             self.container_repr_body(param, site);
         }
     } except MirRefused as err {
-        self.text_fns.pop(value_type.key, None);
+        self.nested = self.nested[:started];
+        for key in [
+            key
+            for key in self.text_fns
+            if key not in known
+        ] {
+            self.text_fns.pop(key);
+        }
         self.state = saved;
         raise err;
     }
@@ -459,9 +464,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
     b.position(again);
     b.ret(b.const_str("...", mir_str()));
     b.position(fresh);
+    (frame, dispatch) = self.guard_open();
     sb = self.call_rt("__jac_rt_sb_new", [b.const_int(32, mir_int())]);
     self.sb_text(sb, arch.name.value + "(");
-    for (index, member) in enumerate(obj_def.fields) {
+    shown = [
+        member
+        for member in obj_def.fields
+        if member.index != obj_def.reports_slot
+    ];
+    for (index, member) in enumerate(shown) {
         self.sb_text(sb, (", " if index > 0 else "") + member.name + "=");
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [param], int_value=member.index
@@ -470,8 +481,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
         self.sb_value(sb, self.repr_of(field, site));
     }
     self.sb_text(sb, ")");
+    self.runtime("__jac_rt_exc_pop", [frame]);
     self.runtime("__jac_rt_repr_leave", [depth]);
     self.builder().ret(self.owned_text(self.call_rt("__jac_rt_sb_finish", [sb])));
+    self.builder().position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    self.runtime("__jac_rt_repr_leave", [depth]);
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    self.builder().unreachable();
 }
 
 impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
@@ -513,7 +531,6 @@ impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
 }
 
 impl MirLowering.str_format(template: str, nd: uni.FuncCall) -> MirValue {
-    import string;
     b = self.builder();
     (args, named) = self.split_args(nd);
     positional = [self.spill(self.lower_expr(arg)) for arg in args];
@@ -522,7 +539,7 @@ impl MirLowering.str_format(template: str, nd: uni.FuncCall) -> MirValue {
         keyed[key] = self.spill(self.lower_expr(arg));
     }
     try {
-        fields = list(string.Formatter().parse(template));
+        fields = mir_format_fields(template);
     } except ValueError as e {
         raise MirRefused(
             mir_refusal("call", f"str.format of {template!r}", nd, str(e))
@@ -749,15 +766,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
                 mir_refusal("call", f"str of {held.type.render()} with an encoding", nd)
             );
         }
-        codec = self.codec_arg(args[1], TEXT_CODECS, nd);
-        errors = self.codec_arg(args[2] if len(args) > 2 else None, TEXT_ERRORS, nd);
-        (data, size) = self.byte_parts(held);
-        return self.owned_text(
-            self.call_rt(
-                "__jac_rt_bytes_decode",
-                [data, size, codec, errors, self.codec_failure("UnicodeDecodeError")]
-            )
-        );
+        return self.bytes_decode(held, args[1], args[2] if len(args) > 2 else None, nd);
     }
     if name == "len" {
         if len(args) == 1
@@ -1682,6 +1691,80 @@ impl MirLowering.struct_call(nd: uni.FuncCall, name: str) -> MirValue {
         }
     }
     return self.emit_value(MirOp.TUPLE_MAKE, result_type, members);
+}
+
+impl mir_format_fields(template: str) -> list[tuple[str, (str | None), str, str]] {
+    fields: list[tuple[str, (str | None), str, str]] = [];
+    literal = "";
+    i = 0;
+    n = len(template);
+    while i < n {
+        ch = template[i];
+        if ch == "{" {
+            if i + 1 < n and template[i + 1] == "{" {
+                literal += "{";
+                i += 2;
+                continue;
+            }
+            depth = 1;
+            j = i + 1;
+            while j < n {
+                if template[j] == "{" {
+                    depth += 1;
+                } elif template[j] == "}" {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            if depth != 0 {
+                raise ValueError("expected '}' before end of string");
+            }
+            body = template[i + 1:j];
+            cut = 0;
+            while cut < len(body) and body[cut] != "!" and body[cut] != ":" {
+                cut += 1;
+            }
+            rest = body[cut:];
+            conversion = "";
+            spec = "";
+            if rest.startswith("!") {
+                if len(rest) < 2 {
+                    raise ValueError(
+                        "end of string while looking for conversion specifier"
+                    );
+                }
+                conversion = rest[1];
+                rest = rest[2:];
+                if rest and not rest.startswith(":") {
+                    raise ValueError("expected ':' after conversion specifier");
+                }
+            }
+            if rest.startswith(":") {
+                spec = rest[1:];
+            }
+            fields.append((literal, body[:cut], spec, conversion));
+            literal = "";
+            i = j + 1;
+            continue;
+        }
+        if ch == "}" {
+            if i + 1 < n and template[i + 1] == "}" {
+                literal += "}";
+                i += 2;
+                continue;
+            }
+            raise ValueError("Single '}' encountered in format string");
+        }
+        literal += ch;
+        i += 1;
+    }
+    if literal {
+        fields.append((literal, None, "", ""));
+    }
+    return fields;
 }
 
 impl MirLowering.float_ratio(value: MirValue) -> MirValue {

@@ -48,11 +48,11 @@ def fmt_errors(prog: JacProgram) -> str {
     return str([str(e) for e in prog.errors_had]);
 }
 
-"""Compile a .jac fixture, run module glob-init (as init_native_globals
-does in production), and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine.
+
+The engine runs the unit's glob-init once, before it hands out the first
+address, so decorators apply exactly once, as they do at Python import."""
 def compile_fixture(fixture: str) -> any {
-    import ctypes;
-    import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES_DIR, fixture)), options=native_force_opts()
@@ -61,10 +61,6 @@ def compile_fixture(fixture: str) -> any {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    gi_addr = native_address(eng, "__jac_glob_init");
-    if gi_addr {
-        ctypes.CFUNCTYPE(None)(gi_addr)();
-    }
     return eng;
 }
 
@@ -158,7 +154,7 @@ test "guardrail: decorated method demotes, native callers demote with it" {
     );
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "Box.get" not in layout.methods , (
+    assert not any(method.rsplit(".", 1)[-1] == "get" for method in layout.methods) , (
         "the decorated method must be demoted out of the native layout, "
         "never run undecorated"
     );

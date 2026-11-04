@@ -2,6 +2,7 @@ import os;
 import hashlib;
 
 glob OVERFLOW_MESSAGE: str = "integer overflow",
+     EDGE_CLASS_MARK: int = 1,
      ZERO_DIVISION_MESSAGE: str = "integer division or modulo by zero",
      FLOAT_ZERO_DIVISION_MESSAGE: str = "float division by zero",
      FLOAT_ZERO_MODULO_MESSAGE: str = "float modulo by zero",
@@ -64,6 +65,13 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      TASK_MESSAGE: int = 40,
      TASK_ORIGIN: int = 48,
      TASK_ARGS: int = 64,
+     FLOW_CTX_CAPTURES: int = 2,
+     FLOW_TASK_PARTIALS: int = 3,
+     LIST_VIEW_WORDS: int = 8,
+     VIEW_REMOVE: int = 4,
+     VIEW_IADD: int = 8,
+     VIEW_DELETE: int = 9,
+     VIEW_SLICE: int = 10,
      GEN_PENDING_MESSAGE: int = 16,
      GEN_PENDING_ORIGIN: int = 24,
      RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
@@ -278,7 +286,8 @@ obj MirWithExit {
 
 obj MirLoopTarget {
     has head: MirBlock,
-        after: MirBlock;
+        after: MirBlock,
+        continue_depth: int = -1;
 }
 
 obj MirIterCursor {
@@ -359,6 +368,12 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_format_fields(template: str) -> list[tuple[str, (str | None), str, str]];
+
+def mir_slice_picks(
+    count: int, start: (int | None), stop: (int | None), step: (int | None)
+) -> list[int];
+
 def mir_same_signature(left: MirDecl, right: MirDecl) -> bool;
 
 obj MirLowering {
@@ -414,6 +429,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         erased_units: set[str] = set(),
+        slot_adapters: dict[str, MirFunction] = {},
         erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
@@ -421,6 +437,9 @@ obj MirLowering {
         c_views: dict[int, MirGlobal] = {},
         owned_world: bool = False,
         ctor_consumes: dict[str, list[int]] = {},
+        decorations: list[tuple[int, str]] = [],
+        fn_deps: dict[str, list[str]] = {},
+        hard_refusals: list[NativeRefusal] = [],
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
@@ -489,6 +508,7 @@ obj MirLowering {
     def lower_while(nd: uni.WhileStmt);
     def lower_forever(nd: uni.ForeverStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
+    def jumped_in_finally -> bool;
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
@@ -1015,6 +1035,31 @@ obj MirLowering {
     def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
     def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
+    def runtime_decorators(ab: uni.Ability) -> list[uni.Expr];
+    def decorator_target(dec: uni.Name) -> (MirDecl | None);
+    def decorator_refusal(decl: MirDecl) -> (NativeRefusal | None);
+    def decorate(decl: MirDecl, raw: MirFunction) -> MirFunction;
+    def copy_kind(nd: uni.FuncCall) -> str;
+    def copy_call(nd: uni.FuncCall, kind: str) -> MirValue;
+    def copy_refused(nd: uni.UniNode, kind: str, why: str) -> NativeRefusal;
+    def copy_memo_type -> MirType;
+    def copy_label(t: MirType) -> str;
+    def copy_atomic(t: MirType, deep: bool) -> bool;
+    def copy_refusal(
+        t: MirType, deep: bool, seen: set[str], top: bool
+    ) -> (str | None);
+
+    def copy_candidates(arch: uni.Archetype) -> list[uni.Archetype];
+    def copy_class_refusal(t: MirType, deep: bool, seen: set[str]) -> (str | None);
+    def copy_value(
+        value: MirValue, deep: bool, memo: (MirValue | None), site: uni.UniNode
+    ) -> MirValue;
+
+    def copy_memo_find(memo: MirValue, source: MirValue, t: MirType) -> MirValue;
+    def copy_memo_record(memo: MirValue, source: MirValue, made: MirValue);
+    def copy_deep_fn(t: MirType, site: uni.UniNode) -> str;
+    def copy_dispatch(t: MirType, deep: bool, site: uni.UniNode) -> str;
+    def copy_body(arch: uni.Archetype, deep: bool, site: uni.UniNode) -> str;
     def lower_try(nd: uni.TryStmt);
     def caught_state(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
     def flush_stdio;
@@ -1069,7 +1114,6 @@ obj MirLowering {
         arch: uni.Archetype, obj_def: MirObjectDef, self_type: MirType
     ) -> MirValue;
 
-    def object_copy(value: MirValue, site: uni.UniNode) -> MirValue;
     def list_bounds(
         lst: MirValue, part: uni.Slice, site: uni.UniNode
     ) -> tuple[MirValue, MirValue, MirValue];
@@ -1128,6 +1172,30 @@ obj MirLowering {
     def flow_threaded -> bool;
     def lower_concurrent(nd: uni.ConcurrentExpr) -> MirValue;
     def flow_thunk(decl: MirDecl) -> str;
+    def flow_marked(nd: uni.InForStmt) -> bool;
+    def chunk_shape(source: uni.Expr) -> (tuple[uni.Expr, uni.Expr] | None);
+    def view_block -> MirValue;
+    def chunk_view(
+        block: MirValue, lst: MirValue, index: MirValue, width: MirValue
+    ) -> MirValue;
+
+    def chunk_width(n_nd: uni.Expr) -> MirValue;
+    def chunk_count(lst: MirValue, width: MirValue) -> MirValue;
+    def view_guard(lst: MirValue, op: int);
+    def lower_chunk_for(nd: uni.InForStmt, lst_nd: uni.Expr, n_nd: uni.Expr);
+    def flow_parallel_ok -> bool;
+    def flow_reductions(nd: uni.InForStmt) -> list[tuple[uni.Name, str]];
+    def flow_captures(nd: uni.InForStmt, excluded: list[uni.Symbol]) -> list[uni.Name];
+    def lower_flow_for(nd: uni.InForStmt) -> bool;
+    def flow_body(
+        nd: uni.InForStmt,
+        list_type: MirType,
+        chunked: bool,
+        captures: list[uni.Name],
+        capture_types: list[MirType],
+        reductions: list[tuple[uni.Name, str]]
+    ) -> str;
+
     def task_store(base: MirValue, offset: int, value: MirValue);
     def pipe_call(nd: uni.BinaryExpr) -> MirValue;
     def cstr_of(value: MirValue) -> MirValue;
@@ -1214,6 +1282,13 @@ obj MirLowering {
     ) -> MirValue;
 
     def codec_failure(exception: str) -> MirValue;
+    def bytes_decode(
+        held: MirValue,
+        codec_nd: (uni.Expr | None),
+        errors_nd: (uni.Expr | None),
+        site: uni.UniNode
+    ) -> MirValue;
+
     def literal_text(nd: (uni.UniNode | None)) -> (str | None);
     def typed_handle(handle: MirValue, nd: uni.Expr) -> MirValue;
     def text_method(
@@ -1460,6 +1535,8 @@ obj MirLowering {
 
     def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def osp_class_tag(nd: uni.Expr) -> (MirValue | None);
+    def osp_edge_bound(nd: uni.Expr) -> (uni.Archetype | None);
+    def osp_edge_class_tag(nd: uni.Expr) -> (MirValue | None);
     def osp_class_tag_ok(nd: uni.Expr) -> bool;
     def lower_dynamic_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
     def default_entry(arch: uni.Archetype) -> (MirFunction | None);
@@ -1492,6 +1569,8 @@ obj MirLowering {
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
     def stdlib_unit(scope: (uni.UniScopeNode | None)) -> (uni.Module | None);
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
+    def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
+    def stdlib_unit_at(path: str) -> (uni.Module | None);
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
     def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);

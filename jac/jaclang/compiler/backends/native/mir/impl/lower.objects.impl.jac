@@ -257,9 +257,15 @@ impl MirLowering.settle_slots {
             if base is None or mir_same_signature(base, decl) {
                 continue;
             }
-            adapter = self.slot_adapter(decl, base);
+            adapter = self.slot_adapters.get(f"{decl.symbol}.__slot");
+            if adapter is None {
+                adapter = self.slot_adapter(decl, base);
+                if adapter is not None {
+                    self.mir.functions.append(adapter);
+                    self.slot_adapters[adapter.symbol] = adapter;
+                }
+            }
             if adapter is not None {
-                self.mir.functions.append(adapter);
                 made.vtable_entries[index] = adapter.symbol;
             }
         }
@@ -355,6 +361,10 @@ impl MirLowering.note_lineage(arch: uni.Archetype, obj_def: MirObjectDef) {
         if held.name != obj_def.name {
             self.class_lineages.append((obj_def.name, held.name));
         }
+    }
+    layout = self.osp_layout(arch);
+    if layout is not None and layout.arch_type == "edge" {
+        self.class_lineages.append((obj_def.name, ""));
     }
 }
 
@@ -831,52 +841,6 @@ impl MirLowering.object_alloc(
         );
     }
     return this;
-}
-
-impl MirLowering.object_copy(value: MirValue, site: uni.UniNode) -> MirValue {
-    arch = self.archetypes.get(value.type.name)
-        if value.type.kind == MirKind.OBJ
-        else None;
-    obj_def = self.mir.objects.get(value.type.name)
-        if value.type.kind == MirKind.OBJ
-        else None;
-    owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
-    registry = get_layout_registry(owner or self.module, self.prog);
-    sealed = obj_def is not None
-        and not any(
-            obj_def.name in list(other.parents or [])
-            for other in registry.layouts.values()
-        );
-    if arch is None or obj_def is None or not sealed or obj_def.tag_slot >= 0 {
-        raise MirRefused(
-            mir_refusal(
-                "call",
-                f"copy of {value.type.render()}",
-                site,
-                "A native shallow copy is of an archetype that has no subclasses."
-            )
-        );
-    }
-    b = self.builder();
-    source = self.spill(value);
-    made = self.object_alloc(arch, obj_def, value.type);
-    for member in obj_def.fields {
-        b.store(
-            self.emit_value(
-                MirOp.FIELD_ADDR, mir_c_ptr(member.type), [made], int_value=member.index
-            ),
-            b.load(
-                self.emit_value(
-                    MirOp.FIELD_ADDR,
-                    mir_c_ptr(member.type),
-                    [source],
-                    int_value=member.index
-                ),
-                member.type
-            )
-        );
-    }
-    return made;
 }
 
 impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) {
@@ -2137,6 +2101,7 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.class_lineages
         and not self.default_entries
         and not self.text_pairs
+        and not self.decorations
         and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
         return None;
     }
@@ -2223,6 +2188,8 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                     self.address_of(
                         self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=base_name)
                     )
+                        if base_name
+                        else b.const_int(EDGE_CLASS_MARK, mir_int())
                 ]
             );
         }
@@ -2254,16 +2221,23 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             }
             index += 1;
         }
-        steps: list[tuple[int, int]] = [
-            (initial.loc.pos_start, at)
+        steps: list[tuple[int, int, int]] = [
+            (initial.loc.pos_start, 0, at)
             for (at, (_, initial)) in enumerate(self.deferred_globals)
         ];
         steps.extend(
-            [(start, -1 - at) for (at, (start, _)) in enumerate(self.class_inits)]
+            [(start, 1, at) for (at, (start, _)) in enumerate(self.class_inits)]
         );
-        for (_, at) in sorted(steps) {
-            if at < 0 {
-                b.call(self.class_inits[-1 - at][1], [], mir_none());
+        steps.extend(
+            [(start, 2, at) for (at, (start, _)) in enumerate(self.decorations)]
+        );
+        for (_, step, at) in sorted(steps) {
+            if step == 1 {
+                b.call(self.class_inits[at][1], [], mir_none());
+                continue;
+            }
+            if step == 2 {
+                b.call(self.decorations[at][1], [], mir_none());
                 continue;
             }
             (glob_def, initial) = self.deferred_globals[at];

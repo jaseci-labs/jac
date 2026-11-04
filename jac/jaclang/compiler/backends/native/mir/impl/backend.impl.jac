@@ -29,6 +29,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     for (site, name, reason) in lowering.c_conflicts {
         self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
     }
+    for refusal in lowering.hard_refusals {
+        self.ctx.emit(
+            E5092,
+            node_override=refusal.site or ir_in,
+            kind=refusal.kind,
+            name=refusal.name,
+            help_text=refusal.help
+        );
+    }
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if self.native_required(path) {
@@ -94,6 +103,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             target[0],
             bool(self.prog.options.native_sjlj)
         );
+        ir_in.gen.ir_module = ir_in.gen.llvm_ir;
     } except Exception as exc {
         self.report_crash(lowering, exc);
         return ir_in;
@@ -726,6 +736,9 @@ impl MirNativePass.class_layouts(
                 mir.path
             )
         );
+        spelled_fields: dict[str, dict[str, any]] = body["fields"];
+        spelled_bases: list[any] = body["bases"];
+        spelled_vtable: list[any] = body["vtable"];
         found[native_unit_spelling(name, mir.path)] = NativeClassLayout(
             name=name,
             size=size,
@@ -735,10 +748,10 @@ impl MirNativePass.class_layouts(
                 else -1,
             fields={
                 fname: NativeFieldSlot.from_dict(slot)
-                for (fname, slot) in body["fields"].items()
+                for (fname, slot) in spelled_fields.items()
             },
-            bases=[str(held) for held in body["bases"]],
-            vtable=[str(held) for held in body["vtable"]],
+            bases=[str(held) for held in spelled_bases],
+            vtable=[str(held) for held in spelled_vtable],
             is_node=bool(obj_def.osp_kind == "node")
         );
     }

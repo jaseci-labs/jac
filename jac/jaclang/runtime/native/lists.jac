@@ -33,7 +33,25 @@ glob LIST_LEN: int = 0,
      BOX_TAG: int = 0,
      BOX_PAYLOAD: int = 8,
      ORDER_LT: int = 0,
-     TAG_LIST: int = 3;
+     TAG_LIST: int = 3,
+     LIST_VIEW_MAGIC: int = 44062,
+     VIEW_APPEND: int = 0,
+     VIEW_EXTEND: int = 1,
+     VIEW_INSERT: int = 2,
+     VIEW_POP: int = 3,
+     VIEW_REMOVE: int = 4,
+     VIEW_CLEAR: int = 5,
+     VIEW_SORT: int = 6,
+     VIEW_REVERSE: int = 7,
+     VIEW_IADD: int = 8,
+     VIEW_DELETE: int = 9,
+     VIEW_SLICE: int = 10;
+
+def:pub __jac_rt_list_view(block: int, parent: int, start: int, count: int) -> int;
+
+def:pub __jac_rt_list_view_check(lst: int, op: int);
+
+def _is_view(lst: int) -> bool;
 
 def:pub __jac_rt_elem_retain(bits: int, kind: int);
 

@@ -88,6 +88,25 @@ test "a Root trigger does not match every node" {
         in out , out;
 }
 
+"""What a forced-native compile of `path` refused, by name: its errors, and each
+demotion it reported, one line per demoted function."""
+def refusals_of(path: str, options: any) -> list[str] {
+    import contextlib;
+    import io;
+    import from jaclang.compiler.driver.program { JacProgram }
+    buf = io.StringIO();
+    program = JacProgram();
+    with contextlib.redirect_stderr(buf) {
+        program.compile(file_path=path, options=options);
+    }
+    return [str(e) for e in program.errors_had]
+        + [
+            line
+            for line in buf.getvalue().splitlines()
+            if "demoting" in line
+        ];
+}
+
 """Two graph forms were accepted by the native tier and did nothing: a
 statement naming `root` was dropped whole, and a connect with a list as an
 operand connected to the list object. A walker then stopped early and the
@@ -100,9 +119,7 @@ test "graph forms the native tier cannot lower are refused, not dropped" {
     options = native_force_opts();
     options.skip_native_engine = True;
     options.no_ir_cache = True;
-    program = JacProgram();
-    program.compile(file_path=fixture("graph_forms_not_lowered.jac"), options=options);
-    refusals = [str(e) for e in program.errors_had];
+    refusals = refusals_of(fixture("graph_forms_not_lowered.jac"), options);
     assert any("expression 'root'" in r for r in refusals) , refusals;
     assert any("connect operand 'root'" in r for r in refusals) , refusals;
     assert any("connect operand 'list'" in r for r in refusals) , refusals;
@@ -217,14 +234,13 @@ test "a connect that puts an edge into root is refused" {
     options = native_force_opts();
     options.skip_native_engine = True;
     options.no_ir_cache = True;
-    program = JacProgram();
-    program.compile(file_path=fixture("connect_into_root.jac"), options=options);
+    found = refusals_of(fixture("connect_into_root.jac"), options);
     refusals = [
-        str(e)
-        for e in program.errors_had
-        if "connect operand 'root'" in str(e)
+        r
+        for r in found
+        if "connect operand 'root'" in r
     ];
-    assert len(refusals) == 4 , [str(e) for e in program.errors_had];
+    assert len(refusals) == 4 , found;
 }
 
 """A `continue` inside a switch belongs to the loop around the switch. The

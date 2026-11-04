@@ -353,6 +353,7 @@ impl __jac_rt_list_rekind(lst: int, kind: int) {
 }
 
 impl __jac_rt_list_reserve(lst: int, n: int) {
+    __jac_rt_list_view_check(lst, VIEW_APPEND);
     cap = __mem_load_i64(lst + LIST_CAP);
     if n <= cap {
         return;
@@ -375,6 +376,7 @@ impl __jac_rt_list_reserve(lst: int, n: int) {
 impl __jac_rt_list_push(lst: int, bits: int, kind: int) {
     n = __mem_load_i64(lst + LIST_LEN);
     if n >= __mem_load_i64(lst + LIST_CAP) {
+        __jac_rt_list_view_check(lst, VIEW_APPEND);
         __jac_rt_list_reserve(lst, n + 1);
     }
     __mem_store_i64(__mem_load_i64(lst + LIST_DATA) + n * SLOT, bits);
@@ -419,6 +421,7 @@ impl __jac_rt_list_get_ref(lst: int, i: int, kind: int) -> int {
 }
 
 impl __jac_rt_list_pop(lst: int, i: int) -> int {
+    __jac_rt_list_view_check(lst, VIEW_POP);
     n = __mem_load_i64(lst + LIST_LEN);
     data = __mem_load_i64(lst + LIST_DATA);
     bits = __mem_load_i64(data + i * SLOT);
@@ -434,6 +437,7 @@ impl __jac_rt_list_pop(lst: int, i: int) -> int {
 }
 
 impl __jac_rt_list_insert(lst: int, i: int, bits: int, kind: int) {
+    __jac_rt_list_view_check(lst, VIEW_INSERT);
     n = __mem_load_i64(lst + LIST_LEN);
     __jac_rt_list_reserve(lst, n + 1);
     data = __mem_load_i64(lst + LIST_DATA);
@@ -446,6 +450,7 @@ impl __jac_rt_list_insert(lst: int, i: int, bits: int, kind: int) {
 }
 
 impl __jac_rt_list_clear(lst: int, kind: int) {
+    __jac_rt_list_view_check(lst, VIEW_CLEAR);
     kind = _held(lst, kind);
     n = __mem_load_i64(lst + LIST_LEN);
     data = __mem_load_i64(lst + LIST_DATA);
@@ -463,6 +468,7 @@ impl __jac_rt_list_clear(lst: int, kind: int) {
 }
 
 impl __jac_rt_list_delete_range(lst: int, start: int, stop: int, kind: int) {
+    __jac_rt_list_view_check(lst, VIEW_DELETE);
     kind = _held(lst, kind);
     n = __mem_load_i64(lst + LIST_LEN);
     if stop <= start {
@@ -525,6 +531,7 @@ impl __jac_rt_list_box(lst: int, tag: int) -> int {
 }
 
 impl __jac_rt_list_extend(dst: int, src: int, kind: int) {
+    __jac_rt_list_view_check(dst, VIEW_EXTEND);
     kind = _held(dst, kind);
     n = __mem_load_i64(src + LIST_LEN);
     if n <= 0 {
@@ -545,6 +552,7 @@ impl __jac_rt_list_extend(dst: int, src: int, kind: int) {
 }
 
 impl __jac_rt_list_reverse(lst: int) {
+    __jac_rt_list_view_check(lst, VIEW_REVERSE);
     data = __mem_load_i64(lst + LIST_DATA);
     i = 0;
     j = __mem_load_i64(lst + LIST_LEN) - 1;
@@ -653,6 +661,7 @@ impl _merge(src: int, dst: int, lo: int, mid: int, hi: int, kind: int, reverse: 
 }
 
 impl __jac_rt_list_sort(lst: int, kind: int, reverse: bool) {
+    __jac_rt_list_view_check(lst, VIEW_SORT);
     n = __mem_load_i64(lst + LIST_LEN);
     if kind == KIND_REF or n < 2 {
         return;
@@ -720,6 +729,7 @@ impl _merge_keyed(
 }
 
 impl __jac_rt_list_sort_keyed(lst: int, keys: int, kind: int, reverse: bool) {
+    __jac_rt_list_view_check(lst, VIEW_SORT);
     n = __mem_load_i64(lst + LIST_LEN);
     if n < 2 {
         return;
@@ -770,4 +780,66 @@ impl __jac_rt_list_sort_keyed(lst: int, keys: int, kind: int, reverse: bool) {
     }
     free(first);
     free(second);
+}
+
+impl __jac_rt_list_view(block: int, parent: int, start: int, count: int) -> int {
+    at = 0;
+    while at < HDR_TOTAL {
+        __mem_store_i64(block + at, 0);
+        at += SLOT;
+    }
+    __mem_store_i64(block, LIST_VIEW_MAGIC << 32);
+    view = block + HDR_TOTAL;
+    total = __mem_load_i64(parent + LIST_LEN);
+    low = start if start < total else total;
+    high = low + count;
+    if high > total {
+        high = total;
+    }
+    __mem_store_i64(view + LIST_LEN, high - low);
+    __mem_store_i64(view + LIST_CAP, high - low);
+    __mem_store_i64(view + LIST_DATA, __mem_load_i64(parent + LIST_DATA) + low * SLOT);
+    __mem_store_i64(view + LIST_KIND, __mem_load_i64(parent + LIST_KIND));
+    return view;
+}
+
+impl _is_view(lst: int) -> bool {
+    return ((__mem_load_i64(lst - HDR_TOTAL) >> 32) & 65535) == LIST_VIEW_MAGIC;
+}
+
+impl __jac_rt_list_view_check(lst: int, op: int) {
+    if lst == 0 or not _is_view(lst) {
+        return;
+    }
+    if op == VIEW_IADD {
+        raise TypeError("unsupported operand type(s) for +=: 'JacListView' and 'list'");
+    }
+    if op == VIEW_DELETE {
+        raise AttributeError("__delitem__");
+    }
+    if op == VIEW_SLICE {
+        raise TypeError("'<' not supported between instances of 'slice' and 'int'");
+    }
+    if op == VIEW_EXTEND {
+        raise AttributeError("'JacListView' object has no attribute 'extend'");
+    }
+    if op == VIEW_INSERT {
+        raise AttributeError("'JacListView' object has no attribute 'insert'");
+    }
+    if op == VIEW_POP {
+        raise AttributeError("'JacListView' object has no attribute 'pop'");
+    }
+    if op == VIEW_REMOVE {
+        raise AttributeError("'JacListView' object has no attribute 'remove'");
+    }
+    if op == VIEW_CLEAR {
+        raise AttributeError("'JacListView' object has no attribute 'clear'");
+    }
+    if op == VIEW_SORT {
+        raise AttributeError("'JacListView' object has no attribute 'sort'");
+    }
+    if op == VIEW_REVERSE {
+        raise AttributeError("'JacListView' object has no attribute 'reverse'");
+    }
+    raise AttributeError("'JacListView' object has no attribute 'append'");
 }

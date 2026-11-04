@@ -1053,15 +1053,7 @@ impl MirLowering.bytes_method(
     keep_kind = held.type.kind == MirKind.BYTEARRAY;
     if name == "decode" {
         (codec_nd, errors_nd) = self.bind_args(nd, ["encoding", "errors"]);
-        codec = self.codec_arg(codec_nd, TEXT_CODECS, nd);
-        errors = self.codec_arg(errors_nd, TEXT_ERRORS, nd);
-        (data, size) = self.byte_parts(held);
-        return self.owned_text(
-            self.call_rt(
-                "__jac_rt_bytes_decode",
-                [data, size, codec, errors, self.codec_failure("UnicodeDecodeError")]
-            )
-        );
+        return self.bytes_decode(held, codec_nd, errors_nd, nd);
     }
     if name == "hex" {
         self.bind_args(nd, []);
@@ -1306,4 +1298,42 @@ impl MirLowering.optional_bytes_arg(
     b.branch(done);
     b.position(done);
     return (b.load(data_slot, data.type), b.load(len_slot, size.type), flag);
+}
+
+impl MirLowering.bytes_decode(
+    held: MirValue,
+    codec_nd: (uni.Expr | None),
+    errors_nd: (uni.Expr | None),
+    site: uni.UniNode
+) -> MirValue {
+    i8p = mir_c_ptr(mir_int(8, False));
+    encoding = self.emit_value(MirOp.CSTR, i8p, [], str_value="utf-8");
+    if codec_nd is not None and self.present(codec_nd) {
+        name = self.literal_text(codec_nd);
+        encoding = self.cstr_of(self.lower_expr(codec_nd))
+            if name is None
+            else self.emit_value(MirOp.CSTR, i8p, [], str_value=name);
+    }
+    errors = self.emit_value(MirOp.CSTR, i8p, [], str_value="strict");
+    if errors_nd is not None and self.present(errors_nd) {
+        spelled = self.literal_text(errors_nd);
+        errors = self.cstr_of(self.lower_expr(errors_nd))
+            if spelled is None
+            else self.emit_value(MirOp.CSTR, i8p, [], str_value=spelled);
+    }
+    (data, size) = self.byte_parts(held);
+    return self.owned_text(
+        self.call_rt(
+            "__jac_rt_bytes_decode",
+            [
+                data,
+                size,
+                encoding,
+                errors,
+                self.codec_failure("UnicodeDecodeError"),
+                self.codec_failure("LookupError"),
+                self.codec_failure("TypeError")
+            ]
+        )
+    );
 }

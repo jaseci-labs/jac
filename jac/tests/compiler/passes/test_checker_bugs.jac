@@ -2439,3 +2439,9 @@ test "bug_union_iter_1_union_of_one_container_class_iterates_its_elements" {
     assert len(errors) == 2 , errors;
     assert all("int" in e for e in errors) , errors;
 }
+
+test "iterating a union of lists yields the union of their element types" {
+    program = compile_and_check("checker_iter_union_of_lists.jac");
+    assert len(program.errors_had) == 1 , [str(e) for e in program.errors_had];
+    assert "A | B" in str(program.errors_had[0]) , str(program.errors_had[0]);
+}
