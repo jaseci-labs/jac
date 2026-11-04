@@ -61,28 +61,72 @@ impl NativeLibrary.initialize -> None {
     self.initialized = True;
 }
 
-impl _pyb_import_module(mod_path: str) -> object {
+impl _pyb_import_module(mod_path: str, package: str) -> object {
     import os;
     key = os.path.abspath(mod_path);
-    cached = _pyb_module_memo.get(key);
+    cache_key = key + "|" + package;
+    cached = _pyb_module_memo.get(cache_key);
     if cached is not None {
         return cached;
     }
     import sys;
+    import types;
     stem = os.path.splitext(os.path.basename(key))[0];
-    existing = sys.modules.get(stem);
-    if (
-        existing is not None
-        and os.path.abspath(getattr(existing, "__file__", "") or "") == key
-    ) {
-        _pyb_module_memo[key] = existing;
+    mirror_name = (package + "." if package else "") + stem + "__jac_server_mirror";
+    existing = sys.modules.get(mirror_name);
+    if existing is not None {
+        _pyb_module_memo[cache_key] = existing;
         return existing;
     }
-    import from jaclang.runtime.runtime { JacModule }
-    mods = JacModule.jac_import(target=stem, base_path=os.path.dirname(key));
-    mod = mods[0] if isinstance(mods, tuple) else mods;
-    _pyb_module_memo[key] = mod;
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    prog = JacProgram();
+    options = CompileOptions(
+        force_codespace="server",
+        default_codespace="server",
+        no_ir_cache=True
+    );
+    mod_ir = prog.compile(file_path=key, options=options);
+    if prog.errors_had {
+        errors = "\n".join(str(alert) for alert in prog.errors_had);
+        raise ImportError(
+            f"could not build server mirror for {key}: {errors}"
+        );
+    }
+    if not mod_ir.gen.py_ast {
+        raise ImportError(f"server mirror for {key} produced no Python image");
+    }
+    mod = types.ModuleType(mirror_name);
+    mod.__file__ = key;
+    mod.__package__ = package;
+    mod.__builtins__ = __builtins__;
+    sys.modules[mirror_name] = mod;
+    try {
+        code = compile(mod_ir.gen.py_ast[0], key, "exec");
+        exec(code, mod.__dict__);
+    } except Exception {
+        sys.modules.pop(mirror_name, None);
+        raise;
+    }
+    _pyb_module_memo[cache_key] = mod;
     return mod;
+}
+
+impl pyb_mirror_member(mod_path: str, name: str, package: str) -> object {
+    """Load the server image of a native-owned Jac module member.
+
+    Native units do not publish their declarations as Python module
+    attributes. Server-side modules that import a native-owned Jac module
+    therefore resolve the member from the module's Python image explicitly.
+    """
+    member = getattr(_pyb_import_module(mod_path, package), name, None);
+    if member is None {
+        raise AttributeError(
+            f"native-placed module '{mod_path}' exposes no '{name}' "
+                + "to mirror into the server codespace"
+        );
+    }
+    return member;
 }
 
 impl _pyb_class_for(
