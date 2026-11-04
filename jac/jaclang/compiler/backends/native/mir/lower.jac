@@ -1009,6 +1009,27 @@ obj MirLowering {
     def decorator_target(dec: uni.Name) -> (MirDecl | None);
     def decorator_refusal(decl: MirDecl) -> (NativeRefusal | None);
     def decorate(decl: MirDecl, raw: MirFunction) -> MirFunction;
+    def copy_kind(nd: uni.FuncCall) -> str;
+    def copy_call(nd: uni.FuncCall, kind: str) -> MirValue;
+    def copy_refused(nd: uni.UniNode, kind: str, why: str) -> NativeRefusal;
+    def copy_memo_type -> MirType;
+    def copy_label(t: MirType) -> str;
+    def copy_atomic(t: MirType, deep: bool) -> bool;
+    def copy_refusal(
+        t: MirType, deep: bool, seen: set[str], top: bool
+    ) -> (str | None);
+
+    def copy_candidates(arch: uni.Archetype) -> list[uni.Archetype];
+    def copy_class_refusal(t: MirType, deep: bool, seen: set[str]) -> (str | None);
+    def copy_value(
+        value: MirValue, deep: bool, memo: (MirValue | None), site: uni.UniNode
+    ) -> MirValue;
+
+    def copy_memo_find(memo: MirValue, source: MirValue, t: MirType) -> MirValue;
+    def copy_memo_record(memo: MirValue, source: MirValue, made: MirValue);
+    def copy_deep_fn(t: MirType, site: uni.UniNode) -> str;
+    def copy_dispatch(t: MirType, deep: bool, site: uni.UniNode) -> str;
+    def copy_body(arch: uni.Archetype, deep: bool, site: uni.UniNode) -> str;
     def lower_try(nd: uni.TryStmt);
     def caught_state(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
     def flush_stdio;
@@ -1063,7 +1084,6 @@ obj MirLowering {
         arch: uni.Archetype, obj_def: MirObjectDef, self_type: MirType
     ) -> MirValue;
 
-    def object_copy(value: MirValue, site: uni.UniNode) -> MirValue;
     def list_bounds(
         lst: MirValue, part: uni.Slice, site: uni.UniNode
     ) -> tuple[MirValue, MirValue, MirValue];

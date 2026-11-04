@@ -2325,6 +2325,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if via_alias is not None {
         return via_alias;
     }
+    copying = self.copy_kind(nd);
+    if copying {
+        return self.copy_call(nd, copying);
+    }
     if isinstance(nd.target, uni.Name)
         and nd.target.value in ("Region", "region_of")
         and (
@@ -4689,32 +4693,6 @@ impl MirLowering.method_call(
         and isinstance(target.target.type, ModuleType)
         and target.target.type.mod_name == "struct" {
         return self.struct_call(nd, right.value);
-    }
-    if isinstance(target.target, uni.Name)
-        and isinstance(target.target.type, ModuleType)
-        and target.target.type.mod_name == "copy"
-        and right.value == "copy"
-        and len(self.call_args(nd)) == 1 {
-        value = self.lower_expr(self.call_args(nd)[0]);
-        if value.type.kind == MirKind.OBJ {
-            return self.object_copy(value, nd);
-        }
-        if value.type.kind in (MirKind.LIST, MirKind.SET) {
-            made = self.spill(
-                self.new_list(value.type.payload(), 4)
-                    if value.type.kind == MirKind.LIST
-                    else self.new_dict(value.type.payload(), None, value.type)
-            );
-            self.extend_from(made, self.spill(value), nd);
-            return made;
-        }
-        if value.type.kind == MirKind.DICT {
-            made = self.spill(
-                self.new_dict(value.type.args[0], value.type.args[1], value.type)
-            );
-            self.merge_dict(made, self.spill(value), nd, False);
-            return made;
-        }
     }
     if isinstance(target.target, uni.Name)
         and isinstance(target.target.type, ModuleType)

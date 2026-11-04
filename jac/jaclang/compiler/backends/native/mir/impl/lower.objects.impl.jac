@@ -818,52 +818,6 @@ impl MirLowering.object_alloc(
     return this;
 }
 
-impl MirLowering.object_copy(value: MirValue, site: uni.UniNode) -> MirValue {
-    arch = self.archetypes.get(value.type.name)
-        if value.type.kind == MirKind.OBJ
-        else None;
-    obj_def = self.mir.objects.get(value.type.name)
-        if value.type.kind == MirKind.OBJ
-        else None;
-    owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
-    registry = get_layout_registry(owner or self.module, self.prog);
-    sealed = obj_def is not None
-        and not any(
-            obj_def.name in list(other.parents or [])
-            for other in registry.layouts.values()
-        );
-    if arch is None or obj_def is None or not sealed or obj_def.tag_slot >= 0 {
-        raise MirRefused(
-            mir_refusal(
-                "call",
-                f"copy of {value.type.render()}",
-                site,
-                "A native shallow copy is of an archetype that has no subclasses."
-            )
-        );
-    }
-    b = self.builder();
-    source = self.spill(value);
-    made = self.object_alloc(arch, obj_def, value.type);
-    for member in obj_def.fields {
-        b.store(
-            self.emit_value(
-                MirOp.FIELD_ADDR, mir_c_ptr(member.type), [made], int_value=member.index
-            ),
-            b.load(
-                self.emit_value(
-                    MirOp.FIELD_ADDR,
-                    mir_c_ptr(member.type),
-                    [source],
-                    int_value=member.index
-                ),
-                member.type
-            )
-        );
-    }
-    return made;
-}
-
 impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) {
     obj_def = self.object_def(arch);
     self_type = mir_obj(obj_def.name);

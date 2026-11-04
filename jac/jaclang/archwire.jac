@@ -10728,6 +10728,7 @@ graph import compiler.backends.native.mir {
             mir_c_ptr,
             mir_c_view,
             mir_class,
+            mir_dict,
             mir_float,
             mir_fn,
             mir_holds_ref,
