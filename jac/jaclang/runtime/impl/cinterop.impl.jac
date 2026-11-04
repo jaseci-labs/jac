@@ -778,7 +778,7 @@ impl CFunction._from_c(self: CFunction, spec: list[any], raw: any) -> any {
         return None;
     }
     if kind == "str" {
-        return raw.decode("utf-8") if raw is not None else "";
+        return raw.decode("utf-8") if raw is not None else None;
     }
     if kind == "ptr" {
         return _make_ptr(_resolve_elem(spec, self._scope), raw);

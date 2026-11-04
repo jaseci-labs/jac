@@ -419,6 +419,11 @@ impl MirLowering.is_absent(value: MirValue) -> MirValue {
             b.const_int(ANY_NONE_TAG, mir_int())
         );
     }
+    if value.type.kind in (MirKind.STR, MirKind.STR_REF) {
+        held = b.str_part(value, "data") if value.type.kind == MirKind.STR else value;
+        address = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [held]);
+        return b.compare("eq", address, b.const_int(0, address.type));
+    }
     return b.const_bool(value.type.kind == MirKind.NONE);
 }
 

@@ -590,6 +590,7 @@ obj MirLowering {
     ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];
 
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
+    def c_text_result(result: MirValue, site: uni.UniNode) -> MirValue;
     def c_extern_address(nd: uni.Name) -> (MirValue | None);
     def c_param_borrowed(pv: uni.ParamVar) -> bool;
     def param_type(pv: uni.ParamVar) -> MirType;

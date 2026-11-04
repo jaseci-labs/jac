@@ -4298,10 +4298,27 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
         b.store(place, self.coerce(b.load(tmp, tmp.type), held, nd));
     }
     if ret_plan == "str" {
-        text = self.call_rt("__jac_rt_str_from_cstr", [result]);
-        return self.owned_text(text);
+        return self.c_text_result(result, nd);
     }
     return result;
+}
+
+impl MirLowering.c_text_result(result: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.temp_slot(mir_str());
+    some = fn.new_block("cstr.some");
+    none = fn.new_block("cstr.none");
+    done = fn.new_block("cstr.done");
+    b.cond_branch(self.truthy(result, site), some, none);
+    b.position(some);
+    b.store(held, self.owned_text(self.call_rt("__jac_rt_str_from_cstr", [result])));
+    b.branch(done);
+    b.position(none);
+    b.store(held, b.const_null(mir_str()));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, mir_str());
 }
 
 impl MirLowering.c_extern_address(nd: uni.Name) -> (MirValue | None) {
