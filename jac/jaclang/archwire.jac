@@ -1083,7 +1083,7 @@ graph import {
             | project.kernel_snapshot
             | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
         cli.commands.execution._exec_file
-            | dist.precompile_bytecode.precompile_unit_context {
+            | dist.precompile_bytecode.served_codespace {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
