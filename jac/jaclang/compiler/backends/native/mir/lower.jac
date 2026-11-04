@@ -986,9 +986,10 @@ obj MirLowering {
     def class_entry(arch: uni.Archetype, bound: uni.Archetype) -> (MirFunction | None);
     def ctor_mask_words(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> int;
     def ctor_mask(
-        mask: int, params: list[tuple[str, MirType, (uni.Expr | None)]]
+        mask: list[int], params: list[tuple[str, MirType, (uni.Expr | None)]]
     ) -> list[MirValue];
 
+    def ctor_mask_set(mask: list[int], index: int);
     def ctor_given_bit(given: list[MirValue], index: int) -> MirValue;
     def ctor_default(
         value: MirValue, given: list[MirValue], index: int, fallback: uni.Expr

@@ -743,7 +743,7 @@ impl MirLowering.osp_edge_object(
     args: list[MirValue] = [];
     taken: set[str] = set();
     params = self.constructor_params(edge_arch);
-    mask = 0;
+    mask: list[int] = [];
     for (index, (pname, ptype, fallback)) in enumerate(params) {
         if pname in values and fallback is None {
             args.append(self.coerce(values[pname], ptype, site));

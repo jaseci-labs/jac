@@ -529,13 +529,13 @@ impl MirLowering.exception_object(
     }
     lowered = [self.spill(self.lower_expr(arg)) for arg in positional];
     values: list[MirValue] = [];
-    mask = 0;
+    mask: list[int] = [];
     site = nd;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
         if index < len(lowered) {
             values.append(self.coerce(lowered[index], ptype, positional[index]));
             if fallback is not None {
-                mask = mask | (1 << index);
+                self.ctor_mask_set(mask, index);
             }
             continue;
         }
@@ -550,7 +550,7 @@ impl MirLowering.exception_object(
             );
         }
         if fallback is not None {
-            mask = mask | (1 << index);
+            self.ctor_mask_set(mask, index);
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }

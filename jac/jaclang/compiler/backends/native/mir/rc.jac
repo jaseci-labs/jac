@@ -1,6 +1,8 @@
 import os;
 import sys;
 
+glob TEMP_BATCH_BITS: int = 62;
+
 glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET],
      UNWIND_RECORD_WORDS: int = 3;
 
@@ -27,6 +29,7 @@ obj MirRcState {
     def initialize_slots;
     def carry_crossing;
     def owned_here(instr: MirInstr) -> bool;
+    def end_temporary_batch(temps: list[MirValue]);
     def end_temporaries;
     def move_temps(blk: MirBlock);
     def temp_ending(instrs: list[MirInstr], start: int, temp: MirValue) -> int;

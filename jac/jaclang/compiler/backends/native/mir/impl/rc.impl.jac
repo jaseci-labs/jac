@@ -277,6 +277,14 @@ impl MirRcState.end_temporaries {
     if not temps or not self.fn.blocks {
         return;
     }
+    start = 0;
+    while start < len(temps) {
+        self.end_temporary_batch(temps[start:start + TEMP_BATCH_BITS]);
+        start += TEMP_BATCH_BITS;
+    }
+}
+
+impl MirRcState.end_temporary_batch(temps: list[MirValue]) {
     bits: dict[int, int] = {};
     for (index, slot) in enumerate(temps) {
         bits[slot.id] = 1 << index;
