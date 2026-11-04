@@ -2357,6 +2357,14 @@ cannot hide other users' errors:
 Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
 20) applies the same per-client limit before a report reaches any service, even
 when the gateway's general rate limit is off. Set it to `0` to turn it off.
+The limit is per client only when the gateway sees each browser's own address.
+`jac scale deploy` trusts the cluster's private ranges on the app services but
+sets none on the gateway, which is the pod an ingress talks to. Without the
+ingress controller's address in `[serve.proxy] trusted`
+(`JAC_SERVE_PROXY_TRUSTED`), every browser arrives from the ingress and they all
+share one budget, so one page reporting in a loop gets everyone's reports
+answered `429`. A gateway in a cluster with the limit on and nothing trusted
+logs a warning at startup saying so.
 
 Locations come from the per-file source maps the client compiler writes beside
 each `compiled/*.js`. They are segment-level -- generated line *and* column,

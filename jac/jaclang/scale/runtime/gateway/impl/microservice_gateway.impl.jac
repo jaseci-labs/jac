@@ -1036,6 +1036,14 @@ impl MicroserviceGateway.setup -> ServingApp {
         registry.register(
             Middleware(name="client_error_limit", priority=10, fn=error_mw)
         );
+        shared_limit = client_error_limit_warning(
+            gw_cfg.get("rate_limit", {}),
+            list(ServeSettings.load(self.base_path).proxy.trusted),
+            in_cluster()
+        );
+        if shared_limit {
+            logger.warning(shared_limit);
+        }
     }
 
     registry.install(self.app);

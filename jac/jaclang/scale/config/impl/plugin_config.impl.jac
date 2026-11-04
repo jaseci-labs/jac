@@ -859,7 +859,7 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                             "client_error_rpm": {
                                 "type": "int",
                                 "default": 20,
-                                "description": "Client error reports (POST /cl/__error__) per minute per client IP, answered with 429 and Retry-After past the limit before they reach a service. Applies even when `enabled` is false. 0 disables it."
+                                "description": "Client error reports (POST /cl/__error__) per minute per client IP, answered with 429 and Retry-After past the limit before they reach a service. Applies even when `enabled` is false. 0 disables it. Per client only when the ingress is in [serve.proxy] trusted; otherwise every browser shares the ingress's budget."
                             },
 
                         }

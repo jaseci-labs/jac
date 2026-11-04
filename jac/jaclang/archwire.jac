@@ -4233,6 +4233,10 @@ graph import {
             ServeSettings
         },
         scale.deploy.target.kubernetes.manifest_builder { AuthSettings, resolve_count },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
+            ServeSettings,
+            in_cluster
+        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start
             | scale.server.inprocess
             | scale.tests.server.test_host_serving
@@ -46624,7 +46628,8 @@ graph import scale.runtime {
     ]
     middleware.rate_limit ++> gateway.microservice_gateway.MicroserviceGateway.setup {
         build_client_error_limit_middleware,
-        build_rate_limit_middleware
+        build_rate_limit_middleware,
+        client_error_limit_warning
     }
     middleware.ws_forward ++> gateway.microservice_gateway._install_ws_catchall {
         websocket_forward

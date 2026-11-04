@@ -43,3 +43,8 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any;
 
 
 def build_client_error_limit_middleware(cfg: dict[str, any]) -> any;
+
+
+def client_error_limit_warning(
+    cfg: dict[str, any], trusted: list[str], clustered: bool
+) -> str;

@@ -619,3 +619,58 @@ test "[scale.gateway.rate_limit] client_error_rpm sets or turns off the gateway'
     assert build_client_error_limit_middleware({"client_error_rpm": 0}) is None;
     assert build_client_error_limit_middleware({"client_error_rpm": 5}) is not None;
 }
+
+test "a gateway in a cluster with no trusted proxy warns that its report limit is shared" {
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.scale.runtime.gateway.microservice_gateway {
+        MicroserviceGateway
+    }
+    import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
+    import from jaclang.scale.runtime.middleware.rate_limit {
+        client_error_limit_warning
+    }
+    import from jaclang.scale.state.factory { _backend_holder }
+    limit = {"client_error_rpm": 20};
+    warned = client_error_limit_warning(limit, [], True);
+    assert "[serve.proxy] trusted" in warned and "ingress" in warned , warned;
+    assert "20" in warned and "client_error_rpm = 0" in warned , warned;
+    assert client_error_limit_warning(limit, ["10.0.0.0/8"], True) == "";
+    assert client_error_limit_warning(limit, [], False) == "";
+    assert client_error_limit_warning({"client_error_rpm": 0}, [], True) == "";
+
+    gateway_logger = logging.getLogger(
+        "jaclang.scale.runtime.gateway.microservice_gateway"
+    );
+    rows = [
+        ("in a cluster, nothing trusted", "10.96.0.1", "", True),
+        ("in a cluster, the ingress trusted", "10.96.0.1", "10.0.0.0/8", False),
+        ("outside a cluster", "", "", False)
+    ];
+    for (label, cluster_host, trusted, should_warn) in rows {
+        _backend_holder.clear();
+        env = {
+            "KUBERNETES_SERVICE_HOST": cluster_host,
+            "JAC_SERVE_PROXY_TRUSTED": trusted
+        };
+        with TemporaryDirectory() as tmp {
+            (buf, handler, old_level) = capture_log_start(
+                gateway_logger, logging.WARNING
+            );
+            try {
+                with patch.dict(os.environ, env) {
+                    MicroserviceGateway(
+                        registry=ServiceRegistry(), base_path=tmp
+                    ).setup();
+                }
+            } finally {
+                capture_log_stop(gateway_logger, handler, old_level);
+                _backend_holder.clear();
+            }
+        }
+        logged = "client_error_rpm" in buf.getvalue();
+        assert logged == should_warn , (
+            f"{label}: expected a shared-limit warning: {should_warn}; got {buf.getvalue()!r}"
+        );
+    }
+}
