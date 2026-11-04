@@ -403,6 +403,7 @@ import from engine.src.runtime.obs_context { obs_is_active }
 import from engine.src.vm.closure_type { JSClosure }
 import from engine.src.builtins.function_type { JSFunctionMeta }  # G0.5: closure-slot reuse metadata reset
 import from engine.src.runtime.jsobject {
+    js_object_create_data_property_or_throw,
     js_object_dense_set_present,
     js_object_create_null,
     js_object_create,
@@ -584,6 +585,7 @@ import from engine.src.builtins.object {
     _to_object_or_throw
 }
 import from engine.src.builtins.native_kinds {
+    NATIVE_KIND_REGEXP_SYMBOL_REPLACE,
     NATIVE_KIND_ARRAY_ISARRAY,
     NATIVE_KIND_DATE_NOW,
     NATIVE_KIND_BUF_GET_BYTE,

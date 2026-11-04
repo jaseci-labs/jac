@@ -28,6 +28,7 @@ import from engine.src.vm.vm {
 }
 import from engine.src.runtime.encoding { FN_BUILTIN_BASE, FN_NATIVE_BASE }
 import from engine.src.bytecode.op { CompiledFunction, make_compiled_fn }
+import from engine.src.runtime.gc_barrier { gc_gen_on }
 import from engine.src.bytecode.compiler { Compiler, make_compiler }
 import from engine.src.parser.parser { parse }
 import from engine.src.runtime.jsvalue {

@@ -575,7 +575,7 @@ impl MirLowering.narrow(value: MirValue, nd: uni.Name) -> MirValue {
     if nd.type is None or isinstance(nd.type, (UnionType, AnyType)) {
         return value;
     }
-    narrowed = self.type_of(nd.type, MirPosition.VALUE, nd);
+    narrowed = self.expr_type(nd);
     if narrowed.kind == MirKind.ANY {
         return value;
     }

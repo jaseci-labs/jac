@@ -73,6 +73,7 @@ import from engine.src.runtime.jsobj_type {
     BRAND_ENV_OBJ
 }
 import from engine.src.runtime.jscell {
+    CELL_FLAG_DEAD,
     FLAG_IS_PROTO,
     FLAG_OLD,
     FLAG_REMEMBERED,
