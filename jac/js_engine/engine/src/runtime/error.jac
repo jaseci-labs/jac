@@ -19,6 +19,7 @@ Design note on format_stack / CallFrame:
 """
 
 import from engine.src.runtime.jsvalue {
+    jsv_is_object_cell,
     JSValue,
     jsv_from_int32,
     jsv_to_int32,

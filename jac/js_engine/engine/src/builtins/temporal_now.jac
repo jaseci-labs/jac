@@ -1,6 +1,7 @@
 """Temporal.Now static methods."""
 
 import from engine.src.runtime.jsvalue {
+    jsv_is_undefined,
     JSValue,
     jsv_from_string_id,
     jsv_is_int32,
@@ -9,6 +10,7 @@ import from engine.src.runtime.jsvalue {
 }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject { js_object_get }
+import from engine.src.runtime.error { vm_has_native_exc }
 import from engine.src.runtime.bignat { bn_from_int, bn_mul_small, bn_to_string }
 import from engine.src.ffi.libuv { uvhrtime }
 import from engine.src.ffi.libc { time, getenv }
