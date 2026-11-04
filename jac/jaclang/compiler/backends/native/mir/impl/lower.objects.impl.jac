@@ -166,6 +166,23 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
                     )
                 );
             }
+            if local {
+                for slot in layout.methods {
+                    inherited = self.find_method(arch, slot.name);
+                    defining = inherited.find_parent_of_type(uni.Module)
+                        if inherited is not None
+                        else None;
+                    if inherited is not None
+                        and defining is not None
+                        and defining is not self.module {
+                        try {
+                            self.foreign_method_decl(inherited);
+                        } except MirRefused {
+                            continue;
+                        }
+                    }
+                }
+            }
             for ancestor in layout.mro {
                 ancestor_layout = get_layout_registry(owner, self.prog).get_layout(
                     ancestor
@@ -480,7 +497,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
         return None;
     }
     self_type = self.object_type(owner);
-    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)];
+    params = [self.param_type(pv) for pv in self.param_nodes(sig, True)];
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
         self.ability_sym(method)
     );
@@ -519,7 +536,7 @@ impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
         or self.is_template(method) {
         return None;
     }
-    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, False)];
+    params = [self.param_type(pv) for pv in self.param_nodes(sig, False)];
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
         self.ability_sym(method)
     );
@@ -607,7 +624,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
         }
         params: list[MirType] = [];
         for pv in self.param_nodes(sig, not method.is_static) {
-            params.append(self.symbol_type(pv.name.sym, pv));
+            params.append(self.param_type(pv));
         }
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
             self.ability_sym(method)
@@ -669,7 +686,7 @@ impl MirLowering.declare_specials(arch: uni.Archetype, self_type: MirType) {
         }
         params: list[MirType] = [];
         for pv in self.param_nodes(sig, True) {
-            params.append(self.symbol_type(pv.name.sym, pv));
+            params.append(self.param_type(pv));
         }
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
             self.ability_sym(method)
@@ -2413,6 +2430,39 @@ impl MirLowering.class_value(arch: uni.Archetype) -> MirValue {
     return self.emit_value(
         MirOp.CLASS_ADDR, mir_class("*"), [], str_value=obj_def.name
     );
+}
+
+impl MirLowering.class_list_isinstance(value: MirValue, kinds: MirValue) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(kinds);
+    probe = self.spill(value);
+    cursor = self.temp_slot(mir_int());
+    found = self.temp_slot(mir_bool());
+    b.store(cursor, b.const_int(0, mir_int()));
+    b.store(found, b.const_bool(False));
+    head = fn.new_block("isa.head");
+    body = fn.new_block("isa.body");
+    hit = fn.new_block("isa.hit");
+    step = fn.new_block("isa.step");
+    done = fn.new_block("isa.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
+    b.position(body);
+    kind = self.spill(self.list_read(held, b.load(cursor, mir_int())));
+    b.cond_branch(self.class_isinstance(probe, kind), hit, step);
+    b.position(hit);
+    b.store(found, b.const_bool(True));
+    b.branch(done);
+    b.position(step);
+    b.store(
+        cursor, b.binary("add", b.load(cursor, mir_int()), b.const_int(1, mir_int()))
+    );
+    b.branch(head);
+    b.position(done);
+    return b.load(found, mir_bool());
 }
 
 impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {

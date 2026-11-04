@@ -26,7 +26,9 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         self.report_crash(lowering, exc);
         return ir_in;
     }
-    self.report_c_conflicts(lowering);
+    for (site, name, reason) in lowering.c_conflicts {
+        self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
+    }
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if self.native_required(path) {
@@ -140,12 +142,6 @@ impl MirNativePass.report_crash(lowering: MirLowering, exc: Exception) {
         name=name,
         details=f"{type(exc).__name__}: {exc}"
     );
-}
-
-impl MirNativePass.report_c_conflicts(lowering: MirLowering) {
-    for (site, name, reason) in lowering.c_conflicts {
-        self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
-    }
 }
 
 impl MirNativePass.report_refusals(lowering: MirLowering) {
@@ -431,11 +427,12 @@ impl MirNativePass.interface(
         if fn.name.startswith("__jac_test_") {
             kind = EXPORT_TEST;
         }
+        exported = fn.c_symbol or fn.symbol;
         exports[name] = NativeExport(
             name=name,
-            symbol=fn.symbol,
+            symbol=exported,
             kind=kind,
-            is_pub=fn.symbol in mir.public and fn.symbol not in mir.demoted,
+            is_pub=exported in mir.public and fn.symbol not in mir.demoted,
             param_defaults=list(mir.defaults.get(fn.symbol, [])),
             param_names=[p.name for p in fn.params],
             param_types=[p.value.type.render() for p in fn.params],

@@ -75,6 +75,8 @@ def:pub __jac_rt_list_reserve(lst: int, n: int);
 
 def:pub __jac_rt_list_push(lst: int, bits: int, kind: int);
 
+def:pub __jac_rt_list_push_words(lst: int, n: int) -> int;
+
 def:pub __jac_rt_list_set(lst: int, i: int, bits: int, kind: int);
 
 def:pub __jac_rt_list_get_ref(lst: int, i: int, kind: int) -> int;

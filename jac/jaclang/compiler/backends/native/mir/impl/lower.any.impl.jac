@@ -1243,27 +1243,3 @@ impl MirLowering.refuse_partial_mro(
         )
     );
 }
-
-impl MirLowering.class_list_isinstance(value: MirValue, classes: MirValue) -> MirValue {
-    b = self.builder();
-    fn = self.st().fn;
-    held = self.spill(classes);
-    verdict = self.temp_slot(mir_bool());
-    cursor = self.temp_slot(mir_int());
-    b.store(verdict, b.const_bool(False));
-    b.store(cursor, b.const_int(0, mir_int()));
-    head = fn.new_block("isa.head");
-    body = fn.new_block("isa.body");
-    done = fn.new_block("isa.done");
-    b.branch(head);
-    b.position(head);
-    at = b.load(cursor, mir_int());
-    b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
-    b.position(body);
-    found = self.class_isinstance(value, self.list_read(held, at));
-    b.store(verdict, found);
-    b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
-    b.cond_branch(found, done, head);
-    b.position(done);
-    return b.load(verdict, mir_bool());
-}

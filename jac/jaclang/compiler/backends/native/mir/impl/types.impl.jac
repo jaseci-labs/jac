@@ -213,8 +213,8 @@ impl mir_c_pin(elem: MirType) -> MirType {
     return mir_type(MirKind.C_PIN, args=[elem]);
 }
 
-impl mir_c_fn(params: list[MirType], ret: MirType) -> MirType {
-    return mir_type(MirKind.C_FN, args=[ret] + params);
+impl mir_c_fn(params: list[MirType], ret: MirType, cc: str = "") -> MirType {
+    return mir_type(MirKind.C_FN, name=cc, args=[ret] + params);
 }
 
 impl mir_holds_ref(t: MirType) -> bool {

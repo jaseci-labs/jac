@@ -257,6 +257,29 @@ impl MirLowering.c_param_borrowed(pv: uni.ParamVar) -> bool {
     return False;
 }
 
+impl MirLowering.param_type(pv: uni.ParamVar) -> MirType {
+    t = self.symbol_type(pv.name.sym, pv);
+    if t.kind == MirKind.C_STRUCT and self.c_param_borrowed(pv) {
+        return mir_c_ptr(t);
+    }
+    return t;
+}
+
+impl MirLowering.lent_struct(arg: uni.Expr, to: MirType) -> (MirValue | None) {
+    if to.kind != MirKind.C_PTR or to.payload().kind != MirKind.C_STRUCT {
+        return None;
+    }
+    bare = self.c_bare(arg);
+    if self.c_borrow_operand(arg) is None
+        and not (
+            isinstance(bare, (uni.Name, uni.AtomTrailer))
+            and self.expr_type(bare).kind == MirKind.C_STRUCT
+        ) {
+        return None;
+    }
+    return self.c_lend(arg, to, False, []);
+}
+
 impl MirLowering.c_declared_type(
     declared: (TypeBase | None), fallback: (TypeBase | None)
 ) -> (TypeBase | None) {
@@ -659,13 +682,17 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
             )
         );
     }
+    if name not in self.mir.public {
+        self.mir.public.append(name);
+    }
     self.decls[key] = MirDecl(
         ability=ab,
         symbol=f"{name}.jac" if by_value else name,
         params=params,
         ret=ret,
         c_variadic=packed,
-        c_symbol=name if by_value else ""
+        c_symbol=name if by_value else "",
+        cc=self.c_convention(ab)
     );
     self.order.append(key);
 }

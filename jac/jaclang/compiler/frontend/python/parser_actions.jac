@@ -20,7 +20,7 @@ obj pa_cmpop_expr_pair {
 }
 
 obj kv_pair {
-    has key: expr,
+    has key: expr | None,
         value: expr;
 }
 
@@ -1453,8 +1453,8 @@ def pa_seq_append_to_end_stmt(head: list[stmt] | None, item: stmt) -> list[stmt]
     return out;
 }
 
-def pa_get_keys(pairs: list[object] | None) -> list[expr] {
-    out: list[expr] = [];
+def pa_get_keys(pairs: list[object] | None) -> list[expr | None] {
+    out: list[expr | None] = [];
     if pairs is None {
         return out;
     }
@@ -1668,7 +1668,7 @@ def pa_call_keywords(`node: expr) -> list[keyword] {
 def pa_comp_field(`node: object, field: str) -> expr {
     pair = `node as kv_pair;
     if field == "key" {
-        return pair.key;
+        return pair.key as expr;
     }
     return pair.value;
 }
@@ -2455,7 +2455,7 @@ def pa_key_value_pair(
     end_lineno: int,
     end_col_offset: int
 ) -> kv_pair {
-    return kv_pair(key=key as expr, value=value as expr);
+    return kv_pair(key=key as (expr | None), value=value as expr);
 }
 
 def pa_key_pattern_pair(
