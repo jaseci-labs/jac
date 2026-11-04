@@ -43,6 +43,12 @@ impl MirLowering.chunk_view(
     return b.ref_cast(view, lst.type, False);
 }
 
+impl MirLowering.view_guard(lst: MirValue, op: int) {
+    self.runtime(
+        "__jac_rt_list_view_check", [lst, self.builder().const_int(op, mir_int())]
+    );
+}
+
 impl MirLowering.chunk_width(n_nd: uni.Expr) -> MirValue {
     b = self.builder();
     width = self.coerce(self.lower_expr(n_nd), mir_int(), n_nd);

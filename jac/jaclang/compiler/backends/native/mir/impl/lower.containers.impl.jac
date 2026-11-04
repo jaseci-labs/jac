@@ -610,6 +610,7 @@ impl MirLowering.list_slice(
     lst: MirValue, part: uni.Slice, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    self.view_guard(lst, VIEW_SLICE);
     (start, stop, step) = self.list_bounds(lst, part, site);
     elem = lst.type.payload();
     handle = self.runtime(
@@ -849,6 +850,7 @@ impl MirLowering.list_method(
         return b.const_bool(False);
     }
     if name == "remove" and len(args) == 1 {
+        self.view_guard(lst, VIEW_REMOVE);
         found = self.runtime(
             "__jac_rt_list_index",
             [lst, self.to_bits(self.lower_expr(args[0]), elem, args[0]), kind]
@@ -1697,11 +1699,15 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
         }
         holder = self.lower_expr(target.target);
         slice = target.right;
+        if holder.type.kind == MirKind.LIST {
+            holder = self.spill(holder);
+            self.view_guard(holder, VIEW_DELETE);
+        }
         if holder.type.kind == MirKind.LIST
             and slice.is_range
             and len(slice.slices) == 1
             and slice.slices[0].step is None {
-            self.list_delete_range(self.spill(holder), slice.slices[0], target);
+            self.list_delete_range(holder, slice.slices[0], target);
             continue;
         }
         if len(slice.slices) != 1 or slice.is_range or slice.slices[0].start is None {
@@ -1759,6 +1765,7 @@ impl MirLowering.list_replace_range(
     }
     fresh: (MirValue | None) = None;
     if values is not None {
+        self.view_guard(lst, VIEW_SLICE);
         fresh = self.spill(self.new_list(lst.type.payload(), 0));
         self.extend_from(fresh, self.spill(values), site);
     }
@@ -1864,6 +1871,7 @@ impl MirLowering.list_extend_in_place(
         if value.type is current.type
         else self.coerce(value, current.type, site);
     elem = current.type.payload();
+    self.view_guard(current, VIEW_IADD);
     self.runtime(
         "__jac_rt_list_extend",
         [

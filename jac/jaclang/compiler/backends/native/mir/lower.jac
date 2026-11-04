@@ -68,6 +68,10 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      FLOW_CTX_CAPTURES: int = 2,
      FLOW_TASK_PARTIALS: int = 3,
      LIST_VIEW_WORDS: int = 8,
+     VIEW_REMOVE: int = 4,
+     VIEW_IADD: int = 8,
+     VIEW_DELETE: int = 9,
+     VIEW_SLICE: int = 10,
      GEN_PENDING_MESSAGE: int = 16,
      GEN_PENDING_ORIGIN: int = 24,
      RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
@@ -1164,6 +1168,7 @@ obj MirLowering {
 
     def chunk_width(n_nd: uni.Expr) -> MirValue;
     def chunk_count(lst: MirValue, width: MirValue) -> MirValue;
+    def view_guard(lst: MirValue, op: int);
     def lower_chunk_for(nd: uni.InForStmt, lst_nd: uni.Expr, n_nd: uni.Expr);
     def flow_parallel_ok -> bool;
     def flow_reductions(nd: uni.InForStmt) -> list[tuple[uni.Name, str]];
