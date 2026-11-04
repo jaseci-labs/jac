@@ -417,7 +417,6 @@ obj MirLowering {
         text_fns: dict[str, str] = {},
         text_serial: int = 0,
         enum_thunks: dict[str, str] = {},
-        slot_cache: dict[str, dict[int, list[str]]] = {},
         named_archs: dict[str, uni.Archetype] = {},
         default_entries: list[tuple[str, str]] = [],
         indexed_units: set[int] = set(),
@@ -439,6 +438,7 @@ obj MirLowering {
         dep_verdicts: dict[str, (list[str] | None)] = {},
         erased_units: set[str] = set(),
         slot_adapters: dict[str, MirFunction] = {},
+        class_names_seen: (list[uni.Archetype] | None) = None,
         erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
@@ -558,6 +558,7 @@ obj MirLowering {
         t: (TypeBase | None), position: MirPosition, site: uni.UniNode
     ) -> MirType;
 
+    def record_enum_type(made: MirType, t: (TypeBase | None));
     def ensure_objects(t: (TypeBase | None));
     def ensure_c_types(t: (TypeBase | None));
     def c_struct_of(t: (TypeBase | None)) -> (uni.Archetype | None);
@@ -874,10 +875,6 @@ obj MirLowering {
 
     def layout_registries(name: str) -> list[LayoutRegistry];
     def runtime_classes(target: str, seen_from: str) -> list[str];
-    def slot_groups(
-        target: str, seen_from: str, name: str, index: int, method: bool
-    ) -> dict[int, list[str]];
-
     def arch_named(name: str, site: uni.UniNode) -> uni.Archetype;
     def union_field_place(
         holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
@@ -933,6 +930,14 @@ obj MirLowering {
 
     def method_receiver(
         decl: MirDecl, arch: uni.Archetype, receiver: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def remapped_field(
+        holder: MirValue, obj_def: MirObjectDef, index: int, place: MirValue
+    ) -> MirValue;
+
+    def vtable_target(
+        receiver: MirValue, obj_def: MirObjectDef, slot: int
     ) -> MirValue;
 
     def invoke_method(
@@ -1619,6 +1624,7 @@ obj MirLowering {
 
     def class_attr_overrides(arch: uni.Archetype, name: str) -> list[uni.Archetype];
     def has_class_attr(arch: uni.Archetype, name: str) -> bool;
+    def named_classes -> list[uni.Archetype];
     def class_dispatch(
         arch: uni.Archetype,
         name: str,

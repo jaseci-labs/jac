@@ -223,22 +223,11 @@ impl MirLowering.object_text(
         }
         obj_def = self.object_def(arch);
         if obj_def.vtable_symbol and decl.symbol in obj_def.vtable_methods {
-            i8p = mir_c_ptr(mir_int(8, False));
-            slot_place = self.emit_value(
-                MirOp.FIELD_ADDR,
-                mir_c_ptr(mir_c_ptr(i8p)),
-                [value],
-                int_value=obj_def.vtable_slot
-            );
-            table = b.load(slot_place, mir_c_ptr(i8p));
-            index = obj_def.vtable_methods.index(decl.symbol) + VTABLE_HEADER_SLOTS;
-            entry_place = self.emit_value(
-                MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(index, mir_int())]
+            target = self.vtable_target(
+                value, obj_def, obj_def.vtable_methods.index(decl.symbol)
             );
             callee = self.emit_value(
-                MirOp.PTR_CAST,
-                mir_c_fn([value.type], decl.ret),
-                [b.load(entry_place, i8p)]
+                MirOp.PTR_CAST, mir_c_fn([value.type], decl.ret), [target]
             );
             result = self.emit_value(
                 MirOp.CALL_FNPTR, decl.ret, [callee, value], str_value=decl.symbol

@@ -205,6 +205,7 @@ obj MirObjectDef {
         vtable_names: list[str] = [],
         vtable_entries: dict[int, str] = {},
         ancestry: list[str] = [],
+        field_remaps: dict[str, list[int]] = {},
         drop_symbol: str = "",
         glue_symbol: str = "",
         drop_slot: str = "",
@@ -282,3 +283,7 @@ obj MirBuilder {
     def ret(value: (MirValue | None));
     def unreachable;
 }
+
+def mir_selector_symbol(name: str) -> str;
+
+def mir_selector_global(name: str) -> MirGlobal;

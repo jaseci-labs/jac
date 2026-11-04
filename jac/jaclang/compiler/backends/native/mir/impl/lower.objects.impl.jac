@@ -119,9 +119,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             if slot_type.kind != MirKind.ANY {
                 self.ensure_objects(field_type);
             }
-            if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
-                self.enum_types.setdefault(slot_type.name, field_type);
-            }
+            self.record_enum_type(slot_type, field_type);
             tag = member.decl_node.type_tag
                 if isinstance(member.decl_node, uni.HasVar)
                 else None;
@@ -189,12 +187,15 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
                 );
                 if ancestor_layout is not None and ancestor_layout.has_vtable {
                     ancestor_path = ancestor_layout.decl_mod or owner.loc.mod_path;
-                    made.ancestry.append(
-                        native_symbol_name(
-                            native_unit_prefix(ancestor_path),
-                            native_unit_spelling(f"{ancestor}.__vtable", ancestor_path)
-                        )
+                    ancestor_symbol = native_symbol_name(
+                        native_unit_prefix(ancestor_path),
+                        native_unit_spelling(f"{ancestor}.__vtable", ancestor_path)
                     );
+                    made.ancestry.append(ancestor_symbol);
+                    moved = field_remap(layout, ancestor_layout);
+                    if moved {
+                        made.field_remaps[ancestor_symbol] = moved;
+                    }
                 }
             }
         }
@@ -234,6 +235,15 @@ impl MirLowering.settle_slots {
                 }
                 try {
                     self.foreign_method_decl(method);
+                } except MirRefused {}
+            }
+            for (slot_name, var, acc) in archetype_accessors(holder) {
+                symbol = self.method_symbol(holder, slot_name);
+                if symbol not in wanted or symbol in self.mir.externs {
+                    continue;
+                }
+                try {
+                    self.foreign_accessor_decl(var, acc);
                 } except MirRefused {}
             }
         }
@@ -1353,9 +1363,7 @@ impl MirLowering.field_place(
     if holder.type.kind == MirKind.ANY {
         holder = self.coerce(holder, self.object_type(arch), site);
     }
-    seen_from = obj_def.name;
     if holder.type.kind == MirKind.OBJ and holder.type.name != obj_def.name {
-        seen_from = holder.type.name;
         holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
     }
     if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
@@ -1370,37 +1378,61 @@ impl MirLowering.field_place(
     place = self.emit_value(
         MirOp.FIELD_ADDR, mir_c_ptr(member.type), [holder], int_value=member.index
     );
-    if holder.type.kind != MirKind.OBJ {
+    if obj_def.vtable_slot < 0 {
         return place;
     }
-    groups = self.slot_groups(obj_def.name, seen_from, name, member.index, False);
-    if not groups {
-        return place;
-    }
+    return self.remapped_field(holder, obj_def, member.index, place);
+}
+
+impl MirLowering.remapped_field(
+    holder: MirValue, obj_def: MirObjectDef, index: int, place: MirValue
+) -> MirValue {
     b = self.builder();
-    named = self.address_of(self.runtime_value("__jac_rt_type_name", [holder]));
-    for (index, classes) in groups.items() {
-        rep_def = self.object_def(self.arch_named(classes[0], site));
-        rep_member = rep_def.field(name);
-        if rep_member is None or rep_member.type is not member.type {
-            raise MirRefused(
-                mir_refusal(
-                    "attribute access",
-                    f"{obj_def.name}.{name} through {rep_def.name}",
-                    site,
-                    "The field has a different type in an archetype that inherits it through a secondary base."
-                )
-            );
-        }
-        alt = self.emit_value(
+    fn = self.st().fn;
+    i8p = mir_c_ptr(mir_int(8, False));
+    table = b.load(
+        self.emit_value(
             MirOp.FIELD_ADDR,
-            mir_c_ptr(member.type),
-            [b.ref_cast(holder, mir_obj(rep_def.name), False)],
-            int_value=index
-        );
-        place = b.select(self.exact_class_test(named, classes, site), alt, place);
-    }
-    return place;
+            mir_c_ptr(mir_c_ptr(i8p)),
+            [holder],
+            int_value=obj_def.vtable_slot
+        ),
+        mir_c_ptr(i8p)
+    );
+    remap = self.address_of(
+        b.load(
+            self.emit_value(
+                MirOp.PTR_OFFSET,
+                mir_c_ptr(i8p),
+                [table, b.const_int(VTABLE_FIELDS_SLOT, mir_int())]
+            ),
+            i8p
+        )
+    );
+    held = self.temp_slot(place.type);
+    b.store(held, place);
+    moved = fn.new_block("field.moved");
+    done = fn.new_block("field.done");
+    b.cond_branch(b.compare("ne", remap, b.const_int(0, mir_int())), moved, done);
+    b.position(moved);
+    found = self.runtime_value(
+        "__jac_rt_field_at",
+        [
+            remap,
+            self.address_of(
+                self.emit_value(
+                    MirOp.VTABLE_ADDR, mir_c_ptr(i8p), [], str_value=obj_def.name
+                )
+            ),
+            b.const_int(index, mir_int()),
+            self.address_of(place),
+            self.address_of(holder)
+        ]
+    );
+    b.store(held, self.emit_value(MirOp.PTR_CAST, place.type, [found]));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, place.type);
 }
 
 impl MirLowering.checked_cross_cast(
@@ -1471,32 +1503,6 @@ impl MirLowering.runtime_classes(target: str, seen_from: str) -> list[str] {
         found = found | below;
     }
     return sorted(found);
-}
-
-impl MirLowering.slot_groups(
-    target: str, seen_from: str, name: str, index: int, method: bool
-) -> dict[int, list[str]] {
-    key = f"{target}|{seen_from}|{name}|{method}";
-    cached = self.slot_cache.get(key);
-    if cached is not None {
-        return cached;
-    }
-    groups: dict[int, list[str]] = {};
-    for cls in self.runtime_classes(target, seen_from) {
-        layout: (ArchetypeLayout | None) = None;
-        for registry in self.layout_registries(target) {
-            layout = layout or registry.get_layout(cls);
-        }
-        if layout is None {
-            continue;
-        }
-        at = layout.method_index.get(name) if method else layout.field_index.get(name);
-        if at is not None and at != index {
-            groups.setdefault(at, []).append(cls);
-        }
-    }
-    self.slot_cache[key] = groups;
-    return groups;
 }
 
 impl MirLowering.arch_named(name: str, site: uni.UniNode) -> uni.Archetype {
@@ -1953,6 +1959,80 @@ impl MirLowering.method_receiver(
     return self.coerce(receiver, decl.self_type, site);
 }
 
+impl MirLowering.vtable_target(
+    receiver: MirValue, obj_def: MirObjectDef, slot: int
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    i8p = mir_c_ptr(mir_int(8, False));
+    slot_place = self.emit_value(
+        MirOp.FIELD_ADDR,
+        mir_c_ptr(mir_c_ptr(i8p)),
+        [receiver],
+        int_value=obj_def.vtable_slot
+    );
+    table = b.load(slot_place, mir_c_ptr(i8p));
+    selector = mir_selector_global(obj_def.vtable_names[slot]);
+    if selector.symbol not in self.mir.globals {
+        self.mir.globals[selector.symbol] = selector;
+    }
+    wanted = self.address_of(
+        self.emit_value(
+            MirOp.GLOBAL_ADDR, mir_c_ptr(selector.type), [], str_value=selector.symbol
+        )
+    );
+    selectors = self.emit_value(
+        MirOp.PTR_CAST,
+        mir_c_ptr(i8p),
+        [
+            b.load(
+                self.emit_value(
+                    MirOp.PTR_OFFSET,
+                    mir_c_ptr(i8p),
+                    [table, b.const_int(VTABLE_SELECTOR_SLOT, mir_int())]
+                ),
+                i8p
+            )
+        ]
+    );
+    seen = self.address_of(
+        b.load(
+            self.emit_value(
+                MirOp.PTR_OFFSET,
+                mir_c_ptr(i8p),
+                [selectors, b.const_int(slot, mir_int())]
+            ),
+            i8p
+        )
+    );
+    held = self.temp_slot(i8p);
+    fixed = fn.new_block("vtable.fixed");
+    moved = fn.new_block("vtable.moved");
+    done = fn.new_block("vtable.done");
+    b.cond_branch(b.compare("eq", seen, wanted), fixed, moved);
+    b.position(fixed);
+    b.store(
+        held,
+        b.load(
+            self.emit_value(
+                MirOp.PTR_OFFSET,
+                mir_c_ptr(i8p),
+                [table, b.const_int(slot + VTABLE_HEADER_SLOTS, mir_int())]
+            ),
+            i8p
+        )
+    );
+    b.branch(done);
+    b.position(moved);
+    found = self.runtime_value(
+        "__jac_rt_vtable_find", [self.address_of(table), wanted]
+    );
+    b.store(held, self.emit_value(MirOp.PTR_CAST, i8p, [found]));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, i8p);
+}
+
 impl MirLowering.invoke_method(
     decl: MirDecl, arch: uni.Archetype, name: str, values: list[MirValue]
 ) -> MirValue {
@@ -1962,34 +2042,9 @@ impl MirLowering.invoke_method(
         and receiver.type.kind != MirKind.CLASS
         and decl.symbol in obj_def.vtable_methods
         and name not in NON_DISPATCHED_METHODS {
-        b = self.builder();
-        i8p = mir_c_ptr(mir_int(8, False));
-        slot_place = self.emit_value(
-            MirOp.FIELD_ADDR,
-            mir_c_ptr(mir_c_ptr(i8p)),
-            [receiver],
-            int_value=obj_def.vtable_slot
+        target = self.vtable_target(
+            receiver, obj_def, obj_def.vtable_methods.index(decl.symbol)
         );
-        table = b.load(slot_place, mir_c_ptr(i8p));
-        slot = obj_def.vtable_methods.index(decl.symbol);
-        index = b.const_int(slot + VTABLE_HEADER_SLOTS, mir_int());
-        groups = self.slot_groups(obj_def.name, obj_def.name, name, slot, True)
-            if receiver.type.kind == MirKind.OBJ
-            else {};
-        if groups {
-            named = self.address_of(
-                self.runtime_value("__jac_rt_type_name", [receiver])
-            );
-            for (at, classes) in groups.items() {
-                index = b.select(
-                    self.exact_class_test(named, classes, arch),
-                    b.const_int(at + VTABLE_HEADER_SLOTS, mir_int()),
-                    index
-                );
-            }
-        }
-        entry_place = self.emit_value(MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, index]);
-        target = b.load(entry_place, i8p);
         base = self.slot_root(arch, name);
         if base is None
             or mir_same_signature(base, decl)

@@ -62,37 +62,15 @@ def py_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def frozen_passes(request: ProductRequest) -> PassSchedule;
 
-def bytecode_passes(request: ProductRequest) -> PassSchedule;
-
 def native_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def native_lower_passes(request: ProductRequest) -> PassSchedule;
 
 def native_toolchain_blocker -> str;
 
-def native_object_passes(request: ProductRequest) -> PassSchedule;
-
-def format_passes(request: ProductRequest) -> PassSchedule;
-
-def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
-
 def lint_passes(request: ProductRequest) -> PassSchedule;
 
-def python_ast_passes(request: ProductRequest) -> PassSchedule;
-
 def python_symbols_passes(request: ProductRequest) -> PassSchedule;
-
-def grammar_passes(request: ProductRequest) -> PassSchedule;
-
-def cfg_dot_passes(request: ProductRequest) -> PassSchedule;
-
-def normalize_passes(request: ProductRequest) -> PassSchedule;
-
-def unparse_passes(request: ProductRequest) -> PassSchedule;
-
-def doc_passes(request: ProductRequest) -> PassSchedule;
-
-def format_text_passes(request: ProductRequest) -> PassSchedule;
 
 def place_module(program: JacProgram, module: Module) -> bool;
 
@@ -222,9 +200,6 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              tiered=True,
              on_import_error=ImportFallback.REPORT
          ),
-         CompilationProduct.BYTECODE: ProductSpec(
-             needs=[CompilationProduct.PY_IR], passes=bytecode_passes
-         ),
          CompilationProduct.NATIVE_IR: ProductSpec(
              needs=[CompilationProduct.FLOW, CompilationProduct.ANALYSIS],
              passes=native_ir_passes,
@@ -239,32 +214,18 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              drop=drop_native_ir,
              loads=NATIVE_LOADS
          ),
-         CompilationProduct.NATIVE_OBJECT: ProductSpec(
-             needs=[CompilationProduct.NATIVE_LOWER],
-             passes=native_object_passes,
-             drop=drop_native_object
-         ),
-         CompilationProduct.FORMAT: ProductSpec(passes=format_passes),
-         CompilationProduct.FORMAT_LINTFIX: ProductSpec(passes=format_lintfix_passes),
          CompilationProduct.LINT: ProductSpec(passes=lint_passes),
-         CompilationProduct.PYTHON_AST: ProductSpec(
-             passes=python_ast_passes, tool=True
-         ),
          CompilationProduct.PYTHON_SYMBOLS: ProductSpec(
              passes=python_symbols_passes, tool=True
-         ),
-         CompilationProduct.GRAMMAR: ProductSpec(passes=grammar_passes, tool=True),
-         CompilationProduct.CFG_DOT: ProductSpec(passes=cfg_dot_passes, tool=True),
-         CompilationProduct.NORMALIZE: ProductSpec(passes=normalize_passes, tool=True),
-         CompilationProduct.UNPARSE: ProductSpec(passes=unparse_passes, tool=True),
-         CompilationProduct.DOC: ProductSpec(passes=doc_passes, tool=True),
-         CompilationProduct.FORMAT_TEXT: ProductSpec(
-             passes=format_text_passes, tool=True
          )
      },
      _LOADING: ContextVar[list[CompilationProduct]] = ContextVar(
          'jac_schedule_loading', `default=[]
      );
+
+def product_spec(product: CompilationProduct) -> ProductSpec;
+
+def register_product(product: CompilationProduct, spec: ProductSpec);
 
 def contract_of(p: type[CompilerPass]) -> PassContract;
 

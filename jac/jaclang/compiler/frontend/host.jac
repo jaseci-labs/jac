@@ -134,6 +134,7 @@ obj HostServices {
 
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
     def note_native_demotion(program: JacProgram, key: str, reason: str) -> bool;
+    def register_host_products;
     def native_fact(kind: str, key: str) -> str;
     def save_native_debug_ir(path: str, text: str);
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;

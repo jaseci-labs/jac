@@ -526,7 +526,9 @@ impl named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
     return owner if isinstance(owner, Ability) else None;
 }
 
-impl variant_module(prog: any, mod: (Module | None)) -> (Module | None) {
+impl variant_module(
+    prog: (JacProgram | None), mod: (Module | None)
+) -> (Module | None) {
     import os;
     if prog is None
         or mod is None
@@ -549,7 +551,7 @@ impl variant_module(prog: any, mod: (Module | None)) -> (Module | None) {
 }
 
 impl variant_assignment(
-    prog: any, asn: (Assignment | None), name: str = ""
+    prog: (JacProgram | None), asn: (Assignment | None), name: str = ""
 ) -> (Assignment | None) {
     if asn is None or not isinstance(asn.parent, GlobalVars) {
         return None;
@@ -578,7 +580,9 @@ impl variant_assignment(
     return None;
 }
 
-impl final_glob_value(nd: (UniNode | None), prog: any = None) -> (Expr | None) {
+impl final_glob_value(
+    nd: (UniNode | None), prog: (JacProgram | None) = None
+) -> (Expr | None) {
     if not isinstance(nd, Name) or nd.sym is None {
         return None;
     }
@@ -626,7 +630,7 @@ impl c_offset_address(expr: (UniNode | None)) -> tuple[(UniNode | None), int] {
 }
 
 impl c_scalar_constant(
-    expr: (UniNode | None), depth: int = 0, prog: any = None
+    expr: (UniNode | None), depth: int = 0, prog: (JacProgram | None) = None
 ) -> tuple[bool, any] {
     if depth > 32 {
         return (False, None);
@@ -655,7 +659,7 @@ impl c_scalar_constant(
 }
 
 impl _fold_with_finals(
-    expr: UniNode, depth: int, prog: any = None
+    expr: UniNode, depth: int, prog: (JacProgram | None) = None
 ) -> tuple[bool, any] {
     if isinstance(expr, UnaryExpr) {
         (ok, value) = c_scalar_constant(expr.operand, depth + 1, prog);
