@@ -567,9 +567,9 @@ graph import {
             unit_drift
         },
         dist.precompile_bytecode.seal_native { kernel_lib_name },
-        project.compiler_host._native_scan_path
-            | project.kernel_check._record_outcome
-            | project.kernel_snapshot.session_inputs { kernel_identity },
+        project.compiler_host._native_scan_path | project.kernel_check._record_outcome {
+            kernel_identity
+        },
         project.kernel_check._replayed_outcome { kernel_identity },
     ]
     compiler.backends.native.kernel_resolve --> [
@@ -5958,9 +5958,7 @@ graph import compiler {
             ct_dep_digest,
             running_compiler_digest
         },
-        backends.native.kernel_resolve.kernel_identity | frontend.kernel_analyze {
-            set_kernel_producer
-        },
+        backends.native.kernel_resolve.kernel_identity { set_kernel_producer },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
             running_compiler_digest,

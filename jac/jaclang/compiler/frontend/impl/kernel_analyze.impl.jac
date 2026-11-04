@@ -266,7 +266,6 @@ impl run_kernel_session(
     if inputs.package_root {
         set_package_root(inputs.package_root);
     }
-    set_kernel_producer(inputs.producer);
     host = KernelHost(inputs=inputs, asker=asker, kernel_asker=kernel_asker);
     host.census.trace = bool(os.environ.get("JAC_KERNEL_TRACE"));
     run = KernelRun(host=host, program=JacProgram());

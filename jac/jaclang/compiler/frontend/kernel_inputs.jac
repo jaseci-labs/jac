@@ -112,7 +112,6 @@ obj KernelInputs {
         package_root: str = "",
         module_projection: str = "",
         target_app: str = "",
-        producer: str = "",
         request: RequestOptions = RequestOptions(),
         project_defaults: (ProjectDefaults | None) = None,
         check_settings: dict[str, CheckSettings] = {},
