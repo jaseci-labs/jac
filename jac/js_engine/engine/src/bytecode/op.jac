@@ -479,7 +479,8 @@ obj CompiledFunction {
         # The register loop's flat own-slot property IC, two words per stack
         # instruction (shape id, slot index; 0: empty), raw like rcode_ptr: a
         # GETFIELD / SETFIELD hit reads it without the Instruction's IC fields.
-        ric_ptr: int = 0;
+        ric_ptr: int = 0,
+        mod_free: int = 0;
 }
 
 # parent-local slot index per free_var; -1 = transitive capture

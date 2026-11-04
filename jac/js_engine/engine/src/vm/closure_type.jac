@@ -49,7 +49,8 @@ obj:pub JSClosure {
         class_brand_sid: int = 0,
         home_realm_id: int = 0,
         prototype_writable: bool = True,
-        jac_module: JSValue = js_undefined();
+        jac_module: JSValue = js_undefined(),
+        call_plain: int = 0;
 
     """Generational write barrier (docs/GENERATIONAL_GC.md §4.4): `v`, just
     stored into a field of this closure, is logged for the next minor
