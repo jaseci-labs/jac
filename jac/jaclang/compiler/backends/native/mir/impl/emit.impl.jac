@@ -473,6 +473,11 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         to = self.llvm_type(type_arg_of(instr));
         if instr.operands[0].type.kind == MirKind.ANY {
             source = b.extract_value(source, 1);
+        } elif instr.operands[0].type.kind == MirKind.OPT
+            and type_arg_of(instr).kind != MirKind.OPT
+            and source.type != to
+            and not isinstance(source.type, (ir.IntType, ir.PointerType)) {
+            source = b.extract_value(source, 1);
         }
         if isinstance(source.type, ir.IntType) {
             self.bind(instr.result, b.inttoptr(source, to));
