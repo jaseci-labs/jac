@@ -1228,6 +1228,13 @@ obj MirLowering {
     ) -> MirValue;
 
     def codec_failure(exception: str) -> MirValue;
+    def bytes_decode(
+        held: MirValue,
+        codec_nd: (uni.Expr | None),
+        errors_nd: (uni.Expr | None),
+        site: uni.UniNode
+    ) -> MirValue;
+
     def literal_text(nd: (uni.UniNode | None)) -> (str | None);
     def typed_handle(handle: MirValue, nd: uni.Expr) -> MirValue;
     def text_method(

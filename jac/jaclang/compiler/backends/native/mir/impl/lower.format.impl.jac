@@ -746,15 +746,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
                 mir_refusal("call", f"str of {held.type.render()} with an encoding", nd)
             );
         }
-        codec = self.codec_arg(args[1], TEXT_CODECS, nd);
-        errors = self.codec_arg(args[2] if len(args) > 2 else None, TEXT_ERRORS, nd);
-        (data, size) = self.byte_parts(held);
-        return self.owned_text(
-            self.call_rt(
-                "__jac_rt_bytes_decode",
-                [data, size, codec, errors, self.codec_failure("UnicodeDecodeError")]
-            )
-        );
+        return self.bytes_decode(held, args[1], args[2] if len(args) > 2 else None, nd);
     }
     if name == "len" {
         if len(args) == 1

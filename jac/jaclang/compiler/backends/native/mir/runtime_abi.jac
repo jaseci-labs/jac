@@ -300,7 +300,16 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
              "int",
              "bool"
          ],
-         "__jac_rt_bytes_decode": ["str.ref", "ptr", "int", "int", "int", "i32"],
+         "__jac_rt_bytes_decode": [
+             "str.ref",
+             "ptr",
+             "int",
+             "ptr",
+             "ptr",
+             "i32",
+             "i32",
+             "i32"
+         ],
          "__jac_rt_str_encode": ["ref", "ptr", "int", "int", "int", "i32"],
          "__jac_rt_bytes_hex": ["str.ref", "ptr", "int"],
          "__jac_rt_bytes_fromhex": ["ref", "ptr", "int"],

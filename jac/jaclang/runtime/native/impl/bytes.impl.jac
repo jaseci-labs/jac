@@ -425,137 +425,334 @@ impl __jac_rt_bytes_affix(
     return int(memcmp(int(data) + at, int(x), xn)) == 0;
 }
 
-impl _utf8_valid(d: int, n: int, i: int) -> int {
+impl _name_is(d: int, n: int, name: ptr[u8]) -> bool {
+    return strlen(int(name)) == n and (n == 0 or int(memcmp(d, int(name), n)) == 0);
+}
+
+impl _codec_match(d: int, n: int, modules: bool) -> int {
+    if (modules and _name_is(d, n, ptr[u8]("utf_8")))
+        or _name_is(d, n, ptr[u8]("utf8"))
+        or _name_is(d, n, ptr[u8]("u8"))
+        or _name_is(d, n, ptr[u8]("utf"))
+        or _name_is(d, n, ptr[u8]("utf8_ucs2"))
+        or _name_is(d, n, ptr[u8]("utf8_ucs4"))
+        or _name_is(d, n, ptr[u8]("cp65001")) {
+        return CODEC_UTF8;
+    }
+    if (modules and _name_is(d, n, ptr[u8]("ascii")))
+        or _name_is(d, n, ptr[u8]("646"))
+        or _name_is(d, n, ptr[u8]("ansi_x3.4_1968"))
+        or _name_is(d, n, ptr[u8]("ansi_x3_4_1968"))
+        or _name_is(d, n, ptr[u8]("ansi_x3.4_1986"))
+        or _name_is(d, n, ptr[u8]("cp367"))
+        or _name_is(d, n, ptr[u8]("csascii"))
+        or _name_is(d, n, ptr[u8]("ibm367"))
+        or _name_is(d, n, ptr[u8]("iso646_us"))
+        or _name_is(d, n, ptr[u8]("iso_646.irv_1991"))
+        or _name_is(d, n, ptr[u8]("iso_ir_6"))
+        or _name_is(d, n, ptr[u8]("us"))
+        or _name_is(d, n, ptr[u8]("us_ascii")) {
+        return CODEC_ASCII;
+    }
+    if (modules and _name_is(d, n, ptr[u8]("latin_1")))
+        or _name_is(d, n, ptr[u8]("8859"))
+        or _name_is(d, n, ptr[u8]("cp819"))
+        or _name_is(d, n, ptr[u8]("csisolatin1"))
+        or _name_is(d, n, ptr[u8]("ibm819"))
+        or _name_is(d, n, ptr[u8]("iso8859"))
+        or _name_is(d, n, ptr[u8]("iso8859_1"))
+        or _name_is(d, n, ptr[u8]("iso_8859_1"))
+        or _name_is(d, n, ptr[u8]("iso_8859_1_1987"))
+        or _name_is(d, n, ptr[u8]("iso_ir_100"))
+        or _name_is(d, n, ptr[u8]("l1"))
+        or _name_is(d, n, ptr[u8]("latin"))
+        or _name_is(d, n, ptr[u8]("latin1")) {
+        return CODEC_LATIN1;
+    }
+    return -1;
+}
+
+impl __jac_rt_codec_lookup(name: ptr[u8]) -> int {
+    source = int(name);
+    n = strlen(source);
+    sb = __jac_rt_sb_new(n + 1);
+    punct = False;
+    i = 0;
+    while i < n {
+        c = _byte(source + i);
+        if (c >= 48 and c <= 57)
+            or (c >= 65 and c <= 90)
+            or (c >= 97 and c <= 122)
+            or c == 46 {
+            if punct and __jac_rt_sb_len(sb) > 0 {
+                __jac_rt_sb_byte(sb, 95);
+            }
+            punct = False;
+            __jac_rt_sb_byte(sb, c + 32 if c >= 65 and c <= 90 else c);
+        } else {
+            punct = True;
+        }
+        i += 1;
+    }
+    d = __jac_rt_sb_data(sb);
+    m = __jac_rt_sb_len(sb);
+    found = _codec_match(d, m, True);
+    if found < 0 {
+        k = 0;
+        while k < m {
+            if _byte(d + k) == 46 {
+                __mem_store_i8(d + k, i8(95));
+            }
+            k += 1;
+        }
+        found = _codec_match(d, m, False);
+    }
+    __jac_rt_sb_drop(sb);
+    return found;
+}
+
+impl _errors_lookup(name: ptr[u8]) -> int {
+    d = int(name);
+    n = strlen(d);
+    if _name_is(d, n, ptr[u8]("strict")) {
+        return ERRORS_STRICT;
+    }
+    if _name_is(d, n, ptr[u8]("replace")) {
+        return ERRORS_REPLACE;
+    }
+    if _name_is(d, n, ptr[u8]("ignore")) {
+        return ERRORS_IGNORE;
+    }
+    if _name_is(d, n, ptr[u8]("surrogatepass")) {
+        return ERRORS_SURROGATEPASS;
+    }
+    if _name_is(d, n, ptr[u8]("backslashreplace")) {
+        return ERRORS_BACKSLASH;
+    }
+    if _name_is(d, n, ptr[u8]("surrogateescape")) {
+        return ERRORS_SURROGATEESCAPE;
+    }
+    if _name_is(d, n, ptr[u8]("xmlcharrefreplace"))
+        or _name_is(d, n, ptr[u8]("namereplace")) {
+        return ERRORS_ENCODE_ONLY;
+    }
+    return ERRORS_UNKNOWN;
+}
+
+impl _is_cont(c: int) -> bool {
+    return c >= 128 and c <= 191;
+}
+
+impl _utf8_step(d: int, n: int, i: int) -> int {
     c = _byte(d + i);
+    left = n - i;
     if c < 128 {
         return 1;
     }
-    need = 0;
-    low = 128;
-    high = 191;
-    if c >= 194 and c <= 223 {
-        need = 1;
-    } elif c >= 224 and c <= 239 {
-        need = 2;
-        if c == 224 {
-            low = 160;
-        } elif c == 237 {
-            high = 159;
-        }
-    } elif c >= 240 and c <= 244 {
-        need = 3;
-        if c == 240 {
-            low = 144;
-        } elif c == 244 {
-            high = 143;
-        }
-    } else {
-        return 0;
+    if c < 194 {
+        return UTF8_BAD_START;
     }
-    k = 1;
-    while k <= need {
-        if i + k >= n {
-            return 0 - k;
+    if c < 224 {
+        if left < 2 {
+            return UTF8_TRUNCATED;
         }
-        b = _byte(d + i + k);
-        if b < low or b > high {
-            return 0 - k;
-        }
-        low = 128;
-        high = 191;
-        k += 1;
+        return 2 if _is_cont(_byte(d + i + 1)) else UTF8_BAD_FIRST;
     }
-    return need + 1;
+    if c < 240 {
+        if left < 2 {
+            return UTF8_TRUNCATED;
+        }
+        c2 = _byte(d + i + 1);
+        if not _is_cont(c2) or (c == 224 and c2 < 160) or (c == 237 and c2 >= 160) {
+            return UTF8_BAD_FIRST;
+        }
+        if left < 3 {
+            return UTF8_TRUNCATED;
+        }
+        return 3 if _is_cont(_byte(d + i + 2)) else UTF8_BAD_SECOND;
+    }
+    if c < 245 {
+        if left < 2 {
+            return UTF8_TRUNCATED;
+        }
+        c2 = _byte(d + i + 1);
+        if not _is_cont(c2) or (c == 240 and c2 < 144) or (c == 244 and c2 >= 144) {
+            return UTF8_BAD_FIRST;
+        }
+        if left < 3 {
+            return UTF8_TRUNCATED;
+        }
+        if not _is_cont(_byte(d + i + 2)) {
+            return UTF8_BAD_SECOND;
+        }
+        if left < 4 {
+            return UTF8_TRUNCATED;
+        }
+        return 4 if _is_cont(_byte(d + i + 3)) else UTF8_BAD_THIRD;
+    }
+    return UTF8_BAD_START;
 }
 
 impl _decode_error(
-    codec: ptr[u8], byte: int, position: int, reason: ptr[u8]
+    codec: ptr[u8], d: int, start: int, stop: int, reason: ptr[u8]
 ) -> ptr[u8] {
     sb = __jac_rt_sb_new(96);
     __jac_rt_sb_byte(sb, 39);
     _sb_text(sb, codec);
-    _sb_text(sb, ptr[u8]("' codec can't decode byte 0x"));
-    __jac_rt_sb_byte(sb, _hex_digit(byte >> 4));
-    __jac_rt_sb_byte(sb, _hex_digit(byte & 15));
-    _sb_text(sb, ptr[u8](" in position "));
-    __jac_rt_sb_int(sb, position);
+    if stop - start == 1 {
+        byte = _byte(d + start);
+        _sb_text(sb, ptr[u8]("' codec can't decode byte 0x"));
+        __jac_rt_sb_byte(sb, _hex_digit(byte >> 4));
+        __jac_rt_sb_byte(sb, _hex_digit(byte & 15));
+        _sb_text(sb, ptr[u8](" in position "));
+        __jac_rt_sb_int(sb, start);
+    } else {
+        _sb_text(sb, ptr[u8]("' codec can't decode bytes in position "));
+        __jac_rt_sb_int(sb, start);
+        __jac_rt_sb_byte(sb, 45);
+        __jac_rt_sb_int(sb, stop - 1);
+    }
     _sb_text(sb, ptr[u8](": "));
     _sb_text(sb, reason);
     return __jac_rt_sb_finish(sb);
 }
 
+impl _named_error(prefix: ptr[u8], name: ptr[u8], suffix: ptr[u8]) -> ptr[u8] {
+    sb = __jac_rt_sb_new(64);
+    _sb_text(sb, prefix);
+    _sb_text(sb, name);
+    _sb_text(sb, suffix);
+    return __jac_rt_sb_finish(sb);
+}
+
+impl _sb_code_point(sb: int, cp: int) {
+    __jac_rt_sb_byte(sb, 224 | (cp >> 12));
+    __jac_rt_sb_byte(sb, 128 | ((cp >> 6) & 63));
+    __jac_rt_sb_byte(sb, 128 | (cp & 63));
+}
+
 impl __jac_rt_bytes_decode(
-    data: ptr[u8], n: int, codec: int, errors: int, failure: i32
+    data: ptr[u8],
+    n: int,
+    encoding: ptr[u8],
+    errors: ptr[u8],
+    failure: i32,
+    lookup: i32,
+    wrong: i32
 ) -> ptr[u8] {
+    codec = CODEC_UTF8;
+    if n > 0 {
+        codec = __jac_rt_codec_lookup(encoding);
+        if codec < 0 {
+            __jac_rt_raise_builtin(
+                lookup,
+                _named_error(ptr[u8]("unknown encoding: "), encoding, ptr[u8](""))
+            );
+        }
+    }
     d = int(data);
     sb = __jac_rt_sb_new(n);
+    handler = -1;
     i = 0;
     while i < n {
         c = _byte(d + i);
-        if codec == CODEC_LATIN1 {
-            if c < 128 {
-                __jac_rt_sb_byte(sb, c);
-            } else {
-                __jac_rt_sb_byte(sb, 192 | (c >> 6));
-                __jac_rt_sb_byte(sb, 128 | (c & 63));
-            }
+        if c < 128 {
+            __jac_rt_sb_byte(sb, c);
             i += 1;
             continue;
         }
-        w = 1 if c < 128 else (0 if codec == CODEC_ASCII else _utf8_valid(d, n, i));
-        if w <= 0
-            and errors == ERRORS_SURROGATEPASS
-            and codec == CODEC_UTF8
-            and c == 237
-            and i + 2 < n
-            and _byte(d + i + 1) >= 160
-            and _byte(d + i + 1) <= 191
-            and _byte(d + i + 2) >= 128
-            and _byte(d + i + 2) <= 191 {
-            w = 3;
-        }
-        if w > 0 {
-            __jac_rt_sb_add(sb, ptr[u8](d + i), w);
-            i += w;
+        if codec == CODEC_LATIN1 {
+            __jac_rt_sb_byte(sb, 192 | (c >> 6));
+            __jac_rt_sb_byte(sb, 128 | (c & 63));
+            i += 1;
             continue;
         }
-        if errors == ERRORS_STRICT or errors == ERRORS_SURROGATEPASS {
-            __jac_rt_sb_drop(sb);
-            if codec == CODEC_ASCII {
-                __jac_rt_raise_builtin(
-                    failure,
-                    _decode_error(
-                        ptr[u8]("ascii"), c, i, ptr[u8]("ordinal not in range(128)")
-                    )
-                );
+        stop = i + 1;
+        name = ptr[u8]("ascii");
+        reason = ptr[u8]("ordinal not in range(128)");
+        if codec == CODEC_UTF8 {
+            w = _utf8_step(d, n, i);
+            if w > 0 {
+                __jac_rt_sb_add(sb, ptr[u8](d + i), w);
+                i += w;
+                continue;
             }
-            if w == 0 {
-                __jac_rt_raise_builtin(
-                    failure,
-                    _decode_error(ptr[u8]("utf-8"), c, i, ptr[u8]("invalid start byte"))
-                );
+            name = ptr[u8]("utf-8");
+            reason = ptr[u8]("invalid continuation byte");
+            if w == UTF8_BAD_START {
+                reason = ptr[u8]("invalid start byte");
+            } elif w == UTF8_TRUNCATED {
+                stop = n;
+                reason = ptr[u8]("unexpected end of data");
+            } elif w == UTF8_BAD_SECOND {
+                stop = i + 2;
+            } elif w == UTF8_BAD_THIRD {
+                stop = i + 3;
             }
-            if i - w >= n {
-                __jac_rt_raise_builtin(
-                    failure,
-                    _decode_error(
-                        ptr[u8]("utf-8"), c, i, ptr[u8]("unexpected end of data")
-                    )
-                );
-            }
-            __jac_rt_raise_builtin(
-                failure,
-                _decode_error(
-                    ptr[u8]("utf-8"), c, i, ptr[u8]("invalid continuation byte")
-                )
-            );
         }
-        if errors == ERRORS_REPLACE {
+        if handler < 0 {
+            handler = _errors_lookup(errors);
+        }
+        if handler == ERRORS_REPLACE {
             __jac_rt_sb_byte(sb, 239);
             __jac_rt_sb_byte(sb, 191);
             __jac_rt_sb_byte(sb, 189);
+            i = stop;
+            continue;
         }
-        i += 1 if w == 0 else 0 - w;
+        if handler == ERRORS_IGNORE {
+            i = stop;
+            continue;
+        }
+        if handler == ERRORS_BACKSLASH {
+            while i < stop {
+                b = _byte(d + i);
+                __jac_rt_sb_byte(sb, 92);
+                __jac_rt_sb_byte(sb, 120);
+                __jac_rt_sb_byte(sb, _hex_digit(b >> 4));
+                __jac_rt_sb_byte(sb, _hex_digit(b & 15));
+                i += 1;
+            }
+            continue;
+        }
+        if handler == ERRORS_SURROGATEESCAPE {
+            while i < stop {
+                _sb_code_point(sb, 56320 + _byte(d + i));
+                i += 1;
+            }
+            continue;
+        }
+        if handler == ERRORS_SURROGATEPASS
+            and codec == CODEC_UTF8
+            and n - i >= 3
+            and (c & 240) == 224
+            and (_byte(d + i + 1) & 192) == 128
+            and (_byte(d + i + 2) & 192) == 128 {
+            cp = ((c & 15) << 12)
+                | ((_byte(d + i + 1) & 63) << 6)
+                | (_byte(d + i + 2) & 63);
+            if cp >= 55296 and cp <= 57343 {
+                __jac_rt_sb_add(sb, ptr[u8](d + i), 3);
+                i += 3;
+                continue;
+            }
+        }
+        __jac_rt_sb_drop(sb);
+        if handler == ERRORS_UNKNOWN {
+            __jac_rt_raise_builtin(
+                lookup,
+                _named_error(
+                    ptr[u8]("unknown error handler name '"), errors, ptr[u8]("'")
+                )
+            );
+        }
+        if handler == ERRORS_ENCODE_ONLY {
+            __jac_rt_raise_builtin(
+                wrong,
+                ptr[u8]("don't know how to handle UnicodeDecodeError in error callback")
+            );
+        }
+        __jac_rt_raise_builtin(failure, _decode_error(name, d, i, stop, reason));
     }
     return __jac_rt_sb_finish(sb);
 }
