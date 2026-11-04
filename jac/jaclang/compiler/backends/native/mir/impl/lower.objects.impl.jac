@@ -937,8 +937,12 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
                 else b.ref_cast(this, decl.self_type, False);
             b.call(decl.symbol, [receiver] + values, decl.ret);
         }
-        post = self.find_method(arch, "postinit")
-            or self.find_method(arch, "__post_init__");
+        post = (
+            self.find_method(arch, "postinit")
+            or self.find_method(arch, "__post_init__")
+        )
+            if init is None
+            else None;
         if post is not None {
             decl = self.decls.get(id(post)) or self.foreign_method_decl(post);
             if decl is not None {
