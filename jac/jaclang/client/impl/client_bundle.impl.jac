@@ -171,7 +171,9 @@ impl client_source_root(project_dir: Path, entry_path: Path) -> Path {
     return project_root if entry_root.is_relative_to(project_root) else entry_root;
 }
 
-impl client_context_program(program: JacProgram, source_root: (Path | None)) -> JacProgram {
+impl client_context_program(
+    program: JacProgram, source_root: (Path | None)
+) -> JacProgram {
     if source_root is None {
         return program;
     }
