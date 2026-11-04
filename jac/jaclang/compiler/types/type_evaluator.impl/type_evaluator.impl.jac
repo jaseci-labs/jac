@@ -2353,7 +2353,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
 
-                    if narrowed := self.get_narrowed_type(symbol, expr) {
+                    binding = isinstance(expr.parent, (InForStmt, InnerCompr))
+                        and expr.parent.target is expr;
+                    if not binding
+                        and (narrowed := self.get_narrowed_type(symbol, expr)) {
                         symbol_type = narrowed;
                     }
                     if isinstance(symbol_type, FunctionType) {
