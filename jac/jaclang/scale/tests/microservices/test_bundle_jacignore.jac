@@ -263,6 +263,51 @@ test "the bundle walk never lists a build tree it cannot ship from" {
 }
 
 
+test "nested jac.toml discovery never lists a build tree" {
+    # Every deploy runs this beside the bundle walk, so listing node_modules or
+    # .jac/venv here costs the same time the bundle walk no longer spends.
+    base = Path(tempfile.mkdtemp(prefix="jac-tomlwalk-"));
+    skipped = ["node_modules", ".jac", "apps/web/node_modules", "build"];
+    for tree in skipped {
+        _write_files(base, [f"{tree}/pkg{i}/lib/mod{i}.js" for i in range(40)]);
+    }
+    (base / ".jacignore").write_text("docsite/\n");
+    for rel in [
+        "jac.toml",
+        "apps/api/jac.toml",
+        "apps/web/jac.toml",
+        "docsite/jac.toml",
+        "node_modules/pkg0/jac.toml",
+        "apps/web/node_modules/pkg0/jac.toml",
+        ".jac/client/dist/jac.toml",
+        "build/pkg0/jac.toml"
+    ] {
+        (base / rel).parent.mkdir(parents=True, exist_ok=True);
+        (base / rel).write_text("[project]\nname = \"x\"\n");
+    }
+    real_scandir = os.scandir;
+    listed: list[str] = [];
+    def recording(path: any = ".") -> any {
+        listed.append(os.path.relpath(os.fspath(path), str(base)).replace(os.sep, "/"));
+        return real_scandir(path);
+    }
+    with unittest.mock.patch.object(os, "scandir", recording) {
+        nested = nested_sanitized_tomls(base);
+    }
+    assert list(nested.keys()) == ["apps/api/jac.toml", "apps/web/jac.toml"] , list(
+        nested.keys()
+    );
+    entered = sorted(
+        {
+            d for d in listed
+            for tree in skipped
+            if d == tree or d.startswith(tree + "/")
+        }
+    );
+    assert entered == [] , f"the discovery listed build trees: {entered}";
+}
+
+
 def _mixed_tree -> Path {
     base = Path(tempfile.mkdtemp(prefix="jac-prunewalk-mixed-"));
     _write_files(

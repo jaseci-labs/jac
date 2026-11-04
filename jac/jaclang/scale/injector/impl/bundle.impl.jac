@@ -332,7 +332,18 @@ impl add_source_members(
 impl nested_sanitized_tomls(base: Path) -> dict[str, str] {
     excluded = source_filter_for(base);
     out: dict[str, str] = {};
-    for toml_path in sorted(base.rglob("jac.toml")) {
+    found: list[Path] = [];
+    for (dirpath, dirnames, filenames) in os.walk(str(base)) {
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if str(name) not in _EXCLUDE_DIRS
+        ];
+        if "jac.toml" in filenames {
+            found.append(Path(str(dirpath)) / "jac.toml");
+        }
+    }
+    for toml_path in sorted(found) {
         rel = toml_path.relative_to(base);
         if len(rel.parts) == 1 or excluded.excludes_tree(rel) {
             continue;
