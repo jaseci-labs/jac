@@ -1099,6 +1099,10 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
         return found;
     }
     slot_type = self.symbol_type(sym, site);
+    view = self.struct_view_local(sym, slot_type);
+    if view {
+        slot_type = mir_c_ptr(slot_type);
+    }
     namesake = self.st().local_names.get(sym.sym_name)
         if not self.comprehension_scoped(sym)
         else None;
@@ -1111,6 +1115,9 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
     made.hold = "own" if sym.ownership == OwnershipKind.OWN else "local";
+    if view {
+        self.st().struct_views.add(made.id);
+    }
     if slot_type.kind != MirKind.NONE {
         first.instrs.insert(
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
@@ -2917,6 +2924,10 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         }
         return made;
     }
+    cast = self.reinterpret(value, to, site);
+    if cast is not None {
+        return cast;
+    }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
     );
@@ -3826,6 +3837,12 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                     else self.lower_place(nd.target)
             );
         holder = self.place_elem(base);
+        if base.is_slot
+            and base.id in self.st().struct_views
+            and holder.kind == MirKind.C_PTR {
+            base = self.builder().load(base, holder);
+            holder = holder.payload();
+        }
         if holder.kind == MirKind.OPT and holder.payload().kind == MirKind.C_STRUCT {
             b = self.builder();
             held = self.spill(b.load(base, holder));
@@ -5197,6 +5214,11 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
             and value_type.kind in (MirKind.INT, MirKind.FLOAT) {
             made.int_value = whole;
             made.float_value = float(whole);
+        } elif whole is not None
+            and (1 << 63) <= whole < (1 << 64)
+            and value_type.kind == MirKind.INT
+            and value_type.width == 64 {
+            made.int_value = whole - (1 << 64);
         } elif isinstance(folded, CtFloat) and value_type.kind == MirKind.FLOAT {
             made.float_value = folded.value;
         } elif isinstance(folded, CtBool) and value_type.kind == MirKind.BOOL {

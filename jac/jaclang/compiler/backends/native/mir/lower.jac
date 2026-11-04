@@ -343,7 +343,8 @@ obj MirFnState {
         pinned: dict[int, MirValue] = {},
         user_loads: dict[int, str] = {},
         null_ok_open: set[int] = set(),
-        tail_sites: list[uni.ReturnStmt] = [];
+        tail_sites: list[uni.ReturnStmt] = [],
+        struct_views: set[int] = set();
 }
 
 obj MirBound {
@@ -612,6 +613,13 @@ obj MirLowering {
     ) -> MirValue;
 
     def c_text_arg(value: MirValue, site: uni.UniNode) -> MirValue;
+    def reinterpret(
+        value: MirValue, to: MirType, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def struct_int_abi(t: MirType) -> bool;
+    def struct_address(value: MirValue) -> MirValue;
+    def struct_view_local(sym: uni.Symbol, t: MirType) -> bool;
     def c_arg(
         arg: uni.Expr,
         to: MirType,

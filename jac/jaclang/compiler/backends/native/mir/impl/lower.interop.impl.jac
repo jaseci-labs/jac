@@ -1040,3 +1040,122 @@ impl MirLowering.c_declared_signature(
     }
     return self.c_signature_text(params, ret);
 }
+
+impl MirLowering.reinterpret(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> (MirValue | None) {
+    b = self.builder();
+    source = value.type.kind;
+    if source == MirKind.INT and to.kind in (MirKind.STR, MirKind.STR_REF) {
+        handle = self.emit_value(MirOp.PTR_CAST, mir_str_ref(), [value]);
+        if to.kind == MirKind.STR_REF {
+            return handle;
+        }
+        return b.str_make(handle, handle, self.call_rt("__jac_rt_str_size", [handle]));
+    }
+    if source == MirKind.INT and to.kind == MirKind.OBJ {
+        return self.emit_value(MirOp.PTR_CAST, to, [value]);
+    }
+    if source == MirKind.INT and to.kind == MirKind.C_STRUCT {
+        if self.struct_int_abi(to) {
+            held = self.temp_slot(to);
+            b.store(
+                self.emit_value(
+                    MirOp.PTR_CAST, mir_c_ptr(value.type), [self.coerce_place(held)]
+                ),
+                value
+            );
+            return b.load(held, to);
+        }
+        return b.load(self.emit_value(MirOp.PTR_CAST, mir_c_ptr(to), [value]), to);
+    }
+    if source == MirKind.C_PTR
+        and to.kind == MirKind.C_STRUCT
+        and value.type.payload() is to {
+        return b.load(value, to);
+    }
+    if to.kind != MirKind.INT {
+        return None;
+    }
+    if source in (MirKind.STR_REF, MirKind.OBJ) {
+        return self.emit_value(MirOp.PTR_INT, to, [value]);
+    }
+    if source == MirKind.STR {
+        kept = self.call_rt(
+            "__jac_rt_str_ref",
+            [
+                b.str_part(value, "root"),
+                b.str_part(value, "data"),
+                b.str_part(value, "len")
+            ]
+        );
+        kept.owned = False;
+        return self.emit_value(MirOp.PTR_INT, to, [kept]);
+    }
+    if source == MirKind.C_STRUCT {
+        if self.struct_int_abi(value.type) {
+            held = self.temp_slot(value.type);
+            b.store(held, value);
+            return b.load(
+                self.emit_value(
+                    MirOp.PTR_CAST, mir_c_ptr(to), [self.coerce_place(held)]
+                ),
+                to
+            );
+        }
+        return self.emit_value(MirOp.PTR_INT, to, [self.struct_address(value)]);
+    }
+    return None;
+}
+
+impl MirLowering.struct_int_abi(t: MirType) -> bool {
+    layout = self.mir.structs.get(t.name);
+    if layout is None or not layout.fields {
+        return False;
+    }
+    bits = 0;
+    for member in layout.fields {
+        if member.type.kind != MirKind.INT {
+            return False;
+        }
+        bits += member.type.width;
+    }
+    return 32 < bits <= 64;
+}
+
+impl MirLowering.struct_address(value: MirValue) -> MirValue {
+    for instr in reversed(self.builder().block.instrs) {
+        if instr.result is None or instr.result.id != value.id {
+            continue;
+        }
+        if instr.op == MirOp.LOAD
+            and (
+                instr.operands[0].is_slot
+                or instr.operands[0].type.kind == MirKind.C_PTR
+            ) {
+            return self.coerce_place(instr.operands[0]);
+        }
+        break;
+    }
+    held = self.temp_slot(value.type);
+    self.builder().store(held, value);
+    return self.coerce_place(held);
+}
+
+impl MirLowering.struct_view_local(sym: uni.Symbol, t: MirType) -> bool {
+    if t.kind != MirKind.C_STRUCT or self.struct_int_abi(t) or sym.decl is None {
+        return False;
+    }
+    owner = sym.decl.parent;
+    if not isinstance(owner, uni.Assignment)
+        or not isinstance(owner.value, uni.Expr)
+        or owner.value.type is None {
+        return False;
+    }
+    try {
+        source = self.expr_type(owner.value);
+    } except MirRefused {
+        return False;
+    }
+    return source.kind in (MirKind.INT, MirKind.C_PTR);
+}
