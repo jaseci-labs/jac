@@ -493,14 +493,18 @@ impl __jac_rt_str_find(
         return -1;
     }
     a = _cp_offset(r, d, n, lo);
-    at = _find(d, a, _cp_offset(r, d, n, hi), int(sub), sn, reverse);
+    b = _cp_offset(r, d, n, hi);
+    at = _find(d, a, b, int(sub), sn, reverse);
     if at < 0 {
         return -1;
     }
     if _is_ascii(r, d, n) {
         return at;
     }
-    return lo + _count_starts(d, a, at);
+    if at - a <= b - at {
+        return lo + _count_starts(d, a, at);
+    }
+    return hi - _count_starts(d, at, b);
 }
 
 impl __jac_rt_str_count(
