@@ -52,13 +52,16 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
 
 impl TypeEvaluator._unpack_target_path(
     expr: Name
-) -> tuple[UniNode, list[int], (TupleVal | ListVal | None)] | None {
+) -> tuple[
+    (Assignment | InForStmt | InnerCompr),
+    list[int],
+    (TupleVal | ListVal | None)
+]
+    | None {
     lhs_root: UniNode = expr;
     star_targets: (TupleVal | ListVal | None) = None;
     holder = expr.parent;
-    if isinstance(holder, UnaryExpr)
-        and isinstance(holder.op, Token)
-        and holder.op.name == Tok.STAR_MUL {
+    if holder is not None and self._is_star_target(holder) {
         if not isinstance(holder.parent, (TupleVal, ListVal)) {
             return None;
         }
@@ -104,13 +107,17 @@ impl TypeEvaluator._unpack_position(
         if v is item {
             return i - len(values) if after_star else i;
         }
-        if isinstance(v, UnaryExpr)
-            and isinstance(v.op, Token)
-            and v.op.name == Tok.STAR_MUL {
+        if self._is_star_target(v) {
             after_star = True;
         }
     }
     return None;
+}
+
+impl TypeEvaluator._is_star_target(nd: UniNode) -> bool {
+    return isinstance(nd, UnaryExpr)
+        and isinstance(nd.op, Token)
+        and nd.op.name == Tok.STAR_MUL;
 }
 
 impl TypeEvaluator._get_type_of_unpack_target(expr: Name) -> TypeBase | None {
@@ -120,16 +127,14 @@ impl TypeEvaluator._get_type_of_unpack_target(expr: Name) -> TypeBase | None {
     }
     (binder, path, star_targets) = site;
     source_type: (TypeBase | None) = None;
-    if isinstance(binder, Assignment) and isinstance(binder.value, Expr) {
-        source_type = self.get_type_of_expression(binder.value);
-    } elif isinstance(binder, (InForStmt, InnerCompr)) {
+    if not isinstance(binder, Assignment) {
         source_type = self._get_iterable_element_type(
             self.get_type_of_expression(binder.collection),
             binder,
             is_async=binder.is_async
         );
-    } else {
-        return None;
+    } elif isinstance(binder.value, Expr) {
+        source_type = self.get_type_of_expression(binder.value);
     }
     if source_type is None {
         return None;
@@ -172,12 +177,8 @@ impl TypeEvaluator._get_source_of_unpack_target(expr: Name) -> Expr | None {
             return None;
         }
         values = source.values or [];
-        for v in values {
-            if isinstance(v, UnaryExpr)
-                and isinstance(v.op, Token)
-                and v.op.name == Tok.STAR_MUL {
-                return None;
-            }
+        if any(self._is_star_target(v) for v in values) {
+            return None;
         }
         if idx >= len(values) or idx < -len(values) {
             return None;
@@ -196,9 +197,7 @@ impl TypeEvaluator._starred_target_type(
     values = star_targets.values or [];
     star_at = 0;
     for (i, v) in enumerate(values) {
-        if isinstance(v, UnaryExpr)
-            and isinstance(v.op, Token)
-            and v.op.name == Tok.STAR_MUL {
+        if self._is_star_target(v) {
             star_at = i;
             break;
         }
