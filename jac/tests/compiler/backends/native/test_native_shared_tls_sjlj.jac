@@ -58,5 +58,18 @@ test "a native-tls builtin-sjlj shared object calls neither pthread keys nor _se
     assert _callers(text, "_longjmp") == [];
     assert "@llvm.eh.sjlj.setjmp(" in text;
     assert "@llvm.eh.sjlj.longjmp(" in text;
+    # A dlopen'd object takes initial-exec TLS from a small static surplus, so
+    # a large block must sit behind a pointer cell rather than in the TLS image.
+    oversized = [
+        m.group(1)
+        for m in re.finditer(
+            r'^@"?([\w.$]+)"? = [^\n]*thread_local\(initialexec\)[^\n]*\[(\d+) x i64\]',
+            text,
+            re.M
+        )
+        if int(m.group(2)) * 8 > 64
+    ];
+    assert oversized == [] , oversized;
+    assert "jac_rt_dtoa.tlsp" in text;
     compiled.verify();
 }

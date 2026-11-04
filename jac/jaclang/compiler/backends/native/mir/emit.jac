@@ -2,6 +2,7 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
      RETAIN_SYMBOL: str = "__jac_rt_retain",
      BUILTIN_SETJMP_SYMBOL: str = "llvm.eh.sjlj.setjmp",
      EXC_FRAME_BYTES: int = 296,
+     TLS_DIRECT_BLOCK_BYTES: int = 64,
      RETURNS_TWICE_SYMBOLS: list[str] = [
          "vfork",
          "setjmp",
@@ -157,6 +158,7 @@ obj MirEmitter {
     def class_global(obj_def: MirObjectDef) -> ir.GlobalVariable;
     def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;
     def keyed_block_fn(label: str, size: int) -> ir.Function;
+    def tls_lazy_block_fn(label: str, size: int) -> ir.Function;
     def single_threaded -> bool;
     def builtin_sjlj -> bool;
     def jmp_symbols -> tuple[str, str];

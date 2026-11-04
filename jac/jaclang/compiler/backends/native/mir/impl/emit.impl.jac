@@ -55,7 +55,9 @@ impl MirEmitter.emit -> ir.Module {
     }
     if self.native_tls and not self.single_threaded() {
         for (label, size) in self.mir.tls_blocks.items() {
-            self.tls_block(label, size);
+            if size <= TLS_DIRECT_BLOCK_BYTES {
+                self.tls_block(label, size);
+            }
         }
     }
     for glob_def in self.mir.globals.values() {
@@ -904,9 +906,14 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
         if self.single_threaded() {
             block = self.global_block(instr.str_value, instr.int_value);
             self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
-        } elif self.native_tls {
+        } elif self.native_tls and instr.int_value <= TLS_DIRECT_BLOCK_BYTES {
             block = self.tls_block(instr.str_value, instr.int_value);
             self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+        } elif self.native_tls {
+            self.bind(
+                instr.result,
+                b.call(self.tls_lazy_block_fn(instr.str_value, instr.int_value), [])
+            );
         } else {
             self.bind(
                 instr.result,
@@ -1943,4 +1950,43 @@ impl MirEmitter.jmp_symbols -> tuple[str, str] {
         return (BUILTIN_SETJMP_SYMBOL, "llvm.eh.sjlj.longjmp");
     }
     return ("_setjmp", "_longjmp");
+}
+
+impl MirEmitter.tls_lazy_block_fn(label: str, size: int) -> ir.Function {
+    name = f"__jac_tls_lazy.{label}";
+    found = self.module.globals.get(name);
+    if isinstance(found, ir.Function) {
+        return found;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    cell_name = f"{label}.tlsp";
+    cell = self.module.globals.get(cell_name);
+    if not isinstance(cell, ir.GlobalVariable) {
+        cell = ir.GlobalVariable(self.module, i8p, name=cell_name);
+        cell.linkage = "weak";
+        cell.initializer = ir.Constant(i8p, None);
+        cell.thread_local = True;
+        cell.tls_model = "initialexec";
+    }
+    func = ir.Function(self.module, ir.FunctionType(i64, []), name=name);
+    func.linkage = "linkonce_odr";
+    first = func.append_basic_block("entry");
+    create = func.append_basic_block("create");
+    done = func.append_basic_block("done");
+    b = ir.IRBuilder(first);
+    held = b.load(cell);
+    b.cbranch(b.icmp_unsigned("==", held, ir.Constant(i8p, None)), create, done);
+    b.position_at_end(create);
+    made = self.extern_call(
+        b, "calloc", i8p, [i64, i64], [ir.Constant(i64, 1), ir.Constant(i64, size)]
+    );
+    b.store(made, cell);
+    b.branch(done);
+    b.position_at_end(done);
+    block = b.phi(i8p);
+    block.add_incoming(held, first);
+    block.add_incoming(made, create);
+    b.ret(b.ptrtoint(block, i64));
+    return func;
 }
