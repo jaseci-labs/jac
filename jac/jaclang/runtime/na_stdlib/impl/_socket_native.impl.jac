@@ -43,6 +43,16 @@ impl sock_connect(fd: int, sa: bytes) -> int {
     return __connect(i32(fd), sa, i32(len(sa)));
 }
 
+impl sock_error(fd: int) -> int {
+    value: bytes = b"\x00" * 4;
+    size: bytes = (4).to_bytes(4, "little");
+    rc = getsockopt(i32(fd), 1, 4, value, size);
+    if rc < 0 {
+        return last_errno();
+    }
+    return int.from_bytes(value, "little");
+}
+
 impl sock_send(fd: int, data: bytes, off: int) -> int {
     n = len(data);
     if off >= n {

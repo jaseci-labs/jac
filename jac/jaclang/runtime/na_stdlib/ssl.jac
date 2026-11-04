@@ -13,6 +13,8 @@ obj:pub SSLSocket {
     def sendall(data: bytes);
     def send(data: bytes) -> int;
     def recv(bufsize: int) -> bytes;
+    def settimeout(timeout: (float | None)) -> None;
+    def gettimeout -> (float | None);
     def close;
 }
 
