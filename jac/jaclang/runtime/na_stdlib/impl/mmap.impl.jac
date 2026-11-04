@@ -147,7 +147,7 @@ impl mmap.read_byte -> int {
     if self._pos >= self._len {
         raise ValueError("read byte out of range");
     }
-    v: int = __mem_load_i8(self._addr + self._pos);
+    v: int = __mem_load_i8(self._addr + self._pos) & 0xFF;
     self._pos += 1;
     return v;
 }
@@ -220,7 +220,7 @@ impl mmap.__getitem__(i: int) -> int {
     if at < 0 or at >= self._len {
         raise IndexError("mmap index out of range");
     }
-    return __mem_load_i8(self._addr + at);
+    return __mem_load_i8(self._addr + at) & 0xFF;
 }
 
 impl mmap.__setitem__(i: int, v: int) {

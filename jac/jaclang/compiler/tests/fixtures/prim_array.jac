@@ -81,6 +81,8 @@ def array_py -> dict[any, any] {
         "q_g0": q.__getitem__(0),
         "q_digest": _digest(q.tobytes()),
         "B_g1": B.__getitem__(1),
+        "H_max": array("H", [65535]).__getitem__(0),
+        "I_max": array("I", [4294967295]).__getitem__(0),
         "pop_last": popped,
         "pop_0": popped0,
         "len_after_pop": a.__len__(),
@@ -239,6 +241,8 @@ def _widths_na(r: dict[str, any]) {
     r["q_g0"] = q.__getitem__(0);
     r["q_digest"] = _digest_na(q.tobytes());
     r["B_g1"] = B.__getitem__(1);
+    r["H_max"] = array("H", [65535]).__getitem__(0);
+    r["I_max"] = array("I", [4294967295]).__getitem__(0);
     h.byteswap();
     r["h_swapped_0"] = h.tolist()[0];
     r["h_swapped_1"] = h.tolist()[1];

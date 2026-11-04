@@ -67,7 +67,7 @@ impl hexlify(data: bytes, sep: bytes = b"", bytes_per_sep: int = 1) -> bytes {
                 j += 1;
             }
         }
-        c: int = __mem_load_i8(sp + i);
+        c: int = __mem_load_i8(sp + i) & 0xFF;
         hi: int = c >> 4;
         lo: int = c & 15;
         __mem_store_i8(dp + j, (48 + hi) if hi < 10 else (87 + hi));
@@ -174,7 +174,7 @@ impl b2a_uu(data: bytes, backtick: bool = False) -> bytes {
     i: int = 0;
     while bin_len > 0 or leftbits != 0 {
         if bin_len > 0 {
-            leftchar = (leftchar << 8) | __mem_load_i8(sp + i);
+            leftchar = (leftchar << 8) | (__mem_load_i8(sp + i) & 0xFF);
             bin_len -= 1;
             i += 1;
         } else {
@@ -325,8 +325,8 @@ impl b2a_qp(
     linelen: int = 0;
     in_i: int = 0;
     while in_i < datalen {
-        c: int = __mem_load_i8(sp + in_i);
-        nxt: int = __mem_load_i8(sp + in_i + 1) if in_i + 1 < datalen else -1;
+        c: int = __mem_load_i8(sp + in_i) & 0xFF;
+        nxt: int = (__mem_load_i8(sp + in_i + 1) & 0xFF) if in_i + 1 < datalen else -1;
         needs_enc: bool = c > 126
             or c == 61
             or (header and c == 95)

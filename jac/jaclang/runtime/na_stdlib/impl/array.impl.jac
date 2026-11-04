@@ -80,11 +80,11 @@ impl _get_le(buf: bytearray, off: int, size: int, signed: bool) -> int {
     }
     v: int = 0;
     if size == 1 {
-        v = __mem_load_i8(p);
+        v = __mem_load_i8(p) & 0xFF;
     } elif size == 2 {
-        v = __mem_load_i16(p);
+        v = __mem_load_i16(p) & 0xFFFF;
     } else {
-        v = __mem_load_i32(p);
+        v = __mem_load_i32(p) & 0xFFFFFFFF;
     }
     if signed and v >= (1 << (size * 8 - 1)) {
         v -= 1 << (size * 8);

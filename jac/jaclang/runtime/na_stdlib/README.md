@@ -1267,8 +1267,11 @@ in `jac/jaclang/compiler/intrinsic_registry.jac` (same mechanism as
   the `List.u8` `{ i64 len, i64 cap, i8* data }` header.
 - `__mem_load_i8/i16/i32/i64(addr: int) -> int` and
   `__mem_store_i8/i16/i32/i64(addr: int, val: int)` -- raw loads/stores.
-  Loads zero-extend narrow reads to `i64`; stores truncate `i64` to the
-  named width. (The `i32` pair pre-existed for `_errno_native`.) The
+  Loads sign-extend narrow reads to `i64`; stores truncate `i64` to the
+  named width. Callers that need the unsigned bit pattern mask explicitly
+  (`& 0xFF`, `& 0xFFFF`, `& 0xFFFFFFFF`) — see `array.impl.jac::_get_le`
+  and `js_engine`'s `mem.jac::read_byte`/`read_u16`/`read_u32` for the
+  convention. (The `i32` pair pre-existed for `_errno_native`.) The
   access width lives as `width` metadata on the `IntrinsicEntry` (the
   checker-visible specs stay `i64`, so callers pass plain `int`); the
   emitters never derive semantics from the intrinsic name.

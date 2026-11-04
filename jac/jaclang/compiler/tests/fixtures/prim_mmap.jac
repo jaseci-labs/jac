@@ -68,6 +68,10 @@ def mmap_py -> dict[any, any] {
     m.move(20, 0, 5);
     m.seek(20);
     r["move_digest"] = _digest(m.read(5));
+    m.__setitem__(7, 255);
+    r["hi_g"] = m.__getitem__(7);
+    m.seek(7);
+    r["hi_readbyte"] = m.read_byte();
     m.close();
     pm = mmap(-1, 64, access=ACCESS_WRITE);
     pm.write(b"hello mmap world");
@@ -303,6 +307,10 @@ def _core_na(r: dict[str, any]) {
     m.move(20, 0, 5);
     m.seek(20);
     r["move_digest"] = _digest_na(m.read(5));
+    m.__setitem__(7, 255);
+    r["hi_g"] = m.__getitem__(7);
+    m.seek(7);
+    r["hi_readbyte"] = m.read_byte();
     m.close();
 }
 

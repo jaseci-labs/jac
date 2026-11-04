@@ -64,6 +64,7 @@ def binascii_py -> dict[any, any] {
         "hex_sep_digest": _digest(hs),
         "a2b_alias": 1 if a2b_hex(h) == unhexlify(h) else 0,
         "b2a_alias": 1 if b2a_hex(data) == h else 0,
+        "hex_hi_digest": _digest(hexlify(b"\xff\x80")),
         "b64_digest": _digest(b64),
         "b64_len": len(b64),
         "b64_rt": 1 if a2b_base64(b64) == data else 0,
@@ -74,6 +75,8 @@ def binascii_py -> dict[any, any] {
         "crc_hqx_seed": crc_hqx(data, 0xFFFF),
         "uu_digest": _digest(uu),
         "uu_rt": 1 if a2b_uu(uu) == b"hello" else 0,
+        "uu_hi_digest": _digest(b2a_uu(b"\xff\x80")),
+        "uu_hi_rt": 1 if a2b_uu(b2a_uu(b"\xff\x80")) == b"\xff\x80" else 0,
         "uu_tick": _digest(b2a_uu(b"\x00", backtick=True)),
         "qp_digest": _digest(qp),
         "qp_rt": 1 if a2b_qp(b2a_qp(data)) == data else 0,
@@ -141,6 +144,7 @@ def _hex_na(r: dict[str, any]) {
     r["hex_sep_digest"] = _digest_na(hs);
     r["a2b_alias"] = 1 if a2b_hex(h) == unhexlify(h) else 0;
     r["b2a_alias"] = 1 if b2a_hex(data) == h else 0;
+    r["hex_hi_digest"] = _digest_na(hexlify(b"\xff\x80"));
 }
 
 
@@ -169,6 +173,8 @@ def _uu_qp_na(r: dict[str, any]) {
     qp = b2a_qp(b"a b=\t\xff");
     r["uu_digest"] = _digest_na(uu);
     r["uu_rt"] = 1 if a2b_uu(uu) == b"hello" else 0;
+    r["uu_hi_digest"] = _digest_na(b2a_uu(b"\xff\x80"));
+    r["uu_hi_rt"] = 1 if a2b_uu(b2a_uu(b"\xff\x80")) == b"\xff\x80" else 0;
     r["uu_tick"] = _digest_na(b2a_uu(b"\x00", backtick=True));
     r["qp_digest"] = _digest_na(qp);
     r["qp_rt"] = 1 if a2b_qp(b2a_qp(data)) == data else 0;

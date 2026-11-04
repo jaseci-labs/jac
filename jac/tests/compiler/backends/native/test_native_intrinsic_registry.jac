@@ -281,7 +281,7 @@ test "every registry intrinsic lowers through its registered emitter" {
     }
 }
 
-test "32 bit memory operations preserve adjacent storage and zero extend" {
+test "32 bit memory operations preserve adjacent storage and signed values" {
     (prog, ir_mod) = _compile_src(
         RAW_MEM_IMPORTS
             + "def probe(x: int) -> int { p = malloc(8); "
@@ -293,9 +293,31 @@ test "32 bit memory operations preserve adjacent storage and zero extend" {
     eng = ir_mod.gen.native_engine;
     assert eng is not None;
     fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
-    assert fn(-123) == 4294967296;
+    assert fn(-123) == 0;
     assert fn(2147483647) == 2147483770;
-    assert fn(-2147483648) == 2147483771;
+    assert fn(-2147483648) == -2147483525;
+}
+
+test "narrow memory loads sign extend into i64" {
+    (prog, ir_mod) = _compile_src(
+        RAW_MEM_IMPORTS
+            + "def probe8(x: int) -> int { p = malloc(8); __mem_store_i8(p, x); "
+            + "v = int(__mem_load_i8(p)); free(p); return v; }\n"
+            + "def probe16(x: int) -> int { p = malloc(8); __mem_store_i16(p, x); "
+            + "v = int(__mem_load_i16(p)); free(p); return v; }\n"
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+    eng = ir_mod.gen.native_engine;
+    assert eng is not None;
+    fn8 = _get_func(eng, "probe8", ctypes.c_int64, ctypes.c_int64);
+    fn16 = _get_func(eng, "probe16", ctypes.c_int64, ctypes.c_int64);
+    assert fn8(255) == -1;
+    assert fn8(128) == -128;
+    assert fn8(127) == 127;
+    assert fn8(0) == 0;
+    assert fn16(32768) == -32768;
+    assert fn16(65535) == -1;
+    assert fn16(32767) == 32767;
 }
 
 test "gc-gated intrinsic is a declared no-op outside its gc mode" {
