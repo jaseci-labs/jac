@@ -5958,8 +5958,9 @@ graph import compiler {
             ct_dep_digest,
             running_compiler_digest
         },
-        backends.native.kernel_resolve.kernel_identity
-            | frontend.kernel_analyze.run_kernel_session { set_kernel_producer },
+        backends.native.kernel_resolve.kernel_identity | frontend.kernel_analyze {
+            set_kernel_producer
+        },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
             running_compiler_digest,
