@@ -416,7 +416,15 @@ impl _seq_kind(p: int, i: int, is_tup: bool) -> int {
     if is_tup {
         return __mem_load_i64(p + TUPLE_KINDS + i * SLOT);
     }
-    return __mem_load_i64(p + LIST_KIND) & 255;
+    return _list_kind(p);
+}
+
+impl _list_kind(p: int) -> int {
+    raw = __mem_load_i64(p + LIST_KIND);
+    if raw > KIND_FLAGGED_MAX {
+        return raw;
+    }
+    return raw & 255;
 }
 
 impl _walk_mode(tag: int, payload: int) -> int {
@@ -1165,8 +1173,8 @@ impl _seq_join(a: int, at: bool, b: int, bt: bool) -> int {
         }
         return made;
     }
-    ka = __mem_load_i64(a + LIST_KIND) & 255;
-    kb = __mem_load_i64(b + LIST_KIND) & 255;
+    ka = _list_kind(a);
+    kb = _list_kind(b);
     kind = ka if ka == kb else KIND_ANY;
     made = __jac_rt_list_new(na + nb, kind);
     _join_into(made, a, ka, kind);
@@ -1208,7 +1216,7 @@ impl _seq_repeat(a: int, is_tup: bool, times: int) -> int {
         }
         return made;
     }
-    kind = __mem_load_i64(a + LIST_KIND) & 255;
+    kind = _list_kind(a);
     made = __jac_rt_list_new(n * count, kind);
     k = 0;
     while k < count {
@@ -1415,7 +1423,7 @@ impl _bind_elem(bits: int, kind: int, family: int) -> bool {
     inner_first = ((family >> 8) & 255) - 1;
     inner_second = ((family >> 16) & 255) - 1;
     if tag == ANY_TAG_LIST {
-        return _bind_kind(__mem_load_i64(payload + LIST_KIND) & 255, inner_first);
+        return _bind_kind(_list_kind(payload), inner_first);
     }
     return _bind_kind(__mem_load_i64(payload + DICT_KEY_KIND), inner_first)
         and (
@@ -1509,7 +1517,7 @@ impl __jac_rt_any_bind(
         _bind_refuse(label);
     }
     if want == ANY_TAG_LIST {
-        have = __mem_load_i64(payload + LIST_KIND) & 255;
+        have = _list_kind(payload);
         if _bind_kind(have, first) {
             __jac_rt_retain(payload);
             return payload;

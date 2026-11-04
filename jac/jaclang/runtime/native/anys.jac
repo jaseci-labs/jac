@@ -120,6 +120,7 @@ glob KIND_INT: int = 0,
      DESC_BOXES: int = 24,
      DESC_SIZE: int = 32,
      KIND_DESC_MIN: int = 256,
+     KIND_FLAGGED_MAX: int = 511,
      INT_FLOAT_EDGE: float = 9.223372036854775808e18,
      ARITH_ADD: int = 0,
      ARITH_SUB: int = 1,
@@ -235,6 +236,8 @@ def _as_float(tag: int, payload: int) -> float;
 def _seq_bits(p: int, i: int, is_tup: bool) -> int;
 
 def _seq_kind(p: int, i: int, is_tup: bool) -> int;
+
+def _list_kind(p: int) -> int;
 
 def _walk_mode(tag: int, payload: int) -> int;
 
