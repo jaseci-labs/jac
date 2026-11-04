@@ -73,6 +73,24 @@ glob COMPLEX_ARITH_OPS: set[str] = {
      BITWISE_OPERATORS: set[str] = {Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR},
      SHIFT_OPERATORS: set[str] = {Tok.LSHIFT, Tok.RSHIFT};
 
+glob NONE_UNSAFE_BINARY_OPERATORS: set[str] = (
+         ARITHMETIC_OPERATORS | SHIFT_OPERATORS | {Tok.BW_AND, Tok.BW_XOR, Tok.DECOR_OP}
+     );
+
+def operand_carries_none(evaluator: TypeEvaluator, ty: TypeBase) -> bool;
+
+def _every_member_accepts(
+    evaluator: TypeEvaluator, receiver: TypeBase, method: str, arg: Expr
+) -> bool;
+
+def none_unsafe_operand(
+    evaluator: TypeEvaluator,
+    magic: str,
+    rmagic: str,
+    left: tuple[TypeBase, Expr],
+    right: tuple[TypeBase, Expr]
+) -> (TypeBase | None);
+
 def get_numeric_promotion_type(
     evaluator: TypeEvaluator,
     left_type: TypeBase,

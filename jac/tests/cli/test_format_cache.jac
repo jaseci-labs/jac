@@ -45,6 +45,12 @@ def backdate(path: Path, seconds_ago: float) {
 }
 
 
+def cache_root_of(cache: FormatCache) -> Path {
+    base = cache.cache_root;
+    assert base is not None;
+    return base;
+}
+
 """Build a FormatCache rooted at a fresh temp dir. Returns (cache, dir)."""
 def fresh_cache(stamp: str = "test-stamp-1") -> tuple[FormatCache, Path] {
     d = Path(tempfile.mkdtemp(prefix="fmtcache-"));
@@ -290,7 +296,7 @@ test "stale entries are pruned on the next write after ttl expiry" {
         # Age the entry past the TTL and the sentinel past the throttle
         # window, then any subsequent write must sweep the stale entry.
         backdate(cache.entry_path(ka), ENTRY_TTL_SECONDS + 60.0);
-        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        backdate(cache_root_of(cache) / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
         kb = cache.make_key(b"new", lintfix=False, config_fingerprint="cfg");
         cache.mark_clean(kb);
         assert not cache.entry_path(ka).exists() , (
@@ -311,7 +317,7 @@ test "hits refresh entry mtime so active entries survive pruning" {
         # A hit must reset the entry's age...
         assert cache.is_clean(ka);
         # ...so the next prune keeps it.
-        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        backdate(cache_root_of(cache) / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
         kb = cache.make_key(b"new", lintfix=False, config_fingerprint="cfg");
         cache.mark_clean(kb);
         assert cache.entry_path(ka).exists() , (
@@ -357,7 +363,7 @@ test "entry count is capped by evicting oldest first" {
         for (i, k) in enumerate(keys) {
             backdate(cache.entry_path(k), 3600.0 - i * 60.0);
         }
-        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        backdate(cache_root_of(cache) / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
         k_new = cache.make_key(b"trigger", lintfix=False, config_fingerprint="cfg");
         cache.mark_clean(k_new);
         # 6 live entries, cap 3 -> the 3 oldest (keys[0..2]) must go.
@@ -384,10 +390,10 @@ test "orphaned temp files are swept by prune" {
         cache.mark_clean(ka);
         # A crashed writer leaves .<digest>.<pid>.tmp behind; prune must
         # sweep it once it is old enough to be unambiguously dead.
-        orphan = cache.cache_root / ".deadbeef.99999.tmp";
+        orphan = cache_root_of(cache) / ".deadbeef.99999.tmp";
         orphan.write_bytes(b"partial");
         backdate(orphan, PRUNE_INTERVAL_SECONDS + 60.0);
-        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        backdate(cache_root_of(cache) / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
         kb = cache.make_key(b"y", lintfix=False, config_fingerprint="cfg");
         cache.mark_clean(kb);
         assert not orphan.exists() , "stale writer temp files must be swept";
