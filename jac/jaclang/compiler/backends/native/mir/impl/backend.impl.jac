@@ -729,6 +729,9 @@ impl MirNativePass.class_layouts(
                 mir.path
             )
         );
+        spelled_fields: dict[str, dict[str, any]] = body["fields"];
+        spelled_bases: list[any] = body["bases"];
+        spelled_vtable: list[any] = body["vtable"];
         found[native_unit_spelling(name, mir.path)] = NativeClassLayout(
             name=name,
             size=size,
@@ -738,10 +741,10 @@ impl MirNativePass.class_layouts(
                 else -1,
             fields={
                 fname: NativeFieldSlot.from_dict(slot)
-                for (fname, slot) in body["fields"].items()
+                for (fname, slot) in spelled_fields.items()
             },
-            bases=[str(held) for held in body["bases"]],
-            vtable=[str(held) for held in body["vtable"]],
+            bases=[str(held) for held in spelled_bases],
+            vtable=[str(held) for held in spelled_vtable],
             is_node=bool(obj_def.osp_kind == "node")
         );
     }
