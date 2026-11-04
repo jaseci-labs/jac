@@ -37,6 +37,7 @@ import from time { sleep, time }
 import from jaclang.runtime.runtime { JacRuntimeInterface as Jac }
 
 glob runs: list[int] = [],
+     profile_gate: any = None,
      rival_commits: list[int] = [],
      commit_faults: list[int] = [],
      failed_commits: list[int] = [],
@@ -218,5 +219,27 @@ walker:pub Deliver {
         }
         Jac.on_commit(mark_sent);
         report status;
+    }
+}
+
+node OnceProfile {}
+
+walker:pub EnsureProfile {
+    can ensure with Root entry {
+        profiles = [here-->[?:OnceProfile]];
+        if profiles {
+            report jid(profiles[0]);
+        } else {
+            # Both requests must have read absence before either can insert.
+            profile_gate.wait(timeout=15);
+            profile = here ++> OnceProfile();
+            report jid(profile);
+        }
+    }
+}
+
+walker:pub CountProfiles {
+    can count with Root entry {
+        report len([here-->[?:OnceProfile]]);
     }
 }

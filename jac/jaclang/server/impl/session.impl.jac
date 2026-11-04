@@ -799,9 +799,8 @@ impl Session.read_scope_exit -> None {
 
 impl Session.unit_exit -> None {
     with self._lock {
-        self._active_units = max(0, self._active_units - 1);
         try {
-            if self._active_units > 0 {
+            if self._active_units > 1 {
                 return;
             }
             if self._lost {
@@ -829,6 +828,7 @@ impl Session.unit_exit -> None {
                 );
             }
         } finally {
+            self._active_units = max(0, self._active_units - 1);
             if self._unit_stack {
                 (_key, was_ro) = self._unit_stack.pop();
                 if was_ro {
@@ -909,7 +909,11 @@ impl Session._rollback_txn -> None {
 
 impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
     self._rollback_txn();
-    if exhausted {
+    # A request's choices depended on this transaction's reads, including
+    # absence predicates. Replaying its writes alone drops those dependencies
+    # and can commit a duplicate. Let the owning unit replay its whole body.
+    if exhausted or self._active_units > 0 {
+        self._last_conflict |= set(self._dirty) | self._deleted;
         self._lost = True;
     }
     if self._lost {
@@ -1024,6 +1028,9 @@ impl Session._flush_locked(full: bool) -> None {
             self._last_conflict = {wc.anchor_id};
             raise;
         } except Exception as e {
+            if _is_serialization_conflict(e) {
+                self._last_conflict |= {row.id for row in rows};
+            }
             if self._queued or not _is_lock_timeout(e) {
                 raise;
             }
@@ -1397,29 +1404,34 @@ impl Session._leave_queue -> None {
 }
 
 impl Session.run_request(body: Callable) -> any {
-    attempt = 0;
-    while True {
-        try {
-            result = body();
-            self.commit();
-            return result;
-        } except Exception as e {
-            if (
-                self._store is not None
-                and (isinstance(e, WriteConflict) or _is_serialization_conflict(e))
-                and attempt < MAX_RETRIES
-            ) {
-                attempt += 1;
-                logger.info(
-                    "serialization conflict; re-running request "
-                    f"(attempt {attempt}/{MAX_RETRIES})"
-                );
+    self.unit_enter();
+    try {
+        attempt = 0;
+        while True {
+            try {
+                result = body();
+                self.commit();
+                return result;
+            } except Exception as e {
+                if (
+                    self._store is not None
+                    and (isinstance(e, WriteConflict) or _is_serialization_conflict(e))
+                    and attempt < MAX_RETRIES
+                ) {
+                    attempt += 1;
+                    logger.info(
+                        "serialization conflict; re-running request "
+                        f"(attempt {attempt}/{MAX_RETRIES})"
+                    );
+                    self.abort();
+                    continue;
+                }
                 self.abort();
-                continue;
+                raise;
             }
-            self.abort();
-            raise;
         }
+    } finally {
+        self.unit_exit();
     }
 }
 

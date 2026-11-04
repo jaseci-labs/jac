@@ -1332,7 +1332,7 @@ test "request loop: the response shows what on_commit callbacks changed" {
 }
 
 
-test "request loop: a COMMIT conflict the session retries does not cost a re-run" {
+test "request loop: a COMMIT conflict re-runs the decisions as well as the writes" {
     prior = _without_read_tier();
     try {
         with TemporaryDirectory() as td {
@@ -1343,9 +1343,9 @@ test "request loop: a COMMIT conflict the session retries does not cost a re-run
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert mod.commit_faults == [] , "the COMMIT failure was never armed";
             assert "error" not in voted , f"the vote failed: {voted}";
-            assert len(mod.runs) == 1 , (
-                "the session retried the COMMIT itself, so the request loop has "
-                f"nothing to re-run; the walker ran {len(mod.runs)} times"
+            assert len(mod.runs) == 2 , (
+                "the failed transaction lost its read predicates, so its "
+                f"decisions must be re-run; the walker ran {len(mod.runs)} times"
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);
             assert tally.get("reports") == [{"cast": True, "total": 1}] , f"{tally}";
@@ -1390,8 +1390,8 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
             assert "error" not in seeded , f"seeding failed: {seeded}";
             (mode, max_attempts, _backoff) = _occ_policy();
             attempts = 1 if mode == "fail" else max(1, max_attempts);
-            # Every run spends the session's whole retry budget on its COMMIT.
-            mod.commit_faults.extend([MAX_RETRIES + 1] * attempts);
+            # One conflict ends the attempt; only the request can replay its reads.
+            mod.commit_faults.extend([1] * attempts);
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert voted.get("error_code") == "write_conflict" , f"{voted}";
             assert voted.get("http_status") == 409 , f"{voted}";
@@ -1399,9 +1399,8 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
                 f"the request loop owns the re-runs: {attempts} attempts allowed, "
                 f"the walker ran {len(mod.runs)} times"
             );
-            assert len(mod.failed_commits) == attempts * (MAX_RETRIES + 1) , (
-                f"each attempt retries its COMMIT {MAX_RETRIES} times before the "
-                f"session hands the conflict to the request loop; "
+            assert len(mod.failed_commits) == attempts , (
+                "each conflict must be handed to the request loop immediately; "
                 f"{len(mod.failed_commits)} COMMITs failed in {attempts} attempts"
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);
@@ -1471,5 +1470,102 @@ test "request loop: ten concurrent writers to one node all land" {
         assert landed == 10 , (
             f"10 accepted writes moved the counter by {landed} (busy={busy})"
         );
+    }
+}
+
+
+test "request loop: two find-or-creates converge after a real predicate conflict" {
+    import threading;
+    prior = _without_read_tier();
+    try {
+        with TemporaryDirectory() as td {
+            (exec_mgr, walkers, mod) = _vote_app(td);
+            assert _spawn(exec_mgr, walkers["CountProfiles"]).get("reports") == [0];
+            mod.profile_gate = threading.Barrier(2);
+            ambient = JacRuntime.get_context();
+            async def one -> any {
+                with RequestScope.open(
+                    ambient.base_path_dir, ambient.full_target_path
+                ) {
+                    return await exec_mgr.spawn_walker(
+                        walkers["EnsureProfile"], {}, "voter"
+                    );
+                }
+            }
+            async def both -> any {
+                return await asyncio.gather(one(), one());
+            }
+            results = _as_any(asyncio.run(both()));
+            assert all("error" not in r for r in results) , f"{results}";
+            assert results[0]["reports"] == results[1]["reports"] , (
+                "a serialization retry must re-read the winner, not insert its "
+                f"own duplicate: {results}"
+            );
+            count = _spawn(exec_mgr, walkers["CountProfiles"]);
+            assert count.get("reports") == [1] , f"duplicates committed: {count}";
+        }
+    } finally {
+        _restore_read_tier(prior);
+    }
+}
+
+
+test "unit exit hands a serialization conflict to its caller without replaying writes" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            anchor = _loose(ctx, 1);
+            sess = _sess(ctx);
+            sess.commit();
+            sess.unit_enter();
+            _as_any(anchor.archetype).n = 2;
+            sess.mark_dirty(anchor);
+            left = _fail_commits(sess);
+            conflicted = False;
+            try {
+                sess.unit_exit();
+            } except WriteConflict {
+                conflicted = True;
+            }
+            assert left == [0] , "the conflict never fired";
+            assert conflicted , "unit_exit replayed writes without their read predicates";
+            assert _stored(ctx, anchor.ensure_id(), "n") == "1";
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
+test "run_request re-runs the body after a serialization failure at commit" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            anchor = _loose(ctx, 1);
+            sess = _sess(ctx);
+            sess.commit();
+            left = _fail_commits(sess);
+            calls: list[int] = [];
+            def body -> int {
+                calls.append(1);
+                current = sess.get(anchor.ensure_id());
+                assert current is not None;
+                _as_any(current.archetype).n += 1;
+                return _as_any(current.archetype).n;
+            }
+            assert sess.run_request(body) == 2;
+            assert left == [0] , "the conflict never fired";
+            assert len(calls) == 2 , "only the writes were replayed";
+            assert _stored(ctx, anchor.ensure_id(), "n") == "2";
+            assert sess.unit_depth() == 0 , "run_request leaked its unit";
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
     }
 }
