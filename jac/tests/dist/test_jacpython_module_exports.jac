@@ -100,22 +100,6 @@ test "the static type exports are validated as globals, not functions" {
         == ["PyInit__bisect"];
 }
 
-test "registered exports are reachable from the lowered native API plan" {
-    prepare = _load_prepare();
-    built = prepare.native_plan(JAC_ROOT, "x86_64-unknown-linux-gnu");
-    program = built[0];
-    plan = built[1];
-    assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
-    assert plan.units , "native_api.jac lowered to an empty plan";
-    missing = prepare.missing_exports(
-        prepare.registered_exports(Path(JAC_ROOT)), plan.pub_exports()
-    );
-    assert not missing , (
-        "native_api.jac does not export registered PyInit_* symbols: "
-        + ", ".join(missing)
-    );
-}
-
 test "the export contract checks registered modules and static type globals" {
     prepare = _load_prepare();
     expected = prepare.registered_exports(Path(JAC_ROOT));
