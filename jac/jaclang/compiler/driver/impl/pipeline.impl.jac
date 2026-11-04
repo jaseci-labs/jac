@@ -115,10 +115,6 @@ impl frozen_passes(request: ProductRequest) -> PassSchedule {
     return [FreezeStructurePass];
 }
 
-impl bytecode_passes(request: ProductRequest) -> PassSchedule {
-    return [JcirBytecodeGenPass];
-}
-
 impl native_ir_passes(request: ProductRequest) -> PassSchedule {
     schedule: PassSchedule = [NativeImportFactsPass, RcFactsPass];
     import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
@@ -138,52 +134,12 @@ impl native_toolchain_blocker -> str {
     return '' if available else why;
 }
 
-impl native_object_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeCompilePass];
-}
-
-impl format_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, DocIRGenPass, JacFormatPass];
-}
-
-impl format_lintfix_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
-}
-
 impl lint_passes(request: ProductRequest) -> PassSchedule {
     return [JacLintCheckPass];
 }
 
-impl python_ast_passes(request: ProductRequest) -> PassSchedule {
-    return [PyastBuildPass];
-}
-
 impl python_symbols_passes(request: ProductRequest) -> PassSchedule {
     return [SymTabBuildPass];
-}
-
-impl grammar_passes(request: ProductRequest) -> PassSchedule {
-    return [GrammarExtractPass];
-}
-
-impl cfg_dot_passes(request: ProductRequest) -> PassSchedule {
-    return [CoalesceBBPass];
-}
-
-impl normalize_passes(request: ProductRequest) -> PassSchedule {
-    return [NormalizePass];
-}
-
-impl unparse_passes(request: ProductRequest) -> PassSchedule {
-    return [UnparsePass];
-}
-
-impl doc_passes(request: ProductRequest) -> PassSchedule {
-    return [DocIRGenPass];
-}
-
-impl format_text_passes(request: ProductRequest) -> PassSchedule {
-    return [JacFormatPass];
 }
 
 impl place_module(program: JacProgram, module: Module) -> bool {
@@ -279,12 +235,30 @@ impl providers_of(passes: PassSchedule) -> set[AnalysisFact] {
     return out;
 }
 
+impl product_spec(product: CompilationProduct) -> ProductSpec {
+    spec = PRODUCTS.get(product);
+    if spec is None {
+        active_host().register_host_products();
+        spec = PRODUCTS.get(product);
+    }
+    if spec is None {
+        raise RuntimeError(
+            f"the {product.value} product is built by the Python host, and no host registered it; the kernel's product table holds only the products whose passes it lowers"
+        );
+    }
+    return spec;
+}
+
+impl register_product(product: CompilationProduct, spec: ProductSpec) {
+    PRODUCTS[product] = spec;
+}
+
 impl schedule_loading -> bool {
     return bool(_LOADING.get());
 }
 
 impl tier_reason(product: CompilationProduct) -> str {
-    spec = PRODUCTS[product];
+    spec = product_spec(product);
     if product in _LOADING.get() {
         return f"the {product.value} schedule was still loading";
     }
@@ -309,7 +283,7 @@ impl resolve(
     internal: bool = False,
     peer_fell_back: bool = False
 ) -> tuple[(PassSchedule | None), bool, bool] {
-    spec = PRODUCTS[product];
+    spec = product_spec(product);
     req = request if request is not None else ProductRequest();
     if spec.tiered and (peer_fell_back or tier_reason(product)) {
         return (spec.bootstrap(req), False, False);
@@ -317,7 +291,7 @@ impl resolve(
     if spec.blocker() {
         return (spec.bootstrap(req), False, False);
     }
-    if req.native and PRODUCTS[CompilationProduct.NATIVE_LOWER].blocker() {
+    if req.native and product_spec(CompilationProduct.NATIVE_LOWER).blocker() {
         req = ProductRequest(
             gen_mtir=req.gen_mtir, native=False, endpoint_effects=req.endpoint_effects
         );
@@ -355,7 +329,7 @@ impl schedule_for(
 }
 
 impl unavailable(product: CompilationProduct) -> str {
-    spec = PRODUCTS[product];
+    spec = product_spec(product);
     blocked = spec.blocker();
     if blocked {
         return blocked;
@@ -375,7 +349,7 @@ impl unavailable(product: CompilationProduct) -> str {
 impl product_passes(
     product: CompilationProduct, request: (ProductRequest | None) = None
 ) -> PassSchedule {
-    return PRODUCTS[product].passes(
+    return product_spec(product).passes(
         request if request is not None else ProductRequest()
     );
 }
@@ -393,6 +367,7 @@ impl early_passes -> PassSchedule {
 }
 
 impl dependents(product: CompilationProduct) -> list[CompilationProduct] {
+    active_host().register_host_products();
     out: list[CompilationProduct] = [];
     frontier: list[CompilationProduct] = [product];
     while frontier {
@@ -410,7 +385,7 @@ impl dependents(product: CompilationProduct) -> list[CompilationProduct] {
 impl product_ready(
     program: JacProgram, module: Module, product: CompilationProduct
 ) -> bool {
-    spec = PRODUCTS[product];
+    spec = product_spec(product);
     build = program.analysis.peek(module);
     if not spec.acts {
         facts = program.analysis.product_facts.get(product);
@@ -442,7 +417,7 @@ impl produce(
     request: (ProductRequest | None),
     task: (ProductTask | None) = None
 ) -> (bool | None) {
-    spec = PRODUCTS[product];
+    spec = product_spec(product);
     if spec.acts {
         return spec.action(program, module);
     }
@@ -482,7 +457,7 @@ impl require(
     cancel_token: (CancelToken | None) = None,
     request: (ProductRequest | None) = None
 ) -> bool {
-    spec = PRODUCTS[product];
+    spec = product_spec(product);
     active_cancel = cancel_token
         if cancel_token is not None
         else program.options.cancel_token;
@@ -549,7 +524,7 @@ impl require(
 impl invalidate(program: JacProgram, module: Module, product: CompilationProduct) {
     build = program.analysis.peek(module);
     for current in [product] + dependents(product) {
-        spec = PRODUCTS[current];
+        spec = product_spec(current);
         if build is not None {
             build.tasks.pop(current, None);
             if not spec.acts {
@@ -602,7 +577,7 @@ impl run_utility(
     program: JacProgram,
     cancel_token: (CancelToken | None) = None
 ) -> any {
-    if not PRODUCTS[product].tool {
+    if not product_spec(product).tool {
         raise ValueError(f"{product.value} is not a utility product");
     }
     step = product_passes(product)[0];

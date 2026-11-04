@@ -313,6 +313,15 @@ impl ProjectHost.native_lowering_failed(program: JacProgram, path: str, detail: 
     program.native_units().failures[os.path.realpath(path)] = detail;
 }
 
+impl ProjectHost.register_host_products {
+    if self._host_products_registered {
+        return;
+    }
+    self._host_products_registered = True;
+    import from jaclang.compiler.driver.host_products { register_host_products }
+    register_host_products();
+}
+
 impl ProjectHost.note_native_demotion(
     program: JacProgram, key: str, reason: str
 ) -> bool {

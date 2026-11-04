@@ -1103,6 +1103,12 @@ impl KernelHost.native_lowering_failed(program: JacProgram, path: str, detail: s
     }
 }
 
+impl KernelHost.register_host_products {
+    if self.fallback is not None {
+        self.fallback.register_host_products();
+    }
+}
+
 impl KernelHost.note_native_demotion(
     program: JacProgram, key: str, reason: str
 ) -> bool {
