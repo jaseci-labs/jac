@@ -2,10 +2,8 @@ name: macOS native
 
 # The darwin native lane: the sealed macOS kit and the Mach-O / wasm-floor /
 # libSystem-equivalence tests and JacPython's conformance gates that consume
-# it. Two callers share this one copy:
-#   - nightly.yml (macos-native): daily, the default home for this lane.
-#   - ci.yml      (macos-native): PR lane, OPT-IN via the `macos` label, plus
-#     workflow_dispatch.
+# it. ci.yml (macos-native) calls it: OPT-IN via the `macos` label on a pull
+# request, plus workflow_dispatch.
 #
 # Why it is not on every PR: the macOS kit is 44-68 min of critical path
 # (macos-26-arm64, ~3x the Linux leg for the same cold 622-module
@@ -17,11 +15,11 @@ name: macOS native
 #
 # That is an argument about WHERE it runs, not about whether it matters:
 # Mach-O linking and the musl-vs-libSystem binding divergence are real
-# darwin-only surfaces, which is why this runs nightly and stays one label
-# away on any PR that touches them.
+# darwin-only surfaces, which is why this stays one label away on any PR that
+# touches them.
 #
-# Nightly runs on main, so it is also what seeds the shared macOS caches
-# (setup-jac gates every cache save to main).
+# setup-jac gates every cache save to main, so only a manual run on main seeds
+# the shared macOS caches; a labelled pull request can start cold.
 
 on:
   workflow_call:

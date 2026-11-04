@@ -276,7 +276,6 @@ GitHub Actions workflows in `.github/workflows/`:
 | `release.yml` | The release lifecycle: version-bump PRs, and on merge the tag + GitHub Release + binary publish (human-approved) |
 | `build-binaries.yml` | Builds the per-platform native `jac` binaries and attaches them to a release |
 | `release-dev.yml` | Rolling `dev` prerelease binaries, rebuilt nightly from main |
-| `nightly.yml` | Cron canaries: notes-app CEF smoke and the live-release installer check |
 
 Local git hooks come from `jac precommit --install`: a pre-commit hook that formats and lints staged `.jac` files, and a commit-msg hook that blocks AI co-author attribution. Manual `jac precommit` runs on staged `.jac` files by default; use `jac precommit --verify` for a check-only run or `jac precommit --all` for the whole project. Markdown lint and the em-dash ban run on every PR via pre-commit.ci (`.pre-commit-config.yaml`).
 

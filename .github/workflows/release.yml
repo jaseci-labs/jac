@@ -326,9 +326,9 @@ jobs:
           read -r -a required <<<"$REQUIRED"
           bash scripts/release_publish_guard.sh "$VERSION" "${required[@]}"
 
-  # install.sh's real `curl | bash` path is verified out-of-band -- nightly.yml
-  # `installer-live` and ci.yml `installer-test` -- not as a blocking release
-  # gate: install.sh queries the GitHub API unauthenticated, and on shared macOS
+  # install.sh's real `curl | bash` path is verified out-of-band by ci.yml
+  # `installer-test`, not as a blocking release gate: install.sh queries the
+  # GitHub API unauthenticated, and on shared macOS
   # runners the anon rate limit routinely trips, which would fail a release
   # whose assets uploaded fine.
 

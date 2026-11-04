@@ -1,15 +1,8 @@
 name: Installer smoke
 
 # The documented `curl ... | bash` path, exercised against the LIVE latest
-# release. Two callers share this one copy:
-#   - ci.yml  (installer-test): PR lane, gated on scripts/install.sh changing.
-#   - nightly.yml (installer-live): daily, so a release that ships a missing
-#     or broken asset is caught even when nobody touches the installer.
-#
-# It was duplicated between those two files and had already drifted: only the
-# ci.yml copy linted install.sh, and only the ci.yml copy ran the shipped
-# compiler rather than the checkout's. Two copies of an installer test
-# converge on being one wrong copy, so the body lives here.
+# release. ci.yml (installer-test) calls it on a pull request that changes
+# scripts/install.sh, and on a manual run.
 
 on:
   workflow_call:
@@ -17,9 +10,7 @@ on:
       shellcheck:
         description: >-
           Lint scripts/install.sh from the checkout. On for the PR lane, whose
-          whole trigger is that file changing. Off for the scheduled lane,
-          which is testing the PUBLISHED installer -- linting the checkout
-          there would report on a file the run never executes.
+          whole trigger is that file changing.
         required: false
         default: false
         type: boolean
