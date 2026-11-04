@@ -259,6 +259,8 @@ def is_native_by_location(file_path: str) -> bool;
 def bundled_stdlib_module_of(file_path: str) -> (str | None);
 
 glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
+         "jaclang.runtime.archetype",
+         "jaclang.runtime.constructs",
          "jaclang.runtime.graph_fragment",
 
      ),
