@@ -897,12 +897,7 @@ impl MirLowering.lower_for_text(nd: uni.InForStmt, holder: MirValue) {
         b.position(body);
         width = self.call_rt("__jac_rt_utf8_width", [data, size, at]);
         b.store(cursor, b.binary("add", at, width));
-        item = self.owned_text(
-            self.call_rt(
-                "__jac_rt_str_new",
-                [self.emit_value(MirOp.PTR_OFFSET, data.type, [data, at]), width]
-            )
-        );
+        item = self.owned_text(self.call_rt("__jac_rt_str_unit", [data, size, at]));
         self.store_name(nd.target, item);
     } else {
         (data, size) = self.byte_parts(source);

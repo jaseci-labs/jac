@@ -47,5 +47,3 @@ def _keys_next(state: ptr[u8], out: ptr[u8]) -> bool;
 def _range_next(state: ptr[u8], out: ptr[u8]) -> bool;
 
 def _str_next(state: ptr[u8], out: ptr[u8]) -> bool;
-
-def _utf8_width(lead: int) -> int;

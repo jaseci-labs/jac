@@ -15278,8 +15278,8 @@ graph import runtime.native {
             __jac_rt_str_size
         },
         bytes { __jac_rt_str_new },
-        dicts { __jac_rt_str_size },
-        format | iterators | text { __jac_rt_str_new, __jac_rt_str_size },
+        dicts | iterators { __jac_rt_str_size },
+        format | text { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
     ]
     text ++> [
@@ -15322,6 +15322,7 @@ graph import runtime.native {
             __jac_rt_str_repr,
             __jac_rt_utf8_width
         },
+        iterators { __jac_rt_str_unit, __jac_rt_utf8_width },
     ]
 }
 
