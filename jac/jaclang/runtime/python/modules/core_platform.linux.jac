@@ -1,5 +1,3 @@
-import from jaclang.runtime.python.modules.time_records { timespec, timeval }
-import from jaclang.runtime.python.layouts_platform { CLOCK_MONOTONIC, SYS_gettid }
 import from c {
     def syscall(number: i64, *args: any) -> i64;  def pthread_condattr_setclock(
         attr: ptr[u8], clock_id: i32

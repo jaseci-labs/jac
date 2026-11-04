@@ -66,6 +66,14 @@ obj ScaleClient {
         use_event_logger: bool = False
     ) -> KubernetesTarget;
 
+    def _build_target(
+        config: KubernetesConfig,
+        spec: DeploySpec,
+        sink: EventSink,
+        dry_run: bool,
+        use_event_logger: bool
+    ) -> KubernetesTarget;
+
     def _lifecycle_target(
         app_name: str, namespace: str, target: str = 'auto'
     ) -> KubernetesTarget;

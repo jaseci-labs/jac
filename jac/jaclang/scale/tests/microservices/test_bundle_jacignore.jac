@@ -1,6 +1,8 @@
 import io;
+import os;
 import tarfile;
 import tempfile;
+import unittest.mock;
 import from pathlib { Path }
 
 
@@ -199,4 +201,184 @@ test "the reported set does not change which files ship" {
         == sorted(
             [p.relative_to(base).as_posix() for p in bundle_source_files(base)]
         ) , "reporting is observation only";
+}
+
+
+def _write_files(base: Path, rels: list[str]) {
+    for rel in rels {
+        path = base / rel;
+        path.parent.mkdir(parents=True, exist_ok=True);
+        path.write_text("x\n");
+    }
+}
+
+
+test "the bundle walk never lists a build tree it cannot ship from" {
+    # Listing node_modules or .jac/venv only to drop every path in it kept the
+    # client-bundle thread busy long enough to starve a deploy's GitHub requests.
+    base = Path(tempfile.mkdtemp(prefix="jac-prunewalk-"));
+    skipped = [
+        "node_modules",
+        ".jac/venv",
+        ".jac/client/node_modules",
+        "apps/web/node_modules"
+    ];
+    _write_files(
+        base,
+        [
+            "main.jac",
+            "apps/web/main.jac",
+            ".jac/client/dist/index.js",
+            ".jac/admin/index.html"
+        ]
+    );
+    for tree in skipped {
+        _write_files(base, [f"{tree}/pkg{i}/lib/mod{i}.js" for i in range(40)]);
+    }
+    real_scandir = os.scandir;
+    listed: list[str] = [];
+    def recording(path: any = ".") -> any {
+        listed.append(os.path.relpath(os.fspath(path), str(base)).replace(os.sep, "/"));
+        return real_scandir(path);
+    }
+    with unittest.mock.patch.object(os, "scandir", recording) {
+        (kept, _pruned) = partition_bundle_sources(base);
+    }
+    rels = [p.relative_to(base).as_posix() for p in kept];
+    assert rels
+        == [
+            ".jac/admin/index.html",
+            ".jac/client/dist/index.js",
+            "apps/web/main.jac",
+            "main.jac"
+        ] , rels;
+    entered = sorted(
+        {
+            d for d in listed
+            for tree in skipped
+            if d == tree or d.startswith(tree + "/")
+        }
+    );
+    assert entered == [] , f"the walk listed build trees it cannot ship from: {entered}";
+}
+
+
+test "nested jac.toml discovery never lists a build tree" {
+    # Every deploy runs this beside the bundle walk, so listing node_modules or
+    # .jac/venv here costs the same time the bundle walk no longer spends.
+    base = Path(tempfile.mkdtemp(prefix="jac-tomlwalk-"));
+    skipped = ["node_modules", ".jac", "apps/web/node_modules", "build"];
+    for tree in skipped {
+        _write_files(base, [f"{tree}/pkg{i}/lib/mod{i}.js" for i in range(40)]);
+    }
+    (base / ".jacignore").write_text("docsite/\n");
+    for rel in [
+        "jac.toml",
+        "apps/api/jac.toml",
+        "apps/web/jac.toml",
+        "docsite/jac.toml",
+        "node_modules/pkg0/jac.toml",
+        "apps/web/node_modules/pkg0/jac.toml",
+        ".jac/client/dist/jac.toml",
+        "build/pkg0/jac.toml"
+    ] {
+        (base / rel).parent.mkdir(parents=True, exist_ok=True);
+        (base / rel).write_text("[project]\nname = \"x\"\n");
+    }
+    real_scandir = os.scandir;
+    listed: list[str] = [];
+    def recording(path: any = ".") -> any {
+        listed.append(os.path.relpath(os.fspath(path), str(base)).replace(os.sep, "/"));
+        return real_scandir(path);
+    }
+    with unittest.mock.patch.object(os, "scandir", recording) {
+        nested = nested_sanitized_tomls(base);
+    }
+    assert list(nested.keys()) == ["apps/api/jac.toml", "apps/web/jac.toml"] , list(
+        nested.keys()
+    );
+    entered = sorted(
+        {
+            d for d in listed
+            for tree in skipped
+            if d == tree or d.startswith(tree + "/")
+        }
+    );
+    assert entered == [] , f"the discovery listed build trees: {entered}";
+}
+
+
+def _mixed_tree -> Path {
+    base = Path(tempfile.mkdtemp(prefix="jac-prunewalk-mixed-"));
+    _write_files(
+        base,
+        [
+            "main.jac",
+            "src/app.jac",
+            "src-gen/a.jac",
+            "src/__pycache__/app.cpython-314.pyc",
+            "notes.txt",
+            "scratch/draft.jac",
+            "scratch/node_modules/x.js",
+            ".env",
+            "keys/id_rsa",
+            "dist/bundle.js",
+            "build/out.txt",
+            "tools/build",
+            "node_modules/pkg/index.js",
+            "node_modules/pkg/node_modules/dep/index.js",
+            "apps/web/main.jac",
+            "apps/web/node_modules/dep/index.js",
+            "apps/web/dist/app.js",
+            ".jac/venv/lib/site.py",
+            ".jac/cache/blob.bin",
+            ".jac/client/node_modules/react/index.js",
+            ".jac/client/dist/index.js",
+            ".jac/client/dist/assets/app.js",
+            ".jac/admin/index.html",
+            ".git/HEAD"
+        ]
+    );
+    (base / "jac.toml").write_text("[project]\nname = \"mixed\"\n");
+    (base / ".jacignore").write_text("scratch/\nnotes.txt\n");
+    (base / "linked_src").symlink_to(base / "src", target_is_directory=True);
+    (base / "linked_nm").symlink_to(base / "node_modules", target_is_directory=True);
+    (base / "linked_main.jac").symlink_to(base / "main.jac");
+    return base;
+}
+
+
+test "the bundle walk ships and reports the same paths on a mixed tree" {
+    # Pinned before the walk learned to skip build trees: required console
+    # files, nested build trees, .jacignore, jac.toml, a secret and symlinks.
+    base = _mixed_tree();
+
+    (kept, pruned) = partition_bundle_sources(base);
+
+    expected = [
+        ".jac/admin/index.html",
+        ".jac/client/dist/assets/app.js",
+        ".jac/client/dist/index.js",
+        ".jacignore",
+        "apps/web/main.jac",
+        "linked_main.jac",
+        "main.jac",
+        "src/app.jac",
+        "src-gen/a.jac"
+    ];
+    assert kept == [base / rel for rel in expected] , [
+        p.relative_to(base).as_posix() for p in kept
+    ];
+    assert pruned
+        == [
+            ".git",
+            "apps/web/dist",
+            "apps/web/node_modules",
+            "build",
+            "dist",
+            "node_modules",
+            "scratch/node_modules",
+            "src/__pycache__",
+            "tools/build"
+        ] , pruned;
 }
