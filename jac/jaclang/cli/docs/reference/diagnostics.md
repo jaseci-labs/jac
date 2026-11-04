@@ -483,6 +483,7 @@ See [Project Wiring](wiring.md).
 | `E1144` | Import of '{module}' is written in '{consumer}'; under archwire.jac it is a wire |
 | `E1146` | '{name}' is wired into '{consumer}', which never uses it |
 | `E1147` | '{name}' is declared into '{consumer}' by a '-->' wire, but '{consumer}' does not write that import where it runs |
+| `E1148` | '{module}' is a variant of '{base}', so it cannot be a wire's provider |
 
 ### Unresolved Names
 

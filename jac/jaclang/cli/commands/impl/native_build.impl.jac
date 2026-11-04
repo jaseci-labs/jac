@@ -144,7 +144,7 @@ impl native_build(
         if not (ir_module and ir_module.decided_codespace == 'native') {
             console.error(
                 "This .jac file is not compatible with native compilation.\n"
-                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+                "  It may use async, by llm(), the persistent root graph, or other\n"
                 "  constructs not supported by the native backend.\n"
                 "  Remove the incompatible constructs it names."
             );

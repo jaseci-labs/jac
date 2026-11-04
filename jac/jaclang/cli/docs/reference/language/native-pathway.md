@@ -86,7 +86,7 @@ There is no syntax for it -- native placement inside a file comes from evidence 
 
 # Standard Jac -- runs on Python
 def process_data(items: list[dict]) -> list[dict] {
-    # Full access to PyPI, walkers, by llm(), etc.
+    # Full access to PyPI, the persistent `root` graph, by llm(), etc.
     return [item for item in items if item["active"]];
 }
 
@@ -1273,14 +1273,15 @@ The following Jac features are **not yet available** in the native codespace:
 
 | Feature | Reason |
 |---------|--------|
-| Walkers, nodes, edges | Graph-spatial constructs require the Jac runtime |
+| Persistent graph (`root`) | Persistence across runs lives in the Jac runtime |
 | Async / await | No async runtime in native code |
-| Generators (`yield`) | Not yet implemented |
-| Lambda expressions | Not yet implemented |
-| Decorators | Not yet implemented |
+| Lambda expressions | Partial: prefer named functions for callbacks |
+| Decorators | Only plain-name decorators on module-level functions, plus `@contextmanager` |
 | Multiple inheritance | Single inheritance only |
 | `by llm()` | Requires Python runtime for LLM calls |
 | PyPI imports | No Python ecosystem in native binaries |
+
+Object-spatial code is native: `node`/`edge`/`walker` archetypes, `spawn`, `visit`, `here`, connects, disconnects, and typed edge queries all compile, so a program can build and walk its own graph natively. Generators lower when the function declares `-> Iterator[T]`.
 
 !!! tip
     If you need a feature from the list above, keep that code in the Python codespace and place only the performance-critical parts native. The compiler handles the interop automatically.
