@@ -13,6 +13,10 @@ def condattr_set_monotonic(attr: ptr[u8]) -> i32;
 
 def semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32;
 
+def cond_timedwait_relative(
+    cond: ptr[u8], mutex: ptr[u8], reltime: ptr[timespec]
+) -> i32;
+
 def timeval_store(tv: ptr[timeval], seconds: i64, microseconds: i64);
 
 impl mach_ticks -> u64 {
@@ -32,6 +36,12 @@ impl condattr_set_monotonic(attr: ptr[u8]) -> i32 {
 }
 
 impl semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32 {
+    return i32(-1);
+}
+
+impl cond_timedwait_relative(
+    cond: ptr[u8], mutex: ptr[u8], reltime: ptr[timespec]
+) -> i32 {
     return i32(-1);
 }
 

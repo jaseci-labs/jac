@@ -275,6 +275,7 @@ graph import {
             | toolchains.manager
             | toolchains.store { console },
         client.cli.run_client_build
+            | client.targets.web_target._copy_public_dirs
             | compiler.driver.application.prepare_dynamic_module
             | project.config._apply_memory_native_placement
             | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
@@ -294,7 +295,7 @@ graph import {
             | project.compiler_host.ProjectHost.note
             | project.config.JacConfig._write_toml_text
             | project.template_registry._register_builtin_client_templates { console },
-        project.config._parse_toml_data
+        project.config._apply_serve_table
             | project.template_registry._register_builtin_shadcn_template { console },
     ]
     type cli.console ++> runtime.runtime { JacConsole as ConsoleImpl }
@@ -645,8 +646,12 @@ graph import {
         | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py {
         generated_python
     }
-    compiler.backends.py.jacpython.compiler_context --> runtime.python.symtable {
-        compile_context
+    compiler.backends.py.jacpython.cpy_compile ++> runtime.python.symtable {
+        cpy_future_from_ast
+    }
+    compiler.backends.py.jacpython.cpy_symtable ++> runtime.python.symtable {
+        cpy_ste,
+        cpy_symtable_build
     }
     compiler.boundary_audit ++> client.compiler.ViteCompiler.prepare_bundle {
         boundary_audit
@@ -866,6 +871,7 @@ graph import {
             get_module_cache_path,
             is_module_cache_valid
         },
+        project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -1035,9 +1041,7 @@ graph import {
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
     }
-    compiler.driver.unit_products ++> project.kernel_compile | project.kernel_snapshot {
-        UnitProducts
-    }
+    compiler.driver.unit_products ++> project.kernel_compile { UnitProducts }
     compiler.driver.wiring ++> [
         cli.commands.architecture {
             ARCH_FILE_NAME,
@@ -1231,7 +1235,7 @@ graph import {
         cli.commands.fix { LexToken },
         lsp.server.engine { TokenKind },
     ]
-    compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expr, stmt }
+    compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expression, mod }
     compiler.frontend.python.ast_output --> runtime.python.symtable {
         ast_output_append_owned,
         ast_output_checked,
@@ -1239,27 +1243,6 @@ graph import {
     }
     compiler.frontend.python.compiler_diagnostics ++> runtime.python.tokenize {
         report_token_warnings
-    }
-    compiler.frontend.python.compiler_diagnostics --> runtime.python.symtable {
-        compiler_diag_to_pyobj
-    }
-    compiler.frontend.python.compiler_symtable ++> runtime.python.symtable {
-        DEF_BOUND,
-        DEF_PARAM,
-        SCOPE_CELL,
-        SCOPE_LOCAL,
-        SCOPE_OFFSET,
-        SYM_USE,
-        is_type_variable_info,
-        scope_info_kind,
-        scope_kind,
-        sym_block
-    }
-    compiler.frontend.python.compiler_symtable --> runtime.python.symtable {
-        build_module_symtable
-    }
-    compiler.frontend.python.compiler_validate --> runtime.python.symtable {
-        future_features
     }
     compiler.frontend.python.parser --> runtime.python.symtable {
         parse_eval_expr,
@@ -1451,11 +1434,6 @@ graph import {
     type compiler.types.stubcat.reader ++> project.compiler_host { StubCatalog }
     compiler.types.stubcat.writer ++> [
         dist.precompile_bytecode.precompile_unit_context,
-        project.kernel_snapshot.KernelSnapshot.record_interface {
-            IncoherentInterface,
-            build_module_iface,
-            module_iface_shape
-        },
         project.kernel_snapshot.python_interface {
             IncoherentInterface,
             build_module_iface
@@ -2010,6 +1988,7 @@ graph import {
             | server.server.JacAPIServer._ensure_client_bundle { client_app_dir_for },
         client.config_loader.JacClientConfig.get_assets_config { client_assets_config },
         client.config_loader.JacClientConfig.get_assets_dir { client_assets_dir },
+        client.config_loader.JacClientConfig.get_public_dirs { client_app_root },
         client.targets.react_native.scaffold._project_native_deps {
             client_workspace_app
         },
@@ -2177,10 +2156,7 @@ graph import {
         scale.config.dev_config.resolve_experimental_pr
             | scale.injector.bundle.seal_timeout_setting { get_config_for_path },
         scale.config.dev_config.resolve_pinned_spec { get_config_for_path },
-        scale.deploy.target.kubernetes.manifest_builder | server.settings {
-            JacConfig,
-            ServeConfig
-        },
+        scale.deploy.target.kubernetes.manifest_builder { JacConfig, ServeConfig },
         scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._check_deploy_settings_resolve {
             get_config_for_path,
             report_env_findings
@@ -2190,6 +2166,7 @@ graph import {
         scale.tests.server.test_host_serving
             | scale.tests.server.test_served_app_route { set_config },
         server.session._database_config { DatabaseConfig, get_config_for_dir },
+        server.settings { JacConfig, ServeConfig, ServeConfigError, apply_table },
         server.static_files { find_project_root, get_config, get_config_for_dir },
         testing.test_runner._fresh_jac_state { get_explicit_config, set_config },
         toolchains.host.use_system_tools { use_system_toolchains },
@@ -2699,6 +2676,7 @@ graph import {
             | data.contracts
             | data.schema_rules
             | data.serializer
+            | project.config.apply_table
             | server.serving.model
             | server.settings { fields, is_record },
         byllm.schema | server.serving.coerce { is_record },
@@ -2847,9 +2825,14 @@ graph import {
         },
     ]
     runtime.python.compiler_integer ++> [
-        compiler.backends.py.jacpython.codegen_util { PyBigInt, integer_add },
-        compiler.backends.py.jacpython.compiler_emit { PyBigInt, integer_negate },
-        compiler.frontend.python.annotation_unparse { PyBigInt, integer_decimal },
+        compiler.backends.py.jacpython.cpy_codegen
+            | compiler.frontend.python.annotation_unparse { PyBigInt, integer_decimal },
+        compiler.backends.py.jacpython.cpy_constfold {
+            PyBigInt,
+            integer_digits,
+            integer_from_digits,
+            integer_negative
+        },
         compiler.frontend.python.ast_validation { PyBigInt },
         compiler.frontend.python.compiler_preprocess {
             PyBigInt,
@@ -2861,9 +2844,9 @@ graph import {
     runtime.python.constant_input ++> compiler.frontend.python.ast_input {
         read_constant
     }
-    runtime.python.constant_keys ++> compiler.backends.py.jacpython.compiler_ir {
-        constant_key
-    }
+    runtime.python.constant_keys ++> compiler.backends.py.jacpython.cpy_codegen
+        | compiler.backends.py.jacpython.cpy_compile
+        | compiler.backends.py.jacpython.cpy_flowgraph { constant_key }
     runtime.python.constant_output ++> compiler.backends.py.jacpython.native_api
         | compiler.frontend.python.ast_output { constant_object }
     runtime.python.cpython_api ++> [
@@ -2991,8 +2974,9 @@ graph import {
         PyInterpreterState_CONFIG
     }
     runtime.python.native_services ++> [
+        compiler.backends.py.jacpython.cpy_compile
+            | compiler.frontend.python.compiler_diagnostics.syntax_warning { warn },
         compiler.frontend.python.ast_input { take_buffer },
-        compiler.frontend.python.compiler_diagnostics.syntax_warning { warn },
         compiler.frontend.python.parser_actions.pa_decode_bytes_escape_body {
             decode_bytes
         },
@@ -3023,64 +3007,58 @@ graph import {
         type_has_feature
     }
     runtime.python.objects ++> [
-        compiler.backends.py.jacpython.assembler { PyCode },
-        compiler.backends.py.jacpython.codegen_util {
-            PyInt,
-            PyObj,
-            PySlice,
-            PyStr,
-            PyTuple,
-            py_none
-        },
-        compiler.backends.py.jacpython.compiler_annotations {
-            PyInt,
-            PyStr,
-            hashkey_equal,
-            py_none
-        },
-        compiler.backends.py.jacpython.compiler_codegen
-            | compiler.backends.py.jacpython.compiler_exc
-            | compiler.backends.py.jacpython.compiler_loops { py_none },
-        compiler.backends.py.jacpython.compiler_defs {
-            PyCode,
-            PyInt,
-            PyObj,
-            PyStr,
-            PyTuple,
-            py_none
-        },
-        compiler.backends.py.jacpython.compiler_emit {
+        compiler.backends.py.jacpython.cpy_assemble { PyCode, PyObj },
+        compiler.backends.py.jacpython.cpy_codegen {
             PyBool,
+            PyBytes,
             PyCode,
             PyComplex,
+            PyEllipsis,
             PyFloat,
             PyInt,
             PyNoneType,
             PyObj,
             PySet,
+            PySlice,
             PyStr,
             PyTuple,
-            is_error,
             py_none
         },
-        compiler.backends.py.jacpython.compiler_ir
-            | compiler.frontend.python.ast_input
-            | compiler.frontend.python.ast_nodes
-            | compiler.frontend.python.ast_output { PyObj },
-        compiler.backends.py.jacpython.compiler_match {
-            PyInt,
+        compiler.backends.py.jacpython.cpy_compile {
+            PyCode,
             PyObj,
             PyStr,
             PyTuple,
-            hashkey_equal
+            py_none
         },
-        compiler.backends.py.jacpython.flowgraph {
+        compiler.backends.py.jacpython.cpy_constfold {
+            PyBool,
+            PyBytes,
+            PyCode,
+            PyComplex,
+            PyEllipsis,
+            PyFloat,
             PyInt,
+            PyNoneType,
             PyObj,
             PySet,
+            PySlice,
+            PyStr,
             PyTuple,
             is_error
         },
+        compiler.backends.py.jacpython.cpy_flowgraph {
+            PyBool,
+            PyInt,
+            PyNoneType,
+            PyObj,
+            PyTuple
+        },
+        compiler.backends.py.jacpython.cpy_seq
+            | compiler.frontend.python.ast_input
+            | compiler.frontend.python.ast_nodes
+            | compiler.frontend.python.ast_output { PyObj },
+        compiler.backends.py.jacpython.cpy_symtable { PyStr },
         compiler.backends.py.jacpython.native_api { PyCode, PyError, PyInt, PyObj },
         compiler.backends.py.jacpython.product_compile { PyObj, py_error },
         compiler.frontend.python.annotation_unparse {
@@ -3108,12 +3086,6 @@ graph import {
             PyStr,
             PyTuple
         },
-        compiler.frontend.python.compiler_diagnostics {
-            PyError,
-            PyInt,
-            PyObj,
-            py_error
-        },
         compiler.frontend.python.compiler_preprocess {
             PyBool,
             PyComplex,
@@ -3135,23 +3107,33 @@ graph import {
         },
     ]
     runtime.python.opcode_meta ++> [
-        compiler.backends.py.jacpython.assembler {
+        compiler.backends.py.jacpython.cpy_assemble {
+            CO_FAST_CELL,
+            CO_FAST_FREE,
+            CO_FAST_HIDDEN,
+            CO_FAST_LOCAL,
+            CO_VARARGS,
+            CO_VARKEYWORDS,
+            MAX_REAL_OPCODE,
             OP_CACHE,
+            OP_END_ASYNC_FOR,
             OP_EXTENDED_ARG,
-            opcode_cache_count
+            OP_JUMP,
+            OP_JUMP_BACKWARD,
+            OP_JUMP_BACKWARD_NO_INTERRUPT,
+            OP_JUMP_FORWARD,
+            OP_JUMP_NO_INTERRUPT,
+            opcode_cache_count,
+            opcode_has_jump
         },
-        compiler.backends.py.jacpython.codegen_util {
+        compiler.backends.py.jacpython.cpy_codegen {
             CMP_EQ,
             CMP_GE,
             CMP_GT,
             CMP_LE,
             CMP_LT,
             CMP_NE,
-            CO_METHOD,
-            CO_NEWLOCALS,
-            CO_OPTIMIZED,
-            CO_VARARGS,
-            CO_VARKEYWORDS,
+            CO_FUTURE_ANNOTATIONS,
             NB_ADD,
             NB_AND,
             NB_FLOOR_DIVIDE,
@@ -3175,140 +3157,11 @@ graph import {
             NB_POWER,
             NB_REMAINDER,
             NB_RSHIFT,
+            NB_SUBSCR,
             NB_SUBTRACT,
             NB_TRUE_DIVIDE,
             NB_XOR,
-            OP_UNARY_INVERT,
-            OP_UNARY_NEGATIVE,
-            OP_UNARY_NOT,
-            compare_filter_oparg,
-            compare_oparg
-        },
-        compiler.backends.py.jacpython.compiler_annotations {
-            CMP_GT,
-            CO_NESTED,
-            CO_NEWLOCALS,
-            CO_OPTIMIZED,
-            OP_BUILD_MAP,
-            OP_BUILD_SET,
-            OP_BUILD_TUPLE,
-            OP_COMPARE_OP,
-            OP_CONTAINS_OP,
-            OP_COPY,
-            OP_COPY_FREE_VARS,
-            OP_LOAD_COMMON_CONSTANT,
-            OP_LOAD_CONST,
-            OP_LOAD_DEREF,
-            OP_LOAD_FAST,
-            OP_LOAD_FAST_BORROW,
-            OP_LOAD_GLOBAL,
-            OP_LOAD_NAME,
-            OP_LOAD_SMALL_INT,
-            OP_MAKE_CELL,
-            OP_MAKE_FUNCTION,
-            OP_POP_JUMP_IF_FALSE,
-            OP_POP_TOP,
-            OP_RAISE_VARARGS,
-            OP_RESUME,
-            OP_RETURN_VALUE,
-            OP_SETUP_ANNOTATIONS,
-            OP_SET_ADD,
-            OP_SET_FUNCTION_ATTRIBUTE,
-            OP_STORE_DEREF,
-            OP_STORE_NAME,
-            OP_STORE_SUBSCR,
-            OP_SWAP,
-            compare_oparg
-        },
-        compiler.backends.py.jacpython.compiler_codegen {
-            CO_COROUTINE,
-            NB_SUBSCR,
-            OP_BINARY_OP,
-            OP_BUILD_SLICE,
-            OP_BUILD_TUPLE,
-            OP_CALL,
-            OP_CALL_INTRINSIC_1,
-            OP_COPY,
-            OP_DELETE_ATTR,
-            OP_DELETE_DEREF,
-            OP_DELETE_FAST,
-            OP_DELETE_GLOBAL,
-            OP_DELETE_NAME,
-            OP_DELETE_SUBSCR,
-            OP_END_FOR,
-            OP_JUMP_BACKWARD,
-            OP_JUMP_FORWARD,
-            OP_LOAD_ATTR,
-            OP_LOAD_COMMON_CONSTANT,
-            OP_LOAD_CONST,
-            OP_LOAD_FAST,
-            OP_MAKE_CELL,
-            OP_NOP,
-            OP_POP_ITER,
-            OP_POP_TOP,
-            OP_RAISE_VARARGS,
-            OP_RESUME,
-            OP_RETURN_VALUE,
-            OP_STORE_ATTR,
-            OP_STORE_DEREF,
-            OP_STORE_FAST,
-            OP_STORE_GLOBAL,
-            OP_STORE_NAME,
-            OP_STORE_SLICE,
-            OP_STORE_SUBSCR,
-            OP_SWAP,
-            OP_UNPACK_EX,
-            OP_UNPACK_SEQUENCE,
-            is_scope_exit_opcode,
-            is_unconditional_jump_opcode
-        },
-        compiler.backends.py.jacpython.compiler_defs {
-            CMP_GT,
-            CO_ASYNC_GENERATOR,
-            CO_COROUTINE,
-            CO_GENERATOR,
-            CO_HAS_DOCSTRING,
-            CO_NESTED,
-            CO_NEWLOCALS,
-            CO_OPTIMIZED,
-            OP_BUILD_TUPLE,
-            OP_CALL,
-            OP_CALL_INTRINSIC_1,
-            OP_CALL_INTRINSIC_2,
-            OP_COMPARE_OP,
-            OP_COPY,
-            OP_COPY_FREE_VARS,
-            OP_IMPORT_FROM,
-            OP_IMPORT_NAME,
-            OP_LOAD_BUILD_CLASS,
-            OP_LOAD_COMMON_CONSTANT,
-            OP_LOAD_CONST,
-            OP_LOAD_FAST_BORROW,
-            OP_LOAD_LOCALS,
-            OP_LOAD_NAME,
-            OP_LOAD_SMALL_INT,
-            OP_MAKE_CELL,
-            OP_MAKE_FUNCTION,
-            OP_POP_JUMP_IF_FALSE,
-            OP_POP_TOP,
-            OP_PUSH_NULL,
-            OP_RAISE_VARARGS,
-            OP_RESUME,
-            OP_RETURN_VALUE,
-            OP_SET_FUNCTION_ATTRIBUTE,
-            OP_STORE_DEREF,
-            OP_STORE_NAME,
-            OP_SWAP,
-            OP_UNPACK_SEQUENCE,
-            compare_oparg
-        },
-        compiler.backends.py.jacpython.compiler_emit {
-            CO_ASYNC_GENERATOR,
-            CO_GENERATOR,
-            CO_NESTED,
-            CO_NEWLOCALS,
-            CO_OPTIMIZED,
-            NB_SUBSCR,
+            OP_ANNOTATIONS_PLACEHOLDER,
             OP_BINARY_OP,
             OP_BINARY_SLICE,
             OP_BUILD_INTERPOLATION,
@@ -3322,13 +3175,21 @@ graph import {
             OP_CALL,
             OP_CALL_FUNCTION_EX,
             OP_CALL_INTRINSIC_1,
+            OP_CALL_INTRINSIC_2,
             OP_CALL_KW,
+            OP_CHECK_EG_MATCH,
+            OP_CHECK_EXC_MATCH,
             OP_CLEANUP_THROW,
             OP_COMPARE_OP,
             OP_CONTAINS_OP,
             OP_CONVERT_VALUE,
             OP_COPY,
-            OP_COPY_FREE_VARS,
+            OP_DELETE_ATTR,
+            OP_DELETE_DEREF,
+            OP_DELETE_FAST,
+            OP_DELETE_GLOBAL,
+            OP_DELETE_NAME,
+            OP_DELETE_SUBSCR,
             OP_DICT_MERGE,
             OP_DICT_UPDATE,
             OP_END_ASYNC_FOR,
@@ -3341,156 +3202,145 @@ graph import {
             OP_GET_ANEXT,
             OP_GET_AWAITABLE,
             OP_GET_ITER,
+            OP_GET_LEN,
             OP_GET_YIELD_FROM_ITER,
+            OP_IMPORT_FROM,
+            OP_IMPORT_NAME,
             OP_IS_OP,
-            OP_JUMP_BACKWARD,
-            OP_JUMP_BACKWARD_NO_INTERRUPT,
-            OP_JUMP_FORWARD,
+            OP_JUMP,
+            OP_JUMP_IF_FALSE,
+            OP_JUMP_IF_TRUE,
+            OP_JUMP_NO_INTERRUPT,
             OP_LIST_APPEND,
             OP_LIST_EXTEND,
             OP_LOAD_ATTR,
+            OP_LOAD_BUILD_CLASS,
+            OP_LOAD_CLOSURE,
+            OP_LOAD_COMMON_CONSTANT,
             OP_LOAD_CONST,
             OP_LOAD_DEREF,
             OP_LOAD_FAST,
             OP_LOAD_FAST_AND_CLEAR,
-            OP_LOAD_FAST_BORROW,
-            OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
             OP_LOAD_FROM_DICT_OR_DEREF,
             OP_LOAD_FROM_DICT_OR_GLOBALS,
             OP_LOAD_GLOBAL,
             OP_LOAD_LOCALS,
             OP_LOAD_NAME,
-            OP_LOAD_SMALL_INT,
+            OP_LOAD_SPECIAL,
             OP_LOAD_SUPER_ATTR,
             OP_MAKE_CELL,
             OP_MAKE_FUNCTION,
             OP_MAP_ADD,
+            OP_MATCH_CLASS,
+            OP_MATCH_KEYS,
+            OP_MATCH_MAPPING,
+            OP_MATCH_SEQUENCE,
             OP_NOP,
+            OP_NOT_TAKEN,
+            OP_POP_BLOCK,
             OP_POP_EXCEPT,
             OP_POP_ITER,
-            OP_POP_JUMP_IF_FALSE,
-            OP_POP_JUMP_IF_NONE,
-            OP_POP_JUMP_IF_NOT_NONE,
-            OP_POP_JUMP_IF_TRUE,
-            OP_POP_TOP,
-            OP_PUSH_NULL,
-            OP_RERAISE,
-            OP_RESUME,
-            OP_RETURN_GENERATOR,
-            OP_RETURN_VALUE,
-            OP_SEND,
-            OP_SET_ADD,
-            OP_SET_FUNCTION_ATTRIBUTE,
-            OP_SET_UPDATE,
-            OP_STORE_DEREF,
-            OP_STORE_FAST,
-            OP_STORE_FAST_LOAD_FAST,
-            OP_STORE_FAST_MAYBE_NULL,
-            OP_STORE_FAST_STORE_FAST,
-            OP_STORE_GLOBAL,
-            OP_STORE_NAME,
-            OP_SWAP,
-            OP_TO_BOOL,
-            OP_UNARY_NOT,
-            OP_UNPACK_SEQUENCE,
-            OP_YIELD_VALUE,
-            compare_filter_oparg,
-            compare_oparg
-        },
-        compiler.backends.py.jacpython.compiler_exc {
-            OP_BUILD_LIST,
-            OP_CALL,
-            OP_CALL_INTRINSIC_2,
-            OP_CHECK_EG_MATCH,
-            OP_CHECK_EXC_MATCH,
-            OP_CLEANUP_THROW,
-            OP_COPY,
-            OP_GET_AWAITABLE,
-            OP_JUMP_BACKWARD_NO_INTERRUPT,
-            OP_JUMP_FORWARD,
-            OP_LIST_APPEND,
-            OP_LOAD_CONST,
-            OP_LOAD_SPECIAL,
-            OP_NOP,
-            OP_POP_EXCEPT,
             OP_POP_JUMP_IF_FALSE,
             OP_POP_JUMP_IF_NONE,
             OP_POP_JUMP_IF_NOT_NONE,
             OP_POP_JUMP_IF_TRUE,
             OP_POP_TOP,
             OP_PUSH_EXC_INFO,
+            OP_PUSH_NULL,
             OP_RAISE_VARARGS,
             OP_RERAISE,
             OP_RESUME,
+            OP_RETURN_VALUE,
             OP_SEND,
+            OP_SETUP_ANNOTATIONS,
+            OP_SETUP_CLEANUP,
+            OP_SETUP_FINALLY,
+            OP_SETUP_WITH,
+            OP_SET_ADD,
+            OP_SET_FUNCTION_ATTRIBUTE,
+            OP_SET_UPDATE,
+            OP_STORE_ATTR,
+            OP_STORE_DEREF,
             OP_STORE_FAST,
+            OP_STORE_FAST_MAYBE_NULL,
+            OP_STORE_GLOBAL,
+            OP_STORE_NAME,
+            OP_STORE_SLICE,
+            OP_STORE_SUBSCR,
             OP_SWAP,
             OP_TO_BOOL,
-            OP_WITH_EXCEPT_START,
-            OP_YIELD_VALUE
-        },
-        compiler.backends.py.jacpython.compiler_ir {
-            OP_LOAD_CONST,
-            opcode_cache_count,
-            opcode_has_const
-        },
-        compiler.backends.py.jacpython.compiler_loops {
-            OP_END_ASYNC_FOR,
-            OP_END_FOR,
-            OP_FOR_ITER,
-            OP_GET_AITER,
-            OP_GET_ANEXT,
-            OP_GET_ITER,
-            OP_GET_YIELD_FROM_ITER,
-            OP_JUMP_BACKWARD,
-            OP_JUMP_FORWARD,
-            OP_LOAD_CONST,
-            OP_NOP,
-            OP_POP_ITER,
-            OP_RETURN_VALUE,
-            has_target,
-            is_scope_exit_opcode,
-            is_unconditional_jump_opcode
-        },
-        compiler.backends.py.jacpython.compiler_match {
-            CMP_EQ,
-            CMP_GE,
-            NB_SUBSCR,
-            NB_SUBTRACT,
-            OP_BINARY_OP,
-            OP_BUILD_MAP,
-            OP_BUILD_TUPLE,
-            OP_COMPARE_OP,
-            OP_COPY,
-            OP_DELETE_SUBSCR,
-            OP_DICT_UPDATE,
-            OP_GET_LEN,
-            OP_IS_OP,
-            OP_JUMP_FORWARD,
-            OP_LOAD_CONST,
-            OP_LOAD_FAST,
-            OP_LOAD_FAST_BORROW,
-            OP_MATCH_CLASS,
-            OP_MATCH_KEYS,
-            OP_MATCH_MAPPING,
-            OP_MATCH_SEQUENCE,
-            OP_NOP,
-            OP_POP_JUMP_IF_FALSE,
-            OP_POP_JUMP_IF_NONE,
-            OP_POP_JUMP_IF_NOT_NONE,
-            OP_POP_TOP,
-            OP_SWAP,
+            OP_UNARY_INVERT,
+            OP_UNARY_NEGATIVE,
+            OP_UNARY_NOT,
             OP_UNPACK_EX,
             OP_UNPACK_SEQUENCE,
-            compare_filter_oparg,
+            OP_WITH_EXCEPT_START,
+            OP_YIELD_VALUE,
             compare_oparg
         },
-        compiler.backends.py.jacpython.flowgraph {
+        compiler.backends.py.jacpython.cpy_compile {
+            CO_ASYNC_GENERATOR,
+            CO_COROUTINE,
+            CO_GENERATOR,
+            CO_HAS_DOCSTRING,
+            CO_METHOD,
+            CO_NESTED,
+            CO_NEWLOCALS,
+            CO_OPTIMIZED,
+            CO_VARARGS,
+            CO_VARKEYWORDS,
+            OP_LOAD_CONST,
+            OP_RETURN_VALUE
+        },
+        compiler.backends.py.jacpython.cpy_constfold {
+            NB_ADD,
+            NB_AND,
+            NB_FLOOR_DIVIDE,
+            NB_LSHIFT,
+            NB_MULTIPLY,
+            NB_OR,
+            NB_POWER,
+            NB_REMAINDER,
+            NB_RSHIFT,
+            NB_SUBSCR,
+            NB_SUBTRACT,
+            NB_TRUE_DIVIDE,
+            NB_XOR,
+            OP_CALL_INTRINSIC_1,
+            OP_UNARY_INVERT,
+            OP_UNARY_NEGATIVE,
+            OP_UNARY_NOT
+        },
+        compiler.backends.py.jacpython.cpy_flowgraph {
+            CO_ASYNC_GENERATOR,
+            CO_COROUTINE,
+            CO_GENERATOR,
+            OP_ANNOTATIONS_PLACEHOLDER,
+            OP_BINARY_OP,
             OP_BUILD_LIST,
             OP_BUILD_SET,
+            OP_BUILD_TUPLE,
+            OP_CALL,
+            OP_CALL_BUILTIN_CLASS,
+            OP_CALL_BUILTIN_FAST,
+            OP_CALL_BUILTIN_FAST_WITH_KEYWORDS,
+            OP_CALL_BUILTIN_O,
+            OP_CALL_FUNCTION_EX,
+            OP_CALL_INTRINSIC_1,
+            OP_CALL_KW_NON_PY,
+            OP_CALL_METHOD_DESCRIPTOR_FAST,
+            OP_CALL_METHOD_DESCRIPTOR_FAST_WITH_KEYWORDS,
+            OP_CALL_METHOD_DESCRIPTOR_NOARGS,
+            OP_CALL_METHOD_DESCRIPTOR_O,
+            OP_CALL_NON_PY_GENERAL,
+            OP_CALL_STR_1,
+            OP_CALL_TUPLE_1,
             OP_CHECK_EXC_MATCH,
+            OP_COMPARE_OP,
             OP_CONTAINS_OP,
             OP_COPY,
+            OP_COPY_FREE_VARS,
+            OP_DELETE_DEREF,
             OP_DELETE_FAST,
             OP_DICT_MERGE,
             OP_DICT_UPDATE,
@@ -3503,54 +3353,83 @@ graph import {
             OP_GET_LEN,
             OP_GET_YIELD_FROM_ITER,
             OP_IMPORT_FROM,
+            OP_INSTRUMENTED_CALL,
+            OP_INSTRUMENTED_CALL_FUNCTION_EX,
+            OP_INSTRUMENTED_JUMP_BACKWARD,
+            OP_INSTRUMENTED_RESUME,
+            OP_IS_OP,
+            OP_JUMP,
             OP_JUMP_BACKWARD,
-            OP_JUMP_BACKWARD_NO_INTERRUPT,
-            OP_JUMP_FORWARD,
+            OP_JUMP_BACKWARD_JIT,
+            OP_JUMP_BACKWARD_NO_JIT,
+            OP_JUMP_IF_FALSE,
+            OP_JUMP_IF_TRUE,
+            OP_JUMP_NO_INTERRUPT,
             OP_LIST_APPEND,
             OP_LIST_EXTEND,
             OP_LOAD_ATTR,
+            OP_LOAD_CLOSURE,
             OP_LOAD_CONST,
+            OP_LOAD_DEREF,
             OP_LOAD_FAST,
             OP_LOAD_FAST_AND_CLEAR,
             OP_LOAD_FAST_BORROW,
             OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
             OP_LOAD_FAST_CHECK,
             OP_LOAD_FAST_LOAD_FAST,
+            OP_LOAD_FROM_DICT_OR_DEREF,
+            OP_LOAD_GLOBAL,
             OP_LOAD_SMALL_INT,
             OP_LOAD_SPECIAL,
             OP_LOAD_SUPER_ATTR,
+            OP_MAKE_CELL,
             OP_MAP_ADD,
             OP_MATCH_KEYS,
             OP_MATCH_MAPPING,
             OP_MATCH_SEQUENCE,
             OP_NOP,
             OP_NOT_TAKEN,
+            OP_POP_BLOCK,
             OP_POP_JUMP_IF_FALSE,
             OP_POP_JUMP_IF_NONE,
             OP_POP_JUMP_IF_NOT_NONE,
             OP_POP_JUMP_IF_TRUE,
             OP_POP_TOP,
             OP_PUSH_EXC_INFO,
+            OP_PUSH_NULL,
             OP_RERAISE,
-            OP_RETURN_VALUE,
+            OP_RESUME,
+            OP_RETURN_GENERATOR,
             OP_SEND,
+            OP_SETUP_CLEANUP,
+            OP_SETUP_WITH,
             OP_SET_ADD,
             OP_SET_FUNCTION_ATTRIBUTE,
             OP_SET_UPDATE,
+            OP_STORE_DEREF,
             OP_STORE_FAST,
             OP_STORE_FAST_LOAD_FAST,
             OP_STORE_FAST_MAYBE_NULL,
             OP_STORE_FAST_STORE_FAST,
             OP_SWAP,
+            OP_TO_BOOL,
+            OP_UNARY_INVERT,
+            OP_UNARY_NEGATIVE,
+            OP_UNARY_NOT,
+            OP_UNPACK_SEQUENCE,
             OP_WITH_EXCEPT_START,
+            OP_YIELD_VALUE,
             _opcode_num_popped,
             _opcode_num_pushed,
             has_target,
+            is_block_push_opcode,
             is_scope_exit_opcode,
             is_unconditional_jump_opcode,
             opcode_has_const,
+            opcode_has_jump,
             stack_effect
         },
+        compiler.backends.py.jacpython.cpy_seq { has_target },
         compiler.backends.py.jacpython.native_api { stack_effect },
     ]
     runtime.python.symtable ++> compiler.backends.py.jacpython.native_api {
@@ -4405,6 +4284,9 @@ graph import {
     ]
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
+    server.static_files ++> client.targets.web_target._copy_public_dirs {
+        ROOT_ASSET_EXTENSIONS
+    }
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
@@ -5368,7 +5250,7 @@ graph import client.targets {
         run_manifest_install as _node_run_manifest_install
     }
     pwa_build --> [
-        web_target.WebTarget.build { apply_pwa },
+        web_target.WebTarget.build { apply_pwa, refresh_pwa_precache },
         web_target.WebTarget.setup { ensure_pwa_icons },
     ]
     react_native.build ++> mobile_target {
@@ -5666,9 +5548,6 @@ graph import compiler {
             generated_python
         },
     ]
-    backends.py.jacpython.compiler_context ++> frontend.python.compiler_symtable {
-        compile_context
-    }
     backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
         JcirBytecodeGenPass
     }
@@ -6351,6 +6230,8 @@ graph import compiler {
             rule_text,
             scope_owners,
             scope_path_of,
+            unnamed_module_label,
+            variant_base_file,
             wiring_for_path
         },
         passes.package_boundary_pass { local_module_name },
@@ -6576,6 +6457,9 @@ graph import compiler {
             is_bundled_native_module,
             resolve_native_module
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
+            resolve_native_module
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
             native_variant_of
         },
@@ -6700,6 +6584,7 @@ graph import compiler {
             InteropManifest
         },
         driver.wiring.WiringSpec.import_provider { is_bundled_native_module },
+        driver.wiring.variant_base_file { native_variant_base },
         erased_imports.erased_identity_call_arg { NATIVE_ERASED_IDENTITY_CALLS },
         erased_imports.erased_import_binds { NATIVE_ERASED_IMPORTS },
         native_bindings.NativeBindings.surface {
@@ -7237,6 +7122,7 @@ graph import compiler {
             E1144,
             E1146,
             E1147,
+            E1148,
             E2088,
             E2089,
             E2090,
@@ -7360,6 +7246,7 @@ graph import compiler {
             E1158,
             E1159,
             E1161,
+            E1162,
             E2015,
             W1036,
             W1037,
@@ -7748,13 +7635,14 @@ graph import compiler {
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
     type frontend.parser.tokens ++> native_compiler { CommentData, SrcDiag }
-    frontend.python.annotation_unparse ++> backends.py.jacpython.product_compile {
-        stringify_future_annotations
+    frontend.python.annotation_unparse ++> backends.py.jacpython.cpy_codegen {
+        render_annotation
     }
     frontend.python.ast_input ++> backends.py.jacpython.native_api { read_node }
     frontend.python.ast_nodes ++> [
-        backends.py.jacpython.codegen_util {
+        backends.py.jacpython.cpy_codegen {
             Add,
+            And,
             AnnAssign,
             Assert,
             Assign,
@@ -7775,13 +7663,14 @@ graph import compiler {
             Compare,
             Constant,
             Continue,
+            Del,
             Delete,
             Dict,
             DictComp,
             Div,
             Eq,
-            ExceptHandler,
             Expr,
+            Expression,
             FloorDiv,
             For,
             FormattedValue,
@@ -7794,248 +7683,21 @@ graph import compiler {
             IfExp,
             Import,
             ImportFrom,
+            In,
+            Interactive,
             Interpolation,
             Invert,
+            Is,
+            IsNot,
             JoinedStr,
             LShift,
             Lambda,
             List,
             ListComp,
+            Load,
             Lt,
             LtE,
             MatMult,
-            Match,
-            MatchAs,
-            MatchOr,
-            Mod,
-            Mult,
-            Name,
-            NamedExpr,
-            Nonlocal,
-            Not,
-            NotEq,
-            Pass,
-            Pow,
-            RShift,
-            Raise,
-            Return,
-            Set,
-            SetComp,
-            Slice,
-            Starred,
-            Sub,
-            Subscript,
-            TemplateStr,
-            Try,
-            TryStar,
-            Tuple,
-            TypeAlias,
-            USub,
-            UnaryOp,
-            While,
-            With,
-            Yield,
-            YieldFrom,
-            alias,
-            arguments,
-            ast_node,
-            expr,
-            keyword,
-            operator,
-            pattern,
-            stmt
-        },
-        backends.py.jacpython.compiler_annotations {
-            AnnAssign,
-            Assert,
-            Assign,
-            AsyncFor,
-            AsyncFunctionDef,
-            AsyncWith,
-            Attribute,
-            AugAssign,
-            Await,
-            BinOp,
-            BoolOp,
-            Break,
-            Call,
-            ClassDef,
-            Compare,
-            Constant,
-            Continue,
-            Delete,
-            Dict,
-            DictComp,
-            ExceptHandler,
-            Expr,
-            For,
-            FormattedValue,
-            FunctionDef,
-            GeneratorExp,
-            Global,
-            If,
-            IfExp,
-            Import,
-            ImportFrom,
-            Interpolation,
-            JoinedStr,
-            Lambda,
-            List,
-            ListComp,
-            Match,
-            Name,
-            NamedExpr,
-            Nonlocal,
-            Pass,
-            Raise,
-            Return,
-            Set,
-            SetComp,
-            Slice,
-            Starred,
-            Subscript,
-            TemplateStr,
-            Try,
-            TryStar,
-            Tuple,
-            UnaryOp,
-            While,
-            With,
-            Yield,
-            YieldFrom,
-            expr,
-            match_case,
-            stmt
-        },
-        backends.py.jacpython.compiler_codegen {
-            AnnAssign,
-            Assert,
-            Assign,
-            AsyncFor,
-            AsyncFunctionDef,
-            AsyncWith,
-            Attribute,
-            AugAssign,
-            Break,
-            ClassDef,
-            Constant,
-            Continue,
-            Delete,
-            Expr,
-            For,
-            FunctionDef,
-            Global,
-            If,
-            Import,
-            ImportFrom,
-            List,
-            Match,
-            Name,
-            Nonlocal,
-            Pass,
-            Raise,
-            Return,
-            Slice,
-            Starred,
-            Subscript,
-            Try,
-            TryStar,
-            Tuple,
-            TypeAlias,
-            While,
-            With,
-            ast_node,
-            expr,
-            stmt
-        },
-        backends.py.jacpython.compiler_defs {
-            AsyncFunctionDef,
-            Call,
-            ClassDef,
-            Constant,
-            Dict,
-            FunctionDef,
-            Import,
-            ImportFrom,
-            Load,
-            Name,
-            ParamSpec,
-            Starred,
-            Tuple,
-            TypeAlias,
-            TypeVar,
-            TypeVarTuple,
-            arguments,
-            expr,
-            stmt,
-            type_param
-        },
-        backends.py.jacpython.compiler_emit {
-            And,
-            Attribute,
-            Await,
-            BinOp,
-            BoolOp,
-            Call,
-            Compare,
-            Constant,
-            Dict,
-            DictComp,
-            FormattedValue,
-            GeneratorExp,
-            IfExp,
-            In,
-            Interpolation,
-            Is,
-            IsNot,
-            JoinedStr,
-            Lambda,
-            List,
-            ListComp,
-            Load,
-            Name,
-            NamedExpr,
-            Not,
-            NotIn,
-            Or,
-            Set,
-            SetComp,
-            Slice,
-            Starred,
-            Subscript,
-            TemplateStr,
-            Tuple,
-            UAdd,
-            USub,
-            UnaryOp,
-            Yield,
-            YieldFrom,
-            arguments,
-            ast_node,
-            comprehension,
-            expr
-        },
-        backends.py.jacpython.compiler_exc {
-            AsyncWith,
-            ExceptHandler,
-            Raise,
-            Try,
-            TryStar,
-            With,
-            stmt
-        },
-        backends.py.jacpython.compiler_ir { stmt },
-        backends.py.jacpython.compiler_loops {
-            AsyncFor,
-            Constant,
-            For,
-            If,
-            Name,
-            While
-        },
-        backends.py.jacpython.compiler_match {
-            Attribute,
-            Constant,
             Match,
             MatchAs,
             MatchClass,
@@ -8045,96 +7707,180 @@ graph import compiler {
             MatchSingleton,
             MatchStar,
             MatchValue,
+            Mod,
+            Module,
+            Mult,
             Name,
+            NamedExpr,
+            Nonlocal,
+            Not,
+            NotEq,
+            NotIn,
+            Or,
+            ParamSpec,
+            Pass,
+            Pow,
+            RShift,
+            Raise,
+            Return,
+            Set,
+            SetComp,
+            Slice,
+            Starred,
+            Store,
+            Sub,
+            Subscript,
+            TemplateStr,
+            Try,
+            TryStar,
+            Tuple,
+            TypeAlias,
+            TypeVar,
+            TypeVarTuple,
+            UAdd,
+            USub,
+            UnaryOp,
+            While,
+            With,
+            Yield,
+            YieldFrom,
+            arg,
+            arguments,
+            cmpop,
+            comprehension,
             expr,
+            expr_context,
+            keyword,
+            mod,
+            operator,
             pattern,
+            stmt,
+            type_param
+        },
+        backends.py.jacpython.cpy_compile {
+            AnnAssign,
+            AsyncFor,
+            AsyncFunctionDef,
+            AsyncWith,
+            Attribute,
+            Break,
+            ClassDef,
+            Constant,
+            Continue,
+            Expr,
+            For,
+            FunctionDef,
+            If,
+            ImportFrom,
+            Interactive,
+            Match,
+            Module,
+            Name,
+            Return,
+            Store,
+            Try,
+            TryStar,
+            While,
+            With,
+            alias,
+            mod,
             stmt
         },
-        backends.py.jacpython.native_api { ast_kind, mod },
-        backends.py.jacpython.product_compile {
+        backends.py.jacpython.cpy_symtable {
+            AnnAssign,
+            Assert,
+            Assign,
+            AsyncFor,
+            AsyncFunctionDef,
+            AsyncWith,
+            Attribute,
+            AugAssign,
+            Await,
+            BinOp,
+            BoolOp,
+            Call,
+            ClassDef,
+            Compare,
+            Constant,
+            Del,
+            Delete,
+            Dict,
+            DictComp,
             Expr,
             Expression,
+            For,
+            FormattedValue,
+            FunctionDef,
+            FunctionType,
+            GeneratorExp,
+            Global,
+            If,
+            IfExp,
+            Import,
+            ImportFrom,
             Interactive,
+            Interpolation,
+            JoinedStr,
+            Lambda,
+            List,
+            ListComp,
+            Match,
+            MatchAs,
+            MatchClass,
+            MatchMapping,
+            MatchOr,
+            MatchSequence,
+            MatchStar,
+            MatchValue,
             Module,
+            Name,
+            NamedExpr,
+            Nonlocal,
+            ParamSpec,
+            Raise,
+            Return,
+            Set,
+            SetComp,
+            Slice,
+            Starred,
+            Store,
+            Subscript,
+            TemplateStr,
+            Try,
+            TryStar,
+            Tuple,
+            TypeAlias,
+            TypeVar,
+            TypeVarTuple,
+            UnaryOp,
+            While,
+            With,
+            Yield,
+            YieldFrom,
+            alias,
+            arg,
+            arguments,
+            comprehension,
+            excepthandler,
             expr,
-            mod
+            expr_context,
+            keyword,
+            match_case,
+            mod,
+            pattern,
+            stmt,
+            type_param,
+            withitem
         },
+        backends.py.jacpython.native_api { ast_kind, mod },
+        backends.py.jacpython.product_compile { Expression, Interactive, Module, mod },
     ]
     frontend.python.ast_output ++> backends.py.jacpython.native_api { ast_write_node }
     frontend.python.ast_validation ++> backends.py.jacpython.native_api {
         validate_ast_value
     }
-    frontend.python.compiler_diagnostics ++> [
-        backends.py.jacpython.compiler_emit { lowering_diagnostic },
-        backends.py.jacpython.compiler_ir { compiler_diagnostic },
-        backends.py.jacpython.flowgraph {
-            compiler_diagnostic,
-            internal_compiler_diagnostic
-        },
-        backends.py.jacpython.product_compile { compiler_diag_to_pyobj },
-    ]
-    frontend.python.compiler_preprocess ++> backends.py.jacpython.product_compile {
-        preprocess_node
-    }
-    frontend.python.compiler_symtable ++> [
-        backends.py.jacpython.codegen_util | backends.py.jacpython.compiler_match {
-            scope_kind
-        },
-        backends.py.jacpython.compiler_annotations {
-            SCOPE_CELL,
-            SCOPE_GLOBAL_IMPLICIT,
-            SYM_USE,
-            scope_kind,
-            sym_block,
-            sym_block_tuple_names,
-            sym_dict_get,
-            sym_set_scope
-        },
-        backends.py.jacpython.compiler_codegen {
-            SCOPE_CELL,
-            SCOPE_FREE,
-            SCOPE_GLOBAL_EXPLICIT,
-            SCOPE_GLOBAL_IMPLICIT,
-            scope_kind,
-            sym_block,
-            sym_dict_get,
-            sym_scope_of
-        },
-        backends.py.jacpython.compiler_defs {
-            SCOPE_GLOBAL_EXPLICIT,
-            scope_kind,
-            scope_role,
-            sym_block,
-            sym_dict_get,
-            sym_scope_of
-        },
-        backends.py.jacpython.compiler_emit {
-            DEF_COMP_ITER,
-            SCOPE_CELL,
-            SCOPE_FREE,
-            SCOPE_GLOBAL_EXPLICIT,
-            SCOPE_GLOBAL_IMPLICIT,
-            SCOPE_LOCAL,
-            mangle_name,
-            scope_kind,
-            sym_block,
-            sym_block_tuple_names,
-            sym_dict_get,
-            sym_flag_set,
-            sym_mangle_name,
-            sym_scope_of,
-            sym_sorted_names
-        },
-        backends.py.jacpython.compiler_ir { sym_block },
-        backends.py.jacpython.native_api { mangle_name },
-        backends.py.jacpython.product_compile { build_module_symtable },
-    ]
-    frontend.python.compiler_validate ++> backends.py.jacpython.product_compile {
-        check_ast_warnings,
-        future_features,
-        validate_eval_expr,
-        validate_module_body
-    }
+    frontend.python.compiler_preprocess ++> backends.py.jacpython.cpy_codegen
+        | backends.py.jacpython.product_compile { preprocess_node }
     frontend.python.parser ++> [
         backends.py.jacpython.native_api {
             parse_eval_source,
@@ -8154,11 +7900,16 @@ graph import compiler {
     frontend.python.source_input ++> backends.py.jacpython.native_api {
         decode_source_value
     }
-    frontend.python.syntax_error ++> backends.py.jacpython.native_api {
-        source_character_column,
-        split_source_lines,
-        syntax_failure
-    }
+    frontend.python.syntax_error ++> [
+        backends.py.jacpython.cpy_compile | backends.py.jacpython.cpy_symtable {
+            syntax_failure
+        },
+        backends.py.jacpython.native_api {
+            source_character_column,
+            split_source_lines,
+            syntax_failure
+        },
+    ]
     frontend.relations ++> [
         driver.program | driver.progstate | passes.scope_walk { ScopeChild },
         types.types {
@@ -8751,7 +8502,7 @@ graph import compiler {
             UniNode
         },
         passes.context { ImplDef, Module, Source, TreeWalker, UniNode },
-        passes.dataflow { UniCFGNode },
+        passes.dataflow { AstElseBodyNode, UniCFGNode },
         passes.decl_impl_match_pass {
             Ability,
             Archetype,
@@ -8908,7 +8659,6 @@ graph import compiler {
             Ability,
             Archetype,
             Assignment,
-            AstElseBodyNode,
             AtomTrailer,
             AwaitExpr,
             BinaryExpr,
@@ -9306,6 +9056,7 @@ graph import compiler {
             Expr,
             ExprAsItem,
             FilterCompr,
+            FinallyStmt,
             FormattedValue,
             FuncCall,
             FuncSignature,
@@ -9340,9 +9091,11 @@ graph import compiler {
             SubTag,
             Symbol,
             Token,
+            TryStmt,
             TupleVal,
             TypeAlias,
             UnaryExpr,
+            UniCFGNode,
             UniNode,
             VisitStmt,
             WhileStmt,
@@ -9589,6 +9342,7 @@ graph import compiler {
             Name,
             ParamVar,
             Symbol,
+            UniNode,
             UniScopeNode
         },
         types.type_evaluator {
@@ -10288,9 +10042,11 @@ graph import compiler {
     passes.type_checker_pass ++> driver.pipeline.analysis_passes
         | tests.test_pipeline_products
         | tests.xbackend_equiv.compile_fixture_to_js { TypeCheckPass }
-    passes.variant_agreement_pass ++> driver.pipeline.analysis_passes {
-        VariantAgreementPass
-    }
+    passes.variant_agreement_pass ++> [
+        driver.pipeline.analysis_passes { VariantAgreementPass },
+        driver.wiring.unnamed_module_label { ANNEX_MARKERS },
+        driver.wiring.variant_base_file { VARIANT_SUFFIX },
+    ]
     placement.placement ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._owner_element
             | passes.placement_pass.element_requirements { element_display_name },
@@ -10753,9 +10509,19 @@ graph import compiler {
     types.stubcat.resolver ++> driver.ifacecache | frontend.kernel_host {
         CatalogResolver
     }
-    types.stubcat.writer ++> driver.ifacecache.IfaceRegistry._encode_iface {
-        IncoherentInterface
-    }
+    types.stubcat.writer ++> [
+        driver.ifacecache.IfaceRegistry._encode_iface {
+            IncoherentInterface,
+            PackagePathMapper
+        },
+        driver.jir.JirPaths.encode { encode_package_path },
+        frontend.kernel_host.record_interface {
+            IncoherentInterface,
+            PackagePathMapper,
+            build_module_iface,
+            module_iface_shape
+        },
+    ]
     types.ts_decl_parser --> tests.test_jac_mobui_typing { parse_dts }
     types.type_evaluator ++> [
         driver.program.JacProgram.get_type_evaluator { TypeEvaluator },
@@ -10799,6 +10565,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_unsigned {
             primitive_type_name_of
         },
+        native_bindings { collect_member_syms },
         passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
             expr_is_builtin_region
         },
@@ -11636,309 +11403,145 @@ graph import compiler.backends.py {
 }
 
 graph import compiler.backends.py.jacpython {
-    assembler ++> compiler_annotations
-        | compiler_defs
-        | compiler_emit
-        | product_compile { assemble }
-    codegen_util ++> [
-        compiler_annotations { expr_loc, nloc, stmt_loc },
-        compiler_codegen {
-            ast_node_name,
-            body_docstring,
-            exec_tail_emits_code,
-            expr_loc,
-            fold_slice_const,
-            inplace_binop_id,
-            is_seq_literal,
-            nloc,
-            seq_target_elts,
-            starred_target_index,
-            stmt_loc,
-            top_loc
+    cpy_assemble ++> cpy_compile { cpy_optimize_and_assemble }
+    cpy_codegen ++> product_compile { cpy_ast_compile }
+    cpy_compile ++> [
+        cpy_codegen {
+            COMPILE_FBLOCK_ASYNC_COMPREHENSION_GENERATOR,
+            COMPILE_FBLOCK_ASYNC_WITH,
+            COMPILE_FBLOCK_EXCEPTION_GROUP_HANDLER,
+            COMPILE_FBLOCK_EXCEPTION_HANDLER,
+            COMPILE_FBLOCK_FINALLY_END,
+            COMPILE_FBLOCK_FINALLY_TRY,
+            COMPILE_FBLOCK_FOR_LOOP,
+            COMPILE_FBLOCK_HANDLER_CLEANUP,
+            COMPILE_FBLOCK_POP_VALUE,
+            COMPILE_FBLOCK_STOP_ITERATION,
+            COMPILE_FBLOCK_TRY_EXCEPT,
+            COMPILE_FBLOCK_WHILE_LOOP,
+            COMPILE_FBLOCK_WITH,
+            COMPILE_OP_DEREF,
+            COMPILE_OP_FAST,
+            COMPILE_OP_GLOBAL,
+            COMPILE_SCOPE_ANNOTATIONS,
+            COMPILE_SCOPE_ASYNC_FUNCTION,
+            COMPILE_SCOPE_CLASS,
+            COMPILE_SCOPE_COMPREHENSION,
+            COMPILE_SCOPE_FUNCTION,
+            COMPILE_SCOPE_LAMBDA,
+            COMPILE_SCOPE_MODULE,
+            NO_LABEL,
+            cpy_clean_doc,
+            cpy_compile_add_const,
+            cpy_compile_add_deferred_annotation,
+            cpy_compile_end_annotation_setup,
+            cpy_compile_enter_scope,
+            cpy_compile_error,
+            cpy_compile_exit_scope,
+            cpy_compile_get_ref_type,
+            cpy_compile_is_interactive_top_level,
+            cpy_compile_lookup_arg,
+            cpy_compile_lookup_cellvar,
+            cpy_compile_mangle,
+            cpy_compile_maybe_add_static_attribute,
+            cpy_compile_maybe_mangle,
+            cpy_compile_optimize_and_assemble,
+            cpy_compile_pop_fblock,
+            cpy_compile_push_fblock,
+            cpy_compile_resolve_nameop,
+            cpy_compile_revert_inlined_comprehension_scopes,
+            cpy_compile_start_annotation_setup,
+            cpy_compile_static_attributes,
+            cpy_compile_top_fblock,
+            cpy_compile_tweak_inlined_comprehension_scopes,
+            cpy_compile_warn,
+            cpy_compiler,
+            cpy_control_flow_warnings,
+            cpy_dict_add,
+            cpy_fblock,
+            cpy_future_from_ast,
+            cpy_get_docstring,
+            cpy_inline_state
         },
-        compiler_defs {
-            body_docstring,
-            class_effective_bases,
-            class_effective_keywords,
-            exec_tail_emits_code,
+        product_compile { cpy_future_from_ast },
+    ]
+    cpy_constfold ++> cpy_flowgraph {
+        const_is_true,
+        eval_const_binop,
+        eval_const_unaryop,
+        make_frozenset,
+        small_int_value
+    }
+    cpy_flowgraph ++> cpy_assemble {
+        cfg_from_instruction_sequence,
+        cfg_optimize_code_unit,
+        is_terminator_opcode,
+        optimized_cfg_to_instruction_sequence
+    }
+    cpy_seq ++> [
+        cpy_assemble {
+            code_unit_metadata,
+            instr_seq,
+            no_location,
+            same_location,
+            seq_instr,
+            srcloc
+        },
+        cpy_codegen { mkloc, next_location, no_location, srcloc },
+        cpy_compile { code_unit_metadata, instr_seq, no_location, srcloc },
+        cpy_flowgraph { code_unit_metadata, instr_seq, mkloc, no_location, srcloc },
+        cpy_symtable { mkloc, srcloc },
+    ]
+    cpy_symtable ++> [
+        cpy_codegen {
+            ClassBlock,
+            ST_CELL,
+            ST_DEF_IMPORT,
+            ST_DEF_LOCAL,
+            ST_DEF_NONLOCAL,
+            ST_FREE,
+            ST_GLOBAL_IMPLICIT,
+            ST_SCOPE_MASK,
+            ST_SCOPE_OFFSET,
+            cpy_st_get_scope,
+            cpy_st_get_symbol,
+            cpy_st_is_function_like,
+            cpy_st_key,
+            cpy_ste,
+            cpy_symtable_build,
+            cpy_symtable_lookup,
             expr_loc,
-            function_argcounts,
-            function_code_flags,
-            import_bind_name,
-            nested_code_qualname,
-            nloc,
+            handler_loc,
+            keyword_loc,
+            pattern_loc,
+            stmt_loc,
+            type_param_loc
+        },
+        cpy_compile {
+            ClassBlock,
+            ST_CELL,
+            ST_DEF_COMP_CELL,
+            ST_DEF_FREE_CLASS,
+            ST_DEF_LOCAL,
+            ST_DEF_NONLOCAL,
+            ST_FREE,
+            ST_GLOBAL_EXPLICIT,
+            ST_GLOBAL_IMPLICIT,
+            ST_LOCAL,
+            ST_SCOPE_MASK,
+            ST_SCOPE_OFFSET,
+            cpy_mangle,
+            cpy_maybe_mangle,
+            cpy_st_get_scope,
+            cpy_st_get_symbol,
+            cpy_st_is_function_like,
+            cpy_ste,
+            cpy_symtable,
+            cpy_symtable_lookup,
+            ste_set_symbol,
             stmt_loc
         },
-        compiler_emit {
-            args_have_kw_defaults,
-            ast_cmp_kind,
-            ast_node_name,
-            binop_id,
-            call_effective_args,
-            call_effective_keywords,
-            call_func_loc,
-            comp_dict_map_loc,
-            comp_leftmost_leaf,
-            comp_name_bound,
-            display_all_constant,
-            display_const_items,
-            display_has_starred,
-            expr_loc,
-            fold_default_leaf_values,
-            fold_slice_const,
-            function_argcounts,
-            function_code_flags,
-            nested_code_qualname,
-            nloc,
-            try_fold_binop,
-            unary_opcode
-        },
-        compiler_exc { exec_tail_emits_code, expr_loc, nloc, stmt_loc },
-        compiler_loops { expr_loc, nloc },
-        compiler_match {
-            exec_tail_emits_code,
-            expr_loc,
-            match_pattern_loc,
-            match_pattern_unwrap_or,
-            match_pattern_wildcard,
-            nloc
-        },
-    ]
-    compiler_annotations ++> [
-        compiler_codegen {
-            ann_scope_plan,
-            collect_ann_plan,
-            emit_module_annotation_setup,
-            finish_module_annotations,
-            visit_ann_assign
-        },
-        compiler_defs {
-            collect_ann_plan_class,
-            emit_class_annotation_setup,
-            emit_future_function_annotations,
-            finish_class_annotations
-        },
-        compiler_exc | compiler_loops | compiler_match { ann_scope_plan },
-    ]
-    compiler_codegen ++> [
-        compiler_annotations.ann_store_target_tos
-            | compiler_emit.emit_comprehension_loop
-            | compiler_loops { visit_store_target_tos },
-        compiler_defs { emit_name_store, visit_stmt },
-        compiler_exc {
-            emit_module_return,
-            emit_name_delete,
-            emit_name_store,
-            visit_stmt_tail,
-            visit_stmts,
-            visit_store_target_tos
-        },
-        compiler_match {
-            emit_module_return,
-            emit_name_store,
-            visit_stmt_tail,
-            visit_stmts
-        },
-        product_compile { compile_eval, compile_exec },
-    ]
-    compiler_context ++> compiler_ir | product_compile { compile_context }
-    compiler_defs as dispatch_defs ++> compiler_codegen.visit_stmt;
-    compiler_emit ++> [
-        compiler_annotations {
-            cellvars_from_sym,
-            codegen_busy,
-            codegen_fail,
-            codegen_mangle,
-            fast_varnames_from_sym,
-            freevars_from_sym,
-            localsplus_index,
-            localsplus_index_u,
-            visit_expr
-        },
-        compiler_codegen {
-            cellvars_from_sym,
-            codegen_busy,
-            codegen_fail,
-            codegen_mangle,
-            emit_branch_if_test_true,
-            emit_control_unwind,
-            emit_generator_except_handler,
-            emit_return_unwind,
-            emit_slice_bound,
-            emit_suspendable_prologue,
-            fast_local_index,
-            fast_varnames_from_sym,
-            finish_control_unwind,
-            flush_pending_await_footers,
-            localsplus_index,
-            localsplus_index_u,
-            visit_expr,
-            visit_subscript_index,
-            visit_test_expr
-        },
-        compiler_defs {
-            call_has_unpacking,
-            cellvars_from_sym,
-            codegen_busy,
-            codegen_fail,
-            codegen_mangle,
-            emit_call_ex_positional,
-            emit_call_instruction,
-            emit_call_keyword_values,
-            emit_folded_int,
-            emit_function_defaults,
-            emit_function_kwdefaults,
-            emit_function_prologue,
-            emit_generator_except_handler,
-            emit_make_function_with_closure,
-            emit_name_load,
-            fast_varnames_from_sym,
-            flush_pending_await_footers,
-            freevars_from_sym,
-            inline_storage_names,
-            localsplus_index,
-            localsplus_index_u,
-            visit_expr
-        },
-        compiler_exc {
-            anext_send_loop,
-            await_send_loop,
-            codegen_busy,
-            codegen_fail,
-            emit_send_delegation_loop,
-            visit_expr
-        },
-        compiler_loops {
-            codegen_busy,
-            codegen_fail,
-            emit_branch_if_test_false,
-            emit_send_delegation_loop,
-            visit_expr,
-            visit_test_expr
-        },
-        compiler_match {
-            codegen_busy,
-            codegen_fail,
-            codegen_mangle,
-            emit_branch_if_test_false,
-            fast_local_index,
-            visit_expr,
-            visit_test_expr
-        },
-    ]
-    compiler_exc ++> compiler_defs { emit_deferred_comp_handlers }
-    compiler_exc as dispatch_exc ++> [
-        compiler_codegen.finish_source_scope
-            | compiler_emit.compile_genexp_cfg
-            | compiler_loops.visit_async_for,
-        compiler_codegen.visit_stmt
-            | compiler_emit.compile_lambda_cfg
-            | compiler_loops.visit_for,
-        compiler_emit.emit_control_unwind | compiler_loops.visit_if,
-        compiler_loops.visit_while,
-    ]
-    compiler_ir ++> [
-        assembler {
-            NO_LINE,
-            cinstr,
-            cloc,
-            except_region,
-            instr_size_codeunits,
-            loc,
-            same_loc
-        },
-        codegen_util { cloc, loc },
-        compiler_annotations {
-            basicblock,
-            cfg_builder,
-            cinstr,
-            cloc,
-            loc,
-            new_cfg_builder,
-            no_loc,
-            stmt_cont,
-            unverified_cfg
-        },
-        compiler_codegen {
-            basicblock,
-            break_site,
-            cfg_builder,
-            cinstr,
-            cloc,
-            control_unwind,
-            loc,
-            new_cfg_builder,
-            no_loc,
-            stmt_cont,
-            unverified_cfg
-        },
-        compiler_defs {
-            cfg_builder,
-            cloc,
-            loc,
-            new_cfg_builder,
-            no_loc,
-            stmt_cont,
-            unverified_cfg
-        },
-        compiler_emit {
-            await_footer_job,
-            basicblock,
-            cfg_builder,
-            cleanup_frame,
-            cloc,
-            comp_handler,
-            control_unwind,
-            except_region,
-            loc,
-            new_cfg_builder,
-            no_loc,
-            try_await_frame,
-            unverified_cfg
-        },
-        compiler_exc {
-            await_footer_job,
-            basicblock,
-            cfg_builder,
-            cleanup_frame,
-            cloc,
-            except_region,
-            no_loc,
-            stmt_cont,
-            try_await_frame
-        },
-        compiler_loops {
-            basicblock,
-            break_site,
-            cfg_builder,
-            cinstr,
-            cloc,
-            except_region,
-            loop_frame,
-            mk_instr,
-            mk_jump,
-            same_loc,
-            stmt_cont
-        },
-        compiler_match { basicblock, cfg_builder, cloc, stmt_cont },
-        flowgraph {
-            basicblock,
-            cinstr,
-            except_region,
-            instr_size_codeunits,
-            mk_instr,
-            unverified_cfg
-        },
-    ]
-    compiler_loops as dispatch_loops ++> compiler_codegen.visit_stmt;
-    compiler_match as dispatch_match ++> compiler_codegen.visit_stmt;
-    flowgraph ++> [
-        assembler { flatten_blocks, verified_cfg },
-        compiler_annotations | compiler_defs | product_compile { verify_cfg },
-        compiler_emit { build_layout_pos, layout_pos, verify_cfg },
-        compiler_exc { build_layout_pos, layout_pos },
-        compiler_loops { MAX_COPY_SIZE, copy_cinstr },
-        compiler_match { optimize_swap_range },
+        native_api { cpy_mangle },
     ]
     product_compile ++> native_api { compile_ast, compile_source, prepare_ast_output }
 }
@@ -12139,6 +11742,14 @@ graph import compiler.driver {
             get_module_cache_path,
             is_module_cache_valid
         },
+        compiler.unit_sections {
+            DepRow,
+            JirPaths,
+            SEC_DEPS,
+            SEC_IFACE,
+            SEC_PATH_ROOT,
+            deps_section
+        },
         ifacecache {
             DepRow,
             JirPaths,
@@ -12164,6 +11775,7 @@ graph import compiler.driver {
             write_module_cache
         },
         ifacecache.IfaceRegistry._deps_match { read_dep_rows },
+        ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
@@ -12530,6 +12142,7 @@ graph import compiler.frontend {
         Absorbs,
         CalleeDecl,
         CalleeSignature,
+        CfgCatch,
         CfgFalse,
         CfgSucc,
         CfgTrue,
@@ -13016,8 +12629,6 @@ graph import compiler.frontend.python {
         annotation_unparse {
             Add,
             And,
-            AnnAssign,
-            AsyncFunctionDef,
             Attribute,
             Await,
             BinOp,
@@ -13034,7 +12645,6 @@ graph import compiler.frontend.python {
             Eq,
             FloorDiv,
             FormattedValue,
-            FunctionDef,
             GeneratorExp,
             Gt,
             GtE,
@@ -13075,7 +12685,6 @@ graph import compiler.frontend.python {
             UnaryOp,
             Yield,
             YieldFrom,
-            arg,
             arguments,
             ast_node,
             comprehension,
@@ -13513,144 +13122,26 @@ graph import compiler.frontend.python {
             expr,
             stmt
         },
-        compiler_symtable {
-            AnnAssign,
-            Assert,
-            Assign,
-            AsyncFor,
-            AsyncFunctionDef,
-            AsyncWith,
-            Attribute,
-            AugAssign,
-            Await,
-            BinOp,
-            BoolOp,
-            Call,
-            ClassDef,
-            Compare,
-            Delete,
-            Dict,
-            DictComp,
-            Expr,
-            For,
-            FormattedValue,
-            FunctionDef,
-            GeneratorExp,
-            Global,
-            If,
-            IfExp,
-            Import,
-            ImportFrom,
-            Interpolation,
-            JoinedStr,
-            Lambda,
-            List,
-            ListComp,
-            Match,
-            MatchAs,
-            MatchClass,
-            MatchMapping,
-            MatchOr,
-            MatchSequence,
-            MatchSingleton,
-            MatchStar,
-            MatchValue,
-            Name,
-            NamedExpr,
-            Nonlocal,
-            ParamSpec,
-            Pass,
-            Raise,
-            Return,
-            Set,
-            SetComp,
-            Slice,
-            Starred,
-            Subscript,
-            TemplateStr,
-            Try,
-            TryStar,
-            Tuple,
-            TypeAlias,
-            TypeVar,
-            TypeVarTuple,
-            UnaryOp,
-            While,
-            With,
-            Yield,
-            YieldFrom,
-            alias,
-            arg,
-            arguments,
-            ast_kind,
-            ast_node,
-            comprehension,
-            expr,
-            pattern,
-            stmt,
-            type_param
-        },
         compiler_validate {
             AnnAssign,
-            Assert,
-            Assign,
             AsyncFor,
             AsyncFunctionDef,
             AsyncWith,
-            Attribute,
             AugAssign,
             Await,
             BinOp,
-            BoolOp,
-            Break,
-            Call,
             ClassDef,
-            Compare,
-            Constant,
-            Continue,
-            Del,
-            Delete,
-            DictComp,
-            Expr,
-            For,
             FunctionDef,
-            GeneratorExp,
-            Global,
-            If,
-            ImportFrom,
-            Is,
-            IsNot,
-            Lambda,
-            List,
-            ListComp,
-            Load,
             MatMult,
             Match,
-            Name,
             NamedExpr,
-            Nonlocal,
             ParamSpec,
-            Pass,
-            Return,
-            SetComp,
-            Slice,
-            Starred,
-            Store,
-            Subscript,
             TemplateStr,
-            Try,
             TryStar,
-            Tuple,
             TypeAlias,
             TypeVar,
             TypeVarTuple,
-            UnaryOp,
-            While,
-            With,
-            Yield,
-            YieldFrom,
             arguments,
-            ast_kind,
             ast_node,
             comprehension,
             expr,
@@ -13819,22 +13310,10 @@ graph import compiler.frontend.python {
     ]
     ast_nodes --> parser.finish_parse { TypeIgnore }
     ast_walk ++> [
-        annotation_unparse | ast_validation { ast_child_visitor, visit_ast_children },
+        ast_validation | compiler_validate { ast_child_visitor, visit_ast_children },
         compiler_preprocess { ast_rewriter, rewrite_ast_children },
-        compiler_validate { ast_child_buffer, ast_child_visitor, visit_ast_children },
     ]
-    compiler_diagnostics ++> compiler_symtable {
-        compiler_diagnostic,
-        symbol_diagnostic
-    }
-    compiler_diagnostics --> [
-        compiler_validate {
-            compiler_diagnostic,
-            syntax_warning,
-            validation_diagnostic
-        },
-        peg_runtime.peg_scan_token { report_token_warnings },
-    ]
+    compiler_diagnostics --> peg_runtime.peg_scan_token { report_token_warnings }
     compiler_validate --> parser.finish_parse { validate_feature_version }
     parser_actions ++> parser {
         keyword_or_starred_node,
@@ -14108,11 +13587,13 @@ graph import compiler.passes {
         ownership_check_pass {
             DataflowTransfer,
             SymId,
+            is_scope_exit,
             solve_backward,
             solve_forward,
             solve_forward_must
         },
         rc_facts_pass { SymId, solve_backward_gen_kill },
+        type_checker_pass { SymId, is_scope_exit, solve_forward },
     ]
     execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
@@ -14260,7 +13741,10 @@ graph import compiler.tests {
             run_py_fixture
         },
     ]
-    xbackend_equiv --> test_osp_equivalence { compile_native, run_native_function }
+    xbackend_equiv --> [
+        test_native_functools { compile_native, get_func },
+        test_osp_equivalence { compile_native, run_native_function },
+    ]
 }
 
 graph import compiler.tools {
@@ -14644,7 +14128,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._load_ts_declarations { parse_dts },
     ]
     type type_evaluator ++> [
-        ct_eval | fixed_width | operations | type_utils { TypeEvaluator },
+        ct_eval | fixed_width | operations | stubcat.writer | type_utils {
+            TypeEvaluator
+        },
         enum_utils { PrefetchedTypes, TypeEvaluator },
     ]
     type_utils ++> [
@@ -14653,6 +14139,7 @@ graph import compiler.types {
             apply_solved_type_vars,
             build_type_var_solution
         },
+        stubcat.writer { origin_of_local_name },
         type_evaluator {
             ClassMember,
             ParamAssignmentTracker,
@@ -14911,6 +14398,7 @@ graph import compiler.types.stubcat {
             put_ref,
             put_refs,
             put_svar,
+            put_u32,
             put_uvar
         },
     ]
@@ -14926,7 +14414,11 @@ graph import compiler.types.stubcat {
         locate._open_file { open_catalog_file },
         locate._open_region { open_catalog_region },
         modiface { StubCatalog },
+        writer.CatalogWriter.encode_scope { CatScope },
         writer.CatalogWriter.encode_symbol { CatProvider },
+        writer.CatalogWriter.force_symbol { CatScope },
+        writer.CatalogWriter.scope_dotted_path { CatScope },
+        writer.metaclass_of_scope { CatScope },
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
@@ -15644,6 +15136,15 @@ graph import runtime {
         source_app._load_application { NativeLibrary, native_callback_of },
     ]
     memory ++> context { Memory }
+    na_stdlib._digest ++> [
+        python.modules.blake2 { new_blake2 },
+        python.modules.hmac { new_hmac },
+        python.modules.md5
+            | python.modules.sha1
+            | python.modules.sha2
+            | python.modules.sha3 { new_core },
+    ]
+    type na_stdlib._digest ++> python.modules.hashlib { DigestCore }
     object_interop ++> typecache { fields, is_record }
     object_model ++> [
         archetype { ObjectField, asdict, fields, is_jac_object, make_object },
@@ -15773,7 +15274,10 @@ graph import runtime.na_stdlib {
         dt_tm_gmtoff,
         dt_tm_zone
     }
-    _digest ++> hashlib | hmac { new_core }
+    _digest ++> [
+        hashlib { new_core },
+        hmac { new_hmac },
+    ]
     type _digest ++> hashlib | hmac { DigestCore }
     _directory_native ++> [
         glob | shutil | uuid | zoneinfo { try_directory_names },
@@ -16225,6 +15729,7 @@ graph import runtime.python {
             | modules.fcntl
             | modules.hashlib
             | modules.hashopenssl
+            | modules.hmac
             | modules.imp
             | modules.io_buffered
             | modules.io_bytesio
@@ -16427,6 +15932,8 @@ graph import runtime.python {
         modules.elementtree
             | modules.pyexpat
             | modules.select_platform
+            | modules.select_platform.darwin
+            | modules.select_platform.linux
             | modules.sqlite3 { MemberField },
         modules.multiprocessing | modules.posix_stat { MemberField, MemberType },
         modules.pickle { record_int, record_set_int },
@@ -16656,17 +16163,14 @@ graph import runtime.python {
     bindings.stat ++> inittab { PyInit__stat }
     bindings.state ++> modules.abc
         | modules.asyncio_core
-        | modules.blake2
         | modules.bz2
         | modules.collections
         | modules.csv
         | modules.elementtree
         | modules.hashlib
         | modules.hashopenssl
-        | modules.hmac
         | modules.lsprof
         | modules.lzma
-        | modules.md5
         | modules.mmap
         | modules.multibytecodec
         | modules.multiprocessing
@@ -16676,9 +16180,6 @@ graph import runtime.python {
         | modules.pyexpat
         | modules.queue
         | modules.select
-        | modules.sha1
-        | modules.sha2
-        | modules.sha3
         | modules.socket_core
         | modules.sqlite3
         | modules.ssl_core
@@ -17217,7 +16718,10 @@ graph import runtime.python {
             | modules.codecs_jp
             | modules.codecs_kr
             | modules.codecs_tw
-            | modules.posix_stat_platform { PyObject },
+            | modules.md5
+            | modules.posix_stat_platform
+            | modules.sha1
+            | modules.sha2 { PyObject },
         bindings.binascii { NULL, PyExc_ValueError, PyObject },
         bindings.blake2 {
             PyLong_FromLong,
@@ -17796,14 +17300,7 @@ graph import runtime.python {
             jacpy_module_add_int_text,
             jacpy_release
         },
-        bindings.sha2 {
-            NULL,
-            PyLong_FromLong,
-            PyModule_AddIntConstant,
-            PyObject,
-            Py_TYPE,
-            jacpy_unicode_from_text
-        },
+        bindings.sha2 { PyLong_FromLong, PyModule_AddIntConstant, PyObject, Py_TYPE },
         bindings.sha3 {
             PyModule_AddIntConstant,
             PyModule_AddStringConstant,
@@ -18061,6 +17558,8 @@ graph import runtime.python {
         constant_output {
             NULL,
             PyBool_FromLong,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
             PyComplex_FromDoubles,
             PyFloat_FromDouble,
             PyLong_FromLongLong,
@@ -18068,9 +17567,10 @@ graph import runtime.python {
             PyObject,
             PySlice_New,
             PyTuple_New,
-            Py_Ellipsis,
+            Py_CONSTANT_ELLIPSIS,
+            Py_CONSTANT_NONE,
+            Py_GetConstant,
             Py_NewRef,
-            Py_None,
             jacpy_code_new,
             jacpy_long_from_bytes,
             jacpy_release,
@@ -19323,22 +18823,7 @@ graph import runtime.python {
             jacpy_release,
             jacpy_sequence_slot
         },
-        modules.blake2 {
-            NULL,
-            PyErr_NoMemory,
-            PyExc_OverflowError,
-            PyExc_ValueError,
-            PyLong_FromLong,
-            PyMem_Free,
-            PyMem_Malloc,
-            PyObject,
-            Py_TYPE,
-            jacpy_hacl_simd_features,
-            jacpy_memory_copy,
-            jacpy_memory_zero,
-            jacpy_release,
-            jacpy_unicode_from_text
-        },
+        modules.blake2 { NULL, PyExc_OverflowError, PyExc_ValueError, PyObject },
         modules.bz2 {
             NULL,
             PyBytes_AsString,
@@ -20559,6 +20044,7 @@ graph import runtime.python {
             jacpy_tuple_item,
             jacpy_tuple_set_owned
         },
+        modules.getpath_platform.darwin { PyMem_RawFree, PyMem_RawMalloc },
         modules.grp {
             NULL,
             PyBytes_AsString,
@@ -20581,14 +20067,14 @@ graph import runtime.python {
         },
         modules.hashlib {
             NULL,
+            PyBytes_Type,
             PyErr_NoMemory,
             PyEval_RestoreThread,
             PyEval_SaveThread,
             PyExc_BufferError,
             PyExc_SystemError,
             PyExc_TypeError,
-            PyMem_Free,
-            PyMem_Malloc,
+            PyLong_FromLong,
             PyObject,
             PyObject_CheckBuffer,
             PyThread_acquire_lock,
@@ -20598,11 +20084,14 @@ graph import runtime.python {
             Py_NewRef,
             Py_TYPE,
             _Py_strhex,
-            jacpy_bytes_from_memory,
+            jacpy_bytes_address,
+            jacpy_bytes_from_payload,
+            jacpy_bytes_length,
             jacpy_crypto_compare,
             jacpy_is_unicode,
             jacpy_release,
-            jacpy_unicode_ascii
+            jacpy_unicode_ascii,
+            jacpy_unicode_from_text
         },
         modules.hashopenssl {
             NULL,
@@ -20664,13 +20153,8 @@ graph import runtime.python {
             PyErr_NoMemory,
             PyErr_SetObject,
             PyExc_OverflowError,
-            PyExc_RuntimeError,
             PyExc_TypeError,
-            PyExc_ValueError,
-            PyLong_FromLong,
             PyLong_FromVoidPtr,
-            PyMem_Free,
-            PyMem_Malloc,
             PyNumber_ToBase,
             PyObject,
             PyObject_CallNoArgs,
@@ -20680,10 +20164,8 @@ graph import runtime.python {
             PyUnicode_Concat,
             PyUnicode_FromString,
             Py_None,
-            Py_TYPE,
-            _Py_strhex,
-            jacpy_bytes_from_memory,
-            jacpy_hacl_simd_features,
+            jacpy_bytes_address,
+            jacpy_bytes_from_payload,
             jacpy_is_unicode,
             jacpy_release,
             jacpy_unicode_from_text
@@ -21660,13 +21142,6 @@ graph import runtime.python {
             jacpy_special_noargs,
             jacpy_tuple_item
         },
-        modules.md5 | modules.sha1 | modules.sha2 {
-            NULL,
-            PyErr_NoMemory,
-            PyObject,
-            Py_TYPE,
-            jacpy_release
-        },
         modules.mmap {
             NULL,
             PyBytes_AsString,
@@ -22249,7 +21724,10 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
-        modules.posix_fileio_platform | object_model.mystrtoul { jacpy_set_errno },
+        modules.posix_fileio_platform
+            | modules.posix_fileio_platform.darwin
+            | modules.posix_fileio_platform.linux
+            | object_model.mystrtoul { jacpy_set_errno },
         modules.posix_files {
             NULL,
             PyBytes_AsString,
@@ -22477,6 +21955,22 @@ graph import runtime.python {
             jacpy_set_errno,
             jacpy_stat
         },
+        modules.posix_stat_platform.darwin {
+            PyFloat_FromDouble,
+            PyLong_FromLong,
+            PyLong_FromLongLong,
+            PyLong_FromUnsignedLong,
+            PyObject,
+            jacpy_fstatfs,
+            jacpy_release,
+            jacpy_statfs
+        },
+        modules.posix_stat_platform.linux {
+            PyLong_FromLong,
+            PyLong_FromUnsignedLong,
+            PyObject,
+            jacpy_release
+        },
         modules.posixshmem {
             NULL,
             PyErr_CheckSignals,
@@ -22543,6 +22037,15 @@ graph import runtime.python {
             jacpy_tuple_set_owned
         },
         modules.posixsubprocess_fds { _Py_closerange },
+        modules.posixsubprocess_platform.darwin {
+            jacpy_closedir,
+            jacpy_dirfd,
+            jacpy_errno,
+            jacpy_opendir,
+            jacpy_readdir_name,
+            jacpy_set_errno
+        },
+        modules.posixsubprocess_platform.linux { _Py_open_noraise },
         modules.pwd {
             NULL,
             PyBytes_AsString,
@@ -22792,19 +22295,10 @@ graph import runtime.python {
         modules.sha3 {
             NULL,
             PyBytes_FromStringAndSize,
-            PyErr_NoMemory,
-            PyExc_SystemError,
             PyExc_ValueError,
             PyLong_FromLong,
-            PyMem_Free,
-            PyMem_Malloc,
             PyObject,
-            PyType_GetModule,
-            Py_TYPE,
-            _Py_strhex,
-            jacpy_bytes_from_memory,
-            jacpy_release,
-            jacpy_unicode_from_text
+            PyType_GetModule
         },
         modules.signal {
             NULL,
@@ -32263,7 +31757,6 @@ graph import runtime.python {
             _object
         },
         object_model.type {
-            ALIGNOF_MAX_ALIGN_T,
             FRAME_OWNED_BY_GENERATOR,
             FRAME_OWNED_BY_INTERPRETER,
             MCACHE_SIZE_EXP,
@@ -33101,6 +32594,9 @@ graph import runtime.python {
         interpreter.lock {
             EINTR,
             ETIMEDOUT,
+            PTHREAD_LOCK_COND,
+            PTHREAD_LOCK_MUTEX,
+            PTHREAD_LOCK_SIZE,
             PyInterpreterState_QSBR,
             PyThreadState_STATE,
             _PyThreadStateImpl_QSBR
@@ -33415,6 +32911,7 @@ graph import runtime.python {
             _PyRuntimeState_THREADS_INITIALIZED,
             _SC_THREAD_STACK_MIN
         },
+        modules.core_platform.linux { CLOCK_MONOTONIC, SYS_gettid },
         modules.ctypes_malloc_closure {
             MAP_ANONYMOUS,
             MAP_PRIVATE,
@@ -33862,7 +33359,6 @@ graph import runtime.python {
             PyThreadState_NEXT,
             PyThreadState_REMOTE_DEBUGGER_PENDING_CALL,
             PyThreadState_REMOTE_DEBUGGER_SCRIPT_PATH,
-            SYS_ARCH_X86_64,
             _PyRuntimeState_GLOBAL_STRINGS,
             _PyRuntimeState_OPEN_CODE_HOOK,
             _PyRuntimeState_OPEN_CODE_USERDATA,
@@ -34022,6 +33518,7 @@ graph import runtime.python {
             _PyRuntimeState_TUPLE_EMPTY
         },
         object_model.type {
+            ALIGNOF_MAX_ALIGN_T,
             PyInterpreterState_CACHED_OBJREDUCE,
             PyInterpreterState_RARE_SET_BASES,
             PyInterpreterState_RARE_SET_CLASS,
@@ -34484,6 +33981,11 @@ graph import runtime.python {
     ]
     modules.contextvars ++> bindings.contextvars { _contextvars_copy_context_impl }
     modules.core_platform ++> [
+        interpreter.lock {
+            PYTHREAD_USE_SEMAPHORES,
+            cond_timedwait_relative,
+            semaphore_timedwait
+        },
         interpreter.thread {
             PYTHREAD_CONDATTR_MONOTONIC,
             PYTHREAD_USE_SEMAPHORES,
@@ -35145,13 +34647,15 @@ graph import runtime.python {
         grp_getgrgid_impl,
         grp_getgrnam_impl
     }
-    modules.hashlib ++> bindings.blake2
-        | bindings.hashopenssl
-        | bindings.hmac
-        | bindings.md5
-        | bindings.sha1
-        | bindings.sha2
-        | bindings.sha3 { HASHLIB_GIL_MINSIZE }
+    modules.hashlib ++> [
+        bindings.blake2
+            | bindings.hashopenssl
+            | bindings.hmac
+            | bindings.md5
+            | bindings.sha1
+            | bindings.sha3 { HASHLIB_GIL_MINSIZE },
+        bindings.sha2 { HASHLIB_GIL_MINSIZE, digest_property },
+    ]
     modules.hashopenssl ++> [
         bindings.clinic.hashopenssl {
             EVPXOF_digest_impl,
@@ -36560,8 +36064,7 @@ graph import runtime.python {
             SHA256Type_token,
             SHA256_BLOCKSIZE,
             SHA512Type_token,
-            SHA512_BLOCKSIZE,
-            sha2_of
+            SHA512_BLOCKSIZE
         },
     ]
     modules.sha3 ++> [
@@ -36575,7 +36078,7 @@ graph import runtime.python {
             py_sha3_new_impl
         },
         bindings.sha3 {
-            SHA3_TYPES,
+            SHA3_NAMES,
             SHA3_token,
             get_block_size,
             get_capacity_bits,
@@ -37277,7 +36780,7 @@ graph import runtime.python {
     modules.time_platform ++> bindings.time { HAS_PTHREAD_GETCPUCLOCKID }
     modules.time_records ++> [
         cpython_api | object_model.pytime { timespec, timeval, tm },
-        interpreter.thread { timespec },
+        interpreter.lock | interpreter.thread { timespec },
     ]
     modules.traceback_platform ++> object_model.traceback { symbol_info }
     modules.tracemalloc ++> bindings.clinic.tracemalloc {
@@ -38406,6 +37909,8 @@ graph import runtime.python {
             | modules.lsprof
             | modules.posix_fileio
             | modules.posix_ids
+            | modules.posix_stat_platform.darwin
+            | modules.posix_stat_platform.linux
             | modules.pwd
             | modules.resource
             | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
@@ -38530,13 +38035,7 @@ graph import runtime.python {
     ]
     objects --> symtable { PyObj, py_error }
     opcode_meta ++> [
-        constant_output {
-            CO_FAST_CELL,
-            CO_FAST_FREE,
-            CO_FAST_HIDDEN,
-            CO_FAST_LOCAL,
-            CO_OPTIMIZED
-        },
+        constant_output { CO_OPTIMIZED },
         modules.opcode {
             is_block_push_opcode,
             opcode_has_arg,
@@ -39480,7 +38979,7 @@ graph import runtime.python.bindings {
             convert_int,
             convert_ssize
         },
-        multibytecodec | sha2 { ClassToken },
+        multibytecodec { ClassToken },
         syslog { argument_label, convert_int, convert_str },
     ]
     members ++> [
@@ -40761,19 +40260,6 @@ graph import runtime.python.modules {
         asyncio.future_clear { clear_future_fields },
     ]
     binary_scalars ++> struct { read_bits, write_bits }
-    blake2_simd ++> blake2 {
-        Hacl_Hash_Blake2b_blake2_params,
-        simd128_copy,
-        simd128_digest,
-        simd128_free,
-        simd128_malloc,
-        simd128_update,
-        simd256_copy,
-        simd256_digest,
-        simd256_free,
-        simd256_malloc,
-        simd256_update
-    }
     cjkcodecs ++> [
         cjkcodecs_mappings_cn { DbcsMap, Gb18030Range },
         cjkcodecs_mappings_hk | cjkcodecs_mappings_kr | cjkcodecs_mappings_tw {
@@ -41755,6 +41241,7 @@ graph import runtime.python.modules {
         },
     ]
     dynload_platform ++> imp { _PyImport_DynLoadFiletab }
+    epoll_layout ++> select_platform.linux { EPOLL_DATA_OFFSET, EPOLL_EVENT_SIZE }
     errno_constants ++> [
         locale { ERANGE },
         multiprocessing { EAGAIN, EINTR, ETIMEDOUT },
@@ -41867,15 +41354,13 @@ graph import runtime.python.modules {
     }
     fcntl_records ++> fcntl { flock_record }
     hashlib ++> [
-        blake2 | md5 | sha1 | sha2 | sha3 {
-            HashLock,
-            UINT32_MAX,
+        blake2 {
             data_argument,
-            hash_digest,
-            hash_initial_data,
-            hash_object_new,
-            hash_state_of,
-            hash_update
+            digest_copy,
+            digest_object,
+            digest_property,
+            digest_update,
+            digest_value
         },
         hashopenssl {
             HASHLIB_GIL_MINSIZE,
@@ -41887,15 +41372,25 @@ graph import runtime.python.modules {
             hash_state_of
         },
         hmac {
-            HashLock,
-            UINT32_MAX,
+            digest_copy,
+            digest_object,
+            digest_property,
+            digest_state,
+            digest_update,
+            digest_value,
             hash_buffer,
-            hash_initial_data,
-            hash_object_new,
-            hash_state_of,
-            hash_update
+            small_bytes
         },
+        md5 | sha1 | sha2 { digest_copy, digest_new, digest_update, digest_value },
         operator { compare_digest },
+        sha3 {
+            digest_copy,
+            digest_new,
+            digest_property,
+            digest_state,
+            digest_update,
+            digest_value
+        },
     ]
     interpreters_common ++> [
         interpchannels | interpqueues {
@@ -42909,7 +42404,9 @@ graph import runtime.python.modules {
             TIOCSCTTY,
             _SC_TTY_NAME_MAX
         },
-        posix_fileio_platform { ENOSYS },
+        posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux { ENOSYS },
         posix_files {
             AT_EACCESS,
             AT_REMOVEDIR,
@@ -42957,6 +42454,7 @@ graph import runtime.python.modules {
             NGROUPS_MAX,
             _SC_NPROCESSORS_ONLN
         },
+        posix_ids_platform.linux { SYS_getrandom },
         posix_process {
             EINTR,
             EINVAL,
@@ -42981,6 +42479,7 @@ graph import runtime.python.modules {
             POSIX_SPAWN_SETSIGMASK,
             PRIO_PROCESS
         },
+        posix_process_platform.linux { SYS_pidfd_open },
         posix_stat {
             AT_SYMLINK_NOFOLLOW,
             DT_DIR,
@@ -43154,6 +42653,7 @@ graph import runtime.python.modules {
     posix_platform ++> [
         posix_core { DEV_T_SIGNED_32, environment_table },
         posix_files { DEV_T_SIGNED_32 },
+        posix_files_platform.darwin { runtime_function },
         posix_process { environment_table },
     ]
     posix_platform --> posix_core { fildes_call }
@@ -43214,6 +42714,29 @@ graph import runtime.python.modules {
     posixsubprocess_constants ++> [
         posixsubprocess { ENOENT, ENOTDIR, NGROUPS_MAX },
         posixsubprocess_fds { _SC_OPEN_MAX },
+        posixsubprocess_platform.linux {
+            NSIG,
+            O_RDONLY,
+            SIGKILL,
+            SIGSTOP,
+            SIG_BLOCK,
+            SIG_SETMASK,
+            SYS_getdents64
+        },
+    ]
+    posixsubprocess_fds ++> [
+        posixsubprocess_platform.darwin {
+            CLOSE_RANGE,
+            close_range_except,
+            fd_in_sorted_fd_sequence,
+            pos_int_from_ascii
+        },
+        posixsubprocess_platform.linux {
+            CLOSE_EACH,
+            close_range_except,
+            fd_in_sorted_fd_sequence,
+            pos_int_from_ascii
+        },
     ]
     posixsubprocess_platform ++> posixsubprocess {
         DIRENT_BUFFER_SIZE,
@@ -43790,6 +43313,8 @@ graph import runtime.python.modules {
         | mmap
         | posix_stat
         | posix_stat_platform
+        | posix_stat_platform.darwin
+        | posix_stat_platform.linux
         | signal { _Py_stat_struct }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     termios_constants ++> termios { ICANON, NCCS, TIOCGWINSZ, TIOCSWINSZ, VMIN, VTIME }
@@ -43822,9 +43347,21 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
-        core_platform | select | signal { timespec, timeval },
+        core_platform | core_platform.darwin | core_platform.linux | select | signal {
+            timespec,
+            timeval
+        },
         datetime_date | datetime_datetime | datetime_format { tm },
-        posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
+        posix_fileio
+            | posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux
+            | posix_files
+            | time_platform
+            | time_platform.darwin
+            | time_platform.linux { timespec },
+        posix_process_platform.darwin { tms },
+        posix_process_platform.linux { timespec, tms },
         time { timespec, timeval, tm, tms },
     ]
     unicodedata_db ++> unicodedata {
@@ -45634,8 +45171,8 @@ graph import scale {
         KubernetesPostgresProvider
     }
     deploy.target.factory ++> [
-        plugin
-            | runtime.realizer.kubernetes_realizer
+        plugin { DeploymentTargetFactory, ensure_deploy_tooling },
+        runtime.realizer.kubernetes_realizer
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
@@ -45773,7 +45310,7 @@ graph import scale {
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
-            | sdk.client
+            | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
             | tests.deploy.test_crash_scan_fleet_guard
@@ -45799,6 +45336,7 @@ graph import scale {
         },
     ]
     deploy.target.kubernetes.target as target_mod --> tests.deploy.test_superseded_deployment_reap;
+    type deploy.target.kubernetes.target ++> sdk.client { KubernetesTarget }
     deploy.target.kubernetes.utils.kubernetes_utils ++> [
         injector.injector | injector.pvc_injector { KubectlCluster },
         injector.pvc_injector.PvcInjector.seed {
@@ -46292,8 +45830,8 @@ graph import scale {
             FLEET_ENV
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
+        plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
-        plugin.scale_cmd { fleet_from_config, fleet_from_env },
         plugin.scale_local_serve { fleet_from_plans },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
@@ -46409,13 +45947,13 @@ graph import scale {
         _to_ws_scheme,
         websocket_forward
     }
-    runtime.orchestrator.local_deployer ++> plugin.scale_cmd
+    runtime.orchestrator.local_deployer ++> plugin._fleet_cmd
         | tests.deploy.test_deployer { LocalDeployer }
     runtime.orchestrator.orchestrator ++> [
-        plugin.scale_cmd { ServiceRegistry, build_registry },
+        plugin._fleet_cmd { ServiceRegistry, build_registry },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
-    runtime.orchestrator.orchestrator --> plugin.scale_cmd { start_gateway_only }
+    runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -47505,6 +47043,7 @@ graph import server {
         server.JacAPIServer._ensure_internal_users { SYSTEM_USER, UserRole },
         server.JacAPIServer._register_scheduled_tasks { SYSTEM_USER },
     ]
+    impl.pruned_inotify --> watcher.JacFileWatcher.start { SharedPrunedInotifyObserver }
     middleware ++> [
         endpoints.auth | endpoints.second_factor { bearer_token, require_user },
         endpoints.introspection { unauthorized },

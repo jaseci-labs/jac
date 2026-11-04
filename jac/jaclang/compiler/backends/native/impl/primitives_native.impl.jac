@@ -6011,8 +6011,15 @@ impl NativeBuiltinEmitter.emit_int(
     if not args {
         return None;
     }
-    arg_val = args[0];
     p = ctx.pass_ref;
+    arg_val = p._opt_unwrap_guarded(
+        args[0],
+        "int",
+        "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+    );
+    if arg_val is None {
+        return None;
+    }
     b = get_builder(p);
     i64 = ir.IntType(64);
 
