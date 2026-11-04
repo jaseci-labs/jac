@@ -567,6 +567,10 @@ graph import {
             unit_drift
         },
         dist.precompile_bytecode.seal_native { kernel_lib_name },
+        project.compiler_host._native_scan_path | project.kernel_check._record_outcome {
+            kernel_identity
+        },
+        project.kernel_check._replayed_outcome { kernel_identity },
     ]
     compiler.backends.native.kernel_resolve --> [
         project.kernel_check.analysis_kernel { KernelLoadError },
@@ -876,6 +880,7 @@ graph import {
             is_module_cache_valid
         },
         project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
+        project.textio.read_file_with_encoding { CONTENT_CONFLICTS },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -2735,6 +2740,7 @@ graph import {
         isolate_request_walk_stack
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
+        | compiler.backends.native.mir.backend
         | compiler.backends.native.mir.lower
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
         | compiler.jc_unit._alert_tag
@@ -5485,6 +5491,9 @@ graph import compiler {
         tests.xbackend_equiv._prelude_cwd { stage_jac_prelude_package },
         tests.xbackend_equiv.run_js_module_fixture { stage_jac_prelude_package },
     ]
+    backends.native.kernel_resolve ++> driver.compiler.JacCompiler._adopt_kernel_compile {
+        kernel_identity
+    }
     backends.native.kernel_resolve --> native_compiler.ensure_loaded { resolve_kernel }
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
@@ -5950,6 +5959,7 @@ graph import compiler {
             ct_dep_digest,
             running_compiler_digest
         },
+        backends.native.kernel_resolve.kernel_identity { set_kernel_producer },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
             running_compiler_digest,
@@ -5993,7 +6003,8 @@ graph import compiler {
         },
         backends.native.link_plan.build_link_plan {
             begin_prepare_memo,
-            end_prepare_memo
+            end_prepare_memo,
+            pin_content_reads
         },
     ]
     driver.module_analysis ++> [
@@ -11177,6 +11188,7 @@ graph import compiler.driver {
             SEC_NBITCODE,
             SEC_NOBJ,
             SEC_PLACEMENT,
+            SEC_PRODUCER,
             cache_mode,
             carried_module_bytecode,
             compute_content_sha256,

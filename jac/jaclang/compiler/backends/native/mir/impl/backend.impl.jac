@@ -755,7 +755,7 @@ impl MirNativePass.class_layouts(
         found[native_unit_spelling(name, mir.path)] = NativeClassLayout(
             name=name,
             size=size,
-            tag=0,
+            tag=stable_osp_tag(name) if 0 <= obj_def.tag_slot < len(offsets) else 0,
             tag_offset=offsets[obj_def.tag_slot]
                 if 0 <= obj_def.tag_slot < len(offsets)
                 else -1,

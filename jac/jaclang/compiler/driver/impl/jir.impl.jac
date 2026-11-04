@@ -254,13 +254,19 @@ impl get_jir_cache_dir -> Path {
 
 impl compute_content_sha256(file_path: str) -> str {
     held = _COMPILED_CONTENT.get();
-    if held {
-        found = held.get(os.path.realpath(file_path));
-        if found is not None {
-            return found;
-        }
+    if held is None {
+        return file_sha256(file_path);
     }
-    return file_sha256(file_path);
+    real = os.path.realpath(file_path);
+    found = held.get(real);
+    if found is not None {
+        return found;
+    }
+    digest = file_sha256(file_path);
+    if held.get(CONTENT_PINNED) {
+        held[real] = digest;
+    }
+    return digest;
 }
 
 impl _related_files(source_path: str) -> list[tuple[str, str]] {
@@ -744,6 +750,13 @@ impl end_prepare_memo(token: any) {
     _PREPARE_MEMO.reset(token[0]);
 }
 
+impl pin_content_reads {
+    held = _COMPILED_CONTENT.get();
+    if held is not None {
+        held[CONTENT_PINNED] = "1";
+    }
+}
+
 impl hold_compiled_content(digests: dict[str, str]) {
     held = _COMPILED_CONTENT.get();
     if held is None {
@@ -795,10 +808,12 @@ impl _memoized(kind: str, source_path: str, compute: any) -> str {
         _native_target_ctx,
         get_effective_default_codespace_override
     }
+    held = _COMPILED_CONTENT.get();
     key = "\x1f".join(
         [
             kind,
             source_path,
+            held.get(CONTENT_CONFLICTS, "") if held is not None else "",
             str(id(active_options())),
             str(id(active_host())),
             get_effective_default_codespace_override(),
@@ -823,23 +838,17 @@ impl compute_module_key(source_path: str) -> str {
 
 impl _arch_stamp(arch: str, package_name: str) -> (str | None) {
     try {
-        st = os.stat(arch);
+        content = compute_content_sha256(arch);
     } except OSError {
         return None;
     }
-    probe = (st.st_mtime_ns, st.st_size, package_name);
+    probe = (content, package_name);
     held = _ARCH_STAMPS.get(arch);
     if held is not None and held[0] == probe {
         return held[1];
     }
     h = hashlib.sha256();
-    try {
-        with open(arch, "rb") as f {
-            h.update(f.read());
-        }
-    } except OSError {
-        return None;
-    }
+    h.update(content.encode());
     h.update(b"\0");
     h.update(package_name.encode());
     stamp = h.hexdigest();
@@ -1428,7 +1437,25 @@ impl jir_env_matches(jir_data: bytes, source_path: str) -> bool {
     if stored is None {
         return False;
     }
-    return stored == module_env_fingerprint(source_path);
+    return stored == module_env_fingerprint(source_path)
+        and jir_producer_matches(jir_data);
+}
+
+impl set_kernel_producer(identity: str) -> None {
+    _KERNEL_PRODUCER.clear();
+    _KERNEL_PRODUCER.append(identity);
+}
+
+impl kernel_producer -> str {
+    return _KERNEL_PRODUCER[0] if _KERNEL_PRODUCER else "";
+}
+
+impl jir_producer_matches(jir_data: bytes) -> bool {
+    producer = read_section_bytes(jir_data, SEC_PRODUCER);
+    if producer is None {
+        return True;
+    }
+    return producer.decode("utf-8", "replace") == kernel_producer();
 }
 
 impl jir_matches_source(jir_data: bytes, source_path: str) -> bool {
@@ -2038,6 +2065,7 @@ impl write_module_cache(
             sections.update(key_sections);
             if bytecode is not None {
                 sections[SEC_BYTECODE] = bytecode;
+                sections.pop(SEC_PRODUCER, None);
             }
             if extra_sections is not None {
                 for (k, v) in extra_sections.items() {

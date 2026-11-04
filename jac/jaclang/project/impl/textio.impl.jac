@@ -15,7 +15,14 @@ impl read_file_with_encoding(
     if reads is not None {
         real = os.path.realpath(file_path);
         digest = hashlib.sha256(data).hexdigest();
-        reads[real] = digest if reads.get(real, digest) == digest else "";
+        if reads.get(real, digest) == digest {
+            reads[real] = digest;
+        } else {
+            reads[real] = "";
+            reads[CONTENT_CONFLICTS] = str(
+                int(reads.get(CONTENT_CONFLICTS, "0") or "0") + 1
+            );
+        }
     }
     for encoding in _JAC_TEXT_ENCODINGS {
         try {

@@ -7,6 +7,7 @@ import from jaclang.compiler.frontend.codeinfo {
     set_native_unit_compile,
     reset_native_unit_compile
 }
+import from jaclang.runtime.osp_tag { stable_osp_tag }
 
 
 test "string fields retain their schema while foreign pointers remain opaque" {
@@ -89,6 +90,34 @@ test "materialization skips deleted native hash entries and preserves dictionary
             assert isinstance(copied, set);
             assert copied == {"one", "three", "four"};
         }
+    } finally {
+        reset_native_unit_compile(previous);
+    }
+}
+
+test "a node's class layout records the OSP tag its constructor writes" {
+    program = JacProgram();
+    previous = set_native_unit_compile(True);
+    try {
+        module = program.compile(
+            file_path="materialization_tags.jac",
+            use_str="node Base { has n: int = 0; } node Leaf(Base) { has m: int = 1; } obj Plain { has k: int = 2; } def make -> Leaf { return Leaf(); } def plain -> Plain { return Plain(); }",
+            options=CompileOptions(
+                force_codespace="native",
+                skip_native_engine=True,
+                no_ir_cache=True,
+                native_unit=True
+            )
+        );
+        assert not program.errors_had , str(program.errors_had);
+        iface = module.gen.native_iface;
+        assert iface is not None;
+        classes = iface.classes;
+        leaf = classes["Leaf"];
+        assert leaf.tag_offset >= 0;
+        assert leaf.tag != 0;
+        assert leaf.tag == stable_osp_tag(leaf.name) , (leaf.tag, leaf.name);
+        assert classes["Plain"].tag == 0;
     } finally {
         reset_native_unit_compile(previous);
     }

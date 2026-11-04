@@ -354,8 +354,13 @@ impl build_link_plan(
     registry.session = session;
 
     target_token = push_native_target(opts.native_target or "");
-    import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
+    import from jaclang.compiler.driver.jir {
+        begin_prepare_memo,
+        end_prepare_memo,
+        pin_content_reads
+    }
     memo = begin_prepare_memo();
+    pin_content_reads();
     try {
         plan = _build_link_plan(prog, roots, opts, mode, native_unit);
         session.finish([unit.path for unit in plan.units]);

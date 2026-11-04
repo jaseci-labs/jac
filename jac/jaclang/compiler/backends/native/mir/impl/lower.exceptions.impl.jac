@@ -614,7 +614,7 @@ impl MirLowering.raise_object(
     if not value.owned and self.owned_world {
         held = b.ref_cast(value, value.type, False);
         b.block.instrs[-1].sub = "escape";
-    } elif not value.owned {
+    } elif not self.owned_world {
         self.runtime("__jac_rt_retain", [held]);
     }
     tid = JAC_TYPE_REGISTRY.exception_type_id(archetype_native_name(arch));
