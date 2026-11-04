@@ -356,6 +356,10 @@ impl MirLowering.note_lineage(arch: uni.Archetype, obj_def: MirObjectDef) {
             self.class_lineages.append((obj_def.name, held.name));
         }
     }
+    layout = self.osp_layout(arch);
+    if layout is not None and layout.arch_type == "edge" {
+        self.class_lineages.append((obj_def.name, ""));
+    }
 }
 
 impl MirLowering.live_unit(path: str) -> (uni.Module | None) {
@@ -2204,6 +2208,8 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                     self.address_of(
                         self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=base_name)
                     )
+                        if base_name
+                        else b.const_int(EDGE_CLASS_MARK, mir_int())
                 ]
             );
         }

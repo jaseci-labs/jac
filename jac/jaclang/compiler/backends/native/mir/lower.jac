@@ -2,6 +2,7 @@ import os;
 import hashlib;
 
 glob OVERFLOW_MESSAGE: str = "integer overflow",
+     EDGE_CLASS_MARK: int = 1,
      ZERO_DIVISION_MESSAGE: str = "integer division or modulo by zero",
      FLOAT_ZERO_DIVISION_MESSAGE: str = "float division by zero",
      FLOAT_ZERO_MODULO_MESSAGE: str = "float modulo by zero",
@@ -1434,6 +1435,8 @@ obj MirLowering {
 
     def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def osp_class_tag(nd: uni.Expr) -> (MirValue | None);
+    def osp_edge_bound(nd: uni.Expr) -> (uni.Archetype | None);
+    def osp_edge_class_tag(nd: uni.Expr) -> (MirValue | None);
     def osp_class_tag_ok(nd: uni.Expr) -> bool;
     def lower_dynamic_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
     def default_entry(arch: uni.Archetype) -> (MirFunction | None);
