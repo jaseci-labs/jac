@@ -1542,6 +1542,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             self.fn_values[address.id] = foreign;
             return address;
         }
+        self.refuse_missing_import(nd);
         c_function = self.c_extern_address(nd);
         if c_function is not None {
             return c_function;
@@ -1563,16 +1564,6 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
                     callee=symbol
                 );
             }
-        }
-        missing_from = self.missing_import(nd);
-        if missing_from is not None {
-            refusal = mir_refusal("import", nd.value, nd, code="E1145");
-            refusal.detail = missing_from;
-            refusal.text = (
-                f"error[E1145]: Cannot import name '{nd.value}' from Jac module"
-                f" '{missing_from}': it defines no such name"
-            );
-            raise MirRefused(refusal);
         }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
@@ -2301,16 +2292,7 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if isinstance(nd.target, uni.Name) and nd.target.sym is not None {
-        missing_from = self.missing_import(nd.target);
-        if missing_from is not None {
-            refusal = mir_refusal("import", nd.target.value, nd.target, code="E1145");
-            refusal.detail = missing_from;
-            refusal.text = (
-                f"error[E1145]: Cannot import name '{nd.target.value}' from Jac module"
-                f" '{missing_from}': it defines no such name"
-            );
-            raise MirRefused(refusal);
-        }
+        self.refuse_missing_import(nd.target);
     }
     via_alias = self.alias_call(nd);
     if via_alias is not None {
@@ -2472,6 +2454,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             return self.builder().const_bool(False);
         }
         return result;
+    }
+    via_stdlib = self.stdlib_item_call(nd);
+    if via_stdlib is not None {
+        return via_stdlib;
     }
     enum_made = self.enum_call(nd);
     if enum_made is not None {
@@ -5242,12 +5228,43 @@ impl MirLowering.c_convention(nd: uni.UniNode) -> str {
     return "";
 }
 
-impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
+impl MirLowering.import_item_of(nd: uni.Name) -> (uni.ModuleItem | None) {
     sym = nd.sym;
     decl = sym.decl if sym is not None else None;
     item = decl.parent if decl is not None else None;
+    if not isinstance(item, uni.ModuleItem) {
+        scope = nd.find_parent_of_type(uni.UniScopeNode);
+        local = scope.lookup(nd.value) if scope is not None else None;
+        item = local.decl.parent
+            if local is not None and local.decl is not None
+            else None;
+    }
     if not isinstance(item, uni.ModuleItem)
         or not isinstance(item.parent, uni.Import) {
+        return None;
+    }
+    return item;
+}
+
+impl MirLowering.refuse_missing_import(nd: uni.Name) {
+    missing_from = self.missing_import(nd);
+    if missing_from is None {
+        return;
+    }
+    item = self.import_item_of(nd);
+    name = item.name.value if item is not None else nd.value;
+    refusal = mir_refusal("import", name, nd, code="E1145");
+    refusal.detail = missing_from;
+    refusal.text = (
+        f"error[E1145]: Cannot import name '{name}' from Jac module"
+        f" '{missing_from}': it defines no such name"
+    );
+    raise MirRefused(refusal);
+}
+
+impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
+    item = self.import_item_of(nd);
+    if item is None {
         return None;
     }
     if id(item) in self.missing_imports {

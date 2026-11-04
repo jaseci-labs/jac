@@ -661,6 +661,8 @@ obj MirLowering {
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool;
+    def import_item_of(nd: uni.Name) -> (uni.ModuleItem | None);
+    def refuse_missing_import(nd: uni.Name);
     def missing_import(nd: uni.Name) -> (str | None);
     def missing_import_of(item: uni.ModuleItem) -> (str | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
@@ -1482,6 +1484,8 @@ obj MirLowering {
     def is_template(ab: uni.Ability) -> bool;
     def template_of(ab: uni.Ability) -> bool;
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
+    def stdlib_unit(scope: (uni.UniScopeNode | None)) -> (uni.Module | None);
+    def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
     def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
