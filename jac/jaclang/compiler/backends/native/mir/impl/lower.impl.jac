@@ -769,6 +769,20 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         raise MirRefused(mir_refusal("assignment", "several targets", nd));
     }
     target = targets[0];
+    if isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and nd.value is not None
+        and nd.aug_op is None {
+        environ = self.environ_unit(target.target);
+        if environ is not None {
+            named = self.environ_key(target.right, nd);
+            self.environ_call(
+                environ, "setitem", [named, self.lower_expr(nd.value)], nd
+            );
+            return;
+        }
+    }
     if isinstance(target, uni.TupleVal)
         and nd.value is not None
         and nd.aug_op is None {
@@ -1015,6 +1029,16 @@ impl MirLowering.assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignm
             value,
             nd
         );
+    } elif isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and self.environ_unit(target.target) is not None {
+        environ = self.environ_unit(target.target);
+        if environ is not None {
+            self.environ_call(
+                environ, "setitem", [self.environ_key(target.right, nd), value], nd
+            );
+        }
     } elif isinstance(target, uni.AtomTrailer)
         and not target.is_attr
         and isinstance(target.right, uni.IndexSlice)
@@ -2004,6 +2028,21 @@ impl MirLowering.lower_compare(nd: uni.CompareExpr) -> MirValue {
     left_nd: uni.Expr = nd.left;
     count = len(nd.ops);
     for (index, (op, right_nd)) in enumerate(zip(nd.ops, nd.rights)) {
+        environ = self.environ_unit(right_nd)
+            if op.name in (Tok.KW_IN, Tok.KW_NIN)
+            else None;
+        if environ is not None {
+            found = self.environ_call(environ, "contains", [left], nd);
+            verdict = found if op.name == Tok.KW_IN else b.logical_not(found);
+            b.store(result, verdict);
+            if index + 1 < count {
+                raise MirRefused(
+                    mir_refusal("comparison", "chain through os.environ", nd)
+                );
+            }
+            b.branch(done);
+            break;
+        }
         right = self.lower_expr(right_nd);
         verdict = self.view_compare(op.name, left_nd, left, right_nd, right)
             or self.compare_values(op.name, left, right, nd);
@@ -3888,6 +3927,14 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
+    if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) {
+        environ = self.environ_unit(nd.target);
+        if environ is not None {
+            return self.environ_call(
+                environ, "getitem", [self.environ_key(nd.right, nd)], nd
+            );
+        }
+    }
     guarded = self.null_ok_trailer(nd);
     if guarded is not None {
         return guarded;

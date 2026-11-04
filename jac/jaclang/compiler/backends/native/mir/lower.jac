@@ -1599,6 +1599,12 @@ obj MirLowering {
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
     def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
     def stdlib_unit_at(path: str) -> (uni.Module | None);
+    def environ_unit(target: uni.UniNode) -> (uni.Module | None);
+    def environ_call(
+        unit: uni.Module, name: str, args: list[MirValue], site: uni.UniNode
+    ) -> MirValue;
+
+    def environ_key(slice: uni.IndexSlice, site: uni.UniNode) -> MirValue;
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
     def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);

@@ -16,6 +16,18 @@ def:pub getenv(key: str, fallback: (str | None) = None) -> (str | None);
 
 def:pub environ_get(key: str, fallback: (str | None) = None) -> (str | None);
 
+def:pub environ_getitem(key: str) -> str;
+
+def:pub environ_setitem(key: str, value: str) -> None;
+
+def:pub environ_delitem(key: str) -> None;
+
+def:pub environ_pop(key: str, fallback: (str | None) = "\x00") -> (str | None);
+
+def:pub environ_contains(key: str) -> bool;
+
+def _environ_name(key: str) -> None;
+
 def:pub listdir(path: str = ".") -> list[str];
 
 def:pub makedirs(name: str, mode: int = 511, exist_ok: bool = False) -> None;

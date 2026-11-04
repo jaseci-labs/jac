@@ -14908,6 +14908,8 @@ graph import runtime.na_stdlib {
             S_IFDIR,
             S_IFMT,
             cwd_path,
+            env_set,
+            env_unset,
             env_value,
             make_dir,
             remove_dir,
