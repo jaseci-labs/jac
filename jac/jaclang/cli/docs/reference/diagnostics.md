@@ -143,7 +143,7 @@ All three block code generation for the module that reports them.
 | `E0057` | 'return' is only valid inside a function body |
 | `E0058` | '{keyword}' is only valid inside a loop |
 
-A `with entry` block runs as module code, not as a function, so `return` and `yield` there have nothing to leave (`E0055`, `E0057`). A `def`, method, `impl` body, ability, block lambda or `test` body is a function body; a `with entry` block inside an archetype is not. To stop an entry block early, move its code into a `def` and call that, or invert the condition.
+A `with entry` block runs as module code, not as a function, so `return` and `yield` there have nothing to leave (`E0055`, `E0057`). For `return`, a `def`, method, `impl` body, ability, block lambda or `test` body is a function body. `yield` is stricter: it needs an enclosing `def`, method, `impl` body or ability, so a `yield` in a `test` body, or in a block lambda outside any of those, is still `E0055`. A `with entry` block inside an archetype is not a function body for either. To stop an entry block early, move its code into a `def` and call that, or invert the condition.
 
 ### Property Declaration Errors
 
