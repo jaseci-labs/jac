@@ -36,13 +36,13 @@ shim.
 
 `contextvars_scalar.jac` runs the same ladder at `int`, `bool`, `str`,
 `float` and optional type arguments (#8229). A generic archetype is laid out
-once, so a slot typed by its parameter is a pointer; a by-value argument
-boxes into it and unboxes at the access site, so `0`, `False` and `""` stay
-distinct from the null that spells None. The explicit `default=None` and
+once, so a slot typed by its parameter holds a tagged `any`; a by-value
+argument goes in tagged and is read back at the access site, so `0`, `False`
+and `""` stay distinct from the None. The explicit `default=None` and
 `get(None)` it exercises are CPython's "a default was passed" case, which the
 shim tells apart from an omitted default with a marker rather than `None`.
-A tagged `any` value has no box, so `ContextVar[int | str]` is still refused
-naming the instantiation, and a test pins that refusal.
+A union argument such as `ContextVar[int | str]` is a tagged `any` already,
+so it is held the same way and answers as CPython does.
 
 `contextvars_token.jac` pins the `Token` protocol against the Python
 backend: `set` returns a token carrying `var` and the previous value,
@@ -160,18 +160,10 @@ test "native ContextVar at scalar and optional type arguments answers like CPyth
     _same_lines(py_out, na_out, "contextvars scalar");
 }
 
-test "a ContextVar at a mixed by-value union type argument is refused, not lowered" {
-    src = os.path.join(FIXTURES, "contextvars_unsupported.jac");
-    out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
-    comp = subprocess.run(
-        jac_command("build", "--native", src, "-o", out_bin),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    combined = (comp.stdout or "") + (comp.stderr or "");
-    assert comp.returncode != 0 , f"an unboxable erased slot compiled silently: {combined[-600:]}";
-    assert "ContextVar[int | str]" in combined , f"diagnostic does not name the instantiation: {combined[-600:]}";
+test "a ContextVar at a mixed by-value union type argument answers like CPython" {
+    py_out = python_run(os.path.join(FIXTURES, "contextvars_unsupported.jac"));
+    (na_out, _na_err) = _na_run("contextvars_unsupported.jac");
+    _same_lines(py_out, na_out, "contextvars union");
 }
 
 test "native ContextVar.set returns a Token that reset honors like CPython" {
