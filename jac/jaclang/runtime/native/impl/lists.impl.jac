@@ -297,6 +297,7 @@ impl __jac_rt_list_new(cap: int, kind: int) -> int {
     __mem_store_i64(lst + LIST_LEN, 0);
     __mem_store_i64(lst + LIST_CAP, size);
     __mem_store_i64(lst + LIST_DATA, data);
+    __mem_store_i64(lst + LIST_KIND, 0);
     __jac_rt_list_rekind(lst, kind);
     return lst;
 }
@@ -342,9 +343,10 @@ impl __jac_rt_list_lend(lst: int) {
 }
 
 impl __jac_rt_list_rekind(lst: int, kind: int) {
-    __mem_store_i64(lst + LIST_KIND, kind);
+    word = kind | (__mem_load_i64(lst + LIST_KIND) & KIND_LENT);
+    __mem_store_i64(lst + LIST_KIND, word);
     dtor = int(_list_drop_plain);
-    if (kind & KIND_LENT) != 0 {
+    if (word & KIND_LENT) != 0 {
         dtor = int(_list_drop_plain);
     } elif kind == KIND_STR {
         dtor = int(_list_drop_str);
