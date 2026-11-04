@@ -207,7 +207,10 @@ impl MirLowering.object_text(
             for (sub_name, sub) in self.archetypes.items()
             if sub_name != value.type.name
                 and self.obj_extends(sub_name, value.type.name)
-                and self.find_method(sub, method) is not None
+                and (
+                    self.find_method(sub, method) is not None
+                    or not (method == "__str__" and self.is_exception_arch(sub))
+                )
         ];
         if carriers {
             return self.subclass_text(value, method, carriers, site);
