@@ -153,6 +153,14 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
 
 glob CTOR_MASK_BITS: int = 63;
 
+glob C_ENTRY_TAIL_KINDS: list[MirKind] = [
+         MirKind.BOOL,
+         MirKind.INT,
+         MirKind.FLOAT,
+         MirKind.C_PTR,
+         MirKind.C_FN
+     ];
+
 glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "int": [0, 7],
          "bool": [7],

@@ -5261,6 +5261,11 @@ impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
             "work remains after the call (converting its result or releasing an argument), so the call is not in tail position"
         );
     }
+    if self.st().region_escape is not None {
+        b.block.instrs.pop();
+        self.drop_regions();
+        b.block.instrs.append(made);
+    }
     made.sub = "musttail";
     self.st().tail_sites.append(nd);
     b.ret(value if returns_value else None);
