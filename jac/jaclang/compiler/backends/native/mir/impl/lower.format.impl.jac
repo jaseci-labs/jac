@@ -457,7 +457,12 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
     b.position(fresh);
     sb = self.call_rt("__jac_rt_sb_new", [b.const_int(32, mir_int())]);
     self.sb_text(sb, arch.name.value + "(");
-    for (index, member) in enumerate(obj_def.fields) {
+    shown = [
+        member
+        for member in obj_def.fields
+        if member.index != obj_def.reports_slot
+    ];
+    for (index, member) in enumerate(shown) {
         self.sb_text(sb, (", " if index > 0 else "") + member.name + "=");
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [param], int_value=member.index
