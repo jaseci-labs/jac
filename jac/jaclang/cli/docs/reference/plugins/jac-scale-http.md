@@ -118,7 +118,11 @@ Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
 disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
 `max_age`) are recognised under the same section. `allow_credentials` defaults
 to `false`, and the same rule holds: with `"*"` in `allow_origins` the config
-is refused.
+is refused. `allow_methods` and `allow_headers` default to `["*"]`, meaning any
+method and any header. The gateway never sends that `*` to the browser, which
+never reads it as covering `Authorization` and, with credentials, reads it as no
+wildcard at all: a preflight is answered with the full method list and with the
+headers it asked for.
 
 ---
 

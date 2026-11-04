@@ -158,3 +158,61 @@ test "[scale.gateway.cors] refuses allow_credentials with a wildcard origin" {
         assert "[scale.gateway.cors] allow_credentials" in str(refused) , str(refused);
     }
 }
+
+
+"""Whether a browser accepts the preflight answer `value` for `wanted`: `*` is a
+wildcard only without credentials, and never stands for Authorization."""
+def _preflight_allows(value: str, wanted: str, credentials: bool) -> bool {
+    listed = [item.strip().lower() for item in value.split(",")];
+    if wanted.lower() in listed {
+        return True;
+    }
+    return "*" in listed and not credentials and wanted.lower() != "authorization";
+}
+
+
+test "a * in the gateway's allow_methods and allow_headers passes a preflight for Authorization" {
+    import from jaclang.scale.config.config_loader { normalize_gateway_config }
+    import from jaclang.server.serving.app { ServingApp }
+    import from jaclang.server.serving.middleware { cors_middleware }
+    import from jaclang.testing.testkit { ServingTestClient }
+    rows = [
+        ("the open default", {}),
+        (
+            "a listed origin with credentials",
+            {"cors": {"allow_origins": [APP_ORIGIN], "allow_credentials": True}}
+        )
+    ];
+    for (label, raw) in rows {
+        cors = normalize_gateway_config(raw)["cors"];
+        assert cors["allow_methods"] == ["*"] and cors["allow_headers"] == ["*"] , (
+            f"{label}: {cors}"
+        );
+        app = ServingApp();
+        app.add_middleware(cors_middleware(**cors));
+        resp = ServingTestClient(app).options(
+            "/function/ping",
+            headers={
+                "Origin": APP_ORIGIN,
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "authorization, content-type"
+            }
+        );
+        seen: dict[str, str] = {};
+        for (name, value) in resp.headers.items() {
+            seen[str(name).lower()] = str(value);
+        }
+        credentials = seen.get("access-control-allow-credentials") == "true";
+        assert credentials == cors["allow_credentials"] , f"{label}: {seen}";
+        methods = seen.get("access-control-allow-methods", "");
+        assert _preflight_allows(methods, "PUT", credentials) , (
+            f"{label}: a browser refuses PUT after Allow-Methods {methods!r}"
+        );
+        for wanted in ["Authorization", "Content-Type"] {
+            allowed = seen.get("access-control-allow-headers", "");
+            assert _preflight_allows(allowed, wanted, credentials) , (
+                f"{label}: a browser refuses {wanted} after Allow-Headers {allowed!r}"
+            );
+        }
+    }
+}

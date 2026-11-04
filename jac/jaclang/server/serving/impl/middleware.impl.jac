@@ -14,9 +14,13 @@ impl cors_middleware(
     methods = allow_methods
         if allow_methods is not None
         else ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+    if '*' in methods {
+        methods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT'];
+    }
     headers_allowed = allow_headers
         if allow_headers is not None
         else ['Content-Type', 'Authorization'];
+    any_header = '*' in headers_allowed;
     exposed = expose_headers if expose_headers is not None else [];
 
     def _origin_value(request: Request) -> str {
@@ -47,9 +51,14 @@ impl cors_middleware(
             preflight = Response(content=b'', status_code=200);
             _apply(preflight, origin);
             preflight.headers.set('Access-Control-Allow-Methods', ', '.join(methods));
-            preflight.headers.set(
-                'Access-Control-Allow-Headers', ', '.join(headers_allowed)
-            );
+            allowed_headers = str(
+                request.headers.get('Access-Control-Request-Headers') or ''
+            )
+                if any_header
+                else ', '.join(headers_allowed);
+            if allowed_headers {
+                preflight.headers.set('Access-Control-Allow-Headers', allowed_headers);
+            }
             preflight.headers.set('Access-Control-Max-Age', str(max_age));
             return preflight;
         }
