@@ -761,8 +761,17 @@ impl Session.unit_enter(key: (str | None) = None) -> None {
             self._ro_units += 1;
         }
         self._unit_stack.append((key, ro));
-        if self._store is not None and self._store.in_txn() {
-            self._ensure_txn();
+        try {
+            if self._store is not None and self._store.in_txn() {
+                self._ensure_txn();
+            }
+        } except BaseException {
+            self._active_units -= 1;
+            (_key, was_ro) = self._unit_stack.pop();
+            if was_ro {
+                self._ro_units -= 1;
+            }
+            raise;
         }
     }
 }
