@@ -3,30 +3,11 @@
 import contextlib;
 import gc;
 import io;
-import os;
-import signal;
 import socket;
 import subprocess;
 import time;
 import requests;
 import from pathlib { Path }
-
-
-"""SIGKILL a started server's whole process group, workers included.
-
-Worker children inherit the harness's stdout and stderr pipes, so killing
-only the master orphans the workers: they keep running and hold the pipes
-open, and any later communicate() blocks on an EOF that never comes. The
-server is launched in its own session, so the group kill reaches every
-worker. Falls back to the single-process kill when the group is gone.
-"""
-def _kill_process_group(server: subprocess.Popen) {
-    try {
-        os.killpg(server.pid, int(signal.SIGKILL));
-    } except OSError {
-        server.kill();
-    }
-}
 
 glob JacScaleFixtures: Path = Path(__file__).parent.parent / "fixtures";
 
