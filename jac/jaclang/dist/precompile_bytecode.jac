@@ -49,8 +49,6 @@ def precompile_native_unit(jac_path: str, collect: bool = True) -> str;
 
 def _served_codespace(pkg_root: str) -> str;
 
-"""Compiles and checks a served stage's units under the codespace it is prepared
-and served with, so the keys the seal writes and the keys it verifies agree."""
 @contextmanager
 def served_codespace(pkg_root: str) -> Iterator[None];
 

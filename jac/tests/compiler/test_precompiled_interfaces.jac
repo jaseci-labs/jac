@@ -53,9 +53,7 @@ test "precompiled modules carry their type interface on cold and cached builds" 
             package = _package(Path(directory));
             source = package / "api.jac";
             source.write_text("def answer() -> int { return 42; }\n");
-            with (
-                contextlib.chdir(package) if served else contextlib.nullcontext()
-            ) {
+            with (contextlib.chdir(package) if served else contextlib.nullcontext()) {
                 if served {
                     (package / "jac.toml").write_text('[project]\nname = "library"\n');
                     app_main = package / "main.jac";
@@ -69,7 +67,9 @@ test "precompiled modules carry their type interface on cold and cached builds" 
                     prepared = {
                         str(p) for p in (package / ".jac" / "cache").rglob("api.*.jir")
                     };
-                    with precompile_unit_context(str(source), str(package)) as _program {
+                    with precompile_unit_context(
+                        str(source), str(package)
+                    ) as _program {
                         codespace = effective_default_codespace();
                         looked = str(get_module_cache_path(str(source)));
                     }
@@ -77,7 +77,9 @@ test "precompiled modules carry their type interface on cold and cached builds" 
                         f"a served app's seal compiles under {codespace!r}, its prepare under server"
                     );
                     assert looked in prepared , (
-                        f"the seal looks up {looked}; the prepare wrote {sorted(prepared)}"
+                        f"the seal looks up {looked}; the prepare wrote {sorted(
+                            prepared
+                        )}"
                     );
                 }
                 for _attempt in range(2) {
