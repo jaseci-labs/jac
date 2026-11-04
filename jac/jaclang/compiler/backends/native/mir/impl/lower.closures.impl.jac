@@ -38,8 +38,11 @@ impl MirLowering.captured_symbols(
     for stmt in body {
         for name in self.names_within(stmt) {
             sym = name.sym;
+            if isinstance(name, uni.SpecialVarRef) and name.value == "super" {
+                sym = self.super_self(name);
+            }
             if sym is not None
-                and name.value == "self"
+                and name.value in ("self", "super")
                 and id(sym) not in seen
                 and self.st().self_value is not None
                 and self.function_of(name) is not owner {
@@ -63,6 +66,11 @@ impl MirLowering.captured_symbols(
         }
     }
     return found;
+}
+
+impl MirLowering.super_self(nd: uni.UniNode) -> (uni.Symbol | None) {
+    scope = nd.find_parent_of_type(uni.UniScopeNode);
+    return scope.lookup("self") if scope is not None else None;
 }
 
 impl MirLowering.prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]) {
@@ -157,6 +165,9 @@ impl MirLowering.lower_closure(
     for stmt in statements {
         for name in self.names_within(stmt) {
             sym = name.sym;
+            if isinstance(name, uni.SpecialVarRef) and name.value == "super" {
+                sym = self.super_self(name);
+            }
             if sym is not None
                 and id(sym) not in captures
                 and (id(sym) in outer.captured or id(sym) in outer.env_cells) {

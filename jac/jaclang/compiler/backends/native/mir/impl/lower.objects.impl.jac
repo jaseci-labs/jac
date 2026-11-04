@@ -1653,6 +1653,11 @@ impl MirLowering.object_method(
 
 impl MirLowering.super_call(nd: uni.FuncCall, name: str) -> MirValue {
     receiver = self.st().self_value;
+    held = self.super_self(nd) if receiver is None else None;
+    cell = self.cell_of(id(held)) if held is not None else None;
+    if held is not None and cell is not None {
+        receiver = self.cell_read(cell, self.st().cell_types[id(held)]);
+    }
     arch = self.archetypes.get(receiver.type.name)
         if receiver is not None and receiver.type.kind == MirKind.OBJ
         else None;

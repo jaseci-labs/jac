@@ -1030,6 +1030,7 @@ obj MirLowering {
         owner: uni.UniNode, body: Sequence[uni.UniNode]
     ) -> list[uni.Symbol];
 
+    def super_self(nd: uni.UniNode) -> (uni.Symbol | None);
     def prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]);
     def cell_of(sym_id: int) -> (MirValue | None);
     def cell_read(cell: MirValue, value_type: MirType) -> MirValue;
