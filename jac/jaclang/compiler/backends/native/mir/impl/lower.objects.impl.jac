@@ -166,6 +166,23 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
                     )
                 );
             }
+            if local {
+                for slot in layout.methods {
+                    inherited = self.find_method(arch, slot.name);
+                    defining = inherited.find_parent_of_type(uni.Module)
+                        if inherited is not None
+                        else None;
+                    if inherited is not None
+                        and defining is not None
+                        and defining is not self.module {
+                        try {
+                            self.foreign_method_decl(inherited);
+                        } except MirRefused {
+                            continue;
+                        }
+                    }
+                }
+            }
             for ancestor in layout.mro {
                 ancestor_layout = get_layout_registry(owner, self.prog).get_layout(
                     ancestor
@@ -474,7 +491,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
         return None;
     }
     self_type = self.object_type(owner);
-    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)];
+    params = [self.param_type(pv) for pv in self.param_nodes(sig, True)];
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
         self.ability_sym(method)
     );
@@ -513,7 +530,7 @@ impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
         or self.is_template(method) {
         return None;
     }
-    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, False)];
+    params = [self.param_type(pv) for pv in self.param_nodes(sig, False)];
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
         self.ability_sym(method)
     );
@@ -601,7 +618,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
         }
         params: list[MirType] = [];
         for pv in self.param_nodes(sig, not method.is_static) {
-            params.append(self.symbol_type(pv.name.sym, pv));
+            params.append(self.param_type(pv));
         }
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
             self.ability_sym(method)
@@ -663,7 +680,7 @@ impl MirLowering.declare_specials(arch: uni.Archetype, self_type: MirType) {
         }
         params: list[MirType] = [];
         for pv in self.param_nodes(sig, True) {
-            params.append(self.symbol_type(pv.name.sym, pv));
+            params.append(self.param_type(pv));
         }
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
             self.ability_sym(method)

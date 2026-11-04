@@ -1,4 +1,7 @@
 impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
+    if t.kind == MirKind.C_STRUCT {
+        return KIND_INT;
+    }
     if t.kind == MirKind.NONE {
         return KIND_NULL;
     }
@@ -251,7 +254,13 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
 
 impl MirLowering.container_len(value: MirValue) -> MirValue {
     if value.type.kind == MirKind.LIST {
-        return self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(value)]);
+        words = self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(value)]);
+        if value.type.payload().kind == MirKind.C_STRUCT {
+            return self.builder().binary(
+                "floordiv", words, self.struct_words(value.type.payload())
+            );
+        }
+        return words;
     }
     if value.type.kind in (MirKind.DICT, MirKind.SET) {
         counted = self.runtime("__jac_rt_dict_len", [value]);
@@ -284,6 +293,9 @@ impl MirLowering.list_index(lst: MirValue, index: MirValue, message: str) -> Mir
 impl MirLowering.list_read(lst: MirValue, index: MirValue) -> MirValue {
     b = self.builder();
     elem = lst.type.payload();
+    if elem.kind == MirKind.C_STRUCT {
+        return b.load(self.struct_element(lst, index), elem);
+    }
     kind = self.elem_kind(elem, self.module);
     if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.runtime(
@@ -464,6 +476,10 @@ impl MirLowering.each_end(head: MirBlock, after: MirBlock) {
 impl MirLowering.container_add(made: MirValue, item: MirValue, site: uni.UniNode) {
     b = self.builder();
     elem = made.type.payload();
+    if made.type.kind == MirKind.LIST and elem.kind == MirKind.C_STRUCT {
+        self.struct_push(made, item, site);
+        return;
+    }
     kind = b.const_int(self.elem_kind(elem, site), mir_int());
     bits = self.to_bits(item, elem, site);
     if made.type.kind == MirKind.LIST {
@@ -666,6 +682,10 @@ impl MirLowering.container_set(
             self.coerce(self.lower_expr(key_nd), mir_int(), key_nd),
             LIST_ASSIGN_MESSAGE
         );
+        if elem.kind == MirKind.C_STRUCT {
+            b.store(self.struct_element(base, index), self.coerce(value, elem, site));
+            return;
+        }
         self.runtime(
             "__jac_rt_list_set",
             [
@@ -718,6 +738,22 @@ impl MirLowering.list_method(
     }
     args = self.call_args(nd);
     elem = lst.type.payload();
+    if elem.kind == MirKind.C_STRUCT {
+        if name == "append" and len(args) == 1 {
+            self.struct_push(lst, self.lower_expr(args[0]), args[0]);
+            return b.const_bool(False);
+        }
+        if name not in ("clear", "copy", "extend") {
+            raise MirRefused(
+                mir_refusal(
+                    "list method",
+                    f"{name} on a list of {elem.render()}",
+                    nd,
+                    "A list of C structs holds each struct inline; it appends, extends, copies, clears, indexes and iterates."
+                )
+            );
+        }
+    }
     kind = b.const_int(self.elem_kind(elem, nd), mir_int());
     if name == "append" and len(args) == 1 {
         self.runtime(
@@ -1826,6 +1862,42 @@ impl MirLowering.list_extend_in_place(
         ]
     );
     return current;
+}
+
+impl MirLowering.struct_words(elem: MirType) -> MirValue {
+    b = self.builder();
+    size = self.st().fn.new_value(mir_int());
+    b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=elem));
+    return b.binary(
+        "floordiv",
+        b.binary("add", size, b.const_int(7, mir_int())),
+        b.const_int(8, mir_int())
+    );
+}
+
+impl MirLowering.struct_element(lst: MirValue, index: MirValue) -> MirValue {
+    b = self.builder();
+    elem = lst.type.payload();
+    data = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", self.address_of(lst), b.const_int(16, mir_int()))]
+    );
+    stride = b.binary("mul", self.struct_words(elem), b.const_int(8, mir_int()));
+    return self.emit_value(
+        MirOp.PTR_CAST,
+        mir_c_ptr(elem),
+        [b.binary("add", data, b.binary("mul", b.convert(index, mir_int()), stride))]
+    );
+}
+
+impl MirLowering.struct_push(lst: MirValue, item: MirValue, site: uni.UniNode) {
+    elem = lst.type.payload();
+    at = self.call_rt("__jac_rt_list_push_words", [lst, self.struct_words(elem)]);
+    self.builder().store(
+        self.emit_value(MirOp.PTR_CAST, mir_c_ptr(elem), [at]),
+        self.coerce(item, elem, site)
+    );
 }
 
 impl MirLowering.user_eq_elem(t: MirType) -> bool {

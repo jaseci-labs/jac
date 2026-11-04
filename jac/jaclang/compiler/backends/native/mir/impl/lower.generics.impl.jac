@@ -305,8 +305,7 @@ impl MirLowering.declare_instance(
             raise MirRefused(mir_refusal("function", self.name_of(ab), ab));
         }
         params = [
-            self.symbol_type(pv.name.sym, pv)
-            for pv in self.param_nodes(sig, owner is not None)
+            self.param_type(pv) for pv in self.param_nodes(sig, owner is not None)
         ];
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
             self.ability_sym(ab)

@@ -79,6 +79,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      SORT_TAGGED_KIND: int = 16,
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
+     C_CALLING_CONVENTIONS: dict[str, str] = {"__preserve_none": "preserve_nonecc"},
+     HEAP_ROUTINES: tuple[str, ...] = ("malloc", "calloc", "realloc", "free"),
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
@@ -351,7 +353,8 @@ obj MirDecl {
         event: str = "",
         env: dict[str, TypeBase] = {},
         c_variadic: bool = False,
-        c_symbol: str = "";
+        c_symbol: str = "",
+        cc: str = "";
 }
 
 def mono_symbol_text(text: str) -> str;
@@ -472,6 +475,8 @@ obj MirLowering {
         held: MirValue
     ) -> MirValue;
 
+    def lower_tail_return(nd: uni.ReturnStmt);
+    def c_convention(nd: uni.UniNode) -> str;
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
     def first_iterable(nd: uni.UniNode) -> bool;
@@ -525,6 +530,7 @@ obj MirLowering {
     def variant_unit(mod: uni.Module) -> (uni.Module | None);
     def variant_ability(callee: uni.Ability) -> uni.Ability;
     def variant_glob(nd: uni.Name) -> (uni.Name | None);
+    def glob_assignment_of(nd: uni.Name) -> (uni.Assignment | None);
     def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
     def variant_declaration(declaration: uni.Assignment) -> (uni.Assignment | None);
     def foreign_c_declaration(name: str) -> (uni.Ability | None);
@@ -540,6 +546,7 @@ obj MirLowering {
     def place_elem(place: MirValue) -> MirType;
     def lower_trailer(nd: uni.AtomTrailer) -> MirValue;
     def call_name(nd: uni.FuncCall) -> str;
+    def heap_routine(symbol: str, callee: uni.Ability) -> str;
     def c_extern(
         callee: uni.Ability, site: uni.UniNode
     ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];
@@ -547,6 +554,8 @@ obj MirLowering {
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
     def c_extern_address(nd: uni.Name) -> (MirValue | None);
     def c_param_borrowed(pv: uni.ParamVar) -> bool;
+    def param_type(pv: uni.ParamVar) -> MirType;
+    def lent_struct(arg: uni.Expr, to: MirType) -> (MirValue | None);
     def c_declared_type(
         declared: (TypeBase | None), fallback: (TypeBase | None)
     ) -> (TypeBase | None);
@@ -641,7 +650,7 @@ obj MirLowering {
     def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
     def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
     def c_const_address(expr: uni.Expr) -> MirConst;
-    def c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str;
+    def c_function_symbol(expr: uni.Expr) -> str;
     def c_addressed(nd: uni.FuncCall) -> MirGlobal;
     def c_addressof(nd: uni.FuncCall) -> MirValue;
     def c_global_settle;
@@ -669,6 +678,9 @@ obj MirLowering {
     def tuple_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def tuple_unbox(handle: MirValue, t: MirType) -> MirValue;
     def address_of(value: MirValue) -> MirValue;
+    def struct_words(elem: MirType) -> MirValue;
+    def struct_element(lst: MirValue, index: MirValue) -> MirValue;
+    def struct_push(lst: MirValue, item: MirValue, site: uni.UniNode);
     def container_len(value: MirValue) -> MirValue;
     def list_read(lst: MirValue, index: MirValue) -> MirValue;
     def list_index(lst: MirValue, index: MirValue, message: str) -> MirValue;
@@ -1265,6 +1277,7 @@ obj MirLowering {
         value: MirValue, digits_nd: (uni.Expr | None), site: uni.UniNode
     ) -> MirValue;
 
+    def float_ratio(value: MirValue) -> MirValue;
     def divmod_value(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def power(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def pow_result(site: uni.UniNode) -> MirType;

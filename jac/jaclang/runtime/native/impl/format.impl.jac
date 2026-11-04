@@ -1457,6 +1457,28 @@ impl __jac_rt_int_bit_count(v: int) -> int {
     return count;
 }
 
+impl __jac_rt_float_ratio_den(v: float) -> int {
+    if v != v {
+        return -1;
+    }
+    if v - v != 0.0 {
+        return 0;
+    }
+    den = 1;
+    scaled = v;
+    while not __jac_rt_float_is_integer(scaled) {
+        if den >= 4611686018427387904 {
+            return -2;
+        }
+        scaled = scaled * 2.0;
+        den = den * 2;
+    }
+    if scaled >= 9223372036854775808.0 or scaled < -9223372036854775808.0 {
+        return -2;
+    }
+    return den;
+}
+
 impl __jac_rt_float_is_integer(v: float) -> bool {
     if v != v or v - v != 0.0 {
         return False;

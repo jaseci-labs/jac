@@ -822,6 +822,10 @@ impl CtEvaluator._eval_symbol(sym: Symbol, use: UniNode) -> CtValue {
                     return self._enum_member_of(par);
                 }
                 if par.is_comptime {
+                    twin = variant_assignment(self.evaluator.program, par, node_.value);
+                    if twin is not None and twin.is_comptime {
+                        return self._eval_binding(twin);
+                    }
                     return self._eval_binding(par);
                 }
                 if self._is_comptime_glob(par, node_.value) {

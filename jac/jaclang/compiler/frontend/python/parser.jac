@@ -7755,8 +7755,8 @@ def:priv _rule_dict(p: peg_parser) -> expr | None {
             end_col_offset = end_tok.end_col_offset;
             res = Dict(
                 keys=(
-                    pa_check(pa_get_keys(a)) as list[expr]
-                        if pa_check(pa_get_keys(a)) as list[expr] is not None
+                    pa_check(pa_get_keys(a)) as list[expr | None]
+                        if pa_check(pa_get_keys(a)) as list[expr | None] is not None
                         else []
                 ),
                 values=(
