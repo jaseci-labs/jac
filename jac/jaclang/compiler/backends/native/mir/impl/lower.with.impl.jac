@@ -345,8 +345,17 @@ impl MirLowering.lower_switch(nd: uni.SwitchStmt) {
     if not reached {
         b.branch(done);
     }
-    resume = self.st().loops[-1].head if self.st().loops else done;
-    self.st().loops.append(MirLoopTarget(head=resume, after=done));
+    loops = self.st().loops;
+    resume = loops[-1].head if loops else done;
+    depth = -1;
+    if loops {
+        depth = loops[-1].continue_depth
+            if loops[-1].continue_depth >= 0
+            else len(loops);
+    }
+    self.st().loops.append(
+        MirLoopTarget(head=resume, after=done, continue_depth=depth)
+    );
     for (index, arm) in enumerate(arms) {
         b.position(bodies[index]);
         self.lower_body(arm.body);

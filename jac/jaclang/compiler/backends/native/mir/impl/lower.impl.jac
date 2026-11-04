@@ -1242,7 +1242,9 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
         raise MirRefused(mir_refusal("statement", nd.ctrl.value, nd));
     }
     target = self.st().loops[-1];
-    if nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
+    if nd.ctrl.name == Tok.KW_CONTINUE and target.continue_depth >= 0 {
+        self.leave_tries(target.continue_depth);
+    } elif nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
         self.leave_tries(len(self.st().loops));
     }
     if nd.ctrl.name == Tok.KW_BREAK {

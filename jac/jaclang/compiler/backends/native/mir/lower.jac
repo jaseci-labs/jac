@@ -277,7 +277,8 @@ obj MirWithExit {
 
 obj MirLoopTarget {
     has head: MirBlock,
-        after: MirBlock;
+        after: MirBlock,
+        continue_depth: int = -1;
 }
 
 obj MirIterCursor {
