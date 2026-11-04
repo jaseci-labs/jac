@@ -563,7 +563,26 @@ impl MirLowering.symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> Mir
 }
 
 impl MirLowering.expr_type(nd: uni.Expr) -> MirType {
-    return self.type_of(nd.type, MirPosition.VALUE, nd);
+    made = self.type_of(nd.type, MirPosition.VALUE, nd);
+    if made.kind == MirKind.TUPLE and not made.args and self.narrowed_from_any(nd) {
+        return mir_any();
+    }
+    return made;
+}
+
+impl MirLowering.narrowed_from_any(nd: uni.Expr) -> bool {
+    if not isinstance(nd, uni.Name) or nd.sym is None {
+        return False;
+    }
+    declared = self.prog.get_type_evaluator().get_type_of_symbol(nd.sym);
+    if isinstance(declared, AnyType) {
+        return True;
+    }
+    try {
+        return self.symbol_type(nd.sym, nd).kind == MirKind.ANY;
+    } except MirRefused {
+        return False;
+    }
 }
 
 impl MirLowering.lower_body(stmts: Sequence[uni.UniNode]) {
@@ -1601,6 +1620,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         target = nd.sym.decl.parent
             if nd.sym is not None and nd.sym.decl is not None
             else None;
+        target = self.absorbed_ability(nd) or target;
         if isinstance(target, uni.Ability)
             and isinstance(target.parent, uni.Module)
             and target.parent is not self.module
@@ -2476,7 +2496,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.intrinsic_call(nd, nd.target.value);
     }
     if callee is None and isinstance(nd.target, uni.Name) {
-        callee = self.stdlib_member(nd.target);
+        callee = self.stdlib_member(nd.target) or self.absorbed_ability(nd.target);
     }
     if isinstance(callee, uni.Ability) {
         callee = self.variant_ability(self.live_member(callee));
@@ -5048,10 +5068,31 @@ impl MirLowering.coerce_place(place: MirValue) -> MirValue {
     return self.emit_value(MirOp.PTR_CAST, mir_c_ptr(place.type), [place]);
 }
 
+impl MirLowering.origin_symbol(sym: uni.Symbol) -> uni.Symbol {
+    origin = sym;
+    for _ in range(16) {
+        if origin.imported_from is None or origin.imported_from is origin {
+            break;
+        }
+        origin = origin.imported_from;
+    }
+    return origin;
+}
+
+impl MirLowering.absorbed_ability(nd: uni.Name) -> (uni.Ability | None) {
+    if nd.sym is None or nd.sym.imported_from is None {
+        return None;
+    }
+    decl = self.origin_symbol(nd.sym).decl;
+    found = decl.parent if decl is not None else None;
+    return found if isinstance(found, uni.Ability) else None;
+}
+
 impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) {
-    child: (uni.UniNode | None) = sym.decl;
-    if sym.imported {
-        child = uni.resolved_decl_of(sym) or sym.decl;
+    origin = self.origin_symbol(sym);
+    child: (uni.UniNode | None) = origin.decl;
+    if origin.imported {
+        child = uni.resolved_decl_of(origin) or origin.decl;
     }
     cursor: (uni.UniNode | None) = child.parent if child is not None else None;
     while cursor is not None and not isinstance(cursor, uni.Assignment) {
@@ -5139,8 +5180,16 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
         return self.declare_c_global(c_assign);
     }
     declaration = self.global_declaration(sym);
+    typed_by: uni.Symbol = sym;
     if declaration is None {
-        return None;
+        declaration = self.variant_import_declaration(nd);
+        if declaration is None {
+            return None;
+        }
+        defined = declaration.target[0] if declaration.target else None;
+        if isinstance(defined, uni.Name) and defined.sym is not None {
+            typed_by = defined.sym;
+        }
     }
     owner = declaration.find_parent_of_type(uni.Module);
     if owner is not None
@@ -5165,7 +5214,7 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
             held = MirGlobal(
                 name=sym.sym_name,
                 symbol=symbol,
-                type=self.symbol_type(sym, nd),
+                type=self.symbol_type(typed_by, nd),
                 linkage="external"
             );
             self.mir.globals[symbol] = held;
@@ -5203,7 +5252,7 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
             made.int_value = 1 if folded.value else 0;
         } elif isinstance(initial, uni.Expr) {
             self.deferred_globals.append((made, initial));
-        } else {
+        } elif initial is not None {
             raise MirRefused(
                 mir_refusal("global initializer", sym.sym_name, declaration)
             );
@@ -5479,6 +5528,24 @@ impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
 }
 
 impl MirLowering.missing_import_of(item: uni.ModuleItem) -> (str | None) {
+    bound = self.import_source_unit(item);
+    if bound is None {
+        return None;
+    }
+    wanted = item.name.value;
+    for held in (bound, self.variant_unit(bound)) {
+        if held is not None
+            and (
+                wanted in held.names_in_scope or wanted in held.names_in_scope_overload
+            ) {
+            return None;
+        }
+    }
+    source = item.parent.from_loc if isinstance(item.parent, uni.Import) else None;
+    return source.dot_path_str if isinstance(source, uni.ModulePath) else None;
+}
+
+impl MirLowering.import_source_unit(item: uni.ModuleItem) -> (uni.Module | None) {
     if not isinstance(item.parent, uni.Import) {
         return None;
     }
@@ -5506,14 +5573,26 @@ impl MirLowering.missing_import_of(item: uni.ModuleItem) -> (str | None) {
             path, importer_path=self.module.loc.mod_path, need_tree=True
         );
     }
-    if not isinstance(bound, uni.Module) {
+    return bound if isinstance(bound, uni.Module) else None;
+}
+
+impl MirLowering.variant_import_declaration(nd: uni.Name) -> (uni.Assignment | None) {
+    item = self.import_item_of(nd);
+    if item is None {
         return None;
     }
-    wanted = item.name.value;
-    if wanted in bound.names_in_scope or wanted in bound.names_in_scope_overload {
+    bound = self.import_source_unit(item);
+    if bound is None
+        or item.name.value in bound.names_in_scope
+        or item.name.value in bound.names_in_scope_overload {
         return None;
     }
-    return source.dot_path_str;
+    twin = self.variant_unit(bound);
+    found = self.module_member(twin, item.name.value) if twin is not None else None;
+    if isinstance(found, uni.Assignment) and isinstance(found.parent, uni.GlobalVars) {
+        return found;
+    }
+    return None;
 }
 
 impl MirLowering.lower_discarded(nd: uni.Expr) {

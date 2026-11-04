@@ -485,6 +485,7 @@ obj MirLowering {
     def builder -> MirBuilder;
     def symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> MirType;
     def expr_type(nd: uni.Expr) -> MirType;
+    def narrowed_from_any(nd: uni.Expr) -> bool;
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
     def drop_consumed_args(nd: uni.FuncCall);
@@ -695,11 +696,15 @@ obj MirLowering {
     def c_const_lost(made: MirConst) -> str;
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
+    def origin_symbol(sym: uni.Symbol) -> uni.Symbol;
+    def absorbed_ability(nd: uni.Name) -> (uni.Ability | None);
     def entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool;
     def import_item_of(nd: uni.Name) -> (uni.ModuleItem | None);
     def refuse_missing_import(nd: uni.Name);
     def missing_import(nd: uni.Name) -> (str | None);
     def missing_import_of(item: uni.ModuleItem) -> (str | None);
+    def import_source_unit(item: uni.ModuleItem) -> (uni.Module | None);
+    def variant_import_declaration(nd: uni.Name) -> (uni.Assignment | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;
