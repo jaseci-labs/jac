@@ -15274,7 +15274,6 @@ graph import runtime.native {
         anys {
             __jac_rt_str_cmp,
             __jac_rt_str_concat,
-            __jac_rt_str_len,
             __jac_rt_str_new,
             __jac_rt_str_size
         },
@@ -15292,6 +15291,7 @@ graph import runtime.native {
             __jac_rt_sb_int,
             __jac_rt_sb_new,
             __jac_rt_str_contains,
+            __jac_rt_str_cp_total,
             __jac_rt_str_index,
             __jac_rt_str_repeat,
             __jac_rt_str_repr,

@@ -1,6 +1,6 @@
 glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_str_cmp": ["int", "ptr", "int", "ptr", "int"],
-         "__jac_rt_str_len": ["int", "ptr", "ptr", "int"],
+         "__jac_rt_str_cp_total": ["int", "ptr", "ptr", "int"],
          "__jac_rt_str_new": ["str.ref", "ptr", "int"],
          "__jac_rt_list_lend": ["none", "ref"],
          "__jac_rt_str_concat": ["str.ref", "ptr", "int", "ptr", "int"],
@@ -12,7 +12,6 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_byte_single": ["ref", "int"],
          "__jac_rt_bytes_from_ints": ["ref", "ref", "bool"],
          "__jac_rt_unbound_check": ["none", "bool", "i32", "ptr"],
-         "__jac_rt_str_char_at": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_list_new": ["ref", "int", "int"],
          "__jac_rt_tuple_new": ["ref", "int"],
          "__jac_rt_tuple_set": ["none", "ref", "int", "int", "int"],

@@ -3292,7 +3292,7 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if value.type.kind == MirKind.STR {
             b = self.builder();
             counted = self.runtime(
-                "__jac_rt_str_len",
+                "__jac_rt_str_cp_total",
                 [
                     b.str_part(value, "root"),
                     b.str_part(value, "data"),
