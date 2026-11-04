@@ -31,6 +31,10 @@ on:
     types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
+  # The merge queue is the gate a pull request's run is not: a queued run is
+  # not a pull_request event, so its kit seals the native kernel and every
+  # lane runs, as on main.
+  merge_group:
 
 # Adding a label CI never reads (one outside the list below, which the
 # `changes` job repeats) must neither rerun the suites nor cancel the run in
@@ -63,13 +67,14 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
-      kernel: ${{ steps.filter.outputs.kernel }}
-      js_engine: ${{ steps.filter.outputs.js_engine }}
+      js_engine: ${{ steps.lanes.outputs.js_engine }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
       - uses: actions/checkout@v5
+      # A merge-group run takes every lane, so it has nothing to filter.
       - uses: dorny/paths-filter@v3
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           filters: |
@@ -104,17 +109,11 @@ jobs:
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
               - '.github/workflows/_installer.yml'
-            # Whatever the engine is or is lowered by: its sources, the whole
-            # compiler (frontend and passes decide layout and dispatch, not
-            # only the native backend), the native stdlib and toolchain, and
-            # the lane's own definition.
+            # The engine's own sources and the lane's definition. A change to
+            # what lowers the engine (the compiler, the native stdlib, the
+            # toolchain) runs the lane in the merge queue instead.
             js_engine:
               - 'jac/js_engine/**'
-              - 'jac/jaclang/compiler/**'
-              - 'jac/jaclang/runtime/na_stdlib/**'
-              - 'jac/native/**'
-              - 'jac/build.zig'
-              - 'jac/build.zig.zon'
               - '.github/workflows/_js_engine.yml'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
             # path that can move them changes (or on push/dispatch). The darwin
@@ -143,49 +142,22 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
-            # Sources the native compiler kernel is lowered from, plus the
-            # compiler that lowers them. A pull request touching any of them
-            # seals the kernel in build-kit, as the `native:kernel` label does:
-            # its kit otherwise skips the seal and the break lands on main.
-            kernel:
-              - 'jac/jaclang/compiler/**'
-              - 'jac/jaclang/runtime/na_stdlib/**'
-              - 'jac/jaclang/runtime/constants.jac'
-              - 'jac/jaclang/runtime/osp_graph.jac'
-              - 'jac/jaclang/runtime/osp_kernel.jac'
-              - 'jac/jaclang/runtime/osp_tag.jac'
-              - 'jac/jaclang/runtime/portability.jac'
-              - 'jac/jaclang/runtime/region_native.jac'
-              - 'jac/jaclang/runtime/scalars.jac'
-              - 'jac/jaclang/runtime/semantic.jac'
-              - 'jac/jaclang/runtime/surface.jac'
-              - 'jac/jaclang/runtime/impl/constants.impl.jac'
-              - 'jac/jaclang/runtime/impl/osp_graph.impl.jac'
-              - 'jac/jaclang/runtime/impl/osp_kernel.impl.jac'
-              - 'jac/jaclang/runtime/impl/osp_tag.impl.jac'
-              - 'jac/jaclang/runtime/impl/portability.impl.jac'
-              - 'jac/jaclang/runtime/impl/region_native.impl.jac'
-              - 'jac/jaclang/runtime/impl/scalars.impl.jac'
-              - 'jac/jaclang/runtime/impl/semantic.impl.jac'
-              - 'jac/jaclang/runtime/impl/surface.impl.jac'
-              - 'jac/jaclang/project/app_kinds.jac'
-              - 'jac/jaclang/project/mobui_scope.jac'
-              - 'jac/jaclang/project/source.jac'
-              - 'jac/jaclang/project/workspace_model.jac'
-              - 'jac/jaclang/project/impl/app_kinds.impl.jac'
-              - 'jac/jaclang/project/impl/mobui_scope.impl.jac'
-              - 'jac/jaclang/project/impl/source.impl.jac'
-              - 'jac/jaclang/project/impl/workspace_model.impl.jac'
-              - 'jac/jaclang/client/client_surface.jac'
-              - 'jac/jaclang/client/targets/react_native/html_tag_map.jac'
-              - 'jac/jaclang/archwire.jac'
-              - 'jac/jaclang/artifacts/kit.jac'
-              - 'jac/jaclang/artifacts/impl/kit.impl.jac'
-              - 'jac/jaclang/dist/precompile_bytecode.jac'
-              - 'jac/jaclang/dist/impl/precompile_bytecode.impl.jac'
-              - 'jac/native/**'
-              - 'jac.toml'
-              - '.github/actions/setup-jac/action.yml'
+
+      # Whether the js-engine lane runs. The lane is gated on it, and build-kit
+      # reads it to hand that lane its build inputs.
+      - name: Decide the js-engine lane
+        id: lanes
+        env:
+          EVENT: ${{ github.event_name }}
+          ENGINE_PATHS: ${{ steps.filter.outputs.js_engine }}
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'native:js-engine') }}
+        run: |
+          run=false
+          case "$EVENT" in
+            workflow_dispatch|merge_group) run=true ;;
+            pull_request) if [ "$ENGINE_PATHS" = true ] || [ "$LABELED" = true ]; then run=true; fi ;;
+          esac
+          echo "js_engine=$run" >> "$GITHUB_OUTPUT"
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -195,12 +167,12 @@ jobs:
     # A pull request's kit carries no native compiler kernel: the compiler
     # runs from the bytecode the same build precompiles, which is the path a
     # kernel build itself compiles through. The kernel is most of a kit's build
-    # time and a pull request rarely changes what it does. Main, nightly and
-    # release kits build it, and so does a pull request carrying the
-    # `native:kernel` label (adding the label starts a new run) or touching a
-    # path in the `kernel` filter. setup-jac turns that into JAC_KIT_OMIT, the
-    # only thing the seal reads (artifacts/kit.jac pr_kit_omits), and the kit's
-    # manifest records the omission for the runtime to read.
+    # time, and a pull request is pushed several times before it merges. The
+    # merge queue, main, nightly and release kits build it, and so does a pull
+    # request carrying the `native:kernel` label (adding the label starts a new
+    # run). setup-jac turns that into JAC_KIT_OMIT, the only thing the seal
+    # reads (artifacts/kit.jac pr_kit_omits), and the kit's manifest records
+    # the omission for the runtime to read.
     needs: changes
     steps:
       - uses: actions/checkout@v5
@@ -227,7 +199,6 @@ jobs:
           # source-built interpreter and its native compiler object. A binary
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
-          native-kernel: ${{ needs.changes.outputs.kernel }}
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -368,6 +339,26 @@ jobs:
           name: jac-precompiled
           path: jac/.precompiled-build/jacpython
           include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      # js-engine's own `zig build` runs on this kit's JacPython runtime and
+      # LLVM shim; without them it lowers both again. A tarball, because an
+      # artifact drops the runtime's executable bits.
+      - name: Pack the build inputs for js-engine
+        if: needs.changes.outputs.js_engine == 'true'
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          tar -cf "$RUNNER_TEMP/jac-build-inputs.tar" .python-build/jacpython \
+            jaclang/compiler/backends/native/llvm/libjacllvm.*
+
+      - name: Upload the build inputs for js-engine
+        if: needs.changes.outputs.js_engine == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-build-inputs
+          path: ${{ runner.temp }}/jac-build-inputs.tar
           retention-days: 1
           if-no-files-found: error
 
@@ -1810,14 +1801,16 @@ jobs:
 
   # The js_engine accelerator's lane: build it, install it, and hold the
   # official binary to using it (node suite, a client build, test262). On a
-  # pull request that changes the engine or anything that compiles it (the
-  # `js_engine` filter), one carrying the `native:js-engine` label, or a
-  # manual run; nightly.yml runs it too. Everything Passed needs it, so a
-  # pull request it runs on cannot merge with the engine broken.
+  # pull request that changes the engine (the `js_engine` filter) or carries
+  # the `native:js-engine` label, in the merge queue, or on a manual run;
+  # nightly.yml runs it too. Everything Passed needs it, so nothing merges
+  # with the engine broken. It builds on this run's kit instead of its own.
   js-engine:
-    needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
+    needs: [changes, build-kit]
+    if: ${{ needs.changes.outputs.js_engine == 'true' }}
     uses: ./.github/workflows/_js_engine.yml
+    with:
+      kit: true
   # JacPython's conformance gates on this run's kit: the native compiler is
   # the interpreter's `compile`, the code-object boundary holds, and every
   # ported module and frontend suite passes its pinned upstream tests. The
