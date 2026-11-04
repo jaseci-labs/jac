@@ -385,6 +385,7 @@ obj MirLowering {
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         entry_globals: dict[int, set[int]] = {},
         missing_imports: dict[int, (str | None)] = {},
+        ctor_keyword_only: dict[str, set[str]] = {},
         class_inits: list[tuple[int, str]] = [],
         class_global_refusals: dict[str, MirRefused] = {},
         nested: list[MirFunction] = [],
@@ -935,6 +936,11 @@ obj MirLowering {
     def nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None);
     def default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None);
     def default_value(expr: uni.Expr, to: MirType) -> MirValue;
+    def field_default_of(var: uni.HasVar) -> (uni.Expr | None);
+    def default_holder(expr: uni.Expr) -> (uni.UniNode | None);
+    def is_field_factory(expr: uni.Expr) -> bool;
+    def field_expr_value(expr: uni.Expr, to: MirType) -> MirValue;
+    def field_factory_value(factory: uni.Expr, to: MirType) -> MirValue;
     def default_thunks(arch: uni.Archetype) -> list[MirFunction];
     def function_default_thunks -> list[MirFunction];
     def make_default_thunks(defaults: list[uni.Expr]) -> list[MirFunction];

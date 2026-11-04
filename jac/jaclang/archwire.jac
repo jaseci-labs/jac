@@ -6296,11 +6296,12 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
             positional_field_names
         },
-        backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
-        passes.type_checker_pass.TypeCheckPass.exit_has_var
+        backends.native.mir.lower
+            | passes.type_checker_pass.TypeCheckPass.exit_has_var
             | types.type_evaluator.TypeEvaluator._build_field_params {
             field_initialization
         },
+        backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
     ]
     frontend.codeinfo ++> [
         backends.es.client_kernel_cache._es_backend_fingerprint
