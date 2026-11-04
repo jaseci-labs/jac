@@ -231,8 +231,7 @@ def dict_elem_drops(n: int) -> int {
     mid = dropped - before;
     total = 0;
     for i in range(n) {
-        v = d[i + 1];
-        total += v.tag;
+        total += d[i + 1].tag;
     }
     d = {};
     after = dropped - before;

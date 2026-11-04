@@ -70,6 +70,9 @@ def loose(n: int) -> int {
     for i in range(n) {
         r = Room(tag=i);
     }
+    # A local keeps its last value until it is rebound or deleted, as in
+    # Python: drop that last reference before reading the count.
+    del r;
     return nodes_dropped;
 }
 
@@ -84,10 +87,17 @@ def held(n: int) -> int {
     for r in [hub-->][?:Room] {
         total += r.tag;
     }
-    # Locals are released after their last use: read the count while `hub`
-    # is still in use.
+    # Read the count while `hub` still holds its graph.
     seen = nodes_dropped;
     return seen * 1000 + total + hub.tag;
+}
+
+"""Disconnect every room `hub` reaches through a Door; the loop variable
+dies with this frame."""
+def cut_rooms(hub: Room) {
+    for r in [hub->:Door:->][?:Room] {
+        hub del --> r;
+    }
 }
 
 """Disconnecting releases a target nothing else refers to, and its edge."""
@@ -98,9 +108,7 @@ def cut(n: int) -> int {
         hub +>:Door(w=i):+> Room(tag=i);
     }
     before = nodes_dropped + edges_dropped;
-    for r in [hub->:Door:->][?:Room] {
-        hub del --> r;
-    }
+    cut_rooms(hub);
     count = len([hub-->]);
     return before * 10000 + count * 1000 + nodes_dropped * 10 + edges_dropped;
 }
@@ -118,12 +126,7 @@ def kept_by_variable -> int {
 """Destroying a subgraph reclaims its nodes and edges."""
 def destroy_tree(n: int) -> int {
     reset();
-    hub = Room(tag=0);
-    for i in range(n) {
-        mid = Room(tag=i);
-        hub +>:Door():+> mid;
-        mid +>:Door():+> Room(tag=i);
-    }
+    hub = build_tree(n);
     for m in [hub->:Door:->][?:Room] {
         for leaf in [m->:Door:->][?:Room] {
             del leaf;
@@ -166,12 +169,19 @@ def edges_held -> int {
     a = Room();
     b = Room();
     a +>:Door(w=7):+> b;
+    total = door_weights(a);
+    a del --> b;
+    return total * 100 + edges_dropped;
+}
+
+"""Sum the weights of the Door edges leaving `a`, reading each edge object
+back from the graph; the loop variable dies with this frame."""
+def door_weights(a: Room) -> int {
     total = 0;
     for e in [edge a->:Door:->] {
         total += e.w;
     }
-    a del --> b;
-    return total * 100 + edges_dropped;
+    return total;
 }
 
 """A node address freed and reused starts with a clean graph entry."""

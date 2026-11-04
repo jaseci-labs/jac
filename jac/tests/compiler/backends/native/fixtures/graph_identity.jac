@@ -59,6 +59,14 @@ def cut_ids(n: int) -> int {
     return len(seen) + hub.tag;
 }
 
+"""Note the jid of every edge from `a` to `b`; the loop variable dies with
+this frame, so the caller holds no edge."""
+def note_edges(seen: list[str], a: Room, b: Room) {
+    for e in [edge a->:Door:->b] {
+        note(seen, jid(e));
+    }
+}
+
 """An edge freed by a disconnect takes its jid with it."""
 def edge_ids(n: int) -> int {
     reset();
@@ -67,9 +75,7 @@ def edge_ids(n: int) -> int {
     seen: list[str] = [];
     for i in range(n) {
         a +>:Door(w=i):+> b;
-        for e in [edge a->:Door:->b] {
-            note(seen, jid(e));
-        }
+        note_edges(seen, a, b);
         a del --> b;
     }
     return len(seen) * 1000 + edges_dropped + (a.tag + b.tag) * 0;
@@ -123,6 +129,8 @@ def endpoint_balance(n: int) -> int {
         hub del --> k;
     }
     kids.clear();
+    # `k` still holds the last kid, as a Python local would: let it go.
+    del k;
     return hits * 10000 + early * 1000 + nodes_dropped * 10 + edges_dropped + hub.tag;
 }
 
