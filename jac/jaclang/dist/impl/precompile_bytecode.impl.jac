@@ -513,12 +513,7 @@ impl precompile_unit_context(
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
-    previous = get_effective_default_codespace_override();
-    codespace = _served_codespace(pkg_root);
-    if codespace {
-        set_effective_default_codespace(codespace);
-    }
-    try {
+    with served_codespace(pkg_root) {
         selected = precompile_context(jac_path, pkg_root, program, source_app);
         compiler.unit_collect = collect;
         owner_options = owner_scope_options(selected);
@@ -536,6 +531,17 @@ impl precompile_unit_context(
                 maybe_malloc_trim();
             }
         }
+    }
+}
+
+impl served_codespace(pkg_root: str) -> Iterator[None] {
+    previous = get_effective_default_codespace_override();
+    codespace = _served_codespace(pkg_root);
+    if codespace {
+        set_effective_default_codespace(codespace);
+    }
+    try {
+        yield;
     } finally {
         set_effective_default_codespace(previous);
     }
@@ -1055,13 +1061,15 @@ impl seal_finalize(
     identity = compiler_identity();
     _phase("completeness check");
     foreign: list[str] = [];
-    for p in sealable_sources(str(pkg_path), app) {
-        rel = Path(p).relative_to(pkg_path);
-        jir = precompiled_dir / pyver / rel.with_suffix(".jir");
-        if not precompiled_jir_matches_source(
-            jir.read_bytes(), p, identity, str(pkg_path)
-        ) {
-            foreign.append(str(rel));
+    with served_codespace(str(pkg_path)) {
+        for p in sealable_sources(str(pkg_path), app) {
+            rel = Path(p).relative_to(pkg_path);
+            jir = precompiled_dir / pyver / rel.with_suffix(".jir");
+            if not precompiled_jir_matches_source(
+                jir.read_bytes(), p, identity, str(pkg_path)
+            ) {
+                foreign.append(str(rel));
+            }
         }
     }
     if foreign {
