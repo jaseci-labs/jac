@@ -1566,6 +1566,14 @@ obj MirLowering {
     def class_name_str(value: MirValue) -> MirValue;
     def is_template(ab: uni.Ability) -> bool;
     def template_of(ab: uni.Ability) -> bool;
+    def stamp_instance(
+        ab: uni.Ability,
+        owner: (uni.Archetype | None),
+        solution: dict[str, TypeBase],
+        site: uni.UniNode
+    ) -> MirDecl;
+
+    def template_value(nd: uni.Name, ab: uni.Ability) -> (MirValue | None);
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
     def stdlib_unit(scope: (uni.UniScopeNode | None)) -> (uni.Module | None);
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);

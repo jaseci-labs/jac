@@ -1532,6 +1532,16 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         if place is not None {
             return self.builder().load(place, self.place_elem(place));
         }
+        named_ab = nd.sym.decl.parent
+            if nd.sym is not None and nd.sym.decl is not None
+            else None;
+        if isinstance(named_ab, uni.Ability)
+            and (id(named_ab) in self.templates or self.template_of(named_ab)) {
+            stamped = self.template_value(nd, named_ab);
+            if stamped is not None {
+                return stamped;
+            }
+        }
         decl = self.decls.get(self.decl_syms.get(id(nd.sym), -1))
             if nd.sym is not None
             else None;
