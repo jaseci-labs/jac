@@ -1345,22 +1345,6 @@ def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
-"""SIGKILL a started server's whole process group, workers included.
-
-Worker children inherit the harness's stdout and stderr pipes, so killing
-only the master orphans the workers: they keep running and hold the pipes
-open, and any later communicate() blocks on an EOF that never comes. The
-server is launched in its own session, so the group kill reaches every
-worker. Falls back to the single-process kill when the group is gone.
-"""
-def _kill_process_group(server: subprocess.Popen) -> None {
-    try {
-        os.killpg(server.pid, signal.SIGKILL);
-    } except OSError {
-        server.kill();
-    }
-}
-
 def setup_dev_mode_server -> subprocess.Popen {
     if not dm_test_file.exists() {
         raise FileNotFoundError(f"Test fixture not found: {dm_test_file}");
