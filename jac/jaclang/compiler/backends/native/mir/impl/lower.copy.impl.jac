@@ -9,6 +9,18 @@ impl MirLowering.copy_kind(nd: uni.FuncCall) -> str {
         and target.target.type.mod_name == "copy" {
         return target.right.value;
     }
+    declared = target.sym.decl
+        if isinstance(target, uni.Name) and target.sym is not None
+        else None;
+    if isinstance(target, uni.Name)
+        and declared is not None
+        and declared.loc is not None
+        and os.path.basename(declared.loc.mod_path) in ("copy.pyi", "copy.py") {
+        named = declared.value if isinstance(declared, uni.Name) else target.value;
+        if named in ("copy", "deepcopy") {
+            return named;
+        }
+    }
     callee = nd.callee_decl;
     if isinstance(target, uni.Name)
         and isinstance(callee, uni.Ability)
