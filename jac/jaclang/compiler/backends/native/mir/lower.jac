@@ -1615,6 +1615,8 @@ obj MirLowering {
         arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
     ) -> (MirValue | None);
 
+    def class_attr_overrides(arch: uni.Archetype, name: str) -> list[uni.Archetype];
+    def has_class_attr(arch: uni.Archetype, name: str) -> bool;
     def class_dispatch(
         arch: uni.Archetype,
         name: str,

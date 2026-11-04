@@ -412,12 +412,7 @@ impl MirLowering.class_dispatch(
     matches: Callable[[uni.Archetype], MirValue]
 ) -> (MirValue | None) {
     base = self.class_attr_entry(arch, name);
-    overrides = [
-        sub
-        for sub in self.subclass_archetypes(arch)
-        if self.class_attr_entry(sub, name) is not None
-            and (base is None or self.class_attr_entry(sub, name)[2] is not base[2])
-    ];
+    overrides = self.class_attr_overrides(arch, name);
     if base is None and not overrides {
         return None;
     }
@@ -453,6 +448,23 @@ impl MirLowering.class_dispatch(
     return b.load(result, wanted);
 }
 
+impl MirLowering.class_attr_overrides(
+    arch: uni.Archetype, name: str
+) -> list[uni.Archetype] {
+    base = self.class_attr_entry(arch, name);
+    return [
+        sub
+        for sub in self.subclass_archetypes(arch)
+        if self.class_attr_entry(sub, name) is not None
+            and (base is None or self.class_attr_entry(sub, name)[2] is not base[2])
+    ];
+}
+
+impl MirLowering.has_class_attr(arch: uni.Archetype, name: str) -> bool {
+    return self.class_attr_entry(arch, name) is not None
+        or bool(self.class_attr_overrides(arch, name));
+}
+
 impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_attr
         or not isinstance(nd.right, uni.Name)
@@ -465,7 +477,7 @@ impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
         bound = self.class_bound(nd.target.type)
             if isinstance(nd.target.type, ClassType)
             else None;
-        if bound is None {
+        if bound is None or not self.has_class_attr(bound, nd.right.value) {
             return None;
         }
         word = self.spill(self.lower_expr(nd.target));
@@ -489,7 +501,8 @@ impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if var is not None and not (group is not None and group.is_static) {
         return None;
     }
-    if self.object_def(arch).field(name) is not None {
+    if self.object_def(arch).field(name) is not None
+        or not self.has_class_attr(arch, name) {
         return None;
     }
     held = self.spill(self.lower_expr(nd.target));
