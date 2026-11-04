@@ -211,8 +211,8 @@ impl CompileOptions.module_projection -> str {
 impl CompileOptions.keeps_interfaces -> bool {
     return not (
         self.aot_mode
-            or bool(self.force_codespace)
-            or self.default_codespace == 'native'
+        or bool(self.force_codespace)
+        or self.default_codespace == 'native'
     );
 }
 

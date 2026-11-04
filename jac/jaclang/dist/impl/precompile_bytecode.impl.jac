@@ -541,7 +541,7 @@ impl served_codespace(pkg_root: str) -> Iterator[None] {
         set_effective_default_codespace(codespace);
     }
     try {
-        yield;
+        yield ;
     } finally {
         set_effective_default_codespace(previous);
     }
