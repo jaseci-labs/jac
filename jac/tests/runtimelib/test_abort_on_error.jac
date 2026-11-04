@@ -8,9 +8,12 @@ walker's work still persists (positive control).
 
 import asyncio;
 import json;
+import os;
 import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from jaclang.runtime.context { ExecutionContext }
+import from jaclang.server.session { RO_UNITS_ENV }
 import from jaclang.testing.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
@@ -104,9 +107,25 @@ test "successful walker still persists (positive control)" {
 }
 
 
-"""An answer to a failed late write is final on every endpoint, so a retry with
-the same key replays it. A failed first commit saved nothing, so a retry runs."""
-test "a failed late write replays under its idempotency key; a failed first commit re-runs" {
+obj LateCase {
+    has label: str,
+        via: str = "walker",
+        body: dict[str, any] = {},
+        own_session: bool = False,
+        read_tier: bool = False,
+        status: int = 500,
+        code: str = "FAILED_AFTER_COMMIT",
+        runs: int = 1,
+        callbacks: int = 1,
+        saved: int = 1;
+}
+
+
+"""A failure after a request's first commit is its final answer: each row is sent
+twice with one key, the walker never re-runs and the retry replays the answer, while
+a callback's error from another database connection stays logged. A failed first
+commit saved nothing, so its retry runs."""
+test "a failure after the first commit is answered once and replayed, never re-run" {
     import from jaclang.server.endpoints.colocated {
         _function_callback,
         _walker_callback
@@ -115,6 +134,72 @@ test "a failed late write replays under its idempotency key; a failed first comm
     import from jaclang.server.serving.datatypes { Headers, JSONResponse, Request }
     import from jaclang.server.transport { TransportResponse }
     bad = f"a{chr(0)}b";
+    refused = {"late": bad, "status": 429};
+    cases = [
+        LateCase("clean", status=200, code="", saved=2),
+        LateCase("bad late write, after respond(429)", body=refused),
+        LateCase("function", via="function", body=refused),
+        # Colocated callbacks run off this user's root, so its count stays put.
+        LateCase("colocated walker", via="colocated walker", body=refused, saved=0),
+        LateCase("colocated function", via="colocated function", body=refused, saved=0),
+        LateCase("late write loses to a rival", body={"fault": "rival"}),
+        LateCase("error on this connection", body={"fault": "own_db"}),
+        LateCase(
+            "error on another connection",
+            body={"fault": "other_db"},
+            status=200,
+            code=""
+        ),
+        LateCase("conflict in the callback", body={"fault": "conflict"}),
+        LateCase(
+            "read tier retry in the callback",
+            body={"fault": "read_tier"},
+            status=200,
+            code=""
+        ),
+        LateCase(
+            "a callback's callback is dropped with the failed write",
+            body={"fault": "chain", "late": bad},
+            own_session=True
+        ),
+        LateCase("getter raises while serializing", via="peek", callbacks=0),
+        LateCase(
+            "late write on the read tier re-runs as a writer",
+            via="read tier",
+            read_tier=True,
+            status=200,
+            code="",
+            runs=2,
+            callbacks=2
+        ),
+        LateCase(
+            "first commit fails",
+            body={"first": bad},
+            own_session=True,
+            code="EXECUTION_ERROR",
+            runs=2,
+            callbacks=0,
+            saved=0
+        ),
+        LateCase(
+            "first commit fails, colocated",
+            via="colocated walker",
+            body={"first": bad},
+            code="EXECUTION_ERROR",
+            runs=2,
+            callbacks=0,
+            saved=0
+        )
+    ];
+    async def own_session_for(target: object, parent: any, user_root_id: str) -> any {
+        context = ExecutionContext(
+            _parent=parent, _own_session=True, full_target_path=parent.full_target_path
+        );
+        await context.aset_user_root(user_root_id);
+        return context;
+    }
+    prior = os.environ.get(RO_UNITS_ENV);
+    real_for_target = ExecutionContext.for_target;
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         try {
@@ -152,44 +237,47 @@ test "a failed late write replays under its idempotency key; a failed first comm
                 }
                 return send;
             }
-            walker_cb = _walker_callback(server, "abort", "LateWrite", intro, False);
-            function_cb = _function_callback(
-                server, "abort", "late_note", intro, False
-            );
-            for (label, send) in (
-                ("walker", by_route("/walker/LateWrite")),
-                ("function", by_route("/function/late_note")),
-                ("colocated walker", by_callback(walker_cb)),
-                ("colocated function", by_callback(function_cb))
-            ) {
-                for status in (200, 429) {
-                    mod.runs.clear();
-                    answers = [
-                        send({"late": bad, "status": status}, f"late-{label}-{status}")
-                        for _ in range(3)
-                    ];
-                    assert all(a == answers[0] for a in answers) , f"{label}: {answers}";
-                    assert answers[0][0] == 500 , f"{label}, {status}: {answers[0]}";
-                    assert "FAILED_AFTER_COMMIT" in answers[0][1] , f"{label}: {answers[
-                        0
-                    ]}";
-                    assert len(mod.runs) == 1 , (
-                        f"{label}: a retry re-ran the saved work, {len(mod.runs)} runs"
-                    );
-                }
-            }
-            for (label, send) in (
-                ("walker", by_route("/walker/LateWrite")),
-                ("colocated walker", by_callback(walker_cb))
-            ) {
+            senders = {
+                "walker": by_route("/walker/LateWrite"),
+                "function": by_route("/function/late_note"),
+                "peek": by_route("/walker/LatePeek"),
+                "read tier": by_route("/walker/LateFromReadTier"),
+                "colocated walker": by_callback(
+                    _walker_callback(server, "abort", "LateWrite", intro, False)
+                ),
+                "colocated function": by_callback(
+                    _function_callback(server, "abort", "late_note", intro, False)
+                )
+            };
+            for row in cases {
+                os.environ[RO_UNITS_ENV] = "1" if row.read_tier else "0";
+                before = count_items(client);
                 mod.runs.clear();
-                answers = [send({"first": bad}, f"first-{label}") for _ in range(2)];
-                assert answers[0][0] == 500 , f"{label}: {answers[0]}";
-                assert len(mod.runs) == 2 , (
-                    f"{label}: nothing was saved, so a retry must run: {len(mod.runs)}"
+                mod.late_runs.clear();
+                if row.own_session {
+                    _as_any(ExecutionContext).for_target = own_session_for;
+                }
+                try {
+                    answers = [senders[row.via](row.body, row.label) for _ in range(2)];
+                } finally {
+                    _as_any(ExecutionContext).for_target = real_for_target;
+                }
+                assert answers[0] == answers[1] , f"{row.label}: {answers}";
+                assert answers[0][0] == row.status , f"{row.label}: {answers[0]}";
+                assert row.code in answers[0][1] , f"{row.label}: {answers[0]}";
+                assert len(mod.runs) == row.runs , f"{row.label}: ran {len(mod.runs)}";
+                assert len(mod.late_runs) == row.callbacks , (
+                    f"{row.label}: callback ran {len(mod.late_runs)} times"
                 );
+                saved = count_items(client) - before;
+                assert saved == row.saved , f"{row.label}: saved {saved}";
             }
         } finally {
+            if prior is None {
+                os.environ.pop(RO_UNITS_ENV, None);
+            } else {
+                os.environ[RO_UNITS_ENV] = prior;
+            }
             client.close();
         }
     }
