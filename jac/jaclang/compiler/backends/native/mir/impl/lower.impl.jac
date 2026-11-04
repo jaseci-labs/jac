@@ -5461,7 +5461,8 @@ impl MirLowering.later_local(nd: uni.Name) -> bool {
         or id(sym) in self.st().captured
         or id(sym) in self.st().env_cells
         or id(sym) in self.decl_syms
-        or self.global_declaration(sym) is not None {
+        or self.global_declaration(sym) is not None
+        or clib_global_of_name(nd) is not None {
         return False;
     }
     owner = self.function_of(sym.decl);
