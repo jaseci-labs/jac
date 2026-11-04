@@ -17,12 +17,15 @@ obj:pub socket {
     has family: int = 2,
         _socktype: int = 1,
         proto: int = 0,
-        _fd: int = -1;
+        _fd: int = -1,
+        _timeout: float | None = None;
 
     def postinit;
     def fileno -> int;
     def _connect_sa(sa: bytes) -> bool;
-    def connect(address: tuple[(str, int)]) -> None;
+    def connect(address: tuple[(str, int)], timeout: (float | None) = None) -> None;
+    def settimeout(timeout: (float | None)) -> None;
+    def gettimeout -> (float | None);
     def send(data: bytes) -> int;
     def sendall(data: bytes);
     def recv(bufsize: int) -> bytes;
@@ -30,4 +33,6 @@ obj:pub socket {
 }
 
 
-def:pub create_connection(address: tuple[(str, int)]) -> socket;
+def:pub create_connection(
+    address: tuple[(str, int)], timeout: (float | None) = None
+) -> socket;
