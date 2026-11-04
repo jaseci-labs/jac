@@ -191,6 +191,7 @@ impl MirLowering.osp_typed(handles: MirValue, site: uni.Expr) -> MirValue {
     if copied is None {
         raise MirRefused(mir_refusal("expression", "graph result", site));
     }
+    self.runtime("__jac_rt_list_rekind", [copied, b.const_int(KIND_REF, mir_int())]);
     return b.ref_cast(copied, target, True);
 }
 
