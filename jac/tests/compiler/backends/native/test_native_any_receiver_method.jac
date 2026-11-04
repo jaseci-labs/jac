@@ -1,4 +1,4 @@
-"""A method call on an `any` receiver refuses loudly instead of vanishing."""
+"""A call over `any` values refuses loudly instead of vanishing."""
 
 import os;
 import ctypes;
@@ -51,10 +51,16 @@ test "mutating and reading methods on an any receiver demote their callable" {
     # These calls used to lower to nothing at all: the call was dropped from
     # the IR and the function returned as if it had run.
     (seams, _ir) = measured();
-    for fn in ["any_field_append", "any_field_bytearray_append", "any_param_count"] {
+    for (fn, refusal) in [
+        ("any_field_append", "on an `any` receiver"),
+        ("any_field_bytearray_append", "on an `any` receiver"),
+        ("any_param_count", "on an `any` receiver"),
+        ("any_list_sorted", "builtin call 'sorted'"),
+        ("any_list_sort", "'list[Any].sort'")
+    ] {
         seam = seam_for(seams, fn);
-        assert "[E5092]" in seam and "on an `any` receiver" in seam , (
-            f"{fn} must refuse its `any` receiver method call, got: {seams}"
+        assert "[E5092]" in seam and refusal in seam , (
+            f"{fn} must refuse its call over `any` values, got: {seams}"
         );
     }
 }
