@@ -236,6 +236,15 @@ impl MirLowering.settle_slots {
                     self.foreign_method_decl(method);
                 } except MirRefused {}
             }
+            for (slot_name, var, acc) in archetype_accessors(holder) {
+                symbol = self.method_symbol(holder, slot_name);
+                if symbol not in wanted or symbol in self.mir.externs {
+                    continue;
+                }
+                try {
+                    self.foreign_accessor_decl(var, acc);
+                } except MirRefused {}
+            }
         }
         for (index, slot_name) in enumerate(made.vtable_names) {
             if slot_name in NON_DISPATCHED_METHODS {
