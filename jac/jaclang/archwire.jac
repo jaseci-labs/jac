@@ -6388,6 +6388,9 @@ graph import compiler {
             native_unit_spelling,
             resolve_native_module
         },
+        backends.native.mir.lower_types.mir_class_type
+            | passes.layout_pass.record_interface_twins
+            | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6514,8 +6517,6 @@ graph import compiler {
         passes.layout_pass { real_path },
         passes.layout_pass._archetype_native_name { native_arch_name },
         passes.layout_pass.interface_class_native_name { native_arch_name },
-        passes.layout_pass.record_interface_twins
-            | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
         placement.placement._scan_blockers_under {
             NATIVE_SUPPORTED_STDLIB,
             is_bundled_native_module,
