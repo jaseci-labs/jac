@@ -937,9 +937,14 @@ obj MirLowering {
     def function_default_thunks -> list[MirFunction];
     def make_default_thunks(defaults: list[uni.Expr]) -> list[MirFunction];
     def class_entry(arch: uni.Archetype, bound: uni.Archetype) -> (MirFunction | None);
-    def ctor_takes_mask(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> bool;
+    def ctor_mask_words(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> int;
+    def ctor_mask(
+        mask: int, params: list[tuple[str, MirType, (uni.Expr | None)]]
+    ) -> list[MirValue];
+
+    def ctor_given_bit(given: list[MirValue], index: int) -> MirValue;
     def ctor_default(
-        value: MirValue, given: MirValue, index: int, fallback: uni.Expr
+        value: MirValue, given: list[MirValue], index: int, fallback: uni.Expr
     ) -> MirValue;
 
     def class_of(value: MirValue, site: uni.UniNode) -> MirValue;

@@ -760,9 +760,7 @@ impl MirLowering.osp_edge_object(
             );
         }
     }
-    if self.ctor_takes_mask(params) {
-        args.append(b.const_int(mask, mir_int()));
-    }
+    args.extend(self.ctor_mask(mask, params));
     owner = edge_arch.find_parent_of_type(uni.Module) or self.module;
     symbol = native_symbol_name(
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
@@ -772,7 +770,7 @@ impl MirLowering.osp_edge_object(
             symbol=symbol,
             ret=mir_obj(obj_def.name),
             params=[param[1] for param in params]
-                + ([mir_int()] if self.ctor_takes_mask(params) else [])
+                + [mir_int()] * self.ctor_mask_words(params)
         );
         self.add_dep(owner.loc.mod_path, obj_def.name, owner);
     }

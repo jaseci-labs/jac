@@ -894,9 +894,14 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         if consumed {
             self.ctor_consumes[symbol] = consumed;
         }
-        if self.ctor_takes_mask(params) {
-            given = fn.new_value(mir_int(), "__given");
-            fn.params.append(MirParam(name="__given", value=given));
+        words = self.ctor_mask_words(params);
+        if words {
+            given: list[MirValue] = [];
+            for word in range(words) {
+                held = fn.new_value(mir_int(), f"__given{word}");
+                fn.params.append(MirParam(name=f"__given{word}", value=held));
+                given.append(held);
+            }
             for (index, (pname, ptype, fallback)) in enumerate(params) {
                 if fallback is None {
                     continue;
@@ -1601,15 +1606,13 @@ impl MirLowering.object_call(
             );
         }
         values = self.bound_values(list(bound), [param[1] for param in params]);
-        if self.ctor_takes_mask(params) {
-            given = 0;
-            for (index, param) in enumerate(params) {
-                if param[2] is not None {
-                    given = given | (1 << index);
-                }
+        given = 0;
+        for (index, param) in enumerate(params) {
+            if param[2] is not None {
+                given = given | (1 << index);
             }
-            values.append(self.builder().const_int(given, mir_int()));
         }
+        values.extend(self.ctor_mask(given, params));
         return self.construct(symbol, obj_def, owner, params, values, nd);
     }
     values = self.ctor_arguments(nd, obj_def.name, params, leading);
@@ -1628,8 +1631,7 @@ impl MirLowering.construct(
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol,
             ret=mir_obj(obj_def.name),
-            params=[p[1] for p in params]
-                + ([mir_int()] if self.ctor_takes_mask(params) else [])
+            params=[p[1] for p in params] + [mir_int()] * self.ctor_mask_words(params)
         );
         self.add_dep(owner.loc.mod_path, obj_def.name, nd);
     }
@@ -2541,38 +2543,51 @@ impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
     return self.emit_value(MirOp.PTR_CAST, mir_class("*"), [b.load(table, i8p)]);
 }
 
-impl MirLowering.ctor_takes_mask(
+impl MirLowering.ctor_mask_words(
     params: list[tuple[str, MirType, (uni.Expr | None)]]
-) -> bool {
+) -> int {
     defaulted = [
         index
         for (index, param) in enumerate(params)
         if param[2] is not None
     ];
-    if defaulted and max(defaulted) >= CTOR_MASK_BITS {
-        raise MirRefused(
-            mir_refusal(
-                "constructor",
-                f"{len(params)} parameters",
-                None,
-                "A native constructor marks which defaulted parameters were given in one 63-bit word."
-            )
-        );
+    if not defaulted {
+        return 0;
     }
-    return bool(defaulted);
+    return max(defaulted) // CTOR_MASK_BITS + 1;
+}
+
+impl MirLowering.ctor_mask(
+    mask: int, params: list[tuple[str, MirType, (uni.Expr | None)]]
+) -> list[MirValue] {
+    b = self.builder();
+    word_mask = (1 << CTOR_MASK_BITS) - 1;
+    return [
+        b.const_int((mask >> (word * CTOR_MASK_BITS)) & word_mask, mir_int())
+        for word in range(self.ctor_mask_words(params))
+    ];
+}
+
+impl MirLowering.ctor_given_bit(given: list[MirValue], index: int) -> MirValue {
+    b = self.builder();
+    return b.binary(
+        "and",
+        b.binary(
+            "shr",
+            given[index // CTOR_MASK_BITS],
+            b.const_int(index % CTOR_MASK_BITS, mir_int())
+        ),
+        b.const_int(1, mir_int())
+    );
 }
 
 impl MirLowering.ctor_default(
-    value: MirValue, given: MirValue, index: int, fallback: uni.Expr
+    value: MirValue, given: list[MirValue], index: int, fallback: uni.Expr
 ) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     held = self.temp_slot(value.type);
-    bit = b.binary(
-        "and",
-        b.binary("shr", given, b.const_int(index, mir_int())),
-        b.const_int(1, mir_int())
-    );
+    bit = self.ctor_given_bit(given, index);
     supplied = fn.new_block("ctor.given");
     missing = fn.new_block("ctor.default");
     done = fn.new_block("ctor.arg");
@@ -2631,7 +2646,7 @@ impl MirLowering.ctor_arguments(
     shown = label.split("$")[0];
     values: list[MirValue] = [];
     mask = 0;
-    dynamic_mask: (MirValue | None) = None;
+    dynamic_mask: dict[int, MirValue] = {};
     matched: (MirValue | None) = None;
     if spreads {
         matched = self.temp_slot(mir_int());
@@ -2693,14 +2708,15 @@ impl MirLowering.ctor_arguments(
                 b.store(held, self.placeholder(ptype));
                 b.branch(done);
                 b.position(done);
+                word = index // CTOR_MASK_BITS;
                 bit = b.select(
                     b.load(flag, mir_bool()),
-                    b.const_int(1 << index, mir_int()),
+                    b.const_int(1 << (index % CTOR_MASK_BITS), mir_int()),
                     b.const_int(0, mir_int())
                 );
-                dynamic_mask = bit
-                    if dynamic_mask is None
-                    else b.binary("or", dynamic_mask, bit);
+                dynamic_mask[word] = bit
+                    if word not in dynamic_mask
+                    else b.binary("or", dynamic_mask[word], bit);
             }
             values.append(b.load(held, ptype));
             continue;
@@ -2728,10 +2744,9 @@ impl MirLowering.ctor_arguments(
             f"{shown}() got an unexpected keyword argument"
         );
     }
-    if self.ctor_takes_mask(params) {
-        made = b.const_int(mask, mir_int());
-        if dynamic_mask is not None {
-            made = b.binary("or", made, dynamic_mask);
+    for (word, made) in enumerate(self.ctor_mask(mask, params)) {
+        if word in dynamic_mask {
+            made = b.binary("or", made, dynamic_mask[word]);
         }
         values.append(made);
     }
@@ -2824,13 +2839,14 @@ impl MirLowering.class_entry(
             }
             given.append(value);
         }
-        supplied = b.const_int(-1, mir_int());
-        if self.ctor_takes_mask(taken) {
-            supplied = fn.new_value(mir_int(), "__given");
-            fn.params.append(MirParam(name="__given", value=supplied));
+        supplied: list[MirValue] = [];
+        for word in range(self.ctor_mask_words(taken)) {
+            held = fn.new_value(mir_int(), f"__given{word}");
+            fn.params.append(MirParam(name=f"__given{word}", value=held));
+            supplied.append(held);
         }
         args: list[MirValue] = [];
-        mask = b.const_int(0, mir_int());
+        mask = self.ctor_mask(0, accepts);
         for (index, (pname, ptype, fallback)) in enumerate(accepts) {
             if pname not in names {
                 args.append(self.placeholder(ptype));
@@ -2838,17 +2854,18 @@ impl MirLowering.class_entry(
             }
             at = names.index(pname);
             args.append(self.coerce(given[at], ptype, arch));
+            word = index // CTOR_MASK_BITS;
             if taken[at][2] is None {
                 if fallback is not None {
-                    mask = b.binary("or", mask, b.const_int(1 << index, mir_int()));
+                    mask[word] = b.binary(
+                        "or",
+                        mask[word],
+                        b.const_int(1 << (index % CTOR_MASK_BITS), mir_int())
+                    );
                 }
                 continue;
             }
-            bit = b.binary(
-                "and",
-                b.binary("shr", supplied, b.const_int(at, mir_int())),
-                b.const_int(1, mir_int())
-            );
+            bit = self.ctor_given_bit(supplied, at);
             if fallback is None {
                 self.raise_if(
                     b.compare("eq", bit, b.const_int(0, mir_int())),
@@ -2856,14 +2873,14 @@ impl MirLowering.class_entry(
                     f"{obj_def.name.split('$')[0]}() missing required argument: '{pname}'"
                 );
             } else {
-                mask = b.binary(
-                    "or", mask, b.binary("shl", bit, b.const_int(index, mir_int()))
+                mask[word] = b.binary(
+                    "or",
+                    mask[word],
+                    b.binary("shl", bit, b.const_int(index % CTOR_MASK_BITS, mir_int()))
                 );
             }
         }
-        if self.ctor_takes_mask(accepts) {
-            args.append(mask);
-        }
+        args.extend(mask);
         made = b.call(ctor, args, mir_obj(obj_def.name));
         if made is None {
             raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
@@ -2903,9 +2920,7 @@ impl MirLowering.default_entry(arch: uni.Archetype) -> (MirFunction | None) {
     try {
         b = self.builder();
         args = [self.placeholder(ptype) for (_, ptype, _) in params];
-        if self.ctor_takes_mask(params) {
-            args.append(b.const_int(0, mir_int()));
-        }
+        args.extend(self.ctor_mask(0, params));
         made = b.call(
             native_symbol_name(prefix, f"{obj_def.name}.__ctor"),
             args,

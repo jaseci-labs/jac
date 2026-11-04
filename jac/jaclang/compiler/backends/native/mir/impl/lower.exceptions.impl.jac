@@ -560,9 +560,7 @@ impl MirLowering.exception_object(
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
-    if self.ctor_takes_mask(params) {
-        values.append(b.const_int(mask, mir_int()));
-    }
+    values.extend(self.ctor_mask(mask, params));
     owner = arch.find_parent_of_type(uni.Module) or self.module;
     symbol = native_symbol_name(
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
