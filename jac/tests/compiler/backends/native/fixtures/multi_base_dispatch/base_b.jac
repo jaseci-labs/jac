@@ -14,6 +14,7 @@ impl Right.right_value.getter -> int {
 node RightNode {
     has right_seed: int = 2,
         right_items: list[int] = [];
+
     has right_value: int { getter; }
 
     def right_name -> int {
