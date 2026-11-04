@@ -1864,6 +1864,9 @@ impl MirLowering.arith(
             right = self.opt_unwrap_checked(right, message);
         }
     }
+    if MirKind.COMPLEX in (left.type.kind, right.type.kind) {
+        return self.complex_arith(op, left, right, site);
+    }
     stepped = self.pointer_arith(op, left, right, site);
     if stepped is not None {
         return stepped;
@@ -2128,6 +2131,10 @@ impl MirLowering.compare_values(
             if op in (Tok.KW_IS, Tok.EE)
             else self.builder().logical_not(absent);
     }
+    via_complex = self.complex_compare(op, left, right, site);
+    if via_complex is not None {
+        return via_complex;
+    }
     special = self.compare_special(op, left, right, site);
     if special is not None {
         return special;
@@ -2285,6 +2292,13 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
                 [b.const_int(ANY_UNARY_CODES[op], mir_int())] + self.any_parts(value)
             )
         );
+    }
+    if value.type.kind == MirKind.COMPLEX and op in (Tok.MINUS, Tok.PLUS) {
+        if op == Tok.PLUS {
+            return value;
+        }
+        (re, im) = self.complex_parts(value);
+        return self.complex_make(b.negate(re), b.negate(im));
     }
     if not value.type.is_numeric() {
         raise MirRefused(
@@ -2752,6 +2766,9 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
     }
     if value.type.kind == MirKind.NONE {
         return b.const_bool(False);
+    }
+    if value.type.kind == MirKind.COMPLEX {
+        return self.complex_truthy(value);
     }
     if value.type.kind == MirKind.TUPLE {
         return b.const_bool(len(value.type.args) > 0);
@@ -3375,6 +3392,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     }
     if name == "print" {
         return self.lower_print(nd);
+    }
+    if name == "complex" {
+        return self.complex_call(self.call_args(nd), nd);
     }
     if name == "input" {
         return self.input_call(nd);

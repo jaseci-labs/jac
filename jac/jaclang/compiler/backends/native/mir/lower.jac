@@ -620,6 +620,33 @@ obj MirLowering {
     def struct_int_abi(t: MirType) -> bool;
     def struct_address(value: MirValue) -> MirValue;
     def struct_view_local(sym: uni.Symbol, t: MirType) -> bool;
+    def complex_make(re: MirValue, im: MirValue) -> MirValue;
+    def complex_parts(value: MirValue) -> tuple[MirValue, MirValue];
+    def complex_call(args: list[uni.Expr], site: uni.UniNode) -> MirValue;
+    def f_abs(x: MirValue) -> MirValue;
+    def f_copysign(mag: MirValue, sign: MirValue) -> MirValue;
+    def f_isnan(x: MirValue) -> MirValue;
+    def f_isinf(x: MirValue) -> MirValue;
+    def f_isfinite(x: MirValue) -> MirValue;
+    def f_box(x: MirValue) -> MirValue;
+    def f_unnan(cond: MirValue, x: MirValue) -> MirValue;
+    def complex_prod(
+        ar: MirValue, ai: MirValue, br: MirValue, bi: MirValue
+    ) -> tuple[MirValue, MirValue];
+
+    def complex_quot(
+        ar: MirValue, ai: MirValue, br: MirValue, bi: MirValue, real: bool
+    ) -> tuple[MirValue, MirValue];
+
+    def complex_arith(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def complex_compare(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def complex_truthy(value: MirValue) -> MirValue;
     def c_arg(
         arg: uni.Expr,
         to: MirType,

@@ -73,6 +73,14 @@ impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
         return bound;
     }
     target_type = self.expr_type(nd.target);
+    if target_type.kind == MirKind.COMPLEX and nd.right.value in ("real", "imag") {
+        return self.emit_value(
+            MirOp.TUPLE_GET,
+            mir_float(),
+            [self.lower_expr(nd.target)],
+            int_value=0 if nd.right.value == "real" else 1
+        );
+    }
     if target_type.kind == MirKind.FILE and nd.right.value == "closed" {
         return self.runtime_value("__jac_rt_file_closed", [self.lower_expr(nd.target)]);
     }

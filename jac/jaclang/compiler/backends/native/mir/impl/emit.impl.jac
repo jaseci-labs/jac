@@ -190,6 +190,9 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.ANY {
         return self.jacval_type();
     }
+    if t.kind == MirKind.COMPLEX {
+        return ir.LiteralStructType([ir.DoubleType(), ir.DoubleType()]);
+    }
     if t.kind
         in (MirKind.STR_REF, MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY)
         or mir_is_container(t) {

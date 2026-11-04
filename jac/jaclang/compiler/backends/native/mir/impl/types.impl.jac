@@ -22,7 +22,6 @@ impl MirType.is_ref -> bool {
             MirKind.FN,
             MirKind.ITER,
             MirKind.RANGE,
-            MirKind.COMPLEX,
             MirKind.C_PIN,
             MirKind.FILE
         );

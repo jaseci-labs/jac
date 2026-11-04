@@ -298,6 +298,9 @@ impl mir_class_type(
     if name == "bool" {
         return mir_bool();
     }
+    if name == "complex" {
+        return mir_complex();
+    }
     shape = shape_of(name);
     if shape is not None {
         if shape.is_float {
