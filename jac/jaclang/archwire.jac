@@ -2735,6 +2735,7 @@ graph import {
         isolate_request_walk_stack
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
+        | compiler.backends.native.mir.backend
         | compiler.backends.native.mir.lower
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
         | compiler.jc_unit._alert_tag
