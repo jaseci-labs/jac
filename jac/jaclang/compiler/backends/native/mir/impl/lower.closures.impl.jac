@@ -307,11 +307,36 @@ impl MirLowering.callee_value(target: uni.Expr) -> MirValue {
         }
     }
     value = self.lower_expr(target);
-    if value.type.kind == MirKind.C_FN and value.id in self.fn_values {
-        named = self.fn_values[value.id];
-        return self.function_value(named, mir_fn(list(named.params), named.ret));
+    if value.type.kind != MirKind.C_FN {
+        return value;
     }
-    return value;
+    named = self.fn_values.get(value.id) or self.named_function_decl(target);
+    if named is None {
+        return value;
+    }
+    return self.function_value(named, mir_fn(list(named.params), named.ret));
+}
+
+impl MirLowering.named_function_decl(target: uni.Expr) -> (MirDecl | None) {
+    ab = named_function_of(target);
+    if not isinstance(ab, uni.Ability) or not isinstance(ab.parent, uni.Module) {
+        return None;
+    }
+    ab = self.variant_ability(ab);
+    sym = ab.name_ref.sym if ab.name_ref is not None else None;
+    found = self.decls.get(self.decl_syms.get(id(sym), -1))
+        if sym is not None
+        else None;
+    if found is not None {
+        return found;
+    }
+    path = ab.loc.mod_path;
+    if not path.endswith(".jac")
+        or os.path.realpath(path) == os.path.realpath(self.module.loc.mod_path)
+        or self.template_of(ab) {
+        return None;
+    }
+    return self.foreign_function_decl(ab, target);
 }
 
 impl MirLowering.call_closure(

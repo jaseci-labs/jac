@@ -1038,6 +1038,7 @@ obj MirLowering {
     ) -> MirValue;
 
     def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
+    def named_function_decl(target: uni.Expr) -> (MirDecl | None);
     def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def runtime_decorators(ab: uni.Ability) -> list[uni.Expr];
