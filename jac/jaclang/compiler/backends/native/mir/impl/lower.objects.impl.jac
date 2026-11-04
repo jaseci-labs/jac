@@ -1378,7 +1378,7 @@ impl MirLowering.field_place(
     place = self.emit_value(
         MirOp.FIELD_ADDR, mir_c_ptr(member.type), [holder], int_value=member.index
     );
-    if holder.type.kind != MirKind.OBJ or obj_def.vtable_slot < 0 {
+    if obj_def.vtable_slot < 0 {
         return place;
     }
     return self.remapped_field(holder, obj_def, member.index, place);
