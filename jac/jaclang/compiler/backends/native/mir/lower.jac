@@ -421,6 +421,9 @@ obj MirLowering {
         c_views: dict[int, MirGlobal] = {},
         owned_world: bool = False,
         ctor_consumes: dict[str, list[int]] = {},
+        decorations: list[tuple[int, str]] = [],
+        fn_deps: dict[str, list[str]] = {},
+        hard_refusals: list[NativeRefusal] = [],
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
@@ -1002,6 +1005,10 @@ obj MirLowering {
     def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
     def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
+    def runtime_decorators(ab: uni.Ability) -> list[uni.Expr];
+    def decorator_target(dec: uni.Name) -> (MirDecl | None);
+    def decorator_refusal(decl: MirDecl) -> (NativeRefusal | None);
+    def decorate(decl: MirDecl, raw: MirFunction) -> MirFunction;
     def lower_try(nd: uni.TryStmt);
     def caught_state(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
     def flush_stdio;

@@ -29,6 +29,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     for (site, name, reason) in lowering.c_conflicts {
         self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
     }
+    for refusal in lowering.hard_refusals {
+        self.ctx.emit(
+            E5092,
+            node_override=refusal.site or ir_in,
+            kind=refusal.kind,
+            name=refusal.name,
+            help_text=refusal.help
+        );
+    }
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if self.native_required(path) {

@@ -49,6 +49,12 @@ impl MirLowering.any_box(value: MirValue, site: uni.UniNode) -> MirValue {
     if value.type.kind == MirKind.NONE {
         return self.any_none();
     }
+    if value.type.kind == MirKind.C_FN and value.id in self.fn_values {
+        named = self.fn_values[value.id];
+        return self.any_box(
+            self.function_value(named, mir_fn(list(named.params), named.ret)), site
+        );
+    }
     if value.type.kind == MirKind.OPT {
         (held, payload, absent, done) = self.opt_begin(value, mir_any());
         self.opt_switch(held, self.any_box(payload, site), absent, done);

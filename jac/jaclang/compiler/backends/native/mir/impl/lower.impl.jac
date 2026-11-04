@@ -209,7 +209,7 @@ impl MirLowering.record_defaults {
 }
 
 impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
-    found: list[str] = [];
+    found: list[str] = list(self.fn_deps.get(fn.symbol, []));
     for blk in fn.blocks {
         for instr in blk.instrs {
             if instr.op in (MirOp.CALL, MirOp.FN_ADDR) and instr.callee {
@@ -393,6 +393,11 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         return self.lower_ability(decl);
     }
     ab = decl.ability;
+    blocked = self.decorator_refusal(decl);
+    if blocked is not None {
+        self.refusals.setdefault(self.refusal_key(decl), []).append(blocked);
+        return None;
+    }
     if self.is_generator(ab) {
         return self.lower_generator(decl);
     }
@@ -524,6 +529,10 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             }
         }
         self.guard_unbound(fn);
+        self.state = None;
+        if self.runtime_decorators(ab) {
+            return self.decorate(decl, fn);
+        }
     } except MirRefused as err {
         self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = None;

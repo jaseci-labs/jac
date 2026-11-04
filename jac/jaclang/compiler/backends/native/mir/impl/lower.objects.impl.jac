@@ -2118,6 +2118,7 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.class_lineages
         and not self.default_entries
         and not self.text_pairs
+        and not self.decorations
         and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
         return None;
     }
@@ -2235,16 +2236,23 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             }
             index += 1;
         }
-        steps: list[tuple[int, int]] = [
-            (initial.loc.pos_start, at)
+        steps: list[tuple[int, int, int]] = [
+            (initial.loc.pos_start, 0, at)
             for (at, (_, initial)) in enumerate(self.deferred_globals)
         ];
         steps.extend(
-            [(start, -1 - at) for (at, (start, _)) in enumerate(self.class_inits)]
+            [(start, 1, at) for (at, (start, _)) in enumerate(self.class_inits)]
         );
-        for (_, at) in sorted(steps) {
-            if at < 0 {
-                b.call(self.class_inits[-1 - at][1], [], mir_none());
+        steps.extend(
+            [(start, 2, at) for (at, (start, _)) in enumerate(self.decorations)]
+        );
+        for (_, step, at) in sorted(steps) {
+            if step == 1 {
+                b.call(self.class_inits[at][1], [], mir_none());
+                continue;
+            }
+            if step == 2 {
+                b.call(self.decorations[at][1], [], mir_none());
                 continue;
             }
             (glob_def, initial) = self.deferred_globals[at];
