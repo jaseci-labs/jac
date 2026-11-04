@@ -45260,7 +45260,8 @@ graph import scale {
             _CLIENT_BUILD_ATTEMPTS,
             _CLIENT_BUILD_RETRY_PAUSE_S,
             _is_transient_client_build_failure,
-            _membership_diagnosis
+            _membership_diagnosis,
+            _run_until_quiet
         },
         tests.deploy.test_deployment_overlay {
             CONFIG_REVISION_ANNOTATION,
