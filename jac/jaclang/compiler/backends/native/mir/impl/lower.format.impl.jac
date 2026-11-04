@@ -321,6 +321,8 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
     }
     symbol = f"{self.mir.prefix}.__repr.{self.text_serial}";
     self.text_serial += 1;
+    started = len(self.nested);
+    known = set(self.text_fns);
     self.text_fns[value_type.key] = symbol;
     fn = MirFunction(
         name=f"__repr.{value_type.render()}",
@@ -340,7 +342,14 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
             self.container_repr_body(param, site);
         }
     } except MirRefused as err {
-        self.text_fns.pop(value_type.key, None);
+        self.nested = self.nested[:started];
+        for key in [
+            key
+            for key in self.text_fns
+            if key not in known
+        ] {
+            self.text_fns.pop(key);
+        }
         self.state = saved;
         raise err;
     }
