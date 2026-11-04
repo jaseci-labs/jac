@@ -585,7 +585,8 @@ impl _precompile_unit(
             cached_data = cache_path.read_bytes();
             cached_bc = read_section_bytes(cached_data, SEC_BYTECODE);
             if cached_bc is not None
-                and read_section_bytes(cached_data, SEC_IFACE) is not None {
+                and read_section_bytes(cached_data, SEC_IFACE) is not None
+                and read_section_bytes(cached_data, SEC_DIAG) is not None {
                 rewrapped = patch_co_filenames_bytes(
                     cached_bc, pkg_root, PRECOMPILE_SENTINEL
                 );
@@ -1798,66 +1799,68 @@ impl run_precompile(
     }
 
     def unit_job(request: dict[(str, any)]) -> dict[(str, any)] {
-        jac_path = str(request["path"]);
-        rel = Path(jac_path).relative_to(pkg_path);
-        jir_path = out_dir / rel.with_suffix(".jir");
-        try {
-            if jir_path.is_file() {
-                existing = jir_path.read_bytes();
-                if precompiled_jir_matches_source(
-                    existing, jac_path, package_root=package_dir
-                )
-                    and embed_src == (read_debug_source(existing) is not None) {
-                    return {"status": "reused", "rel": str(rel)};
+        with served_codespace(package_dir) {
+            jac_path = str(request["path"]);
+            rel = Path(jac_path).relative_to(pkg_path);
+            jir_path = out_dir / rel.with_suffix(".jir");
+            try {
+                if jir_path.is_file() {
+                    existing = jir_path.read_bytes();
+                    if precompiled_jir_matches_source(
+                        existing, jac_path, package_root=package_dir
+                    )
+                        and embed_src == (read_debug_source(existing) is not None) {
+                        return {"status": "reused", "rel": str(rel)};
+                    }
                 }
-            }
-            is_native = bool(
-                native_units_set and os.path.realpath(jac_path) in native_units_set
-            );
-            if is_native
-                and not precompile_native_unit(jac_path, collect=not use_pool) {
+                is_native = bool(
+                    native_units_set and os.path.realpath(jac_path) in native_units_set
+                );
+                if is_native
+                    and not precompile_native_unit(jac_path, collect=not use_pool) {
+                    jir_path.unlink(missing_ok=True);
+                    return {
+                        "status": "failed",
+                        "rel": str(rel),
+                        "message": f"FAIL (native unit did not lower): {rel}"
+                    };
+                }
+                if jac_path in native_only_units {
+                    jir_bytes: (bytes | None) = write_precompiled_jir(
+                        None,
+                        compute_precompile_module_key(jac_path),
+                        FLAG_PRECOMPILED,
+                        _unit_extra(jac_path, package_dir, embed_src)
+                    );
+                } else {
+                    jir_bytes = precompile_unit(
+                        jac_path,
+                        package_dir,
+                        embed_src,
+                        collect=not use_pool,
+                        app=app,
+                        skip_analysis=skip_analysis
+                    );
+                }
+                if jir_bytes is None {
+                    jir_path.unlink(missing_ok=True);
+                    return {
+                        "status": "failed",
+                        "rel": str(rel),
+                        "message": f"  SKIP (no bytecode): {rel}"
+                    };
+                }
+                jir_path.parent.mkdir(parents=True, exist_ok=True);
+                jir_path.write_bytes(jir_bytes);
+                return {"status": "compiled", "rel": str(rel)};
+            } except Exception as e {
                 jir_path.unlink(missing_ok=True);
                 return {
                     "status": "failed",
                     "rel": str(rel),
-                    "message": f"FAIL (native unit did not lower): {rel}"
+                    "message": f"FAIL: {rel} - {type(e).__name__}: {e}{raised_at(e)}"
                 };
             }
-            if jac_path in native_only_units {
-                jir_bytes: (bytes | None) = write_precompiled_jir(
-                    None,
-                    compute_precompile_module_key(jac_path),
-                    FLAG_PRECOMPILED,
-                    _unit_extra(jac_path, package_dir, embed_src)
-                );
-            } else {
-                jir_bytes = precompile_unit(
-                    jac_path,
-                    package_dir,
-                    embed_src,
-                    collect=not use_pool,
-                    app=app,
-                    skip_analysis=skip_analysis
-                );
-            }
-            if jir_bytes is None {
-                jir_path.unlink(missing_ok=True);
-                return {
-                    "status": "failed",
-                    "rel": str(rel),
-                    "message": f"  SKIP (no bytecode): {rel}"
-                };
-            }
-            jir_path.parent.mkdir(parents=True, exist_ok=True);
-            jir_path.write_bytes(jir_bytes);
-            return {"status": "compiled", "rel": str(rel)};
-        } except Exception as e {
-            jir_path.unlink(missing_ok=True);
-            return {
-                "status": "failed",
-                "rel": str(rel),
-                "message": f"FAIL: {rel} - {type(e).__name__}: {e}{raised_at(e)}"
-            };
         }
     }
 
