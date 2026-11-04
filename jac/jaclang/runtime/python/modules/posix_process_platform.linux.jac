@@ -9,8 +9,6 @@ the 20th field of /proc/self/stat, and pidfd_open() goes through syscall()
 (glibc 2.17 has no wrapper).
 """
 
-import from jaclang.runtime.python.modules.time_records { timespec, tms }
-import from jaclang.runtime.python.modules.posix_constants { SYS_pidfd_open }
 import from c {
     obj siginfo_t {
         has si_signo: i32 = 0,

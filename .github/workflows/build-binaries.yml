@@ -376,7 +376,7 @@ jobs:
         id: shim-fetch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
         run: |
           set -euo pipefail
           EXT=so
@@ -413,12 +413,8 @@ jobs:
             zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install host tools (zstd)
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y zstd
-          else
-            brew install zstd
-          fi
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zstd
 
       - name: Set up Zig 0.16.0
         # SHA-pinned: same shipping-binaries rationale as the checkout.
@@ -683,9 +679,7 @@ jobs:
           check "$SHIM"
 
       # Intel-mac mirror of the glibc check: neither the launcher nor the shim
-      # may require a macOS newer than the zig_target floor, and the shim must
-      # carry no Homebrew load commands (its from-source slice is built with
-      # every external OFF, so a brew dep here means the slice regressed).
+      # may require a macOS newer than the zig_target floor.
       # Release channel only: dev binaries are host-native with no pinned floor.
       - name: Verify macOS floor (from zig_target)
         if: runner.os == 'macOS' && inputs.channel != 'dev' && matrix.zig_target
@@ -707,9 +701,23 @@ jobs:
           check zig-out/bin/jac
           SHIM="jaclang/compiler/backends/native/llvm/libjacllvm.dylib"
           check "$SHIM"
-          if otool -L "$SHIM" | grep -E "/opt/homebrew|/usr/local"; then
-            echo "::error::$SHIM links Homebrew dylibs; the from-source slice must not."; exit 1
-          fi
+
+      # Every macOS leg, in every channel: a load command outside the OS (a
+      # Homebrew zstd, say) passes on a runner that has that library and fails
+      # on a user's Mac that does not.
+      - name: Verify the macOS binary and shim load only system libraries
+        if: runner.os == 'macOS'
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          for f in zig-out/bin/jac jaclang/compiler/backends/native/llvm/libjacllvm.dylib; do
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            foreign="$(otool -L "$f" | tail -n +2 | awk '{print $1}' \
+              | grep -vE '^(/usr/lib/|/System/Library/|@rpath/|@loader_path/)' || true)"
+            if [ -n "$foreign" ]; then
+              echo "::error::$f loads libraries outside the OS: $foreign"; exit 1
+            fi
+          done
 
       # A release-channel cold build just produced (and floor-verified) the
       # shim the deps release was missing: publish it so the next release with

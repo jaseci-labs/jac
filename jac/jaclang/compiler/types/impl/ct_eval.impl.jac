@@ -738,7 +738,9 @@ impl CtEvaluator._demand_tree(sym: Symbol) -> Symbol {
         scope = scope.parent_scope;
     }
     try {
-        real = self.evaluator.program.load_dependency_module(path, need_tree=True);
+        real = self.evaluator.program.load_dependency_module(
+            path, need_tree=True, need_bodies=True
+        );
     } except Exception {
         return sym;
     }
