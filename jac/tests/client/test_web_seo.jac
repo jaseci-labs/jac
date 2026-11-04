@@ -427,32 +427,84 @@ test "robots.txt takes X-Forwarded-Host only from a proxy in [serve.proxy] trust
     }
 }
 
+"""The app's own `/robots.txt` route answers the canonical host, and a preview host
+gets `Disallow: /` instead."""
+def assert_routed_robots(label: str, client: any) {
+    canonical = client.get("/robots.txt", headers={"host": "example.org"});
+    assert canonical.status_code == 200 , f"{label}: {canonical.status_code}";
+    assert "from the app route" in canonical.text , f"{label}: {canonical.text!r}";
+    preview = client.get("/robots.txt", headers={"host": PREVIEW_HOST});
+    assert preview.text == DISALLOW_ALL_ROBOTS , (
+        f"{label}: the app's own route answered a preview host: {preview.text!r}"
+    );
+}
+
 test "a preview host gets Disallow even from an app that routes /robots.txt itself" {
+    import os;
+    import from jaclang.scale.runtime.gateway.microservice_gateway {
+        MicroserviceGateway
+    }
+    import from jaclang.scale.runtime.gateway.service_registry {
+        ServiceEntry,
+        ServiceRegistry,
+        ServiceStatus
+    }
+    import from jaclang.server.serving.server { ServingServer }
     import from jaclang.testing.testing { JacTestClient }
+    import from jaclang.testing.testkit { ServingTestClient }
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp).resolve();
         (project_dir / "jac.toml").write_text(
             f'[project]\nname = "site"\n\n[client.seo]\nsite_url = "{SITE}"\n'
         );
-        (project_dir / "main.jac").write_text(
+        main_file = project_dir / "main.jac";
+        main_file.write_text(
             'import from jaclang.runtime.builtin { restspec }\n'
                 + 'import from http { HTTPMethod }\n\n'
                 + '@restspec(method=HTTPMethod.GET, path="/robots.txt")\n'
                 + 'def:pub robots_route -> str { return "from the app route"; }\n'
         );
-        server = JacTestClient.from_file(
-            str(project_dir / "main.jac"), base_path=str(project_dir)
-        );
+        server = JacTestClient.from_file(str(main_file), base_path=str(project_dir));
         try {
-            canonical = server.get("/robots.txt", headers={"host": "example.org"});
-            assert canonical.status_code == 200 , canonical.status_code;
-            assert "from the app route" in canonical.text , canonical.text;
-            preview = server.get("/robots.txt", headers={"host": PREVIEW_HOST});
-            assert preview.text == DISALLOW_ALL_ROBOTS , (
-                f"the app's own route answered a preview host: {preview.text!r}"
-            );
+            assert_routed_robots("jac run --serve", server);
         } finally {
             server.close();
+        }
+        # A microservice member runs with JAC_SV_SIBLING set, and the gateway
+        # reaches it without the public Host. The gateway's dist has no
+        # robots.txt, so a canonical-host request goes on to the app route.
+        member = JacTestClient.from_file(str(main_file), base_path=str(project_dir));
+        with patch.dict(os.environ, {"JAC_SV_SIBLING": "1"}) {
+            member_app = member.server.require_app();
+        }
+        assert member.get("/openapi.json").status_code == 200;
+        backend = ServingServer(app=member_app, host="127.0.0.1", port=0);
+        stop = backend.serve_background();
+        try {
+            registry = ServiceRegistry();
+            registry.register(
+                ServiceEntry(
+                    name="main",
+                    file="main.jac",
+                    prefix="/main",
+                    port=backend.bound_port,
+                    url=f"http://127.0.0.1:{backend.bound_port}",
+                    status=ServiceStatus.HEALTHY
+                )
+            );
+            dist = project_dir / "dist";
+            dist.mkdir();
+            gateway = MicroserviceGateway(
+                registry=registry, client_dist_dir=str(dist), base_path=str(project_dir)
+            );
+            gateway.setup();
+            assert_routed_robots(
+                "a microservice member behind the gateway",
+                ServingTestClient(gateway.app)
+            );
+        } finally {
+            stop();
+            member.close();
         }
     }
 }

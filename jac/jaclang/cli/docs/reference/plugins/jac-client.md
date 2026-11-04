@@ -97,9 +97,12 @@ the request comes from a proxy listed in `[serve.proxy] trusted`. Behind a proxy
 that rewrites `Host`, list the proxy there, or the production host is not
 recognized either. On any other host, such as a preview or staging deployment, they
 answer `User-agent: *` / `Disallow: /` ahead of any route the app declares, whether
-the file was generated or hand-written, so previews are not indexed. Both files are
-served with `Cache-Control: no-cache`. In a workspace, `[client.seo]`
-applies to every app; `[apps.<name>.client.seo]` overrides it for one app.
+the file was generated or hand-written, so previews are not indexed. In a
+microservice deployment only the gateway checks: the apps behind it see the
+gateway's address, not the public host, so a `/robots.txt` it forwards to them is
+answered as is. Both files are served with `Cache-Control: no-cache`. In a
+workspace, `[client.seo]` applies to every app; `[apps.<name>.client.seo]`
+overrides it for one app.
 
 ### Client Code Is Inferred
 
