@@ -89,6 +89,8 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_cell_set": ["none", "ref", "int", "int"],
          "__jac_rt_closure_new": ["ref", "int", "int"],
          "__jac_rt_closure_set": ["none", "ref", "int", "ref"],
+         "__jac_rt_closure_key": ["none", "ref", "int"],
+         "__jac_rt_closure_eq": ["bool", "int", "int"],
          "__jac_rt_write": ["none", "int", "ptr", "int"],
          "__jac_rt_write_int": ["none", "int", "int"],
          "__jac_rt_any_box": ["ref", "int", "int"],

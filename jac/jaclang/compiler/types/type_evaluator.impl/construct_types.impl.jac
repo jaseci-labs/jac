@@ -981,7 +981,6 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
     declared = self.get_type_of_expression(tag);
     if isinstance(declared, FunctionType) {
         param_types: list[TypeBase] = [];
-        typed = False;
         for p in declared.parameters or [] {
             parameter_type = p.param_type;
             pn = numeric_name_of(parameter_type);
@@ -989,7 +988,6 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
                 and pn is not None
                 and JAC_TYPE_REGISTRY.is_sized(pn) {
                 param_types.append(parameter_type);
-                typed = True;
             } else {
                 param_types.append(AnyType(is_foreign=True, foreign_scalar=pn));
             }
@@ -1003,15 +1001,11 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
                 or self._is_typed_c_declaration(return_type)
             ) {
             ret_type = return_type;
-            typed = True;
         } elif isinstance(return_type, ClassType)
             and return_type.shared.class_name == "NoneType" {
             ret_type = return_type;
         }
-        if typed {
-            return create_callable_type(param_types, ret_type, is_gradual=False);
-        }
-        return AnyType(is_foreign=True);
+        return create_callable_type(param_types, ret_type, is_gradual=False);
     }
     return self._extern_scalar_type(tag);
 }

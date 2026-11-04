@@ -12,31 +12,30 @@ impl Embed.need(name: str) -> int {
 }
 
 impl Embed.bind_api {
-    a = self.api;
-    a.PyInitConfig_Create = self.need("PyInitConfig_Create");
-    a.PyInitConfig_Free = self.need("PyInitConfig_Free");
-    a.PyInitConfig_GetError = self.need("PyInitConfig_GetError");
-    a.PyInitConfig_GetExitCode = self.need("PyInitConfig_GetExitCode");
-    a.PyInitConfig_SetInt = self.need("PyInitConfig_SetInt");
-    a.PyInitConfig_SetStr = self.need("PyInitConfig_SetStr");
-    a.PyInitConfig_SetStrList = self.need("PyInitConfig_SetStrList");
-    a.Py_InitializeFromInitConfig = self.need("Py_InitializeFromInitConfig");
-    a.PyRun_SimpleString = self.need("PyRun_SimpleString");
-    a.Py_FinalizeEx = self.need("Py_FinalizeEx");
-    a.Py_Finalize = self.need("Py_Finalize");
-    a.Py_RunMain = self.need("Py_RunMain");
-    a.PyImport_AddModule = self.need("PyImport_AddModule");
-    a.PyModule_GetDict = self.need("PyModule_GetDict");
-    a.PyRun_String = self.need("PyRun_String");
-    a.PyLong_AsLong = self.need("PyLong_AsLong");
-    a.PyEval_SaveThread = self.need("PyEval_SaveThread");
-    a.PyEval_RestoreThread = self.need("PyEval_RestoreThread");
-    a.PyGILState_Ensure = self.need("PyGILState_Ensure");
-    a.PyGILState_Release = self.need("PyGILState_Release");
-    a.PyObject_CallOneArg = self.need("PyObject_CallOneArg");
-    a.PyUnicode_FromString = self.need("PyUnicode_FromString");
-    a.PyUnicode_AsUTF8 = self.need("PyUnicode_AsUTF8");
-    a.Py_DecRef = self.need("Py_DecRef");
+    self.api.PyInitConfig_Create = self.need("PyInitConfig_Create");
+    self.api.PyInitConfig_Free = self.need("PyInitConfig_Free");
+    self.api.PyInitConfig_GetError = self.need("PyInitConfig_GetError");
+    self.api.PyInitConfig_GetExitCode = self.need("PyInitConfig_GetExitCode");
+    self.api.PyInitConfig_SetInt = self.need("PyInitConfig_SetInt");
+    self.api.PyInitConfig_SetStr = self.need("PyInitConfig_SetStr");
+    self.api.PyInitConfig_SetStrList = self.need("PyInitConfig_SetStrList");
+    self.api.Py_InitializeFromInitConfig = self.need("Py_InitializeFromInitConfig");
+    self.api.PyRun_SimpleString = self.need("PyRun_SimpleString");
+    self.api.Py_FinalizeEx = self.need("Py_FinalizeEx");
+    self.api.Py_Finalize = self.need("Py_Finalize");
+    self.api.Py_RunMain = self.need("Py_RunMain");
+    self.api.PyImport_AddModule = self.need("PyImport_AddModule");
+    self.api.PyModule_GetDict = self.need("PyModule_GetDict");
+    self.api.PyRun_String = self.need("PyRun_String");
+    self.api.PyLong_AsLong = self.need("PyLong_AsLong");
+    self.api.PyEval_SaveThread = self.need("PyEval_SaveThread");
+    self.api.PyEval_RestoreThread = self.need("PyEval_RestoreThread");
+    self.api.PyGILState_Ensure = self.need("PyGILState_Ensure");
+    self.api.PyGILState_Release = self.need("PyGILState_Release");
+    self.api.PyObject_CallOneArg = self.need("PyObject_CallOneArg");
+    self.api.PyUnicode_FromString = self.need("PyUnicode_FromString");
+    self.api.PyUnicode_AsUTF8 = self.need("PyUnicode_AsUTF8");
+    self.api.Py_DecRef = self.need("Py_DecRef");
 }
 
 impl Embed.check(cfg: int, rc: int, what: str) {

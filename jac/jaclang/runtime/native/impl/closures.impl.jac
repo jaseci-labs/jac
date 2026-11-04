@@ -21,12 +21,12 @@ impl __jac_rt_cell_set(cell: int, bits: int, kind: int) {
 }
 
 impl __jac_rt_closure_new(code: int, count: int) -> int {
-    closure = __jac_rt_alloc(CLOSURE_CELLS + count * SLOT);
+    closure = __jac_rt_alloc(CLOSURE_CELLS + (count + 1) * SLOT);
     __jac_rt_set_type(closure, int(ptr[u8]("closure")));
     __mem_store_i64(closure + CLOSURE_CODE, code);
     __mem_store_i64(closure + CLOSURE_COUNT, count);
     i = 0;
-    while i < count {
+    while i <= count {
         __mem_store_i64(closure + CLOSURE_CELLS + i * SLOT, 0);
         i += 1;
     }
@@ -37,6 +37,37 @@ impl __jac_rt_closure_new(code: int, count: int) -> int {
 impl __jac_rt_closure_set(closure: int, index: int, cell: int) {
     __jac_rt_retain(cell);
     __mem_store_i64(closure + CLOSURE_CELLS + index * SLOT, cell);
+}
+
+impl __jac_rt_closure_key(closure: int, key: int) {
+    count = __mem_load_i64(closure + CLOSURE_COUNT);
+    __mem_store_i64(closure + CLOSURE_CELLS + count * SLOT, key);
+}
+
+impl __jac_rt_closure_eq(a: int, b: int) -> bool {
+    if a == b {
+        return True;
+    }
+    if a == 0 or b == 0 {
+        return False;
+    }
+    count = __mem_load_i64(a + CLOSURE_COUNT);
+    if count != __mem_load_i64(b + CLOSURE_COUNT) {
+        return False;
+    }
+    key = __mem_load_i64(a + CLOSURE_CELLS + count * SLOT);
+    if key == 0 or key != __mem_load_i64(b + CLOSURE_CELLS + count * SLOT) {
+        return False;
+    }
+    i = 0;
+    while i < count {
+        if __mem_load_i64(a + CLOSURE_CELLS + i * SLOT)
+            != __mem_load_i64(b + CLOSURE_CELLS + i * SLOT) {
+            return False;
+        }
+        i += 1;
+    }
+    return True;
 }
 
 impl _cell_drop(cell: ptr[u8]) {

@@ -153,6 +153,14 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
 
 glob CTOR_MASK_BITS: int = 63;
 
+glob C_ENTRY_TAIL_KINDS: list[MirKind] = [
+         MirKind.BOOL,
+         MirKind.INT,
+         MirKind.FLOAT,
+         MirKind.C_PTR,
+         MirKind.C_FN
+     ];
+
 glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "int": [0, 7],
          "bool": [7],
@@ -334,7 +342,8 @@ obj MirFnState {
         region_escape: (MirValue | None) = None,
         pinned: dict[int, MirValue] = {},
         user_loads: dict[int, str] = {},
-        null_ok_open: set[int] = set();
+        null_ok_open: set[int] = set(),
+        tail_sites: list[uni.ReturnStmt] = [];
 }
 
 obj MirBound {
@@ -496,6 +505,10 @@ obj MirLowering {
     ) -> MirValue;
 
     def lower_tail_return(nd: uni.ReturnStmt);
+    def tail_refusal(nd: uni.UniNode, reason: str) -> MirRefused;
+    def tail_frame_blocker -> (str | None);
+    def tail_mismatch(made: MirInstr) -> (str | None);
+    def settle_tails;
     def c_convention(nd: uni.UniNode) -> str;
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
@@ -1022,6 +1035,8 @@ obj MirLowering {
         owner: uni.UniNode, body: Sequence[uni.UniNode]
     ) -> list[uni.Symbol];
 
+    def super_self(nd: uni.UniNode) -> (uni.Symbol | None);
+    def closure_key(made: MirValue, identity: str);
     def prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]);
     def cell_of(sym_id: int) -> (MirValue | None);
     def cell_read(cell: MirValue, value_type: MirType) -> MirValue;
@@ -1572,11 +1587,25 @@ obj MirLowering {
     def class_name_str(value: MirValue) -> MirValue;
     def is_template(ab: uni.Ability) -> bool;
     def template_of(ab: uni.Ability) -> bool;
+    def stamp_instance(
+        ab: uni.Ability,
+        owner: (uni.Archetype | None),
+        solution: dict[str, TypeBase],
+        site: uni.UniNode
+    ) -> MirDecl;
+
+    def template_value(nd: uni.Name, ab: uni.Ability) -> (MirValue | None);
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
     def stdlib_unit(scope: (uni.UniScopeNode | None)) -> (uni.Module | None);
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
     def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
     def stdlib_unit_at(path: str) -> (uni.Module | None);
+    def environ_unit(target: uni.UniNode) -> (uni.Module | None);
+    def environ_call(
+        unit: uni.Module, name: str, args: list[MirValue], site: uni.UniNode
+    ) -> MirValue;
+
+    def environ_key(slice: uni.IndexSlice, site: uni.UniNode) -> MirValue;
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
     def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
@@ -1600,6 +1629,8 @@ obj MirLowering {
         arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
     ) -> (MirValue | None);
 
+    def class_attr_overrides(arch: uni.Archetype, name: str) -> list[uni.Archetype];
+    def has_class_attr(arch: uni.Archetype, name: str) -> bool;
     def named_classes -> list[uni.Archetype];
     def class_dispatch(
         arch: uni.Archetype,

@@ -28,6 +28,22 @@ impl env_value(name: str) -> (str | None) {
     return strdup(at);
 }
 
+impl env_set(name: str, value: str) -> int {
+    return int(setenv(name, value, i32(1)));
+}
+
+impl env_unset(name: str) -> int {
+    return int(unsetenv(name));
+}
+
+impl process_id -> int {
+    return int(getpid());
+}
+
+impl rename_file(src: str, dst: str) -> int {
+    return int(rename(src, dst));
+}
+
 impl resolved_path(path: str) -> (str | None) {
     buf = b"\x00" * 4096;
     at = realpath(path, buf);

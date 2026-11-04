@@ -1697,6 +1697,13 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
                 mir_refusal("statement", "del of " + type(target).__name__, target)
             );
         }
+        environ = self.environ_unit(target.target);
+        if environ is not None {
+            self.environ_call(
+                environ, "delitem", [self.environ_key(target.right, target)], target
+            );
+            continue;
+        }
         holder = self.lower_expr(target.target);
         slice = target.right;
         if holder.type.kind == MirKind.LIST {

@@ -509,6 +509,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             self.region_escape_entry();
         }
         self.lower_body(body);
+        self.settle_tails();
         if abstract {
             self.builder().raise_builtin(
                 "NotImplementedError", f"{self.name_of(ab)} is abstract"
@@ -768,6 +769,20 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         raise MirRefused(mir_refusal("assignment", "several targets", nd));
     }
     target = targets[0];
+    if isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and nd.value is not None
+        and nd.aug_op is None {
+        environ = self.environ_unit(target.target);
+        if environ is not None {
+            named = self.environ_key(target.right, nd);
+            self.environ_call(
+                environ, "setitem", [named, self.lower_expr(nd.value)], nd
+            );
+            return;
+        }
+    }
     if isinstance(target, uni.TupleVal)
         and nd.value is not None
         and nd.aug_op is None {
@@ -1014,6 +1029,16 @@ impl MirLowering.assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignm
             value,
             nd
         );
+    } elif isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and self.environ_unit(target.target) is not None {
+        environ = self.environ_unit(target.target);
+        if environ is not None {
+            self.environ_call(
+                environ, "setitem", [self.environ_key(target.right, nd), value], nd
+            );
+        }
     } elif isinstance(target, uni.AtomTrailer)
         and not target.is_attr
         and isinstance(target.right, uni.IndexSlice)
@@ -1532,6 +1557,16 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         if place is not None {
             return self.builder().load(place, self.place_elem(place));
         }
+        named_ab = nd.sym.decl.parent
+            if nd.sym is not None and nd.sym.decl is not None
+            else None;
+        if isinstance(named_ab, uni.Ability)
+            and (id(named_ab) in self.templates or self.template_of(named_ab)) {
+            stamped = self.template_value(nd, named_ab);
+            if stamped is not None {
+                return stamped;
+            }
+        }
         decl = self.decls.get(self.decl_syms.get(id(nd.sym), -1))
             if nd.sym is not None
             else None;
@@ -1993,6 +2028,21 @@ impl MirLowering.lower_compare(nd: uni.CompareExpr) -> MirValue {
     left_nd: uni.Expr = nd.left;
     count = len(nd.ops);
     for (index, (op, right_nd)) in enumerate(zip(nd.ops, nd.rights)) {
+        environ = self.environ_unit(right_nd)
+            if op.name in (Tok.KW_IN, Tok.KW_NIN)
+            else None;
+        if environ is not None {
+            found = self.environ_call(environ, "contains", [left], nd);
+            verdict = found if op.name == Tok.KW_IN else b.logical_not(found);
+            b.store(result, verdict);
+            if index + 1 < count {
+                raise MirRefused(
+                    mir_refusal("comparison", "chain through os.environ", nd)
+                );
+            }
+            b.branch(done);
+            break;
+        }
         right = self.lower_expr(right_nd);
         verdict = self.view_compare(op.name, left_nd, left, right_nd, right)
             or self.compare_values(op.name, left, right, nd);
@@ -2150,6 +2200,18 @@ impl MirLowering.compare_values(
         and left.type.kind in (MirKind.OBJ, MirKind.OSP)
         and right.type.kind in (MirKind.OBJ, MirKind.OSP) {
         return self.object_compare(name, left, right, site);
+    }
+    if name in ("eq", "ne")
+        and left.type.kind == MirKind.FN
+        and right.type.kind == MirKind.FN {
+        same = self.call_rt(
+            "__jac_rt_closure_eq",
+            [
+                self.emit_value(MirOp.PTR_INT, mir_int(), [left]),
+                self.emit_value(MirOp.PTR_INT, mir_int(), [right])
+            ]
+        );
+        return same if name == "eq" else self.builder().logical_not(same);
     }
     if self.value_comparable(left, right, name) {
         return self.any_compare(name, left, right, site);
@@ -3865,6 +3927,14 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
+    if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) {
+        environ = self.environ_unit(nd.target);
+        if environ is not None {
+            return self.environ_call(
+                environ, "getitem", [self.environ_key(nd.right, nd)], nd
+            );
+        }
+    }
     guarded = self.null_ok_trailer(nd);
     if guarded is not None {
         return guarded;
@@ -5229,16 +5299,9 @@ impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
             )
         );
     }
-    if self.st().tries or self.st().region_slots {
-        raise MirRefused(
-            mir_refusal(
-                "return",
-                "tail call under a try or an open region",
-                nd,
-                "Work remains after the call (an exception frame or a region to close), so it is not in tail position.",
-                "E5114"
-            )
-        );
+    blocker = self.tail_frame_blocker();
+    if blocker is not None {
+        raise self.tail_refusal(nd, blocker);
     }
     value = self.lower_expr(nd.expr);
     made = b.block.instrs[-1] if b.block.instrs else None;
@@ -5246,20 +5309,112 @@ impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
     returns_value = ret.kind not in (MirKind.NONE, MirKind.VOID);
     if made is None
         or made.op not in (MirOp.CALL_C, MirOp.CALL_FNPTR, MirOp.CALL)
-        or (returns_value and made.result is not value)
-        or (returns_value and value.type is not ret) {
-        raise MirRefused(
-            mir_refusal(
-                "return",
-                "tail call",
-                nd,
-                "Work remains after the call (converting its result or releasing an argument), so it is not in tail position.",
-                "E5114"
-            )
+        or (returns_value and made.result is not value) {
+        raise self.tail_refusal(
+            nd,
+            "work remains after the call (converting its result or releasing an argument), so the call is not in tail position"
         );
     }
+    mismatch = self.tail_mismatch(made);
+    if mismatch is not None {
+        raise self.tail_refusal(nd, mismatch);
+    }
+    if (returns_value and value.type is not ret)
+        or any(
+            operand.owned and mir_holds_ref(operand.type) for operand in made.operands
+        ) {
+        raise self.tail_refusal(
+            nd,
+            "work remains after the call (converting its result or releasing an argument), so the call is not in tail position"
+        );
+    }
+    if self.st().region_escape is not None {
+        b.block.instrs.pop();
+        self.drop_regions();
+        b.block.instrs.append(made);
+    }
     made.sub = "musttail";
+    self.st().tail_sites.append(nd);
     b.ret(value if returns_value else None);
+}
+
+impl MirLowering.tail_refusal(nd: uni.UniNode, reason: str) -> MirRefused {
+    refusal = mir_refusal(
+        "return",
+        "tail call",
+        nd,
+        f"`return tail` cannot be a guaranteed tail call: {reason}.",
+        "E5114"
+    );
+    refusal.detail = reason;
+    return MirRefused(refusal);
+}
+
+impl MirLowering.tail_frame_blocker -> (str | None) {
+    st = self.st();
+    if st.generator is not None or st.fn.resumable {
+        return "a generator's frame outlives each resumption";
+    }
+    if st.finals or any(id(frame) in st.try_exits for (frame, _, _) in st.tries) {
+        return "a `finally` or `with` block must run after the call";
+    }
+    if st.tries {
+        return "a `try` handler must stay active while the callee runs";
+    }
+    if st.region_slots {
+        return "an open region must be left after the call";
+    }
+    if st.captured {
+        return "captured variables' cells must be released after the call";
+    }
+    return None;
+}
+
+impl MirLowering.tail_mismatch(made: MirInstr) -> (str | None) {
+    def spelled(t: (MirType | None)) -> str {
+        if t is None or t.kind in (MirKind.NONE, MirKind.VOID) {
+            return "void";
+        }
+        if t.kind == MirKind.BOOL {
+            return "i1";
+        }
+        if t.kind == MirKind.INT {
+            return f"i{t.width if t.is_sized() else 64}";
+        }
+        if t.kind == MirKind.FLOAT {
+            return "float" if t.is_sized() and t.width == 32 else "double";
+        }
+        return "ptr";
+    }
+    fn = self.st().fn;
+    args = made.operands[1:] if made.op == MirOp.CALL_FNPTR else made.operands;
+    have = spelled(made.result.type if made.result is not None else None);
+    want = spelled(fn.ret);
+    if have != want {
+        return f"the callee returns {have}, the caller {want}";
+    }
+    if len(args) != len(fn.params) {
+        return f"the callee takes {len(args)} parameters, the caller {len(fn.params)}";
+    }
+    return None;
+}
+
+impl MirLowering.settle_tails {
+    st = self.st();
+    if not st.tail_sites {
+        return;
+    }
+    for slot in st.local_names.values() {
+        if not slot.is_slot or slot.is_temp {
+            continue;
+        }
+        t = slot.type.payload() if slot.type.kind == MirKind.OPT else slot.type;
+        if mir_holds_ref(t) {
+            raise self.tail_refusal(
+                st.tail_sites[0], "an owned local must be released after the call"
+            );
+        }
+    }
 }
 
 impl MirLowering.c_convention(nd: uni.UniNode) -> str {
@@ -5473,7 +5628,8 @@ impl MirLowering.later_local(nd: uni.Name) -> bool {
         or id(sym) in self.st().captured
         or id(sym) in self.st().env_cells
         or id(sym) in self.decl_syms
-        or self.global_declaration(sym) is not None {
+        or self.global_declaration(sym) is not None
+        or clib_global_of_name(nd) is not None {
         return False;
     }
     owner = self.function_of(sym.decl);

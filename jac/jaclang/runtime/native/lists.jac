@@ -15,8 +15,8 @@ glob KIND_INT: int = 0,
      KIND_ANY: int = 6,
      KIND_UINT: int = 7,
      KIND_NULL: int = 8,
-     KIND_LENT: int = 256,
-     KIND_MASK: int = 255,
+     KIND_LENT: int = 4611686018427387904,
+     KIND_BASE: int = 4611686018427387903,
      SORT_TAGGED_KIND: int = 16;
 
 glob LIST_LEN: int = 0,
@@ -84,6 +84,10 @@ def:pub __jac_rt_list_new(cap: int, kind: int) -> int;
 def:pub __jac_rt_list_rekind(lst: int, kind: int);
 
 def:pub __jac_rt_list_lend(lst: int);
+
+def:pub __jac_rt_list_kind(lst: int) -> int;
+
+def:pub __jac_rt_list_is_lent(lst: int) -> bool;
 
 def _held(lst: int, kind: int) -> int;
 

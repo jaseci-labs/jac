@@ -451,12 +451,7 @@ impl MirLowering.class_dispatch(
     matches: Callable[[uni.Archetype], MirValue]
 ) -> (MirValue | None) {
     base = self.class_attr_entry(arch, name);
-    overrides = [
-        sub
-        for sub in self.subclass_archetypes(arch)
-        if self.class_attr_entry(sub, name) is not None
-            and (base is None or self.class_attr_entry(sub, name)[2] is not base[2])
-    ];
+    overrides = self.class_attr_overrides(arch, name);
     if base is None and not overrides {
         return None;
     }
@@ -492,6 +487,23 @@ impl MirLowering.class_dispatch(
     return b.load(result, wanted);
 }
 
+impl MirLowering.class_attr_overrides(
+    arch: uni.Archetype, name: str
+) -> list[uni.Archetype] {
+    base = self.class_attr_entry(arch, name);
+    return [
+        sub
+        for sub in self.subclass_archetypes(arch)
+        if self.class_attr_entry(sub, name) is not None
+            and (base is None or self.class_attr_entry(sub, name)[2] is not base[2])
+    ];
+}
+
+impl MirLowering.has_class_attr(arch: uni.Archetype, name: str) -> bool {
+    return self.class_attr_entry(arch, name) is not None
+        or bool(self.class_attr_overrides(arch, name));
+}
+
 impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_attr
         or not isinstance(nd.right, uni.Name)
@@ -504,7 +516,7 @@ impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
         bound = self.class_bound(nd.target.type)
             if isinstance(nd.target.type, ClassType)
             else None;
-        if bound is None {
+        if bound is None or not self.has_class_attr(bound, nd.right.value) {
             return None;
         }
         word = self.spill(self.lower_expr(nd.target));
@@ -528,7 +540,8 @@ impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if var is not None and not (group is not None and group.is_static) {
         return None;
     }
-    if self.object_def(arch).field(name) is not None {
+    if self.object_def(arch).field(name) is not None
+        or not self.has_class_attr(arch, name) {
         return None;
     }
     held = self.spill(self.lower_expr(nd.target));
@@ -541,4 +554,43 @@ impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
             held, held, sub, nd
         ); }
     );
+}
+
+impl MirLowering.environ_unit(target: uni.UniNode) -> (uni.Module | None) {
+    while isinstance(target, uni.AtomUnit) {
+        target = target.value;
+    }
+    if not isinstance(target, uni.AtomTrailer)
+        or not target.is_attr
+        or not isinstance(target.right, uni.Name)
+        or target.right.value != "environ" {
+        return None;
+    }
+    return self.stdlib_module(target.target);
+}
+
+impl MirLowering.environ_call(
+    unit: uni.Module, name: str, args: list[MirValue], site: uni.UniNode
+) -> MirValue {
+    member = self.module_member(unit, f"environ_{name}");
+    if not isinstance(member, uni.Ability) {
+        raise MirRefused(mir_refusal("os.environ", name, site));
+    }
+    decl = self.foreign_function_decl(member, site);
+    if len(args) != len(decl.params) {
+        raise MirRefused(mir_refusal("os.environ", name, site));
+    }
+    values = [self.coerce(arg, param, site) for (arg, param) in zip(args, decl.params)];
+    result = self.builder().call(decl.symbol, values, decl.ret);
+    if result is None {
+        return self.builder().const_bool(False);
+    }
+    return result;
+}
+
+impl MirLowering.environ_key(slice: uni.IndexSlice, site: uni.UniNode) -> MirValue {
+    if slice.is_range or len(slice.slices) != 1 or slice.slices[0].start is None {
+        raise MirRefused(mir_refusal("os.environ", "slice", site));
+    }
+    return self.lower_expr(slice.slices[0].start);
 }

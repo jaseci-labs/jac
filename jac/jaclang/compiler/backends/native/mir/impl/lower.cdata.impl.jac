@@ -844,13 +844,32 @@ impl MirLowering.c_entry(
             args.append(value);
         }
         self.region_escape_entry();
-        result = self.builder().call(symbol, args, ret);
+        b = self.builder();
+        bare = ret.kind in (MirKind.NONE, MirKind.VOID);
+        escape_slot = self.st().region_escape;
+        if escape_slot is not None
+            and not self.c_convention(target)
+            and all(
+                t.kind in C_ENTRY_TAIL_KINDS for t in params + ([] if bare else [ret])
+            ) {
+            escaped = fn.new_block("c_entry.escaped");
+            direct = fn.new_block("c_entry.direct");
+            b.cond_branch(
+                b.compare(
+                    "ge", b.load(escape_slot, mir_int()), b.const_int(0, mir_int())
+                ),
+                escaped,
+                direct
+            );
+            b.position(direct);
+            result = b.call(symbol, args, ret);
+            b.block.instrs[-1].sub = "musttail";
+            b.ret(None if bare or result is None else result);
+            b.position(escaped);
+        }
+        result = b.call(symbol, args, ret);
         self.drop_regions();
-        self.builder().ret(
-            None
-                if ret.kind in (MirKind.NONE, MirKind.VOID) or result is None
-                else result
-        );
+        b.ret(None if bare or result is None else result);
     } finally {
         self.state = saved;
     }

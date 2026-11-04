@@ -6828,7 +6828,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend { E1145, E1158, E5092, E5095, E9003 },
+        backends.native.mir.backend { E1145, E1158, E5092, E5095, E5114, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -14908,10 +14908,14 @@ graph import runtime.na_stdlib {
             S_IFDIR,
             S_IFMT,
             cwd_path,
+            env_set,
+            env_unset,
             env_value,
             make_dir,
+            process_id,
             remove_dir,
             remove_file,
+            rename_file,
             run_shell,
             stat_fields
         },
@@ -15231,6 +15235,7 @@ graph import runtime.native {
             __jac_rt_elem_release,
             __jac_rt_elem_retain,
             __jac_rt_list_extend,
+            __jac_rt_list_kind,
             __jac_rt_list_new,
             __jac_rt_list_push,
             __jac_rt_list_rekind,

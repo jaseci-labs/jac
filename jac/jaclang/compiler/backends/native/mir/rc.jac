@@ -50,7 +50,9 @@ obj MirOwnState(MirRcState) {
         final_loads: dict[int, int] = {},
         movable_temps: set[int] = set(),
         carried: dict[int, MirValue] = {},
-        fallbacks: list[str] = [];
+        fallbacks: list[str] = [],
+        temp_places: dict[int, list[MirValue]] = {},
+        borrowed_carry: dict[int, MirValue] = {};
 
     override def run;
     override def rewrite(blk: MirBlock);

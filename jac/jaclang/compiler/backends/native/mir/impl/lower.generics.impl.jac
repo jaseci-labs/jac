@@ -246,28 +246,7 @@ impl MirLowering.generic_call(
             );
         }
     }
-    env: dict[str, TypeBase] = dict(self.type_env);
-    env.update(solution);
-    key = f"{label}|"
-        + ",".join(
-            sorted(
-                f"{param}={mir_type_of(bound, MirPosition.VALUE, nd, env).render()}"
-                for (param, bound) in solution.items()
-            )
-        );
-    decl = self.instances.get(key);
-    if decl is None {
-        parts = sorted(
-            f"{param}={native_type_key(bound)}" for (param, bound) in solution.items()
-        );
-        memo = f"{label}|" + ",".join(parts);
-        digest = hashlib.sha256(memo.encode()).hexdigest()[:8];
-        stem = f"{archetype_native_name(owner)}_{name}" if owner is not None else name;
-        symbol = f"__jac_mono_{stem}_{mono_symbol_text('_'.join(parts))}_{digest}";
-        decl = self.declare_instance(ab, env, symbol, owner);
-        self.instances[key] = decl;
-        self.pending.append(decl);
-    }
+    decl = self.stamp_instance(ab, owner, solution, nd);
     bound = self.bound_args(nd, ab, receiver is not None);
     if len(bound) != len(decl.params) {
         raise MirRefused(
@@ -288,6 +267,73 @@ impl MirLowering.generic_call(
         return self.builder().const_bool(False);
     }
     return result;
+}
+
+impl MirLowering.stamp_instance(
+    ab: uni.Ability,
+    owner: (uni.Archetype | None),
+    solution: dict[str, TypeBase],
+    site: uni.UniNode
+) -> MirDecl {
+    name = self.name_of(ab);
+    label = f"{archetype_native_name(owner)}.{name}" if owner is not None else name;
+    env: dict[str, TypeBase] = dict(self.type_env);
+    env.update(solution);
+    key = f"{label}|"
+        + ",".join(
+            sorted(
+                f"{param}={mir_type_of(bound, MirPosition.VALUE, site, env).render()}"
+                for (param, bound) in solution.items()
+            )
+        );
+    decl = self.instances.get(key);
+    if decl is None {
+        parts = sorted(
+            f"{param}={native_type_key(bound)}" for (param, bound) in solution.items()
+        );
+        memo = f"{label}|" + ",".join(parts);
+        digest = hashlib.sha256(memo.encode()).hexdigest()[:8];
+        stem = f"{archetype_native_name(owner)}_{name}" if owner is not None else name;
+        symbol = f"__jac_mono_{stem}_{mono_symbol_text('_'.join(parts))}_{digest}";
+        decl = self.declare_instance(ab, env, symbol, owner);
+        self.instances[key] = decl;
+        self.pending.append(decl);
+    }
+    return decl;
+}
+
+impl MirLowering.template_value(nd: uni.Name, ab: uni.Ability) -> (MirValue | None) {
+    asn = nd.parent;
+    if not isinstance(asn, uni.Assignment)
+        or asn.value is not nd
+        or asn.type_tag is None
+        or not isinstance(asn.type_tag.tag, uni.Expr)
+        or self.owner_archetype(ab) is not None {
+        return None;
+    }
+    wanted = asn.type_tag.tag.type;
+    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+    if not isinstance(wanted, FunctionType)
+        or not isinstance(fn_type, FunctionType)
+        or self.mentions_typevar(wanted) {
+        return None;
+    }
+    solution: dict[str, TypeBase] = {};
+    self.unify(fn_type, wanted, solution);
+    for param in self.type_param_names(ab) {
+        if param not in solution {
+            return None;
+        }
+    }
+    decl = self.stamp_instance(ab, None, solution, nd);
+    address = self.emit_value(
+        MirOp.FN_ADDR,
+        mir_c_fn(decl.params, decl.ret),
+        [],
+        callee=self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability)
+    );
+    self.fn_values[address.id] = decl;
+    return address;
 }
 
 impl MirLowering.declare_instance(

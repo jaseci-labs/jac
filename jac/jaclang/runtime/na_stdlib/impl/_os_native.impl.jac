@@ -18,6 +18,60 @@ impl environ_get(key: str, fallback: (str | None) = None) -> (str | None) {
     return found if found is not None else fallback;
 }
 
+impl environ_getitem(key: str) -> str {
+    found = env_value(key);
+    if found is None {
+        raise KeyError(key);
+    }
+    return found;
+}
+
+impl _environ_name(key: str) -> None {
+    if not key or "=" in key {
+        raise ValueError("illegal environment variable name");
+    }
+    if "\x00" in key {
+        raise ValueError("embedded null byte");
+    }
+}
+
+impl environ_setitem(key: str, value: str) -> None {
+    _environ_name(key);
+    if "\x00" in value {
+        raise ValueError("embedded null byte");
+    }
+    if env_set(key, value) != 0 {
+        raise OSError("setenv failed");
+    }
+}
+
+impl environ_delitem(key: str) -> None {
+    if env_value(key) is None {
+        raise KeyError(key);
+    }
+    _environ_name(key);
+    if env_unset(key) != 0 {
+        raise OSError("unsetenv failed");
+    }
+}
+
+impl environ_pop(key: str, fallback: (str | None) = "\x00") -> (str | None) {
+    found = env_value(key);
+    if found is None {
+        if fallback == "\x00" {
+            raise KeyError(key);
+        }
+        return fallback;
+    }
+    _environ_name(key);
+    env_unset(key);
+    return found;
+}
+
+impl environ_contains(key: str) -> bool {
+    return env_value(key) is not None;
+}
+
 impl listdir(path: str = ".") -> list[str] {
     return directory_names(path);
 }
@@ -74,4 +128,17 @@ impl rmdir(path: str) -> None {
 
 impl system(command: str) -> int {
     return run_shell(command);
+}
+
+impl getpid -> int {
+    return process_id();
+}
+
+impl rename(src: str, dst: str) -> None {
+    if "\x00" in src or "\x00" in dst {
+        raise ValueError("embedded null byte");
+    }
+    if rename_file(src, dst) != 0 {
+        raise_path_error(src + "' -> '" + dst, last_errno());
+    }
 }
