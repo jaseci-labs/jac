@@ -1672,7 +1672,7 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
     slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
     raw = self.builder.load(slot, name="mem.ld");
     if intr.width < 64 {
-        return self.builder.zext(raw, ir.IntType(64), name="mem.ld.wide");
+        return self.builder.sext(raw, ir.IntType(64), name="mem.ld.wide");
     }
     return raw;
 }
