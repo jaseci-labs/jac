@@ -22,6 +22,7 @@ Design notes:
 """
 
 import from engine.src.runtime.jsvalue {
+    jsv_is_symbol,
     JSValue,
     js_undefined,
     js_null,

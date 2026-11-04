@@ -1,6 +1,7 @@
 """Temporal.PlainDate built-in."""
 
 import from engine.src.runtime.jsvalue {
+    jsv_to_table_id,
     JSValue,
     js_undefined,
     js_int,

@@ -14,6 +14,7 @@ import from engine.src.builtins.native_registry {
     is_native_val
 }
 import from engine.src.runtime.jsvalue {
+    jsv_is_undefined,
     JSValue,
     jsv_is_object_cell,
     js_undefined,

@@ -25,6 +25,7 @@ import from engine.src.bytecode.op {
 }
 import from engine.src.bytecode.regisa { reg_translate_fn }
 import from engine.src.runtime.jsvalue {
+    jsv_is_number,
     js_typeof_code,
     JSValue,
     js_undefined,

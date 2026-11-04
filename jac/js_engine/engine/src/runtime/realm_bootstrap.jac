@@ -5,6 +5,7 @@ Kept separate from global.na.jac to avoid vm.na.jac ↔ global.na.jac circular i
 """
 
 import from engine.src.runtime.jsvalue {
+    jsv_is_object_cell,
     JSValue,
     js_undefined,
     js_true,

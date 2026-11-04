@@ -1,6 +1,10 @@
 """Temporal.Instant built-in — epoch nanoseconds via bignat."""
 
 import from engine.src.runtime.jsvalue {
+    jsv_to_table_id,
+    jsv_is_null,
+    jsv_is_bool,
+    jsv_is_symbol,
     JSValue,
     js_undefined,
     js_int,
