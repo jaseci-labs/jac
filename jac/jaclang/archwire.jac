@@ -6180,6 +6180,7 @@ graph import compiler {
         | backends.native.link_plan
         | backends.native.mir.backend
         | backends.native.mir.lower
+        | c_interop
         | capability_notes
         | frontend.host
         | frontend.parser.frontend
