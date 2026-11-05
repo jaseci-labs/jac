@@ -996,6 +996,7 @@ obj MirLowering {
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
     def host_only_type(t: (TypeBase | None)) -> bool;
+    def foreign_field(t: (TypeBase | None)) -> bool;
     def erased_class(t: ClassType) -> bool;
     def note_erasures(t: (TypeBase | None));
     def erased_slot(t: (TypeBase | None)) -> bool;

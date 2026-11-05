@@ -112,7 +112,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             self.ensure_c_types(field_type);
             self.note_erasures(field_type);
             slot_type = mir_any()
-                if self.erased_slot(field_type) or self.host_only_type(field_type)
+                if self.erased_slot(field_type)
+                    or self.host_only_type(field_type)
+                    or self.foreign_field(field_type)
                 else mir_type_of(
                     field_type, MirPosition.FIELD, member.decl_node or arch
                 );
@@ -2375,6 +2377,27 @@ impl MirLowering.host_only_type(t: (TypeBase | None)) -> bool {
     members = t.types if isinstance(t, UnionType) else [t];
     for member in members {
         if isinstance(member, ClassType) and self.erased_class(member) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl MirLowering.foreign_field(t: (TypeBase | None)) -> bool {
+    if not self.prog.options.native_unit {
+        return False;
+    }
+    members = t.types if isinstance(t, UnionType) else [t];
+    for member in members {
+        if not isinstance(member, ClassType)
+            or member._shared is None
+            or not isinstance(member.shared.symbol_table, uni.Archetype)
+            or not stub_archetype(member.shared.symbol_table) {
+            continue;
+        }
+        try {
+            mir_type_of(member, MirPosition.FIELD);
+        } except MirRefused {
             return True;
         }
     }

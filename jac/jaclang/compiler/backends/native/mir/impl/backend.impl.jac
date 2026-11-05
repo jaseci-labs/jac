@@ -720,7 +720,10 @@ impl MirNativePass.class_layouts(
             }
             (code, aux, schema) = mir_field_slot(member.type);
             if member.type.kind == MirKind.ANY
-                and lowering.host_only_type(declared.get(member.name)) {
+                and (
+                    lowering.host_only_type(declared.get(member.name))
+                    or lowering.foreign_field(declared.get(member.name))
+                ) {
                 (code, aux, schema) = ("opaque", "", None);
             }
             slot: dict[str, any] = {
