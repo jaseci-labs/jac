@@ -2523,6 +2523,13 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if callee is None and isinstance(nd.target, uni.Name) {
         callee = self.stdlib_member(nd.target) or self.absorbed_ability(nd.target);
     }
+    if callee is None and isinstance(nd.target, uni.Name) {
+        reexported = named_function_of(nd.target);
+        if isinstance(reexported, uni.Ability)
+            and clib_import_of(reexported) is not None {
+            callee = reexported;
+        }
+    }
     if isinstance(callee, uni.Ability) {
         callee = self.variant_ability(self.live_member(callee));
     }
