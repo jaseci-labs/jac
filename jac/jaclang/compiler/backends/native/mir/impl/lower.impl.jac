@@ -958,8 +958,38 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
     } elif nd.type_tag is not None {
         self.lend_fresh(value, nd.type_tag, nd.value);
         self.redeclare_local(target, nd.type_tag);
+    } else {
+        self.retype_from_value(target, value);
     }
     self.store_name(target, value);
+}
+
+impl MirLowering.retype_from_value(target: uni.Name, value: MirValue) {
+    sym = target.sym;
+    if value.type.kind != MirKind.OBJ
+        or sym is None
+        or sym.storage != SymbolStorage.LOCAL
+        or id(sym) in self.st().locals
+        or self.cell_of(id(sym)) is not None
+        or len(binding_sites(sym)) != 1 {
+        return;
+    }
+    try {
+        if self.symbol_type(sym, target).kind != MirKind.ANY {
+            return;
+        }
+    } except MirRefused {
+        return;
+    }
+    fn = self.st().fn;
+    made = fn.new_value(value.type, sym.sym_name);
+    made.is_slot = True;
+    made.hold = "own" if sym.ownership == OwnershipKind.OWN else "local";
+    fn.blocks[0].instrs.insert(
+        0, MirInstr(op=MirOp.SLOT, result=made, type_arg=value.type)
+    );
+    self.st().locals[id(sym)] = made;
+    self.st().retyped[id(sym)] = value.type;
 }
 
 impl MirLowering.exchange_place(arg: uni.Expr) -> MirValue {
@@ -1308,8 +1338,8 @@ impl MirLowering.lower_while(nd: uni.WhileStmt) {
     cond = self.condition(nd.condition);
     self.builder().cond_branch(cond, body, otherwise);
     self.builder().position(body);
-    self.st().loops.append(MirLoopTarget(head=head, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=head, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(head);
@@ -1325,8 +1355,8 @@ impl MirLowering.lower_forever(nd: uni.ForeverStmt) {
     after = fn.new_block("forever.exit");
     self.builder().branch(head);
     self.builder().position(head);
-    self.st().loops.append(MirLoopTarget(head=head, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=head, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(head);
@@ -1350,8 +1380,8 @@ impl MirLowering.lower_iter_for(nd: uni.IterForStmt) {
     cond = self.condition(nd.condition);
     self.builder().cond_branch(cond, body, otherwise);
     self.builder().position(body);
-    self.st().loops.append(MirLoopTarget(head=step, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=step, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(step);
@@ -1381,6 +1411,10 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
         raise MirRefused(mir_refusal("statement", nd.ctrl.value, nd));
     }
     target = self.st().loops[-1];
+    if nd.ctrl.name == Tok.KW_CONTINUE
+        or (nd.ctrl.name == Tok.KW_BREAK and target.breaks_pass) {
+        self.detach_pass_links(target.passes);
+    }
     if nd.ctrl.name == Tok.KW_CONTINUE and target.continue_depth >= 0 {
         self.leave_tries(target.continue_depth);
     } elif nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
@@ -3252,6 +3286,7 @@ impl MirLowering.ability_sym(ab: uni.Ability) -> uni.Symbol {
 impl MirLowering.type_of(
     t: (TypeBase | None), position: MirPosition, site: uni.UniNode
 ) -> MirType {
+    t = self.counterpart_type(t);
     self.ensure_c_types(t);
     self.note_erasures(t);
     if self.host_only_type(t) {
@@ -3260,6 +3295,12 @@ impl MirLowering.type_of(
     made = mir_type_of(t, position, site, self.type_env or None);
     self.ensure_objects(t);
     self.record_enum_type(made, t);
+    if made.kind == MirKind.OBJ
+        and made.name not in self.archetypes
+        and isinstance(t, ClassType)
+        and isinstance(t.shared.symbol_table, uni.Archetype) {
+        self.archetypes[made.name] = t.shared.symbol_table;
+    }
     return made;
 }
 
@@ -3798,8 +3839,8 @@ impl MirLowering.lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]) {
     b.cond_branch(more, body, otherwise);
     b.position(body);
     self.store_name(nd.target, now);
-    self.st().loops.append(MirLoopTarget(head=advance, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=advance, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(advance);
@@ -5069,6 +5110,12 @@ impl MirLowering.method_call(
             True
         );
         return made if target.target.value == "bytes" else self.to_bytearray(made);
+    }
+    made_by = self.stdlib_result_arch(target.target);
+    if made_by is not None {
+        return self.object_method(
+            nd, self.lower_expr(target.target), made_by, right.value
+        );
     }
     receiver_type = self.expr_type(target.target)
         if isinstance(target.target, uni.Expr)

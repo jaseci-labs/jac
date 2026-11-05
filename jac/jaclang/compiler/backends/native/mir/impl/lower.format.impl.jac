@@ -774,15 +774,28 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
             or isinstance(args[0].type, FunctionType) {
             return None;
         }
-        source_kind = self.expr_type(args[0]).kind;
+        source_type = self.expr_type(args[0]);
+        source_kind = source_type.kind;
         if source_kind == MirKind.ANY and len(args) == 1 {
             return self.any_number(self.lower_expr(args[0]), name == "int", nd);
+        }
+        if source_kind == MirKind.OPT {
+            source_kind = source_type.payload().kind;
         }
         if source_kind
             not in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
             return None;
         }
-        source = self.spill(self.lower_expr(args[0]));
+        source = self.lower_expr(args[0]);
+        if source.type.kind == MirKind.OPT {
+            source = self.opt_unwrap_checked(
+                source,
+                f"{name}() argument must be a string"
+                    + (", a bytes-like object" if name == "int" else "")
+                    + " or a real number, not 'NoneType'"
+            );
+        }
+        source = self.spill(source);
         (data, size) = self.text_bytes(source);
         if name == "float" {
             return self.call_rt("__jac_rt_float_parse", [data, size]);

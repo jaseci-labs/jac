@@ -1344,26 +1344,38 @@ impl MirLowering.osp_delete(target: uni.Expr) -> bool {
     if isinstance(target, uni.AtomTrailer) {
         return False;
     }
-    t = target.type;
+    return self.osp_destroy_held(self.lower_expr(target), target.type, target)
+        if self.osp_graph_type(target.type)
+        else False;
+}
+
+impl MirLowering.osp_graph_type(t: (TypeBase | None)) -> bool {
     if isinstance(t, ClassType) and t.shared.class_name == "list" {
         args = t.private.type_args if t.private else [];
-        elem = self.arch_of_type(args[0]) if args else None;
-        layout = self.osp_layout(elem);
-        if layout is None or layout.arch_type not in ("node", "edge") {
-            return False;
-        }
-        self.osp_call(
-            "__jac_osp_destroy_all", [self.osp_handles(self.lower_expr(target), target)]
-        );
-        return True;
+        return bool(args)
+            and not (
+                isinstance(args[0], ClassType) and args[0].shared.class_name == "list"
+            )
+            and self.osp_graph_type(args[0]);
     }
-    layout = self.osp_layout(self.arch_of_type(t));
-    if layout is None or layout.arch_type not in ("node", "edge") {
+    if not isinstance(t, ClassType) {
         return False;
     }
-    self.osp_call(
-        "__jac_osp_destroy", [self.osp_handle(self.lower_expr(target), target)]
-    );
+    layout = self.osp_layout(self.arch_of_type(t));
+    if layout is not None {
+        return layout.arch_type in ("node", "edge");
+    }
+    return t.is_node_type() or t.is_edge_type();
+}
+
+impl MirLowering.osp_destroy_held(
+    value: MirValue, t: (TypeBase | None), site: uni.UniNode
+) -> bool {
+    if isinstance(t, ClassType) and t.shared.class_name == "list" {
+        self.osp_call("__jac_osp_destroy_all", [self.osp_handles(value, site)]);
+    } else {
+        self.osp_call("__jac_osp_destroy", [self.osp_handle(value, site)]);
+    }
     return True;
 }
 

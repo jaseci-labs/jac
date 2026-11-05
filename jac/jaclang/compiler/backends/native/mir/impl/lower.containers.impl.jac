@@ -851,10 +851,12 @@ impl MirLowering.list_method(
     }
     if name == "remove" and len(args) == 1 {
         self.view_guard(lst, VIEW_REMOVE);
-        found = self.runtime(
-            "__jac_rt_list_index",
-            [lst, self.to_bits(self.lower_expr(args[0]), elem, args[0]), kind]
-        );
+        found = self.list_scan(lst, self.lower_expr(args[0]), "find", args[0])
+            if self.structural_elem(elem)
+            else self.runtime(
+                "__jac_rt_list_index",
+                [lst, self.to_bits(self.lower_expr(args[0]), elem, args[0]), kind]
+            );
         if found is None {
             return None;
         }
@@ -1669,8 +1671,8 @@ impl MirLowering.lower_for_container(nd: uni.InForStmt, holder: MirValue) {
             self.store_name(nd.target, self.scalar_from_bits(bits, key));
         }
     }
-    self.st().loops.append(MirLoopTarget(head=head, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=head, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(head);
@@ -1728,22 +1730,33 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
                 "list assignment index out of range"
             );
             bits = self.runtime("__jac_rt_list_pop", [holder, at]);
-            if bits is not None
-                and self.elem_kind(holder.type.payload(), target)
-                    in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
-                self.owned_element(
-                    b.ref_cast(bits, mir_ref(), True), holder.type.payload()
-                );
+            if bits is None {
+                continue;
+            }
+            elem = holder.type.payload();
+            popped = self.owned_element(b.ref_cast(bits, mir_ref(), True), elem)
+                if self.elem_kind(elem, target)
+                    in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY)
+                else self.scalar_from_bits(bits, elem);
+            if self.osp_graph_type(target.type) {
+                self.osp_destroy_held(popped, target.type, target);
             }
             continue;
         }
         if holder.type.kind == MirKind.DICT {
             (key_type, value_type) = (holder.type.args[0], holder.type.args[1]);
+            key = self.spill(self.lower_expr(key_nd));
+            if self.osp_graph_type(target.type) {
+                holder = self.spill(holder);
+                self.osp_destroy_held(
+                    self.dict_get(holder, key, target), target.type, target
+                );
+            }
             gone = self.runtime(
                 "__jac_rt_dict_del",
                 [
                     holder,
-                    self.to_bits(self.lower_expr(key_nd), key_type, key_nd),
+                    self.to_bits(key, key_type, key_nd),
                     b.const_int(self.elem_kind(key_type, target), mir_int()),
                     b.const_int(self.elem_kind(value_type, target), mir_int())
                 ]

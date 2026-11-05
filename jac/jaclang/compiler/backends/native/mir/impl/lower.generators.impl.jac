@@ -1385,8 +1385,8 @@ impl MirLowering.lower_for_sources(nd: uni.InForStmt, holder: (MirValue | None))
     b.position(head);
     values = self.step_sources(cursors, counter, otherwise);
     self.bind_values(nd.target, values, nd);
-    self.st().loops.append(MirLoopTarget(head=head, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=head, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(head);

@@ -5,7 +5,7 @@ impl MirLowering.stdlib_module(expr: uni.UniNode) -> (uni.Module | None) {
     return self.stdlib_unit(expr.type.symbol_table);
 }
 
-impl MirLowering.stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None) {
+impl MirLowering.stdlib_item_member(nd: uni.FuncCall) -> (uni.Ability | None) {
     callee = nd.callee_decl;
     if not isinstance(nd.target, uni.Name)
         or not isinstance(callee, uni.Ability)
@@ -17,14 +17,41 @@ impl MirLowering.stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None) {
     member = self.module_member(unit, self.name_of(callee))
         if unit is not None
         else None;
-    if not isinstance(member, uni.Ability) {
+    return member if isinstance(member, uni.Ability) else None;
+}
+
+impl MirLowering.stdlib_result_arch(nd: uni.UniNode) -> (uni.Archetype | None) {
+    if not isinstance(nd, uni.FuncCall) {
+        return None;
+    }
+    member = self.stdlib_item_member(nd);
+    if member is None {
+        return None;
+    }
+    made = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(member));
+    return self.arch_of_type(made.return_type)
+        if isinstance(made, FunctionType)
+        else None;
+}
+
+impl MirLowering.stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None) {
+    member = self.stdlib_item_member(nd);
+    if member is None {
         return None;
     }
     made = self.import_call(nd, member);
     if made is None {
         return None;
     }
-    wanted = self.expr_type(nd);
+    if self.stdlib_result_arch(nd) is not None {
+        try {
+            wanted = self.expr_type(nd);
+        } except MirRefused {
+            return made;
+        }
+    } else {
+        wanted = self.expr_type(nd);
+    }
     if made.type is wanted
         or wanted.kind == MirKind.NONE
         or made.type.kind == MirKind.NONE {
@@ -56,27 +83,108 @@ impl MirLowering.stdlib_unit_at(path: str) -> (uni.Module | None) {
     if not name {
         return None;
     }
-    scope_path = path;
+    if name in self.stdlib_units {
+        return self.stdlib_units[name];
+    }
+    return self.stdlib_unit_named(name) if not path.endswith(".jac") else None;
+}
+
+impl MirLowering.stdlib_unit_named(name: str) -> (uni.Module | None) {
     if name in self.stdlib_units {
         return self.stdlib_units[name];
     }
     found: (uni.Module | None) = None;
-    if not scope_path.endswith(".jac") {
-        (_, full_path) = resolve_native_module(
-            name, os.path.dirname(self.module.loc.mod_path), allow_inferred=False
+    (_, full_path) = resolve_native_module(
+        name, os.path.dirname(self.module.loc.mod_path), allow_inferred=False
+    );
+    if full_path is not None
+        and full_path.endswith(".jac")
+        and os.path.isfile(full_path)
+        and os.path.realpath(full_path) != os.path.realpath(self.module.loc.mod_path) {
+        found = self.prog.load_dependency_module(
+            full_path, importer_path=self.module.loc.mod_path, need_tree=True
         );
-        if full_path is not None
-            and full_path.endswith(".jac")
-            and os.path.isfile(full_path)
-            and os.path.realpath(full_path)
-                != os.path.realpath(self.module.loc.mod_path) {
-            found = self.prog.load_dependency_module(
-                full_path, importer_path=self.module.loc.mod_path, need_tree=True
-            );
-        }
     }
     self.stdlib_units[name] = found;
     return found;
+}
+
+impl MirLowering.stdlib_counterpart(scope: uni.Archetype) -> (uni.Archetype | None) {
+    if not stub_archetype(scope) or scope.loc is None {
+        return None;
+    }
+    if id(scope) in self.counterparts {
+        return self.counterparts[id(scope)];
+    }
+    self.counterparts[id(scope)] = None;
+    if not bundled_stdlib_module_of(scope.loc.mod_path) {
+        return None;
+    }
+    units: list[uni.Module] = [];
+    home = self.stdlib_unit_at(scope.loc.mod_path);
+    if home is not None {
+        units.append(home);
+    }
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
+        paths = [imp.from_loc]
+            if imp.from_loc is not None
+            else [
+                item
+                for item in imp.items
+                if isinstance(item, uni.ModulePath)
+            ];
+        for path in paths {
+            unit = self.stdlib_unit_named(path.dot_path_str)
+                if path.level == 0 and is_bundled_native_module(path.dot_path_str)
+                else None;
+            if unit is not None and unit not in units {
+                units.append(unit);
+            }
+        }
+    }
+    wanted = scope.name.value;
+    for unit in units {
+        for elem in unit.body {
+            if isinstance(elem, uni.Archetype) and elem.name.value == wanted {
+                self.counterparts[id(scope)] = elem;
+                return elem;
+            }
+        }
+    }
+    return None;
+}
+
+impl MirLowering.counterpart_type(t: (TypeBase | None)) -> (TypeBase | None) {
+    if isinstance(t, UnionType) {
+        members: list[TypeBase] = [];
+        changed = False;
+        for member in t.types {
+            made = self.counterpart_type(member);
+            if made is None or made is member {
+                members.append(member);
+            } else {
+                members.append(made);
+                changed = True;
+            }
+        }
+        return UnionType(types=members) if changed else t;
+    }
+    if not isinstance(t, ClassType) or t._shared is None {
+        return t;
+    }
+    scope = t.shared.symbol_table;
+    if not isinstance(scope, uni.Archetype) {
+        return t;
+    }
+    found = self.stdlib_counterpart(scope);
+    if found is None or found.name.sym is None {
+        return t;
+    }
+    made = self.prog.get_type_evaluator().get_type_of_symbol(found.name.sym);
+    if not isinstance(made, ClassType) {
+        return t;
+    }
+    return made.clone_as_instance() if t.is_instance() else made;
 }
 
 impl MirLowering.module_member(unit: uni.Module, name: str) -> (uni.UniNode | None) {
