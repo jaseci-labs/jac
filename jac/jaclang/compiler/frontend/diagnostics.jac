@@ -990,8 +990,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot assign to '{name}': it is declared {kind}",
          help="A binding annotated with 'Final' (or a 'readonly' member of an"
          " imported TypeScript interface) can only be set at its declaration,"
-         " or in the 'init'/'postinit' of the object that declares it when the"
-         " declaration has no initializer."
+         " or once, in the 'init'/'postinit' of the object that declares it, when"
+         " the declaration has no initializer."
      ),
      E1138 = _err(
          "E1138",
@@ -1188,6 +1188,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " or take a `ptr[T]` to storage the caller owns. `&mut local` lends a"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
+     ),
+     E1162 = _err(
+         "E1162",
+         Category.TYPE,
+         "'Final' without a type needs a value to take its type from",
+         help="Name the type in brackets, as in `has x: Final[int];`, or give a"
+         " value and the type comes from it, as in `has x: Final = 5;`."
      ),
      E1301 = _err(
          "E1301",
