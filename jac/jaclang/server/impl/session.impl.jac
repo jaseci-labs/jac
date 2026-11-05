@@ -792,11 +792,24 @@ impl Session._ensure_txn -> None {
     }
 }
 
-impl Session._prepare_raw_rows -> None {
-    if self._active_units > 0
-        and self._store is not None
-        and not self._store.in_txn() {
-        self._ensure_txn();
+impl Session._prepare_raw_rows(raw: bool = False, writable: bool = False) -> None {
+    with self._lock {
+        if self._store is None {
+            return;
+        }
+        if self._active_units > 0 {
+            if writable {
+                if self._ro_units > 0 {
+                    self._raise_ro_retry();
+                }
+                self._begin_writable();
+            } elif not self._store.in_txn() {
+                self._ensure_txn();
+            }
+        }
+        if raw and self._active_units > 0 and self._store.in_txn() {
+            self._raw_rows_pending = True;
+        }
     }
 }
 
@@ -976,6 +989,7 @@ impl Session._commit_txn -> None {
             raise;
         }
         self._rows.promote();
+        self._raw_rows_pending = False;
     }
     self._txn_gen += 1;
 }
@@ -989,6 +1003,7 @@ impl Session._rollback_txn -> None {
             logger.debug(f"rollback failed: {type(e).__name__}: {e}");
         }
     }
+    self._raw_rows_pending = False;
     self._txn_gen += 1;
     lost = self._rows.discard();
     if lost.joined {
@@ -1012,9 +1027,11 @@ impl Session._rollback_txn -> None {
 
 
 impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
+    raw = self._raw_rows_pending;
     self._rollback_txn();
 
-    if exhausted
+    if raw
+        or exhausted
         or (
             self._active_units > 0 and self._active_units not in self._committed_units
         ) {
@@ -1028,10 +1045,14 @@ impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
 
 
 impl Session._reclaim_dead_txn -> None {
-    if not self._rows.in_flight() or self._store is None or self._store.in_txn() {
+    if not (self._rows.in_flight() or self._raw_rows_pending)
+        or self._store is None
+        or self._store.in_txn() {
         return;
     }
+    raw = self._raw_rows_pending;
     self._rollback_txn();
+    self._lost |= raw;
     if self._lost {
         raise TransactionLost(anchor_id=UUID(int=0));
     }
@@ -1532,9 +1553,7 @@ impl Session.run_request(body: Callable) -> any {
                 self.commit();
                 self.unit_committed();
 
-                if self._store is not None and self._store.in_txn() {
-                    self.commit();
-                }
+                self.commit();
                 return result;
             } except Exception as e {
                 if (

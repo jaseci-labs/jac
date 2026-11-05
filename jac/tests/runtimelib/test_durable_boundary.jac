@@ -5,11 +5,13 @@ import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from uuid { uuid4 }
 import from jaclang.data.pgwire { PgWireError }
+import from jaclang.data.store { TxnIsolation }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.runtime.memory { Memory }
 import from jaclang.server.session { Session }
 import jaclang.server.sv_client as sv_client;
-import from jaclang.runtime.exceptions { PartialCommitError }
+import from jaclang.runtime.exceptions { PartialCommitError, ReadOnlyRetry }
+import from jaclang.server.session { unit_writes_recorded }
 import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface as Jac }
 import from .test_session_rollback {
     _ctx,
@@ -74,6 +76,59 @@ test "a lazily opened store starts a transaction on raw queries inside a unit" {
             sess.unit_exit();
         } finally {
             sess.close();
+        }
+    }
+}
+
+test "raw writes promote keyed read-tier units by safe request replay" {
+    for snapshot in [False, True] {
+        with TemporaryDirectory() as td {
+            sess = Session(base_path=td, target_path=td + "/raw-writer.jac");
+            try {
+                store = _as_any(sess.store);
+                key = "raw-writer:" + uuid4().hex;
+                value_key = uuid4().hex;
+                sess.unit_enter(key);
+                retried = False;
+                try {
+                    if snapshot {
+                        sess.read_barrier();
+                    }
+                    store.rows(
+                        "INSERT INTO kv_state (key, value) VALUES (:k, 'v')",
+                        {"k": value_key}
+                    );
+                } except ReadOnlyRetry {
+                    retried = True;
+                    sess.abort();
+                    sess.take_ro_retry();
+                } finally {
+                    sess.unit_exit();
+                }
+                assert retried and unit_writes_recorded(key);
+                sess.unit_enter(key);
+                try {
+                    store.rows(
+                        "INSERT INTO kv_state (key, value) VALUES (:k, 'v')",
+                        {"k": value_key}
+                    );
+                    assert store.txn_isolation() is TxnIsolation.SERIALIZABLE;
+                    sess.commit();
+                } finally {
+                    sess.unit_exit();
+                }
+                probe = store.new_session();
+                try {
+                    rows = probe.rows(
+                        "SELECT count(*) FROM kv_state WHERE key = :k", {"k": value_key}
+                    );
+                    assert int(rows[0][0]) == 1;
+                } finally {
+                    probe.close();
+                }
+            } finally {
+                sess.close();
+            }
         }
     }
 }

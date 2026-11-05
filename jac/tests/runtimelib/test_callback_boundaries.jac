@@ -1,6 +1,7 @@
 """A committed callback keeps write retries, without replaying irreversible work."""
 
 import from tempfile { TemporaryDirectory }
+import from uuid { uuid4 }
 import from jaclang.data.pgwire { PgWireError }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.runtime.exceptions { PartialCommitError }
@@ -12,6 +13,115 @@ import from .test_session_rollback {
     _loose,
     _stored,
     _fail_commits
+}
+
+test "staged nested callback writes persist before returning to the outer unit" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            ids: list[any] = [];
+            calls: list[int] = [];
+            callbacks: list[int] = [];
+            def outer {
+                calls.append(1);
+                def inner {
+                    ids.append(_loose(ctx, 7).ensure_id());
+                    def effect {
+                        callbacks.append(1);
+                        ids.append(_loose(ctx, 42).ensure_id());
+                    }
+                    sess.on_commit(effect);
+                }
+                sess.run_request(inner);
+                assert [_stored(ctx, id, "n") for id in ids] == ["7", "42"];
+                raise ValueError("outer body failed after the nested call");
+            }
+            partial = False;
+            try {
+                sess.run_request(outer);
+            } except PartialCommitError {
+                partial = True;
+            }
+            assert partial and calls == [1] and callbacks == [1];
+            assert [_stored(ctx, id, "n") for id in ids] == ["7", "42"];
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+test "raw callback writes never disappear behind a successful write-set retry" {
+    for failure in ["commit", "flush"] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            try {
+                sess = _sess(ctx);
+                store = _as_any(sess.store);
+                key = uuid4().hex;
+                ids: list[any] = [];
+                calls: list[int] = [];
+                callbacks: list[int] = [];
+                left = [1];
+                real_upsert = store.upsert;
+                def fail_upsert(rows: any) -> any {
+                    if left[0] {
+                        left[0] -= 1;
+                        store.rollback();
+                        raise PgWireError({"C": "40001", "M": "raw callback conflict"});
+                    }
+                    return real_upsert(rows);
+                }
+                def body {
+                    calls.append(1);
+                    ids.append(_loose(ctx, 7).ensure_id());
+                    def effect {
+                        callbacks.append(1);
+                        store.rows(
+                            "INSERT INTO kv_state (key, value) VALUES (:k, 'v')",
+                            {"k": key}
+                        );
+                        if failure == "commit" {
+                            _fail_commits(sess);
+                        } else {
+                            _loose(ctx, 42);
+                            store.upsert = fail_upsert;
+                            sess.read_barrier();
+                        }
+                    }
+                    sess.on_commit(effect);
+                }
+                partial = False;
+                try {
+                    sess.run_request(body);
+                } except PartialCommitError {
+                    partial = True;
+                } finally {
+                    store.upsert = real_upsert;
+                }
+                assert partial , "opaque callback SQL must fail closed after rollback";
+                assert calls == [1] and callbacks == [1];
+                assert _stored(ctx, ids[0], "n") == "7";
+                probe = store.new_session();
+                try {
+                    rows = probe.rows(
+                        "SELECT count(*) FROM kv_state WHERE key = :k", {"k": key}
+                    );
+                    assert int(rows[0][0]) == 0;
+                } finally {
+                    probe.close();
+                }
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+        }
+    }
 }
 
 def check_callback(variant: str, failures: int = 1, outer_conflict: bool = False) {

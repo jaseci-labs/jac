@@ -1132,7 +1132,18 @@ impl PgStore.rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
     if guard is not None and self._in_txn {
         self._raw_rows_in_txn = True;
     }
-    return [tuple(r) for r in self._run(sql, params)];
+    try {
+        rows = [tuple(r) for r in self._run(sql, params)];
+        if guard is not None {
+            guard(raw=True);
+        }
+        return rows;
+    } except Exception as e {
+        if guard is not None and _sqlstate(e) == '25006' {
+            guard(writable=True);
+        }
+        raise;
+    }
 }
 
 impl Store._read_rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {

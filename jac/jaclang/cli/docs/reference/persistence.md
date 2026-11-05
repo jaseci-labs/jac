@@ -95,6 +95,12 @@ Session callbacks run within that committed write-retry phase, including on
 explicit and nested commits. Completing a nested `run_request` settles its
 callback writes before returning. Callback failures that lose their database
 transaction produce a final failure instead of reporting a successful save.
+This also saves graph changes that a callback only staged in memory, without
+opening a transaction itself. Opaque SQL issued through `store.rows()` is not
+part of the graph write ledger: a rollback after such SQL cannot use a graph-only
+write-set retry. Before commit it requires request replay; after commit it is a
+final `failed_after_commit` failure. A raw write refused by a read-tier transaction
+requests the same safe writer replay as a graph write.
 If a nested unit, independent child session, explicit commit, or callback has
 already made work durable, a later conflict cannot safely replay the enclosing
 request. The request instead reports `failed_after_commit`; retrying it may

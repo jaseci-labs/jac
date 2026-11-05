@@ -155,6 +155,7 @@ obj Session(Memory) {
         _lease: (RuntimeLease | None) = None,
         _rows: RowLedger postinit,
         _lost: bool postinit,
+        _raw_rows_pending: bool = False,
         _fetch_count: int postinit,
         _active_units: int postinit,
         _committed_units: set[int] postinit,
@@ -254,7 +255,7 @@ obj Session(Memory) {
     def _replay_txn(cause: Exception, exhausted: bool = False) -> None;
     def _reclaim_dead_txn -> None;
     def _ensure_txn -> None;
-    def _prepare_raw_rows -> None;
+    def _prepare_raw_rows(raw: bool = False, writable: bool = False) -> None;
     def _txn_isolation -> TxnIsolation;
     def _register_ro_writers -> str;
     def _raise_ro_retry -> None;
