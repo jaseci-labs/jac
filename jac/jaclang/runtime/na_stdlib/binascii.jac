@@ -18,10 +18,14 @@ def _hexdig(v: int) -> int;
 def _hqx_tab -> list[int];
 
 
-def:pub hexlify(data: bytes, sep: bytes = b"", bytes_per_sep: int = 1) -> bytes;
+def:pub hexlify(
+    data: bytes, sep: (bytes | None) = None, bytes_per_sep: int = 1
+) -> bytes;
 
 
-def:pub b2a_hex(data: bytes, sep: bytes = b"", bytes_per_sep: int = 1) -> bytes;
+def:pub b2a_hex(
+    data: bytes, sep: (bytes | None) = None, bytes_per_sep: int = 1
+) -> bytes;
 
 
 def:pub unhexlify(hexstr: bytes) -> bytes;

@@ -9,7 +9,8 @@ import from _mmap_native {
     mm_errno,
     mm_errstr,
     mm_dup_fd,
-    mm_close_fd
+    mm_close_fd,
+    mm_isreg
 }
 import from _mmap_platform { mm_anon_flag, mm_sync_flag, mm_resize_requires_mremap }
 

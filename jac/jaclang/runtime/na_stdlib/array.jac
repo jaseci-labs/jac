@@ -36,7 +36,7 @@ obj:pub array {
         _hi: int = 127,
         _enc: bytearray = bytearray(0);
 
-    def init(typecode: str, initial: (list[any] | None) = None);
+    def init(typecode: str, initial: any = None);
     def _count -> int;
     def __len__ -> int;
     def _coerce_int(v: any) -> int;
@@ -48,7 +48,7 @@ obj:pub array {
     def _read_float_elem(off: int) -> float;
     def _encode_one(v: any, dst: bytearray);
     def append(v: any);
-    def extend(seq: list[any]);
+    def extend(seq: any);
     def _extend_array(other: array);
     def _extend_bytes(data: bytes);
     def fromlist(seq: list[any]);

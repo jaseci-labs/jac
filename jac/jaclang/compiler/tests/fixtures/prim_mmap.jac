@@ -259,7 +259,27 @@ def mmap_py -> dict[any, any] {
     r["rfind_neg_start"] = mb.rfind(b"x", -100);
     r["find_default_pos5"] = mb.find(b"x");
     r["rfind_default_pos5"] = mb.rfind(b"x");
+    # empty needle: find returns the clamped start (current pos by default),
+    # rfind the clamped end -- same as CPython/bytes semantics.
+    r["find_empty_pos5"] = mb.find(b"");
+    r["rfind_empty"] = mb.rfind(b"");
+    r["find_empty_05"] = mb.find(b"", 0, 5);
+    r["rfind_empty_05"] = mb.rfind(b"", 0, 5);
     mb.close();
+    # resize shrink: succeeds where mremap exists, SystemError where it does
+    # not -- both lanes agree per platform.
+    rs = mmap(-1, 64);
+    rs.write(b"resize-me");
+    try {
+        rs.resize(32);
+        rs.seek(0);
+        r["resize_shrink"] = "ok";
+        r["rs_len"] = rs.__len__();
+        r["rs_digest"] = _digest(rs.read(9));
+    } except Exception as e {
+        r["resize_shrink"] = str(e);
+    }
+    rs.close();
     return r;
 }
 
@@ -510,7 +530,23 @@ def _bounds_na(r: dict[str, any]) {
     r["rfind_neg_start"] = mb.rfind(b"x", -100);
     r["find_default_pos5"] = mb.find(b"x");
     r["rfind_default_pos5"] = mb.rfind(b"x");
+    r["find_empty_pos5"] = mb.find(b"");
+    r["rfind_empty"] = mb.rfind(b"");
+    r["find_empty_05"] = mb.find(b"", 0, 5);
+    r["rfind_empty_05"] = mb.rfind(b"", 0, 5);
     mb.close();
+    rs = mmap(-1, 64);
+    rs.write(b"resize-me");
+    try {
+        rs.resize(32);
+        rs.seek(0);
+        r["resize_shrink"] = "ok";
+        r["rs_len"] = rs.__len__();
+        r["rs_digest"] = _digest_na(rs.read(9));
+    } except Exception as e {
+        r["resize_shrink"] = str(e);
+    }
+    rs.close();
 }
 
 

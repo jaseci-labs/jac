@@ -104,7 +104,7 @@ impl _get_le(buf: bytearray, off: int, size: int, signed: bool) -> int {
 }
 
 
-impl array.init(typecode: str, initial: (list[any] | None) = None) {
+impl array.init(typecode: str, initial: any = None) {
     self.typecode = typecode;
     self.itemsize = _arr_itemsize(typecode);
     self._sgn = _arr_signed(typecode);
@@ -120,7 +120,25 @@ impl array.init(typecode: str, initial: (list[any] | None) = None) {
     self._buf = bytearray(0);
     self._enc = bytearray(self.itemsize);
     if initial is not None {
-        self.extend(initial);
+        if isinstance(initial, bytes) {
+            self.frombytes(initial as bytes);
+        } elif isinstance(initial, bytearray) {
+            self.frombytes(bytes(initial as bytearray));
+        } elif isinstance(initial, array) {
+            src = initial as array;
+            if src.typecode == self.typecode {
+                self._extend_array(src);
+            } else {
+                n: int = src._count();
+                i: int = 0;
+                while i < n {
+                    self.append(src.__getitem__(i));
+                    i += 1;
+                }
+            }
+        } else {
+            self.extend(initial);
+        }
     }
 }
 
@@ -228,13 +246,30 @@ impl array.append(v: any) {
     b.extend(self._enc);
 }
 
-impl array.extend(seq: list[any]) {
-    n: int = len(seq);
-    i: int = 0;
-    while i < n {
-        self.append(seq[i]);
-        i += 1;
+impl array.extend(seq: any) {
+    if isinstance(seq, array) {
+        self._extend_array(seq as array);
+        return;
     }
+    if isinstance(seq, bytes) {
+        self._extend_bytes(seq as bytes);
+        return;
+    }
+    if isinstance(seq, bytearray) {
+        self._extend_bytes(bytes(seq as bytearray));
+        return;
+    }
+    if isinstance(seq, list) {
+        lst = seq as list[any];
+        n: int = len(lst);
+        i: int = 0;
+        while i < n {
+            self.append(lst[i]);
+            i += 1;
+        }
+        return;
+    }
+    raise TypeError("extend() argument must be a list, array, bytes, or bytearray");
 }
 
 impl array._extend_array(other: array) {
@@ -450,16 +485,14 @@ impl array.fromfile(f: any, n: int) {
         raise ValueError("negative count");
     }
     need: int = n * self.itemsize;
-    data: bytes = f.read(need);
-    got: int = len(data);
-    if got != need {
-        ok: int = got - (got % self.itemsize);
-        if ok > 0 {
-            self.frombytes(data[0:ok]);
-        }
-        raise EOFError("read() didn't return enough bytes");
+    data: any = f.read(need);
+    if not isinstance(data, bytes) {
+        raise TypeError("read() didn't return bytes");
     }
     self.frombytes(data);
+    if len(data) != need {
+        raise EOFError("read() didn't return enough bytes");
+    }
 }
 
 impl array.tolist -> list[any] {

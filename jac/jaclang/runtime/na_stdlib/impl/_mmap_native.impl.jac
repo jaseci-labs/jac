@@ -3,6 +3,43 @@ impl mm_map(length: int, prot: int, flags: int, fd: int, offset: int) -> int {
 }
 
 
+impl _stat_mode_pos -> tuple[int, int] {
+    if _SM_OFF >= 0 {
+        return (_SM_OFF, _SM_W);
+    }
+    pid = int(__jac_platform_id());
+    if pid == 1 {
+        _SM_OFF = 4;
+        _SM_W = 2;
+    } elif pid == 0 and plat_machine() == "x86_64" {
+        _SM_OFF = 24;
+        _SM_W = 4;
+    } elif pid == 0 {
+        _SM_OFF = 16;
+        _SM_W = 4;
+    }
+    return (_SM_OFF, _SM_W);
+}
+
+impl mm_isreg(fd: int) -> bool {
+    pos = _stat_mode_pos();
+    if pos[0] < 0 {
+        return False;
+    }
+    buf = b"\x00" * 256;
+    if __jac_fstat_record(i32(fd), buf) != 0 {
+        return False;
+    }
+    base = __bytes_data(buf);
+    mode: int = 0;
+    if pos[1] == 2 {
+        mode = __mem_load_i16(base + pos[0]) & 0xFFFF;
+    } else {
+        mode = __mem_load_i32(base + pos[0]) & 0xFFFFFFFF;
+    }
+    return (mode & 0xF000) == 0x8000;
+}
+
 impl mm_unmap(addr: int, length: int) -> int {
     return munmap(addr, u64(length));
 }

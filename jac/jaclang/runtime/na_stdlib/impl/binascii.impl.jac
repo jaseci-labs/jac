@@ -36,13 +36,17 @@ impl _hqx_tab -> list[int] {
 }
 
 
-impl hexlify(data: bytes, sep: bytes = b"", bytes_per_sep: int = 1) -> bytes {
+impl hexlify(data: bytes, sep: (bytes | None) = None, bytes_per_sep: int = 1) -> bytes {
     n: int = len(data);
-    use_sep: bool = len(sep) > 0;
-    if use_sep and len(sep) != 1 {
-        raise ValueError("sep must be length 1.");
+    sep_b: bytes = b"";
+    use_sep: bool = sep is not None;
+    if use_sep {
+        sep_b = sep as bytes;
+        if len(sep_b) != 1 {
+            raise ValueError("sep must be length 1.");
+        }
     }
-    sep_byte: int = sep[0] if use_sep else 0;
+    sep_byte: int = sep_b[0] if use_sep else 0;
     abs_bps: int = -bytes_per_sep if bytes_per_sep < 0 else bytes_per_sep;
     nseps: int = 0;
     if use_sep and abs_bps > 0 and n > 1 {
@@ -79,7 +83,7 @@ impl hexlify(data: bytes, sep: bytes = b"", bytes_per_sep: int = 1) -> bytes {
 }
 
 
-impl b2a_hex(data: bytes, sep: bytes = b"", bytes_per_sep: int = 1) -> bytes {
+impl b2a_hex(data: bytes, sep: (bytes | None) = None, bytes_per_sep: int = 1) -> bytes {
     return hexlify(data, sep, bytes_per_sep);
 }
 
