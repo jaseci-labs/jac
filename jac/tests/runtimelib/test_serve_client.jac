@@ -558,7 +558,9 @@ test "serve get function signature" {
             ("ratio", 0.5),
             ("flag", False),
             ("title", "seed"),
-            ("tags", [])
+            ("tags", []),
+            ("limit", "inf"),
+            ("grid", {"(1, 2)": "x"})
         ] {
             for shown in [params[name]["default"], props[name]["default"]] {
                 assert shown == declared and type(shown) is type(declared) , (
@@ -608,8 +610,12 @@ test "serve call function with defaults" {
             "flag": False,
             "title": "seed",
             "tags": ["seen"],
-            "note": None
+            "note": None,
+            "hits": 1,
+            "limit": "inf",
+            "grid": {"(1, 2)": "x"}
         };
+        # The empty body runs twice: no call may see what another did to a default.
         for (body, changed) in [
             ({}, {}),
             ({}, {}),

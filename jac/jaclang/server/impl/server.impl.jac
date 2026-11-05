@@ -1610,7 +1610,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
 
     def format_param(name: str, info: dict[(str, any)]) -> str {
         req = 'required' if info['required'] else 'optional';
-        `default = f", default: {info['default']}"
+        `default = f", default: {info['default']!r}"
             if info.get('default') is not None
             else '';
         return f"{name}: {info['type']} ({req}{`default})";

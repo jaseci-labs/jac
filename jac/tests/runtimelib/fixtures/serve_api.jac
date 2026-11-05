@@ -97,9 +97,14 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
+obj EchoBox {
+    has hits: int = 0;
+}
+
 """Optional parameters of each kind, echoed so a caller sees what each received.
 
-`tags` is appended to so a shared default would show up on the next call.
+`tags` and `box` are changed so a shared default would show up on the next call.
+`limit` and `grid` have no plain JSON form.
 """
 def:pub echo_defaults(
     count: int = 5,
@@ -107,16 +112,23 @@ def:pub echo_defaults(
     flag: bool = False,
     title: str = "seed",
     tags: list[str] = [],
-    note: str | None = None
+    note: str | None = None,
+    box: EchoBox = EchoBox(),
+    limit: float = float("inf"),
+    grid: dict[tuple[int, int], str] = {(1, 2): "x"}
 ) -> dict[str, any] {
     tags.append("seen");
+    box.hits += 1;
     return {
         "count": count,
         "ratio": ratio,
         "flag": flag,
         "title": title,
         "tags": tags,
-        "note": note
+        "note": note,
+        "hits": box.hits,
+        "limit": limit,
+        "grid": grid
     };
 }
 

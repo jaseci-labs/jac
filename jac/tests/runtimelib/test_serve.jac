@@ -120,8 +120,9 @@ test "faux flag prints endpoint docs" {
         # Verify parameter details are included
         assert "required" in output;
         assert "optional" in output;
-        # A falsy default is shown, not dropped.
+        # A falsy default is shown, not dropped, and a string shows as one.
         assert "flag: bool (optional, default: False)" in output;
+        assert "title: str (optional, default: 'seed')" in output;
         assert "Bearer token" in output;
     }
 }
