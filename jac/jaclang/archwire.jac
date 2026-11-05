@@ -13470,8 +13470,10 @@ graph import compiler.frontend.python {
             peg_update_memo
         },
         parser_actions {
+            DEL_TARGETS,
             peg_has_error,
             peg_parser,
+            peg_peek_type,
             peg_raise_syntax_error,
             peg_raise_syntax_error_on_token,
             peg_token
@@ -13502,7 +13504,7 @@ graph import compiler.frontend.python {
             TSTRING_START,
             TYPE_COMMENT
         },
-        parser_actions { mk_diag, tok_loc },
+        parser_actions { ENDMARKER, NEWLINE, SEMI, mk_diag, tok_loc },
         peg_runtime {
             COMMENT,
             ENDMARKER,

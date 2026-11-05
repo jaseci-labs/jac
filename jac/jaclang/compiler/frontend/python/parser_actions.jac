@@ -1837,6 +1837,12 @@ def pa_get_genexp_start_expr(`node: object, clauses: object) -> expr | None {
 }
 
 def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> None {
+    if kind == DEL_TARGETS {
+        next = peg_peek_type(p);
+        if next not in (NEWLINE, ENDMARKER, SEMI) {
+            return None;
+        }
+    }
     if isinstance(`node, expr) {
         target_name = pa_get_expr_name(`node as expr, kind == 1);
         action = "delete" if kind == 1 else "assign to";
