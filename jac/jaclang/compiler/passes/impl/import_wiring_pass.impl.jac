@@ -89,9 +89,18 @@ impl ImportWiringPass._check_scope(
 
 impl ImportWiringPass._check_wire(spec: WiringSpec, wire: ImportWire) -> None {
     provider = wire.provider_path;
-    provider_ok = spec.module_file(provider) is not None;
-    if not provider_ok {
+    provided = spec.module_file(provider);
+    base = variant_base_file(provided) if provided is not None else None;
+    provider_ok = provided is not None and base is None;
+    if provided is None {
         self.ctx.emit(E1141, node_override=wire.provider, module=provider);
+    } elif base is not None {
+        self.ctx.emit(
+            E1148,
+            node_override=wire.provider,
+            module=provider,
+            base=spec.module_name(base) or provider
+        );
     }
     for target in wire.targets {
         self._check_target(spec, provider, provider_ok, target);
@@ -159,7 +168,7 @@ impl ImportWiringPass._check_target(
 }
 
 impl ImportWiringPass._check_rule_patterns(spec: WiringSpec, rule: ImportRule) -> None {
-    modules = spec.project_modules();
+    modules = spec.ruled_modules();
     top_level = {m.split(".")[0] for m in modules};
     record = rule_record(rule);
     for (side, patterns, nodes) in [
@@ -267,6 +276,15 @@ impl ImportWiringPass._check_edge(
 impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
     consumer = spec.module_name(mod.loc.mod_path);
     if consumer is None {
+        label = unnamed_module_label(spec.root_dir, mod.loc.mod_path);
+        if label is not None {
+            for imp in [
+                *ModuleFacts.iter_module_imports(mod),
+                *ModuleFacts.iter_nested_imports(mod)
+            ] {
+                self._check_import_edges(spec, imp, spec.package_prefix + label);
+            }
+        }
         return;
     }
     if spec.parse_failed {
@@ -373,6 +391,12 @@ impl ImportWiringPass._check_import(
             );
         }
     }
+    self._check_import_edges(spec, imp, consumer);
+}
+
+impl ImportWiringPass._check_import_edges(
+    spec: WiringSpec, imp: Import, consumer: str
+) -> None {
     from_loc = imp.from_loc;
     if from_loc is not None {
         local = spec.import_provider(from_loc);
@@ -478,6 +502,16 @@ impl unused_wire_bindings(mod: Module) -> list[UnusedBinding] {
         }
     }
     exports = ModuleFacts.literal_exports(mod) or set();
+    base = variant_base_file(path);
+    base_name = spec.module_name(base) if base is not None else None;
+    if base_name is not None {
+        exports = exports
+            | {
+                binding.name
+                for wire in spec.wires
+                if wire.provider == base_name for binding in wire.bindings()
+            };
+    }
     reads = ScopeReads(mod=mod);
     for (wire, scope) in [
         (w, ".".join(s)) for w in wires for s in spec.consumer_scopes(consumer, w)
@@ -538,23 +572,23 @@ impl names_read_in(body: UniNode, mod: Module) -> set[str] {
     ] {
         parent = nd.parent;
         sym = nd.sym;
+        if (isinstance(parent, AtomTrailer) and parent.is_attr and parent.right is nd)
+            or (isinstance(parent, KWPair) and parent.key is nd)
+            or (isinstance(parent, JsxElementName) and parent.parts[0] is not nd)
+            or nd.find_parent_of_type(ModulePath) is not None
+            or nd.find_parent_of_type(ModuleItem) is not None {
+            continue;
+        }
         if nd.expr_ctx != ExprCtx.LOAD
             or (
                 sym is not None
                 and not sym.imported
                 and sym.decl is not None
                 and sym.decl.find_parent_of_type(Module) is mod
-            )
-            or (
-                isinstance(parent, AtomTrailer)
-                and parent.is_attr
-                and parent.right is nd
-            )
-            or (isinstance(parent, KWPair) and parent.key is nd)
-            or (isinstance(parent, JsxElementName) and parent.parts[0] is not nd)
-            or nd.find_parent_of_type(ModulePath) is not None
-            or nd.find_parent_of_type(ModuleItem) is not None {
-            continue;
+            ) {
+            if clib_global_of_name(nd) is None {
+                continue;
+            }
         }
         names.add(nd.value);
     }

@@ -6,13 +6,13 @@ description: Compile Jac to native executables. Use for supported native constru
 The native codespace compiles Jac through LLVM to machine code - no Python runtime, no external compiler or linker (Jac bundles the whole toolchain). Three verbs:
 
 ```bash
-jac run app.jac -- x --flag    # placement inferred: native when the module can lower, else Python (full language, PyPI, OSP) with a note; `--` separates program args
+jac run app.jac -- x --flag    # placement inferred: native when the module can lower, else Python (full language, PyPI, persistent `root`) with a note; `--` separates program args
 jac build --native app.jac -o app   # standalone zero-dependency binary - forces native, loud errors
 ./app x --flag
 ```
 
 - `jac build --native` compiles a **plain `.jac`**, coercing the whole module native - anything that cannot lower is a loud compile error, never a demotion. `CompileOptions(force_codespace='native')` is the programmatic one.
-- Under `[placement] default = "native"` (the default), `jac run` executes a verdict-passing module natively; a module using walkers/PyPI/async just runs on Python, with a dim `note:` when a native-preferring module had to demote. Set `[placement] default = "server"` to opt a project out.
+- Under `[placement] default = "native"` (the default), `jac run` executes a verdict-passing module natively; a module using `root`/PyPI/async just runs on Python, with a dim `note:` when a native-preferring module had to demote. Set `[placement] default = "server"` to opt a project out.
 - A standalone binary REQUIRES `with entry { }` - otherwise: *"No entry point found."*
 - `jac build --native --target wasm32|windows|macos` cross-targets; `--lib` builds a C-ABI library (see the sibling skills); `--memory managed|rc|nogc` picks the memory-management runtime (see `jac-native-memory`).
 - **Native placement is inferred - at two granularities.** Whole markerless modules: the placement solver (blocker scan + import-closure fixpoint) compiles a module native when it can lower, demoting to server with a note otherwise. Within mixed files: an import whose braces declare C-ABI functions (`import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) is an FFI surface only the native backend can satisfy, so it seeds native placement and the declarations using it follow (see `jac-codespaces`). Consuming a native *module* (`import from mymod { fast_fn }`) is not a signal. When native must be mandatory, force it: `jac build --native`, `jac build --as native`, or the explicit `na` markers.
@@ -62,7 +62,7 @@ Anything else fails **loudly at compile time** - `import json` -> *"Native pathw
 
 The stdlib table is for **host** binaries. On `--target wasm32` there is no libc/libm to link: each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
 
-**Not supported** (compile errors): `async`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
+**Not supported** (compile errors): `async`, decorators other than plain-name ones on module-level functions and `@contextmanager`, multiple inheritance, reading the persistent `root` graph, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
 
 ## Gotchas (all verified against the current compiler)
 

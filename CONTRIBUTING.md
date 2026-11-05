@@ -103,8 +103,7 @@ exposes it as `jac://docs/*` resources, and the website renders the same
 corpus -- there is no separate docs build. Edit the markdown in place, then:
 
 ```bash
-jac run scripts/validate_docs_code.jac        # syntax-check the code blocks
-cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
+cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_code_blocks.jac tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
 ```
 
 Adding or removing a page means updating `jac/jaclang/cli/docs/nav.json` in
@@ -170,39 +169,20 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 ## Building JacPython
 
-Releases ship one configuration: stock CPython. JacPython (CPython with its C
-progressively replaced by native Jac, the Python compiler included) is an
-accelerator you build on request. From the repository, with Zig 0.16 and the
-LLVM shim in place (`zig build fetch-llvm` once):
-
-```bash
-jac native build jacpython
-```
-
-That builds a second jac, `jac/zig-out/jacpython/bin/jac`, whose bundled
-interpreter is JacPython; the jac you ran it with is unchanged. Use it like any
-jac. It reports the native compiler as active:
-
-```bash
-JACPYTHON_BIN="$PWD/jac/zig-out/jacpython/bin/jac"
-cd "$(mktemp -d)"   # outside the repo, so its [dev] stanza does not reroute the compiler
-"$JACPYTHON_BIN" -c '
-import ast, ctypes
-assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
-print("Python compiler: native JacPython")
-exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
-'
-"$JACPYTHON_BIN" native status jacpython
-```
+JacPython (CPython with its C progressively replaced by native Jac, the Python
+compiler included) is the only Python jac builds on, ships or runs. With Zig
+0.16 and the LLVM shim in place (`zig build fetch-llvm` once), `zig build` in
+`jac/` (or `jac native build jacpython`) builds it, then `jac/zig-out/bin/jac`
+on it. The build runs on the previous JacPython output, or on the pinned
+linux-x86_64 seed when there is none; on another platform, adopt a native
+object lowered on linux-x86_64 with `-Djacpython-object=DIR`. See
+[the build guide](jac/launcher/README.md#build) and the Building section of
+[the migration notes](jac/jaclang/cli/docs/internals/jacpython-migration.md).
 
 `jac native build jacpython --exact` rebuilds the runtime instead of reusing one
 whose lowered sources are unchanged. Its native compiler object is linked at
 build time, so editing compiler source through the dev loop does not change an
-existing JacPython binary: rebuild it. CI builds and tests JacPython in its own
-lane (`.github/workflows/_jacpython.yml`), on a pull request carrying the
-`native:jacpython` label and nightly on every supported platform. See
-[the build guide](jac/launcher/README.md#build) for cache details and
-prerequisites.
+existing binary: rebuild it.
 
 ## Code Rules and Guidelines
 
@@ -281,6 +261,42 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 │                     │    │                     │    │                     │    │  environment)       │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
+
+### Step 0: Run CI with the native kernel first
+
+Day-to-day CI runs on GitHub-hosted runners with a bytecode kit: build-kit
+leaves the native compiler kernel out, and the `js-engine` and `macos-native`
+lanes are turned off. Nothing in pull-request CI builds the kernel, so native
+breakage is only caught here. Before cutting a release, on a branch:
+
+1. **Runners**: switch the kernel-building jobs back to the bigger runners.
+   `git log -S blacksmith -- .github` finds the commit that moved them; its
+   diff has every label.
+   - `ci.yml` `build-kit`, `build-kernel.yml`, `build-seeds.yml`,
+     `_js_engine.yml`, and `jacpython-compat.yml` (input default and both
+     `runs-on`): `blacksmith-8vcpu-ubuntu-2404`
+   - `build-binaries.yml` Linux legs: `blacksmith-8vcpu-ubuntu-2404` and
+     `blacksmith-8vcpu-ubuntu-2404-arm`
+   - every other job in `ci.yml`, `release.yml`, and `nightly.yml`:
+     `blacksmith-4vcpu-ubuntu-2404`
+
+   The kernel seal peaks near 15 GB, so `build-kit`, `build-kernel.yml`, and
+   `build-binaries.yml` will not fit a 16 GB `ubuntu-24.04` runner.
+2. **Kernel in build-kit**: in `ci.yml`'s `build-kit`, restore the commented
+   `native-kernel:` line, remove `bytecode-kit: "true"`, and drop
+   `-Dstale-python=true` from its `zig build` lines. A bytecode kit links the
+   last JacPython native object it can find, even one lowered from older
+   compiler sources, so only this run lowers JacPython from the tree.
+3. **js-engine**: in `ci.yml`, replace `if: false` on the `js-engine` job
+   with the commented `if:` above it. `if: false` blocks every trigger,
+   including a manual dispatch and the `native:js-engine` label.
+4. **macos-native**: the same for the `macos-native` job, to cover macOS.
+
+Dispatch **CI** on that branch and fix what it finds, then merge it to `main`
+before Step 1. The Release run that builds the binaries starts when the release
+PR merges and reads its workflows from `main` (`release.yml` calls
+`build-binaries.yml`), so changes left on a side branch never reach it. Once
+the release is published, revert them on `main`.
 
 ### Step 1: Create the Release PR
 
