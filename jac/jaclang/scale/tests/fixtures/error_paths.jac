@@ -14,3 +14,13 @@ walker:protect BoomHook {
         raise ValueError("boom");
     }
 }
+
+walker:protect NamesMissingUser {
+    can go with Root entry {
+        raise ValueError("User not found");
+    }
+}
+
+def:protect names_missing_user -> int {
+    raise ValueError("User not found");
+}

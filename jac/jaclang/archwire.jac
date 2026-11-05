@@ -722,7 +722,7 @@ graph import {
         packages.api.package_surface { compilation_scope },
         project.compiler_host.ProjectHost.lint_settings { context_app },
     ]
-    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
+    compiler.driver.compilation_context --> client.client_bundle.client_context_program {
         context_program
     }
     compiler.driver.compile_options ++> [
@@ -2743,8 +2743,14 @@ graph import {
         compiler.placement.placement_solver { supports },
         compiler.placement.placement_solver._py_import_client_portable { supports },
     ]
-    runtime.preparation_lock ++> server.hmr.HotReloader._reload_server_module
-        | server.server.JacAPIServer._refresh_dev_endpoints { PREPARATION_LOCK }
+    runtime.preparation_lock ++> [
+        compiler.driver.application._prepare_revision { SourcesChanged },
+        server.hmr.HotReloader._reload_server_module { PREPARATION_LOCK },
+        server.server.JacAPIServer._refresh_dev_endpoints {
+            PREPARATION_LOCK,
+            SourcesChanged
+        },
+    ]
     runtime.preparation_lock --> [
         compiler.driver.application.prepare_application { PREPARATION_LOCK },
         compiler.driver.application.prepare_dynamic_module { PREPARATION_LOCK },
@@ -4985,6 +4991,11 @@ graph import client {
         compiler.ViteCompiler.prepare_bundle { client_program },
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
+        },
+        jac_client_compiler.JacClientCompiler.compile { client_source_root },
+        targets.web_target.WebTarget.build {
+            client_context_program,
+            client_source_root
         },
         vite_client_bundle {
             ClientBuildInputs,
@@ -46952,7 +46963,7 @@ graph import server {
         register_walker_endpoints
     }
     exchange ++> [
-        endpoints.colocated { refusal_status, settle_envelope },
+        endpoints.colocated { settle_envelope },
         endpoints.walkers {
             apply_response_choice,
             has_response_choice,
@@ -47240,7 +47251,7 @@ graph import server {
 graph import server.endpoints {
     auth ++> second_factor { fail, ok, throttled }
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller }
 }
 
 graph import server.identity {
