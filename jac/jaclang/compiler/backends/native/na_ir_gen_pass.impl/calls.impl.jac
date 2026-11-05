@@ -1802,9 +1802,14 @@ impl NaIRGenPass._emit_intrinsic_list_data(
         self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
         return None;
     }
-    _ld_pointee = lst.type?.pointee;
-    _ld_name = str(getattr(_ld_pointee, "name", "") or "");
-    if not isinstance(lst.type, ir.PointerType) or not _ld_name.startswith("List.") {
+    _ld_name = "";
+    if isinstance(lst.type, ir.PointerType)
+        and isinstance(lst.type.pointee, ir.IdentifiedStructType) {
+        _ld_name = lst.type.pointee.name;
+    }
+    if not isinstance(lst.type, ir.PointerType)
+        or len(_ld_name) < 5
+        or _ld_name[:5] != "List." {
         self._emit_intrinsic_misuse(
             nd, intr, f"operand of type {lst.type} is not a list"
         );
@@ -2074,6 +2079,27 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if func_name == "isinstance" {
             return self._emit_isinstance(nd);
+        }
+
+        if func_name == "hasattr" {
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+            arg_vals: list[ir.Value] = [];
+            arg_nodes: list[uni.UniNode] = [];
+            for param in params_l {
+                if isinstance(param, uni.KWPair) {
+                    continue;
+                }
+                value = self._codegen_expr(param);
+                if value is not None {
+                    arg_vals.append(value);
+                    arg_nodes.append(param);
+                }
+            }
+            result = self._dispatch_builtin(
+                func_name, arg_vals, arg_nodes=arg_nodes, kw_node=nd
+            );
+            self._release_owned_args(arg_vals, op="hasattr_arg");
+            return result;
         }
 
         if func_name == "type" {

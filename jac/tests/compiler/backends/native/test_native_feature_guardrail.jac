@@ -334,6 +334,25 @@ test "guardrail: call to an undefined function is rejected" {
 # answer instead; agreement between the lanes promises the native answer is
 # right. A regression to a silent body-drop fails on the value, a regression to
 # demotion fails on layout membership, and either way this test names it.
+test "hasattr lowers for Jac object fields with constant and dynamic names" {
+    src = "obj HasAttrBase { has base_value: int = 1; }\n"
+    "obj HasAttrChild(HasAttrBase) { has nullable: str | None = None; }\n"
+    "def answer() -> int {\n"
+    "    item = HasAttrChild();\n"
+    "    name: str = 'base_value';\n"
+    "    return (1000 if hasattr(item, 'base_value') else 0) +\n"
+    "        (100 if hasattr(item, 'absent') else 0) +\n"
+    "        (10 if hasattr(item, 'nullable') else 0) +\n"
+    "        (1 if hasattr(item, name) else 0);\n"
+    "}\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_fields", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" in ir.gen.native_layout.functions , log;
+    assert native_answer(ir.gen.native_engine, "answer") == 1011;
+    assert server_answer("hasattr_fields_server", src, "answer") == 1011;
+}
+
 test "for-loop over a set lowers, and both lanes answer the same sum" {
     src = "def run() -> int {\n"
     "    s: set[int] = {1, 2, 3};\n"

@@ -255,8 +255,13 @@ impl normalize_exclude_patterns(patterns: list[str]) -> list[str] {
 }
 
 impl is_secret_file(name: str) -> bool {
-    return name == ".env"
-        or name.startswith(".env.")
-        or name in SECRET_FILE_NAMES
-        or name.endswith(SECRET_FILE_SUFFIXES);
+    if name == ".env" or name.startswith(".env.") or name in SECRET_FILE_NAMES {
+        return True;
+    }
+    for suffix in SECRET_FILE_SUFFIXES {
+        if name.endswith(suffix) {
+            return True;
+        }
+    }
+    return False;
 }
