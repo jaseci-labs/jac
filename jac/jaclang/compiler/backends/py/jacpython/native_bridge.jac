@@ -2,9 +2,7 @@ import from c {
     def jac_str_new(data: ptr[u8], size: i64) -> ptr;  def jac_release(value: ptr);  def jacpy_compile_object(
         source: u64,
         filename: u64,
-        mode_owner: ptr,
-        mode_data: ptr[u8],
-        mode_size: i64,
+        mode: ptr[u8],
         optimize: i64,
         options: i64,
         feature: i64
@@ -242,6 +240,12 @@ import from c {
         level = optimize;
         if level < 0 {
             level = config_word(PyConfig_OPTIMIZATION_LEVEL);
+            # The interpreter config keeps -1 as its pre-initialization
+            # sentinel. Imports such as encodings compile source before the
+            # final config is applied; CPython's effective default then is 0.
+            if level < 0 {
+                level = 0;
+            }
         }
         length = i64(strlen(mode));
         mode_string = jac_str_new(mode, length);
@@ -251,9 +255,7 @@ import from c {
         native = jacpy_compile_object(
             u64(int(source)),
             u64(int(filename)),
-            mode_string,
             ptr[u8](mode_string),
-            length,
             i64(level),
             i64(options),
             i64(feature)
