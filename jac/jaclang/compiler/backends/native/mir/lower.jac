@@ -442,7 +442,7 @@ obj MirLowering {
         slot_adapters: dict[str, MirFunction] = {},
         class_names_seen: (list[uni.Archetype] | None) = None,
         erased_archs: dict[int, bool] = {},
-        imported_fns: dict[str, tuple[str, str]] = {},
+        imported_fns: dict[str, tuple[str, str, list[str]]] = {},
         flow_sites: int = 0,
         tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
@@ -485,6 +485,7 @@ obj MirLowering {
     def lower_function(decl: MirDecl) -> (MirFunction | None);
     def st -> MirFnState;
     def builder -> MirBuilder;
+    def declared_type(sym: uni.Symbol) -> TypeBase;
     def symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> MirType;
     def expr_type(nd: uni.Expr) -> MirType;
     def redeclare_local(target: uni.Name, tag: uni.SubTag);
@@ -534,6 +535,8 @@ obj MirLowering {
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
     def lower_fstring(nd: uni.FString) -> MirValue;
     def lower_expr(nd: uni.UniNode) -> MirValue;
+    def ct_fold(nd: uni.UniNode) -> (MirValue | None);
+    def ct_origin(nd: uni.Expr) -> bool;
     def literal_destination(nd: uni.Int) -> (str | None);
     def typed_operand(nd: uni.Expr) -> MirValue;
     def lower_name(nd: uni.Name) -> MirValue;
@@ -696,6 +699,7 @@ obj MirLowering {
     def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
     def require_dep_native(path: str, symbol: str, site: uni.UniNode);
     def dep_verdict(path: str) -> (bool | None);
+    def dep_options -> CompileOptions;
     def add_dep(path: str, name: str, site: (uni.UniNode | None));
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;

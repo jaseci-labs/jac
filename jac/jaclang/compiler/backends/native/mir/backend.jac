@@ -54,6 +54,7 @@ walker MirNativePass(CompilerPass) {
     def report_crash(lowering: MirLowering, exc: Exception);
     def settle_soft(lowering: MirLowering) -> bool;
     def refuse_events(lowering: MirLowering) -> bool;
+    def refuse_module_code(lowering: MirLowering) -> bool;
     def note_demotions(lowering: MirLowering, prior: (NativeIface | None));
     def interface(
         lowering: MirLowering, deps: list[str], triple: str = ""

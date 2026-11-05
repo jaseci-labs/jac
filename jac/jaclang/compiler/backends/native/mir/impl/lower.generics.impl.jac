@@ -32,7 +32,7 @@ impl MirLowering.is_template(ab: uni.Ability) -> bool {
     if ab.type_params {
         return True;
     }
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+    fn_type = self.declared_type(self.ability_sym(ab));
     return isinstance(fn_type, FunctionType) and self.mentions_typevar(fn_type);
 }
 
@@ -145,7 +145,7 @@ impl MirLowering.type_param_names(ab: uni.Ability) -> list[str] {
         return names;
     }
     pending: list[TypeBase] = [];
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+    fn_type = self.declared_type(self.ability_sym(ab));
     if isinstance(fn_type, FunctionType) {
         pending.extend(
             [
@@ -215,7 +215,6 @@ impl MirLowering.generic_call(
         raise MirRefused(mir_refusal("call argument", f"unpacking into {label}", nd));
     }
     nodes = self.param_nodes(sig, receiver is not None);
-    evaluator = self.prog.get_type_evaluator();
     solution: dict[str, TypeBase] = {};
     for (pv, chosen) in zip(nodes, self.bound_args(nd, ab, receiver is not None)) {
         if pv.name.sym is None {
@@ -225,11 +224,11 @@ impl MirLowering.generic_call(
             if isinstance(chosen, uni.Expr)
             else (pv.value if isinstance(pv.value, uni.Expr) else None);
         if given is not None {
-            self.unify(evaluator.get_type_of_symbol(pv.name.sym), given.type, solution);
+            self.unify(self.declared_type(pv.name.sym), given.type, solution);
         }
     }
     if nd.type is not None {
-        fn_type = evaluator.get_type_of_symbol(self.ability_sym(ab));
+        fn_type = self.declared_type(self.ability_sym(ab));
         if isinstance(fn_type, FunctionType) {
             self.unify(fn_type.return_type, nd.type, solution);
         }
@@ -312,7 +311,7 @@ impl MirLowering.template_value(nd: uni.Name, ab: uni.Ability) -> (MirValue | No
         return None;
     }
     wanted = asn.type_tag.tag.type;
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+    fn_type = self.declared_type(self.ability_sym(ab));
     if not isinstance(wanted, FunctionType)
         or not isinstance(fn_type, FunctionType)
         or self.mentions_typevar(wanted) {
@@ -353,9 +352,7 @@ impl MirLowering.declare_instance(
         params = [
             self.param_type(pv) for pv in self.param_nodes(sig, owner is not None)
         ];
-        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-            self.ability_sym(ab)
-        );
+        fn_type = self.declared_type(self.ability_sym(ab));
         ret = mir_none();
         if isinstance(fn_type, FunctionType) {
             ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, ab);

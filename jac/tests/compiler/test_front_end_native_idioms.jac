@@ -511,7 +511,7 @@ test "guardrail: @lru_cache binds the bundled module where a dict cache does not
     assert [
         s
         for s in seams
-        if "decorator 'on twice'" in s
+        if s.startswith("twice:") and "decorator 'computed decorator on twice'" in s
     ] , (
         "compiling the decorated declaration is not the same as calling it: "
         "a stateful decorator still demotes `twice` to its Python-only "
@@ -520,7 +520,7 @@ test "guardrail: @lru_cache binds the bundled module where a dict cache does not
     assert [
         s
         for s in seams
-        if "function 'twice'" in s
+        if s.startswith("use_twice:") and s.endswith(".twice, which is not native")
     ] , (
         "a native caller of the decorated name cannot reach it either, so it "
         f"must demote with it instead of lowering a call to nothing: {seams}"

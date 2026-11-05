@@ -23,9 +23,7 @@ impl MirLowering.exception_target(nd: uni.Expr) -> tuple[str, (uni.Archetype | N
 
 impl MirLowering.is_exception_arch(arch: uni.Archetype) -> bool {
     sym = arch.name.sym if arch.name is not None else None;
-    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
-        if sym is not None
-        else None;
+    made = self.declared_type(sym) if sym is not None else None;
     if not isinstance(made, ClassType) or made._shared is None {
         return False;
     }
@@ -46,9 +44,7 @@ impl MirLowering.is_exception_arch(arch: uni.Archetype) -> bool {
 
 impl MirLowering.exception_ancestors(arch: uni.Archetype) -> list[int] {
     sym = arch.name.sym if arch.name is not None else None;
-    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
-        if sym is not None
-        else None;
+    made = self.declared_type(sym) if sym is not None else None;
     tid = JAC_TYPE_REGISTRY.exception_type_id(archetype_native_name(arch));
     found: list[int] = [];
     if not isinstance(made, ClassType) or made._shared is None {

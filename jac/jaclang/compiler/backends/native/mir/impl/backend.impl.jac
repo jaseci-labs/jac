@@ -54,7 +54,8 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             self.note_demotions(lowering, ir_in.gen.native_iface);
         }
     } else {
-        if self.refuse_events(lowering) {
+        refused = self.refuse_events(lowering);
+        if self.refuse_module_code(lowering) or refused {
             return ir_in;
         }
         self.note_demotions(lowering, ir_in.gen.native_iface);
@@ -305,6 +306,54 @@ impl MirNativePass.refuse_events(lowering: MirLowering) -> bool {
             help_text=(hint + " " if hint else "")
                 + f"This ability could not be lowered ({why}). A walker runs its abilities through the native graph engine, which has no caller to refuse, so the module cannot stay native with it."
         );
+        refused = True;
+    }
+    return refused;
+}
+
+impl MirNativePass.refuse_module_code(lowering: MirLowering) -> bool {
+    module = lowering.module;
+    path = module.loc.mod_path;
+    sites: dict[str, uni.UniNode] = {};
+    for elem in module.body {
+        if isinstance(elem, uni.ModuleCode) {
+            sites.setdefault(native_entry_name(path), elem);
+        } elif isinstance(elem, uni.GlobalVars) {
+            sites.setdefault(native_glob_init_name(path), elem);
+        }
+    }
+    here = os.path.realpath(path);
+    refused = False;
+    for (symbol, site) in sites.items() {
+        reason = lowering.mir.demoted.get(symbol);
+        if reason is None {
+            continue;
+        }
+        found = lowering.refusals.get(symbol, []);
+        for refusal in found {
+            anchor = refusal.site;
+            if anchor is None
+                or anchor is module
+                or os.path.realpath(anchor.loc.mod_path) != here {
+                anchor = site;
+            }
+            self.ctx.emit(
+                E5092,
+                node_override=anchor,
+                kind=refusal.kind,
+                name=refusal.name,
+                help_text=refusal.help
+            );
+        }
+        if not found {
+            self.ctx.emit(
+                E5092,
+                node_override=site,
+                kind="module code",
+                name=mir_demoted_name(lowering.mir, symbol),
+                help_text=f"It {reason}, so it cannot run natively. A module placed native by the build runs its top-level code natively, with no Python body to fall back to."
+            );
+        }
         refused = True;
     }
     return refused;
@@ -594,20 +643,17 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
             )
         );
     }
-    for (name, (unit, symbol)) in sorted(lowering.imported_fns.items()) {
+    for (name, (_unit, symbol, names)) in sorted(lowering.imported_fns.items()) {
         if name in made.functions {
             continue;
         }
-        iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
-        found = iface.layout.functions.get(name)
-            if iface is not None and iface.layout is not None
-            else None;
         ext = mir.externs.get(symbol);
-        if found is None and ext is not None {
+        found: (NativeFuncLayout | None) = None;
+        if ext is not None {
             found = NativeFuncLayout(
                 name=symbol,
                 param_types=[mir_layout_type(param) for param in ext.params],
-                param_names=[],
+                param_names=list(names),
                 ret_type=mir_layout_type(ext.ret),
                 ret_struct_name=ext.ret.name
                     if ext.ret.kind == MirKind.OBJ and ext.ret.name != "*"

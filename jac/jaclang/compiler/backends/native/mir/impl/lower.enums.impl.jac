@@ -436,7 +436,7 @@ impl MirLowering.enum_self_type(decl: (uni.Archetype | uni.Enum)) -> (MirType | 
     if sym is None {
         return None;
     }
-    made = self.prog.get_type_evaluator().get_type_of_symbol(sym);
+    made = self.declared_type(sym);
     if not isinstance(made, ClassType) or not is_enum_class_type(made) {
         return None;
     }
@@ -470,9 +470,7 @@ impl MirLowering.declare_enum_methods(
         for pv in self.param_nodes(sig, True) {
             params.append(self.symbol_type(pv.name.sym, pv));
         }
-        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-            self.ability_sym(method)
-        );
+        fn_type = self.declared_type(self.ability_sym(method));
         ret = mir_none();
         if isinstance(fn_type, FunctionType) {
             ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
@@ -549,9 +547,7 @@ impl MirLowering.foreign_enum_method(
         params = [
             self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)
         ];
-        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-            self.ability_sym(method)
-        );
+        fn_type = self.declared_type(self.ability_sym(method));
         ret = mir_none();
         if isinstance(fn_type, FunctionType) {
             ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);

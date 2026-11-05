@@ -209,9 +209,7 @@ impl MirLowering.class_attr_entry(
 
 impl MirLowering.arch_is_enum(arch: uni.Archetype) -> bool {
     sym = arch.name.sym if arch.name is not None else None;
-    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
-        if sym is not None
-        else None;
+    made = self.declared_type(sym) if sym is not None else None;
     return is_enum_class_type(made);
 }
 

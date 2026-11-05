@@ -27,9 +27,7 @@ impl MirLowering.python_call(nd: uni.FuncCall) -> (MirValue | None) {
         );
     }
     params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, False)];
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-        self.ability_sym(callee)
-    );
+    fn_type = self.declared_type(self.ability_sym(callee));
     ret = mir_none();
     if isinstance(fn_type, FunctionType) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, nd);
@@ -308,9 +306,7 @@ impl MirLowering.c_param_plan(
 ) -> tuple[MirType, str] {
     declared = pv.type;
     if declared is None and pv.type_tag is not None and not self.c_param_borrowed(pv) {
-        declared = self.prog.get_type_evaluator().get_type_of_expression(
-            pv.type_tag.tag
-        );
+        declared = pv.type_tag.tag.type;
     }
     t = self.c_declared_type(declared, fallback);
     self.ensure_c_types(t);
@@ -631,7 +627,7 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
         }
         params.append(ptype);
     }
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+    fn_type = self.declared_type(self.ability_sym(ab));
     ret = mir_none();
     if sig.return_type is not None and isinstance(fn_type, FunctionType) {
         (ret, plan) = self.c_return_plan(sig, fn_type.return_type, ab);
@@ -1015,7 +1011,7 @@ impl MirLowering.c_declared_signature(
     decl: uni.Ability, site: uni.UniNode
 ) -> (str | None) {
     sig = decl.signature;
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(decl));
+    fn_type = self.declared_type(self.ability_sym(decl));
     if not isinstance(sig, uni.FuncSignature)
         or not isinstance(fn_type, FunctionType) {
         return None;

@@ -427,7 +427,7 @@ impl MirLowering.declared_field_type(decl: (uni.UniNode | None)) -> (TypeBase | 
     if not isinstance(decl, uni.HasVar) or decl.name.sym is None {
         return None;
     }
-    return self.prog.get_type_evaluator().get_type_of_symbol(decl.name.sym);
+    return self.declared_type(decl.name.sym);
 }
 
 impl MirLowering.arch_methods(arch: uni.Archetype) -> list[uni.Ability] {
@@ -454,9 +454,7 @@ impl MirLowering.find_method(arch: uni.Archetype, name: str) -> (uni.Ability | N
 
 impl MirLowering.lineage(arch: uni.Archetype) -> list[uni.Archetype] {
     sym = arch.name.sym if arch.name is not None else None;
-    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
-        if sym is not None
-        else None;
+    made = self.declared_type(sym) if sym is not None else None;
     if isinstance(made, ClassType) and made._shared is not None {
         found: list[uni.Archetype] = [];
         for ancestor in made.shared.mro {
@@ -512,9 +510,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
     }
     self_type = self.object_type(owner);
     params = [self.param_type(pv) for pv in self.param_nodes(sig, True)];
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-        self.ability_sym(method)
-    );
+    fn_type = self.declared_type(self.ability_sym(method));
     ret = mir_none();
     if isinstance(fn_type, FunctionType) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
@@ -551,9 +547,7 @@ impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
         return None;
     }
     params = [self.param_type(pv) for pv in self.param_nodes(sig, False)];
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-        self.ability_sym(method)
-    );
+    fn_type = self.declared_type(self.ability_sym(method));
     ret = mir_none();
     if isinstance(fn_type, FunctionType) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
@@ -640,9 +634,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
         for pv in self.param_nodes(sig, not method.is_static) {
             params.append(self.param_type(pv));
         }
-        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-            self.ability_sym(method)
-        );
+        fn_type = self.declared_type(self.ability_sym(method));
         ret = mir_none();
         if isinstance(fn_type, FunctionType) {
             ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
@@ -702,9 +694,7 @@ impl MirLowering.declare_specials(arch: uni.Archetype, self_type: MirType) {
         for pv in self.param_nodes(sig, True) {
             params.append(self.param_type(pv));
         }
-        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-            self.ability_sym(method)
-        );
+        fn_type = self.declared_type(self.ability_sym(method));
         ret = mir_none();
         if isinstance(fn_type, FunctionType) {
             ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
@@ -3053,7 +3043,7 @@ impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | No
         );
     }
     if isinstance(holder, uni.ParamVar) {
-        ability = holder.find_parent_of_type(uni.Ability);
+        ability = holder.enclosing_decl(uni.Ability);
         arch = self.owner_archetype(ability) if ability is not None else None;
         if ability is None {
             return None;

@@ -135,41 +135,50 @@ glob FORBIDDEN: dict[str, str] = {
              "declared annotation is the consumed fact, not a resolved type"
          ),
          ("native/mir/impl/lower.impl.jac", "type_evaluator"): (
-             8,
-             "symbol-type reads: get_type_of_symbol on already-resolved "
-             "declaration symbols - a function's signature, a has-var's declared "
-             "type, a nested def's callable type, a C struct field and an "
-             "archetype's ClassType for imported-layout adoption. The evaluator "
-             "memoizes the type of a declared symbol; MIR reads that central "
-             "fact and never infers an expression"
-         ),
-         ("native/mir/impl/lower.objects.impl.jac", "type_evaluator"): (
-             4,
-             "symbol-type reads for archetype lowering: a field's declared type, "
-             "the ClassType whose MRO gives an archetype's lineage, and method "
-             "signatures for vtable slots - get_type_of_symbol over resolved "
-             "declarations, no expression inference"
-         ),
-         ("native/mir/impl/lower.generics.impl.jac", "type_evaluator"): (
-             4,
-             "symbol-type reads for monomorphization: a generic template's "
-             "signature and its parameters' declared types, unified against the "
-             "call's stamped argument types (Expr.type). The template is "
-             "uninstantiated, so its declared signature is the only TypeVar "
-             "surface"
-         ),
-         ("native/mir/impl/lower.exceptions.impl.jac", "type_evaluator"): (
-             2,
-             "symbol-type reads: an exception archetype's ClassType, whose MRO "
-             "decides whether it is an exception class and which exception type "
-             "ids it matches - get_type_of_symbol over the resolved archetype "
-             "declaration"
-         ),
-         ("native/mir/impl/lower.interop.impl.jac", "type_evaluator"): (
              1,
-             "symbol-type read of a Python-boundary callee's signature to type "
-             "the call bridge - get_type_of_symbol over the resolved ability "
-             "declaration"
+             "MirLowering.declared_type, MIR's one read of the evaluator: "
+             "get_type_of_symbol on an already-resolved declaration symbol - a "
+             "function's signature, a has-var's or C struct field's declared "
+             "type, an archetype's ClassType (its MRO, imported-layout adoption, "
+             "exception ids) and a generic template's parameters. The evaluator "
+             "memoizes the type of a declared symbol; every MIR file asks this "
+             "accessor for that central fact and none infers an expression "
+             "(annotation types are read from the stamped Expr.type)"
+         ),
+         ("native/mir/impl/lower.format.impl.jac", "type_evaluator"): (
+             1,
+             "struct_format_fields, the central struct-format layout table: the "
+             "checker types struct.pack/unpack results from it, and MIR reads the "
+             "same table for the field offsets so the two cannot disagree. It is "
+             "a pure function of the literal format string, no inference"
+         ),
+         ("native/mir/impl/lower.generics.impl.jac", "type_tag.tag"): (
+             2,
+             "template_value: a generic template bound to an annotated name "
+             "(f: Callable[[int], int] = template) is monomorphized against the "
+             "binding's declared Callable annotation, read as its stamped "
+             "Expr.type - the template is uninstantiated, so the declared "
+             "annotation is the only solution surface (NaIRGen's #7626 A5 entry)"
+         ),
+         ("native/mir/impl/lower.interop.impl.jac", "type_tag.tag"): (
+             1,
+             "c_param_plan: the declared annotation of a clib parameter, read as "
+             "its stamped Expr.type, when the parameter itself carries none - the "
+             "declaration IS the C wire fact, as for native/impl/foreign.impl.jac"
+         ),
+         ("native/mir/impl/lower.closures.impl.jac", ".lookup("): (
+             1,
+             "super_self: the receiver binding `self` that the enclosing method "
+             "declares, for a super reference lowered inside a closure. The "
+             "declared NAME is the fact (super has no symbol of its own); no "
+             "user name is re-resolved"
+         ),
+         ("native/mir/impl/lower.impl.jac", ".lookup("): (
+             1,
+             "import_item_of: the checker resolves a from-imported name straight "
+             "through to its origin, so the importing module's own binding - the "
+             "import item E1145 and the bundled-twin call key off - is found by "
+             "its declared NAME in the name's scope"
          ),
          ("native/impl/host_facts.impl.jac", ".lookup("): (
              1,
