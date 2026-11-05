@@ -2084,6 +2084,11 @@ impl MirLowering.list_scan(
     b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
     b.position(body);
     elem = self.spill(self.list_read(held, b.load(cursor, mir_int())));
+    if self.identity_first(elem.type) and self.identity_first(probe.type) {
+        equal = fn.new_block("scan.eq");
+        b.cond_branch(self.identity(elem, probe, site), hit, equal);
+        b.position(equal);
+    }
     same = self.truthy(self.compare_values(Tok.EE, elem, probe, site), site);
     b.cond_branch(same, hit, step);
     b.position(hit);
@@ -2114,6 +2119,14 @@ impl MirLowering.list_scan(
         );
     }
     return result;
+}
+
+impl MirLowering.identity_first(t: MirType) -> bool {
+    return t.kind == MirKind.ANY
+        or (
+            mir_holds_ref(t)
+            and t.kind not in (MirKind.STR, MirKind.STR_REF, MirKind.OPT, MirKind.TUPLE)
+        );
 }
 
 impl MirLowering.list_pairwise_eq(left: MirValue, right: MirValue) -> MirValue {

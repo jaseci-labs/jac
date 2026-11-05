@@ -896,6 +896,7 @@ obj MirLowering {
     def dict_pairwise_eq(left: MirValue, right: MirValue) -> MirValue;
     def user_eq_elem(t: MirType) -> bool;
     def structural_elem(t: MirType) -> bool;
+    def identity_first(t: MirType) -> bool;
     def list_scan(
         lst: MirValue, item: MirValue, mode: str, site: uni.UniNode
     ) -> MirValue;
