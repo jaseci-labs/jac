@@ -949,6 +949,7 @@ import from engine.src.builtins.markers {
 }
 import from engine.src.builtins.array {
     js_array_dense_full,
+    js_array_spread_copy,
     js_Array_isArray,
     js_Array_indexOf,
     js_array_push1_fast,
@@ -2062,6 +2063,17 @@ glob _HDI_ARR_SHAPE: int = -1,
 
 # GET_PROP getter IC markers (see VM._getter_ic_call).
 # 2^40: above any table id
+
+"""An own data property of `v` when it is a shape-mode ordinary object holding
+one (dense elements or not -- js_object_get_ordinary reports any read of an
+object with elements as the hole), else the hole."""
+def _vm_own_data_or_hole(v: JSValue, key: int) -> JSValue {
+    od_si: int = js_object_own_data_slot(v, key);
+    if od_si < 0 {
+        return jsv_hole();
+    }
+    return js_object_slot_at_id(jsv_to_table_id(v), od_si);
+}
 
 # The shapes of the dense arguments objects (_build_arguments_dense): marker,
 # `length`, @@iterator, and with a data `callee` before @@iterator. Learned
@@ -31713,6 +31725,18 @@ obj VM {
         sp_src: JSValue = self._pop();
         sp_arr: JSValue = js_undefined();
         sp_push: bool = True;
+        # A plain dense Array under the default iteration (GETITER's test):
+        # its elements copied in one pass, where the drain below interned
+        # every index and read, tested and stored it by key.
+        if js_array_dense_full(sp_src) and idx_protector_ok() and self._has_default_iter(sp_src) {
+            sp_arr = js_array_spread_copy(sp_src);
+            if not jsv_is_hole(sp_arr) {
+                js_object_set(sp_arr, _KEY_IS_SPREAD, js_true());
+                self._push(sp_arr);
+                return;
+            }
+            sp_arr = js_undefined();
+        }
         if js_is_generator(sp_src) {
             # Drain the generator into an array
             gen_sp_items: list[JSValue] = [];
@@ -36143,7 +36167,7 @@ obj VM {
     intrinsic: elements 0..length-1 (plain own data, as an ArrayIterator would
     read them), marked as a spread like the handler's array. False → handler."""
     def _reg_spread_args(frame: CallFrame, w: int, src: JSValue) -> bool {
-        sa_it: JSValue = js_object_get_ordinary(src, SYMBOL_KEY_BASE + SYMBOL_ITERATOR);
+        sa_it: JSValue = _vm_own_data_or_hole(src, SYMBOL_KEY_BASE + SYMBOL_ITERATOR);
         if jsv_is_hole(sa_it) or not (sa_it == self.realm.array_values_fn) {
             return False;
         }
@@ -36151,20 +36175,40 @@ obj VM {
         if not jsv_is_object_cell(sa_aip) {
             return False;
         }
-        sa_next: JSValue = js_object_get_ordinary(sa_aip, WK_NEXT);
+        # (an own read: js_object_get_ordinary gives the hole for this
+        # prototype, so every arguments spread took the handler's drain)
+        sa_next: JSValue = jo_get_own_data_or_hole(jsv_to_table_id(sa_aip), WK_NEXT);
         if not (
             is_native_val(sa_next)
             and get_native_kind(sa_next) == NATIVE_KIND_ARRAY_ITER_NEXT
-        ) {
+        )
+            or not jsv_is_undefined(js_object_get_own_accessor_getter(sa_aip, WK_NEXT)) {
             return False;
         }
-        sa_lv: JSValue = js_object_get_ordinary(src, WK_LENGTH);
+        sa_lv: JSValue = _vm_own_data_or_hole(src, WK_LENGTH);
         if not jsv_is_int32(sa_lv) or jsv_to_int32(sa_lv) < 0 {
             return False;
         }
         sa_n: int = jsv_to_int32(sa_lv);
         sa_items: list[JSValue] = [];
         sa_i: int = 0;
+        sa_id: int = jsv_to_table_id(src);
+        if jo_elems_kind(sa_id) != ELEMS_NONE {
+            # The dense elements (_build_arguments_dense) hold 0..length-1 as
+            # plain data: js_object_get_ordinary reports a dense element as the
+            # hole, so every spread of them took the handler's iterator drain.
+            if jo_elen(sa_id) < sa_n {
+                return False;
+            }
+            while sa_i < sa_n {
+                sa_dv: JSValue = jo_eget(sa_id, sa_i);
+                if jsv_is_hole(sa_dv) {
+                    return False;
+                }
+                sa_items.append(sa_dv);
+                sa_i = sa_i + 1;
+            }
+        }
         while sa_i < sa_n {
             sa_v: JSValue = js_object_get_ordinary(src, str_intern_index(sa_i));
             if jsv_is_hole(sa_v) {

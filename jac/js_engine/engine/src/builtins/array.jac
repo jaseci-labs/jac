@@ -74,6 +74,7 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.runtime.jsobject {
     js_object_array_dense_full,
+    js_object_proto_idx_id,
     js_object_array_push1,
     js_object_dense_index_of,
     js_object_new_array_empty,
@@ -210,6 +211,34 @@ def:pub js_array_dense_full(arr: JSValue) -> bool {
         and jsv_is_object_cell(arr)
         and jsv_to_table_id(arr) > 0
         and js_object_array_dense_full(arr, _ARRAY_SHAPE);
+}
+
+"""`[...arr]` of an Array at the canonical array shape whose prototype is
+%Array.prototype%, with all its elements in its dense buffer (the caller
+checks that the default @@iterator is in place and that no prototype carries
+an index property): a new Array of its elements, a hole read as undefined —
+what draining its default iterator gives, with nothing able to observe the
+difference. The hole when `arr` does not qualify."""
+def:pub js_array_spread_copy(arr: JSValue) -> JSValue {
+    if not js_array_dense_full(arr) or not jsv_is_object_cell(_ARRAY_PROTO) {
+        return jsv_hole();
+    }
+    sc_id: int = jsv_to_table_id(arr);
+    if js_object_proto_idx_id(sc_id) != jsv_to_table_id(_ARRAY_PROTO) {
+        return jsv_hole();
+    }
+    sc_n: int = jo_elen(sc_id);
+    sc_vals: list[JSValue] = [];
+    sc_k: int = 0;
+    while sc_k < sc_n {
+        sc_v: JSValue = jo_eget(sc_id, sc_k);
+        if jsv_is_hole(sc_v) {
+            sc_v = js_undefined();
+        }
+        sc_vals.append(sc_v);
+        sc_k = sc_k + 1;
+    }
+    return js_array_create(sc_vals);
 }
 
 """push(v) of one value onto an Array at the canonical array shape (the
