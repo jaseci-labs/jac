@@ -528,6 +528,7 @@ import from engine.src.runtime.jsobject {
     js_object_own_data_slot,
     js_object_dense_put,
     js_object_dense_shift,
+    js_object_dense_pop,
     js_object_proto_idx_id,
     js_object_cell_flags_id,
     js_object_own_int_add,
@@ -34837,6 +34838,13 @@ obj VM {
                 return True;
             }
         }
+        if rn_kind == NATIVE_KIND_ARRAY_POP and argc == 0 and idx_protector_ok() {
+            rn_po: JSValue = js_object_dense_pop(this_val);
+            if not jsv_is_hole(rn_po) {
+                frame.locals[frame.lb + (dst)] = rn_po;
+                return True;
+            }
+        }
         if rn_kind < 0 or rn_kind >= len(_NATIVE_FAST_KIND) {
             return False;
         }
@@ -46688,6 +46696,14 @@ def _vm_array_pop(vm: VM, this_val: JSValue) -> JSValue {
     o: JSValue = _vm_array_to_object(this_val);
     if vm_has_native_exc() {
         return js_undefined();
+    }
+    # Dense fast arm (as shift's): a stack popped in a loop interned the
+    # index key and ran the keyed get / delete / length set per call.
+    if idx_protector_ok() {
+        po_last: JSValue = js_object_dense_pop(o);
+        if not jsv_is_hole(po_last) {
+            return po_last;
+        }
     }
     len_: int = _length_of(o);
     if vm_has_native_exc() {

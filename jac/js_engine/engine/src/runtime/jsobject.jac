@@ -1463,6 +1463,50 @@ def:pub js_object_dense_shift(v: JSValue) -> JSValue {
     return ds_first;
 }
 
+"""Array.prototype.pop on the arrays js_object_dense_shift takes (idx_protector_ok
+checked by the caller): dropping the last element word and storing the new
+length is the spec's Get / DeletePropertyOrThrow / Set sequence, which
+nothing can observe. An empty array (length 0) gives undefined, as the spec's
+Set of length 0 changes nothing. Returns the removed element (undefined for a
+hole), or the hole when `v` does not qualify."""
+def:pub js_object_dense_pop(v: JSValue) -> JSValue {
+    if not jsv_is_object_cell(v) {
+        return jsv_hole();
+    }
+    dpo_id: int = jsv_to_table_id(v);
+    if dpo_id <= 0 {
+        return jsv_hole();
+    }
+    if jo_class_id(dpo_id) != 0
+        or jo_elems_kind(dpo_id) == ELEMS_NONE
+        or (jo_brand(dpo_id) & BRAND_ARRAY) == 0
+        or jo_mode(dpo_id) != MAP_MODE_SHAPE {
+        return jsv_hole();
+    }
+    if (jo_cell_flags(dpo_id) & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
+        return jsv_hole();
+    }
+    dpo_lk: int = shape_lookup(jo_shape_id(dpo_id), KEY_LENGTH);
+    if dpo_lk < 0 or (dpo_lk & SHAPE_ATTR_ACCESSOR) != 0 or (dpo_lk & PROP_WRITABLE) == 0 {
+        return jsv_hole();
+    }
+    dpo_n: int = jo_elen(dpo_id);
+    dpo_len: JSValue = jo_sget(dpo_id, dpo_lk // 16);
+    if not jsv_is_int32(dpo_len) or jsv_to_int32(dpo_len) != dpo_n {
+        return jsv_hole();
+    }
+    if dpo_n == 0 {
+        return js_undefined();
+    }
+    dpo_last: JSValue = jo_eget(dpo_id, dpo_n - 1);
+    write_i64(jo_ep(dpo_id), 0, dpo_n - 1);
+    jo_sset(dpo_id, dpo_lk // 16, js_int(dpo_n - 1));
+    if jsv_is_hole(dpo_last) {
+        return js_undefined();
+    }
+    return dpo_last;
+}
+
 """True for an ordinary object cell: no class (Proxy, String / Date …
 wrappers), binary payload, module namespace or arguments exotic — whose
 own-property attributes all live in its shape / property map / elements."""
