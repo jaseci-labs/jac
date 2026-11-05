@@ -27,6 +27,17 @@ impl _arr_float(tc: str) -> bool {
 }
 
 
+impl _ieqf(a: int, b: float) -> bool {
+    if b >= -9223372036854775808.0 and b < 9223372036854775808.0 {
+        bi: int = int(b);
+        if float(bi) == b {
+            return a == bi;
+        }
+    }
+    return False;
+}
+
+
 impl _arr_cname(tc: str) -> str {
     if tc == "b" {
         return "signed char";
@@ -300,7 +311,7 @@ impl array._elem_eq(v: any, i: int) -> bool {
         fv: float = self._read_float_elem(i * sz);
         if isinstance(v, int) {
             iv: int = v;
-            return fv == float(iv);
+            return _ieqf(iv, fv);
         }
         if isinstance(v, float) {
             vf: float = v;
@@ -315,7 +326,7 @@ impl array._elem_eq(v: any, i: int) -> bool {
     }
     if isinstance(v, float) {
         vf: float = v;
-        return float(li) == vf;
+        return _ieqf(li, vf);
     }
     return False;
 }
@@ -435,7 +446,20 @@ impl array.tofile(f: any) {
 }
 
 impl array.fromfile(f: any, n: int) {
-    self.frombytes(f.read(n * self.itemsize));
+    if n < 0 {
+        raise ValueError("negative count");
+    }
+    need: int = n * self.itemsize;
+    data: bytes = f.read(need);
+    got: int = len(data);
+    if got != need {
+        ok: int = got - (got % self.itemsize);
+        if ok > 0 {
+            self.frombytes(data[0:ok]);
+        }
+        raise EOFError("read() didn't return enough bytes");
+    }
+    self.frombytes(data);
 }
 
 impl array.tolist -> list[any] {
@@ -501,11 +525,11 @@ impl array._same_elem(other: array, i: int) -> bool {
         if other._flt {
             return lv == other._read_float_elem(i * other.itemsize);
         }
-        return lv == float(other._read_elem(i * other.itemsize));
+        return _ieqf(other._read_elem(i * other.itemsize), lv);
     }
     li: int = self._read_elem(i * self.itemsize);
     if other._flt {
-        return float(li) == other._read_float_elem(i * other.itemsize);
+        return _ieqf(li, other._read_float_elem(i * other.itemsize));
     }
     return li == other._read_elem(i * other.itemsize);
 }

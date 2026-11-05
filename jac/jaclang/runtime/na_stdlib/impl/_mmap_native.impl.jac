@@ -61,3 +61,13 @@ impl mm_errno -> int {
 impl mm_errstr -> str {
     return errno_message();
 }
+
+
+impl mm_dup_fd(fd: int) -> int {
+    return dup(i32(fd));
+}
+
+
+impl mm_close_fd(fd: int) -> int {
+    return close(i32(fd));
+}

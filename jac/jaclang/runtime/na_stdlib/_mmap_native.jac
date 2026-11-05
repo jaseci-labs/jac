@@ -6,6 +6,8 @@ import from c {
 import from c { def munmap(addr: int, length: u64) -> i32;  }
 import from c { def msync(addr: int, length: u64, flags: i32) -> i32;  }
 import from c { def lseek(fd: i32, off: i64, whence: i32) -> i64;  }
+import from c { def dup(fd: i32) -> i32;  }
+import from c { def close(fd: i32) -> i32;  }
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
 import from c { def memmove(dst: int, src: bytes, n: u64) -> int;  }
 import from _errno_native { last_errno, errno_message }
@@ -37,3 +39,9 @@ def:pub mm_errno -> int;
 
 
 def:pub mm_errstr -> str;
+
+
+def:pub mm_dup_fd(fd: int) -> int;
+
+
+def:pub mm_close_fd(fd: int) -> int;
