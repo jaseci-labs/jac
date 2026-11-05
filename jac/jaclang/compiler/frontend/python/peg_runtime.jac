@@ -61,7 +61,7 @@ obj peg_parser {
 }
 
 # Parser/parser.c's MAXSTACK: deeper rule nesting is a MemoryError.
-glob MAXSTACK: int = 1000;
+glob MAXSTACK: int = 1500;
 
 def peg_rule_abort(p: peg_parser) {
     if p.level >= MAXSTACK {
@@ -71,9 +71,18 @@ def peg_rule_abort(p: peg_parser) {
 
 def peg_stack_overflow(p: peg_parser) {
     if p.error is None {
+        has_fstring = False;
+        for token in p.tokens {
+            if token.tok_type == FSTRING_START {
+                has_fstring = True;
+                break;
+            }
+        }
         p.error = mk_diag(
-            "RecursionError",
-            "maximum recursion depth exceeded during parsing",
+            "SyntaxError" if has_fstring else "RecursionError",
+            "f-string: expressions nested too deeply"
+                if has_fstring
+                else "maximum recursion depth exceeded during parsing",
             tok_loc(lineno=1, end_lineno=1, col_offset=0, end_col_offset=0),
             p.filename
         );
