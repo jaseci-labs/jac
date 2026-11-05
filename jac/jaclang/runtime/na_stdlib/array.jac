@@ -1,4 +1,5 @@
 import struct;
+import from _typename { typename }
 
 
 def _arr_itemsize(tc: str) -> int;
