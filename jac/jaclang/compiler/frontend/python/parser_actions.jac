@@ -1776,6 +1776,21 @@ def pa_raise_syntax_known_expr(
 def pa_raise_syntax_known_range(
     p: peg_parser, on_next: bool, a: object | None, b: object | None, message: str
 ) -> None {
+    if (
+        message == "Missing parentheses in call to '%U'. Did you mean %U(...)?"
+        and isinstance(a, Name)
+    ) {
+        name = (a as Name).id;
+        return pa_raise_syntax(
+            p,
+            on_next,
+            "Missing parentheses in call to '"
+                + name
+                + "'. Did you mean "
+                + name
+                + "(...)?"
+        );
+    }
     if isinstance(a, peg_token) and isinstance(b, peg_token) and not peg_has_error(p) {
         p.error = mk_diag(
             "SyntaxError",
@@ -1973,7 +1988,8 @@ def pa_arguments_parsing_error(p: peg_parser, `node: object) -> object {
 }
 
 def pa_check_legacy_stmt(p: peg_parser, `node: object) -> bool {
-    return False;
+    return isinstance(`node, Name)
+        and ((`node as Name).id == "print" or (`node as Name).id == "exec");
 }
 
 def pa_concatenate_tstrings(parts: list[expr]) -> expr | None {
