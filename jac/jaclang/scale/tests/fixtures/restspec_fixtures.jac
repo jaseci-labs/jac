@@ -228,6 +228,32 @@ walker:pub NullFields {
     }
 }
 
+"""Optional parameters of each kind, to call without sending any of them."""
+def:pub func_defaults(
+    count: int = 5,
+    ratio: float = 0.5,
+    flag: bool = False,
+    title: str = "seed",
+    tags: list[str] = [],
+    note: str | None = None
+) -> dict[str, any] {
+    tags.append("seen");
+    return {
+        "count": count,
+        "ratio": ratio,
+        "flag": flag,
+        "title": title,
+        "tags": tags,
+        "note": note
+    };
+}
+
+"""The same defaults, reached through the query string."""
+@restspec(method=HTTPMethod.GET, path="/func-defaults")
+def:pub func_defaults_query(count: int = 5, flag: bool = False) -> dict[str, any] {
+    return {"count": count, "flag": flag};
+}
+
 node UserProfile {
     has user_id: str = "",
         name: str = "";
