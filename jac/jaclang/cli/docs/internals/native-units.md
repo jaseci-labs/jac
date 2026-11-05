@@ -156,17 +156,20 @@ callers, and the plan knows nothing about any of them.
    units' relocatable objects. `bitcode` links every unit's bitcode into one
    LLVM module and runs the pass pipeline whole-program before a single
    codegen; executables are internalized first. This is the release lane,
-   and what the JIT, PE and wasm targets use.
+   and what the PE and wasm targets always use.
 8. Record the plan digest, the merged class layout and its digest, the unit
    list and the source key in the `<artifact>.layout.json` sidecar.
 
-The JIT is the same plan rooted at the module, always in bitcode mode, with
-the merged module optimized whole-program before MCJIT sees it. The optimized
-merged image is written under the `jir-jit` cache bucket keyed by the plan
-digest, so a later run of an unchanged plan parses that image instead of
-merging and optimizing again; debug builds, IR dumps and cache bypasses never
-reuse one. Its target
-machine is llvmlite's default for `jit=True`: with the position-independent
+The JIT is the same plan rooted at the module, in the build's link mode. In
+`objects` mode, the default, MCJIT loads the units' cached relocatable objects
+beside the glue module, so a run generates code only for the glue and for a
+unit whose object is not cached yet; the runtime units' objects are shared by
+every program that links them. In `bitcode` mode the merged module is
+optimized whole-program before MCJIT sees it, and the optimized merged image
+is written under the `jir-jit` cache bucket keyed by the plan digest, so a
+later run of an unchanged plan parses that image instead of merging and
+optimizing again; debug builds, IR dumps and cache bypasses never reuse one.
+Its target machine is llvmlite's default for `jit=True`: with the position-independent
 small-model pair the linked artifacts use, MCJIT's AArch64 stubs branch into
 the GOT instead of through it.
 

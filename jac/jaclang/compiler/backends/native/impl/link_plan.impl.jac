@@ -1598,6 +1598,9 @@ impl _mark_host_rc_threaded(engine: ExecutionEngine) {
 
 impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     tm = _target_machine(plan, ArtifactKind.JIT);
+    if plan.mode == NATIVE_LINK_MODE_OBJECTS {
+        return _jit_engine_from_objects(plan, tm);
+    }
     registry = plan.prog.native_units();
     image = _jit_image_path(plan);
     merged: (ModuleRef | None) = None;
@@ -1666,6 +1669,90 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     if has_rc_flag {
         _mark_host_rc_threaded(engine);
     }
+    return _finish_jit_engine(plan, engine, libraries, bridges);
+}
+
+impl _jit_engine_from_objects(plan: LinkPlan, tm: TargetMachine) -> ExecutionEngine {
+    registry = plan.prog.native_units();
+    paths = [u.path for u in plan.units];
+    registry.emit_objects(paths, plan.options);
+    objects: list[bytes] = [];
+    for u in plan.units {
+        object_bytes = registry.object_for(u.path, plan.options);
+        if object_bytes is None {
+            raise LinkPlanError(f"no object for native unit {u.path}");
+        }
+        objects.append(object_bytes);
+    }
+    spec = plan.glue_spec(ArtifactKind.JIT, _platform_of(plan.triple), False);
+    (glue, _exports) = _glue_module(plan, spec, tm);
+    defined: set[str] = set();
+    wanted: set[str] = set(undefined_functions(glue));
+    for blob in objects {
+        mangled = blob[:4] == b"\xcf\xfa\xed\xfe";
+        (blob_defined, blob_undefined) = llvm.object_symbols(blob);
+        defined.update(_unmangled(symbol, mangled) for symbol in blob_defined);
+        wanted.update(_unmangled(symbol, mangled) for symbol in blob_undefined);
+    }
+    for fn in glue.functions {
+        if not fn.is_declaration {
+            defined.add(str(fn.name));
+        }
+    }
+    undefined = sorted(
+        name
+        for name in wanted - defined
+        if not name.startswith("llvm.")
+    );
+    if env_na_debug() {
+        sys.stderr.write(
+            f"[jit] {len(plan.units)} unit object(s), inits {plan.init_symbols()}, "
+            f"undefined: {undefined}\n"
+        );
+    }
+    bridges = bind_python_bridges(plan, undefined);
+    libraries: dict[str, ctypes.CDLL] = {};
+    symbol_lib = plan.clib_symbol_lib();
+    for symbol in undefined {
+        lib_path = symbol_lib.get(symbol);
+        if lib_path is None or lib_path in ("libc.so", "libc.dylib", "c.dll") {
+            continue;
+        }
+        if lib_path not in libraries {
+            libraries[lib_path] = load_jit_library(lib_path);
+        }
+        try {
+            address = ctypes.cast(
+                getattr(libraries[lib_path], symbol), ctypes.c_void_p
+            ).value;
+        } except AttributeError {
+            raise LinkPlanError(f"C symbol '{symbol}' not found in '{lib_path}'");
+        }
+        if address is None {
+            raise LinkPlanError(
+                f"C symbol '{symbol}' has a null address in '{lib_path}'"
+            );
+        }
+        llvm.add_symbol(symbol, address);
+    }
+    engine = llvm.create_mcjit_compiler(glue, tm);
+    assert isinstance(engine, llvm.ExecutionEngine);
+    for blob in objects {
+        engine.add_object_file(llvm.ObjectFileRef.from_data(blob));
+    }
+    engine.finalize_object();
+    if RC_THREADED_SYMBOL in defined {
+        _mark_host_rc_threaded(engine);
+    }
+    return _finish_jit_engine(plan, engine, libraries, bridges);
+}
+
+impl _finish_jit_engine(
+    plan: LinkPlan,
+    engine: ExecutionEngine,
+    libraries: dict[str, ctypes.CDLL],
+    bridges: list[any]
+) -> ExecutionEngine {
     engine.static_init_symbols = list(plan.init_symbols());
     engine.static_init_chained = {JAC_ENTRY_SYMBOL};
     engine_any: any = engine;
@@ -1687,16 +1774,14 @@ impl jit_engine_for_module(
         return None;
     }
     prog.native_units().record_module(module, options);
-    plan = build_link_plan(
-        prog, [module.loc.mod_path], options, mode=NATIVE_LINK_MODE_BITCODE
-    );
+    plan = build_link_plan(prog, [module.loc.mod_path], options);
     return jit_engine(plan);
 }
 
 impl jit_engine_for_cached(
     prog: JacProgram, path: str, options: CompileOptions
 ) -> (ExecutionEngine | None) {
-    plan = build_link_plan(prog, [path], options, mode=NATIVE_LINK_MODE_BITCODE);
+    plan = build_link_plan(prog, [path], options);
     return jit_engine(plan);
 }
 

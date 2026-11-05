@@ -801,9 +801,9 @@ Each cache entry is a **JIR file** (Jac IR) with named sections defined in
 |---------|----------|
 | `SEC_BYTECODE` | Marshalled Python `CodeType` (server backend) |
 | `SEC_MTIR` | Meaning-Typed IR for `by llm` calls |
-| `SEC_NBITCODE` | The unit's LLVM bitcode under its native stamp (whole-program and JIT link modes) |
+| `SEC_NBITCODE` | The unit's LLVM bitcode under its native stamp (bitcode link mode, and the source its object is emitted from) |
 | `SEC_NIFACE` | The unit's native interface: link symbols, class layouts, initializer, demoted symbols, C library needs; digest-prefixed |
-| `SEC_NOBJ` | The unit's relocatable object, materialized on demand from bitcode under its native stamp (incremental link mode) |
+| `SEC_NOBJ` | The unit's relocatable object, materialized on demand from bitcode under its native stamp (objects link mode, for artifacts and the JIT) |
 | `SEC_NCTDEPS` | Native compile-time inputs, using the shared CTDEPS codec under a native stamp |
 | `SEC_INTEROP` | Serialised `InteropManifest` |
 | `SEC_MODKEY` / `SEC_ENVKEY` | Content key and environment fingerprint that gate every read |
