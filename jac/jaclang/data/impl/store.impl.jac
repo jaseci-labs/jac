@@ -787,6 +787,7 @@ impl PgStore.begin(isolation: TxnIsolation = TxnIsolation.SERIALIZABLE) -> None 
         }
         self._run(f"BEGIN {isolation.value}", {});
         self._in_txn = True;
+        self._raw_rows_in_txn = False;
         self._isolation = isolation;
         self._txn_types = set();
         self._txn_serial += 1;
@@ -808,6 +809,7 @@ impl PgStore.commit -> None {
             self._known_types |= self._txn_types;
         } finally {
             self._in_txn = False;
+            self._raw_rows_in_txn = False;
             self._isolation = None;
         }
     }
@@ -823,6 +825,7 @@ impl PgStore.rollback -> None {
             self._run('ROLLBACK', {});
         } finally {
             self._in_txn = False;
+            self._raw_rows_in_txn = False;
             self._isolation = None;
         }
     }
@@ -1122,6 +1125,25 @@ impl PgStore.subtype_names(type_name: str) -> list[str] {
 
 
 impl PgStore.rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
+    guard = self._unit_guard;
+    if guard is not None {
+        guard();
+    }
+    if guard is not None and self._in_txn {
+        self._raw_rows_in_txn = True;
+    }
+    return [tuple(r) for r in self._run(sql, params)];
+}
+
+impl Store._read_rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
+    return self.rows(sql, params);
+}
+
+impl PgStore._read_rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
+    guard = self._unit_guard;
+    if guard is not None {
+        guard();
+    }
     return [tuple(r) for r in self._run(sql, params)];
 }
 

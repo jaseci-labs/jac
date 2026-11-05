@@ -24,6 +24,65 @@ import from .test_session_rollback {
     _restore_read_tier
 }
 
+test "request loop: nested durable work stops outer replay" {
+    prior = _without_read_tier();
+    try {
+        with TemporaryDirectory() as td {
+            (exec_mgr, walkers, mod) = _vote_app(td);
+            result = _spawn(exec_mgr, walkers["NestedDurableRetry"]);
+            assert result.get("error_code") == "failed_after_commit" , f"{result}";
+            assert result.get("http_status") == 500;
+            assert result.get("final") is True;
+            assert mod.profile_runs == [1];
+            assert mod.profile_effect_runs == [1];
+            assert mod.failed_commits == [1];
+            assert _spawn(exec_mgr, walkers["CountProfiles"]).get("reports") == [1];
+        }
+    } finally {
+        _restore_read_tier(prior);
+    }
+}
+
+test "request loop: cancellation waits for a durable nested worker and returns final failure" {
+    import threading;
+    prior = _without_read_tier();
+    try {
+        with TemporaryDirectory() as td {
+            (exec_mgr, walkers, mod) = _vote_app(td);
+            mod.cancel_started = threading.Event();
+            mod.cancel_release = threading.Event();
+            ambient = JacRuntime.get_context();
+            async def run -> any {
+                with RequestScope.open(
+                    ambient.base_path_dir, ambient.full_target_path
+                ) {
+                    task = asyncio.create_task(
+                        exec_mgr.spawn_walker(
+                            walkers["CancelAfterNestedCommit"], {}, "voter"
+                        )
+                    );
+                    try {
+                        assert await asyncio.to_thread(mod.cancel_started.wait, 10);
+                        task.cancel();
+                        await asyncio.sleep(0);
+                        assert not task.done() , "worker continued after request cancellation";
+                    } finally {
+                        mod.cancel_release.set();
+                    }
+                    return await task;
+                }
+            }
+            result = _as_any(asyncio.run(run()));
+            assert result.get("error_code") == "failed_after_commit" , f"{result}";
+            assert result.get("final") is True;
+            assert mod.profile_runs == [1] and mod.profile_effect_runs == [1];
+            assert _spawn(exec_mgr, walkers["CountProfiles"]).get("reports") == [1];
+        }
+    } finally {
+        _restore_read_tier(prior);
+    }
+}
+
 test "request loop: find-or-create convergence survives a post-commit serialization conflict" {
     import threading;
     prior = _without_read_tier();

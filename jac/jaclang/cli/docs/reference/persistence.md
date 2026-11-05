@@ -91,6 +91,17 @@ After the request commits, the body and its `on_commit` effects cannot safely
 run again. A serialization conflict while saving the effects' remaining
 writes instead uses the bounded write-set retry; if it is exhausted, the
 request reports a failure after commit.
+If a nested unit, independent child session, explicit commit, or callback has
+already made work durable, a later conflict cannot safely replay the enclosing
+request. The request instead reports `failed_after_commit`; retrying it may
+repeat the work that already committed. A read-tier retry after a callback has
+started is also reported this way because the callback may have external effects.
+If the connection fails while confirming a commit, its outcome can be unknown;
+the request reports failure rather than assuming the commit was rolled back.
+Dispatching a remote writer is also treated as a possible durable boundary,
+since its outcome may be unknown if communication fails. Detached background
+work and independently managed database connections are outside this boundary;
+make those effects idempotent and wait for them before returning.
 
 **Side effects and replay: `on_commit`.** Because a losing request replays from scratch, an *external* side effect in the body (charging a card, sending mail, registering a token) would otherwise run more than once. Defer such effects with the `on_commit(...)` ambient builtin (no import needed): it registers a callback that runs only after the unit of work commits successfully, and is discarded on abort/replay -- so it fires exactly once, for the attempt that wins.
 

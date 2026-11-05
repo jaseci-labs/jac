@@ -368,9 +368,13 @@ impl _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
     );
     token = JacRuntime.push_request_context(ctx);
     streaming = False;
+    entered = False;
     try {
+        ctx.mem.unit_enter();
+        entered = True;
         result = await _await_if_needed(target(**kwargs));
         ctx.mem.commit();
+        ctx.mem.unit_committed();
         import inspect;
         streaming = inspect.isgenerator(result) or inspect.isasyncgen(result);
         return await ctx.bind_stream(result) if streaming else result;
@@ -379,8 +383,14 @@ impl _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
         raise;
     } finally {
         try {
-            if not streaming {
-                ctx.close();
+            try {
+                if entered {
+                    ctx.mem.unit_exit();
+                }
+            } finally {
+                if not streaming {
+                    ctx.close();
+                }
             }
         } finally {
             JacRuntime.reset_request_context(token);
@@ -461,6 +471,12 @@ impl call(
             result = await _local_call(app, fn, kwargs);
         } else {
             _ensure_available(app, fn);
+            if writer {
+                context = JacRuntime.peek_context();
+                if context is not None {
+                    context.mem._durable_boundary.mark();
+                }
+            }
             headers = request_headers();
             if contract {
                 headers["X-Jac-Endpoint"] = contract;
@@ -509,6 +525,10 @@ impl spawn_walker(
             return await _local_spawn(app, walker_name, kwargs);
         }
         _ensure_available(app, walker_name);
+        context = JacRuntime.peek_context();
+        if context is not None {
+            context.mem._durable_boundary.mark();
+        }
         headers = request_headers(idempotency_key);
         transport = _scale_transport();
         if transport is not None and app not in _test_clients {

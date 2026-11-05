@@ -10,9 +10,9 @@ obj DurableBoundary {
     has _generation: int = 0,
         _lock: threading.RLock postinit;
 
-    def postinit { self._lock = threading.RLock(); }
-    def mark -> None { with self._lock { self._generation += 1; } }
-    def current -> int { with self._lock { return self._generation; } }
+    def postinit;
+    def mark;
+    def current -> int;
 }
 
 
@@ -24,7 +24,8 @@ obj Memory {
         _deleted: set[UUID] postinit,
         _on_commit: list[Callable] postinit,
         _lock: threading.RLock postinit,
-        _durable_boundary: DurableBoundary postinit;
+        _durable_boundary: DurableBoundary postinit,
+        _unit_generations: list[int] postinit;
 
     has store: (any | None) {
         getter {
@@ -77,6 +78,7 @@ obj Memory {
     def get_fetch_count -> int;
     def unit_enter(key: (str | None) = None);
     def unit_committed;
+    def has_durable_boundary -> bool;
     def unit_exit;
     def unit_depth -> int;
     def take_ro_retry -> str | None;

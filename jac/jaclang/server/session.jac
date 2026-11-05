@@ -197,6 +197,9 @@ obj Session(Memory) {
         }
         setter(value: (Store | None)) {
             self._store = value;
+            if value is not None {
+                value._unit_guard = self._prepare_raw_rows;
+            }
             self._data_location = None;
         }
     }
@@ -227,6 +230,7 @@ obj Session(Memory) {
     def hop_store(key: any, by_origin: dict[UUID, list[tuple[any, any]]]) -> None;
     def unit_enter(key: (str | None) = None) -> None;
     override def unit_committed -> None;
+    override def has_durable_boundary -> bool;
     def unit_exit -> None;
     def unit_depth -> int;
     override def note_effect_failure(e: Exception) -> None;
@@ -250,6 +254,7 @@ obj Session(Memory) {
     def _replay_txn(cause: Exception, exhausted: bool = False) -> None;
     def _reclaim_dead_txn -> None;
     def _ensure_txn -> None;
+    def _prepare_raw_rows -> None;
     def _txn_isolation -> TxnIsolation;
     def _register_ro_writers -> str;
     def _raise_ro_retry -> None;
