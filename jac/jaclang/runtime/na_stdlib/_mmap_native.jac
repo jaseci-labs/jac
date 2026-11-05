@@ -6,12 +6,12 @@ import from c {
 import from c { def munmap(addr: int, length: u64) -> i32;  }
 import from c { def msync(addr: int, length: u64, flags: i32) -> i32;  }
 import from c { def lseek(fd: i32, off: i64, whence: i32) -> i64;  }
-import from c { def dup(fd: i32) -> i32;  }
+import from c { def fcntl(fd: i32, cmd: i32, *args: VaList) -> i32;  }
 import from c { def close(fd: i32) -> i32;  }
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
 import from c { def memmove(dst: int, src: bytes, n: u64) -> int;  }
 import from _errno_native { last_errno, errno_message }
-import from _mmap_platform { mm_sync_flag }
+import from _mmap_platform { mm_sync_flag, mm_dupfd_cloexec_cmd }
 
 
 def:pub mm_map(length: int, prot: int, flags: int, fd: int, offset: int) -> int;
