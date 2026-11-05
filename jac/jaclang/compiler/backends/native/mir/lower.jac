@@ -1268,6 +1268,10 @@ obj MirLowering {
 
     def task_store(base: MirValue, offset: int, value: MirValue);
     def pipe_call(nd: uni.BinaryExpr) -> MirValue;
+    def pipe_as_call(
+        nd: uni.BinaryExpr, subject: uni.Expr, target: uni.Expr
+    ) -> MirValue;
+
     def cstr_of(value: MirValue) -> MirValue;
     def open_call(nd: uni.FuncCall) -> MirValue;
     def file_method(

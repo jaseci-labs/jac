@@ -2332,7 +2332,8 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
 impl MirLowering.lower_module_entry -> (MirFunction | None) {
     blocks: list[uni.ModuleCode] = [];
     for elem in self.module.body {
-        if isinstance(elem, uni.ModuleCode) and elem.name is None {
+        if isinstance(elem, uni.ModuleCode)
+            and (elem.name is None or elem.name.sym_name == "__main__") {
             blocks.append(elem);
         }
     }

@@ -1720,39 +1720,58 @@ impl MirLowering.pipe_call(nd: uni.BinaryExpr) -> MirValue {
     decl = self.decls.get(self.decl_syms.get(id(target.sym), -1))
         if isinstance(target, uni.Name) and target.sym is not None
         else None;
+    if decl is None or decl.self_type is not None {
+        return self.pipe_as_call(nd, subject, target);
+    }
     b = self.builder();
     value = self.lower_expr(subject);
-    if decl is not None and decl.self_type is None {
-        args = [value];
-        if value.type.kind == MirKind.TUPLE and len(decl.params) > 1 {
-            held = self.spill(value);
-            args = [
-                self.tuple_get(held, index) for index in range(len(value.type.args))
-            ];
-        }
-        if len(args) != len(decl.params) {
-            raise MirRefused(
-                mir_refusal(
-                    "pipe",
-                    f"{len(args)} arguments into {self.name_of(decl.ability)}",
-                    nd
-                )
-            );
-        }
-        values = [
-            self.coerce(arg, ptype, subject) for (arg, ptype) in zip(args, decl.params)
-        ];
-        result = b.call(decl.symbol, values, decl.ret);
-        return result if result is not None else self.none_value();
+    args = [value];
+    if value.type.kind == MirKind.TUPLE and len(decl.params) > 1 {
+        held = self.spill(value);
+        args = [self.tuple_get(held, index) for index in range(len(value.type.args))];
     }
-    raise MirRefused(
-        mir_refusal(
-            "pipe",
-            "target that is not a module function",
-            nd,
-            "A native pipe feeds its value into a named function of this module; call the function directly otherwise."
-        )
+    if len(args) != len(decl.params) {
+        raise MirRefused(
+            mir_refusal(
+                "pipe", f"{len(args)} arguments into {self.name_of(decl.ability)}", nd
+            )
+        );
+    }
+    values = [
+        self.coerce(arg, ptype, subject) for (arg, ptype) in zip(args, decl.params)
+    ];
+    result = b.call(decl.symbol, values, decl.ret);
+    return result if result is not None else self.none_value();
+}
+
+impl MirLowering.pipe_as_call(
+    nd: uni.BinaryExpr, subject: uni.Expr, target: uni.Expr
+) -> MirValue {
+    params: list[uni.Expr | uni.KWPair] = list(subject.values)
+        if isinstance(subject, uni.TupleVal) and subject.values
+        else [subject];
+    call = uni.FuncCall(
+        target=target, params=params, genai_call=None, kid=[target, *params]
     );
+    held: (uni.UniNode | None) = target.sym.decl
+        if isinstance(target, uni.Name) and target.sym is not None
+        else None;
+    call.callee_decl = uni.ability_of_symbol(target.sym)
+        if isinstance(target, uni.Name)
+        else None;
+    if call.callee_decl is None and isinstance(held, uni.Ability) {
+        call.callee_decl = held;
+    }
+    owner = nd.parent;
+    if owner is not None {
+        call.set_parent(owner);
+    }
+    call.type = nd.type;
+    try {
+        return self.lower_call(call);
+    } finally {
+        del [edge call-->];
+    }
 }
 
 impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
