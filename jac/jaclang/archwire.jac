@@ -880,7 +880,6 @@ graph import {
             is_module_cache_valid
         },
         project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
-        project.textio.read_file_with_encoding { CONTENT_CONFLICTS },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -2456,6 +2455,7 @@ graph import {
             read_file_with_encoding,
             span_for_file
         },
+        compiler.driver.jir { CONTENT_CONFLICTS },
         dist.seal.make_sealed_image | scale.injector.bundle.source_filter_for {
             read_jacignore_patterns
         },

@@ -58,8 +58,7 @@ glob LOCK_POOL_SIZE: int = 64;
 
 glob _KERNEL_PRODUCER: list[str] = [];
 
-glob CONTENT_CONFLICTS: str = "\x1fconflicts",
-     CONTENT_PINNED: str = "\x1fpinned";
+glob CONTENT_PINNED: str = "\x1fpinned";
 
 glob STALE_CODE_SECTIONS: tuple[int, ...] = (
          SEC_BYTECODE,
