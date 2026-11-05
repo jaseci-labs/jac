@@ -2622,8 +2622,15 @@ such a deferred `super()` is possible (only consulted on the rare frame-exit pat
 where a derived constructor completed without an obvious `super()`).
 """
 def _fn_may_defer_super(fn: CompiledFunction) -> bool {
+    # (a function of the code: scanned once, on every derived-construct exit
+    # it ran per call)
+    if fn.may_defer_super != 0 {
+        return fn.may_defer_super == 1;
+    }
+    fn.may_defer_super = -1;
     for mds_ins in fn.code {
         if mds_ins.opcode == Opcode.PUSH_CATCH or mds_ins.opcode == Opcode.ITER_CLOSE {
+            fn.may_defer_super = 1;
             return True;
         }
     }
@@ -4841,6 +4848,9 @@ obj VM {
         cur_mod_val: JSValue = 0,
         reg_call_args: list[JSValue] = [],
         cur_mod_epoch: int = -1,
+        # the shape id _reg_super_enter last found a class (own WK_IS_CLASS,
+        # no KEY_CTOR_KIND): a function of the shape, -1 none
+        super_ok_sid: int = -1,
         cur_exp_val: JSValue = 0,
         cur_exp_epoch: int = -1,
         st_pool: list[ExecState] = [],
@@ -36340,7 +36350,8 @@ obj VM {
     in-loop-enterable constructor (see V4.9 above): 1 = the super constructor's
     frame was entered (its return finishes the super() in _reg_super_done),
     0 = the handler takes it (nothing done), 2 = a base super's field
-    initializer threw (raised here)."""
+    initializer threw (raised here), 3 = the super constructor ran in place
+    and the super() is finished."""
     def _reg_super_enter(frame: CallFrame, st: ExecState, w: int, pc: int) -> int {
         if _INLINE_CALLS_ON == 0 {
             return 0;
@@ -36354,15 +36365,39 @@ obj VM {
             return 0;
         }
         se_sup: JSValue = jc_super_class(get_fn_idx(frame.self_fn));
-        if not (
-            jsv_is_object_cell(se_sup)
-            and jsv_to_table_id(se_sup) > 0
-            and js_object_has_own(se_sup, WK_IS_CLASS)
-            and not js_object_has_own(se_sup, KEY_CTOR_KIND)
-        ) {
+        if not jsv_is_object_cell(se_sup) or jsv_to_table_id(se_sup) <= 0 {
             return 0;
         }
-        se_fn: JSValue = js_object_get(se_sup, WK_CTOR);
+        # The class checks answer from the shape (shape mode: own keys are the
+        # shape's), the last class's shape remembered; the constructor and
+        # the WK_SUPER test from new's per-shape class metadata.
+        se_sid: int = -1;
+        se_id: int = jsv_to_table_id(se_sup);
+        if se_id <= jo_count() and jo_mode(se_id) == MAP_MODE_SHAPE {
+            se_sid = jo_shape_id(se_id);
+        }
+        if se_sid < 0 or se_sid != self.super_ok_sid {
+            if not (
+                js_object_has_own(se_sup, WK_IS_CLASS)
+                and not js_object_has_own(se_sup, KEY_CTOR_KIND)
+            ) {
+                return 0;
+            }
+            self.super_ok_sid = se_sid;
+        }
+        se_meta: int = -1;
+        if se_sid >= 0 {
+            se_meta = js_object_class_meta(se_id, WK_CTOR, WK_PROTOTYPE, WK_FIELDS, WK_SUPER);
+        }
+        se_fn: JSValue = 0;
+        se_derived: bool = False;
+        if se_meta >= 0 {
+            se_fn = js_object_slot_at_id(se_id, se_meta & 65535);
+            se_derived = (se_meta >> 48) != 0;
+        } else {
+            se_fn = js_object_get(se_sup, WK_CTOR);
+            se_derived = js_object_has_own(se_sup, WK_SUPER);
+        }
         if not is_fn_val(se_fn) {
             return 0;
         }
@@ -36387,10 +36422,23 @@ obj VM {
         }
         frame.ip = se_orig + 1;
         frame.this_uninitialized = False;
-        if not js_object_has_own(se_sup, WK_SUPER) {
+        if not se_derived {
             if not self._run_class_own_fields(se_sup, frame.this_val, frame, st) {
                 return 2;
             }
+        }
+        # A base constructor whose body only stores parameters and constants
+        # into `this` (_ipc_analyze): its stores applied to this object in
+        # place, no frame, and the super() finished as its return would.
+        se_cl: int = get_fn_idx(se_fn);
+        if se_argpc != -1
+            and se_cl < jc_count()
+            and _JC_FUNC[se_cl].ipc >= 0
+            and _reg_ctor_inplace(frame, se_cl, frame.this_val, se_argpc, se_argc) {
+            st.ret = js_undefined();
+            self._reg_super_done(frame, st, se_base);
+            st.ret = js_undefined();
+            return 3;
         }
         self._pending_new_target = frame.new_target;
         se_r: int = self._reg_call_enter_cl(
@@ -38866,14 +38914,17 @@ obj VM {
             } elif op == 120 {
                 # STK base, npop|npush<<12, orig
                 b = (w >> 24) & 65535;
-                if frame.func.code[(w >> 40) & 8388607].opcode == Opcode.SUPER_CALL
-                    and self._reg_super_enter(frame, st, w, pc) == 1 {
+                cr = 0;
+                if frame.func.code[(w >> 40) & 8388607].opcode == Opcode.SUPER_CALL {
+                    cr = self._reg_super_enter(frame, st, w, pc);
+                }
+                if cr == 1 {
                     frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = 0;
-                } elif not self._reg_stk_fast(frame, st, w) {
+                } elif cr == 0 and not self._reg_stk_fast(frame, st, w) {
                     self._reg_bridge_range(
                         frame,
                         st,
@@ -53128,7 +53179,8 @@ must hit its site's flat add cache from the object's current shape on (a
 [[Set]] add filled for this [[Prototype]] while the proto epoch stands, so no
 setter or read-only key can intervene) before any is applied. The values
 are the NEW's argument registers (rcode words from `argpc`, `argc` of them:
-missing ones undefined) and the constants. False: nothing done, the
+missing ones undefined; a negative `argpc` is super()'s -base - 2, the
+registers from base on) and the constants. False: nothing done, the
 ordinary call constructs."""
 def _reg_ctor_inplace(frame: CallFrame, cl: int, ip_o: JSValue, argpc: int, argc: int) -> bool {
     ip_t: int = _JC_FUNC[cl].ipc;
@@ -53183,10 +53235,13 @@ def _reg_ctor_inplace(frame: CallFrame, cl: int, ip_o: JSValue, argpc: int, argc
         ip_v: JSValue = __mem_load_i64(wrapping_add(ip_s, 16));
         if __mem_load_i64(wrapping_add(ip_s, 8)) == 0 {
             ip_pi: int = __mem_load_i64(wrapping_add(ip_s, 16));
-            if ip_pi < argc {
+            if ip_pi >= argc {
+                ip_v = js_undefined();
+            } elif argpc >= 0 {
                 ip_v = frame.locals[frame.lb + (frame.func.rcode[argpc + ip_pi] & 32767)];
             } else {
-                ip_v = js_undefined();
+                # (super()'s arguments: the registers from -argpc - 2 on)
+                ip_v = frame.locals[frame.lb + (-argpc - 2 + ip_pi)];
             }
         }
         ip_sn: int = __mem_load_i64(wrapping_add(ip_p, 24));

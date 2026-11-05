@@ -493,7 +493,9 @@ obj CompiledFunction {
         # A constructor body that only stores parameters and constants into
         # `this`: its steps for in-place construction (vm.jac
         # _ipc_analyze; raw memory), -1 for any other body, 0 unknown
-        ipc: int = 0;
+        ipc: int = 0,
+        # vm.jac _fn_may_defer_super's answer: 1 yes, -1 no, 0 not computed
+        may_defer_super: int = 0;
 }
 
 # parent-local slot index per free_var; -1 = transitive capture
