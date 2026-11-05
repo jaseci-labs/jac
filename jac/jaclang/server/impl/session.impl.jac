@@ -939,6 +939,7 @@ impl Session.note_effect_failure(e: Exception) -> None {
         cause = cause.__cause__ or cause.__context__;
     }
     if cause is not None
+        or isinstance(e, PartialCommitError)
         or _is_serialization_conflict(e)
         or (isinstance(e, WriteConflict) and not isinstance(e, ReadOnlyRetry)) {
         self._lost = True;

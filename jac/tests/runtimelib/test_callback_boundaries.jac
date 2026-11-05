@@ -134,3 +134,58 @@ test "callback boundary exhausted nested writes fail without repeating work" {
 test "callback boundary completed nested writes survive an outer conflict" {
     check_callback("shared", failures=0, outer_conflict=True);
 }
+
+test "callback boundary child partial failure reaches its parent" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        child = ExecutionContext(_parent=ctx, _own_session=True);
+        try {
+            sess = _sess(ctx);
+            other = _sess(child);
+            parent = _loose(child, 0);
+            other.commit();
+            body_calls: list[int] = [];
+            callback_calls: list[int] = [];
+            child_calls: list[int] = [];
+            ids: list[any] = [];
+            faults: list[list[int]] = [];
+            def body {
+                body_calls.append(1);
+                ids.append(_loose(ctx, 7).ensure_id());
+                def callback {
+                    callback_calls.append(1);
+                    def nested {
+                        def inner {
+                            child_calls.append(1);
+                            ids.append(_loose(child, 42).ensure_id());
+                        }
+                        other.run_request(inner);
+                        current = other.get(parent.ensure_id());
+                        assert current is not None;
+                        _as_any(current.archetype).n = 1;
+                        faults.append(_fail_commits(other));
+                    }
+                    other.run_request(nested);
+                }
+                sess.on_commit(callback);
+            }
+            partial = False;
+            try {
+                sess.run_request(body);
+            } except PartialCommitError {
+                partial = True;
+            }
+            assert partial , "a failed child callback must not report parent success";
+            assert body_calls == [1] and callback_calls == [1] and child_calls == [1];
+            assert faults == [[0]] and len(ids) == 2;
+            assert [_stored(child, id, "n") for id in ids] == ["7", "42"];
+            assert _stored(child, parent.ensure_id(), "n") == "0";
+        } finally {
+            child.close();
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
