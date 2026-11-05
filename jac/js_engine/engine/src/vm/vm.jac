@@ -5015,10 +5015,14 @@ obj VM {
         # `then` is callable adopts that thenable's state rather than fulfilling
         # with the object. The `then` lookup happens now (once, and its throw
         # rejects p), but the call is deferred to a job so user code never runs
-        # synchronously inside resolve(). Rejection never assimilates.
+        # synchronously inside resolve(). Rejection never assimilates. A
+        # function is an Object too (a function with a `then` method).
         if state == PROMISE_FULFILLED
-            and jsv_is_object_cell(value)
-            and jsv_to_table_id(value) > 0 {
+            and (
+                (jsv_is_object_cell(value) and jsv_to_table_id(value) > 0)
+                or is_fn_val(value)
+                or is_native_val(value)
+            ) {
             # A promise is itself a thenable, so §27.2.1.3.2 applies to it as
             # well: `resolve(otherPromise)` must adopt that promise's state, not
             # fulfil with the promise object. Excluding promises here left
@@ -5030,7 +5034,11 @@ obj VM {
             if value != p {
                 then_fn: JSValue = js_undefined();
                 had_exc_before: bool = self.had_exception;
-                then_fn = self._get_prop_accessor(value, str_intern("then"));
+                if is_fn_val(value) or is_native_val(value) {
+                    then_fn = self.obs_get(value, WK_THEN, value);
+                } else {
+                    then_fn = self._get_prop_accessor(value, WK_THEN);
+                }
                 # A throwing `then` getter rejects the promise with that error.
                 # It can surface on either channel: a JS getter is run by
                 # _get_prop_accessor_recv, which clears self.had_exception and
@@ -5050,37 +5058,39 @@ obj VM {
                     return;
                 }
                 if self._value_is_callable(then_fn) {
-                    # Adopting `value` installs handlers on it, so a rejected
-                    # promise being adopted is no longer unhandled — otherwise
-                    # `await Promise.reject(e)` inside a try/catch reported an
-                    # "Uncaught (in promise)" alongside the caught exception.
-                    if js_is_promise(value) {
-                        promise_unmark_unhandled(value);
-                        process_queue_rejection_handled(value);
-                    }
-                    # §27.2.1.3 [[AlreadyResolved]]: the promise counts as
-                    # resolved from here even though it stays PENDING until the
-                    # job runs, so a later reject (e.g. an executor that throws
-                    # after resolve(thenable)) must be ignored.
-                    js_object_set(p, _KEY_PRESOLVED, js_true());
-                    job: JSValue = js_object_create_null();
-                    js_object_set(job, _KEY_IS_THENABLE_JOB, js_true());
-                    js_object_set(job, _KEY_THENABLE_VALUE, value);
-                    js_object_set(job, _KEY_THENABLE_THEN, then_fn);
-                    # p stays PENDING; the job settles it via resolve/reject fns.
-                    scheduler_push_reaction(
-                        self.realm,
-                        job,
-                        js_undefined(),
-                        SCHED_REACT_MICROTASK,
-                        p,
-                        js_undefined()
-                    );
+                    self._promise_thenable_job(p, value, then_fn);
                     return;
                 }
             }
         }
         self._promise_settle_and_drain_raw(p, state, value);
+    }
+
+    """§27.2.1.3.2 steps 11-13: queue NewPromiseResolveThenableJob(p, value,
+    then_fn), `then_fn` the callable `then` already read from `value` (the
+    spec's single Get). p stays PENDING; the job settles it through a fresh
+    resolve/reject pair."""
+    def _promise_thenable_job(p: JSValue, value: JSValue, then_fn: JSValue) -> None {
+        # Adopting `value` installs handlers on it, so a rejected
+        # promise being adopted is no longer unhandled — otherwise
+        # `await Promise.reject(e)` inside a try/catch reported an
+        # "Uncaught (in promise)" alongside the caught exception.
+        if js_is_promise(value) {
+            promise_unmark_unhandled(value);
+            process_queue_rejection_handled(value);
+        }
+        # §27.2.1.3 [[AlreadyResolved]]: the promise counts as
+        # resolved from here even though it stays PENDING until the
+        # job runs, so a later reject (e.g. an executor that throws
+        # after resolve(thenable)) must be ignored.
+        js_object_set(p, _KEY_PRESOLVED, js_true());
+        job: JSValue = js_object_create_null();
+        js_object_set(job, _KEY_IS_THENABLE_JOB, js_true());
+        js_object_set(job, _KEY_THENABLE_VALUE, value);
+        js_object_set(job, _KEY_THENABLE_THEN, then_fn);
+        scheduler_push_reaction(
+            self.realm, job, js_undefined(), SCHED_REACT_MICROTASK, p, js_undefined()
+        );
     }
 
     """
@@ -5125,7 +5135,9 @@ obj VM {
 
     """
     Promise Resolve Function (ES §27.2.1.3.2): adopt thenables / chain Promises
-    instead of fulfilling with the thenable object itself.
+    instead of fulfilling with the thenable object itself. A promise is a
+    thenable like any other: its `then` is read (an own or deleted one honoured)
+    and the call deferred to NewPromiseResolveThenableJob, as Node times it.
     """
     def _promise_resolve_value(p: JSValue, resolution: JSValue) -> None {
         if js_promise_get_state(p) != PROMISE_PENDING {
@@ -5150,65 +5162,6 @@ obj VM {
                 + str(jsv_is_object_cell(resolution))
                 + "\n";
             write(2, _rv2, str_nbytes(_rv2));
-        }
-        if js_is_promise(resolution) {
-            if jsv_to_table_id(resolution) == jsv_to_table_id(p) {
-                self._promise_settle_and_drain(
-                    p,
-                    PROMISE_REJECTED,
-                    make_type_error("Cannot resolve Promise with itself")
-                );
-                return;
-            }
-            pst: int = js_promise_get_state(resolution);
-            if pst == PROMISE_PENDING {
-                js_promise_add_reaction(resolution, js_undefined(), js_undefined(), p);
-                promise_unmark_unhandled(resolution);
-            } else {
-                self._promise_settle_and_drain(
-                    p, pst, js_promise_get_value(resolution)
-                );
-                if pst == PROMISE_REJECTED {
-                    promise_unmark_unhandled(resolution);
-                }
-            }
-            return;
-        }
-        if jsv_is_object_cell(resolution) and jsv_to_table_id(resolution) > 0 {
-            then_fn: JSValue = self.obs_get(resolution, WK_THEN, resolution);
-            if vm_has_native_exc() {
-                self._promise_settle_and_drain(
-                    p, PROMISE_REJECTED, vm_take_native_exc()
-                );
-                return;
-            }
-            if self.had_exception {
-                exc_th: JSValue = self.pending_exc;
-                self.had_exception = False;
-                self.pending_exc = js_undefined();
-                self._promise_settle_and_drain(p, PROMISE_REJECTED, exc_th);
-                return;
-            }
-            if self._value_is_callable(then_fn) {
-                resolve_fn: JSValue = js_make_resolve_fn(p);
-                reject_fn: JSValue = js_make_reject_fn(p);
-                _vm_invoke_callback(self, then_fn, resolution, [resolve_fn, reject_fn]);
-                if self.had_exception {
-                    exc_call: JSValue = self.pending_exc;
-                    self.had_exception = False;
-                    self.pending_exc = js_undefined();
-                    if js_promise_get_state(p) == PROMISE_PENDING {
-                        self._promise_settle_and_drain(p, PROMISE_REJECTED, exc_call);
-                    }
-                } elif vm_has_native_exc() {
-                    if js_promise_get_state(p) == PROMISE_PENDING {
-                        self._promise_settle_and_drain(
-                            p, PROMISE_REJECTED, vm_take_native_exc()
-                        );
-                    }
-                }
-                return;
-            }
         }
         self._promise_settle_and_drain(p, PROMISE_FULFILLED, resolution);
     }
@@ -5462,24 +5415,12 @@ obj VM {
                     );
                 }
             } else {
-                # Regular async function return
+                # Regular async function return (a returned promise is
+                # adopted through its `then` in a job)
                 if js_is_promise(raf_outer_p) {
-                    if js_is_promise(raf_result) {
-                        raf_st: int = js_promise_get_state(raf_result);
-                        if raf_st != PROMISE_PENDING {
-                            self._promise_settle_and_drain(
-                                raf_outer_p, raf_st, js_promise_get_value(raf_result)
-                            );
-                        } else {
-                            js_promise_add_reaction(
-                                raf_result, js_undefined(), js_undefined(), raf_outer_p
-                            );
-                        }
-                    } else {
-                        self._promise_settle_and_drain(
-                            raf_outer_p, PROMISE_FULFILLED, raf_result
-                        );
-                    }
+                    self._promise_settle_and_drain(
+                        raf_outer_p, PROMISE_FULFILLED, raf_result
+                    );
                 }
             }
         }
@@ -5591,22 +5532,10 @@ obj VM {
             }
         } else {
             if js_is_promise(rait_outer_p) {
-                if js_is_promise(rait_result) {
-                    rait_st: int = js_promise_get_state(rait_result);
-                    if rait_st != PROMISE_PENDING {
-                        self._promise_settle_and_drain(
-                            rait_outer_p, rait_st, js_promise_get_value(rait_result)
-                        );
-                    } else {
-                        js_promise_add_reaction(
-                            rait_result, js_undefined(), js_undefined(), rait_outer_p
-                        );
-                    }
-                } else {
-                    self._promise_settle_and_drain(
-                        rait_outer_p, PROMISE_FULFILLED, rait_result
-                    );
-                }
+                # (a returned promise is adopted through its `then` in a job)
+                self._promise_settle_and_drain(
+                    rait_outer_p, PROMISE_FULFILLED, rait_result
+                );
             }
         }
         # Release the result-promise temp root.
@@ -10665,20 +10594,9 @@ obj VM {
             self._promise_settle_and_drain(caa_cap, PROMISE_REJECTED, caa_exc);
             return caa_cap;
         }
-        if js_is_promise(caa_res) {
-            caa_st: int = js_promise_get_state(caa_res);
-            if caa_st != PROMISE_PENDING {
-                self._promise_settle_and_drain(
-                    caa_cap, caa_st, js_promise_get_value(caa_res)
-                );
-            } else {
-                js_promise_add_reaction(
-                    caa_res, js_undefined(), js_undefined(), caa_cap
-                );
-            }
-        } else {
-            self._promise_settle_and_drain(caa_cap, PROMISE_FULFILLED, caa_res);
-        }
+        # (a returned promise or thenable is adopted through its `then` in a
+        # job, as the capability's resolve function does)
+        self._promise_settle_and_drain(caa_cap, PROMISE_FULFILLED, caa_res);
         return caa_cap;
     }
 
@@ -22878,22 +22796,10 @@ obj VM {
                             );
                             self._push(new_cap_c);
                         } else {
-                            if js_is_promise(res_c) {
-                                st_rc: int = js_promise_get_state(res_c);
-                                if st_rc != PROMISE_PENDING {
-                                    self._promise_settle_and_drain(
-                                        new_cap_c, st_rc, js_promise_get_value(res_c)
-                                    );
-                                } else {
-                                    js_promise_add_reaction(
-                                        res_c, js_undefined(), js_undefined(), new_cap_c
-                                    );
-                                }
-                            } else {
-                                self._promise_settle_and_drain(
-                                    new_cap_c, PROMISE_FULFILLED, res_c
-                                );
-                            }
+                            # (a returned promise is adopted through its `then` in a job)
+                            self._promise_settle_and_drain(
+                                new_cap_c, PROMISE_FULFILLED, res_c
+                            );
                             self._push(new_cap_c);
                         }
                     } else {
@@ -22972,20 +22878,8 @@ obj VM {
             self.pending_exc = js_undefined();
             self._promise_settle_and_drain(iar_new_p, PROMISE_REJECTED, iar_exc);
         } else {
-            if js_is_promise(iar_res) {
-                iar_st: int = js_promise_get_state(iar_res);
-                if iar_st != PROMISE_PENDING {
-                    self._promise_settle_and_drain(
-                        iar_new_p, iar_st, js_promise_get_value(iar_res)
-                    );
-                } else {
-                    js_promise_add_reaction(
-                        iar_res, js_undefined(), js_undefined(), iar_new_p
-                    );
-                }
-            } else {
-                self._promise_settle_and_drain(iar_new_p, PROMISE_FULFILLED, iar_res);
-            }
+            # (a returned promise is adopted through its `then` in a job)
+            self._promise_settle_and_drain(iar_new_p, PROMISE_FULFILLED, iar_res);
         }
         return iar_new_p;
     }
@@ -26765,22 +26659,8 @@ obj VM {
                     self._promise_settle_and_drain(new_cap_m, PROMISE_REJECTED, exc_m);
                     self._push(new_cap_m);
                 } else {
-                    if js_is_promise(res_m) {
-                        st_rm: int = js_promise_get_state(res_m);
-                        if st_rm != PROMISE_PENDING {
-                            self._promise_settle_and_drain(
-                                new_cap_m, st_rm, js_promise_get_value(res_m)
-                            );
-                        } else {
-                            js_promise_add_reaction(
-                                res_m, js_undefined(), js_undefined(), new_cap_m
-                            );
-                        }
-                    } else {
-                        self._promise_settle_and_drain(
-                            new_cap_m, PROMISE_FULFILLED, res_m
-                        );
-                    }
+                    # (a returned promise is adopted through its `then` in a job)
+                    self._promise_settle_and_drain(new_cap_m, PROMISE_FULFILLED, res_m);
                     self._push(new_cap_m);
                 }
             } else {
@@ -31158,12 +31038,15 @@ obj VM {
         # non-promise object whose `then` is callable — is assimilated rather than treated
         # as a plain value, so `await thenable` (and, via AsyncGeneratorYield, `yield
         # thenable`) observes the thenable's resolved value, not the object. Read `then`
-        # exactly once (the spec's single Get), then call it with a fresh promise's
-        # resolve/reject and await that promise. Non-thenable values fall through unchanged
+        # exactly once (the spec's single Get), queue its call with a fresh promise's
+        # resolve/reject (a job) and await that promise. Non-thenable values fall through unchanged
         # (preserving this engine's synchronous `await <plain value>` behaviour).
         if not js_is_promise(aw_val)
-            and jsv_is_object_cell(aw_val)
-            and jsv_to_table_id(aw_val) > 0 {
+            and (
+                (jsv_is_object_cell(aw_val) and jsv_to_table_id(aw_val) > 0)
+                or is_fn_val(aw_val)
+                or is_native_val(aw_val)
+            ) {
             aw_then0: JSValue = self.obs_get(aw_val, WK_THEN, aw_val);
             if vm_has_native_exc() {
                 aw_te: JSValue = vm_take_native_exc();
@@ -31186,26 +31069,10 @@ obj VM {
                 return;
             }
             if self._value_is_callable(aw_then0) {
+                # (the call in NewPromiseResolveThenableJob, not here: user
+                # code never runs synchronously inside the await)
                 aw_wrap0: JSValue = js_promise_create();
-                aw_rfn0: JSValue = js_make_resolve_fn(aw_wrap0);
-                aw_jfn0: JSValue = js_make_reject_fn(aw_wrap0);
-                _vm_invoke_callback(self, aw_then0, aw_val, [aw_rfn0, aw_jfn0]);
-                if self.had_exception {
-                    aw_ce: JSValue = self.pending_exc;
-                    self.had_exception = False;
-                    self.pending_exc = js_undefined();
-                    if js_promise_get_state(aw_wrap0) == PROMISE_PENDING {
-                        self._promise_settle_and_drain(
-                            aw_wrap0, PROMISE_REJECTED, aw_ce
-                        );
-                    }
-                } elif vm_has_native_exc() {
-                    if js_promise_get_state(aw_wrap0) == PROMISE_PENDING {
-                        self._promise_settle_and_drain(
-                            aw_wrap0, PROMISE_REJECTED, vm_take_native_exc()
-                        );
-                    }
-                }
+                self._promise_thenable_job(aw_wrap0, aw_val, aw_then0);
                 aw_val = aw_wrap0;
             }
         }
@@ -49426,20 +49293,8 @@ def:pub vm_call_js_fn(
             vm.pending_exc = js_undefined();
             vm._promise_settle_and_drain(new_p, PROMISE_REJECTED, exc_async);
         } else {
-            if js_is_promise(res_async) {
-                st_async: int = js_promise_get_state(res_async);
-                if st_async != PROMISE_PENDING {
-                    vm._promise_settle_and_drain(
-                        new_p, st_async, js_promise_get_value(res_async)
-                    );
-                } else {
-                    js_promise_add_reaction(
-                        res_async, js_undefined(), js_undefined(), new_p
-                    );
-                }
-            } else {
-                vm._promise_settle_and_drain(new_p, PROMISE_FULFILLED, res_async);
-            }
+            # (a returned promise is adopted through its `then` in a job)
+            vm._promise_settle_and_drain(new_p, PROMISE_FULFILLED, res_async);
         }
         return new_p;
     }
