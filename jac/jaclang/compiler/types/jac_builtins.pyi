@@ -15,6 +15,7 @@
 # builtin.__all__ for that purpose. This file is NOT used by codegen.
 
 from collections.abc import Callable
+from concurrent.futures import Future
 from typing import Any, ClassVar, Generic, NoReturn, Protocol, TypeVar, overload
 
 _NewT = TypeVar("_NewT")
@@ -239,11 +240,12 @@ class Pinned(Generic[_PinT]):
 
 def pin(value: _PinT) -> Pinned[_PinT]: ...
 
-# The handle `flow` returns. `wait` on it yields the flowed expression's value,
-# or raises what that expression raised.
-_TaskT = TypeVar("_TaskT", covariant=True)
+# The handle `flow` returns: the concurrent.futures.Future the runtime hands
+# back, so it goes wherever a Future is expected. `wait` on it yields the
+# flowed expression's value, or raises what that expression raised.
+_TaskT = TypeVar("_TaskT")
 
-class Task(Generic[_TaskT]):
+class Task(Future[_TaskT]):
     def result(self, timeout: float | None = None) -> _TaskT: ...
     def done(self) -> bool: ...
 
