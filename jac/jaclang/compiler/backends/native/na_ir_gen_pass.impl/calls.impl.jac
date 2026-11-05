@@ -1628,9 +1628,14 @@ impl NaIRGenPass._emit_intrinsic_list_data(
         self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
         return None;
     }
-    _ld_pointee = lst.type?.pointee;
-    _ld_name = str(getattr(_ld_pointee, "name", "") or "");
-    if not isinstance(lst.type, ir.PointerType) or not _ld_name.startswith("List.") {
+    _ld_name = "";
+    if isinstance(lst.type, ir.PointerType)
+        and isinstance(lst.type.pointee, ir.IdentifiedStructType) {
+        _ld_name = lst.type.pointee.name;
+    }
+    if not isinstance(lst.type, ir.PointerType)
+        or len(_ld_name) < 5
+        or _ld_name[:5] != "List." {
         self._emit_intrinsic_misuse(
             nd, intr, f"operand of type {lst.type} is not a list"
         );
