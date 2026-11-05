@@ -675,7 +675,8 @@ impl MirEmitter.emit_ovf(b: ir.IRBuilder, instr: MirInstr) -> ir.Value {
         if not t.signed {
             return ir.Constant(ir.IntType(1), 0);
         }
-        lowest = ir.Constant(l.type, -(1 << (t.width - 1)));
+        half = 1 << (t.width - 2);
+        lowest = ir.Constant(l.type, -half - half);
         return b.and_(
             b.icmp_signed("==", l, lowest),
             b.icmp_signed("==", r, ir.Constant(l.type, -1))
