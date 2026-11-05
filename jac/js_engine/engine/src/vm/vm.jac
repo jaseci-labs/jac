@@ -29528,9 +29528,14 @@ obj VM {
         }
         # Tag CJS-created closures with their defining module so LOAD_GLOBAL
         # for `module`/`exports` resolves the right module in async callbacks.
+        # The enclosing closure's module first: a mod_free caller runs without
+        # the module/exports swap, so the globals can still be its caller's.
         # Guard: skip in ESM scope to prevent stale CJS module from leaking.
         if self.esm_entry == 0 {
-            cur_mod_mf: JSValue = self._reg_cur_module();
+            cur_mod_mf: JSValue = _fn_jac_module(frame.self_fn, self.realm);
+            if not jsv_is_object_cell(cur_mod_mf) {
+                cur_mod_mf = self._reg_cur_module();
+            }
             if jsv_is_object_cell(cur_mod_mf) {
                 jc_set_jac_module(new_cl_mf, cur_mod_mf);
             }
@@ -29575,8 +29580,9 @@ obj VM {
         ap_brand: JSValue = 0;
         ap_bsid: int = 0;
         ap_realm: int = 0;
+        ap_e: int = -1;
         if is_fn_val(frame.self_fn) {
-            ap_e: int = get_fn_idx(frame.self_fn);
+            ap_e = get_fn_idx(frame.self_fn);
             ap_sup = jc_super_class(ap_e);
             ap_home = jc_home_object(ap_e);
             ap_brand = jc_class_brand(ap_e);
@@ -29585,13 +29591,18 @@ obj VM {
         }
         ap_mod: JSValue = js_undefined();
         if self.esm_entry == 0 {
-            # (_reg_cur_module's cache read in place)
-            ap_cm: JSValue = self.cur_mod_val;
-            if self.cur_mod_epoch != self.gw_epoch {
-                ap_cm = self._reg_cur_module();
-            }
-            if jsv_is_object_cell(ap_cm) {
-                ap_mod = ap_cm;
+            # the enclosing closure's module first (as _make_arrow_general)
+            if ap_e >= 0 and jsv_is_object_cell(jc_jac_module(ap_e)) {
+                ap_mod = jc_jac_module(ap_e);
+            } else {
+                # (_reg_cur_module's cache read in place)
+                ap_cm: JSValue = self.cur_mod_val;
+                if self.cur_mod_epoch != self.gw_epoch {
+                    ap_cm = self._reg_cur_module();
+                }
+                if jsv_is_object_cell(ap_cm) {
+                    ap_mod = ap_cm;
+                }
             }
         }
         ap_id: int = jc_pop();
@@ -29743,7 +29754,10 @@ obj VM {
         # Tag CJS-created arrow functions with their defining module (same as MAKE_FUNCTION).
         # Guard: skip in ESM scope to prevent stale CJS module from leaking.
         if self.esm_entry == 0 {
-            cur_mod_ma: JSValue = self._reg_cur_module();
+            cur_mod_ma: JSValue = _fn_jac_module(frame.self_fn, self.realm);
+            if not jsv_is_object_cell(cur_mod_ma) {
+                cur_mod_ma = self._reg_cur_module();
+            }
             if jsv_is_object_cell(cur_mod_ma) {
                 jc_set_jac_module(arrow_cl, cur_mod_ma);
             }
