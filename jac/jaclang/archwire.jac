@@ -722,7 +722,7 @@ graph import {
         packages.api.package_surface { compilation_scope },
         project.compiler_host.ProjectHost.lint_settings { context_app },
     ]
-    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
+    compiler.driver.compilation_context --> client.client_bundle.client_context_program {
         context_program
     }
     compiler.driver.compile_options ++> [
@@ -871,6 +871,7 @@ graph import {
             get_module_cache_path,
             is_module_cache_valid
         },
+        project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -1040,9 +1041,7 @@ graph import {
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
     }
-    compiler.driver.unit_products ++> project.kernel_compile | project.kernel_snapshot {
-        UnitProducts
-    }
+    compiler.driver.unit_products ++> project.kernel_compile { UnitProducts }
     compiler.driver.wiring ++> [
         cli.commands.architecture {
             ARCH_FILE_NAME,
@@ -1435,11 +1434,6 @@ graph import {
     type compiler.types.stubcat.reader ++> project.compiler_host { StubCatalog }
     compiler.types.stubcat.writer ++> [
         dist.precompile_bytecode.precompile_unit_context,
-        project.kernel_snapshot.KernelSnapshot.record_interface {
-            IncoherentInterface,
-            build_module_iface,
-            module_iface_shape
-        },
         project.kernel_snapshot.python_interface {
             IncoherentInterface,
             build_module_iface
@@ -4992,6 +4986,11 @@ graph import client {
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
         },
+        jac_client_compiler.JacClientCompiler.compile { client_source_root },
+        targets.web_target.WebTarget.build {
+            client_context_program,
+            client_source_root
+        },
         vite_client_bundle {
             ClientBuildInputs,
             ClientBundle,
@@ -6236,6 +6235,8 @@ graph import compiler {
             rule_text,
             scope_owners,
             scope_path_of,
+            unnamed_module_label,
+            variant_base_file,
             wiring_for_path
         },
         passes.package_boundary_pass { local_module_name },
@@ -6461,6 +6462,9 @@ graph import compiler {
             is_bundled_native_module,
             resolve_native_module
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
+            resolve_native_module
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
             native_variant_of
         },
@@ -6585,6 +6589,7 @@ graph import compiler {
             InteropManifest
         },
         driver.wiring.WiringSpec.import_provider { is_bundled_native_module },
+        driver.wiring.variant_base_file { native_variant_base },
         erased_imports.erased_identity_call_arg { NATIVE_ERASED_IDENTITY_CALLS },
         erased_imports.erased_import_binds { NATIVE_ERASED_IMPORTS },
         native_bindings.NativeBindings.surface {
@@ -7122,6 +7127,7 @@ graph import compiler {
             E1144,
             E1146,
             E1147,
+            E1148,
             E2088,
             E2089,
             E2090,
@@ -7245,6 +7251,7 @@ graph import compiler {
             E1158,
             E1159,
             E1161,
+            E1162,
             E2015,
             W1036,
             W1037,
@@ -8500,7 +8507,7 @@ graph import compiler {
             UniNode
         },
         passes.context { ImplDef, Module, Source, TreeWalker, UniNode },
-        passes.dataflow { UniCFGNode },
+        passes.dataflow { AstElseBodyNode, UniCFGNode },
         passes.decl_impl_match_pass {
             Ability,
             Archetype,
@@ -8657,7 +8664,6 @@ graph import compiler {
             Ability,
             Archetype,
             Assignment,
-            AstElseBodyNode,
             AtomTrailer,
             AwaitExpr,
             BinaryExpr,
@@ -9055,6 +9061,7 @@ graph import compiler {
             Expr,
             ExprAsItem,
             FilterCompr,
+            FinallyStmt,
             FormattedValue,
             FuncCall,
             FuncSignature,
@@ -9089,9 +9096,11 @@ graph import compiler {
             SubTag,
             Symbol,
             Token,
+            TryStmt,
             TupleVal,
             TypeAlias,
             UnaryExpr,
+            UniCFGNode,
             UniNode,
             VisitStmt,
             WhileStmt,
@@ -9338,6 +9347,7 @@ graph import compiler {
             Name,
             ParamVar,
             Symbol,
+            UniNode,
             UniScopeNode
         },
         types.type_evaluator {
@@ -10037,9 +10047,11 @@ graph import compiler {
     passes.type_checker_pass ++> driver.pipeline.analysis_passes
         | tests.test_pipeline_products
         | tests.xbackend_equiv.compile_fixture_to_js { TypeCheckPass }
-    passes.variant_agreement_pass ++> driver.pipeline.analysis_passes {
-        VariantAgreementPass
-    }
+    passes.variant_agreement_pass ++> [
+        driver.pipeline.analysis_passes { VariantAgreementPass },
+        driver.wiring.unnamed_module_label { ANNEX_MARKERS },
+        driver.wiring.variant_base_file { VARIANT_SUFFIX },
+    ]
     placement.placement ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._owner_element
             | passes.placement_pass.element_requirements { element_display_name },
@@ -10502,9 +10514,19 @@ graph import compiler {
     types.stubcat.resolver ++> driver.ifacecache | frontend.kernel_host {
         CatalogResolver
     }
-    types.stubcat.writer ++> driver.ifacecache.IfaceRegistry._encode_iface {
-        IncoherentInterface
-    }
+    types.stubcat.writer ++> [
+        driver.ifacecache.IfaceRegistry._encode_iface {
+            IncoherentInterface,
+            PackagePathMapper
+        },
+        driver.jir.JirPaths.encode { encode_package_path },
+        frontend.kernel_host.record_interface {
+            IncoherentInterface,
+            PackagePathMapper,
+            build_module_iface,
+            module_iface_shape
+        },
+    ]
     types.ts_decl_parser --> tests.test_jac_mobui_typing { parse_dts }
     types.type_evaluator ++> [
         driver.program.JacProgram.get_type_evaluator { TypeEvaluator },
@@ -11725,6 +11747,14 @@ graph import compiler.driver {
             get_module_cache_path,
             is_module_cache_valid
         },
+        compiler.unit_sections {
+            DepRow,
+            JirPaths,
+            SEC_DEPS,
+            SEC_IFACE,
+            SEC_PATH_ROOT,
+            deps_section
+        },
         ifacecache {
             DepRow,
             JirPaths,
@@ -11750,6 +11780,7 @@ graph import compiler.driver {
             write_module_cache
         },
         ifacecache.IfaceRegistry._deps_match { read_dep_rows },
+        ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
@@ -12116,6 +12147,7 @@ graph import compiler.frontend {
         Absorbs,
         CalleeDecl,
         CalleeSignature,
+        CfgCatch,
         CfgFalse,
         CfgSucc,
         CfgTrue,
@@ -13560,11 +13592,13 @@ graph import compiler.passes {
         ownership_check_pass {
             DataflowTransfer,
             SymId,
+            is_scope_exit,
             solve_backward,
             solve_forward,
             solve_forward_must
         },
         rc_facts_pass { SymId, solve_backward_gen_kill },
+        type_checker_pass { SymId, is_scope_exit, solve_forward },
     ]
     execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
@@ -14099,7 +14133,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._load_ts_declarations { parse_dts },
     ]
     type type_evaluator ++> [
-        ct_eval | fixed_width | operations | type_utils { TypeEvaluator },
+        ct_eval | fixed_width | operations | stubcat.writer | type_utils {
+            TypeEvaluator
+        },
         enum_utils { PrefetchedTypes, TypeEvaluator },
     ]
     type_utils ++> [
@@ -14367,6 +14403,7 @@ graph import compiler.types.stubcat {
             put_ref,
             put_refs,
             put_svar,
+            put_u32,
             put_uvar
         },
     ]
@@ -14382,7 +14419,11 @@ graph import compiler.types.stubcat {
         locate._open_file { open_catalog_file },
         locate._open_region { open_catalog_region },
         modiface { StubCatalog },
+        writer.CatalogWriter.encode_scope { CatScope },
         writer.CatalogWriter.encode_symbol { CatProvider },
+        writer.CatalogWriter.force_symbol { CatScope },
+        writer.CatalogWriter.scope_dotted_path { CatScope },
+        writer.metaclass_of_scope { CatScope },
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
@@ -15896,6 +15937,8 @@ graph import runtime.python {
         modules.elementtree
             | modules.pyexpat
             | modules.select_platform
+            | modules.select_platform.darwin
+            | modules.select_platform.linux
             | modules.sqlite3 { MemberField },
         modules.multiprocessing | modules.posix_stat { MemberField, MemberType },
         modules.pickle { record_int, record_set_int },
@@ -17529,9 +17572,10 @@ graph import runtime.python {
             PyObject,
             PySlice_New,
             PyTuple_New,
-            Py_Ellipsis,
+            Py_CONSTANT_ELLIPSIS,
+            Py_CONSTANT_NONE,
+            Py_GetConstant,
             Py_NewRef,
-            Py_None,
             jacpy_code_new,
             jacpy_long_from_bytes,
             jacpy_release,
@@ -20005,6 +20049,7 @@ graph import runtime.python {
             jacpy_tuple_item,
             jacpy_tuple_set_owned
         },
+        modules.getpath_platform.darwin { PyMem_RawFree, PyMem_RawMalloc },
         modules.grp {
             NULL,
             PyBytes_AsString,
@@ -21684,7 +21729,10 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
-        modules.posix_fileio_platform | object_model.mystrtoul { jacpy_set_errno },
+        modules.posix_fileio_platform
+            | modules.posix_fileio_platform.darwin
+            | modules.posix_fileio_platform.linux
+            | object_model.mystrtoul { jacpy_set_errno },
         modules.posix_files {
             NULL,
             PyBytes_AsString,
@@ -21912,6 +21960,22 @@ graph import runtime.python {
             jacpy_set_errno,
             jacpy_stat
         },
+        modules.posix_stat_platform.darwin {
+            PyFloat_FromDouble,
+            PyLong_FromLong,
+            PyLong_FromLongLong,
+            PyLong_FromUnsignedLong,
+            PyObject,
+            jacpy_fstatfs,
+            jacpy_release,
+            jacpy_statfs
+        },
+        modules.posix_stat_platform.linux {
+            PyLong_FromLong,
+            PyLong_FromUnsignedLong,
+            PyObject,
+            jacpy_release
+        },
         modules.posixshmem {
             NULL,
             PyErr_CheckSignals,
@@ -21978,6 +22042,15 @@ graph import runtime.python {
             jacpy_tuple_set_owned
         },
         modules.posixsubprocess_fds { _Py_closerange },
+        modules.posixsubprocess_platform.darwin {
+            jacpy_closedir,
+            jacpy_dirfd,
+            jacpy_errno,
+            jacpy_opendir,
+            jacpy_readdir_name,
+            jacpy_set_errno
+        },
+        modules.posixsubprocess_platform.linux { _Py_open_noraise },
         modules.pwd {
             NULL,
             PyBytes_AsString,
@@ -32843,6 +32916,7 @@ graph import runtime.python {
             _PyRuntimeState_THREADS_INITIALIZED,
             _SC_THREAD_STACK_MIN
         },
+        modules.core_platform.linux { CLOCK_MONOTONIC, SYS_gettid },
         modules.ctypes_malloc_closure {
             MAP_ANONYMOUS,
             MAP_PRIVATE,
@@ -37840,6 +37914,8 @@ graph import runtime.python {
             | modules.lsprof
             | modules.posix_fileio
             | modules.posix_ids
+            | modules.posix_stat_platform.darwin
+            | modules.posix_stat_platform.linux
             | modules.pwd
             | modules.resource
             | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
@@ -41170,6 +41246,7 @@ graph import runtime.python.modules {
         },
     ]
     dynload_platform ++> imp { _PyImport_DynLoadFiletab }
+    epoll_layout ++> select_platform.linux { EPOLL_DATA_OFFSET, EPOLL_EVENT_SIZE }
     errno_constants ++> [
         locale { ERANGE },
         multiprocessing { EAGAIN, EINTR, ETIMEDOUT },
@@ -42332,7 +42409,9 @@ graph import runtime.python.modules {
             TIOCSCTTY,
             _SC_TTY_NAME_MAX
         },
-        posix_fileio_platform { ENOSYS },
+        posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux { ENOSYS },
         posix_files {
             AT_EACCESS,
             AT_REMOVEDIR,
@@ -42380,6 +42459,7 @@ graph import runtime.python.modules {
             NGROUPS_MAX,
             _SC_NPROCESSORS_ONLN
         },
+        posix_ids_platform.linux { SYS_getrandom },
         posix_process {
             EINTR,
             EINVAL,
@@ -42404,6 +42484,7 @@ graph import runtime.python.modules {
             POSIX_SPAWN_SETSIGMASK,
             PRIO_PROCESS
         },
+        posix_process_platform.linux { SYS_pidfd_open },
         posix_stat {
             AT_SYMLINK_NOFOLLOW,
             DT_DIR,
@@ -42577,6 +42658,7 @@ graph import runtime.python.modules {
     posix_platform ++> [
         posix_core { DEV_T_SIGNED_32, environment_table },
         posix_files { DEV_T_SIGNED_32 },
+        posix_files_platform.darwin { runtime_function },
         posix_process { environment_table },
     ]
     posix_platform --> posix_core { fildes_call }
@@ -42637,6 +42719,29 @@ graph import runtime.python.modules {
     posixsubprocess_constants ++> [
         posixsubprocess { ENOENT, ENOTDIR, NGROUPS_MAX },
         posixsubprocess_fds { _SC_OPEN_MAX },
+        posixsubprocess_platform.linux {
+            NSIG,
+            O_RDONLY,
+            SIGKILL,
+            SIGSTOP,
+            SIG_BLOCK,
+            SIG_SETMASK,
+            SYS_getdents64
+        },
+    ]
+    posixsubprocess_fds ++> [
+        posixsubprocess_platform.darwin {
+            CLOSE_RANGE,
+            close_range_except,
+            fd_in_sorted_fd_sequence,
+            pos_int_from_ascii
+        },
+        posixsubprocess_platform.linux {
+            CLOSE_EACH,
+            close_range_except,
+            fd_in_sorted_fd_sequence,
+            pos_int_from_ascii
+        },
     ]
     posixsubprocess_platform ++> posixsubprocess {
         DIRENT_BUFFER_SIZE,
@@ -43213,6 +43318,8 @@ graph import runtime.python.modules {
         | mmap
         | posix_stat
         | posix_stat_platform
+        | posix_stat_platform.darwin
+        | posix_stat_platform.linux
         | signal { _Py_stat_struct }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     termios_constants ++> termios { ICANON, NCCS, TIOCGWINSZ, TIOCSWINSZ, VMIN, VTIME }
@@ -43245,9 +43352,21 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
-        core_platform | select | signal { timespec, timeval },
+        core_platform | core_platform.darwin | core_platform.linux | select | signal {
+            timespec,
+            timeval
+        },
         datetime_date | datetime_datetime | datetime_format { tm },
-        posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
+        posix_fileio
+            | posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux
+            | posix_files
+            | time_platform
+            | time_platform.darwin
+            | time_platform.linux { timespec },
+        posix_process_platform.darwin { tms },
+        posix_process_platform.linux { timespec, tms },
         time { timespec, timeval, tm, tms },
     ]
     unicodedata_db ++> unicodedata {
@@ -45057,8 +45176,8 @@ graph import scale {
         KubernetesPostgresProvider
     }
     deploy.target.factory ++> [
-        plugin
-            | runtime.realizer.kubernetes_realizer
+        plugin { DeploymentTargetFactory, ensure_deploy_tooling },
+        runtime.realizer.kubernetes_realizer
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
@@ -45146,7 +45265,8 @@ graph import scale {
             _CLIENT_BUILD_ATTEMPTS,
             _CLIENT_BUILD_RETRY_PAUSE_S,
             _is_transient_client_build_failure,
-            _membership_diagnosis
+            _membership_diagnosis,
+            _run_until_quiet
         },
         tests.deploy.test_deployment_overlay {
             CONFIG_REVISION_ANNOTATION,
@@ -45196,7 +45316,7 @@ graph import scale {
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
-            | sdk.client
+            | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
             | tests.deploy.test_crash_scan_fleet_guard
@@ -45222,6 +45342,7 @@ graph import scale {
         },
     ]
     deploy.target.kubernetes.target as target_mod --> tests.deploy.test_superseded_deployment_reap;
+    type deploy.target.kubernetes.target ++> sdk.client { KubernetesTarget }
     deploy.target.kubernetes.utils.kubernetes_utils ++> [
         injector.injector | injector.pvc_injector { KubectlCluster },
         injector.pvc_injector.PvcInjector.seed {
@@ -45715,8 +45836,8 @@ graph import scale {
             FLEET_ENV
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
+        plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
-        plugin.scale_cmd { fleet_from_config, fleet_from_env },
         plugin.scale_local_serve { fleet_from_plans },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
@@ -45832,13 +45953,13 @@ graph import scale {
         _to_ws_scheme,
         websocket_forward
     }
-    runtime.orchestrator.local_deployer ++> plugin.scale_cmd
+    runtime.orchestrator.local_deployer ++> plugin._fleet_cmd
         | tests.deploy.test_deployer { LocalDeployer }
     runtime.orchestrator.orchestrator ++> [
-        plugin.scale_cmd { ServiceRegistry, build_registry },
+        plugin._fleet_cmd { ServiceRegistry, build_registry },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
-    runtime.orchestrator.orchestrator --> plugin.scale_cmd { start_gateway_only }
+    runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -46308,7 +46429,7 @@ graph import scale.deploy.target.kubernetes {
 
 graph import scale.emailer {
     emailer ++> [
-        emailers { EmailAttachment, Emailer },
+        emailers { EmailAttachment, Emailer, MAX_HEADER_LINE },
         factory { Emailer },
     ]
     emailers --> factory.create { SMTPEmailer }
@@ -46836,7 +46957,7 @@ graph import server {
         register_walker_endpoints
     }
     exchange ++> [
-        endpoints.colocated { refusal_status, settle_envelope },
+        endpoints.colocated { settle_envelope },
         endpoints.walkers {
             apply_response_choice,
             has_response_choice,
@@ -47124,7 +47245,7 @@ graph import server {
 graph import server.endpoints {
     auth ++> second_factor { fail, ok, throttled }
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller }
 }
 
 graph import server.identity {

@@ -984,8 +984,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot assign to '{name}': it is declared {kind}",
          help="A binding annotated with 'Final' (or a 'readonly' member of an"
          " imported TypeScript interface) can only be set at its declaration,"
-         " or in the 'init'/'postinit' of the object that declares it when the"
-         " declaration has no initializer."
+         " or once, in the 'init'/'postinit' of the object that declares it, when"
+         " the declaration has no initializer."
      ),
      E1138 = _err(
          "E1138",
@@ -1047,6 +1047,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " import if the module keeps one. A name that is part of the module's"
          " public surface belongs in its `__all__`; names are not re-exported"
          " otherwise, so other modules import them from where they are defined."
+     ),
+     E1148 = _err(
+         "E1148",
+         Category.IMPORT,
+         "'{module}' is a variant of '{base}', so it cannot be a wire's provider",
+         help="A platform or `.native.jac` variant is chosen for its target in place"
+         " of '{base}'; no import names it. Wire '{base}' as the provider. A variant"
+         " is a consumer in its own right: its imports are wired to '{module}'."
      ),
      E1145 = _err(
          "E1145",
@@ -1174,6 +1182,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " or take a `ptr[T]` to storage the caller owns. `&mut local` lends a"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
+     ),
+     E1162 = _err(
+         "E1162",
+         Category.TYPE,
+         "'Final' without a type needs a value to take its type from",
+         help="Name the type in brackets, as in `has x: Final[int];`, or give a"
+         " value and the type comes from it, as in `has x: Final = 5;`."
      ),
      E1301 = _err(
          "E1301",

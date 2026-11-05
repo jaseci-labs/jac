@@ -38,8 +38,7 @@ obj basicblock {
         b_instr: list[cfg_instr] = [],
         b_stale: list[cfg_instr] = [],
         b_next: basicblock | None = None,
-        b_unsafe_lo: int = 0,
-        b_unsafe_hi: int = 0,
+        b_unsafe: list[int] = [],
         b_predecessors: int = 0,
         b_startdepth: int = 0,
         b_preserve_lasti: int = 0,
@@ -1772,97 +1771,89 @@ def optimize_load_fast(g: cfg_builder) {
     }
 }
 
-def maybe_push(b: basicblock, lo: int, hi: int, sp: list[basicblock]) {
-    both_lo = b.b_unsafe_lo | lo;
-    both_hi = b.b_unsafe_hi | hi;
-    if b.b_unsafe_lo != both_lo or b.b_unsafe_hi != both_hi {
-        b.b_unsafe_lo = both_lo;
-        b.b_unsafe_hi = both_hi;
-        if not b.b_visited {
-            sp.append(b);
-            b.b_visited = 1;
-        }
+# One signed native int carries 63 positive bits. Split local masks into these
+# words so the sign bit never participates in local-slot tracking.
+def mask_has(mask: list[int], slot: int) -> bool {
+    if slot < 0 {
+        return False;
+    }
+    word = slot // 63;
+    if word >= len(mask) {
+        return False;
+    }
+    return (mask[word] & (1 << (slot % 63))) != 0;
+}
+
+def mask_set(mask: list[int], slot: int) {
+    if slot < 0 {
+        return;
+    }
+    word = slot // 63;
+    if word < len(mask) {
+        mask[word] = mask[word] | (1 << (slot % 63));
     }
 }
 
-def scan_block_for_locals(b: basicblock, sp: list[basicblock]) {
-    lo = b.b_unsafe_lo;
-    hi = b.b_unsafe_hi;
+def mask_clear(mask: list[int], slot: int) {
+    if slot < 0 {
+        return;
+    }
+    word = slot // 63;
+    if word < len(mask) {
+        mask[word] = mask[word] & ~(1 << (slot % 63));
+    }
+}
+
+def maybe_push(b: basicblock, unsafe: list[int], sp: list[basicblock]) {
+    changed = False;
+    for wi in range(len(unsafe)) {
+        both = b.b_unsafe[wi] | unsafe[wi];
+        if b.b_unsafe[wi] != both {
+            b.b_unsafe[wi] = both;
+            changed = True;
+        }
+    }
+    if changed and not b.b_visited {
+        sp.append(b);
+        b.b_visited = 1;
+    }
+}
+
+def scan_block_for_locals(b: basicblock, sp: list[basicblock], nlocals: int) {
+    mask = list(b.b_unsafe);
     for instr in b.b_instr {
         exc = instr.i_except;
         if exc is not None {
-            maybe_push(exc, lo, hi, sp);
+            maybe_push(exc, mask, sp);
         }
         arg = instr.i_oparg;
-        if arg >= 64 or arg < 0 {
+        if arg < 0 or arg >= nlocals {
             continue;
-        }
-        blo = 0;
-        bhi = 0;
-        if arg < 32 {
-            blo = 1 << arg;
-        } else {
-            bhi = 1 << (arg - 32);
         }
         op = instr.i_opcode;
         if op == OP_DELETE_FAST
             or op == OP_LOAD_FAST_AND_CLEAR
             or op == OP_STORE_FAST_MAYBE_NULL {
-            lo = lo | blo;
-            hi = hi | bhi;
+            mask_set(mask, arg);
         } elif op == OP_STORE_FAST or op == OP_LOAD_FAST_CHECK {
-            lo = lo & ~blo;
-            hi = hi & ~bhi;
+            mask_clear(mask, arg);
         } elif op == OP_LOAD_FAST {
-            if (lo & blo) != 0 or (hi & bhi) != 0 {
+            if mask_has(mask, arg) {
                 instr.i_opcode = OP_LOAD_FAST_CHECK;
             }
-            lo = lo & ~blo;
-            hi = hi & ~bhi;
+            mask_clear(mask, arg);
         }
     }
     nxt = b.b_next;
     if nxt is not None and bb_has_fallthrough(b) {
-        maybe_push(nxt, lo, hi, sp);
+        maybe_push(nxt, mask, sp);
     }
     last = basicblock_last_instr(b);
     if last is not None and is_jump(last) {
         target = last.i_target;
         if target is not None {
-            maybe_push(target, lo, hi, sp);
+            maybe_push(target, mask, sp);
         }
-    }
-}
-
-def fast_scan_many_locals(entryblock: basicblock, nlocals: int) {
-    states: list[int] = [];
-    for k in range(nlocals - 64) {
-        states.append(0);
-    }
-    blocknum = 0;
-    b: basicblock | None = entryblock;
-    while b is not None {
-        blocknum += 1;
-        for instr in b.b_instr {
-            arg = instr.i_oparg;
-            if arg < 64 {
-                continue;
-            }
-            op = instr.i_opcode;
-            if op == OP_DELETE_FAST
-                or op == OP_LOAD_FAST_AND_CLEAR
-                or op == OP_STORE_FAST_MAYBE_NULL {
-                states[arg - 64] = blocknum - 1;
-            } elif op == OP_STORE_FAST {
-                states[arg - 64] = blocknum;
-            } elif op == OP_LOAD_FAST {
-                if states[arg - 64] != blocknum {
-                    instr.i_opcode = OP_LOAD_FAST_CHECK;
-                }
-                states[arg - 64] = blocknum;
-            }
-        }
-        b = b.b_next;
     }
 }
 
@@ -1928,32 +1919,34 @@ def add_checks_for_loads_of_uninitialized_variables(
     if nlocals == 0 {
         return;
     }
-    count = nlocals;
-    if count > 64 {
-        fast_scan_many_locals(entryblock, count);
-        count = 64;
+    word_count = (nlocals + 62) // 63;
+    init: basicblock | None = entryblock;
+    while init is not None {
+        init.b_unsafe = [];
+        for k in range(word_count) {
+            init.b_unsafe.append(0);
+        }
+        init = init.b_next;
     }
     reset_visited(entryblock);
     sp: list[basicblock] = [];
-    start_lo = 0;
-    start_hi = 0;
-    for k in range(nparams, count) {
-        if k < 32 {
-            start_lo = start_lo | (1 << k);
-        } else {
-            start_hi = start_hi | (1 << (k - 32));
-        }
+    start_mask: list[int] = [];
+    for k in range(word_count) {
+        start_mask.append(0);
     }
-    maybe_push(entryblock, start_lo, start_hi, sp);
+    for k in range(nparams, nlocals) {
+        mask_set(start_mask, k);
+    }
+    maybe_push(entryblock, start_mask, sp);
     b: basicblock | None = entryblock;
     while b is not None {
-        scan_block_for_locals(b, sp);
+        scan_block_for_locals(b, sp, nlocals);
         b = b.b_next;
     }
     while len(sp) > 0 {
         cur = sp.pop();
         cur.b_visited = 0;
-        scan_block_for_locals(cur, sp);
+        scan_block_for_locals(cur, sp, nlocals);
     }
 }
 

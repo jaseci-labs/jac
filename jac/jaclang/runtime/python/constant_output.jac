@@ -19,10 +19,10 @@ obj constant_writer {
 
     def write(constant: PyObj) -> ptr[PyObject] {
         if isinstance(constant, PyNoneType) {
-            return required(Py_NewRef(Py_None));
+            return required(Py_GetConstant(Py_CONSTANT_NONE));
         }
         if isinstance(constant, PyEllipsis) {
-            return required(Py_NewRef(Py_Ellipsis));
+            return required(Py_GetConstant(Py_CONSTANT_ELLIPSIS));
         }
         if isinstance(constant, PyBool) {
             return required(PyBool_FromLong(i64(constant.val)));
