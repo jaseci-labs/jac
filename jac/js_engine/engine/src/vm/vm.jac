@@ -947,10 +947,13 @@ import from engine.src.builtins.markers {
     _KEY_IS_THENABLE_JOB,
     _KEY_THENABLE_VALUE,
     _KEY_THENABLE_THEN,
-    _KEY_PRESOLVED
+    _KEY_PRESOLVED,
+    _KEY_AG_QUEUE,
+    _KEY_AG_BUSY
 }
 import from engine.src.builtins.array {
     js_array_dense_full,
+    js_array_push,
     js_array_spread_copy,
     js_Array_isArray,
     js_Array_indexOf,
@@ -5352,6 +5355,7 @@ obj VM {
         self.call_depth = self.call_depth - 1;
 
         # Settle the outer async promise based on outcome
+        raf_again: bool = self.vm_awaiting;
         if self.vm_awaiting {
             # Hit another AWAIT — raf_outer_p stays pending; the new suspended
             # frame already stored raf_outer_p in its async_promise field.
@@ -5360,6 +5364,14 @@ obj VM {
             exc_raf: JSValue = self.pending_exc;
             self.had_exception = False;
             self.pending_exc = js_undefined();
+            # an async generator's body threw: it is completed
+            if js_is_generator(raf_state.delegate_gen) {
+                raf_xstate: JSGeneratorState = js_get_generator_state(
+                    raf_state.delegate_gen
+                );
+                raf_xstate.done = True;
+                js_set_generator_state(raf_state.delegate_gen, raf_xstate);
+            }
             if js_is_promise(raf_outer_p) {
                 self._promise_settle_and_drain(raf_outer_p, PROMISE_REJECTED, exc_raf);
             } elif _vm_is_entry_module_frame(self, raf_state.func) {
@@ -5428,6 +5440,55 @@ obj VM {
         while len(self.realm.gc_temp_roots) > raf_gtr0 {
             del self.realm.gc_temp_roots[len(self.realm.gc_temp_roots) - 1];
         }
+        # An async generator's body left its await (yield, return or throw):
+        # the requests queued meanwhile run now.
+        if not raf_again
+            and js_is_generator(raf_state.delegate_gen)
+            and js_object_has_own(raf_state.delegate_gen, _KEY_AG_BUSY) {
+            self._ag_drain(raf_state.delegate_gen);
+        }
+    }
+
+    """§27.6.3.10 AsyncGeneratorDrainQueue: run the requests `gen` received
+    while suspended at an await, in order, until one suspends it again; each
+    queued promise takes the state of its step's result promise."""
+    def _ag_drain(gen: JSValue) -> None {
+        js_object_delete(gen, _KEY_AG_BUSY);
+        ad_q: JSValue = js_object_get(gen, _KEY_AG_QUEUE);
+        if not js_is_array(ad_q) {
+            return;
+        }
+        ad_i: int = 0;
+        while ad_i < js_array_len(ad_q) and not js_object_has_own(gen, _KEY_AG_BUSY) {
+            ad_req: JSValue = js_array_get(ad_q, ad_i);
+            ad_m: int = jsv_to_int32(js_array_get(ad_req, 0));
+            ad_qp: JSValue = js_array_get(ad_req, 2);
+            ad_r: JSValue = self.run_generator(
+                gen, js_array_get(ad_req, 1), ad_m == 1, ad_m == 2
+            );
+            if js_is_promise(ad_r) {
+                ad_st: int = js_promise_get_state(ad_r);
+                if ad_st == PROMISE_PENDING {
+                    js_promise_add_reaction(ad_r, js_undefined(), js_undefined(), ad_qp);
+                } else {
+                    if ad_st == PROMISE_REJECTED {
+                        # (handled through ad_qp, which reports it if nothing does)
+                        promise_unmark_unhandled(ad_r);
+                    }
+                    self._promise_settle_and_drain_raw(
+                        ad_qp, ad_st, js_promise_get_value(ad_r)
+                    );
+                }
+            }
+            ad_i = ad_i + 1;
+        }
+        # the requests behind a new suspension stay queued, in order
+        ad_rest: list[JSValue] = [];
+        while ad_i < js_array_len(ad_q) {
+            ad_rest.append(js_array_get(ad_q, ad_i));
+            ad_i = ad_i + 1;
+        }
+        js_object_set(gen, _KEY_AG_QUEUE, js_array_create(ad_rest));
     }
 
     """
@@ -12926,6 +12987,26 @@ obj VM {
             self.pending_exc = gen_re_err;
             return js_iter_result(js_undefined(), True);
         }
+        # §27.6.3.2 AsyncGeneratorEnqueue: while the body is suspended at an
+        # await the request waits for the next yield (or completion), when
+        # _ag_drain runs it; resuming here would rerun the body from its last
+        # yield.
+        if is_ag and js_object_has_own(gen_obj, _KEY_AG_BUSY) {
+            rg_q_p: JSValue = js_promise_create();
+            rg_q: JSValue = js_object_get(gen_obj, _KEY_AG_QUEUE);
+            if not js_is_array(rg_q) {
+                rg_q = js_array_create([]);
+                js_object_set(gen_obj, _KEY_AG_QUEUE, rg_q);
+            }
+            rg_q_m: int = 0;
+            if throw_mode {
+                rg_q_m = 1;
+            } elif ret_mode {
+                rg_q_m = 2;
+            }
+            js_array_push(rg_q, js_array_create([js_int(rg_q_m), send_val, rg_q_p]));
+            return rg_q_p;
+        }
         if state.done {
             if is_ag {
                 rg_done_p: JSValue = js_promise_create();
@@ -13347,6 +13428,9 @@ obj VM {
             # On YIELD it saves gen state and settles rg_outer_p with {value, done:false}.
             # We do NOT mark state.done here.
             self.vm_awaiting = False;
+            if is_ag {
+                js_object_set(gen_obj, _KEY_AG_BUSY, js_true());
+            }
             return rg_outer_p;
         }
 
