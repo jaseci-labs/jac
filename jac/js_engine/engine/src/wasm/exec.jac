@@ -761,6 +761,16 @@ def _f32r(d: float) -> float {
     return float(f32(d));
 }
 
+def _sign_extend(x: int, bits: int) -> int {
+    mask: int = (1 << bits) - 1;
+    sign: int = 1 << (bits - 1);
+    x = x & mask;
+    if x >= sign {
+        return x - (1 << bits);
+    }
+    return x;
+}
+
 def _clz64(x: int) -> int {
     if x == 0 {
         return 64;
@@ -1030,7 +1040,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 if ea + 1 > ms {
                     return _trap("out of bounds memory access");
                 }
-                __mem_store_i64(dst, int(__mem_load_i8(mb + ea)));
+                __mem_store_i64(dst, _sign_extend(int(__mem_load_i8(mb + ea)), 8));
             } elif op == 45 or op == 49 {
                 if ea + 1 > ms {
                     return _trap("out of bounds memory access");
@@ -1040,7 +1050,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 if ea + 2 > ms {
                     return _trap("out of bounds memory access");
                 }
-                __mem_store_i64(dst, int(__mem_load_i16(mb + ea)));
+                __mem_store_i64(dst, _sign_extend(int(__mem_load_i16(mb + ea)), 16));
             } elif op == 47 or op == 51 {
                 if ea + 2 > ms {
                     return _trap("out of bounds memory access");
@@ -1050,7 +1060,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 if ea + 4 > ms {
                     return _trap("out of bounds memory access");
                 }
-                __mem_store_i64(dst, int(__mem_load_i32(mb + ea)));
+                __mem_store_i64(dst, _sign_extend(int(__mem_load_i32(mb + ea)), 32));
             } else {
                 if ea + 4 > ms {
                     return _trap("out of bounds memory access");
