@@ -965,10 +965,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1134",
          Category.IMPORT,
          "Relative import '{module}' names no module",
-         help="A dotted relative import addresses a file inside this project, so"
-         " its target has to sit beside the importing module: '{module}'"
-         " resolves to no .jac, .py, .pyi or .js file and to no package"
-         " directory. Create the module, correct the spelling, or drop the"
+         help="A dotted relative import addresses a file inside this project,"
+         " counted from the importing module's folder: one dot is that folder"
+         " and each further dot climbs one level. '{module}' resolves there to"
+         " no .jac, .py, .pyi or .js file and to no package directory, and is"
+         " not looked for anywhere else, such as the project root. Create the"
+         " module, correct the spelling or the number of dots, or drop the"
          " import. Leaving it unresolved erases the binding from the emitted"
          " client bundle, where it fails as an undefined name at runtime. Two"
          " shapes are exempt: a bare specifier, which can name an npm package"

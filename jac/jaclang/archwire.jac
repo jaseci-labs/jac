@@ -2289,7 +2289,9 @@ graph import {
         },
         compiler.backends.py.artifact_imports.resolve_imports
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
-        dist.publish.py_imports { resolve_module },
+        compiler.tests.test_missing_local_import | dist.publish.py_imports {
+            resolve_module
+        },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
             resolve_client_npm_declarations,
