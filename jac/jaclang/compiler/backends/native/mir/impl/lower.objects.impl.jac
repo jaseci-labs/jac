@@ -2391,8 +2391,7 @@ impl MirLowering.foreign_field(t: (TypeBase | None)) -> bool {
     for member in members {
         if not isinstance(member, ClassType)
             or member._shared is None
-            or not isinstance(member.shared.symbol_table, uni.Archetype)
-            or not stub_archetype(member.shared.symbol_table) {
+            or not stub_scope(member.shared.symbol_table) {
             continue;
         }
         try {

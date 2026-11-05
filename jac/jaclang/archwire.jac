@@ -10733,7 +10733,8 @@ graph import compiler.backends.native.mir {
         pop_erased_units,
         push_erased_units,
         refusal_of,
-        stub_archetype
+        stub_archetype,
+        stub_scope
     }
     rc ++> backend { mir_insert_rc, mir_insert_unwind }
     runtime_abi ++> [
