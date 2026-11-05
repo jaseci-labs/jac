@@ -25092,6 +25092,10 @@ obj VM {
                                 );
                                 subj_rpf: str = jsval_to_str(subj_rpf_v);
                                 slen_rpf: int = str_nbytes(subj_rpf);
+                                # (the subject value is handed to every exec and
+                                # callback below: rooted with this call's natives;
+                                # js_str re-interned the whole subject per match)
+                                frame.native_roots.append(subj_rpf_v);
                                 if is_g_rpf {
                                     js_object_set(fncall_this, WK_LASTINDEX, js_int(0));
                                 }
@@ -25102,12 +25106,12 @@ obj VM {
                                     and str_cell_ascii(jsv_to_table_id(subj_rpf_v)) == 1
                                 )
                                     or js_string_utf16_len(subj_rpf) == slen_rpf;
-                                out_rpf: str = "";
+                                out_rpf: list[str] = [];
                                 pos_rpf: int = 0;
                                 pos_u_rpf: int = 0;
                                 while True {
                                     step_rpf: JSValue = js_regexp_exec(
-                                        fncall_this, js_str(subj_rpf)
+                                        fncall_this, subj_rpf_v
                                     );
                                     if jsv_is_null(step_rpf) {
                                         break;
@@ -25139,8 +25143,7 @@ obj VM {
                                         );
                                     }
                                     mend_rpf: int = mstart_b_rpf + str_nbytes(mtxt_rpf);
-                                    out_rpf = out_rpf
-                                        + str_substr(subj_rpf, pos_rpf, mstart_b_rpf);
+                                    out_rpf.append(str_substr(subj_rpf, pos_rpf, mstart_b_rpf));
 
                                     cb_rpf: list[JSValue] = [];
                                     cb_rpf.append(m0_rpf);
@@ -25163,7 +25166,7 @@ obj VM {
                                         ci_rpf = ci_rpf + 1;
                                     }
                                     cb_rpf.append(js_int(mstart_rpf));
-                                    cb_rpf.append(js_str(subj_rpf));
+                                    cb_rpf.append(subj_rpf_v);
                                     gr_rpf: JSValue = js_object_get(
                                         step_rpf, WK_GROUPS
                                     );
@@ -25241,7 +25244,7 @@ obj VM {
                                     rep_rpf_s: str = jsval_to_str(
                                         self._to_primitive_string(rep_rpf_v)
                                     );
-                                    out_rpf = out_rpf + rep_rpf_s;
+                                    out_rpf.append(rep_rpf_s);
                                     if mend_rpf > pos_rpf {
                                         pos_rpf = mend_rpf;
                                         if asc_rpf {
@@ -25267,7 +25270,7 @@ obj VM {
                                             ch_rpf: str = str_substr(
                                                 subj_rpf, pos_rpf, nxt_b_rpf
                                             );
-                                            out_rpf = out_rpf + ch_rpf;
+                                            out_rpf.append(ch_rpf);
                                             if asc_rpf {
                                                 pos_u_rpf = pos_u_rpf + 1;
                                             } else {
@@ -25290,7 +25293,7 @@ obj VM {
                                 if st.running {
                                     self._push(
                                         js_str_heap(
-                                            out_rpf
+                                            "".join(out_rpf)
                                                 + str_substr(
                                                     subj_rpf, pos_rpf, slen_rpf
                                                 )
@@ -25848,6 +25851,9 @@ obj VM {
                         subj_rp_prim: JSValue = self._to_primitive_string(subj_rp_v);
                         subj_rp: str = jsval_to_str(subj_rp_prim);
                         slen_rp: int = str_nbytes(subj_rp);
+                        # (rooted with this call's natives: handed to every exec
+                        # and callback below, where js_str re-interned it per match)
+                        frame.native_roots.append(subj_rp_prim);
                         if is_g_rp {
                             js_object_set(re_rp, WK_LASTINDEX, js_int(0));
                         }
@@ -25862,7 +25868,7 @@ obj VM {
                             and str_cell_ascii(jsv_to_table_id(subj_rp_prim)) == 1
                         )
                             or js_string_utf16_len(subj_rp) == slen_rp;
-                        out_rp: str = "";
+                        out_rp: list[str] = [];
                         pos_rp: int = 0;
                         pos_u_rp: int = 0;
                         # Set when a replacer-callback throw unwound to a handler in THIS
@@ -25870,7 +25876,7 @@ obj VM {
                         # replace result on top would corrupt what the catch receives.
                         unwound_rp: bool = False;
                         while True {
-                            step_rp: JSValue = js_regexp_exec(re_rp, js_str(subj_rp));
+                            step_rp: JSValue = js_regexp_exec(re_rp, subj_rp_prim);
                             if jsv_is_null(step_rp) {
                                 break;
                             }
@@ -25899,7 +25905,7 @@ obj VM {
                                 );
                             }
                             mend_rp: int = mstart_b_rp + str_nbytes(mtxt_rp);
-                            out_rp = out_rp + str_substr(subj_rp, pos_rp, mstart_b_rp);
+                            out_rp.append(str_substr(subj_rp, pos_rp, mstart_b_rp));
                             cb_args_rp: list[JSValue] = [];
                             cb_args_rp.append(m0_rp);
                             len_rp_v: JSValue = js_object_get(step_rp, KEY_LENGTH);
@@ -25917,7 +25923,7 @@ obj VM {
                                 ci_rp = ci_rp + 1;
                             }
                             cb_args_rp.append(js_int(mstart_rp));
-                            cb_args_rp.append(js_str(subj_rp));
+                            cb_args_rp.append(subj_rp_prim);
                             gr_rp: JSValue = js_object_get(step_rp, WK_GROUPS);
                             if not jsv_is_undefined(gr_rp) {
                                 cb_args_rp.append(gr_rp);
@@ -25992,7 +25998,7 @@ obj VM {
                             rep_rp_s: str = jsval_to_str(
                                 self._to_primitive_string(rep_rp_v)
                             );
-                            out_rp = out_rp + rep_rp_s;
+                            out_rp.append(rep_rp_s);
                             if mend_rp > pos_rp {
                                 pos_rp = mend_rp;
                                 if asc_rp {
@@ -26013,7 +26019,7 @@ obj VM {
                                         );
                                     }
                                     ch_rp: str = str_substr(subj_rp, pos_rp, nxt_b_rp);
-                                    out_rp = out_rp + ch_rp;
+                                    out_rp.append(ch_rp);
                                     if asc_rp {
                                         pos_u_rp = pos_u_rp + 1;
                                     } else {
@@ -26034,7 +26040,7 @@ obj VM {
                         if st.running and not unwound_rp {
                             self._push(
                                 js_str_heap(
-                                    out_rp + str_substr(subj_rp, pos_rp, slen_rp)
+                                    "".join(out_rp) + str_substr(subj_rp, pos_rp, slen_rp)
                                 )
                             );
                         }  # G1.5: replace result
@@ -26054,10 +26060,11 @@ obj VM {
                     search_sr: str = js_to_string_prim(re_rp);
                     subj_sr_prim: JSValue = self._to_primitive_string(subj_rp_v);
                     subj_sr: str = jsval_to_str(subj_sr_prim);
+                    frame.native_roots.append(subj_sr_prim);
                     slen_sr: int = str_nbytes(subj_sr);
                     off_sr: int = str_bfind(subj_sr, search_sr);
                     if off_sr < 0 {
-                        self._push(js_str(subj_sr));
+                        self._push(subj_sr_prim);
                     } else {
                         cb_args_sr: list[JSValue] = [];
                         cb_args_sr.append(js_str(search_sr));
@@ -26065,7 +26072,7 @@ obj VM {
                         cb_args_sr.append(
                             js_int(js_string_byte_to_unit(subj_sr, off_sr))
                         );
-                        cb_args_sr.append(js_str(subj_sr));
+                        cb_args_sr.append(subj_sr_prim);
                         rep_sr_v: JSValue = js_undefined();
                         sr_ok: bool = True;
                         if is_fn_val(repl_rp_fn) {
