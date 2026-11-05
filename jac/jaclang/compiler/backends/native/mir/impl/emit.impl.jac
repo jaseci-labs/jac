@@ -263,6 +263,11 @@ impl MirEmitter.extern(
         self.functions[symbol] = existing;
         return existing;
     }
+    floor = mir_runtime_abi(symbol);
+    if floor is not None {
+        ret = self.llvm_type(floor[1]);
+        args = [self.llvm_type(param) for param in floor[0]];
+    }
     made = ir.Function(
         self.module, ir.FunctionType(ret, args, var_arg=variadic), name=symbol
     );

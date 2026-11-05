@@ -54,6 +54,7 @@ glob _LATE_BOUND: set = {
          "strtol",
          "snprintf",
          "fwrite",
+         "write",
 
      };
 

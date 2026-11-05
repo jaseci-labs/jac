@@ -59,10 +59,14 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_set_disjoint": ["bool", "ref", "ref", "int"],
          "__jac_rt_alloc": ["ref", "int"],
          "__jac_rt_alloc_zeroed": ["ref", "int"],
-         "__jac_rt_set_type": ["none", "ref", "ptr"],
+         "__jac_rt_set_type": ["none", "ref", "int"],
          "__jac_rt_free_block": ["none", "int"],
          "__jac_rt_release": ["none", "ref"],
          "__jac_rt_drop": ["none", "ref"],
+         "__jac_rt_release_acyclic": ["none", "ref"],
+         "__jac_rt_drop_text": ["none", "ref"],
+         "__jac_rt_pin_share": ["none", "ref"],
+         "__jac_rt_any_drop": ["none", "int", "int"],
          "__jac_rt_gc_disable": ["none"],
          "__jac_rt_gc_enable": ["none"],
          "__jac_rt_collect_cycles": ["none"],
@@ -244,7 +248,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_gc_disable": ["none"],
          "__jac_rt_gc_enable": ["none"],
          "__jac_rt_collect_cycles": ["none"],
-         "__jac_rt_argv_list": ["ref", "int", "ptr"],
+         "__jac_rt_argv_list": ["ref", "int", "int"],
          "__jac_rt_float_repr": ["str.ref", "float"],
          "__jac_rt_format_int": ["str.ref", "int", "ptr", "int"],
          "__jac_rt_format_bool": ["str.ref", "bool", "ptr", "int"],
@@ -387,6 +391,10 @@ def mir_osp_signature(name: str) -> tuple[list[MirType], MirType];
 def mir_runtime_signature(name: str) -> tuple[list[MirType], MirType];
 
 def mir_runtime_spec(spec: str) -> MirType;
+
+def mir_runtime_abi(name: str) -> (tuple[list[MirType], MirType] | None);
+
+def mir_runtime_abi_spec(spec: str) -> MirType;
 
 glob MIR_PRIMITIVE_METHODS: dict[str, list[str]] = {
          "list": [
