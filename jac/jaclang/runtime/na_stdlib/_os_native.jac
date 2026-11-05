@@ -2,6 +2,9 @@ def:pub replace(
     src: str, dst: str, *, src_dir_fd: int | None = None, dst_dir_fd: int | None = None
 );
 
+glob O_NONBLOCK: int = _O_NONBLOCK,
+     O_APPEND: int = _O_APPEND;
+
 glob sep: str = "/",
      extsep: str = ".",
      pardir: str = "..",

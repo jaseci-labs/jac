@@ -345,6 +345,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_bytearray_set": ["none", "ref", "int", "int"],
          "__jac_rt_bytearray_extend": ["none", "ref", "ptr", "int"],
          "__jac_rt_bytearray_pop": ["int", "ref", "int"],
+         "__jac_rt_bytearray_splice": ["none", "ref", "int", "int", "ptr", "int"],
          "__jac_rt_bytearray_clear": ["none", "ref"]
      },
      MIR_OSP_ABI: dict[str, list[str]] = {

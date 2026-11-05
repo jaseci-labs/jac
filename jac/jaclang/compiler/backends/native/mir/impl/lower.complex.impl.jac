@@ -367,14 +367,192 @@ impl MirLowering.complex_arith(
         (qr, qi) = self.complex_quot(ar, ai, br, bi, not left_complex);
         return self.complex_make(qr, qi);
     }
+    if op == Tok.STAR_POW {
+        return self.complex_pow(ar, ai, br, bi);
+    }
     raise MirRefused(
         mir_refusal(
             "binary operator",
             f"{OPERATOR_SYMBOLS.get(op, op)} on complex",
             site,
-            "Native complex numbers support +, -, * and /."
+            "Native complex numbers support +, -, *, / and **."
         )
     );
+}
+
+impl MirLowering.libm(name: str, args: list[MirValue]) -> MirValue {
+    f64 = mir_float();
+    if name not in self.mir.externs {
+        self.mir.externs[name] = MirExtern(
+            symbol=name, ret=f64, params=[f64 for _ in args], c_abi=True
+        );
+    }
+    made = self.builder().call(name, args, f64);
+    if made is None {
+        raise MirRefused(mir_refusal("call", name));
+    }
+    return made;
+}
+
+impl MirLowering.complex_pow(
+    ar: MirValue, ai: MirValue, br: MirValue, bi: MirValue
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    f64 = mir_float();
+    zero = b.const_float(0.0, f64);
+    one = b.const_float(1.0, f64);
+    res_r = self.temp_slot(f64);
+    res_i = self.temp_slot(f64);
+    acc_r = self.temp_slot(f64);
+    acc_i = self.temp_slot(f64);
+    cur_r = self.temp_slot(f64);
+    cur_i = self.temp_slot(f64);
+    mask = self.temp_slot(mir_int());
+    int_bb = fn.new_block("cp.int");
+    loop_bb = fn.new_block("cp.loop");
+    body_bb = fn.new_block("cp.body");
+    mul_bb = fn.new_block("cp.mul");
+    sq_bb = fn.new_block("cp.sq");
+    after_bb = fn.new_block("cp.after");
+    inv_bb = fn.new_block("cp.inv");
+    keep_bb = fn.new_block("cp.keep");
+    gen_bb = fn.new_block("cp.gen");
+    one_bb = fn.new_block("cp.one");
+    gen2_bb = fn.new_block("cp.gen2");
+    azero_bb = fn.new_block("cp.azero");
+    calc_bb = fn.new_block("cp.calc");
+    chk_bb = fn.new_block("cp.chk");
+    done_bb = fn.new_block("cp.done");
+    whole = b.binary(
+        "and",
+        b.compare("eq", bi, zero),
+        b.binary(
+            "and",
+            b.compare("eq", br, self.libm("floor", [br])),
+            b.compare("le", self.f_abs(br), b.const_float(100.0, f64))
+        )
+    );
+    b.cond_branch(whole, int_bb, gen_bb);
+
+    b.position(int_bb);
+    n = b.convert(br, mir_int());
+    negative = b.compare("lt", n, b.const_int(0, mir_int()));
+    m = b.select(negative, b.binary("sub", b.const_int(0, mir_int()), n), n);
+    b.store(acc_r, one);
+    b.store(acc_i, zero);
+    b.store(cur_r, ar);
+    b.store(cur_i, ai);
+    b.store(mask, b.const_int(1, mir_int()));
+    b.branch(loop_bb);
+
+    b.position(loop_bb);
+    b.cond_branch(b.compare("ge", m, b.load(mask, mir_int())), body_bb, after_bb);
+
+    b.position(body_bb);
+    b.cond_branch(
+        b.compare(
+            "ne", b.binary("and", m, b.load(mask, mir_int())), b.const_int(0, mir_int())
+        ),
+        mul_bb,
+        sq_bb
+    );
+
+    b.position(mul_bb);
+    (mr, mi) = self.complex_prod(
+        b.load(acc_r, f64), b.load(acc_i, f64), b.load(cur_r, f64), b.load(cur_i, f64)
+    );
+    b.store(acc_r, mr);
+    b.store(acc_i, mi);
+    b.branch(sq_bb);
+
+    b.position(sq_bb);
+    b.store(mask, b.binary("shl", b.load(mask, mir_int()), b.const_int(1, mir_int())));
+    c_r = b.load(cur_r, f64);
+    c_i = b.load(cur_i, f64);
+    (sr, si) = self.complex_prod(c_r, c_i, c_r, c_i);
+    b.store(cur_r, sr);
+    b.store(cur_i, si);
+    b.branch(loop_bb);
+
+    b.position(after_bb);
+    b.cond_branch(negative, inv_bb, keep_bb);
+
+    b.position(inv_bb);
+    pw_r = b.load(acc_r, f64);
+    pw_i = b.load(acc_i, f64);
+    self.raise_if(
+        b.binary("and", b.compare("eq", pw_r, zero), b.compare("eq", pw_i, zero)),
+        "ZeroDivisionError",
+        "zero to a negative or complex power"
+    );
+    (qr, qi) = self.complex_quot(one, zero, pw_r, pw_i, False);
+    b.store(res_r, qr);
+    b.store(res_i, qi);
+    b.branch(chk_bb);
+
+    b.position(keep_bb);
+    b.store(res_r, b.load(acc_r, f64));
+    b.store(res_i, b.load(acc_i, f64));
+    b.branch(chk_bb);
+
+    b.position(gen_bb);
+    b.cond_branch(
+        b.binary("and", b.compare("eq", br, zero), b.compare("eq", bi, zero)),
+        one_bb,
+        gen2_bb
+    );
+
+    b.position(one_bb);
+    b.store(res_r, one);
+    b.store(res_i, zero);
+    b.branch(done_bb);
+
+    b.position(gen2_bb);
+    b.cond_branch(
+        b.binary("and", b.compare("eq", ar, zero), b.compare("eq", ai, zero)),
+        azero_bb,
+        calc_bb
+    );
+
+    b.position(azero_bb);
+    self.raise_if(
+        b.binary("or", b.compare("ne", bi, zero), b.compare("lt", br, zero)),
+        "ZeroDivisionError",
+        "zero to a negative or complex power"
+    );
+    b.store(res_r, zero);
+    b.store(res_i, zero);
+    b.branch(done_bb);
+
+    b.position(calc_bb);
+    vabs = self.libm("hypot", [ar, ai]);
+    length = self.libm("pow", [vabs, br]);
+    at = self.libm("atan2", [ai, ar]);
+    phase = b.binary("mul", at, br);
+    imaginary = b.compare("ne", bi, zero);
+    scaled = b.binary(
+        "mul", length, self.libm("exp", [b.binary("mul", b.negate(at), bi)])
+    );
+    turned = b.binary("add", phase, b.binary("mul", bi, self.libm("log", [vabs])));
+    length = b.select(imaginary, scaled, length);
+    phase = b.select(imaginary, turned, phase);
+    b.store(res_r, b.binary("mul", length, self.libm("cos", [phase])));
+    b.store(res_i, b.binary("mul", length, self.libm("sin", [phase])));
+    b.branch(chk_bb);
+
+    b.position(chk_bb);
+    self.raise_if(
+        b.binary(
+            "or", self.f_isinf(b.load(res_r, f64)), self.f_isinf(b.load(res_i, f64))
+        ),
+        "OverflowError",
+        "complex exponentiation"
+    );
+    b.branch(done_bb);
+
+    b.position(done_bb);
+    return self.complex_make(b.load(res_r, f64), b.load(res_i, f64));
 }
 
 impl MirLowering.complex_compare(

@@ -1169,6 +1169,26 @@ impl __jac_rt_bytearray_pop(ba: int, i: int) -> int {
     return value;
 }
 
+impl __jac_rt_bytearray_splice(ba: int, start: int, stop: int, data: ptr[u8], n: int) {
+    size = __mem_load_i64(ba + LIST_LEN);
+    held = 0;
+    if n > 0 {
+        held = malloc(n);
+        memmove(held, int(data), n);
+    }
+    grown = size - (stop - start) + n;
+    _bytearray_reserve(ba, grown);
+    items = __mem_load_i64(ba + LIST_DATA);
+    if size > stop {
+        memmove(items + start + n, items + stop, size - stop);
+    }
+    if n > 0 {
+        memmove(items + start, held, n);
+        free(held);
+    }
+    __mem_store_i64(ba + LIST_LEN, grown);
+}
+
 impl __jac_rt_bytearray_clear(ba: int) {
     __mem_store_i64(ba + LIST_LEN, 0);
 }

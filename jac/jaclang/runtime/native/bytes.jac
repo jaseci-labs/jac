@@ -158,6 +158,10 @@ def:pub __jac_rt_bytearray_extend(ba: int, data: ptr[u8], n: int);
 
 def:pub __jac_rt_bytearray_pop(ba: int, i: int) -> int;
 
+def:pub __jac_rt_bytearray_splice(
+    ba: int, start: int, stop: int, data: ptr[u8], n: int
+);
+
 def:pub __jac_rt_bytearray_clear(ba: int);
 
 def _byte(at: int) -> int;

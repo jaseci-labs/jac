@@ -1626,7 +1626,8 @@ impl MirLowering.key_slot_type(key_fn: MirValue, site: uni.UniNode) -> MirType {
     if key_type.kind == MirKind.STR {
         key_type = mir_str_ref();
     }
-    if self.elem_kind(key_type, site) == KIND_REF {
+    if self.elem_kind(key_type, site) == KIND_REF
+        and self.sort_kind(key_type, site) == KIND_REF {
         raise MirRefused(
             mir_refusal(
                 "call argument",

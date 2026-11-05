@@ -206,6 +206,17 @@ impl _elem_cmp(a: int, b: int, kind: int) -> int {
     if kind == KIND_ANY {
         return _any_cmp(a, b);
     }
+    if kind == KIND_REF {
+        ta = __jac_rt_elem_tag(a, KIND_REF);
+        tb = __jac_rt_elem_tag(b, KIND_REF);
+        if __jac_rt_any_order(ta, a, tb, b, ORDER_LT) {
+            return -1;
+        }
+        if __jac_rt_any_order(tb, b, ta, a, ORDER_LT) {
+            return 1;
+        }
+        return 0;
+    }
     if kind == KIND_FLOAT {
         fa = __bits_float(a);
         fb = __bits_float(b);

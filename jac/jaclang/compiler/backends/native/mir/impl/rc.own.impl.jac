@@ -16,6 +16,7 @@ impl MirOwnState.run {
                     MirOp.PTR_CAST,
                     MirOp.PTR_INT,
                     MirOp.OPT_GET,
+                    MirOp.OPT_MAKE,
                     MirOp.TUPLE_GET,
                     MirOp.ANY_TAG,
                     MirOp.ANY_PAYLOAD,

@@ -277,6 +277,8 @@ def _elem_equal(x: int, kx: int, y: int, ky: int) -> bool;
 
 def _uint_equal(x: int, kx: int, y: int, ky: int) -> bool;
 
+def _uint_less(x: int, kx: int, y: int, ky: int) -> bool;
+
 def _seq_equal(a: int, at: bool, b: int, bt: bool) -> bool;
 
 def _map_find(d: int, tag: int, payload: int) -> int;

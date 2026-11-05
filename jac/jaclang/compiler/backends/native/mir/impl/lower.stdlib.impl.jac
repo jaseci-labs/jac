@@ -7,7 +7,10 @@ impl MirLowering.stdlib_module(expr: uni.UniNode) -> (uni.Module | None) {
 
 impl MirLowering.stdlib_item_member(nd: uni.FuncCall) -> (uni.Ability | None) {
     callee = nd.callee_decl;
-    if isinstance(nd.target, uni.Name) and callee is None {
+    if isinstance(nd.target, uni.Name)
+        and not (
+            isinstance(callee, uni.Ability) and isinstance(callee.parent, uni.Module)
+        ) {
         return self.stdlib_member(nd.target);
     }
     if not isinstance(nd.target, uni.Name)
@@ -46,18 +49,19 @@ impl MirLowering.stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None) {
     if made is None {
         return None;
     }
-    if self.stdlib_result_arch(nd) is not None {
-        try {
-            wanted = self.expr_type(nd);
-        } except MirRefused {
-            return made;
-        }
-    } else {
+    try {
         wanted = self.expr_type(nd);
+    } except MirRefused {
+        return made;
     }
     if made.type is wanted
         or wanted.kind == MirKind.NONE
-        or made.type.kind == MirKind.NONE {
+        or made.type.kind == MirKind.NONE
+        or (
+            made.type.is_numeric()
+            and wanted.is_numeric()
+            and made.type.kind != wanted.kind
+        ) {
         return made;
     }
     return self.coerce(made, wanted, nd);
@@ -81,10 +85,53 @@ impl MirLowering.stdlib_member(nd: uni.Name) -> (uni.Ability | None) {
     return found if isinstance(found, uni.Ability) else None;
 }
 
+impl MirLowering.stdlib_glob_target(nd: uni.Name) -> (uni.Name | None) {
+    sym = nd.sym;
+    if sym is None
+        or sym.decl is None
+        or sym.decl.loc is None
+        or not sym.decl.loc.mod_path.endswith(".pyi") {
+        return None;
+    }
+    unit = self.stdlib_unit_at(sym.decl.loc.mod_path);
+    named = sym.decl.value if isinstance(sym.decl, uni.Name) else nd.value;
+    member = self.module_member(unit, named) if unit is not None else None;
+    if not isinstance(member, uni.Assignment)
+        or not member.target
+        or not isinstance(member.target[0], uni.Name) {
+        return None;
+    }
+    return member.target[0];
+}
+
+impl MirLowering.stdlib_glob(nd: uni.Name) -> (MirValue | None) {
+    target = self.stdlib_glob_target(nd);
+    if target is None {
+        return None;
+    }
+    place = self.global_place(target);
+    if place is None {
+        return None;
+    }
+    loaded = self.builder().load(place, self.place_elem(place));
+    try {
+        wanted = self.expr_type(nd);
+    } except MirRefused {
+        return loaded;
+    }
+    if wanted.kind != loaded.type.kind and mir_is_container(loaded.type) {
+        return loaded;
+    }
+    return self.coerce(loaded, wanted, nd);
+}
+
 impl MirLowering.stdlib_unit_at(path: str) -> (uni.Module | None) {
     name = bundled_stdlib_module_of(path);
     if not name {
         return None;
+    }
+    if name in ("posixpath", "ntpath", "genericpath") {
+        name = "os.path";
     }
     if name in self.stdlib_units {
         return self.stdlib_units[name];
@@ -147,11 +194,14 @@ impl MirLowering.stdlib_counterpart(
             }
         }
     }
-    for unit in units {
-        for elem in unit.body {
-            if isinstance(elem, uni.Archetype) and elem.name.value == wanted {
-                self.counterparts[id(scope)] = elem;
-                return elem;
+    names = [wanted] if not wanted.startswith("_") else [wanted, wanted.lstrip("_")];
+    for name in names {
+        for unit in units {
+            for elem in unit.body {
+                if isinstance(elem, uni.Archetype) and elem.name.value == name {
+                    self.counterparts[id(scope)] = elem;
+                    return elem;
+                }
             }
         }
     }
@@ -175,6 +225,32 @@ impl MirLowering.counterpart_type(t: (TypeBase | None)) -> (TypeBase | None) {
     }
     if not isinstance(t, ClassType) or t._shared is None {
         return t;
+    }
+    if t.is_instance() and t.private is not None and t.private.type_args {
+        args: list[TypeBase] = [];
+        moved = False;
+        for arg in t.private.type_args {
+            made_arg = self.counterpart_type(arg);
+            if made_arg is None or made_arg is arg {
+                args.append(arg);
+            } else {
+                args.append(made_arg);
+                moved = True;
+            }
+        }
+        if moved {
+            return ClassType(
+                _shared=t.shared,
+                private=ClassDetailsPrivate(
+                    type_args=args,
+                    ct_args=t.private.ct_args,
+                    alias_name=t.private.alias_name,
+                    literal_value=t.private.literal_value,
+                    distinct_key=t.private.distinct_key
+                ),
+                flags=t.flags
+            );
+        }
     }
     found = self.stdlib_counterpart(t.shared.symbol_table, t.shared.class_name);
     if found is None or found.name.sym is None {
@@ -238,10 +314,19 @@ impl MirLowering.stdlib_call(
     if made is None {
         return None;
     }
-    wanted = self.expr_type(nd);
+    try {
+        wanted = self.expr_type(nd);
+    } except MirRefused {
+        return made;
+    }
     if made.type is wanted
         or wanted.kind == MirKind.NONE
-        or made.type.kind == MirKind.NONE {
+        or made.type.kind == MirKind.NONE
+        or (
+            made.type.is_numeric()
+            and wanted.is_numeric()
+            and made.type.kind != wanted.kind
+        ) {
         return made;
     }
     return self.coerce(made, wanted, nd);

@@ -1139,6 +1139,11 @@ impl _seq_less(a: int, at: bool, b: int, bt: bool, or_equal: bool, op: int) -> b
         y = _seq_bits(b, i, bt);
         ky = _seq_kind(b, i, bt);
         if not _elem_equal(x, kx, y, ky) {
+            if (kx == KIND_UINT or ky == KIND_UINT)
+                and (kx == KIND_UINT or kx == KIND_INT)
+                and (ky == KIND_UINT or ky == KIND_INT) {
+                return _uint_less(x, kx, y, ky);
+            }
             return _any_less(
                 __jac_rt_elem_tag(x, kx),
                 __jac_rt_elem_payload(x, kx),
@@ -1654,6 +1659,15 @@ impl __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> i
     return __jac_rt_elem_box(
         _seq_bits(payload, index, is_tup), _seq_kind(payload, index, is_tup)
     );
+}
+
+impl _uint_less(x: int, kx: int, y: int, ky: int) -> bool {
+    x_big = kx == KIND_UINT and x < 0;
+    y_big = ky == KIND_UINT and y < 0;
+    if x_big != y_big {
+        return y_big;
+    }
+    return x < y;
 }
 
 impl _uint_equal(x: int, kx: int, y: int, ky: int) -> bool {

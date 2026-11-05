@@ -1021,6 +1021,13 @@ impl MirLowering.bytearray_store(
     b = self.builder();
     holder = self.spill(self.lower_expr(target.target));
     slice = target.right;
+    if isinstance(slice, uni.IndexSlice)
+        and slice.is_range
+        and len(slice.slices) == 1
+        and slice.slices[0].step is None {
+        self.bytearray_splice(holder, slice.slices[0], value_nd, site);
+        return;
+    }
     if not isinstance(slice, uni.IndexSlice)
         or slice.is_range
         or len(slice.slices) != 1
@@ -1031,6 +1038,39 @@ impl MirLowering.bytearray_store(
     at = self.byte_index(size, slice.slices[0].start, "bytearray index out of range");
     value = self.coerce(self.lower_expr(value_nd), mir_int(), value_nd);
     self.runtime("__jac_rt_bytearray_set", [holder, at, value]);
+}
+
+impl MirLowering.bytearray_splice(
+    holder: MirValue, part: uni.Slice, value_nd: uni.Expr, site: uni.UniNode
+) {
+    b = self.builder();
+    zero = b.const_int(0, mir_int());
+    (_, size) = self.byte_parts(holder);
+    bounds: list[MirValue] = [];
+    for (given, fallback) in ((part.start, zero), (part.stop, size)) {
+        if given is None {
+            bounds.append(fallback);
+            continue;
+        }
+        at = self.coerce(self.lower_expr(given), mir_int(), given);
+        shifted = b.select(b.compare("lt", at, zero), b.binary("add", at, size), at);
+        low = b.select(b.compare("lt", shifted, zero), zero, shifted);
+        bounds.append(b.select(b.compare("gt", low, size), size, low));
+    }
+    start = bounds[0];
+    stop = b.select(b.compare("lt", bounds[1], start), start, bounds[1]);
+    value = self.spill(self.lower_expr(value_nd));
+    if not self.is_byte_seq(value) {
+        raise MirRefused(
+            mir_refusal(
+                "subscript assignment",
+                f"bytearray slice of {value.type.render()}",
+                site
+            )
+        );
+    }
+    (data, count) = self.byte_parts(value);
+    self.runtime("__jac_rt_bytearray_splice", [holder, start, stop, data, count]);
 }
 
 impl MirLowering.bytes_arg(

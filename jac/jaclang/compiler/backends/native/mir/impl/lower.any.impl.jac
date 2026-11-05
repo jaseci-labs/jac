@@ -34,7 +34,9 @@ impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
             MirKind.BYTES,
             MirKind.BYTEARRAY,
             MirKind.TUPLE,
-            MirKind.FILE
+            MirKind.FILE,
+            MirKind.ITER,
+            MirKind.RANGE
         ) {
         return ANY_OBJ_TAG;
     }

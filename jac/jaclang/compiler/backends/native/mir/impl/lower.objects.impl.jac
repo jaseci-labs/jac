@@ -1847,6 +1847,27 @@ impl MirLowering.direct_method_call(
     return result;
 }
 
+impl MirLowering.static_method_call(
+    nd: uni.FuncCall, arch: uni.Archetype, name: str
+) -> (MirValue | None) {
+    method = self.find_method(arch, name);
+    if method is None or not method.is_static or id(method) in self.templates {
+        return None;
+    }
+    decl = self.decls.get(id(method)) or self.foreign_static_decl(method);
+    if decl is None or decl.self_type is not None {
+        return None;
+    }
+    args = self.bound_args(nd, method, False);
+    if len(args) != len(decl.params) {
+        raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
+    }
+    made = self.builder().call(
+        decl.symbol, self.bound_values(list(args), decl.params), decl.ret
+    );
+    return made if made is not None else self.builder().const_bool(False);
+}
+
 impl MirLowering.unbound_method(
     nd: uni.FuncCall, arch: uni.Archetype, name: str
 ) -> (MirValue | None) {

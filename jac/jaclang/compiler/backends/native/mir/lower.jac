@@ -524,6 +524,7 @@ obj MirLowering {
     def expr_type(nd: uni.Expr) -> MirType;
     def redeclare_local(target: uni.Name, tag: uni.SubTag);
     def retype_from_value(target: uni.Name, value: MirValue);
+    def adopt_value_type(target: uni.Name, value: MirValue);
     def narrowed_from_any(nd: uni.Expr) -> bool;
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
@@ -682,6 +683,11 @@ obj MirLowering {
     def complex_quot(
         ar: MirValue, ai: MirValue, br: MirValue, bi: MirValue, real: bool
     ) -> tuple[MirValue, MirValue];
+
+    def libm(name: str, args: list[MirValue]) -> MirValue;
+    def complex_pow(
+        ar: MirValue, ai: MirValue, br: MirValue, bi: MirValue
+    ) -> MirValue;
 
     def complex_arith(
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
@@ -857,6 +863,15 @@ obj MirLowering {
     def wrapping_call(nd: uni.FuncCall, name: str, args: list[uni.Expr]) -> MirValue;
     def checked_cast(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def struct_call(nd: uni.FuncCall, name: str) -> MirValue;
+    def struct_function(target: uni.Expr) -> str;
+    def struct_put_fields(
+        fields: list[tuple[str, int, int]],
+        values: list[uni.Expr],
+        data: MirValue,
+        start: MirValue,
+        big_flag: MirValue
+    );
+
     def int_bytes_call(
         nd: uni.FuncCall, target: uni.AtomTrailer, name: str
     ) -> (MirValue | None);
@@ -870,6 +885,7 @@ obj MirLowering {
     ) -> (MirValue | None);
 
     def nullable_payload(t: MirType) -> bool;
+    def absent_value(t: MirType, site: uni.UniNode) -> MirValue;
     def sort_kind(t: MirType, site: uni.UniNode) -> int;
     def container_method(
         receiver: MirValue, name: str, nd: uni.FuncCall
@@ -1014,6 +1030,10 @@ obj MirLowering {
 
     def object_method(
         nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
+    ) -> (MirValue | None);
+
+    def static_method_call(
+        nd: uni.FuncCall, arch: uni.Archetype, name: str
     ) -> (MirValue | None);
 
     def unbound_method(
@@ -1462,6 +1482,10 @@ obj MirLowering {
         arg: (uni.Expr | None), site: uni.UniNode
     ) -> tuple[MirValue, MirValue, MirValue];
 
+    def bytearray_splice(
+        holder: MirValue, part: uni.Slice, value_nd: uni.Expr, site: uni.UniNode
+    );
+
     def bytes_arg(
         arg: (uni.Expr | None), site: uni.UniNode
     ) -> tuple[MirValue, MirValue];
@@ -1712,6 +1736,8 @@ obj MirLowering {
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
     def stdlib_item_member(nd: uni.FuncCall) -> (uni.Ability | None);
     def stdlib_unit_named(name: str) -> (uni.Module | None);
+    def stdlib_glob_target(nd: uni.Name) -> (uni.Name | None);
+    def stdlib_glob(nd: uni.Name) -> (MirValue | None);
     def stdlib_counterpart(
         scope: (uni.UniScopeNode | None), wanted: str
     ) -> (uni.Archetype | None);

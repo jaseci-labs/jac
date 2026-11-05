@@ -1054,13 +1054,16 @@ impl MirLowering.dict_method(
     if name == "setdefault" and len(args) in (1, 2) {
         held = self.spill(d);
         key = self.spill(self.lower_expr(args[0]));
+        absent = len(args) == 1
+            and (value_type.kind == MirKind.STR or self.nullable_payload(value_type));
         fallback = self.spill(
-            self.coerce(
-                self.lower_expr(args[1]) if len(args) == 2 else self.none_value(),
-                value_type,
-                nd
-            )
+            self.coerce(self.lower_expr(args[1]), value_type, nd)
+                if len(args) == 2
+                else self.absent_value(value_type, nd)
         );
+        fallback_bits = b.const_int(0, mir_int())
+            if absent
+            else self.to_bits(fallback, value_type, nd);
         found = self.runtime_value(
             "__jac_rt_dict_find", [held, self.to_bits(key, key_type, args[0]), key_kind]
         );
@@ -1074,7 +1077,7 @@ impl MirLowering.dict_method(
             [
                 held,
                 self.to_bits(key, key_type, args[0]),
-                self.to_bits(fallback, value_type, nd),
+                fallback_bits,
                 key_kind,
                 value_kind
             ]
@@ -2225,4 +2228,11 @@ impl MirLowering.dict_pairwise_eq(left: MirValue, right: MirValue) -> MirValue {
     b.branch(done);
     b.position(done);
     return b.load(verdict, mir_bool());
+}
+
+impl MirLowering.absent_value(t: MirType, site: uni.UniNode) -> MirValue {
+    if t.kind == MirKind.STR or self.nullable_payload(t) {
+        return self.builder().const_null(t);
+    }
+    return self.coerce(self.none_value(), t, site);
 }

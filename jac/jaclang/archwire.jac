@@ -10133,6 +10133,7 @@ graph import compiler {
             | passes.layout_pass.enum_class_of { ClassType },
         backends.native.mir.lower {
             AnyType,
+            ClassDetailsPrivate,
             ClassType,
             EnumMemberType,
             FunctionType,
@@ -14814,7 +14815,7 @@ graph import runtime.na_stdlib {
         string { is_id_start, is_word },
     ]
     _bz2_native ++> bz2 { bz2_compress, bz2_decompress }
-    _csprng_native ++> secrets | uuid { csprng_bytes }
+    _csprng_native ++> random | secrets | uuid { csprng_bytes }
     _datetime_native ++> datetime {
         dt_epoch_us,
         dt_fmt_buf,
@@ -14851,18 +14852,21 @@ graph import runtime.na_stdlib {
         termios { errno_message, last_errno },
     ]
     _errno_platform ++> _errno_native { errno_address }
-    _fcntl_native ++> fcntl {
-        _F_GETFD,
-        _F_GETFL,
-        _F_SETFD,
-        _F_SETFL,
-        _F_SETOWN,
-        _O_APPEND,
-        _O_ASYNC,
-        _O_NONBLOCK,
-        do_fcntl,
-        do_ioctl
-    }
+    _fcntl_native ++> [
+        _os_native { _O_APPEND, _O_NONBLOCK },
+        fcntl {
+            _F_GETFD,
+            _F_GETFL,
+            _F_SETFD,
+            _F_SETFL,
+            _F_SETOWN,
+            _O_APPEND,
+            _O_ASYNC,
+            _O_NONBLOCK,
+            do_fcntl,
+            do_ioctl
+        },
+    ]
     _fd_native ++> _replace_native { AT_FDCWD }
     _file_native ++> [
         gettext | mimetypes | pathlib | uuid | zoneinfo { read_file_bytes },
@@ -15252,7 +15256,8 @@ graph import runtime.native {
             __jac_rt_any_box,
             __jac_rt_any_equal,
             __jac_rt_any_order,
-            __jac_rt_elem_box
+            __jac_rt_elem_box,
+            __jac_rt_elem_tag
         },
     ]
     bytes ++> anys { __jac_rt_bytes_has, __jac_rt_bytes_repr }
