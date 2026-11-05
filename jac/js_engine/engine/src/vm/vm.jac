@@ -41599,7 +41599,47 @@ def _vm_box_string_units(boxed: JSValue, raw: str) -> None {
 }
 
 """Object.keys — EnumerableOwnProperties kind=key (§20.1.2.17 / §7.3.23)."""
+# Object.keys per shape id for the objects whose answer is a function of the
+# shape (_vm_okeys_sid); shapes are immutable and never freed.
+glob _VM_OKEYS: dict[int, list[JSValue]] = {};
+
+"""The shape id Object.keys(jsobj) can be cached under — an ordinary
+shape-mode object of data properties only (no class, binary backing, element
+storage, accessor or module namespace: its own keys and their [[Enumerable]]
+are the shape's, reading them observes nothing) — else -1."""
+def _vm_okeys_sid(jsobj: JSValue) -> int {
+    if not jsv_is_object_cell(jsobj) {
+        return -1;
+    }
+    ks_id: int = jsv_to_table_id(jsobj);
+    if ks_id <= 0 or ks_id > jo_count() {
+        return -1;
+    }
+    if jo_mode(ks_id) != MAP_MODE_SHAPE
+        or jo_elems_kind(ks_id) != ELEMS_NONE
+        or jo_class_id(ks_id) != 0
+        or jo_bkind(ks_id) != 0
+        or (jo_cell_flags(ks_id) & FLAG_MODULE_NS) != 0
+        or not js_object_array_is_dataonly_fast(jsobj) {
+        return -1;
+    }
+    return jo_shape_id(ks_id);
+}
+
+"""A fresh array of shape `sid`'s cached Object.keys."""
+def _vm_okeys_array(sid: int) -> JSValue {
+    ka_out: list[JSValue] = [];
+    for ka_v in _VM_OKEYS[sid] {
+        ka_out.append(ka_v);
+    }
+    return js_array_create(ka_out);
+}
+
 def _vm_object_keys(vm: VM, jsobj: JSValue) -> JSValue {
+    ok_sid: int = _vm_okeys_sid(jsobj);
+    if ok_sid >= 0 and ok_sid in _VM_OKEYS {
+        return _vm_okeys_array(ok_sid);
+    }
     if jsv_is_null(jsobj) or jsv_is_undefined(jsobj) {
         vm_throw_native(make_type_error("Cannot convert undefined or null to object"));
         return js_undefined();
@@ -41648,6 +41688,13 @@ def _vm_object_keys(vm: VM, jsobj: JSValue) -> JSValue {
             return js_undefined();
         }
         items.append(jsv_from_string_id(kid));
+    }
+    if ok_sid >= 0 {
+        ok_keep: list[JSValue] = [];
+        for ok_r in items {
+            ok_keep.append(ok_r);
+        }
+        _VM_OKEYS[ok_sid] = ok_keep;
     }
     return js_array_create(items);
 }
@@ -48398,7 +48445,8 @@ def _nf_init {
         NATIVE_KIND_STR_INDEXOF,
         NATIVE_KIND_STR_STARTSWITH,
         NATIVE_KIND_MATH_FLOOR,
-        NATIVE_KIND_NUM_TOSTRING
+        NATIVE_KIND_NUM_TOSTRING,
+        NATIVE_KIND_OBJ_STATIC_KEYS
     ];
     nd_max: int = 0;
     for nd_k in nd_kinds {
@@ -53276,6 +53324,14 @@ def _reg_native_direct(slot: int, this_val: JSValue, frame: CallFrame, argpc: in
                 or (jsv_is_int32(nd_a0) and jsv_to_int32(nd_a0) == 10)
             ) {
             return jsv_from_string_id(str_intern_index(jsv_to_int32(this_val)));
+        }
+    } elif slot == 18 {
+        # Object.keys of an object whose shape caches the answer (_VM_OKEYS)
+        if argc >= 1 {
+            nd_ks: int = _vm_okeys_sid(nd_a0);
+            if nd_ks >= 0 and nd_ks in _VM_OKEYS {
+                return _vm_okeys_array(nd_ks);
+            }
         }
     }
     return jsv_hole();
