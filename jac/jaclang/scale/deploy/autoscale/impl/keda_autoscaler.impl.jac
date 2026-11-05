@@ -1067,7 +1067,7 @@ impl KEDAAutoscaler._build_http_scaled_object {
         digest = hashlib.sha256(scaled_obj_name.encode()).hexdigest()[:10];
         scaled_obj_spec["advanced"] = {
             "horizontalPodAutoscalerConfig": {
-                "name": f"{hpa_name[:52].rstrip('-')}-{digest}"
+                "name": f"{hpa_name[:52].rstrip('-.')}-{digest}"
             }
         };
     }
