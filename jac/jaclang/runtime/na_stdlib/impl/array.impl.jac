@@ -275,20 +275,6 @@ impl array.extend(seq: any) {
         }
         return;
     }
-    if isinstance(seq, set) {
-        st = seq as set;
-        for v in st {
-            self.append(v);
-        }
-        return;
-    }
-    if isinstance(seq, frozenset) {
-        fs = seq as frozenset;
-        for v in fs {
-            self.append(v);
-        }
-        return;
-    }
     if isinstance(seq, str) {
         t = seq as str;
         for ch in t {
