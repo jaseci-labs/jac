@@ -90,8 +90,21 @@ def install_tests(python: str, cache: Path) -> str {
     stdlib = Path(
         probe(python, "import sysconfig; print(sysconfig.get_path('stdlib'))")
     );
-    target = stdlib / "test";
-    if (target / "libregrtest").is_dir() {
+    targets = {
+        "Lib/test/": stdlib / "test",
+        # CPython's runtime build omits documentation data. The regression
+        # suite's pydoc tests need the pinned documentation tables as well as
+        # Lib/test; these files are installed only into the ephemeral
+        # compatibility-test interpreter tree.
+        "Lib/pydoc_data/": stdlib / "pydoc_data"
+    };
+    missing = {
+        prefix: target
+        for (prefix, target) in targets.items()
+        if not target.is_dir()
+            or (prefix == "Lib/test/" and not (target / "libregrtest").is_dir())
+    };
+    if not missing {
         return version;
     }
     archive = cache / f"Python-{pin['version']}-{pin['sha256']}.tgz";
@@ -106,19 +119,24 @@ def install_tests(python: str, cache: Path) -> str {
         }
         archive.write_bytes(data);
     }
-    prefix = f"Python-{pin['version']}/Lib/test/";
+    archive_prefix = f"Python-{pin['version']}/";
     with tempfile.TemporaryDirectory() as scratch {
         with tarfile.open(archive, mode="r:gz") as bundle {
-            members = [
-                m
-                for m in bundle
-                if m.name.startswith(prefix)
-            ];
-            bundle.extractall(scratch, members=members, filter="data");
+            for prefix in missing {
+                members = [
+                    m
+                    for m in bundle
+                    if m.name.startswith(archive_prefix + prefix)
+                ];
+                bundle.extractall(scratch, members=members, filter="data");
+            }
         }
-        shutil.copytree(Path(scratch) / prefix, target);
+        for (prefix, target) in missing.items() {
+            source = Path(scratch) / archive_prefix / prefix.rstrip("/");
+            shutil.copytree(source, target);
+        }
     }
-    print(f"Installed the CPython {version} test package into {target}", flush=True);
+    print(f"Installed pinned CPython {version} test support into {stdlib}", flush=True);
     return version;
 }
 
