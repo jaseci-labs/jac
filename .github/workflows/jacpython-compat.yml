@@ -62,6 +62,9 @@ jobs:
       fail-fast: false
       matrix:
         python: [cpython, jacpython]
+    # The JacPython native lowering step was terminated after exactly 30
+    # minutes on the Blacksmith runner even though this job allows five hours.
+    # GitHub-hosted runners honor the job timeout for this long-running build.
     runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 300
     steps:
