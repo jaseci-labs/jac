@@ -73,11 +73,7 @@ impl JacClientCompiler.compile(
 ) -> tuple[list[str], list[str]] {
     self.input_files = {};
     self.client_modules = {};
-    project_root = self.project_dir.resolve();
-    entry_root = module_path.resolve().parent;
-    source_root = (
-        project_root if entry_root.is_relative_to(project_root) else entry_root
-    );
+    source_root = client_source_root(self.project_dir, module_path);
     self.jac_compiler.source_root = source_root;
     self.emit_prelude();
     artifact = self.jac_compiler.compile_module(module_path);

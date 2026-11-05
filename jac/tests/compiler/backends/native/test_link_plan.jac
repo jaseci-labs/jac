@@ -1614,6 +1614,7 @@ test "a unit in an import cycle can lower again" {
             assert session.lower(first) is not None;
         } finally {
             registry.session = None;
+            session.close();
         }
     }
 }

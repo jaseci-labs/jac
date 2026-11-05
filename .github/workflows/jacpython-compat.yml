@@ -38,6 +38,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 # A push cancels the run in flight; adding some other label must not, so that
 # (job-less) run gets a group of its own.
@@ -75,6 +76,7 @@ jobs:
         uses: ./.github/actions/setup-jac
         with:
           need-build-inputs: ${{ matrix.python == 'jacpython' }}
+          bytecode-kit: "true"
 
       - name: Read the pinned CPython release
         id: pin
@@ -178,7 +180,7 @@ jobs:
 
   compare:
     needs: suite
-    runs-on: ${{ inputs.runner || 'blacksmith-8vcpu-ubuntu-2404' }}
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
