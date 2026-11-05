@@ -7,6 +7,9 @@ impl MirLowering.stdlib_module(expr: uni.UniNode) -> (uni.Module | None) {
 
 impl MirLowering.stdlib_item_member(nd: uni.FuncCall) -> (uni.Ability | None) {
     callee = nd.callee_decl;
+    if isinstance(nd.target, uni.Name) and callee is None {
+        return self.stdlib_member(nd.target);
+    }
     if not isinstance(nd.target, uni.Name)
         or not isinstance(callee, uni.Ability)
         or not isinstance(callee.parent, uni.Module)
@@ -28,7 +31,7 @@ impl MirLowering.stdlib_result_arch(nd: uni.UniNode) -> (uni.Archetype | None) {
     if member is None {
         return None;
     }
-    made = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(member));
+    made = self.declared_type(self.ability_sym(member));
     return self.arch_of_type(made.return_type)
         if isinstance(made, FunctionType)
         else None;
@@ -180,7 +183,7 @@ impl MirLowering.counterpart_type(t: (TypeBase | None)) -> (TypeBase | None) {
     if found is None or found.name.sym is None {
         return t;
     }
-    made = self.prog.get_type_evaluator().get_type_of_symbol(found.name.sym);
+    made = self.declared_type(found.name.sym);
     if not isinstance(made, ClassType) {
         return t;
     }
