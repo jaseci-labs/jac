@@ -12,10 +12,12 @@ import from unittest.mock { AsyncMock, patch }
 
 glob WATCHED_LOGGERS: tuple[str, ...] = (
          "jaclang.serve",
-         "jaclang.scale.server.webhook_ext"
+         "jaclang.scale.server.webhook_ext",
+         "jaclang.server.serving.app"
      );
 
 def _with_capture(send: Callable[[any], any]) -> tuple[any, list[any]] {
+    client = make_client("error_paths.jac");
     watched = [logging.getLogger(name) for name in WATCHED_LOGGERS];
     saved = [(lg, lg.level, lg.disabled) for lg in watched];
     capture = MemoryHandler(10000);
@@ -26,7 +28,6 @@ def _with_capture(send: Callable[[any], any]) -> tuple[any, list[any]] {
         lg.disabled = False;
         lg.addHandler(capture);
     }
-    client = make_client("error_paths.jac");
     try {
         resp = send(client);
         return (resp, list(capture.buffer));
@@ -159,9 +160,11 @@ test "an unhandled server failure stays in the log, off the wire" {
             );
         }
     }
-    (resp, _records) = _with_capture(send);
+    (resp, records) = _with_capture(send);
     assert resp.status_code == 500 , resp.text;
     assert resp.json() == {"error": "Internal Server Error"} , resp.text;
+    logged = [r.getMessage() for r in records];
+    assert any("Traceback" in m and "Root anchor" in m for m in logged) , logged;
 }
 
 test "webhook exception: opaque failure on the wire, one ERROR record in the log" {
