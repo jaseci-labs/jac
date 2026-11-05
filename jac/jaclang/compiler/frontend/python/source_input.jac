@@ -85,7 +85,7 @@ def decode_source_value(source: ptr[PyObject], filename: str = "<string>") -> st
                         message, filename=filename, lineno=line, text=source_text
                     );
                 }
-                raise syntax_failure("(unicode error) " + detail, filename="<string>");
+                raise syntax_failure(detail, filename=filename);
             }
             text = take_buffer(decoded).decode("utf-8", "surrogatepass");
         } finally {
