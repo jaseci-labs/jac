@@ -211,6 +211,9 @@ test "only a caller with no root answers 401, whatever a program's error says" {
             }
         }
         assert resp.status_code == 401 , f"guest with no root: {resp.text}";
+        err = resp.json()["error"];
+        assert (err["code"], err["message"])
+            == ("UNAUTHORIZED", "Unauthorized: unknown user") , err;
     } finally {
         client.close();
     }
