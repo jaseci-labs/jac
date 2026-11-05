@@ -263,6 +263,17 @@ test "a target too long for KEDA's derived HPA name gets a valid, stable and dis
         != name , "two targets must not share an HPA";
 }
 
+test "a long target cut right after a dot still gets a valid HPA name" {
+    target = "a" * 42 + ".b";
+    assert ("keda-hpa-" + target)[:52].endswith(".");
+    name = _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"];
+    label = r"[a-z0-9]([-a-z0-9]*[a-z0-9])?";
+    assert len(name) <= 63 , name;
+    assert re.fullmatch(label + r"(\." + label + r")*", name) , name;
+}
+
 test "a target whose derived HPA name fits keeps KEDA's own name" {
     assert len("keda-hpa-" + "a" * 36 + "-http-scaledobject") == 63;
     assert "advanced" not in _applied_scaled_object_spec("a" * 36);
