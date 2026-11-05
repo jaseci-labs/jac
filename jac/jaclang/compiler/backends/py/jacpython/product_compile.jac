@@ -25,7 +25,26 @@ def compile_source(
     if tree is None {
         return py_error("SyntaxError", "invalid syntax");
     }
-    return cpy_ast_compile(tree, filename, flags, optimize);
+    try {
+        return cpy_ast_compile(tree, filename, flags, optimize);
+    } except syntax_failure as error {
+        if error.text is not None {
+            raise error;
+        }
+        lines = split_source_lines(source);
+        line = error.lineno;
+        text = lines[line - 1] if line > 0 and line <= len(lines) else None;
+        raise syntax_failure(
+            error.msg,
+            filename=error.filename if error.filename != "<unknown>" else filename,
+            lineno=error.lineno,
+            offset=error.offset,
+            text=text,
+            end_lineno=error.end_lineno,
+            end_offset=error.end_offset,
+            kind=error.kind
+        );
+    }
 }
 
 def compile_ast(
