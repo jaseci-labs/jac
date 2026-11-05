@@ -489,7 +489,27 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
             f"running this deploy ({pinned})."
         );
     }
-    stage_root = _stage_app(base, sanitized_jac_toml(base), client_build_sources(base));
+    sources = client_build_sources(base);
+    sanitized = sanitized_jac_toml(base);
+    tomls = nested_sanitized_tomls(base);
+    key = client_input_digest(
+        base,
+        sources,
+        Path(shutil.which(jac_bin) or jac_bin).read_bytes(),
+        entry_rel.as_posix(),
+        sanitized,
+        tomls
+    );
+    cached = cached_client_dist(base, key);
+    if cached is not None {
+        _install_client_dist(str(cached), project_dir);
+        console.print(
+            f"Reusing the client bundle built from unchanged inputs ({key[:12]}); "
+            "skipping the client build."
+        );
+        return;
+    }
+    stage_root = _stage_app(base, sanitized, sources, tomls);
     stage = str(stage_root / "app");
     dist_candidates = self._client_dist_candidates(stage, entry_rel);
     try {
@@ -581,22 +601,29 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
                 f"({client_entry}); the gateway would have nothing to serve."
             );
         }
-        target = os.path.join(project_dir, ".jac", "client", "dist");
-        incoming = target + ".incoming";
-        outgoing = target + ".outgoing";
-        os.makedirs(os.path.dirname(target), exist_ok=True);
-        shutil.rmtree(incoming, ignore_errors=True);
-        shutil.rmtree(outgoing, ignore_errors=True);
-        shutil.copytree(dist, incoming);
-        if os.path.isdir(target) {
-            os.replace(target, outgoing);
-        }
-        os.replace(incoming, target);
-        shutil.rmtree(outgoing, ignore_errors=True);
+        _install_client_dist(dist, project_dir);
+        remember_client_dist(base, key, dist);
     } finally {
         remove_stage_root(stage_root);
     }
     console.print("Client bundle built; shipping it to the gateway pod.");
+}
+
+impl _install_client_dist(dist: str, project_dir: str) {
+    import os;
+    import shutil;
+    target = os.path.join(project_dir, ".jac", "client", "dist");
+    incoming = target + ".incoming";
+    outgoing = target + ".outgoing";
+    os.makedirs(os.path.dirname(target), exist_ok=True);
+    shutil.rmtree(incoming, ignore_errors=True);
+    shutil.rmtree(outgoing, ignore_errors=True);
+    shutil.copytree(dist, incoming);
+    if os.path.isdir(target) {
+        os.replace(target, outgoing);
+    }
+    os.replace(incoming, target);
+    shutil.rmtree(outgoing, ignore_errors=True);
 }
 
 impl ManifestBuilder._client_dist_candidates(stage: str, entry_rel: any) -> list[str] {
