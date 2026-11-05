@@ -1191,11 +1191,12 @@ native layout records the emitted name separately from its source-level key.
   not provided; `fromfile`/`tofile` take a file-like `any` receiver whose
   method calls na cannot lower, so both stay Python-only on the native lane
   (calling them from native code is a lowering error, not a runtime one).
-  Constructor/`extend` accept `list`, `array`, `bytes`, `bytearray`, `set`,
-  `frozenset`, and `str` (iterated element-wise, so `str` fails coercion
-  like CPython); `tuple`, `range`, `dict`, generators, and `memoryview`
-  cannot cross the `any` boundary or expose iterable elements natively and
-  stay Python-only -- non-iterables raise CPython's
+  Constructor/`extend` accept `list`, `array`, `bytes`, `bytearray`, and
+  `str` (iterated element-wise, so `str` fails coercion like CPython);
+  `set`/`frozenset` storage is element-typed so `any` reads the wrong
+  slots, `tuple`/`range` have no `any` box, `dict` element views are
+  unsupported, and generators/`memoryview` have no detectable runtime
+  shape -- all stay Python-only. Non-iterables raise CPython's
   `'<type>' object is not iterable`.
 - **`binascii.jac`** (Mechanism B over the raw-buffer intrinsics) --
   `hexlify`/`unhexlify`/`a2b_hex`/`b2a_hex`, `a2b_base64`/`b2a_base64`
