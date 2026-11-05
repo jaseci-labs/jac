@@ -1,11 +1,11 @@
 {
   "summary": {
-    "same": 50,
-    "refused": 78,
-    "fails": 0,
+    "same": 54,
+    "refused": 74,
+    "fails": 1,
     "differs": 1,
     "hangs": 0,
-    "crashes": 1,
+    "crashes": 0,
     "skipped": 58
   },
   "programs": {
@@ -167,11 +167,11 @@
     },
     "tests/language/fixtures/abc_check.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "reason": "E5092 Native lowering failed for attribute 'Circle.radius'"
     },
     "tests/language/fixtures/anonymous_ability_test.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/arch_create_util.jac": {
       "class": "same"
@@ -187,8 +187,7 @@
       "class": "same"
     },
     "tests/language/fixtures/as_cast.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for builtin call 'sum'"
+      "class": "same"
     },
     "tests/language/fixtures/as_cast_precedence.jac": {
       "class": "same"
@@ -199,11 +198,11 @@
     },
     "tests/language/fixtures/assign_compr.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for subscript/index access '[ListVal]'"
+      "reason": "E5092 Native lowering failed for subscript 'AssignCompr'"
     },
     "tests/language/fixtures/assign_compr_dup.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for subscript/index access '[ListVal]'"
+      "reason": "E5092 Native lowering failed for subscript 'AssignCompr'"
     },
     "tests/language/fixtures/async_ability.jac": {
       "class": "refused",
@@ -226,14 +225,14 @@
     },
     "tests/language/fixtures/bidirectional_edge_traversal.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for event ability 'travel_generic.visit_generic'"
+      "reason": "E5092 Native lowering failed for attribute access 'any'"
     },
     "tests/language/fixtures/blankwithentry.jac": {
       "class": "same"
     },
     "tests/language/fixtures/builtin_printgraph.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for subscript/index access 'b'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/builtin_printgraph_json.jac": {
       "class": "skipped",
@@ -249,11 +248,11 @@
     },
     "tests/language/fixtures/chandra_bugs.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for tuple unpacking 'TupleVal'"
+      "reason": "E5092 Native lowering failed for assignment 'an any value into mydict, inferred as dict<str.ref, int>'"
     },
     "tests/language/fixtures/chandra_bugs2.jac": {
       "class": "refused",
-      "reason": "E5090 Native pathway does not yet support Python module import 're'"
+      "reason": "E5092 Native lowering failed for name 'apple'"
     },
     "tests/language/fixtures/check_diag_brackets_e0049.jac": {
       "class": "skipped",
@@ -269,7 +268,7 @@
     },
     "tests/language/fixtures/circle.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "reason": "E5092 Native lowering failed for attribute 'Circle.radius'"
     },
     "tests/language/fixtures/circle_clean.jac": {
       "class": "same"
@@ -279,7 +278,7 @@
     },
     "tests/language/fixtures/cls_method.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for method '_'"
+      "reason": "E5092 Native lowering failed for decorator 'on method my_method'"
     },
     "tests/language/fixtures/concurrency.jac": {
       "class": "skipped",
@@ -324,7 +323,7 @@
     },
     "tests/language/fixtures/deep_walker_chain.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/deferred_field.jac": {
       "class": "same"
@@ -334,7 +333,7 @@
     },
     "tests/language/fixtures/del_dead_anchor.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for event ability 'Sweep.look'"
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
     },
     "tests/language/fixtures/del_semantics.jac": {
       "class": "refused",
@@ -361,7 +360,7 @@
     },
     "tests/language/fixtures/edge_node_walk.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/edge_ops.jac": {
       "class": "refused",
@@ -369,7 +368,7 @@
     },
     "tests/language/fixtures/edges_walk.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/edgetypeissue.jac": {
       "class": "refused",
@@ -377,15 +376,15 @@
     },
     "tests/language/fixtures/entry_exit.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/enum_inside_archtype.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'AtomTrailer'"
+      "reason": "E5092 Native lowering failed for attribute 'outer.color'"
     },
     "tests/language/fixtures/enum_typed_base.jac": {
       "class": "refused",
-      "reason": "E5090 Native pathway does not yet support comparison 'i64 against i8*'"
+      "reason": "E5092 Native lowering failed for enum 'Crate'"
     },
     "tests/language/fixtures/err_runtime.jac": {
       "class": "skipped",
@@ -418,7 +417,7 @@
     },
     "tests/language/fixtures/funccall_genexpr.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for function '_'"
+      "reason": "E5092 Native lowering failed for conversion 'iter<int> to any'"
     },
     "tests/language/fixtures/gendot_bubble_sort.jac": {
       "class": "refused",
@@ -439,16 +438,15 @@
       "class": "same"
     },
     "tests/language/fixtures/hash_init_check.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "class": "same"
     },
     "tests/language/fixtures/hashcheck.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for field assignment 'b'"
+      "reason": "E5092 Native lowering failed for attribute access 'any'"
     },
     "tests/language/fixtures/hashcheck_dup.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for field assignment 'b'"
+      "reason": "E5092 Native lowering failed for attribute access 'any'"
     },
     "tests/language/fixtures/hello.jac": {
       "class": "same"
@@ -462,19 +460,18 @@
     },
     "tests/language/fixtures/ignore.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/ignore_dup.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/iife_functions_client.jac": {
       "class": "skipped",
       "reason": "the Python tier fails"
     },
     "tests/language/fixtures/implicit_return.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "class": "same"
     },
     "tests/language/fixtures/index_slice.jac": {
       "class": "same"
@@ -510,7 +507,7 @@
     },
     "tests/language/fixtures/lambda_decorator_arg.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "reason": "E5092 Native lowering failed for conversion 'fn<class *, class *> to class *'"
     },
     "tests/language/fixtures/lambda_decorator_has_combo.jac": {
       "class": "refused",
@@ -518,7 +515,7 @@
     },
     "tests/language/fixtures/lambda_default_arg.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "reason": "E5092 Native lowering failed for call 'construction through type'"
     },
     "tests/language/fixtures/lambda_enum_decorator.jac": {
       "class": "refused",
@@ -526,15 +523,15 @@
     },
     "tests/language/fixtures/lambda_func_deco_body_combo.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "reason": "E5092 Native lowering failed for conversion 'fn<class *, class *> to class *'"
     },
     "tests/language/fixtures/lambda_has_default.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "reason": "E5092 Native lowering failed for call 'construction through type'"
     },
     "tests/language/fixtures/lambda_method_body.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "reason": "E5092 Native lowering failed for type '<Unknown>'"
     },
     "tests/language/fixtures/lambda_per_instance_default.jac": {
       "class": "same"
@@ -544,7 +541,7 @@
     },
     "tests/language/fixtures/match_class_pattern.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for function '_'"
+      "reason": "E5092 Native lowering failed for match pattern 'class pattern of a non-archetype'"
     },
     "tests/language/fixtures/match_multi_ex.jac": {
       "class": "same"
@@ -559,7 +556,7 @@
     },
     "tests/language/fixtures/node_del.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for statement 'Archetype'"
+      "reason": "E5092 Native lowering failed for name 'printgraph'"
     },
     "tests/language/fixtures/node_trigger.jac": {
       "class": "same"
@@ -578,16 +575,16 @@
       "class": "same"
     },
     "tests/language/fixtures/params/test_complex_params.jac": {
-      "class": "crashes",
-      "reason": "the program"
+      "class": "fails",
+      "reason": "expected bool, got float"
     },
     "tests/language/fixtures/params/test_failing_kwonly.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for call through a value '_'"
+      "reason": "E5092 Native lowering failed for closure 'python_keyword_conflicts parameters'"
     },
     "tests/language/fixtures/params/test_failing_posonly.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'Name'"
+      "reason": "E5092 Native lowering failed for call argument 'keyword'"
     },
     "tests/language/fixtures/params/test_failing_varargs.jac": {
       "class": "refused",
@@ -598,7 +595,7 @@
     },
     "tests/language/fixtures/prop_class_setter.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "reason": "E5092 Native lowering failed for attribute 'Gauge._level'"
     },
     "tests/language/fixtures/prop_multi.jac": {
       "class": "same"
@@ -610,8 +607,7 @@
       "class": "same"
     },
     "tests/language/fixtures/raw_byte_string.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'Name'"
+      "class": "same"
     },
     "tests/language/fixtures/refs_target.jac": {
       "class": "refused",
@@ -627,22 +623,22 @@
     },
     "tests/language/fixtures/safe_call_operator.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for attribute access 'name'"
+      "reason": "E5090 Native pathway does not yet support attribute access 'value'"
     },
     "tests/language/fixtures/self_type.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for integer operator layout 'PLUS on %\"Money\"* vs %\"Money\"*'"
+      "reason": "E5092 Native lowering failed for type 'type variable Self'"
     },
     "tests/language/fixtures/self_type_errors.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for method '_'"
+      "reason": "E5092 Native lowering failed for type 'type variable Self'"
     },
     "tests/language/fixtures/simple_archs.jac": {
       "class": "same"
     },
     "tests/language/fixtures/simple_walk.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/spawn_loc_list.jac": {
       "class": "refused",
@@ -650,7 +646,7 @@
     },
     "tests/language/fixtures/sub_abil_sep.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for function '_'"
+      "reason": "E5092 Native lowering failed for statement 'ImplDef'"
     },
     "tests/language/fixtures/sub_abil_sep_multilev.jac": {
       "class": "same"
@@ -671,7 +667,7 @@
     },
     "tests/language/fixtures/tuplytuples.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for tuple unpacking 'TupleVal'"
+      "reason": "E5092 Native lowering failed for type '<Unknown>'"
     },
     "tests/language/fixtures/type_alias_generics.jac": {
       "class": "same"
@@ -685,14 +681,14 @@
     },
     "tests/language/fixtures/visit_sequence.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/visit_traversal.jac": {
       "class": "same"
     },
     "tests/language/fixtures/walker_override.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for type 'Root'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/walker_update.jac": {
       "class": "skipped",
