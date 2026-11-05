@@ -509,6 +509,187 @@ test "a JSON null is refused for a field that is not optional, whatever its type
     }
 }
 
+test "a JSON field of the wrong type is refused, naming the field" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        for (name, value) in [
+            ("count", 19.99),
+            ("count", True),
+            ("count", "12"),
+            ("ratio", True),
+            ("ratio", "1.5"),
+            ("flag", ""),
+            ("flag", 1),
+            ("title", {"note": "x"}),
+            ("title", [1, 2]),
+            ("title", 1.0),
+            ("tags", "urgent"),
+            ("tags", {"a": 1}),
+            ("pair", [1]),
+            ("pair", [1, 2, 3]),
+            ("mode", "zzz"),
+            ("num", "3"),
+            ("small", 300),
+            ("small", "abc"),
+            ("small", 3.9),
+            ("when", "not-a-date"),
+            ("inner", {"count": 1.5})
+        ] {
+            r = client.post("/strict", json={name: value});
+            assert r.status_code == 422 , f"{name}={value!r}: {r.status_code} {r.text}";
+            detail = _as_any(r.json())["detail"];
+            assert [d["loc"] for d in detail] == [["body", name]] , r.text;
+        }
+
+        # Every bad field is reported, not only the first.
+        r = client.post("/strict", json={"count": "x", "title": 1});
+        assert r.status_code == 422 , r.text;
+        locs = [d["loc"] for d in _as_any(r.json())["detail"]];
+        assert locs == [["body", "count"], ["body", "title"]] , r.text;
+
+        # A function is bound by the same rules as a walker.
+        r = client.post("/function/strict_func", json={"count": 19.99, "title": "x"});
+        assert r.status_code == 422 , r.text;
+        r = client.post("/function/strict_func", json={"count": 19, "title": {"a": 1}});
+        assert r.status_code == 422 , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "a JSON field of the right type reaches the walker as that type" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        for (name, value, want) in [
+            ("count", 12, "12"),
+            ("count", 3.0, "3"),
+            ("ratio", 1, "1.0"),
+            ("flag", False, "False"),
+            ("title", "", "''"),
+            ("tags", ["a"], "['a']"),
+            ("pair", [1, 2], "(1, 2)"),
+            ("mode", "b", "'b'"),
+            ("num", 3.9, "3.9"),
+            ("num", 3, "3"),
+            ("small", 7, "7"),
+            (
+                "when",
+                "2026-10-07T10:00:00Z",
+                "datetime.datetime(2026, 10, 7, 10, 0, tzinfo=datetime.timezone.utc)"
+            ),
+            ("when", None, "None"),
+            ("inner", {"count": 2}, "StrictInner(count=2)")
+        ] {
+            r = client.post("/strict", json={name: value});
+            assert r.status_code == 200 , f"{name}={value!r}: {r.text}";
+            got = extract_data(r.json())["reports"][0];
+            assert got[name] == want , f"{name}={value!r}: {got[name]}";
+        }
+    } finally {
+        client.close();
+    }
+}
+
+test "a form field is text, so it parses even though it arrives in the body" {
+    client = make_client("restspec_fixtures.jac");
+    form = {"Content-Type": "application/x-www-form-urlencoded"};
+    try {
+        r = client.post(
+            "/strict",
+            content="count=5&ratio=1.5&flag=&title=hi&tags=one&mode=b&small=7&num=3",
+            headers=form
+        );
+        assert r.status_code == 200 , r.text;
+        got = extract_data(r.json())["reports"][0];
+        assert got["count"] == "5" and got["ratio"] == "1.5" and got["flag"] == "False";
+        assert got["title"] == "'hi'" and got["tags"] == "['one']";
+        assert got["mode"] == "'b'" and got["small"] == "7" and got["num"] == "3";
+
+        r = client.post("/strict", content="tags=one&tags=two", headers=form);
+        assert r.status_code == 200 , r.text;
+        assert extract_data(r.json())["reports"][0]["tags"] == "['one', 'two']";
+
+        # A repeated value for a single field used to be stored as its repr.
+        for body in [
+            "title=a&title=b",
+            "count=1&count=2",
+            "count=3.9",
+            "count=abc",
+            "mode=zzz"
+        ] {
+            r = client.post("/strict", content=body, headers=form);
+            assert r.status_code == 422 , f"{body}: {r.text}";
+        }
+
+        # Multipart fields are text too.
+        r = client.post(
+            "/strict",
+            data={"count": "5", "tags": "one"},
+            files={"attachment": ("a.txt", b"x", "text/plain")}
+        );
+        assert r.status_code == 200 , r.text;
+        got = extract_data(r.json())["reports"][0];
+        assert got["count"] == "5" and got["tags"] == "['one']" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "a query value is text, and repeats reach every collection field" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get(
+            "/strict-query?count=3&flag=&tags=a&tags=b&otags=a&otags=b&unique=x&unique=y&mode=b"
+        );
+        assert r.status_code == 200 , r.text;
+        got = extract_data(r.json())["reports"][0];
+        assert got["count"] == "3" and got["flag"] == "False" and got["mode"] == "'b'";
+        assert got["tags"] == "['a', 'b']" , r.text;
+        assert got["otags"] == "['a', 'b']" , r.text;
+        assert got["unique"] == "['x', 'y']" , r.text;
+
+        r = client.get("/strict-query?tags=a&otags=a");
+        assert r.status_code == 200 , r.text;
+        got = extract_data(r.json())["reports"][0];
+        assert got["tags"] == "['a']" and got["otags"] == "['a']" , r.text;
+
+        for query in [
+            "count=1&count=2",
+            "count=3.9",
+            "count=1_000",
+            "count=%2012",
+            "flag=maybe",
+            "mode=zzz"
+        ] {
+            r = client.get(f"/strict-query?{query}");
+            assert r.status_code == 422 , f"{query}: {r.text}";
+            assert _as_any(r.json())["detail"][0]["loc"][0] == "query" , r.text;
+        }
+    } finally {
+        client.close();
+    }
+}
+
+test "the OpenAPI schema advertises what the binder accepts" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        srv = client._server;
+        assert srv is not None , "server must be running";
+        spec = srv.app.openapi();
+        body_ref = spec["paths"]["/strict"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"];
+        props = spec["components"]["schemas"][body_ref.rsplit("/", 1)[1]]["properties"];
+        assert props["when"]["format"] == "date-time"
+            and props["when"]["type"] == "string";
+        assert props["mode"]["enum"] == ["a", "b"];
+        assert props["small"]["type"] == "integer";
+        assert props["pair"]["minItems"] == 2 and props["pair"]["maxItems"] == 2;
+    } finally {
+        client.close();
+    }
+}
+
 # ============================================================================
 # Custom Object Body Parameter Tests — walker + function + recursive
 # One integration test per variant; schema + runtime + validation in one flow.

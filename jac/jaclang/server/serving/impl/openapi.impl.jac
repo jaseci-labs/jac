@@ -8,12 +8,23 @@ impl _schema_for_type(
         return dict(_NAME_SCHEMAS.get(target.lower(), {}));
     }
     origin = get_origin(target);
-    if origin is list {
-        args = get_args(target);
+    if origin is typing.Literal {
+        return {'enum': list(get_args(target))};
+    }
+    shape = origin if origin is not None else target;
+    args = get_args(target);
+    if shape is list {
         items = _schema_for_type(args[0], schemas) if args else {};
         return {'type': 'array', 'items': items};
     }
-    if origin is dict {
+    if shape is set {
+        items = _schema_for_type(args[0], schemas) if args else {};
+        return {'type': 'array', 'items': items, 'uniqueItems': True};
+    }
+    if shape is tuple {
+        return _tuple_schema(args, schemas);
+    }
+    if shape is dict {
         return {'type': 'object'};
     }
     if origin is Union or origin is UnionType {
@@ -39,10 +50,43 @@ impl _schema_for_type(
     if target is bool {
         return {'type': 'boolean'};
     }
+    if isinstance(target, EnumMeta) {
+        members: list[any] = list(target);
+        return {'enum': [member.value for member in members]};
+    }
     if isinstance(target, type) {
+        if target in _CLASS_SCHEMAS {
+            return dict(_CLASS_SCHEMAS[target]);
+        }
+        if issubclass(target, int) {
+            return {'type': 'integer'};
+        }
+        if issubclass(target, float) {
+            return {'type': 'number'};
+        }
+        if issubclass(target, (str, bytes)) {
+            return {'type': 'string'};
+        }
         return _object_schema(target, schemas);
     }
     return {};
+}
+
+impl _tuple_schema(
+    args: tuple[object, ...], schemas: (dict[str, any] | None)
+) -> dict[str, any] {
+    if not args {
+        return {'type': 'array'};
+    }
+    if len(args) == 2 and args[1] is Ellipsis {
+        return {'type': 'array', 'items': _schema_for_type(args[0], schemas)};
+    }
+    return {
+        'type': 'array',
+        'prefixItems': [_schema_for_type(arg, schemas) for arg in args],
+        'minItems': len(args),
+        'maxItems': len(args)
+    };
 }
 
 impl _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str, any] {

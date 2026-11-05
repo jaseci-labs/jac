@@ -14,7 +14,7 @@ walker Greeting {
 }
 
 test "object coercion and schemas use the public constructor signature" {
-    value = coerce_value({"args": "7"}, Payload);
+    value = coerce_value({"args": 7}, Payload);
     assert value.args == 7;
     assert value.kwargs == "default";
     schemas: dict[str, any] = {};
