@@ -34262,6 +34262,23 @@ obj VM {
         if rc_idx < 0 or rc_idx >= jc_count() {
             return 0;
         }
+        # A bound function without bound arguments (fn.bind(t)): its target
+        # with this = t, the call's own arguments unchanged (§10.4.1.1).
+        if _JC_FUNC[rc_idx].is_bound
+            and len(_JC_FV[rc_idx]) == 1
+            and is_fn_val(_JC_FV[rc_idx][0]) {
+            return self._reg_call_enter(
+                frame,
+                st,
+                _JC_FV[rc_idx][0],
+                jc_lexical_this(rc_idx),
+                dst,
+                argpc,
+                argc,
+                orig,
+                resume_pc
+            );
+        }
         # The closure goes in as a borrowed list element (no local, so no
         # retain/release per call — the same reason _op_call passes it so).
         # The plain entry first; the general one handles what it declines.
