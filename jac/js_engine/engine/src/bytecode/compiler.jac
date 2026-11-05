@@ -355,6 +355,44 @@ def _unescape_string(raw: str) -> str {
 # 3.  Compiler
 # ══════════════════════════════════════════════════════════════════════════════
 
+"""The seven stack opcodes whose `arg` is a code index (optimizer.jac's audit)."""
+def _tdz_is_jump(op: Opcode) -> bool {
+    return op == Opcode.JUMP
+        or op == Opcode.JUMP_IF_TRUE
+        or op == Opcode.JUMP_IF_FALSE
+        or op == Opcode.JUMP_IF_NULL
+        or op == Opcode.JUMP_IF_UNDEFINED
+        or op == Opcode.PUSH_CATCH
+        or op == Opcode.PUSH_FINALLY;
+}
+
+"""_tdz_elide's transfer for instruction `i` on the bit set `cur`: a store
+of a tracked slot sets it, unless it stores the TDZ sentinel (TDZ_CLASS /
+NOP just before it in the same block), which clears it."""
+def _tdz_step(
+    code: list[Instruction], i: int, lead: list[bool], idx: dict[int, int], cur: list[int]
+) {
+    ts_ins: Instruction = code[i];
+    if (ts_ins.opcode == Opcode.STORE_LOCAL or ts_ins.opcode == Opcode.STORE_NEW_CELL)
+        and ts_ins.arg in idx {
+        ts_j: int = idx[ts_ins.arg];
+        ts_bit: int = 1 << (ts_j % 60);
+        ts_tdz: bool = lead[i]
+            or (
+                i > 0
+                and (
+                    code[i - 1].opcode == Opcode.TDZ_CLASS
+                    or code[i - 1].opcode == Opcode.NOP
+                )
+            );
+        if ts_tdz {
+            cur[ts_j // 60] = cur[ts_j // 60] & (-1 - ts_bit);
+        } else {
+            cur[ts_j // 60] = cur[ts_j // 60] | ts_bit;
+        }
+    }
+}
+
 """
 Compiles an AST tree to a CompiledFunction (bytecode + constants + metadata).
 
@@ -1806,6 +1844,234 @@ obj Compiler {
         return "var";
     }
 
+    """TDZ elision over a finished function's stack code (before cells are
+    rewritten): a let/const read (LOAD_LOCAL_CHECKED) that every path reaches
+    after a store of a real value reads plainly, and a slot none of whose reads
+    can then meet its TDZ sentinel drops its TDZ stores (FILLER: the length,
+    hence every jump target, stays). A forward must-analysis over the basic
+    blocks: a TDZ store (TDZ_CLASS / NOP then STORE_LOCAL / STORE_NEW_CELL)
+    clears a slot, any other store sets it; entry and handler entries (catch,
+    finally) start with nothing set. Cells are left alone (a closure reads
+    them at any time), and so is code that reaches slots by name (with,
+    LOAD_NAME / STORE_NAME, eval)."""
+    def _tdz_elide(fn: CompiledFunction, cells: list[int]) {
+        te_code: list[Instruction] = fn.code;
+        te_n: int = len(te_code);
+        if te_n == 0 or "eval" in fn.constants.values {
+            return;
+        }
+        # tracked slots: read checked somewhere, not cells; dense indices
+        te_idx: dict[int, int] = {};
+        te_i: int = 0;
+        while te_i < te_n {
+            te_op: Opcode = te_code[te_i].opcode;
+            if te_op == Opcode.WITH_PUSH
+                or te_op == Opcode.LOAD_NAME
+                or te_op == Opcode.STORE_NAME
+                or te_op == Opcode.DEL_NAME {
+                return;
+            }
+            if te_op == Opcode.LOAD_LOCAL_CHECKED
+                and te_code[te_i].arg >= 0
+                and te_code[te_i].arg not in cells
+                and te_code[te_i].arg not in te_idx {
+                te_idx[te_code[te_i].arg] = len(te_idx);
+            }
+            te_i = te_i + 1;
+        }
+        te_k: int = len(te_idx);
+        if te_k == 0 {
+            return;
+        }
+        te_wn: int = (te_k + 59) // 60;
+        # basic blocks
+        te_lead: list[bool] = [];
+        te_hnd: list[bool] = [];
+        te_i = 0;
+        while te_i <= te_n {
+            te_lead.append(False);
+            te_hnd.append(False);
+            te_i = te_i + 1;
+        }
+        te_lead[0] = True;
+        te_i = 0;
+        while te_i < te_n {
+            te_op2: Opcode = te_code[te_i].opcode;
+            if _tdz_is_jump(te_op2) {
+                te_t: int = te_code[te_i].arg;
+                if te_t >= 0 and te_t < te_n {
+                    te_lead[te_t] = True;
+                    if te_op2 == Opcode.PUSH_CATCH or te_op2 == Opcode.PUSH_FINALLY {
+                        te_hnd[te_t] = True;
+                    }
+                }
+                te_lead[te_i + 1] = True;
+            } elif te_op2 == Opcode.RETURN
+                or te_op2 == Opcode.RETURN_UNDEFINED
+                or te_op2 == Opcode.THROW
+                or te_op2 == Opcode.TAIL_CALL {
+                te_lead[te_i + 1] = True;
+            }
+            te_i = te_i + 1;
+        }
+        te_bs: list[int] = [];
+        te_bof: list[int] = [];
+        te_i = 0;
+        while te_i < te_n {
+            if te_lead[te_i] {
+                te_bs.append(te_i);
+            }
+            te_bof.append(len(te_bs) - 1);
+            te_i = te_i + 1;
+        }
+        te_nb: int = len(te_bs);
+        te_bs.append(te_n);
+        # predecessors (block -> list of blocks); handler entries take none
+        te_preds: list[list[int]] = [];
+        te_b: int = 0;
+        while te_b < te_nb {
+            te_preds.append([]);
+            te_b = te_b + 1;
+        }
+        te_b = 0;
+        while te_b < te_nb {
+            te_last: Instruction = te_code[te_bs[te_b + 1] - 1];
+            te_lop: Opcode = te_last.opcode;
+            te_falls: bool = not (
+                te_lop == Opcode.JUMP
+                or te_lop == Opcode.RETURN
+                or te_lop == Opcode.RETURN_UNDEFINED
+                or te_lop == Opcode.THROW
+                or te_lop == Opcode.TAIL_CALL
+            );
+            if te_falls and te_b + 1 < te_nb {
+                te_preds[te_b + 1].append(te_b);
+            }
+            if _tdz_is_jump(te_lop)
+                and te_lop != Opcode.PUSH_CATCH
+                and te_lop != Opcode.PUSH_FINALLY
+                and te_last.arg >= 0
+                and te_last.arg < te_n {
+                te_preds[te_bof[te_last.arg]].append(te_b);
+            }
+            te_b = te_b + 1;
+        }
+        # OUT states, all set (top) to start; entry / handler blocks use none
+        te_out: list[int] = [];
+        te_b = 0;
+        while te_b < te_nb * te_wn {
+            te_out.append(-1);
+            te_b = te_b + 1;
+        }
+        te_cur: list[int] = [];
+        te_w: int = 0;
+        while te_w < te_wn {
+            te_cur.append(0);
+            te_w = te_w + 1;
+        }
+        te_changed: bool = True;
+        while te_changed {
+            te_changed = False;
+            te_b = 0;
+            while te_b < te_nb {
+                self._tdz_block_in(te_b, te_preds, te_out, te_hnd[te_bs[te_b]], te_cur, te_wn);
+                te_i = te_bs[te_b];
+                while te_i < te_bs[te_b + 1] {
+                    _tdz_step(te_code, te_i, te_lead, te_idx, te_cur);
+                    te_i = te_i + 1;
+                }
+                te_w = 0;
+                while te_w < te_wn {
+                    if te_out[te_b * te_wn + te_w] != te_cur[te_w] {
+                        te_out[te_b * te_wn + te_w] = te_cur[te_w];
+                        te_changed = True;
+                    }
+                    te_w = te_w + 1;
+                }
+                te_b = te_b + 1;
+            }
+        }
+        # rewrite the proven reads; note the slots still observable as TDZ
+        te_keep: list[bool] = [];
+        te_i = 0;
+        while te_i < te_k {
+            te_keep.append(False);
+            te_i = te_i + 1;
+        }
+        te_b = 0;
+        while te_b < te_nb {
+            self._tdz_block_in(te_b, te_preds, te_out, te_hnd[te_bs[te_b]], te_cur, te_wn);
+            te_i = te_bs[te_b];
+            while te_i < te_bs[te_b + 1] {
+                te_ins: Instruction = te_code[te_i];
+                if (te_ins.opcode == Opcode.LOAD_LOCAL_CHECKED or te_ins.opcode == Opcode.LOAD_LOCAL)
+                    and te_ins.arg in te_idx {
+                    te_j: int = te_idx[te_ins.arg];
+                    te_set: bool = ((te_cur[te_j // 60] >> (te_j % 60)) & 1) == 1;
+                    if te_set and te_ins.opcode == Opcode.LOAD_LOCAL_CHECKED {
+                        te_code[te_i] = make_instruction(
+                            Opcode.LOAD_LOCAL, te_ins.arg, te_ins.arg2, te_ins.line
+                        );
+                    } elif not te_set {
+                        te_keep[te_j] = True;
+                    }
+                }
+                _tdz_step(te_code, te_i, te_lead, te_idx, te_cur);
+                te_i = te_i + 1;
+            }
+            te_b = te_b + 1;
+        }
+        # TDZ stores of the slots no read can see in TDZ any more
+        te_i = 1;
+        while te_i < te_n {
+            te_st: Instruction = te_code[te_i];
+            if (te_st.opcode == Opcode.STORE_LOCAL or te_st.opcode == Opcode.STORE_NEW_CELL)
+                and te_st.arg2 == 0
+                and te_st.arg in te_idx
+                and not te_keep[te_idx[te_st.arg]]
+                and not te_lead[te_i]
+                and (
+                    te_code[te_i - 1].opcode == Opcode.TDZ_CLASS
+                    or te_code[te_i - 1].opcode == Opcode.NOP
+                ) {
+                te_code[te_i - 1] = make_instruction(
+                    Opcode.FILLER, 0, 0, te_code[te_i - 1].line
+                );
+                te_code[te_i] = make_instruction(Opcode.FILLER, 0, 0, te_st.line);
+            }
+            te_i = te_i + 1;
+        }
+    }
+
+    """_tdz_elide's block entry state into `cur`: the meet (intersection) of
+    the predecessors' OUT states; none for the entry block, a handler entry or
+    a block no edge reaches."""
+    def _tdz_block_in(
+        b: int,
+        preds: list[list[int]],
+        outs: list[int],
+        hnd: bool,
+        cur: list[int],
+        wn: int
+    ) {
+        bi_w: int = 0;
+        if b == 0 or hnd or len(preds[b]) == 0 {
+            while bi_w < wn {
+                cur[bi_w] = 0;
+                bi_w = bi_w + 1;
+            }
+            return;
+        }
+        while bi_w < wn {
+            bi_v: int = -1;
+            for bi_p in preds[b] {
+                bi_v = bi_v & outs[bi_p * wn + bi_w];
+            }
+            cur[bi_w] = bi_v;
+            bi_w = bi_w + 1;
+        }
+    }
+
     """Emit TDZ_CLASS + STORE_LOCAL for a let/const slot."""
     def _emit_tdz_store(slot: int) {
         self._op(Opcode.TDZ_CLASS);
@@ -1954,6 +2220,7 @@ obj Compiler {
                 }
             }
         }
+        self._tdz_elide(fn, cells);
         if len(cells) > 0 {
             # : rewrite opcodes in-place
             ci: int = 0;
