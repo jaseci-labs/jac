@@ -609,7 +609,7 @@ impl EsastGenPass.exit_dict_val with uni.DictVal exit {
             }
             continue;
         }
-        # Unresolved client property names stay literal; bound names are values.
+
         literal_name = isinstance(kv_pair.key, uni.Name)
             and (
                 kv_pair.key.sym is None or kv_pair.key.sym.sym_type == SymbolType.TYPE
