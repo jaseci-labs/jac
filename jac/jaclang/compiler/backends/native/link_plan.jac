@@ -222,6 +222,15 @@ def _mark_host_rc_threaded(engine: ExecutionEngine);
 
 def jit_engine(plan: LinkPlan) -> ExecutionEngine;
 
+def _jit_engine_from_objects(plan: LinkPlan, tm: TargetMachine) -> ExecutionEngine;
+
+def _finish_jit_engine(
+    plan: LinkPlan,
+    engine: ExecutionEngine,
+    libraries: dict[str, ctypes.CDLL],
+    bridges: list[any]
+) -> ExecutionEngine;
+
 def jit_engine_for_module(
     prog: JacProgram, module: any, options: CompileOptions
 ) -> (ExecutionEngine | None);
