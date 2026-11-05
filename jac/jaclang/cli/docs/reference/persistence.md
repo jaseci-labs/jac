@@ -91,6 +91,10 @@ After the request commits, the body and its `on_commit` effects cannot safely
 run again. A serialization conflict while saving the effects' remaining
 writes instead uses the bounded write-set retry; if it is exhausted, the
 request reports a failure after commit.
+Session callbacks run within that committed write-retry phase, including on
+explicit and nested commits. Completing a nested `run_request` settles its
+callback writes before returning. Callback failures that lose their database
+transaction produce a final failure instead of reporting a successful save.
 If a nested unit, independent child session, explicit commit, or callback has
 already made work durable, a later conflict cannot safely replay the enclosing
 request. The request instead reports `failed_after_commit`; retrying it may

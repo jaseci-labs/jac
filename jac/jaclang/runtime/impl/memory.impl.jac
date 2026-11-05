@@ -176,6 +176,7 @@ impl Memory._fire_on_commit {
             try {
                 cb();
             } except Exception as e {
+                self.note_effect_failure(e);
                 logger.warning(f"on_commit callback failed: {type(e).__name__}: {e}");
             }
         }

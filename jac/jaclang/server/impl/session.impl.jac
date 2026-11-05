@@ -624,8 +624,26 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
             self._dirty.clear();
             self._deleted.clear();
         }
+        callback_depth = self._active_units;
+        already_committed = callback_depth in self._committed_units;
+        if callback_depth > 0 {
+            self._committed_units.add(callback_depth);
+        }
     }
-    self._fire_on_commit();
+    try {
+        self._fire_on_commit();
+    } finally {
+        if not already_committed {
+            with self._lock {
+                self._committed_units.discard(callback_depth);
+            }
+        }
+    }
+    if self._lost {
+        raise PartialCommitError(
+            "callback writes failed after committed work; replay is unsafe"
+        );
+    }
 }
 
 
@@ -921,6 +939,7 @@ impl Session.note_effect_failure(e: Exception) -> None {
         cause = cause.__cause__ or cause.__context__;
     }
     if cause is not None
+        or _is_serialization_conflict(e)
         or (isinstance(e, WriteConflict) and not isinstance(e, ReadOnlyRetry)) {
         self._lost = True;
     }
@@ -1511,9 +1530,16 @@ impl Session.run_request(body: Callable) -> any {
                 result = body();
                 self.commit();
                 self.unit_committed();
+
+                if self._store is not None and self._store.in_txn() {
+                    self.commit();
+                }
                 return result;
             } except Exception as e {
-                if self.has_durable_boundary()
+                if (
+                    self.has_durable_boundary()
+                    or self._active_units in self._committed_units
+                )
                     and not isinstance(e, PartialCommitError) {
                     self.abort();
                     raise PartialCommitError(
