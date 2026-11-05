@@ -146,6 +146,8 @@ def:pub __jac_rt_elem_payload(bits: int, kind: int) -> int;
 
 def:pub __jac_rt_elem_box(bits: int, kind: int) -> int;
 
+def:pub __jac_rt_any_as_kind(bits: int, kind: int) -> int;
+
 def:pub __jac_rt_any_iter(tag: int, payload: int) -> int;
 
 def:pub __jac_rt_any_repr(tag: int, payload: int) -> ptr[u8];
