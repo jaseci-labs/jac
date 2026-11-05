@@ -227,6 +227,7 @@ obj Session(Memory) {
     def unit_enter(key: (str | None) = None) -> None;
     def unit_exit -> None;
     def unit_depth -> int;
+    override def note_effect_failure(e: Exception) -> None;
     def read_scope_enter -> None;
     def read_scope_exit -> None;
     def flush(full: bool = False) -> None;
