@@ -251,7 +251,7 @@ def client_input_digest(
     base: Path,
     sources: list[Path],
     jac_binary: bytes,
-    entry: str,
+    entry_rel: str,
     sanitized: (str | None),
     tomls: dict[str, str]
 ) -> str;

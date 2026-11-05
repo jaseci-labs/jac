@@ -234,9 +234,9 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
 test "a precompile report left in the project does not block reusing the seal" {
     binary = require_pod_binary().read_bytes();
     base = Path(_mini_app());
-    report = base / "_precompiled" / "PRECOMPILE_RESULT.json";
-    report.parent.mkdir();
-    report.write_text('{"total": 1, "compiled": 1, "reused": 0, "failed": 0}\n');
+    report_file = base / "_precompiled" / "PRECOMPILE_RESULT.json";
+    report_file.parent.mkdir();
+    report_file.write_text('{"total": 1, "compiled": 1, "reused": 0, "failed": 0}\n');
     (first, first_log) = _pack_logged(base, binary);
     assert not any("changed while it was sealed" in m for m in first_log) , (
         f"the seal's own report counted as a project edit: {first_log}"

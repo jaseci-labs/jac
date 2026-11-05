@@ -932,7 +932,7 @@ impl client_input_digest(
     base: Path,
     sources: list[Path],
     jac_binary: bytes,
-    entry: str,
+    entry_rel: str,
     sanitized: (str | None),
     tomls: dict[str, str]
 ) -> str {
@@ -945,7 +945,7 @@ impl client_input_digest(
         base,
         sources,
         jac_binary,
-        ["client", entry, sanitized or "", *vite_env],
+        ["client", entry_rel, sanitized or "", *vite_env],
         tomls
     );
 }
@@ -982,9 +982,9 @@ impl remember_client_dist(base: Path, key: str, dist: str) {
         os.replace(partial, cache / key);
         kept = sorted(
             [
-                entry
-                for entry in cache.iterdir()
-                if entry.is_dir() and ".partial-" not in entry.name
+                child
+                for child in cache.iterdir()
+                if child.is_dir() and ".partial-" not in child.name
             ],
             key=_mtime,
             reverse=True
@@ -1147,12 +1147,12 @@ impl pack_jab(
             tomls
         );
     }
-    report = Path("_precompiled") / RESULT_NAME;
+    report_rel = Path("_precompiled") / RESULT_NAME;
     seal_sources = [
         path
         for path in sources
         if not _is_client_dist(path.relative_to(base))
-            and path.relative_to(base) != report
+            and path.relative_to(base) != report_rel
     ];
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
