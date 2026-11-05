@@ -37,6 +37,8 @@ async def _abegin_user_request_context(
     user_manager: UserManager, username: str, target: object | None = None
 ) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue];
 
+def _unknown_user_failure -> dict[str, JsonValue];
+
 def _deserialize_wire_args(args: dict[(str, any)]);
 
 impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
@@ -1742,7 +1744,7 @@ impl _abegin_user_request_context(
             root_id = await asyncio.to_thread(ensure_root, username);
         }
         if not root_id {
-            return {'error': 'User not found'};
+            return _unknown_user_failure();
         }
     }
     try {
@@ -1764,11 +1766,19 @@ impl _abegin_user_request_context(
         );
         healed_id = await asyncio.to_thread(user_manager.reset_root, username);
         if not healed_id {
-            return {'error': 'User not found'};
+            return _unknown_user_failure();
         }
         (ctx, token) = await _begin_request_context(healed_id, target);
         return (ctx, token, healed_id);
     }
+}
+
+impl _unknown_user_failure -> dict[str, JsonValue] {
+    return {
+        'error': 'Unauthorized: unknown user',
+        'error_code': 'unauthorized',
+        'http_status': 401
+    };
 }
 
 impl _deserialize_wire_args(args: dict[(str, any)]) {

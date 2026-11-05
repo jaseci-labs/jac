@@ -38,20 +38,7 @@ impl _answer_is_final(result: any) -> bool {
 
 impl _outcome(result: any, fallback: str) -> (TransportResponse | Response) {
     if _unit_failed(result) {
-        if result.get('error') == 'User not found' {
-            return _fail('UNAUTHORIZED', 'Unauthorized: unknown user', 401);
-        }
-        return TransportResponse.fail(
-            code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
-            message=result.get('error', fallback),
-            meta=Meta(
-                extra={
-                    'http_status': int(
-                        result.get('http_status') or refusal_status() or 500
-                    )
-                }
-            )
-        );
+        return _failure(result, fallback);
     }
     return settle_envelope(
         TransportResponse.success(data=result, meta=Meta(extra={'http_status': 200}))
