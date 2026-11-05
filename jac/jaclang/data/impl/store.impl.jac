@@ -359,9 +359,11 @@ impl PgStore._run(sql: str, params: dict[str, any]) -> list[any] {
                 }
                 if was_txn {
                     import from jaclang.data.pgwire { PgWireError }
-                    raise PgWireError(
+                    lost = PgWireError(
                         {'C': '08006', 'M': 'connection lost mid-transaction; retry'}
-                    ) from e;
+                    );
+                    self.last_error = lost;
+                    raise lost from e;
                 }
                 conn2: any = self._main();
                 return conn2.run(sql, **params) or [];
@@ -372,6 +374,7 @@ impl PgStore._run(sql: str, params: dict[str, any]) -> list[any] {
                 } except Exception {}
                 self._in_txn = False;
             }
+            self.last_error = e;
             raise;
         }
     }

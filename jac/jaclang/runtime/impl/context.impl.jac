@@ -137,6 +137,10 @@ impl ExecutionContext.run_pending_effects -> None {
                 effect();
             } except Exception as e {
                 logger.error(f"on_commit effect failed: {e}");
+                state = self.call_state.get(None);
+                if state is not None and state.committed {
+                    self.mem.note_effect_failure(e);
+                }
             }
         }
     } finally {

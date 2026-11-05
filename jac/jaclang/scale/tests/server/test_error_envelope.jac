@@ -8,6 +8,7 @@ import time;
 import uuid;
 import from logging.handlers { MemoryHandler }
 import from typing { Callable }
+import from unittest.mock { AsyncMock, patch }
 
 glob WATCHED_LOGGERS: tuple[str, ...] = (
          "jaclang.serve",
@@ -138,4 +139,42 @@ test "webhook exception: opaque failure on the wire, one ERROR record in the log
     assert len(records) == 1 , (
         f"expected the catch-site record alone, got {len(records)}: {rendered}"
     );
+}
+
+test "only a caller with no root answers 401, whatever a program's error says" {
+    client = make_client("error_paths.jac");
+    try {
+        member = client.register_and_login(
+            f"member_{uuid.uuid4().hex[:8]}", "password123"
+        );
+        server: any = client._server;
+        ghost = server.user_manager.create_jwt_token("ghost");
+        for (token, status, code, message) in (
+            (member, 500, "EXECUTION_ERROR", "User not found"),
+            (ghost, 401, "UNAUTHORIZED", "Unauthorized: unknown user")
+        ) {
+            for path in ("/walker/NamesMissingUser", "/function/names_missing_user") {
+                resp = client.post(
+                    path, json={}, headers={"Authorization": f"Bearer {token}"}
+                );
+                assert resp.status_code == status , f"{path}: {resp.text}";
+                err = resp.json()["error"];
+                assert (err["code"], err["message"]) == (code, message) , f"{path}: {err}";
+            }
+        }
+
+        users = server.user_manager;
+        with patch.object(
+            users,
+            "aget_root_id",
+            new=AsyncMock(return_value="00000000-0000-4000-8000-000000000001")
+        ) {
+            with patch.object(users, "reset_root", return_value=None) {
+                resp = client.post("/walker/Boom", json={});
+            }
+        }
+        assert resp.status_code == 401 , f"guest with no root: {resp.text}";
+    } finally {
+        client.close();
+    }
 }

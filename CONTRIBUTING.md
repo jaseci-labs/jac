@@ -262,6 +262,42 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
+### Step 0: Run CI with the native kernel first
+
+Day-to-day CI runs on GitHub-hosted runners with a bytecode kit: build-kit
+leaves the native compiler kernel out, and the `js-engine` and `macos-native`
+lanes are turned off. Nothing in pull-request CI builds the kernel, so native
+breakage is only caught here. Before cutting a release, on a branch:
+
+1. **Runners**: switch the kernel-building jobs back to the bigger runners.
+   `git log -S blacksmith -- .github` finds the commit that moved them; its
+   diff has every label.
+   - `ci.yml` `build-kit`, `build-kernel.yml`, `build-seeds.yml`,
+     `_js_engine.yml`, and `jacpython-compat.yml` (input default and both
+     `runs-on`): `blacksmith-8vcpu-ubuntu-2404`
+   - `build-binaries.yml` Linux legs: `blacksmith-8vcpu-ubuntu-2404` and
+     `blacksmith-8vcpu-ubuntu-2404-arm`
+   - every other job in `ci.yml`, `release.yml`, and `nightly.yml`:
+     `blacksmith-4vcpu-ubuntu-2404`
+
+   The kernel seal peaks near 15 GB, so `build-kit`, `build-kernel.yml`, and
+   `build-binaries.yml` will not fit a 16 GB `ubuntu-24.04` runner.
+2. **Kernel in build-kit**: in `ci.yml`'s `build-kit`, restore the commented
+   `native-kernel:` line, remove `bytecode-kit: "true"`, and drop
+   `-Dstale-python=true` from its `zig build` lines. A bytecode kit links the
+   last JacPython native object it can find, even one lowered from older
+   compiler sources, so only this run lowers JacPython from the tree.
+3. **js-engine**: in `ci.yml`, replace `if: false` on the `js-engine` job
+   with the commented `if:` above it. `if: false` blocks every trigger,
+   including a manual dispatch and the `native:js-engine` label.
+4. **macos-native**: the same for the `macos-native` job, to cover macOS.
+
+Dispatch **CI** on that branch and fix what it finds, then merge it to `main`
+before Step 1. The Release run that builds the binaries starts when the release
+PR merges and reads its workflows from `main` (`release.yml` calls
+`build-binaries.yml`), so changes left on a side branch never reach it. Once
+the release is published, revert them on `main`.
+
 ### Step 1: Create the Release PR
 
 1. Go to **GitHub Actions** -> **Release**
