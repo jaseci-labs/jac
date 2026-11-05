@@ -1134,6 +1134,9 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
     made.hold = "own" if sym.ownership == OwnershipKind.OWN else "local";
+    if slot_type.kind == MirKind.OBJ and self.address_view_local(sym) {
+        made.hold = "raw";
+    }
     if view {
         self.st().struct_views.add(made.id);
     }
