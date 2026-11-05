@@ -672,7 +672,7 @@ impl MirLowering.foreign_accessor_decl(
         or unit is None
         or unit is self.module
         or not unit.loc.mod_path.endswith(".jac")
-        or acc.accessor_kind not in ("property", "setter") {
+        or acc.accessor_kind not in ("property", "setter", "deleter") {
         return None;
     }
     slot: (str | None) = None;
@@ -689,7 +689,7 @@ impl MirLowering.foreign_accessor_decl(
     ret = mir_none();
     if acc.accessor_kind == "property" {
         ret = self.type_of(self.declared_field_type(var), MirPosition.SIGNATURE, var);
-    } else {
+    } elif acc.accessor_kind == "setter" {
         sig = self.accessor_sig(acc);
         nodes = self.param_nodes(sig, True) if sig is not None else [];
         if len(nodes) != 1 {
@@ -3398,7 +3398,7 @@ impl MirLowering.accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None) {
 
 impl MirLowering.declare_accessors(arch: uni.Archetype, self_type: MirType) {
     for (slot, var, acc) in archetype_accessors(arch) {
-        if acc.accessor_kind not in ("property", "setter") {
+        if acc.accessor_kind not in ("property", "setter", "deleter") {
             continue;
         }
         params: list[MirType] = [];
@@ -3407,7 +3407,7 @@ impl MirLowering.declare_accessors(arch: uni.Archetype, self_type: MirType) {
             ret = self.type_of(
                 self.declared_field_type(var), MirPosition.SIGNATURE, var
             );
-        } else {
+        } elif acc.accessor_kind == "setter" {
             sig = self.accessor_sig(acc);
             nodes = self.param_nodes(sig, True) if sig is not None else [];
             if len(nodes) != 1 {
@@ -3815,6 +3815,22 @@ impl MirLowering.accessor_store(target: uni.AtomTrailer, value: MirValue) -> boo
             self.method_receiver(decl, arch, holder, target),
             self.coerce(value, decl.params[0], target)
         ]
+    );
+    return True;
+}
+
+impl MirLowering.accessor_delete(target: uni.AtomTrailer) -> bool {
+    found = self.accessor_of(target, "deleter");
+    if found is None {
+        return False;
+    }
+    (arch, decl) = found;
+    holder = self.spill(self.lower_expr(target.target));
+    self.invoke_method(
+        decl,
+        arch,
+        self.decl_label(decl),
+        [self.method_receiver(decl, arch, holder, target)]
     );
     return True;
 }

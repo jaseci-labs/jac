@@ -1757,6 +1757,11 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
         if self.unbind_local(target) {
             continue;
         }
+        if isinstance(target, uni.AtomTrailer)
+            and target.is_attr
+            and self.accessor_delete(target) {
+            continue;
+        }
         if not isinstance(target, uni.AtomTrailer)
             or target.is_attr
             or not isinstance(target.right, uni.IndexSlice) {

@@ -979,6 +979,7 @@ obj MirLowering {
 
     def accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
     def accessor_store(target: uni.AtomTrailer, value: MirValue) -> bool;
+    def accessor_delete(target: uni.AtomTrailer) -> bool;
     def any_scalar_unbox(value: MirValue, to: MirType) -> MirValue;
     def any_tag_check(held: MirValue, tag_value: int, label: str);
     def any_mismatch(held: MirValue, label: str);
