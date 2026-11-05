@@ -4247,13 +4247,27 @@ impl MirLowering.c_extern(
     }
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol,
-        ret=ret,
-        params=[plan[0] for plan in plans],
+        ret=self.libc_slot(symbol, -1, ret),
+        params=[
+            self.libc_slot(symbol, index, plan[0]) for (index, plan) in enumerate(plans)
+        ],
         variadic=variadic,
         c_abi=True,
         cc=self.c_convention(callee)
     );
     return (symbol, plans, ret, ret_plan, variadic);
+}
+
+impl MirLowering.libc_slot(symbol: str, index: int, declared: MirType) -> MirType {
+    found = LIBC_POINTER_SLOTS.get(symbol);
+    if found is None or declared.kind != MirKind.INT or declared.width != 64 {
+        return declared;
+    }
+    (ret_ptr, params) = found;
+    if (index < 0 and ret_ptr) or index in params {
+        return mir_c_ptr(mir_int(8, False));
+    }
+    return declared;
 }
 
 impl MirLowering.heap_routine(symbol: str, callee: uni.Ability) -> str {
@@ -4328,12 +4342,22 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
         } else {
             values.append(self.c_vararg(arg));
         }
+        if index < len(plans) {
+            slot = self.libc_slot(symbol, index, values[-1].type);
+            if slot is not values[-1].type {
+                values[-1] = self.emit_value(MirOp.PTR_CAST, slot, [values[-1]]);
+            }
+        }
     }
     result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
     if symbol == "pthread_create" {
         self.mark_threaded();
     }
-    result = self.emit_value(MirOp.CALL_C, result_type, values, callee=symbol);
+    c_result = self.libc_slot(symbol, -1, result_type);
+    result = self.emit_value(MirOp.CALL_C, c_result, values, callee=symbol);
+    if c_result is not result_type {
+        result = self.emit_value(MirOp.PTR_INT, result_type, [result]);
+    }
     if mir_holds_ref(result_type) {
         result.owned = True;
     }
