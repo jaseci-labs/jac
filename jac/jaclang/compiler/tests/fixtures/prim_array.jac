@@ -176,6 +176,91 @@ def array_py -> dict[any, any] {
     r["eq_int_float"] = 1 if fi.__eq__(ff1) else 0;
     r["eq_int_float_diff"] = 1 if fi.__eq__(ff2) else 0;
     r["eq_nan"] = 1 if fn.__eq__(fn) else 0;
+    # Non-numeric values must raise TypeError on write paths (never store a
+    # reinterpreted payload), and search compares by value across int/float.
+    # Bad operands go through `any` locals so the sv lane's typeshed
+    # `array[int]` signature does not reject them at compile time.
+    ci = array("i", [1, 2, 3]);
+    bad_str: any = "x";
+    bad_none: any = None;
+    bad_list: any = [7];
+    bad_seq: list[any] = [];
+    bad_seq.append("x");
+    two_point_oh: any = 2.0;
+    two: any = 2;
+    try {
+        ci.append(bad_str);
+        r["err_append_str"] = "noraise";
+    } except TypeError as e {
+        r["err_append_str"] = str(e);
+    }
+    try {
+        ci.append(bad_none);
+        r["err_append_none"] = "noraise";
+    } except TypeError as e {
+        r["err_append_none"] = str(e);
+    }
+    try {
+        ci.append(bad_list);
+        r["err_append_list"] = "noraise";
+    } except TypeError as e {
+        r["err_append_list"] = str(e);
+    }
+    try {
+        array("q").append(bad_str);
+        r["err_append_q_str"] = "noraise";
+    } except TypeError as e {
+        r["err_append_q_str"] = str(e);
+    }
+    try {
+        array("d").append(bad_str);
+        r["err_d_append_str"] = "noraise";
+    } except TypeError as e {
+        r["err_d_append_str"] = str(e);
+    }
+    try {
+        array("d").append(bad_none);
+        r["err_d_append_none"] = "noraise";
+    } except TypeError as e {
+        r["err_d_append_none"] = str(e);
+    }
+    r["len_after_bad"] = ci.__len__();
+    r["index_float_eq"] = ci.index(two_point_oh);
+    r["count_float_eq"] = ci.count(two_point_oh);
+    r["contains_float_eq"] = 1 if ci.__contains__(two_point_oh) else 0;
+    r["d_index_int"] = array("d", [2.0]).index(two);
+    try {
+        ci.index(bad_str);
+        r["err_index_str"] = "noraise";
+    } except ValueError as e {
+        r["err_index_str"] = str(e);
+    }
+    try {
+        ci.remove(bad_str);
+        r["err_remove_str"] = "noraise";
+    } except ValueError as e {
+        r["err_remove_str"] = str(e);
+    }
+    r["count_str"] = ci.count(bad_str);
+    r["contains_str"] = 1 if ci.__contains__(bad_str) else 0;
+    try {
+        ci.__setitem__(0, bad_str);
+        r["err_setitem_str"] = "noraise";
+    } except TypeError as e {
+        r["err_setitem_str"] = str(e);
+    }
+    try {
+        ci.insert(0, bad_str);
+        r["err_insert_str"] = "noraise";
+    } except TypeError as e {
+        r["err_insert_str"] = str(e);
+    }
+    try {
+        ci.extend(bad_seq);
+        r["err_extend_str"] = "noraise";
+    } except TypeError as e {
+        r["err_extend_str"] = str(e);
+    }
     return r;
 }
 
@@ -341,6 +426,92 @@ def _err_na(r: dict[str, any]) {
 }
 
 
+def _coerce_na(r: dict[str, any]) {
+    # Mirrors the sv lane's coercion/search probes exactly.
+    ci = array("i", [1, 2, 3]);
+    bad_str: any = "x";
+    bad_none: any = None;
+    bad_list: any = [7];
+    bad_seq: list[any] = [];
+    bad_seq.append("x");
+    two_point_oh: any = 2.0;
+    two: any = 2;
+    try {
+        ci.append(bad_str);
+        r["err_append_str"] = "noraise";
+    } except TypeError as e {
+        r["err_append_str"] = str(e);
+    }
+    try {
+        ci.append(bad_none);
+        r["err_append_none"] = "noraise";
+    } except TypeError as e {
+        r["err_append_none"] = str(e);
+    }
+    try {
+        ci.append(bad_list);
+        r["err_append_list"] = "noraise";
+    } except TypeError as e {
+        r["err_append_list"] = str(e);
+    }
+    try {
+        array("q").append(bad_str);
+        r["err_append_q_str"] = "noraise";
+    } except TypeError as e {
+        r["err_append_q_str"] = str(e);
+    }
+    try {
+        array("d").append(bad_str);
+        r["err_d_append_str"] = "noraise";
+    } except TypeError as e {
+        r["err_d_append_str"] = str(e);
+    }
+    try {
+        array("d").append(bad_none);
+        r["err_d_append_none"] = "noraise";
+    } except TypeError as e {
+        r["err_d_append_none"] = str(e);
+    }
+    r["len_after_bad"] = ci.__len__();
+    r["index_float_eq"] = ci.index(two_point_oh);
+    r["count_float_eq"] = ci.count(two_point_oh);
+    r["contains_float_eq"] = 1 if ci.__contains__(two_point_oh) else 0;
+    r["d_index_int"] = array("d", [2.0]).index(two);
+    try {
+        ci.index(bad_str);
+        r["err_index_str"] = "noraise";
+    } except ValueError as e {
+        r["err_index_str"] = str(e);
+    }
+    try {
+        ci.remove(bad_str);
+        r["err_remove_str"] = "noraise";
+    } except ValueError as e {
+        r["err_remove_str"] = str(e);
+    }
+    r["count_str"] = ci.count(bad_str);
+    r["contains_str"] = 1 if ci.__contains__(bad_str) else 0;
+    try {
+        ci.__setitem__(0, bad_str);
+        r["err_setitem_str"] = "noraise";
+    } except TypeError as e {
+        r["err_setitem_str"] = str(e);
+    }
+    try {
+        ci.insert(0, bad_str);
+        r["err_insert_str"] = "noraise";
+    } except TypeError as e {
+        r["err_insert_str"] = str(e);
+    }
+    try {
+        ci.extend(bad_seq);
+        r["err_extend_str"] = "noraise";
+    } except TypeError as e {
+        r["err_extend_str"] = str(e);
+    }
+}
+
+
 def _eq_na(r: dict[str, any]) {
     # Value-based cross-typecode equality (each side read via its own
     # typecode; NaN never equals itself).
@@ -365,6 +536,7 @@ def array_na -> dict[str, any] {
     _widths_na(r);
     _ops_na(r);
     _err_na(r);
+    _coerce_na(r);
     _eq_na(r);
     return r;
 }

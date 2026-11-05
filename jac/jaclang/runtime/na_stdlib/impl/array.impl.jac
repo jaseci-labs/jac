@@ -122,11 +122,11 @@ impl array.__len__ -> int {
 }
 
 impl array._coerce_int(v: any) -> int {
-    if isinstance(v, float) {
-        raise TypeError("'float' object cannot be interpreted as an integer");
+    if isinstance(v, int) {
+        iv: int = v;
+        return iv;
     }
-    iv: int = v;
-    return iv;
+    raise TypeError("'" + typename(v) + "' object cannot be interpreted as an integer");
 }
 
 impl array._coerce_float(v: any) -> float {
@@ -134,8 +134,11 @@ impl array._coerce_float(v: any) -> float {
         iv: int = v;
         return float(iv);
     }
-    fv: float = v;
-    return fv;
+    if isinstance(v, float) {
+        fv: float = v;
+        return fv;
+    }
+    raise TypeError("must be real number, not " + typename(v));
 }
 
 impl array._check_range(v: int) {
@@ -294,9 +297,27 @@ impl array.remove(v: any) {
 impl array._elem_eq(v: any, i: int) -> bool {
     sz: int = self.itemsize;
     if self._flt {
-        return self._read_float_elem(i * sz) == self._coerce_float(v);
+        fv: float = self._read_float_elem(i * sz);
+        if isinstance(v, int) {
+            iv: int = v;
+            return fv == float(iv);
+        }
+        if isinstance(v, float) {
+            vf: float = v;
+            return fv == vf;
+        }
+        return False;
     }
-    return self._read_elem(i * sz) == self._coerce_int(v);
+    li: int = self._read_elem(i * sz);
+    if isinstance(v, int) {
+        iv: int = v;
+        return li == iv;
+    }
+    if isinstance(v, float) {
+        vf: float = v;
+        return float(li) == vf;
+    }
+    return False;
 }
 
 impl array._find(v: any) -> int {
