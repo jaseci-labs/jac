@@ -38,6 +38,7 @@ import from jaclang.compiler.driver.pipeline {
     ANALYSIS_LOADS,
     CODEGEN_LOADS,
     IR_LOADS,
+    PassKind,
     providers_of,
     schedule_for,
     tier_reason
@@ -288,7 +289,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [
-            p.__name__
+            p.value
             for product in (
                 CompilationProduct.CODEGEN,
                 CompilationProduct.PY_IR,
@@ -327,10 +328,6 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
     import from jaclang.bootstrap_manifest { is_seed_source }
     `root = os.path.dirname(str(jaclang.__file__));
 
-    def seed(mod_name: str) -> bool {
-        rel = mod_name.removeprefix("jaclang.").replace(".", os.sep) + ".jac";
-        return is_seed_source(rel);
-    }
     codegen = (schedule_for(CompilationProduct.CODEGEN) or [])
         + (schedule_for(CompilationProduct.PY_IR) or [])
         + (schedule_for(CompilationProduct.FROZEN) or []);
@@ -347,14 +344,13 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
                 f"{origin}: {dep} came back half-initialized"
             );
         }
-        for p in passes {
-            owner = p.__module__;
-            covered = seed(owner)
-                or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
-            assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
-                "seed module nor in the schedule's dependency list; a compile "
-                "reached from its import would run the schedule that needs it"
+        for pass_kind in passes {
+            assert isinstance(pass_kind, PassKind) , (
+                f"{origin}: class-valued pass escaped the static schedule: "
+                f"{pass_kind}"
+            );
+            assert pass_kind.value.endswith("Pass") , (
+                f"{origin}: malformed pass identifier {pass_kind.value}"
             );
         }
     }

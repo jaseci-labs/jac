@@ -14,15 +14,15 @@ on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
 import os;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline { PassKind, product_passes }
 import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
     ProductRequest
 }
 
 """The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
-def codegen_lane(native: bool) -> list[type] {
-    lane: list[type] = [];
+def codegen_lane(native: bool) -> list[PassKind] {
+    lane: list[PassKind] = [];
     for product in (
         CompilationProduct.CODEGEN,
         CompilationProduct.PY_IR,
@@ -61,15 +61,15 @@ test "importing the native package does not initialize code generation" {
 
 test "the codegen lane omits the native passes when native=False" {
     without_native = codegen_lane(False);
-    assert NaIRGenPass not in without_native;
-    assert NativeCompilePass not in without_native;
+    assert PassKind.NA_IR_GEN not in without_native;
+    assert PassKind.NATIVE_COMPILE not in without_native;
 }
 
 
 test "the codegen lane schedules the native passes when native=True" {
     with_native = codegen_lane(True);
-    assert NaIRGenPass in with_native;
-    assert NativeCompilePass not in with_native;
+    assert PassKind.NA_IR_GEN in with_native;
+    assert PassKind.NATIVE_COMPILE not in with_native;
 }
 
 

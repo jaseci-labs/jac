@@ -25,15 +25,15 @@ nineteen files exist, CI runs them, and what they run is the container.
 
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline { PassKind, product_passes }
 import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
     ProductRequest
 }
 
 """The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
-def codegen_lane(native: bool) -> list[type] {
-    lane: list[type] = [];
+def codegen_lane(native: bool) -> list[PassKind] {
+    lane: list[PassKind] = [];
     for product in (
         CompilationProduct.CODEGEN,
         CompilationProduct.PY_IR,
@@ -138,17 +138,17 @@ test "the manifest has no duplicates and covers both lanes" {
 
 test "the lane the canaries measure is the container, with no alternative" {
     sched = codegen_lane(False);
-    assert JcirGenPass in sched , (
-        f"the codegen schedule does not emit JCIR: {[p.__name__ for p in sched]}"
+    assert PassKind.JCIR_GEN in sched , (
+        f"the codegen schedule does not emit JCIR: {[p.value for p in sched]}"
     );
-    assert JcirBytecodeGenPass not in sched , (
+    assert PassKind.JCIR_BYTECODE_GEN not in sched , (
         "the codegen schedule transcribes JCIR itself; transcription is the "
         "host's assembly step, after the compiler hands JCIR over"
     );
     for `entry in sched {
-        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
+        assert "Pyast" not in entry.value and "PyBytecode" not in entry.value , (
             f"a second Python codegen emitter is back in the schedule "
-            f"({`entry.__name__}); the manifest measures whichever lane runs, "
+            f"({entry.value}); the manifest measures whichever lane runs, "
             "so two lanes make it ambiguous"
         );
     }
