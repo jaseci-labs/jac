@@ -596,6 +596,37 @@ def:pub js_object_new_shaped2(
     return _obj_wrap(sh2_idx);
 }
 
+"""js_object_new_shaped2 for a three-property shape `sid` (inline slots)."""
+def:pub js_object_new_shaped3(
+    proto_idx: int, sid: int, v0: JSValue, v1: JSValue, v2: JSValue
+) -> JSValue {
+    sh3_idx: int = _obj_alloc(proto_idx);
+    sh3_p: int = jo_p(sh3_idx);
+    __mem_store_i64(wrapping_add(sh3_p, 16), sid);
+    __mem_store_i64(wrapping_add(sh3_p, 32), v0);
+    __mem_store_i64(wrapping_add(sh3_p, 40), v1);
+    __mem_store_i64(wrapping_add(sh3_p, 48), v2);
+    __mem_store_i64(wrapping_add(sh3_p, 24), 3);
+    __mem_store_i64(wrapping_add(sh3_p, 8), 3);
+    return _obj_wrap(sh3_idx);
+}
+
+"""js_object_new_shaped2 for a four-property shape `sid` (inline slots)."""
+def:pub js_object_new_shaped4(
+    proto_idx: int, sid: int, v0: JSValue, v1: JSValue, v2: JSValue, v3: JSValue
+) -> JSValue {
+    sh4_idx: int = _obj_alloc(proto_idx);
+    sh4_p: int = jo_p(sh4_idx);
+    __mem_store_i64(wrapping_add(sh4_p, 16), sid);
+    __mem_store_i64(wrapping_add(sh4_p, 32), v0);
+    __mem_store_i64(wrapping_add(sh4_p, 40), v1);
+    __mem_store_i64(wrapping_add(sh4_p, 48), v2);
+    __mem_store_i64(wrapping_add(sh4_p, 56), v3);
+    __mem_store_i64(wrapping_add(sh4_p, 24), 4);
+    __mem_store_i64(wrapping_add(sh4_p, 8), 4);
+    return _obj_wrap(sh4_idx);
+}
+
 """The shape of `v` when it is the shape-mode Array js_array_create builds:
 the array marker `mk` (slot 0, a data property) then a writable-only
 `length` (slot 1), nothing else. -1 otherwise."""

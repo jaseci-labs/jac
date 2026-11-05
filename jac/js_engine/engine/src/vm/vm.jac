@@ -436,7 +436,7 @@ import from engine.src.runtime.jsobj_type {
     BRAND_ENV_OBJ,
     BRAND_REGEXP
 }
-import from engine.src.runtime.shape { shape_lookup, shape_parent, SHAPE_ATTR_ACCESSOR }
+import from engine.src.runtime.shape { shape_lookup, shape_parent, shape_key_count, SHAPE_ATTR_ACCESSOR }
 import from engine.src.runtime.obs_context { obs_is_active }
 import from engine.src.vm.closure_type {
     jc_pop,
@@ -516,6 +516,8 @@ import from engine.src.runtime.jsobject {
     js_object_proto_ic_ok,
     js_object_spread_plan,
     js_object_new_shaped2,
+    js_object_new_shaped3,
+    js_object_new_shaped4,
     js_object_class_id_id,
     js_object_elems_kind_id,
     js_object_ic_hit,
@@ -2060,6 +2062,40 @@ glob _HDI_ARR_SHAPE: int = -1,
 
 # GET_PROP getter IC markers (see VM._getter_ic_call).
 # 2^40: above any table id
+
+# The shapes of the dense arguments objects (_build_arguments_dense): marker,
+# `length`, @@iterator, and with a data `callee` before @@iterator. Learned
+# from the first one built the ordinary way; shapes are never freed.
+glob _ARGS_SID: int = -1,
+     _ARGS_SID_CALLEE: int = -1;
+
+def _args_shape_learn(al_obj: JSValue, with_callee: bool) {
+    al_sid: int = js_object_ic_shape(al_obj);
+    if al_sid <= 0 or jo_mode(jsv_to_table_id(al_obj)) != MAP_MODE_SHAPE {
+        return;
+    }
+    al_keys: list[int] = [_KEY_IS_ARGUMENTS, KEY_LENGTH];
+    if with_callee {
+        al_keys.append(WK_CALLEE);
+    }
+    al_keys.append(SYMBOL_KEY_BASE + SYMBOL_ITERATOR);
+    if shape_key_count(al_sid) != len(al_keys) {
+        return;
+    }
+    al_i: int = 0;
+    while al_i < len(al_keys) {
+        al_e: int = shape_lookup(al_sid, al_keys[al_i]);
+        if al_e < 0 or al_e // 16 != al_i or (al_e & SHAPE_ATTR_ACCESSOR) != 0 {
+            return;
+        }
+        al_i = al_i + 1;
+    }
+    if with_callee {
+        _ARGS_SID_CALLEE = al_sid;
+    } else {
+        _ARGS_SID = al_sid;
+    }
+}
 
 # Layout of GET_ITER's standard iterator (a null-prototype object with
 # exactly __I then __J), learned from the first one built — see
@@ -5975,6 +6011,11 @@ obj VM {
         if fn.is_strict {
             return self._build_arguments_strict(args);
         }
+        if len(fn.params) == 0 or len(args) == 0 {
+            # Nothing to map (no parameter, or no argument for one): the
+            # dense layout with a data `callee` is the same object.
+            return self._build_arguments_dense(args, callee, False);
+        }
         ba_obj: JSValue = js_object_new_ordinary();
         # Hidden marker: an arguments exotic object iterates array-style and reports
         # [object Arguments].  js_object_set stores it above the string-key range so
@@ -6069,10 +6110,47 @@ obj VM {
     define (~8k instructions per object). It is no array: js_is_array checks
     FLAG_IS_ARGUMENTS, and the element append path leaves `length` alone."""
     def _build_arguments_strict(args: list[JSValue]) -> JSValue {
-        bs_obj: JSValue = js_object_new_ordinary();
-        js_object_set(bs_obj, _KEY_IS_ARGUMENTS, js_true());
-        js_object_mark_arguments(bs_obj);
+        return self._build_arguments_dense(args, js_undefined(), True);
+    }
+
+    """The dense arguments object of _build_arguments_strict; a sloppy one
+    that maps no parameter also gets its data `callee` after `length`."""
+    def _build_arguments_dense(
+        args: list[JSValue], callee: JSValue, strict: bool
+    ) -> JSValue {
         bs_n: int = len(args);
+        bs_callee: bool = not strict and not jsv_is_undefined(callee);
+        bs_iter_fn: JSValue = self.realm.array_values_fn;
+        if jsv_is_undefined(bs_iter_fn)
+            or (jsv_is_int32(bs_iter_fn) and jsv_to_int32(bs_iter_fn) == 0) {
+            bs_iter_fn = js_native_singleton("values", 0, NATIVE_KIND_ARRAY_ITER);
+        }
+        # Built at the shape the first one of its kind reached (marker,
+        # `length`[, `callee`], @@iterator): the three or four property adds
+        # walked the shape transitions for every call that reads `arguments`.
+        bs_sid: int = _ARGS_SID_CALLEE if bs_callee else _ARGS_SID;
+        bs_proto: JSValue = js_object_get_ordinary_proto();
+        if bs_sid > 0 and jsv_is_object_cell(bs_proto) and jsv_to_table_id(bs_proto) > 0 {
+            bs_fobj: JSValue = js_undefined();
+            if bs_callee {
+                bs_fobj = js_object_new_shaped4(
+                    jsv_to_table_id(bs_proto), bs_sid, js_false(), js_int(bs_n), callee, bs_iter_fn
+                );
+            } else {
+                bs_fobj = js_object_new_shaped3(
+                    jsv_to_table_id(bs_proto), bs_sid, js_boolean(strict), js_int(bs_n), bs_iter_fn
+                );
+            }
+            js_object_mark_arguments(bs_fobj);
+            if bs_n > 0 {
+                bs_fid: int = jsv_to_table_id(bs_fobj);
+                jo_set_elems_kind(bs_fid, jo_einit_range(bs_fid, args, 0, bs_n));
+            }
+            return bs_fobj;
+        }
+        bs_obj: JSValue = js_object_new_ordinary();
+        js_object_set(bs_obj, _KEY_IS_ARGUMENTS, js_boolean(strict));
+        js_object_mark_arguments(bs_obj);
         if bs_n > 0 {
             bs_id: int = jsv_to_table_id(bs_obj);
             jo_set_elems_kind(bs_id, jo_einit_range(bs_id, args, 0, bs_n));
@@ -6080,10 +6158,10 @@ obj VM {
         js_object_set_flags(
             bs_obj, WK_LENGTH, js_int(bs_n), PROP_WRITABLE | PROP_CONFIGURABLE
         );
-        bs_iter_fn: JSValue = self.realm.array_values_fn;
-        if jsv_is_undefined(bs_iter_fn)
-            or (jsv_is_int32(bs_iter_fn) and jsv_to_int32(bs_iter_fn) == 0) {
-            bs_iter_fn = js_native_singleton("values", 0, NATIVE_KIND_ARRAY_ITER);
+        if bs_callee {
+            js_object_set_flags(
+                bs_obj, WK_CALLEE, callee, PROP_WRITABLE | PROP_CONFIGURABLE
+            );
         }
         js_object_set_flags(
             bs_obj,
@@ -6091,6 +6169,10 @@ obj VM {
             bs_iter_fn,
             PROP_WRITABLE | PROP_CONFIGURABLE
         );
+        if jsv_is_object_cell(bs_proto)
+            and js_object_proto_idx_id(jsv_to_table_id(bs_obj)) == jsv_to_table_id(bs_proto) {
+            _args_shape_learn(bs_obj, bs_callee);
+        }
         return bs_obj;
     }
 
