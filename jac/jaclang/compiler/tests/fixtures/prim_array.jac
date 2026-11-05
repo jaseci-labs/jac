@@ -20,7 +20,12 @@ Documented divergences NOT exercised here (they would spuriously fail):
     backends (raw addresses), so only ``[1]`` (the item count) is compared,
   - ``fromfile``/``tofile`` take a file-like ``any`` receiver whose method
     calls na cannot lower; they stay Python-only on the native lane,
-  - 'u'/'w' typecodes, slicing, ``del``, and ``tobuffer``.
+  - 'u'/'w' typecodes, slicing, ``del``, and ``tobuffer``,
+  - constructor/``extend`` iterables the ``any`` boundary cannot carry:
+    ``tuple`` and ``range`` have no ``any`` box, ``dict`` element views are
+    unsupported, and generators/``memoryview`` have no runtime shape the
+    native lane can detect -- the py lane pins these under keys waived by
+    the equivalence row's ``allow_missing``.
 
 ES/JS opts out (``array_cl`` returns an empty dict).
 """
@@ -286,6 +291,54 @@ def array_py -> dict[any, any] {
     r["ctor_ba"] = cba.__getitem__(0);
     ca = array("d", array("i", [8, 9]));
     r["ctor_arr_g1"] = ca.__getitem__(1);
+    # extend/ctor also consume sets and frozensets element-wise (single
+    # elements keep set order deterministic), str iterates characters and
+    # fails element coercion, and non-iterables get CPython's
+    # '<type>' object is not iterable TypeError.
+    es = array("i");
+    es.extend({9});
+    r["ext_set_g0"] = es.__getitem__(0);
+    ef = array("i");
+    ef.extend(frozenset([4]));
+    r["ext_frozenset_g0"] = ef.__getitem__(0);
+    ess = array("i");
+    ess.extend("");
+    r["ext_empty_str_len"] = ess.__len__();
+    bad_int: any = 5;
+    try {
+        array("i").extend(bad_int);
+        r["err_extend_int"] = "noraise";
+    } except TypeError as e {
+        r["err_extend_int"] = str(e);
+    }
+    try {
+        array("i").extend("ab");
+        r["err_extend_strarg"] = "noraise";
+    } except TypeError as e {
+        r["err_extend_strarg"] = str(e);
+    }
+    try {
+        array("i", "ab");
+        r["err_ctor_str"] = "noraise";
+    } except TypeError as e {
+        r["err_ctor_str"] = str(e);
+    }
+    cs = array("i", {8});
+    r["ctor_set_g0"] = cs.__getitem__(0);
+    cf = array("i", frozenset([6]));
+    r["ctor_frozenset_g0"] = cf.__getitem__(0);
+    # Python-only on the native lane (waived in the equivalence row):
+    # tuple/range cannot cross the `any` boundary, dict element views are
+    # unsupported, and generators have no detectable runtime shape.
+    ct = array("i", (11, 22));
+    r["ctor_tuple_g1"] = ct.__getitem__(1);
+    cr = array("i", range(3));
+    r["ctor_range_g2"] = cr.__getitem__(2);
+    cd = array("i", {1: "a", 2: "b"});
+    r["ctor_dict_g1"] = cd.__getitem__(1);
+    et = array("i");
+    et.extend((30, 40));
+    r["ext_tuple_g1"] = et.__getitem__(1);
     return r;
 }
 
@@ -576,6 +629,41 @@ def _extend_na(r: dict[str, any]) {
     r["ctor_ba"] = cba.__getitem__(0);
     ca = array("d", array("i", [8, 9]));
     r["ctor_arr_g1"] = ca.__getitem__(1);
+    # Mirrors the sv lane's iterable probes: sets/frozensets go element-wise,
+    # str iterates characters into the element-coercion TypeError, and
+    # non-iterables get CPython's '<type>' object is not iterable.
+    es = array("i");
+    es.extend({9});
+    r["ext_set_g0"] = es.__getitem__(0);
+    ef = array("i");
+    ef.extend(frozenset([4]));
+    r["ext_frozenset_g0"] = ef.__getitem__(0);
+    ess = array("i");
+    ess.extend("");
+    r["ext_empty_str_len"] = ess.__len__();
+    bad_int: any = 5;
+    try {
+        array("i").extend(bad_int);
+        r["err_extend_int"] = "noraise";
+    } except TypeError as e {
+        r["err_extend_int"] = str(e);
+    }
+    try {
+        array("i").extend("ab");
+        r["err_extend_strarg"] = "noraise";
+    } except TypeError as e {
+        r["err_extend_strarg"] = str(e);
+    }
+    try {
+        array("i", "ab");
+        r["err_ctor_str"] = "noraise";
+    } except TypeError as e {
+        r["err_ctor_str"] = str(e);
+    }
+    cs = array("i", {8});
+    r["ctor_set_g0"] = cs.__getitem__(0);
+    cf = array("i", frozenset([6]));
+    r["ctor_frozenset_g0"] = cf.__getitem__(0);
 }
 
 
