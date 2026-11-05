@@ -34983,6 +34983,32 @@ obj VM {
         return 3;
     }
 
+    """R_CALLM of %Function.prototype.call% on a built-in receiver `fnv`:
+    `fnv.call(t, args...)` as fnv's own direct or fast call with this = t and
+    the argument registers after it (3 = done, the result in regs[dst]; 0 =
+    the handler takes it, including a TDZ-flagged `t`)."""
+    def _reg_native_call_call(
+        frame: CallFrame, st: ExecState, fnv: JSValue, dst: int, argpc: int, argc: int, orig: int
+    ) -> int {
+        cc_w: int = frame.func.rcode[argpc];
+        cc_t: JSValue = frame.locals[frame.lb + (cc_w & 32767)];
+        if (cc_w & 32768) != 0 and js_is_tdz(cc_t) {
+            return 0;
+        }
+        cc_k: int = get_native_kind(fnv);
+        if cc_k >= 0 and cc_k < len(_ND_SLOT) and _ND_SLOT[cc_k] != 0 {
+            cc_v: JSValue = _reg_native_direct(_ND_SLOT[cc_k], cc_t, frame, argpc + 1, argc - 1);
+            if not jsv_is_hole(cc_v) {
+                frame.locals[frame.lb + (dst)] = cc_v;
+                return 3;
+            }
+        }
+        if self._reg_native_fast_call(frame, st, dst, fnv, cc_t, argpc + 1, argc - 1, orig, cc_k) {
+            return 3;
+        }
+        return 0;
+    }
+
     """R_CALLM on a whitelisted builtin (see _NATIVE_FAST_KIND): the stack
     loop's _native_fast_call on registers — the receiver `this_val`, the
     `argc` argument registers at rcode[argpc..], the result in regs[dst].
@@ -38173,6 +38199,16 @@ obj VM {
                             # fn.call(t, args...) on a closure: enter fn with this = t
                             cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
                         }
+                        if cr == 0
+                            and zi == NATIVE_KIND_FN_CALL
+                            and br >= 0
+                            and c >= 1
+                            and is_native_val(vb) {
+                            # f.call(t, args...) on a built-in f
+                            # (Object.prototype.hasOwnProperty.call(o, k)): f's
+                            # own fast call with this = t and the rest
+                            cr = self._reg_native_call_call(frame, st, vb, a, xi, c, xo);
+                        }
                         if cr == 0 and zi >= 0 and zi < len(_ND_SLOT) and _ND_SLOT[zi] != 0 {
                             # a hot built-in on plain operands, done in place
                             vr = _reg_native_direct(_ND_SLOT[zi], vb, frame, xi, c);
@@ -38462,6 +38498,16 @@ obj VM {
                             and not is_native_val(vb) {
                             # fn.call(t, args...) on a closure: enter fn with this = t
                             cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
+                        }
+                        if cr == 0
+                            and zi == NATIVE_KIND_FN_CALL
+                            and br >= 0
+                            and c >= 1
+                            and is_native_val(vb) {
+                            # f.call(t, args...) on a built-in f
+                            # (Object.prototype.hasOwnProperty.call(o, k)): f's
+                            # own fast call with this = t and the rest
+                            cr = self._reg_native_call_call(frame, st, vb, a, xi, c, xo);
                         }
                         if cr == 0 and zi >= 0 and zi < len(_ND_SLOT) and _ND_SLOT[zi] != 0 {
                             # a hot built-in on plain operands, done in place
