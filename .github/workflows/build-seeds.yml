@@ -15,9 +15,11 @@ name: Build the JacPython seed
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/build-seeds.yml
+  # Turned off: a seed build lowers JacPython's native object, which does not
+  # fit a 16 GB GitHub-hosted runner. Restore with the bigger runner.
+  # pull_request:
+  #   paths:
+  #     - .github/workflows/build-seeds.yml
 
 permissions:
   contents: read
@@ -28,7 +30,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     outputs:
       asset: ${{ steps.seed.outputs.asset }}
