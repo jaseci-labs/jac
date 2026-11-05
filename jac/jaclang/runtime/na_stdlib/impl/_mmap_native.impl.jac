@@ -11,12 +11,14 @@ impl _stat_mode_pos -> tuple[int, int] {
     if pid == 1 {
         _SM_OFF = 4;
         _SM_W = 2;
-    } elif pid == 0 and plat_machine() == "x86_64" {
-        _SM_OFF = 24;
-        _SM_W = 4;
     } elif pid == 0 {
-        _SM_OFF = 16;
-        _SM_W = 4;
+        if plat_uname_ok() and plat_machine() == "x86_64" {
+            _SM_OFF = 24;
+            _SM_W = 4;
+        } else {
+            _SM_OFF = 16;
+            _SM_W = 4;
+        }
     }
     return (_SM_OFF, _SM_W);
 }

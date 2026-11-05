@@ -416,11 +416,3 @@ impl mmap.resize(newsize: int) {
         self._pos = newsize;
     }
 }
-
-impl mmap._read_slice(start: int, n: int) -> bytes {
-    self._check_open();
-    if start < 0 or start + n > self._len {
-        raise IndexError("mmap slice out of range");
-    }
-    return mm_read(self._addr + start, n);
-}

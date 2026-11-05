@@ -14,7 +14,7 @@ import from c { def __jac_fstat_record(fd: i32, buf: bytes) -> i32;  }
 import from c { def __jac_platform_id -> i32;  }
 import from _errno_native { last_errno, errno_message }
 import from _mmap_platform { mm_sync_flag, mm_dupfd_cloexec_cmd }
-import from _platform_native { plat_machine }
+import from _platform_native { plat_machine, plat_uname_ok }
 
 
 def:pub mm_map(length: int, prot: int, flags: int, fd: int, offset: int) -> int;
