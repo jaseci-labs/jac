@@ -275,6 +275,20 @@ impl __jac_rt_dict_find(d: int, key: int, key_kind: int) -> int {
 }
 
 impl __jac_rt_dict_set(d: int, key: int, val: int, key_kind: int, val_kind: int) {
+    if key_kind == KIND_ANY {
+        have_key = __mem_load_i64(d + DICT_KEY_KIND);
+        if have_key != KIND_ANY {
+            key = __jac_rt_any_as_kind(key, have_key);
+            key_kind = have_key;
+        }
+    }
+    if val_kind == KIND_ANY {
+        have_val = __mem_load_i64(d + DICT_VAL_KIND);
+        if have_val >= 0 and have_val != KIND_ANY {
+            val = __jac_rt_any_as_kind(val, have_val);
+            val_kind = have_val;
+        }
+    }
     _store(d, _hash(key, key_kind), key, val, key_kind, val_kind);
 }
 

@@ -437,6 +437,35 @@ impl __jac_rt_elem_box(bits: int, kind: int) -> int {
     );
 }
 
+impl __jac_rt_any_as_kind(bits: int, kind: int) -> int {
+    tag = __jac_rt_elem_tag(bits, KIND_ANY);
+    fits = False;
+    if kind == KIND_INT or kind == KIND_UINT {
+        fits = tag == ANY_TAG_INT or tag == ANY_TAG_BOOL;
+    } elif kind == KIND_FLOAT {
+        fits = tag == ANY_TAG_FLOAT;
+    } elif kind == KIND_BOOL {
+        fits = tag == ANY_TAG_BOOL;
+    } elif kind == KIND_NULL {
+        fits = tag == ANY_TAG_NONE;
+    } elif kind == KIND_STR {
+        fits = tag == ANY_TAG_STR or tag == ANY_TAG_NONE;
+    } elif kind == KIND_REF {
+        fits = tag == ANY_TAG_NONE
+            or tag == ANY_TAG_LIST
+            or tag == ANY_TAG_DICT
+            or tag == ANY_TAG_SET
+            or tag == ANY_TAG_OBJ
+            or tag == ANY_TAG_ENUM;
+    }
+    if not fits {
+        raise TypeError(
+            "a container with typed elements cannot hold this value through an `any` view"
+        );
+    }
+    return __jac_rt_elem_payload(bits, KIND_ANY);
+}
+
 impl _seq_bits(p: int, i: int, is_tup: bool) -> int {
     if is_tup {
         return __mem_load_i64(

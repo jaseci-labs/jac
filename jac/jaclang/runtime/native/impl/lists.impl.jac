@@ -383,6 +383,13 @@ impl __jac_rt_list_reserve(lst: int, n: int) {
 }
 
 impl __jac_rt_list_push(lst: int, bits: int, kind: int) {
+    if kind == KIND_ANY {
+        have = __jac_rt_list_kind(lst);
+        if have != KIND_ANY {
+            bits = __jac_rt_any_as_kind(bits, have);
+            kind = have;
+        }
+    }
     n = __mem_load_i64(lst + LIST_LEN);
     if n >= __mem_load_i64(lst + LIST_CAP) {
         __jac_rt_list_view_check(lst, VIEW_APPEND);
@@ -409,6 +416,13 @@ impl __jac_rt_list_push_words(lst: int, n: int) -> int {
 }
 
 impl __jac_rt_list_set(lst: int, i: int, bits: int, kind: int) {
+    if kind == KIND_ANY {
+        have = __jac_rt_list_kind(lst);
+        if have != KIND_ANY {
+            bits = __jac_rt_any_as_kind(bits, have);
+            kind = have;
+        }
+    }
     at = __mem_load_i64(lst + LIST_DATA) + i * SLOT;
     old = __mem_load_i64(at);
     held = _held(lst, kind);
@@ -446,6 +460,13 @@ impl __jac_rt_list_pop(lst: int, i: int) -> int {
 
 impl __jac_rt_list_insert(lst: int, i: int, bits: int, kind: int) {
     __jac_rt_list_view_check(lst, VIEW_INSERT);
+    if kind == KIND_ANY {
+        have = __jac_rt_list_kind(lst);
+        if have != KIND_ANY {
+            bits = __jac_rt_any_as_kind(bits, have);
+            kind = have;
+        }
+    }
     n = __mem_load_i64(lst + LIST_LEN);
     __jac_rt_list_reserve(lst, n + 1);
     data = __mem_load_i64(lst + LIST_DATA);
@@ -540,6 +561,22 @@ impl __jac_rt_list_box(lst: int, tag: int) -> int {
 
 impl __jac_rt_list_extend(dst: int, src: int, kind: int) {
     __jac_rt_list_view_check(dst, VIEW_EXTEND);
+    if kind == KIND_ANY {
+        have = __jac_rt_list_kind(src);
+        if __jac_rt_list_kind(dst) != have {
+            count = __mem_load_i64(src + LIST_LEN);
+            at = 0;
+            while at < count {
+                boxed = __jac_rt_elem_box(
+                    __mem_load_i64(__mem_load_i64(src + LIST_DATA) + at * SLOT), have
+                );
+                __jac_rt_list_push(dst, boxed, KIND_ANY);
+                __jac_rt_elem_release(boxed, KIND_ANY);
+                at += 1;
+            }
+            return;
+        }
+    }
     kind = _held(dst, kind);
     n = __mem_load_i64(src + LIST_LEN);
     if n <= 0 {
