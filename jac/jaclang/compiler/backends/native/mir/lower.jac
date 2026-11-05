@@ -295,7 +295,9 @@ obj MirWithExit {
 obj MirLoopTarget {
     has head: MirBlock,
         after: MirBlock,
-        continue_depth: int = -1;
+        continue_depth: int = -1,
+        passes: (uni.UniNode | None) = None,
+        breaks_pass: bool = True;
 }
 
 obj MirIterCursor {
@@ -328,6 +330,8 @@ obj MirFnState {
         cell_types: dict[int, MirType] = {},
         env_cells: dict[int, int] = {},
         env: (MirValue | None) = None,
+        linked: set[int] = set(),
+        pass_links: dict[int, MirValue] = {},
         locals: dict[int, MirValue] = {},
         local_names: dict[str, MirValue] = {},
         loops: list[MirLoopTarget] = [],
@@ -451,6 +455,8 @@ obj MirLowering {
         decorations: list[tuple[int, str]] = [],
         fn_deps: dict[str, list[str]] = {},
         hard_refusals: list[NativeRefusal] = [],
+        loop_links: (LoopLinks | None) = None,
+        counterparts: dict[int, (uni.Archetype | None)] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
@@ -488,6 +494,7 @@ obj MirLowering {
     def symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> MirType;
     def expr_type(nd: uni.Expr) -> MirType;
     def redeclare_local(target: uni.Name, tag: uni.SubTag);
+    def retype_from_value(target: uni.Name, value: MirValue);
     def narrowed_from_any(nd: uni.Expr) -> bool;
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
@@ -1086,6 +1093,10 @@ obj MirLowering {
     def closure_key(made: MirValue, identity: str);
     def prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]);
     def cell_of(sym_id: int) -> (MirValue | None);
+    def links -> LoopLinks;
+    def lower_pass(loop: uni.UniNode, body: Sequence[uni.UniNode]);
+    def open_pass_links(loop: uni.UniNode);
+    def detach_pass_links(loop: (uni.UniNode | None));
     def cell_read(cell: MirValue, value_type: MirType) -> MirValue;
     def cell_write(
         cell: MirValue, value: MirValue, value_type: MirType, site: uni.UniNode
@@ -1331,6 +1342,11 @@ obj MirLowering {
     ) -> MirValue;
 
     def osp_delete(target: uni.Expr) -> bool;
+    def osp_graph_type(t: (TypeBase | None)) -> bool;
+    def osp_destroy_held(
+        value: MirValue, t: (TypeBase | None), site: uni.UniNode
+    ) -> bool;
+
     def lower_jid(nd: uni.FuncCall) -> MirValue;
     def call_rt(name: str, args: list[MirValue]) -> MirValue;
     def text_const(text: str) -> tuple[MirValue, MirValue];
@@ -1645,6 +1661,11 @@ obj MirLowering {
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
     def stdlib_unit(scope: (uni.UniScopeNode | None)) -> (uni.Module | None);
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
+    def stdlib_item_member(nd: uni.FuncCall) -> (uni.Ability | None);
+    def stdlib_unit_named(name: str) -> (uni.Module | None);
+    def stdlib_counterpart(scope: uni.Archetype) -> (uni.Archetype | None);
+    def counterpart_type(t: (TypeBase | None)) -> (TypeBase | None);
+    def stdlib_result_arch(nd: uni.UniNode) -> (uni.Archetype | None);
     def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
     def stdlib_unit_at(path: str) -> (uni.Module | None);
     def environ_unit(target: uni.UniNode) -> (uni.Module | None);

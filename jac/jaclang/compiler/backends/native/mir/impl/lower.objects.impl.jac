@@ -19,7 +19,7 @@ impl MirLowering.arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None) {
         or self.erased_class(t) {
         return None;
     }
-    return None if stub_archetype(scope) else scope;
+    return self.stdlib_counterpart(scope) if stub_archetype(scope) else scope;
 }
 
 impl MirLowering.object_type(arch: uni.Archetype) -> MirType {
@@ -1906,6 +1906,15 @@ impl MirLowering.object_compare(
 }
 
 impl MirLowering.holder_arch(expr: uni.Expr) -> (uni.Archetype | None) {
+    if isinstance(expr, uni.Name)
+        and expr.sym is not None
+        and self.state is not None
+        and id(expr.sym) in self.st().retyped {
+        retyped = self.st().retyped[id(expr.sym)];
+        if retyped.kind == MirKind.OBJ and retyped.name in self.archetypes {
+            return self.archetypes[retyped.name];
+        }
+    }
     seen = expr.narrowed_type if expr.narrowed_type is not None else expr.type;
     found = self.arch_of_type(seen);
     if found is not None or not isinstance(seen, UnionType) {

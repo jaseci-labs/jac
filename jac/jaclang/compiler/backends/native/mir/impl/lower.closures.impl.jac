@@ -118,9 +118,11 @@ impl MirLowering.cell_of(sym_id: int) -> (MirValue | None) {
         self.address_of(env),
         b.const_int(CLOSURE_CELLS_OFFSET + index * 8, mir_int())
     );
-    return b.ref_cast(
-        self.emit_value(MirOp.MEM_LOAD, mir_int(), [address]), mir_ref(), False
-    );
+    held = self.emit_value(MirOp.MEM_LOAD, mir_int(), [address]);
+    if sym_id in self.st().linked {
+        held = self.emit_value(MirOp.MEM_LOAD, mir_int(), [held]);
+    }
+    return b.ref_cast(held, mir_ref(), False);
 }
 
 impl MirLowering.cell_read(cell: MirValue, value_type: MirType) -> MirValue {
@@ -175,6 +177,14 @@ impl MirLowering.lower_closure(
             }
         }
     }
+    links: dict[int, MirValue] = {};
+    for link in self.links().of_closure(owner) {
+        slot = outer.pass_links.get(link.index);
+        if slot is not None and id(link.sym) in captures {
+            links[id(link.sym)] = slot;
+        }
+    }
+    rebinds = {id(sym) for sym in self.links().rebinds_of(owner)};
     i8p = mir_c_ptr(mir_int(8, False));
     ret = fn_type.args[0];
     params = fn_type.args[1:];
@@ -189,6 +199,9 @@ impl MirLowering.lower_closure(
         for (index, sym_id) in enumerate(captures) {
             inner.env_cells[sym_id] = index;
             inner.cell_types[sym_id] = outer.cell_types[sym_id];
+            if sym_id in links {
+                inner.linked.add(sym_id);
+            }
         }
         nodes = list(signature.posonly_params) + list(signature.params or [])
             if signature is not None
@@ -247,6 +260,27 @@ impl MirLowering.lower_closure(
         cell = self.cell_of(sym_id);
         if cell is None {
             raise MirRefused(mir_refusal("closure", label, owner));
+        }
+        if sym_id in links {
+            cell = b.load(links[sym_id], mir_ref());
+        } elif sym_id in rebinds {
+            kind = b.const_int(
+                self.elem_kind(outer.cell_types[sym_id], owner), mir_int()
+            );
+            fresh = self.runtime("__jac_rt_cell_new", [kind]);
+            if fresh is None {
+                raise MirRefused(mir_refusal("closure", label, owner));
+            }
+            fresh = self.spill(fresh);
+            self.runtime(
+                "__jac_rt_cell_set",
+                [
+                    fresh,
+                    self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(cell)]),
+                    kind
+                ]
+            );
+            cell = fresh;
         }
         self.runtime(
             "__jac_rt_closure_set", [held, b.const_int(index, mir_int()), cell]
@@ -798,4 +832,84 @@ impl MirLowering.bound_method_value(nd: uni.AtomTrailer) -> (MirValue | None) {
     self.closure_key(made, f"method {name}");
     value = b.ref_cast(made, mir_fn(decl.params, decl.ret), True);
     return value if value.type is wanted else self.coerce(value, wanted, nd);
+}
+
+impl MirLowering.links -> LoopLinks {
+    if self.loop_links is None {
+        self.loop_links = LoopLinks.of(self.module);
+    }
+    return self.loop_links;
+}
+
+impl MirLowering.lower_pass(loop: uni.UniNode, body: Sequence[uni.UniNode]) {
+    self.open_pass_links(loop);
+    self.lower_body(body);
+    self.detach_pass_links(loop);
+}
+
+impl MirLowering.open_pass_links(loop: uni.UniNode) {
+    b = self.builder();
+    for link in self.links().of_loop(loop) {
+        cell = self.cell_of(id(link.sym));
+        if cell is None {
+            continue;
+        }
+        made = self.runtime("__jac_rt_cell_new", [b.const_int(KIND_REF, mir_int())]);
+        if made is None {
+            raise MirRefused(mir_refusal("closure", link.sym.sym_name, loop));
+        }
+        slot = self.st().pass_links.get(link.index);
+        if slot is None {
+            slot = self.temp_slot(mir_ref());
+            slot.is_temp = False;
+            self.st().pass_links[link.index] = slot;
+        }
+        b.store(slot, made);
+        self.runtime(
+            "__jac_rt_cell_set",
+            [
+                b.load(slot, mir_ref()),
+                self.address_of(cell),
+                b.const_int(KIND_REF, mir_int())
+            ]
+        );
+    }
+}
+
+impl MirLowering.detach_pass_links(loop: (uni.UniNode | None)) {
+    if loop is None or self.builder().block.terminated() {
+        return;
+    }
+    b = self.builder();
+    for link in self.links().of_loop(loop) {
+        slot = self.st().pass_links.get(link.index);
+        cell = self.cell_of(id(link.sym));
+        if slot is None or cell is None {
+            continue;
+        }
+        kind = b.const_int(
+            self.elem_kind(self.st().cell_types[id(link.sym)], loop), mir_int()
+        );
+        kept = self.runtime("__jac_rt_cell_new", [kind]);
+        if kept is None {
+            raise MirRefused(mir_refusal("closure", link.sym.sym_name, loop));
+        }
+        held = self.spill(kept);
+        self.runtime(
+            "__jac_rt_cell_set",
+            [
+                held,
+                self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(cell)]),
+                kind
+            ]
+        );
+        self.runtime(
+            "__jac_rt_cell_set",
+            [
+                b.load(slot, mir_ref()),
+                self.address_of(held),
+                b.const_int(KIND_REF, mir_int())
+            ]
+        );
+    }
 }

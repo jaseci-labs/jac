@@ -906,8 +906,8 @@ impl MirLowering.lower_for_text(nd: uni.InForStmt, holder: MirValue) {
         b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
         self.store_name(nd.target, self.byte_at(data, at));
     }
-    self.st().loops.append(MirLoopTarget(head=head, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=head, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(head);

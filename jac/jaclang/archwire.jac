@@ -6396,6 +6396,7 @@ graph import compiler {
             REGION_KERNEL_REL,
             bundled_stdlib_module_of,
             interop_callback_symbol,
+            is_bundled_native_module,
             is_kernel_unit_path,
             kernel_unit_path,
             module_dotted_name,
@@ -7384,6 +7385,7 @@ graph import compiler {
             enclosing_loop,
             in_loop_else
         },
+        backends.native.mir.lower { LoopLinks, binding_sites },
         backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
         passes.ast_validation_pass { in_loop_else },
         passes.cfg_build_pass { enclosing_loop },

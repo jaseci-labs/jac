@@ -102,8 +102,8 @@ impl MirLowering.lower_chunk_for(nd: uni.InForStmt, lst_nd: uni.Expr, n_nd: uni.
             block, lst, b.load(current, mir_int()), b.load(width, mir_int())
         )
     );
-    self.st().loops.append(MirLoopTarget(head=advance, after=after));
-    self.lower_body(nd.body);
+    self.st().loops.append(MirLoopTarget(head=advance, after=after, passes=nd));
+    self.lower_pass(nd, nd.body);
     self.st().loops.pop();
     if not self.builder().block.terminated() {
         self.builder().branch(advance);
@@ -728,8 +728,8 @@ impl MirLowering.flow_body(
         } else {
             self.store_name(loop_target, self.list_read(lst, at));
         }
-        self.st().loops.append(MirLoopTarget(head=advance, after=after));
-        self.lower_body(nd.body);
+        self.st().loops.append(MirLoopTarget(head=advance, after=after, passes=nd));
+        self.lower_pass(nd, nd.body);
         self.st().loops.pop();
         if not self.builder().block.terminated() {
             self.builder().branch(advance);
