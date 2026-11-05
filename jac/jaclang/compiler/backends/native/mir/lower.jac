@@ -344,7 +344,8 @@ obj MirFnState {
         user_loads: dict[int, str] = {},
         null_ok_open: set[int] = set(),
         tail_sites: list[uni.ReturnStmt] = [],
-        struct_views: set[int] = set();
+        struct_views: set[int] = set(),
+        retyped: dict[int, MirType] = {};
 }
 
 obj MirBound {
@@ -486,6 +487,7 @@ obj MirLowering {
     def builder -> MirBuilder;
     def symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> MirType;
     def expr_type(nd: uni.Expr) -> MirType;
+    def redeclare_local(target: uni.Name, tag: uni.SubTag);
     def narrowed_from_any(nd: uni.Expr) -> bool;
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);

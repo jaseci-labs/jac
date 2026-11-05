@@ -563,6 +563,12 @@ impl MirLowering.symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> Mir
 }
 
 impl MirLowering.expr_type(nd: uni.Expr) -> MirType {
+    if isinstance(nd, uni.Name)
+        and nd.sym is not None
+        and self.state is not None
+        and id(nd.sym) in self.st().retyped {
+        return self.st().retyped[id(nd.sym)];
+    }
     made = self.type_of(nd.type, MirPosition.VALUE, nd);
     if made.kind == MirKind.TUPLE and not made.args and self.narrowed_from_any(nd) {
         return mir_any();
@@ -941,6 +947,7 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         }
     } elif nd.type_tag is not None {
         self.lend_fresh(value, nd.type_tag, nd.value);
+        self.redeclare_local(target, nd.type_tag);
     }
     self.store_name(target, value);
 }
@@ -6072,4 +6079,41 @@ impl mir_slice_picks(
         at += stride;
     }
     return picks;
+}
+
+impl MirLowering.redeclare_local(target: uni.Name, tag: uni.SubTag) {
+    sym = target.sym;
+    if sym is None
+        or self.cell_of(id(sym)) is not None
+        or sym.storage != SymbolStorage.LOCAL {
+        return;
+    }
+    if id(sym) not in self.st().locals {
+        self.local_slot(sym, target);
+    }
+    held = self.st().locals.get(id(sym));
+    if held is None or not held.is_slot or held.id in self.st().struct_views {
+        return;
+    }
+    annotated = self.prog.get_type_evaluator().get_type_of_expression(tag.tag);
+    if isinstance(annotated, ClassType) and not annotated.is_instance() {
+        annotated = annotated.clone_as_instance();
+    }
+    try {
+        wanted = self.type_of(annotated, MirPosition.VALUE, target);
+    } except MirRefused {
+        return;
+    }
+    if wanted is held.type or wanted.kind in (MirKind.NONE, MirKind.ANY) {
+        return;
+    }
+    fn = self.st().fn;
+    made = fn.new_value(wanted, sym.sym_name);
+    made.is_slot = True;
+    made.hold = held.hold;
+    fn.blocks[0].instrs.insert(
+        0, MirInstr(op=MirOp.SLOT, result=made, type_arg=wanted)
+    );
+    self.st().locals[id(sym)] = made;
+    self.st().retyped[id(sym)] = wanted;
 }
