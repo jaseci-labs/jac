@@ -97,6 +97,29 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
+"""Optional parameters of each kind, echoed so a caller sees what each received.
+
+`tags` is appended to so a shared default would show up on the next call.
+"""
+def:pub echo_defaults(
+    count: int = 5,
+    ratio: float = 0.5,
+    flag: bool = False,
+    title: str = "seed",
+    tags: list[str] = [],
+    note: str | None = None
+) -> dict[str, any] {
+    tags.append("seen");
+    return {
+        "count": count,
+        "ratio": ratio,
+        "flag": flag,
+        "title": title,
+        "tags": tags,
+        "note": note
+    };
+}
+
 glob WELCOME_TITLE: str = "Runtime Test";
 
 def:pub client_page -> JsxElement {

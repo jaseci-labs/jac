@@ -509,61 +509,6 @@ test "a JSON null is refused for a field that is not optional, whatever its type
     }
 }
 
-test "an omitted function argument keeps its declared value and type" {
-    import io;
-    import from contextlib { redirect_stdout }
-    client = make_client("restspec_fixtures.jac");
-    try {
-        # The binder used to pass str(default): flag arrived as "False", which is
-        # truthy, so a switch declared off ran as on.
-        r = client.post("/function/func_defaults", json={});
-        assert r.status_code == 200 , r.text;
-        got = extract_data(r.json())["result"];
-        assert got["flag"] is False , r.text;
-        assert got["count"] == 5 and got["ratio"] == 0.5 and got["title"] == "seed" , r.text;
-        assert got["tags"] == ["seen"] and got["note"] is None , r.text;
-
-        # A mutable default is the function's own: no call sees another's append.
-        r = client.post("/function/func_defaults", json={});
-        assert extract_data(r.json())["result"]["tags"] == ["seen"] , r.text;
-
-        # What the caller sends still wins over the default.
-        r = client.post("/function/func_defaults", json={"flag": True, "count": 7});
-        got = extract_data(r.json())["result"];
-        assert got["flag"] is True and got["count"] == 7 , r.text;
-
-        r = client.get("/func-defaults");
-        assert r.status_code == 200 , r.text;
-        assert extract_data(r.json())["result"] == {"count": 5, "flag": False} , r.text;
-
-        # Every reader of the signature sees the value, not its repr.
-        r = client.get("/function/func_defaults");
-        assert r.status_code == 200 , r.text;
-        params = extract_data(r.json())["signature"]["parameters"];
-        assert params["flag"]["default"] is False , r.text;
-        assert params["count"]["default"] == 5 , r.text;
-        assert params["note"]["default"] is None and not params["note"]["required"] , r.text;
-
-        srv = client._server;
-        assert srv is not None , "server must be running";
-        spec = srv.app.openapi();
-        body_ref = spec["paths"]["/function/func_defaults"]["post"]["requestBody"][
-            "content"
-        ]["application/json"]["schema"]["$ref"];
-        props = spec["components"]["schemas"][body_ref.rsplit("/", 1)[1]]["properties"];
-        assert props["flag"]["default"] is False and props["count"]["default"] == 5;
-
-        # The banner shows a falsy default instead of dropping it.
-        printed = io.StringIO();
-        with redirect_stdout(printed) {
-            srv.print_endpoint_docs();
-        }
-        assert "flag: bool (optional, default: False)" in printed.getvalue();
-    } finally {
-        client.close();
-    }
-}
-
 # ============================================================================
 # Custom Object Body Parameter Tests — walker + function + recursive
 # One integration test per variant; schema + runtime + validation in one flow.
