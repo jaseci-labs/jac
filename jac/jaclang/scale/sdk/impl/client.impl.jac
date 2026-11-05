@@ -170,8 +170,20 @@ impl ScaleClient._make_target(
     dry_run: bool = False,
     use_event_logger: bool = False
 ) -> KubernetesTarget {
+    return self._build_target(
+        self._target_config(spec, dry_run), spec, sink, dry_run, use_event_logger
+    );
+}
+
+impl ScaleClient._build_target(
+    config: KubernetesConfig,
+    spec: DeploySpec,
+    sink: EventSink,
+    dry_run: bool,
+    use_event_logger: bool
+) -> KubernetesTarget {
     return KubernetesTarget(
-        config=self._target_config(spec, dry_run),
+        config=config,
         logger=self._pick_logger(sink, use_event_logger),
         dry_run=dry_run,
         secrets=dict(spec.secrets),

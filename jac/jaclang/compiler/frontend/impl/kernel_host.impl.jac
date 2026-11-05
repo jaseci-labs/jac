@@ -1,6 +1,43 @@
-impl HostAsker.record_interface(
-    program: JacProgram, module: Module, products: UnitProducts
-) {}
+impl record_interface(
+    program: JacProgram,
+    module: Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+) {
+    import base64;
+
+    evaluator = program.get_type_evaluator();
+    pkg_dir = os.path.dirname(os.path.realpath(module.loc.mod_path));
+    try {
+        data = build_module_iface(module, evaluator, pkg_dir);
+        shape = module_iface_shape(module, evaluator, pkg_dir);
+    } except IncoherentInterface {
+        return;
+    }
+    products.iface = base64.b64encode(data).decode("ascii");
+    products.iface_shape = shape;
+    if not catalog_dir
+        or not sentinel
+        or module.parse_failed
+        or module.codespace_inferred {
+        return;
+    }
+    package_dir = os.path.realpath(program.options.project_root or pkg_dir);
+    try {
+        portable = build_module_iface(
+            module,
+            evaluator,
+            catalog_dir,
+            PackagePathMapper(
+                base_dir=pkg_dir, package_dir=package_dir, sentinel=sentinel
+            )
+        );
+    } except IncoherentInterface {
+        return;
+    }
+    products.iface_jir = base64.b64encode(portable).decode("ascii");
+}
 
 impl HostCensus.count(method: str) {
     if self.trace {
@@ -329,7 +366,11 @@ impl KernelHost.python_module(program: JacProgram, file_path: str) -> (Module | 
     self._served[resolved] = ServedInterface(catalog=catalog, module=mod);
     program.stamp_app_facts(mod);
     if iface.effects {
-        mod.gen.callable_effects = json.loads(iface.effects);
+        effects: dict[str, dict[str, any]] = {};
+        for (key, facts) in json_map(json.loads(iface.effects)).items() {
+            effects[key] = json_map(facts);
+        }
+        mod.gen.callable_effects = effects;
     }
     if iface.placement {
         import from jaclang.compiler.placement.placement { summary_store }
@@ -364,9 +405,14 @@ impl KernelHost.record_unit(task: ModuleAnalysis) {
     if lowered is not None and lowered is not module and not products.native_ir {
         native_products(lowered, products);
     }
-    asker = self.asker;
-    if real.endswith(".jac") and asker is not None {
-        asker.record_interface(task.program, module, products);
+    if real.endswith(".jac") {
+        record_interface(
+            task.program,
+            module,
+            products,
+            self.inputs.stub_catalog_dir,
+            self.inputs.path_sentinel
+        );
     }
     self.units[real] = products;
 }
@@ -841,6 +887,23 @@ impl KernelHost.keep_wiring_records(digest: str, text: str) {
     }
 }
 
+impl KernelHost.native_scan_record(path: str, digest: str) -> str {
+    if self.kernel_only("native_scan_record") {
+        return "";
+    }
+    with self.delegating("native_scan_record") as host {
+        answer = host.native_scan_record(path, digest);
+    }
+    return answer;
+}
+
+impl KernelHost.keep_native_scan_record(path: str, digest: str, text: str) {
+    self.census.count("keep_native_scan_record");
+    if self.fallback is not None {
+        self.fallback.keep_native_scan_record(path, digest, text);
+    }
+}
+
 impl KernelHost.native_parse(
     source_str: str,
     file_path: str,
@@ -1206,7 +1269,10 @@ impl KernelHost.compile_module(
     if tree_wanted {
         owned = False;
     }
-    if self.in_kernel() and not tree_wanted {
+    body_wanted = not owned
+        and file_path.endswith(".jac")
+        and (options.body_demand or os.path.realpath(file_path) in self.grown);
+    if self.in_kernel() and not tree_wanted and not body_wanted {
         served = self.python_module(program, file_path);
         if served is None and (owned or not file_path.endswith(".jac")) {
             if self.ask("compile_module", file_path) {

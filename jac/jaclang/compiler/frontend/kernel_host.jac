@@ -15,8 +15,15 @@ class HostOnlyError(RuntimeError) {}
 
 obj HostAsker {
     def ask(method: str, key: str) -> str abst;
-    def record_interface(program: JacProgram, module: Module, products: UnitProducts);
 }
+
+def record_interface(
+    program: JacProgram,
+    module: Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+);
 
 enum HostEventKind { NOTE, COVERAGE, COLLECT }
 
@@ -178,6 +185,8 @@ obj KernelHost(HostServices) {
     def is_seed_source(rel_path: str) -> bool;
     def wiring_records(digest: str) -> str;
     def keep_wiring_records(digest: str, text: str);
+    def native_scan_record(path: str, digest: str) -> str;
+    def keep_native_scan_record(path: str, digest: str, text: str);
     def native_parse(
         source_str: str,
         file_path: str,

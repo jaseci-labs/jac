@@ -134,6 +134,7 @@ impl build_http_activation_spec(
         max_replicas=cfg.get("max_replicas", 1),
         polling_interval=cfg.get("polling_interval", 30),
         cooldown_period=cfg.get("cooldown_period", 300),
+        initial_cooldown_period=cfg.get("initial_cooldown_period", 0),
         concurrency=concurrency,
         request_rate=request_rate,
         cold_start=cold_start,

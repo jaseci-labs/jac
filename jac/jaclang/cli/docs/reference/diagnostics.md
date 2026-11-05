@@ -181,7 +181,6 @@ All three block code generation for the module that reports them.
 | `E0100` | Unterminated string literal |
 | `E0101` | Unterminated block comment |
 | `E0102` | Unterminated f-string |
-| `E0103` | Unterminated inline Python block |
 | `E0104` | Unexpected end of JSX content |
 | `E0105` | Unexpected character: '{ch}' |
 | `E0106` | Unexpected character in JSX tag: '{ch}' |
@@ -313,6 +312,15 @@ Emitted by the type checker for [C library](language/native-pathway.md#c-library
 | `E1159` | '{name}' is a borrowed scalar parameter; {what} |
 
 A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bool`, another foreign struct (nested by value, never containing itself), `ptr[T]` / `ptr`, or a named-function callback (`E1150`). A bodiless `obj Name;` declares an opaque C type, usable only as `ptr[Name]` (`E1151`). `pin(value)`, `p.view(n)` and `&T` / `&mut T` clib parameters lay their payload out in C memory, so `T` needs a known size (`E1152`). `glob name: T;` in a C library import declares a C variable and `glob name: T = value;` defines one; a C object (foreign struct, opaque type or `list[T]` array) is used only by address (`E1153`), `addressof()` takes only such a symbol (`E1154`), a definition's initializer is a C constant, where `ptr(function)` is a named function's address for a `ptr` field such as a `PyMethodDef` entry and a sized integer array also takes a bytes literal, read as its little-endian elements (`E1155`), and `ptr[u8]("text")` takes a string literal (`E1156`). A C variadic function takes C scalars, pointers, `str` or `bytes` as extra arguments and no keyword parameters (`E1157`), and a `def` with a body in a C library import defines a C function whose parameters and result are C data, under a C symbol no other linked module declares with a different signature (`E1158`). Escaping a `PtrView` of C memory is `E1315`, and passing anything but a `Pinned[T]` to a `&mut Pinned[T]` parameter is an ordinary argument mismatch (`E1053`), as is `&mut x` for a `ptr[T]` parameter unless the callee is a C function and `x` is exactly `T` (then it lends x's address for the call). A Jac function's `&mut` parameter holding a scalar (a number, a bool or a pointer) is a value: assigning it, lending it on as `&mut p`, or passing it to a parameter the callee declares `&mut` would write only the function's copy, so each is `E1159`; return the new value or take a `ptr[T]` to storage the caller owns.
+
+### Final Bindings
+
+| Code | Message |
+|------|---------|
+| `E1135` | Cannot assign to '{name}': it is declared {kind} |
+| `E1162` | 'Final' without a type needs a value to take its type from |
+
+A `Final` field with no value is set exactly once, by the first write in its object's `init` or `postinit`; a second write, a write that a loop repeats, or a `postinit` write to a field the constructor already set is `E1135`. A bare `Final` takes its type from its value, so writing it with neither a type nor a value is `E1162`.
 
 ### Exception / Context Manager / Yield
 
@@ -484,6 +492,7 @@ See [Project Wiring](wiring.md).
 | `E1144` | Import of '{module}' is written in '{consumer}'; under archwire.jac it is a wire |
 | `E1146` | '{name}' is wired into '{consumer}', which never uses it |
 | `E1147` | '{name}' is declared into '{consumer}' by a '-->' wire, but '{consumer}' does not write that import where it runs |
+| `E1148` | '{module}' is a variant of '{base}', so it cannot be a wire's provider |
 
 ### Unresolved Names
 
@@ -518,7 +527,7 @@ Emitted by static analysis and declaration-implementation matching passes.
 
 `W2029` covers the Python property decorators -- `@property`, and the same-object
 `@x.getter` / `@x.setter` / `@x.deleter` -- in favour of [native property
-syntax](language/functions-objects.md#6-properties-and-encapsulation):
+syntax](language/functions-objects.md#5-properties-and-encapsulation):
 
 ```jac
 obj Account {
@@ -722,7 +731,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 `E5101` is the backstop under all of the above, and it checks the finished artifact rather than the reasoning that produced it. After the client module is emitted, every identifier it references is matched against the module's own declarations, its imports, its parameters, and the ambient surface a browser provides (the same `js_globals` / `dom_types` stubs `jac check` resolves client-tier names against). What is left over is then narrowed to names the compiler itself resolved in Jac: a name with a symbol, emitted with nothing to bind it, is a `ReferenceError` on first use with `jac check` green and the build exiting 0. Give the name client presence (declare it, import it, or make it a `def:pub` endpoint so it bridges); reach a host global the compiler does not know about through `globalThis` so the intent is explicit; and if neither applies, a lowering dropped a binding it owed, which is a compiler bug worth reporting with the source line. Declarations count wherever they appear in the module rather than per scope, so the check never fires on a name that is bound somewhere. A name that resolves to nothing in Jac either is still presumed to be an undeclared ambient global and is not reported here -- requiring those to be declared is tracked separately.
 
-`E5087` fires when an app whose kind has no server contains code that needs one: root access, an FFI extern, an inline `::py::` block, or a Python import whose bindings are used at value level. A `js-package` ships as an npm tarball with nothing serving `/function/<name>`, so server placement there could only fail at runtime inside a `fetch` that has no route to reach. Annotation-only and `import type` uses stay silent, on the same criterion `E5084` uses. Drop the server dependency, or give the app a `kind` that has a server.
+`E5087` fires when an app whose kind has no server contains code that needs one: root access, an FFI extern, or a Python import whose bindings are used at value level. A `js-package` ships as an npm tarball with nothing serving `/function/<name>`, so server placement there could only fail at runtime inside a `fetch` that has no route to reach. Annotation-only and `import type` uses stay silent, on the same criterion `E5084` uses. Drop the server dependency, or give the app a `kind` that has a server.
 
 ### Workspace Boundaries
 

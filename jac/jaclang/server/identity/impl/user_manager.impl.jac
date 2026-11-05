@@ -482,6 +482,37 @@ impl UserManager.get_sso_accounts(user_id: str) -> list[dict[str, str]] {
     return self._identity_storage.get_sso_accounts(user_id);
 }
 
+impl UserManager.oauth_grants(user_id: str) -> list[dict[str, any]] {
+    return self._identity_storage._get_oauth_grants(user_id);
+}
+
+impl UserManager.oauth_grant(user_id: str, platform: str) -> dict[str, any] | None {
+    for grant in self.oauth_grants(user_id) {
+        if grant.get('platform') == platform {
+            return grant;
+        }
+    }
+    return None;
+}
+
+impl UserManager.save_oauth_grant(
+    user_id: str, grant: dict[str, any], version: (int | None) = None
+) -> int {
+    if version is not None {
+        return self._identity_storage._swap_oauth_grant(user_id, grant, version);
+    }
+    if not self._identity_storage.user_exists_by_id(user_id) {
+        return 0;
+    }
+    return self._identity_storage._put_oauth_grant(user_id, grant);
+}
+
+impl UserManager.drop_oauth_grant(
+    user_id: str, platform: str, version: (int | None) = None
+) -> dict[str, any] | None {
+    return self._identity_storage._take_oauth_grant(user_id, platform, version);
+}
+
 impl UserManager.get_user_by_sso(
     platform: str, external_id: str
 ) -> dict[str, str] | None {

@@ -109,7 +109,9 @@ impl kernel_check(
         return KernelCheck(outcome=replayed, adopted=True);
     }
     try {
-        outcome = kernel_analysis(active_host(), program, path, options, isolated=True);
+        outcome = kernel_analysis(
+            active_host(), program, os.path.realpath(path), options, isolated=True
+        );
     } except Exception as err {
         if not parity {
             raise KernelCheckError(
@@ -131,7 +133,7 @@ impl kernel_check(
         }
         return KernelCheck(outcome=outcome, parity=True, failure=failure);
     }
-    entry_module = outcome.module(path);
+    entry_module = outcome.entry_module();
     if entry_module is None {
         raise KernelCheckError(
             f"the native compiler kernel analyzed {path} but reported no module for it"
