@@ -73,7 +73,7 @@ def source_encoding(source: bytes) -> str {
                 raise boundary_failure();
             }
             if bom and encoding != "utf-8" {
-                raise syntax_failure("encoding problem: utf-8");
+                raise syntax_failure("encoding problem: utf-8 and " + encoding);
             }
             return "utf-8-sig" if bom else encoding;
         }
