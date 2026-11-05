@@ -7,6 +7,7 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _EXIT_CUSHION_S: int = 5,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
+     _CLIENT_BUILD_QUIET_S: int = 900,
      _CLIENT_BUILD_ALONGSIDE_SEAL_GIB: int = 24,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
      _TRANSIENT_CLIENT_BUILD_MARKERS: tuple[str, ...] = (
@@ -33,6 +34,11 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
 
 
 def _output_tail(result: any, lines: int = 15) -> str;
+
+
+def _run_until_quiet(
+    cmd: list[str], cwd: str, env: (dict[str, str] | None), quiet_s: float
+) -> any;
 
 
 def _is_transient_client_build_failure(output: str) -> bool;

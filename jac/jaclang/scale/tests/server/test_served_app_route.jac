@@ -31,6 +31,16 @@ glob _WEB_SRC: str = (
          "def:pub shout(text: str) -> str {\n"
          "    return text.upper();\n"
          "}\n"
+         "\n"
+         "walker:pub NamesMissingUser {\n"
+         "    can run with Root entry {\n"
+         "        raise ValueError(\"User not found\");\n"
+         "    }\n"
+         "}\n"
+         "\n"
+         "def:pub names_missing_user -> int {\n"
+         "    raise ValueError(\"User not found\");\n"
+         "}\n"
      ),
      _TOML: str = (
          '[project]\nname = "routed"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell.main"\n'
@@ -85,7 +95,7 @@ test "the served workspace app is mounted under its own route" {
         set_config(None);
         Jac.set_full_target_path(os.path.join(tmp, "web", "main.jac"));
         sv_client.set_consumer_app("web");
-        (client, _srv) = _serve(tmp, "main", os.path.join(tmp, "web"));
+        (client, srv) = _serve(tmp, "main", os.path.join(tmp, "web"));
 
         root_listing = client.get("/walkers");
         assert root_listing.status_code == 200 , root_listing.text;
@@ -103,6 +113,23 @@ test "the served workspace app is mounted under its own route" {
         called = client.post("/api/web/function/shout", json={"text": "hi"});
         assert called.status_code == 200 , called.text;
         assert "HI" in called.text , called.text;
+
+        ghost = {
+            "Authorization": f"Bearer {srv.user_manager.create_jwt_token('ghost')}"
+        };
+        for path in (
+            "/api/web/walker/NamesMissingUser",
+            "/api/web/function/names_missing_user"
+        ) {
+            for (headers, status, message) in (
+                ({}, 500, "User not found"),
+                (ghost, 401, "Unauthorized: unknown user")
+            ) {
+                failed = client.post(path, json={}, headers=headers);
+                assert failed.status_code == status , failed.text;
+                assert failed.json()["error"]["message"] == message , failed.text;
+            }
+        }
     } finally {
         _reset(tmp);
     }
