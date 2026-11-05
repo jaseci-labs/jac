@@ -1778,14 +1778,26 @@ def pa_raise_syntax_known_range(
 ) -> None {
     if message == "Generator expression must be parenthesized"
         and isinstance(b, comprehension) {
+        start_expr: expr | None = None;
+        if isinstance(a, Call) and (a as Call).args {
+            start_expr = (a as Call).args[-1];
+        } elif isinstance(a, expr) {
+            start_expr = a as expr;
+        }
+        end_expr = (b as comprehension).iter;
+        if (b as comprehension).ifs {
+            end_expr = (b as comprehension).ifs[-1];
+        }
         p.error = mk_diag(
             "SyntaxError",
             message,
             tok_loc(
-                lineno=b.for_lineno,
-                end_lineno=b.for_end_lineno,
-                col_offset=b.for_col_offset,
-                end_col_offset=b.for_end_col_offset
+                lineno=start_expr.lineno if start_expr is not None else b.for_lineno,
+                end_lineno=end_expr.end_lineno or end_expr.lineno,
+                col_offset=start_expr.col_offset
+                    if start_expr is not None
+                    else b.for_col_offset,
+                end_col_offset=end_expr.end_col_offset or end_expr.col_offset
             ),
             p.filename
         );
@@ -1797,7 +1809,7 @@ def pa_raise_syntax_known_range(
 
 def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> None {
     if isinstance(`node, expr) {
-        target_name = pa_get_expr_name(`node as expr);
+        target_name = pa_get_expr_name(`node as expr, kind == 1);
         action = "delete" if kind == 1 else "assign to";
         return pa_raise_syntax_known_expr(
             p, False, `node, "cannot " + action + " " + target_name
@@ -1919,7 +1931,7 @@ def pa_ensure_real(p: peg_parser, value: expr) -> expr | None {
     return value;
 }
 
-def pa_get_expr_name(`node: expr) -> str {
+def pa_get_expr_name(`node: expr, is_delete: bool = False) -> str {
     if isinstance(`node, Attribute) {
         return "attribute";
     }
@@ -1934,9 +1946,9 @@ def pa_get_expr_name(`node: expr) -> str {
     }
     if isinstance(`node, List) {
         for elt in (`node as List).elts {
-            elt_name = pa_get_expr_name(elt);
-            if elt_name
-                not in ["name", "attribute", "subscript", "list", "tuple", "starred"] {
+            elt_name = pa_get_expr_name(elt, is_delete);
+            if elt_name not in ["name", "attribute", "subscript", "list", "tuple"]
+                and (is_delete or elt_name != "starred") {
                 return elt_name;
             }
         }
@@ -1944,9 +1956,9 @@ def pa_get_expr_name(`node: expr) -> str {
     }
     if isinstance(`node, Tuple) {
         for elt in (`node as Tuple).elts {
-            elt_name = pa_get_expr_name(elt);
-            if elt_name
-                not in ["name", "attribute", "subscript", "list", "tuple", "starred"] {
+            elt_name = pa_get_expr_name(elt, is_delete);
+            if elt_name not in ["name", "attribute", "subscript", "list", "tuple"]
+                and (is_delete or elt_name != "starred") {
                 return elt_name;
             }
         }
@@ -2022,7 +2034,24 @@ def pa_get_last_comprehension_item(`node: object) -> object {
     if isinstance(`node, comprehension) {
         return `node;
     }
+    if isinstance(`node, list) and (`node as list[object]) {
+        last = (`node as list[object])[-1];
+        if isinstance(last, comprehension) {
+            return last;
+        }
+    }
     return None;
+}
+
+def pa_has_keyword_unpacking(`node: object) -> bool {
+    if isinstance(`node, Call) {
+        for kw in (`node as Call).keywords {
+            if kw.arg is None {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 def pa_join_names_with_dot(a: expr, b: expr) -> expr {
