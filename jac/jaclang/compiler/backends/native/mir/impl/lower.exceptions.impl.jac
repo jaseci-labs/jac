@@ -83,6 +83,15 @@ impl MirLowering.exception_matches(type_id: MirValue, clause: uni.Expr) -> MirVa
         else [clause];
     verdict = b.const_bool(False);
     for item in items {
+        if isinstance(item, uni.Name)
+            and (item.sym is None or item.sym.decl is None)
+            and not JAC_TYPE_REGISTRY.is_exception(item.value) {
+            b.raise_builtin("NameError", f"name '{item.value}' is not defined");
+            b.position(self.st().fn.new_block("exc.unbound"));
+            return b.const_bool(False);
+        }
+    }
+    for item in items {
         (name, arch) = self.exception_target(item);
         if arch is None and name in ("Exception", "BaseException") {
             return b.const_bool(True);

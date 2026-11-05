@@ -1109,7 +1109,7 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
         raise err;
     }
     if any(slot is held for held in self.st().region_slots) {
-        self.region_call("__jac_region_drop", [self.builder().load(slot, slot.type)]);
+        self.region_call("__jac_region_drop", [self.region_slot_handle(slot)]);
     }
     self.builder().store(slot, stored);
 }
@@ -1162,7 +1162,14 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
         );
     }
-    if slot_type.kind == MirKind.REGION and sym.na_region_handle {
+    if sym.na_region_handle
+        and (
+            slot_type.kind == MirKind.REGION
+            or (
+                slot_type.kind == MirKind.OPT
+                and slot_type.payload().kind == MirKind.REGION
+            )
+        ) {
         empty = fn.new_value(slot_type);
         at = 0;
         while at < len(first.instrs)
@@ -1784,39 +1791,58 @@ impl MirLowering.pipe_call(nd: uni.BinaryExpr) -> MirValue {
     decl = self.decls.get(self.decl_syms.get(id(target.sym), -1))
         if isinstance(target, uni.Name) and target.sym is not None
         else None;
+    if decl is None or decl.self_type is not None {
+        return self.pipe_as_call(nd, subject, target);
+    }
     b = self.builder();
     value = self.lower_expr(subject);
-    if decl is not None and decl.self_type is None {
-        args = [value];
-        if value.type.kind == MirKind.TUPLE and len(decl.params) > 1 {
-            held = self.spill(value);
-            args = [
-                self.tuple_get(held, index) for index in range(len(value.type.args))
-            ];
-        }
-        if len(args) != len(decl.params) {
-            raise MirRefused(
-                mir_refusal(
-                    "pipe",
-                    f"{len(args)} arguments into {self.name_of(decl.ability)}",
-                    nd
-                )
-            );
-        }
-        values = [
-            self.coerce(arg, ptype, subject) for (arg, ptype) in zip(args, decl.params)
-        ];
-        result = b.call(decl.symbol, values, decl.ret);
-        return result if result is not None else self.none_value();
+    args = [value];
+    if value.type.kind == MirKind.TUPLE and len(decl.params) > 1 {
+        held = self.spill(value);
+        args = [self.tuple_get(held, index) for index in range(len(value.type.args))];
     }
-    raise MirRefused(
-        mir_refusal(
-            "pipe",
-            "target that is not a module function",
-            nd,
-            "A native pipe feeds its value into a named function of this module; call the function directly otherwise."
-        )
+    if len(args) != len(decl.params) {
+        raise MirRefused(
+            mir_refusal(
+                "pipe", f"{len(args)} arguments into {self.name_of(decl.ability)}", nd
+            )
+        );
+    }
+    values = [
+        self.coerce(arg, ptype, subject) for (arg, ptype) in zip(args, decl.params)
+    ];
+    result = b.call(decl.symbol, values, decl.ret);
+    return result if result is not None else self.none_value();
+}
+
+impl MirLowering.pipe_as_call(
+    nd: uni.BinaryExpr, subject: uni.Expr, target: uni.Expr
+) -> MirValue {
+    params: list[uni.Expr | uni.KWPair] = list(subject.values)
+        if isinstance(subject, uni.TupleVal) and subject.values
+        else [subject];
+    call = uni.FuncCall(
+        target=target, params=params, genai_call=None, kid=[target, *params]
     );
+    held: (uni.UniNode | None) = target.sym.decl
+        if isinstance(target, uni.Name) and target.sym is not None
+        else None;
+    call.callee_decl = uni.ability_of_symbol(target.sym)
+        if isinstance(target, uni.Name)
+        else None;
+    if call.callee_decl is None and isinstance(held, uni.Ability) {
+        call.callee_decl = held;
+    }
+    owner = nd.parent;
+    if owner is not None {
+        call.set_parent(owner);
+    }
+    call.type = nd.type;
+    try {
+        return self.lower_call(call);
+    } finally {
+        del [edge call-->];
+    }
 }
 
 impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
@@ -4285,13 +4311,27 @@ impl MirLowering.c_extern(
     }
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol,
-        ret=ret,
-        params=[plan[0] for plan in plans],
+        ret=self.libc_slot(symbol, -1, ret),
+        params=[
+            self.libc_slot(symbol, index, plan[0]) for (index, plan) in enumerate(plans)
+        ],
         variadic=variadic,
         c_abi=True,
         cc=self.c_convention(callee)
     );
     return (symbol, plans, ret, ret_plan, variadic);
+}
+
+impl MirLowering.libc_slot(symbol: str, index: int, declared: MirType) -> MirType {
+    found = LIBC_POINTER_SLOTS.get(symbol);
+    if found is None or declared.kind != MirKind.INT or declared.width != 64 {
+        return declared;
+    }
+    (ret_ptr, params) = found;
+    if (index < 0 and ret_ptr) or index in params {
+        return mir_c_ptr(mir_int(8, False));
+    }
+    return declared;
 }
 
 impl MirLowering.heap_routine(symbol: str, callee: uni.Ability) -> str {
@@ -4366,12 +4406,22 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
         } else {
             values.append(self.c_vararg(arg));
         }
+        if index < len(plans) {
+            slot = self.libc_slot(symbol, index, values[-1].type);
+            if slot is not values[-1].type {
+                values[-1] = self.emit_value(MirOp.PTR_CAST, slot, [values[-1]]);
+            }
+        }
     }
     result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
     if symbol == "pthread_create" {
         self.mark_threaded();
     }
-    result = self.emit_value(MirOp.CALL_C, result_type, values, callee=symbol);
+    c_result = self.libc_slot(symbol, -1, result_type);
+    result = self.emit_value(MirOp.CALL_C, c_result, values, callee=symbol);
+    if c_result is not result_type {
+        result = self.emit_value(MirOp.PTR_INT, result_type, [result]);
+    }
     if mir_holds_ref(result_type) {
         result.owned = True;
     }

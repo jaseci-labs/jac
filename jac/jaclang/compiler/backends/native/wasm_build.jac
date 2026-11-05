@@ -53,6 +53,7 @@ glob _LATE_BOUND: set = {
          "strncmp",
          "strtol",
          "snprintf",
+         "fwrite",
 
      };
 

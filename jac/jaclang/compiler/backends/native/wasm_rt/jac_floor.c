@@ -19,6 +19,49 @@
 
 int64_t __jac_errno(void) { return (int64_t)(intptr_t)&errno; }
 
+/* The floor ends a process with _exit once it has flushed stdio itself; a
+ * wasm module has no atexit handlers to skip, so it is the host's exit. */
+extern void exit(int) __attribute__((noreturn));
+void _exit(int code) { exit(code); }
+
+/* The standard streams as tokens: the module has no FILE objects, and every
+ * call that takes one (fwrite, fgetc, fflush) is resolved in-module or by
+ * the host's stream-free contract. */
+void *__jac_stdio(int32_t fd) { return (void *)(intptr_t)(fd + 1); }
+
+/* The jac_host1 contract has no standard input. */
+int32_t fgetc(void *stream) {
+    (void)stream;
+    return -1;
+}
+
+/* A module never runs exit handlers: the host ends it. Registration fails,
+ * as C lets it, so a caller that needs the handler knows it will not run. */
+int atexit(void (*handler)(void)) {
+    (void)handler;
+    return -1;
+}
+
+/* wasm32 has no non-local jump without the exception-handling proposal. A
+ * handler still arms (setjmp returns 0, so a body that does not raise runs as
+ * it does elsewhere), but a raise that reaches a handler cannot unwind to it:
+ * it ends the module the way an uncaught exception does. */
+extern long write(int, const void *, unsigned long);
+
+int setjmp(void *env) {
+    (void)env;
+    return 0;
+}
+
+void longjmp(void *env, int value) {
+    static const char note[] =
+        "jac: an exception reached a handler, which wasm32 cannot jump to\n";
+    (void)env;
+    (void)value;
+    write(2, note, sizeof note - 1);
+    exit(1);
+}
+
 /* sys.platform as the floor numbers it: 0 linux. */
 int32_t __jac_platform_id(void) { return 0; }
 

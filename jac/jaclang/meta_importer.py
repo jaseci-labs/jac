@@ -13,7 +13,6 @@ import importlib.machinery
 import importlib.util
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
-import logging
 import marshal
 import os
 import sys
@@ -39,9 +38,6 @@ _jac0_hash = (
     if _jac0_source_path and os.path.isfile(_jac0_source_path)
     else b""
 )
-
-# Inline logging config (previously in jaclang.compiler.driver.log)
-logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
 
 # ---------------------------------------------------------------------------

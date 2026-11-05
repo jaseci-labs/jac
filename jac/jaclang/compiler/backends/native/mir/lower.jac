@@ -89,6 +89,34 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      NO_VALUE_KIND: int = -1,
      C_CALLING_CONVENTIONS: dict[str, str] = {"__preserve_none": "preserve_nonecc"},
      HEAP_ROUTINES: tuple[str, ...] = ("malloc", "calloc", "realloc", "free"),
+     LIBC_POINTER_SLOTS: dict[str, tuple[bool, tuple[int, ...]]] = {
+         "free": (False, (0, )),
+         "malloc": (True, ()),
+         "calloc": (True, ()),
+         "realloc": (True, (0, )),
+         "malloc_usable_size": (False, (0, )),
+         "memcpy": (True, (0, 1)),
+         "memmove": (True, (0, 1)),
+         "memset": (True, (0, )),
+         "memcmp": (False, (0, 1)),
+         "memmem": (True, (0, 2)),
+         "memchr": (True, (0, )),
+         "strlen": (False, (0, )),
+         "strcmp": (False, (0, 1)),
+         "strncmp": (False, (0, 1)),
+         "strtod": (False, (0, 1)),
+         "strtol": (False, (0, 1)),
+         "getenv": (True, (0, )),
+         "puts": (False, (0, )),
+         "write": (False, (1, )),
+         "fopen": (True, (0, 1)),
+         "fclose": (False, (0, )),
+         "fflush": (False, (0, )),
+         "fgetc": (False, (0, )),
+         "fread": (False, (0, 3)),
+         "fwrite": (False, (0, 3)),
+         "atexit": (False, (0, ))
+     },
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
@@ -594,6 +622,7 @@ obj MirLowering {
         callee: uni.Ability, site: uni.UniNode
     ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];
 
+    def libc_slot(symbol: str, index: int, declared: MirType) -> MirType;
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
     def c_text_result(result: MirValue, site: uni.UniNode) -> MirValue;
     def c_extern_address(nd: uni.Name) -> (MirValue | None);
@@ -670,6 +699,7 @@ obj MirLowering {
     def region_call(name: str, args: list[MirValue]) -> MirValue;
     def lower_open(nd: uni.OpenStmt);
     def drop_regions;
+    def region_slot_handle(slot: MirValue) -> MirValue;
     def fresh_block(size: MirValue) -> MirValue;
     def region_escape_entry;
     def region_value(value: MirValue) -> MirValue;
@@ -1000,6 +1030,7 @@ obj MirLowering {
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
     def host_only_type(t: (TypeBase | None)) -> bool;
+    def foreign_field(t: (TypeBase | None)) -> bool;
     def erased_class(t: ClassType) -> bool;
     def note_erasures(t: (TypeBase | None));
     def erased_slot(t: (TypeBase | None)) -> bool;
@@ -1270,6 +1301,10 @@ obj MirLowering {
 
     def task_store(base: MirValue, offset: int, value: MirValue);
     def pipe_call(nd: uni.BinaryExpr) -> MirValue;
+    def pipe_as_call(
+        nd: uni.BinaryExpr, subject: uni.Expr, target: uni.Expr
+    ) -> MirValue;
+
     def cstr_of(value: MirValue) -> MirValue;
     def open_call(nd: uni.FuncCall) -> MirValue;
     def file_method(

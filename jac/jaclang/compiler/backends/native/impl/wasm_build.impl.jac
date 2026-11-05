@@ -124,7 +124,9 @@ impl _link_wasm_libc(mod: ModuleRef) -> bool {
 
     renames: list[ValueRef] = [];
     for fn in _mod_functions(mod) {
-        if fn.is_declaration and fn.name in provided and fn.name not in WASM_HOST_ABI {
+        if fn.is_declaration
+            and fn.name in provided
+            and (fn.name not in WASM_HOST_ABI or fn.name in _ABI64_ADAPTED) {
             if fn.name in _ABI64_ADAPTED {
                 renames.append(fn);
             } elif str(fn.global_value_type) != libc_sig[str(fn.name)] {
