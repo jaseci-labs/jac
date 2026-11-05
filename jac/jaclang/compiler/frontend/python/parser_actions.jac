@@ -1779,7 +1779,14 @@ def pa_raise_syntax_known_range(
     return pa_raise_syntax(p, on_next, message);
 }
 
-def pa_raise_invalid_target(p: peg_parser, kind: object, `node: object | None) -> None {
+def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> None {
+    if isinstance(`node, expr) {
+        target_name = pa_get_expr_name(`node as expr);
+        action = "delete" if kind == 1 else "assign to";
+        return pa_raise_syntax_known_expr(
+            p, False, `node, "cannot " + action + " " + target_name
+        );
+    }
     return pa_raise_syntax(p, False, "invalid assignment target");
 }
 
