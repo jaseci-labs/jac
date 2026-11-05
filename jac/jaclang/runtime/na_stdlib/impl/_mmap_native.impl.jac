@@ -64,7 +64,7 @@ impl mm_errstr -> str {
 
 
 impl mm_dup_fd(fd: int) -> int {
-    return dup(i32(fd));
+    return int(fcntl(i32(fd), i32(mm_dupfd_cloexec_cmd()), i64(0)));
 }
 
 
