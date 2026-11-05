@@ -1776,6 +1776,21 @@ def pa_raise_syntax_known_expr(
 def pa_raise_syntax_known_range(
     p: peg_parser, on_next: bool, a: object | None, b: object | None, message: str
 ) -> None {
+    if isinstance(a, peg_token) and isinstance(b, peg_token) and not peg_has_error(p) {
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=(a as peg_token).lineno,
+                end_lineno=(b as peg_token).end_lineno,
+                col_offset=(a as peg_token).col_offset,
+                end_col_offset=(b as peg_token).end_col_offset
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
     if message == "Generator expression must be parenthesized"
         and isinstance(b, comprehension) {
         start_expr: expr | None = None;
