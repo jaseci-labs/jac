@@ -24,7 +24,6 @@ obj MirRcState {
     def release(value: MirValue);
     def release_slots;
     def last_uses(blk: MirBlock) -> dict[int, int];
-    def base_of(value_id: int) -> int;
     def bases_of(value_id: int) -> list[int];
     def initialize_slots;
     def carry_crossing;

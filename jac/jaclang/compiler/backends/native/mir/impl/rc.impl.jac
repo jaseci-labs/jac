@@ -76,22 +76,14 @@ impl MirRcState.bases_of(value_id: int) -> list[int] {
     found: list[int] = [];
     pending = [value_id];
     while pending {
-        current = self.base_of(pending.pop());
-        if current in found {
-            continue;
+        current: (int | None) = pending.pop();
+        while current is not None and current not in found {
+            found.append(current);
+            pending.extend(self.joins.get(current, []));
+            current = self.parents.get(current);
         }
-        found.append(current);
-        pending.extend(self.joins.get(current, []));
     }
     return found;
-}
-
-impl MirRcState.base_of(value_id: int) -> int {
-    current = value_id;
-    while current in self.parents {
-        current = self.parents[current];
-    }
-    return current;
 }
 
 impl MirRcState.rewrite(blk: MirBlock) {

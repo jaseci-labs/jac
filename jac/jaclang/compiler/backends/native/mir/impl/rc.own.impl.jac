@@ -357,7 +357,7 @@ impl MirOwnState.rewrite(blk: MirBlock) {
         seen: set[int] = set();
         mark = len(self.out);
         for operand in instr.operands {
-            for used in (operand.id, self.base_of(operand.id)) {
+            for used in self.bases_of(operand.id) {
                 if used in seen {
                     continue;
                 }
