@@ -1042,7 +1042,11 @@ obj comprehension(ast_node) {
     has target: expr,
         iter: expr,
         ifs: list[expr],
-        is_async: int;
+        is_async: int,
+        for_lineno: int = 0,
+        for_col_offset: int = 0,
+        for_end_lineno: int = 0,
+        for_end_col_offset: int = 0;
 
     def node_kind -> ast_kind;
 }

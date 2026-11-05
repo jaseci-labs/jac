@@ -9162,7 +9162,11 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
                                 target=a,
                                 iter=b,
                                 ifs=(c if c is not None else []),
-                                is_async=1
+                                is_async=1,
+                                for_lineno=kw_1.lineno,
+                                for_col_offset=kw_1.col_offset,
+                                for_end_lineno=kw_1.end_lineno,
+                                for_end_col_offset=kw_1.end_col_offset
                             );
                             p.level -= 1;
                             return res;
@@ -9188,7 +9192,11 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
                             target=a,
                             iter=b,
                             ifs=(c if c is not None else []),
-                            is_async=0
+                            is_async=0,
+                            for_lineno=kw.lineno,
+                            for_col_offset=kw.col_offset,
+                            for_end_lineno=kw.end_lineno,
+                            for_end_col_offset=kw.end_col_offset
                         );
                         p.level -= 1;
                         return res;
