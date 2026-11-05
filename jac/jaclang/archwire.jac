@@ -1661,7 +1661,7 @@ graph import {
         sealable_sources
     }
     dist.precompile_bytecode as precompiler --> scale.tests.microservices.test_app_precompile;
-    dist.precompile_bytecode --> scale.injector.bundle.pack_jab { RESULT_NAME }
+    dist.precompile_bytecode ++> scale.injector.bundle.pack_jab { RESULT_NAME }
     dist.publish.builder ++> cli.commands.project._bundle_wheel { WheelBuilder }
     dist.publish.builder --> cli.commands.project.install { WheelBuilder }
     dist.publish.npm_builder ++> cli.commands.project._bundle_npm { NpmBuilder }
