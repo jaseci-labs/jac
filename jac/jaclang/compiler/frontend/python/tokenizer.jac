@@ -84,6 +84,7 @@ obj tok_state {
         pending: int = 0,
         paren_level: int = 0,
         paren_stack: list[str] = [],
+        paren_locations: list[tuple[int, int]] = [],
         comments: dict[int, list[tuple[int, int]]] = {},
         string_modes: list[string_mode] = [];
 
@@ -1503,6 +1504,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                     );
                 }
                 st.paren_stack.append(op.spelling);
+                st.paren_locations.append((op.lineno, op.col_offset));
             } elif op.tok_type == RPAR
                 or op.tok_type == RSQB
                 or op.tok_type == RBRACE {
@@ -1530,6 +1532,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 }
                 if st.paren_stack {
                     st.paren_stack.pop();
+                    st.paren_locations.pop();
                 }
             }
 
@@ -1583,6 +1586,20 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
     st.eof_reached = True;
     if st.string_modes and st.string_modes[-1].fields {
         return _string_syntax_error(st, "'{' was never closed", st.col_offset);
+    }
+    if st.paren_stack and not st.extra_tokens {
+        opener = st.paren_stack[-1];
+        location = st.paren_locations[-1];
+        message = "'" + opener + "' was never closed";
+        bad = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc_span(location[0], location[0], location[1], location[1] + 1),
+            st.filename
+        );
+        st.error = bad;
+        st.done = True;
+        return bad;
     }
     if st.at_bol {
         if _process_bol_indent(st) < 0 {
