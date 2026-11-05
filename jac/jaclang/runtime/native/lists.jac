@@ -61,6 +61,8 @@ def:pub __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool;
 
 def:pub __jac_rt_tuple_new(n: int) -> int;
 
+def:pub __jac_rt_tuple_from_list(lst: int, kind: int) -> int;
+
 def:pub __jac_rt_tuple_set(box: int, i: int, bits: int, kind: int);
 
 def:pub __jac_rt_tuple_get_ref(box: int, i: int) -> int;

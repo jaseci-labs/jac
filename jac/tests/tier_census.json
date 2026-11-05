@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 54,
-    "refused": 74,
+    "same": 55,
+    "refused": 73,
     "fails": 1,
     "differs": 1,
     "hangs": 0,
@@ -416,8 +416,7 @@
       "class": "same"
     },
     "tests/language/fixtures/funccall_genexpr.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for conversion 'iter<int> to any'"
+      "class": "same"
     },
     "tests/language/fixtures/gendot_bubble_sort.jac": {
       "class": "refused",

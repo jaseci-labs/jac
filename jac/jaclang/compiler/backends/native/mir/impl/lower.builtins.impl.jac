@@ -406,3 +406,48 @@ impl MirLowering.materialize_source(
     b.position(after);
     return made;
 }
+
+impl MirLowering.variadic_tuple_call(nd: uni.FuncCall) -> (MirValue | None) {
+    if not isinstance(nd.target, uni.Name)
+        or nd.target.value != "tuple"
+        or len(nd.params or []) != 1
+        or isinstance((nd.params or [])[0], uni.KWPair) {
+        return None;
+    }
+    args = self.call_args(nd);
+    if (
+        nd.target.sym is not None
+        and nd.target.sym.decl is not None
+        and nd.target.sym.decl.loc is not None
+        and os.path.basename(nd.target.sym.decl.loc.mod_path) not in BUILTIN_STUBS
+    )
+        or not (
+            self.variadic_tuple(nd) or self.expr_type(args[0]).kind == MirKind.ANY
+        ) {
+        return None;
+    }
+    b = self.builder();
+    drained = self.spill(self.drain(self.lower_expr(args[0]), mir_any(), nd));
+    made = self.runtime_value(
+        "__jac_rt_tuple_from_list", [drained, b.const_int(KIND_ANY, mir_int())]
+    );
+    return self.emit_value(
+        MirOp.ANY_BOX,
+        mir_any(),
+        [b.ref_cast(made, mir_ref(), True)],
+        int_value=ANY_OBJ_TAG
+    );
+}
+
+impl MirLowering.variadic_tuple(nd: uni.FuncCall) -> bool {
+    t = nd.type;
+    if not isinstance(t, ClassType) or t.shared.class_name != "tuple" {
+        return False;
+    }
+    try {
+        made = self.expr_type(nd);
+    } except MirRefused {
+        return True;
+    }
+    return made.kind == MirKind.TUPLE and not made.args;
+}

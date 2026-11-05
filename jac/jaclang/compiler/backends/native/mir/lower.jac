@@ -1306,6 +1306,8 @@ obj MirLowering {
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def identity_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def list_concat(left: MirValue, right: MirValue) -> MirValue;
+    def variadic_tuple(nd: uni.FuncCall) -> bool;
+    def variadic_tuple_call(nd: uni.FuncCall) -> (MirValue | None);
     def str_subscript(nd: uni.AtomTrailer) -> (MirValue | None);
     def sys_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def extern_global(symbol: str, t: MirType) -> MirValue;

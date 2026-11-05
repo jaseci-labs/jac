@@ -15271,7 +15271,7 @@ graph import runtime.native {
         closures { __jac_rt_raise },
     ]
     format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
-    iterators ++> anys { __jac_rt_iter_new }
+    iterators ++> anys { __jac_rt_iter_new, __jac_rt_range_len }
     lists ++> [
         anys {
             __jac_rt_elem_release,

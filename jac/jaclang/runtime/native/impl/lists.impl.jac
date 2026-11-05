@@ -68,6 +68,18 @@ impl __jac_rt_tuple_new(n: int) -> int {
     return box;
 }
 
+impl __jac_rt_tuple_from_list(lst: int, kind: int) -> int {
+    n = __mem_load_i64(lst + LIST_LEN);
+    box = __jac_rt_tuple_new(n);
+    data = __mem_load_i64(lst + LIST_DATA);
+    i = 0;
+    while i < n {
+        __jac_rt_tuple_set(box, i, __mem_load_i64(data + i * SLOT), kind);
+        i += 1;
+    }
+    return box;
+}
+
 impl __jac_rt_tuple_set(box: int, i: int, bits: int, kind: int) {
     n = __mem_load_i64(box + TUPLE_LEN);
     slot = box + TUPLE_KINDS + (n + i) * SLOT;

@@ -2929,6 +2929,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             else fp_ret;
         return self.emit_value(MirOp.CALL_FNPTR, fp_result, [fnptr] + fp_values);
     }
+    via_tuple = self.variadic_tuple_call(nd);
+    if via_tuple is not None {
+        return via_tuple;
+    }
     via_type = self.type_call(nd);
     if via_type is not None {
         return via_type;

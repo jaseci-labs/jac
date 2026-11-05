@@ -501,6 +501,9 @@ impl _walk_mode(tag: int, payload: int) -> int {
     if tag == ANY_TAG_OBJ and _type_is(payload, ptr[u8]("bytearray")) {
         return WALK_BYTEARRAY;
     }
+    if tag == ANY_TAG_OBJ and _type_is(payload, ptr[u8]("range")) {
+        return WALK_RANGE;
+    }
     raise TypeError(_not_iterable(tag, payload));
 }
 
@@ -513,6 +516,10 @@ impl _not_iterable(tag: int, payload: int) -> ptr[u8] {
 }
 
 impl __jac_rt_any_iter(tag: int, payload: int) -> int {
+    if tag == ANY_TAG_OBJ and _type_is(payload, ptr[u8]("iterator")) {
+        __jac_rt_retain(payload);
+        return payload;
+    }
     mode = _walk_mode(tag, payload);
     state = __jac_rt_alloc(WALK_SIZE);
     __jac_rt_set_type(state, int(ptr[u8]("iterator_state")));
@@ -561,6 +568,15 @@ impl _walk_next(state: ptr[u8], out: ptr[u8]) -> bool {
         __mem_store_i64(int(out), __jac_rt_any_box(ANY_TAG_STR, int(piece)));
         __jac_rt_release(int(piece));
         __mem_store_i64(at + WALK_INDEX, index + width);
+        return True;
+    }
+    if mode == WALK_RANGE {
+        if index >= __jac_rt_range_len(coll) {
+            return False;
+        }
+        value = __mem_load_i64(coll) + index * __mem_load_i64(coll + 16);
+        __mem_store_i64(int(out), __jac_rt_any_box(ANY_TAG_INT, value));
+        __mem_store_i64(at + WALK_INDEX, index + 1);
         return True;
     }
     if mode == WALK_BYTES or mode == WALK_BYTEARRAY {

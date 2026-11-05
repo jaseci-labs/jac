@@ -91,6 +91,11 @@ impl MirLowering.any_box(value: MirValue, site: uni.UniNode) -> MirValue {
             MirOp.ANY_BOX, mir_any(), [source], int_value=ANY_OBJ_TAG
         );
     }
+    if value.type.kind == MirKind.ITER
+        and value.type.args
+        and value.type.payload().kind != MirKind.ANY {
+        source = self.iter_adapter("each", mir_any(), [value], site);
+    }
     if mir_is_var_tuple(value.type) {
         return self.emit_value(
             MirOp.ANY_BOX,
