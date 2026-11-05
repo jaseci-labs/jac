@@ -895,6 +895,28 @@ def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
     return bad;
 }
 
+def _escaped_terminal_quote(st: tok_state, quote: int) -> bool {
+    end = len(st.data);
+    while end > 0
+        and (st.data[end - 1] == ord("\n") or st.data[end - 1] == ord("\r")) {
+        end = end - 1;
+    }
+    return end >= 2 and st.data[end - 1] == quote and st.data[end - 2] == ord("\\");
+}
+
+def _unterminated_string_message(
+    st: tok_state, quote: int, start_lineno: int, qlen: int
+) -> str {
+    if qlen == 1 and not st.string_modes and _escaped_terminal_quote(st, quote) {
+        return "unterminated string literal (detected at line "
+            + str(start_lineno)
+            + "); perhaps you escaped the end quote";
+    }
+    return "EOL while scanning string literal"
+        if st.string_modes and quote == st.string_modes[-1].quote
+        else "unterminated string literal";
+}
+
 def _fstring_emit_middle(
     st: tok_state,
     text: str,
@@ -1197,9 +1219,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
             if ch == ord("\n") or ch == ord("\r") {
                 return _string_syntax_error(
                     st,
-                    "EOL while scanning string literal"
-                        if st.string_modes and quote == st.string_modes[-1].quote
-                        else "unterminated string literal",
+                    _unterminated_string_message(st, quote, start_lineno, qlen),
                     start_col
                 );
             }
@@ -1257,11 +1277,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
         _advance(st);
     }
     return _string_syntax_error(
-        st,
-        "EOL while scanning string literal"
-            if st.string_modes and quote == st.string_modes[-1].quote
-            else "unterminated string literal",
-        start_col
+        st, _unterminated_string_message(st, quote, start_lineno, qlen), start_col
     );
 }
 
