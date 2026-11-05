@@ -1952,7 +1952,23 @@ def pa_nonparen_genexp_in_call(a: object, b: object) -> object {
     return None;
 }
 
-def pa_arguments_parsing_error(`node: object) -> object {
+def pa_arguments_parsing_error(p: peg_parser, `node: object) -> object {
+    if isinstance(`node, Call) and (`node as Call).keywords {
+        keyword_unpacking = False;
+        for kw in (`node as Call).keywords {
+            if kw.arg is None {
+                keyword_unpacking = True;
+                break;
+            }
+        }
+        return pa_raise_syntax(
+            p,
+            False,
+            "positional argument follows keyword argument unpacking"
+                if keyword_unpacking
+                else "positional argument follows keyword argument"
+        );
+    }
     return None;
 }
 
