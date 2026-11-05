@@ -37423,6 +37423,30 @@ obj VM {
             frame.locals[frame.lb + ((w >> 8) & 65535)] = js_boolean(js_is_array(va));
             return;
         }
+        if op == 59
+            and (jsv_is_string_cell(va) or jsv_is_int32(va))
+            and jsv_is_object_cell(vb)
+            and jsv_to_table_id(vb) > 0
+            and not js_is_proxy(vb) {
+            # `key in obj` for a string or integer key (no ToPropertyKey to
+            # observe) on a non-Proxy object: _op_in's HasProperty without the
+            # bridge, a present dense element answering first (no index key
+            # interned).
+            in_r: bool = jsv_is_int32(va)
+                and jsv_to_int32(va) >= 0
+                and not jsv_is_hole(js_object_dense_elem(vb, jsv_to_int32(va)));
+            if not in_r {
+                in_r = self.obs_has(vb, jsval_to_prop_key(va));
+                if vm_has_native_exc() {
+                    self._reg_throw(
+                        frame, st, vm_take_native_exc(), frame.func.rorig[pc - 1]
+                    );
+                    return;
+                }
+            }
+            frame.locals[frame.lb + ((w >> 8) & 65535)] = js_boolean(in_r);
+            return;
+        }
         if op == 58
             and (
                 (is_fn_val(vb) and _vm_instanceof_plain(vb))
