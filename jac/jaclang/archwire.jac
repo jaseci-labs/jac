@@ -722,7 +722,7 @@ graph import {
         packages.api.package_surface { compilation_scope },
         project.compiler_host.ProjectHost.lint_settings { context_app },
     ]
-    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
+    compiler.driver.compilation_context --> client.client_bundle.client_context_program {
         context_program
     }
     compiler.driver.compile_options ++> [
@@ -4985,6 +4985,11 @@ graph import client {
         compiler.ViteCompiler.prepare_bundle { client_program },
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
+        },
+        jac_client_compiler.JacClientCompiler.compile { client_source_root },
+        targets.web_target.WebTarget.build {
+            client_context_program,
+            client_source_root
         },
         vite_client_bundle {
             ClientBuildInputs,
