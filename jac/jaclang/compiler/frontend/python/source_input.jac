@@ -1,6 +1,6 @@
 """Decode Python source values using native encoding detection."""
 
-def invalid_utf8_source_error(data: bytes, detail: str) -> tuple[str, int] {
+def invalid_utf8_source_error(data: bytes, detail: str, filename: str) -> str {
     # Match the tokenizer's source error instead of exposing the lower-level
     # UnicodeDecodeError used by the codec boundary.
     marker = "position ";
@@ -28,10 +28,10 @@ def invalid_utf8_source_error(data: bytes, detail: str) -> tuple[str, int] {
         }
         index += 1;
     }
-    return (f"Non-UTF-8 code starting with '\\x{byte:02x}'", line);
+    return f"Non-UTF-8 code starting with '\\x{byte:02x}' in file {filename} on line {line}";
 }
 
-def decode_source_value(source: ptr[PyObject]) -> str {
+def decode_source_value(source: ptr[PyObject], filename: str = "<string>") -> str {
     kind = int(jacpy_source_kind(source));
     if kind < 0 and jacpy_error_pending() != 0 {
         raise boundary_failure();
@@ -54,10 +54,10 @@ def decode_source_value(source: ptr[PyObject]) -> str {
             if decoded == 0 and PyErr_ExceptionMatches(PyExc_UnicodeError) != 0 {
                 detail = take_error_text();
                 if encoding == "utf-8" or encoding == "utf-8-sig" {
-                    (message, line) = invalid_utf8_source_error(
-                        read_buffer(raw), detail
+                    message = invalid_utf8_source_error(
+                        read_buffer(raw), detail, filename
                     );
-                    raise syntax_failure(message, filename="<string>", lineno=line);
+                    raise syntax_failure(message);
                 }
                 raise syntax_failure("(unicode error) " + detail, filename="<string>");
             }

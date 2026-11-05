@@ -233,7 +233,7 @@ obj compile_request(native_request) {
                 kind="TypeError"
             );
         }
-        return self.compile_text(decode_source_value(self.source));
+        return self.compile_text(decode_source_value(self.source, self.filename));
     }
 
     def compile_text(text: str) -> ptr[PyObject] {
@@ -306,7 +306,7 @@ obj symtable_request(native_request) {
 
     def run -> ptr[PyObject] {
         self.filename = text_value(self.filename_handle);
-        text = decode_source_value(self.source);
+        text = decode_source_value(self.source, self.filename);
         result = source_symtable(text, self.filename, self.mode);
         if isinstance(result, SymtableEntry) {
             return symtable_to_object(result);
