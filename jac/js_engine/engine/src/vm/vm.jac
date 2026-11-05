@@ -2075,6 +2075,42 @@ def _vm_own_data_or_hole(v: JSValue, key: int) -> JSValue {
     return js_object_slot_at_id(jsv_to_table_id(v), od_si);
 }
 
+"""CreateListFromArrayLike(`v`) appended to `out` when no read of it can be
+observed: an Array at the canonical shape with all its elements dense, or an
+unmapped arguments object whose own data `length` its dense elements cover,
+while no prototype carries an index property (a hole reads as undefined).
+False, `out` untouched, otherwise."""
+def _vm_dense_list_from(v: JSValue, out: list[JSValue]) -> bool {
+    if not jsv_is_object_cell(v) or jsv_to_table_id(v) <= 0 or not idx_protector_ok() {
+        return False;
+    }
+    dl_id: int = jsv_to_table_id(v);
+    dl_n: int = 0;
+    if js_array_dense_full(v) {
+        dl_n = jo_elen(dl_id);
+    } elif (js_object_cell_flags_id(dl_id) & (FLAG_IS_ARGUMENTS | FLAG_MAPPED_ARGS))
+        == FLAG_IS_ARGUMENTS
+        and jo_elems_kind(dl_id) != ELEMS_NONE {
+        dl_lv: JSValue = _vm_own_data_or_hole(v, WK_LENGTH);
+        if not jsv_is_int32(dl_lv) or jsv_to_int32(dl_lv) < 0 or jo_elen(dl_id) < jsv_to_int32(dl_lv) {
+            return False;
+        }
+        dl_n = jsv_to_int32(dl_lv);
+    } else {
+        return False;
+    }
+    dl_k: int = 0;
+    while dl_k < dl_n {
+        dl_x: JSValue = jo_eget(dl_id, dl_k);
+        if jsv_is_hole(dl_x) {
+            dl_x = js_undefined();
+        }
+        out.append(dl_x);
+        dl_k = dl_k + 1;
+    }
+    return True;
+}
+
 # The shapes of the dense arguments objects (_build_arguments_dense): marker,
 # `length`, @@iterator, and with a data `callee` before @@iterator. Learned
 # from the first one built the ordinary way; shapes are never freed.
@@ -25432,6 +25468,8 @@ obj VM {
                     arr_ap: JSValue = args_m[1];
                     if jsv_is_null(arr_ap) or jsv_is_undefined(arr_ap) {
                         # null/undefined argsArray → call with no arguments
+                    } elif _vm_dense_list_from(arr_ap, fnapply_args) {
+                        # a dense Array / arguments object: no read to observe
                     } elif jsv_is_object_cell(arr_ap) or js_is_proxy(arr_ap) {
                         # CreateListFromArrayLike: Get(length)→ToLength, then Get(0..len-1).
                         # Reads are accessor-aware so a throwing getter propagates (§7.3.17).
