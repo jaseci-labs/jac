@@ -410,7 +410,9 @@ impl _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None) {
     return decl.element_in(target);
 }
 
-impl _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None) {
+impl _materialize_module(
+    path: str, prog: JacProgram, need_bodies: bool = False
+) -> (uni.Module | None) {
     found = hub_module_for_path(path, prog);
     if found is not None {
         return found;
@@ -419,7 +421,9 @@ impl _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None) {
         return None;
     }
     try {
-        return prog.load_dependency_module(path, need_tree=True);
+        return prog.load_dependency_module(
+            path, need_tree=True, need_bodies=need_bodies
+        );
     } except Exception {
         return None;
     }
@@ -434,7 +438,7 @@ impl _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | 
         return None;
     }
     placement_work(prog).observe_path(resolved);
-    found = _materialize_module(os.path.abspath(resolved), prog);
+    found = _materialize_module(os.path.abspath(resolved), prog, need_bodies=True);
     import from jaclang.compiler.types.stubcat.reader { CatModule }
     import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if isinstance(found, CatModule) and is_compiler_source_path(resolved) {
@@ -948,7 +952,7 @@ impl _pull_boundary_import(
         return 0;
     }
     targets: list[uni.Module] = [];
-    hub_target = _materialize_module(os.path.abspath(resolved), prog);
+    hub_target = _materialize_module(os.path.abspath(resolved), prog, need_bodies=True);
     if hub_target is not None and hub_target is not module {
         targets.append(hub_target);
     }
@@ -1020,7 +1024,9 @@ impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     if ir_in.gen.native_undecided and ir_in.loc is not None and ir_in.loc.mod_path {
         base_dir = os.path.dirname(os.path.abspath(ir_in.loc.mod_path)) or ".";
-        closed = native_blocker_scan(ir_in, base_dir).first();
+        closed = native_blocker_scan(
+            ir_in, base_dir, allow_pub=bool(self.prog.options?.native_import)
+        ).first();
         if closed {
             ir_in.gen.native_undecided = False;
             ir_in.gen.native_closed_why = closed;

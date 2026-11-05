@@ -836,7 +836,7 @@ test "an interface that cannot place a class is not persisted" {
         build_module_iface(provider, prog.get_type_evaluator(), jaclang_pkg_dir());
     } except IncoherentInterface as exc {
         refused = True;
-        assert any("Cfg" in o for o in exc.orphans) , f"the refusal does not name the unplaceable class: {exc.orphans}";
+        assert "Cfg" in str(exc) , f"the refusal does not name the unplaceable class: {exc}";
     }
     assert refused , "an interface with an unplaceable class was built";
     cache_path = _cache_path(paths["provider"]);
@@ -1057,7 +1057,7 @@ test "failed type evaluation cannot publish an interface" {
         try {
             build_module_iface(mod, evaluator, jaclang_pkg_dir());
         } except IncoherentInterface as exc {
-            assert any("incomplete dependency" in failure for failure in exc.failures);
+            assert "incomplete dependency" in str(exc);
             refused = True;
         }
     }

@@ -1,5 +1,23 @@
+import from email { policy as email_policy }
+
 glob DEFAULT_MEDIA_TYPE: str = 'application/octet-stream',
-     MEDIA_TYPE_CHARS: str = "!#$%&'*+-.^_`{|}~";
+     MEDIA_TYPE_CHARS: str = "!#$%&'*+-.^_`{|}~",
+     RESERVED_HEADERS: tuple[str, ...] = (
+         'from',
+         'to',
+         'cc',
+         'bcc',
+         'subject',
+         'reply-to',
+         'sender',
+         'mime-version',
+         'return-path',
+         'received',
+         'dkim-signature',
+         'authentication-results'
+     ),
+     RESERVED_HEADER_PREFIXES: tuple[str, ...] = ('content-', 'resent-', 'arc-'),
+     MAX_HEADER_LINE: int = 998;
 
 obj EmailAttachment {
     has filename: str,
@@ -23,8 +41,10 @@ obj Emailer {
         body_html: (str | None) = None,
         from_addr: (str | None) = None,
         reply_to: (str | None) = None,
-        attachments: (list[EmailAttachment] | None) = None
+        attachments: (list[EmailAttachment] | None) = None,
+        headers: (dict[str, str] | None) = None
     ) -> bool abst;
 
     def is_ready -> bool;
+    def checked_headers(headers: (dict[str, str] | None)) -> dict[str, str];
 }

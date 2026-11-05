@@ -1,4 +1,3 @@
-import from jaclang.runtime.python.modules.time_records { timespec, timeval }
 import from c {
     def mach_absolute_time -> u64;  def mach_timebase_info(
         info: &mut MachTimebase

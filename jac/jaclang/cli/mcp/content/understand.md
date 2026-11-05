@@ -66,7 +66,7 @@ isolated root automatically. `walker:priv` enforces auth. `walker:pub` = public.
 ### [E] Full-Stack Development (Codespaces)
 
 Single .jac file = complete full-stack app. Placement is inferred: JSX/npm imports = client
-code (React/JSX); python imports and graph archetypes = server. Overrides go in jac.toml
+code (React/JSX); python imports and `root` access = server. Overrides go in jac.toml
 (`[placement.pins]`), never in the source.
 
 **Client components**: `def:pub Name(prop: str) -> JsxElement { ... }` (the JSX places it client)

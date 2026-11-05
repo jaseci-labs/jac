@@ -41,8 +41,18 @@ glob _EXCLUDE_DIRS: set[str] = {
 
 glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
+glob _CLIENT_DIST: tuple[str, ...] = (".jac", "client", "dist");
+
+glob _BUNDLE_REQUIRED: tuple[tuple[str, ...], ...] = (
+         _CLIENT_DIST,
+         (".jac", "admin")
+     );
+
 
 def _is_bundle_required(rel: Path) -> bool;
+
+
+def _may_hold_bundle_required(rel: Path) -> bool;
 
 
 def _is_client_dist(rel: Path) -> bool;
