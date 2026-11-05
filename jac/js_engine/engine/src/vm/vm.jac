@@ -25091,6 +25091,10 @@ obj VM {
                                     fncall_args[0]
                                 );
                                 subj_rpf: str = jsval_to_str(subj_rpf_v);
+                                if not jsv_is_string_cell(subj_rpf_v) {
+                                    # (a primitive comes back unconverted)
+                                    subj_rpf_v = js_str(subj_rpf);
+                                }
                                 slen_rpf: int = str_nbytes(subj_rpf);
                                 # (the subject value is handed to every exec and
                                 # callback below: rooted with this call's natives;
@@ -25850,6 +25854,10 @@ obj VM {
                         is_g_rp: bool = self._regexp_is_global(re_rp);
                         subj_rp_prim: JSValue = self._to_primitive_string(subj_rp_v);
                         subj_rp: str = jsval_to_str(subj_rp_prim);
+                        if not jsv_is_string_cell(subj_rp_prim) {
+                            # (a primitive comes back unconverted)
+                            subj_rp_prim = js_str(subj_rp);
+                        }
                         slen_rp: int = str_nbytes(subj_rp);
                         # (rooted with this call's natives: handed to every exec
                         # and callback below, where js_str re-interned it per match)
@@ -26060,6 +26068,10 @@ obj VM {
                     search_sr: str = js_to_string_prim(re_rp);
                     subj_sr_prim: JSValue = self._to_primitive_string(subj_rp_v);
                     subj_sr: str = jsval_to_str(subj_sr_prim);
+                    if not jsv_is_string_cell(subj_sr_prim) {
+                        # (a primitive comes back unconverted)
+                        subj_sr_prim = js_str(subj_sr);
+                    }
                     frame.native_roots.append(subj_sr_prim);
                     slen_sr: int = str_nbytes(subj_sr);
                     off_sr: int = str_bfind(subj_sr, search_sr);
