@@ -3889,6 +3889,7 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
+            | scale.tests.server.test_error_envelope
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
@@ -4351,7 +4352,8 @@ graph import {
     testing.testkit ++> [
         scale.server.inprocess.prepare_inprocess_runtime
             | scale.tests.microservices.test_gateway_docs_precedence
-            | scale.tests.microservices.test_gateway_webapp { ServingTestClient },
+            | scale.tests.microservices.test_gateway_webapp
+            | scale.tests.server.test_error_envelope { ServingTestClient },
         scale.tests.data.test_eager_spawn
             | scale.tests.microservices.test_embedded_gateway
             | scale.tests.microservices.test_microservice

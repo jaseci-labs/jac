@@ -7,7 +7,6 @@ import logging;
 import time;
 import uuid;
 import from logging.handlers { MemoryHandler }
-import from typing { Callable }
 import from unittest.mock { AsyncMock, patch }
 
 glob WATCHED_LOGGERS: tuple[str, ...] = (
@@ -16,8 +15,12 @@ glob WATCHED_LOGGERS: tuple[str, ...] = (
          "jaclang.server.serving.app"
      );
 
-def _with_capture(send: Callable[[any], any]) -> tuple[any, list[any]] {
-    client = make_client("error_paths.jac");
+def _with_capture(
+    send: Callable[[any], any], client: any = None
+) -> tuple[any, list[any]] {
+    if client is None {
+        client = make_client("error_paths.jac");
+    }
     watched = [logging.getLogger(name) for name in WATCHED_LOGGERS];
     saved = [(lg, lg.level, lg.disabled) for lg in watched];
     capture = MemoryHandler(10000);
@@ -160,25 +163,19 @@ test "a bad target node is the caller's error and leaves no stack in the log" {
 }
 
 test "an unhandled server failure stays in the log, off the wire" {
-    def send(client: any) -> any {
-        token = client.register_and_login(
-            f"member_{uuid.uuid4().hex[:8]}", "password123"
-        );
-        with patch.object(
-            client._server.user_manager,
-            "aget_root_id",
-            new=AsyncMock(return_value="00000000-0000-4000-8000-000000000001")
-        ) {
-            return client.post(
-                "/walker/Boom", json={}, headers={"Authorization": f"Bearer {token}"}
-            );
-        }
+    async def fail(request: any, call_next: any) -> any {
+        raise RuntimeError("secret detail");
     }
-    (resp, records) = _with_capture(send);
+    app = ServingApp();
+    app.add_middleware(fail);
+    def send(client: any) -> any {
+        return client.get("/anything");
+    }
+    (resp, records) = _with_capture(send, ServingTestClient(app=app));
     assert resp.status_code == 500 , resp.text;
     assert resp.json() == {"error": "Internal Server Error"} , resp.text;
     logged = [r.getMessage() for r in records];
-    assert any("Traceback" in m and "Root anchor" in m for m in logged) , logged;
+    assert any("Traceback" in m and "secret detail" in m for m in logged) , logged;
 }
 
 test "webhook exception: opaque failure on the wire, one ERROR record in the log" {
