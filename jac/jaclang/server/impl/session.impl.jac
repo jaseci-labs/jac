@@ -352,7 +352,7 @@ impl Session.postinit -> None {
     self._rows = RowLedger();
     self._lost = False;
     self._active_units = 0;
-    self._committed_depth = 0;
+    self._committed_units = set();
     self._flushing = None;
     self._read_scopes = 0;
     self._ro_units = 0;
@@ -610,9 +610,7 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
 
 impl Session.abort -> None {
     with self._lock {
-        self._committed_depth = min(
-            self._committed_depth, max(0, self._active_units - 1)
-        );
+        self._committed_units.discard(self._active_units);
         self._contended |= self._last_conflict;
         self._last_conflict = set();
         self._rollback_txn();
@@ -782,7 +780,9 @@ impl Session.unit_enter(key: (str | None) = None) -> None {
 
 impl Session.unit_committed -> None {
     with self._lock {
-        self._committed_depth = self._active_units;
+        if self._active_units > 0 {
+            self._committed_units.add(self._active_units);
+        }
     }
 }
 
@@ -847,8 +847,8 @@ impl Session.unit_exit -> None {
                 );
             }
         } finally {
+            self._committed_units.discard(self._active_units);
             self._active_units = max(0, self._active_units - 1);
-            self._committed_depth = min(self._committed_depth, self._active_units);
             if self._unit_stack {
                 (_key, was_ro) = self._unit_stack.pop();
                 if was_ro {
@@ -930,7 +930,10 @@ impl Session._rollback_txn -> None {
 impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
     self._rollback_txn();
 
-    if exhausted or self._active_units > self._committed_depth {
+    if exhausted
+        or (
+            self._active_units > 0 and self._active_units not in self._committed_units
+        ) {
         self._last_conflict |= set(self._dirty) | self._deleted;
         self._lost = True;
     }

@@ -157,7 +157,7 @@ obj Session(Memory) {
         _lost: bool postinit,
         _fetch_count: int postinit,
         _active_units: int postinit,
-        _committed_depth: int postinit,
+        _committed_units: set[int] postinit,
         _flushing: (int | None) postinit,
         _read_scopes: int postinit,
         _ro_units: int postinit,
