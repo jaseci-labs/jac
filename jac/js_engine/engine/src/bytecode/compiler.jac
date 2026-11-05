@@ -370,6 +370,8 @@ obj Compiler {
         finalizer_stack: list[FinalizerEntry],
         all_fns: list[CompiledFunction],
         cell_slots: list[list[int]],
+        tdz_pre: list[dict[int, bool]] = [],
+        tdz_redund: list[list[int]] = [],
         esm_live_names: dict[str, bool] = {},
         esm_export_aliases: dict[str, str] = {},
         esm_import_bindings: dict[str, str] = {},
@@ -1852,6 +1854,10 @@ obj Compiler {
         self.fn_stack.append(fn);
         self.fn_scope_base.append(len(self.scope_stack));
         self.cell_slots.append([]);
+        # slots the open blocks gave a TDZ sentinel at entry, and the
+        # declaration-site TDZ stores of those slots (see _pop_fn)
+        self.tdz_pre.append({});
+        self.tdz_redund.append([]);
         self._push_scope(True);
     }
 
@@ -1925,6 +1931,29 @@ obj Compiler {
         n_cell: int = len(self.cell_slots);
         cells: list[int] = self.cell_slots[n_cell - 1];
         del self.cell_slots[n_cell - 1];
+        # A let/const declaration re-stored the TDZ sentinel its block's entry
+        # had just stored: nothing can write the slot in between (assigning it
+        # throws), so for a slot no closure captures (no fresh per-iteration
+        # cell to make) the pair is a dead store, run on every pass through a
+        # loop body. FILLER keeps the code length (jump targets stay put).
+        n_tr: int = len(self.tdz_redund);
+        tr_sites: list[int] = self.tdz_redund[n_tr - 1];
+        del self.tdz_redund[n_tr - 1];
+        del self.tdz_pre[len(self.tdz_pre) - 1];
+        for tr_ci in tr_sites {
+            if tr_ci + 1 < len(fn.code)
+                and fn.code[tr_ci].opcode == Opcode.TDZ_CLASS {
+                tr_st: Instruction = fn.code[tr_ci + 1];
+                if (
+                    tr_st.opcode == Opcode.STORE_LOCAL
+                    or tr_st.opcode == Opcode.STORE_NEW_CELL
+                )
+                    and tr_st.arg not in cells {
+                    fn.code[tr_ci] = make_instruction(Opcode.FILLER, 0, 0, fn.code[tr_ci].line);
+                    fn.code[tr_ci + 1] = make_instruction(Opcode.FILLER, 0, 0, tr_st.line);
+                }
+            }
+        }
         if len(cells) > 0 {
             # : rewrite opcodes in-place
             ci: int = 0;
@@ -2870,6 +2899,7 @@ obj Compiler {
         # restore the prior flag state at block exit so scopes stay independent.
         blk_predeclared: list[str] = [];
         blk_prior_flag: dict[str, bool] = {};
+        blk_tdz_slots: list[int] = [];
         for stmt in nd.children {
             if stmt.ntype == ASTNodeType.VariableDeclaration {
                 vd_kind: str = stmt.value;
@@ -2884,6 +2914,8 @@ obj Compiler {
                                 tdz_slot: int = self._declare(tdz_name, vd_kind);
                                 if tdz_slot >= 0 {
                                     self._emit_tdz_store(tdz_slot);
+                                    self.tdz_pre[len(self.tdz_pre) - 1][tdz_slot] = True;
+                                    blk_tdz_slots.append(tdz_slot);
                                     # hoist_predeclared is keyed per function-base
                                     # (_hoist_predecl_key), which doesn't distinguish
                                     # sibling blocks in the same function — so still
@@ -2980,6 +3012,12 @@ obj Compiler {
                 self.hoist_predeclared[bpn] = True;
             } elif bpn in self.hoist_predeclared {
                 del self.hoist_predeclared[bpn];
+            }
+        }
+        bt_pre: dict[int, bool] = self.tdz_pre[len(self.tdz_pre) - 1];
+        for bts in blk_tdz_slots {
+            if bts in bt_pre {
+                del bt_pre[bts];
             }
         }
         self._pop_scope();
@@ -3094,6 +3132,9 @@ obj Compiler {
                 }
                 if kind == "let" or kind == "const" {
                     if slot >= 0 {
+                        if slot in self.tdz_pre[len(self.tdz_pre) - 1] {
+                            self.tdz_redund[len(self.tdz_redund) - 1].append(len(self._fn().code));
+                        }
                         self._emit_tdz_store(slot);
                     }
                 }
