@@ -9,7 +9,13 @@ closures, and free defs all observe the same module state as CPython.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    assert_native_identity,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -32,4 +38,11 @@ test "entry globals: a free def reads entry-assigned module state" {
     entry_fn();
     f = get_func(eng, "read_k", ctypes.c_int64);
     assert f() == 100 , "def sees the final entry-assigned value of k";
+}
+
+test "entry globals: float /= and %= store the result, not the right-hand side" {
+    out = assert_native_identity(
+        os.path.join(FIXTURES, "entry_float_aug.jac"), profiles=["managed"]
+    );
+    assert out == ("5.0\n4.5\n1.5\n4.0\n19.0\nZeroDivisionError\n") , f"got {out!r}";
 }

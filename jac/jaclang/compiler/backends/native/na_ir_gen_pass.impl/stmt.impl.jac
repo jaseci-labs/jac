@@ -3231,8 +3231,26 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                     current = self._str_norm(current);
                     value = self._str_norm(value);
                 }
+                _gscalar_aug: (ir.Value | None) = None;
+                if isinstance(current.type, (ir.IntType, ir.FloatType, ir.DoubleType))
+                    and isinstance(
+                        value.type, (ir.IntType, ir.FloatType, ir.DoubleType)
+                    )
+                    and aug_op_val != "**=" {
+                    _gscalar_aug = self._apply_scalar_aug_op(
+                        current,
+                        value,
+                        aug_op_val,
+                        nd.value,
+                        target_type=target_expr.type,
+                        unsigned=self._is_unsigned_node(target_expr),
+                        sized=self._is_sized_node(target_expr)
+                    );
+                }
                 coerced = self._coerce_type(value, current.type);
-                if aug_op_val == "+=" {
+                if _gscalar_aug is not None {
+                    value = _gscalar_aug;
+                } elif aug_op_val == "+=" {
                     if isinstance(current.type, ir.IntType) {
                         value = self._emit_overflow_op(
                             "add", current, coerced, self._is_unsigned_node(target_expr)

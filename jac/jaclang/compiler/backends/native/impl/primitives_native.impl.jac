@@ -6198,31 +6198,33 @@ impl NativeBuiltinEmitter.emit_bool(
     b = get_builder(p);
     i64 = ir.IntType(64);
     if isinstance(arg_val.type, ir.IntType) {
-        is_nonzero = b.icmp_signed("!=", arg_val, ir.Constant(i64, 0), name="bool.nz");
-        return b.zext(is_nonzero, i64, name="bool.result");
-    }
-    if isinstance(arg_val.type, ir.DoubleType) {
-        is_nonzero = b.fcmp_ordered(
-            "!=", arg_val, ir.Constant(ir.DoubleType(), 0.0), name="bool.fnz"
+        if arg_val.type.width == 1 {
+            return arg_val;
+        }
+        return b.icmp_signed(
+            "!=", arg_val, ir.Constant(arg_val.type, 0), name="bool.nz"
         );
-        return b.zext(is_nonzero, i64, name="bool.fresult");
+    }
+    if isinstance(arg_val.type, (ir.DoubleType, ir.FloatType)) {
+        return b.fcmp_unordered(
+            "!=", arg_val, ir.Constant(arg_val.type, 0.0), name="bool.fnz"
+        );
     }
     if isinstance(arg_val.type, ir.PointerType) {
         i8p = ir.IntType(8).as_pointer();
         if arg_val.type == i8p {
             slen = p._call_str_len(b, arg_val, name="bool.slen");
-            is_nonempty = b.icmp_unsigned(
+            return b.icmp_unsigned(
                 "!=", slen, ir.Constant(i64, 0), name="bool.nonempty"
             );
-            return b.zext(is_nonempty, i64, name="bool.sresult");
         }
 
         if p._is_bytes_value(arg_val) {
-            return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
+            return p._emit_bytes_truthy(arg_val);
         }
     }
 
-    return b.zext(p._to_bool(arg_val), i64, name="bool.result");
+    return p._to_bool(arg_val);
 }
 
 impl NativeBuiltinEmitter.emit_list(
