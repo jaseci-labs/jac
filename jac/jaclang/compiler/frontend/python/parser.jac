@@ -10820,7 +10820,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_range(
                     p,
                     False,
-                    a_5,
+                    pa_get_genexp_start_expr(a_5, b),
                     pa_get_last_comprehension_item(b),
                     "Generator expression must be parenthesized"
                 );
@@ -11554,9 +11554,11 @@ def:priv _rule_invalid_del_stmt(p: peg_parser) -> object | None {
     if kw is not None {
         a = rule_star_expressions(p);
         if a is not None {
-            res = pa_raise_invalid_target(p, DEL_TARGETS, a);
-            p.level -= 1;
-            return res;
+            if not pa_next_token_is_augassign(p) {
+                res = pa_raise_invalid_target(p, DEL_TARGETS, a);
+                p.level -= 1;
+                return res;
+            }
         }
     }
     peg_reset(p, mark);

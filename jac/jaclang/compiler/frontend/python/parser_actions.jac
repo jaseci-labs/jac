@@ -1807,6 +1807,35 @@ def pa_raise_syntax_known_range(
     return pa_raise_syntax(p, on_next, message);
 }
 
+def pa_get_genexp_start_expr(`node: object, clauses: object) -> expr | None {
+    if isinstance(`node, Call) and (`node as Call).args {
+        args = (`node as Call).args;
+        first_for: comprehension | None = None;
+        if isinstance(clauses, list) and (clauses as list[object]) {
+            first = (clauses as list[object])[0];
+            if isinstance(first, comprehension) {
+                first_for = first as comprehension;
+            }
+        }
+        candidate: expr | None = None;
+        for arg in args {
+            if first_for is None
+                or arg.lineno < first_for.for_lineno
+                or (
+                    arg.lineno == first_for.for_lineno
+                    and arg.col_offset < first_for.for_col_offset
+                ) {
+                candidate = arg;
+            }
+        }
+        return candidate if candidate is not None else args[-1];
+    }
+    if isinstance(`node, expr) {
+        return `node as expr;
+    }
+    return None;
+}
+
 def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> None {
     if isinstance(`node, expr) {
         target_name = pa_get_expr_name(`node as expr, kind == 1);
@@ -1816,6 +1845,32 @@ def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> N
         );
     }
     return pa_raise_syntax(p, False, "invalid assignment target");
+}
+
+def pa_next_token_is_augassign(p: peg_parser) -> bool {
+    if p.mark >= len(p.tokens) and not peg_fill_token(p) {
+        return False;
+    }
+    if p.mark >= len(p.tokens) {
+        return False;
+    }
+    spelling = p.tokens[p.mark].spelling;
+    return spelling
+        in [
+            "+=",
+            "-=",
+            "*=",
+            "@=",
+            "/=",
+            "//=",
+            "%=",
+            "**=",
+            "<<=",
+            ">>=",
+            "&=",
+            "|=",
+            "^="
+        ];
 }
 
 def pa_raise_type_param_error(
