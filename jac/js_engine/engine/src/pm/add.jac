@@ -43,7 +43,8 @@ import from engine.src.pm.manifest {
     MVersion,
     manifest_fetch,
     manifest_find_best,
-    manifest_find_dist_tag
+    manifest_find_dist_tag,
+    manifest_blocked_tag_suffix
 }
 import from engine.src.pm.semver {
     semver_group_is_exact,
@@ -65,6 +66,7 @@ import from engine.src.runtime.mem {
 def _out(s: str) {
     write(1, s, str_nbytes(s));
 }
+
 def _err(s: str) {
     write(2, s, str_nbytes(s));
 }
@@ -93,7 +95,11 @@ def _guess_indent(text: str) -> str {
     for line in lines {
         n: int = 0;
         _nb95_line: int = str_nbytes(line);
-        while n < _nb95_line and (byte_chr(str_byte(line, n)) == " " or byte_chr(str_byte(line, n)) == "\t") {
+        while n < _nb95_line
+            and (
+                byte_chr(str_byte(line, n)) == " "
+                or byte_chr(str_byte(line, n)) == "\t"
+            ) {
             n = n + 1;
         }
         if n > 0 and n < str_nbytes(line) and byte_chr(str_byte(line, n)) == "\"" {
@@ -326,7 +332,9 @@ def:pub pm_cmd_add(args: PmArgs, cfg: PmConfig, banner: str) -> int {
                         + spec.name
                         + "\" with tag \""
                         + spec.dist_tag
-                        + "\" not found\n"
+                        + "\" not found"
+                        + manifest_blocked_tag_suffix(mf, spec.dist_tag)
+                        + "\n"
                 );
                 return 1;
             }
