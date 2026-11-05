@@ -804,6 +804,7 @@ obj MirLowering {
 
     def extreme_named(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def sized_type_name(nd: uni.UniNode) -> (str | None);
+    def u64_or_i64(value: int) -> bool;
     def int_bounds(t: MirType) -> tuple[int, int];
     def int_bits(value: int, t: MirType) -> int;
     def sized_bound(nd: uni.AtomTrailer) -> (MirValue | None);
@@ -1026,9 +1027,10 @@ obj MirLowering {
     def class_entry(arch: uni.Archetype, bound: uni.Archetype) -> (MirFunction | None);
     def ctor_mask_words(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> int;
     def ctor_mask(
-        mask: int, params: list[tuple[str, MirType, (uni.Expr | None)]]
+        mask: list[int], params: list[tuple[str, MirType, (uni.Expr | None)]]
     ) -> list[MirValue];
 
+    def ctor_mask_set(mask: list[int], index: int);
     def ctor_given_bit(given: list[MirValue], index: int) -> MirValue;
     def ctor_default(
         value: MirValue, given: list[MirValue], index: int, fallback: uni.Expr

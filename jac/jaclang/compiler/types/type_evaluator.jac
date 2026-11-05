@@ -571,6 +571,7 @@ walker TypeEvaluator {
     ) -> FunctionType;
 
     def _lookup_class_member(base_type: ClassType, member: str) -> ClassMember | None;
+    def _inherited_member_declared_type(symbol: Symbol) -> (TypeBase | None);
     def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;

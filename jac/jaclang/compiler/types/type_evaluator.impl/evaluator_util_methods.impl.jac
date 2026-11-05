@@ -546,6 +546,43 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+impl TypeEvaluator._inherited_member_declared_type(
+    symbol: Symbol
+) -> (TypeBase | None) {
+    owner = symbol.parent_tab;
+    if not isinstance(owner, Archetype) {
+        return None;
+    }
+    cls_type = self.get_type_of_class(owner);
+    if not isinstance(cls_type, ClassType) {
+        return None;
+    }
+    self._heal_ancestry(cls_type);
+    ensure_mro_fresh(cls_type);
+    for base in cls_type.shared.mro[1:] {
+        overloaded: list[Symbol] = [];
+        inherited = base.lookup_member_symbol(symbol.sym_name, overloaded);
+        if inherited is None or inherited is symbol {
+            continue;
+        }
+        site = inherited.decl.name_of if inherited.decl else None;
+        declared = isinstance(site, HasVar)
+            or (
+                isinstance(site, Name)
+                and isinstance(site.parent, AtomTrailer)
+                and isinstance(site.parent.parent, Assignment)
+                and site.parent.parent.type_tag is not None
+            );
+        if not declared {
+            return None;
+        }
+        return self.get_type_of_member(
+            ClassMember(inherited, base, overloaded), cls_type.clone_as_instance()
+        );
+    }
+    return None;
+}
+
 impl TypeEvaluator._is_type_subscript(class_type: ClassType) -> bool {
     return (
         class_type.is_builtin("type")

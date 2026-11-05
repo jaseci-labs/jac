@@ -1597,10 +1597,10 @@ impl MirLowering.object_call(
             );
         }
         values = self.bound_values(list(bound), [param[1] for param in params]);
-        given = 0;
+        given: list[int] = [];
         for (index, param) in enumerate(params) {
             if param[2] is not None {
-                given = given | (1 << index);
+                self.ctor_mask_set(given, index);
             }
         }
         values.extend(self.ctor_mask(given, params));
@@ -2615,14 +2615,21 @@ impl MirLowering.ctor_mask_words(
 }
 
 impl MirLowering.ctor_mask(
-    mask: int, params: list[tuple[str, MirType, (uni.Expr | None)]]
+    mask: list[int], params: list[tuple[str, MirType, (uni.Expr | None)]]
 ) -> list[MirValue] {
     b = self.builder();
-    word_mask = (1 << CTOR_MASK_BITS) - 1;
     return [
-        b.const_int((mask >> (word * CTOR_MASK_BITS)) & word_mask, mir_int())
+        b.const_int(mask[word] if word < len(mask) else 0, mir_int())
         for word in range(self.ctor_mask_words(params))
     ];
+}
+
+impl MirLowering.ctor_mask_set(mask: list[int], index: int) {
+    word = index // CTOR_MASK_BITS;
+    while len(mask) <= word {
+        mask.append(0);
+    }
+    mask[word] = mask[word] | (1 << (index % CTOR_MASK_BITS));
 }
 
 impl MirLowering.ctor_given_bit(given: list[MirValue], index: int) -> MirValue {
@@ -2708,7 +2715,7 @@ impl MirLowering.ctor_arguments(
     }
     shown = label.split("$")[0];
     values: list[MirValue] = [];
-    mask = 0;
+    mask: list[int] = [];
     dynamic_mask: dict[int, MirValue] = {};
     matched: (MirValue | None) = None;
     if spreads {
@@ -2790,7 +2797,7 @@ impl MirLowering.ctor_arguments(
             continue;
         }
         if fallback is not None {
-            mask = mask | (1 << index);
+            self.ctor_mask_set(mask, index);
         }
         if source is None {
             raise MirRefused(mir_refusal("call", f"{label} missing {pname}", nd));
@@ -2910,7 +2917,7 @@ impl MirLowering.class_entry(
             supplied.append(held);
         }
         args: list[MirValue] = [];
-        mask = self.ctor_mask(0, accepts);
+        mask = self.ctor_mask([], accepts);
         for (index, (pname, ptype, fallback)) in enumerate(accepts) {
             if pname not in names {
                 args.append(self.placeholder(ptype));
@@ -2984,7 +2991,7 @@ impl MirLowering.default_entry(arch: uni.Archetype) -> (MirFunction | None) {
     try {
         b = self.builder();
         args = [self.placeholder(ptype) for (_, ptype, _) in params];
-        args.extend(self.ctor_mask(0, params));
+        args.extend(self.ctor_mask([], params));
         made = b.call(
             native_symbol_name(prefix, f"{obj_def.name}.__ctor"),
             args,

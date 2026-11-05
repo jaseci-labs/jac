@@ -2445,3 +2445,11 @@ test "iterating a union of lists yields the union of their element types" {
     assert len(program.errors_had) == 1 , [str(e) for e in program.errors_had];
     assert "A | B" in str(program.errors_had[0]) , str(program.errors_had[0]);
 }
+
+test "an untyped self assignment keeps the declared type of an inherited member" {
+    program = compile_and_check("checker_inherited_member_assignment.jac");
+    errors = [str(e) for e in program.errors_had];
+    assert len(errors) == 2 , errors;
+    assert any("list[int] | None" in e for e in errors) , errors;
+    assert any("int | None" in e and "list" not in e for e in errors) , errors;
+}

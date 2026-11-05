@@ -1326,7 +1326,17 @@ impl MirLowering.sized_type_name(nd: uni.UniNode) -> (str | None) {
     return nd.value;
 }
 
+impl MirLowering.u64_or_i64(value: int) -> bool {
+    if value <= 9223372036854775807 {
+        return value >= -9223372036854775807 - 1;
+    }
+    return value - 9223372036854775807 - 1 <= 9223372036854775807;
+}
+
 impl MirLowering.int_bounds(t: MirType) -> tuple[int, int] {
+    if t.signed and t.width >= 64 {
+        return (-9223372036854775807 - 1, 9223372036854775807);
+    }
     if t.signed {
         return (-(1 << (t.width - 1)), (1 << (t.width - 1)) - 1);
     }
@@ -1334,8 +1344,8 @@ impl MirLowering.int_bounds(t: MirType) -> tuple[int, int] {
 }
 
 impl MirLowering.int_bits(value: int, t: MirType) -> int {
-    if value >= (1 << 63) {
-        return value - (1 << 64);
+    if value > 9223372036854775807 {
+        return value - 9223372036854775807 - 9223372036854775807 - 2;
     }
     return value;
 }
