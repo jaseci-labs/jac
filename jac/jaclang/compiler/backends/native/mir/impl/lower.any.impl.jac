@@ -131,32 +131,11 @@ impl MirLowering.any_unbox(
         );
     }
     if to.kind in (MirKind.INT, MirKind.BOOL, MirKind.FLOAT) {
-        bits = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
-        if to.kind == MirKind.BOOL {
-            return b.compare("ne", bits, b.const_int(0, mir_int()));
-        }
-        if to.kind == MirKind.FLOAT {
-            held_any = self.spill(value);
-            raw = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [held_any]);
-            tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held_any]);
-            integral = b.binary(
-                "or",
-                b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int())),
-                b.compare("eq", tag, b.const_int(ANY_BOOL_TAG, mir_int()))
-            );
-            return b.convert(
-                b.select(
-                    integral,
-                    b.convert(raw, mir_float()),
-                    self.emit_value(MirOp.BITCAST, mir_float(), [raw])
-                ),
-                to
-            );
-        }
-        return b.convert(bits, to);
+        return self.any_scalar_unbox(value, to);
     }
     held = self.spill(value);
     if to.kind == MirKind.STR {
+        self.any_tag_check(held, ANY_STR_TAG, "str");
         text = b.ref_cast(held, mir_str_ref(), False);
         size = self.runtime("__jac_rt_str_size", [text]);
         if size is None {
@@ -197,6 +176,124 @@ impl MirLowering.any_unbox(
         return b.ref_cast(held, to, False);
     }
     raise MirRefused(mir_refusal("conversion", f"any to {to.render()}", site));
+}
+
+impl MirLowering.any_scalar_unbox(value: MirValue, to: MirType) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(value);
+    tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held]);
+    raw = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [held]);
+    result = self.temp_slot(to);
+    fast = fn.new_block("unbox.fast");
+    slow = fn.new_block("unbox.slow");
+    done = fn.new_block("unbox.done");
+    primary = ANY_INT_TAG;
+    if to.kind == MirKind.BOOL {
+        primary = ANY_BOOL_TAG;
+    } elif to.kind == MirKind.FLOAT {
+        primary = ANY_FLOAT_TAG;
+    }
+    b.cond_branch(b.compare("eq", tag, b.const_int(primary, mir_int())), fast, slow);
+    b.position(fast);
+    if to.kind == MirKind.BOOL {
+        b.store(result, b.compare("ne", raw, b.const_int(0, mir_int())));
+    } elif to.kind == MirKind.FLOAT {
+        b.store(
+            result, b.convert(self.emit_value(MirOp.BITCAST, mir_float(), [raw]), to)
+        );
+    } else {
+        b.store(result, b.convert(raw, to));
+    }
+    b.branch(done);
+    b.position(slow);
+    if to.kind != MirKind.BOOL {
+        integral = fn.new_block("unbox.integral");
+        other = fn.new_block("unbox.other");
+        b.cond_branch(
+            b.compare("eq", tag, b.const_int(ANY_BOOL_TAG, mir_int())), integral, other
+        );
+        b.position(integral);
+        b.store(result, b.convert(raw, to));
+        b.branch(done);
+        b.position(other);
+        if to.kind == MirKind.FLOAT {
+            whole = fn.new_block("unbox.whole");
+            mismatch = fn.new_block("unbox.mismatch");
+            b.cond_branch(
+                b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int())),
+                whole,
+                mismatch
+            );
+            b.position(whole);
+            b.store(result, b.convert(b.convert(raw, mir_int()), to));
+            b.branch(done);
+            b.position(mismatch);
+        } else {
+            enum_bb = fn.new_block("unbox.enum");
+            mismatch = fn.new_block("unbox.mismatch");
+            b.cond_branch(
+                b.compare("eq", tag, b.const_int(ANY_ENUM_TAG, mir_int())),
+                enum_bb,
+                mismatch
+            );
+            b.position(enum_bb);
+            b.store(
+                result,
+                b.convert(
+                    self.runtime_value("__jac_rt_enum_value", self.any_parts(held)), to
+                )
+            );
+            b.branch(done);
+            b.position(mismatch);
+        }
+    }
+    self.any_mismatch(
+        held, {MirKind.BOOL: "bool", MirKind.FLOAT: "float"}.get(to.kind, "int")
+    );
+    b.position(done);
+    return b.load(result, to);
+}
+
+impl MirLowering.any_tag_check(held: MirValue, tag_value: int, label: str) {
+    b = self.builder();
+    fn = self.st().fn;
+    tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held]);
+    ok = fn.new_block("unbox.ok");
+    mismatch = fn.new_block("unbox.mismatch");
+    b.cond_branch(
+        b.compare("eq", tag, b.const_int(tag_value, mir_int())), ok, mismatch
+    );
+    b.position(mismatch);
+    self.any_mismatch(held, label);
+    b.position(ok);
+}
+
+impl MirLowering.any_mismatch(held: MirValue, label: str) {
+    b = self.builder();
+    named = self.runtime_value("__jac_rt_any_type_name", self.any_parts(held));
+    text = self.class_name_str(
+        self.emit_value(MirOp.PTR_CAST, mir_class("*"), [named])
+    );
+    message = self.spill(
+        self.str_concat(b.const_str(f"expected {label}, got ", mir_str()), text)
+    );
+    data = self.call_rt(
+        "__jac_rt_exc_message",
+        [b.str_part(message, "data"), b.str_part(message, "len")]
+    );
+    self.runtime(
+        "__jac_rt_raise",
+        [
+            data,
+            b.const_int(
+                JAC_TYPE_REGISTRY.exception_type_id("TypeError"),
+                mir_int(32, True, True)
+            ),
+            data
+        ]
+    );
+    b.unreachable();
 }
 
 impl MirLowering.bind_family(t: MirType, site: uni.UniNode) -> int {
