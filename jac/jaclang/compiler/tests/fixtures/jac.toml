@@ -121,6 +121,7 @@
 "osp_visit_order.visit_order_na" = "native"
 "prim_any.any_dispatch_na" = "native"
 "prim_any.tag_na" = "native"
+"prim_array._coerce_na" = "native"
 "prim_array._core_na" = "native"
 "prim_array._digest_na" = "native"
 "prim_array._eq_na" = "native"
