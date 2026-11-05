@@ -61,7 +61,7 @@ obj peg_parser {
 }
 
 # Parser/parser.c's MAXSTACK: deeper rule nesting is a MemoryError.
-glob MAXSTACK: int = 2500;
+glob MAXSTACK: int = 3000;
 
 def peg_rule_abort(p: peg_parser) {
     if p.level >= MAXSTACK {
