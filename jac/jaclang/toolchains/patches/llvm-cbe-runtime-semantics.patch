@@ -11,7 +11,7 @@
  #include "llvm/IR/PatternMatch.h"
  #include "llvm/MC/TargetRegistry.h"
  #include "llvm/Support/Debug.h"
-@@ -671,10 +673,10 @@
+@@ -671,11 +673,11 @@ raw_ostream &CWriter::printFunctionAttributes(raw_ostream &Out,
          const auto AllocSize = FnAttr.getAllocSizeArgs();
          if (AllocSize.second.has_value()) {
            AttrsToPrint.push_back(
@@ -25,7 +25,8 @@
 +                                 std::to_string(AllocSize.first + 1) + ")");
          }
        } break;
-@@ -1679,8 +1681,8 @@
+ 
+@@ -1679,8 +1681,8 @@ std::string CWriter::GetValueName(const Value *Operand) {
    }
  
    // Mangle globals with the standard mangler interface for LLC compatibility.
@@ -36,7 +37,7 @@
    }
  
    std::string VarName;
-@@ -2132,7 +2134,7 @@
+@@ -2132,7 +2134,7 @@ static void defineStackSaveRestore(raw_ostream &Out) {
  
  static void defineInt128(raw_ostream &Out) {
    // Output typedefs for 128-bit integers
@@ -45,7 +46,7 @@
           "*/\n"
        << "typedef int __attribute__((mode(TI))) int128_t;\n"
        << "typedef unsigned __attribute__((mode(TI))) uint128_t;\n"
-@@ -2189,32 +2191,32 @@
+@@ -2189,32 +2191,32 @@ static void defineInt128(raw_ostream &Out) {
        << " return l.hi != r.hi || l.lo != r.lo; }\n"
        << "static __forceinline bool llvm_icmp_ule_u128(uint128_t l, uint128_t "
           "r) {"
@@ -86,7 +87,9 @@
        << "#define __emulate_i128\n"
        << "#endif\n\n";
  }
-@@ -2431,2 +2433,10 @@
+@@ -2429,6 +2431,14 @@ bool CWriter::doFinalization(Module &M) {
+ }
+ 
  void CWriter::generateHeader(Module &M) {
 +  for (const Function &F : M) {
 +    StringRef Name = F.getName();
@@ -97,7 +100,9 @@
 +  }
 +
    // Keep track of which functions are static ctors/dtors so they can have
-@@ -2457,8 +2459,6 @@
+   // an attribute added to their prototypes.
+   std::set<Function *> StaticCtors, StaticDtors;
+@@ -2457,8 +2467,6 @@ void CWriter::generateHeader(Module &M) {
    // Support for integers with explicit sizes. This one isn't conditional
    // because virtually all CBE output will use it.
    OutHeaders << "#include <stdint.h>\n"; // Sized integer support
@@ -106,7 +111,7 @@
    // Provide a definition for `bool' if not compiling with a C++ compiler.
    OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
    OutHeaders << "\n";
-@@ -2585,7 +2585,9 @@
+@@ -2585,7 +2593,9 @@ void CWriter::generateHeader(Module &M) {
        case Intrinsic::ssub_sat:
        case Intrinsic::sshl_sat:
        case Intrinsic::ushl_sat:
@@ -117,7 +122,9 @@
        case Intrinsic::ceil:
        case Intrinsic::ctlz:
        case Intrinsic::ctpop:
-@@ -2615,13 +2617,7 @@
+@@ -2613,15 +2623,9 @@ void CWriter::generateHeader(Module &M) {
+     // Skip a few functions that have already been defined in headers
+     if ((headerIncSetjmp() &&
           (I->getName() == "setjmp" || I->getName() == "longjmp" ||
 -          I->getName() == "_setjmp" || I->getName() == "siglongjmp" ||
 +          I->getName() == "_setjmp" || I->getName() == "_longjmp" ||
@@ -133,7 +140,7 @@
          I->getName() == "alloca" || I->getName() == "_alloca" ||
          I->getName() == "_chkstk" || I->getName() == "__chkstk" ||
          I->getName() == "___chkstk_ms")
-@@ -2694,54 +2689,15 @@
+@@ -2694,54 +2698,15 @@ void CWriter::generateHeader(Module &M) {
        if (I->hasLocalLinkage())
          continue; // Internal Global
  
@@ -197,7 +204,7 @@
      }
    }
  
-@@ -3070,11 +3026,11 @@
+@@ -3070,11 +3035,11 @@ void CWriter::generateHeader(Module &M) {
          } else if (opcode == Instruction::FRem) {
            // Output a call to fmod/fmodf instead of emitting a%b
            if (ElemTy->isFloatTy())
@@ -212,7 +219,7 @@
          } else {
            Out << "a.vector[" << n << "]";
            switch (opcode) {
-@@ -3278,11 +3234,11 @@
+@@ -3278,11 +3243,11 @@ void CWriter::generateHeader(Module &M) {
        } else if (opcode == Instruction::FRem) {
          // Output a call to fmod/fmodf instead of emitting a%b
          if (ElemTy->isFloatTy())
@@ -227,7 +234,7 @@
        } else {
          Out << "a";
          switch (opcode) {
-@@ -4214,11 +4170,11 @@
+@@ -4214,11 +4179,11 @@ void CWriter::visitBinaryOperator(BinaryOperator &I) {
    } else if (I.getOpcode() == Instruction::FRem) {
      // Output a call to fmod/fmodf instead of emitting a%b
      if (I.getType() == Type::getFloatTy(I.getContext()))
@@ -242,20 +249,26 @@
      writeOperand(I.getOperand(0), ContextCasted);
      Out << ", ";
      writeOperand(I.getOperand(1), ContextCasted);
-@@ -4493,5 +4458,7 @@
+@@ -4492,8 +4457,10 @@ static void printLimitValue(IntegerType &Ty, bool isSigned, bool isMax,
+ 
    if (isSigned)
      Out << sprefix << type << (isMax ? "_MAX" : "_MIN");
--  else
--    Out << "U" << type << (isMax ? "_MAX" : "0");
 +  else if (isMax)
 +    Out << "U" << type << "_MAX";
-+  else
+   else
+-    Out << "U" << type << (isMax ? "_MAX" : "0");
 +    Out << "0";
  }
-@@ -4597,52 +4553,39 @@
+ 
+ #ifndef NDEBUG
+@@ -4597,52 +4564,39 @@ void CWriter::printIntrinsicDefinition(FunctionType *funT, unsigned Opcode,
        DBG_ERRS("Unsupported Intrinsic!" << Opcode);
        errorWithMessage("unsupported instrinsic");
  
+-    case Intrinsic::uadd_with_overflow:
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a + b;\n";
+-      Out << "  r.field1 = (r.field0 < a);\n";
 +    case Intrinsic::fshl:
 +    case Intrinsic::fshr: {
 +      unsigned width = elemIntT->getBitWidth();
@@ -264,17 +277,50 @@
 +        Out << "  r = c == 0 ? a : (a << c) | (b >> (" << width << " - c));\n";
 +      else
 +        Out << "  r = c == 0 ? b : (a << (" << width << " - c)) | (b >> c);\n";
-+      break;
+       break;
+-
 +    }
-     case Intrinsic::uadd_with_overflow:
-+    case Intrinsic::sadd_with_overflow:
-+    case Intrinsic::usub_with_overflow:
-+    case Intrinsic::ssub_with_overflow:
-+    case Intrinsic::umul_with_overflow:
++    case Intrinsic::uadd_with_overflow:
+     case Intrinsic::sadd_with_overflow:
+-      //   r.field0 = a + b;
+-      //   r.field1 = (b > 0 && a > XX_MAX - b) ||
+-      //              (b < 0 && a < XX_MIN - b);
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a + b;\n";
+-      Out << "  r.field1 = (b >= 0 ? a > ";
+-      printLimitValue(*elemIntT, true, true, Out);
+-      Out << " - b : a < ";
+-      printLimitValue(*elemIntT, true, false, Out);
+-      Out << " - b);\n";
+-      break;
+-
+     case Intrinsic::usub_with_overflow:
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a - b;\n";
+-      Out << "  r.field1 = (a < b);\n";
+-      break;
+-
+     case Intrinsic::ssub_with_overflow:
+-      //   r.field0 = a - b;
+-      //   r.field1 = (b <= 0 ? a > XX_MAX + b : a < XX_MIN + b);
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a - b;\n";
+-      Out << "  r.field1 = (b <= 0 ? a > ";
+-      printLimitValue(*elemIntT, true, true, Out);
+-      Out << " + b : a < ";
+-      printLimitValue(*elemIntT, true, false, Out);
+-      Out << " + b);\n";
+-      break;
+-
+     case Intrinsic::umul_with_overflow:
 +    case Intrinsic::smul_with_overflow: {
        cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
--      Out << "  r.field0 = a + b;\n";
--      Out << "  r.field1 = (r.field0 < a);\n";
+-      Out << "  r.field1 = LLVMMul_uov(8 * sizeof(a), &a, &b, &r.field0);\n";
+-      break;
+-
+-    case Intrinsic::smul_with_overflow:
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field1 = LLVMMul_sov(8 * sizeof(a), &a, &b, &r.field0);\n";
 +      bool isSigned = Opcode == Intrinsic::sadd_with_overflow ||
 +                      Opcode == Intrinsic::ssub_with_overflow ||
 +                      Opcode == Intrinsic::smul_with_overflow;
@@ -290,52 +336,11 @@
 +          << "_overflow(a, b, &value);\n";
 +      Out << "  r.field0 = value;\n";
        break;
--
--    case Intrinsic::sadd_with_overflow:
--      //   r.field0 = a + b;
--      //   r.field1 = (b > 0 && a > XX_MAX - b) ||
--      //              (b < 0 && a < XX_MIN - b);
--      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
--      Out << "  r.field0 = a + b;\n";
--      Out << "  r.field1 = (b >= 0 ? a > ";
--      printLimitValue(*elemIntT, true, true, Out);
--      Out << " - b : a < ";
--      printLimitValue(*elemIntT, true, false, Out);
--      Out << " - b);\n";
--      break;
--
--    case Intrinsic::usub_with_overflow:
--      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
--      Out << "  r.field0 = a - b;\n";
--      Out << "  r.field1 = (a < b);\n";
--      break;
--
--    case Intrinsic::ssub_with_overflow:
--      //   r.field0 = a - b;
--      //   r.field1 = (b <= 0 ? a > XX_MAX + b : a < XX_MIN + b);
--      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
--      Out << "  r.field0 = a - b;\n";
--      Out << "  r.field1 = (b <= 0 ? a > ";
--      printLimitValue(*elemIntT, true, true, Out);
--      Out << " + b : a < ";
--      printLimitValue(*elemIntT, true, false, Out);
--      Out << " + b);\n";
--      break;
--
--    case Intrinsic::umul_with_overflow:
--      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
--      Out << "  r.field1 = LLVMMul_uov(8 * sizeof(a), &a, &b, &r.field0);\n";
--      break;
--
--    case Intrinsic::smul_with_overflow:
--      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
--      Out << "  r.field1 = LLVMMul_sov(8 * sizeof(a), &a, &b, &r.field0);\n";
--      break;
 +    }
  
      case Intrinsic::uadd_sat:
        //   r = (a > XX_MAX - b) ? XX_MAX : a + b
-@@ -4817,19 +4760,19 @@
+@@ -4817,19 +4771,19 @@ void CWriter::printIntrinsicDefinition(FunctionType *funT, unsigned Opcode,
        errorWithMessage("unsupported instrinsic");
  
      case Intrinsic::ceil:
@@ -359,7 +364,7 @@
        break;
  
      case Intrinsic::fmuladd:
-@@ -4838,19 +4781,19 @@
+@@ -4838,19 +4792,19 @@ void CWriter::printIntrinsicDefinition(FunctionType *funT, unsigned Opcode,
  
      case Intrinsic::pow:
      case Intrinsic::powi:
@@ -383,7 +388,7 @@
        break;
      }
    }
-@@ -4899,7 +4842,9 @@
+@@ -4899,7 +4853,9 @@ bool CWriter::lowerIntrinsics(Function &F) {
            case Intrinsic::ssub_sat:
            case Intrinsic::ushl_sat:
            case Intrinsic::sshl_sat:
@@ -394,7 +399,7 @@
            case Intrinsic::ceil:
            case Intrinsic::ctlz:
            case Intrinsic::ctpop:
-@@ -4924,8 +4869,32 @@
+@@ -4924,9 +4880,33 @@ bool CWriter::lowerIntrinsics(Function &F) {
            case Intrinsic::smax:
            case Intrinsic::abs:
            case Intrinsic::is_constant:
@@ -403,7 +408,7 @@
 +          case Intrinsic::wasm_memory_grow:
              // We directly implement these intrinsics
              break;
-+
+ 
 +          case Intrinsic::scmp:
 +          case Intrinsic::ucmp: {
 +            // LLVM 22 introduces three-way compares during optimization.
@@ -424,10 +429,42 @@
 +            LoweredAny = true;
 +            break;
 +          }
- 
++
            default:
              // All other intrinsic calls we must lower.
-@@ -5047,4 +5024,5 @@
+             LoweredAny = true;
+@@ -4934,6 +4914,8 @@ bool CWriter::lowerIntrinsics(Function &F) {
+             Instruction *Before = (CI == &BB.front())
+                                       ? nullptr
+                                       : &*std::prev(BasicBlock::iterator(CI));
++            // The instruction the lowering resumes at when it emits nothing.
++            Instruction *After = CI->getNextNode();
+ 
+             IL->LowerIntrinsicCall(CI);
+             if (Before) { // Move iterator to instruction after call
+@@ -4946,10 +4928,14 @@ bool CWriter::lowerIntrinsics(Function &F) {
+             // If the intrinsic got lowered to another call, and that call has
+             // a definition, then we need to make sure its prototype is emitted
+             // before any calls to it.
+-            if (CallInst *Call = dyn_cast<CallInst>(I))
+-              if (Function *NewF = Call->getCalledFunction())
+-                if (!NewF->isDeclaration())
+-                  prototypesToGen.push_back(NewF);
++            // An intrinsic lowered to nothing (llvm.lifetime.*) leaves I at
++            // the next original instruction, whose callee is not a lowering's
++            // and is declared with its own linkage.
++            if (&*I != After)
++              if (CallInst *Call = dyn_cast<CallInst>(I))
++                if (Function *NewF = Call->getCalledFunction())
++                  if (!NewF->isDeclaration())
++                    prototypesToGen.push_back(NewF);
+ 
+             break;
+           }
+@@ -5044,9 +5030,10 @@ void CWriter::visitCallInst(CallInst &I) {
+     // emit cast for the first argument to type expected by header prototype
+     // the jmp_buf type is an array, so the array-to-pointer decay adds the
+     // strange extra *'s
 -    if (Name == "sigsetjmp")
 +    if (Name == "sigsetjmp" || Name == "siglongjmp")
        Out << "*(sigjmp_buf*)";
@@ -435,7 +472,9 @@
 +    else if (Name == "setjmp" || Name == "_setjmp" || Name == "longjmp" ||
 +             Name == "_longjmp")
        Out << "*(jmp_buf*)";
-@@ -5086,6 +5055,21 @@
+   }
+ 
+@@ -5086,6 +5073,21 @@ bool CWriter::visitBuiltinCall(CallInst &I, Intrinsic::ID ID) {
    case Intrinsic::dbg_declare:
    case Intrinsic::dbg_assign:
      return true; // ignore these intrinsics
@@ -457,7 +496,7 @@
    case Intrinsic::vastart:
      headerUseStdarg();
      Out << "0; ";
-@@ -5241,6 +5225,8 @@
+@@ -5241,6 +5243,8 @@ bool CWriter::visitBuiltinCall(CallInst &I, Intrinsic::ID ID) {
    case Intrinsic::usub_with_overflow:
    case Intrinsic::umul_with_overflow:
    case Intrinsic::smul_with_overflow:
@@ -466,7 +505,7 @@
    case Intrinsic::bswap:
    case Intrinsic::ctlz:
    case Intrinsic::ctpop:
-@@ -5610,8 +5596,75 @@
+@@ -5610,8 +5614,75 @@ void CWriter::writeMemoryAccess(Value *Operand, Type *OperandType,
    }
  }
  
@@ -542,7 +581,7 @@
  
    writeMemoryAccess(I.getOperand(0), I.getType(), I.isVolatile(),
                      I.getAlign().value());
-@@ -5619,6 +5672,14 @@
+@@ -5619,6 +5690,14 @@ void CWriter::visitLoadInst(LoadInst &I) {
  
  void CWriter::visitStoreInst(StoreInst &I) {
    CurInstr = &I;
@@ -559,7 +598,7 @@
                      I.isVolatile(), I.getAlign().value());
 --- a/lib/Target/CBackend/CBackend.h
 +++ b/lib/Target/CBackend/CBackend.h
-@@ -306,7 +306,10 @@
+@@ -306,7 +306,10 @@ private:
    void visitFCmpInst(FCmpInst &I);
  
    void visitCastInst(CastInst &I);
@@ -572,7 +611,7 @@
    bool visitBuiltinCall(CallInst &I, Intrinsic::ID ID);
 --- a/lib/Target/CBackend/CTargetMachine.cpp
 +++ b/lib/Target/CBackend/CTargetMachine.cpp
-@@ -37,8 +37,7 @@
+@@ -37,8 +37,7 @@ bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
    PM.add(createLowerInvokePass());
    PM.add(createUnreachableBlockEliminationPass());
  

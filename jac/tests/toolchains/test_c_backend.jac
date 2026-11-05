@@ -188,6 +188,47 @@ test "C projection saturates unsigned subtraction at zero" {
     }
 }
 
+"""An intrinsic the C backend lowers to nothing (llvm.lifetime.end, which the
+optimizer leaves around inlined allocas) used to leave the lowering at the next
+instruction; when that was a call to an internal function, the backend emitted
+a non-static prototype for it ahead of its static definition, which no C
+compiler accepts. The arena replay's source export hit it."""
+test "C projection keeps an internal callee static after a lowered intrinsic" {
+    cc = c_compiler();
+    source = """
+declare void @llvm.lifetime.start.p0(ptr)
+declare void @llvm.lifetime.end.p0(ptr)
+define internal i64 @twice(i64 %x) {
+  %r = add i64 %x, %x
+  ret i64 %r
+}
+define i64 @exercise(i64 %n) {
+  %slot = alloca i64
+  call void @llvm.lifetime.start.p0(ptr %slot)
+  store i64 %n, ptr %slot
+  %v = load i64, ptr %slot
+  call void @llvm.lifetime.end.p0(ptr %slot)
+  %r = call i64 @twice(i64 %v)
+  ret i64 %r
+}
+""";
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'lifetime.c';
+        path.write_text(emit_c(source));
+        library = Path(tmp) / 'lifetime.so';
+        built = subprocess.run(
+            [cc, '-shared', '-fPIC', str(path), '-o', str(library)],
+            capture_output=True,
+            text=True
+        );
+        assert built.returncode == 0 , built.stderr;
+        exercise = ctypes.CDLL(str(library)).exercise;
+        exercise.argtypes = [ctypes.c_uint64];
+        exercise.restype = ctypes.c_uint64;
+        assert exercise(21) == 42;
+    }
+}
+
 test "native source executables use the C runtime startup and receive arguments" {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
