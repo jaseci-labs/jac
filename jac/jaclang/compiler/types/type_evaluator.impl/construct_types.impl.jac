@@ -263,6 +263,9 @@ impl TypeEvaluator._get_iterable_element_type(
             if element is None {
                 continue;
             }
+            if element.is_any_instance() or isinstance(element, AnyType) {
+                return element;
+            }
             self._collect_unique_types(element, elements);
         }
         if not elements {
