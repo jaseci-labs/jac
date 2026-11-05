@@ -19,7 +19,7 @@ impl write_client(application: PreparedApplication, base: Path) -> str {
     native = [];
     for target in compiler._wasm_targets(Path(application.entry)) {
         (llvm_ir, imports) = wasm_ir(client_program(compiler.program), str(target));
-        (module, machine, linked) = prepare_wasm_module(llvm_ir);
+        (module, machine, linked) = prepare_wasm_module(llvm_ir, c_source=True);
         stem = native_wasm_stem(str(target));
         source = workspace / 'native' / f'{stem}.c';
         source.parent.mkdir(parents=True, exist_ok=True);

@@ -94,7 +94,7 @@ impl _assert_abi64_adapters(
     );
 }
 
-impl _link_wasm_libc(mod: ModuleRef) -> bool {
+impl _link_wasm_libc(mod: ModuleRef, keep: set[str] = set()) -> bool {
     found = require("wasm-libc").found;
     assert found is not None;
     libc_dir = found.path;
@@ -148,7 +148,8 @@ impl _link_wasm_libc(mod: ModuleRef) -> bool {
     for fn in _mod_functions(mod) {
         if fn.name in provided
             and not fn.is_declaration
-            and fn.name not in _LATE_BOUND {
+            and fn.name not in _LATE_BOUND
+            and fn.name not in keep {
             fn.linkage = "internal";
         }
     }
@@ -160,33 +161,66 @@ impl _link_wasm_libc(mod: ModuleRef) -> bool {
     return True;
 }
 
-impl _internalize_late_bound(mod: ModuleRef) {
+impl _internalize_late_bound(mod: ModuleRef, keep: set[str] = set()) {
     for fn in _mod_functions(mod) {
         if fn.name in _LATE_BOUND
             and fn.name not in _BACKEND_BOUND
+            and fn.name not in keep
             and not fn.is_declaration {
             fn.linkage = "internal";
         }
     }
 }
 
-impl prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, bool] {
+impl _c_writer_libcalls(llvm_ir_text: str) -> set[str] {
+    found: set[str] = set();
+    if re.search(r"= frem ", llvm_ir_text) {
+        found |= {"fmod", "fmodf"};
+    }
+    for (base, width) in re.findall(
+        r"declare [^@]*@llvm\.(\w+)\.f(32|64)\(", llvm_ir_text
+    ) {
+        if base in _C_WRITER_LIBM {
+            found.add(base + "f" if width == "32" else base);
+        }
+    }
+    return found;
+}
+
+impl prepare_wasm_module(
+    llvm_ir_str: str, c_source: bool = False
+) -> tuple[ModuleRef, TargetMachine, bool] {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
-    mod = llvm.parse_assembly(llvm_ir_str);
-    mod.verify();
-    libc_linked = _link_wasm_libc(mod);
-    target = llvm.Target.from_triple("wasm32-unknown-unknown");
-    assert isinstance(target, llvm.Target);
-    tm = target.create_target_machine(opt=2);
-    assert isinstance(tm, llvm.TargetMachine);
+    keep: set[str] = set();
+    while True {
+        mod = llvm.parse_assembly(llvm_ir_str);
+        mod.verify();
+        libc_linked = _link_wasm_libc(mod, keep);
+        target = llvm.Target.from_triple("wasm32-unknown-unknown");
+        assert isinstance(target, llvm.Target);
+        tm = target.create_target_machine(opt=2);
+        assert isinstance(tm, llvm.TargetMachine);
 
-    optimize_unit(mod, tm, 2);
-    if libc_linked {
-        _internalize_late_bound(mod);
         optimize_unit(mod, tm, 2);
+        if libc_linked {
+            _internalize_late_bound(mod, keep);
+            optimize_unit(mod, tm, 2);
+        }
+        if not (c_source and libc_linked) {
+            return (mod, tm, libc_linked);
+        }
+        defined = {
+            str(fn.name)
+            for fn in _mod_functions(mod)
+            if not fn.is_declaration
+        };
+        missing = _c_writer_libcalls(str(mod)) - defined - keep;
+        if not missing {
+            return (mod, tm, libc_linked);
+        }
+        keep |= missing;
     }
-    return (mod, tm, libc_linked);
 }
 
 impl emit_wasm_from_ir(
