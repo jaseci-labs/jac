@@ -1111,7 +1111,12 @@ impl JacAPIServer.enable_hmr(hot_reloader: any) -> None {
 impl JacAPIServer._refresh_dev_endpoints -> None {
     with PREPARATION_LOCK {
         self._hmr_pending = False;
-        self.introspector.load(force_reload=True);
+        try {
+            self.introspector.load(force_reload=True);
+        } except SourcesChanged {
+            self._hmr_pending = True;
+            return;
+        }
     }
     if self.app is None {
         return;
