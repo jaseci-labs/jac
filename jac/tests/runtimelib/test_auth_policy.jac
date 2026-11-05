@@ -397,6 +397,20 @@ test "every write path is held to the policy and existing accounts are grandfath
                 {'type': 'password', 'password': 'pw'}
             );
             old_id = str(grandfathered['user_id']);
+            storage = manager._identity_storage;
+            with patch.object(type(storage), 'identity_taken', return_value=False) {
+                raced = storage.create_user(
+                    [{'type': 'username', 'value': old_name}],
+                    {'type': 'password', 'password': 'other'}
+                );
+            }
+            assert raced.get('code') == 'IDENTITY_TAKEN' , raced;
+            assert [
+                u['user_id']
+                for u in storage.list_all_users(limit=1000)
+                if old_name in [i.get('value_normalized') for i in u['identities']]
+            ]
+                == [old_id];
 
             configure_identity(
                 AuthSettings(
