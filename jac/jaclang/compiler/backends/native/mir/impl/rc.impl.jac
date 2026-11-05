@@ -14,6 +14,7 @@ impl MirRcState.run {
     for instr in self.fn.blocks[0].instrs if self.fn.blocks else [] {
         if instr.op == MirOp.SLOT
             and instr.result is not None
+            and instr.result.hold != "raw"
             and mir_holds_ref(instr.result.type) {
             self.ref_slots.append(instr.result);
         }
@@ -114,6 +115,14 @@ impl MirRcState.rewrite(blk: MirBlock) {
             self.out.append(instr);
         } elif instr.op == MirOp.STORE
             and instr.operands[0].is_slot
+            and instr.operands[0].hold == "raw" {
+            stored = instr.operands[1];
+            if stored.owned and stored.id in self.pending {
+                self.pending.pop(stored.id);
+            }
+            self.out.append(instr);
+        } elif instr.op == MirOp.STORE
+            and instr.operands[0].is_slot
             and mir_holds_ref(instr.operands[1].type) {
             slot = instr.operands[0];
             previous = self.fn.new_value(slot.type);
@@ -130,6 +139,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
             self.release(previous);
         } elif instr.op == MirOp.LOAD
             and not instr.operands[0].is_slot
+            and instr.sub != "raw"
             and instr.result is not None
             and mir_holds_ref(instr.result.type) {
             self.out.append(instr);
@@ -584,7 +594,7 @@ impl MirRcState.owned_here(instr: MirInstr) -> bool {
         return False;
     }
     if instr.op == MirOp.LOAD {
-        return not instr.operands[0].is_slot;
+        return not instr.operands[0].is_slot and instr.sub != "raw";
     }
     if instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE, MirOp.ANY_BOX) {
         return result.owned and instr.sub == "owned";

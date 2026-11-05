@@ -1078,6 +1078,7 @@ impl MirLowering.reinterpret(
         return None;
     }
     if source in (MirKind.STR_REF, MirKind.OBJ) {
+        self.raw_read(value);
         return self.emit_value(MirOp.PTR_INT, to, [value]);
     }
     if source == MirKind.STR {
@@ -1143,7 +1144,14 @@ impl MirLowering.struct_address(value: MirValue) -> MirValue {
 }
 
 impl MirLowering.struct_view_local(sym: uni.Symbol, t: MirType) -> bool {
-    if t.kind != MirKind.C_STRUCT or self.struct_int_abi(t) or sym.decl is None {
+    if t.kind != MirKind.C_STRUCT or self.struct_int_abi(t) {
+        return False;
+    }
+    return self.address_view_local(sym);
+}
+
+impl MirLowering.address_view_local(sym: uni.Symbol) -> bool {
+    if sym.decl is None {
         return False;
     }
     owner = sym.decl.parent;
@@ -1158,4 +1166,16 @@ impl MirLowering.struct_view_local(sym: uni.Symbol, t: MirType) -> bool {
         return False;
     }
     return source.kind in (MirKind.INT, MirKind.C_PTR);
+}
+
+impl MirLowering.raw_read(value: MirValue) {
+    for instr in reversed(self.builder().block.instrs) {
+        if instr.result is None or instr.result.id != value.id {
+            continue;
+        }
+        if instr.op == MirOp.LOAD and not instr.operands[0].is_slot {
+            instr.sub = "raw";
+        }
+        return;
+    }
 }

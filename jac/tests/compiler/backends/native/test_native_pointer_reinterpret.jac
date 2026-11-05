@@ -67,3 +67,7 @@ test "a global int keeps the 64-bit pattern of a u64-range literal" {
     assert run_fixture("rc", "u64_global_literal")
         == ["mask True True", "tag 65535", "high True"];
 }
+
+test "an address view never refcounts the foreign memory it views" {
+    assert run_fixture("rc", "address_views") == ["word 4096", "readv True hello iov"];
+}

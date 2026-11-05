@@ -620,8 +620,10 @@ obj MirLowering {
     ) -> (MirValue | None);
 
     def struct_int_abi(t: MirType) -> bool;
+    def raw_read(value: MirValue);
     def struct_address(value: MirValue) -> MirValue;
     def struct_view_local(sym: uni.Symbol, t: MirType) -> bool;
+    def address_view_local(sym: uni.Symbol) -> bool;
     def complex_make(re: MirValue, im: MirValue) -> MirValue;
     def complex_parts(value: MirValue) -> tuple[MirValue, MirValue];
     def complex_call(args: list[uni.Expr], site: uni.UniNode) -> MirValue;

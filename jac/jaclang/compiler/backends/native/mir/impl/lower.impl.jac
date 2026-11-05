@@ -1134,6 +1134,9 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
     made.hold = "own" if sym.ownership == OwnershipKind.OWN else "local";
+    if slot_type.kind == MirKind.OBJ and self.address_view_local(sym) {
+        made.hold = "raw";
+    }
     if view {
         self.st().struct_views.add(made.id);
     }
@@ -2519,6 +2522,13 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     }
     if callee is None and isinstance(nd.target, uni.Name) {
         callee = self.stdlib_member(nd.target) or self.absorbed_ability(nd.target);
+    }
+    if callee is None and isinstance(nd.target, uni.Name) {
+        reexported = named_function_of(nd.target);
+        if isinstance(reexported, uni.Ability)
+            and clib_import_of(reexported) is not None {
+            callee = reexported;
+        }
     }
     if isinstance(callee, uni.Ability) {
         callee = self.variant_ability(self.live_member(callee));

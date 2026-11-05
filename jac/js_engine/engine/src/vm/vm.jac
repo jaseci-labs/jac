@@ -3755,6 +3755,36 @@ def _legacy_octal_value(rest: str) -> int {
     return val;
 }
 
+"""Value of a hex integer literal's text `rest` (`0x`/`0X` then hex digits, `_`
+separators skipped), or -1.0 when `rest` is not one. Native float() parses
+like Python's, which rejects a `0x` prefix."""
+def _hex_literal_value(rest: str) -> float {
+    ln: int = str_nbytes(rest);
+    if ln < 3 or byte_chr(str_byte(rest, 0)) != "0" {
+        return -1.0;
+    }
+    pfx: str = byte_chr(str_byte(rest, 1));
+    if pfx != "x" and pfx != "X" {
+        return -1.0;
+    }
+    val: float = 0.0;
+    i: int = 2;
+    while i < ln {
+        c: int = str_byte(rest, i);
+        if c >= 48 and c <= 57 {
+            val = val * 16.0 + float(c - 48);
+        } elif c >= 97 and c <= 102 {
+            val = val * 16.0 + float(c - 87);
+        } elif c >= 65 and c <= 70 {
+            val = val * 16.0 + float(c - 55);
+        } elif c != 95 {
+            return -1.0;
+        }
+        i = i + 1;
+    }
+    return val;
+}
+
 """
 Decode a constant-pool entry into a JSValue.
 
@@ -3771,7 +3801,7 @@ def const_to_jsval(s: str) -> JSValue {
         if c0 == "n" and c1 == ":" {
             rest: str = str_substr(s, 2, n);
             rn: int = str_nbytes(rest);
-            # Handle 0o/0O octal and 0b/0B binary prefixes (strtod handles 0x already)
+            # Handle 0o/0O octal and 0b/0B binary prefixes (0x below)
             if rn >= 3 and byte_chr(str_byte(rest, 0)) == "0" {
                 pfx: str = byte_chr(str_byte(rest, 1));
                 if pfx == "o" or pfx == "O" {
@@ -3807,6 +3837,10 @@ def const_to_jsval(s: str) -> JSValue {
             lo_val: int = _legacy_octal_value(rest);
             if lo_val >= 0 {
                 return float_to_jsval(float(lo_val));
+            }
+            hex_val: float = _hex_literal_value(rest);
+            if hex_val >= 0.0 {
+                return float_to_jsval(hex_val);
             }
             f: float = float(rest);
             return float_to_jsval(f);
@@ -48574,6 +48608,8 @@ def _wasm_exc_message(vm: VM, exc: JSValue) -> str {
     return "wasm host import threw";
 }
 
+glob _WASM_HOST_BRIDGE_READY: bool = False;
+
 """Register the WASM host-call bridge into ffi/wasmtime.jac (idempotent)."""
 def:pub vm_wasm_init_host_bridge -> None {
     if _WASM_HOST_BRIDGE_READY {
@@ -48582,8 +48618,6 @@ def:pub vm_wasm_init_host_bridge -> None {
     wasm_register_host_call(_wasm_host_call);
     _WASM_HOST_BRIDGE_READY = True;
 }
-
-glob _WASM_HOST_BRIDGE_READY: bool = False;
 
 """Push VM context for observable native property access (NAPI / external callers)."""
 def:pub vm_push_native_obs_context(vm: VM) {
