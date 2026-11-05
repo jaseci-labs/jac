@@ -76,6 +76,7 @@ impl ExecutionManager._finalize_call_response(
     ctx = Jac.get_context();
     await ctx.mem.acommit();
     call_state.committed = True;
+    ctx.mem.unit_committed();
     ctx.run_pending_effects();
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
         return result;

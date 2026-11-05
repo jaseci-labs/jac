@@ -66,6 +66,7 @@ obj Memory {
     def reset_fetch_count;
     def get_fetch_count -> int;
     def unit_enter(key: (str | None) = None);
+    def unit_committed;
     def unit_exit;
     def unit_depth -> int;
     def take_ro_retry -> str | None;

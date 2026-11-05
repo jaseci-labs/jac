@@ -197,6 +197,8 @@ impl Memory.get_fetch_count -> int {
 
 impl Memory.unit_enter(key: (str | None) = None) {}
 
+impl Memory.unit_committed {}
+
 impl Memory.unit_exit {}
 
 impl Memory.unit_depth -> int {

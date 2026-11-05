@@ -10,6 +10,7 @@ import from tempfile { TemporaryDirectory }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.runtime.exceptions { WriteConflict }
 import from jaclang.server.request_scope { RequestScope }
+import from jaclang.server.session { MAX_RETRIES }
 import from .test_session_rollback {
     _as_any,
     _ctx,
@@ -23,7 +24,7 @@ import from .test_session_rollback {
     _restore_read_tier
 }
 
-test "request loop: two find-or-creates converge after a real predicate conflict" {
+test "request loop: find-or-create convergence survives a post-commit serialization conflict" {
     import threading;
     prior = _without_read_tier();
     try {
@@ -31,6 +32,7 @@ test "request loop: two find-or-creates converge after a real predicate conflict
             (exec_mgr, walkers, mod) = _vote_app(td);
             assert _spawn(exec_mgr, walkers["CountProfiles"]).get("reports") == [0];
             mod.profile_gate = threading.Barrier(2);
+            mod.profile_effect_faults.append(1);
             ambient = JacRuntime.get_context();
             async def one -> any {
                 with RequestScope.open(
@@ -52,9 +54,93 @@ test "request loop: two find-or-creates converge after a real predicate conflict
             );
             count = _spawn(exec_mgr, walkers["CountProfiles"]);
             assert count.get("reports") == [1] , f"duplicates committed: {count}";
+            assert mod.profile_runs == [1, 1, 1] , "only the losing body should replay";
+            assert mod.profile_effect_runs == [1] , "the committed effect must run once";
+            assert mod.failed_commits == [1] , "the post-commit conflict never fired";
+            delivered = _spawn(exec_mgr, walkers["ProfileDeliveries"]);
+            assert delivered.get("reports") == [[1]] , f"effect write lost: {delivered}";
         }
     } finally {
         _restore_read_tier(prior);
+    }
+}
+
+
+test "request loop: exhausted post-commit retries never replay the body or effect" {
+    import threading;
+    prior = _without_read_tier();
+    try {
+        with TemporaryDirectory() as td {
+            (exec_mgr, walkers, mod) = _vote_app(td);
+            mod.profile_gate = threading.Barrier(1);
+            mod.profile_effect_faults.append(MAX_RETRIES + 1);
+            result = _spawn(exec_mgr, walkers["EnsureProfile"]);
+            assert result.get("error_code") == "failed_after_commit" , f"{result}";
+            assert result.get("http_status") == 500;
+            assert result.get("final") is True;
+            assert mod.profile_runs == [1] , "a committed body must not replay";
+            assert mod.profile_effect_runs == [1] , "an effect must not run twice";
+            assert len(mod.failed_commits) == MAX_RETRIES + 1;
+            assert _spawn(exec_mgr, walkers["CountProfiles"]).get("reports") == [1];
+            assert _spawn(exec_mgr, walkers["ProfileDeliveries"]).get("reports")
+                == [[0]];
+        }
+    } finally {
+        _restore_read_tier(prior);
+    }
+}
+
+
+test "run_request retries post-commit writes without replaying its body or callback" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            anchor = _loose(ctx, 1);
+            sess.commit();
+            calls: list[int] = [];
+            callbacks: list[int] = [];
+            faults: list[list[int]] = [];
+            def body -> int {
+                calls.append(1);
+                current = sess.get(anchor.ensure_id());
+                assert current is not None;
+                _as_any(current.archetype).n += 1;
+                def effect {
+                    callbacks.append(1);
+                    _as_any(current.archetype).n += 1;
+                    sess.read_barrier();
+                    faults.append(_fail_commits(sess));
+                }
+                sess.on_commit(effect);
+                return _as_any(current.archetype).n;
+            }
+            assert sess.run_request(body) == 2;
+            assert calls == [1];
+            assert callbacks == [1];
+            assert faults == [[0]];
+            assert _stored(ctx, anchor.ensure_id(), "n") == "3";
+            assert sess.unit_depth() == 0;
+
+            later_calls: list[int] = [];
+            def later -> int {
+                later_calls.append(1);
+                current = sess.get(anchor.ensure_id());
+                assert current is not None;
+                _as_any(current.archetype).n += 1;
+                return _as_any(current.archetype).n;
+            }
+            left = _fail_commits(sess);
+            assert sess.run_request(later) == 4;
+            assert left == [0];
+            assert later_calls == [1, 1] , "the next unit must replay its read decisions";
+            assert _stored(ctx, anchor.ensure_id(), "n") == "4";
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
     }
 }
 

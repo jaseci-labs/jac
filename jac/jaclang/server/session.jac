@@ -157,6 +157,7 @@ obj Session(Memory) {
         _lost: bool postinit,
         _fetch_count: int postinit,
         _active_units: int postinit,
+        _committed_depth: int postinit,
         _flushing: (int | None) postinit,
         _read_scopes: int postinit,
         _ro_units: int postinit,
@@ -225,6 +226,7 @@ obj Session(Memory) {
     def hop_cached(key: any, origin: UUID) -> (list[tuple[any, any]] | None);
     def hop_store(key: any, by_origin: dict[UUID, list[tuple[any, any]]]) -> None;
     def unit_enter(key: (str | None) = None) -> None;
+    override def unit_committed -> None;
     def unit_exit -> None;
     def unit_depth -> int;
     override def note_effect_failure(e: Exception) -> None;

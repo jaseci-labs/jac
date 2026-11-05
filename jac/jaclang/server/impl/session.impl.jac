@@ -352,6 +352,7 @@ impl Session.postinit -> None {
     self._rows = RowLedger();
     self._lost = False;
     self._active_units = 0;
+    self._committed_depth = 0;
     self._flushing = None;
     self._read_scopes = 0;
     self._ro_units = 0;
@@ -609,6 +610,9 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
 
 impl Session.abort -> None {
     with self._lock {
+        self._committed_depth = min(
+            self._committed_depth, max(0, self._active_units - 1)
+        );
         self._contended |= self._last_conflict;
         self._last_conflict = set();
         self._rollback_txn();
@@ -776,6 +780,12 @@ impl Session.unit_enter(key: (str | None) = None) -> None {
     }
 }
 
+impl Session.unit_committed -> None {
+    with self._lock {
+        self._committed_depth = self._active_units;
+    }
+}
+
 
 impl Session.read_scope_enter -> None {
     with self._lock {
@@ -838,6 +848,7 @@ impl Session.unit_exit -> None {
             }
         } finally {
             self._active_units = max(0, self._active_units - 1);
+            self._committed_depth = min(self._committed_depth, self._active_units);
             if self._unit_stack {
                 (_key, was_ro) = self._unit_stack.pop();
                 if was_ro {
@@ -919,7 +930,7 @@ impl Session._rollback_txn -> None {
 impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
     self._rollback_txn();
 
-    if exhausted or self._active_units > 0 {
+    if exhausted or self._active_units > self._committed_depth {
         self._last_conflict |= set(self._dirty) | self._deleted;
         self._lost = True;
     }
@@ -1418,6 +1429,7 @@ impl Session.run_request(body: Callable) -> any {
             try {
                 result = body();
                 self.commit();
+                self.unit_committed();
                 return result;
             } except Exception as e {
                 if (

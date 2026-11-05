@@ -1170,6 +1170,9 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
     mod.failed_commits.clear();
     mod.lock_exhaustions.clear();
     mod.exhausted_queries.clear();
+    mod.profile_runs.clear();
+    mod.profile_effect_runs.clear();
+    mod.profile_effect_faults.clear();
     return (exec_mgr, walkers, mod);
 }
 
