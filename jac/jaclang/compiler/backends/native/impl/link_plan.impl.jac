@@ -392,6 +392,12 @@ impl _build_link_plan(
     }
     registry = prog.native_units();
     real_roots = [os.path.realpath(r) for r in roots];
+    dep_opts = opts;
+    if opts.no_ir_cache and not any(os.path.isfile(r) for r in real_roots) {
+        import copy;
+        dep_opts = copy.copy(opts);
+        dep_opts.no_ir_cache = False;
+    }
     units: dict[str, LinkUnit] = {};
     edges: dict[str, list[str]] = {};
     virtual_sources: dict[str, str] = {};
@@ -403,7 +409,8 @@ impl _build_link_plan(
         if path in stack {
             return;
         }
-        for dep in registry.known_native_deps(path, opts) {
+        unit_opts = opts if path in real_roots else dep_opts;
+        for dep in registry.known_native_deps(path, unit_opts) {
             if os.path.isfile(dep) {
                 walk_unit(dep, stack + [path]);
             }
@@ -411,10 +418,10 @@ impl _build_link_plan(
         errs_before = len(prog.errors_had);
 
         ent = registry.ensure(
-            path, compile_on_miss=False, options=opts, check_deps=True
+            path, compile_on_miss=False, options=unit_opts, check_deps=True
         );
         if ent is None and os.path.isfile(path) {
-            ent = registry.compile_unit(path, opts);
+            ent = registry.compile_unit(path, unit_opts);
         }
         if ent is None {
             why = [

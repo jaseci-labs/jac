@@ -5947,7 +5947,8 @@ graph import compiler {
         | tests.test_stubcat_roundtrip
         | tests.xbackend_equiv
         | tools.code_intel.CodeIntelligence._full_compile_one { CompileOptions }
-    type driver.compile_options ++> backends.native.na_compile_pass
+    type driver.compile_options ++> backends.native.mir.lower
+        | backends.native.na_compile_pass
         | frontend.host
         | placement.placement_facts { CompileOptions }
     driver.compiler ++> types.stubcat.build.build_catalog { JacCompiler }
@@ -9938,7 +9939,7 @@ graph import compiler {
             CtValue,
             int_host
         },
-        backends.native.mir.lower { CtBool, CtFloat, CtInt, int_host },
+        backends.native.mir.lower { CtBool, CtFloat, CtInt, CtNone, CtStr, int_host },
         backends.py.jcir_gen_pass.JcirGenPass._ct_kind {
             CtDict,
             CtEnumMember,

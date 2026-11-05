@@ -51,7 +51,7 @@ impl MirLowering.lower_unit -> MirModule {
     }
     self.mir.functions.extend(self.function_default_thunks());
     for nd in self.module.body {
-        if isinstance(nd, uni.Test) {
+        if isinstance(nd, uni.Test) and nd.code_context == CodeContext.NATIVE {
             self.current = nd.name.sym_name;
             tested = self.lower_test(nd);
             if tested is not None {
@@ -351,7 +351,7 @@ impl MirLowering.declare(ab: uni.Ability) {
         }
         params.append(self.param_type(pv));
     }
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+    fn_type = self.declared_type(self.ability_sym(ab));
     ret = mir_none();
     if isinstance(fn_type, FunctionType) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, ab);
@@ -554,11 +554,15 @@ impl MirLowering.builder -> MirBuilder {
     return self.st().b;
 }
 
+impl MirLowering.declared_type(sym: uni.Symbol) -> TypeBase {
+    return self.prog.get_type_evaluator().get_type_of_symbol(sym);
+}
+
 impl MirLowering.symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> MirType {
     if sym is None {
         raise MirRefused(mir_refusal("name", "unresolved", site));
     }
-    found = self.prog.get_type_evaluator().get_type_of_symbol(sym);
+    found = self.declared_type(sym);
     return self.type_of(found, MirPosition.VALUE, site);
 }
 
@@ -580,7 +584,7 @@ impl MirLowering.narrowed_from_any(nd: uni.Expr) -> bool {
     if not isinstance(nd, uni.Name) or nd.sym is None {
         return False;
     }
-    declared = self.prog.get_type_evaluator().get_type_of_symbol(nd.sym);
+    declared = self.declared_type(nd.sym);
     if isinstance(declared, AnyType) {
         return True;
     }
@@ -675,14 +679,22 @@ impl MirLowering.drop_last_uses(stmt: uni.UniNode) {
         }
     }
     moved = list(names);
-    for ln in last_uses {
-        if ln in names {
-            continue;
+    owned: dict[str, uni.Symbol] = {};
+    if last_uses {
+        for nm in stmt.get_all_sub_nodes(uni.Name) {
+            held = nm.sym;
+            if held is not None
+                and held.ownership == OwnershipKind.OWN
+                and held.storage == SymbolStorage.LOCAL
+                and held.decl is not None
+                and held.decl.find_parent_of_type(uni.InnerCompr) is None
+                and nm.find_parent_of_type(uni.LambdaExpr) is None {
+                owned.setdefault(nm.sym_name, held);
+            }
         }
-        sym = stmt.sym_tab.lookup(ln) if stmt.sym_tab is not None else None;
-        if sym is None
-            or sym.ownership != OwnershipKind.OWN
-            or sym.storage != SymbolStorage.LOCAL {
+    }
+    for ln in last_uses {
+        if ln in names or ln not in owned {
             continue;
         }
         names.append(ln);
@@ -757,9 +769,7 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
             raise MirRefused(mir_refusal("statement", "nested function", nd));
         }
         fn_type = self.type_of(
-            self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(nd)),
-            MirPosition.VALUE,
-            nd
+            self.declared_type(self.ability_sym(nd)), MirPosition.VALUE, nd
         );
         made = self.lower_closure(
             nd, nd.signature, list(body), fn_type, self.name_of(nd)
@@ -1385,6 +1395,10 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
     if self.state is not None and id(nd) in self.st().pinned {
         return self.st().pinned[id(nd)];
     }
+    folded = self.ct_fold(nd);
+    if folded is not None {
+        return folded;
+    }
     value: (MirValue | None) = None;
     if isinstance(nd, uni.Int) {
         bits = uni.int_literal_i64(nd.value);
@@ -1493,6 +1507,63 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.coerce(value, mir_class_type_named(nd.coerce_to, nd), nd);
     }
     return value;
+}
+
+impl MirLowering.ct_fold(nd: uni.UniNode) -> (MirValue | None) {
+    if not isinstance(nd, (uni.Name, uni.AtomTrailer, uni.FuncCall))
+        or nd.ct_value is None
+        or nd.ct_value.is_deferred {
+        return None;
+    }
+    par = nd.parent;
+    if isinstance(par, uni.FuncCall) and par.target is nd {
+        return None;
+    }
+    if isinstance(par, uni.AtomTrailer) and (par.target is nd or par.right is nd) {
+        return None;
+    }
+    if not self.ct_origin(nd) {
+        return None;
+    }
+    try {
+        wanted = self.expr_type(nd);
+    } except MirRefused {
+        return None;
+    }
+    held = nd.ct_value;
+    b = self.builder();
+    value: (MirValue | None) = None;
+    if isinstance(held, CtBool) and wanted.kind == MirKind.BOOL {
+        value = b.const_bool(held.value);
+    } elif isinstance(held, CtInt) and not held.mag and wanted.kind == MirKind.INT {
+        value = b.const_int(held.small, wanted);
+    } elif isinstance(held, CtFloat) and wanted.kind == MirKind.FLOAT {
+        value = b.const_float(held.value, wanted);
+    } elif isinstance(held, CtStr) and wanted.kind == MirKind.STR {
+        value = b.const_str(held.value, wanted);
+    } elif isinstance(held, CtNone) and wanted.kind == MirKind.NONE {
+        value = self.none_value();
+    }
+    if value is not None and nd.coerce_to is not None {
+        value = self.coerce(value, mir_class_type_named(nd.coerce_to, nd), nd);
+    }
+    return value;
+}
+
+impl MirLowering.ct_origin(nd: uni.Expr) -> bool {
+    if isinstance(nd, uni.FuncCall) {
+        return nd.callee_decl is not None and nd.callee_decl.is_comptime;
+    }
+    if isinstance(nd, uni.AtomTrailer) {
+        return nd.is_attr
+            and isinstance(nd.right, uni.Name)
+            and self.ct_origin(nd.right);
+    }
+    sym = nd.sym if isinstance(nd, uni.Name) else None;
+    decl = sym.decl if sym is not None else None;
+    owner = decl.parent if decl is not None else None;
+    return isinstance(owner, (uni.Assignment, uni.ParamVar, uni.InForStmt))
+        and bool(owner.is_comptime);
 }
 
 impl MirLowering.typed_operand(nd: uni.Expr) -> MirValue {
@@ -2995,14 +3066,13 @@ impl MirLowering.adopt_imported_layouts(target: (uni.Module | None) = None) {
     }
     self.layout_owners.add(id(home));
     merged: set[int] = {id(home)};
-    evaluator = self.prog.get_type_evaluator();
     for arch in [
         elem
         for elem in home.body
         if isinstance(elem, uni.Archetype)
     ] {
         sym = arch.name.sym if arch.name is not None else None;
-        made = evaluator.get_type_of_symbol(sym) if sym is not None else None;
+        made = self.declared_type(sym) if sym is not None else None;
         if not isinstance(made, ClassType) or made._shared is None {
             continue;
         }
@@ -3067,9 +3137,7 @@ impl MirLowering.obj_extends(child: str, base: str) -> bool {
         return True;
     }
     sym = arch.name.sym if arch.name is not None else None;
-    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
-        if sym is not None
-        else None;
+    made = self.declared_type(sym) if sym is not None else None;
     if not isinstance(made, ClassType) or made._shared is None {
         return False;
     }
@@ -3269,13 +3337,12 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
     self.c_struct_sites[name] = site;
     made = MirStructDef(name=name);
     self.mir.structs[name] = made;
-    evaluator = self.prog.get_type_evaluator();
     for hv in self.arch_fields(arch) {
         sym = hv.name.sym;
         if sym is None {
             raise MirRefused(mir_refusal("C struct field", hv.name.value, hv));
         }
-        field_type = evaluator.get_type_of_symbol(sym);
+        field_type = self.declared_type(sym);
         self.ensure_c_types(field_type);
         self.ensure_objects(field_type);
         member_type = mir_type_of(field_type, MirPosition.C_FIELD, hv);
@@ -3298,13 +3365,12 @@ impl MirLowering.c_struct_same(arch: uni.Archetype, name: str) -> bool {
     if len(fields) != len(known.fields) {
         return False;
     }
-    evaluator = self.prog.get_type_evaluator();
     for (hv, member) in zip(fields, known.fields) {
         sym = hv.name.sym;
         if sym is None or hv.name.value != member.name {
             return False;
         }
-        if mir_type_of(evaluator.get_type_of_symbol(sym), MirPosition.C_FIELD, hv)
+        if mir_type_of(self.declared_type(sym), MirPosition.C_FIELD, hv)
             is not member.type {
             return False;
         }
@@ -4181,9 +4247,7 @@ impl MirLowering.call_args(nd: uni.FuncCall) -> list[uni.Expr] {
 impl MirLowering.c_extern(
     callee: uni.Ability, site: uni.UniNode
 ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool] {
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-        self.ability_sym(callee)
-    );
+    fn_type = self.declared_type(self.ability_sym(callee));
     sig = callee.signature;
     symbol = self.name_of(callee);
     if not isinstance(fn_type, FunctionType)
@@ -4405,9 +4469,7 @@ impl MirLowering.foreign_function_decl(
         return known;
     }
     path = callee.loc.mod_path;
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
-        self.ability_sym(callee)
-    );
+    fn_type = self.declared_type(self.ability_sym(callee));
     if not isinstance(fn_type, FunctionType) {
         raise MirRefused(mir_refusal("call", self.name_of(callee), site));
     }
@@ -4418,13 +4480,16 @@ impl MirLowering.foreign_function_decl(
             self.type_of(p.param_type, MirPosition.VALUE, site)
             for p in fn_type.parameters
         ];
+    names = [pv.name.value for pv in self.param_nodes(sig, False)]
+        if sig is not None
+        else [p.name for p in fn_type.parameters];
     ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, site);
     symbol = self.unit_symbol(self.name_of(callee), callee.access, path);
     self.require_dep_native(path, symbol, site);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
     self.add_dep(path, symbol, site);
     unit = os.path.realpath(path);
-    self.imported_fns[self.name_of(callee)] = (unit, symbol);
+    self.imported_fns[self.name_of(callee)] = (unit, symbol, names);
     made = MirDecl(ability=callee, symbol=symbol, params=params, ret=ret);
     self.decls[id(callee)] = made;
     return made;
@@ -4433,7 +4498,7 @@ impl MirLowering.foreign_function_decl(
 impl MirLowering.dep_verdict(path: str) -> (bool | None) {
     unit = os.path.realpath(path);
     if unit not in self.dep_verdicts {
-        iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
+        iface = active_host().native_dep_iface(self.prog, unit, self.dep_options());
         self.dep_verdicts[unit] = list(iface.demoted) if iface is not None else None;
     }
     if self.dep_verdicts[unit] is not None {
@@ -4443,6 +4508,16 @@ impl MirLowering.dep_verdict(path: str) -> (bool | None) {
         return None;
     }
     return False;
+}
+
+impl MirLowering.dep_options -> CompileOptions {
+    opts = self.prog.options;
+    if opts.no_ir_cache and not os.path.isfile(self.module.loc.mod_path or "") {
+        import copy;
+        opts = copy.copy(opts);
+        opts.no_ir_cache = False;
+    }
+    return opts;
 }
 
 impl MirLowering.add_dep(path: str, name: str, site: (uni.UniNode | None)) {
@@ -5212,7 +5287,7 @@ impl MirLowering.entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool {
                 or cursor.parent.parent is not owner {
                 continue;
             }
-            if name.find_parent_of_type(uni.Ability) is not None
+            if name.enclosing_decl(uni.Ability) is not None
                 or name.find_parent_of_type(uni.LambdaExpr) is not None {
                 used.add(id(held));
             }
@@ -5365,7 +5440,13 @@ impl MirLowering.literal_destination(nd: uni.Int) -> (str | None) {
         and isinstance(up, uni.FuncCall)
         and isinstance(up.target, uni.Expr)
         and c_builtin_kind(up.target.type) == "ptr" {
-        dest = "u64";
+        for name in JAC_TYPE_REGISTRY.sized_int_names() {
+            shape = JAC_TYPE_REGISTRY.shape_of(name);
+            if shape is not None and shape.width == 64 and not shape.signed {
+                dest = name;
+                break;
+            }
+        }
     }
     return dest;
 }
@@ -6095,7 +6176,10 @@ impl MirLowering.redeclare_local(target: uni.Name, tag: uni.SubTag) {
     if held is None or not held.is_slot or held.id in self.st().struct_views {
         return;
     }
-    annotated = self.prog.get_type_evaluator().get_type_of_expression(tag.tag);
+    annotated = tag.tag.type;
+    if annotated is None {
+        return;
+    }
     if isinstance(annotated, ClassType) and not annotated.is_instance() {
         annotated = annotated.clone_as_instance();
     }

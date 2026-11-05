@@ -105,7 +105,7 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
     if found is not None {
         return found;
     }
-    ctype = self.prog.get_type_evaluator().get_type_of_symbol(target.sym);
+    ctype = self.declared_type(target.sym);
     self.note_clib(clib_import_of(assign));
     owner = assign.find_parent_of_type(uni.Module);
     defines = assign.value is not None
@@ -267,14 +267,13 @@ impl MirLowering.c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst
         }
     }
     items = [MirConst(kind="zero") for _ in layout.fields];
-    evaluator = self.prog.get_type_evaluator();
     for hv in fields {
         arg = given.get(hv.name.sym_name);
         if arg is None {
             continue;
         }
         index = layout.index_of(hv.name.value);
-        field_type = evaluator.get_type_of_symbol(hv.name.sym)
+        field_type = self.declared_type(hv.name.sym)
             if hv.name.sym is not None
             else None;
         items[index] = self.c_const(arg, field_type, layout.fields[index].type);
@@ -351,9 +350,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     if decl is not None {
         return self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability);
     }
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(sym)
-        if sym is not None
-        else None;
+    fn_type = self.declared_type(sym) if sym is not None else None;
     if not isinstance(fn_type, FunctionType) {
         raise MirRefused(mir_refusal("function address", expr.sym_name, expr));
     }
