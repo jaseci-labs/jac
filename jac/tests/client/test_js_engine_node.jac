@@ -123,3 +123,10 @@ test "void evaluates its operand, gives undefined, and checks an uninitialized b
     );
     assert json.loads(out) == [True, 1, "ReferenceError"];
 }
+
+test "hex numeric literals load from the constant pool" {
+    out = run_source(
+        "console.log(JSON.stringify([0x10 + 0X0a, 0x04000000, 0xFF_FF, 0x1FFFFFFFFFFFFF]));\n"
+    );
+    assert json.loads(out) == [26, 67108864, 65535, 9007199254740991];
+}
