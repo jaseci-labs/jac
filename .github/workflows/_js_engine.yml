@@ -91,6 +91,7 @@ jobs:
         run: >-
           jac test jac/tests/client/test_js_engine_node.jac
           jac/tests/runtimelib/test_client_bundle.jac
+          jac/tests/client/test_min_release_age.jac
 
       - name: Restore the test262 checkout
         uses: actions/cache@v4

@@ -11,8 +11,14 @@ glob logger = logging.getLogger(__name__),
      API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",
      JAC_API_BASE_URL_KEY = "globalThis.__JAC_API_BASE_URL__",
      VITE_READY_TIMEOUT_SECONDS = 60,
-     INSTALL_ATTEMPTS = 3,
-     INSTALL_RETRY_PAUSE_SECONDS = 2,
+     DEFAULT_MIN_RELEASE_AGE_SECONDS = 86400,
+     RELEASE_AGE_UNITS: dict[str, int] = {
+         's': 1,
+         'm': 60,
+         'h': 3600,
+         'd': 86400,
+         'w': 604800
+     },
      VITE_READY_PATTERNS = ['ready in', 'local:'],
      VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'],
      CONFIG_META_KEYS = frozenset({'extension'}),
@@ -34,6 +40,8 @@ glob logger = logging.getLogger(__name__),
      ];
 
 def client_deps_stale(build_dir: Path) -> bool;
+
+def release_age_seconds(value: any) -> int;
 
 def _forward_vite_output(
     proc: any,
@@ -128,6 +136,7 @@ class ViteBundler {
     def create_tsconfig(self: ViteBundler) -> Path;
     def create_config_files(self: ViteBundler) -> list[Path];
     def create_npmrc(self: ViteBundler) -> Optional[Path];
+    def write_bunfig(self: ViteBundler, build_dir: Path) -> Path;
     def start_dev_server(
         self: ViteBundler,
         port: int = 3000,

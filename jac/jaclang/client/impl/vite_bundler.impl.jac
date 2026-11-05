@@ -227,27 +227,27 @@ impl ViteBundler.install_packages(
     if configs_npmrc.exists() and not build_npmrc.exists() {
         shutil.copy2(configs_npmrc, build_npmrc);
     }
+    build_bunfig = self.write_bunfig(build_dir);
 
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
-        for attempt in range(1, INSTALL_ATTEMPTS + 1) {
-            (returncode, error_output) = run_pm(
-                ['install'], str(build_dir), capture=capture_output
-            );
-            if returncode == 0 or attempt == INSTALL_ATTEMPTS {
-                break;
-            }
-            console.warning(
-                f"Dependency installation failed (attempt {attempt} of {INSTALL_ATTEMPTS}); retrying"
-            );
-            time.sleep(INSTALL_RETRY_PAUSE_SECONDS);
-        }
+        (returncode, error_output) = run_pm(
+            ['install'], str(build_dir), capture=capture_output
+        );
         elapsed = time.time() - start_time;
         if returncode != 0 {
             if capture_output {
+                hint = "";
+                if "minimum-release-age" in error_output {
+                    hint = (
+                        "\n\nThat version is newer than [client.npm] min_release_age in "
+                        "jac.toml. Add the package to min_release_age_excludes to "
+                        "install it anyway."
+                    );
+                }
                 raise ClientBundleError(
-                    f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}"
+                    f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}{hint}"
                 ) from None;
             }
             console.error(f"\n  ✖ Dependency installation failed after {elapsed:.1f}s");
@@ -267,6 +267,9 @@ impl ViteBundler.install_packages(
         }
         if build_npmrc.exists() {
             build_npmrc.unlink();
+        }
+        if build_bunfig.exists() {
+            build_bunfig.unlink();
         }
 
         build_bun_lockb = build_dir / 'bun.lockb';
@@ -1232,6 +1235,49 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     }
     npmrc_path.write_text('\n'.join(lines) + '\n', encoding='utf-8');
     return npmrc_path;
+}
+
+impl release_age_seconds(value: any) -> int {
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0 {
+        return value;
+    }
+    if isinstance(value, str) {
+        text = value.strip().lower();
+        unit = 's';
+        if text and text[-1] in RELEASE_AGE_UNITS {
+            unit = text[-1];
+            text = text[:-1].strip();
+        }
+        if text.isdigit() {
+            return int(text) * RELEASE_AGE_UNITS[unit];
+        }
+    }
+    raise ClientBundleError(
+        "[client.npm] min_release_age must be a number of seconds or a string "
+        f"like \"12h\" or \"3d\", not {value!r}"
+    );
+}
+
+impl ViteBundler.write_bunfig(self: ViteBundler, build_dir: Path) -> Path {
+    npm_config = self.config_loader.get_npm_config();
+    age = release_age_seconds(
+        npm_config.get('min_release_age', DEFAULT_MIN_RELEASE_AGE_SECONDS)
+    );
+    excludes = npm_config.get('min_release_age_excludes', []);
+    if not isinstance(excludes, list)
+        or not all(isinstance(name, str) for name in excludes) {
+        raise ClientBundleError(
+            "[client.npm] min_release_age_excludes must be a list of package names"
+        );
+    }
+    bunfig_path = build_dir / 'bunfig.toml';
+    bunfig_path.write_text(
+        "[install]\n"
+        f"minimumReleaseAge = {age}\n"
+        f"minimumReleaseAgeExcludes = {json.dumps(excludes)}\n",
+        encoding='utf-8'
+    );
+    return bunfig_path;
 }
 
 def _toml_config_to_js(config_data: dict[str, any]) -> str;
