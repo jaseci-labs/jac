@@ -281,6 +281,138 @@ test "a target whose derived HPA name fits keeps KEDA's own name" {
     assert "advanced" not in _applied_scaled_object_spec("preview-deployment");
 }
 
+def _applied_bodies(target: str) -> dict[str, dict[str, any]] {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(_cfg(), target, "staging", "preview-svc", keda);
+    return {
+        created[1]["plural"]: created[1]["body"]
+        for created in custom_api.create_namespaced_custom_object.call_args_list
+    };
+}
+
+# KEDA also uses a ScaledObject's own name as a label value, so it refuses one over
+# 63 characters whatever the HPA is called.
+test "a target too long for KEDA's ScaledObject name limit gets a name KEDA accepts" {
+    target = "a" * 46;
+    assert len(target + "-http-scaledobject") == 64;
+    scaled = _applied_bodies(target)["scaledobjects"];
+    name = scaled["metadata"]["name"];
+    assert len(name) <= 63 , name;
+    assert len("keda-hpa-" + name) <= 63 , "KEDA's own HPA name must fit: " + name;
+    assert re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name) , name;
+    assert "advanced" not in scaled["spec"];
+    assert scaled["spec"]["scaleTargetRef"]["name"] == target;
+    assert _applied_bodies(target)["scaledobjects"]["metadata"]["name"] == name , "a re-apply must not rename it";
+    assert _applied_bodies("a" * 47)["scaledobjects"]["metadata"]["name"] != name , "two targets must not share one";
+}
+
+# A workload can have one ScaledObject, so KEDA refuses a renamed one while the old one
+# is live, and a teardown looking for the new name would leave the old one behind.
+test "a ScaledObject name KEDA accepts is never renamed" {
+    for target in [
+        "preview-deployment",
+        "a" * 36,
+        "a" * 37,
+        "jac-sbx-4e43bcdeeaff4cd1af54c486c21826f3",
+        "a" * 45
+    ] {
+        assert _applied_bodies(target)["scaledobjects"]["metadata"]["name"]
+            == target + "-http-scaledobject";
+    }
+    hpa_config = _applied_scaled_object_spec("a" * 45)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ];
+    assert len(hpa_config["name"]) <= 63 , hpa_config["name"];
+}
+
+test "teardown and status reads find a shortened ScaledObject" {
+    target = "a" * 46;
+    applied = _applied_bodies(target)["scaledobjects"]["metadata"]["name"];
+    assert len(applied) <= 63 , applied;
+
+    (keda, custom_api, _, _) = _mocked_keda();
+    destroy_http_activation_for_target(target, "staging", keda);
+    deleted = [
+        call[1]["name"]
+        for call in custom_api.delete_namespaced_custom_object.call_args_list
+        if call[1]["plural"] == "scaledobjects"
+    ];
+    assert deleted == [applied];
+
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    keda._read_scaled_object(target, "staging", None);
+    read = [
+        call[1]["name"]
+        for call in custom_api.get_namespaced_custom_object.call_args_list
+    ];
+    assert applied in read , read;
+}
+
+test "the metric autoscaler shortens a ScaledObject name KEDA would refuse, and only that" {
+    keda = KEDAAutoscaler();
+    fits = "a" * 41;
+    assert len("keda-hpa-" + fits + "-scaledobject") == 63;
+    assert keda.resource_name_for(fits) == fits + "-scaledobject";
+
+    long_app = "a" * 42;
+    name = keda.resource_name_for(long_app);
+    assert len("keda-hpa-" + name) <= 63 , name;
+    assert re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name) , name;
+    assert keda.resource_name_for("a" * 43) != name , "two apps must not share one";
+
+    scaled = keda._build_manifests(
+        AutoscalerSpec(
+            scale_target_name=long_app + "-deployment",
+            app_name=long_app,
+            namespace="staging"
+        )
+    )[0];
+    assert scaled["metadata"]["name"] == name;
+    assert list(scaled["spec"]["advanced"]["horizontalPodAutoscalerConfig"])
+        == ["behavior"] , "a shortened name leaves the HPA name to KEDA and keeps its behavior";
+
+    custom_api = unittest.mock.MagicMock();
+    custom_api.list_namespaced_custom_object.return_value = {"items": []};
+    KEDAAutoscaler(_custom_api=custom_api).destroy(long_app, "staging");
+    assert custom_api.delete_namespaced_custom_object.call_args[1]["name"] == name;
+}
+
+test "a target too long for a label value still gets a label Kubernetes accepts" {
+    target = "a" * 64;
+    bodies = _applied_bodies(target);
+    for plural in ["interceptorroutes", "scaledobjects"] {
+        label = bodies[plural]["metadata"]["labels"]["app"];
+        assert len(label) <= 63 , plural + ": " + label;
+        assert re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", label) , label;
+    }
+    assert bodies["scaledobjects"]["spec"]["scaleTargetRef"]["name"] == target;
+
+    metric = AutoscalerSpec(
+        scale_target_name=target,
+        namespace="staging",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={"address": "redis:6379"},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    manifests = KEDAAutoscaler()._build_manifests(metric);
+    assert len(manifests) == 2;
+    for manifest in manifests {
+        label = manifest["metadata"]["labels"]["app"];
+        assert len(label) <= 63 , manifest["kind"] + ": " + label;
+    }
+
+    fits = "a" * 63;
+    assert _applied_bodies(fits)["scaledobjects"]["metadata"]["labels"]["app"] == fits;
+}
+
 # RFC 7386 JSON merge patch, which is how the client sends a PATCH to a
 # custom object: a key the patch leaves out is kept, and null removes it.
 def _merge_patch(current: any, patch: any) -> any {

@@ -539,6 +539,35 @@ test "hpa apply deletes competing ScaledObject when switching from keda engine" 
     }
 }
 
+test "hpa apply deletes a ScaledObject whose name KEDA's limit shortened" {
+    long_app = "a" * 42;
+    spec = AutoscalerSpec(
+        scale_target_name=long_app + "-deployment",
+        app_name=long_app,
+        namespace="default",
+        triggers=[Trigger(type="cpu", metadata={})]
+    );
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
+    ) as mock_v2_cls {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.autoscale.hpa_autoscaler.client"
+        ) as mock_client {
+            mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
+                status=404
+            );
+            HPAAutoscaler().apply(spec);
+            deleted = _as_any(
+                mock_client
+            ).CustomObjectsApi.return_value.delete_namespaced_custom_object.call_args[1][
+                "name"
+            ];
+        }
+    }
+    assert deleted == AutoscalerFactory.create("keda", {}).resource_name_for(long_app);
+    assert len("keda-hpa-" + deleted) <= 63 , deleted;
+}
+
 test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObject exists" {
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
