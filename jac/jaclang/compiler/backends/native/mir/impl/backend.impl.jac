@@ -312,6 +312,13 @@ impl MirNativePass.refuse_events(lowering: MirLowering) -> bool {
 }
 
 impl MirNativePass.refuse_module_code(lowering: MirLowering) -> bool {
+    options = self.prog.options;
+    if not options.aot_mode
+        or options.default_codespace != "native"
+        or bool(options.force_codespace)
+        or options.native_import {
+        return False;
+    }
     module = lowering.module;
     path = module.loc.mod_path;
     sites: dict[str, uni.UniNode] = {};
