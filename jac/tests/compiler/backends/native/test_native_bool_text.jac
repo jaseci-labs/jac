@@ -103,3 +103,10 @@ test "print of a bool() call matches the Python backend" {
             "True True True True True\n"
         ) , f"got {out!r}";
 }
+
+test "a bool used as a float is 1.0, not -1.0" {
+    out = assert_native_identity(
+        os.path.join(FIXTURES, "bool_to_float.jac"), profiles=["managed"]
+    );
+    assert out == "11.0 9.0 0.5 0.5 2.5 1.0\n11.0 11.0 0.5 0.5 0.0\n" , f"got {out!r}";
+}
