@@ -885,6 +885,11 @@ impl resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True
 ) -> tuple[(str | None, str | None)] {
     import os;
+    if os.path.isabs(module_name) and module_name.endswith('.jac')
+        and os.path.isfile(module_name) {
+        path = real_path(module_name);
+        return (path, path);
+    }
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
 
