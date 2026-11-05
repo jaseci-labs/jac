@@ -32,14 +32,16 @@ on:
   push:
     branches: [main]
 
-# Adding a label CI never reads (one outside the list below, which the
-# `changes` job repeats) must neither rerun the suites nor cancel the run in
-# flight, so that run gets a group of its own and only Everything Passed runs.
+# Adding a label that does not add a lane (one outside the list below, which
+# the `changes` job repeats) must neither rerun the suites nor cancel the run in
+# flight, so that run gets a group of its own and only Contribution Checks and
+# Everything Passed run. The skip-* labels are such labels: they only waive a
+# check, so Everything Passed drops the waived job from the verdict it carries.
 concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -55,7 +57,7 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -593,7 +595,10 @@ jobs:
   contribution-checks:
     name: Contribution Checks
     needs: changes
-    if: ${{ github.event_name != 'push' || needs.changes.outputs.docs == 'true' }}
+    if: >-
+      !cancelled()
+      && (needs.changes.result == 'success' || github.event.action == 'labeled')
+      && (github.event_name != 'push' || needs.changes.outputs.docs == 'true')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -1930,22 +1935,40 @@ jobs:
     permissions:
       actions: read
     steps:
-      # A label-only run skips every job, and the newest Everything Passed on a
-      # commit is the one that gates it, so that run repeats the verdict of the
-      # run before it (waiting for it if it is still going) instead of passing.
+      # A label-only run skips every suite, and the newest Everything Passed on
+      # a commit is the one that gates it, so that run repeats the verdict of
+      # the newest earlier run that ran the suites (waiting for it if it is
+      # still going). Contribution Checks is judged again here, so its earlier
+      # result is dropped, and so is test-scale-k8s once the PR has skip-k8s.
       - name: Carry the previous run's verdict over a label-only run
         if: needs.changes.result == 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          SKIP_K8S: ${{ contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
         run: |
-          prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --limit 50 \
-            --json databaseId --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID)] | first | .databaseId // empty")
-          if [ -z "$prev" ]; then
-            echo "::error::No earlier CI run on $SHA to carry over; push or rerun CI."
-            exit 1
+          waived='^(Everything Passed|Contribution Checks)$'
+          if [ "$SKIP_K8S" = true ]; then
+            waived='^(Everything Passed|Contribution Checks|test-scale-k8s)$'
           fi
-          gh run watch "$prev" --repo "$GITHUB_REPOSITORY" --exit-status --interval 60
+          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --limit 50 \
+              --json databaseId --jq ".[] | select(.databaseId < $GITHUB_RUN_ID) | .databaseId"); do
+            gh run watch "$id" --repo "$GITHUB_REPOSITORY" --interval 60 > /dev/null || true
+            jobs=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json conclusion,jobs)
+            [ "$(jq -r .conclusion <<<"$jobs")" = cancelled ] && continue
+            [ "$(jq -r '.jobs[] | select(.name == "changes") | .conclusion' <<<"$jobs")" = success ] || continue
+            bad=$(jq -r '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | .name' <<<"$jobs" \
+              | grep -Ev "$waived" || true)
+            if [ -n "$bad" ]; then
+              echo "::error::Run $id on $SHA did not pass:"
+              echo "$bad"
+              exit 1
+            fi
+            echo "Carried the verdict of run $id."
+            exit 0
+          done
+          echo "::error::No earlier CI run on $SHA ran the suites to carry over; push or rerun CI."
+          exit 1
       - name: Fail if any dependency failed or was cancelled
         if: >-
           contains(needs.*.result, 'failure') ||
