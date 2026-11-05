@@ -1737,6 +1737,18 @@ impl _jit_engine_from_objects(plan: LinkPlan, tm: TargetMachine) -> ExecutionEng
     }
     engine = llvm.create_mcjit_compiler(glue, tm);
     assert isinstance(engine, llvm.ExecutionEngine);
+    unbound = [
+        name
+        for name in undefined
+        if not llvm.address_of_symbol(name)
+    ];
+    if unbound {
+        raise LinkPlanError(
+            "the JIT link cannot resolve "
+                + ", ".join(unbound)
+                + ": every symbol the units import must be bound before the engine is finalized"
+        );
+    }
     for blob in objects {
         engine.add_object_file(llvm.ObjectFileRef.from_data(blob));
     }

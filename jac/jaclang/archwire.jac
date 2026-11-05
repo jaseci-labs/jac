@@ -2674,14 +2674,9 @@ graph import {
         },
     ]
     runtime.memory ++> server.session { Memory }
-    runtime.native_library --> [
-        compiler.driver.compiler.JacCompiler._load_native_from_cache {
-            SharedNativeEngine
-        },
-        compiler.driver.compiler.JacCompiler._sealed_native_engine {
-            shared_engine_for
-        },
-    ]
+    runtime.native_library --> compiler.driver.compiler.JacCompiler._sealed_native_engine {
+        shared_engine_for
+    }
     type runtime.native_library ++> cli.commands.execution
         | compiler.driver.compiler
         | compiler.frontend.codeinfo { SharedNativeEngine }

@@ -510,7 +510,20 @@ impl JacCompiler._load_native_from_cache(
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
         full_target
     );
+    py_func_table: dict[str, Callable[..., object]] = {};
+    callbacks_list: list[object] = [];
+    manifest = interop_manifest_of(cached_interop) if cached_interop else None;
     if engine is None {
+        if manifest is not None and manifest.callable_native_imports {
+            import from jaclang.runtime.interop_bridge { register_py_callbacks }
+            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            register_py_callbacks(
+                manifest.callable_native_imports,
+                py_func_table,
+                callbacks_list,
+                llvm.add_symbol
+            );
+        }
         import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
         engine = jit_engine_for_cached(
             target_program,
@@ -524,25 +537,10 @@ impl JacCompiler._load_native_from_cache(
     gen = target_program.hub.artifacts.get(full_target) or CodeGenTarget();
     self._restore_native_clibs(gen, cached_interop);
     gen.native_engine = engine;
-    py_func_table: dict[str, Callable[..., object]] = {};
-    callbacks_list: list[object] = [];
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
-    if cached_interop {
-        manifest = interop_manifest_of(cached_interop);
+    if manifest is not None {
         gen.interop_manifest = manifest;
-        import from jaclang.runtime.native_library { SharedNativeEngine }
-        if manifest.callable_native_imports
-            and not isinstance(engine, SharedNativeEngine) {
-            import from jaclang.runtime.interop_bridge { register_py_callbacks }
-            import jaclang.compiler.backends.native.llvm.binding as llvm;
-            register_py_callbacks(
-                manifest.callable_native_imports,
-                py_func_table,
-                callbacks_list,
-                llvm.add_symbol
-            );
-        }
     }
     target_program.hub.artifacts[full_target] = gen;
 }
