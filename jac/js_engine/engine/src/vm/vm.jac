@@ -23605,6 +23605,11 @@ obj VM {
     trap mid-loop, eligibility drops and we fall back to per-index probing.
     """
     def _arr_cb_fast_next(o: JSValue, i: int, n: int) -> int {
+        # A present dense element: the caller reads it as is (no HasProperty
+        # or Get), so no hole skipping can apply.
+        if not jsv_is_hole(js_object_dense_elem(o, i)) {
+            return i;
+        }
         if not idx_protector_ok() {
             return i;
         }
@@ -23658,6 +23663,7 @@ obj VM {
             fn_fe: JSValue = prep_fe[1];
             ta_fe: JSValue = prep_fe[2];
             n_fe: int = int(jsv_to_double(prep_fe[3]));
+            lt_fe: JSValue = self._cb_lean_this(fn_fe, ta_fe);
             i_fe: int = 0;
             while i_fe < n_fe {
                 i_fe = self._arr_cb_fast_next(o_fe, i_fe, n_fe);
@@ -23684,7 +23690,7 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    _vm_invoke_callback(self, fn_fe, ta_fe, [v_fe, js_int(i_fe), o_fe]);
+                    self._cb_invoke3(fn_fe, ta_fe, lt_fe, v_fe, js_int(i_fe), o_fe);
                     if self.had_exception {
                         exc_fe: JSValue = self.pending_exc;
                         self.had_exception = False;
@@ -23714,6 +23720,7 @@ obj VM {
             fn_am: JSValue = prep_am[1];
             ta_am: JSValue = prep_am[2];
             n_am: int = int(jsv_to_double(prep_am[3]));
+            lt_am: JSValue = self._cb_lean_this(fn_am, ta_am);
             a_am: JSValue = _vm_array_species_create(self, o_am, n_am);
             if vm_has_native_exc() {
                 self._arr_cb_unwind(frame, st, vm_take_native_exc());
@@ -23747,9 +23754,7 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    r_am: JSValue = _vm_invoke_callback(
-                        self, fn_am, ta_am, [v_am, js_int(i_am), o_am]
-                    );
+                    r_am: JSValue = self._cb_invoke3(fn_am, ta_am, lt_am, v_am, js_int(i_am), o_am);
                     if self.had_exception {
                         exc_am: JSValue = self.pending_exc;
                         self.had_exception = False;
@@ -23786,6 +23791,7 @@ obj VM {
             fn_af: JSValue = prep_af[1];
             ta_af: JSValue = prep_af[2];
             n_af: int = int(jsv_to_double(prep_af[3]));
+            lt_af: JSValue = self._cb_lean_this(fn_af, ta_af);
             a_af: JSValue = _vm_array_species_create(self, o_af, 0);
             if vm_has_native_exc() {
                 self._arr_cb_unwind(frame, st, vm_take_native_exc());
@@ -23820,9 +23826,7 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    r_af: JSValue = _vm_invoke_callback(
-                        self, fn_af, ta_af, [v_af, js_int(i_af), o_af]
-                    );
+                    r_af: JSValue = self._cb_invoke3(fn_af, ta_af, lt_af, v_af, js_int(i_af), o_af);
                     if self.had_exception {
                         exc_af: JSValue = self.pending_exc;
                         self.had_exception = False;
@@ -23860,6 +23864,7 @@ obj VM {
             o_ar: JSValue = prep_ar[0];
             fn_ar: JSValue = prep_ar[1];
             n_ar: int = int(jsv_to_double(prep_ar[3]));
+            lt_ar: JSValue = self._cb_lean_this(fn_ar, js_undefined());
             acc_ar: JSValue = js_undefined();
             start_ar: int = 0;
             has_acc_ar: bool = False;
@@ -23930,8 +23935,8 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    r_ar: JSValue = _vm_invoke_callback(
-                        self, fn_ar, js_undefined(), [acc_ar, v_ar, js_int(i_ar), o_ar]
+                    r_ar: JSValue = self._cb_invoke4(
+                        fn_ar, js_undefined(), lt_ar, acc_ar, v_ar, js_int(i_ar), o_ar
                     );
                     if self.had_exception {
                         exc_ar: JSValue = self.pending_exc;
@@ -23965,6 +23970,7 @@ obj VM {
             o_arr: JSValue = prep_arr[0];
             fn_arr: JSValue = prep_arr[1];
             n_arr: int = int(jsv_to_double(prep_arr[3]));
+            lt_arr: JSValue = self._cb_lean_this(fn_arr, js_undefined());
             acc_arr: JSValue = js_undefined();
             start_arr: int = n_arr - 1;
             has_acc_arr: bool = False;
@@ -24017,11 +24023,8 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    r_arr: JSValue = _vm_invoke_callback(
-                        self,
-                        fn_arr,
-                        js_undefined(),
-                        [acc_arr, v_arr, js_int(i_arr), o_arr]
+                    r_arr: JSValue = self._cb_invoke4(
+                        fn_arr, js_undefined(), lt_arr, acc_arr, v_arr, js_int(i_arr), o_arr
                     );
                     if self.had_exception {
                         exc_arr: JSValue = self.pending_exc;
@@ -24054,6 +24057,7 @@ obj VM {
             fn_fd: JSValue = prep_fd[1];
             ta_fd: JSValue = prep_fd[2];
             n_fd: int = int(jsv_to_double(prep_fd[3]));
+            lt_fd: JSValue = self._cb_lean_this(fn_fd, ta_fd);
             i_fd: int = 0;
             while i_fd < n_fd {
                 v_fd: JSValue = js_object_dense_elem(o_fd, i_fd);
@@ -24064,9 +24068,7 @@ obj VM {
                     self._arr_cb_unwind(frame, st, vm_take_native_exc());
                     return;
                 }
-                r_fd: JSValue = _vm_invoke_callback(
-                    self, fn_fd, ta_fd, [v_fd, js_int(i_fd), o_fd]
-                );
+                r_fd: JSValue = self._cb_invoke3(fn_fd, ta_fd, lt_fd, v_fd, js_int(i_fd), o_fd);
                 if self.had_exception {
                     exc_fd: JSValue = self.pending_exc;
                     self.had_exception = False;
@@ -24094,6 +24096,7 @@ obj VM {
             fn_fi: JSValue = prep_fi[1];
             ta_fi: JSValue = prep_fi[2];
             n_fi: int = int(jsv_to_double(prep_fi[3]));
+            lt_fi: JSValue = self._cb_lean_this(fn_fi, ta_fi);
             i_fi: int = 0;
             while i_fi < n_fi {
                 v_fi: JSValue = js_object_dense_elem(o_fi, i_fi);
@@ -24104,9 +24107,7 @@ obj VM {
                     self._arr_cb_unwind(frame, st, vm_take_native_exc());
                     return;
                 }
-                r_fi: JSValue = _vm_invoke_callback(
-                    self, fn_fi, ta_fi, [v_fi, js_int(i_fi), o_fi]
-                );
+                r_fi: JSValue = self._cb_invoke3(fn_fi, ta_fi, lt_fi, v_fi, js_int(i_fi), o_fi);
                 if self.had_exception {
                     exc_fi: JSValue = self.pending_exc;
                     self.had_exception = False;
@@ -24134,6 +24135,7 @@ obj VM {
             fn_fl: JSValue = prep_fl[1];
             ta_fl: JSValue = prep_fl[2];
             n_fl: int = int(jsv_to_double(prep_fl[3]));
+            lt_fl: JSValue = self._cb_lean_this(fn_fl, ta_fl);
             i_fl: int = n_fl - 1;
             while i_fl >= 0 {
                 v_fl: JSValue = js_object_dense_elem(o_fl, i_fl);
@@ -24144,9 +24146,7 @@ obj VM {
                     self._arr_cb_unwind(frame, st, vm_take_native_exc());
                     return;
                 }
-                r_fl: JSValue = _vm_invoke_callback(
-                    self, fn_fl, ta_fl, [v_fl, js_int(i_fl), o_fl]
-                );
+                r_fl: JSValue = self._cb_invoke3(fn_fl, ta_fl, lt_fl, v_fl, js_int(i_fl), o_fl);
                 if self.had_exception {
                     exc_fl: JSValue = self.pending_exc;
                     self.had_exception = False;
@@ -24174,6 +24174,7 @@ obj VM {
             fn_fli: JSValue = prep_fli[1];
             ta_fli: JSValue = prep_fli[2];
             n_fli: int = int(jsv_to_double(prep_fli[3]));
+            lt_fli: JSValue = self._cb_lean_this(fn_fli, ta_fli);
             i_fli: int = n_fli - 1;
             while i_fli >= 0 {
                 v_fli: JSValue = js_object_dense_elem(o_fli, i_fli);
@@ -24184,8 +24185,8 @@ obj VM {
                     self._arr_cb_unwind(frame, st, vm_take_native_exc());
                     return;
                 }
-                r_fli: JSValue = _vm_invoke_callback(
-                    self, fn_fli, ta_fli, [v_fli, js_int(i_fli), o_fli]
+                r_fli: JSValue = self._cb_invoke3(
+                    fn_fli, ta_fli, lt_fli, v_fli, js_int(i_fli), o_fli
                 );
                 if self.had_exception {
                     exc_fli: JSValue = self.pending_exc;
@@ -24214,6 +24215,7 @@ obj VM {
             fn_so: JSValue = prep_so[1];
             ta_so: JSValue = prep_so[2];
             n_so: int = int(jsv_to_double(prep_so[3]));
+            lt_so: JSValue = self._cb_lean_this(fn_so, ta_so);
             i_so: int = 0;
             while i_so < n_so {
                 i_so = self._arr_cb_fast_next(o_so, i_so, n_so);
@@ -24240,9 +24242,7 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    r_so: JSValue = _vm_invoke_callback(
-                        self, fn_so, ta_so, [v_so, js_int(i_so), o_so]
-                    );
+                    r_so: JSValue = self._cb_invoke3(fn_so, ta_so, lt_so, v_so, js_int(i_so), o_so);
                     if self.had_exception {
                         exc_so: JSValue = self.pending_exc;
                         self.had_exception = False;
@@ -24276,6 +24276,7 @@ obj VM {
             fn_ev: JSValue = prep_ev[1];
             ta_ev: JSValue = prep_ev[2];
             n_ev: int = int(jsv_to_double(prep_ev[3]));
+            lt_ev: JSValue = self._cb_lean_this(fn_ev, ta_ev);
             i_ev: int = 0;
             while i_ev < n_ev {
                 i_ev = self._arr_cb_fast_next(o_ev, i_ev, n_ev);
@@ -24302,9 +24303,7 @@ obj VM {
                         self._arr_cb_unwind(frame, st, vm_take_native_exc());
                         return;
                     }
-                    r_ev: JSValue = _vm_invoke_callback(
-                        self, fn_ev, ta_ev, [v_ev, js_int(i_ev), o_ev]
-                    );
+                    r_ev: JSValue = self._cb_invoke3(fn_ev, ta_ev, lt_ev, v_ev, js_int(i_ev), o_ev);
                     if self.had_exception {
                         exc_ev: JSValue = self.pending_exc;
                         self.had_exception = False;
@@ -34951,6 +34950,39 @@ obj VM {
         );
     }
 
+    """R_CALLM of an array callback built-in (forEach, map, filter, reduce,
+    find, some, every, sort, flatMap) on `this_val`: the dispatcher the
+    bridged CALL_METHOD handler ends in, given the argument registers (3 =
+    done, its result in regs[dst] or its throw unwound; 0 = the bridge takes
+    it: a TDZ-flagged argument)."""
+    def _reg_arr_cb_call(
+        frame: CallFrame,
+        st: ExecState,
+        kind: int,
+        this_val: JSValue,
+        dst: int,
+        argpc: int,
+        argc: int,
+        orig: int
+    ) -> int {
+        ac_args: list[JSValue] = [];
+        ac_k: int = 0;
+        while ac_k < argc {
+            ac_w: int = frame.func.rcode[argpc + ac_k];
+            if (ac_w & 32768) != 0
+                and js_is_tdz(frame.locals[frame.lb + (ac_w & 32767)]) {
+                return 0;
+            }
+            ac_args.append(frame.locals[frame.lb + (ac_w & 32767)]);
+            ac_k = ac_k + 1;
+        }
+        frame.ip = orig + 1;
+        self.reg_unwound = False;
+        self._arr_dispatch_callback_method(kind, this_val, ac_args, frame, st);
+        _ = self._reg_bridge_done(frame, st, dst, 1, orig);
+        return 3;
+    }
+
     """R_CALLM on a whitelisted builtin (see _NATIVE_FAST_KIND): the stack
     loop's _native_fast_call on registers — the receiver `this_val`, the
     `argc` argument registers at rcode[argpc..], the result in regs[dst].
@@ -35795,6 +35827,165 @@ obj VM {
         }
         self.frames[self.ftop - 1].ctor_this = rn_obj;
         return 1;
+    }
+
+    """A native's callback (forEach, map, filter, reduce, find, some, every
+    and their kin): the effective `this` the lean entry _cb_call runs `fn`
+    with, or the hole when every call must take _vm_invoke_callback. Decided
+    once per native call: a register-ISA closure that needs none of run_cl's
+    or _reg_run_value's other steps (bind, rest, tail call, module swap, the
+    generator and async wrappers: _reg_eff_this's gates)."""
+    def _cb_lean_this(fn: JSValue, this_arg: JSValue) -> JSValue {
+        if not is_fn_val(fn) {
+            return jsv_hole();
+        }
+        cl_cb: int = get_fn_idx(fn);
+        if cl_cb < 0 or cl_cb >= jc_count() {
+            return jsv_hole();
+        }
+        if jc_napi_cb_ptr(cl_cb) != 0
+            or _JC_FUNC[cl_cb].has_tail_call
+            or _JC_FUNC[cl_cb].has_rest
+            or _JC_FUNC[cl_cb].name == "<main>" {
+            return jsv_hole();
+        }
+        # (run_cl's module/exports swap: only a call that would not swap)
+        jm_cb: JSValue = jc_jac_module(cl_cb);
+        if jsv_is_object_cell(jm_cb)
+            and not (
+                jm_cb == self._reg_cur_module()
+                and self._reg_cur_exports() == _vm_module_exports(jm_cb)
+            ) {
+            return jsv_hole();
+        }
+        return self._reg_eff_this(cl_cb, fn, this_arg);
+    }
+
+    """One callback call: the lean entry when _cb_lean_this cleared `fn`
+    (`lt` its effective this), else the general path."""
+    def _cb_invoke3(
+        fn: JSValue, this_arg: JSValue, lt: JSValue, a0: JSValue, a1: JSValue, a2: JSValue
+    ) -> JSValue {
+        if jsv_is_hole(lt) {
+            return _vm_invoke_callback(self, fn, this_arg, [a0, a1, a2]);
+        }
+        return self._cb_call(get_fn_idx(fn), fn, lt, a0, a1, a2, js_undefined(), 3);
+    }
+
+    """_cb_invoke3 with four arguments (reduce's accumulator first)."""
+    def _cb_invoke4(
+        fn: JSValue,
+        this_arg: JSValue,
+        lt: JSValue,
+        a0: JSValue,
+        a1: JSValue,
+        a2: JSValue,
+        a3: JSValue
+    ) -> JSValue {
+        if jsv_is_hole(lt) {
+            return _vm_invoke_callback(self, fn, this_arg, [a0, a1, a2, a3]);
+        }
+        return self._cb_call(get_fn_idx(fn), fn, lt, a0, a1, a2, a3, 4);
+    }
+
+    """The lean callback entry: _reg_run_value without the per-call steps
+    _cb_lean_this settled once (`this_eff` already effective, no rest
+    parameter), the arguments written straight into the callee's window —
+    no argument list, no run_cl."""
+    def _cb_call(
+        cl: int,
+        fn: JSValue,
+        this_eff: JSValue,
+        a0: JSValue,
+        a1: JSValue,
+        a2: JSValue,
+        a3: JSValue,
+        argc: int
+    ) -> JSValue {
+        # A construct channel still pending belongs to the general path,
+        # which consumes it.
+        cb_pnt: JSValue = self._pending_new_target;
+        if jsv_is_undefined(cb_pnt) {
+            cb_pnt = self.pending_new_target;
+        }
+        if (cb_pnt != 0 and not jsv_is_undefined(cb_pnt))
+            or self._pending_this_uninit
+            or self._pending_ctor_class != 0 {
+            cb_args: list[JSValue] = [a0, a1, a2];
+            if argc > 3 {
+                cb_args.append(a3);
+            }
+            return _vm_invoke_callback(self, fn, this_eff, cb_args);
+        }
+        cb_cf: CompiledFunction = _JC_FUNC[cl];
+        cb_np: int = len(cb_cf.params);
+        cb_pb: int = cb_cf.param_base;
+        cb_base: int = self._win_alloc(cb_cf.num_locals, cb_cf.reg_tmp_base);
+        if cb_np > 0 {
+            self.regs[cb_base + cb_pb] = a0;
+            if cb_np > 1 {
+                self.regs[cb_base + cb_pb + 1] = a1;
+                if cb_np > 2 {
+                    self.regs[cb_base + cb_pb + 2] = a2;
+                    if cb_np > 3 and argc > 3 {
+                        self.regs[cb_base + cb_pb + 3] = a3;
+                    }
+                }
+            }
+        }
+        cb_nt: JSValue = js_undefined();
+        if jc_is_arrow(cl) {
+            cb_nt = jc_lexical_new_target(cl);
+        }
+        cb_fr: CallFrame = self._frame_acquire(
+            cb_cf,
+            len(self.stack),
+            self.regs,
+            _JC_FV[cl],
+            this_eff,
+            fn,
+            cb_nt,
+            False,
+            0,
+            self.ftop < len(self.frames)
+        );
+        cb_fr.rpc = 0;
+        cb_fr.win = True;
+        cb_fr.lb = cb_base;
+        cb_mf: list[CompiledFunction] = self.module_fns;
+        if len(_JC_MF[cl]) > 0 {
+            self.module_fns = _JC_MF[cl];
+        }
+        self.ftop = self.ftop + 1;
+        self.call_depth = self.call_depth + 1;
+        cb_res: JSValue = self._exec_reg(cb_fr);
+        if len(cb_fr.dispose_stack) > 0 {
+            cb_se: bool = self.had_exception;
+            cb_sp: JSValue = self.pending_exc;
+            self.had_exception = False;
+            self.pending_exc = js_undefined();
+            self._dispose_to(cb_fr, 0);
+            cb_fr.dispose_marks = [];
+            if not self.had_exception {
+                self.had_exception = cb_se;
+                self.pending_exc = cb_sp;
+            }
+        }
+        while len(self.stack) > cb_fr.stack_base {
+            self.stack.pop();
+        }
+        if self.had_exception {
+            self._fpop_drop();
+        } else {
+            self.ftop = self.ftop - 1;
+        }
+        self.rtop = cb_base;
+        self.call_depth = self.call_depth - 1;
+        self.module_fns = cb_mf;
+        if self.had_exception {
+            return js_undefined();
+        }
+        return cb_res;
     }
 
     """run_cl's register path: a register-ISA closure called from native
@@ -37996,6 +38187,10 @@ obj VM {
                             and self._reg_native_fast_call(frame, st, a, va, vb, xi, c, xo, zi) {
                             cr = 3;
                         }
+                        if cr == 0 and br >= 0 and _is_arr_callback_kind(zi) {
+                            # forEach / map / filter / … without the bridge
+                            cr = self._reg_arr_cb_call(frame, st, zi, vb, a, xi, c, xo);
+                        }
                     }
                     if cr == 1 {
                         frame = self.frames[self.ftop - 1];
@@ -38281,6 +38476,10 @@ obj VM {
                         if cr == 0
                             and self._reg_native_fast_call(frame, st, a, va, vb, xi, c, xo, zi) {
                             cr = 3;
+                        }
+                        if cr == 0 and br >= 0 and _is_arr_callback_kind(zi) {
+                            # forEach / map / filter / … without the bridge
+                            cr = self._reg_arr_cb_call(frame, st, zi, vb, a, xi, c, xo);
                         }
                     }
                     if cr == 1 {
