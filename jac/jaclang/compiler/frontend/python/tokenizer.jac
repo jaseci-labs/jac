@@ -1607,6 +1607,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             st.paren_level = st.paren_level + _track_paren_delta(op.tok_type);
             return op;
         }
+        error_col = st.col_offset + 1 if ch == ord("\\") else st.col_offset;
         bad = mk_diag(
             "SyntaxError",
             "unexpected character after line continuation character"
@@ -1614,7 +1615,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 else "invalid non-printable character U+" + format(ch, "04X")
                     if not unicode_printable(ch)
                     else "invalid character in identifier",
-            tok_loc_span(st.lineno, st.lineno, st.col_offset, st.col_offset + 1),
+            tok_loc_span(st.lineno, st.lineno, error_col, error_col + 1),
             st.filename
         );
         st.error = bad;

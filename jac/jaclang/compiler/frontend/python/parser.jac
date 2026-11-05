@@ -10858,7 +10858,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
         if lit is not None {
             args = rule_args(p);
             if args is not None {
-                res = pa_arguments_parsing_error(a_7);
+                res = pa_arguments_parsing_error(p, a_7);
                 p.level -= 1;
                 return res;
             }
