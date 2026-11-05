@@ -1933,9 +1933,23 @@ def pa_get_expr_name(`node: expr) -> str {
         return "name";
     }
     if isinstance(`node, List) {
+        for elt in (`node as List).elts {
+            elt_name = pa_get_expr_name(elt);
+            if elt_name
+                not in ["name", "attribute", "subscript", "list", "tuple", "starred"] {
+                return elt_name;
+            }
+        }
         return "list";
     }
     if isinstance(`node, Tuple) {
+        for elt in (`node as Tuple).elts {
+            elt_name = pa_get_expr_name(elt);
+            if elt_name
+                not in ["name", "attribute", "subscript", "list", "tuple", "starred"] {
+                return elt_name;
+            }
+        }
         return "tuple";
     }
     if isinstance(`node, Lambda) {
