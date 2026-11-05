@@ -314,6 +314,7 @@ impl TypeEvaluator._validate_call_type(
         return self.prefetch.int_class or UnknownType();
     }
 
+    import from jaclang.compiler.types.fixed_width { fixed_width_call_type }
     fw_type = fixed_width_call_type(self, expr, caller_type);
     if fw_type is not None {
         return fw_type;

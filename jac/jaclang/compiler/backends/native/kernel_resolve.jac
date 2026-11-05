@@ -2,7 +2,6 @@ import hashlib;
 import json;
 import os;
 import sys;
-
 glob NOT_BUILT: str = "not built",
      LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
      KERNEL_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS;
