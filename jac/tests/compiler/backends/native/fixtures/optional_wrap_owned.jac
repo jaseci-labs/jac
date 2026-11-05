@@ -13,7 +13,10 @@ with entry {
     TABLE.append(None);
     TABLE.append(Item(v=7));
     filler = [Item(v=99) for _ in range(8)];
-    seen: list[str] = [];
+}
+
+glob seen: list[str] = [];
+with entry {
     for it in TABLE {
         seen.append(str(it.v) if it is not None else "-");
     }
