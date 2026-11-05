@@ -1950,7 +1950,7 @@ impl MirEmitter.builtin_sjlj -> bool {
 impl MirEmitter.jmp_symbols -> tuple[str, str] {
     triple = str(self.module.triple or "").lower();
     if "wasm" in triple {
-        return ("setjmp", "longjmp");
+        return ("__jac_wasm_setjmp", "__jac_wasm_longjmp");
     }
     if any(name in triple for name in ("windows", "win32", "mingw", "msvc")) {
         return ("__jac_setjmp", "__jac_longjmp");

@@ -45,15 +45,17 @@ int atexit(void (*handler)(void)) {
 /* wasm32 has no non-local jump without the exception-handling proposal. A
  * handler still arms (setjmp returns 0, so a body that does not raise runs as
  * it does elsewhere), but a raise that reaches a handler cannot unwind to it:
- * it ends the module the way an uncaught exception does. */
+ * it ends the module the way an uncaught exception does. The pair carries
+ * Jac's own names: the C writer that ejects a wasm module treats calls to
+ * libc's setjmp/longjmp as jmp_buf intrinsics. */
 extern long write(int, const void *, unsigned long);
 
-int setjmp(void *env) {
+int __jac_wasm_setjmp(void *env) {
     (void)env;
     return 0;
 }
 
-void longjmp(void *env, int value) {
+void __jac_wasm_longjmp(void *env, int value) {
     static const char note[] =
         "jac: an exception reached a handler, which wasm32 cannot jump to\n";
     (void)env;
