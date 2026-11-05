@@ -1776,6 +1776,22 @@ def pa_raise_syntax_known_expr(
 def pa_raise_syntax_known_range(
     p: peg_parser, on_next: bool, a: object | None, b: object | None, message: str
 ) -> None {
+    if message == "Generator expression must be parenthesized"
+        and isinstance(b, comprehension) {
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=b.for_lineno,
+                end_lineno=b.for_end_lineno,
+                col_offset=b.for_col_offset,
+                end_col_offset=b.for_end_col_offset
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
     return pa_raise_syntax(p, on_next, message);
 }
 
@@ -1989,6 +2005,9 @@ def pa_get_expr_name(`node: expr) -> str {
 }
 
 def pa_get_last_comprehension_item(`node: object) -> object {
+    if isinstance(`node, comprehension) {
+        return `node;
+    }
     return None;
 }
 

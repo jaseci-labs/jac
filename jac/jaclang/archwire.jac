@@ -13404,6 +13404,7 @@ graph import compiler.frontend.python {
             arguments,
             boolop,
             cmpop,
+            comprehension,
             expr,
             expr_context,
             keyword,
