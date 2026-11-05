@@ -667,6 +667,7 @@ obj MirLowering {
     def region_call(name: str, args: list[MirValue]) -> MirValue;
     def lower_open(nd: uni.OpenStmt);
     def drop_regions;
+    def region_slot_handle(slot: MirValue) -> MirValue;
     def fresh_block(size: MirValue) -> MirValue;
     def region_escape_entry;
     def region_value(value: MirValue) -> MirValue;

@@ -1099,7 +1099,7 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
         raise err;
     }
     if any(slot is held for held in self.st().region_slots) {
-        self.region_call("__jac_region_drop", [self.builder().load(slot, slot.type)]);
+        self.region_call("__jac_region_drop", [self.region_slot_handle(slot)]);
     }
     self.builder().store(slot, stored);
 }
@@ -1152,7 +1152,14 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
         );
     }
-    if slot_type.kind == MirKind.REGION and sym.na_region_handle {
+    if sym.na_region_handle
+        and (
+            slot_type.kind == MirKind.REGION
+            or (
+                slot_type.kind == MirKind.OPT
+                and slot_type.payload().kind == MirKind.REGION
+            )
+        ) {
         empty = fn.new_value(slot_type);
         at = 0;
         while at < len(first.instrs)

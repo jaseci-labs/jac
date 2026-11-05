@@ -825,9 +825,20 @@ impl MirLowering.drop_regions {
         b.position(resumed);
     }
     for slot in self.st().region_slots {
-        self.region_call("__jac_region_drop", [b.load(slot, slot.type)]);
+        self.region_call("__jac_region_drop", [self.region_slot_handle(slot)]);
         b.store(slot, b.const_null(slot.type));
     }
+}
+
+impl MirLowering.region_slot_handle(slot: MirValue) -> MirValue {
+    b = self.builder();
+    held = b.load(slot, slot.type);
+    if held.type.kind != MirKind.OPT {
+        return held;
+    }
+    return b.select(
+        self.opt_present(held), self.opt_get(held), b.const_null(mir_region())
+    );
 }
 
 impl MirLowering.region_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) {
