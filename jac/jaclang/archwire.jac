@@ -2593,11 +2593,10 @@ graph import {
             NodeArchetype
         },
         server.endpoints.pages.register_graph_endpoints.graph_target
-            | server.server.ExecutionManager.spawn_walker_async { NodeArchetype },
+            | server.server._spawn_target { NodeArchetype },
         server.identity.identity_storage.IdentityStorage.create_user { Root },
         server.identity.identity_storage.IdentityStorage.ensure_user_by_id { Root },
         server.identity.identity_storage.IdentityStorage.reset_root { Root },
-        server.server.ExecutionManager.spawn_walker_sync { NodeArchetype },
         server.server.ModuleIntrospector.target { WalkerArchetype },
         server.session._ancestry_of {
             Archetype,

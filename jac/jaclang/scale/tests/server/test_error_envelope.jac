@@ -127,6 +127,43 @@ test "function exception: message on the wire, stack in the server log" {
     _assert_stack_logged(records, "boom_fn");
 }
 
+test "a bad target node is the caller's error and leaves no stack in the log" {
+    unknown = "00000000-0000-4000-8000-000000000001";
+    for (path, body, status, code, message) in (
+        ("/walker/Boom/zzz", {}, 400, "INVALID_NODE_ID", "Invalid node id"),
+        (f"/walker/Boom/{unknown}", {}, 404, "NOT_FOUND", "Target node not found")
+    ) {
+        def send(client: any) -> any {
+            return client.post(path, json=body);
+        }
+        (resp, records) = _with_capture(send);
+        assert resp.status_code == status , f"{path}: {resp.text}";
+        err = resp.json()["error"];
+        assert (err["code"], err["message"]) == (code, message) , f"{path}: {err}";
+        assert not _stacks(records) , f"{path}: {_stacks(records)}";
+    }
+}
+
+test "an unhandled server failure stays in the log, off the wire" {
+    def send(client: any) -> any {
+        token = client.register_and_login(
+            f"member_{uuid.uuid4().hex[:8]}", "password123"
+        );
+        with patch.object(
+            client._server.user_manager,
+            "aget_root_id",
+            new=AsyncMock(return_value="00000000-0000-4000-8000-000000000001")
+        ) {
+            return client.post(
+                "/walker/Boom", json={}, headers={"Authorization": f"Bearer {token}"}
+            );
+        }
+    }
+    (resp, _records) = _with_capture(send);
+    assert resp.status_code == 500 , resp.text;
+    assert resp.json() == {"error": "Internal Server Error"} , resp.text;
+}
+
 test "webhook exception: opaque failure on the wire, one ERROR record in the log" {
     (resp, records) = _hit_webhook_with_capture();
     assert resp.status_code == 500 , resp.text;

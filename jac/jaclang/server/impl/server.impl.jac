@@ -39,6 +39,10 @@ async def _abegin_user_request_context(
 
 def _unknown_user_failure -> dict[str, JsonValue];
 
+async def _spawn_target(
+    target_node_id: any, ctx: ExecutionContext
+) -> NodeArchetype | dict[str, JsonValue];
+
 def _deserialize_wire_args(args: dict[(str, any)]);
 
 impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
@@ -187,13 +191,9 @@ impl ExecutionManager.spawn_walker_sync(
         call_state: CallState, ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
-            }
-        } else {
-            target_node = ctx.get_root();
+        target_node = await _spawn_target(target_node_id, ctx);
+        if isinstance(target_node, dict) {
+            return target_node;
         }
         result = await asyncio.to_thread(Jac.`spawn, `walker, target_node);
 
@@ -223,13 +223,9 @@ impl ExecutionManager.spawn_walker_async(
         call_state: CallState, ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
-            }
-        } else {
-            target_node = ctx.get_root();
+        target_node = await _spawn_target(target_node_id, ctx);
+        if isinstance(target_node, dict) {
+            return target_node;
         }
         spawn_result = Jac.`spawn(`walker, target_node);
         if iscoroutine(spawn_result) {
@@ -1779,6 +1775,35 @@ impl _unknown_user_failure -> dict[str, JsonValue] {
         'error_code': 'unauthorized',
         'http_status': 401
     };
+}
+
+impl _spawn_target(
+    target_node_id: any, ctx: ExecutionContext
+) -> NodeArchetype | dict[str, JsonValue] {
+    if not target_node_id {
+        return ctx.get_root();
+    }
+    node_id = str(target_node_id);
+    if node_id != 'root' {
+        try {
+            UUID(node_id);
+        } except ValueError {
+            return {
+                'error': 'Invalid node id',
+                'error_code': 'invalid_node_id',
+                'http_status': 400
+            };
+        }
+    }
+    target_node = await Jac.aget_object(node_id);
+    if not isinstance(target_node, NodeArchetype) {
+        return {
+            'error': 'Target node not found',
+            'error_code': 'not_found',
+            'http_status': 404
+        };
+    }
+    return target_node;
 }
 
 impl _deserialize_wire_args(args: dict[(str, any)]) {
