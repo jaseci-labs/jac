@@ -973,7 +973,8 @@ impl MirLowering.absolute(value: MirValue, site: uni.UniNode) -> MirValue {
         bits = self.emit_value(
             MirOp.BITCAST, mir_int(value.type.width, True, True), [value]
         );
-        mask = b.const_int((1 << (value.type.width - 1)) - 1, bits.type);
+        half = 1 << (value.type.width - 2);
+        mask = b.const_int(half - 1 + half, bits.type);
         return self.emit_value(
             MirOp.BITCAST, value.type, [b.binary("and", bits, mask)]
         );
