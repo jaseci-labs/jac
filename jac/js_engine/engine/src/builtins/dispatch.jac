@@ -6308,10 +6308,11 @@ def _dn_native_kind_promise_then_raw(
 }
 
 """__jacPromiseResolveFast(x): Promise.resolve(x) for C = %Promise% when no step
-of it can be observed -- `x` a primitive, or an ordinary object whose `then`
-(read through the chain without a getter, trap or exotic object) is not
-callable: a new promise fulfilled with `x`. Undefined otherwise; the JS
-resolve then takes the capability path (builtins_stubs.js)."""
+of it can be observed -- `x` a primitive, or an ordinary object, not a promise,
+whose `then` (read through the chain without a getter, trap or exotic object)
+is not callable: a new promise fulfilled with `x`. Undefined otherwise; the JS
+resolve then takes the identity (`x.constructor`) and capability paths
+(builtins_stubs.js)."""
 def _dn_native_kind_promise_resolve_fast(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
@@ -6320,6 +6321,9 @@ def _dn_native_kind_promise_resolve_fast(
         rf_x = args[0];
     }
     if jsv_is_object_cell(rf_x) {
+        if js_is_promise(rf_x) {
+            return js_undefined();
+        }
         rf_then: JSValue = js_object_get_ordinary(rf_x, WK_THEN);
         if jsv_is_hole(rf_then) or spec_is_callable(rf_then) {
             return js_undefined();
