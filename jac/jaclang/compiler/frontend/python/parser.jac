@@ -22897,8 +22897,8 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
     }
     line = first_bad.lineno if first_bad is not None else 1;
     column = first_bad.col_offset if first_bad is not None else 0;
-    end_line = line;
-    end_column = column + 1;
+    end_line = first_bad.end_lineno if first_bad is not None else line;
+    end_column = first_bad.end_col_offset if first_bad is not None else column + 1;
     if p.error is not None {
         kind = p.error.kind;
         message = p.error.message;
