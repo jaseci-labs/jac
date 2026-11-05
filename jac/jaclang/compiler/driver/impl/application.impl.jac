@@ -522,14 +522,14 @@ impl prepare_application(
             time.monotonic() - started
         ):.1f}s{current}';
     }
-    import from jaclang.compiler.frontend.codeinfo {
-        get_effective_default_codespace_override,
-        set_effective_default_codespace
-    }
     import from jaclang.runtime.preparation_lock { PREPARATION_LOCK }
     with PREPARATION_LOCK {
         previous = get_effective_default_codespace_override();
-        set_effective_default_codespace('server');
+        preparation_codespace: str = str(effective_default_codespace());
+        if force_codespace {
+            preparation_codespace = force_codespace;
+        }
+        set_effective_default_codespace(preparation_codespace);
         watched = bool(os.environ.get('JAC_KERNEL_TIMING'));
         if watched {
             import faulthandler;
@@ -564,7 +564,7 @@ impl prepare_application(
                             path,
                             program,
                             CompileOptions(
-                                default_codespace='server',
+                                default_codespace=preparation_codespace,
                                 force_codespace=force_codespace,
                                 skip_native_engine=program.options.skip_native_engine,
                                 entry_point=path,

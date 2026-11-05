@@ -1372,7 +1372,10 @@ graph import {
             module_spaces,
             spaces_are_client_only
         },
-        dist.precompile_bytecode.find_jac_files { native_only },
+        dist.precompile_bytecode.find_jac_files {
+            native_only,
+            variant_selected
+        },
         dist.precompile_bytecode.package_native_units { native_units_of },
         dist.publish.runtime_vendor._compile_runtime_module
             | testing.cl_test_runner.module_is_client { module_record },
@@ -1380,6 +1383,7 @@ graph import {
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
+        dist.precompile_bytecode.run_precompile.unit_job { native_only },
         dist.precompile_bytecode.sealable_sources {
             discover_spaces,
             spaces_are_client_only
@@ -6628,6 +6632,10 @@ graph import compiler {
         },
         tools.comment_attach_pass { NodeComments },
     ]
+    driver.boundary_classify
+        ++> backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
+        native_only_import_target
+    }
     frontend.codeinfo --> [
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
             | backends.py.jcir_gen_pass.JcirGenPass._sv_endpoint_effects
@@ -6669,6 +6677,7 @@ graph import compiler {
             endpoint_key
         },
         driver.application.prepare_application {
+            effective_default_codespace,
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
@@ -14059,6 +14068,10 @@ graph import compiler.types {
     fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
         numeric_name_of
     }
+    fixed_width --> type_evaluator.TypeEvaluator._validate_call_type {
+        fixed_width_call_type
+    }
+    ct_eval ++> type_evaluator.TypeEvaluator.__post_init__ { CtEvaluator }
     operations ++> type_evaluator {
         BINARY_OPERATOR_MAP,
         get_type_of_binary_operation,
@@ -14258,6 +14271,7 @@ graph import compiler.types {
 
 graph import compiler.types.stubcat {
     build ++> locate.StubcatArtifact.build { build_catalog }
+    writer ++> build._build_catalog_inner { CatalogWriter }
     format ++> [
         locate { FORMAT_VERSION },
         modiface { IFACE_HASH_LEN },
@@ -14871,7 +14885,7 @@ graph import project {
         validate_against_schema
     }
     dependencies ++> [
-        config { PackageDep },
+        config { PackageDep, split_dependency_table },
         config.JacConfig.merge_dependency_tables { split_dependency_table },
     ]
     kernel_check ++> kernel_compile.kernel_compile_reported { alert_of }
@@ -14929,7 +14943,7 @@ graph import project {
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [
-        config { PersistenceConfig },
+        config { PersistenceConfig, parse_persistence },
         config._parse_toml_data { parse_persistence },
     ]
     placement ++> kinds.resolve_app_kind { match_pin, validate_pins }
@@ -14958,6 +14972,7 @@ graph import project {
         compiler_host._git_ignored_under { drop_git_ignored },
     ]
     textio --> config.JacConfig.save { read_file_with_encoding }
+    tomlio ++> config { read_toml_with_encoding }
     tomlio ++> [
         config.JacConfig.load | template_loader { read_toml_with_encoding },
         config.JacConfig.merge_from_toml_file { read_toml_with_encoding },
