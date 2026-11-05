@@ -1106,6 +1106,8 @@ import from engine.src.builtins.promise {
     js_promise_get_value,
     js_promise_settle,
     js_promise_get_reactions,
+    js_promise_reaction_field,
+    js_promise_reset_reactions,
     js_promise_add_reaction,
     js_make_resolve_fn,
     js_make_reject_fn,
@@ -5099,9 +5101,9 @@ obj VM {
         i_r: int = 0;
         while i_r < n_r {
             r: JSValue = js_array_get(reactions, i_r);
-            on_f: JSValue = js_object_get(r, _RKEY_ONFULFILL);
-            on_r: JSValue = js_object_get(r, _RKEY_ONREJECT);
-            next_p: JSValue = js_object_get(r, _RKEY_NEXT);
+            on_f: JSValue = js_promise_reaction_field(r, 0);
+            on_r: JSValue = js_promise_reaction_field(r, 1);
+            next_p: JSValue = js_promise_reaction_field(r, 2);
             if _VM_PD2
                 and jsv_is_object_cell(on_f)
                 and jsv_to_table_id(on_f) > 0
@@ -5116,7 +5118,7 @@ obj VM {
             scheduler_push_reaction(self.realm, on_f, on_r, state, value, next_p);
             i_r = i_r + 1;
         }
-        js_object_set(p, _KEY_PREACTIONS, js_array_create([]));
+        js_promise_reset_reactions(p);
     }
 
     """

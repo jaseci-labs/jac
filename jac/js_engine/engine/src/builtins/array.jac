@@ -60,6 +60,7 @@ import from engine.src.runtime.jsvalue {
 }
 import from engine.src.runtime.jsobj_type {
     jo_all_keys,
+    jo_ep,
     jo_eget,
     jo_elems_kind,
     jo_elen,
@@ -164,7 +165,8 @@ import from engine.src.runtime.gc_pin { gc_pin_value }
 import from engine.src.runtime.mem {
     byte_chr,
     str_byte,
-    str_nbytes
+    str_nbytes,
+    write_i64
 }
 
 """Internal: object-table index of Array.prototype, wired by init_global."""
@@ -239,6 +241,21 @@ def:pub js_array_spread_copy(arr: JSValue) -> JSValue {
         sc_k = sc_k + 1;
     }
     return js_array_create(sc_vals);
+}
+
+"""Empty an Array at the canonical array shape with all its elements dense
+(length 0, the buffer kept), as `arr.length = 0` would; False (nothing done)
+otherwise."""
+def:pub js_array_truncate_fast(arr: JSValue) -> bool {
+    if not js_array_dense_full(arr) {
+        return False;
+    }
+    tf_id: int = jsv_to_table_id(arr);
+    if jo_ep(tf_id) != 0 {
+        write_i64(jo_ep(tf_id), 0, 0);
+    }
+    jo_sset(tf_id, 1, js_array_len_value(0));
+    return True;
 }
 
 """push(v) of one value onto an Array at the canonical array shape (the

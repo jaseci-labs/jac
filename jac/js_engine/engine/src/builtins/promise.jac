@@ -32,7 +32,9 @@ import from engine.src.runtime.jsvalue {
     jsv_to_int32,
     jsv_from_string_id,
     jsv_to_table_id,
-    jsv_is_cell
+    jsv_is_cell,
+    jsv_hole,
+    jsv_is_hole
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -47,13 +49,17 @@ import from engine.src.runtime.jsobject {
     js_object_get_prototype,
     js_object_own_data_slot,
     js_object_slot_at_id,
-    js_object_get_own_accessor_getter
+    js_object_get_own_accessor_getter,
+    js_object_ic_shape,
+    js_object_new_shaped3,
+    js_object_new_shaped4
 }
 import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
 import from engine.src.runtime.jssymbol { SYMBOL_SPECIES }
-import from engine.src.runtime.jsobj_type { JSProperty, BRAND_PROMISE }
+import from engine.src.runtime.jsobj_type { JSProperty, BRAND_PROMISE, jo_brand, jo_set_brand, jo_sset, jo_mode, MAP_MODE_SHAPE }
+import from engine.src.runtime.shape { shape_lookup, shape_key_count, SHAPE_ATTR_ACCESSOR }
 import from engine.src.runtime.jsstring { str_intern }
-import from engine.src.builtins.array { js_array_create, js_array_push }
+import from engine.src.builtins.array { js_array_create, js_array_push, js_array_push1_fast, js_array_truncate_fast }
 import from engine.src.runtime.gc_pin { gc_pin_value, gc_pin_live_list }
 import from engine.src.builtins.markers {
     _KEY_IS_PROMISE,
@@ -280,6 +286,21 @@ def:pub promise_seed_keys -> None {
 
 """Create a new pending Promise object."""
 def:pub js_promise_create -> JSValue {
+    # At the shape the first promise reached (marker, state, value,
+    # reactions): four property adds walked the transitions per promise.
+    if _PRM_SID > 0 and jsv_is_object_cell(_PROMISE_PROTO) {
+        pf: JSValue = js_object_new_shaped4(
+            jsv_to_table_id(_PROMISE_PROTO),
+            _PRM_SID,
+            js_true(),
+            js_int(PROMISE_PENDING),
+            js_undefined(),
+            js_array_create([])
+        );
+        jo_set_brand(jsv_to_table_id(pf), jo_brand(jsv_to_table_id(pf)) | BRAND_PROMISE);
+        _ah_assign_ids(pf);
+        return pf;
+    }
     p: JSValue = js_object_create(_PROMISE_PROTO)
         if jsv_is_object_cell(_PROMISE_PROTO)
         else js_object_create_null();
@@ -287,8 +308,48 @@ def:pub js_promise_create -> JSValue {
     js_object_set(p, _KEY_PSTATE, js_int(PROMISE_PENDING));
     js_object_set(p, _KEY_PVALUE, js_undefined());
     js_object_set(p, _KEY_PREACTIONS, js_array_create([]));
+    if _PRM_SID < 0 and jsv_is_object_cell(_PROMISE_PROTO) {
+        _PRM_SID = _shape_learn(p, [_KEY_IS_PROMISE, _KEY_PSTATE, _KEY_PVALUE, _KEY_PREACTIONS]);
+    }
     _ah_assign_ids(p);
     return p;
+}
+
+# The shapes js_promise_create and js_promise_add_reaction build at, learned
+# from the first object built the ordinary way (shapes are never freed): a
+# promise's slots are marker, state, value, reactions; a reaction's are
+# on-fulfill, on-reject, next.
+glob _PRM_SID: int = -1,
+     _RCT_SID: int = -1;
+
+"""The shape of `v` when its own properties are exactly `keys`, data
+properties in slots 0, 1, ... in that order; 0 otherwise (never retried)."""
+def _shape_learn(v: JSValue, keys: list[int]) -> int {
+    sl_sid: int = js_object_ic_shape(v);
+    if sl_sid <= 0 or jo_mode(jsv_to_table_id(v)) != MAP_MODE_SHAPE {
+        return 0;
+    }
+    if shape_key_count(sl_sid) != len(keys) {
+        return 0;
+    }
+    sl_i: int = 0;
+    while sl_i < len(keys) {
+        sl_e: int = shape_lookup(sl_sid, keys[sl_i]);
+        if sl_e < 0 or sl_e // 16 != sl_i or (sl_e & SHAPE_ATTR_ACCESSOR) != 0 {
+            return 0;
+        }
+        sl_i = sl_i + 1;
+    }
+    return sl_sid;
+}
+
+"""Slot `si` of promise `p` when it is still at the creation shape, else
+the hole (the caller reads by key)."""
+def _prm_slot(p: JSValue, si: int) -> JSValue {
+    if _PRM_SID > 0 and js_object_ic_shape(p) == _PRM_SID {
+        return js_object_slot_at_id(jsv_to_table_id(p), si);
+    }
+    return jsv_hole();
 }
 
 """Install the promise internal slots on an existing object.
@@ -318,7 +379,10 @@ def:pub js_is_promise(v: JSValue) -> bool {
 
 """Return the current promise state (PROMISE_PENDING / FULFILLED / REJECTED)."""
 def:pub js_promise_get_state(p: JSValue) -> int {
-    sv: JSValue = js_object_get(p, _KEY_PSTATE);
+    sv: JSValue = _prm_slot(p, 1);
+    if jsv_is_hole(sv) {
+        sv = js_object_get(p, _KEY_PSTATE);
+    }
     if jsv_is_int32(sv) {
         return jsv_to_int32(sv);
     }
@@ -327,14 +391,23 @@ def:pub js_promise_get_state(p: JSValue) -> int {
 
 """Return the settled value (undefined if still pending)."""
 def:pub js_promise_get_value(p: JSValue) -> JSValue {
-    return js_object_get(p, _KEY_PVALUE);
+    gv: JSValue = _prm_slot(p, 2);
+    if jsv_is_hole(gv) {
+        return js_object_get(p, _KEY_PVALUE);
+    }
+    return gv;
 }
 
 """Atomically settle a promise (fulfilled or rejected).
 Called only by the VM once, when it knows the promise is still pending."""
 def:pub js_promise_settle(p: JSValue, state: int, value: JSValue) {
-    js_object_set(p, _KEY_PSTATE, js_int(state));
-    js_object_set(p, _KEY_PVALUE, value);
+    if _PRM_SID > 0 and js_object_ic_shape(p) == _PRM_SID {
+        jo_sset(jsv_to_table_id(p), 1, js_int(state));
+        jo_sset(jsv_to_table_id(p), 2, value);
+    } else {
+        js_object_set(p, _KEY_PSTATE, js_int(state));
+        js_object_set(p, _KEY_PVALUE, value);
+    }
     if _AH_PROMISE_HOOKS != 0 and js_object_has_own(p, _KEY_AH_ASYNC_ID) {
         sv: JSValue = js_object_get(p, _KEY_AH_ASYNC_ID);
         if jsv_is_int32(sv) {
@@ -347,19 +420,56 @@ def:pub js_promise_settle(p: JSValue, state: int, value: JSValue) {
 
 """Return the reactions array stored on an unsettled promise."""
 def:pub js_promise_get_reactions(p: JSValue) -> JSValue {
-    return js_object_get(p, _KEY_PREACTIONS);
+    gr: JSValue = _prm_slot(p, 3);
+    if jsv_is_hole(gr) {
+        return js_object_get(p, _KEY_PREACTIONS);
+    }
+    return gr;
+}
+
+"""Empty a settled promise's reactions once they are scheduled (the array is
+reachable only from `p`): in place, else a fresh empty array."""
+def:pub js_promise_reset_reactions(p: JSValue) -> None {
+    if js_array_truncate_fast(js_promise_get_reactions(p)) {
+        return;
+    }
+    js_object_set(p, _KEY_PREACTIONS, js_array_create([]));
+}
+
+"""Field `k` (0 on-fulfill, 1 on-reject, 2 next) of a reaction object."""
+def:pub js_promise_reaction_field(r: JSValue, k: int) -> JSValue {
+    if _RCT_SID > 0 and js_object_ic_shape(r) == _RCT_SID {
+        return js_object_slot_at_id(jsv_to_table_id(r), k);
+    }
+    if k == 0 {
+        return js_object_get(r, _RKEY_ONFULFILL);
+    }
+    if k == 1 {
+        return js_object_get(r, _RKEY_ONREJECT);
+    }
+    return js_object_get(r, _RKEY_NEXT);
 }
 
 """Add a reaction object {__RF__, __RJ__, __RN__} to a pending promise."""
 def:pub js_promise_add_reaction(
     p: JSValue, on_fulfill: JSValue, on_reject: JSValue, next: JSValue
 ) {
-    r: JSValue = js_object_create_null();
-    js_object_set(r, _RKEY_ONFULFILL, on_fulfill);
-    js_object_set(r, _RKEY_ONREJECT, on_reject);
-    js_object_set(r, _RKEY_NEXT, next);
-    arr: JSValue = js_object_get(p, _KEY_PREACTIONS);
-    js_array_push(arr, r);
+    r: JSValue = js_undefined();
+    if _RCT_SID > 0 {
+        r = js_object_new_shaped3(-1, _RCT_SID, on_fulfill, on_reject, next);
+    } else {
+        r = js_object_create_null();
+        js_object_set(r, _RKEY_ONFULFILL, on_fulfill);
+        js_object_set(r, _RKEY_ONREJECT, on_reject);
+        js_object_set(r, _RKEY_NEXT, next);
+        if _RCT_SID < 0 {
+            _RCT_SID = _shape_learn(r, [_RKEY_ONFULFILL, _RKEY_ONREJECT, _RKEY_NEXT]);
+        }
+    }
+    arr: JSValue = js_promise_get_reactions(p);
+    if jsv_is_hole(js_array_push1_fast(arr, r)) {
+        js_array_push(arr, r);
+    }
 }
 
 # ── Resolve / Reject callback wrappers ───────────────────────────────────────
