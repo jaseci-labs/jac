@@ -10759,7 +10759,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                     p,
                     False,
                     a_2,
-                    pa_get_last_comprehension_item(pa_seq_last(b)),
+                    pa_get_last_comprehension_item(b),
                     "Generator expression must be parenthesized"
                 );
                 p.level -= 1;
