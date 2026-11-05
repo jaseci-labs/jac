@@ -236,7 +236,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
                 if isinstance(list_inst, ClassType) and not expr.values {
                     expected_elem = self._get_expected_element_type(
-                        expected_type, self.prefetch.list_class
+                        expected_type, self.prefetch.list_class, True
                     );
                     if expected_elem is not None {
                         list_inst.private.type_args = [expected_elem];
@@ -307,7 +307,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 dict_inst = self._convert_to_instance(self.prefetch.dict_class);
                 if isinstance(dict_inst, ClassType) and not expr.kv_pairs {
                     expected_kv_e = self._get_expected_kv_types(
-                        expected_type, self.prefetch.dict_class
+                        expected_type, self.prefetch.dict_class, True
                     );
                     if expected_kv_e is not None {
                         dict_inst.private.type_args = list(expected_kv_e);
@@ -472,7 +472,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
                 if isinstance(set_inst, ClassType) and not expr.values {
                     expected_elem_se = self._get_expected_element_type(
-                        expected_type, self.prefetch.set_class
+                        expected_type, self.prefetch.set_class, True
                     );
                     if expected_elem_se is not None {
                         set_inst.private.type_args = [expected_elem_se];
@@ -1753,7 +1753,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     and constructor.is_instantiable_class()
                     and constructor.is_builtin(["list", "set", "frozenset", "dict"]) {
                     expected = self._get_expected_container_type(
-                        expected_type, constructor
+                        expected_type, constructor, True
                     )
                         if expected_type is not None
                         else None;

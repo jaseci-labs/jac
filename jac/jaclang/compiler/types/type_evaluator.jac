@@ -545,15 +545,15 @@ walker TypeEvaluator {
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
     def _is_empty_container_expr(expr: Expr) -> bool;
     def _get_expected_container_type(
-        expected_type: TypeBase | None, container_class: TypeBase
+        expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
     ) -> ClassType | None;
 
     def _get_expected_element_type(
-        expected_type: TypeBase | None, container_class: TypeBase
+        expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
     ) -> TypeBase | None;
 
     def _get_expected_kv_types(
-        expected_type: TypeBase | None, dict_class: TypeBase
+        expected_type: TypeBase | None, dict_class: TypeBase, empty: bool = False
     ) -> tuple[TypeBase, TypeBase] | None;
 
     def _infer_elem_from_mutations(

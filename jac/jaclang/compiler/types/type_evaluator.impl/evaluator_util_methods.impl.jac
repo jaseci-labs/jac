@@ -940,7 +940,7 @@ impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -
 }
 
 impl TypeEvaluator._get_expected_container_type(
-    expected_type: TypeBase | None, container_class: TypeBase
+    expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
 ) -> ClassType | None {
     if not isinstance(container_class, ClassType) {
         return None;
@@ -961,7 +961,7 @@ impl TypeEvaluator._get_expected_container_type(
             found = candidate;
         }
     }
-    if found is not None {
+    if found is not None or not empty {
         return found;
     }
     for candidate in candidates {
@@ -1002,9 +1002,9 @@ impl TypeEvaluator._get_expected_container_type(
 }
 
 impl TypeEvaluator._get_expected_element_type(
-    expected_type: TypeBase | None, container_class: TypeBase
+    expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
 ) -> TypeBase | None {
-    expected = self._get_expected_container_type(expected_type, container_class);
+    expected = self._get_expected_container_type(expected_type, container_class, empty);
     if expected is not None and expected.private.type_args {
         return self._convert_to_instance(expected.private.type_args[0]);
     }
@@ -1012,9 +1012,9 @@ impl TypeEvaluator._get_expected_element_type(
 }
 
 impl TypeEvaluator._get_expected_kv_types(
-    expected_type: TypeBase | None, dict_class: TypeBase
+    expected_type: TypeBase | None, dict_class: TypeBase, empty: bool = False
 ) -> tuple[TypeBase, TypeBase] | None {
-    expected = self._get_expected_container_type(expected_type, dict_class);
+    expected = self._get_expected_container_type(expected_type, dict_class, empty);
     if expected is not None
         and expected.private.type_args
         and len(expected.private.type_args) >= 2 {

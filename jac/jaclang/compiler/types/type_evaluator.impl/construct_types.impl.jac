@@ -1094,15 +1094,25 @@ impl TypeEvaluator.struct_format_fields(
 
 impl TypeEvaluator._native_struct_unpack_result(expr: FuncCall) -> TypeBase | None {
     target = expr.target;
-    if not isinstance(target, AtomTrailer)
-        or not target.is_attr
-        or not isinstance(target.right, Name)
-        or target.right.value not in ("unpack", "unpack_from")
-        or not expr.params {
-        return None;
+    name = "";
+    if isinstance(target, AtomTrailer)
+        and target.is_attr
+        and isinstance(target.right, Name) {
+        owner = self.get_type_of_expression(target.target);
+        if not isinstance(owner, ModuleType) or owner.mod_name != "struct" {
+            return None;
+        }
+        name = target.right.value;
+    } elif isinstance(target, Name)
+        and target.sym is not None
+        and target.sym.decl is not None
+        and target.sym.decl.loc is not None
+        and os.path.basename(target.sym.decl.loc.mod_path)
+            in ("struct.pyi", "_struct.pyi") {
+        decl = target.sym.decl;
+        name = decl.value if isinstance(decl, Name) else target.value;
     }
-    owner = self.get_type_of_expression(target.target);
-    if not isinstance(owner, ModuleType) or owner.mod_name != "struct" {
+    if name not in ("unpack", "unpack_from") or not expr.params {
         return None;
     }
     fmt = literal_string_value(expr.params[0]);
