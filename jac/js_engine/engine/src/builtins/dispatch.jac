@@ -79,6 +79,7 @@ import from engine.src.runtime.jsstring {
 import from engine.src.runtime.spec_ops { spec_is_callable, spec_same_value }
 import from engine.src.runtime.wk_keys {
     WK_REF,
+    WK_THEN,
     WK_TIMER_ID,
     WK_UNREF,
     WK_NAME,
@@ -383,6 +384,7 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_PROMISE_THEN,
     NATIVE_KIND_PROMISE_THEN_RAW,
     NATIVE_KIND_PROMISE_THEN_SETUP,
+    NATIVE_KIND_PROMISE_RESOLVE_FAST,
     NATIVE_KIND_PROMISE_CATCH,
     NATIVE_KIND_PROMISE_FINALLY,
     NATIVE_KIND_SET_TIMEOUT,
@@ -1367,6 +1369,7 @@ import from engine.src.runtime.iterator { js_make_iterator }
 import from engine.src.runtime.jsobj_type { JSProperty }
 import from engine.src.vm.vm_obs { js_to_string_observable }
 import from engine.src.runtime.jsobject {
+    js_object_get_ordinary,
     js_object_create_null,
     js_object_set,
     js_object_get,
@@ -6304,6 +6307,40 @@ def _dn_native_kind_promise_then_raw(
     return next_p;
 }
 
+"""__jacPromiseResolveFast(x): Promise.resolve(x) for C = %Promise% when no step
+of it can be observed -- `x` a primitive, or an ordinary object whose `then`
+(read through the chain without a getter, trap or exotic object) is not
+callable: a new promise fulfilled with `x`. Undefined otherwise; the JS
+resolve then takes the capability path (builtins_stubs.js)."""
+def _dn_native_kind_promise_resolve_fast(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    rf_x: JSValue = js_undefined();
+    if len(args) > 0 {
+        rf_x = args[0];
+    }
+    if jsv_is_object_cell(rf_x) {
+        rf_then: JSValue = js_object_get_ordinary(rf_x, WK_THEN);
+        if jsv_is_hole(rf_then) or spec_is_callable(rf_then) {
+            return js_undefined();
+        }
+    } elif not (
+        jsv_is_undefined(rf_x)
+        or jsv_is_null(rf_x)
+        or jsv_is_bool(rf_x)
+        or jsv_is_int32(rf_x)
+        or jsv_is_double(rf_x)
+        or jsv_is_string_cell(rf_x)
+        or jsv_is_symbol(rf_x)
+        or jsv_is_bigint_cell(rf_x)
+    ) {
+        return js_undefined();
+    }
+    rf_p: JSValue = js_promise_create();
+    js_promise_settle(rf_p, PROMISE_FULFILLED, rf_x);
+    return rf_p;
+}
+
 """__jacPromiseThenSetup(wrapper, Promise) — see _dn_native_kind_promise_then."""
 def _dn_native_kind_promise_then_setup(
     realm: Realm, this_val: JSValue, args: list[JSValue]
@@ -11226,6 +11263,7 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN] = _dn_native_kind_promise_then;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN_RAW] = _dn_native_kind_promise_then_raw;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN_SETUP] = _dn_native_kind_promise_then_setup;
+    _DISPATCH_TABLE[NATIVE_KIND_PROMISE_RESOLVE_FAST] = _dn_native_kind_promise_resolve_fast;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_CATCH] = _dn_native_kind_promise_catch;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_FINALLY] = _dn_native_kind_promise_noop;
     _DISPATCH_TABLE[NATIVE_KIND_SET_TIMEOUT] = _dn_native_kind_set_timeout;

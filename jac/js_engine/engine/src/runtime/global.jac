@@ -387,6 +387,7 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_PROMISE_THEN,
     NATIVE_KIND_PROMISE_THEN_RAW,
     NATIVE_KIND_PROMISE_THEN_SETUP,
+    NATIVE_KIND_PROMISE_RESOLVE_FAST,
     NATIVE_KIND_PROMISE_CATCH,
     NATIVE_KIND_PROMISE_FINALLY,
     NATIVE_KIND_PROMISE_STATIC_RESOLVE,
@@ -4715,6 +4716,11 @@ def:pub init_global(ctx: GlobalContext) {
         gv,
         str_intern("__jacPromiseThenSetup"),
         js_native_create("__jacPromiseThenSetup", 2, NATIVE_KIND_PROMISE_THEN_SETUP)
+    );
+    js_object_set(
+        gv,
+        str_intern("__jacPromiseResolveFast"),
+        js_native_create("resolve", 1, NATIVE_KIND_PROMISE_RESOLVE_FAST)
     );
 
     # SetData size for ES2024 Set algebra (bypasses receiver .size accessor overrides).

@@ -994,7 +994,8 @@ glob:pub NATIVE_KIND_CONSOLE_LOG: int = 1,
      NATIVE_KIND_NET_TCP_SHUTDOWN: int = 1105,
      NATIVE_KIND_PROMISE_THEN_RAW: int = 1106,
      NATIVE_KIND_PROMISE_THEN_SETUP: int = 1107,
-     NATIVE_KIND_LAST: int = 1108;
+     NATIVE_KIND_PROMISE_RESOLVE_FAST: int = 1108,
+     NATIVE_KIND_LAST: int = 1109;
 
 
 # ── Global numeric / string utilities ────────────────────────────────────────
