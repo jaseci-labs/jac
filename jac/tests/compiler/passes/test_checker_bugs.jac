@@ -2453,3 +2453,8 @@ test "an untyped self assignment keeps the declared type of an inherited member"
     assert any("list[int] | None" in e for e in errors) , errors;
     assert any("int | None" in e and "list" not in e for e in errors) , errors;
 }
+
+test "iterating a union with an any member yields any" {
+    program = compile_and_check("checker_iter_union_with_any.jac");
+    assert len(program.errors_had) == 0 , [str(e) for e in program.errors_had];
+}
