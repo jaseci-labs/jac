@@ -7,8 +7,8 @@
  * __jac64_<name> before linking, and these adapters (whose signatures match
  * the floor's declarations exactly) truncate/extend and forward.
  *
- * Only functions DEFINED in the vendored libc need adapters — imports keep
- * the floor's declared signature, and the JS host is signature-agnostic.
+ * A host import needs one too when the floor's declaration widens a size the
+ * host reads as a JS number (write's count): an i64 reaches JS as a BigInt.
  * The list must stay in sync with _ABI64_ADAPTED in wasm_build.jac.
  */
 #include <stdarg.h>
@@ -80,6 +80,12 @@ i64 __jac64_fwrite(const void *p, i64 size, i64 n, void *stream) {
         }
     }
     return 0;
+}
+
+/* The floor declares write with a Jac int count and result; the host's
+ * write takes and returns a wasm32 size. */
+i64 __jac64_write(int32_t fd, const void *p, i64 n) {
+    return (i64)write(fd, p, (size_t)n);
 }
 
 int __jac64_snprintf(char *buf, i64 n, const char *fmt, ...) {

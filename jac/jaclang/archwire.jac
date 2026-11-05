@@ -10735,6 +10735,7 @@ graph import compiler.backends.native.mir {
     }
     rc ++> backend { mir_insert_rc, mir_insert_unwind }
     runtime_abi ++> [
+        emit { mir_runtime_abi },
         generators | rc { mir_runtime_signature },
         lower { mir_osp_signature, mir_runtime_signature },
     ]

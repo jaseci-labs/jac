@@ -14,6 +14,24 @@ impl mir_osp_signature(name: str) -> tuple[list[MirType], MirType] {
     return ([mir_runtime_spec(spec) for spec in specs[1:]], mir_runtime_spec(specs[0]));
 }
 
+impl mir_runtime_abi(name: str) -> (tuple[list[MirType], MirType] | None) {
+    specs = MIR_RUNTIME_ABI.get(name) or MIR_OSP_ABI.get(name);
+    if specs is None {
+        return None;
+    }
+    return (
+        [mir_runtime_abi_spec(spec) for spec in specs[1:]],
+        mir_runtime_abi_spec(specs[0])
+    );
+}
+
+impl mir_runtime_abi_spec(spec: str) -> MirType {
+    if spec == "ref" {
+        return mir_int();
+    }
+    return mir_runtime_spec(spec);
+}
+
 impl mir_runtime_spec(spec: str) -> MirType {
     if spec == "int" {
         return mir_int();
