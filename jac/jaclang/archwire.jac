@@ -13640,6 +13640,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._classify_property_symbol { PropertyWriteKind },
         type_evaluator.TypeEvaluator._heal_ancestry { ensure_mro_fresh },
         type_evaluator.TypeEvaluator._heal_class_bases { linearize_mro, mro_signature },
+        type_evaluator.TypeEvaluator._inherited_member_declared_type {
+            ensure_mro_fresh
+        },
         type_evaluator.TypeEvaluator._lookup_class_member { ensure_mro_fresh },
         type_evaluator.TypeEvaluator._same_type_args { types_equivalent },
         type_evaluator.TypeEvaluator._super_owner_for { collect_member_syms },

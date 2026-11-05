@@ -3005,6 +3005,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     }
                     return self._convert_to_instance(annotation_type);
                 } else {
+                    if inherited := self._inherited_member_declared_type(symbol) {
+                        return inherited;
+                    }
                     if node_.parent.parent.value is not None {
                         return self._widen_literal_for_declaration(
                             self.get_type_of_expression(node_.parent.parent.value)
