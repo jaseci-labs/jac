@@ -7,7 +7,7 @@ impl _mismatch(expected: str, value: any) -> ValueError {
     return ValueError(f"expected {expected}, got {kind}");
 }
 
-impl _coerce_bool(value: any, text: bool = False) -> bool {
+impl _coerce_bool(value: any, text: bool) -> bool {
     if isinstance(value, bool) {
         return value;
     }
@@ -24,7 +24,7 @@ impl _coerce_bool(value: any, text: bool = False) -> bool {
     raise ValueError('invalid boolean');
 }
 
-impl _coerce_int(value: any, text: bool = False) -> int {
+impl _coerce_int(value: any, text: bool) -> int {
     if isinstance(value, int) and not isinstance(value, bool) {
         return value;
     }
@@ -39,7 +39,7 @@ impl _coerce_int(value: any, text: bool = False) -> int {
     raise _mismatch('integer', value);
 }
 
-impl _coerce_float(value: any, text: bool = False) -> float {
+impl _coerce_float(value: any, text: bool) -> float {
     is_number = isinstance(value, (int, float)) and not isinstance(value, bool);
     is_numeric_text = text and isinstance(value, str) and _FLOAT_TEXT.fullmatch(value);
     if not (is_number or is_numeric_text) {
@@ -53,28 +53,14 @@ impl _coerce_float(value: any, text: bool = False) -> float {
 }
 
 impl _coerce_string_type(value: any, target: type) -> any {
-    if isinstance(value, target) {
-        return value;
-    }
-    name = target.__name__;
-    is_number = isinstance(value, (int, float)) and not isinstance(value, bool);
-    if not (isinstance(value, str) or (target is Decimal and is_number)) {
-        raise _mismatch(f"a string for {name}", value);
-    }
-    spelled = str(value);
-    if target is Decimal and not _FLOAT_TEXT.fullmatch(spelled) {
-        raise ValueError(f"invalid {name}");
-    }
     try {
-        return _STRING_PARSERS[target](spelled);
+        return _STRING_PARSERS[target](value);
     } except Exception {
-        raise ValueError(f"invalid {name}") from None;
+        raise ValueError(f"invalid {target.__name__}") from None;
     }
 }
 
-impl _coerce_literal(
-    value: any, options: tuple[object, ...], text: bool = False
-) -> any {
+impl _coerce_literal(value: any, options: tuple[object, ...], text: bool) -> any {
     for opt in options {
         if opt is None or value is None {
             if opt is value {
@@ -95,7 +81,7 @@ impl _coerce_literal(
 }
 
 impl _coerce_tuple(
-    value: any, args: tuple[object, ...], text: bool = False
+    value: any, args: tuple[object, ...], text: bool
 ) -> tuple[any, ...] {
     items = _as_item_list(value, text);
     if len(args) == 2 and args[1] is Ellipsis {
@@ -107,9 +93,7 @@ impl _coerce_tuple(
     return tuple(coerce_value(v, t, text) for (v, t) in zip(items, args));
 }
 
-impl _coerce_dict(
-    value: any, args: tuple[object, ...], text: bool = False
-) -> dict[any, any] {
+impl _coerce_dict(value: any, args: tuple[object, ...], text: bool) -> dict[any, any] {
     if not isinstance(value, dict) {
         raise _mismatch('object', value);
     }
@@ -160,9 +144,9 @@ impl _construct_object(value: any, target: any) -> any {
     return target(**kwargs);
 }
 
-impl _as_item_list(value: any, text: bool = False) -> list[any] {
-    if isinstance(value, (list, tuple, set)) {
-        return list(value);
+impl _as_item_list(value: any, text: bool) -> list[any] {
+    if isinstance(value, list) {
+        return value;
     }
     if text {
         return [value];
@@ -269,9 +253,6 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         return {coerce_value(v, item_t, text) for v in _as_item_list(value, text)};
     }
     if shape is tuple {
-        if origin is None {
-            return tuple(_as_item_list(value, text));
-        }
         return _coerce_tuple(value, args, text);
     }
     if shape is dict {
@@ -296,9 +277,6 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         raise _mismatch('string', value);
     }
     if target is bytes {
-        if isinstance(value, bytes) {
-            return value;
-        }
         if isinstance(value, str) {
             return value.encode();
         }
@@ -306,7 +284,7 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
     }
     if target is UploadFile
         or (isinstance(target, type) and issubclass(target, UploadFile)) {
-        return value;
+        raise _mismatch('a file', value);
     }
     if isinstance(target, EnumMeta) {
         if isinstance(value, target) {
@@ -322,7 +300,7 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         return _coerce_string_type(value, target);
     }
     if isinstance(target, type) {
-        for base in (int, float, str, bytes) {
+        for base in (int, float, str) {
             if issubclass(target, base) {
                 return target(coerce_value(value, base, text));
             }
@@ -336,7 +314,7 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
     return value;
 }
 
-impl _coerce_union(value: any, options: tuple[object, ...], text: bool = False) -> any {
+impl _coerce_union(value: any, options: tuple[object, ...], text: bool) -> any {
     none_type = type(None);
     if value is None {
         for opt in options {

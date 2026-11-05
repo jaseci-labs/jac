@@ -3,10 +3,8 @@ import re;
 import typing;
 
 import from datetime { date, datetime, time }
-import from decimal { Decimal }
 import from enum { EnumMeta }
 import from math { isfinite }
-import from pathlib { Path }
 import from types { UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
 import from uuid { UUID }
@@ -42,8 +40,7 @@ glob _TRUE_STRINGS: set[str] = {'1', 'true', 'yes', 'on', 'y'},
          float: 'number',
          str: 'string',
          list: 'array',
-         dict: 'object',
-         type(None): 'null'
+         dict: 'object'
      },
      _MAX_EXACT_FLOAT_INT: int = 2 ** 53,
      _INT_TEXT: re.Pattern = re.compile(r'[+-]?[0-9]+'),
@@ -54,37 +51,29 @@ glob _TRUE_STRINGS: set[str] = {'1', 'true', 'yes', 'on', 'y'},
          datetime: datetime.fromisoformat,
          date: date.fromisoformat,
          time: time.fromisoformat,
-         UUID: UUID,
-         Decimal: Decimal,
-         Path: Path
+         UUID: UUID
      };
 
 
 def _mismatch(expected: str, value: any) -> ValueError;
 
-def _coerce_bool(value: any, text: bool = False) -> bool;
+def _coerce_bool(value: any, text: bool) -> bool;
 
-def _coerce_int(value: any, text: bool = False) -> int;
+def _coerce_int(value: any, text: bool) -> int;
 
-def _coerce_float(value: any, text: bool = False) -> float;
+def _coerce_float(value: any, text: bool) -> float;
 
 def _coerce_string_type(value: any, target: type) -> any;
 
-def _coerce_literal(
-    value: any, options: tuple[object, ...], text: bool = False
-) -> any;
+def _coerce_literal(value: any, options: tuple[object, ...], text: bool) -> any;
 
-def _coerce_tuple(
-    value: any, args: tuple[object, ...], text: bool = False
-) -> tuple[any, ...];
+def _coerce_tuple(value: any, args: tuple[object, ...], text: bool) -> tuple[any, ...];
 
-def _coerce_dict(
-    value: any, args: tuple[object, ...], text: bool = False
-) -> dict[any, any];
+def _coerce_dict(value: any, args: tuple[object, ...], text: bool) -> dict[any, any];
 
 def _construct_object(value: any, target: any) -> any;
 
-def _as_item_list(value: any, text: bool = False) -> list[any];
+def _as_item_list(value: any, text: bool) -> list[any];
 
 def is_upload_type(target: any) -> bool;
 
@@ -98,7 +87,7 @@ def _without_none(target: any) -> any;
 
 def coerce_value(value: any, target: any = None, text: bool = False) -> any;
 
-def _coerce_union(value: any, options: tuple[object, ...], text: bool = False) -> any;
+def _coerce_union(value: any, options: tuple[object, ...], text: bool) -> any;
 
 def _param_target(param: APIParameter) -> any;
 

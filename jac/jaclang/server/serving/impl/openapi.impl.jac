@@ -22,7 +22,7 @@ impl _schema_for_type(
         return {'type': 'array', 'items': items, 'uniqueItems': True};
     }
     if shape is tuple {
-        return {'type': 'array'} if origin is None else _tuple_schema(args, schemas);
+        return _tuple_schema(args, schemas);
     }
     if shape is dict {
         return {'type': 'object'};
@@ -37,15 +37,6 @@ impl _schema_for_type(
             return _schema_for_type(options[0], schemas);
         }
         return {'anyOf': [_schema_for_type(a, schemas) for a in options]};
-    }
-    if target is str {
-        return {'type': 'string'};
-    }
-    if target is int {
-        return {'type': 'integer'};
-    }
-    if target is float {
-        return {'type': 'number'};
     }
     if target is bool {
         return {'type': 'boolean'};
@@ -134,11 +125,8 @@ impl _schema_default(value: any) -> any {
     if isinstance(value, (datetime, date, time)) {
         return value.isoformat();
     }
-    if isinstance(value, (list, tuple)) {
-        return [_schema_default(item) for item in value];
-    }
     if isinstance(value, (set, frozenset)) {
-        return [_schema_default(item) for item in sorted(value, key=str)];
+        return sorted(value, key=str);
     }
     return value;
 }

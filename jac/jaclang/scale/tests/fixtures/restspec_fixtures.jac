@@ -74,7 +74,8 @@ walker:pub GetWalkerWithParams {
         age: int,
         tags: list[str] = [],
         maybe_tags: list[str] | None = None,
-        flag: bool = True;
+        flag: bool = True,
+        since: datetime = datetime(2026, 1, 2);
 
     can get_data with Root entry {
         report {

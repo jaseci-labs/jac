@@ -146,7 +146,7 @@ Each value is checked against the type declared for it, and a mismatch answers `
 
 Browser input values are strings, so convert them before sending them to a numeric field: `int(e.target.value)`.
 
-`datetime`, `date`, `time`, `UUID`, `Decimal` and `Path` fields take a string from either source, with dates and times in ISO 8601. A `Decimal` also takes a JSON number. In a union, a JSON value that already is one of the members stays as it is. Otherwise the members are tried in declared order, which is also the order used for text.
+`datetime`, `date`, `time` and `UUID` fields take a string from either source, with dates and times in ISO 8601. In a union, a JSON value that already is one of the members stays as it is. Otherwise the members are tried in declared order, which is also the order used for text.
 
 ### Response Format
 
