@@ -977,6 +977,9 @@ jobs:
       # The opt-in flag test_deploy_k8s gates on: this is the lane with a
       # cluster.
       JAC_TEST_K8S: "1"
+      # Deploys look release assets up through the GitHub API, and a hosted
+      # runner's shared IP exhausts the anonymous quota.
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
         with:
