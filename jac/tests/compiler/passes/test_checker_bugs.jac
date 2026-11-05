@@ -2458,3 +2458,11 @@ test "iterating a union with an any member yields any" {
     program = compile_and_check("checker_iter_union_with_any.jac");
     assert len(program.errors_had) == 0 , [str(e) for e in program.errors_had];
 }
+
+test "a dict literal's differently typed list values are checked whichever key comes first" {
+    program = compile_and_check("checker_dict_value_lists_kept_apart.jac");
+    errors = [str(e) for e in program.errors_had];
+    assert len(errors) == 2 , errors;
+    lines = sorted(e.loc.first_line for e in program.errors_had);
+    assert lines == [9, 10] , errors;
+}
