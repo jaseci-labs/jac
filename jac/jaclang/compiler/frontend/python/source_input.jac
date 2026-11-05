@@ -1,6 +1,8 @@
 """Decode Python source values using native encoding detection."""
 
-def invalid_utf8_source_error(data: bytes, detail: str, filename: str) -> str {
+def invalid_utf8_source_error(
+    data: bytes, detail: str, filename: str
+) -> tuple[str, int] {
     # Match the tokenizer's source error instead of exposing the lower-level
     # UnicodeDecodeError used by the codec boundary.
     marker = "position ";
@@ -28,7 +30,10 @@ def invalid_utf8_source_error(data: bytes, detail: str, filename: str) -> str {
         }
         index += 1;
     }
-    return f"Non-UTF-8 code starting with '\\x{byte:02x}' in file {filename} on line {line}";
+    return (
+        f"Non-UTF-8 code starting with '\\x{byte:02x}' in file {filename} on line {line}",
+        line
+    );
 }
 
 def decode_source_value(source: ptr[PyObject], filename: str = "<string>") -> str {
@@ -54,10 +59,10 @@ def decode_source_value(source: ptr[PyObject], filename: str = "<string>") -> st
             if decoded == 0 and PyErr_ExceptionMatches(PyExc_UnicodeError) != 0 {
                 detail = take_error_text();
                 if encoding == "utf-8" or encoding == "utf-8-sig" {
-                    message = invalid_utf8_source_error(
+                    (message, line) = invalid_utf8_source_error(
                         read_buffer(raw), detail, filename
                     );
-                    raise syntax_failure(message);
+                    raise syntax_failure(message, filename=filename, lineno=line);
                 }
                 raise syntax_failure("(unicode error) " + detail, filename="<string>");
             }
