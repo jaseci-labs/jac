@@ -46,7 +46,9 @@ import from engine.src.wasm.exec {
     canon_type,
     set_host_handler,
     export_index,
-    global_get
+    global_get,
+    func_type_id,
+    type_count
 }
 
 glob M32: int = 4294967295,
@@ -283,6 +285,19 @@ def _check(tok: str, got: int) -> bool {
     }
     if t == "externref" {
         return got == _udec(v) + 1;
+    }
+    if t == "funcref" {
+        # The spec JSON format carries no function identity for funcref
+        # expectations: wast2json emits "0" for every non-null (ref.func),
+        # and spectest-interp likewise checks only that the result is a
+        # function, not which one. The strongest check available is that the
+        # slot holds a real FuncRec — proven by a registered canonical type
+        # id — rather than accepting any nonzero bits.
+        if got == 0 {
+            return False;
+        }
+        tid: int = func_type_id(got);
+        return tid > 0 and tid < type_count();
     }
     return got != 0;
 }

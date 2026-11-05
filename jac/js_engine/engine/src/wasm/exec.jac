@@ -111,6 +111,10 @@ def:pub type_results(id: int) -> list[int] {
     return _TYPE_RESULTS[id];
 }
 
+def:pub type_count -> int {
+    return len(_TYPE_PARAMS);
+}
+
 # ── Records ──────────────────────────────────────────────────────────────────
 
 def _words(n: int) -> int {
