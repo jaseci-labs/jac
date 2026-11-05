@@ -12,7 +12,7 @@ buffer attached.
 From the `jac/` repository directory:
 
 ```bash
-zig build js-engine
+jac native build js-engine
 zig-out/js/bin/node js_engine/engine/tests/wasm/test_externref_js_values.js
 ```
 
