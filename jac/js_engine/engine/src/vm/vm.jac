@@ -440,6 +440,7 @@ import from engine.src.runtime.shape { shape_lookup, shape_parent, shape_key_cou
 import from engine.src.runtime.obs_context { obs_is_active }
 import from engine.src.vm.closure_type {
     jc_pop,
+    jc_free_count,
     jc_ctor_ok,
     jc_set_ctor_ok,
     jc_init_arrow,
@@ -594,7 +595,8 @@ import from engine.src.vm.vm_obs {
 import from engine.src.runtime.jsobject {
     js_object_register_napi_obs_scope,
     js_object_brand,
-    js_object_is_plain_ordinary
+    js_object_is_plain_ordinary,
+    jo_free_n
 }
 import from engine.src.runtime.error {
     create_error,
@@ -33733,7 +33735,7 @@ obj VM {
             # "collect when the heap has grown by ~itself" policy), scaled by
             # _GC_GROWTH_PCT (JAC_GC_GROWTH).
             # The growth tapers for very large heaps (gc_growth_pct_for).
-            _gc_nlive: int = jo_count() - len(self.realm.free_object_slots);
+            _gc_nlive: int = jo_count() - jo_free_n();
             _gc_live: int = (_gc_nlive * gc_growth_pct_for(_gc_nlive)) // 100;
             if _gc_live > _GC_MIN_THRESHOLD {
                 self.realm.gc_threshold = _gc_live;
@@ -33748,7 +33750,7 @@ obj VM {
             # are old, so old dead closures alone must still bring a major.
             if gc_gen_on() {
                 _gc_ncells: int = _gc_nlive + jc_count()
-                    - len(self.realm.free_closure_slots)
+                    - jc_free_count()
                     + len(self.realm.maps)
                     - len(self.realm.free_map_slots)
                     + len(self.realm.sets)
