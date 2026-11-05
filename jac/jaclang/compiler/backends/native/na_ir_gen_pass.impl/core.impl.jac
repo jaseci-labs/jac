@@ -1694,15 +1694,22 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
     if aname is None or arch.body is None {
         return;
     }
+    imports = self._imports;
+    assert imports is not None;
     for stmt in (ModuleFacts.unwrap_body(arch) or []) {
         if isinstance(stmt, uni.Ability) {
             if stmt.signature is not None
                 and isinstance(stmt.signature, uni.FuncSignature) {
-                self._forward_declare_method(aname, stmt, imported=True);
-                if stmt.name_ref is not None {
-                    self._record_linked_decl(
-                        self.method_funcs.get(f"{aname}.{stmt.name_ref.sym_name}"), stmt
-                    );
+                if stmt.is_comptime {
+                    continue;
+                }
+                if stmt.type_params {
+                    self._forward_declare_method(aname, stmt, imported=True);
+                    continue;
+                }
+                full_name = f"{aname}.{self._method_slot_name(stmt, None)}";
+                if full_name not in self.method_funcs {
+                    imports.methods[full_name] = (aname, stmt, None);
                 }
             } elif isinstance(stmt.signature, uni.EventSignature)
                 and (arch.arch_kind is not None) {
@@ -1712,8 +1719,57 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
         }
     }
     for (_slot, _accvar, _acc) in archetype_accessors(arch) {
-        self._forward_declare_method(aname, _acc, field=_accvar, imported=True);
+        if _acc.is_comptime {
+            continue;
+        }
+        full_name = f"{aname}.{self._method_slot_name(_acc, _accvar)}";
+        if full_name not in self.method_funcs {
+            imports.methods[full_name] = (aname, _acc, _accvar);
+        }
     }
+}
+
+impl NaIRGenPass._declare_imported_method(full_name: str) -> (ir.Function | None) {
+    imports = self._imports;
+    assert imports is not None;
+    pending = imports.methods.pop(full_name, None);
+    if pending is None {
+        return self.method_funcs.get(full_name);
+    }
+    (aname, method, field) = pending;
+    scope = self.scope;
+    self.scope = scope.outermost();
+    try {
+        self._forward_declare_method(aname, method, field=field, imported=True);
+        if field is None and method.name_ref is not None {
+            self._record_linked_decl(
+                self.method_funcs.get(f"{aname}.{method.name_ref.sym_name}"), method
+            );
+        }
+    } finally {
+        self.scope = scope;
+    }
+    return self.method_funcs.get(full_name);
+}
+
+impl NaIRGenPass._method_func(full_name: str) -> (ir.Function | None) {
+    found = self.method_funcs.get(full_name);
+    if found is None {
+        imports = self._imports;
+        if imports is not None and full_name in imports.methods {
+            found = self._declare_imported_method(full_name);
+        }
+    }
+    return found;
+}
+
+impl NaIRGenPass._has_method_func(full_name: str) -> bool {
+    return self._method_func(full_name) is not None;
+}
+
+impl NaIRGenPass._is_static_method(full_name: str) -> bool {
+    self._method_func(full_name);
+    return full_name in self.static_methods;
 }
 
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {

@@ -108,7 +108,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
 impl NaIRGenPass._pyb_native_override_owner(arch_name: str, meth: str) -> (str | None) {
     for _sc in self._mro_of(arch_name) {
         _k = f"{_sc}.{meth}";
-        if _k in self.method_funcs and _k not in self._native_skipped_methods {
+        if self._has_method_func(_k) and _k not in self._native_skipped_methods {
             return _sc;
         }
     }
@@ -1009,7 +1009,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
     suppress = 0;
     for _sc in self._mro_of(type_name) {
         for pn in [f"{_sc}.__post_init__", f"{_sc}.postinit"] {
-            if pn in self.method_funcs and pn not in self._native_skipped_methods {
+            if self._has_method_func(pn) and pn not in self._native_skipped_methods {
                 suppress = 1;
                 break;
             }

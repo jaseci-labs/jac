@@ -1112,7 +1112,7 @@ impl NaIRGenPass._resolve_method(
     cur: (str | None) = arch_name;
     _guard = 0;
     while cur is not None and _guard < 64 {
-        fn = self.method_funcs.get(f"{cur}.{method_name}");
+        fn = self._method_func(f"{cur}.{method_name}");
         if fn is not None {
             return fn;
         }
@@ -1124,7 +1124,7 @@ impl NaIRGenPass._resolve_method(
     if owner is None {
         return None;
     }
-    return self.method_funcs.get(f"{owner}.{method_name}");
+    return self._method_func(f"{owner}.{method_name}");
 }
 
 impl NaIRGenPass._arch_implements_iter(arch_name: str) -> bool {
