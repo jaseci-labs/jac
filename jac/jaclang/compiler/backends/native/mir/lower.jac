@@ -466,6 +466,7 @@ obj MirLowering {
         specials: dict[str, int] = {},
         pending: list[MirDecl] = [],
         enum_types: dict[str, TypeBase] = {},
+        catalog_enums: dict[int, EnumLayout] = {},
         enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
         current: str = "",
@@ -1817,6 +1818,7 @@ obj MirLowering {
     def body_types(ab: uni.Ability);
     def enum_layout(t: (TypeBase | None), site: uni.UniNode) -> EnumLayout;
     def enum_layout_of(value_type: MirType, site: uni.UniNode) -> EnumLayout;
+    def catalog_enum_layout(t: (TypeBase | None)) -> (EnumLayout | None);
     def enum_payload(layout: EnumLayout, member: EnumMemberLayout) -> int;
     def is_enum_class(nd: uni.UniNode) -> bool;
     def attr_special(nd: uni.AtomTrailer) -> (MirValue | None);

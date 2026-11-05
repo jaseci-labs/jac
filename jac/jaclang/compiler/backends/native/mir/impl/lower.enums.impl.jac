@@ -1,5 +1,21 @@
 impl MirLowering.enum_layout(t: (TypeBase | None), site: uni.UniNode) -> EnumLayout {
     decl = enum_decl_of(t);
+    if decl is None {
+        served = self.catalog_enum_layout(t);
+        if served is not None {
+            if not served.all_values_known {
+                raise MirRefused(
+                    mir_refusal(
+                        "enum",
+                        served.name,
+                        site,
+                        f"A native enum is a table of int or str member values; the stub for '{served.name}' gives a member some other value."
+                    )
+                );
+            }
+            return served;
+        }
+    }
     if decl is None or decl.name is None {
         raise MirRefused(
             mir_refusal(
@@ -29,6 +45,46 @@ impl MirLowering.enum_layout(t: (TypeBase | None), site: uni.UniNode) -> EnumLay
         );
     }
     return found;
+}
+
+impl MirLowering.catalog_enum_layout(t: (TypeBase | None)) -> (EnumLayout | None) {
+    if not is_enum_class_type(t) or not isinstance(t, ClassType) {
+        return None;
+    }
+    shared = t.shared;
+    if not stub_scope(shared.symbol_table) or not shared.enum_members {
+        return None;
+    }
+    known = self.catalog_enums.get(id(shared));
+    if known is not None {
+        return known;
+    }
+    values = [info.literal_value for info in shared.enum_members.values()];
+    texts = all(isinstance(value, str) for value in values);
+    whole = all(
+        isinstance(value, int) and not isinstance(value, bool) for value in values
+    );
+    members: list[EnumMemberLayout] = [];
+    for (ordinal, (name, info)) in enumerate(shared.enum_members.items()) {
+        value = info.literal_value;
+        members.append(
+            EnumMemberLayout(
+                name=name,
+                ordinal=ordinal,
+                int_value=value if isinstance(value, int) else 0,
+                str_value=value if isinstance(value, str) else None
+            )
+        );
+    }
+    made = EnumLayout(
+        name=class_type_native_name(t) or shared.class_name,
+        is_string_enum=texts and not whole,
+        is_class_form=True,
+        all_values_known=texts or whole,
+        members=members
+    );
+    self.catalog_enums[id(shared)] = made;
+    return made;
 }
 
 impl MirLowering.enum_layout_of(value_type: MirType, site: uni.UniNode) -> EnumLayout {

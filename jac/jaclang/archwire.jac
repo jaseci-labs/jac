@@ -9566,6 +9566,8 @@ graph import compiler {
         backends.native.mir.emit { VTABLE_HEADER_SLOTS },
         backends.native.mir.lower {
             EXC_MESSAGE_FIELD,
+            EnumLayout,
+            EnumMemberLayout,
             NON_DISPATCHED_METHODS,
             VTABLE_DROP_SLOT,
             VTABLE_FIELDS_SLOT,
@@ -9590,12 +9592,7 @@ graph import compiler {
         symbol_utils.collect_method_names { archetype_accessors },
     ]
     type passes.layout_pass ++> [
-        backends.native.mir.lower {
-            ArchetypeLayout,
-            EnumLayout,
-            EnumMemberLayout,
-            LayoutRegistry
-        },
+        backends.native.mir.lower { ArchetypeLayout, LayoutRegistry },
         frontend.codeinfo { LayoutRegistry },
     ]
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
