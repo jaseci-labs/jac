@@ -42,6 +42,8 @@ pub const Options = struct {
     /// wrote, see object_files): checked against this build and linked in
     /// place of lowering one.
     adopt_object: ?[]const u8 = null,
+    /// Adopt that object even when it was lowered from other sources.
+    stale_object: bool = false,
     /// Stop after the native stage and copy the object with its manifest to
     /// this directory.
     object_out: ?[]const u8 = null,
@@ -507,6 +509,10 @@ pub const ObjectExpect = struct {
     tools: []const u8,
     root: []const u8,
     headers: ?[]const u8 = null,
+    // A bytecode kit's build (build_python --stale-lowered) takes an object
+    // lowered from other sources or tools; its target, integrity and headers
+    // are still checked.
+    any_sources: bool = false,
 };
 
 /// The paths an object's `sources` record lists, in the Jac root; none when
@@ -581,7 +587,7 @@ pub fn checkObject(io: Io, a: Allocator, dir: []const u8, expect: ObjectExpect) 
         if (!std.mem.eql(u8, lowered, digest)) try changed.append(a, name);
     }
     const inputs = objectInputs(expect.tools, current.names, current.digests);
-    if (!std.mem.eql(u8, &inputs, m.inputs)) {
+    if (!expect.any_sources and !std.mem.eql(u8, &inputs, m.inputs)) {
         // The tools digest leaves the lowered sources out, so each part of a
         // refusal names a separate change.
         var why: std.ArrayList(u8) = .empty;
@@ -613,6 +619,7 @@ fn adoptObject(c: *Ctx, dir: []const u8, native: []const u8) !void {
         .tools = &tools,
         .root = c.o.root,
         .headers = &headers,
+        .any_sources = c.o.stale_object,
     })) {
         .refused => |why| {
             c.print("build-python: refusing the prebuilt native object: {s}", .{why});
