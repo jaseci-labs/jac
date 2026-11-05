@@ -23,7 +23,7 @@ on:
       runner:
         description: Runner for both suites
         type: string
-        default: blacksmith-8vcpu-ubuntu-2404
+        default: ubuntu-24.04
       modules:
         description: Space-separated regrtest modules (empty runs the full suite)
         type: string
@@ -61,7 +61,10 @@ jobs:
       fail-fast: false
       matrix:
         python: [cpython, jacpython]
-    runs-on: ${{ inputs.runner || 'blacksmith-8vcpu-ubuntu-2404' }}
+    # The JacPython native lowering step was terminated after exactly 30
+    # minutes on the Blacksmith runner even though this job allows five hours.
+    # GitHub-hosted runners honor the job timeout for this long-running build.
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v5
