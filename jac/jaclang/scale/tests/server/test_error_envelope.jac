@@ -129,20 +129,34 @@ test "function exception: message on the wire, stack in the server log" {
 }
 
 test "a bad target node is the caller's error and leaves no stack in the log" {
-    unknown = "00000000-0000-4000-8000-000000000001";
-    for (path, body, status, code, message) in (
-        ("/walker/Boom/zzz", {}, 400, "INVALID_NODE_ID", "Invalid node id"),
-        (f"/walker/Boom/{unknown}", {}, 404, "NOT_FOUND", "Target node not found")
-    ) {
-        def send(client: any) -> any {
-            return client.post(path, json=body);
-        }
-        (resp, records) = _with_capture(send);
-        assert resp.status_code == status , f"{path}: {resp.text}";
-        err = resp.json()["error"];
-        assert (err["code"], err["message"]) == (code, message) , f"{path}: {err}";
-        assert not _stacks(records) , f"{path}: {_stacks(records)}";
+    invalid = ("INVALID_NODE_ID", "Invalid node id");
+    not_found = ("NOT_FOUND", "Target node not found");
+    def send(client: any) -> any {
+        token = client.register_and_login(
+            f"owner_{uuid.uuid4().hex[:8]}", "password123"
+        );
+        made = client.post(
+            "/walker/MakeNote", json={}, headers={"Authorization": f"Bearer {token}"}
+        );
+        private_note = extract_data(made.json())["reports"][0];
+        unknown = "00000000-0000-4000-8000-000000000001";
+        return [
+            (client.post(path, json={}), status, expected)
+            for (path, status, expected) in (
+                ("/walker/Boom/zzz", 400, invalid),
+                (f"/walker/Boom/{unknown}", 404, not_found),
+                (f"/walker/Boom/{private_note}", 404, not_found),
+                ("/walker/Pong/root", 200, (None, None))
+            )
+        ];
     }
+    (answers, records) = _with_capture(send);
+    for (resp, status, expected) in answers {
+        assert resp.status_code == status , resp.text;
+        err = resp.json()["error"] or {};
+        assert (err.get("code"), err.get("message")) == expected , resp.text;
+    }
+    assert not _stacks(records) , _stacks(records);
 }
 
 test "an unhandled server failure stays in the log, off the wire" {
