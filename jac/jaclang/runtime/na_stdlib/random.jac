@@ -1,12 +1,3 @@
-"""Native `random`: CPython's Mersenne Twister with its seeding and draws.
-
-The state, `seed(int)`, `random()`, `getrandbits()`, `randrange()`,
-`randint()` and `uniform()` follow CPython's `_randommodule.c` and
-`random.py` step for step, so a seeded sequence is the same on both
-backends. An integer is 64 bits natively, so `getrandbits` takes at most
-63 bits and `seed` takes an int that fits one.
-"""
-
 glob _N: int = 624,
      _M: int = 397,
      _MT: list[int] = [0] * 624,
