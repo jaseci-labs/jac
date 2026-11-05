@@ -13,13 +13,15 @@ impl MirLowering.arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None) {
         return None;
     }
     scope = t.shared.symbol_table;
-    if not isinstance(scope, uni.Archetype)
-        or c_builtin_kind(t)
+    if c_builtin_kind(t)
         or foreign_struct_of_type(t) is not None
         or self.erased_class(t) {
         return None;
     }
-    return self.stdlib_counterpart(scope) if stub_archetype(scope) else scope;
+    if stub_scope(scope) {
+        return self.stdlib_counterpart(scope, t.shared.class_name);
+    }
+    return scope if isinstance(scope, uni.Archetype) else None;
 }
 
 impl MirLowering.object_type(arch: uni.Archetype) -> MirType {

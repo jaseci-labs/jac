@@ -112,8 +112,10 @@ impl MirLowering.stdlib_unit_named(name: str) -> (uni.Module | None) {
     return found;
 }
 
-impl MirLowering.stdlib_counterpart(scope: uni.Archetype) -> (uni.Archetype | None) {
-    if not stub_archetype(scope) or scope.loc is None {
+impl MirLowering.stdlib_counterpart(
+    scope: (uni.UniScopeNode | None), wanted: str
+) -> (uni.Archetype | None) {
+    if scope is None or not stub_scope(scope) {
         return None;
     }
     if id(scope) in self.counterparts {
@@ -145,7 +147,6 @@ impl MirLowering.stdlib_counterpart(scope: uni.Archetype) -> (uni.Archetype | No
             }
         }
     }
-    wanted = scope.name.value;
     for unit in units {
         for elem in unit.body {
             if isinstance(elem, uni.Archetype) and elem.name.value == wanted {
@@ -175,11 +176,7 @@ impl MirLowering.counterpart_type(t: (TypeBase | None)) -> (TypeBase | None) {
     if not isinstance(t, ClassType) or t._shared is None {
         return t;
     }
-    scope = t.shared.symbol_table;
-    if not isinstance(scope, uni.Archetype) {
-        return t;
-    }
-    found = self.stdlib_counterpart(scope);
+    found = self.stdlib_counterpart(t.shared.symbol_table, t.shared.class_name);
     if found is None or found.name.sym is None {
         return t;
     }

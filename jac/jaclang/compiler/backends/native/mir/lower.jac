@@ -1703,7 +1703,10 @@ obj MirLowering {
     def stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None);
     def stdlib_item_member(nd: uni.FuncCall) -> (uni.Ability | None);
     def stdlib_unit_named(name: str) -> (uni.Module | None);
-    def stdlib_counterpart(scope: uni.Archetype) -> (uni.Archetype | None);
+    def stdlib_counterpart(
+        scope: (uni.UniScopeNode | None), wanted: str
+    ) -> (uni.Archetype | None);
+
     def counterpart_type(t: (TypeBase | None)) -> (TypeBase | None);
     def stdlib_result_arch(nd: uni.UniNode) -> (uni.Archetype | None);
     def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
