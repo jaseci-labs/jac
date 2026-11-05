@@ -13255,7 +13255,7 @@ def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
                     False,
                     a_3,
                     b,
-                    "expression cannot contain assignment, perhaps you meant \\\"==\\\"?"
+                    "expression cannot contain assignment, perhaps you meant \"==\"?"
                 );
                 p.level -= 1;
                 return res;

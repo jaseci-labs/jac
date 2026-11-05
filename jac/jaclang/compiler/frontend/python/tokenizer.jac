@@ -917,6 +917,31 @@ def _unterminated_string_message(
         else "unterminated string literal";
 }
 
+def _string_prefix_error(prefix: str) -> str {
+    if "u" in prefix and "b" in prefix {
+        return "'u' and 'b' prefixes are incompatible";
+    }
+    if "u" in prefix and "r" in prefix {
+        return "'u' and 'r' prefixes are incompatible";
+    }
+    if "u" in prefix and "f" in prefix {
+        return "'u' and 'f' prefixes are incompatible";
+    }
+    if "u" in prefix and "t" in prefix {
+        return "'u' and 't' prefixes are incompatible";
+    }
+    if "b" in prefix and "f" in prefix {
+        return "'b' and 'f' prefixes are incompatible";
+    }
+    if "b" in prefix and "t" in prefix {
+        return "'b' and 't' prefixes are incompatible";
+    }
+    if "f" in prefix and "t" in prefix {
+        return "'f' and 't' prefixes are incompatible";
+    }
+    return "string prefixes are incompatible";
+}
+
 def _fstring_emit_middle(
     st: tok_state,
     text: str,
@@ -1180,7 +1205,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
     prefix = st.data[start:st.pos].decode("utf-8").lower();
     if prefix
         not in ("", "u", "r", "b", "br", "rb", "f", "fr", "rf", "t", "tr", "rt") {
-        return _string_syntax_error(st, "string prefixes are incompatible", start_col);
+        return _string_syntax_error(st, _string_prefix_error(prefix), start_col);
     }
     quote = _peek(st);
     if quote != ord("'") and quote != ord("\"") {
