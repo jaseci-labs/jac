@@ -1400,6 +1400,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
     import struct;
     import tempfile;
     import shutil;
+    import os;
     import from jaclang.compiler.driver.jir {
         is_module_cache_valid,
         HEADER_FMT,
@@ -1428,7 +1429,12 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
         data = bytearray(cache_path.read_bytes());
         # Header layout <4sHHIIIIII>: jaclang_version_hash is at offset 8.
         struct.pack_into("<I", data, 8, 0xDEADBEEF);
-        cache_path.write_bytes(bytes(data));
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=cache_path.parent, delete=False
+        ) as tampered_cache {
+            tampered_cache.write(bytes(data));
+        }
+        os.replace(tampered_cache.name, cache_path);
 
         # The cache should now be rejected.
         with cache_scope(program.options) {

@@ -9,7 +9,6 @@ import time;
 import requests;
 import from pathlib { Path }
 
-
 glob JacScaleFixtures: Path = Path(__file__).parent.parent / "fixtures";
 
 obj JacScaleTestRunner {
@@ -69,12 +68,16 @@ obj JacScaleTestRunner {
             str(self.example_file)
         ];
 
+        # Own session so _kill_process_group can take the worker children
+        # down with the master (they inherit these pipes; orphans holding
+        # them make a later communicate() wait on EOF forever).
         self.server_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=example_dir
+            cwd=example_dir,
+            start_new_session=True
         );
 
         max_attempts = timeout * 5;
@@ -82,7 +85,8 @@ obj JacScaleTestRunner {
 
         for _ in range(max_attempts) {
             if self.server_process.poll() is not None {
-                (stdout, stderr) = self.server_process.communicate();
+                _kill_process_group(self.server_process);
+                (stdout, stderr) = self.server_process.communicate(timeout=30);
                 raise RuntimeError(
                     f"Server process terminated unexpectedly.\n"
                     f"STDOUT: {stdout}\nSTDERR: {stderr}"
@@ -102,6 +106,7 @@ obj JacScaleTestRunner {
         }
 
         if not server_ready {
+            _kill_process_group(self.server_process);
             (stdout, stderr) = self.server_process.communicate(timeout=5);
             raise RuntimeError(
                 f"Server failed to become ready.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
@@ -116,8 +121,8 @@ obj JacScaleTestRunner {
             try {
                 self.server_process.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
-                self.server_process.kill();
-                self.server_process.`wait();
+                _kill_process_group(self.server_process);
+                self.server_process.`wait(timeout=5);
             }
             if self.server_process.stdout {
                 self.server_process.stdout.close();

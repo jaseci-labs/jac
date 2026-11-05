@@ -233,17 +233,22 @@ test "a worker killed mid-request stops counting as in progress" {
 
 
 def _serve_exported(project: Path, port: int) -> subprocess.Popen {
+    # Own session so _kill_process_group can take the worker children down
+    # with the master (they inherit these pipes; orphans holding them make a
+    # later communicate() wait on EOF forever).
     server = subprocess.Popen(
         [jac_executable(), "run", "main.py", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        cwd=str(project)
+        cwd=str(project),
+        start_new_session=True
     );
     deadline = time.monotonic() + 300.0;
     while time.monotonic() < deadline {
         if server.poll() is not None {
-            (out, err) = server.communicate();
+            _kill_process_group(server);
+            (out, err) = server.communicate(timeout=30);
             raise RuntimeError(f"exported app exited\nSTDOUT:\n{out}\nSTDERR:\n{err}");
         }
         with contextlib.suppress(requests.RequestException) {
@@ -254,7 +259,7 @@ def _serve_exported(project: Path, port: int) -> subprocess.Popen {
         }
         time.sleep(1);
     }
-    server.kill();
+    _kill_process_group(server);
     raise RuntimeError(f"exported app never answered /healthz on port {port}");
 }
 
