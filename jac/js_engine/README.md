@@ -8,7 +8,7 @@ This README is meant to be the one place you go to understand what the project i
 
 ## How it ships
 
-js_engine is an accelerator over bun: a release ships bun, and jac runs JavaScript on the engine wherever one is built and current. `zig build js-engine` from `jac/` builds it into `jac/zig-out/js` and installs that directory for every jac:
+js_engine is an accelerator over bun: a release ships bun, and jac runs JavaScript on the engine wherever one is built and current. From `jac/`, run `jac native build js-engine` to build the engine, create its `bin/node` link and build record, and install it into `jac/zig-out/js` for every jac:
 
 | File | What it is |
 |------|------------|
@@ -23,7 +23,7 @@ The engine is never a separate program. `jac` runs it **as `node`**: the `jac` b
 ## Running
 
 ```bash
-zig build js-engine
+jac native build js-engine
 jac/zig-out/js/bin/node path/to/script.js
 ```
 
