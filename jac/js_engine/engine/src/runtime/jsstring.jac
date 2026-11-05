@@ -902,6 +902,15 @@ def:pub str_heap_ascii_n(s: str, n: int) -> int {
     return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, n, 1);
 }
 
+"""str_heap for text whose byte length `n` and ASCII flag `asc` (1 ASCII, 2
+not) the caller knows: no rescan of either."""
+def:pub str_heap_n(s: str, n: int, asc: int) -> int {
+    if n == 0 {
+        return 6;
+    }
+    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, n, asc);
+}
+
 """str_heap for text the caller knows is byte-clean ASCII (a slice of a
 byte-clean string): no rescan for the cell's ASCII flag."""
 def:pub str_heap_ascii(s: str) -> int {
@@ -2207,8 +2216,14 @@ def _u16ix_build(id: int, s: str) -> U16Index {
     i: int = 0;
     u: int = 0;
     nxt: int = U16IX_STEP;
+    ub_p: int = __str_data(s);
     while i < n {
         r: int = i;
+        # the ASCII run eight bytes a load (no byte of a word has its top bit)
+        while r + 8 <= n
+            and (__mem_load_i64(wrapping_add(ub_p, r)) & -9187201950435737472) == 0 {
+            r = r + 8;
+        }
         while r < n {
             rb: int = str_byte(s, r);
             if rb >= 128 {

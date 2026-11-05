@@ -47,6 +47,7 @@ import from engine.src.runtime.jsstring {
     str_cell_ascii,
     str_heap_ascii,
     str_heap_ascii_n,
+    str_heap_n,
     str_cell_len,
     str_slice_cell,
     str_substr_cell,
@@ -1221,7 +1222,24 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
             b0_x: int = u16ix_unit_to_byte(ix_sl, s, st_x);
             b1_x: int = u16ix_unit_to_byte(ix_sl, s, en_x);
             if b0_x >= 0 and b1_x >= 0 {
-                return _mk_str(str_substr_in(s, b0_x, b1_x));
+                # As many bytes as units: the piece is ASCII (UTF-8 spends more
+                # than one byte per unit on anything else) -- most pieces of a
+                # mostly-ASCII source. A long one is a lazy slice of this cell,
+                # as on the ASCII path; the rest are copies whose length and
+                # flag are known (no rescan of the copy).
+                if b1_x - b0_x == en_x - st_x {
+                    if b1_x - b0_x >= LAZY_SLICE_MIN {
+                        return jsv_from_string_id(
+                            str_slice_cell(jsv_to_table_id(v), b0_x, b1_x - b0_x, 1)
+                        );
+                    }
+                    return jsv_from_string_id(
+                        str_heap_ascii_n(str_substr_in(s, b0_x, b1_x), b1_x - b0_x)
+                    );
+                }
+                return jsv_from_string_id(
+                    str_heap_n(str_substr_in(s, b0_x, b1_x), b1_x - b0_x, 2)
+                );
             }
             # A bound splits a surrogate pair: cut the code units instead.
             return _units_substr(js_string_utf16_units(s), st_x, en_x);
