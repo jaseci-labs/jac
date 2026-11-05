@@ -24,7 +24,7 @@ obj KEDAAutoscaler(Autoscaler) {
         trigger: Trigger, app_name: str, trigger_index: int
     ) -> dict[str, any];
 
-    static def _owner_label_value(name: str) -> str;
+    static def _fit_name(name: str, limit: int = 63) -> str;
     def _scaled_object_name(spec: AutoscalerSpec, app_name: str) -> str;
     def _build_trigger_auth_manifest(
         trigger: Trigger, namespace: str, app_name: str, trigger_index: int, owner: str
