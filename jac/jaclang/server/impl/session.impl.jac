@@ -1714,11 +1714,13 @@ impl Session.new_session(target_path: str) -> Session {
     if self.store is None {
         raise RuntimeError('Cannot create a provider session without a bound store');
     }
-    return Session(
+    child = Session(
         _store=self.store.new_session(),
         base_path=self.base_path,
         target_path=target_path
     );
+    child._durable_boundary = self._durable_boundary;
+    return child;
 }
 
 impl Session.preserve_unresolved_ref(id: UUID) -> bool {

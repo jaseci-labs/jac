@@ -4,6 +4,7 @@ impl Memory.postinit {
 
 impl Memory._init_memory {
     self._lock = threading.RLock();
+    self._durable_boundary = DurableBoundary();
     self.__mem__ = {};
     self._dirty = {};
     self._deleted = set();
