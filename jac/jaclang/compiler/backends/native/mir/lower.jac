@@ -1236,6 +1236,7 @@ obj MirLowering {
         arg: (uni.Expr | MirPacked | MirBound), ptype: MirType
     ) -> MirValue;
 
+    def literal_default(value: (uni.Expr | None)) -> bool;
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def identity_of(value: MirValue, site: uni.UniNode) -> MirValue;

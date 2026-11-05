@@ -463,7 +463,7 @@ impl MirLowering.bound_value(
     return made;
 }
 
-impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
+impl MirLowering.literal_default(value: (uni.Expr | None)) -> bool {
     if value is None {
         return False;
     }
@@ -479,8 +479,17 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
             for part in value.strings
         );
     }
-    if isinstance(value, uni.UnaryExpr) and value.op.name == Tok.MINUS {
-        return isinstance(value.operand, (uni.Int, uni.Float));
+    return isinstance(value, uni.UnaryExpr)
+        and value.op.name == Tok.MINUS
+        and isinstance(value.operand, (uni.Int, uni.Float));
+}
+
+impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
+    if value is None {
+        return False;
+    }
+    if self.literal_default(value) {
+        return True;
     }
     if isinstance(value, uni.AtomTrailer)
         and value.is_attr

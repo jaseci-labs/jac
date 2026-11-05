@@ -3210,7 +3210,7 @@ impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
             + list(method.signature.params or [])
             + list(method.signature.kwonlyargs or []) {
             if isinstance(pv.value, uni.Expr)
-                and (is_init or not self.constant_default(pv.value)) {
+                and (is_init or not self.literal_default(pv.value)) {
                 defaults.append(pv.value);
             }
         }
@@ -3238,7 +3238,7 @@ impl MirLowering.function_default_thunks -> list[MirFunction] {
         for pv in list(sig.posonly_params)
             + list(sig.params or [])
             + list(sig.kwonlyargs or []) {
-            if isinstance(pv.value, uni.Expr) and not self.constant_default(pv.value) {
+            if isinstance(pv.value, uni.Expr) and not self.literal_default(pv.value) {
                 defaults.append(pv.value);
             }
         }
