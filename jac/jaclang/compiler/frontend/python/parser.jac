@@ -10814,13 +10814,17 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
     if a_5 is not None {
         b = rule_for_if_clauses(p);
         if b is not None {
-            res = pa_raise_syntax_known_range(
-                p,
-                False,
-                a_5,
-                pa_get_last_comprehension_item(pa_seq_last(b)),
-                "Generator expression must be parenthesized"
-            );
+            if pa_has_keyword_unpacking(a_5) {
+                res = pa_nonparen_genexp_in_call(a_5, b);
+            } else {
+                res = pa_raise_syntax_known_range(
+                    p,
+                    False,
+                    a_5,
+                    pa_get_last_comprehension_item(b),
+                    "Generator expression must be parenthesized"
+                );
+            }
             p.level -= 1;
             return res;
         }
@@ -10838,7 +10842,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                         p,
                         False,
                         a_6,
-                        pa_get_last_comprehension_item(pa_seq_last(b)),
+                        pa_get_last_comprehension_item(b),
                         "Generator expression must be parenthesized"
                     );
                     p.level -= 1;
