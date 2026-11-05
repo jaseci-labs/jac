@@ -136,6 +136,12 @@ impl array.init(typecode: str, initial: any = None) {
                     i += 1;
                 }
             }
+        } elif isinstance(initial, str) {
+            raise TypeError(
+                "cannot use a str to initialize an array with typecode '"
+                    + typecode
+                    + "'"
+            );
         } else {
             self.extend(initial);
         }
@@ -269,7 +275,28 @@ impl array.extend(seq: any) {
         }
         return;
     }
-    raise TypeError("extend() argument must be a list, array, bytes, or bytearray");
+    if isinstance(seq, set) {
+        st = seq as set;
+        for v in st {
+            self.append(v);
+        }
+        return;
+    }
+    if isinstance(seq, frozenset) {
+        fs = seq as frozenset;
+        for v in fs {
+            self.append(v);
+        }
+        return;
+    }
+    if isinstance(seq, str) {
+        t = seq as str;
+        for ch in t {
+            self.append(ch);
+        }
+        return;
+    }
+    raise TypeError("'" + typename(seq) + "' object is not iterable");
 }
 
 impl array._extend_array(other: array) {

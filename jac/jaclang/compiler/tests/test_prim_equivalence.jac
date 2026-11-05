@@ -352,7 +352,8 @@ glob STR_NA_GAPS: list[any] = [
              "array_py",
              "array_cl",
              "array_na",
-             ["na"]
+             ["na"],
+             ["ctor_tuple_g1", "ctor_range_g2", "ctor_dict_g1", "ext_tuple_g1"]
          ),
          ("mmap bundled", "prim_mmap.jac", "mmap_py", "mmap_cl", "mmap_na", ["na"]),
          ("time", "prim_time.jac", "time_py", "time_cl", "time_na", ["na"]),
