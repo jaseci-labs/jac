@@ -45,6 +45,7 @@ glob _TRUE_STRINGS: set[str] = {'1', 'true', 'yes', 'on', 'y'},
          dict: 'object',
          type(None): 'null'
      },
+     _MAX_EXACT_FLOAT_INT: int = 2 ** 53,
      _INT_TEXT: re.Pattern = re.compile(r'[+-]?[0-9]+'),
      _FLOAT_TEXT: re.Pattern = re.compile(
          r'[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?'
@@ -77,6 +78,10 @@ def _coerce_tuple(
     value: any, args: tuple[object, ...], text: bool = False
 ) -> tuple[any, ...];
 
+def _coerce_dict(
+    value: any, args: tuple[object, ...], text: bool = False
+) -> dict[any, any];
+
 def _construct_object(value: any, target: any) -> any;
 
 def _as_item_list(value: any, text: bool = False) -> list[any];
@@ -99,9 +104,7 @@ def _param_target(param: APIParameter) -> any;
 
 def _header_lookup(request: Request, name: str) -> (str | None);
 
-def _accepts_many(target: any) -> bool;
-
-def _text_values(values: list[str], target: any) -> any;
+def _text_values(values: list[str]) -> any;
 
 def _extract_raw(
     param: APIParameter, request: Request, body_json: any

@@ -21,14 +21,16 @@ impl _coerce_bool(value: any, text: bool = False) -> bool {
     if word in _FALSE_STRINGS {
         return False;
     }
-    raise ValueError(f"invalid boolean: {value!r}");
+    raise ValueError('invalid boolean');
 }
 
 impl _coerce_int(value: any, text: bool = False) -> int {
     if isinstance(value, int) and not isinstance(value, bool) {
         return value;
     }
-    if isinstance(value, float) and value.is_integer() {
+    if isinstance(value, float)
+        and value.is_integer()
+        and abs(value) <= _MAX_EXACT_FLOAT_INT {
         return int(value);
     }
     if text and isinstance(value, str) and _INT_TEXT.fullmatch(value) {
@@ -59,15 +61,15 @@ impl _coerce_string_type(value: any, target: type) -> any {
     if not (isinstance(value, str) or (target is Decimal and is_number)) {
         raise _mismatch(f"a string for {name}", value);
     }
+    spelled = str(value);
+    if target is Decimal and not _FLOAT_TEXT.fullmatch(spelled) {
+        raise ValueError(f"invalid {name}");
+    }
     try {
-        parsed = _STRING_PARSERS[target](str(value));
+        return _STRING_PARSERS[target](spelled);
     } except Exception {
         raise ValueError(f"invalid {name}") from None;
     }
-    if isinstance(parsed, Decimal) and not parsed.is_finite() {
-        raise ValueError(f"invalid {name}");
-    }
-    return parsed;
 }
 
 impl _coerce_literal(
@@ -96,9 +98,6 @@ impl _coerce_tuple(
     value: any, args: tuple[object, ...], text: bool = False
 ) -> tuple[any, ...] {
     items = _as_item_list(value, text);
-    if not args {
-        return tuple(items);
-    }
     if len(args) == 2 and args[1] is Ellipsis {
         return tuple(coerce_value(v, args[0], text) for v in items);
     }
@@ -106,6 +105,25 @@ impl _coerce_tuple(
         raise ValueError(f"expected {len(args)} items, got {len(items)}");
     }
     return tuple(coerce_value(v, t, text) for (v, t) in zip(items, args));
+}
+
+impl _coerce_dict(
+    value: any, args: tuple[object, ...], text: bool = False
+) -> dict[any, any] {
+    if not isinstance(value, dict) {
+        raise _mismatch('object', value);
+    }
+    key_t = args[0] if args else None;
+    val_t = args[1] if len(args) > 1 else None;
+    bound: dict[any, any] = {};
+    for (k, v) in value.items() {
+        key = coerce_value(k, key_t, text=True);
+        if key in bound {
+            raise ValueError('two keys parse to the same value');
+        }
+        bound[key] = coerce_value(v, val_t, text);
+    }
+    return bound;
 }
 
 impl _construct_object(value: any, target: any) -> any {
@@ -251,18 +269,13 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         return {coerce_value(v, item_t, text) for v in _as_item_list(value, text)};
     }
     if shape is tuple {
+        if origin is None {
+            return tuple(_as_item_list(value, text));
+        }
         return _coerce_tuple(value, args, text);
     }
     if shape is dict {
-        if not isinstance(value, dict) {
-            raise _mismatch('object', value);
-        }
-        key_t = args[0] if args else None;
-        val_t = args[1] if len(args) > 1 else None;
-        return {
-            coerce_value(k, key_t, text=True): coerce_value(v, val_t, text)
-            for (k, v) in value.items()
-        };
+        return _coerce_dict(value, args, text);
     }
     if origin is not None {
         return value;
@@ -299,7 +312,11 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         if isinstance(value, target) {
             return value;
         }
-        return target(value);
+        try {
+            return target(value);
+        } except ValueError {
+            raise ValueError(f"invalid {target.__name__}") from None;
+        }
     }
     if isinstance(target, type) and target in _STRING_PARSERS {
         return _coerce_string_type(value, target);
@@ -329,7 +346,7 @@ impl _coerce_union(value: any, options: tuple[object, ...], text: bool = False) 
         }
     }
     if not text and type(value) in options {
-        return value;
+        return coerce_value(value, type(value));
     }
     last_error: (Exception | None) = None;
     for opt in options {
@@ -363,17 +380,8 @@ impl _header_lookup(request: Request, name: str) -> (str | None) {
     return request.headers.get(name.replace('_', '-'));
 }
 
-impl _accepts_many(target: any) -> bool {
-    named = _NAME_TYPES.get(target.lower()) if isinstance(target, str) else target;
-    bare = _without_none(named);
-    return (get_origin(bare) or bare) in (list, set, tuple);
-}
-
-impl _text_values(values: list[str], target: any) -> any {
-    if len(values) > 1 or _accepts_many(target) {
-        return values;
-    }
-    return values[0];
+impl _text_values(values: list[str]) -> any {
+    return values if len(values) > 1 else values[0];
 }
 
 impl _extract_raw(
@@ -388,7 +396,7 @@ impl _extract_raw(
     if param.kind == ParameterType.QUERY {
         values = request.query_params.getlist(param.name);
         if values {
-            return (True, _text_values(values, _param_target(param)), True);
+            return (True, _text_values(values), True);
         }
         return (False, None, False);
     }
@@ -413,7 +421,7 @@ impl _extract_raw(
     if param.kind == ParameterType.BODY {
         if request.form_fields and param.name in request.form_fields {
             form_values = request.form_fields[param.name];
-            return (True, _text_values(form_values, _param_target(param)), True);
+            return (True, _text_values(form_values), True);
         }
         if isinstance(body_json, dict) and param.name in body_json {
             return (True, body_json[param.name], False);

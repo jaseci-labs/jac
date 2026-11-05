@@ -45,6 +45,8 @@ def _tuple_schema(
 
 def _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str, any];
 
+def _schema_default(value: any) -> any;
+
 def _param_schema(
     param: APIParameter, schemas: (dict[str, any] | None) = None
 ) -> dict[str, any];

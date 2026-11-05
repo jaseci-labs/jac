@@ -22,7 +22,7 @@ impl _schema_for_type(
         return {'type': 'array', 'items': items, 'uniqueItems': True};
     }
     if shape is tuple {
-        return _tuple_schema(args, schemas);
+        return {'type': 'array'} if origin is None else _tuple_schema(args, schemas);
     }
     if shape is dict {
         return {'type': 'object'};
@@ -76,7 +76,7 @@ impl _tuple_schema(
     args: tuple[object, ...], schemas: (dict[str, any] | None)
 ) -> dict[str, any] {
     if not args {
-        return {'type': 'array'};
+        return {'type': 'array', 'maxItems': 0};
     }
     if len(args) == 2 and args[1] is Ellipsis {
         return {'type': 'array', 'items': _schema_for_type(args[0], schemas)};
@@ -125,6 +125,22 @@ impl _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str,
     }
     schemas[name] = `entry;
     return ref;
+}
+
+impl _schema_default(value: any) -> any {
+    if isinstance(type(value), EnumMeta) {
+        return value.value;
+    }
+    if isinstance(value, (datetime, date, time)) {
+        return value.isoformat();
+    }
+    if isinstance(value, (list, tuple)) {
+        return [_schema_default(item) for item in value];
+    }
+    if isinstance(value, (set, frozenset)) {
+        return [_schema_default(item) for item in sorted(value, key=str)];
+    }
+    return value;
 }
 
 impl _param_schema(
@@ -195,7 +211,7 @@ impl build_openapi(app: ServingApp) -> dict[str, any] {
                 location = str(kind.value);
                 param_schema = _param_schema(param, component_schemas);
                 if not param.required and param.default_value is not None {
-                    param_schema['default'] = param.default_value;
+                    param_schema['default'] = _schema_default(param.default_value);
                 }
                 params_out.append(
                     {
@@ -215,7 +231,7 @@ impl build_openapi(app: ServingApp) -> dict[str, any] {
             } else {
                 body_schema = _param_schema(param, component_schemas);
                 if not param.required and param.default_value is not None {
-                    body_schema['default'] = param.default_value;
+                    body_schema['default'] = _schema_default(param.default_value);
                 }
                 body_props[param.name] = body_schema;
                 if param.required {

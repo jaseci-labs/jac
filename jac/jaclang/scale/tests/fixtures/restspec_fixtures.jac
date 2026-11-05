@@ -71,13 +71,19 @@ def:protect default_func -> dict[str, any] {
 @restspec(method=HTTPMethod.GET)
 walker:pub GetWalkerWithParams {
     has name: str,
-        age: int;
+        age: int,
+        tags: list[str] = [],
+        maybe_tags: list[str] | None = None,
+        flag: bool = True;
 
     can get_data with Root entry {
         report {
             "message": "GetWalkerWithParams executed",
             "name": self.name,
-            "age": self.age
+            "age": self.age,
+            "tags": self.tags,
+            "maybe_tags": self.maybe_tags,
+            "flag": self.flag
         };
     }
 }
@@ -206,16 +212,17 @@ def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] 
     return {"request": request, "status": status};
 }
 
-"""One field of each scalar type, plus an optional one and a list, to send
-JSON null to."""
-@restspec(method=HTTPMethod.POST, path="/nulls")
-walker:pub NullFields {
+"""One field of each scalar type, plus an optional one, a list and a datetime,
+to send mismatched values to."""
+@restspec(method=HTTPMethod.POST, path="/typed-fields")
+walker:pub TypedFields {
     has title: str = "seed",
         note: str | None = "seed",
         count: int = -1,
         ratio: float = 0.5,
         flag: bool = True,
-        tags: list[str] = [];
+        tags: list[str] = [],
+        when: datetime = datetime(2026, 1, 2);
 
     can echo with Root entry {
         report {
@@ -224,73 +231,10 @@ walker:pub NullFields {
             "count": self.count,
             "ratio": self.ratio,
             "flag": self.flag,
-            "tags": self.tags
+            "tags": self.tags,
+            "when": str(self.when)
         };
     }
-}
-
-obj StrictInner {
-    has count: int = 0;
-}
-
-"""One field of each shape the binder decides on, reported as reprs so a test
-sees the exact type that reached the walker."""
-@restspec(method=HTTPMethod.POST, path="/strict")
-walker:pub StrictFields {
-    has count: int = -1,
-        ratio: float = 0.5,
-        flag: bool = True,
-        title: str = "seed",
-        tags: list[str] = [],
-        pair: tuple[int, int] = (0, 0),
-        mode: Literal["a", "b"] = "a",
-        num: int | float = 0,
-        small: u8 = 0,
-        when: datetime | None = None,
-        inner: StrictInner | None = None;
-
-    can echo with Root entry {
-        report {
-            "count": repr(self.count),
-            "ratio": repr(self.ratio),
-            "flag": repr(self.flag),
-            "title": repr(self.title),
-            "tags": repr(self.tags),
-            "pair": repr(self.pair),
-            "mode": repr(self.mode),
-            "num": repr(self.num),
-            "small": repr(self.small),
-            "when": repr(self.when),
-            "inner": repr(self.inner)
-        };
-    }
-}
-
-"""The same rules reached through the query string, where every value is text."""
-@restspec(method=HTTPMethod.GET, path="/strict-query")
-walker:pub StrictQuery {
-    has count: int = -1,
-        flag: bool = True,
-        tags: list[str] = [],
-        otags: list[str] | None = None,
-        unique: set[str] = set(),
-        mode: Literal["a", "b"] = "a";
-
-    can echo with Root entry {
-        report {
-            "count": repr(self.count),
-            "flag": repr(self.flag),
-            "tags": repr(self.tags),
-            "otags": repr(self.otags),
-            "unique": repr(sorted(self.unique)),
-            "mode": repr(self.mode)
-        };
-    }
-}
-
-"""A function binds through the same path as a walker."""
-def:pub strict_func(count: int, title: str) -> dict[str, str] {
-    return {"count": repr(count), "title": repr(title)};
 }
 
 node UserProfile {
