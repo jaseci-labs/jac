@@ -890,6 +890,35 @@ test "bundled shutil" {
     );
 }
 
+test "mmap file-size checks apply only to regular files" {
+    # CPython gates the empty-file/offset/length validation on S_ISREG, so a
+    # character device like /dev/zero must skip it and reach the mmap syscall
+    # (which fails with ENODEV on darwin, succeeds on linux). Regular files
+    # keep the checks.
+    import platform;
+    if platform.system() not in ("Darwin", "Linux") {
+        testskip("fd probe needs /dev/zero and /etc/hosts (posix only)");
+    }
+    (eng, na_ir) = compile_native("prim_mmap_fd.jac");
+    res = run_native_function(eng, "mmap_fd_probe", na_ir);
+    assert res["zero_fd"] > 0 and res["hosts_fd"] > 0 , (
+        f"probe fds did not open: {res}"
+    );
+    assert res["zero_isreg"] == 0 , f"/dev/zero must not classify as regular: {res}";
+    assert res["hosts_isreg"] == 1 , f"/etc/hosts must classify as regular: {res}";
+    assert res["hosts_huge"] == "valueerror" , (
+        f"oversized map of a regular file must raise ValueError: {res}"
+    );
+    assert res["hosts_small"] == "ok" , f"small map of a regular file must succeed: {res}";
+    if platform.system() == "Darwin" {
+        assert res["zero_map"] == "oserror" , (
+            f"darwin refuses device mmap with ENODEV: {res}"
+        );
+    } else {
+        assert res["zero_map"] == "ok" , f"linux mmaps /dev/zero fine: {res}";
+    }
+}
+
 test "native sort never silently orders object-returning keys" {
     # Node values lower to bare i8*, the same LLVM type as raw string
     # data. The checker's call overloads reject a non-comparable key

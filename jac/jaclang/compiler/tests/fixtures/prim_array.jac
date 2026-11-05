@@ -16,10 +16,10 @@ dunder methods on objs, so BOTH lanes call them explicitly
 on CPython too, keeping the two lanes source-identical where possible.
 
 Documented divergences NOT exercised here (they would spuriously fail):
-  - bytes/array constructor initializers (na: use ``frombytes`` /
-    ``_extend_array`` -- the ctor takes ``list[any]``),
   - ``buffer_info()[0]`` is a live address on BOTH lanes and differs across
     backends (raw addresses), so only ``[1]`` (the item count) is compared,
+  - ``fromfile``/``tofile`` take a file-like ``any`` receiver whose method
+    calls na cannot lower; they stay Python-only on the native lane,
   - 'u'/'w' typecodes, slicing, ``del``, and ``tobuffer``.
 
 ES/JS opts out (``array_cl`` returns an empty dict).
@@ -261,6 +261,31 @@ def array_py -> dict[any, any] {
     } except TypeError as e {
         r["err_extend_str"] = str(e);
     }
+    # extend/ctor accept arrays, bytes, bytearray, and lists: extending with
+    # an array requires the same typecode (CPython's fast path), while the
+    # constructor iterates any array element-wise. bytes/bytearray extend
+    # element-wise, but constructor bytes/bytearray initializers decode raw.
+    # fromfile/tofile take a file-like `any` receiver whose method calls na
+    # cannot lower, so they stay Python-only and are not exercised here.
+    ea = array("i", [1, 2]);
+    ea.extend(array("i", [3, 4]));
+    r["ext_arr_g3"] = ea.__getitem__(3);
+    ea.extend(b"\x05\x00\x00\x00");
+    r["ext_bytes_len"] = ea.__len__();
+    ea.extend(bytearray(b"\x06\x00\x00\x00"));
+    r["ext_ba_len"] = ea.__len__();
+    try {
+        array("d").extend(array("i", [8, 9]));
+        r["ext_diffkind"] = "noraise";
+    } except TypeError as e {
+        r["ext_diffkind"] = str(e);
+    }
+    cb = array("i", b"\x07\x00\x00\x00");
+    r["ctor_bytes"] = cb.__getitem__(0);
+    cba = array("i", bytearray(b"\x08\x00\x00\x00"));
+    r["ctor_ba"] = cba.__getitem__(0);
+    ca = array("d", array("i", [8, 9]));
+    r["ctor_arr_g1"] = ca.__getitem__(1);
     return r;
 }
 
@@ -530,6 +555,30 @@ def _eq_na(r: dict[str, any]) {
 }
 
 
+def _extend_na(r: dict[str, any]) {
+    # Mirrors the sv lane's extend/ctor probes exactly.
+    ea = array("i", [1, 2]);
+    ea.extend(array("i", [3, 4]));
+    r["ext_arr_g3"] = ea.__getitem__(3);
+    ea.extend(b"\x05\x00\x00\x00");
+    r["ext_bytes_len"] = ea.__len__();
+    ea.extend(bytearray(b"\x06\x00\x00\x00"));
+    r["ext_ba_len"] = ea.__len__();
+    try {
+        array("d").extend(array("i", [8, 9]));
+        r["ext_diffkind"] = "noraise";
+    } except TypeError as e {
+        r["ext_diffkind"] = str(e);
+    }
+    cb = array("i", b"\x07\x00\x00\x00");
+    r["ctor_bytes"] = cb.__getitem__(0);
+    cba = array("i", bytearray(b"\x08\x00\x00\x00"));
+    r["ctor_ba"] = cba.__getitem__(0);
+    ca = array("d", array("i", [8, 9]));
+    r["ctor_arr_g1"] = ca.__getitem__(1);
+}
+
+
 def array_na -> dict[str, any] {
     r: dict[str, any] = {};
     _core_na(r);
@@ -538,5 +587,6 @@ def array_na -> dict[str, any] {
     _err_na(r);
     _coerce_na(r);
     _eq_na(r);
+    _extend_na(r);
     return r;
 }

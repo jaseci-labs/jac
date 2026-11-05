@@ -41,7 +41,7 @@ impl mmap.init(
     }
     if fileno == -1 {
         use_flags = use_flags | MAP_ANON;
-    } else {
+    } elif mm_isreg(fileno) {
         fsize: int = mm_filesize(fileno);
         if fsize < 0 {
             raise OSError(_os_err());
@@ -54,10 +54,8 @@ impl mmap.init(
                 raise ValueError("mmap offset is greater than file size");
             }
             map_len = fsize - offset;
-        } else {
-            if offset > fsize or map_len > fsize - offset {
-                raise ValueError("mmap length is greater than file size");
-            }
+        } elif offset > fsize or map_len > fsize - offset {
+            raise ValueError("mmap length is greater than file size");
         }
     }
     addr: int = mm_map(map_len, use_prot, use_flags, fileno, offset);
@@ -72,8 +70,11 @@ impl mmap.init(
     } else {
         self._fd = mm_dup_fd(fileno);
         if self._fd < 0 {
+            msg: str = _os_err();
             mm_unmap(self._addr, self._len);
-            raise OSError(_os_err());
+            self._addr = 0;
+            self.closed = True;
+            raise OSError(msg);
         }
     }
     self.closed = False;

@@ -113,6 +113,44 @@ def binascii_py -> dict[any, any] {
     } except ValueError as e {
         r["err_strict"] = str(e);
     }
+    # hexlify separator edge cases: an explicit empty or over-long sep is a
+    # ValueError (only an omitted sep means "no separator").
+    try {
+        hexlify(data, b"");
+        r["err_hex_empty"] = "noraise";
+    } except ValueError as e {
+        r["err_hex_empty"] = str(e);
+    }
+    try {
+        hexlify(data, b"::");
+        r["err_hex_longsep"] = "noraise";
+    } except ValueError as e {
+        r["err_hex_longsep"] = str(e);
+    }
+    r["hex_bps_digest"] = _digest(hexlify(b"\x01\x02\x03\x04", b":", 2));
+    # quoted-printable hex escapes, a trailing bare '=', invalid escapes left
+    # literal, and the 76-column soft wrap.
+    r["qp_esc_digest"] = _digest(a2b_qp(b"a=20b=3Dc=FF"));
+    r["qp_esc_len"] = len(a2b_qp(b"a=20b=3Dc=FF"));
+    r["qp_trail_eq"] = 1 if a2b_qp(b"abc=") == b"abc" else 0;
+    r["qp_badhex_lit"] = 1 if a2b_qp(b"a=zz") == b"a=zz" else 0;
+    r["qp_wrap_digest"] = _digest(b2a_qp(b"x" * 100));
+    r["qp_wrap_len"] = len(b2a_qp(b"x" * 100));
+    # uuencode decode errors. (Empty input is NOT pinned: older CPython reads
+    # past the buffer and returns garbage while newer CPython raises
+    # "Missing length byte" -- version-dependent.)
+    try {
+        a2b_uu(b"\x00abc");
+        r["err_uu_illegal"] = "noraise";
+    } except ValueError as e {
+        r["err_uu_illegal"] = str(e);
+    }
+    try {
+        a2b_uu(b"!!!!");
+        r["err_uu_trailing"] = "noraise";
+    } except ValueError as e {
+        r["err_uu_trailing"] = str(e);
+    }
     return r;
 }
 
@@ -145,6 +183,7 @@ def _hex_na(r: dict[str, any]) {
     r["a2b_alias"] = 1 if a2b_hex(h) == unhexlify(h) else 0;
     r["b2a_alias"] = 1 if b2a_hex(data) == h else 0;
     r["hex_hi_digest"] = _digest_na(hexlify(b"\xff\x80"));
+    r["hex_bps_digest"] = _digest_na(hexlify(b"\x01\x02\x03\x04", b":", 2));
 }
 
 
@@ -180,6 +219,12 @@ def _uu_qp_na(r: dict[str, any]) {
     r["qp_rt"] = 1 if a2b_qp(b2a_qp(data)) == data else 0;
     r["qp_header"] = _digest_na(b2a_qp(b"two words", True, True));
     r["qp_und"] = 1 if a2b_qp(b"two_words", True) == b"two words" else 0;
+    r["qp_esc_digest"] = _digest_na(a2b_qp(b"a=20b=3Dc=FF"));
+    r["qp_esc_len"] = len(a2b_qp(b"a=20b=3Dc=FF"));
+    r["qp_trail_eq"] = 1 if a2b_qp(b"abc=") == b"abc" else 0;
+    r["qp_badhex_lit"] = 1 if a2b_qp(b"a=zz") == b"a=zz" else 0;
+    r["qp_wrap_digest"] = _digest_na(b2a_qp(b"x" * 100));
+    r["qp_wrap_len"] = len(b2a_qp(b"x" * 100));
 }
 
 
@@ -217,6 +262,30 @@ def _err_na(r: dict[str, any]) {
         r["err_strict"] = "noraise";
     } except Exception as e {
         r["err_strict"] = str(e);
+    }
+    try {
+        hexlify(b"ab", b"");
+        r["err_hex_empty"] = "noraise";
+    } except Exception as e {
+        r["err_hex_empty"] = str(e);
+    }
+    try {
+        hexlify(b"ab", b"::");
+        r["err_hex_longsep"] = "noraise";
+    } except Exception as e {
+        r["err_hex_longsep"] = str(e);
+    }
+    try {
+        a2b_uu(b"\x00abc");
+        r["err_uu_illegal"] = "noraise";
+    } except Exception as e {
+        r["err_uu_illegal"] = str(e);
+    }
+    try {
+        a2b_uu(b"!!!!");
+        r["err_uu_trailing"] = "noraise";
+    } except Exception as e {
+        r["err_uu_trailing"] = str(e);
     }
 }
 

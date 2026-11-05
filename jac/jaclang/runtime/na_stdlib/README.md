@@ -1179,6 +1179,45 @@ native layout records the emitted name separately from its source-level key.
   so aliased codes resolve to the same name CPython reports. SCOPE: Linux
   and Darwin tables only; no `strerror`-style message lookup is exported
   (`os.strerror` stays a compiler intercept).
+- **`array.jac`** (Mechanism B over the raw-buffer intrinsics) -- the
+  CPython `array` typecode surface (`b B h H i I l L q Q f d`), raw ingest
+  via `frombytes`/`fromfile`, `byteswap`, and value-based cross-typecode
+  equality. Integer elements use the host width table, so `l`/`L` are 8
+  bytes (LP64) where CPython on Windows uses 4; float elements pack
+  little-endian. SCOPE/divergences: the `Q`/`L` unsigned typecodes cannot
+  represent values >= 2**63 -- the native integer domain is signed `i64`,
+  so such values read back negative (the same limit the `int` type
+  itself has); slicing, `del`, `tobuffer`, and the `u`/`w` typecodes are
+  not provided; `fromfile`/`tofile` take a file-like `any` receiver whose
+  method calls na cannot lower, so both stay Python-only on the native lane
+  (calling them from native code is a lowering error, not a runtime one).
+- **`binascii.jac`** (Mechanism B over the raw-buffer intrinsics) --
+  `hexlify`/`unhexlify`/`a2b_hex`/`b2a_hex`, `a2b_base64`/`b2a_base64`
+  (strict mode included), `crc32`/`crc_hqx`, `a2b_uu`/`b2a_uu`, and
+  `a2b_qp`/`b2a_qp`, with `Error` subclassing `ValueError` as on CPython.
+  SCOPE/divergences: `hexlify`'s `sep` must be `bytes` (CPython also
+  accepts `str`); `a2b_uu(b"")` raises `Error("Missing length byte")`,
+  matching current CPython -- older releases read past the buffer and
+  return garbage, so callers porting uudecode loops should not rely on the
+  empty-input result either way.
+- **`mmap.jac`** (Mechanism F over `_mmap_native` libc floors and
+  `_mmap_platform` per-OS constants) -- anonymous and file-backed mappings
+  with `read`/`write`/`seek`/`find`/`move`/`flush`/`resize`/`close`,
+  `ACCESS_READ`/`ACCESS_WRITE`/`ACCESS_COPY`, and `size()`. File-size
+  validation (`cannot mmap an empty file`, length/offset checks) applies
+  only to regular files -- character devices such as `/dev/zero` pass
+  straight to `mmap(2)` like CPython. The mapping's fd is duplicated with
+  `FD_CLOEXEC` so `size()` answers the file size without sharing the
+  caller's descriptor lifetime. SCOPE/divergences: POSIX targets only
+  (Linux/Darwin; the C floor does not link on Windows); `resize` supports
+  anonymous maps and refuses file-backed shared maps (no `ftruncate` +
+  `mremap` path -- a `MAP_PRIVATE` file-backed resize remaps anonymously
+  and loses the file association, as CPython's fallback did pre-`mremap`);
+  `_writable` derives from `PROT_WRITE`, so a default-access map created
+  with `prot=PROT_READ` is rejected here where CPython's `is_writable()`
+  would call it writable (deliberate hardening -- such a map would SIGSEGV
+  on write); `size()` on an anonymous map raises `OSError(EBADF)` matching
+  CPython <= 3.14.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
