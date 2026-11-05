@@ -31,6 +31,7 @@ impl mmap.init(
     }
     self._access = access;
     self._flags = use_flags;
+    self._writable = (use_prot & PROT_WRITE) != 0;
     map_len: int = length;
     if map_len < 0 {
         raise OverflowError("memory mapped length must be positive");
@@ -66,7 +67,15 @@ impl mmap.init(
     self._addr = addr;
     self._len = map_len;
     self._pos = 0;
-    self._fd = fileno;
+    if fileno == -1 {
+        self._fd = -1;
+    } else {
+        self._fd = mm_dup_fd(fileno);
+        if self._fd < 0 {
+            mm_unmap(self._addr, self._len);
+            raise OSError(_os_err());
+        }
+    }
     self.closed = False;
 }
 
@@ -81,10 +90,19 @@ impl mmap.close {
         mm_unmap(self._addr, self._len);
         self._addr = 0;
     }
+    if self._fd != -1 {
+        mm_close_fd(self._fd);
+        self._fd = -1;
+    }
     self.closed = True;
 }
 
+impl mmap.drop {
+    self.close();
+}
+
 impl mmap.__enter__ -> mmap {
+    self._check_open();
     return self;
 }
 
@@ -94,6 +112,7 @@ impl mmap.__exit__(exc_type: any, exc: any, tb: any) -> bool {
 }
 
 impl mmap.__len__ -> int {
+    self._check_open();
     return self._len;
 }
 
@@ -102,7 +121,11 @@ impl mmap.size -> int {
     if self._fd == -1 {
         raise OSError("[Errno 9] Bad file descriptor");
     }
-    return mm_filesize(self._fd);
+    fsz: int = mm_filesize(self._fd);
+    if fsz < 0 {
+        raise OSError(_os_err());
+    }
+    return fsz;
 }
 
 impl mmap.tell -> int {
@@ -175,7 +198,7 @@ impl mmap.readline -> bytes {
 }
 
 impl mmap._check_writable {
-    if self._access == ACCESS_READ {
+    if not self._writable {
         raise TypeError("mmap can't modify a readonly memory map.");
     }
 }
@@ -264,7 +287,7 @@ impl mmap._find_bounds(start: int, end: int) -> tuple[int, int] {
     if hi > self._len {
         hi = self._len;
     }
-    if lo >= hi {
+    if lo > hi {
         return (-1, -1);
     }
     return (lo, hi);
@@ -356,7 +379,7 @@ impl mmap.move(dest: int, src: int, count: int) {
 impl mmap.resize(newsize: int) {
     self._check_open();
 
-    if self._access == ACCESS_READ or self._access == ACCESS_COPY {
+    if not self._writable or self._access == ACCESS_COPY {
         raise TypeError("mmap can't resize a readonly or copy-on-write memory map.");
     }
     if newsize < 0 {

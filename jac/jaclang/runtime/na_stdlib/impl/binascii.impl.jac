@@ -126,7 +126,11 @@ impl b2a_base64(data: bytes, newline: bool = True) -> bytes {
 
 
 impl a2b_base64(data: bytes, strict_mode: bool = False) -> bytes {
-    return b64decode(data, b"", strict_mode);
+    try {
+        return b64decode(data, b"", strict_mode);
+    } except ValueError as e {
+        raise Error(str(e));
+    }
 }
 
 
@@ -191,6 +195,7 @@ impl b2a_uu(data: bytes, backtick: bool = False) -> bytes {
             }
             j += 1;
         }
+        leftchar &= (1 << leftbits) - 1;
     }
     __mem_store_i8(dp + j, 10);
     j += 1;

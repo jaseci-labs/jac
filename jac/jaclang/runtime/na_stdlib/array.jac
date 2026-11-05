@@ -23,6 +23,9 @@ def _put_le(buf: bytearray, off: int, v: int, size: int);
 def _get_le(buf: bytearray, off: int, size: int, signed: bool) -> int;
 
 
+def _ieqf(a: int, b: float) -> bool;
+
+
 obj:pub array {
     has typecode: str = "b",
         _buf: bytearray = bytearray(0),

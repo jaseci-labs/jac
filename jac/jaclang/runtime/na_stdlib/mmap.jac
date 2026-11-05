@@ -7,7 +7,9 @@ import from _mmap_native {
     mm_write,
     mm_copy,
     mm_errno,
-    mm_errstr
+    mm_errstr,
+    mm_dup_fd,
+    mm_close_fd
 }
 import from _mmap_platform { mm_anon_flag, mm_sync_flag, mm_resize_requires_mremap }
 
@@ -40,7 +42,8 @@ obj:pub mmap {
         closed: bool = False,
         _access: int = 0,
         _flags: int = 0,
-        _fd: int = -1;
+        _fd: int = -1,
+        _writable: bool = False;
 
     def init(
         fileno: int,
@@ -53,6 +56,7 @@ obj:pub mmap {
 
     def _check_open;
     def close;
+    def drop;
     def __enter__ -> mmap;
     def __exit__(exc_type: any, exc: any, tb: any) -> bool;
     def __len__ -> int;
