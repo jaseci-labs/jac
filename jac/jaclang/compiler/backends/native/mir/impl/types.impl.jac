@@ -148,6 +148,14 @@ impl mir_tuple(elems: list[MirType]) -> MirType {
     return mir_type(MirKind.TUPLE, args=elems);
 }
 
+impl mir_var_tuple(elem: MirType) -> MirType {
+    return mir_type(MirKind.LIST, name="tuple", args=[elem]);
+}
+
+impl mir_is_var_tuple(t: MirType) -> bool {
+    return t.kind == MirKind.LIST and t.name == "tuple";
+}
+
 impl mir_obj(name: str) -> MirType {
     return mir_type(MirKind.OBJ, name=name);
 }

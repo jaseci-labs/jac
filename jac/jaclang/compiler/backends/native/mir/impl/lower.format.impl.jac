@@ -391,7 +391,8 @@ impl MirLowering.container_repr_body(param: MirValue, site: uni.UniNode) {
         b.position(filled);
     }
     sb = self.call_rt("__jac_rt_sb_new", [b.const_int(32, mir_int())]);
-    self.sb_text(sb, "[" if kind == MirKind.LIST else "{");
+    tupled = mir_is_var_tuple(param.type);
+    self.sb_text(sb, "(" if tupled else ("[" if kind == MirKind.LIST else "{"));
     cursor = self.temp_slot(mir_int());
     seen = self.temp_slot(mir_int());
     b.store(cursor, b.const_int(0 if kind == MirKind.LIST else -1, mir_int()));
@@ -437,7 +438,14 @@ impl MirLowering.container_repr_body(param: MirValue, site: uni.UniNode) {
     }
     self.builder().branch(head);
     b.position(done);
-    self.sb_text(sb, "]" if kind == MirKind.LIST else "}");
+    if tupled {
+        (lone, lone_len) = self.text_const(",");
+        single = b.compare("eq", b.load(seen, mir_int()), b.const_int(1, mir_int()));
+        self.runtime("__jac_rt_sb_add", [sb, lone, b.select(single, lone_len, zero)]);
+        self.sb_text(sb, ")");
+    } else {
+        self.sb_text(sb, "]" if kind == MirKind.LIST else "}");
+    }
     b.ret(self.owned_text(self.call_rt("__jac_rt_sb_finish", [sb])));
 }
 

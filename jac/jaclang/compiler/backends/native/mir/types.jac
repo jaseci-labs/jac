@@ -95,6 +95,10 @@ def mir_set(elem: MirType) -> MirType;
 
 def mir_tuple(elems: list[MirType]) -> MirType;
 
+def mir_var_tuple(elem: MirType) -> MirType;
+
+def mir_is_var_tuple(t: MirType) -> bool;
+
 def mir_obj(name: str) -> MirType;
 
 def mir_osp(kind: str) -> MirType;

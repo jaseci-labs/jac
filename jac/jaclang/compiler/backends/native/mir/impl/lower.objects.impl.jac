@@ -445,6 +445,104 @@ impl MirLowering.arch_methods(arch: uni.Archetype) -> list[uni.Ability] {
     return found;
 }
 
+impl MirLowering.hasattr_value(
+    target: uni.Expr, attr: uni.Expr, site: uni.UniNode
+) -> MirValue {
+    name = uni.literal_string_value(attr);
+    if not isinstance(name, str) {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                "hasattr with a computed name",
+                site,
+                "Native code answers hasattr from the value's declared members, so the attribute name must be a string literal."
+            )
+        );
+    }
+    value = self.lower_expr(target);
+    found = self.static_hasattr(value, target, name);
+    if found is None {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"hasattr({value.type.render()}, {name!r})",
+                site,
+                "Native code answers hasattr from the value's declared members; this value's attributes are only known at run time."
+            )
+        );
+    }
+    return self.builder().const_bool(found);
+}
+
+impl MirLowering.static_hasattr(
+    value: MirValue, target: uni.Expr, name: str
+) -> (bool | None) {
+    t = value.type;
+    if t.kind == MirKind.OPT {
+        return None;
+    }
+    if t.kind in (MirKind.OBJ, MirKind.CLASS, MirKind.OSP) {
+        arch = self.archetypes.get(t.name);
+        declared = target.type;
+        if arch is None
+            and isinstance(declared, ClassType)
+            and declared._shared is not None
+            and isinstance(declared.shared.symbol_table, uni.Archetype)
+            and not stub_archetype(declared.shared.symbol_table) {
+            arch = declared.shared.symbol_table;
+        }
+        if arch is None {
+            return None;
+        }
+        for hook in ("__getattr__", "__getattribute__") {
+            if self.find_method(arch, hook) is not None {
+                return None;
+            }
+        }
+        if not name.isidentifier() {
+            return False;
+        }
+        if t.kind == MirKind.OBJ
+            and (
+                self.object_def(arch).field(name) is not None
+                or self.find_method(arch, name) is not None
+            ) {
+            return True;
+        }
+        return None;
+    }
+    builtin: (type | None) = None;
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        builtin = str;
+    } elif t.kind == MirKind.INT {
+        builtin = int;
+    } elif t.kind == MirKind.FLOAT {
+        builtin = float;
+    } elif t.kind == MirKind.BOOL {
+        builtin = bool;
+    } elif t.kind == MirKind.NONE {
+        builtin = type(None);
+    } elif mir_is_var_tuple(t) {
+        builtin = tuple;
+    } elif t.kind == MirKind.LIST {
+        builtin = list;
+    } elif t.kind == MirKind.DICT {
+        builtin = dict;
+    } elif t.kind == MirKind.SET {
+        builtin = set;
+    } elif t.kind == MirKind.BYTES {
+        builtin = bytes;
+    } elif t.kind == MirKind.BYTEARRAY {
+        builtin = bytearray;
+    } elif t.kind == MirKind.TUPLE {
+        builtin = tuple;
+    }
+    if builtin is None {
+        return None;
+    }
+    return hasattr(builtin, name);
+}
+
 impl MirLowering.find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None) {
     for holder in self.lineage(arch) {
         for method in self.arch_methods(holder) {

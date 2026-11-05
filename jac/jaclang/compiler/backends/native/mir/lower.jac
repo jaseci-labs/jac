@@ -912,6 +912,10 @@ obj MirLowering {
     def arch_methods(arch: uni.Archetype) -> list[uni.Ability];
     def lineage(arch: uni.Archetype) -> list[uni.Archetype];
     def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
+    def hasattr_value(target: uni.Expr, attr: uni.Expr, site: uni.UniNode) -> MirValue;
+    def var_tuple_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def refuse_inferred_any_store(base: MirValue, value: MirValue, site: uni.UniNode);
+    def static_hasattr(value: MirValue, target: uni.Expr, name: str) -> (bool | None);
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
     def owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None);

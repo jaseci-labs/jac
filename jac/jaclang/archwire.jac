@@ -8865,6 +8865,7 @@ graph import compiler {
             CodeBlockStmt,
             CompareExpr,
             DeleteStmt,
+            DictCompr,
             EdgeRefTrailer,
             ElseIf,
             Enum,
@@ -8872,6 +8873,7 @@ graph import compiler {
             Except,
             Expr,
             ExprAsItem,
+            ExprStmt,
             FilterCompr,
             FinallyStmt,
             FormattedValue,
@@ -8890,6 +8892,7 @@ graph import compiler {
             JsxElementName,
             KWPair,
             LambdaExpr,
+            ListCompr,
             ListVal,
             MatchArch,
             MatchAs,
@@ -10774,6 +10777,7 @@ graph import compiler.backends.native.mir {
             mir_holds_ref,
             mir_int,
             mir_is_container,
+            mir_is_var_tuple,
             mir_iter,
             mir_list,
             mir_none,
@@ -10819,7 +10823,8 @@ graph import compiler.backends.native.mir {
             mir_set,
             mir_str,
             mir_str_ref,
-            mir_tuple
+            mir_tuple,
+            mir_var_tuple
         },
         rc { MirKind, MirType, mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
         runtime_abi {

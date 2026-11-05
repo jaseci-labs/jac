@@ -69,6 +69,7 @@ walker TypeCheckPass(TreePass) {
     def _check_borrowed_scalar_forward(nd: FuncCall) -> None;
     def _c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None);
     can exit_gen_compr with GenCompr exit;
+    can exit_expr_stmt with ExprStmt exit;
     def _check_intrinsic_collision(nd: Ability) -> None;
     can exit_jsx_element with JsxElement exit;
     can exit_filter_compr with FilterCompr exit;

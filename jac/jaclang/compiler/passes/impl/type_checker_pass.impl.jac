@@ -180,6 +180,14 @@ impl TypeCheckPass.exit_gen_compr with GenCompr exit {
     }
 }
 
+impl TypeCheckPass.exit_expr_stmt with ExprStmt exit {
+    if isinstance(here.expr, (ListCompr, DictCompr))
+        and here.expr.type is None
+        and self._lambda_depth == 0 {
+        self.evaluator.get_type_of_expression(here.expr);
+    }
+}
+
 impl TypeCheckPass.exit_func_call with FuncCall exit {
     if self._lambda_depth > 0 {
         here.call_kind = classify_call(here).value;

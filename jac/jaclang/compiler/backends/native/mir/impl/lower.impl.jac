@@ -3108,7 +3108,7 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         for index in range(len(value.type.args)) {
             self.container_add(made, self.tuple_get(held, index), site);
         }
-        return made;
+        return made if made.type is to else self.builder().ref_cast(made, to, False);
     }
     cast = self.reinterpret(value, to, site);
     if cast is not None {
@@ -3656,6 +3656,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     }
     if name == "isinstance" and len(args) == 2 {
         return self.isinstance_value(args[0], args[1], nd);
+    }
+    if name == "hasattr" and len(args) == 2 {
+        return self.hasattr_value(args[0], args[1], nd);
     }
     if name.startswith("wrapping_") {
         return self.wrapping_call(nd, name, args);

@@ -80,6 +80,70 @@ impl MirLowering.tuple_box(value: MirValue, site: uni.UniNode) -> MirValue {
     return box;
 }
 
+impl MirLowering.refuse_inferred_any_store(
+    base: MirValue, value: MirValue, site: uni.UniNode
+) {
+    holder = base.type.payload() if base.type.kind == MirKind.OPT else base.type;
+    if value.type.kind != MirKind.ANY
+        or not isinstance(site, uni.AtomTrailer)
+        or not isinstance(site.target, uni.Name)
+        or holder.kind not in (MirKind.LIST, MirKind.DICT) {
+        return;
+    }
+    elem = holder.args[-1];
+    if elem.kind not in (MirKind.INT, MirKind.FLOAT, MirKind.BOOL, MirKind.STR) {
+        return;
+    }
+    sym = site.target.sym;
+    decl = sym.decl if sym is not None else None;
+    made = decl.parent if decl is not None else None;
+    if not isinstance(made, uni.Assignment) or made.type_tag is not None {
+        return;
+    }
+    raise MirRefused(
+        mir_refusal(
+            "assignment",
+            f"an any value into {site.target.value}, inferred as {holder.render()}",
+            site,
+            f"Native code stores {elem.render()} slots in {site.target.value}, whose type was inferred from its first value, and cannot hold whatever this any value is at run time. Annotate {site.target.value} with the element type it really holds (any, if it is mixed)."
+        )
+    );
+}
+
+impl MirLowering.var_tuple_box(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(value);
+    elem = value.type.payload();
+    size = self.container_len(held);
+    box = self.runtime_value("__jac_rt_tuple_new", [size]);
+    cursor = self.temp_slot(mir_int());
+    b.store(cursor, b.const_int(0, mir_int()));
+    head = fn.new_block("vtuple.head");
+    body = fn.new_block("vtuple.body");
+    done = fn.new_block("vtuple.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, size), body, done);
+    b.position(body);
+    self.runtime(
+        "__jac_rt_tuple_set",
+        [
+            box,
+            at,
+            self.to_bits(self.list_read(held, at), elem, site),
+            self.creation_kind(elem, site)
+        ]
+    );
+    self.builder().store(
+        cursor, self.builder().binary("add", at, b.const_int(1, mir_int()))
+    );
+    self.builder().branch(head);
+    self.builder().position(done);
+    return box;
+}
+
 impl MirLowering.tuple_unbox(handle: MirValue, t: MirType) -> MirValue {
     b = self.builder();
     size = len(t.args);
@@ -665,6 +729,7 @@ impl MirLowering.container_set(
     base: MirValue, slice: uni.IndexSlice, value: MirValue, site: uni.UniNode
 ) {
     b = self.builder();
+    self.refuse_inferred_any_store(base, value, site);
     if len(slice.slices) == 1 and slice.is_range {
         holder = base;
         if holder.type.kind == MirKind.OPT

@@ -546,7 +546,13 @@ impl MirLowering.osp_special(nd: uni.SpecialVarRef) -> MirValue {
     if arch is not None and self.osp_layout(arch) is not None {
         return self.any_unbox(found, self.object_type(arch), nd);
     }
-    return found;
+    b = self.builder();
+    tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [found]);
+    handle = b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int()));
+    return self.any_make(
+        b.select(handle, b.const_int(ANY_OBJ_TAG, mir_int()), tag),
+        self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [found])
+    );
 }
 
 impl MirLowering.osp_leave {

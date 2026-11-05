@@ -317,7 +317,9 @@ impl mir_class_type(
             raise MirRefused(mir_refusal("type", "tuple without member types", site));
         }
         if len(members) == 2 and isinstance(members[1], UnknownType) {
-            return mir_list(mir_type_of(members[0], MirPosition.ELEMENT, site, env));
+            return mir_var_tuple(
+                mir_type_of(members[0], MirPosition.ELEMENT, site, env)
+            );
         }
         return mir_tuple(
             [mir_type_of(member, MirPosition.VALUE, site, env) for member in members]

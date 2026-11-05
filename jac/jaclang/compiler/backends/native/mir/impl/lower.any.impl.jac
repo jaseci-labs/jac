@@ -89,6 +89,14 @@ impl MirLowering.any_box(value: MirValue, site: uni.UniNode) -> MirValue {
             MirOp.ANY_BOX, mir_any(), [source], int_value=ANY_OBJ_TAG
         );
     }
+    if mir_is_var_tuple(value.type) {
+        return self.emit_value(
+            MirOp.ANY_BOX,
+            mir_any(),
+            [self.var_tuple_box(value, site)],
+            int_value=ANY_OBJ_TAG
+        );
+    }
     return self.emit_value(
         MirOp.ANY_BOX, mir_any(), [source], int_value=self.any_tag(source.type, site)
     );
@@ -176,6 +184,11 @@ impl MirLowering.any_unbox(
     }
     if to.kind == MirKind.TUPLE {
         return self.tuple_unbox(b.ref_cast(held, mir_ref(), False), to);
+    }
+    if mir_is_var_tuple(to) {
+        made = self.spill(self.new_list(to.payload(), 4));
+        self.extend_from(made, held, site);
+        return b.ref_cast(made, to, False);
     }
     if to.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET) {
         return self.any_bind(held, to, site);
