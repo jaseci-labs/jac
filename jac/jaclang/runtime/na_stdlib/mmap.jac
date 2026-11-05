@@ -79,5 +79,4 @@ obj:pub mmap {
     def flush(offset: int = 0, size: int = 0);
     def move(dest: int, src: int, count: int);
     def resize(newsize: int);
-    def _read_slice(start: int, n: int) -> bytes;
 }
