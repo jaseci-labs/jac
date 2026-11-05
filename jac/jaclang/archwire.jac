@@ -722,7 +722,7 @@ graph import {
         packages.api.package_surface { compilation_scope },
         project.compiler_host.ProjectHost.lint_settings { context_app },
     ]
-    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
+    compiler.driver.compilation_context --> client.client_bundle.client_context_program {
         context_program
     }
     compiler.driver.compile_options ++> [
@@ -2743,8 +2743,14 @@ graph import {
         compiler.placement.placement_solver { supports },
         compiler.placement.placement_solver._py_import_client_portable { supports },
     ]
-    runtime.preparation_lock ++> server.hmr.HotReloader._reload_server_module
-        | server.server.JacAPIServer._refresh_dev_endpoints { PREPARATION_LOCK }
+    runtime.preparation_lock ++> [
+        compiler.driver.application._prepare_revision { SourcesChanged },
+        server.hmr.HotReloader._reload_server_module { PREPARATION_LOCK },
+        server.server.JacAPIServer._refresh_dev_endpoints {
+            PREPARATION_LOCK,
+            SourcesChanged
+        },
+    ]
     runtime.preparation_lock --> [
         compiler.driver.application.prepare_application { PREPARATION_LOCK },
         compiler.driver.application.prepare_dynamic_module { PREPARATION_LOCK },
@@ -4985,6 +4991,11 @@ graph import client {
         compiler.ViteCompiler.prepare_bundle { client_program },
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
+        },
+        jac_client_compiler.JacClientCompiler.compile { client_source_root },
+        targets.web_target.WebTarget.build {
+            client_context_program,
+            client_source_root
         },
         vite_client_bundle {
             ClientBuildInputs,
@@ -7246,6 +7257,7 @@ graph import compiler {
             E1158,
             E1159,
             E1161,
+            E1162,
             E2015,
             W1036,
             W1037,
@@ -8501,7 +8513,7 @@ graph import compiler {
             UniNode
         },
         passes.context { ImplDef, Module, Source, TreeWalker, UniNode },
-        passes.dataflow { UniCFGNode },
+        passes.dataflow { AstElseBodyNode, UniCFGNode },
         passes.decl_impl_match_pass {
             Ability,
             Archetype,
@@ -8658,7 +8670,6 @@ graph import compiler {
             Ability,
             Archetype,
             Assignment,
-            AstElseBodyNode,
             AtomTrailer,
             AwaitExpr,
             BinaryExpr,
@@ -9056,6 +9067,7 @@ graph import compiler {
             Expr,
             ExprAsItem,
             FilterCompr,
+            FinallyStmt,
             FormattedValue,
             FuncCall,
             FuncSignature,
@@ -9090,9 +9102,11 @@ graph import compiler {
             SubTag,
             Symbol,
             Token,
+            TryStmt,
             TupleVal,
             TypeAlias,
             UnaryExpr,
+            UniCFGNode,
             UniNode,
             VisitStmt,
             WhileStmt,
@@ -12139,6 +12153,7 @@ graph import compiler.frontend {
         Absorbs,
         CalleeDecl,
         CalleeSignature,
+        CfgCatch,
         CfgFalse,
         CfgSucc,
         CfgTrue,
@@ -13583,11 +13598,13 @@ graph import compiler.passes {
         ownership_check_pass {
             DataflowTransfer,
             SymId,
+            is_scope_exit,
             solve_backward,
             solve_forward,
             solve_forward_must
         },
         rc_facts_pass { SymId, solve_backward_gen_kill },
+        type_checker_pass { SymId, is_scope_exit, solve_forward },
     ]
     execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
@@ -45254,7 +45271,8 @@ graph import scale {
             _CLIENT_BUILD_ATTEMPTS,
             _CLIENT_BUILD_RETRY_PAUSE_S,
             _is_transient_client_build_failure,
-            _membership_diagnosis
+            _membership_diagnosis,
+            _run_until_quiet
         },
         tests.deploy.test_deployment_overlay {
             CONFIG_REVISION_ANNOTATION,
@@ -46417,7 +46435,7 @@ graph import scale.deploy.target.kubernetes {
 
 graph import scale.emailer {
     emailer ++> [
-        emailers { EmailAttachment, Emailer },
+        emailers { EmailAttachment, Emailer, MAX_HEADER_LINE },
         factory { Emailer },
     ]
     emailers --> factory.create { SMTPEmailer }
@@ -46945,7 +46963,7 @@ graph import server {
         register_walker_endpoints
     }
     exchange ++> [
-        endpoints.colocated { refusal_status, settle_envelope },
+        endpoints.colocated { settle_envelope },
         endpoints.walkers {
             apply_response_choice,
             has_response_choice,
@@ -47233,7 +47251,7 @@ graph import server {
 graph import server.endpoints {
     auth ++> second_factor { fail, ok, throttled }
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller }
 }
 
 graph import server.identity {

@@ -9,16 +9,16 @@
         "_comment": "libc++ slice (built -DLLVM_ENABLE_LIBCXX=ON with zig c++ @ glibc 2.17): the LLVMPY_* shim links it with `zig c++` for a clean glibc 2.17 floor (#7082). The stock x86_64-linux slice is libstdc++ and forces a host-g++ link at the runner's glibc (~2.38).",
         "dirname": "LLVM-22.1.8-Linux-X64-libcxx-lld",
         "triple": "x86_64-linux-libcxx-lld",
-        "manifest_sha256": "2870eb77034eb74ce2fc17e24d37ea035db9d61c06071f42b6ad6ecbb32a14c8",
-        "zip_size": 1423609156,
+        "manifest_sha256": "b51f86dc5f145727916933d8b76c6df617f5bffa1fca140e9de2af04989708c4",
+        "zip_size": 122878759,
         "upstream": false
       },
       "linux-aarch64": {
         "_comment": "libc++ slice, same zig c++ @ 2.17 build as x86_64 (built natively on ubuntu-24.04-arm, llvm-slice#4); the libcxx triple routes the shim to the zig c++/2.17 link path. Closes the #7082 aarch64 follow-up.",
         "dirname": "LLVM-22.1.8-Linux-ARM64-libcxx-lld",
         "triple": "aarch64-linux-libcxx-lld",
-        "manifest_sha256": "f7d6dc875024b0d0fd915d5809706b395d03f3305a10f150202657987731895b",
-        "zip_size": 1424249476,
+        "manifest_sha256": "b60d038a5494e723aec29617da18f955d6723b43c531e5ff9ab605f78b66acdb",
+        "zip_size": 117923127,
         "upstream": false
       },
       "macos-aarch64": {

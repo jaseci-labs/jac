@@ -48,13 +48,6 @@ impl _stream(result: any) -> StreamingResponse {
 }
 
 impl _failure(result: dict[str, any], fallback: str) -> TransportResponse {
-    if result.get('error') == 'User not found' {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Unauthorized: unknown user',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
     return TransportResponse.fail(
         code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
         message=result.get('error', fallback),
@@ -243,7 +236,11 @@ impl walker_callback(
             return _stream(result);
         }
         if isinstance(result, dict) and 'error' in result {
-            return _failure(result, 'Walker execution failed');
+            return remember_response(
+                idem,
+                _failure(result, 'Walker execution failed'),
+                committed=bool(result.get('final'))
+            );
         }
         return remember_response(
             idem,
@@ -409,7 +406,11 @@ impl function_callback(
             return _stream(result);
         }
         if isinstance(result, dict) and 'error' in result {
-            return _failure(result, 'Function execution failed');
+            return remember_response(
+                idem,
+                _failure(result, 'Function execution failed'),
+                committed=bool(result.get('final'))
+            );
         }
         if raw_body {
             payload = result.get('result') if isinstance(result, dict) else result;
