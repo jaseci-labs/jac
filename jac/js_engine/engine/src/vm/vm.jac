@@ -5616,9 +5616,16 @@ obj VM {
     def _drain_stream_pending -> None {
         # Re-entrancy guard: if a JS callback triggers more stream
         # events, the new entries stay queued for the outer loop.
-        if self._draining_streams {
+        # (the common empty queue answered without the body's list local,
+        # which registered every call — every generic method call — for unwind)
+        if self._draining_streams or stream_pending_count() == 0 {
             return;
         }
+        self._drain_stream_run();
+    }
+
+    """_drain_stream_pending's loop: run the queued stream callbacks."""
+    def _drain_stream_run -> None {
         self._draining_streams = True;
         while stream_pending_count() > 0 {
             sp_n: int = len(_PENDING_EMIT_FNS);
