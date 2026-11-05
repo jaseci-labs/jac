@@ -119,6 +119,9 @@ impl MirLowering.lower_chunk_for(nd: uni.InForStmt, lst_nd: uni.Expr, n_nd: uni.
 }
 
 impl MirLowering.flow_parallel_ok -> bool {
+    if "wasm" in self.prog.options.effective_triple().lower() {
+        return False;
+    }
     mode = self.prog.options.na_gc_mode or "cycles";
     if mode == "rc" {
         return True;
@@ -183,8 +186,7 @@ impl MirLowering.lower_flow_for(nd: uni.InForStmt) -> bool {
         or not self.flow_parallel_ok()
         or nd.else_body is not None
         or self.st().generator is not None
-        or not isinstance(nd.collection, uni.UnaryExpr)
-        or "wasm" in self.prog.options.effective_triple().lower() {
+        or not isinstance(nd.collection, uni.UnaryExpr) {
         return False;
     }
     loop_target = nd.target;
