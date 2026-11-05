@@ -54,13 +54,14 @@ obj peg_parser {
         known_err_token: peg_token | None = None,
         filename: str = "<unknown>",
         parsing_started: bool = False,
-        # Rule nesting depth (Parser.level).
+        # Rule nesting depth (Parser.level). Jac parser rule calls use native stack
+        # frames, so keep this below the point where a deep source can exhaust C stack.
         level: int = 0,
         memo_value: object | None = None;
 }
 
 # Parser/parser.c's MAXSTACK: deeper rule nesting is a MemoryError.
-glob MAXSTACK: int = 6000;
+glob MAXSTACK: int = 1000;
 
 def peg_rule_abort(p: peg_parser) {
     if p.level >= MAXSTACK {
@@ -71,8 +72,8 @@ def peg_rule_abort(p: peg_parser) {
 def peg_stack_overflow(p: peg_parser) {
     if p.error is None {
         p.error = mk_diag(
-            "MemoryError",
-            "Parser stack overflowed - Python source too complex to parse",
+            "RecursionError",
+            "maximum recursion depth exceeded during parsing",
             tok_loc(lineno=1, end_lineno=1, col_offset=0, end_col_offset=0),
             p.filename
         );
