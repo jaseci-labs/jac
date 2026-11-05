@@ -1060,6 +1060,17 @@ impl KEDAAutoscaler._build_http_scaled_object {
     if spec.initial_cooldown_period > 0 {
         scaled_obj_spec["initialCooldownPeriod"] = spec.initial_cooldown_period;
     }
+    # KEDA names the HPA keda-hpa-<ScaledObject>, and its admission webhook refuses a
+    # name over 63 characters. One that fits keeps KEDA's own name.
+    hpa_name = f"keda-hpa-{scaled_obj_name}";
+    if len(hpa_name) > 63 {
+        digest = hashlib.sha256(scaled_obj_name.encode()).hexdigest()[:10];
+        scaled_obj_spec["advanced"] = {
+            "horizontalPodAutoscalerConfig": {
+                "name": f"{hpa_name[:52].rstrip('-')}-{digest}"
+            }
+        };
+    }
 
     return {
         "name": scaled_obj_name,

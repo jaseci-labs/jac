@@ -238,7 +238,9 @@ def _applied_scaled_object_spec(target: str) -> dict[str, any] {
     (keda, custom_api, _, _) = _mocked_keda();
     custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
     apply_http_activation_for_target(_cfg(), target, "staging", "preview-svc", keda);
-    return custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"]["spec"];
+    return custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"][
+        "spec"
+    ];
 }
 
 # KEDA names a ScaledObject's HPA keda-hpa-<ScaledObject>, and its admission webhook
@@ -246,14 +248,19 @@ def _applied_scaled_object_spec(target: str) -> dict[str, any] {
 test "a target too long for KEDA's derived HPA name gets a valid, stable and distinct one" {
     target = "jac-sbx-4e43bcdeeaff4cd1af54c486c21826f3";
     assert len("keda-hpa-" + target + "-http-scaledobject") == 67;
-    name = _applied_scaled_object_spec(target)["advanced"]["horizontalPodAutoscalerConfig"]["name"];
+    name = _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"];
     assert len(name) <= 63 , name;
     assert re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name) , name;
-    assert _applied_scaled_object_spec(target)["advanced"]["horizontalPodAutoscalerConfig"]["name"]
+    assert _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"]
         == name , "a re-apply must not rename the HPA";
-    assert _applied_scaled_object_spec(
-        "jac-sbx-4e43bcdeeaff4cd1af54c486c21826f4"
-    )["advanced"]["horizontalPodAutoscalerConfig"]["name"] != name , "two targets must not share an HPA";
+    assert _applied_scaled_object_spec("jac-sbx-4e43bcdeeaff4cd1af54c486c21826f4")[
+        "advanced"
+    ]["horizontalPodAutoscalerConfig"]["name"]
+        != name , "two targets must not share an HPA";
 }
 
 test "a target whose derived HPA name fits keeps KEDA's own name" {
