@@ -55,7 +55,7 @@ test "a shared bucket is never counted without its lock" {
     ).consume(
         "busy"
     );
-    assert (allowed, retry) == (False, 1.0) , (allowed, retry);
+    assert (allowed, retry) == (True, 0.0) , (allowed, retry);
     assert held.get("rl:busy") is None , "a call without the lock wrote the bucket";
     held.release_lock("rl:lock:busy");
     (allowed, _) = StateBackendRateLimiter(

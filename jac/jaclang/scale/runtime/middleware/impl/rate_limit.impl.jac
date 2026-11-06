@@ -179,7 +179,7 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
         time.sleep(0.001);
     }
     if not acquired {
-        return (False, 1.0);
+        return (True, 0.0);
     }
     now: float = time.time();
     try {
