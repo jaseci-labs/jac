@@ -127,10 +127,6 @@ def test_extension_sources(source_root: Path) -> list[tuple[str, list[Path]]] {
         if not in_test_section {
             continue;
         }
-        if line.strip()
-            == "# Limited API template modules; must be built as shared modules." {
-            break;
-        }
         matched = re.match(r"@MODULE_[A-Z0-9_]+_TRUE@(\S+)\s+(.+)$", line.strip());
         if not matched {
             continue;
