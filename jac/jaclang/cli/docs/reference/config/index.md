@@ -320,7 +320,8 @@ The `[serve]` tables are checked when the configuration loads, in every layer
 (`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
 `jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
 `"false"` or `true` for a number, stops the load. The message lists every such
-key at once and suggests the right name for a misspelled one.
+key at once and suggests the right name for a misspelled one, and nothing from a
+table with a mistake is applied.
 A layer's sub-table merges into the one below it instead of replacing it.
 `[serve.auth]` is the exception: its layers are merged first and the result is
 checked when the server starts (or a deploy builds its manifests).
