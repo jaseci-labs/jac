@@ -266,7 +266,25 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          'jac_schedule_loading', `default=[]
      );
 
-def contract_of(p: type[CompilerPass]) -> PassContract;
+def contract_of(pass_kind: PassKind) -> PassContract;
+
+def run_scheduled_pass(
+    pass_kind: PassKind,
+    module: Module,
+    program: JacProgram,
+    cancel_token: (CancelToken | None),
+    policy: DiagnosticPolicy
+) -> Module;
+
+def run_early_pass(pass_kind: PassKind, module: Module) -> CompileContext;
+
+def native_ir_alert(
+    module: Module,
+    module_name: str,
+    detail: str,
+    code: DiagnosticInfo,
+    schedule_unavailable: bool
+) -> Alert;
 
 def validate_schedule(
     passes: PassSchedule,
@@ -284,7 +302,8 @@ def resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
     internal: bool = False,
-    peer_fell_back: bool = False
+    peer_fell_back: bool = False,
+    source_path: str = ""
 ) -> tuple[(PassSchedule | None), bool, bool];
 
 def schedule_for(

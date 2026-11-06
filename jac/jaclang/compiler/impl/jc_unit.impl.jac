@@ -124,16 +124,11 @@ impl _run_early_passes(mod: Module) -> list[CompileContext] {
     } elif _JC.early_context == 3 {
         mod.set_code_context(CodeContext.NATIVE);
     }
-    for pass_type in early_passes() {
-        if pass_type is SymTabBuildPass and _has_absorb_import(mod) {
+    for pass_kind in early_passes() {
+        if pass_kind == PassKind.SYM_TAB_BUILD and _has_absorb_import(mod) {
             break;
         }
-        ctx = CompileContext(
-            current_node=mod, from_pass=pass_type, pass_name=pass_type.__name__
-        );
-        started = time.time();
-        mod spawn pass_type(module=mod, ctx=ctx);
-        ctx.time_taken = time.time() - started;
+        ctx = run_early_pass(pass_kind, mod);
         done.append(ctx);
     }
     return done;
