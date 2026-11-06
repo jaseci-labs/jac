@@ -2341,6 +2341,39 @@ value, and the `/cl/__error__` endpoint logs it through the same renderer in
 production. See [Errors and Warnings](../diagnostics.md#dev-loop-and-client-runtime-errors-e7xxx)
 for the code catalog.
 
+The endpoint limits each client on its own, so one page reporting in a loop
+cannot hide other users' errors:
+
+- **Rate:** a client gets 20 reports a minute. Past that, every request is
+  answered `429` (`RATE_LIMITED`, the same envelope as the login and
+  registration limits) with `Retry-After` until its minute is up. The count is
+  kept in the shared database (the embedded one the server provisions, or the
+  one `[scale.database] url` names), so it holds across every worker of
+  `jac run --serve` and every replica of a deployment. If that database cannot
+  be reached, each worker process counts on its own, so a server with N workers
+  accepts up to N x 20 a minute from one client.
+- **Repeats:** the same message from the same client within 10 seconds is
+  accepted (`{"ok": true, "throttled": true}`) but not logged again. This check
+  is per worker process.
+- **Size:** a report over 64 KiB is refused with `413` before it is parsed.
+- **Browser extensions:** a report whose stack frames all point into a browser
+  extension (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`,
+  `safari-extension://`) is logged at INFO as a browser extension's error,
+  not at ERROR. The client runtime drops these itself; this covers pages still
+  running an older runtime.
+
+Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
+20) applies the same per-client limit before a report reaches any service, even
+when the gateway's general rate limit is off. Set it to `0` to turn it off.
+The gateway applies it only when it can see each browser's own address. In a
+cluster with nothing in `[serve.proxy] trusted` (`JAC_SERVE_PROXY_TRUSTED`),
+which is what `jac scale deploy` sets on the gateway, every browser arrives from
+the ingress address, so the gateway skips the limit and logs that at startup.
+The services behind it still limit each browser, because they trust the
+cluster's private ranges and read the address the gateway forwards. List the
+ingress controller's address in the gateway's `[serve.proxy] trusted` to refuse
+floods at the gateway too.
+
 Locations come from the per-file source maps the client compiler writes beside
 each `compiled/*.js`. They are segment-level -- generated line *and* column,
 with a `names` array -- so a stack frame or an import specifier resolves to an

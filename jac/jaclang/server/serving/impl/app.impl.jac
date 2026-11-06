@@ -92,6 +92,9 @@ impl _parse_request_body(request: Request, ep: JEndPoint, spool_bytes: int) -> a
         parse_urlencoded_form(request);
         return None;
     }
+    if ep.request_model is None and not _declares_body(ep) {
+        return None;
+    }
     if 'application/json' in content_type or content_type == '' {
         try {
             return request.json_sync();
