@@ -440,7 +440,7 @@ impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
     import json;
     parts: list[str] = [
         "from jaclang.runtime.interop_bridge import pyb_mirror_member as "
-        + "__jac_pyb_mirror_member"
+            + "__jac_pyb_mirror_member"
     ];
     names: list[str] = [];
     for item in nd.items {
