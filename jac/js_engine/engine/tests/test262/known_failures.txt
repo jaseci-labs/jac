@@ -1442,11 +1442,15 @@ test/language/function-code/switch-dflt-decl-onlystrict.js	FAIL
 test/language/global-code/decl-lex-restricted-global.js	FAIL
 test/language/global-code/decl-lex.js	FAIL
 test/language/global-code/decl-var.js	FAIL
+test/language/global-code/script-decl-func-dups.js	FAIL
 test/language/global-code/script-decl-func-err-non-configurable.js	FAIL
 test/language/global-code/script-decl-func-err-non-extensible.js	FAIL
 test/language/global-code/script-decl-func.js	FAIL
+test/language/global-code/script-decl-lex-deletion.js	FAIL
 test/language/global-code/script-decl-lex-lex.js	FAIL
 test/language/global-code/script-decl-lex-restricted-global.js	FAIL
+test/language/global-code/script-decl-lex-var-declared-via-eval.js	FAIL
+test/language/global-code/script-decl-lex-var.js	FAIL
 test/language/global-code/script-decl-lex.js	FAIL
 test/language/global-code/script-decl-var-collision.js	FAIL
 test/language/global-code/script-decl-var-err.js	FAIL

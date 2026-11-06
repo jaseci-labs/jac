@@ -330,3 +330,36 @@ test "a call whose name lost its scope marks the endpoint unknown instead of cra
         f"a callee that cannot be resolved must mark the endpoint unknown; got {after}"
     );
 }
+
+test "symbol type recursion yields unknown endpoint effects" {
+    import from unittest.mock { PropertyMock, patch }
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
+    tmp = write_mods(
+        {
+            "main.jac": (
+                "def helper -> int { return 1; }\n"
+                "def:pub caller -> int { return helper(); }\n"
+            )
+        }
+    );
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(tmp, "main.jac"));
+    key = endpoint_key(mod, "func", "caller");
+    with patch.object(
+        uni.Symbol,
+        "sym_type",
+        new_callable=PropertyMock,
+        side_effect=RecursionError("recursive symbol type")
+    ) {
+        run_walker(EndpointEffectPass, mod);
+    }
+    effects = mod.gen.interop_manifest.endpoint_effects.get(key);
+    assert effects is not None and effects["unknown"] and effects["writes"] == ["*"] , (
+        f"a recursive symbol-type lookup must make endpoint effects conservative; got {effects}"
+    );
+    callable_effects = mod.gen.callable_effects.get("caller");
+    assert callable_effects is not None and callable_effects["unknown"] , (
+        f"a recursive symbol-type lookup must make callable summaries conservative; got {callable_effects}"
+    );
+}
