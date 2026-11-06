@@ -203,6 +203,43 @@ test "only what stock CPython passes counts against JacPython" {
     assert "4 incompatibilities" in render(stock, jac, found);
 }
 
+test "expected failures are compared only when stock CPython passes" {
+    stock = results(
+        False,
+        {
+            "test_passed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_passed": ["passed", ""]}
+            },
+            "test_xfailed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_xfailed": ["xfail", ""]}
+            }
+        }
+    );
+    jac = results(
+        True,
+        {
+            "test_passed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_passed": ["xfail", "expected failure"]}
+            },
+            "test_xfailed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_xfailed": ["passed", ""]}
+            }
+        }
+    );
+    found = compare_results(stock, jac);
+    assert found["case_regressions"]
+        == [["test_was_passed", "xfail", "expected failure", "passed"]];
+    assert not found["cases_not_run"];
+}
+
 test "a difference JacPython makes by decision is reported, not counted" {
     stock = results(
         False, {"test_remote_pdb": {"state": "passed", "detail": "", "cases": {}}}

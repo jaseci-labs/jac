@@ -37,8 +37,9 @@ import from pathlib { Path }
 glob REPO: Path = Path(__file__).resolve().parents[1],
      RAN: set[str] = {"passed", "flaky", "env_changed"},
      BROKEN: set[str] = {"failed", "crashed", "timeout", "died"},
-     CASE_OK: set[str] = {"passed", "xfail"},
-     CASE_BAD: set[str] = {"failed", "error", "xpass"},
+     # Expected failures are not passing cases; only stock-passed cases gate JacPython.
+     CASE_OK: set[str] = {"passed"},
+     CASE_BAD: set[str] = {"failed", "error", "xfail", "xpass"},
      REPORT_LIMIT: int = 150,
      # What JacPython leaves out by decision, by module, class or test:
      # reported, never counted.
