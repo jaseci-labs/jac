@@ -442,10 +442,7 @@ def parse_junit(text: str) -> dict[str, tuple[str, str]] {
     return cases;
 }
 
-def run_module(python: str, name: str, out: Path, args: any) -> dict[str, any] {
-    work = out / "work" / name;
-    work.mkdir(parents=True, exist_ok=True);
-    xml_path = out / "junit" / f"{name}.xml";
+def regrtest_command(python: str, name: str, xml_path: Path, args: any) -> list[str] {
     command = [
         python,
         "-m",
@@ -457,7 +454,18 @@ def run_module(python: str, name: str, out: Path, args: any) -> dict[str, any] {
     if args.resources {
         command.extend(["-u", args.resources]);
     }
+    if args.memlimit {
+        command.extend(["-M", args.memlimit]);
+    }
     command.extend([f"--junit-xml={xml_path}", name]);
+    return command;
+}
+
+def run_module(python: str, name: str, out: Path, args: any) -> dict[str, any] {
+    work = out / "work" / name;
+    work.mkdir(parents=True, exist_ok=True);
+    xml_path = out / "junit" / f"{name}.xml";
+    command = regrtest_command(python, name, xml_path, args);
     started = time.monotonic();
     returncode: int | None = None;
     with open(out / "logs" / f"{name}.log", "wb") as log {
@@ -563,6 +571,7 @@ def run(args: any) -> int {
                 "version": version,
                 "jacpython": jacpython,
                 "resources": args.resources,
+                "memlimit": args.memlimit,
                 "seconds": round(time.monotonic() - started),
                 "modules": {
                     name: {
@@ -701,7 +710,8 @@ def render(
     lines = [
         f"## CPython {jac['version']} regression suite: JacPython vs stock CPython",
         "",
-        f"**{verdict}** (resources: `{jac['resources'] or 'none'}`)",
+        f"**{verdict}** (resources: `{jac['resources'] or 'none'}`, "
+            + f"memory cap: `{jac.get('memlimit') or 'disabled'}`)",
         "",
         "| | modules | passed | flaky | failed | crashed | timeout | skipped | denied | tests passed | tests failed | tests skipped |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|"
@@ -755,9 +765,12 @@ def compare(args: any) -> int {
     jac = json.loads((Path(args.jacpython) / "results.json").read_text());
     if stock["version"] != jac["version"]
         or stock["jacpython"]
-        or not jac["jacpython"] {
+        or not jac["jacpython"]
+        or stock.get("resources") != jac.get("resources")
+        or stock.get("memlimit", "") != jac.get("memlimit", "") {
         raise RuntimeError(
-            "compare needs a stock CPython result and a JacPython result of one version"
+            "compare needs stock CPython and JacPython results with matching "
+                + "version, resources, and memory cap"
         );
     }
     found = compare_results(stock, jac);
@@ -798,6 +811,11 @@ def main -> int {
         "--resources",
         `default="all,-network,-urlfetch,-gui,-audio,-largefile",
         help="regrtest -u value; empty runs without optional resources"
+    );
+    runner.add_argument(
+        "--memlimit",
+        `default="",
+        help="regrtest -M memory cap; empty leaves big-memory tests disabled"
     );
     runner.add_argument(
         "--jobs", `type=int, `default=0, help="Modules at a time (0: CPUs)"
