@@ -2601,11 +2601,10 @@ graph import {
             NodeArchetype
         },
         server.endpoints.pages.register_graph_endpoints.graph_target
-            | server.server.ExecutionManager.spawn_walker_async { NodeArchetype },
+            | server.server._spawn_target { NodeArchetype },
         server.identity.identity_storage.IdentityStorage.create_user { Root },
         server.identity.identity_storage.IdentityStorage.ensure_user_by_id { Root },
         server.identity.identity_storage.IdentityStorage.reset_root { Root },
-        server.server.ExecutionManager.spawn_walker_sync { NodeArchetype },
         server.server.ModuleIntrospector.target { WalkerArchetype },
         server.session._ancestry_of {
             Archetype,
@@ -3904,6 +3903,7 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
+            | scale.tests.server.test_error_envelope
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
@@ -4135,6 +4135,9 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
+        cors_pair_problem
+    }
     server.serving.middleware --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
         cors_middleware
     }
@@ -4366,7 +4369,8 @@ graph import {
     testing.testkit ++> [
         scale.server.inprocess.prepare_inprocess_runtime
             | scale.tests.microservices.test_gateway_docs_precedence
-            | scale.tests.microservices.test_gateway_webapp { ServingTestClient },
+            | scale.tests.microservices.test_gateway_webapp
+            | scale.tests.server.test_error_envelope { ServingTestClient },
         scale.tests.data.test_eager_spawn
             | scale.tests.microservices.test_embedded_gateway
             | scale.tests.microservices.test_microservice
@@ -7084,6 +7088,7 @@ graph import compiler {
             E0051,
             E0052,
             E0055,
+            E0057,
             E0058,
             E0063,
             E0065,
@@ -8368,6 +8373,7 @@ graph import compiler {
             ReturnStmt,
             SpecialVarRef,
             SwitchStmt,
+            Test,
             Token,
             TryStmt,
             TupleVal,
@@ -47170,10 +47176,10 @@ graph import server {
     serving.health ++> server.JacAPIServer.register_endpoints {
         register_health_endpoints
     }
-    serving.middleware ++> server.JacAPIServer.build_app {
-        cors_middleware,
-        custom_headers_middleware
-    }
+    serving.middleware ++> [
+        server.JacAPIServer.build_app { cors_middleware, custom_headers_middleware },
+        settings.ServeSettings.validate { cors_pair_problem },
+    ]
     serving.model ++> identity.auth_models { ApiModel, require_str }
     serving.openapi ++> [
         server.JacAPIServer._refresh_dev_endpoints { register_docs_endpoints },

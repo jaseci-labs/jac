@@ -33,6 +33,7 @@ walker ASTValidationPass(TreePass) {
     def _reject_undeletable(target: UniNode) -> None;
     can enter_param_var with ParamVar entry;
     can enter_yield_expr with YieldExpr entry;
+    can enter_return_stmt with ReturnStmt entry;
     can enter_ctrl_stmt with CtrlStmt entry;
     can enter_global_vars with GlobalVars entry;
     can enter_func_call with FuncCall entry;

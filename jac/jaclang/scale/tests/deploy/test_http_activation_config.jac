@@ -1,3 +1,4 @@
+import re;
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
 
@@ -231,6 +232,53 @@ test "initial_cooldown_period reaches the ScaledObject, and leaving it unset kee
         "body"
     ]["spec"];
     assert "initialCooldownPeriod" not in scaled_obj_spec , scaled_obj_spec;
+}
+
+def _applied_scaled_object_spec(target: str) -> dict[str, any] {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(_cfg(), target, "staging", "preview-svc", keda);
+    return custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"][
+        "spec"
+    ];
+}
+
+# KEDA names a ScaledObject's HPA keda-hpa-<ScaledObject>, and its admission webhook
+# refuses a name over 63 characters, so a longer target could not be activated at all.
+test "a target too long for KEDA's derived HPA name gets a valid, stable and distinct one" {
+    target = "jac-sbx-4e43bcdeeaff4cd1af54c486c21826f3";
+    assert len("keda-hpa-" + target + "-http-scaledobject") == 67;
+    name = _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"];
+    assert len(name) <= 63 , name;
+    assert re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name) , name;
+    assert _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"]
+        == name , "a re-apply must not rename the HPA";
+    assert _applied_scaled_object_spec("jac-sbx-4e43bcdeeaff4cd1af54c486c21826f4")[
+        "advanced"
+    ]["horizontalPodAutoscalerConfig"]["name"]
+        != name , "two targets must not share an HPA";
+}
+
+test "a long target cut right after a dot still gets a valid HPA name" {
+    target = "a" * 42 + ".b";
+    assert ("keda-hpa-" + target)[:52].endswith(".");
+    name = _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"];
+    label = r"[a-z0-9]([-a-z0-9]*[a-z0-9])?";
+    assert len(name) <= 63 , name;
+    assert re.fullmatch(label + r"(\." + label + r")*", name) , name;
+}
+
+test "a target whose derived HPA name fits keeps KEDA's own name" {
+    assert len("keda-hpa-" + "a" * 36 + "-http-scaledobject") == 63;
+    assert "advanced" not in _applied_scaled_object_spec("a" * 36);
+    assert "advanced" in _applied_scaled_object_spec("a" * 37);
+    assert "advanced" not in _applied_scaled_object_spec("preview-deployment");
 }
 
 # RFC 7386 JSON merge patch, which is how the client sends a PATCH to a
