@@ -412,6 +412,30 @@ impl native_unit_root(directory: str) -> (str | None) {
     }
 }
 
+impl _toml_line_content(raw_line: str) -> str {
+    quote: str = "";
+    escaped: bool = False;
+    i: int = 0;
+    while i < len(raw_line) {
+        ch = raw_line[i];
+        if escaped {
+            escaped = False;
+        } elif quote == '"' and ch == "\\" {
+            escaped = True;
+        } elif quote {
+            if ch == quote {
+                quote = "";
+            }
+        } elif ch == '"' or ch == "'" {
+            quote = ch;
+        } elif ch == "#" {
+            return raw_line[:i].strip();
+        }
+        i += 1;
+    }
+    return raw_line.strip();
+}
+
 """Read [project].name from a jac.toml without tomllib (which can't lower
 natively — the kernel compiles this file). A line scan is enough: track the
 current TOML section and take the first `name = "..."` inside [project].
@@ -425,7 +449,7 @@ impl _jac_toml_project_name(toml_path: str) -> (str | None) {
     }
     in_project = False;
     for raw_line in text.split("\n") {
-        line = raw_line.strip();
+        line = _toml_line_content(raw_line);
         if not line or line.startswith("#") {
             continue;
         }
