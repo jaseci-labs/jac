@@ -389,6 +389,8 @@ impl _build_link_plan(
     units: dict[str, LinkUnit] = {};
     edges: dict[str, list[str]] = {};
     virtual_sources: dict[str, str] = {};
+    prefix_owners: dict[str, str] = {};
+    unit_aliases: dict[str, str] = {};
 
     def walk_unit(path: str, stack: list[str]) -> None {
         if path in units {
@@ -426,6 +428,17 @@ impl _build_link_plan(
                     + (f"; reached through {reached}" if reached else "")
             );
         }
+        prefix_owner: str | None = prefix_owners.get(ent.iface.prefix);
+        if prefix_owner is not None and prefix_owner != path {
+            if unit_source_digest(prefix_owner) != unit_source_digest(path) {
+                raise LinkPlanError(
+                    f"{prefix_owner} and {path} share native unit prefix "
+                    f"{ent.iface.prefix} but have different source contents"
+                );
+            }
+            unit_aliases[path] = prefix_owner;
+            return;
+        }
 
         try {
             modkey = module_cache_key(path);
@@ -440,16 +453,32 @@ impl _build_link_plan(
             modkey=modkey,
             is_root=(path in real_roots)
         );
-        deps = sorted(os.path.realpath(d) for d in ent.iface.deps);
-        edges[path] = deps;
-        for dep in deps {
-            walk_unit(dep, stack + [path]);
+        prefix_owners[ent.iface.prefix] = path;
+        deps: list[str] = [];
+        for raw_dep in sorted(os.path.realpath(d) for d in ent.iface.deps) {
+            walk_unit(raw_dep, stack + [path]);
+            canonical_dep: str = unit_aliases.get(raw_dep, raw_dep);
+            if canonical_dep not in deps {
+                deps.append(canonical_dep);
+            }
         }
+        edges[path] = deps;
     }
 
     for root_u in real_roots {
         walk_unit(root_u, []);
     }
+    canonical_roots: list[str] = [];
+    for root_u in real_roots {
+        canonical_root: str = unit_aliases.get(root_u, root_u);
+        if canonical_root not in canonical_roots {
+            canonical_roots.append(canonical_root);
+        }
+        if canonical_root in units {
+            units[canonical_root].is_root = True;
+        }
+    }
+    real_roots = canonical_roots;
 
     seen: set[str] = set();
     ordered: list[LinkUnit] = [];
