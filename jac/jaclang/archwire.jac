@@ -1990,9 +1990,9 @@ graph import {
         scale.config.dev_config.resolve_dev_channel
             | scale.injector.bundle.fat_bundle_setting { get_config_for_path },
         scale.config.dev_config.resolve_experimental_pr
-            | scale.injector.bundle.seal_timeout_setting { get_config_for_path },
-        scale.config.dev_config.resolve_pinned_spec
             | scale.injector.bundle.seal_cache_setting { get_config_for_path },
+        scale.config.dev_config.resolve_pinned_spec
+            | scale.injector.bundle.seal_timeout_setting { get_config_for_path },
         scale.deploy.target.kubernetes.manifest_builder { JacConfig, ServeConfig },
         scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._check_deploy_settings_resolve {
             get_config_for_path,
