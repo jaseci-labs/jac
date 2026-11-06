@@ -60,26 +60,37 @@ test "a slow hook does not cost a request in flight its response" {
     import requests;
     import from concurrent.futures { ThreadPoolExecutor }
 
-    port = get_free_port();
-    server = start_server(
-        FIXTURES_DIR,
-        FIXTURES_DIR / "drain_slow_hook_app.jac",
-        port,
-        env={"JAC_SERVE_WORKERS": "1", "JAC_SERVE_DRAIN_TIMEOUT": "2"}
-    );
-    try {
-        with ThreadPoolExecutor(max_workers=1) as pool {
-            call = pool.submit(
-                requests.post,
-                f"http://localhost:{port}/walker/slow",
-                json={},
-                timeout=30
-            );
-            time.sleep(0.5);
-            server.send_signal(signal.SIGTERM);
-            assert call.result().status_code == 200;
+    with tempfile.TemporaryDirectory(prefix="drain_slow_") as tmp {
+        started = Path(tmp) / "started";
+        port = get_free_port();
+        server = start_server(
+            FIXTURES_DIR,
+            FIXTURES_DIR / "drain_slow_hook_app.jac",
+            port,
+            env={
+                "WALKER_MARK": str(started),
+                "JAC_SERVE_WORKERS": "1",
+                "JAC_SERVE_DRAIN_TIMEOUT": "2"
+            }
+        );
+        try {
+            with ThreadPoolExecutor(max_workers=1) as pool {
+                call = pool.submit(
+                    requests.post,
+                    f"http://localhost:{port}/walker/slow",
+                    json={},
+                    timeout=30
+                );
+                deadline = time.monotonic() + 20;
+                while not started.exists() and time.monotonic() < deadline {
+                    time.sleep(0.05);
+                }
+                assert started.exists() , "the walker never started";
+                server.send_signal(signal.SIGTERM);
+                assert call.result().status_code == 200;
+            }
+        } finally {
+            stop_server(server);
         }
-    } finally {
-        stop_server(server);
     }
 }
