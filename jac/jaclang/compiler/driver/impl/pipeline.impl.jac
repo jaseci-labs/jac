@@ -24,107 +24,107 @@ impl no_blocker -> str {
 
 impl front_passes -> PassSchedule {
     return [
-        AppContextPass,
-        GraphLoweringPass,
-        ASTValidationPass,
-        AbsorbImportsPass,
-        SymTabBuildPass
+        PassKind.APP_CONTEXT,
+        PassKind.GRAPH_LOWERING,
+        PassKind.AST_VALIDATION,
+        PassKind.ABSORB_IMPORTS,
+        PassKind.SYM_TAB_BUILD
     ];
 }
 
 impl symbols_passes(request: ProductRequest) -> PassSchedule {
-    return front_passes() + [DeclImplMatchPass, PlacementApplyPass];
+    return front_passes() + [PassKind.DECL_IMPL_MATCH, PassKind.PLACEMENT_APPLY];
 }
 
 impl bootstrap_ir_passes(request: ProductRequest) -> (PassSchedule | None) {
-    return front_passes() + [DeclImplMatchPass, SemanticAnalysisPass];
+    return front_passes() + [PassKind.DECL_IMPL_MATCH, PassKind.SEMANTIC_ANALYSIS];
 }
 
 impl ir_passes(request: ProductRequest) -> PassSchedule {
     passes = front_passes()
         + [
-            ImportWiringPass,
-            PackageBoundaryPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass,
-            SemDefMatchPass,
-            CFGBuildPass
+            PassKind.IMPORT_WIRING,
+            PassKind.PACKAGE_BOUNDARY,
+            PassKind.DECL_IMPL_MATCH,
+            PassKind.SEMANTIC_ANALYSIS,
+            PassKind.SEM_DEF_MATCH,
+            PassKind.CFG_BUILD
         ];
     if request.gen_mtir {
         import from jaclang.compiler.passes.mtir_gen_pass { MTIRGenPass }
-        passes.append(MTIRGenPass);
+        passes.append(PassKind.MTIR_GEN);
     }
-    passes.append(JsxIntrinsicGuardPass);
-    passes.append(PlacementApplyPass);
+    passes.append(PassKind.JSX_INTRINSIC_GUARD);
+    passes.append(PassKind.PLACEMENT_APPLY);
     import from jaclang.compiler.passes.comptime_resolve_pass { ComptimeResolvePass }
-    passes.append(ComptimeResolvePass);
+    passes.append(PassKind.COMPTIME_RESOLVE);
     return passes;
 }
 
 impl flow_passes(request: ProductRequest) -> PassSchedule {
-    return [CFGBuildPass];
+    return [PassKind.CFG_BUILD];
 }
 
 impl analysis_passes(request: ProductRequest) -> PassSchedule {
     return [
-        RegionInferPass,
-        VariantAgreementPass,
-        TypeCheckPass,
-        StaticAnalysisPass,
-        AccessCheckPass,
-        OwnershipCheckPass,
-        PlacementPass,
-        PortabilityWarnPass,
-        JacLintCheckPass
+        PassKind.REGION_INFER,
+        PassKind.VARIANT_AGREEMENT,
+        PassKind.TYPE_CHECK,
+        PassKind.STATIC_ANALYSIS,
+        PassKind.ACCESS_CHECK,
+        PassKind.OWNERSHIP_CHECK,
+        PassKind.PLACEMENT,
+        PassKind.PORTABILITY_WARN,
+        PassKind.JAC_LINT_CHECK
     ];
 }
 
 impl declaration_passes(request: ProductRequest) -> PassSchedule {
-    return [DeclarationTypePass];
+    return [PassKind.DECLARATION_TYPE];
 }
 
 impl boundary_passes(request: ProductRequest) -> PassSchedule {
     if not request.endpoint_effects {
-        return [BoundaryFactsPass, BoundaryAnalysisPass];
+        return [PassKind.BOUNDARY_FACTS, PassKind.BOUNDARY_ANALYSIS];
     }
-    return [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass];
+    return [PassKind.BOUNDARY_FACTS, PassKind.BOUNDARY_ANALYSIS, PassKind.ENDPOINT_EFFECT];
 }
 
 impl client_passes(request: ProductRequest) -> PassSchedule {
-    return [EsastGenPass];
+    return [PassKind.ESAST_GEN];
 }
 
 impl layout_passes(request: ProductRequest) -> PassSchedule {
-    return [LayoutPass];
+    return [PassKind.LAYOUT];
 }
 
 impl codegen_passes(request: ProductRequest) -> PassSchedule {
-    passes: PassSchedule = [RcFactsPass, EsastGenPass];
+    passes: PassSchedule = [PassKind.RC_FACTS, PassKind.ESAST_GEN];
     if request.native and not unavailable(CompilationProduct.NATIVE_LOWER) {
         import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-        passes.append(NaIRGenPass);
+        passes.append(PassKind.NA_IR_GEN);
     }
     return passes;
 }
 
 impl py_ir_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeImportFactsPass, JcirGenPass];
+    return [PassKind.NATIVE_IMPORT_FACTS, PassKind.JCIR_GEN];
 }
 
 impl frozen_passes(request: ProductRequest) -> PassSchedule {
-    return [FreezeStructurePass];
+    return [PassKind.FREEZE_STRUCTURE];
 }
 
 impl bytecode_passes(request: ProductRequest) -> PassSchedule {
-    return [JcirBytecodeGenPass];
+    return [PassKind.JCIR_BYTECODE_GEN];
 }
 
 impl native_ir_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
+    return [PassKind.NATIVE_IMPORT_FACTS, PassKind.RC_FACTS, PassKind.NA_IR_GEN];
 }
 
 impl native_lower_passes(request: ProductRequest) -> PassSchedule {
-    return [RcFactsPass, NaIRGenPass];
+    return [PassKind.RC_FACTS, PassKind.NA_IR_GEN];
 }
 
 impl native_toolchain_blocker -> str {
@@ -133,51 +133,51 @@ impl native_toolchain_blocker -> str {
 }
 
 impl native_object_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeCompilePass];
+    return [PassKind.NATIVE_COMPILE];
 }
 
 impl format_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, DocIRGenPass, JacFormatPass];
+    return [PassKind.COMMENT_ATTACH, PassKind.DOC_IR_GEN, PassKind.JAC_FORMAT];
 }
 
 impl format_lintfix_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
+    return [PassKind.COMMENT_ATTACH, PassKind.JAC_AUTO_LINT, PassKind.DOC_IR_GEN, PassKind.JAC_FORMAT];
 }
 
 impl lint_passes(request: ProductRequest) -> PassSchedule {
-    return [JacLintCheckPass];
+    return [PassKind.JAC_LINT_CHECK];
 }
 
 impl python_ast_passes(request: ProductRequest) -> PassSchedule {
-    return [PyastBuildPass];
+    return [PassKind.PYAST_BUILD];
 }
 
 impl python_symbols_passes(request: ProductRequest) -> PassSchedule {
-    return [SymTabBuildPass];
+    return [PassKind.SYM_TAB_BUILD];
 }
 
 impl grammar_passes(request: ProductRequest) -> PassSchedule {
-    return [GrammarExtractPass];
+    return [PassKind.GRAMMAR_EXTRACT];
 }
 
 impl cfg_dot_passes(request: ProductRequest) -> PassSchedule {
-    return [CoalesceBBPass];
+    return [PassKind.COALESCE_BB];
 }
 
 impl normalize_passes(request: ProductRequest) -> PassSchedule {
-    return [NormalizePass];
+    return [PassKind.NORMALIZE];
 }
 
 impl unparse_passes(request: ProductRequest) -> PassSchedule {
-    return [UnparsePass];
+    return [PassKind.UNPARSE];
 }
 
 impl doc_passes(request: ProductRequest) -> PassSchedule {
-    return [DocIRGenPass];
+    return [PassKind.DOC_IR_GEN];
 }
 
 impl format_text_passes(request: ProductRequest) -> PassSchedule {
-    return [JacFormatPass];
+    return [PassKind.JAC_FORMAT];
 }
 
 impl place_module(program: JacProgram, module: Module) -> bool {
@@ -225,15 +225,249 @@ impl require_typeshed_stubs -> None {
     }
 }
 
-impl contract_of(p: type[CompilerPass]) -> PassContract {
-    contract = p.contract;
-    if contract is None {
-        raise RuntimeError(
-            f"scheduling error: pass {p.__name__} declares no contract; every "
-            "scheduled pass states the analysis facts it requires and provides"
+impl contract_of(pass_kind: PassKind) -> PassContract {
+    contract = PassContract();
+    if pass_kind == PassKind.GRAPH_LOWERING
+        or pass_kind == PassKind.AST_VALIDATION
+        or pass_kind == PassKind.SEMANTIC_ANALYSIS
+        or pass_kind == PassKind.SEM_DEF_MATCH
+        or pass_kind == PassKind.JSX_INTRINSIC_GUARD {
+        contract = PassContract(kernel_safe=True);
+    } elif pass_kind == PassKind.SYM_TAB_BUILD {
+        contract = PassContract(
+            provides=(
+                AnalysisFact.SYM_OF,
+                AnalysisFact.DEFINES,
+                AnalysisFact.IN_SCOPE,
+                AnalysisFact.SCOPE_CHILD
+            ),
+            kernel_safe=True
+        );
+    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
+        contract = PassContract(
+            requires=(AnalysisFact.SYM_OF, ),
+            provides=(AnalysisFact.IMPL_OF, ),
+            kernel_safe=True
+        );
+    } elif pass_kind == PassKind.CFG_BUILD {
+        contract = PassContract(
+            provides=(
+                AnalysisFact.CFG_SUCC,
+                AnalysisFact.CFG_TRUE,
+                AnalysisFact.CFG_FALSE
+            ),
+            kernel_safe=True
+        );
+    } elif pass_kind == PassKind.IMPORT_WIRING
+        or pass_kind == PassKind.PACKAGE_BOUNDARY {
+        contract = PassContract(requires=(AnalysisFact.SYM_OF, ));
+    } elif pass_kind == PassKind.COMPTIME_RESOLVE {
+        contract = PassContract(provides=(AnalysisFact.COMPTIME, ));
+    } elif pass_kind == PassKind.REGION_INFER {
+        contract = PassContract(provides=(AnalysisFact.REGION_INFER, ));
+    } elif pass_kind == PassKind.VARIANT_AGREEMENT {
+        contract = PassContract(provides=(AnalysisFact.VARIANT_AGREEMENT, ));
+    } elif pass_kind == PassKind.TYPE_CHECK {
+        contract = PassContract(provides=(AnalysisFact.TYPE_OF, ));
+    } elif pass_kind == PassKind.STATIC_ANALYSIS {
+        contract = PassContract(provides=(AnalysisFact.STATIC_CHECKS, ));
+    } elif pass_kind == PassKind.ACCESS_CHECK {
+        contract = PassContract(provides=(AnalysisFact.ACCESS_CHECKS, ));
+    } elif pass_kind == PassKind.OWNERSHIP_CHECK {
+        contract = PassContract(
+            requires=(AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF),
+            provides=(AnalysisFact.OWNERSHIP, )
+        );
+    } elif pass_kind == PassKind.PLACEMENT {
+        contract = PassContract(
+            requires=(AnalysisFact.TYPE_OF, ),
+            provides=(AnalysisFact.CAPABILITY, AnalysisFact.CLIENT_CAPABILITY)
+        );
+    } elif pass_kind == PassKind.PORTABILITY_WARN {
+        contract = PassContract(provides=(AnalysisFact.PORTABILITY, ));
+    } elif pass_kind == PassKind.DECLARATION_TYPE {
+        contract = PassContract(provides=(AnalysisFact.DECL_TYPES, ));
+    } elif pass_kind == PassKind.PLACEMENT_APPLY {
+        contract = PassContract(
+            requires=(AnalysisFact.SYM_OF, ),
+            provides=(
+                AnalysisFact.PLACED_IN,
+                AnalysisFact.DECIDED_CODESPACE,
+                AnalysisFact.CODESPACE_PULL
+            )
+        );
+    } elif pass_kind == PassKind.RC_FACTS {
+        contract = PassContract(
+            requires=(AnalysisFact.CFG_SUCC, ),
+            provides=(AnalysisFact.RC_FACTS, )
+        );
+    } elif pass_kind == PassKind.FREEZE_STRUCTURE {
+        contract = PassContract(provides=(AnalysisFact.FROZEN, ));
+    } elif pass_kind == PassKind.NA_IR_GEN {
+        contract = PassContract(
+            requires=(
+                AnalysisFact.TYPE_OF,
+                AnalysisFact.CFG_SUCC,
+                AnalysisFact.OWNERSHIP,
+                AnalysisFact.CAPABILITY,
+                AnalysisFact.RC_FACTS
+            )
         );
     }
     return contract;
+}
+
+impl run_scheduled_pass(
+    pass_kind: PassKind,
+    module: Module,
+    program: JacProgram,
+    cancel_token: (CancelToken | None),
+    policy: DiagnosticPolicy
+) -> Module {
+    if pass_kind == PassKind.APP_CONTEXT {
+        return run_pass(AppContextPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.GRAPH_LOWERING {
+        return run_pass(GraphLoweringPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.AST_VALIDATION {
+        return run_pass(ASTValidationPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.ABSORB_IMPORTS {
+        return run_pass(AbsorbImportsPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.SYM_TAB_BUILD {
+        return run_pass(SymTabBuildPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
+        return run_pass(DeclImplMatchPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.PLACEMENT_APPLY {
+        return run_pass(PlacementApplyPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.SEMANTIC_ANALYSIS {
+        return run_pass(SemanticAnalysisPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.IMPORT_WIRING {
+        return run_pass(ImportWiringPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.PACKAGE_BOUNDARY {
+        return run_pass(PackageBoundaryPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.SEM_DEF_MATCH {
+        return run_pass(SemDefMatchPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.CFG_BUILD {
+        return run_pass(CFGBuildPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.MTIR_GEN {
+        return run_pass(MTIRGenPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.JSX_INTRINSIC_GUARD {
+        return run_pass(JsxIntrinsicGuardPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.COMPTIME_RESOLVE {
+        return run_pass(ComptimeResolvePass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.REGION_INFER {
+        return run_pass(RegionInferPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.VARIANT_AGREEMENT {
+        return run_pass(VariantAgreementPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.TYPE_CHECK {
+        return run_pass(TypeCheckPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.STATIC_ANALYSIS {
+        return run_pass(StaticAnalysisPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.ACCESS_CHECK {
+        return run_pass(AccessCheckPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.OWNERSHIP_CHECK {
+        return run_pass(OwnershipCheckPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.PLACEMENT {
+        return run_pass(PlacementPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.PORTABILITY_WARN {
+        return run_pass(PortabilityWarnPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.JAC_LINT_CHECK {
+        return run_pass(JacLintCheckPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.DECLARATION_TYPE {
+        return run_pass(DeclarationTypePass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.BOUNDARY_FACTS {
+        return run_pass(BoundaryFactsPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.BOUNDARY_ANALYSIS {
+        return run_pass(BoundaryAnalysisPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.ENDPOINT_EFFECT {
+        return run_pass(EndpointEffectPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.ESAST_GEN {
+        return run_pass(EsastGenPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.LAYOUT {
+        return run_pass(LayoutPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.RC_FACTS {
+        return run_pass(RcFactsPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.NA_IR_GEN {
+        return run_pass(NaIRGenPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.NATIVE_IMPORT_FACTS {
+        return run_pass(NativeImportFactsPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.JCIR_GEN {
+        return run_pass(JcirGenPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.FREEZE_STRUCTURE {
+        return run_pass(FreezeStructurePass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.JCIR_BYTECODE_GEN {
+        return run_pass(JcirBytecodeGenPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.NATIVE_COMPILE {
+        return run_pass(NativeCompilePass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.COMMENT_ATTACH {
+        return run_pass(CommentAttachPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.DOC_IR_GEN {
+        return run_pass(DocIRGenPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.JAC_FORMAT {
+        return run_pass(JacFormatPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.JAC_AUTO_LINT {
+        return run_pass(JacAutoLintPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.PYAST_BUILD {
+        return run_pass(PyastBuildPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.GRAMMAR_EXTRACT {
+        return run_pass(GrammarExtractPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.COALESCE_BB {
+        return run_pass(CoalesceBBPass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.NORMALIZE {
+        return run_pass(NormalizePass, module, program, cancel_token, policy).module;
+    } elif pass_kind == PassKind.UNPARSE {
+        return run_pass(UnparsePass, module, program, cancel_token, policy).module;
+    }
+    raise ValueError(f"unknown compiler pass: {pass_kind.value}");
+}
+
+impl run_early_pass(pass_kind: PassKind, module: Module) -> CompileContext {
+    if pass_kind == PassKind.APP_CONTEXT {
+        return run_walker(AppContextPass, module=module).ctx;
+    } elif pass_kind == PassKind.GRAPH_LOWERING {
+        return run_walker(GraphLoweringPass, module=module).ctx;
+    } elif pass_kind == PassKind.AST_VALIDATION {
+        return run_walker(ASTValidationPass, module=module).ctx;
+    } elif pass_kind == PassKind.ABSORB_IMPORTS {
+        return run_walker(AbsorbImportsPass, module=module).ctx;
+    } elif pass_kind == PassKind.SYM_TAB_BUILD {
+        return run_walker(SymTabBuildPass, module=module).ctx;
+    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
+        return run_walker(DeclImplMatchPass, module=module).ctx;
+    } elif pass_kind == PassKind.SEMANTIC_ANALYSIS {
+        return run_walker(SemanticAnalysisPass, module=module).ctx;
+    } elif pass_kind == PassKind.SEM_DEF_MATCH {
+        return run_walker(SemDefMatchPass, module=module).ctx;
+    } elif pass_kind == PassKind.CFG_BUILD {
+        return run_walker(CFGBuildPass, module=module).ctx;
+    } elif pass_kind == PassKind.JSX_INTRINSIC_GUARD {
+        return run_walker(JsxIntrinsicGuardPass, module=module).ctx;
+    }
+    raise ValueError(f"pass is not available during early parse: {pass_kind.value}");
+}
+
+impl native_ir_alert(
+    module: Module,
+    module_name: str,
+    detail: str,
+    code: DiagnosticInfo,
+    schedule_unavailable: bool
+) -> Alert {
+    if schedule_unavailable {
+        return Alert(
+            msg=code.format_message(kind='module', name=module_name),
+            loc=module.loc.span(),
+            from_pass=JcirGenPass,
+            code=code,
+            help_text=detail
+        );
+    }
+    return Alert(
+        msg=code.format_message(kind='module', name=module_name),
+        loc=module.loc.span(),
+        from_pass=NaIRGenPass,
+        code=code,
+        help_text=detail
+    );
 }
 
 impl validate_schedule(
@@ -244,12 +478,12 @@ impl validate_schedule(
     provided: set[AnalysisFact] = set(preprovided)
         if preprovided is not None
         else set();
-    for p in passes {
-        contract = contract_of(p);
+    for pass_kind in passes {
+        contract = contract_of(pass_kind);
         for tag in contract.requires {
             if tag not in provided {
                 raise RuntimeError(
-                    f"scheduling error: pass {p.__name__} requires analysis "
+                    f"scheduling error: pass {pass_kind.value} requires analysis "
                     f"'{tag}' which is neither provided by an earlier pass in "
                     f"the {origin} nor already available -- the schedule was "
                     f"constructed missing a declared dependency."
@@ -265,8 +499,8 @@ impl validate_schedule(
 
 impl providers_of(passes: PassSchedule) -> set[AnalysisFact] {
     out: set[AnalysisFact] = set();
-    for p in passes {
-        for tag in contract_of(p).provides {
+    for pass_kind in passes {
+        for tag in contract_of(pass_kind).provides {
             out.add(tag);
         }
     }
@@ -301,10 +535,24 @@ impl resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
     internal: bool = False,
-    peer_fell_back: bool = False
+    peer_fell_back: bool = False,
+    source_path: str = ""
 ) -> tuple[(PassSchedule | None), bool, bool] {
     spec = PRODUCTS[product];
     req = request if request is not None else ProductRequest();
+    if spec.tiered and source_path {
+        for load_name in spec.loads {
+            parts = load_name.split(".");
+            if parts and parts[0] == "jaclang" {
+                source_suffix = (
+                    "jaclang" + os.sep + os.sep.join(parts[1:]) + ".jac"
+                );
+                if source_path.endswith(source_suffix) {
+                    return (spec.bootstrap(req), False, False);
+                }
+            }
+        }
+    }
     if spec.tiered and (peer_fell_back or tier_reason(product)) {
         return (spec.bootstrap(req), False, False);
     }
@@ -380,9 +628,9 @@ impl product_facts(product: CompilationProduct) -> set[AnalysisFact] {
 
 impl early_passes -> PassSchedule {
     return [
-        p
-        for p in product_passes(CompilationProduct.IR)
-        if contract_of(p).kernel_safe
+        pass_kind
+        for pass_kind in product_passes(CompilationProduct.IR)
+        if contract_of(pass_kind).kernel_safe
     ];
 }
 
@@ -449,7 +697,11 @@ impl produce(
         }
     }
     (schedule, fell_back, full) = resolve(
-        product, request, program.internal, peer_fell_back
+        product,
+        request,
+        program.internal,
+        peer_fell_back,
+        module.loc.mod_path or module.source.file_path
     );
     if task is not None {
         task.import_fallback = fell_back;
@@ -547,9 +799,9 @@ impl invalidate(program: JacProgram, module: Module, product: CompilationProduct
         if build is not None {
             build.tasks.pop(current, None);
             if not spec.acts {
-                for step in product_passes(current) {
-                    if not contract_of(step).provides {
-                        build.done.discard(step.__name__);
+                for pass_kind in product_passes(current) {
+                    if not contract_of(pass_kind).provides {
+                        build.done.discard(pass_kind.value);
                     }
                 }
             }
@@ -571,21 +823,21 @@ impl execute_passes(
         origin=f"schedule for module {module.loc.mod_path}"
     );
     policy = build_diagnostic_policy(program);
-    for step in passes {
-        if step.__name__ in build.done {
+    for pass_kind in passes {
+        if pass_kind.value in build.done {
             continue;
         }
         if cancelled(cancel_token) {
             return module;
         }
-        module = run_pass(
-            step, module, program, cancel_token=cancel_token, policy=policy
-        ).module;
-        build.facts.update(contract_of(step).provides);
+        module = run_scheduled_pass(
+            pass_kind, module, program, cancel_token, policy
+        );
+        build.facts.update(contract_of(pass_kind).provides);
         if cancelled(cancel_token) {
             return module;
         }
-        build.done.add(step.__name__);
+        build.done.add(pass_kind.value);
     }
     return module;
 }
@@ -599,7 +851,10 @@ impl run_utility(
     if not PRODUCTS[product].tool {
         raise ValueError(f"{product.value} is not a utility product");
     }
-    step = product_passes(product)[0];
-    contract_of(step);
-    return run_pass(step, ir, program, cancel_token=cancel_token);
+    pass_kind = product_passes(product)[0];
+    contract_of(pass_kind);
+    policy = build_diagnostic_policy(program);
+    return run_scheduled_pass(
+        pass_kind, ir, program, cancel_token, policy
+    );
 }
