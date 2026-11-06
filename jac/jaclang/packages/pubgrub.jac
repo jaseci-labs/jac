@@ -77,7 +77,8 @@ obj Solver {
         _requirements: dict[tuple[str, str], dict[str, Requirement]] = {},
         _universe: dict[str, set[str]] | None = None,
         _namers: dict[str, set[str]] = {},
-        _ranges_on: dict[str, list[VersionSet]] = {};
+        _ranges_on: dict[str, list[VersionSet]] = {},
+        _grants: dict[str, int] = {};
 
     def solve -> dict[str, Version];
     def _add(incompat: Incompatibility);
@@ -91,11 +92,15 @@ obj Solver {
     def _backtrack(level: int);
     def _candidates_for(name: str) -> list[Version];
     def _dependencies(name: str, version: Version) -> dict[str, Requirement];
+    def _count_grants(name: str, version: Version, step: int);
     def _granted(name: str) -> bool;
     def _allowed(name: str, term: Term) -> list[Version];
     def _has_prerelease_candidate(name: str, term: Term) -> bool;
     def _universe_edges -> dict[str, set[str]];
-    def _downstream(starts: set[str]) -> set[str];
+    def _closure(
+        starts: set[str], edges: dict[str, set[str]], within: set[str]
+    ) -> set[str];
+
     def _interchangeable(owner: str, v: Version, current: Version) -> bool;
     def _prerelease_gap(name: str, term: Term) -> Incompatibility;
     def _decide -> str | None;

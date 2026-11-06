@@ -138,67 +138,48 @@ def _resolver_world(
     return World(tmp=base, registry=registry, app=app, env=env);
 }
 
-def _install_world(w: World) -> Lockfile {
-    with patch.dict(os.environ, w.env) {
-        cfg = _config(w.app);
-        result = sync(cfg);
-        write_lock(cfg, result.lock);
-        lock = Lockfile.read(w.app / "jac.lock");
-        assert lock is not None;
-        return lock;
-    }
-}
-
-def _assert_mounted_version(w: World, package: str, version: str) {
-    mount = w.app / ".jac" / "packages" / "local" / package / "api.jac";
-    assert mount.exists() , f"missing mounted {package} package";
-    assert f'return "{version}"' in mount.read_text() , (
-        f"mounted {package} source does not match {version}"
-    );
-}
-
-test "a rejected candidate cannot enable prereleases" {
-    with TemporaryDirectory() as raw {
-        base_dir = Path(raw);
-        lib_releases = {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.5.0-beta.1": {}};
-        rejected = _resolver_world(
-            base_dir / "rejected",
+test "an install picks a prerelease only while a selected requirement names one" {
+    lib = {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.5.0-beta.1": {}};
+    rows: list[tuple[str, dict[str, dict[str, dict[str, str]]], dict[str, str], str]] = [
+        (
+            "rejected",
             {
-                "local/lib": lib_releases,
+                "local/lib": lib,
                 "local/bridge": {
                     "1.0.0": {},
                     "2.0.0": {"local/lib": ">=1.5.0-beta.1", "local/missing": "^1"}
                 }
             },
-            {"local/bridge": "*", "local/lib": "^1"}
-        );
-        removed = _resolver_world(
-            base_dir / "removed",
-            {"local/lib": lib_releases, "local/bridge": {"1.0.0": {}}},
-            {"local/bridge": "*", "local/lib": "^1"}
-        );
-        rejected_lock = _install_world(rejected);
-        removed_lock = _install_world(removed);
-        expected = {"local/bridge": "1.0.0", "local/lib": "1.2.0"};
-        assert _versions(rejected_lock) == expected;
-        assert _versions(removed_lock) == expected;
-        _assert_mounted_version(rejected, "lib", "1.2.0");
-        _assert_mounted_version(removed, "lib", "1.2.0");
-    }
-}
-
-test "an explicit root prerelease requirement is preserved" {
+            {"local/bridge": "*", "local/lib": "^1"},
+            "1.2.0"
+        ),
+        (
+            "removed",
+            {"local/lib": lib, "local/bridge": {"1.0.0": {}}},
+            {"local/bridge": "*", "local/lib": "^1"},
+            "1.2.0"
+        ),
+        (
+            "explicit",
+            {"local/lib": lib, "local/bridge": {"1.0.0": {}}},
+            {"local/bridge": "*", "local/lib": ">=1.5.0-beta.1"},
+            "1.5.0-beta.1"
+        )
+    ];
     with TemporaryDirectory() as raw {
-        base_dir = Path(raw);
-        lib_releases = {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.5.0-beta.1": {}};
-        explicit = _resolver_world(
-            base_dir / "explicit",
-            {"local/lib": lib_releases, "local/bridge": {"1.0.0": {}}},
-            {"local/bridge": "*", "local/lib": ">=1.5.0-beta.1"}
-        );
-        explicit_lock = _install_world(explicit);
-        assert _versions(explicit_lock)["local/lib"] == "1.5.0-beta.1";
-        _assert_mounted_version(explicit, "lib", "1.5.0-beta.1");
+        for (label, releases, deps, lib_version) in rows {
+            w = _resolver_world(Path(raw) / label, releases, deps);
+            with patch.dict(os.environ, w.env) {
+                cfg = _config(w.app);
+                write_lock(cfg, sync(cfg).lock);
+            }
+            lock = Lockfile.read(w.app / "jac.lock");
+            assert lock is not None , label;
+            assert _versions(lock)
+                == {"local/bridge": "1.0.0", "local/lib": lib_version} , label;
+            mount = w.app / ".jac" / "packages" / "local" / "lib" / "api.jac";
+            assert f'return "{lib_version}"' in mount.read_text() , label;
+        }
     }
 }
 

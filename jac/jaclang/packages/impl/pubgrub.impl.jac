@@ -330,11 +330,17 @@ impl Solver._backtrack(level: int) {
         if a.level <= level
     ];
     self.level = level;
-    self.decisions = {
+    kept = {
         a.term.package: self.decisions[a.term.package]
         for a in self.assignments
         if a.is_decision() and a.term.package in self.decisions
     };
+    for (name, version) in self.decisions.items() {
+        if name not in kept {
+            self._count_grants(name, version, -1);
+        }
+    }
+    self.decisions = kept;
 }
 
 impl Solver._candidates_for(name: str) -> list[Version] {
@@ -352,14 +358,16 @@ impl Solver._dependencies(name: str, version: Version) -> dict[str, Requirement]
     return self._requirements[key];
 }
 
-impl Solver._granted(name: str) -> bool {
-    for (decided, version) in self.decisions.items() {
-        req = self._dependencies(decided, version).get(name);
-        if req is not None and req.names_prerelease {
-            return True;
+impl Solver._count_grants(name: str, version: Version, step: int) {
+    for (dep, req) in self._dependencies(name, version).items() {
+        if req.names_prerelease {
+            self._grants[dep] = self._grants.get(dep, 0) + step;
         }
     }
-    return False;
+}
+
+impl Solver._granted(name: str) -> bool {
+    return self._grants.get(name, 0) > 0;
 }
 
 impl Solver._allowed(name: str, term: Term) -> list[Version] {
@@ -420,15 +428,16 @@ impl Solver._universe_edges -> dict[str, set[str]] {
     return self._universe;
 }
 
-impl Solver._downstream(starts: set[str]) -> set[str] {
-    edges = self._universe_edges();
+impl Solver._closure(
+    starts: set[str], edges: dict[str, set[str]], within: set[str]
+) -> set[str] {
     out = set(starts);
     todo = list(starts);
     while todo {
-        for dep in edges.get(todo.pop(), set()) {
-            if dep not in out {
-                out.add(dep);
-                todo.append(dep);
+        for nxt in edges.get(todo.pop(), set()) {
+            if nxt not in out and nxt in within {
+                out.add(nxt);
+                todo.append(nxt);
             }
         }
     }
@@ -456,21 +465,19 @@ impl Solver._interchangeable(owner: str, v: Version, current: Version) -> bool {
 
 impl Solver._prerelease_gap(name: str, term: Term) -> Incompatibility {
     edges = self._universe_edges();
-    sources = self._namers.get(name, set()) - {self.root_name};
-    todo = list(sources);
-    while todo {
-        target = todo.pop();
-        for (owner, deps) in edges.items() {
-            if target in deps and owner != self.root_name and owner not in sources {
-                sources.add(owner);
-                todo.append(owner);
-            }
+    owners: dict[str, set[str]] = {};
+    for (owner, deps) in edges.items() {
+        for dep in deps {
+            owners.setdefault(dep, set()).add(owner);
         }
     }
-    reach = self._downstream(sources);
+    within = self._closure({self.root_name}, edges, set(edges) - {name})
+        - {self.root_name};
+    sources = self._closure(self._namers.get(name, set()) & within, owners, within);
+    relevant = self._closure(self._closure(sources, edges, within), owners, within);
     terms = [term];
     for (decided, current) in self.decisions.items() {
-        if decided == self.root_name or not (self._downstream({decided}) & reach) {
+        if decided not in relevant {
             continue;
         }
         same = VersionSet.none();
@@ -577,6 +584,7 @@ impl Solver._decide_version(name: str, version: Version) {
             )
         );
         self.decisions[name] = version;
+        self._count_grants(name, version, 1);
     }
 }
 
