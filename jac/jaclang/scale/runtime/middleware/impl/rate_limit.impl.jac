@@ -101,18 +101,13 @@ impl build_client_error_limit_middleware(cfg: dict[str, any]) -> any {
         if ok {
             return await call_next(request);
         }
-        return error_response(
-            code="RATE_LIMITED",
-            message="Too many error reports; slow down.",
-            status=429,
-            retry_after_seconds=int(retry_in) + 1
-        );
+        return transport_to_response(throttled(int(retry_in) + 1, "Error reporting"));
     }
 
     return client_error_limit;
 }
 
-impl client_error_limit_warning(
+impl client_error_limit_skipped(
     cfg: dict[str, any], trusted: list[str], clustered: bool
 ) -> str {
     rpm: int = int(cfg.get("client_error_rpm", 20));
@@ -120,13 +115,12 @@ impl client_error_limit_warning(
         return "";
     }
     return (
-        "[scale.gateway.rate_limit] client_error_rpm counts error reports per "
-        "client address, but [serve.proxy] trusted is empty in a cluster, so "
-        "every browser arrives from the ingress address and they all share one "
-        f"budget of {rpm} reports a minute: one page reporting in a loop gets "
-        "every other user's reports answered 429. List the ingress in "
-        "[serve.proxy] trusted (JAC_SERVE_PROXY_TRUSTED), or set "
-        "client_error_rpm = 0."
+        "[scale.gateway.rate_limit] client_error_rpm is not applied at the "
+        "gateway: [serve.proxy] trusted is empty in a cluster, so every browser "
+        "arrives from the ingress address and they would all share one budget. "
+        "Each service still limits error reports per client. List the ingress "
+        "in [serve.proxy] trusted (JAC_SERVE_PROXY_TRUSTED) to limit them at "
+        "the gateway too."
     );
 }
 

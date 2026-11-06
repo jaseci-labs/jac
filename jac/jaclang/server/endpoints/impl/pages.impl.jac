@@ -425,16 +425,11 @@ impl register_diagnostics_endpoints(server: JacAPIServer) {
 
     limiter = ClientErrorLimiter();
 
-    async def client_error(request: Request) -> JSONResponse {
-        import math;
+    def client_error(request: Request) -> JSONResponse | TransportResponse {
         client = request.client_host or 'unknown';
-        retry_in = limiter.admit(client);
-        if retry_in > 0 {
-            refused = JSONResponse(
-                status_code=429, content={'error': 'Too many error reports'}
-            );
-            refused.headers.set('Retry-After', str(max(1, math.ceil(retry_in))));
-            return refused;
+        retry = limiter.admit(client);
+        if retry > 0 {
+            return throttled(retry, 'Error reporting');
         }
         if len(request.body) > CLIENT_ERROR_MAX_BYTES {
             return JSONResponse(
@@ -445,7 +440,7 @@ impl register_diagnostics_endpoints(server: JacAPIServer) {
             );
         }
         try {
-            data = await request.json();
+            data = request.json_sync();
         } except Exception {
             return JSONResponse(status_code=400, content={'error': 'Invalid JSON'});
         }

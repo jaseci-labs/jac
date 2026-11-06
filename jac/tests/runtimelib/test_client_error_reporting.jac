@@ -341,64 +341,103 @@ def error_report(message: str, stack: str = APP_STACK) -> dict[str, any] {
     return {"message": message, "stack": stack, "source": "window.onerror"};
 }
 
-"""Statuses, and Retry-After values on the 429s, for `count` reports from one client."""
+"""Statuses, Retry-After values and the first 429 body for reports posted
+round-robin across `clients`, each standing in for one worker."""
 def post_reports(
-    client: JacTestClient, messages: list[str]
-) -> tuple[list[int], list[any]] {
+    clients: list[JacTestClient], messages: list[str]
+) -> tuple[list[int], list[any], dict[str, dict[str, str]] | None] {
     statuses: list[int] = [];
     retry_after: list[any] = [];
-    for message in messages {
-        resp = client.post("/cl/__error__", json=error_report(message));
+    refused: dict[str, dict[str, str]] | None = None;
+    for (i, message) in enumerate(messages) {
+        resp = clients[i % len(clients)].post(
+            "/cl/__error__", json=error_report(message)
+        );
         statuses.append(resp.status_code);
         if resp.status_code == 429 {
             retry_after.append(resp.headers.get("Retry-After"));
+            refused = refused or resp.json();
         }
     }
-    return (statuses, retry_after);
+    return (statuses, retry_after, refused);
 }
 
-def assert_backs_off(statuses: list[int], retry_after: list[any]) {
-    assert 429 in statuses , f"a flood of error reports never got a 429: {statuses}";
-    assert statuses.count(200) <= 20 , f"more than one budget was accepted: {statuses}";
+def assert_backs_off(label: str, statuses: list[int], retry_after: list[any]) {
+    assert 429 in statuses , f"{label}: a flood of error reports never got a 429: {statuses}";
+    assert statuses.count(200) <= 20 , f"{label}: more than one budget was accepted: {statuses}";
     first_refusal = statuses.index(429);
     assert set(statuses[first_refusal:]) == {429} , (
-        f"a report got through after the client was refused: {statuses}"
+        f"{label}: a report got through after the client was refused: {statuses}"
     );
     for value in retry_after {
         assert value is not None and 1 <= int(value) <= 60 , (
-            f"a 429 without a usable Retry-After: {retry_after}"
+            f"{label}: a 429 without a usable Retry-After: {retry_after}"
         );
     }
 }
 
-test "a client past its error-report budget gets 429 with Retry-After" {
-    tag = uuid.uuid4().hex;
-    with TemporaryDirectory() as tmpdir {
-        client = make_client(tmpdir);
-        try {
-            (statuses, retry_after) = post_reports(
-                client, [f"distinct {tag} {i}" for i in range(40)]
-            );
-        } finally {
-            client.close();
-        }
-    }
-    assert_backs_off(statuses, retry_after);
+def assert_rate_limited_body(label: str, body: dict[str, dict[str, str]] | None) {
+    assert body and body["error"]["code"] == "RATE_LIMITED" , (label, body);
+    assert body["error"]["message"].startswith("Too many attempts") , (label, body);
 }
 
-test "the same report in a loop spends the client's budget too" {
-    # The jachammer incident: one message, hundreds of times a second.
-    with TemporaryDirectory() as tmpdir {
-        client = make_client(tmpdir);
-        try {
-            (statuses, retry_after) = post_reports(
-                client, [f"looping {uuid.uuid4().hex}"] * 40
-            );
-        } finally {
-            client.close();
+test "a client past its error-report budget gets 429 with Retry-After, across workers" {
+    import from unittest.mock { patch }
+    import from jaclang.client.source_mapping { ClientErrorLimiter }
+    import from jaclang.server.identity.rate_limit { consume_limit }
+    tag = uuid.uuid4().hex;
+    rows = [
+        ("distinct reports", [f"distinct {tag} {i}" for i in range(40)], 1, True),
+        ("the same report in a loop", [f"looping {tag}"] * 40, 1, True),
+        (
+            "distinct reports across two workers",
+            [f"spread {tag} {i}" for i in range(40)],
+            2,
+            True
+        ),
+        (
+            "no shared store, so each worker counts",
+            [f"local {tag} {i}" for i in range(40)],
+            1,
+            False
+        )
+    ];
+    for (label, messages, workers, shared) in rows {
+        with TemporaryDirectory() as tmpdir {
+            clients = [make_client(tmpdir) for _ in range(workers)];
+            try {
+                if shared {
+                    (statuses, retry_after, refused) = post_reports(clients, messages);
+                } else {
+                    with patch(
+                        consume_limit.__module__ + ".shared_store", return_value=None
+                    ) {
+                        (statuses, retry_after, refused) = post_reports(
+                            clients, messages
+                        );
+                    }
+                }
+            } finally {
+                for client in clients {
+                    client.close();
+                }
+            }
         }
+        assert_backs_off(label, statuses, retry_after);
+        assert_rate_limited_body(label, refused);
     }
-    assert_backs_off(statuses, retry_after);
+
+    limiter = ClientErrorLimiter();
+    big = "x" * 60000;
+    with patch(consume_limit.__module__ + ".shared_store", return_value=None) {
+        assert limiter.admit("203.0.113.30") == 0;
+    }
+    assert not limiter.is_repeat("203.0.113.30", big);
+    assert limiter.is_repeat("203.0.113.30", big);
+    seen = limiter._clients["203.0.113.30"].seen;
+    assert all(len(key) <= 32 for key in seen) , (
+        f"the dedup map holds {[len(key) for key in seen]} bytes per report"
+    );
 }
 
 """POST `payload` to 127.0.0.1:`port` as if forwarded for `client_ip`."""
@@ -427,6 +466,8 @@ test "one client's flood does not mute another client's report" {
     tag = uuid.uuid4().hex;
     logger = logging.getLogger("jaclang.client_errors");
     records = logging.handlers.BufferingHandler(100000);
+    old_level = logger.level;
+    logger.setLevel(logging.ERROR);
     logger.addHandler(records);
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
@@ -448,6 +489,7 @@ test "one client's flood does not mute another client's report" {
             stop();
             client.close();
             logger.removeHandler(records);
+            logger.setLevel(old_level);
         }
     }
     assert 429 in noisy , f"the noisy client was never refused: {noisy}";
@@ -559,52 +601,6 @@ def serve_counting_upstream -> tuple[any, ...] {
     return (srv, srv.server_address[1], hits);
 }
 
-test "the gateway refuses an error-report flood before forwarding it, with the rate limit off" {
-    import from jaclang.scale.runtime.gateway.microservice_gateway {
-        MicroserviceGateway
-    }
-    import from jaclang.scale.runtime.gateway.service_registry {
-        ServiceEntry,
-        ServiceRegistry,
-        ServiceStatus
-    }
-    import from jaclang.scale.state.factory { _backend_holder }
-    import from jaclang.testing.testkit { ServingTestClient }
-    _backend_holder.clear();
-    (srv, port, hits) = serve_counting_upstream();
-    registry = ServiceRegistry();
-    registry.register(
-        ServiceEntry(
-            name="web",
-            file="web.jac",
-            prefix="/web",
-            port=port,
-            url=f"http://127.0.0.1:{port}",
-            status=ServiceStatus.HEALTHY
-        )
-    );
-    gateway = MicroserviceGateway(registry=registry);
-    gateway.setup();
-    client = ServingTestClient(gateway.app);
-    statuses: list[int] = [];
-    retry_after: list[any] = [];
-    try {
-        for i in range(60) {
-            resp = client.post("/cl/__error__", json=error_report(f"flood {i}"));
-            statuses.append(resp.status_code);
-            if resp.status_code == 429 {
-                retry_after.append(resp.headers.get("Retry-After"));
-            }
-        }
-    } finally {
-        srv.shutdown();
-        _backend_holder.clear();
-    }
-    assert 429 in statuses , f"the gateway forwarded every report: {statuses}";
-    assert len(hits) < 30 , f"{len(hits)} of 60 reports reached the service";
-    assert all(v is not None and int(v) >= 1 for v in retry_after) , retry_after;
-}
-
 test "[scale.gateway.rate_limit] client_error_rpm sets or turns off the gateway's report limit" {
     import from jaclang.scale.config.config_loader { normalize_gateway_config }
     import from jaclang.scale.config.validation { validate_scale_config }
@@ -620,57 +616,103 @@ test "[scale.gateway.rate_limit] client_error_rpm sets or turns off the gateway'
     assert build_client_error_limit_middleware({"client_error_rpm": 5}) is not None;
 }
 
-test "a gateway in a cluster with no trusted proxy warns that its report limit is shared" {
+test "the gateway refuses an error-report flood only when it can tell clients apart" {
     import os;
     import from unittest.mock { patch }
     import from jaclang.scale.runtime.gateway.microservice_gateway {
         MicroserviceGateway
     }
-    import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
+    import from jaclang.scale.runtime.gateway.service_registry {
+        ServiceEntry,
+        ServiceRegistry,
+        ServiceStatus
+    }
     import from jaclang.scale.runtime.middleware.rate_limit {
-        client_error_limit_warning
+        client_error_limit_skipped
     }
     import from jaclang.scale.state.factory { _backend_holder }
+    import from jaclang.testing.testkit { ServingTestClient }
     limit = {"client_error_rpm": 20};
-    warned = client_error_limit_warning(limit, [], True);
-    assert "[serve.proxy] trusted" in warned and "ingress" in warned , warned;
-    assert "20" in warned and "client_error_rpm = 0" in warned , warned;
-    assert client_error_limit_warning(limit, ["10.0.0.0/8"], True) == "";
-    assert client_error_limit_warning(limit, [], False) == "";
-    assert client_error_limit_warning({"client_error_rpm": 0}, [], True) == "";
+    skipped = client_error_limit_skipped(limit, [], True);
+    assert "[serve.proxy] trusted" in skipped and "ingress" in skipped , skipped;
+    assert "Each service still limits" in skipped , skipped;
+    assert client_error_limit_skipped(limit, ["10.0.0.0/8"], True) == "";
+    assert client_error_limit_skipped(limit, [], False) == "";
+    assert client_error_limit_skipped({"client_error_rpm": 0}, [], True) == "";
 
     gateway_logger = logging.getLogger(
         "jaclang.scale.runtime.gateway.microservice_gateway"
     );
     rows = [
-        ("in a cluster, nothing trusted", "10.96.0.1", "", True),
-        ("in a cluster, the ingress trusted", "10.96.0.1", "10.0.0.0/8", False),
-        ("outside a cluster", "", "", False)
+        ("outside a cluster", "", "", True),
+        ("in a cluster, the ingress trusted", "10.96.0.1", "10.0.0.0/8", True),
+        ("in a cluster, nothing trusted", "10.96.0.1", "", False)
     ];
-    for (label, cluster_host, trusted, should_warn) in rows {
+    for (label, cluster_host, trusted, should_limit) in rows {
         _backend_holder.clear();
+        (srv, port, hits) = serve_counting_upstream();
+        registry = ServiceRegistry();
+        registry.register(
+            ServiceEntry(
+                name="web",
+                file="web.jac",
+                prefix="/web",
+                port=port,
+                url=f"http://127.0.0.1:{port}",
+                status=ServiceStatus.HEALTHY
+            )
+        );
         env = {
             "KUBERNETES_SERVICE_HOST": cluster_host,
             "JAC_SERVE_PROXY_TRUSTED": trusted
         };
+        statuses: list[int] = [];
+        retry_after: list[any] = [];
+        refused: dict[str, dict[str, str]] | None = None;
         with TemporaryDirectory() as tmp {
-            (buf, handler, old_level) = capture_log_start(
-                gateway_logger, logging.WARNING
-            );
+            (buf, handler, old_level) = capture_log_start(gateway_logger, logging.INFO);
             try {
                 with patch.dict(os.environ, env) {
-                    MicroserviceGateway(
-                        registry=ServiceRegistry(), base_path=tmp
-                    ).setup();
+                    gateway = MicroserviceGateway(registry=registry, base_path=tmp);
+                    gateway.setup();
+                    client = ServingTestClient(gateway.app);
+                    for i in range(60) {
+                        resp = client.post(
+                            "/cl/__error__", json=error_report(f"flood {i}")
+                        );
+                        statuses.append(resp.status_code);
+                        if resp.status_code == 429 {
+                            retry_after.append(resp.headers.get("Retry-After"));
+                            refused = refused or resp.json();
+                        }
+                    }
                 }
             } finally {
                 capture_log_stop(gateway_logger, handler, old_level);
+                srv.shutdown();
                 _backend_holder.clear();
             }
         }
-        logged = "client_error_rpm" in buf.getvalue();
-        assert logged == should_warn , (
-            f"{label}: expected a shared-limit warning: {should_warn}; got {buf.getvalue()!r}"
+        if should_limit {
+            assert 429 in statuses , f"{label}: the gateway forwarded every report: {statuses}";
+            assert len(hits) < 30 , f"{label}: {len(
+                hits
+            )} of 60 reports reached the service";
+            assert all(
+                v is not None and int(v) >= 1 for v in retry_after
+            ) , retry_after;
+            assert_rate_limited_body(label, refused);
+        } else {
+            assert 429 not in statuses , (
+                f"{label}: the gateway limited every browser as one client: {statuses}"
+            );
+            assert len(hits) == 60 , f"{label}: {len(
+                hits
+            )} of 60 reports reached the service";
+        }
+        noted = "client_error_rpm is not applied" in buf.getvalue();
+        assert noted == (not should_limit) , (
+            f"{label}: expected the gateway to say it skips the limit: {not should_limit}; got {buf.getvalue()!r}"
         );
     }
 }

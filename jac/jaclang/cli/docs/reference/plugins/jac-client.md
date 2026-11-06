@@ -2345,8 +2345,16 @@ The endpoint limits each client on its own, so one page reporting in a loop
 cannot hide other users' errors:
 
 - **Rate:** a client gets 20 reports a minute. Past that, every request is
-  answered `429` with `Retry-After` until its minute is up. The same message from the same
-  client within 10 seconds is accepted (`{"ok": true, "throttled": true}`) but not logged again.
+  answered `429` (`RATE_LIMITED`, the same envelope as the login and
+  registration limits) with `Retry-After` until its minute is up. The count is
+  kept in the shared database (the embedded one the server provisions, or the
+  one `[scale.database] url` names), so it holds across every worker of
+  `jac run --serve` and every replica of a deployment. If that database cannot
+  be reached, each worker process counts on its own, so a server with N workers
+  accepts up to N x 20 a minute from one client.
+- **Repeats:** the same message from the same client within 10 seconds is
+  accepted (`{"ok": true, "throttled": true}`) but not logged again. This check
+  is per worker process.
 - **Size:** a report over 64 KiB is refused with `413` before it is parsed.
 - **Browser extensions:** a report whose stack frames all point into a browser
   extension (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`,
@@ -2357,14 +2365,14 @@ cannot hide other users' errors:
 Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
 20) applies the same per-client limit before a report reaches any service, even
 when the gateway's general rate limit is off. Set it to `0` to turn it off.
-The limit is per client only when the gateway sees each browser's own address.
-`jac scale deploy` trusts the cluster's private ranges on the app services but
-sets none on the gateway, which is the pod an ingress talks to. Without the
-ingress controller's address in `[serve.proxy] trusted`
-(`JAC_SERVE_PROXY_TRUSTED`), every browser arrives from the ingress and they all
-share one budget, so one page reporting in a loop gets everyone's reports
-answered `429`. A gateway in a cluster with the limit on and nothing trusted
-logs a warning at startup saying so.
+The gateway applies it only when it can see each browser's own address. In a
+cluster with nothing in `[serve.proxy] trusted` (`JAC_SERVE_PROXY_TRUSTED`),
+which is what `jac scale deploy` sets on the gateway, every browser arrives from
+the ingress address, so the gateway skips the limit and logs that at startup.
+The services behind it still limit each browser, because they trust the
+cluster's private ranges and read the address the gateway forwards. List the
+ingress controller's address in the gateway's `[serve.proxy] trusted` to refuse
+floods at the gateway too.
 
 Locations come from the per-file source maps the client compiler writes beside
 each `compiled/*.js`. They are segment-level -- generated line *and* column,

@@ -3631,6 +3631,9 @@ graph import {
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
             | scale.tests.server.test_registration_challenge
             | scale.tests.server.test_registration_limits { register_auth_endpoints },
+        scale.runtime.middleware.rate_limit.build_client_error_limit_middleware {
+            throttled
+        },
         scale.server.extensions { register_mail_endpoints },
     ]
     server.endpoints.colocated ++> scale.tests.server.test_sv_outbox_endpoints {
@@ -3725,8 +3728,9 @@ graph import {
         scale.tests.server.test_auth_policy_startup { check_password, minted_password },
     ]
     server.identity.rate_limit ++> [
+        client.source_mapping.ClientErrorLimiter.admit
+            | scale.tests.server.test_registration_limits { consume_limit },
         scale.admin.admin_portal { AttemptsExhausted },
-        scale.tests.server.test_registration_limits { consume_limit },
     ]
     server.identity.registration_challenge ++> scale.tests.server.test_registration_challenge {
         consume_challenge,
@@ -3899,7 +3903,8 @@ graph import {
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
-        scale.tests.server.test_auth_policy_startup
+        scale.runtime.middleware.rate_limit.build_client_error_limit_middleware
+            | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_registration_limits { transport_to_response },
         scale.tests.server.test_stream_ws._spawn_ws_upstream { ServingApp },
         scale.tests.server.test_stream_ws._spawn_ws_upstream_with_protocol {
@@ -46505,14 +46510,11 @@ graph import scale.runtime {
             service_unavailable
         },
         gateway.microservice_gateway.MicroserviceGateway.handle_metrics
-            | middleware.rate_limit.build_client_error_limit_middleware {
-            error_response
-        },
+            | middleware.rate_limit.build_rate_limit_middleware { error_response },
         gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
             not_found
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services { not_found },
-        middleware.rate_limit.build_rate_limit_middleware { error_response },
     ]
     context.errors --> [
         gateway.microservice_gateway.MicroserviceGateway.deliver_once { not_found },
@@ -46629,7 +46631,7 @@ graph import scale.runtime {
     middleware.rate_limit ++> gateway.microservice_gateway.MicroserviceGateway.setup {
         build_client_error_limit_middleware,
         build_rate_limit_middleware,
-        client_error_limit_warning
+        client_error_limit_skipped
     }
     middleware.ws_forward ++> gateway.microservice_gateway._install_ws_catchall {
         websocket_forward
@@ -47232,6 +47234,7 @@ graph import server {
     task_scheduler --> server.JacAPIServer._start_problems { schedule_problems }
     transport ++> [
         bridge.serialize_response
+            | endpoints.pages.register_diagnostics_endpoints.client_error
             | endpoints.second_factor
             | exchange
             | outbox.remember_response
@@ -47246,7 +47249,10 @@ graph import server {
 }
 
 graph import server.endpoints {
-    auth ++> second_factor { fail, ok, throttled }
+    auth ++> [
+        pages.register_diagnostics_endpoints.client_error { throttled },
+        second_factor { fail, ok, throttled },
+    ]
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
     walkers ++> colocated { idempotency_key, request_caller }
 }

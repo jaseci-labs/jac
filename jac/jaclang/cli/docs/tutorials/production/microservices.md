@@ -396,7 +396,7 @@ The gateway's own knobs live under `[scale.gateway]` -- and the whole error enve
 | Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s (2s while anything is unhealthy) |
 | CORS | `[scale.gateway.cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
 | Rate limiting | `[scale.gateway.rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
-| Client error reports (`POST /cl/__error__`) per client IP | `[scale.gateway.rate_limit] client_error_rpm = 20` | 20 a minute, then `429` with `Retry-After`, even with rate limiting disabled; `0` turns it off. Per client only with the ingress in `[serve.proxy] trusted` |
+| Client error reports (`POST /cl/__error__`) per client IP | `[scale.gateway.rate_limit] client_error_rpm = 20` | 20 a minute, then `429` with `Retry-After`, even with rate limiting disabled; `0` turns it off. Skipped in a cluster unless the ingress is in `[serve.proxy] trusted`; the services still limit per client |
 | Centralised logs (Loki + Alloy) | `[scale.gateway.logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale-kubernetes.md#centralised-logs) |
 
 The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path; `X-Trace-Id` is minted if absent and threaded through every hop. WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently. On `SIGTERM` (or `jac scale stop`), each app flips a drain flag (new requests get `503` with `Retry-After: 1`) and the server waits up to `[serve.timeouts] drain` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.

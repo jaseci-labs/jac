@@ -1,4 +1,6 @@
+import hashlib;
 import json;
+import math;
 import os;
 import re;
 import time;
@@ -68,21 +70,21 @@ glob _error_rate_limiter = ErrorRateLimiter();
 
 obj ClientErrorLimiter {
     has max_per_window: int = 20,
-        window_seconds: float = 60.0,
+        window_seconds: int = 60,
         dedup_seconds: float = 10.0,
         max_clients: int = 4096,
         _clients: dict[str, ClientErrorWindow] = {},
         _lock: Lock = Lock();
 
-    def admit(client: str) -> float;
-    def _admit_locked(client: str, now: float) -> float;
+    def admit(client: str) -> int;
+    def _admit_locked(client: str, now: float) -> int;
     def is_repeat(client: str, message: str) -> bool;
 }
 
 obj ClientErrorWindow {
     has started: float,
         count: int = 0,
-        seen: dict[str, float] = {};
+        seen: dict[bytes, float] = {};
 }
 
 glob EXTENSION_URL_PREFIXES: tuple[str, ...] = (
