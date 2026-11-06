@@ -110,7 +110,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
             continue;
         }
         key = param.key.sym_name if param.key is not None else None;
-        named = self._print_stream_name(param.value) if key == "file" else None;
+        named = self._sys_stream_of(param.value) if key == "file" else None;
         if named is None {
             self.ctx.emit(
                 E5092,
@@ -263,21 +263,18 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     return ir.Constant(ir.IntType(64), 0);
 }
 
-impl NaIRGenPass._print_stream_name(value: uni.Expr) -> (str | None) {
-    if not isinstance(value, uni.AtomTrailer) {
+# Matches the stream by the symbol it resolves to, not its spelling, so
+# `sys.stderr`, `s.stderr` and a from-imported `stderr as err` all lower.
+impl NaIRGenPass._sys_stream_of(value: uni.Expr) -> (str | None) {
+    if "sys" not in self._native_stdlib_modules {
         return None;
     }
-    chain = value.as_attr_list;
-    if len(chain) != 2 or chain[0].sym_name != "sys" {
+    import from jaclang.compiler.symbol_utils { stdlib_member }
+    origin = stdlib_member(value);
+    if origin is None or origin[0] != "sys" or origin[1] not in ("stdout", "stderr") {
         return None;
     }
-    if chain[1].sym_name == "stdout" {
-        return "stdout";
-    }
-    if chain[1].sym_name == "stderr" {
-        return "stderr";
-    }
-    return None;
+    return origin[1];
 }
 
 impl NaIRGenPass._emit_print_call(
