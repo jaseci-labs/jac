@@ -14,17 +14,21 @@ impl cors_middleware(
     methods = allow_methods
         if allow_methods is not None
         else ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
-    if '*' in methods {
-        methods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT'];
-    }
+    any_method = '*' in methods;
+    listed_methods = [
+        m
+        for m in methods
+        if m != '*'
+    ];
     headers_allowed = allow_headers
         if allow_headers is not None
         else ['Content-Type', 'Authorization'];
     any_header = '*' in headers_allowed;
     exposed = expose_headers if expose_headers is not None else [];
+    any_origin = '*' in origins;
 
     def _origin_value(request: Request) -> str {
-        if '*' in origins {
+        if any_origin {
             return '*';
         }
         req_origin = request.headers.get('Origin') or '';
@@ -32,6 +36,9 @@ impl cors_middleware(
     }
 
     def _apply(response: Response, origin: str) {
+        if not any_origin {
+            response.headers.add_vary('Origin');
+        }
         if not origin {
             return;
         }
@@ -50,12 +57,24 @@ impl cors_middleware(
             and request.headers.get('Access-Control-Request-Method') is not None {
             preflight = Response(content=b'', status_code=200);
             _apply(preflight, origin);
-            preflight.headers.set('Access-Control-Allow-Methods', ', '.join(methods));
-            allowed_headers = str(
-                request.headers.get('Access-Control-Request-Headers') or ''
-            )
-                if any_header
-                else ', '.join(headers_allowed);
+            allowed_methods = list(listed_methods);
+            if any_method {
+                wanted = str(request.headers.get('Access-Control-Request-Method'));
+                if wanted not in allowed_methods {
+                    allowed_methods.append(wanted);
+                }
+                preflight.headers.add_vary('Access-Control-Request-Method');
+            }
+            preflight.headers.set(
+                'Access-Control-Allow-Methods', ', '.join(allowed_methods)
+            );
+            allowed_headers = ', '.join(headers_allowed);
+            if any_header {
+                allowed_headers = str(
+                    request.headers.get('Access-Control-Request-Headers') or ''
+                );
+                preflight.headers.add_vary('Access-Control-Request-Headers');
+            }
             if allowed_headers {
                 preflight.headers.set('Access-Control-Allow-Headers', allowed_headers);
             }

@@ -18,8 +18,8 @@ glob APP_ORIGIN: str = "https://app.example",
      CORS_ENV: list[str] = ["JAC_SERVE_CORS_ORIGINS", "JAC_SERVE_CORS_CREDENTIALS"];
 
 
-"""The Access-Control-* headers a real app answers `method path` from `origin` with,
-names lowercased. `serve_table` is the app's `[serve]` section."""
+"""The Access-Control-* and Vary headers a real app answers `method path` from
+`origin` with, names lowercased. `serve_table` is the app's `[serve]` section."""
 def _cors_headers(
     serve_table: str, method: str, path: str, origin: str
 ) -> dict[str, str] {
@@ -44,11 +44,18 @@ def _cors_headers(
     }
     seen: dict[str, str] = {};
     for (name, value) in resp.headers.items() {
-        if str(name).lower().startswith("access-control-") {
+        if str(name).lower().startswith("access-control-")
+            or str(name).lower() == "vary" {
             seen[str(name).lower()] = str(value);
         }
     }
     return seen;
+}
+
+
+def _varies_on(seen: dict[str, str], field: str) -> bool {
+    return field.lower()
+        in [v.strip().lower() for v in seen.get("vary", "").split(",")];
 }
 
 
@@ -82,6 +89,7 @@ test "a default app allows every origin without claiming credentials" {
         assert "access-control-allow-credentials" not in seen , (
             f"{method} {path} paired a wildcard origin with credentials: {seen}"
         );
+        assert not _varies_on(seen, "Origin") , f"{method} {path}: {seen}";
     }
 }
 
@@ -101,9 +109,19 @@ test "a listed origin is echoed, with credentials only when cors_credentials is 
         assert seen.get("access-control-allow-credentials") == "true" , (
             f"{method} {path} dropped the credentials cors_credentials allows: {seen}"
         );
+        assert _varies_on(seen, "Origin") , (
+            f"{method} {path} echoed an origin without Vary: Origin, so a cache can "
+            f"serve it to another origin: {seen}"
+        );
     }
     unlisted = _cors_headers(credentialed, "GET", "/healthz", OTHER_ORIGIN);
-    assert unlisted == {} , f"an unlisted origin got CORS headers: {unlisted}";
+    assert _varies_on(unlisted, "Origin") , unlisted;
+    assert [
+        k
+        for k in unlisted
+        if k != "vary"
+    ]
+        == [] , (f"an unlisted origin got CORS headers: {unlisted}");
 }
 
 
@@ -171,21 +189,27 @@ def _preflight_allows(value: str, wanted: str, credentials: bool) -> bool {
 }
 
 
-test "a * in the gateway's allow_methods and allow_headers passes a preflight for Authorization" {
+test "a * in the gateway's allow_methods and allow_headers passes any preflight" {
     import from jaclang.scale.config.config_loader { normalize_gateway_config }
     import from jaclang.server.serving.app { ServingApp }
     import from jaclang.server.serving.middleware { cors_middleware }
     import from jaclang.testing.testkit { ServingTestClient }
+    credentialed = {"allow_origins": [APP_ORIGIN], "allow_credentials": True};
     rows = [
-        ("the open default", {}),
+        ("the open default", {}, "PUT", []),
+        ("a listed origin with credentials", credentialed, "PUT", []),
+        ("a custom method", {}, "PROPFIND", []),
+        ("a custom method with credentials", credentialed, "PROPFIND", []),
         (
-            "a listed origin with credentials",
-            {"cors": {"allow_origins": [APP_ORIGIN], "allow_credentials": True}}
+            "a method listed beside the *",
+            {** credentialed, "allow_methods": ["*", "REPORT"]},
+            "PROPFIND",
+            ["REPORT"]
         )
     ];
-    for (label, raw) in rows {
-        cors = normalize_gateway_config(raw)["cors"];
-        assert cors["allow_methods"] == ["*"] and cors["allow_headers"] == ["*"] , (
+    for (label, cors_raw, method, kept) in rows {
+        cors = normalize_gateway_config({"cors": cors_raw} if cors_raw else {})["cors"];
+        assert "*" in cors["allow_methods"] and cors["allow_headers"] == ["*"] , (
             f"{label}: {cors}"
         );
         app = ServingApp();
@@ -194,7 +218,7 @@ test "a * in the gateway's allow_methods and allow_headers passes a preflight fo
             "/function/ping",
             headers={
                 "Origin": APP_ORIGIN,
-                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Method": method,
                 "Access-Control-Request-Headers": "authorization, content-type"
             }
         );
@@ -205,14 +229,22 @@ test "a * in the gateway's allow_methods and allow_headers passes a preflight fo
         credentials = seen.get("access-control-allow-credentials") == "true";
         assert credentials == cors["allow_credentials"] , f"{label}: {seen}";
         methods = seen.get("access-control-allow-methods", "");
-        assert _preflight_allows(methods, "PUT", credentials) , (
-            f"{label}: a browser refuses PUT after Allow-Methods {methods!r}"
-        );
+        for wanted in [method] + kept {
+            assert _preflight_allows(methods, wanted, credentials) , (
+                f"{label}: a browser refuses {wanted} after Allow-Methods {methods!r}"
+            );
+        }
         for wanted in ["Authorization", "Content-Type"] {
             allowed = seen.get("access-control-allow-headers", "");
             assert _preflight_allows(allowed, wanted, credentials) , (
                 f"{label}: a browser refuses {wanted} after Allow-Headers {allowed!r}"
             );
+        }
+        for echoed in [
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers"
+        ] {
+            assert _varies_on(seen, echoed) , f"{label}: the echo of {echoed} is not in Vary: {seen}";
         }
     }
 }

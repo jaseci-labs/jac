@@ -872,7 +872,7 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                             "allow_methods": {
                                 "type": "list",
                                 "default": ["*"],
-                                "description": "HTTP methods allowed on cross-origin requests. [\"*\"] allows any, answered as the full method list."
+                                "description": "HTTP methods allowed on cross-origin requests. [\"*\"] allows any, answered with the method the preflight asked for."
                             },
                             "allow_headers": {
                                 "type": "list",
