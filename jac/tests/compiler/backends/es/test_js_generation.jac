@@ -1414,12 +1414,36 @@ def as_list(items: list[int]) -> list[any] {
     return [front, c, d];
 }
 
+def closures -> list[any] {
+    fns = [];
+    for (h, *mid, l) in [[1, 2, 3], [4, 5, 6]] {
+        fns.append(lambda { return mid; });
+    }
+    return [f() for f in fns];
+}
+
+def after_loop -> list[any] {
+    for (h, *mid, l) in [[1, 2, 3], [4, 5, 6]] {
+    }
+    return [h, mid, l];
+}
+
+def outer_rows -> list[any] {
+    rows = [0, 0];
+    for (x, *m, rows[0]) in [[1, 2, 3]] {
+    }
+    return rows;
+}
+
 def probe -> list[any] {
     return [
         middle([1, 2, 3, 4]),
         middle([1, 2]),
         nested([0, [1, 2, 3, 4], 5, 6, 7]),
-        as_list([1, 2, 3])
+        as_list([1, 2, 3]),
+        closures(),
+        after_loop(),
+        outer_rows()
     ];
 }
 """,
@@ -1434,7 +1458,15 @@ def probe -> list[any] {
     result = run_js_module(js_code + "\nconsole.log(JSON.stringify(probe()));");
     assert result.returncode == 0 , f"{result.stderr}\njs:\n{js_code}";
     assert json.loads(result.stdout.strip())
-        == [[1, [2, 3], 4], [1, [], 2], [0, 1, [2, 3], 4, [5, 6], 7], [[1], 2, 3]] , result.stdout;
+        == [
+            [1, [2, 3], 4],
+            [1, [], 2],
+            [0, 1, [2, 3], 4, [5, 6], 7],
+            [[1], 2, 3],
+            [[2], [5]],
+            [4, [5], 6],
+            [3, 0]
+        ] , result.stdout;
 }
 
 # ============================================================================
