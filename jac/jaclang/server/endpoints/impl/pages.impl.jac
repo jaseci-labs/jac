@@ -233,7 +233,11 @@ impl register_page_endpoints(server: JacAPIServer) {
         candidate = find_root_asset(_static_base(server), file_path, asset_dist);
         if candidate is not None {
             return file_response(
-                request, str(candidate), cache_control=ASSET_CACHE_CONTROL
+                request,
+                str(candidate),
+                cache_control='no-cache'
+                    if file_path in SEO_ROOT_FILES
+                    else ASSET_CACHE_CONTROL
             );
         }
         index = client_dist_index(asset_dist);
@@ -270,6 +274,18 @@ impl register_page_endpoints(server: JacAPIServer) {
             forward_undeclared_query_params=False
         )
     );
+}
+
+impl robots_middleware(server: JacAPIServer) -> Callable[..., any] {
+    async def answer_robots(request: Request, call_next: any) -> Response {
+        blocked = robots_response(request, _static_base(server));
+        if blocked is not None {
+            return blocked;
+        }
+        next_fn: any = call_next;
+        return await next_fn(request);
+    }
+    return answer_robots;
 }
 
 impl register_graph_endpoints(server: JacAPIServer) {
