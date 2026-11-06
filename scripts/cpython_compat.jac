@@ -53,6 +53,7 @@ glob REPO: Path = Path(__file__).resolve().parents[1],
      # Test-only C extensions that unlock the largest upstream test groups.
      # Their source list is read from the pinned release's Setup.stdlib.in.
      TEST_EXTENSIONS: set[str] = {
+         "_ctypes_test",
          "_testbuffer",
          "_testcapi",
          "_testclinic",
@@ -62,6 +63,7 @@ glob REPO: Path = Path(__file__).resolve().parents[1],
          "_testlimitedcapi",
          "_testmultiphase",
          "_testsinglephase",
+         "_xxtestfuzz",
          "xxlimited",
          "xxlimited_35",
          "xxsubtype"
