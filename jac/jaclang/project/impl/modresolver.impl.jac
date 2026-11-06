@@ -634,10 +634,19 @@ impl resolve_module(
     actual_parts = parts[level:];
 
     base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
+    escape_marker = '';
     if level > 1 {
         climbed = os.path.abspath(base_dir or '.');
         for _ in range(level - 1) {
             climbed = os.path.dirname(climbed);
+        }
+        top = find_jac_project_root(base_path);
+        if top {
+            real_top = os.path.realpath(top);
+            real_climbed = os.path.realpath(climbed);
+            if os.path.commonpath([real_climbed, real_top]) != real_top {
+                escape_marker = os.path.join(top, 'jac.toml');
+            }
         }
         if os.path.isabs(base_dir) {
             base_dir = climbed;
@@ -645,6 +654,9 @@ impl resolve_module(
             rel = os.path.relpath(climbed);
             base_dir = '' if rel == '.' else rel;
         }
+    }
+    if escape_marker {
+        return (os.path.join(escape_marker, *actual_parts), 'py');
     }
     if level > 0 {
         res = resolve_local_module(base_dir, actual_parts);

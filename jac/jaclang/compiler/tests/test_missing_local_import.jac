@@ -531,3 +531,59 @@ test "extra dots climb past the working directory when the module is given by a 
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "a relative import that climbs above the project root is E1134" {
+    outer = tempfile.mkdtemp(prefix="jac_rel_above_");
+    try {
+        with open(os.path.join(outer, "outside_zz.jac"), "w") as f {
+            f.write("def:pub of -> int {\n    return 7;\n}\n");
+        }
+        os.makedirs(os.path.join(outer, "outside_pkg"));
+        with open(os.path.join(outer, "outside_pkg", "__init__.jac"), "w") as f {
+            f.write("def:pub of -> int {\n    return 7;\n}\n");
+        }
+        proj = os.path.join(outer, "proj");
+        os.makedirs(os.path.join(proj, "feat"));
+        with open(os.path.join(proj, "jac.toml"), "w") as f {
+            f.write("[project]\nname = \"above\"\n");
+        }
+        for (name, spec) in [
+            ("beyond.jac", "...outside_zz"),
+            ("beyond_pkg.jac", "...outside_pkg")
+        ] {
+            with open(os.path.join(proj, "feat", name), "w") as f {
+                f.write(f"import from {spec} {{ of }}\n");
+            }
+            prog = JacProgram();
+            prog.compile(os.path.join(proj, "feat", name));
+            named = [
+                str(e)
+                for e in prog.errors_had
+                if e.code and e.code.code == "E1134"
+            ];
+            assert any([spec in m for m in named]) , f"{spec}: {_codes(prog)}";
+        }
+    } finally {
+        shutil.rmtree(outer, ignore_errors=True);
+    }
+}
+
+
+test "outside any project a relative import still climbs to its target" {
+    outer = tempfile.mkdtemp(prefix="jac_rel_noproj_");
+    try {
+        with open(os.path.join(outer, "outside_zz.jac"), "w") as f {
+            f.write("def:pub of -> int {\n    return 7;\n}\n");
+        }
+        os.makedirs(os.path.join(outer, "loose", "feat"));
+        with open(os.path.join(outer, "loose", "feat", "beyond.jac"), "w") as f {
+            f.write("import from ...outside_zz { of }\n");
+        }
+        prog = JacProgram();
+        prog.compile(os.path.join(outer, "loose", "feat", "beyond.jac"));
+        assert "E1134" not in _codes(prog) , _codes(prog);
+    } finally {
+        shutil.rmtree(outer, ignore_errors=True);
+    }
+}
