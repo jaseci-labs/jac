@@ -412,6 +412,86 @@ impl native_unit_root(directory: str) -> (str | None) {
     }
 }
 
+impl _toml_line_content(raw_line: str) -> str {
+    quote: str = "";
+    escaped: bool = False;
+    i: int = 0;
+    while i < len(raw_line) {
+        ch = raw_line[i];
+        if escaped {
+            escaped = False;
+        } elif quote == '"' and ch == "\\" {
+            escaped = True;
+        } elif quote {
+            if ch == quote {
+                quote = "";
+            }
+        } elif ch == '"' or ch == "'" {
+            quote = ch;
+        } elif ch == "#" {
+            return raw_line[:i].strip();
+        }
+        i += 1;
+    }
+    return raw_line.strip();
+}
+
+impl _jac_toml_project_name(toml_path: str) -> (str | None) {
+    fh = open(toml_path, "r");
+    try {
+        text = fh.read();
+    } finally {
+        fh.close();
+    }
+    in_project = False;
+    for raw_line in text.split("\n") {
+        line = _toml_line_content(raw_line);
+        if not line or line.startswith("#") {
+            continue;
+        }
+        if line.startswith("[") {
+            in_project = line == "[project]";
+            continue;
+        }
+        if in_project and line.startswith("name") and line[4:5] in (" ", "=", "\t") {
+            eq = line.find("=");
+            if eq < 0 {
+                continue;
+            }
+            value = line[eq + 1:].strip();
+            if len(value) >= 2
+                and (value.startswith('"') or value.startswith("'"))
+                and value.endswith(value[0]) {
+                inner = value[1:-1].strip();
+                if inner {
+                    return inner;
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl _native_unit_root_name(unit_root: str) -> str {
+    memo = _native_unit_root_name_memo.get(unit_root);
+    if memo is not None {
+        return memo;
+    }
+    import os;
+    name = os.path.basename(unit_root);
+    toml_path = os.path.join(unit_root, "jac.toml");
+    if os.path.isfile(toml_path) {
+        try {
+            pname = _jac_toml_project_name(toml_path);
+            if pname is not None {
+                name = pname;
+            }
+        } except Exception {}
+    }
+    _native_unit_root_name_memo[unit_root] = name;
+    return name;
+}
+
 impl native_unit_identity(path: str) -> str {
     memo = _native_unit_identity_memo.get(path);
     if memo is not None {
@@ -423,7 +503,7 @@ impl native_unit_identity(path: str) -> str {
     identity = rp;
     if unit_root is not None {
         rel = os.path.relpath(rp, unit_root).replace("\\", "/");
-        identity = f"{os.path.basename(unit_root)}/{rel}";
+        identity = f"{_native_unit_root_name(unit_root)}/{rel}";
     }
     _native_unit_identity_memo[path] = identity;
     return identity;
@@ -885,6 +965,12 @@ impl resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True
 ) -> tuple[(str | None, str | None)] {
     import os;
+    if os.path.isabs(module_name)
+        and module_name.endswith('.jac')
+        and os.path.isfile(module_name) {
+        path = real_path(module_name);
+        return (path, path);
+    }
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
 
