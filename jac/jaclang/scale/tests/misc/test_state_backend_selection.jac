@@ -42,26 +42,27 @@ def _set_env(pairs: dict[str, str | None]) -> dict[str, str | None] {
 
 
 test "outside a fleet, unshared state stays in this process" {
+    import from unittest.mock { patch }
     previous = _set_env({_CLUSTER_ENV: None, _SIBLING_ENV: None});
     _reset();
     try {
         assert not in_fleet();
         backend = get_state_backend(False);
         assert isinstance(backend, InProcessStateBackend);
-        for i in range(100) {
-            backend.set(f"rl:client-{i}", "1:0", ttl_seconds=1);
+        clock = [1000.0];
+        def frozen -> float {
+            return clock[0];
         }
-        backend.set("kept", "1");
-        backend._next_sweep = 0.0;
-        backend.set("rl:latest", "1:0", ttl_seconds=60);
-        assert len(backend._values) == 102 , "live entries were swept";
-        backend._next_sweep = 0.0;
-        for (key, (value, _)) in list(backend._values.items()) {
-            if key.startswith("rl:client-") {
-                backend._values[key] = (value, 1.0);
+        with patch("time.time", frozen) {
+            for i in range(100) {
+                backend.set(f"rl:client-{i}", "1:0", ttl_seconds=1);
             }
+            backend.set("kept", "1");
+            backend.set("rl:latest", "1:0", ttl_seconds=120);
+            assert len(backend._values) == 102 , "live entries were swept";
+            clock[0] += backend.sweep_seconds + 1;
+            backend.increment("rl:other", ttl_seconds=60);
         }
-        backend.increment("rl:other", ttl_seconds=60);
         assert sorted(backend._values) == ["kept", "rl:latest", "rl:other"] , (
             f"{len(backend._values)} entries kept after every client's window expired"
         );

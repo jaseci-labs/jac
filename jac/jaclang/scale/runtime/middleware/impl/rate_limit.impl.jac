@@ -167,7 +167,6 @@ impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
 
 
 impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
-    now: float = time.time();
     state_key: str = f"rl:{key}";
     lock_key: str = f"rl:lock:{key}";
 
@@ -179,6 +178,10 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
         }
         time.sleep(0.001);
     }
+    if not acquired {
+        return (False, 1.0);
+    }
+    now: float = time.time();
     try {
         raw = self.backend.get(state_key);
         if raw is None {
@@ -207,8 +210,6 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
         );
         return (allowed, retry);
     } finally {
-        if acquired {
-            self.backend.release_lock(lock_key);
-        }
+        self.backend.release_lock(lock_key);
     }
 }

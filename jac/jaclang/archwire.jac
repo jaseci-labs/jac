@@ -45949,6 +45949,7 @@ graph import scale {
     ]
     runtime.middleware.rate_limit ++> tests.microservices.test_rate_limit {
         InProcessRateLimiter,
+        StateBackendRateLimiter,
         build_rate_limit_middleware
     }
     runtime.middleware.ws_forward ++> tests.server.test_stream_ws {
@@ -46149,7 +46150,9 @@ graph import scale {
     state.factory as factory_mod ++> tests.misc.test_state_backend_selection;
     state.state_backend ++> [
         runtime.middleware.rate_limit { InProcessStateBackend, StateBackend },
-        tests.misc.test_state_backend_selection { InProcessStateBackend },
+        tests.microservices.test_rate_limit | tests.misc.test_state_backend_selection {
+            InProcessStateBackend
+        },
     ]
     storage.factory ++> runtime.provider.JacScaleRuntime.store
         | tests.data.test_firebase_env { StorageFactory }
