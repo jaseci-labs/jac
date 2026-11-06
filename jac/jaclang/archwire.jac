@@ -2743,8 +2743,14 @@ graph import {
         compiler.placement.placement_solver { supports },
         compiler.placement.placement_solver._py_import_client_portable { supports },
     ]
-    runtime.preparation_lock ++> server.hmr.HotReloader._reload_server_module
-        | server.server.JacAPIServer._refresh_dev_endpoints { PREPARATION_LOCK }
+    runtime.preparation_lock ++> [
+        compiler.driver.application._prepare_revision { SourcesChanged },
+        server.hmr.HotReloader._reload_server_module { PREPARATION_LOCK },
+        server.server.JacAPIServer._refresh_dev_endpoints {
+            PREPARATION_LOCK,
+            SourcesChanged
+        },
+    ]
     runtime.preparation_lock --> [
         compiler.driver.application.prepare_application { PREPARATION_LOCK },
         compiler.driver.application.prepare_dynamic_module { PREPARATION_LOCK },
@@ -7252,6 +7258,7 @@ graph import compiler {
             E1159,
             E1161,
             E1162,
+            E1163,
             E2015,
             W1036,
             W1037,
@@ -9109,7 +9116,8 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
-            type_only_import_of
+            type_only_import_of,
+            type_param_of
         },
         passes.variant_agreement_pass {
             Ability,
