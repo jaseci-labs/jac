@@ -815,6 +815,10 @@ impl NativeBuildSession.lower(
         or (use_str is None and resolved in self.unlowerable) {
         return None;
     }
+    completed = self.registry.entries.get(resolved);
+    if resolved in self.lowered and completed is not None {
+        return completed;
+    }
     self.heap.take();
     self.registry.building.add(resolved);
     import from jaclang.compiler.frontend.codeinfo {
@@ -901,6 +905,14 @@ impl NativeBuildSession.lower(
             if refusal {
                 self.registry.failures[resolved] = refusal;
             } elif mod.gen.native_iface is None {
+                # A source that analyzes cleanly but emits no native interface
+                # is a stable negative dependency result for this source key.
+                # Remember it across build sessions so importing roots do not
+                # repeat full compiler analysis of declaration-only modules.
+                source_key = self.source_keys.get(resolved);
+                if len(self.prog.errors_had) == errors_before and source_key is not None {
+                    self.registry.not_native[resolved] = source_key;
+                }
                 self.registry.failures[resolved] = (
                     "lowering produced no native interface: the module has "
                     "no native code of its own, so it is not a link unit"
