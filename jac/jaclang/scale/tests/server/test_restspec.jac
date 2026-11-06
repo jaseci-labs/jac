@@ -165,6 +165,29 @@ test "get walker with params" {
         assert data["reports"][0]["message"] == "GetWalkerWithParams executed";
         assert data["reports"][0]["name"] == "Alice";
         assert data["reports"][0]["age"] == 30;
+
+        # Query values are text. Repeats reach an optional list too, which used to
+        # keep only the first.
+        base = "/walker/GetWalkerWithParams?name=Alice&age=30";
+        for (query, want) in [
+            (
+                "&tags=a&tags=b&maybe_tags=a&maybe_tags=b&flag=",
+                {"tags": ["a", "b"], "maybe_tags": ["a", "b"], "flag": False}
+            ),
+            ("&tags=a&maybe_tags=a", {"tags": ["a"], "maybe_tags": ["a"]})
+        ] {
+            response = client.get(base + query);
+            assert response.status_code == 200 , f"{query}: {response.text}";
+            got = extract_data(response.json())["reports"][0];
+            for (name, value) in want.items() {
+                assert got[name] == value , f"{query}: {name}={got[name]!r}";
+            }
+        }
+        for query in ["&age=31", "&flag=maybe"] {
+            response = client.get(base + query);
+            assert response.status_code == 422 , f"{query}: {response.text}";
+            assert _as_any(response.json())["detail"][0]["loc"][0] == "query";
+        }
     } finally {
         client.close();
     }
@@ -193,6 +216,14 @@ test "get func with params" {
         assert data["result"]["message"] == "get_func_with_params executed";
         assert data["result"]["name"] == "Bob";
         assert data["result"]["age"] == 40;
+
+        # A function is bound by the same rules as a walker.
+        response = client.get(
+            "/function/get_func_with_params",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"name": "Bob", "age": "3.9"}
+        );
+        assert response.status_code == 422 , response.text;
     } finally {
         client.close();
     }
@@ -250,17 +281,27 @@ test "openapi specs" {
         assert "/custom/func" in paths;
         assert "get" in paths["/custom/func"];
 
-        assert "/walker/GetWalker" in paths;
-        assert "get" in paths["/walker/GetWalker"];
-        assert "post" not in paths["/walker/GetWalker"];
-
-        assert "/walker/PostWalker" in paths;
-        assert "post" in paths["/walker/PostWalker"];
-        assert "get" not in paths["/walker/PostWalker"];
-
-        assert "/walker/DefaultWalker" in paths;
-        assert "post" in paths["/walker/DefaultWalker"];
-        assert "get" not in paths["/walker/DefaultWalker"];
+        # A declared default fits the schema it's shown in, in a body or a query.
+        body_ref = paths["/typed-fields"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"];
+        schemas = spec["components"]["schemas"];
+        query = paths["/walker/GetWalkerWithParams"]["get"]["parameters"];
+        for shown in [
+            schemas[body_ref.rsplit("/", 1)[1]]["properties"]["when"],
+            next(
+                p["schema"]
+                for p in query
+                if p["name"] == "since"
+            )
+        ] {
+            assert shown
+                == {
+                    "type": "string",
+                    "format": "date-time",
+                    "default": "2026-01-02T00:00:00"
+                } , f"{shown}";
+        }
     } finally {
         client.close();
     }
@@ -480,30 +521,76 @@ test "a field named request reaches the walker and the function" {
     }
 }
 
-test "a JSON null is refused for a field that is not optional, whatever its type" {
+test "a JSON value of the wrong type is refused, and a form value is parsed" {
     client = make_client("restspec_fixtures.jac");
+    form = {"Content-Type": "application/x-www-form-urlencoded"};
     try {
         # Each non-optional field answers the same 422; str used to store "None"
         # and bool used to read null as an invalid boolean string.
-        for (name, body) in [
-            ("title", {"title": None}),
-            ("count", {"count": None}),
-            ("ratio", {"ratio": None}),
-            ("flag", {"flag": None}),
-            ("tags", {"tags": None}),
-            ("tags", {"tags": ["a", None]})
+        for (name, body, message) in [
+            ("title", {"title": None}, "null is not allowed"),
+            ("count", {"count": None}, "null is not allowed"),
+            ("ratio", {"ratio": None}, "null is not allowed"),
+            ("flag", {"flag": None}, "null is not allowed"),
+            ("tags", {"tags": None}, "null is not allowed"),
+            ("tags", {"tags": ["a", None]}, "null is not allowed"),
+            ("count", {"count": "12"}, "expected integer, got string"),
+            ("title", {"title": {"note": "x"}}, "expected string, got object"),
+            ("when", {"when": "not-a-date"}, "invalid datetime")
         ] {
-            r = client.post("/nulls", json=body);
+            r = client.post("/typed-fields", json=body);
             assert r.status_code == 422 , f"{body}: {r.status_code} {r.text}";
             detail = _as_any(r.json())["detail"];
             assert [d["loc"] for d in detail] == [["body", name]] , r.text;
-            assert "null is not allowed" in detail[0]["msg"] , r.text;
+            assert message in detail[0]["msg"] , r.text;
         }
 
-        r = client.post("/nulls", json={"note": None});
-        assert r.status_code == 200 , r.text;
-        got = extract_data(r.json())["reports"][0];
-        assert got["note"] is None and got["title"] == "seed";
+        # The same fields take JSON of the right type and form text, which is parsed.
+        # A multipart field is text too, so it reaches the same rules.
+        attachment = {"attachment": ("a.txt", b"x", "text/plain")};
+        for (request, want) in [
+            ({"json": {"note": None}}, {"note": None, "title": "seed"}),
+            (
+                {"json": {"when": "2026-10-07T10:00:00Z"}},
+                {"when": "2026-10-07 10:00:00+00:00"}
+            ),
+            (
+                {
+                    "content": "count=5&ratio=1.5&flag=&title=hi&tags=one",
+                    "headers": form
+                },
+                {
+                    "count": 5,
+                    "ratio": 1.5,
+                    "flag": False,
+                    "title": "hi",
+                    "tags": ["one"]
+                }
+            ),
+            (
+                {"content": "tags=one&tags=two", "headers": form},
+                {"tags": ["one", "two"]}
+            ),
+            (
+                {"data": {"count": "5", "tags": "one"}, "files": attachment},
+                {"count": 5, "tags": ["one"]}
+            )
+        ] {
+            r = client.post("/typed-fields", **request);
+            assert r.status_code == 200 , f"{request}: {r.text}";
+            got = extract_data(r.json())["reports"][0];
+            for (name, value) in want.items() {
+                assert got[name] == value and type(got[name]) is type(value) , (
+                    f"{request}: {name}={got[name]!r}"
+                );
+            }
+        }
+
+        # A repeat on a field that takes one value used to store the list's repr.
+        for body in ["title=a&title=b", "count=abc"] {
+            r = client.post("/typed-fields", content=body, headers=form);
+            assert r.status_code == 422 , f"{body}: {r.text}";
+        }
     } finally {
         client.close();
     }

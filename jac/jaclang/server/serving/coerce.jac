@@ -1,9 +1,13 @@
 import inspect;
+import re;
 import typing;
 
+import from datetime { date, datetime, time }
 import from enum { EnumMeta }
+import from math { isfinite }
 import from types { UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
+import from uuid { UUID }
 
 
 obj RequestValidationError(Exception) {
@@ -29,14 +33,47 @@ glob _TRUE_STRINGS: set[str] = {'1', 'true', 'yes', 'on', 'y'},
          'object': dict,
          'any': None,
          '': None
+     },
+     _JSON_KINDS: dict[type, str] = {
+         bool: 'boolean',
+         int: 'integer',
+         float: 'number',
+         str: 'string',
+         list: 'array',
+         dict: 'object'
+     },
+     _MAX_EXACT_FLOAT_INT: int = 2 ** 53,
+     _INT_TEXT: re.Pattern = re.compile(r'[+-]?[0-9]+'),
+     _FLOAT_TEXT: re.Pattern = re.compile(
+         r'[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?'
+     ),
+     _STRING_PARSERS: dict[type, any] = {
+         datetime: datetime.fromisoformat,
+         date: date.fromisoformat,
+         time: time.fromisoformat,
+         UUID: UUID
      };
 
 
-def _coerce_bool(value: any) -> bool;
+def _mismatch(expected: str, value: any) -> ValueError;
+
+def _coerce_bool(value: any, text: bool) -> bool;
+
+def _coerce_int(value: any, text: bool) -> int;
+
+def _coerce_float(value: any, text: bool) -> float;
+
+def _coerce_string_type(value: any, target: type) -> any;
+
+def _coerce_literal(value: any, options: tuple[object, ...], text: bool) -> any;
+
+def _coerce_tuple(value: any, args: tuple[object, ...], text: bool) -> tuple[any, ...];
+
+def _coerce_dict(value: any, args: tuple[object, ...], text: bool) -> dict[any, any];
 
 def _construct_object(value: any, target: any) -> any;
 
-def _as_item_list(value: any) -> list[any];
+def _as_item_list(value: any, text: bool) -> list[any];
 
 def is_upload_type(target: any) -> bool;
 
@@ -48,17 +85,19 @@ def _accepts_single_upload(target: any) -> bool;
 
 def _without_none(target: any) -> any;
 
-def coerce_value(value: any, target: any = None) -> any;
+def coerce_value(value: any, target: any = None, text: bool = False) -> any;
 
-def _coerce_union(value: any, options: tuple[object, ...]) -> any;
+def _coerce_union(value: any, options: tuple[object, ...], text: bool) -> any;
 
 def _param_target(param: APIParameter) -> any;
 
 def _header_lookup(request: Request, name: str) -> (str | None);
 
+def _text_values(values: list[str]) -> any;
+
 def _extract_raw(
     param: APIParameter, request: Request, body_json: any
-) -> tuple[bool, any];
+) -> tuple[bool, any, bool];
 
 def _fresh_default(value: any) -> any;
 
