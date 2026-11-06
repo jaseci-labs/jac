@@ -587,7 +587,7 @@ impl PgWireConnection.run(sql: str, **params: any) -> list[any] {
             }
             if err is not None {
                 code = err.get('C', '');
-                if code == '26000' and not fresh {
+                if code == '26000' and not fresh and not resets {
                     self._stmts.pop(pos_sql, None);
                     if payload[:1] == b'I' {
                         return self.run(sql, **params);

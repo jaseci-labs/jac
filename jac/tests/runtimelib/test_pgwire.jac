@@ -490,6 +490,32 @@ test "deallocating one statement forgets only that one" {
 }
 
 
+test "deallocating a missing statement reports the server error without retrying" {
+    with TemporaryDirectory() as td {
+        conn = _live_conn(td);
+        try {
+            assert conn.run("SELECT :x::int AS missing_marker", x=1) == [(1, )];
+            for sql in (
+                "DEALLOCATE missing_statement",
+                "DEALLOCATE PREPARE missing_statement",
+                'DEALLOCATE "missing_statement"'
+            ) {
+                try {
+                    conn.run(sql);
+                    assert False , "deallocating a missing statement must fail";
+                } except PgWireError as e {
+                    assert "26000" in str(e) , str(e);
+                }
+                assert conn.run("SELECT :x::int AS missing_marker", x=2) == [(2, )];
+                assert _prepared(conn, "missing_marker") == 1;
+            }
+        } finally {
+            conn.close();
+        }
+    }
+}
+
+
 test "a cached statement whose result columns change recovers by the next call" {
     with TemporaryDirectory() as td {
         conn = _live_conn(td);
