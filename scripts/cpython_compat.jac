@@ -760,9 +760,7 @@ def render(
     return "\n".join(lines) + "\n";
 }
 
-def compare(args: any) -> int {
-    stock = json.loads((Path(args.stock) / "results.json").read_text());
-    jac = json.loads((Path(args.jacpython) / "results.json").read_text());
+def validate_comparison_runs(stock: dict[str, any], jac: dict[str, any]) {
     if stock["version"] != jac["version"]
         or stock["jacpython"]
         or not jac["jacpython"]
@@ -773,6 +771,12 @@ def compare(args: any) -> int {
                 + "version, resources, and memory cap"
         );
     }
+}
+
+def compare(args: any) -> int {
+    stock = json.loads((Path(args.stock) / "results.json").read_text());
+    jac = json.loads((Path(args.jacpython) / "results.json").read_text());
+    validate_comparison_runs(stock, jac);
     found = compare_results(stock, jac);
     markdown = render(stock, jac, found);
     print(markdown);
