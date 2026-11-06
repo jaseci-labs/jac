@@ -807,7 +807,23 @@ impl EsastGenPass.exit_in_for_stmt with uni.InForStmt exit {
     }
     body = self._build_pass_block(here);
     decl: es.VariableDeclaration | es.Pattern;
-    if isinstance(left, es.VariableDeclaration) {
+    if self._needs_unpack(here.target) {
+        frame = self._frame_scope_of(here);
+        for nm in here.target.get_all_sub_nodes(uni.Name) {
+            if frame is not None and nm.sym_name not in self.reactive_vars {
+                self._hoist_into(frame, nm.sym_name, nm);
+            }
+        }
+        self._unpack_seq += 1;
+        item = f"__jac_item_{self._unpack_seq}";
+        body.body = self._lower_unpack([here.target], es.Identifier(name=item), here)
+            + body.body;
+        declarator = es.VariableDeclarator(id=es.Identifier(name=item), `init=None);
+        decl = self.sync_loc(
+            es.VariableDeclaration(declarations=[declarator], kind='const'),
+            jac_node=here.target
+        );
+    } elif isinstance(left, es.VariableDeclaration) {
         decl = left;
     } elif self._target_confined(here) {
         pattern = self._target_to_pattern(left, here.target);

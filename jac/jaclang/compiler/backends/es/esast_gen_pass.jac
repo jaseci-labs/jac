@@ -667,30 +667,31 @@ walker EsastGenPass(TreePass) {
     def _lower_plain_assignment(
         targets: Sequence[uni.Expr],
         value_expr: (es.Expression | None),
-        here: uni.Assignment
+        here: uni.UniNode
     ) -> list[es.Statement];
 
-    def _has_mid_star(target: uni.UniNode) -> bool;
-    def _lower_unpack_assignment(
-        here: uni.Assignment, value_expr: (es.Expression | None)
+    def _lower_binop(
+        op_name: (str | None),
+        fw_node: uni.Expr,
+        left_node: uni.UniNode,
+        left: es.Expression,
+        right: es.Expression,
+        here: uni.UniNode
+    ) -> es.Expression;
+
+    def _needs_unpack(target: uni.UniNode) -> bool;
+    def _lower_unpack(
+        targets: Sequence[uni.Expr], value: es.Expression, here: uni.UniNode
     ) -> list[es.Statement];
 
-    def _unpack_pattern(
-        expr: uni.Expr,
-        prefix: str,
-        leaves: list[tuple[uni.Expr, str]],
-        trailing: list[es.VariableDeclarator]
-    ) -> es.Pattern;
-
-    def _unpack_bind(
+    def _unpack_temp(value: es.Expression, decls: list[es.VariableDeclarator]) -> str;
+    def _unpack_leaves(
         target: uni.Expr,
-        source: es.Expression,
-        prefix: str,
-        leaves: list[tuple[uni.Expr, str]],
-        trailing: list[es.VariableDeclarator]
+        item: es.Expression,
+        decls: list[es.VariableDeclarator],
+        leaves: list[tuple[uni.Expr, es.Expression]]
     ) -> None;
 
-    def _from_end(name: str, offset: int) -> es.Expression;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_route_role(rt: uni.Expr) -> (str | None);

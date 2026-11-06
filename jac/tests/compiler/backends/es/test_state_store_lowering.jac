@@ -153,71 +153,32 @@ test "preact lowers a shorthand jsx attribute as a state read" {
     assert_shorthand_read(js, "preact");
 }
 
-# Each face binds the whole value first (its shape after `const [T_0, `), then writes
-# every name with its temporary: `a`/`b` through the setter, any other as a local.
-glob UNPACK_FACES = [
-         (r"\1_1\] = \[\(?__jacS_b\.val \+ 1\)?, \(?__jacS_a\.val \+ 1\)?\];", "a b"),
-         (r"\1_1\] = \[\(?__jacS_b\.val \+ 2\)?, \(?__jacS_a\.val \+ 2\)?\];", "a b"),
-         (r"\1_1\] = \[5, 6\];", "a x"),
-         (r"\.\.\.\1_1\] = __jacS_items\.val;", "a rest"),
-         (r"\[\1_1, \1_2\]\] = ", "a b y")
-     ];
-
-def assert_written(js: str, name: str, temp: str, backend_name: str) {
-    if name in ("a", "b") {
-        assert re.search(rf"__jacS_{name}\.set\(\(?{temp}\)?\)", js) , (
-            f"[{backend_name}] `{name}` must be set from `{temp}`:\n{js}"
-        );
-    } else {
-        assert re.search(rf"\blet {name} = {temp};", js) , (
-            f"[{backend_name}] local `{name}` must be declared from `{temp}`:\n{js}"
-        );
-    }
-}
-
-def assert_state_unpack(js: str, backend_name: str) {
-    assert re.search(r"\[\s*a\s*,", js) is None , (
-        f"[{backend_name}] no write may destructure into bare field names:\n{js}"
-    );
-    for (shape, names) in UNPACK_FACES {
-        bound = re.search(r"const \[(__jac_unpack_\d+)_0, " + shape, js);
-        assert bound is not None , (
-            f"[{backend_name}] no unpack matches `{shape}`:\n{js}"
-        );
-        temp = bound.group(1);
-        for (i, name) in enumerate(names.split()) {
-            assert_written(js[bound.end():], name, f"{temp}_{i}", backend_name);
-        }
-    }
-    chained = re.search(r"const (__jac_unpack_\d+) = 7;", js);
-    assert chained is not None , f"[{backend_name}] `a = b = 7` must bind once:\n{js}";
-    for name in ("a", "b") {
-        assert_written(js[chained.end():], name, chained.group(1), backend_name);
-    }
-    assert re.search(r"\.\.\.\w+\s*,", js) is None , (
-        f"[{backend_name}] a rest element must be the last element:\n{js}"
-    );
-    middle = re.search(
-        r"const \[(__jac_unpack_\d+)_0, \.\.\.(__jac_unpack_\d+)\] = __jacS_items\.val,\s*"
-        r"\1_1 = \2\.slice\(0, \(?\2\.length - 1\)?\),\s*"
-        r"\1_2 = \2\[\(?\2\.length - 1\)?\];",
-        js
-    );
-    assert middle is not None , (
-        f"[{backend_name}] `(a, *mid, b)` must split the tail after the rest:\n{js}"
-    );
-    temp = middle.group(1);
-    for (i, name) in enumerate(["a", "mid", "b"]) {
-        assert_written(js[middle.end():], name, f"{temp}_{i}", backend_name);
-    }
-}
-
-test "react routes tuple and chained writes to state through setters" {
+test "every state rebinding goes through the setter and matches Python" {
+    import json;
+    import from tests.compiler.backends.es.codegen_helpers { run_js_module }
     js = compile_with_backend("state_tuple_unpack.jac", ReactBackend());
-    assert_state_unpack(js, "react");
-}
-
-test "preact routes tuple and chained writes to state through setters" {
-    js = compile_with_backend("state_tuple_unpack.jac", PreactBackend());
-    assert_state_unpack(js, "preact");
+    js = re.sub(r'import \{[^}]*\} from "@jac/runtime";', "", js);
+    stubs = (
+        "const cells = []; const clicks = [];\n"
+        "const useJacState = (v) => { const c = {val: v, set(x) { c.val = x; }}; cells.push(c); return c; };\n"
+        "const __jacJsx = (t, p, k) => { if (p && p.onClick) clicks.push(p.onClick); return null; };\n"
+    );
+    probe = "\napp(); console.log(JSON.stringify(clicks.map((f) => { f(); return [cells[0].val, cells[1].val]; })));";
+    result = run_js_module(stubs + js + probe);
+    assert result.returncode == 0 , f"{result.stderr}\njs:\n{js}";
+    assert json.loads(result.stdout.strip())
+        == [
+            [1, 1],
+            [3, 3],
+            [5, 6],
+            [1, 2],
+            [3, 2],
+            [7, 7],
+            [1, 3],
+            [3, 4],
+            [6, 4],
+            [1, 4],
+            [9, 9],
+            [3, 2]
+        ] , result.stdout;
 }
