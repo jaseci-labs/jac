@@ -561,12 +561,14 @@ test "a module named by import from . that is not where the dots point is E1134"
 }
 
 
-test "import from . still accepts sibling modules and names its __init__ defines" {
+test "import from . still accepts sibling modules, namespace packages and names its __init__ defines" {
     base = _rooted_project(
         {
             "feat/sib.jac": "def:pub s -> int {\n    return 2;\n}\n",
             "feat/ok.jac": "import from . { sib }\n",
             "feat/up.jac": "import from .. { top }\n",
+            "feat/subpkg/leaf.jac": "def:pub v -> int {\n    return 5;\n}\n",
+            "feat/ns.jac": "import from . { subpkg }\n",
             "pkg/__init__.jac": "def:pub helper -> int {\n    return 3;\n}\n",
             "pkg/user.jac": "import from . { helper }\n",
             "feat/guarded.jac": (
@@ -582,7 +584,13 @@ test "import from . still accepts sibling modules and names its __init__ defines
         }
     );
     try {
-        for rel in ["feat/ok.jac", "feat/up.jac", "pkg/user.jac", "feat/guarded.jac"] {
+        for rel in [
+            "feat/ok.jac",
+            "feat/up.jac",
+            "feat/ns.jac",
+            "pkg/user.jac",
+            "feat/guarded.jac"
+        ] {
             prog = JacProgram();
             prog.compile(os.path.join(base, rel));
             assert not _codes(prog) , f"{rel}: {_codes(prog)}";

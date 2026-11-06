@@ -114,6 +114,18 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
 
+            sub_dir = mod_dir / item_name;
+            if sub_dir.is_dir()
+                and item_name in {e.name for e in mod_dir.iterdir()}
+                and is_jac_namespace_package(str(sub_dir)) {
+                binding.type = ModuleType(
+                    mod_name=binding.sym_name,
+                    file_uri=sub_dir.resolve(),
+                    symbol_table=None
+                );
+                binding._sym_category = SymbolType.MODULE;
+                return binding.type;
+            }
             binding.type = UnknownType(is_diagnosed=True);
             if self._relative_import_must_resolve(import_node.from_loc) {
                 sep = "" if from_mod_name.endswith(".") else ".";

@@ -1805,6 +1805,9 @@ graph import {
             IMPL_SUFFIX,
             is_annex
         },
+        compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
+            is_jac_namespace_package
+        },
         project.modresolver { MODULE_SUFFIXES, is_jac_namespace_package, language_of },
         runtime.prepared.semantic_for_scope | server.hmr.HotReloader._path_to_module {
             base_stem
