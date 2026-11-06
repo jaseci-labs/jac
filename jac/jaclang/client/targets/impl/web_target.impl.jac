@@ -114,15 +114,25 @@ impl WebTarget.build(
         }
         inputs = builder.prepare(loaded_mod);
         exports = list(artifact.manifest.exports or []) if artifact is not None else [];
-        function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     } finally {
         program._get_compiler().release_compile_state(program);
     }
     builder.bundle(inputs);
+    return self.finish_dist(entry_file, project_dir, exports);
+}
+
+impl WebTarget.finish_dist(
+    entry_file: Path, project_dir: Path, exports: list[str]
+) -> Path {
+    function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
+    bundler = ViteBundler(project_dir=project_dir);
+    dist_dir = bundler.output_dir;
     bundle_path = bundler.find_bundle();
     if not bundle_path {
         raise RuntimeError("Web build failed: bundle not found");
     }
+    loaded_mod = types.ModuleType(entry_file.stem);
+    loaded_mod.__file__ = str(entry_file.resolve());
     _generate_index_html(
         bundle_path=bundle_path,
         bundler=bundler,
