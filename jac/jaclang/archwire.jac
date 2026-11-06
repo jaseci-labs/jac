@@ -255,8 +255,6 @@ graph import {
             | project.template_loader
             | scale.deploy.target.factory.ensure_deploy_tooling
             | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
-            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
-            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector
             | scale.deploy.target.kubernetes.target.KubernetesTarget._wait_for_fleet_rollout
             | scale.deploy.target.kubernetes.utils.kubernetes_utils
             | scale.injector.binary_injector.select_injector
@@ -291,6 +289,12 @@ graph import {
         client.cli.run_npm_remove { console },
         client.cli.setup { console },
         runtime.runtime.JacBuiltin.get_console { JacConsole },
+        scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
+            console
+        },
+        scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
+            console
+        },
     ]
     cli.console --> [
         client.npm_provider.app_npm_deps._add
@@ -491,14 +495,16 @@ graph import {
     client.targets.react_native.html_tag_map --> compiler.passes.jsx_intrinsic_guard_pass._suggestion_for {
         rn_tag_suggestions
     }
-    client.targets.web_target ++> dist.seal.ensure_client_dist
-        | dist.seal.finish_prepared_client { WebTarget }
+    client.targets.web_target ++> [
+        dist.seal.ensure_client_dist { WebTarget },
+        dist.seal.finish_prepared_client { WebTarget },
+    ]
     client.vite_bundler ++> [
         compiler.driver.application._prepare_revision
             | dist.seal.sealed_image_key
-            | scale.injector.bundle.client_input_digest
-            | scale.injector.bundle.seal_input_digest { client_build_env },
+            | scale.injector.bundle.client_input_digest { client_build_env },
         dist.source.client.write_client { ViteBundler },
+        scale.injector.bundle.seal_input_digest { client_build_env },
     ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
@@ -45434,8 +45440,10 @@ graph import scale {
     ]
     injector.binary ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
-            | deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client
             | runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac {
+            host_toolchain_path
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
             host_toolchain_path
         },
         deploy.target.kubernetes.runtime_bootstrap.build_bootstrap_init_container {
