@@ -4,9 +4,7 @@ import from uuid { uuid4 }
 glob _DEFAULT_PREFIX: str = "tmp";
 
 impl mkdtemp(
-    suffix: (str | None) = None,
-    prefix: (str | None) = None,
-    dir: (str | None) = None
+    suffix: (str | None) = None, prefix: (str | None) = None, dir: (str | None) = None
 ) -> str {
     base: str = "";
     if dir is not None {
