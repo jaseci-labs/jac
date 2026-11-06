@@ -472,43 +472,6 @@ impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     return self;
 }
 
-impl UniNode.__deepcopy__(memo: dict[int, object]) -> UniNode {
-    import copy;
-
-    dup = object.__new__(type(self));
-    memo[id(self)] = dup;
-    for (key, val) in self.__dict__.items() {
-        if key == "__jac__" {
-            continue;
-        }
-        if key == "_ctx_parent" or key.endswith("__sub_node_tab") {
-            dup.__dict__[key] = None;
-        } elif key == "_struct_frozen" {
-            dup.__dict__[key] = False;
-        } elif key == "orig_src" {
-            dup.__dict__[key] = val;
-        } else {
-            dup.__dict__[key] = copy.deepcopy(val, memo);
-        }
-    }
-    for k in [self->:Kid:->] {
-        kc = copy.deepcopy(k, memo);
-        dup +>:Kid:+> kc;
-    }
-    roles: list[type] = [];
-    for e in [edge self->:Role:->] {
-        if `type(e) not in roles {
-            roles.append(`type(e));
-        }
-    }
-    for role in roles {
-        for tgt in [self->:role:->] {
-            dup._attach(copy.deepcopy(tgt, memo), role);
-        }
-    }
-    return dup;
-}
-
 impl UniNode.set_parent(parent: UniNode) -> UniNode {
     self._ctx_parent = parent;
     return self;
@@ -3459,16 +3422,8 @@ impl Literal.init(
     Expr.postinit(self);
 }
 
-impl Literal.lit_value.getter -> int | str | float | bool | None | type | object {
+impl Literal.lit_value.getter -> int | str | float | bool | None | object {
     raise NotImplementedError;
-}
-
-impl BuiltinType.lit_value.getter -> type {
-    tval = Literal.type_map.get(self.value);
-    if tval is None {
-        raise TypeError(f"ICE: {self.value} is not a callable builtin");
-    }
-    return tval;
 }
 
 impl Float.lit_value.getter -> float {
@@ -3833,6 +3788,9 @@ impl _ability_of_defn(defn_node: UniNode) -> (Ability | None) {
     }
     if isinstance(defn_node.parent, Ability) {
         return defn_node.parent;
+    }
+    if isinstance(defn_node, NameAtom) and isinstance(defn_node.name_of, Ability) {
+        return defn_node.name_of;
     }
     return None;
 }

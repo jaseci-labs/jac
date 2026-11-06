@@ -14,32 +14,33 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
     from_mod_name = import_node.from_loc.dot_path_str;
-    if isinstance(from_mod_type, ModuleType) or from_path.exists() {
-        is_dir = from_path.is_dir() or (from_path.stem == "__init__");
+    if isinstance(from_mod_type, ModuleType) or os.path.exists(from_path) {
+        from_is_dir = os.path.isdir(from_path);
+        is_dir = from_is_dir
+            or os.path.splitext(os.path.basename(from_path))[0] == "__init__";
         if is_dir {
-            mod_dir = from_path.parent if not from_path.is_dir() else from_path;
+            mod_dir = os.path.dirname(from_path) if not from_is_dir else from_path;
             for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
                 candidate_paths = [
-                    mod_dir / f"{item_name}{ext}",
-                    mod_dir / item_name / f"__init__{ext}",
-                    mod_dir / f"__init__{ext}",
-
+                    os.path.join(mod_dir, f"{item_name}{ext}"),
+                    os.path.join(mod_dir, item_name, f"__init__{ext}"),
+                    os.path.join(mod_dir, f"__init__{ext}")
                 ];
 
                 for (slot, spelled) in enumerate(candidate_paths) {
-                    if not spelled.exists() {
+                    if not os.path.exists(spelled) {
                         continue;
                     }
 
-                    if spelled.name not in {e.name for e in spelled.parent.iterdir()} {
+                    if os.path.basename(spelled)
+                        not in os.listdir(os.path.dirname(spelled)) {
                         continue;
                     }
-                    if slot == 1
-                        and item_name not in {e.name for e in mod_dir.iterdir()} {
+                    if slot == 1 and item_name not in os.listdir(mod_dir) {
                         continue;
                     }
-                    path = spelled.resolve();
-                    path_str = str(path);
+                    path = os.path.realpath(spelled);
+                    path_str = path;
 
                     if (not path_str.endswith((".jac", ".py", ".pyi")))
                         or active_host().is_untyped_third_party(path_str) {
@@ -81,13 +82,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                         need_tree=import_node.is_comptime
                     );
 
+                    path_leaf = os.path.basename(path);
+                    parent_leaf = os.path.basename(os.path.dirname(path));
                     is_subpackage_init = (
-                        path.name.startswith("__init__")
-                        and path.parent.name == item_name
+                        path_leaf.startswith("__init__") and parent_leaf == item_name
                     );
                     is_parent_init = (
-                        path.name.startswith("__init__")
-                        and path.parent.name != item_name
+                        path_leaf.startswith("__init__") and parent_leaf != item_name
                     );
 
                     if is_parent_init {
@@ -100,6 +101,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                             return self._set_module_item_symbol_and_type(
                                 node_, star_symbol
                             );
+                        }
+                        if self._is_flight_placeholder(mod) {
+                            return UnknownType(is_incomplete=True);
                         }
                         continue;
                     }
@@ -182,6 +186,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
+            }
+            if self._is_flight_placeholder(from_mod_type.symbol_table) {
+                return UnknownType(is_incomplete=True);
             }
             binding.type = UnknownType(is_diagnosed=True);
             self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
@@ -269,7 +276,7 @@ impl TypeEvaluator._resolve_star_import_symbol(
         submod: Module | None = None;
         if resolved {
             candidate = resolved[-1];
-            if candidate and Path(candidate).exists() {
+            if candidate and os.path.exists(candidate) {
                 submod = self._import_module_from_path(
                     candidate, importer_path=self._resolve_importer_path(mod)
                 );
@@ -296,8 +303,10 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
         last_type = path_parts[-1].type;
 
         if last_type
+            and not (isinstance(last_type, UnknownType) and not last_type.is_diagnosed)
             and not (
-                isinstance(last_type, UnknownType) and not last_type.is_diagnosed
+                isinstance(last_type, ModuleType)
+                and self._is_flight_placeholder(last_type.symbol_table)
             ) {
             return last_type;
         }
@@ -316,7 +325,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             }
 
             if mod_path in self._module_type_cache {
-                resolved_for_cache = str(Path(mod_path).resolve());
+                resolved_for_cache = os.path.realpath(mod_path);
                 if self.program.is_hub_entry_fresh(resolved_for_cache) {
                     part.type = self._module_type_cache[mod_path];
                     if isinstance(npath, Name) {
@@ -327,7 +336,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 self.program.invalidate_module(resolved_for_cache);
             }
 
-            if not Path(mod_path).exists() {
+            if not os.path.exists(mod_path) {
                 if isinstance(npath, Name) {
                     npath._sym_category = SymbolType.MODULE;
                 }
@@ -337,7 +346,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 if npm_entry := self._resolve_client_npm_module(node_) {
                     mod_type = ModuleType(
                         mod_name=npath.value,
-                        file_uri=Path(npm_entry).resolve(),
+                        file_uri=os.path.realpath(npm_entry),
                         symbol_table=None,
                         is_external=True,
                     );
@@ -365,27 +374,26 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 return part.type;
             }
 
-            if Path(mod_path).is_dir() {
+            if os.path.isdir(mod_path) {
                 if isinstance(npath, Name) {
                     npath._sym_category = SymbolType.MODULE;
                 }
-                pkg_dir = Path(mod_path);
+                pkg_dir = mod_path;
                 pkg_sym_tab: (Module | None) = None;
                 pkg_settled = True;
                 for ext in (".jac", ".py", ".pyi") {
-                    init_file = pkg_dir / f"__init__{ext}";
-                    if init_file.exists() {
+                    init_file = os.path.join(pkg_dir, f"__init__{ext}");
+                    if os.path.exists(init_file) {
                         pkg_sym_tab = self._import_module_from_path(
-                            str(init_file),
-                            importer_path=self._resolve_importer_path(node_)
+                            init_file, importer_path=self._resolve_importer_path(node_)
                         );
-                        pkg_settled = not self._module_in_flight(str(init_file));
+                        pkg_settled = not self._module_in_flight(init_file);
                         break;
                     }
                 }
                 pkg_type = ModuleType(
                     mod_name=npath.value,
-                    file_uri=pkg_dir.resolve(),
+                    file_uri=os.path.realpath(pkg_dir),
                     symbol_table=pkg_sym_tab,
                 );
                 part.type = pkg_type;
@@ -399,7 +407,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 or active_host().is_untyped_third_party(mod_path) {
                 mod_type = ModuleType(
                     mod_name=npath.value,
-                    file_uri=Path(mod_path).resolve(),
+                    file_uri=os.path.realpath(mod_path),
                     symbol_table=None,
                     is_external=True,
                 );
@@ -418,7 +426,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             );
             mod_type = ModuleType(
                 mod_name=npath.value,
-                file_uri=Path(mod_path).resolve(),
+                file_uri=os.path.realpath(mod_path),
                 symbol_table=mod,
             );
             part.type = mod_type;
@@ -442,34 +450,34 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
 impl TypeEvaluator._resolve_submodule_attr(
     base_type: ModuleType, attr_name: str
 ) -> (ModuleType | None) {
-    if base_type.file_uri is None {
+    if not base_type.file_uri {
         return None;
     }
-    base_path = Path(base_type.file_uri);
-    is_pkg_dir = base_path.is_dir();
-    if not is_pkg_dir and base_path.stem != "__init__" {
+    base_path = base_type.file_uri;
+    is_pkg_dir = os.path.isdir(base_path);
+    if not is_pkg_dir
+        and os.path.splitext(os.path.basename(base_path))[0] != "__init__" {
         return None;
     }
-    mod_dir = base_path if is_pkg_dir else base_path.parent;
+    mod_dir = base_path if is_pkg_dir else os.path.dirname(base_path);
     for ext in (".jac", ".py", ".pyi") {
         candidates = [
-            mod_dir / f"{attr_name}{ext}",
-            mod_dir / attr_name / f"__init__{ext}",
-
+            os.path.join(mod_dir, f"{attr_name}{ext}"),
+            os.path.join(mod_dir, attr_name, f"__init__{ext}")
         ];
         for (slot, spelled) in enumerate(candidates) {
-            if not spelled.exists() {
+            if not os.path.exists(spelled) {
                 continue;
             }
 
-            if spelled.name not in {e.name for e in spelled.parent.iterdir()} {
+            if os.path.basename(spelled) not in os.listdir(os.path.dirname(spelled)) {
                 continue;
             }
-            if slot == 1 and attr_name not in {e.name for e in mod_dir.iterdir()} {
+            if slot == 1 and attr_name not in os.listdir(mod_dir) {
                 continue;
             }
-            path = spelled.resolve();
-            path_str = str(path);
+            path = os.path.realpath(spelled);
+            path_str = path;
             if path_str in self._module_type_cache {
                 cached = self._module_type_cache[path_str];
                 if isinstance(cached, ModuleType) {
@@ -498,14 +506,18 @@ impl TypeEvaluator._resolve_submodule_attr(
 impl TypeEvaluator._import_module_from_path(
     path: str, importer_path: (str | None) = None, need_tree: bool = False
 ) -> Module {
-    resolved_path = str(Path(path).resolve());
+    resolved_path = os.path.realpath(path);
 
     if resolved_path in self._modules_in_compile {
         _pending = self._in_flight_module(resolved_path);
         if _pending is not None {
             mod = _pending;
         } else {
-            return Module.make_stub(inject_name=Path(resolved_path).stem);
+            placeholder = Module.make_stub(
+                inject_name=os.path.splitext(os.path.basename(resolved_path))[0]
+            );
+            self._flight_placeholders[id(placeholder)] = placeholder;
+            return placeholder;
         }
     } else {
         self._modules_in_compile.add(resolved_path);
@@ -533,7 +545,11 @@ impl TypeEvaluator._in_flight_module(resolved_path: str) -> (Module | None) {
 }
 
 impl TypeEvaluator._module_in_flight(path: str) -> bool {
-    return str(Path(path).resolve()) in self._modules_in_compile;
+    return os.path.realpath(path) in self._modules_in_compile;
+}
+
+impl TypeEvaluator._is_flight_placeholder(mod: any) -> bool {
+    return mod is not None and self._flight_placeholders.get(id(mod)) is mod;
 }
 
 impl TypeEvaluator.forget_module(resolved_path: str) -> None {
@@ -624,8 +640,9 @@ impl TypeEvaluator._imports_own_module(node_: ModulePath, mod_path: str) -> bool
     if not importer or not importer.endswith(".test.jac") {
         return False;
     }
-    base = Path(importer[:-len(".test.jac")] + ".jac");
-    return base.exists() and Path(mod_path).resolve() == base.resolve();
+    base = importer[:-len(".test.jac")] + ".jac";
+    return os.path.exists(base)
+        and os.path.realpath(mod_path) == os.path.realpath(base);
 }
 
 impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {

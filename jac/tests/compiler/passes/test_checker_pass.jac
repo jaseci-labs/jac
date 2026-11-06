@@ -5307,7 +5307,7 @@ test "local_module_shadows_stdlib_in_resolver" {
     # `import from ast { ... }` from a file alongside a local `ast.jac`
     # must resolve to the local file, not Python's stdlib ast.pyi. Without
     # this the imported symbols decay to Unknown and propagate cascade
-    # errors (E1001 / E1030 / E1053). Symmetric with NaIRGenPass's
+    # errors (E1001 / E1030 / E1053). Symmetric with the legacy native backend's
     # struct-registration fix; covered by fix_shadow_entry.jac in the
     # native fixture suite too.
     path = os.path.join(CHECKER_FIXTURES, "checker_local_shadows_stdlib", "entry.jac");

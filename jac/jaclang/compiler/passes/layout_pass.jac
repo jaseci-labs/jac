@@ -6,8 +6,10 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "bytes"
      }
          | set(JAC_TYPE_REGISTRY.sized_scalar_names()),
-     VTABLE_HEADER_SLOTS: int = 3,
+     VTABLE_HEADER_SLOTS: int = 5,
      VTABLE_DROP_SLOT: int = 2,
+     VTABLE_SELECTOR_SLOT: int = 3,
+     VTABLE_FIELDS_SLOT: int = 4,
      EXC_MESSAGE_FIELD: str = "__jac_exc_msg__";
 
 glob LAYOUT_COMPATIBLE_SCALARS: set[str] = LAYOUT_COMPATIBLE_PRIMITIVES | {"type"};
@@ -51,7 +53,9 @@ obj ArchetypeLayout {
         is_acyclic: bool = False,
         vtable_ptr_slot: (int | None) = None,
         type_tag_slot: (int | None) = None,
-        reports_slot: (int | None) = None;
+        reports_slot: (int | None) = None,
+        pending_bases: list[str] = [],
+        pending_scan: int = -1;
 }
 
 obj EnumMemberLayout {
@@ -70,7 +74,8 @@ obj EnumLayout {
         members: list[EnumMemberLayout] = [];
 }
 
-glob ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
+glob LAYOUT_HUBS: list[dict[str, Module]] = [],
+     ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
          "property": "__get__",
          "setter": "__set__",
          "deleter": "__del__"
@@ -79,6 +84,8 @@ glob ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
 def accessor_slot_name(field_name: str, acc: Ability) -> (str | None);
 
 def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]];
+
+def field_remap(child: ArchetypeLayout, base: ArchetypeLayout) -> list[int];
 
 glob NON_DISPATCHED_METHODS: frozenset[str] = frozenset(
          {"init", "postinit", "__init__", "__post_init__", "drop"}
@@ -126,7 +133,11 @@ def extended_mro(reg: LayoutRegistry, lay: ArchetypeLayout) -> list[str];
 
 def adopt_imported_bases(module: Module, header_identity: bool = True) -> list[str];
 
+def merge_imported_layouts(consumer: Module, imported: Module, prog: JacProgram);
+
 def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]);
+
+def settle_pending_bases(reg: LayoutRegistry, lay: ArchetypeLayout) -> None;
 
 def clone_field(finfo: FieldLayout, index: int) -> FieldLayout;
 

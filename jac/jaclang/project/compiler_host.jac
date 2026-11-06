@@ -16,7 +16,8 @@ obj ProjectHost(HostServices) {
         _facts: dict[str, tuple[any, ProjectFacts]] = {},
         _stub_globals: list[str] = [],
         _collect_budget: UnitCollectBudget = UnitCollectBudget(),
-        _platform: (HostPlatform | None) = None;
+        _platform: (HostPlatform | None) = None,
+        _host_products_registered: bool = False;
 
     @contextmanager
     def session -> Iterator[None];
@@ -43,13 +44,15 @@ obj ProjectHost(HostServices) {
         program: JacProgram, path: str, options: CompileOptions
     ) -> (NativeIface | None);
 
-    def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_dep_pending(program: JacProgram, path: str) -> bool;
     def native_deps_deferred(program: JacProgram) -> bool;
     def held_native_iface(
         program: JacProgram, path: str, options: CompileOptions
     ) -> str;
 
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def note_native_demotion(program: JacProgram, key: str, reason: str) -> bool;
+    def register_host_products;
     def native_fact(kind: str, key: str) -> str;
     def save_native_debug_ir(path: str, text: str);
     def has_npm_package(spec: str, base_path: str) -> bool;

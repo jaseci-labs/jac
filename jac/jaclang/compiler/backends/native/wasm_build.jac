@@ -1,4 +1,5 @@
 import os;
+import re;
 
 def _wasm_libc_dir -> (str | None);
 
@@ -39,6 +40,27 @@ glob _LATE_BOUND: set = {
 
      },
      _BACKEND_BOUND: set = {"memcpy", "memmove", "memset", "__multi3"},
+     _C_WRITER_LIBM: set[str] = {
+         "sqrt",
+         "sin",
+         "cos",
+         "pow",
+         "exp",
+         "exp2",
+         "log",
+         "log2",
+         "log10",
+         "floor",
+         "ceil",
+         "trunc",
+         "round",
+         "roundeven",
+         "rint",
+         "nearbyint",
+         "copysign",
+         "fma",
+
+     },
      _ABI64_ADAPTED: set[str] = {
          "strlen",
          "malloc",
@@ -53,6 +75,8 @@ glob _LATE_BOUND: set = {
          "strncmp",
          "strtol",
          "snprintf",
+         "fwrite",
+         "write",
 
      };
 
@@ -61,11 +85,15 @@ def _assert_abi64_adapters(
     needed: list[str], provided: set[str], libc_dir: str
 ) -> None;
 
-def _link_wasm_libc(mod: ModuleRef) -> bool;
+def _link_wasm_libc(mod: ModuleRef, keep: set[str] = set()) -> bool;
 
-def _internalize_late_bound(mod: ModuleRef);
+def _internalize_late_bound(mod: ModuleRef, keep: set[str] = set());
 
-def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, bool];
+def _c_writer_libcalls(llvm_ir_text: str) -> set[str];
+
+def prepare_wasm_module(
+    llvm_ir_str: str, c_source: bool = False
+) -> tuple[ModuleRef, TargetMachine, bool];
 
 def emit_wasm_from_ir(
     llvm_ir_str: str, export_funcs: list[str] = [], app_imports: (set | None) = None

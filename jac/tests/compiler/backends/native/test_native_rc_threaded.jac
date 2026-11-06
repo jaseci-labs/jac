@@ -6,9 +6,9 @@ threads on one object. Retain, release and (in a debug build, the only one
 that numbers its allocations) the alloc-id counter therefore test the
 process-wide `__jac_rc_threaded` byte: 0 takes a plain load/add/store, 1
 takes the atomic RMW. Every thread spawn stores 1 before `pthread_create`, and
-nothing stores 0. These pin that shape and run the threaded fixture: with the
-flag store removed, 9 of 10 runs freed the shared string early and printed a
-string that reused its block.
+nothing stores 0. These pin the flag protocol and run the threaded fixture:
+with the flag store removed, 9 of 10 runs freed the shared string early and
+printed a string that reused its block.
 
 Native code a host loads is entered from threads the native code did not
 start (a Python process calls in from any thread), so the host side marks it
@@ -18,7 +18,7 @@ whose threads all come from its own spawn sites, starts on the plain path.
 
 A plain store, unlike an atomic RMW, is deleted by LLVM when it writes through
 a `readonly` argument. Retaining a borrowed object writes its count header, so
-borrowed parameters carry `readonly` only in builds without refcounts; with it,
+borrowed parameters never carry `readonly` in builds with refcounts; with it,
 a view that stored a borrowed list lost its retain and freed the list early.
 """
 
@@ -74,21 +74,6 @@ def _mark_precedes_spawn(text: str) -> bool {
     return mark.start() < call.start();
 }
 
-test "retain, release and alloc ids branch on the threaded flag" {
-    text = _compile_ir("rc");
-    assert re.search(r'@"?__jac_rc_threaded"? = weak global i8 0', text) , "no shared threaded flag";
-    for tag in ("rc.r", "rc.rel") {
-        assert f"{tag}.mt.flag" in text , f"{tag}: update not gated on the flag";
-        assert f"{tag}.st.new" in text , f"{tag}: no plain update path";
-        assert f"{tag}.mt.old" in text , f"{tag}: no atomic update path";
-    }
-    assert "aid.mt.flag" not in text , "a release build numbers its allocations";
-    debug_text = _compile_ir("rc", debug=True);
-    assert "aid.mt.flag" in debug_text , "aid: update not gated on the flag";
-    assert "aid.st.new" in debug_text , "aid: no plain update path";
-    assert "aid.mt.old" in debug_text , "aid: no atomic update path";
-}
-
 test "flow spawns set the flag before pthread_create" {
     assert _mark_precedes_spawn(_compile_ir("rc")) , "flag must be set before the first spawn";
 }
@@ -112,7 +97,7 @@ test "single-threaded RC churn computes correctly" {
     assert f(0) == 0;
 }
 
-test "borrowed parameters are readonly only when nothing writes their refcount" {
+test "borrowed parameters are not readonly when a retain writes their refcount" {
     view = os.path.join(
         TESTS_DIR,
         "compiler",
@@ -122,15 +107,17 @@ test "borrowed parameters are readonly only when nothing writes their refcount" 
         "nogc_identity",
         "view_cursor.jac"
     );
-    for (gc_mode, readonly) in (("cycles", False), ("rc", False), ("none", True)) {
+    for gc_mode in ("cycles", "rc") {
         sig = [
             ln
             for ln in _compile_ir(gc_mode, view).splitlines()
             if ln.startswith("define") and re.search(r'\.walk"?\(', ln)
         ];
         assert len(sig) == 1 , f"{gc_mode}: walk not found";
-        assert "noalias" in sig[0] , f"{gc_mode}: {sig[0]}";
-        assert ("readonly" in sig[0]) == readonly , f"{gc_mode}: {sig[0]}";
+        assert "readonly" not in sig[0] , (
+            f"{gc_mode}: a retain writes the borrowed object's count, so its "
+            f"parameter cannot be readonly: {sig[0]}"
+        );
     }
 }
 

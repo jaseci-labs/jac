@@ -526,7 +526,63 @@ impl named_function_of(nd: (UniNode | None)) -> (UniNode | None) {
     return owner if isinstance(owner, Ability) else None;
 }
 
-impl final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
+impl variant_module(
+    prog: (JacProgram | None), mod: (Module | None)
+) -> (Module | None) {
+    import os;
+    if prog is None
+        or mod is None
+        or mod.loc is None
+        or not mod.loc.mod_path.endswith(".jac") {
+        return None;
+    }
+    path = os.path.realpath(mod.loc.mod_path);
+    selected = os.path.realpath(native_variant_of(path));
+    if selected == path or not os.path.isfile(selected) {
+        return None;
+    }
+    found = prog.mod.hub.get(selected);
+    if found is None {
+        found = prog.load_dependency_module(
+            selected, importer_path=path, need_tree=True
+        );
+    }
+    return found if isinstance(found, Module) else None;
+}
+
+impl variant_assignment(
+    prog: (JacProgram | None), asn: (Assignment | None), name: str = ""
+) -> (Assignment | None) {
+    if asn is None or not isinstance(asn.parent, GlobalVars) {
+        return None;
+    }
+    if not name {
+        if len(asn.target) != 1 or not isinstance(asn.target[0], Name) {
+            return None;
+        }
+        name = asn.target[0].value;
+    }
+    twin = variant_module(prog, asn.find_parent_of_type(Module));
+    if twin is None {
+        return None;
+    }
+    for elem in twin.body {
+        if isinstance(elem, GlobalVars) {
+            for found in elem.assignments {
+                for target in found.target {
+                    if isinstance(target, Name) and target.value == name {
+                        return found;
+                    }
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl final_glob_value(
+    nd: (UniNode | None), prog: (JacProgram | None) = None
+) -> (Expr | None) {
     if not isinstance(nd, Name) or nd.sym is None {
         return None;
     }
@@ -534,6 +590,10 @@ impl final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
     assign = decl if isinstance(decl, Assignment) else None;
     if assign is None and decl is not None {
         assign = decl.find_parent_of_type(Assignment);
+    }
+    twin = variant_assignment(prog, assign) if prog is not None else None;
+    if twin is not None {
+        assign = twin;
     }
     if assign is None
         or not isinstance(assign.parent, GlobalVars)
@@ -569,7 +629,9 @@ impl c_offset_address(expr: (UniNode | None)) -> tuple[(UniNode | None), int] {
     return (expr.left, value);
 }
 
-impl c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any] {
+impl c_scalar_constant(
+    expr: (UniNode | None), depth: int = 0, prog: (JacProgram | None) = None
+) -> tuple[bool, any] {
     if depth > 32 {
         return (False, None);
     }
@@ -580,25 +642,27 @@ impl c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, an
         and isinstance(expr.target, Name)
         and JAC_TYPE_REGISTRY.is_numeric(expr.target.value)
         and len(expr.params or []) == 1 {
-        return c_scalar_constant((expr.params or [])[0], depth + 1);
+        return c_scalar_constant((expr.params or [])[0], depth + 1, prog);
     }
     if isinstance(expr, Name) {
-        value = final_glob_value(expr);
+        value = final_glob_value(expr, prog);
         if value is None {
             return (False, None);
         }
-        return c_scalar_constant(value, depth + 1);
+        return c_scalar_constant(value, depth + 1, prog);
     }
     folded = fold_const(expr);
     if not folded[0] and isinstance(expr, (BinaryExpr, UnaryExpr)) {
-        return _fold_with_finals(expr, depth);
+        return _fold_with_finals(expr, depth, prog);
     }
     return folded;
 }
 
-impl _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
+impl _fold_with_finals(
+    expr: UniNode, depth: int, prog: (JacProgram | None) = None
+) -> tuple[bool, any] {
     if isinstance(expr, UnaryExpr) {
-        (ok, value) = c_scalar_constant(expr.operand, depth + 1);
+        (ok, value) = c_scalar_constant(expr.operand, depth + 1, prog);
         if not ok or not isinstance(value, int) or isinstance(value, bool) {
             return (False, None);
         }
@@ -617,8 +681,8 @@ impl _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any] {
     if not isinstance(expr, BinaryExpr) {
         return (False, None);
     }
-    (lok, left) = c_scalar_constant(expr.left, depth + 1);
-    (rok, right) = c_scalar_constant(expr.right, depth + 1);
+    (lok, left) = c_scalar_constant(expr.left, depth + 1, prog);
+    (rok, right) = c_scalar_constant(expr.right, depth + 1, prog);
     if not lok
         or not rok
         or not isinstance(left, int)

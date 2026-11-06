@@ -47,7 +47,9 @@ impl _interface_source_path(path: str) -> bool {
 }
 
 impl native_lowering_reads(path: str) -> bool {
-    return not is_compiler_source_path(path) or is_native_by_location(path);
+    return not is_compiler_source_path(path)
+        or is_native_by_location(path)
+        or is_native_compiler_unit(path);
 }
 
 impl _span_record(span: any) -> list[str | int | None] {
@@ -644,7 +646,10 @@ impl IfaceRegistry._serve_in_context(
     if not options.iface_ok or options.need_full_ast or not self.ready() {
         return None;
     }
-    if options.native_tree_demand and native_lowering_reads(resolved) {
+    if options.native_tree_demand
+        and (
+            native_lowering_reads(resolved) or options.native_required_for(resolved)
+        ) {
         return None;
     }
     if resolved in self.building {
@@ -926,11 +931,13 @@ impl IfaceRegistry._persist_in_context(
     if options.no_cgen {
         profiles = self._existing_profiles(resolved);
         errors: list[dict[str, any]] = [];
-        for alert in self.prog.errors_had[err_start:] {
+        for alert in self._owned_alerts(resolved, self.prog.errors_had[err_start:]) {
             errors.append(_alert_record(alert));
         }
         warnings: list[dict[str, any]] = [];
-        for alert in self.prog.warnings_had[warn_start:] {
+        for alert in self._owned_alerts(
+            resolved, self.prog.warnings_had[warn_start:]
+        ) {
             warnings.append(_alert_record(alert));
         }
         _prof_key = self.analysis_profile(options);
@@ -966,6 +973,41 @@ impl IfaceRegistry._persist_in_context(
             }
         }
     }
+}
+
+impl IfaceRegistry._owned_alerts(resolved: str, alerts: list[any]) -> list[any] {
+    if not alerts {
+        return [];
+    }
+    owned: set[str] = {os.path.realpath(resolved)};
+    for annex in discover_annex_files(resolved) {
+        owned.add(os.path.realpath(str(annex)));
+    }
+    wire_file = "";
+    wire_lines: set[int] = set();
+    try {
+        spec = wiring_for_path(resolved);
+        consumer = spec.module_name(resolved) if spec is not None else None;
+        if spec is not None and consumer {
+            wire_file = os.path.realpath(spec.path);
+            for wire in spec.consumer_wires(consumer) {
+                for (line0, _col, _text) in spec._wire_pieces(wire) {
+                    wire_lines.add(line0 + 1);
+                }
+            }
+        }
+    } except Exception {
+        wire_file = "";
+    }
+    kept: list[any] = [];
+    for alert in alerts {
+        where = os.path.realpath(alert.loc.mod_path) if alert.loc.mod_path else "";
+        if where in owned
+            or (where == wire_file and alert.loc.first_line in wire_lines) {
+            kept.append(alert);
+        }
+    }
+    return kept;
 }
 
 impl IfaceRegistry._disk_iface_digest(resolved: str) -> str {
@@ -1069,12 +1111,24 @@ impl IfaceRegistry.resolve_shared(
     parts = dotted.split(".");
     scope: any = mod;
     for part in parts[:-1] {
-        scope = scope.find_scope(part);
-        if scope is None {
+        inner = scope.find_scope(part);
+        if inner is None {
+            held = collect_scope_members(scope).names.get(part);
+            try {
+                inner = held.symbol_table if held is not None else None;
+            } except Exception {
+                inner = None;
+            }
+        }
+        if inner is None {
             return None;
         }
+        scope = inner;
     }
     sym = scope.names_in_scope.get(parts[-1]);
+    if sym is None {
+        sym = collect_scope_members(scope).names.get(parts[-1]);
+    }
     if sym is None {
         return None;
     }
@@ -1094,6 +1148,58 @@ impl IfaceRegistry.resolve_shared(
         return shared;
     }
     return None;
+}
+
+impl IfaceRegistry._iface_semantics(
+    section: bytes, paths: (JirPaths | None)
+) -> list[str] {
+    codec = iface_codec();
+    if codec is None {
+        return [];
+    }
+    catalog: any = codec.open_module_iface(
+        section,
+        self._pkg_dir(),
+        resolver=self,
+        path_mapper=paths.resolve if paths is not None else None
+    );
+    if catalog is None {
+        return [];
+    }
+    def scope_path(sid: int) -> str {
+        names: list[str] = [];
+        cur = sid;
+        while cur >= 0 and len(names) < 64 {
+            rec = catalog._read_scope(cur);
+            names.append(rec.name);
+            cur = rec.parent;
+        }
+        return ".".join(reversed(names));
+    }
+    def describe(sym_id: int) -> str {
+        rec = catalog._read_symbol(sym_id);
+        origin = catalog._mod_recs[rec.alias_mod][1] if rec.alias_mod >= 0 else "";
+        shown = "";
+        try {
+            shown = str(catalog.type_of(rec.type_id));
+        } except Exception as err {
+            shown = f"<unreadable {type(err).__name__}>";
+        }
+        return f"{rec.symtype}|{rec.access}|{origin}:{rec.alias_name}|{shown}";
+    }
+    rows: list[str] = [];
+    for sid in range(catalog.hdr.n_scopes) {
+        rec = catalog._read_scope(sid);
+        where = scope_path(sid);
+        for (name, sym_id) in rec.members {
+            rows.append(f"{where}.{name}={describe(sym_id)}");
+        }
+        for (name, ids) in rec.overloads {
+            shapes = sorted(describe(i) for i in ids);
+            rows.append(f"{where}.{name}@overloads={shapes}");
+        }
+    }
+    return sorted(rows);
 }
 
 impl IfaceRegistry._fresh_verify_program -> JacProgram {
@@ -1143,11 +1249,31 @@ impl IfaceRegistry._verify_iface(resolved: str, ent: IfaceEntry) -> None {
             );
         }
         fresh_digest = codec.read_iface_hash(fresh_bytes) or "";
-        if fresh_digest != ent.digest {
+        if fresh_digest == ent.digest or ent.section is None {
+            return;
+        }
+        import hashlib;
+        stamped = codec.read_iface_hash(ent.section) or "";
+        if ent.digest != stamped
+            or hashlib.sha256(ent.section[len(stamped):]).hexdigest() != stamped {
             raise RuntimeError(
                 f"analysis-cache verify failed for {resolved}: the served "
-                f"interface digest {ent.digest[:12]} differs from a fresh "
-                f"source compile's {fresh_digest[:12]}"
+                f"interface digest {ent.digest[:12]} is not the hash of the "
+                "interface it was served with"
+            );
+        }
+        served_rows = self._iface_semantics(ent.section, ent.paths);
+        fresh_rows = self._iface_semantics(
+            fresh_bytes, JirPaths(base_dir=os.path.dirname(resolved))
+        );
+        if served_rows != fresh_rows {
+            only_served = sorted(set(served_rows) - set(fresh_rows))[:6];
+            only_fresh = sorted(set(fresh_rows) - set(served_rows))[:6];
+            raise RuntimeError(
+                f"analysis-cache verify failed for {resolved}: the served "
+                f"interface {ent.digest[:12]} differs from a fresh source "
+                f"compile's {fresh_digest[:12]} (served only: {only_served}; "
+                f"fresh only: {only_fresh})"
             );
         }
     } finally {
@@ -1182,8 +1308,12 @@ impl IfaceRegistry._verify_analysis(resolved: str, options: any, prof: dict[str,
             span = rec.get("span") or ["", 0, 0, 0];
             return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
         }
-        fresh_errs = sorted(digestible(a) for a in prog2.errors_had);
-        fresh_warns = sorted(digestible(a) for a in prog2.warnings_had);
+        fresh_errs = sorted(
+            digestible(a) for a in self._owned_alerts(resolved, prog2.errors_had)
+        );
+        fresh_warns = sorted(
+            digestible(a) for a in self._owned_alerts(resolved, prog2.warnings_had)
+        );
         replay_errs = sorted(rec_digestible(r) for r in (prof.get("errors") or []));
         replay_warns = sorted(rec_digestible(r) for r in (prof.get("warnings") or []));
         if fresh_errs != replay_errs or fresh_warns != replay_warns {

@@ -1,7 +1,7 @@
 """Fixture: a dependency seam only the backend's emitter discovers.
 
 `from_code` invokes `Hue` as a constructor. No AST-level capability check
-refuses it, so the demotion verdict exists only after NaIRGenPass lowers the
+refuses it, so the demotion verdict exists only after native lowering reaches the
 dependency. `double` must stay native.
 
 `Hue` receives a floating-point argument. Native integer-enum construction

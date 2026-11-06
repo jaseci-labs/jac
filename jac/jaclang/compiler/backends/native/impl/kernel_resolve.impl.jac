@@ -413,6 +413,18 @@ impl resolve_kernel -> (ResolvedKernel | None) {
     );
 }
 
+impl kernel_identity -> str {
+    found: (ResolvedKernel | None) = None;
+    try {
+        found = resolve_kernel();
+    } except Exception {
+        found = None;
+    }
+    identity = (found.plan_digest or found.lib_path) if found is not None else "";
+    set_kernel_producer(identity);
+    return identity;
+}
+
 impl build_kernel(
     dst: str = "",
     log: (Callable[[str], None] | None) = None,

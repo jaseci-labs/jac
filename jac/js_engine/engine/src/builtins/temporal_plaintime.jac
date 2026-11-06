@@ -2,6 +2,7 @@
 
 import from engine.src.vm.vm_obs { js_object_get_observable, js_to_number_observable }
 import from engine.src.runtime.jsvalue {
+    jsv_is_undefined,
     JSValue,
     js_undefined,
     js_int,

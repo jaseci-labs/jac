@@ -503,8 +503,15 @@ impl NativeUnitRegistry.dep_iface(
     return ent.iface if ent is not None else None;
 }
 
-impl NativeUnitRegistry.dep_discovery_open -> bool {
-    return self.session is not None and self.session.discovering();
+impl NativeUnitRegistry.dep_pending(path: str) -> bool {
+    resolved = os.path.realpath(path);
+    if resolved in self.building {
+        return True;
+    }
+    session = self.session;
+    return session is not None
+        and session.discovering()
+        and resolved in session.deferred[-1];
 }
 
 impl NativeUnitRegistry.close_dep_deferral -> bool {
@@ -919,6 +926,7 @@ impl NativeBuildSession.lower(
     prior_codespace = get_effective_default_codespace_override();
     prior_options = self.prog.options;
     errors_before = len(self.prog.errors_had);
+    held_before = len(self.held_errors);
     try {
         opts = self.options.clone_for_native_import();
         mod = self.lowered.get(resolved);
@@ -1023,16 +1031,23 @@ impl NativeBuildSession.lower(
         }
         return None;
     } finally {
-        if len(self.prog.errors_had) > errors_before {
+        mine: list[Alert] = list(self.prog.errors_had[errors_before:]);
+        inherited: list[Alert] = self.held_errors[held_before:];
+        del self.held_errors[held_before:];
+        failed = resolved not in self.lowered;
+        if mine or (failed and inherited) {
             self.registry.failures[resolved] = "\n".join(
-                alert.pretty_print() for alert in self.prog.errors_had[errors_before:]
+                alert.pretty_print() for alert in mine + inherited
             );
         }
-
-        if use_str is None and resolved not in self.lowered {
+        if use_str is None and failed {
             self.unlowerable.add(resolved);
         }
         self.registry.building.discard(resolved);
+        if failed and self.registry.building {
+            del self.prog.errors_had[errors_before:];
+            self.held_errors.extend(mine + inherited);
+        }
         self.prog.options = prior_options;
         set_effective_default_codespace(prior_codespace);
         pop_native_target(target_token);
@@ -1104,12 +1119,17 @@ impl NativeBuildSession.unbound_symbols(
             return None;
         }
         defined = provided[0];
+        demoted = set(ent.iface.demoted);
         prefix = f"{ent.iface.prefix}." if ent.iface.prefix else "";
         for symbol in declared {
-            if symbol not in defined
-                and (
-                    (prefix and symbol.startswith(prefix))
-                    or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
+            if symbol in demoted
+                or (prefix and symbol[len(prefix):] in demoted)
+                or (
+                    symbol not in defined
+                    and (
+                        (prefix and symbol.startswith(prefix))
+                        or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
+                    )
                 ) {
                 unbound.add(symbol);
             }

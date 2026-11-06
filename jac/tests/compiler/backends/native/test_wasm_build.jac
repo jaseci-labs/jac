@@ -21,6 +21,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.wasm_build {
     emit_wasm_from_ir,
+    prepare_wasm_module,
     _wasm_libc_dir
 }
 import from jaclang.compiler.backends.native.wasm_artifact { wasm_import_map }
@@ -145,6 +146,47 @@ test "libc folds in-module; the host surface is jac_host1 only" {
     for fld in imports.get(WASM_HOST_MODULE, []) {
         assert fld in WASM_HOST_ABI , f"{fld} not in the declared host ABI";
     }
+}
+
+glob LIBM_PROBE_IR: str = """target triple = "wasm32-unknown-unknown"
+
+define double @probe(double %a, double %b) {
+  %r = frem double %a, %b
+  %c = call double @llvm.copysign.f64(double %r, double %b)
+  ret double %c
+}
+
+define double @direct(double %a, double %b) {
+  %r = call double @fmod(double %a, double %b)
+  ret double %r
+}
+
+declare double @llvm.copysign.f64(double, double)
+declare double @fmod(double, double)
+""";
+
+def defined_functions(text: str) -> set[str] {
+    return {
+        line.split("@", 1)[1].split("(", 1)[0]
+        for line in text.splitlines()
+        if line.startswith("define ")
+            and not line.startswith(("define internal ", "define private "))
+    };
+}
+
+"""The C writer that ejects a wasm module as source turns frem and the
+float intrinsics into libm calls, and the ejected source links with no libc:
+the module it translates keeps the vendored definitions those calls need,
+externally visible: an internal definition is written as a static the
+lowered call does not name (fmod, called directly elsewhere in the module)."""
+test "a module prepared for the C writer keeps the libm it will call" {
+    _require_libc();
+    native = defined_functions(str(prepare_wasm_module(LIBM_PROBE_IR)[0]));
+    ejected = defined_functions(
+        str(prepare_wasm_module(LIBM_PROBE_IR, c_source=True)[0])
+    );
+    assert {"fmod", "copysign"} <= ejected , sorted(ejected);
+    assert not ({"fmod", "copysign"} & native) , sorted(native);
 }
 
 test "app FFI stays under env; undeclared imports are a build-time error" {

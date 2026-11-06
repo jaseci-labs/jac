@@ -6,7 +6,11 @@ def run_cases {
     print(f"{n!r}");
     print(f"{None!r:>6}");
     print(f"{None}");
-    print(f"{None:>6}");
+    try {
+        print(f"{None:>6}");
+    } except TypeError as e {
+        print(f"TypeError: {e}");
+    }
     s: (str | None) = None;
     print(f"{s}");
     print(f"{n!s}");
@@ -15,7 +19,7 @@ def run_cases {
     print(f"{q and 'u'}");
     print(f"{n and 'u'}");
     print(f"{n and f'{1}'}");
-    print(f"{(n and 'u'):>6}|");
+    print(f"{(n and 'u')!s:>6}|");
     print("end");
 }
 

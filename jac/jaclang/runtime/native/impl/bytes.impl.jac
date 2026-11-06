@@ -1,0 +1,1307 @@
+impl _byte(at: int) -> int {
+    return int(__mem_load_i8(at)) & 255;
+}
+
+impl _is_space(c: int) -> bool {
+    return c == 32 or (c >= 9 and c <= 13);
+}
+
+impl _hex_value(c: int) -> int {
+    if c >= 48 and c <= 57 {
+        return c - 48;
+    }
+    if c >= 97 and c <= 102 {
+        return c - 87;
+    }
+    if c >= 65 and c <= 70 {
+        return c - 55;
+    }
+    return -1;
+}
+
+impl _hex_digit(value: int) -> int {
+    return 48 + value if value < 10 else 87 + value;
+}
+
+impl _sb_text(sb: int, text: ptr[u8]) {
+    __jac_rt_sb_add(sb, text, strlen(int(text)));
+}
+
+impl _from_sb(sb: int) -> int {
+    made = __jac_rt_bytes_new(ptr[u8](__jac_rt_sb_data(sb)), __jac_rt_sb_len(sb));
+    __jac_rt_sb_drop(sb);
+    return made;
+}
+
+impl _find(hay: int, lo: int, hi: int, needle: int, nn: int, reverse: bool) -> int {
+    if nn == 0 {
+        return hi if reverse else lo;
+    }
+    if hi - lo < nn {
+        return -1;
+    }
+    if not reverse {
+        i = lo;
+        while i <= hi - nn {
+            if int(memcmp(hay + i, needle, nn)) == 0 {
+                return i;
+            }
+            i += 1;
+        }
+        return -1;
+    }
+    j = hi - nn;
+    while j >= lo {
+        if int(memcmp(hay + j, needle, nn)) == 0 {
+            return j;
+        }
+        j -= 1;
+    }
+    return -1;
+}
+
+impl __jac_rt_file_open(path: ptr[u8], mode: ptr[u8], binary: bool) -> int {
+    stream = fopen(path, mode);
+    if stream == 0 {
+        return 0;
+    }
+    made = __jac_rt_alloc(FILE_SIZE);
+    if binary {
+        __jac_rt_set_type(made, int(ptr[u8]("BinaryFile")));
+    } else {
+        __jac_rt_set_type(made, int(ptr[u8]("File")));
+    }
+    __mem_store_i64(made + FILE_HANDLE, stream);
+    __mem_store_i64(made + FILE_CLOSED, 0);
+    __jac_rt_retain(int(path));
+    __jac_rt_retain(int(mode));
+    __mem_store_i64(made + FILE_PATH, int(path));
+    __mem_store_i64(made + FILE_MODE, int(mode));
+    __mem_store_i64(made - HDR_DTOR_BACK, int(_file_drop));
+    return made;
+}
+
+impl _file_live(f: int) -> int {
+    if __mem_load_i64(f + FILE_CLOSED) != 0 {
+        raise ValueError("I/O operation on closed file.");
+    }
+    return __mem_load_i64(f + FILE_HANDLE);
+}
+
+impl __jac_rt_file_read(f: int, binary: bool, line: bool) -> int {
+    stream = _file_live(f);
+    cap = FILE_CHUNK;
+    buf = malloc(cap);
+    filled = 0;
+    if line {
+        while True {
+            ch = int(fgetc(stream));
+            if ch < 0 {
+                break;
+            }
+            if filled == cap {
+                cap = cap * 2;
+                buf = realloc(buf, cap);
+            }
+            __mem_store_i8(buf + filled, i8(ch));
+            filled += 1;
+            if ch == 10 {
+                break;
+            }
+        }
+    } else {
+        while True {
+            got = fread(buf + filled, 1, cap - filled, stream);
+            filled += got;
+            if filled < cap {
+                break;
+            }
+            cap = cap + FILE_CHUNK;
+            buf = realloc(buf, cap);
+        }
+    }
+    made = __jac_rt_bytes_new(ptr[u8](buf), filled)
+        if binary
+        else int(__jac_rt_str_new(ptr[u8](buf), filled));
+    free(buf);
+    return made;
+}
+
+impl __jac_rt_file_write(f: int, data: ptr[u8], n: int) -> int {
+    stream = _file_live(f);
+    if n <= 0 {
+        return 0;
+    }
+    return fwrite(int(data), 1, n, stream);
+}
+
+impl __jac_rt_file_close(f: int) {
+    if __mem_load_i64(f + FILE_CLOSED) == 0 {
+        fclose(__mem_load_i64(f + FILE_HANDLE));
+        __mem_store_i64(f + FILE_CLOSED, 1);
+    }
+}
+
+impl __jac_rt_file_flush(f: int) {
+    fflush(_file_live(f));
+}
+
+impl __jac_rt_file_closed(f: int) -> bool {
+    return __mem_load_i64(f + FILE_CLOSED) != 0;
+}
+
+impl _file_drop(f: ptr[u8]) {
+    at = int(f);
+    __jac_rt_file_close(at);
+    __jac_rt_release(__mem_load_i64(at + FILE_PATH));
+    __jac_rt_release(__mem_load_i64(at + FILE_MODE));
+    __jac_rt_free_block(at - HDR_TOTAL);
+}
+
+impl __jac_rt_bytes_new(data: ptr[u8], n: int) -> int {
+    made = __jac_rt_alloc(n + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, n);
+    if n > 0 {
+        memcpy(made + BYTES_DATA, int(data), n);
+    }
+    return made;
+}
+
+impl __jac_rt_bytes_zero(n: int) -> int {
+    if n < 0 {
+        raise ValueError("negative count");
+    }
+    made = __jac_rt_alloc(n + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, n);
+    if n > 0 {
+        memset(made + BYTES_DATA, i32(0), n);
+    }
+    return made;
+}
+
+impl __jac_rt_bytes_from_list(lst: int) -> int {
+    n = __mem_load_i64(lst + LIST_LEN);
+    items = __mem_load_i64(lst + LIST_DATA);
+    made = __jac_rt_alloc(n + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, n);
+    i = 0;
+    while i < n {
+        value = __mem_load_i64(items + i * 8);
+        if value < 0 or value > 255 {
+            __jac_rt_release_acyclic(made);
+            raise ValueError("bytes must be in range(0, 256)");
+        }
+        __mem_store_i8(made + BYTES_DATA + i, i8.wrap(value));
+        i += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_bytes_slice(
+    data: ptr[u8], n: int, start: int, stop: int, step: int, given: int
+) -> int {
+    if step == 0 {
+        raise ValueError("slice step cannot be zero");
+    }
+    d = int(data);
+    has_start = (given & 1) != 0;
+    has_stop = (given & 2) != 0;
+    if step > 0 {
+        lo = 0;
+        hi = n;
+        if has_start {
+            lo = start;
+            if lo < 0 {
+                lo += n;
+                if lo < 0 {
+                    lo = 0;
+                }
+            } elif lo > n {
+                lo = n;
+            }
+        }
+        if has_stop {
+            hi = stop;
+            if hi < 0 {
+                hi += n;
+                if hi < 0 {
+                    hi = 0;
+                }
+            } elif hi > n {
+                hi = n;
+            }
+        }
+        if hi <= lo {
+            return __jac_rt_bytes_new(data, 0);
+        }
+        if step == 1 {
+            return __jac_rt_bytes_new(ptr[u8](d + lo), hi - lo);
+        }
+        sb = __jac_rt_sb_new(hi - lo);
+        k = lo;
+        while k < hi {
+            __jac_rt_sb_byte(sb, _byte(d + k));
+            if hi - k <= step {
+                break;
+            }
+            k += step;
+        }
+        return _from_sb(sb);
+    }
+    lo = n - 1;
+    hi = -1;
+    if has_start {
+        lo = start;
+        if lo < 0 {
+            lo += n;
+            if lo < 0 {
+                lo = -1;
+            }
+        } elif lo >= n {
+            lo = n - 1;
+        }
+    }
+    if has_stop {
+        hi = stop;
+        if hi < 0 {
+            hi += n;
+            if hi < 0 {
+                hi = -1;
+            }
+        } elif hi >= n {
+            hi = n - 1;
+        }
+    }
+    if lo <= hi {
+        return __jac_rt_bytes_new(data, 0);
+    }
+    sb = __jac_rt_sb_new(lo - hi);
+    k = lo;
+    while k > hi {
+        __jac_rt_sb_byte(sb, _byte(d + k));
+        if k - hi <= 0 - step {
+            break;
+        }
+        k += step;
+    }
+    return _from_sb(sb);
+}
+
+impl __jac_rt_bytes_concat(a: ptr[u8], an: int, b: ptr[u8], bn: int) -> int {
+    made = __jac_rt_alloc(an + bn + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, an + bn);
+    if an > 0 {
+        memcpy(made + BYTES_DATA, int(a), an);
+    }
+    if bn > 0 {
+        memcpy(made + BYTES_DATA + an, int(b), bn);
+    }
+    return made;
+}
+
+impl __jac_rt_bytes_repeat(data: ptr[u8], n: int, times: int) -> int {
+    if times <= 0 or n == 0 {
+        return __jac_rt_bytes_new(data, 0);
+    }
+    made = __jac_rt_alloc(n * times + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, n * times);
+    k = 0;
+    while k < times {
+        memcpy(made + BYTES_DATA + k * n, int(data), n);
+        k += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_bytes_find(
+    data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int, reverse: bool
+) -> int {
+    lo = start;
+    hi = stop;
+    if lo < 0 {
+        lo += n;
+        if lo < 0 {
+            lo = 0;
+        }
+    }
+    if hi < 0 {
+        hi += n;
+        if hi < 0 {
+            hi = 0;
+        }
+    } elif hi > n {
+        hi = n;
+    }
+    if lo > n or hi < lo {
+        return -1;
+    }
+    return _find(int(data), lo, hi, int(sub), sn, reverse);
+}
+
+impl __jac_rt_bytes_count(
+    data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int
+) -> int {
+    lo = start;
+    hi = stop;
+    if lo < 0 {
+        lo += n;
+        if lo < 0 {
+            lo = 0;
+        }
+    }
+    if hi < 0 {
+        hi += n;
+        if hi < 0 {
+            hi = 0;
+        }
+    } elif hi > n {
+        hi = n;
+    }
+    if lo > n or hi < lo {
+        return 0;
+    }
+    if sn == 0 {
+        return hi - lo + 1;
+    }
+    count = 0;
+    i = lo;
+    while True {
+        at = _find(int(data), i, hi, int(sub), sn, False);
+        if at < 0 {
+            break;
+        }
+        count += 1;
+        i = at + sn;
+    }
+    return count;
+}
+
+impl __jac_rt_bytes_has(data: ptr[u8], n: int, value: int) -> bool {
+    if value < 0 or value > 255 {
+        raise ValueError("byte must be in range(0, 256)");
+    }
+    d = int(data);
+    i = 0;
+    while i < n {
+        if _byte(d + i) == value {
+            return True;
+        }
+        i += 1;
+    }
+    return False;
+}
+
+impl __jac_rt_bytes_affix(
+    data: ptr[u8], n: int, x: ptr[u8], xn: int, start: int, stop: int, suffix: bool
+) -> bool {
+    lo = start;
+    hi = stop;
+    if lo < 0 {
+        lo += n;
+        if lo < 0 {
+            lo = 0;
+        }
+    }
+    if hi < 0 {
+        hi += n;
+        if hi < 0 {
+            hi = 0;
+        }
+    } elif hi > n {
+        hi = n;
+    }
+    if lo > n or hi < lo or hi - lo < xn {
+        return False;
+    }
+    if xn == 0 {
+        return True;
+    }
+    at = hi - xn if suffix else lo;
+    return int(memcmp(int(data) + at, int(x), xn)) == 0;
+}
+
+impl _name_is(d: int, n: int, name: ptr[u8]) -> bool {
+    return strlen(int(name)) == n and (n == 0 or int(memcmp(d, int(name), n)) == 0);
+}
+
+impl _codec_match(d: int, n: int, modules: bool) -> int {
+    if (modules and _name_is(d, n, ptr[u8]("utf_8")))
+        or _name_is(d, n, ptr[u8]("utf8"))
+        or _name_is(d, n, ptr[u8]("u8"))
+        or _name_is(d, n, ptr[u8]("utf"))
+        or _name_is(d, n, ptr[u8]("utf8_ucs2"))
+        or _name_is(d, n, ptr[u8]("utf8_ucs4"))
+        or _name_is(d, n, ptr[u8]("cp65001")) {
+        return CODEC_UTF8;
+    }
+    if (modules and _name_is(d, n, ptr[u8]("ascii")))
+        or _name_is(d, n, ptr[u8]("646"))
+        or _name_is(d, n, ptr[u8]("ansi_x3.4_1968"))
+        or _name_is(d, n, ptr[u8]("ansi_x3_4_1968"))
+        or _name_is(d, n, ptr[u8]("ansi_x3.4_1986"))
+        or _name_is(d, n, ptr[u8]("cp367"))
+        or _name_is(d, n, ptr[u8]("csascii"))
+        or _name_is(d, n, ptr[u8]("ibm367"))
+        or _name_is(d, n, ptr[u8]("iso646_us"))
+        or _name_is(d, n, ptr[u8]("iso_646.irv_1991"))
+        or _name_is(d, n, ptr[u8]("iso_ir_6"))
+        or _name_is(d, n, ptr[u8]("us"))
+        or _name_is(d, n, ptr[u8]("us_ascii")) {
+        return CODEC_ASCII;
+    }
+    if (modules and _name_is(d, n, ptr[u8]("latin_1")))
+        or _name_is(d, n, ptr[u8]("8859"))
+        or _name_is(d, n, ptr[u8]("cp819"))
+        or _name_is(d, n, ptr[u8]("csisolatin1"))
+        or _name_is(d, n, ptr[u8]("ibm819"))
+        or _name_is(d, n, ptr[u8]("iso8859"))
+        or _name_is(d, n, ptr[u8]("iso8859_1"))
+        or _name_is(d, n, ptr[u8]("iso_8859_1"))
+        or _name_is(d, n, ptr[u8]("iso_8859_1_1987"))
+        or _name_is(d, n, ptr[u8]("iso_ir_100"))
+        or _name_is(d, n, ptr[u8]("l1"))
+        or _name_is(d, n, ptr[u8]("latin"))
+        or _name_is(d, n, ptr[u8]("latin1")) {
+        return CODEC_LATIN1;
+    }
+    return -1;
+}
+
+impl __jac_rt_codec_lookup(name: ptr[u8]) -> int {
+    source = int(name);
+    n = strlen(source);
+    sb = __jac_rt_sb_new(n + 1);
+    punct = False;
+    i = 0;
+    while i < n {
+        c = _byte(source + i);
+        if (c >= 48 and c <= 57)
+            or (c >= 65 and c <= 90)
+            or (c >= 97 and c <= 122)
+            or c == 46 {
+            if punct and __jac_rt_sb_len(sb) > 0 {
+                __jac_rt_sb_byte(sb, 95);
+            }
+            punct = False;
+            __jac_rt_sb_byte(sb, c + 32 if c >= 65 and c <= 90 else c);
+        } else {
+            punct = True;
+        }
+        i += 1;
+    }
+    d = __jac_rt_sb_data(sb);
+    m = __jac_rt_sb_len(sb);
+    found = _codec_match(d, m, True);
+    if found < 0 {
+        k = 0;
+        while k < m {
+            if _byte(d + k) == 46 {
+                __mem_store_i8(d + k, i8(95));
+            }
+            k += 1;
+        }
+        found = _codec_match(d, m, False);
+    }
+    __jac_rt_sb_drop(sb);
+    return found;
+}
+
+impl _errors_lookup(name: ptr[u8]) -> int {
+    d = int(name);
+    n = strlen(d);
+    if _name_is(d, n, ptr[u8]("strict")) {
+        return ERRORS_STRICT;
+    }
+    if _name_is(d, n, ptr[u8]("replace")) {
+        return ERRORS_REPLACE;
+    }
+    if _name_is(d, n, ptr[u8]("ignore")) {
+        return ERRORS_IGNORE;
+    }
+    if _name_is(d, n, ptr[u8]("surrogatepass")) {
+        return ERRORS_SURROGATEPASS;
+    }
+    if _name_is(d, n, ptr[u8]("backslashreplace")) {
+        return ERRORS_BACKSLASH;
+    }
+    if _name_is(d, n, ptr[u8]("surrogateescape")) {
+        return ERRORS_SURROGATEESCAPE;
+    }
+    if _name_is(d, n, ptr[u8]("xmlcharrefreplace"))
+        or _name_is(d, n, ptr[u8]("namereplace")) {
+        return ERRORS_ENCODE_ONLY;
+    }
+    return ERRORS_UNKNOWN;
+}
+
+impl _is_cont(c: int) -> bool {
+    return c >= 128 and c <= 191;
+}
+
+impl _utf8_step(d: int, n: int, i: int) -> int {
+    c = _byte(d + i);
+    left = n - i;
+    if c < 128 {
+        return 1;
+    }
+    if c < 194 {
+        return UTF8_BAD_START;
+    }
+    if c < 224 {
+        if left < 2 {
+            return UTF8_TRUNCATED;
+        }
+        return 2 if _is_cont(_byte(d + i + 1)) else UTF8_BAD_FIRST;
+    }
+    if c < 240 {
+        if left < 2 {
+            return UTF8_TRUNCATED;
+        }
+        c2 = _byte(d + i + 1);
+        if not _is_cont(c2) or (c == 224 and c2 < 160) or (c == 237 and c2 >= 160) {
+            return UTF8_BAD_FIRST;
+        }
+        if left < 3 {
+            return UTF8_TRUNCATED;
+        }
+        return 3 if _is_cont(_byte(d + i + 2)) else UTF8_BAD_SECOND;
+    }
+    if c < 245 {
+        if left < 2 {
+            return UTF8_TRUNCATED;
+        }
+        c2 = _byte(d + i + 1);
+        if not _is_cont(c2) or (c == 240 and c2 < 144) or (c == 244 and c2 >= 144) {
+            return UTF8_BAD_FIRST;
+        }
+        if left < 3 {
+            return UTF8_TRUNCATED;
+        }
+        if not _is_cont(_byte(d + i + 2)) {
+            return UTF8_BAD_SECOND;
+        }
+        if left < 4 {
+            return UTF8_TRUNCATED;
+        }
+        return 4 if _is_cont(_byte(d + i + 3)) else UTF8_BAD_THIRD;
+    }
+    return UTF8_BAD_START;
+}
+
+impl _decode_error(
+    codec: ptr[u8], d: int, start: int, stop: int, reason: ptr[u8]
+) -> ptr[u8] {
+    sb = __jac_rt_sb_new(96);
+    __jac_rt_sb_byte(sb, 39);
+    _sb_text(sb, codec);
+    if stop - start == 1 {
+        byte = _byte(d + start);
+        _sb_text(sb, ptr[u8]("' codec can't decode byte 0x"));
+        __jac_rt_sb_byte(sb, _hex_digit(byte >> 4));
+        __jac_rt_sb_byte(sb, _hex_digit(byte & 15));
+        _sb_text(sb, ptr[u8](" in position "));
+        __jac_rt_sb_int(sb, start);
+    } else {
+        _sb_text(sb, ptr[u8]("' codec can't decode bytes in position "));
+        __jac_rt_sb_int(sb, start);
+        __jac_rt_sb_byte(sb, 45);
+        __jac_rt_sb_int(sb, stop - 1);
+    }
+    _sb_text(sb, ptr[u8](": "));
+    _sb_text(sb, reason);
+    return __jac_rt_sb_finish(sb);
+}
+
+impl _named_error(prefix: ptr[u8], name: ptr[u8], suffix: ptr[u8]) -> ptr[u8] {
+    sb = __jac_rt_sb_new(64);
+    _sb_text(sb, prefix);
+    _sb_text(sb, name);
+    _sb_text(sb, suffix);
+    return __jac_rt_sb_finish(sb);
+}
+
+impl _sb_code_point(sb: int, cp: int) {
+    __jac_rt_sb_byte(sb, 224 | (cp >> 12));
+    __jac_rt_sb_byte(sb, 128 | ((cp >> 6) & 63));
+    __jac_rt_sb_byte(sb, 128 | (cp & 63));
+}
+
+impl __jac_rt_bytes_decode(
+    data: ptr[u8],
+    n: int,
+    encoding: ptr[u8],
+    errors: ptr[u8],
+    failure: i32,
+    lookup: i32,
+    wrong: i32
+) -> ptr[u8] {
+    codec = CODEC_UTF8;
+    if n > 0 {
+        codec = __jac_rt_codec_lookup(encoding);
+        if codec < 0 {
+            __jac_rt_raise_builtin(
+                lookup,
+                _named_error(ptr[u8]("unknown encoding: "), encoding, ptr[u8](""))
+            );
+        }
+    }
+    d = int(data);
+    sb = __jac_rt_sb_new(n);
+    handler = -1;
+    i = 0;
+    while i < n {
+        c = _byte(d + i);
+        if c < 128 {
+            __jac_rt_sb_byte(sb, c);
+            i += 1;
+            continue;
+        }
+        if codec == CODEC_LATIN1 {
+            __jac_rt_sb_byte(sb, 192 | (c >> 6));
+            __jac_rt_sb_byte(sb, 128 | (c & 63));
+            i += 1;
+            continue;
+        }
+        stop = i + 1;
+        name = ptr[u8]("ascii");
+        reason = ptr[u8]("ordinal not in range(128)");
+        if codec == CODEC_UTF8 {
+            w = _utf8_step(d, n, i);
+            if w > 0 {
+                __jac_rt_sb_add(sb, ptr[u8](d + i), w);
+                i += w;
+                continue;
+            }
+            name = ptr[u8]("utf-8");
+            reason = ptr[u8]("invalid continuation byte");
+            if w == UTF8_BAD_START {
+                reason = ptr[u8]("invalid start byte");
+            } elif w == UTF8_TRUNCATED {
+                stop = n;
+                reason = ptr[u8]("unexpected end of data");
+            } elif w == UTF8_BAD_SECOND {
+                stop = i + 2;
+            } elif w == UTF8_BAD_THIRD {
+                stop = i + 3;
+            }
+        }
+        if handler < 0 {
+            handler = _errors_lookup(errors);
+        }
+        if handler == ERRORS_REPLACE {
+            __jac_rt_sb_byte(sb, 239);
+            __jac_rt_sb_byte(sb, 191);
+            __jac_rt_sb_byte(sb, 189);
+            i = stop;
+            continue;
+        }
+        if handler == ERRORS_IGNORE {
+            i = stop;
+            continue;
+        }
+        if handler == ERRORS_BACKSLASH {
+            while i < stop {
+                b = _byte(d + i);
+                __jac_rt_sb_byte(sb, 92);
+                __jac_rt_sb_byte(sb, 120);
+                __jac_rt_sb_byte(sb, _hex_digit(b >> 4));
+                __jac_rt_sb_byte(sb, _hex_digit(b & 15));
+                i += 1;
+            }
+            continue;
+        }
+        if handler == ERRORS_SURROGATEESCAPE {
+            while i < stop {
+                _sb_code_point(sb, 56320 + _byte(d + i));
+                i += 1;
+            }
+            continue;
+        }
+        if handler == ERRORS_SURROGATEPASS
+            and codec == CODEC_UTF8
+            and n - i >= 3
+            and (c & 240) == 224
+            and (_byte(d + i + 1) & 192) == 128
+            and (_byte(d + i + 2) & 192) == 128 {
+            cp = ((c & 15) << 12)
+                | ((_byte(d + i + 1) & 63) << 6)
+                | (_byte(d + i + 2) & 63);
+            if cp >= 55296 and cp <= 57343 {
+                __jac_rt_sb_add(sb, ptr[u8](d + i), 3);
+                i += 3;
+                continue;
+            }
+        }
+        __jac_rt_sb_drop(sb);
+        if handler == ERRORS_UNKNOWN {
+            __jac_rt_raise_builtin(
+                lookup,
+                _named_error(
+                    ptr[u8]("unknown error handler name '"), errors, ptr[u8]("'")
+                )
+            );
+        }
+        if handler == ERRORS_ENCODE_ONLY {
+            __jac_rt_raise_builtin(
+                wrong,
+                ptr[u8]("don't know how to handle UnicodeDecodeError in error callback")
+            );
+        }
+        __jac_rt_raise_builtin(failure, _decode_error(name, d, i, stop, reason));
+    }
+    return __jac_rt_sb_finish(sb);
+}
+
+impl _encode_error(codec: ptr[u8], cp: int, position: int, limit: ptr[u8]) -> ptr[u8] {
+    sb = __jac_rt_sb_new(96);
+    __jac_rt_sb_byte(sb, 39);
+    _sb_text(sb, codec);
+    _sb_text(sb, ptr[u8]("' codec can't encode character '\\"));
+    digits = 2;
+    if cp < 256 {
+        __jac_rt_sb_byte(sb, 120);
+    } elif cp < 65536 {
+        __jac_rt_sb_byte(sb, 117);
+        digits = 4;
+    } else {
+        __jac_rt_sb_byte(sb, 85);
+        digits = 8;
+    }
+    shift = (digits - 1) * 4;
+    while shift >= 0 {
+        __jac_rt_sb_byte(sb, _hex_digit((cp >> shift) & 15));
+        shift -= 4;
+    }
+    _sb_text(sb, ptr[u8]("' in position "));
+    __jac_rt_sb_int(sb, position);
+    _sb_text(sb, ptr[u8](": ordinal not in range("));
+    _sb_text(sb, limit);
+    __jac_rt_sb_byte(sb, 41);
+    return __jac_rt_sb_finish(sb);
+}
+
+impl __jac_rt_str_encode(
+    data: ptr[u8], n: int, codec: int, errors: int, failure: i32
+) -> int {
+    if codec == CODEC_UTF8 {
+        return __jac_rt_bytes_new(data, n);
+    }
+    d = int(data);
+    sb = __jac_rt_sb_new(n);
+    i = 0;
+    position = 0;
+    while i < n {
+        w = __jac_rt_utf8_width(data, n, i);
+        c = _byte(d + i);
+        cp = c;
+        if w == 2 {
+            cp = ((c & 31) << 6) | (_byte(d + i + 1) & 63);
+        } elif w > 2 {
+            cp = 65536;
+        }
+        fits = cp < 128 if codec == CODEC_ASCII else cp < 256;
+        if fits {
+            __jac_rt_sb_byte(sb, cp);
+        } elif errors == ERRORS_STRICT or errors == ERRORS_SURROGATEPASS {
+            __jac_rt_sb_drop(sb);
+            if w > 2 {
+                cp = c & (15 if w == 3 else 7);
+                k = 1;
+                while k < w {
+                    cp = (cp << 6) | (_byte(d + i + k) & 63);
+                    k += 1;
+                }
+            }
+            if codec == CODEC_ASCII {
+                __jac_rt_raise_builtin(
+                    failure,
+                    _encode_error(ptr[u8]("ascii"), cp, position, ptr[u8]("128"))
+                );
+            }
+            __jac_rt_raise_builtin(
+                failure, _encode_error(ptr[u8]("latin-1"), cp, position, ptr[u8]("256"))
+            );
+        } elif errors == ERRORS_REPLACE {
+            __jac_rt_sb_byte(sb, 63);
+        }
+        i += w;
+        position += 1;
+    }
+    return _from_sb(sb);
+}
+
+impl __jac_rt_bytes_hex(data: ptr[u8], n: int) -> ptr[u8] {
+    d = int(data);
+    sb = __jac_rt_sb_new(n * 2);
+    i = 0;
+    while i < n {
+        c = _byte(d + i);
+        __jac_rt_sb_byte(sb, _hex_digit(c >> 4));
+        __jac_rt_sb_byte(sb, _hex_digit(c & 15));
+        i += 1;
+    }
+    return __jac_rt_sb_finish(sb);
+}
+
+impl _fromhex_error(position: int) -> ptr[u8] {
+    sb = __jac_rt_sb_new(80);
+    _sb_text(sb, ptr[u8]("non-hexadecimal number found in fromhex() arg at position "));
+    __jac_rt_sb_int(sb, position);
+    return __jac_rt_sb_finish(sb);
+}
+
+impl __jac_rt_bytes_fromhex(data: ptr[u8], n: int) -> int {
+    d = int(data);
+    sb = __jac_rt_sb_new(n // 2);
+    i = 0;
+    while i < n {
+        if _is_space(_byte(d + i)) {
+            i += 1;
+            continue;
+        }
+        high = _hex_value(_byte(d + i));
+        if high < 0 {
+            __jac_rt_sb_drop(sb);
+            raise ValueError(_fromhex_error(i));
+        }
+        if i + 1 == n {
+            __jac_rt_sb_drop(sb);
+            raise ValueError(
+                "fromhex() arg must contain an even number of hexadecimal digits"
+            );
+        }
+        low = _hex_value(_byte(d + i + 1));
+        if low < 0 {
+            __jac_rt_sb_drop(sb);
+            raise ValueError(_fromhex_error(i + 1));
+        }
+        __jac_rt_sb_byte(sb, high * 16 + low);
+        i += 2;
+    }
+    return _from_sb(sb);
+}
+
+impl __jac_rt_bytes_case(data: ptr[u8], n: int, mode: int) -> int {
+    d = int(data);
+    sb = __jac_rt_sb_new(n);
+    i = 0;
+    while i < n {
+        c = _byte(d + i);
+        if mode == CASE_UPPER and c >= 97 and c <= 122 {
+            c -= 32;
+        } elif mode == CASE_LOWER and c >= 65 and c <= 90 {
+            c += 32;
+        }
+        __jac_rt_sb_byte(sb, c);
+        i += 1;
+    }
+    return _from_sb(sb);
+}
+
+impl _in_set(c: int, chars: int, cn: int) -> bool {
+    k = 0;
+    while k < cn {
+        if _byte(chars + k) == c {
+            return True;
+        }
+        k += 1;
+    }
+    return False;
+}
+
+impl __jac_rt_bytes_strip(
+    data: ptr[u8], n: int, chars: ptr[u8], cn: int, has_chars: bool, which: int
+) -> int {
+    d = int(data);
+    lo = 0;
+    hi = n;
+    if which != STRIP_RIGHT {
+        while lo < hi
+            and (
+                _in_set(_byte(d + lo), int(chars), cn)
+                    if has_chars
+                    else _is_space(_byte(d + lo))
+            ) {
+            lo += 1;
+        }
+    }
+    if which != STRIP_LEFT {
+        while hi > lo
+            and (
+                _in_set(_byte(d + hi - 1), int(chars), cn)
+                    if has_chars
+                    else _is_space(_byte(d + hi - 1))
+            ) {
+            hi -= 1;
+        }
+    }
+    return __jac_rt_bytes_new(ptr[u8](d + lo), hi - lo);
+}
+
+impl _push_bytes(lst: int, at: int, n: int) {
+    made = __jac_rt_bytes_new(ptr[u8](at), n);
+    __jac_rt_list_push(lst, made, KIND_REF);
+    __jac_rt_release_acyclic(made);
+}
+
+impl __jac_rt_bytes_split(
+    data: ptr[u8], n: int, sep: ptr[u8], sn: int, has_sep: bool, maxsplit: int
+) -> int {
+    if has_sep and sn == 0 {
+        raise ValueError("empty separator");
+    }
+    d = int(data);
+    lst = __jac_rt_list_new(4, KIND_REF);
+    parts = 0;
+    if not has_sep {
+        i = 0;
+        while True {
+            while i < n and _is_space(_byte(d + i)) {
+                i += 1;
+            }
+            if i >= n {
+                break;
+            }
+            if maxsplit >= 0 and parts >= maxsplit {
+                _push_bytes(lst, d + i, n - i);
+                break;
+            }
+            j = i;
+            while j < n and not _is_space(_byte(d + j)) {
+                j += 1;
+            }
+            _push_bytes(lst, d + i, j - i);
+            parts += 1;
+            i = j;
+        }
+        return lst;
+    }
+    i = 0;
+    while maxsplit < 0 or parts < maxsplit {
+        at = _find(d, i, n, int(sep), sn, False);
+        if at < 0 {
+            break;
+        }
+        _push_bytes(lst, d + i, at - i);
+        parts += 1;
+        i = at + sn;
+    }
+    _push_bytes(lst, d + i, n - i);
+    return lst;
+}
+
+impl __jac_rt_bytes_replace(
+    data: ptr[u8], n: int, old: ptr[u8], on: int, repl: ptr[u8], rn: int, count: int
+) -> int {
+    d = int(data);
+    sb = __jac_rt_sb_new(n);
+    done = 0;
+    if on == 0 {
+        i = 0;
+        while True {
+            if count < 0 or done < count {
+                __jac_rt_sb_add(sb, repl, rn);
+                done += 1;
+            }
+            if i >= n {
+                break;
+            }
+            __jac_rt_sb_byte(sb, _byte(d + i));
+            i += 1;
+        }
+        return _from_sb(sb);
+    }
+    i = 0;
+    while count < 0 or done < count {
+        at = _find(d, i, n, int(old), on, False);
+        if at < 0 {
+            break;
+        }
+        __jac_rt_sb_add(sb, ptr[u8](d + i), at - i);
+        __jac_rt_sb_add(sb, repl, rn);
+        done += 1;
+        i = at + on;
+    }
+    __jac_rt_sb_add(sb, ptr[u8](d + i), n - i);
+    return _from_sb(sb);
+}
+
+impl __jac_rt_bytes_join(sep: ptr[u8], sn: int, parts: int) -> int {
+    count = __mem_load_i64(parts + LIST_LEN);
+    items = __mem_load_i64(parts + LIST_DATA);
+    sb = __jac_rt_sb_new(sn * count);
+    k = 0;
+    while k < count {
+        if k > 0 {
+            __jac_rt_sb_add(sb, sep, sn);
+        }
+        item = __mem_load_i64(items + k * 8);
+        __jac_rt_sb_add(
+            sb, ptr[u8](item + BYTES_DATA), __mem_load_i64(item + BYTES_LEN)
+        );
+        k += 1;
+    }
+    return _from_sb(sb);
+}
+
+impl __jac_rt_bytes_repr(data: ptr[u8], n: int) -> ptr[u8] {
+    d = int(data);
+    single = False;
+    double = False;
+    i = 0;
+    while i < n {
+        c = _byte(d + i);
+        if c == 39 {
+            single = True;
+        } elif c == 34 {
+            double = True;
+        }
+        i += 1;
+    }
+    quote = 34 if single and not double else 39;
+    sb = __jac_rt_sb_new(n + 3);
+    __jac_rt_sb_byte(sb, 98);
+    __jac_rt_sb_byte(sb, quote);
+    i = 0;
+    while i < n {
+        c = _byte(d + i);
+        if c == 92 or c == quote {
+            __jac_rt_sb_byte(sb, 92);
+            __jac_rt_sb_byte(sb, c);
+        } elif c == 9 {
+            _sb_text(sb, ptr[u8]("\\t"));
+        } elif c == 10 {
+            _sb_text(sb, ptr[u8]("\\n"));
+        } elif c == 13 {
+            _sb_text(sb, ptr[u8]("\\r"));
+        } elif c < 32 or c >= 127 {
+            __jac_rt_sb_byte(sb, 92);
+            __jac_rt_sb_byte(sb, 120);
+            __jac_rt_sb_byte(sb, _hex_digit(c >> 4));
+            __jac_rt_sb_byte(sb, _hex_digit(c & 15));
+        } else {
+            __jac_rt_sb_byte(sb, c);
+        }
+        i += 1;
+    }
+    __jac_rt_sb_byte(sb, quote);
+    return __jac_rt_sb_finish(sb);
+}
+
+impl _bytearray_drop(o: int) {
+    free(__mem_load_i64(o + LIST_DATA));
+    __jac_rt_free_block(o - HDR_TOTAL);
+}
+
+impl _bytearray_reserve(ba: int, need: int) {
+    cap = __mem_load_i64(ba + LIST_CAP);
+    if need <= cap {
+        return;
+    }
+    grown = cap * 2 if cap > 0 else BYTEARRAY_MIN_CAP;
+    while grown < need {
+        grown = grown * 2;
+    }
+    __mem_store_i64(ba + LIST_DATA, realloc(__mem_load_i64(ba + LIST_DATA), grown));
+    __mem_store_i64(ba + LIST_CAP, grown);
+}
+
+impl __jac_rt_bytearray_new(data: ptr[u8], n: int) -> int {
+    ba = __jac_rt_alloc(LIST_SIZE);
+    __jac_rt_set_type(ba, int(ptr[u8]("bytearray")));
+    __mem_store_i64(ba + LIST_LEN, 0);
+    __mem_store_i64(ba + LIST_CAP, 0);
+    __mem_store_i64(ba + LIST_DATA, 0);
+    __mem_store_i64(ba - HDR_DTOR_BACK, int(_bytearray_drop));
+    __jac_rt_bytearray_extend(ba, data, n);
+    return ba;
+}
+
+impl __jac_rt_bytearray_push(ba: int, value: int) {
+    if value < 0 or value > 255 {
+        raise ValueError("byte must be in range(0, 256)");
+    }
+    n = __mem_load_i64(ba + LIST_LEN);
+    _bytearray_reserve(ba, n + 1);
+    __mem_store_i8(__mem_load_i64(ba + LIST_DATA) + n, i8.wrap(value));
+    __mem_store_i64(ba + LIST_LEN, n + 1);
+}
+
+impl __jac_rt_bytearray_set(ba: int, i: int, value: int) {
+    if value < 0 or value > 255 {
+        raise ValueError("byte must be in range(0, 256)");
+    }
+    __mem_store_i8(__mem_load_i64(ba + LIST_DATA) + i, i8.wrap(value));
+}
+
+impl __jac_rt_bytearray_extend(ba: int, data: ptr[u8], n: int) {
+    if n <= 0 {
+        return;
+    }
+    size = __mem_load_i64(ba + LIST_LEN);
+    before = __mem_load_i64(ba + LIST_DATA);
+    source = int(data);
+    inside = before != 0
+        and source >= before
+        and source < before + __mem_load_i64(ba + LIST_CAP);
+    _bytearray_reserve(ba, size + n);
+    after = __mem_load_i64(ba + LIST_DATA);
+    if inside {
+        source = after + (source - before);
+    }
+    memmove(after + size, source, n);
+    __mem_store_i64(ba + LIST_LEN, size + n);
+}
+
+impl __jac_rt_bytearray_pop(ba: int, i: int) -> int {
+    n = __mem_load_i64(ba + LIST_LEN);
+    items = __mem_load_i64(ba + LIST_DATA);
+    value = _byte(items + i);
+    if i < n - 1 {
+        memmove(items + i, items + i + 1, n - 1 - i);
+    }
+    __mem_store_i64(ba + LIST_LEN, n - 1);
+    return value;
+}
+
+impl __jac_rt_bytearray_splice(ba: int, start: int, stop: int, data: ptr[u8], n: int) {
+    size = __mem_load_i64(ba + LIST_LEN);
+    held = 0;
+    if n > 0 {
+        held = malloc(n);
+        memmove(held, int(data), n);
+    }
+    grown = size - (stop - start) + n;
+    _bytearray_reserve(ba, grown);
+    items = __mem_load_i64(ba + LIST_DATA);
+    if size > stop {
+        memmove(items + start + n, items + stop, size - stop);
+    }
+    if n > 0 {
+        memmove(items + start, held, n);
+        free(held);
+    }
+    __mem_store_i64(ba + LIST_LEN, grown);
+}
+
+impl __jac_rt_bytearray_clear(ba: int) {
+    __mem_store_i64(ba + LIST_LEN, 0);
+}
+
+impl __jac_rt_int_from_bytes(data: ptr[u8], n: int, big: bool, signed: bool) -> int {
+    d = int(data);
+    result = 0;
+    i = 0;
+    while i < n and i < 8 {
+        at = d + (n - 1 - i) if big else d + i;
+        result = result | wrapping_shl(_byte(at), i * 8);
+        i += 1;
+    }
+    if signed and n > 0 and n < 8 {
+        top = _byte(d if big else d + n - 1);
+        if top >= 128 {
+            result = result - (1 << (n * 8));
+        }
+    }
+    if not signed and n >= 8 and result < 0 {
+        raise OverflowError("int too large to convert");
+    }
+    fill = 255 if result < 0 else 0;
+    while i < n {
+        at = d + (n - 1 - i) if big else d + i;
+        if _byte(at) != fill {
+            raise OverflowError("int too large to convert");
+        }
+        i += 1;
+    }
+    return result;
+}
+
+impl __jac_rt_int_to_bytes(value: int, n: int, big: bool, signed: bool) -> int {
+    if n < 0 {
+        raise ValueError("length argument must be non-negative");
+    }
+    if not signed and value < 0 {
+        raise OverflowError("can't convert negative int to unsigned");
+    }
+    if n < 8 {
+        if signed {
+            half = 1 << (n * 8 - 1) if n > 0 else 1;
+            if n == 0 and value != 0 or n > 0 and (value < 0 - half or value >= half) {
+                raise OverflowError("int too big to convert");
+            }
+        } elif value >= (1 << (n * 8)) {
+            raise OverflowError("int too big to convert");
+        }
+    }
+    made = __jac_rt_bytes_zero(n);
+    fill = 255 if value < 0 else 0;
+    i = 0;
+    while i < n {
+        byte = (value >> (i * 8)) & 255 if i < 8 else fill;
+        at = made + BYTES_DATA + (n - 1 - i if big else i);
+        __mem_store_i8(at, i8.wrap(byte));
+        i += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_struct_put(at: ptr[u8], bits: int, size: int, big: bool) {
+    d = int(at);
+    i = 0;
+    while i < size {
+        byte = (bits >> (i * 8)) & 255 if i < 8 else 0;
+        __mem_store_i8(d + (size - 1 - i if big else i), i8.wrap(byte));
+        i += 1;
+    }
+}
+
+impl __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8] {
+    ring = __thread_local_block("jac_rt_exc_message_ring", 136);
+    at = __mem_load_i64(ring + 128);
+    slot = ring + (at % 16) * 8;
+    held = __mem_load_i64(slot);
+    if held != 0 {
+        free(held);
+    }
+    made = malloc(n + 1);
+    if n > 0 {
+        memcpy(made, int(data), n);
+    }
+    __mem_store_i8(made + n, i8(0));
+    __mem_store_i64(slot, made);
+    __mem_store_i64(ring + 128, at + 1);
+    return ptr[u8](made);
+}
+
+impl __jac_rt_byte_single(value: int) -> int {
+    if value < 0 or value > 255 {
+        raise ValueError("byte must be in range(0, 256)");
+    }
+    made = __jac_rt_alloc(1 + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, 1);
+    __mem_store_i8(made + BYTES_DATA, i8.wrap(value));
+    return made;
+}
+
+impl __jac_rt_bytes_from_ints(lst: int, array: bool) -> int {
+    if array {
+        n = __mem_load_i64(lst + LIST_LEN);
+        items = __mem_load_i64(lst + LIST_DATA);
+        i = 0;
+        while i < n {
+            value = __mem_load_i64(items + i * 8);
+            if value < 0 or value > 255 {
+                raise ValueError("byte must be in range(0, 256)");
+            }
+            i += 1;
+        }
+    }
+    return __jac_rt_bytes_from_list(lst);
+}

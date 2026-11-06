@@ -2,9 +2,9 @@
 #
 # `Box.evaluate` (uses `eval`) is demoted to Python-only, but here a *native*
 # free function calls it. The native pathway cannot fall back to Python
-# mid-stream, so the caller cascades into a seam of its own (granular
-# demotion, epic #8201) and the module entry that calls it surfaces a loud
-# E5092 rather than silently dropping to a null result.
+# mid-stream, so the caller cascades into a demotion of its own (granular
+# demotion, epic #8201), and so does the module entry that calls it, rather
+# than silently dropping to a null result.
 obj Box {
     has raw: str;
 

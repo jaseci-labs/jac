@@ -43,7 +43,7 @@ test "os path isfile and isdir report real file kinds natively" {
             "True",
             "False",
             "5",
-            "-1",
+            "FileNotFoundError",
             "True",
             "jac_ospath_probe.txt",
             "environment text"

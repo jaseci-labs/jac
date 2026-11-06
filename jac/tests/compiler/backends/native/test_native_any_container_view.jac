@@ -31,15 +31,15 @@ test "typed containers narrowed from any to containers of any match Python" {
 }
 
 """The other direction: an `any` holding a container bound to a typed
-container. A container whose header names the target's own layout passes
-through, and an empty one is rebuilt with the target's layout. Any other
-container, such as the `dict[str, any]` that `json.loads` returns, raises
-`TypeError` natively instead of being read with the target's slot layout,
-which gave `0` or `None` for keys that are present. A container whose
-elements have another type, such as a `list[int]` bound to `list[float]`, is
-refused too, while the pointer list an edge walk returns binds to a typed node
-list. Python binds without a check, so the two backends differ only on the
-refused lines."""
+container. A container whose recorded element kinds match the target passes
+through, and an empty one takes the target's kinds. A container of `any`
+elements, such as the `dict[str, any]` that `json.loads` returns or the list an
+edge walk produces, is converted element by element after every element is
+checked against the target's element kind, so it reads as it does in Python.
+A container whose elements have another fixed kind, such as a `list[int]`
+bound to `list[float]`, raises `TypeError` instead of being read with the
+target's slot layout. Python binds without a check, so the two backends
+differ only on the refused line."""
 test "an any bound to a typed container passes a matching layout and refuses another" {
     source = str(
         Path(__file__).resolve().parent
@@ -59,8 +59,8 @@ test "an any bound to a typed container passes a matching layout and refuses ano
             == [
                 "typed 7",
                 "empty 4",
-                "ints TypeError",
-                "field TypeError",
+                "ints 3",
+                "field 1",
                 "floats TypeError",
                 "walked 6"
             ] , (memory, out);

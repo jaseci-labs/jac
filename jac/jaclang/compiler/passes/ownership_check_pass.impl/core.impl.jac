@@ -1192,7 +1192,7 @@ impl OwnershipCheckPass._owned_field_of(expr: Expr | None) -> (Name | None) {
     if self._expr_scalar_typed(expr) or self._nogc_str_elem_ok(expr) {
         return None;
     }
-    if reads_foreign_storage(expr) {
+    if reads_foreign_storage(expr) or foreign_field_of(expr) is not None {
         return None;
     }
     if self._own_field_target(expr) or self.nogc_prov is not None {

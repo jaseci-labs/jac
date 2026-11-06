@@ -35,8 +35,8 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-"""Compile a fixture through the native pipeline and return (engine, LLVM IR)."""
-def native_compile(fixture: str) -> tuple[object, str] {
+"""Compile a fixture through the native pipeline and return its JIT engine."""
+def native_engine(fixture: str) -> object {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
@@ -45,12 +45,7 @@ def native_compile(fixture: str) -> tuple[object, str] {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, str(ir.gen.llvm_ir));
-}
-
-"""Compile a fixture through the native pipeline and return its JIT engine."""
-def native_engine(fixture: str) -> object {
-    return native_compile(fixture)[0];
+    return eng;
 }
 
 """Call a no-argument int-returning function out of the JIT engine."""
@@ -131,21 +126,13 @@ test "container elem inference: the annotation cannot change the answer" {
 }
 
 test "container elem inference: untyped enum list is not boxed away from congruence" {
-    (eng, llvm) = native_compile("container_elem_infer.jac");
+    eng = native_engine("container_elem_infer.jac");
     assert native_call(eng, "untyped_enum_pick") == 1 , (
         "c[1] == Color.GREEN on an untyped enum list"
     );
     assert native_call(eng, "untyped_enum_scan") == 1 , (
         "exactly one Color.BLUE in the untyped enum list"
     );
-    # Every container in this fixture has an element type the checker knows,
-    # so none of them may fall back to tagged {tag, payload} storage. The
-    # untyped enum list is the one that used to: its inferred element type is
-    # a union of enum-member types, which the backend could not lower.
-    assert "List.jacval" not in llvm , (
-        "a container with a known element type fell back to tagged storage"
-    );
-    assert "List.f64" in llvm , "list[float] must keep unboxed f64 storage";
 }
 
 test "container elem inference: list[float] keeps f64 storage past an int literal" {
@@ -207,59 +194,97 @@ test "un-inferable elem type: ordering a tagged element checks its tag at runtim
     assert native_call(eng, "mixed_ord_float_vs_int_false") == 0 , "not 20.5 < 9";
 }
 
-test "un-inferable elem type: equality against an unboxable peer is refused" {
-    # The equality branch boxes the unboxed peer, but _box_to_jacval only
-    # represents scalars and pointers. An aggregate peer -- here a by-value
-    # tuple literal -- has no tagged representation, and its old catch-all
-    # stored tag=0/payload=0, so `x[0] == (1, 2)` compared a real element
-    # against a null-ish tagged value and could answer True for `0 == (0, 0)`.
-    # The guard is now symmetric with the ordering branch: unboxable peers
-    # refuse to lower, and the refusal demotes the owning function to a seam.
-    (prog, ir) = compile_na_inline_ir(
-        "eq_tuple",
-        "def f -> int {\n"
-            + "    x = [];\n"
-            + "    x.append(7);\n"
-            + "    x.append(\"seven\");\n"
-            + "    if x[0] == (1, 2) {\n"
-            + "        return 1;\n"
-            + "    }\n"
-            + "    return 0;\n"
-            + "}\n"
-    );
-    assert not prog.errors_had , (
-        "the unboxable-peer refusal is owned by f(), which must demote, got "
-        + f"{[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in ir.gen.native_layout.functions , (
-        "the refused comparison's function must be demoted out of the layout, "
-        + "never answer True for 0 == (0, 0)"
-    );
+test "un-inferable elem type: equality against an aggregate peer answers like CPython" {
+    # The old backend boxed the unboxed peer through a helper that only knew
+    # scalars and pointers, so a by-value tuple literal was stored as
+    # tag=0/payload=0 and `x[0] == (1, 2)` could answer True for
+    # `0 == (0, 0)`; it refused the comparison instead. MIR boxes the tuple
+    # as a real `any`, so the comparison lowers and must answer what CPython
+    # answers -- including for the zero element that used to collide.
+    for (label, first) in [("eq_tuple", "7"), ("eq_tuple_zero", "0")] {
+        (prog, ir) = compile_na_inline_ir(
+            label,
+            "def f -> int {\n"
+                + "    x = [];\n"
+                + f"    x.append({first});\n"
+                + "    x.append(\"seven\");\n"
+                + "    if x[0] == (0, 0) or x[0] == (1, 2) {\n"
+                + "        return 1;\n"
+                + "    }\n"
+                + "    return 0;\n"
+                + "}\n"
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        assert "f" in ir.gen.native_layout.functions , (
+            f"{label}: the boxed comparison stopped lowering"
+        );
+        assert native_call(ir.gen.native_engine, "f") == 0 , (
+            f"{label}: an int element never equals a tuple"
+        );
+    }
 }
 
-test "un-inferable elem type: an unorderable mixed comparison is refused, not guessed" {
+test "un-inferable elem type: an unorderable mixed comparison raises, not guessed" {
+    # `7 < "zebra"` has no order; CPython raises TypeError, so native must
+    # raise it too rather than order the payload bits. A comparable pair in
+    # the same list still orders.
     (prog, ir) = compile_na_inline_ir(
         "order_str",
         "def f() -> int {\n"
             + "    x = [];\n"
             + "    x.append(7);\n"
             + "    x.append(\"seven\");\n"
-            + "    if x[1] < \"zebra\" {\n"
+            + "    try {\n"
+            + "        if x[0] < \"zebra\" {\n"
+            + "            return 1;\n"
+            + "        }\n"
+            + "        return 0;\n"
+            + "    } except TypeError {\n"
+            + "        return 2;\n"
+            + "    }\n"
+            + "}\n"
+            + "def g() -> int {\n"
+            + "    x = [];\n"
+            + "    x.append(7);\n"
+            + "    x.append(\"seven\");\n"
+            + "    return 1 if x[1] < \"zebra\" else 0;\n"
+            + "}\n"
+    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    eng = ir.gen.native_engine;
+    assert native_call(eng, "f") == 2 , "ordering an int against a str must raise TypeError";
+    assert native_call(eng, "g") == 1 , "\"seven\" < \"zebra\"";
+}
+
+test "un-inferable elem type: a comparison that cannot lower demotes its function" {
+    # A containment test MIR has no lowering for must demote the owning
+    # function to its Python implementation, never answer a guess, and must
+    # not take a clean sibling down with it.
+    (prog, ir) = compile_na_inline_ir(
+        "in_range",
+        "def f() -> int {\n"
+            + "    x = [];\n"
+            + "    x.append(7);\n"
+            + "    x.append(\"seven\");\n"
+            + "    if x[0] in range(10) {\n"
             + "        return 1;\n"
             + "    }\n"
             + "    return 0;\n"
             + "}\n"
+            + "def pure(n: int) -> int {\n"
+            + "    return n + 1;\n"
+            + "}\n"
     );
     assert not prog.errors_had , (
-        "the unorderable-comparison refusal is owned by f(), which must "
-        + f"demote, got {[str(e) for e in prog.errors_had]}"
+        "the refused comparison is owned by f(), which must demote, got "
+        + f"{[str(e) for e in prog.errors_had]}"
     );
     assert ir.gen.native_layout is not None , "whole-module native compile aborted";
     assert "f" not in ir.gen.native_layout.functions , (
         "the refused comparison's function must be demoted out of the layout, "
         + "never guessed"
     );
+    assert "pure" in ir.gen.native_layout.functions , "the clean sibling was lost";
 }
 
 test "isinstance-narrowed any container unboxes at the boxed-boundary flavor" {

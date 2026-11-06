@@ -184,7 +184,7 @@ test "a module that cannot be lowered is placed on the server inside the session
         );
         (base / 'models.jac').write_text(
             'def double(x: int) -> int {\n    return x * 2;\n}\n\n'
-                + 'with entry {\n    s = {1, "a"};\n    print(double(2), len(s));\n}\n'
+                + 'with entry {\n    v = memoryview(b"ab");\n    print(double(2), len(v));\n}\n'
         );
         entry_file = str(base / 'models.jac');
         with in_process_kernel() {

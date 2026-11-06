@@ -135,6 +135,30 @@ test "vendored binding parses, verifies and prints a module" {
     assert "add i32" in out;
 }
 
+# Disposing a context frees its modules, and the cycle collector finalizes a
+# module and its private context in either order: whichever goes last disposes.
+test "a module in a private context survives the cycle collector in either order" {
+    import gc;
+    for i in range(200) {
+        ctx = llvm.create_context();
+        box: list[any] = [
+            llvm.parse_assembly(f"define i32 @f{i}() {{ ret i32 {i} }}", ctx)
+        ];
+        box.append(ctx);
+        box.append(box);
+        if i % 2 == 0 {
+            other = llvm.parse_assembly(f"define i32 @g{i}() {{ ret i32 0 }}", ctx);
+            box[0].link_in(other);
+        }
+        ctx = None;
+        box = [];
+        if i % 25 == 0 {
+            gc.collect();
+        }
+    }
+    gc.collect();
+}
+
 
 test "every concrete ir type class has an __eq__ specimen" {
     specimens = _ir_type_specimens();

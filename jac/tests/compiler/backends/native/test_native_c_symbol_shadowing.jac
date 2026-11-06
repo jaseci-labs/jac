@@ -15,13 +15,7 @@ import re;
 import subprocess;
 import tempfile;
 import jaclang;
-import from tests.support {
-    compile_native,
-    compile_native_ir,
-    get_func,
-    jac_command,
-    TESTS_DIR
-}
+import from tests.support { compile_native, get_func, jac_command, TESTS_DIR }
 import from jaclang.compiler.frontend.codeinfo {
     NATIVE_RESERVED_C_SYMBOLS,
     native_def_symbol,
@@ -49,32 +43,7 @@ test "user strlen, puts and main do not replace the runtime's C symbols" {
     assert get_func(engine, "entry_names_probe", ctypes.c_int64)() == 1105;
 }
 
-test "C-named user definitions get Jac-owned symbols and C keeps its own" {
-    module = compile_native_ir("c_symbol_shadowing.jac");
-    text = str(module.gen.llvm_ir);
-    for name in ["floor", "sqrt", "strlen", "puts", "main"] {
-        assert re.search(rf'define [^\n]*@"[^"\n]*\.{name}"\(', text) , (
-            f"user {name} was not emitted under its module-qualified symbol"
-        );
-        assert not re.search(rf'define [^\n]*@"?{name}"?\(', text) , (
-            f"a user definition took over the C symbol {name}"
-        );
-    }
-    assert re.search(r'@"[^"\n]*\.pow" = ', text) , "glob pow kept the C name";
-    assert re.search(r'declare [^\n]*@"?floor"?\(double', text) , (
-        "libm floor is no longer declared for math.floor"
-    );
-}
-
-test "a public C-named definition is emitted as __jac_def_ beside the C symbol" {
-    module = compile_native_ir("c_symbol_shadowing_pub.jac");
-    text = str(module.gen.llvm_ir);
-    assert re.search(r'define [^\n]*@"?__jac_def_floor"?\(', text) , (
-        "a public floor was not emitted under its Jac-owned symbol"
-    );
-    assert not re.search(r'define [^\n]*@"?floor"?\(', text) , (
-        "a public floor took over the C symbol"
-    );
+test "a public C-named definition and the C symbol it shadows both answer" {
     (engine, _module) = compile_native("c_symbol_shadowing_pub.jac");
     assert get_func(engine, "pub_floor_probe", ctypes.c_int64)() == 7;
     assert get_func(engine, "math_floor_probe", ctypes.c_int64)() == 2;
@@ -145,12 +114,13 @@ test "native_def_symbol moves only C-named definitions" {
 }
 
 test "every C symbol the backend or a bundled module declares is reserved" {
-    # Drift guard: a new extern the backend declares, or a new C function a
-    # bundled na_stdlib module imports, must join NATIVE_RESERVED_C_SYMBOLS,
+    # Drift guard: a new extern the MIR emitter declares, or a new C function
+    # the native runtime or a bundled na_stdlib module imports, must join
+    # NATIVE_RESERVED_C_SYMBOLS,
     # or a user definition of that name collides with it again.
     package_dir = os.path.dirname(jaclang.__file__);
     declared: dict[str, str] = {};
-    backend = os.path.join(package_dir, "compiler", "backends", "native");
+    backend = os.path.join(package_dir, "compiler", "backends", "native", "mir");
     for (directory, _dirs, files) in os.walk(backend) {
         for file_name in files {
             if not file_name.endswith(".jac") {
@@ -161,7 +131,12 @@ test "every C symbol the backend or a bundled module declares is reserved" {
                 source = handle.read();
             }
             for found in re.finditer(
-                r'_get_or_declare_extern\(\s*"([A-Za-z_]\w*)"', source
+                r'\bextern(?:_call)?\(\s*(?:\w+,\s*)?"([A-Za-z_]\w*)"', source
+            ) {
+                declared[found.group(1)] = path;
+            }
+            for found in re.finditer(
+                r'SETJMP_SYMBOL: str = "([A-Za-z_]\w*)"', source
             ) {
                 declared[found.group(1)] = path;
             }
@@ -169,7 +144,8 @@ test "every C symbol the backend or a bundled module declares is reserved" {
     }
     stdlib = native_stdlib_root();
     assert stdlib is not None , "bundled na_stdlib not found";
-    for (directory, _dirs, files) in os.walk(stdlib) {
+    runtime = os.path.join(package_dir, "runtime", "native");
+    for (directory, _dirs, files) in [*os.walk(stdlib), *os.walk(runtime)] {
         for file_name in files {
             if not file_name.endswith(".jac") {
                 continue;
@@ -185,7 +161,9 @@ test "every C symbol the backend or a bundled module declares is reserved" {
             }
         }
     }
-    assert "floor" in declared and "strlen" in declared , "drift scan found nothing";
+    assert "floor" in declared and "strlen" in declared and "calloc" in declared , (
+        "drift scan found nothing"
+    );
     missing = sorted(
         f"{name} ({os.path.relpath(path, package_dir)})"
         for (name, path) in declared.items()

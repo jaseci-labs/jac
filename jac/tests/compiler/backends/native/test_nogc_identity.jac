@@ -349,3 +349,11 @@ test "a character indexed from a string reaches each owner as a copy" {
     assert out.splitlines() == ["a b ['c']", "a b ['c']", "900"] , out;
     _assert_nogc_leak_free("str_index_owners.jac");
 }
+
+test "containers drop the elements that leave them, and empty text is falsy" {
+    out = assert_native_identity(_fixture("container_element_drops.jac"));
+    lines = out.splitlines();
+    assert lines[:4] == ["clear", "drop 3", "drop 2", "drop 1"] , out;
+    assert "False True no yes" in lines , out;
+    assert lines[-2:] == ["drop 9", "done"] , out;
+}

@@ -22,7 +22,6 @@ import from jaclang.compiler.backends.native.link_plan {
     link_artifact
 }
 import from unittest.mock { patch }
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.unitree { Assignment, HasVar, Name }
 
 glob SOURCES: dict[str, str] = {
@@ -130,31 +129,44 @@ def _value_of(module: any, name: str) -> any {
     return None;
 }
 
-"""Build from `root_dir`, recording for each dependency a lowered unit reads
-whether it was typed on its declarations or analysed whole, and whether the
-value given to each of `names` carries a type."""
+"""Build from `root_dir`, recording, each time a unit is lowered, for every
+other module its lowering session holds whether it was typed on its
+declarations or analysed whole, and whether the value given to each of
+`names` carries a type."""
 def _plan_recording(
     root_dir: str, names: list[str]
 ) -> tuple[JacProgram, any, dict[str, DepTyping]] {
+    import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
     seen: dict[str, DepTyping] = {};
-    original = NaIRGenPass._ensure_dep_inference;
-    def record(lowering: NaIRGenPass, dep_mod: any) {
-        original(lowering, dep_mod);
+    original = MirNativePass._run_impl;
+    def record(lowering: MirNativePass, ir_in: any) -> any {
+        out = original(lowering, ir_in);
         analysis = lowering.prog.analysis;
-        typed: dict[str, bool] = {};
-        for name in names {
-            value = _value_of(dep_mod, name);
-            if value is not None {
-                typed[name] = value.type is not None;
+        here = os.path.realpath(ir_in.loc.mod_path);
+        for dep_mod in list(lowering.prog.mod.hub.values()) {
+            if dep_mod.loc is None or not dep_mod.loc.mod_path {
+                continue;
             }
+            path = os.path.realpath(dep_mod.loc.mod_path);
+            if path == here {
+                continue;
+            }
+            typed: dict[str, bool] = {};
+            for name in names {
+                value = _value_of(dep_mod, name);
+                if value is not None {
+                    typed[name] = value.type is not None;
+                }
+            }
+            seen[path] = DepTyping(
+                decl_types=analysis.provides(dep_mod, AnalysisFact.DECL_TYPES),
+                whole=analysis.provides(dep_mod, AnalysisFact.TYPE_OF),
+                typed=typed
+            );
         }
-        seen[os.path.realpath(dep_mod.loc.mod_path)] = DepTyping(
-            decl_types=analysis.provides(dep_mod, AnalysisFact.DECL_TYPES),
-            whole=analysis.provides(dep_mod, AnalysisFact.TYPE_OF),
-            typed=typed
-        );
+        return out;
     }
-    with patch.object(NaIRGenPass, "_ensure_dep_inference", record) {
+    with patch.object(MirNativePass, "_run_impl", record) {
         (prog, plan) = _plan_for(root_dir);
     }
     return (prog, plan, seen);

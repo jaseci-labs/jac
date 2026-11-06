@@ -293,16 +293,22 @@ impl JacCompiler._get_bytecode(
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
     try {
-        result = self.compile(
-            file_path=full_target, target_program=actual_program, options=options
-        );
-        if result.gen.py_bytecode {
-            actual_program.hub_cache_stamp(full_target);
-            self._persist_module_cache(full_target, result, actual_program);
+        import from jaclang.compiler.driver.jir { compiled_content_scope }
+        with compiled_content_scope() {
+            compiled = self.compile(
+                file_path=full_target, target_program=actual_program, options=options
+            );
+            result = compiled;
+            if compiled.gen.py_bytecode {
+                actual_program.hub_cache_stamp(full_target);
+                self._persist_module_cache(full_target, compiled, actual_program);
+            }
+        }
+        if compiled.gen.py_bytecode {
             if is_internal {
                 note_compiler_source_failure(full_target, '');
             }
-            return marshal.loads(result.gen.py_bytecode);
+            return marshal.loads(compiled.gen.py_bytecode);
         }
         if is_internal {
             note_compiler_source_failure(
@@ -368,6 +374,7 @@ impl JacCompiler._adopt_kernel_compile(
                     )
                 );
             }
+            sections[SEC_PRODUCER] = kernel_identity().encode("utf-8");
             try {
                 write_module_cache(unit.path, bytecode, extra_sections=sections);
             } except OSError {}
@@ -419,6 +426,15 @@ impl JacCompiler.kernel_native_entry(
     if options is None and module_record(path, target_program) is not None {
         return (False, None);
     }
+    forced = False;
+    if options is not None and options.force_codespace == "native" {
+        forced = True;
+        if not options.native_required {
+            import copy;
+            options = copy.copy(options);
+            options.native_required = True;
+        }
+    }
     actual = self.selfhost.resolve(path, target_program, execution=True);
     import from jaclang.project.kernel_compile { kernel_generates_native }
     if actual.internal or not kernel_generates_native(actual, path) {
@@ -430,6 +446,12 @@ impl JacCompiler.kernel_native_entry(
         compiled = self.product_program(path, target_program, execution=True);
     } else {
         self._adopt_kernel_compile(path, actual, options);
+        if forced and actual.errors_had {
+            import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+            raise LinkPlanError(
+                "\n".join(error.pretty_print() for error in actual.errors_had)
+            );
+        }
     }
     import from jaclang.compiler.placement.placement { summary_store }
     placed = summary_store(compiled).get(os.path.abspath(path));
@@ -488,7 +510,20 @@ impl JacCompiler._load_native_from_cache(
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
         full_target
     );
+    py_func_table: dict[str, Callable[..., object]] = {};
+    callbacks_list: list[object] = [];
+    manifest = interop_manifest_of(cached_interop) if cached_interop else None;
     if engine is None {
+        if manifest is not None and manifest.callable_native_imports {
+            import from jaclang.runtime.interop_bridge { register_py_callbacks }
+            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            register_py_callbacks(
+                manifest.callable_native_imports,
+                py_func_table,
+                callbacks_list,
+                llvm.add_symbol
+            );
+        }
         import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
         engine = jit_engine_for_cached(
             target_program,
@@ -502,25 +537,10 @@ impl JacCompiler._load_native_from_cache(
     gen = target_program.hub.artifacts.get(full_target) or CodeGenTarget();
     self._restore_native_clibs(gen, cached_interop);
     gen.native_engine = engine;
-    py_func_table: dict[str, Callable[..., object]] = {};
-    callbacks_list: list[object] = [];
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
-    if cached_interop {
-        manifest = interop_manifest_of(cached_interop);
+    if manifest is not None {
         gen.interop_manifest = manifest;
-        import from jaclang.runtime.native_library { SharedNativeEngine }
-        if manifest.callable_native_imports
-            and not isinstance(engine, SharedNativeEngine) {
-            import from jaclang.runtime.interop_bridge { register_py_callbacks }
-            import jaclang.compiler.backends.native.llvm.binding as llvm;
-            register_py_callbacks(
-                manifest.callable_native_imports,
-                py_func_table,
-                callbacks_list,
-                llvm.add_symbol
-            );
-        }
     }
     target_program.hub.artifacts[full_target] = gen;
 }

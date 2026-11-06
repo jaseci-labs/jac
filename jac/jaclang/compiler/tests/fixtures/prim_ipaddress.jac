@@ -10,11 +10,10 @@ each lane, so the fixture compares `str(e)`). IPv6 addresses are an unsigned
 128-bit (hi, lo) pair natively, so no `.int` key is pinned.
 
 The concrete classes -- not the `ip_address`/`ip_network` factories -- carry the
-work, because a factory returns a union that erases to `any`, and `a in net`
-over an `any` operand is E1124 on the native pathway (there is no layout to
-answer the membership test from). `__contains__`/`__lt__` are spelled out for
-the same reason. The `ip_address`/`ip_network`/`ip_interface` factories return a union that
-erases to `any`, which neither `in` nor `str()` can dispatch on natively, so they
+work, because a factory returns a union that erases to `any`, and an `any`
+holding an object cannot dispatch the object's own `__contains__`/`__lt__`
+natively. `__contains__`/`__lt__` are spelled out for the same reason. The `ip_address`/`ip_network`/`ip_interface` factories return a union that
+erases to `any`, which `in` cannot dispatch on natively, so they
 are covered by the module's own docs rather than pinned here. The bad-address arm
 catches `ipaddress.AddressValueError` by its exact class: a parent-class arm does
 not catch a module-defined subclass on the ctypes-JIT path (jaseci-labs/jac#9380),

@@ -227,8 +227,8 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
     if Path(package_dir).name == "jaclang" {
         result = list(candidates);
     } else {
+        import from jaclang.compiler.placement.placement_cache { discover_spaces }
         import from jaclang.compiler.placement.placement_facts {
-            discover_spaces,
             spaces_are_client_only
         }
         import from jaclang.compiler.driver.program { JacProgram }

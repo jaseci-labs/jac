@@ -22,6 +22,7 @@ Design notes:
 """
 
 import from engine.src.runtime.jsvalue {
+    jsv_is_symbol,
     JSValue,
     js_undefined,
     js_null,
@@ -64,6 +65,7 @@ import from engine.src.runtime.jsstring {
     utf8_encode_scalar
 }
 import from engine.src.runtime.error {
+    vm_has_native_exc,
     make_syntax_error,
     make_type_error,
     vm_throw_native

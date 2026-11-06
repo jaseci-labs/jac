@@ -269,7 +269,12 @@ impl CtEvaluator._eval_inner(nd: UniNode) -> CtValue {
     if isinstance(nd, SpecialVarRef) {
         return self._eval_special(nd);
     }
-    if isinstance(nd, BuiltinType) {
+    if isinstance(nd, BuiltinType)
+        and not (
+            nd.sym is not None
+            and nd.sym.decl is not None
+            and nd.sym.decl.loc.mod_path == nd.loc.mod_path
+        ) {
         return self._builtin_type(nd.value);
     }
     if isinstance(nd, Name) {
@@ -822,6 +827,10 @@ impl CtEvaluator._eval_symbol(sym: Symbol, use: UniNode) -> CtValue {
                     return self._enum_member_of(par);
                 }
                 if par.is_comptime {
+                    twin = variant_assignment(self.evaluator.program, par, node_.value);
+                    if twin is not None and twin.is_comptime {
+                        return self._eval_binding(twin);
+                    }
                     return self._eval_binding(par);
                 }
                 if self._is_comptime_glob(par, node_.value) {

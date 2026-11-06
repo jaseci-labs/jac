@@ -38,7 +38,8 @@ obj NativeUnitRegistry {
         stop_after: int = 0,
         lowered_units: int = 0,
         unit_lower_seconds: dict[str, float] = {},
-        unit_functions: dict[str, tuple[int, int]] = {};
+        unit_functions: dict[str, tuple[int, int]] = {},
+        noted_demotions: dict[str, str] = {};
 
     def postinit;
     def begin_parse(path: str);
@@ -121,7 +122,7 @@ obj NativeUnitRegistry {
         path: str, options: CompileOptions, products: bool = True
     ) -> (NativeIface | None);
 
-    def dep_discovery_open -> bool;
+    def dep_pending(path: str) -> bool;
     def close_dep_deferral -> bool;
     def known_native_deps(path: str, options: CompileOptions) -> list[str];
     def product_sections(path: str) -> dict[int, bytes];
@@ -188,6 +189,7 @@ obj NativeBuildSession {
         deferred: list[set[str]] = [],
         discovery_open: list[bool] = [],
         unlowerable: set[str] = set(),
+        held_errors: list[Alert] = [],
         heap: SessionHeap = SessionHeap();
 
     def discovering -> bool;

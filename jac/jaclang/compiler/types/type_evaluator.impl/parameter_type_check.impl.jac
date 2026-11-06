@@ -324,6 +324,10 @@ impl TypeEvaluator._validate_call_type(
         if na_iter_ret is not None {
             return na_iter_ret;
         }
+        na_struct_ret = self._native_struct_unpack_result(expr);
+        if na_struct_ret is not None {
+            return na_struct_ret;
+        }
     }
 
     if isinstance(caller_type, AnyType) {
@@ -417,6 +421,11 @@ impl TypeEvaluator._validate_call_type(
                 if isinstance(first_arg, KWPair)
                 else first_arg;
             cast_target_type = self.get_type_of_expression(first_arg_expr);
+            for rest in expr.params[1:] {
+                self.get_type_of_expression(
+                    rest.value if isinstance(rest, KWPair) else rest
+                );
+            }
             if not isinstance(cast_target_type, UnknownType) {
                 return self._convert_to_instance(cast_target_type);
             }
@@ -710,6 +719,8 @@ impl TypeEvaluator._validate_call_type(
         }
         if matched_method is not None {
             expr.callee_signature = matched_method;
+        } else {
+            self._evaluate_call_args(expr);
         }
 
         inferred_type_args = self._infer_type_args_from_method(
@@ -792,6 +803,9 @@ impl TypeEvaluator.match_args_to_params(
         try {
             spread = _literal_kwargs_spread(arg) if isinstance(arg, KWPair) else None;
             if spread is not None {
+                if isinstance(arg, KWPair) {
+                    self.get_type_of_expression(arg.value);
+                }
                 for (name, value_expr) in spread {
                     spread_param = param_tracker.lookup_named_parameter(name);
                     if spread_param is None {

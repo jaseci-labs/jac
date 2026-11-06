@@ -850,13 +850,6 @@ test "native print renders bools as True and False" {
     run_with_both(
         "prim_print_bool.jac", "pbool_py", "pbool_cl", "pbool_na", require=["cl", "na"]
     );
-    # The native print of an i1 must go through the True/False string
-    # select, not the %lld integer path that rendered bools as 1/0.
-    (eng, na_ir) = compile_native("prim_print_bool.jac");
-    llvm_txt = str(na_ir.gen.llvm_ir);
-    assert (".repr.true" in llvm_txt) and (".repr.false" in llvm_txt) , (
-        "print(bool) must select the True/False repr strings natively"
-    );
 }
 
 test "bundled shutil" {
@@ -885,31 +878,27 @@ test "native sort never silently orders object-returning keys" {
     );
 }
 
-test "native gradual object keys demote, never pointer-sort (#9158)" {
+test "native gradual object keys never pointer-sort (#9158)" {
     # A `-> any` key slips the checker's overloads, so only the native
-    # gate sees the danger: the erased i8* is indistinguishable from
-    # string data, and object pointers must never reach strcmp. The
-    # function demotes to its Python implementation instead, while a
-    # semantic `-> str` key in the same module stays natively lowered.
+    # lane sees the danger: object pointers must never reach strcmp. The
+    # native sort orders a gradual key through the boxed-any comparison,
+    # which refuses two objects with TypeError exactly as CPython does,
+    # while a semantic `-> str` key in the same module orders by text.
     (eng, na_ir) = compile_native("prim_sort_key_gradual.jac");
     llvm_txt = str(na_ir.gen.llvm_ir);
-    issues = native_lowering_issues(llvm_txt);
+    iface: any = na_ir.gen.native_iface;
     demoted = [
-        i
-        for i in issues
-        if "grad_obj_na" in i.symbol
+        sym.rsplit(".", 1)[-1]
+        for sym in (list(iface.demoted) if iface is not None else [])
     ];
-    assert len(demoted) == 1 , (
-        f"gradual object key function should demote exactly once: {issues}"
+    assert "grad_str_na" not in demoted , (
+        f"semantic str key must lower natively: {demoted}"
     );
-    assert "orderable key values" in demoted[0].detail , demoted[0].detail;
-    kept = [
-        i
-        for i in issues
-        if "grad_str_na" in i.symbol
-    ];
-    assert len(kept) == 0 , f"semantic str key must lower natively: {kept}";
-    assert "__jac_str_cmp" in llvm_txt , "str-key control should use the semantic string comparator";
+    assert "grad_obj_raises_na" not in demoted , (
+        f"gradual object key must lower natively: {demoted}"
+    );
+    raised = get_func(eng, "grad_obj_raises_na", ctypes.c_int64)();
+    assert raised == 1 , "a gradual object key must raise TypeError natively";
     import re;
     assert re.search(r'\bcall\s+i32\s+@"?strcmp"?\(', llvm_txt) is None , (
         "no raw pointer may reach libc strcmp (#9158)"

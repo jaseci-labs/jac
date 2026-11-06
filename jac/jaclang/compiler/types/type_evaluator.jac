@@ -1,5 +1,4 @@
 import os;
-import from pathlib { Path }
 
 import from typing { cast }
 
@@ -36,6 +35,7 @@ obj PrefetchedTypes {
         edge_class: ClassType | None = None,
         walker_class: ClassType | None = None,
         path_class: ClassType | None = None,
+        task_class: ClassType | None = None,
         jsx_element_class: ClassType | None = None,
         html_common_props_class: ClassType | None = None,
         jsx_intrinsic_elements_class: ClassType | None = None,
@@ -163,6 +163,7 @@ walker TypeEvaluator {
         _flow_pending_keys: set[tuple[str, int]] postinit,
         _module_type_cache: dict[str, ModuleType] = {},
         _modules_in_compile: set[str] postinit,
+        _flight_placeholders: dict[int, Module] postinit,
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
@@ -210,9 +211,10 @@ walker TypeEvaluator {
 
     def _in_flight_module(resolved_path: str) -> (Module | None);
     def _module_in_flight(path: str) -> bool;
+    def _is_flight_placeholder(mod: any) -> bool;
     def _resolve_importer_path(ast_node: UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
-    def _resolve_from_path(from_mod: ModulePath) -> Path;
+    def _resolve_from_path(from_mod: ModulePath) -> str;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
     def _declared_missing_dependency(node_: ModulePath) -> (str | None);
@@ -445,6 +447,7 @@ walker TypeEvaluator {
         expr: AtomTrailer, base_type: (TypeBase | None) = None
     ) -> TypeBase;
 
+    def _null_ok_index_type(expr: AtomTrailer, base_type: TypeBase) -> TypeBase;
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
     def _provided_import_item_symbol(node_: ModuleItem) -> Symbol | None;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
@@ -491,6 +494,11 @@ walker TypeEvaluator {
 
     def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
+    def struct_format_fields(
+        fmt: str
+    ) -> (tuple[list[tuple[str, int, int]], int, bool] | None);
+
+    def _native_struct_unpack_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(
         edge_type: ClassType, want_src: bool
@@ -531,18 +539,21 @@ walker TypeEvaluator {
         at: UniNode
     ) -> None;
 
+    def _same_type_args(ty: ClassType, existing: ClassType) -> bool;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
+    def _literal_member_known(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
+    def _is_empty_container_expr(expr: Expr) -> bool;
     def _get_expected_container_type(
-        expected_type: TypeBase | None, container_class: TypeBase
+        expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
     ) -> ClassType | None;
 
     def _get_expected_element_type(
-        expected_type: TypeBase | None, container_class: TypeBase
+        expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
     ) -> TypeBase | None;
 
     def _get_expected_kv_types(
-        expected_type: TypeBase | None, dict_class: TypeBase
+        expected_type: TypeBase | None, dict_class: TypeBase, empty: bool = False
     ) -> tuple[TypeBase, TypeBase] | None;
 
     def _infer_elem_from_mutations(
@@ -560,6 +571,7 @@ walker TypeEvaluator {
     ) -> FunctionType;
 
     def _lookup_class_member(base_type: ClassType, member: str) -> ClassMember | None;
+    def _inherited_member_declared_type(symbol: Symbol) -> (TypeBase | None);
     def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;
@@ -756,6 +768,10 @@ walker TypeEvaluator {
         loop_node: UniCFGNode, target: NarrowingTarget
     ) -> bool;
 
+    def _loop_back_edge_types(
+        loop_node: UniCFGNode, target: NarrowingTarget
+    ) -> (list[TypeBase] | None);
+
     def _classify_edge(pred: IfStmt, succ: UniCFGNode) -> str;
     def _find_predicate_for(
         target: NarrowingTarget, condition: Expr
@@ -795,6 +811,8 @@ walker TypeEvaluator {
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
     def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
+    def _get_type_of_match_capture(pattern: MatchPattern) -> TypeBase;
+    def _match_position_type(pattern: MatchPattern) -> TypeBase;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _isinstance_classinfo_is_exact(expr: Expr) -> bool;

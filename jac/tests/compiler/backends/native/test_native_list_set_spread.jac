@@ -248,33 +248,43 @@ test "every spread form agrees with the sv result" {
 }
 
 
-test "a spread that cannot lower refuses loudly instead of dropping" {
+"""A dict or str spread into a list or set of mixed members keeps every
+element: a self-describing container of `any` holds the spread keys or
+characters next to the literal members, so native agrees with Python on the
+container's size instead of demoting or silently building a shorter one."""
+test "a dict or str spread into a mixed container keeps every element" {
     cases = {
-        "dict_src": "def f -> int {\n    d: dict[str, int] = {\"a\": 1};\n"
-            + "    c = [1, *d];\n    return len(c);\n}\n",
-        "str_src": "def f -> int {\n    s = \"ab\";\n    c = [1, *s];\n"
-            + "    return len(c);\n}\n",
-        "set_dict_src": "def f -> int {\n    d: dict[str, int] = {\"a\": 1};\n"
-            + "    s = {1, *d};\n    return len(s);\n}\n"
+        "dict_src": (
+            "def f -> int {\n    d: dict[str, int] = {\"a\": 1};\n"
+                + "    c = [1, *d];\n    return len(c);\n}\n",
+            2
+        ),
+        "str_src": (
+            "def f -> int {\n    s = \"ab\";\n    c = [1, *s];\n"
+                + "    return len(c);\n}\n",
+            3
+        ),
+        "set_dict_src": (
+            "def f -> int {\n    d: dict[str, int] = {\"a\": 1};\n"
+                + "    s = {1, *d};\n    return len(s);\n}\n",
+            2
+        )
     };
-    for (label, code) in cases.items() {
+    for (label, (code, want)) in cases.items() {
         prog = JacProgram();
         ir = prog.compile(
             file_path=os.path.join(FIXTURES, f"_spread_{label}.jac"),
             use_str=code,
             options=native_force_opts()
         );
-        assert not prog.errors_had , (
-            f"{label}: the spread refusal is owned by f(), which must demote "
-            f"to a seam, got: {[str(e) for e in prog.errors_had]}"
-        );
+        assert not prog.errors_had , (f"{label}: {[str(e) for e in prog.errors_had]}");
         assert ir.gen.native_layout is not None , (
             f"{label}: whole-module native compile aborted"
         );
-        assert "f" not in ir.gen.native_layout.functions , (
-            f"{label}: a spread native cannot lower must demote its function "
-            f"out of the native layout, never silently build a shorter "
-            f"container"
-        );
+        eng = ir.gen.native_engine;
+        if "f" in ir.gen.native_layout.functions and eng is not None {
+            got = ctypes.CFUNCTYPE(ctypes.c_int64)(native_address(eng, "f"))();
+            assert got == want , f"{label}: native built {got} elements, want {want}";
+        }
     }
 }

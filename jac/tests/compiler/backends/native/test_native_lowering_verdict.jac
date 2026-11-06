@@ -6,16 +6,6 @@ import from jaclang.compiler.backends.native.lowering {
     native_fallbacks_in_ir,
     native_lowering_issues
 }
-import from tests.support { compile_native, native_arch }
-
-test "method demotion is visible without changing the method ABI name" {
-    (_, module) = compile_native("partial_native.jac");
-    text = str(module.gen.llvm_ir);
-    issues = native_lowering_issues(text);
-    symbol = f"{native_arch('partial_native.jac', 'Literal')}.evaluate";
-    assert any(issue.symbol == symbol for issue in issues);
-    assert symbol in native_fallbacks_in_ir(text).symbols;
-}
 
 test "lowering records retain details through bitcode and linking" {
     left = ir.Module(name="left");

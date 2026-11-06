@@ -1,15 +1,34 @@
-impl read_file_with_encoding(file_path: str) -> str {
+impl read_file_with_encoding(
+    file_path: str, reads: (dict[str, str] | None) = None
+) -> str {
+    import hashlib;
+    import io;
+    try {
+        with open(file_path, "rb") as f {
+            data = f.read();
+        }
+    } except Exception as e {
+        raise OSError(
+            f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
+        );
+    }
+    if reads is not None {
+        real = os.path.realpath(file_path);
+        digest = hashlib.sha256(data).hexdigest();
+        if reads.get(real, digest) == digest {
+            reads[real] = digest;
+        } else {
+            reads[real] = "";
+            reads[CONTENT_CONFLICTS] = str(
+                int(reads.get(CONTENT_CONFLICTS, "0") or "0") + 1
+            );
+        }
+    }
     for encoding in _JAC_TEXT_ENCODINGS {
         try {
-            with open(file_path, encoding=encoding) as f {
-                return f.read();
-            }
+            return io.TextIOWrapper(io.BytesIO(data), encoding=encoding).read();
         } except UnicodeError {
             continue;
-        } except Exception as e {
-            raise OSError(
-                f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            );
         }
     }
     raise OSError(

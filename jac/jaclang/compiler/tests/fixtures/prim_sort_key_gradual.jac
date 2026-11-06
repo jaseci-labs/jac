@@ -24,3 +24,13 @@ def grad_str_na -> dict[str, str] {
     by_name: list[Gthing] = sorted(things, key=lambda (t: Gthing) -> str { t.name; });
     return {"s0": by_name[0].name};
 }
+
+def grad_obj_raises_na -> int {
+    things: list[Gthing] = [Gthing(name="b2"), Gthing(name="a9")];
+    try {
+        sorted(things, key=lambda (t: Gthing) -> any { t; });
+    } except TypeError {
+        return 1;
+    }
+    return 0;
+}

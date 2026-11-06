@@ -873,6 +873,48 @@ test "bug_cast_union_instance" {
     );
 }
 
+test "empty_list_after_or_takes_the_protocols_element_type" {
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_empty_or_protocol.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    assert len(program.errors_had) == 0 , f"{[str(e) for e in program.errors_had]}";
+    targets = [
+        t for asg in mod.get_all_sub_nodes(uni.Assignment)
+        for t in asg.target
+        if isinstance(t, uni.Name) and t.value == "got"
+    ];
+    assert len(targets) == 1;
+    assert str(targets[0].type) == "list[Item]" , f"got is {targets[0].type}";
+}
+
+test "cast_records_the_value_arguments_type" {
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_cast_value_typed.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    assert len(program.errors_had) == 0 , f"{[str(e) for e in program.errors_had]}";
+    calls = [
+        call
+        for call in mod.get_all_sub_nodes(uni.FuncCall)
+        if isinstance(call.target, uni.Name) and call.target.value == "cast"
+    ];
+    assert len(calls) == 2;
+    for call in calls {
+        for arg in list(call.params)[1:] {
+            value = arg.value if isinstance(arg, uni.KWPair) else arg;
+            assert isinstance(value, uni.Expr);
+            assert value.type is not None , f"cast's value argument at line {value.loc.first_line} has no recorded type";
+        }
+    }
+}
+
 # =========================================================================
 # Bug #NONE-EQ: `x == None` / `x != None` did not narrow `T | None`.
 #
@@ -2389,4 +2431,38 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
         "Bug #CTOR-INIT-ARGS: `dict({1: \"one\"})` is a dict[int, str]. "
         f"Line 24 reported: {by_line.get(24)}"
     );
+}
+
+test "bug_union_iter_1_union_of_one_container_class_iterates_its_elements" {
+    program = compile_and_check("checker_bug_union_list_iteration.jac");
+    errors = [str(e) for e in program.errors_had];
+    assert len(errors) == 2 , errors;
+    assert all("int" in e for e in errors) , errors;
+}
+
+test "iterating a union of lists yields the union of their element types" {
+    program = compile_and_check("checker_iter_union_of_lists.jac");
+    assert len(program.errors_had) == 1 , [str(e) for e in program.errors_had];
+    assert "A | B" in str(program.errors_had[0]) , str(program.errors_had[0]);
+}
+
+test "an untyped self assignment keeps the declared type of an inherited member" {
+    program = compile_and_check("checker_inherited_member_assignment.jac");
+    errors = [str(e) for e in program.errors_had];
+    assert len(errors) == 2 , errors;
+    assert any("list[int] | None" in e for e in errors) , errors;
+    assert any("int | None" in e and "list" not in e for e in errors) , errors;
+}
+
+test "iterating a union with an any member yields any" {
+    program = compile_and_check("checker_iter_union_with_any.jac");
+    assert len(program.errors_had) == 0 , [str(e) for e in program.errors_had];
+}
+
+test "a dict literal's differently typed list values are checked whichever key comes first" {
+    program = compile_and_check("checker_dict_value_lists_kept_apart.jac");
+    errors = [str(e) for e in program.errors_had];
+    assert len(errors) == 2 , errors;
+    lines = sorted(e.loc.first_line for e in program.errors_had);
+    assert lines == [9, 10] , errors;
 }

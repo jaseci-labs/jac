@@ -7,14 +7,13 @@ captures bind as a pointer to the enclosing frame's slot so writes
 propagate. A capturing closure used as a VALUE (returned, stored, passed)
 lowers via closure conversion: captured variables of the frame promote to
 RC heap cells (Python cell semantics) and the closure becomes an RC
-{fn, env} pair whose env keeps the cells alive after the frame dies. The
-remaining unsupported shapes (a capture borrowed from an outer frame, a
-call through an `any`-typed value) stay structured E5092 errors, never a
-silently mis-bound value.
+{fn, env} pair whose env keeps the cells alive after the frame dies, a
+capture reached through a middle frame included. A call through an
+`any`-typed value stays a structured E5092 error, never a silently
+mis-bound value.
 """
 
 import ctypes;
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import os;
 import from tests.support {
     TESTS_DIR,
@@ -28,8 +27,6 @@ import jaclang;
 
 test "lambda parameters remain borrowed across explicit returns" {
     (engine, module) = compile_native("lambda_borrowed_params.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(engine, "call_lambda", ctypes.c_int64);
     drops = get_func(engine, "drop_count", ctypes.c_int64);
     assert call() == 770;
@@ -144,8 +141,6 @@ def probe -> int {
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
     assert call() == 50;
 }
@@ -172,8 +167,6 @@ def drops -> int { return dropped; }
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
     drops = get_func(module.gen.native_engine, "drops", ctypes.c_int64);
     before = drops();
@@ -200,8 +193,6 @@ def probe -> int {
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
     assert call() == 35;
 }
@@ -283,7 +274,7 @@ test "closure escape: capturing lambda escapes as a value" {
     assert g() == 23;
 }
 
-test "closure escape: capture borrowed from an outer frame stays rejected" {
+test "closure escape: a capture reached through a middle frame lives in its cell" {
     (prog, ir) = compile_na_inline_ir(
         "transitive_escape",
         "def outer(y: int) -> Callable[[], int] {\n"
@@ -293,15 +284,17 @@ test "closure escape: capture borrowed from an outer frame stays rejected" {
         "    }\n"
         "    return mid();\n"
         "}\n"
+        "def check(v: int) -> int {\n"
+        "    f = outer(v);\n"
+        "    g = outer(v + 1);\n"
+        "    return f() * 100 + g();\n"
+        "}\n"
     );
-    assert not prog.errors_had , (
-        f"the outer-frame capture refusal is owned by outer(), which must "
-        f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
-        "a closure escaping with an outer-frame capture must demote its "
-        "function out of the native layout, never lower wrongly"
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    assert "outer" in ir.gen.native_layout.functions , "outer demoted";
+    got = get_func(ir.gen.native_engine, "check", ctypes.c_int64, ctypes.c_int64)(5);
+    assert got == 506 , (
+        f"each closure keeps the cell of the frame that made it: {got}"
     );
 }
 

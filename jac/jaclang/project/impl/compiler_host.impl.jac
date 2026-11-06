@@ -287,8 +287,8 @@ impl ProjectHost.native_dep_iface(
     );
 }
 
-impl ProjectHost.native_dep_discovery_open(program: JacProgram) -> bool {
-    return program.native_units().dep_discovery_open();
+impl ProjectHost.native_dep_pending(program: JacProgram, path: str) -> bool {
+    return program.native_units().dep_pending(path);
 }
 
 impl ProjectHost.native_deps_deferred(program: JacProgram) -> bool {
@@ -311,6 +311,26 @@ impl ProjectHost.held_native_iface(
 impl ProjectHost.native_lowering_failed(program: JacProgram, path: str, detail: str) {
     import os;
     program.native_units().failures[os.path.realpath(path)] = detail;
+}
+
+impl ProjectHost.register_host_products {
+    if self._host_products_registered {
+        return;
+    }
+    self._host_products_registered = True;
+    import from jaclang.compiler.driver.host_products { register_host_products }
+    register_host_products();
+}
+
+impl ProjectHost.note_native_demotion(
+    program: JacProgram, key: str, reason: str
+) -> bool {
+    shown = program.native_units().noted_demotions;
+    if shown.get(key) == reason {
+        return False;
+    }
+    shown[key] = reason;
+    return True;
 }
 
 impl ProjectHost.save_native_debug_ir(path: str, text: str) {
@@ -570,7 +590,7 @@ impl ProjectHost.path_facts(path: str) -> PathFacts {
 }
 
 impl ProjectHost.read_source(path: str) -> str {
-    return read_file_with_encoding(path);
+    return read_file_with_encoding(path, compiled_content_reads());
 }
 
 impl ProjectHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
@@ -883,7 +903,9 @@ impl _native_scan_path(path: str, digest: str) -> str {
     import hashlib;
     import os;
     name = hashlib.sha256(
-        (digest + "\x00" + module_env_fingerprint(path)).encode()
+        (
+            digest + "\x00" + module_env_fingerprint(path) + "\x00" + kernel_identity()
+        ).encode()
     ).hexdigest();
     return os.path.join(
         str(get_jir_cache_dir()), "nativescan", name[:2], name + ".txt"

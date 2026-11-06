@@ -98,6 +98,8 @@ def refuse_unloadable;
 
 def resolve_kernel -> (ResolvedKernel | None);
 
+def kernel_identity -> str;
+
 def build_kernel(
     dst: str = "",
     log: (Callable[[str], None] | None) = None,

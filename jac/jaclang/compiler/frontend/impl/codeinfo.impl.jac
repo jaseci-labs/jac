@@ -503,6 +503,7 @@ impl kernel_unit_path(rel: str) -> str {
     return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
 }
 
+
 impl kernel_unit_paths -> list[str] {
     return [kernel_unit_path(rel) for rel in kernel_unit_rels()];
 }
@@ -532,7 +533,8 @@ impl is_kernel_unit_path(path: str) -> bool {
             return True;
         }
     }
-    return False;
+    return rp.endswith(".jac")
+        and os.path.dirname(rp) == real_path(kernel_unit_path("runtime/native"));
 }
 
 impl native_erased_import_names(module_name: str, names: list[str]) -> bool {
@@ -646,6 +648,24 @@ impl is_native_by_location(file_path: str) -> bool {
     ap = os.path.abspath(file_path);
     for pkg in bundled_pkg_roots() {
         if ap.startswith(os.path.join(pkg, "runtime", "na_stdlib") + os.sep) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl is_native_compiler_unit(file_path: str) -> bool {
+    import os;
+    if not file_path {
+        return False;
+    }
+    if is_kernel_unit_path(file_path) {
+        return True;
+    }
+    ap = os.path.abspath(file_path);
+    for pkg in bundled_pkg_roots() {
+        if ap.startswith(os.path.join(pkg, "runtime", "native") + os.sep)
+            or ap == os.path.join(pkg, OSP_NATIVE_REL.replace("/", os.sep)) {
             return True;
         }
     }

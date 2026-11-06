@@ -59,9 +59,12 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "def other(x: int) -> int {\n"
          "    return x * 2;\n"
          "}\n\n"
+         "def late(n: int) -> int {\n"
+         "    print(n, flush=n > 0);\n"
+         "    return n;\n"
+         "}\n\n"
          "with entry {\n"
-         "    s = {1, \"a\"};\n"
-         "    print(other(2), len(s));\n"
+         "    print(other(2), late(1));\n"
          "}\n"
      ),
      CLEAN_SRC = (
@@ -97,10 +100,14 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "}\n"
      ),
      ERASED_SRC = (
-         "import json;\n\n"
+         "def pick(x: int | None) -> int {\n"
+         "    if x < 5 {\n"
+         "        return 1;\n"
+         "    }\n"
+         "    return 0;\n"
+         "}\n\n"
          "with entry {\n"
-         "    data = json.loads(\"[1, 2]\");\n"
-         "    print(1 in data);\n"
+         "    print(pick(3));\n"
          "}\n"
      ),
      STRICT_SRC = (
@@ -169,8 +176,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    return json.dumps(x, indent=2);\n"
          "}\n\n"
          "def bad(n: int) -> int {\n"
-         "    s = {1, \"a\"};\n"
-         "    return len(s) + n;\n"
+         "    print(n, flush=n > 0);\n"
+         "    return n;\n"
          "}\n\n"
          "def double(n: int) -> int {\n"
          "    return n * 2;\n"
@@ -199,8 +206,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "obj Foo {\n"
          "    has n: int = 1;\n\n"
          "    def size -> int {\n"
-         "        s = {1, \"a\"};\n"
-         "        return len(s) + self.n;\n"
+         "        print(self.n, flush=self.n > 0);\n"
+         "        return self.n;\n"
          "    }\n"
          "}\n\n"
          "with entry {\n"
@@ -455,7 +462,7 @@ test "what only matters natively is a note on the typed module, never a type err
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert parses == 1 , f"the module is analyzed once, got {parses} analyses";
     assert mod.decided_codespace != 'native';
-    assert "E1124" in [note.code for note in capability_notes_of(prog, path, "native")];
+    assert "E1121" in [note.code for note in capability_notes_of(prog, path, "native")];
 }
 
 test "a finding that only matters natively keeps its own code where native is required" {
@@ -472,8 +479,9 @@ test "a finding that only matters natively keeps its own code where native is re
         for e in forced.errors_had
         if e.code is not None
     ];
-    assert "E1124" in codes and "E1121" in codes , (
-        f"forced native must report the recorded findings under their own "
+    assert "E1121" in codes and "E1124" not in codes , (
+        f"forced native must report the recorded finding under its own code, and "
+        f"membership over an `any` operand is answered natively, not a finding: "
         f"codes: {[str(e) for e in forced.errors_had]}"
     );
     (prog, mod, soft_path, parses) = compile_native_default(STRICT_SRC);
@@ -502,17 +510,17 @@ test "a native-only construct in code that cannot be placed native is an error" 
 
 test "a backend crash is a compiler error, never a placement decision" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    real_body: any = NaIRGenPass._codegen_body;
+    import from jaclang.compiler.backends.native.mir.lower { MirLowering }
+    real_lower: any = MirLowering.lower_function;
     calls: list[int] = [];
-    def crash_once(this: NaIRGenPass, *args: any) {
+    def crash_once(this: MirLowering, *args: any) -> any {
         calls.append(1);
         if len(calls) == 1 {
             raise RuntimeError("boom");
         }
-        real_body(this, *args);
+        return real_lower(this, *args);
     }
-    with patch.object(NaIRGenPass, "_codegen_body", crash_once) {
+    with patch.object(MirLowering, "lower_function", crash_once) {
         (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
     }
     crashes = [
@@ -591,7 +599,7 @@ test "a refusal inside an element pinned native is an error" {
 
 test "a late refusal inside an element pinned native is an error" {
     prog = compile_pinned_foo(PINNED_LATE_METHOD_SRC);
-    assert any("mixed element types" in str(e) for e in prog.errors_had) , (
+    assert any("flush that is not a constant" in str(e) for e in prog.errors_had) , (
         f"a method of a pinned archetype that refuses during lowering keeps its "
         f"error rather than an abort() body: {[str(e) for e in prog.errors_had]}"
     );

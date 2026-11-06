@@ -414,6 +414,20 @@ impl collect_member_syms(
 
     s: UniScopeNode | None = scope;
     while s is not None {
+        direct = list(s.lookup_all(name, deep=False) or []);
+        if direct {
+            if not any(is_overload_sym(sym) for sym in direct) {
+                return direct;
+            }
+            break;
+        }
+        if UniScopeNode.is_python_scoping(s) {
+            break;
+        }
+        s = s.parent_scope;
+    }
+    s = scope;
+    while s is not None {
         if (found := descend(s)) {
             return found;
         }

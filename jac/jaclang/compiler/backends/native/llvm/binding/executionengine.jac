@@ -98,13 +98,18 @@ class ExecutionEngine(ffi.ObjectRef) {
 
         Handing out an address makes the unit's code reachable, so any pending
         static initializers run first -- unless *name* is listed in
-        *static_init_chained*, meaning that function runs them itself -- and
+        *static_init_chained*, meaning that function runs them itself, so they
+        are no longer pending for any later address -- and
         the engine is pinned so the address outlives its compile closure.
         """
     def get_function_address(self: ExecutionEngine, name: any) -> int {
         self._pin();
-        if self.static_init_symbols and (name not in self.static_init_chained) {
-            self.run_static_init();
+        if self.static_init_symbols {
+            if name in self.static_init_chained {
+                self.static_init_symbols = [];
+            } else {
+                self.run_static_init();
+            }
         }
         return ffi.lib.LLVMPY_GetFunctionAddress(self, name.encode("ascii"));
     }
@@ -288,6 +293,7 @@ class ExecutionEngine(ffi.ObjectRef) {
     }
 
     def _dispose(self: ExecutionEngine) -> object {
+        self._capi.LLVMPY_DisposeExecutionEngine(self);
         for mod in self._modules {
             mod.detach();
         }
@@ -296,7 +302,6 @@ class ExecutionEngine(ffi.ObjectRef) {
         }
         self._modules.clear();
         self._object_cache = None;
-        self._capi.LLVMPY_DisposeExecutionEngine(self);
     }
 }
 

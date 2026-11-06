@@ -29,8 +29,6 @@ matched through its symbol, not its spelling: a module-local function called
 server lane answers what CPython answers.
 """
 
-import contextlib;
-import io;
 import os;
 import subprocess;
 import tempfile;
@@ -49,19 +47,6 @@ def compile_native(fixture: str) -> tuple[any, ...] {
         file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
     );
     return (prog, ir, );
-}
-
-
-"""The seam report a build would show on stderr for a fixture."""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-        );
-    }
-    return buf.getvalue();
 }
 
 
@@ -102,14 +87,28 @@ def na_lines(fixture: str) -> list[str] {
 }
 
 
-test "an all-auto enum lowers with no seam" {
+"""The seam report a build would show on stderr for a fixture: each function
+a forced-native compile demotes, with the refusal that demoted it."""
+def seam_report(fixture: str) -> str {
+    import contextlib;
+    import io;
+    buf = io.StringIO();
+    prog = JacProgram();
+    with contextlib.redirect_stderr(buf) {
+        prog.compile(
+            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
+        );
+    }
+    return buf.getvalue();
+}
+
+
+test "an all-auto enum lowers with no refusal" {
     (prog, ir) = compile_native("enum_auto.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
-    seams = seam_report("enum_auto.jac");
-    assert "attribute access" not in seams , (
-        f"a member read off the class still refused:\n{seams}"
-    );
+    iface: any = ir.gen.native_iface;
+    assert not iface.demoted , f"a function of the fixture demoted: {iface.demoted}";
 }
 
 
@@ -176,11 +175,12 @@ test "a module-local auto is not read as the enum's" {
 
 test "an unencodable declared enum refuses where it is used" {
     (prog, _ir) = compile_native("enum_unencodable.jac");
-    errs = [str(e) for e in prog.errors_had];
-    assert any("Native lowering failed for enum 'Ratio'" in e for e in errs) , (
-        f"a use of an unencodable enum lowered with guessed zeros: {errs}"
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    seams = seam_report("enum_unencodable.jac");
+    assert "Native lowering failed for enum 'Ratio'" in seams , (
+        f"a use of an unencodable enum lowered with guessed zeros:\n{seams}"
     );
-    assert not any("Unread" in e or "enum_unencodable_lib" in e for e in errs) , (
-        f"an enum nothing uses refused its module: {errs}"
+    assert "Unread" not in seams , (
+        f"an enum nothing uses demoted a function of its module:\n{seams}"
     );
 }

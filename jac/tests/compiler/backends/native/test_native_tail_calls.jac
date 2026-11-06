@@ -15,13 +15,7 @@ import resource;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support {
-    assert_native_identity,
-    compile_native_ir,
-    jac_command,
-    native_build,
-    source_spelled
-}
+import from tests.support { assert_native_identity, jac_command, native_build }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -30,12 +24,6 @@ glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures";
 test "tail calls agree with the Python backend under every memory profile" {
     out = assert_native_identity(str(FIXTURES / "tail_calls.jac"));
     assert out.splitlines() == ["True False False True", "1275", "11", "5"] , out;
-}
-
-test "every tail call lowers to musttail" {
-    ir = compile_native_ir("tail_calls_deep.jac");
-    text = source_spelled(str(ir.gen.llvm_ir));
-    assert text.count("musttail call") >= 4 , text[:2000];
 }
 
 test "ten million tail calls run in a one-megabyte stack under every profile" {

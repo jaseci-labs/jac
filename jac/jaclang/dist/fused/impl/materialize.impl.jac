@@ -31,7 +31,7 @@ impl dir_writable(path: str) -> bool {
     if not os.path.isdir(path) {
         return False;
     }
-    probe = path + "/.jac-write-probe";
+    probe = f"{path}/.jac-write-probe.{os.getpid()}";
     if not write_file(probe, b"") {
         return False;
     }

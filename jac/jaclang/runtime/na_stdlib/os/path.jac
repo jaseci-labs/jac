@@ -1,6 +1,3 @@
-import os;
-
-
 glob sep: str = "/",
      extsep: str = ".",
      pardir: str = "..",

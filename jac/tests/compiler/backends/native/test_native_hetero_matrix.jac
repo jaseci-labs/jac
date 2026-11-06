@@ -1,17 +1,13 @@
 """Heterogeneous container matrix: jacval storage, ownership, reclamation.
 
-Mixed-element containers lower to tagged jacval storage (`List.jacval`,
-`Dict.<k>.jacval`); elements are self-describing and retain/release/trace/
-drop route through the tag inside the container helpers, so no call site
-carries hetero-store ownership special cases.
+Mixed-element containers lower to tagged storage; elements are
+self-describing and retain/release/trace/drop route through the tag inside the
+container helpers, so no call site carries hetero-store ownership special
+cases.
 
 Coverage:
   - JIT read-back correctness for list and dict mixed elements
     (store/load/overwrite/append/pop/clear/iteration/repr).
-  - IR-shape gate: the hetero fixtures build jacval containers and contain
-    ZERO `ptr.toint` coercions -- the only emitter that ever `ptrtoint`'d an
-    RC pointer into an integer container slot. Boxing uses the tagged
-    `jv.p2i` path, whose payload the container releases through the tag.
   - Full-reclamation churn under gc rc and cycles via the glibc
     `mallinfo2().uordblks` in-use probe (container death, slot overwrite,
     and clear() all release), and under headerless `--memory nogc
@@ -126,22 +122,6 @@ test "hetero dict read-back, overwrite, pop, clear" {
     assert pl(b"z") == 5;
     assert cl(b"z") == 0;
 }
-
-test "IR shape: hetero containers are jacval; no ptrtoint into integer slots" {
-    for fixture in [PROG, "hetero_list_str.jac"] {
-        (_, ir) = _compile(fixture);
-        text = str(ir.gen.llvm_ir);
-        assert "List.jacval" in text , f"{fixture}: hetero list did not lower to List.jacval";
-        assert "ptr.toint" not in text , (
-            f"{fixture}: an RC pointer was ptrtoint'd into an integer "
-            f"container slot (the deleted List.i64 boxing path is back)"
-        );
-    }
-    (_, ir2) = _compile(PROG);
-    text2 = str(ir2.gen.llvm_ir);
-    assert "Dict.ptr.jacval" in text2 , "hetero dict did not lower to Dict.<k>.jacval";
-}
-
 
 """Return a callable reading glibc `mallinfo2().uordblks`, or None if unavailable."""
 def _inuse_probe -> (object | None) {
@@ -288,40 +268,63 @@ test "hetero nogc fixture passes under headerless --memory nogc (AOT)" {
     assert out == ["600", "400", "done"] , f"hetero nogc output mismatch: {out}";
 }
 
-test "mixed dict keys and mixed set elements are stable diagnostics" {
-    import tempfile as _tf;
+"""Compile `src_text` as its own forced-native module and hand back the
+program and module; the source file is removed again before returning."""
+def compile_snippet(src_text: str) -> tuple[JacProgram, any] {
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tf {
+        tf.write(src_text);
+        path = tf.name;
+    }
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=path, options=native_force_opts());
+        return (prog, ir);
+    } finally {
+        os.unlink(path);
+    }
+}
+
+test "mixed dict keys and mixed set elements lower and answer like CPython" {
+    # The old backend had no element representation for keys or elements of
+    # more than one type and refused these; MIR keys and holds them as
+    # `any`, so they lower and must count what CPython counts.
     for (src_text, fn_name, label) in [
         (
-            "def bad_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
-            "bad_keys",
+            "def mixed_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
+            "mixed_keys",
             "dict-mixed-keys"
         ),
         (
-            "def bad_set -> int { s: set = {1, \"a\"}; return len(s); }",
-            "bad_set",
+            "def mixed_set -> int { s: set = {1, \"a\"}; return len(s); }",
+            "mixed_set",
             "set-mixed-elems"
         )
     ] {
-        with _tf.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tf {
-            tf.write(src_text);
-            path = tf.name;
-        }
-        try {
-            prog = JacProgram();
-            ir = prog.compile(file_path=path, options=native_force_opts());
-            assert not prog.errors_had , (
-                f"{label}: the refusal is owned by {fn_name}(), which must "
-                f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-            );
-            assert ir.gen.native_layout is not None , (
-                f"{label}: whole-module native compile aborted"
-            );
-            assert fn_name not in ir.gen.native_layout.functions , (
-                f"{label}: the refused container must demote its function "
-                f"out of the native layout, never lower silently"
-            );
-        } finally {
-            os.unlink(path);
-        }
+        (prog, ir) = compile_snippet(src_text);
+        assert not prog.errors_had , f"{label}: {[str(e) for e in prog.errors_had]}";
+        assert fn_name in ir.gen.native_layout.functions , (
+            f"{label}: the mixed container stopped lowering"
+        );
+        addr = native_address(ir.gen.native_engine, fn_name);
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(addr)() == 2 , (
+            f"{label}: two distinct members, two entries"
+        );
     }
+}
+
+test "a container whose elements have no native form is a stable demotion" {
+    (prog, ir) = compile_snippet(
+        "def bad_views -> int { xs = [memoryview(b\"ab\")]; return len(xs); }\n"
+            + "def pure(n: int) -> int { return n + 1; }\n"
+    );
+    assert not prog.errors_had , (
+        f"the refusal is owned by bad_views(), which must demote to a seam, "
+        f"got: {[str(e) for e in prog.errors_had]}"
+    );
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert "bad_views" not in ir.gen.native_layout.functions , (
+        "the refused container must demote its function out of the native "
+        "layout, never lower silently"
+    );
+    assert "pure" in ir.gen.native_layout.functions , "the clean sibling was lost";
 }

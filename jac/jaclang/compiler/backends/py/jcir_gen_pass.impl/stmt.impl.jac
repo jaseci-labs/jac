@@ -834,8 +834,8 @@ impl JcirGenPass.exit_return_stmt with ReturnStmt exit {
 }
 
 impl JcirGenPass._scope_cleanup_body(
-    scope: UniNode, body: list[CgNode]
-) -> list[CgNode] {
+    scope: UniNode, body: list[CgItem]
+) -> list[CgItem] {
     names = self.module.rc_scope_cleanup.get(id(scope), []);
     if not names {
         return body;

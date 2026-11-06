@@ -57,7 +57,7 @@ obj PerfProbe {
         (self.results() / "ready.ready").write_text(ready + "\n");
     }
 
-    def baseline(samples: dict[str, list[float]]) -> str {
+    def baseline(samples: dict[str, list[object]]) -> str {
         path = self.directory / "baseline.json";
         path.write_text(json.dumps(samples));
         return str(path);

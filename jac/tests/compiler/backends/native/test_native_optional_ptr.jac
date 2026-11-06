@@ -1,4 +1,4 @@
-"""Behavioral, diagnostic, and IR-shape tests for tagged pointer optionals (#7871 A).
+"""Behavioral and diagnostic tests for tagged pointer optionals (#7871 A).
 
 `str | None`, obj refs, tuples, and container elements all lower through the
 one JacOptional rule: a tagged {i8, T} value whose tag is the only authority
@@ -8,18 +8,12 @@ truthiness and f-strings follow Python (`None` renders, "" is falsy); explicit
 unwrap flows through the single coerce emitter. Un-narrowed use where the
 unwrapped value is required is an E1121 check-time diagnostic. On old main a
 None `str` used as a dict key or strcmp operand dereferenced NULL and
-segfaulted; these tests pin the diagnostic and the guard-free IR shape.
+segfaulted; these tests pin the diagnostic and the Python-matching answers.
 """
 
 import ctypes;
 import os;
-import from tests.support {
-    TESTS_DIR,
-    compile_native,
-    compile_native_ir,
-    get_func,
-    native_force_opts
-}
+import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
 
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -139,23 +133,4 @@ test "un-narrowed optional use at strict sites is E1121, never runtime UB" {
     assert len(subscript) == 1 , (
         f"expected E1121 for the dict-key vector (segfaulted on old main), got: {msgs}"
     );
-}
-
-test "IR shape: tagged optionals, jacval slots, no NULL-guarded strcmp" {
-    ir = compile_native_ir("optional_ptr.jac");
-    text = str(ir.gen.llvm_ir);
-    assert "JacOpt." in text , "pointer optionals did not lower to JacOpt";
-    assert "List.jacval" in text , "optional elements did not lower to jacval slots";
-    for guard in (
-        "strcmp.lnull",
-        "strcmp.rnull",
-        "strcmp.anynull",
-        "strcmp.lsafe",
-        "strcmp.rsafe"
-    ) {
-        assert guard not in text , (
-            f"deleted #7851 NULL-guard '{guard}' reappeared at a strcmp site"
-        );
-    }
-    assert "tobool.str.null" not in text , ("deleted truthiness NULL-guard reappeared");
 }

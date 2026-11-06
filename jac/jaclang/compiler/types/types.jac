@@ -1,5 +1,4 @@
 import from enum { IntEnum, auto }
-import from pathlib { Path }
 
 enum TypeCategory(IntEnum) {
     Unbound,
@@ -74,7 +73,7 @@ node AnyType(TypeBase) {
 
 node ModuleType(TypeBase) {
     has mod_name: str = "",
-        file_uri: Path = Path(""),
+        file_uri: str = "",
         is_external: bool = False;
 
     static has CATEGORY: TypeCategory = TypeCategory.Module;
@@ -86,7 +85,7 @@ node ModuleType(TypeBase) {
     def init(
         *,
         mod_name: str = "",
-        file_uri: Path = Path(""),
+        file_uri: str = "",
         symbol_table: (SymbolTable | None) = None,
         is_external: bool = False,
         flags: TypeFlags = TypeFlags.Null

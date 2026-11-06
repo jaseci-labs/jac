@@ -22,7 +22,6 @@ node UniNode {
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _link(kid: Sequence[UniNode], roles: dict[type, any]) -> None;
-    def __deepcopy__(memo: dict[int, object]) -> UniNode;
     def _assert_thawed -> None;
     def freeze_structure -> None;
     def thaw_structure -> None;
@@ -2333,18 +2332,6 @@ node SpecialVarRef(Name) {
 node Literal(Token, AtomExpr) {
     with entry {
         SYMBOL_TYPE = SymbolType.VAR;
-        type_map = {
-            'int': int,
-            'float': float,
-            'str': str,
-            'bool': bool,
-            'bytes': `bytes,
-            'list': `list,
-            'tuple': `tuple,
-            'set': `set,
-            'dict': `dict,
-            'type': `type
-        };
     }
 
     def init(
@@ -2359,7 +2346,7 @@ node Literal(Token, AtomExpr) {
         pos_end: int
     ) -> None;
 
-    has lit_value: int | str | bytes | float | bool | None | type | object { getter; }
+    has lit_value: int | str | bytes | float | bool | None | object { getter; }
 
     def __repr__ -> str;
 }
@@ -2368,8 +2355,6 @@ node BuiltinType(Name, Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.VAR;
     }
-
-    has lit_value: type { getter; }
 
     def __repr__ -> str;
 }

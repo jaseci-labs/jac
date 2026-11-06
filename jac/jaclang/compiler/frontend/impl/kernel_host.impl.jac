@@ -1017,14 +1017,14 @@ impl KernelHost.native_dep_iface(
     return found;
 }
 
-impl KernelHost.native_dep_discovery_open(program: JacProgram) -> bool {
+impl KernelHost.native_dep_pending(program: JacProgram, path: str) -> bool {
     if self.fallback is not None {
-        with self.delegating("native_dep_discovery_open") as host {
-            answer = host.native_dep_discovery_open(program);
+        with self.delegating("native_dep_pending") as host {
+            answer = host.native_dep_pending(program, path);
         }
         return answer;
     }
-    return False;
+    return os.path.realpath(path) in self._lowering;
 }
 
 impl KernelHost.native_deps_deferred(program: JacProgram) -> bool {
@@ -1101,6 +1101,22 @@ impl KernelHost.native_lowering_failed(program: JacProgram, path: str, detail: s
     if self.fallback is not None {
         self.fallback.native_lowering_failed(program, path, detail);
     }
+}
+
+impl KernelHost.register_host_products {
+    if self.fallback is not None {
+        self.fallback.register_host_products();
+    }
+}
+
+impl KernelHost.note_native_demotion(
+    program: JacProgram, key: str, reason: str
+) -> bool {
+    self.census.count("note_native_demotion");
+    if self.fallback is not None {
+        return self.fallback.note_native_demotion(program, key, reason);
+    }
+    return True;
 }
 
 impl KernelHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {

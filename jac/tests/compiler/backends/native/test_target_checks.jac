@@ -1,53 +1,63 @@
-"""The IR generator reads its target in a few named places only (#10219).
+"""The native backend reads its target in a few named places only (#10219).
 
 What a C library spells, lays out or numbers per target belongs to the
 runtime floor, and object formats and library naming belong to the linker, so
 lowering stays the same for every 64-bit target. This gate keeps it that way:
-a new test of the module's triple anywhere else in the IR generator fails here
-and has to move behind the floor or join the list below with a reason.
+a new read of the target anywhere else in the MIR backend fails here and has
+to move behind the floor or join the list below with a reason.
 """
 import re;
 import from pathlib { Path }
 
-"""Where the IR generator may read its triple, and why."""
+"""Where the MIR backend may read its target, and why."""
 glob ALLOWED: dict[str, str] = {
-         "postinit": "stamps the module's triple and data layout",
-         "_target_is_wasm": "wasm has no floor and its own libc",
-         "_emit_platform_name": "names sys.platform for wasm, which has no floor",
-         "_resolve_clib_lib_name": "spells a C library's file name for the linker",
-         "_exc_jmp_symbols": "Windows keeps its own setjmp pair, which no floor function can wrap",
-         "_thunk_tail_callable": "musttail is unavailable on 32-bit and wasm targets",
-         "_declare_clib_ability": "passes C structs by value under the target's C ABI",
-         "_c_va_start": "names the target in its diagnostic"
+         "MirNativePass._run_impl": "hands the target triple and data layout to emission",
+         "emit_mir_module": "stamps the module's triple and data layout",
+         "MirEmitter.c_classify": "a by-value C struct is split into registers by the target's C calling convention, which no floor can hide",
+         "MirEmitter.single_threaded": "wasm runs one thread, so a thread-local block is a plain global there",
+         "MirLowering.flow_parallel_ok": "wasm runs one thread, so a flow for keeps the sequential lowering there",
+         "MirEmitter.jmp_symbols": "picks the setjmp/longjmp pair a handler arms with: LLVM's builtin pair on x86_64, libc's underscore pair, wasm's plain pair or the Windows floor's",
+         "mir_clib_path": "spells a `import from clib` library's file name (lib*.so, *.dylib, *.dll) for the unit's interface, which the linker reads",
+         "MirNativePass.interface": "records the unit's C libraries under their target file names for the link plan"
      };
 
-test "the IR generator reads the target only where the list says" {
+glob TARGET_READS = re.compile(
+         r"triple|native_target|sys\.platform|\"wasm|\"windows|\"darwin|\"win32"
+     );
+
+test "the MIR backend reads the target only where the list says" {
     import jaclang;
-    annex = Path(jaclang.__file__).resolve().parent
+    mir = Path(jaclang.__file__).resolve().parent
         / "compiler"
         / "backends"
         / "native"
-        / "na_ir_gen_pass.impl";
+        / "mir";
     found: dict[str, list[str]] = {};
-    for path in sorted(annex.glob("*.jac")) {
+    for path in sorted(mir.rglob("*.jac")) {
+        if not path.name.endswith(".impl.jac") {
+            continue;
+        }
         current = "";
         for (lineno, line) in enumerate(path.read_text().splitlines(), 1) {
-            head = re.match(r"impl NaIRGenPass\.(\w+)", line);
+            head = re.match(r"impl ([\w.]+)", line);
             if head {
                 current = head.group(1);
             }
-            if "llvm_module.triple" in line {
+            if TARGET_READS.search(line) {
                 found.setdefault(current, []).append(f"{path.name}:{lineno}");
             }
         }
     }
+    assert "emit_mir_module" in found , (
+        f"emission no longer stamps the target; the scan lost its anchor: {found}"
+    );
     stray = {
         name: places
         for (name, places) in found.items()
         if name not in ALLOWED
     };
     assert not stray , (
-        "these IR generator methods read the target triple; move the decision "
+        "these MIR backend functions read the target; move the decision "
         f"behind the runtime floor or the linker: {stray}"
     );
 }

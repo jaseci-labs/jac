@@ -69,6 +69,10 @@ def get_sock_fd(s: ptr[PySocketSockObject]) -> i32;
 
 def set_sock_fd(s: ptr[PySocketSockObject], fd: i32);
 
+def note_sock_cloexec(works: i32);
+
+def note_accept4(works: i32);
+
 def sock_family(s: ptr[PySocketSockObject]) -> int;
 
 def sock_proto(s: ptr[PySocketSockObject]) -> int;
@@ -185,6 +189,14 @@ impl get_sock_fd(s: ptr[PySocketSockObject]) -> i32 {
 
 impl set_sock_fd(s: ptr[PySocketSockObject], fd: i32) {
     s.view(1)[0].sock_fd = fd;
+}
+
+impl note_sock_cloexec(works: i32) {
+    sock_cloexec_works = works;
+}
+
+impl note_accept4(works: i32) {
+    accept4_works = works;
 }
 
 impl sock_family(s: ptr[PySocketSockObject]) -> int {

@@ -1452,3 +1452,7 @@ impl osp_destroy_all(hs: list[int]) -> int {
 impl osp_region_died(rgn: int) -> int {
     return DEFAULT_GRAPH.region_died(rgn);
 }
+
+impl __jac_region_died_hook(rgn: int) {
+    osp_region_died(rgn);
+}

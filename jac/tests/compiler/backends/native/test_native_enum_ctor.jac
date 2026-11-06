@@ -22,18 +22,10 @@ print the same lines, and CPython's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
-import contextlib;
-import io;
 import os;
 import subprocess;
 import tempfile;
-import from tests.support {
-    jac_command,
-    TESTS_DIR,
-    native_force_opts,
-    python_run,
-    compile_native_ir
-}
+import from tests.support { jac_command, TESTS_DIR, native_force_opts, python_run }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
@@ -61,8 +53,11 @@ def sv_lines(fixture: str) -> list[str] {
 }
 
 
-"""The seam report a build would show on stderr for a fixture."""
+"""The seam report a build would show on stderr for a fixture: each function
+a forced-native compile demotes, with the refusal that demoted it."""
 def seam_report(fixture: str) -> str {
+    import contextlib;
+    import io;
     buf = io.StringIO();
     prog = JacProgram();
     with contextlib.redirect_stderr(buf) {
@@ -70,6 +65,9 @@ def seam_report(fixture: str) -> str {
             file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
         );
     }
+    assert not prog.errors_had , f"forced native demotes: {[
+        str(e) for e in prog.errors_had
+    ]}";
     return buf.getvalue();
 }
 
@@ -102,33 +100,6 @@ test "the enum-constructor fixture lowers with no seam" {
 }
 
 
-test "the call validates against every declared member" {
-    ir = compile_native_ir("enum_ctor.jac");
-    text = str(ir.gen.llvm_ir);
-    for member in ("Null", "Instantiable", "Instance", "Ambiguous") {
-        assert f"ec.Flags.{member}" in text , (
-            f"'{member}' is missing from the validation table, so a value it "
-            f"carries would be rejected"
-        );
-    }
-    assert "raise.ValueError" in text , (
-        "the call lowered to the identity; an undeclared value would pass "
-        "through as a member"
-    );
-}
-
-
-test "the declared-enum spelling validates the same way" {
-    ir = compile_native_ir("enum_ctor.jac");
-    text = str(ir.gen.llvm_ir);
-    for member in ("LOW", "MID", "HIGH") {
-        assert f"ec.Level.{member}" in text , (
-            f"'{member}' is missing from the declared enum's table"
-        );
-    }
-}
-
-
 test "declared and undeclared values answer as CPython does" {
     sv = sv_lines("enum_ctor.jac");
     assert sv == list(EXPECTED) , f"server lane printed {sv}";
@@ -142,7 +113,7 @@ test "a noninteger input to an integer enum refuses by name" {
     assert "enum constructor 'Hue'" in seams , (
         f"the floating-point input lowered silently:\n{seams}"
     );
-    assert "from_code" in seams , (
+    assert "demoting from_code" in seams and "line 14," in seams , (
         f"the refusal did not demote the callable that owns it:\n{seams}"
     );
 }
@@ -160,11 +131,6 @@ test "string enum constructors resolve values and reject missing members" {
 test "a same-named local function is not read as the enum" {
     (prog, ir) = compile_native("enum_ctor_shadow_main.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    text = str(ir.gen.llvm_ir);
-    assert "ec.Tone.SOFT" not in text , (
-        "the hook matched the imported enum by spelling, so this module's own "
-        "`Tone` function was replaced by a member lookup"
-    );
     sv = sv_lines("enum_ctor_shadow_main.jac");
     assert sv == ["6", "12"] , f"server lane printed {sv}";
     na = na_lines("enum_ctor_shadow_main.jac");

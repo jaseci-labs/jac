@@ -342,7 +342,7 @@ impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: Name, tag_name: str) -> None
 }
 ```
 
-**Also worth studying:** [`jaclang/compiler/backends/native/na_ir_gen/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/backends/native/na_ir_gen) -- the native backend takes the next step past this pattern, splitting one 764-method object into 43 sibling modules that a composing `obj NaIRGenPass(...)` inherits, so each concern is its own compilation unit rather than one woven module.
+**Also worth studying:** [`jaclang/compiler/backends/native/mir/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/backends/native/mir) -- the native backend keeps one declaration of `MirLowering` in `lower.jac` and splits its bodies across `impl/lower.*.impl.jac`, one annex per concern (strings, containers, objects, exceptions, OSP, ...).
 
 ### When to use
 

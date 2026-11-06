@@ -1,0 +1,1188 @@
+impl MirLowering.python_call(nd: uni.FuncCall) -> (MirValue | None) {
+    if not isinstance(nd.target, uni.Name) {
+        return None;
+    }
+    name = nd.target.value;
+    binding = self.module.gen.interop_manifest.bindings.get(name);
+    if binding is None or not binding.native_callable {
+        return None;
+    }
+    callee = nd.callee_decl;
+    if not isinstance(callee, uni.Ability)
+        and isinstance(binding.ast_node, uni.Ability) {
+        callee = binding.ast_node;
+    }
+    sig = self.ability_sig(callee) if isinstance(callee, uni.Ability) else None;
+    if sig is None or not isinstance(callee, uni.Ability) {
+        raise MirRefused(mir_refusal("function signature", name, nd));
+    }
+    if sig.varargs is not None or sig.kwargs is not None {
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                name,
+                nd,
+                "A variadic function cannot be called across the native interop boundary yet; wrap it in a fixed-arity function on the defining side."
+            )
+        );
+    }
+    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, False)];
+    fn_type = self.declared_type(self.ability_sym(callee));
+    ret = mir_none();
+    if isinstance(fn_type, FunctionType) {
+        ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, nd);
+    }
+    bound = self.bound_args(nd, callee, False);
+    if len(bound) != len(params) {
+        raise MirRefused(
+            mir_refusal("call", f"{name} with {len(bound)} arguments", nd)
+        );
+    }
+    args = self.bound_values(list(bound), params);
+    return self.bridge_call(binding.symbol, binding.name, args, ret, nd);
+}
+
+impl MirLowering.bridge_type(t: MirType, site: uni.UniNode) -> MirType {
+    if t.kind in (MirKind.INT, MirKind.FLOAT, MirKind.BOOL) {
+        return t;
+    }
+    if t.kind in (MirKind.NONE, MirKind.VOID) {
+        return mir_none();
+    }
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return mir_c_ptr(mir_int(8, False));
+    }
+    raise MirRefused(
+        mir_refusal(
+            "Python call",
+            f"{t.render()} across the bridge",
+            site,
+            "Native code calls Python with ints, floats, bools and strings, and receives the same back."
+        )
+    );
+}
+
+impl MirLowering.bridge_type_name(t: MirType) -> str {
+    if t.kind == MirKind.INT {
+        return t.render();
+    }
+    if t.kind == MirKind.FLOAT {
+        return "float" if t.width == 64 else t.render();
+    }
+    if t.kind == MirKind.BOOL {
+        return "bool";
+    }
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return "str";
+    }
+    return "None";
+}
+
+impl MirLowering.bridge_call(
+    symbol: str, name: str, args: list[MirValue], ret: MirType, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    i8p = mir_c_ptr(mir_int(8, False));
+    wire: list[MirValue] = [];
+    for arg in args {
+        carried = self.bridge_type(arg.type, site);
+        if carried.kind == MirKind.C_PTR {
+            text = self.coerce(arg, mir_str(), site);
+            held = self.runtime_value(
+                "__jac_rt_str_ref",
+                [
+                    b.str_part(text, "root"),
+                    b.str_part(text, "data"),
+                    b.str_part(text, "len")
+                ]
+            );
+            wire.append(self.emit_value(MirOp.PTR_CAST, i8p, [held]));
+        } else {
+            wire.append(arg);
+        }
+    }
+    back = self.bridge_type(ret, site);
+    self.mir.externs[symbol] = MirExtern(
+        symbol=symbol, ret=back, params=[value.type for value in wire]
+    );
+    if name not in self.mir.python_imports {
+        self.mir.python_imports.append(name);
+    }
+    result = self.emit_value(MirOp.CALL_PYTHON, back, wire, callee=symbol);
+    if back.kind == MirKind.NONE {
+        return self.none_value();
+    }
+    if back.kind == MirKind.C_PTR {
+        text = self.runtime_value("__jac_rt_str_from_cstr", [result]);
+        return b.str_make(text, text, self.runtime_value("__jac_rt_str_size", [text]));
+    }
+    return result;
+}
+
+impl MirLowering.bridge_symbol(symbol: str) {
+    if symbol in self.mir.bridged
+        or self.module.decided_codespace == "native"
+        or self.prog.options.native_required_for(self.module.loc.mod_path) {
+        return;
+    }
+    decl: (MirDecl | None) = None;
+    for candidate in self.decls.values() {
+        if candidate.symbol == symbol and candidate.owner is None {
+            decl = candidate;
+        }
+    }
+    if decl is None {
+        return;
+    }
+    for t in decl.params + [decl.ret] {
+        if t.kind
+            not in (
+                MirKind.INT,
+                MirKind.FLOAT,
+                MirKind.BOOL,
+                MirKind.NONE,
+                MirKind.VOID,
+                MirKind.STR,
+                MirKind.STR_REF
+            ) {
+            return;
+        }
+    }
+    sig = self.ability_sig(decl.ability);
+    if sig is None {
+        return;
+    }
+    name = self.name_of(decl.ability);
+    bridge = interop_callback_symbol(self.module.loc.mod_path, name);
+    adapter = MirFunction(name=name, symbol=symbol, ret=decl.ret);
+    saved = self.state;
+    self.state = MirFnState(
+        fn=adapter, b=MirBuilder(fn=adapter, block=adapter.new_block("entry"))
+    );
+    try {
+        args: list[MirValue] = [];
+        for (index, ptype) in enumerate(decl.params) {
+            value = adapter.new_value(ptype, f"a{index}");
+            adapter.params.append(MirParam(name=f"a{index}", value=value));
+            args.append(value);
+        }
+        result = self.bridge_call(bridge, name, args, decl.ret, decl.ability);
+        self.builder().ret(
+            None if decl.ret.kind in (MirKind.NONE, MirKind.VOID) else result
+        );
+    } finally {
+        self.state = saved;
+    }
+    self.mir.functions = [
+        fn
+        for fn in self.mir.functions
+        if fn.symbol != symbol
+    ]
+        + [adapter];
+    self.mir.bridged[symbol] = bridge;
+    nodes = self.param_nodes(sig, False);
+    self.bindings.append(
+        InteropBinding(
+            name=name,
+            source_context=InteropContext.SERVER,
+            callers={InteropContext.NATIVE},
+            ret_type=self.bridge_type_name(decl.ret),
+            param_types=[self.bridge_type_name(t) for t in decl.params],
+            param_names=[pv.name.value for pv in nodes],
+            ast_node=decl.ability,
+            kind="function",
+            symbol=bridge
+        )
+    );
+}
+
+impl MirLowering.python_base_of(arch: uni.Archetype) -> (str | None) {
+    for base_expr in list(arch.base_classes or []) {
+        if isinstance(base_expr, uni.AtomTrailer)
+            and isinstance(base_expr.right, uni.IndexSlice) {
+            base_expr = base_expr.target;
+        }
+        if not isinstance(base_expr, uni.Name)
+            or base_expr.value in NATIVE_ERASED_BASES {
+            continue;
+        }
+        base_type = base_expr.type;
+        if not isinstance(base_type, ClassType) {
+            continue;
+        }
+        if is_enum_class_type(base_type)
+            or JAC_TYPE_REGISTRY.is_exception(base_expr.value) {
+            continue;
+        }
+        scope = base_type.shared.symbol_table;
+        if isinstance(scope, uni.Archetype) {
+            decl_mod = scope.find_parent_of_type(uni.Module);
+            path = decl_mod.loc.mod_path if decl_mod is not None else "";
+            if path.endswith(".jac") and pinned_module_space(path) != "server" {
+                continue;
+            }
+        }
+        if base_type.shared.class_name in ("object", "Enum", "IntEnum", "StrEnum") {
+            continue;
+        }
+        return base_expr.value;
+    }
+    return None;
+}
+
+impl MirLowering.c_param_borrowed(pv: uni.ParamVar) -> bool {
+    tag = pv.type_tag;
+    if tag is None {
+        return False;
+    }
+    if is_borrow_kind(tag.ownership) {
+        return True;
+    }
+    pending: list[uni.UniNode] = [tag.tag];
+    while pending {
+        expr = pending.pop();
+        while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+            expr = expr.value;
+        }
+        if isinstance(expr, uni.UnaryExpr) and is_borrow_kind(expr.ownership) {
+            return True;
+        }
+        if isinstance(expr, uni.BinaryExpr) {
+            pending.append(expr.left);
+            pending.append(expr.right);
+        }
+    }
+    return False;
+}
+
+impl MirLowering.param_type(pv: uni.ParamVar) -> MirType {
+    t = self.symbol_type(pv.name.sym, pv);
+    if t.kind == MirKind.C_STRUCT and self.c_param_borrowed(pv) {
+        return mir_c_ptr(t);
+    }
+    return t;
+}
+
+impl MirLowering.lent_struct(arg: uni.Expr, to: MirType) -> (MirValue | None) {
+    if to.kind != MirKind.C_PTR or to.payload().kind != MirKind.C_STRUCT {
+        return None;
+    }
+    bare = self.c_bare(arg);
+    if self.c_borrow_operand(arg) is None
+        and not (
+            isinstance(bare, (uni.Name, uni.AtomTrailer))
+            and self.expr_type(bare).kind == MirKind.C_STRUCT
+        ) {
+        return None;
+    }
+    return self.c_lend(arg, to, False, []);
+}
+
+impl MirLowering.c_declared_type(
+    declared: (TypeBase | None), fallback: (TypeBase | None)
+) -> (TypeBase | None) {
+    t = declared if declared is not None else fallback;
+    if isinstance(t, ClassType) and not t.is_instance() {
+        t = t.clone_as_instance();
+    }
+    if isinstance(t, UnionType) {
+        members = [
+            member
+            for member in t.types
+            if not (
+                isinstance(member, ClassType)
+                and member.shared.class_name in ("NoneType", "None")
+            )
+        ];
+        if len(members) == 1 and len(members) < len(t.types) {
+            return members[0];
+        }
+    }
+    return t;
+}
+
+impl MirLowering.c_param_plan(
+    pv: uni.ParamVar, fallback: (TypeBase | None), site: uni.UniNode
+) -> tuple[MirType, str] {
+    declared = pv.type;
+    if declared is None and pv.type_tag is not None and not self.c_param_borrowed(pv) {
+        declared = pv.type_tag.tag.type;
+    }
+    t = self.c_declared_type(declared, fallback);
+    self.ensure_c_types(t);
+    if self.c_param_borrowed(pv) {
+        lent = mir_c_elem(t, site);
+        if lent.kind == MirKind.C_PIN {
+            return (mir_c_ptr(lent.payload()), "pinned");
+        }
+        return (mir_c_ptr(lent), "lend");
+    }
+    if isinstance(t, ClassType) and t.shared.class_name in ("str", "bytes") {
+        return (mir_c_ptr(mir_int(8, False)), t.shared.class_name);
+    }
+    return (mir_type_of(t, MirPosition.C_FIELD, site), "value");
+}
+
+impl MirLowering.c_bare(nd: uni.Expr) -> uni.Expr {
+    inner: uni.Expr = nd;
+    while True {
+        if isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr) {
+            inner = inner.value;
+        } elif isinstance(inner, uni.CfgExpr) {
+            inner = inner.expr;
+        } else {
+            return inner;
+        }
+    }
+}
+
+impl MirLowering.c_borrow_operand(arg: uni.Expr) -> (uni.Expr | None) {
+    bare = self.c_bare(arg);
+    if isinstance(bare, uni.UnaryExpr) and is_borrow_kind(bare.ownership) {
+        return self.c_bare(bare.operand);
+    }
+    return None;
+}
+
+impl MirLowering.c_same_storage(a: MirType, b: MirType) -> bool {
+    if a is b {
+        return True;
+    }
+    if a.kind in (MirKind.INT, MirKind.FLOAT) and a.kind == b.kind {
+        return a.width == b.width;
+    }
+    return a.kind in (MirKind.C_PTR, MirKind.C_FN)
+        and b.kind in (MirKind.C_PTR, MirKind.C_FN);
+}
+
+impl MirLowering.c_address(place: MirValue, to: MirType) -> MirValue {
+    return self.emit_value(MirOp.PTR_CAST, to, [self.coerce_place(place)]);
+}
+
+impl MirLowering.c_lend(
+    arg: uni.Expr,
+    to: MirType,
+    exact: bool,
+    copybacks: list[tuple[MirValue, MirValue, MirType]]
+) -> MirValue {
+    b = self.builder();
+    operand = self.c_borrow_operand(arg);
+    if operand is None {
+        arg = self.c_bare(arg);
+        if isinstance(arg, uni.Null) {
+            return self.emit_value(MirOp.PTR_NULL, to, []);
+        }
+        if not isinstance(arg, (uni.Name, uni.AtomTrailer))
+            or self.expr_type(arg).kind in (MirKind.C_PTR, MirKind.C_FN) {
+            value = self.lower_expr(arg);
+            if value.type.kind in (MirKind.C_PTR, MirKind.C_FN, MirKind.INT) {
+                return self.emit_value(MirOp.PTR_CAST, to, [value]);
+            }
+            elem = to.payload();
+            tmp = self.temp_slot(elem);
+            b.store(tmp, self.coerce(value, elem, arg));
+            return self.c_address(tmp, to);
+        }
+        operand = arg;
+    }
+    place = self.lower_place(operand);
+    held = self.place_elem(place);
+    elem = to.payload();
+    if not exact or self.c_same_storage(held, elem) {
+        if mir_holds_ref(held) {
+            raise MirRefused(
+                mir_refusal(
+                    "C pointer argument",
+                    held.render(),
+                    arg,
+                    "`&mut x` lends C storage: a variable or field holding a C scalar, pointer or struct."
+                )
+            );
+        }
+        return self.c_address(place, to);
+    }
+    if mir_holds_ref(held) or elem.kind == MirKind.C_STRUCT {
+        raise MirRefused(
+            mir_refusal(
+                "C pointer argument",
+                f"{held.render()} as {elem.render()}",
+                arg,
+                "`&mut x` passed to a `&mut T` parameter lends a variable whose storage is the C `T`."
+            )
+        );
+    }
+    tmp = self.temp_slot(elem);
+    b.store(tmp, self.coerce(b.load(place, held), elem, arg));
+    copybacks.append((tmp, place, held));
+    return self.c_address(tmp, to);
+}
+
+impl MirLowering.c_text_arg(value: MirValue, site: uni.UniNode) -> MirValue {
+    u8p = mir_c_ptr(mir_int(8, False));
+    if value.type.kind in (MirKind.C_PTR, MirKind.INT) {
+        return self.emit_value(MirOp.PTR_CAST, u8p, [value]);
+    }
+    if value.type.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
+        (data, size) = self.byte_parts(self.spill(value));
+        return data;
+    }
+    held = self.coerce(value, mir_str_ref(), site);
+    return self.emit_value(MirOp.PTR_CAST, u8p, [held]);
+}
+
+impl MirLowering.c_arg(
+    arg: uni.Expr,
+    to: MirType,
+    plan: str,
+    copybacks: list[tuple[MirValue, MirValue, MirType]]
+) -> MirValue {
+    if isinstance(self.c_bare(arg), uni.Null)
+        and to.kind in (MirKind.C_PTR, MirKind.C_FN) {
+        return self.emit_value(MirOp.PTR_NULL, to, []);
+    }
+    if plan == "lend" {
+        return self.c_lend(arg, to, True, copybacks);
+    }
+    if plan == "pinned" {
+        held = self.c_borrow_operand(arg);
+        box = self.lower_expr(held if held is not None else arg);
+        if box.type.kind != MirKind.C_PIN {
+            raise MirRefused(
+                mir_refusal(
+                    "C pointer argument",
+                    box.type.render(),
+                    arg,
+                    "A `&mut Pinned[T]` parameter lends the payload of a `Pinned[T]` box made by `pin(...)`."
+                )
+            );
+        }
+        return self.emit_value(MirOp.PTR_CAST, to, [box]);
+    }
+    if plan in ("str", "bytes") {
+        return self.c_text_arg(self.lower_expr(arg), arg);
+    }
+    bare = self.c_bare(arg);
+    named = named_function_of(bare)
+        if to.kind == MirKind.C_FN and isinstance(bare, uni.Name)
+        else None;
+    if isinstance(named, uni.Ability) and clib_import_of(named) is None {
+        return self.c_function_value(bare, to);
+    }
+    if to.kind == MirKind.C_PTR and self.c_borrow_operand(arg) is not None {
+        return self.c_lend(arg, to, False, copybacks);
+    }
+    return self.coerce(self.lower_expr(arg), to, arg);
+}
+
+impl MirLowering.c_vararg(arg: uni.Expr) -> MirValue {
+    b = self.builder();
+    u8p = mir_c_ptr(mir_int(8, False));
+    if self.c_borrow_operand(arg) is not None {
+        return self.c_lend(arg, u8p, False, []);
+    }
+    if isinstance(self.c_bare(arg), uni.Null) {
+        return self.emit_value(MirOp.PTR_NULL, u8p, []);
+    }
+    value = self.enum_as_int(self.lower_expr(arg), arg);
+    kind = value.type.kind;
+    if kind == MirKind.BOOL {
+        return b.convert(value, mir_int(32, False, True));
+    }
+    if kind == MirKind.INT {
+        if value.type.width >= 32 {
+            return value;
+        }
+        return b.convert(value, mir_int(32, value.type.signed, True));
+    }
+    if kind == MirKind.FLOAT {
+        return b.convert(value, mir_float(64));
+    }
+    if kind in (MirKind.C_PTR, MirKind.C_FN) {
+        return value;
+    }
+    if kind in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
+        return self.c_text_arg(value, arg);
+    }
+    if kind == MirKind.OPT
+        and value.type.payload().kind in (MirKind.C_PTR, MirKind.C_FN) {
+        return b.select(
+            self.opt_present(value),
+            self.emit_value(MirOp.PTR_CAST, u8p, [self.opt_get(value)]),
+            self.emit_value(MirOp.PTR_NULL, u8p, [])
+        );
+    }
+    raise MirRefused(
+        mir_refusal(
+            "C variadic argument",
+            value.type.render(),
+            arg,
+            "A C variadic argument is a C scalar, `ptr`, `str` or `bytes`; a Jac object has no C representation to pass."
+        )
+    );
+}
+
+impl MirLowering.c_return_plan(
+    sig: uni.FuncSignature, fallback: (TypeBase | None), site: uni.UniNode
+) -> tuple[MirType, str] {
+    if sig.return_type is None {
+        return (mir_void(), "value");
+    }
+    declared = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
+    t = self.c_declared_type(declared if declared is not None else fallback, fallback);
+    if isinstance(t, ClassType) and t.shared.class_name in ("NoneType", "None") {
+        return (mir_void(), "value");
+    }
+    self.ensure_c_types(t);
+    if isinstance(t, ClassType) and t.shared.class_name == "str" {
+        return (mir_c_ptr(mir_int(8, False)), "str");
+    }
+    return (mir_type_of(t, MirPosition.C_FIELD, site), "value");
+}
+
+impl MirLowering.condition(nd: uni.Expr) -> MirValue {
+    b = self.builder();
+    inner = self.c_bare(nd);
+    if isinstance(inner, uni.UnaryExpr)
+        and isinstance(inner.op, uni.Token)
+        and inner.op.name == Tok.NOT {
+        return b.logical_not(self.condition(inner.operand));
+    }
+    if not isinstance(inner, uni.BoolExpr) {
+        return self.truthy(self.lower_expr(nd), nd);
+    }
+    fn = self.st().fn;
+    result = self.temp_slot(mir_bool());
+    done = fn.new_block("cond.done");
+    is_and = inner.op.name == Tok.KW_AND;
+    values = list(inner.values);
+    for (index, operand_nd) in enumerate(values) {
+        verdict = self.condition(operand_nd);
+        b.store(result, verdict);
+        if index + 1 < len(values) {
+            more = fn.new_block("cond.next");
+            if is_and {
+                b.cond_branch(verdict, more, done);
+            } else {
+                b.cond_branch(verdict, done, more);
+            }
+            b.position(more);
+        } else {
+            b.branch(done);
+        }
+    }
+    b.position(done);
+    return b.load(result, mir_bool());
+}
+
+impl MirLowering.c_defines(decl: uni.UniNode) -> bool {
+    return isinstance(decl, uni.Ability)
+        and isinstance(decl.signature, uni.FuncSignature)
+        and decl.body is not None
+        and not (isinstance(decl.body, list) and not decl.body);
+}
+
+impl MirLowering.declare_c_definition(ab: uni.Ability) {
+    sig = ab.signature;
+    name = self.name_of(ab);
+    if not isinstance(sig, uni.FuncSignature) {
+        raise MirRefused(mir_refusal("C function definition", name, ab));
+    }
+    params: list[MirType] = [];
+    packed = False;
+    for pv in self.param_nodes(sig, False) {
+        if pv.is_vararg and is_va_list_type(pv.type) and sig.kwargs is None {
+            packed = True;
+            continue;
+        }
+        if pv.is_vararg or pv.is_kwargs {
+            raise MirRefused(
+                mir_refusal(
+                    "C function definition",
+                    f"{name} with variadic parameters",
+                    pv,
+                    "A C variadic function defined in Jac is not lowered natively yet."
+                )
+            );
+        }
+        if self.c_param_borrowed(pv) {
+            raise MirRefused(
+                mir_refusal(
+                    "C function definition",
+                    f"{name} parameter {pv.name.value}",
+                    pv,
+                    "A C function defined in Jac takes a pointer as `ptr[T]`, not `&mut T`."
+                )
+            );
+        }
+        ptype = self.symbol_type(pv.name.sym, pv);
+        if ptype.kind not in C_ABI_KINDS + [MirKind.C_STRUCT] {
+            raise MirRefused(
+                mir_refusal(
+                    "C function definition",
+                    f"{name} parameter {pv.name.value} of {ptype.render()}",
+                    pv,
+                    "A C function defined in Jac takes C scalars and pointers; structs and Jac values do not cross its C ABI natively yet."
+                )
+            );
+        }
+        params.append(ptype);
+    }
+    fn_type = self.declared_type(self.ability_sym(ab));
+    ret = mir_none();
+    if sig.return_type is not None and isinstance(fn_type, FunctionType) {
+        (ret, plan) = self.c_return_plan(sig, fn_type.return_type, ab);
+        if ret.kind == MirKind.VOID {
+            ret = mir_none();
+        }
+        if plan != "value"
+            or ret.kind not in C_ABI_KINDS + [MirKind.NONE, MirKind.C_STRUCT] {
+            raise MirRefused(
+                mir_refusal(
+                    "C function definition",
+                    f"{name} returning {ret.render()}",
+                    ab,
+                    "A C function defined in Jac returns a C scalar or pointer; structs and Jac values do not cross its C ABI natively yet."
+                )
+            );
+        }
+    }
+    other = self.foreign_c_declaration(name);
+    if other is not None {
+        mine = self.c_signature_text(params, ret);
+        there = self.c_declared_signature(other, ab);
+        if there is not None and there != mine {
+            owner = other.find_parent_of_type(uni.Module);
+            where = owner.loc.mod_path
+                if owner is not None and owner.loc
+                else "another module";
+            self.c_conflicts.append(
+                (
+                    ab,
+                    name,
+                    f"takes the C symbol '{name}' that {where} declares as {there}, with a different signature {mine}; rename one of them"
+                )
+            );
+            return;
+        }
+    }
+    key = id(ab);
+    self.decl_syms[id(self.ability_sym(ab))] = key;
+    by_value = ret.kind == MirKind.C_STRUCT
+        or any(ptype.kind == MirKind.C_STRUCT for ptype in params);
+    if by_value and packed {
+        raise MirRefused(
+            mir_refusal(
+                "C function definition",
+                f"{name} with variadic parameters and C structs by value",
+                ab
+            )
+        );
+    }
+    if name not in self.mir.public {
+        self.mir.public.append(name);
+    }
+    self.decls[key] = MirDecl(
+        ability=ab,
+        symbol=f"{name}.jac" if by_value else name,
+        params=params,
+        ret=ret,
+        c_variadic=packed,
+        c_symbol=name if by_value else "",
+        cc=self.c_convention(ab)
+    );
+    self.order.append(key);
+}
+
+impl MirLowering.va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue {
+    b = self.builder();
+    want = self.expr_type(nd);
+    if want.kind not in C_ABI_KINDS {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                "VaList.arg(T)",
+                nd,
+                "`args.arg(T)` reads the next C variadic argument; T is a sized scalar, `int`, `float`, `bool` or a `ptr`."
+            )
+        );
+    }
+    held = self.c_address(
+        self.lower_place(receiver), mir_c_ptr(mir_c_ptr(mir_int(8, False)))
+    );
+    floating = want.kind == MirKind.FLOAT;
+    symbol = "__jac_va_f64" if floating else "__jac_va_i64";
+    word = mir_float(64) if floating else mir_int(64, True, True);
+    self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=word, params=[held.type]);
+    raw = self.emit_value(MirOp.CALL_C, word, [held], callee=symbol);
+    if want.kind == MirKind.BOOL {
+        return b.compare("ne", raw, b.const_int(0, word));
+    }
+    if want.kind in (MirKind.C_PTR, MirKind.C_FN) {
+        return self.emit_value(MirOp.PTR_CAST, want, [raw]);
+    }
+    return b.convert(raw, want);
+}
+
+impl MirLowering.region_call(name: str, args: list[MirValue]) -> MirValue {
+    (returns, arity) = REGION_KERNEL_ABI[name];
+    ret = mir_int() if returns else mir_none();
+    self.mir.externs[name] = MirExtern(
+        symbol=name, ret=ret, params=[mir_int() for _ in range(arity)]
+    );
+    here = os.path.realpath(self.module.loc.mod_path);
+    unit = os.path.realpath(kernel_unit_path(REGION_KERNEL_REL));
+    if unit != here and unit not in self.mir.deps {
+        self.mir.deps.append(unit);
+    }
+    words = [
+        arg
+            if arg.type.kind == MirKind.INT
+            else self.emit_value(MirOp.PTR_INT, mir_int(), [arg]) for arg in args
+    ];
+    made = self.builder().call_runtime(name, words, ret);
+    return made if made is not None else self.builder().const_bool(False);
+}
+
+impl MirLowering.region_value(value: MirValue) -> MirValue {
+    if value.type.kind == MirKind.REGION {
+        return value;
+    }
+    if value.type.kind == MirKind.OPT and value.type.payload().kind == MirKind.REGION {
+        return self.opt_get(value);
+    }
+    return self.coerce(value, mir_region(), self.module);
+}
+
+impl MirLowering.lower_open(nd: uni.OpenStmt) {
+    b = self.builder();
+    fn = self.st().fn;
+    target = self.lower_expr(nd.target);
+    if target.type.kind not in (MirKind.REGION, MirKind.OPT) {
+        raise MirRefused(
+            mir_refusal(
+                "statement",
+                f"in {target.type.render()}",
+                nd,
+                "`in r { ... }` opens a Region."
+            )
+        );
+    }
+    handle = self.region_value(target);
+    owned: (MirValue | None) = None;
+    if isinstance(self.c_bare(nd.target), uni.FuncCall) {
+        owned = self.temp_slot(mir_region());
+        b.store(owned, handle);
+    }
+    held = self.temp_slot(mir_int());
+    b.store(held, self.region_call("__jac_region_depth", []));
+    self.region_call("__jac_region_enter", [handle]);
+    (frame, dispatch) = self.guard_open();
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
+    self.st().try_exits[id(frame)] = MirWithExit(
+        site=nd, region_depth=held, region_owned=owned
+    );
+    self.lower_body(list(nd.body));
+    self.st().tries.pop();
+    after = fn.new_block("open.done");
+    if not self.builder().block.terminated() {
+        self.runtime("__jac_rt_exc_pop", [frame]);
+        self.region_call("__jac_region_unwind", [b.load(held, mir_int())]);
+        if owned is not None {
+            self.region_call("__jac_region_drop", [b.load(owned, mir_region())]);
+        }
+        self.builder().branch(after);
+    }
+    b.position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    self.region_call("__jac_region_unwind", [b.load(held, mir_int())]);
+    if owned is not None {
+        self.region_call("__jac_region_drop", [b.load(owned, mir_region())]);
+    }
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    b.unreachable();
+    b.position(after);
+}
+
+impl MirLowering.drop_regions {
+    b = self.builder();
+    escaped = self.st().region_escape;
+    if escaped is not None {
+        fn = self.st().fn;
+        saved = b.load(escaped, mir_int());
+        restore = fn.new_block("region.restore");
+        resumed = fn.new_block("region.restored");
+        b.cond_branch(
+            b.compare("ge", saved, b.const_int(0, mir_int())), restore, resumed
+        );
+        b.position(restore);
+        self.region_call("__jac_region_restore", [saved]);
+        b.branch(resumed);
+        b.position(resumed);
+    }
+    for slot in self.st().region_slots {
+        self.region_call("__jac_region_drop", [self.region_slot_handle(slot)]);
+        b.store(slot, b.const_null(slot.type));
+    }
+}
+
+impl MirLowering.region_slot_handle(slot: MirValue) -> MirValue {
+    b = self.builder();
+    held = b.load(slot, slot.type);
+    if held.type.kind != MirKind.OPT {
+        return held;
+    }
+    return b.select(
+        self.opt_present(held), self.opt_get(held), b.const_null(mir_region())
+    );
+}
+
+impl MirLowering.region_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) {
+    args = self.call_args(nd);
+    b = self.builder();
+    if name == "Region" and not args {
+        made = self.region_call("__jac_region_new", []);
+        return self.emit_value(MirOp.PTR_CAST, mir_region(), [made]);
+    }
+    if name == "region_of" and len(args) == 1 {
+        subject = self.lower_expr(args[0]);
+        if subject.type.kind == MirKind.OPT {
+            subject = self.opt_get(subject);
+        }
+        if not mir_holds_ref(subject.type) {
+            return self.builder().const_null(self.expr_type(nd));
+        }
+        found = self.region_call("__jac_region_of", [self.address_of(subject)]);
+        wanted = self.expr_type(nd);
+        handle = self.emit_value(MirOp.PTR_CAST, mir_region(), [found]);
+        if wanted.kind != MirKind.OPT {
+            return handle;
+        }
+        present = b.compare("ne", found, b.const_int(0, mir_int()));
+        return self.emit_value(MirOp.OPT_MAKE, wanted, [handle, present]);
+    }
+    return None;
+}
+
+impl MirLowering.region_alloc(
+    size: MirValue, drop_symbol: str, local: bool, eligible: bool = True
+) -> tuple[MirValue, MirValue] {
+    b = self.builder();
+    if not eligible {
+        return (self.fresh_block(size), b.const_int(0, mir_int()));
+    }
+    fn = self.st().fn;
+    i8p = mir_c_ptr(mir_int(8, False));
+    live_at = self.emit_value(
+        MirOp.GLOBAL_BLOCK, mir_int(), [], str_value="__jac_region_gbl", int_value=64
+    );
+    self.mir.global_blocks["__jac_region_gbl"] = max(
+        self.mir.global_blocks.get("__jac_region_gbl", 0), 64
+    );
+    live = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", live_at, b.const_int(16, mir_int()))]
+    );
+    made = self.temp_slot(mir_int());
+    current = self.temp_slot(mir_int());
+    b.store(current, b.const_int(0, mir_int()));
+    probe = fn.new_block("alloc.region.probe");
+    decide = fn.new_block("alloc.region.decide");
+    b.cond_branch(b.compare("ne", live, b.const_int(0, mir_int())), probe, decide);
+    b.position(probe);
+    b.store(current, self.region_call("__jac_region_current", []));
+    b.branch(decide);
+    b.position(decide);
+    hdl = b.load(current, mir_int());
+    arena = fn.new_block("alloc.region");
+    heap = fn.new_block("alloc.heap");
+    done = fn.new_block("alloc.done");
+    b.cond_branch(b.compare("ne", hdl, b.const_int(0, mir_int())), arena, heap);
+    b.position(arena);
+    words = self.region_call("__jac_region_alloc", [hdl, size]);
+    self.mir.externs["memset"] = MirExtern(
+        symbol="memset", ret=i8p, params=[i8p, mir_int(32, True, True), mir_int()]
+    );
+    self.emit_value(
+        MirOp.CALL_C,
+        i8p,
+        [
+            self.emit_value(MirOp.PTR_CAST, i8p, [words]),
+            b.const_int(0, mir_int(32, True, True)),
+            size
+        ],
+        callee="memset"
+    );
+    if not local {
+        self.mir.externs[drop_symbol] = MirExtern(
+            symbol=drop_symbol, ret=mir_none(), params=[i8p]
+        );
+    }
+    dtor = self.emit_value(
+        MirOp.FN_ADDR, mir_c_fn([i8p], mir_none()), [], callee=drop_symbol
+    );
+    self.region_call("__jac_region_log_dtor", [hdl, words, dtor]);
+    b.store(made, words);
+    b.branch(done);
+    b.position(heap);
+    b.store(made, self.fresh_block(size));
+    b.branch(done);
+    b.position(done);
+    return (b.load(made, mir_int()), b.load(current, mir_int()));
+}
+
+impl MirLowering.fresh_block(size: MirValue) -> MirValue {
+    raw = self.call_rt("__jac_rt_alloc_zeroed", [size]);
+    raw.owned = False;
+    return self.address_of(raw);
+}
+
+impl MirLowering.region_escape_entry {
+    b = self.builder();
+    fn = self.st().fn;
+    saved = self.temp_slot(mir_int());
+    b.store(saved, b.const_int(-1, mir_int()));
+    live_at = self.emit_value(
+        MirOp.GLOBAL_BLOCK, mir_int(), [], str_value="__jac_region_gbl", int_value=64
+    );
+    self.mir.global_blocks["__jac_region_gbl"] = max(
+        self.mir.global_blocks.get("__jac_region_gbl", 0), 64
+    );
+    live = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", live_at, b.const_int(16, mir_int()))]
+    );
+    probe = fn.new_block("region.escape.probe");
+    leave = fn.new_block("region.escape");
+    body = fn.new_block("region.escape.done");
+    b.cond_branch(b.compare("ne", live, b.const_int(0, mir_int())), probe, body);
+    b.position(probe);
+    current = self.region_call("__jac_region_current", []);
+    b.cond_branch(b.compare("ne", current, b.const_int(0, mir_int())), leave, body);
+    b.position(leave);
+    b.store(saved, self.region_call("__jac_region_escape", []));
+    b.branch(body);
+    b.position(body);
+    self.st().region_escape = saved;
+}
+
+impl MirLowering.foreign_c_declaration(name: str) -> (uni.Ability | None) {
+    hub = self.prog.mod.hub;
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
+        if imp.is_comptime or imp.clib_decls {
+            continue;
+        }
+        paths: list[str] = [];
+        if isinstance(imp.from_loc, uni.ModulePath) {
+            paths.append(imp.from_loc.resolve_relative_path());
+        } else {
+            for item in imp.items {
+                if isinstance(item, uni.ModulePath) {
+                    paths.append(item.resolve_relative_path());
+                }
+            }
+        }
+        for path in paths {
+            dep = hub.get(os.path.realpath(path)) if path else None;
+            if dep is None or dep is self.module {
+                continue;
+            }
+            for held in dep.get_all_sub_nodes(uni.Import) {
+                for decl in held.clib_decls or [] {
+                    if isinstance(decl, uni.Ability) and self.name_of(decl) == name {
+                        return decl;
+                    }
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl MirLowering.c_signature_text(params: list[MirType], ret: MirType) -> str {
+    def spelled(t: MirType) -> str {
+        if t.kind in (MirKind.C_PTR, MirKind.C_FN)
+            or (t.kind == MirKind.INT and t.width == 64) {
+            return "i64";
+        }
+        if t.kind in (MirKind.NONE, MirKind.VOID) {
+            return "void";
+        }
+        if t.kind == MirKind.INT {
+            return f"i{t.width}";
+        }
+        return t.render();
+    }
+    return f"({', '.join([spelled(t) for t in params])}) -> {spelled(ret)}";
+}
+
+impl MirLowering.c_declared_signature(
+    decl: uni.Ability, site: uni.UniNode
+) -> (str | None) {
+    sig = decl.signature;
+    fn_type = self.declared_type(self.ability_sym(decl));
+    if not isinstance(sig, uni.FuncSignature)
+        or not isinstance(fn_type, FunctionType) {
+        return None;
+    }
+    declared = sig.get_parameters();
+    fallbacks = [p.param_type for p in fn_type.parameters];
+    params: list[MirType] = [];
+    for pv in declared {
+        if pv.is_vararg or pv.is_kwargs {
+            continue;
+        }
+        index = declared.index(pv);
+        params.append(
+            self.c_param_plan(
+                pv, fallbacks[index] if index < len(fallbacks) else None, site
+            )[0]
+        );
+    }
+    ret = mir_none();
+    if sig.return_type is not None {
+        (ret, _) = self.c_return_plan(sig, fn_type.return_type, site);
+    }
+    return self.c_signature_text(params, ret);
+}
+
+impl MirLowering.reinterpret(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> (MirValue | None) {
+    b = self.builder();
+    source = value.type.kind;
+    if source == MirKind.INT and to.kind in (MirKind.STR, MirKind.STR_REF) {
+        handle = self.emit_value(MirOp.PTR_CAST, mir_str_ref(), [value]);
+        if to.kind == MirKind.STR_REF {
+            return handle;
+        }
+        return b.str_make(handle, handle, self.call_rt("__jac_rt_str_size", [handle]));
+    }
+    if source == MirKind.INT and to.kind == MirKind.OBJ {
+        return self.emit_value(MirOp.PTR_CAST, to, [value]);
+    }
+    if source == MirKind.INT and to.kind == MirKind.C_STRUCT {
+        if self.struct_int_abi(to) {
+            held = self.temp_slot(to);
+            b.store(
+                self.emit_value(
+                    MirOp.PTR_CAST, mir_c_ptr(value.type), [self.coerce_place(held)]
+                ),
+                value
+            );
+            return b.load(held, to);
+        }
+        return b.load(self.emit_value(MirOp.PTR_CAST, mir_c_ptr(to), [value]), to);
+    }
+    if source == MirKind.C_PTR
+        and to.kind == MirKind.C_STRUCT
+        and value.type.payload() is to {
+        return b.load(value, to);
+    }
+    if to.kind != MirKind.INT {
+        return None;
+    }
+    if source in (MirKind.STR_REF, MirKind.OBJ) {
+        self.raw_read(value);
+        return self.emit_value(MirOp.PTR_INT, to, [value]);
+    }
+    if source == MirKind.STR {
+        kept = self.call_rt(
+            "__jac_rt_str_ref",
+            [
+                b.str_part(value, "root"),
+                b.str_part(value, "data"),
+                b.str_part(value, "len")
+            ]
+        );
+        kept.owned = False;
+        return self.emit_value(MirOp.PTR_INT, to, [kept]);
+    }
+    if source == MirKind.C_STRUCT {
+        if self.struct_int_abi(value.type) {
+            held = self.temp_slot(value.type);
+            b.store(held, value);
+            return b.load(
+                self.emit_value(
+                    MirOp.PTR_CAST, mir_c_ptr(to), [self.coerce_place(held)]
+                ),
+                to
+            );
+        }
+        return self.emit_value(MirOp.PTR_INT, to, [self.struct_address(value)]);
+    }
+    return None;
+}
+
+impl MirLowering.struct_int_abi(t: MirType) -> bool {
+    layout = self.mir.structs.get(t.name);
+    if layout is None or not layout.fields {
+        return False;
+    }
+    bits = 0;
+    for member in layout.fields {
+        if member.type.kind != MirKind.INT {
+            return False;
+        }
+        bits += member.type.width;
+    }
+    return 32 < bits <= 64;
+}
+
+impl MirLowering.struct_address(value: MirValue) -> MirValue {
+    for instr in reversed(self.builder().block.instrs) {
+        if instr.result is None or instr.result.id != value.id {
+            continue;
+        }
+        if instr.op == MirOp.LOAD
+            and (
+                instr.operands[0].is_slot
+                or instr.operands[0].type.kind == MirKind.C_PTR
+            ) {
+            return self.coerce_place(instr.operands[0]);
+        }
+        break;
+    }
+    held = self.temp_slot(value.type);
+    self.builder().store(held, value);
+    return self.coerce_place(held);
+}
+
+impl MirLowering.struct_view_local(sym: uni.Symbol, t: MirType) -> bool {
+    if t.kind != MirKind.C_STRUCT or self.struct_int_abi(t) {
+        return False;
+    }
+    return self.address_view_local(sym);
+}
+
+impl MirLowering.address_view_local(sym: uni.Symbol) -> bool {
+    if sym.decl is None {
+        return False;
+    }
+    owner = sym.decl.parent;
+    if not isinstance(owner, uni.Assignment)
+        or not isinstance(owner.value, uni.Expr)
+        or owner.value.type is None {
+        return False;
+    }
+    try {
+        source = self.expr_type(owner.value);
+    } except MirRefused {
+        return False;
+    }
+    return source.kind in (MirKind.INT, MirKind.C_PTR);
+}
+
+impl MirLowering.raw_read(value: MirValue) {
+    for instr in reversed(self.builder().block.instrs) {
+        if instr.result is None or instr.result.id != value.id {
+            continue;
+        }
+        if instr.op == MirOp.LOAD and not instr.operands[0].is_slot {
+            instr.sub = "raw";
+        }
+        return;
+    }
+}

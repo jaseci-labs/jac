@@ -1,0 +1,2001 @@
+impl emit_mir_module(
+    mir: MirModule,
+    triple: str = "",
+    native_tls: bool = False,
+    data_layout: str = "",
+    native_sjlj: bool = False
+) -> ir.Module {
+    module = ir.Module(name=mir.path, context=ir.Context());
+    if triple {
+        module.triple = triple;
+    }
+    if data_layout {
+        module.data_layout = data_layout;
+    }
+    return MirEmitter(
+        mir=mir, module=module, native_tls=native_tls, native_sjlj=native_sjlj
+    ).emit();
+}
+
+impl MirEmitter.emit -> ir.Module {
+    for fn in self.mir.functions {
+        self.declare(fn);
+    }
+    for fn in self.mir.functions {
+        if fn.c_symbol {
+            self.c_abi_extern(
+                MirExtern(
+                    symbol=fn.c_symbol,
+                    ret=fn.ret,
+                    params=[param.value.type for param in fn.params],
+                    c_abi=True
+                )
+            );
+        }
+    }
+    for ext in self.mir.externs.values() {
+        if ext.c_abi
+            and ext.symbol not in self.functions
+            and (
+                ext.ret.kind == MirKind.C_STRUCT
+                or any(param.kind == MirKind.C_STRUCT for param in ext.params)
+            ) {
+            self.c_abi_extern(ext);
+            continue;
+        }
+        declared = self.extern(
+            ext.symbol,
+            self.llvm_type(ext.ret),
+            [self.llvm_type(param) for param in ext.params],
+            ext.variadic
+        );
+        if ext.cc and not declared.calling_convention {
+            declared.calling_convention = ext.cc;
+        }
+    }
+    if self.native_tls and not self.single_threaded() {
+        for (label, size) in self.mir.tls_blocks.items() {
+            if size <= TLS_DIRECT_BLOCK_BYTES {
+                self.tls_block(label, size);
+            }
+        }
+    }
+    for glob_def in self.mir.globals.values() {
+        self.global_variable(glob_def);
+    }
+    for (label, size) in self.mir.global_blocks.items() {
+        self.global_block(label, size);
+    }
+    for fn in self.mir.functions {
+        self.emit_function(fn);
+    }
+    for fn in self.mir.functions {
+        if fn.c_symbol {
+            self.c_thunk(fn);
+        }
+    }
+    for obj_def in self.mir.objects.values() {
+        if obj_def.local and obj_def.vtable_symbol {
+            self.vtable_global(obj_def);
+        }
+        if obj_def.local and obj_def.class_symbol {
+            self.class_global(obj_def);
+        }
+    }
+    for glob_def in self.mir.globals.values() {
+        if glob_def.c_init is not None {
+            held = self.module.globals[glob_def.symbol];
+            if not isinstance(held, ir.GlobalVariable) {
+                raise MirEmitError(f"{glob_def.symbol} is not a global variable");
+            }
+            held.initializer = self.c_constant(glob_def.c_init, held.value_type);
+        }
+    }
+    return self.module;
+}
+
+impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
+    kind = made.kind;
+    if kind == "zero" or (kind == "int" and made.int_value == 0) {
+        return ir.Constant(shape, None);
+    }
+    if kind in ("int", "float") {
+        if isinstance(shape, ir.IntType) {
+            return ir.Constant(
+                shape, made.int_value if kind == "int" else int(made.float_value)
+            );
+        }
+        if isinstance(shape, ir.PointerType) {
+            return ir.Constant(ir.IntType(64), made.int_value).inttoptr(shape) as ir.Constant;
+        }
+        return ir.Constant(
+            shape, float(made.int_value) if kind == "int" else made.float_value
+        );
+    }
+    if kind == "bytes" {
+        return ir.Constant(shape, bytearray(made.data));
+    }
+    if kind == "aggregate" {
+        if isinstance(shape, ir.ArrayType) {
+            return ir.Constant(
+                shape, [self.c_constant(item, shape.element) for item in made.items]
+            );
+        }
+        if not isinstance(shape, ir.BaseStructType) {
+            raise MirEmitError(f"an aggregate C constant for {shape}");
+        }
+        members = list(shape._element_types() or []);
+        return ir.Constant(
+            shape,
+            [
+                self.c_constant(item, member)
+                for (item, member) in zip(made.items, members)
+            ]
+        );
+    }
+    target: ir.Value;
+    if kind == "fn" {
+        target = self.functions[made.symbol];
+    } elif kind == "cstr" {
+        target = self.cstring_global(made.data.decode("utf-8")).gep(
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)]
+        );
+    } else {
+        target = self.module.globals[made.symbol];
+        if made.offset {
+            addressed = target.type;
+            pointee = addressed.pointee
+                if isinstance(addressed, ir.PointerType)
+                else None;
+            steps = [
+                ir.Constant(ir.IntType(32), 0),
+                ir.Constant(ir.IntType(64), made.offset)
+            ]
+                if isinstance(pointee, ir.ArrayType)
+                else [ir.Constant(ir.IntType(64), made.offset)];
+            target = target.gep(steps);
+        }
+    }
+    if isinstance(shape, ir.IntType) {
+        return target.ptrtoint(shape) as ir.Constant;
+    }
+    return target.bitcast(shape) as ir.Constant;
+}
+
+impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
+    if t.kind == MirKind.BOOL {
+        return ir.IntType(1);
+    }
+    if t.kind == MirKind.INT {
+        return ir.IntType(t.width);
+    }
+    if t.kind == MirKind.FLOAT {
+        return ir.FloatType() if t.width == 32 else ir.DoubleType();
+    }
+    if t.kind in (MirKind.NONE, MirKind.VOID) {
+        return ir.VoidType();
+    }
+    if t.kind == MirKind.STR {
+        return self.str_type();
+    }
+    if t.kind == MirKind.OPT {
+        return ir.LiteralStructType([ir.IntType(1), self.slot_type(t.payload())]);
+    }
+    if t.kind == MirKind.TUPLE {
+        return ir.LiteralStructType([self.slot_type(member) for member in t.args]);
+    }
+    if t.kind == MirKind.OBJ and t.name != "*" {
+        return self.object_struct(t.name).as_pointer();
+    }
+    if t.kind == MirKind.ANY {
+        return self.jacval_type();
+    }
+    if t.kind == MirKind.COMPLEX {
+        return ir.LiteralStructType([ir.DoubleType(), ir.DoubleType()]);
+    }
+    if t.kind
+        in (MirKind.STR_REF, MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY)
+        or mir_is_container(t) {
+        return ir.IntType(8).as_pointer();
+    }
+    if t.kind == MirKind.C_PTR {
+        elem = t.payload();
+        if elem.kind in (MirKind.NONE, MirKind.VOID) {
+            return ir.IntType(8).as_pointer();
+        }
+        return self.llvm_type(elem).as_pointer();
+    }
+    if t.kind == MirKind.C_STRUCT {
+        return self.c_struct(t.name);
+    }
+    if t.kind == MirKind.C_PIN {
+        return self.llvm_type(t.payload()).as_pointer();
+    }
+    if t.kind == MirKind.C_VIEW {
+        return ir.LiteralStructType(
+            [self.llvm_type(mir_c_ptr(t.payload())), ir.IntType(64)]
+        );
+    }
+    if t.kind == MirKind.C_FN {
+        return ir.FunctionType(
+            self.llvm_type(t.args[0]), [self.slot_type(arg) for arg in t.args[1:]]
+        ).as_pointer();
+    }
+    if t.kind == MirKind.ENUM {
+        return ir.IntType(64);
+    }
+    if t.is_ref() or t.kind in (MirKind.CLASS, MirKind.REGION) {
+        return ir.IntType(8).as_pointer();
+    }
+    raise MirEmitError(f"no LLVM form for MIR type {t.render()}");
+}
+
+impl MirEmitter.fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType {
+    return ir.FunctionType(self.llvm_type(ret), [self.slot_type(p) for p in params]);
+}
+
+impl MirEmitter.declare(fn: MirFunction) -> ir.Function {
+    shape = self.fn_type([p.value.type for p in fn.params], fn.ret);
+    if fn.variadic {
+        shape = ir.FunctionType(shape.return_type, shape.args, var_arg=True);
+    }
+    made = ir.Function(self.module, shape, name=fn.symbol);
+    made.linkage = fn.linkage;
+    if fn.cc {
+        made.calling_convention = fn.cc;
+    }
+    if fn.ret.kind == MirKind.BOOL {
+        made.return_value.add_attribute("zeroext");
+    }
+    self.functions[fn.symbol] = made;
+    return made;
+}
+
+impl MirEmitter.extern(
+    symbol: str, ret: ir.Type, args: list[ir.Type], variadic: bool = False
+) -> ir.Function {
+    found = self.functions.get(symbol);
+    if found is not None {
+        return found;
+    }
+    existing = self.module.globals.get(symbol);
+    if isinstance(existing, ir.Function) {
+        self.functions[symbol] = existing;
+        return existing;
+    }
+    floor = mir_runtime_abi(symbol);
+    if floor is not None {
+        ret = self.llvm_type(floor[1]);
+        args = [self.llvm_type(param) for param in floor[0]];
+    }
+    made = ir.Function(
+        self.module, ir.FunctionType(ret, args, var_arg=variadic), name=symbol
+    );
+    if symbol in RETURNS_TWICE_SYMBOLS {
+        made.attributes.add("returns_twice");
+    }
+    self.functions[symbol] = made;
+    return made;
+}
+
+impl MirEmitter.emit_function(fn: MirFunction) {
+    func = self.functions[fn.symbol];
+    self.values = {};
+    self.blocks = {};
+    for blk in fn.blocks {
+        self.blocks[blk.label] = func.append_basic_block(name=blk.label);
+    }
+    for (param, arg) in zip(fn.params, func.args) {
+        arg.name = param.name;
+        self.values[param.value.id] = arg;
+    }
+    self.volatile_slots = any(
+        instr.op == MirOp.SETJMP for blk in fn.blocks for instr in blk.instrs
+    );
+    b = ir.IRBuilder();
+    for blk in emission_order(fn) {
+        b.position_at_end(self.blocks[blk.label]);
+        for instr in blk.instrs {
+            try {
+                self.emit_instr(b, instr);
+            } except MirEmitError as err {
+                if str(err).startswith(fn.symbol) {
+                    raise err;
+                }
+                raise MirEmitError(
+                    f"{fn.symbol}: {instr.render()} in {blk.label}: {err}"
+                ) from err;
+            } except Exception as err {
+                origins = [
+                    made.render() for other in fn.blocks
+                    for made in other.instrs
+                    if made.result is not None
+                        and any(made.result.id == used.id for used in instr.operands)
+                ];
+                raise MirEmitError(
+                    f"{fn.symbol}: {instr.render()} in {blk.label} (operands from {origins}): {err}"
+                ) from err;
+            }
+        }
+    }
+}
+
+impl MirEmitter.slot_type(t: MirType) -> ir.Type {
+    if t.kind in (MirKind.NONE, MirKind.VOID) {
+        return ir.IntType(64);
+    }
+    return self.llvm_type(t);
+}
+
+impl MirEmitter.value(v: MirValue) -> ir.Value {
+    found = self.values.get(v.id);
+    if found is None and v.type.kind == MirKind.NONE {
+        return ir.Constant(ir.IntType(64), 0);
+    }
+    if found is None {
+        raise MirEmitError(f"MIR value {v.render()} is used before it is defined");
+    }
+    return found;
+}
+
+impl MirEmitter.bind(v: (MirValue | None), made: ir.Value) {
+    if v is not None {
+        self.values[v.id] = made;
+    }
+}
+
+impl MirEmitter.cstring(b: ir.IRBuilder, text: str) -> ir.Value {
+    return b.bitcast(self.cstring_global(text), ir.IntType(8).as_pointer());
+}
+
+impl MirEmitter.cstring_global(text: str) -> ir.GlobalVariable {
+    gv = self.strings.get(text);
+    if gv is None {
+        data = bytearray(text.encode("utf-8")) + bytearray([0]);
+        arr = ir.ArrayType(ir.IntType(8), len(data));
+        gv = ir.GlobalVariable(self.module, arr, name=f".mir.str.{len(self.strings)}");
+        gv.initializer = ir.Constant(arr, data);
+        gv.global_constant = True;
+        gv.linkage = "private";
+        self.strings[text] = gv;
+    }
+    return gv;
+}
+
+impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    if op == MirOp.CONST_INT {
+        self.bind(
+            instr.result,
+            ir.Constant(self.llvm_type(result_of(instr).type), instr.int_value)
+        );
+    } elif op == MirOp.CONST_FLOAT {
+        self.bind(
+            instr.result,
+            ir.Constant(self.llvm_type(result_of(instr).type), instr.float_value)
+        );
+    } elif op == MirOp.CONST_BOOL {
+        self.bind(instr.result, ir.Constant(ir.IntType(1), instr.int_value));
+    } elif op == MirOp.SLOT and instr.operands {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.value(instr.operands[0]),
+                self.llvm_type(type_arg_of(instr)).as_pointer()
+            )
+        );
+    } elif op == MirOp.SLOT {
+        self.bind(
+            instr.result,
+            b.alloca(self.llvm_type(type_arg_of(instr)), name=result_of(instr).name)
+        );
+    } elif op == MirOp.LOAD {
+        loaded = b.load(self.value(instr.operands[0]));
+        if self.volatile_slots
+            and instr.operands[0].is_slot
+            and isinstance(loaded, ir.LoadInstr) {
+            loaded.volatile = True;
+        }
+        self.bind(instr.result, loaded);
+    } elif op == MirOp.STORE {
+        stored = b.store(self.value(instr.operands[1]), self.value(instr.operands[0]));
+        if self.volatile_slots
+            and instr.operands[0].is_slot
+            and isinstance(stored, ir.StoreInstr) {
+            stored.volatile = True;
+        }
+    } elif op == MirOp.BIN {
+        self.bind(instr.result, self.emit_bin(b, instr));
+    } elif op == MirOp.OVF {
+        self.bind(instr.result, self.emit_ovf(b, instr));
+    } elif op == MirOp.CMP {
+        self.bind(instr.result, self.emit_cmp(b, instr));
+    } elif op == MirOp.NEG {
+        self.bind(instr.result, b.fneg(self.value(instr.operands[0])));
+    } elif op == MirOp.NOT {
+        self.bind(
+            instr.result,
+            b.xor(self.value(instr.operands[0]), ir.Constant(ir.IntType(1), 1))
+        );
+    } elif op == MirOp.CONV {
+        self.bind(
+            instr.result,
+            self.emit_conv(
+                b,
+                self.value(instr.operands[0]),
+                instr.operands[0].type,
+                type_arg_of(instr)
+            )
+        );
+    } elif op == MirOp.CONST_NULL {
+        self.bind(instr.result, ir.Constant(self.llvm_type(type_arg_of(instr)), None));
+    } elif op == MirOp.CONST_STR {
+        data = self.str_literal(b, instr.str_value);
+        if type_arg_of(instr).kind == MirKind.STR {
+            size = len(instr.str_value.encode("utf-8"));
+            made = b.insert_value(ir.Constant(self.str_type(), None), data, 0);
+            made = b.insert_value(made, data, 1);
+            made = b.insert_value(made, ir.Constant(ir.IntType(64), size), 2);
+            self.bind(instr.result, made);
+        } else {
+            self.bind(instr.result, data);
+        }
+    } elif op == MirOp.CONST_BYTES {
+        self.bind(
+            instr.result, self.bytes_literal(b, instr.str_value.encode("latin-1"))
+        );
+    } elif op == MirOp.STR_PART {
+        index = ["root", "data", "len"].index(instr.sub);
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), index));
+    } elif op == MirOp.STR_MAKE {
+        made = ir.Constant(self.str_type(), None);
+        for (index, part) in enumerate(instr.operands) {
+            made = b.insert_value(made, self.value(part), index);
+        }
+        self.bind(instr.result, made);
+    } elif op == MirOp.OPT_MAKE {
+        made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);
+        made = b.insert_value(
+            made,
+            self.value(instr.operands[1])
+                if len(instr.operands) > 1
+                else ir.Constant(ir.IntType(1), 1),
+            0
+        );
+        self.bind(instr.result, b.insert_value(made, self.value(instr.operands[0]), 1));
+    } elif op == MirOp.TUPLE_MAKE {
+        made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);
+        for (index, member) in enumerate(instr.operands) {
+            made = b.insert_value(made, self.value(member), index);
+        }
+        self.bind(instr.result, made);
+    } elif op == MirOp.TUPLE_GET {
+        self.bind(
+            instr.result,
+            b.extract_value(self.value(instr.operands[0]), instr.int_value)
+        );
+    } elif op == MirOp.OPT_PRESENT {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 0));
+    } elif op == MirOp.OPT_GET {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 1));
+    } elif op == MirOp.REF_CAST {
+        source = self.value(instr.operands[0]);
+        to = self.llvm_type(type_arg_of(instr));
+        if instr.operands[0].type.kind == MirKind.ANY {
+            source = b.extract_value(source, 1);
+        } elif instr.operands[0].type.kind == MirKind.OPT
+            and type_arg_of(instr).kind != MirKind.OPT
+            and source.type != to
+            and not isinstance(source.type, (ir.IntType, ir.PointerType)) {
+            source = b.extract_value(source, 1);
+        }
+        if isinstance(source.type, ir.IntType) {
+            self.bind(instr.result, b.inttoptr(source, to));
+        } elif source.type == to {
+            self.bind(instr.result, source);
+        } else {
+            self.bind(instr.result, b.bitcast(source, to));
+        }
+    } elif op in (MirOp.RETAIN, MirOp.RELEASE) {
+        self.emit_rc(b, instr);
+    } elif op in ANY_OPS {
+        self.emit_any(b, instr);
+    } elif op == MirOp.CALL_RUNTIME {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR runtime call to undeclared {instr.callee}");
+        }
+        made = self.call_declared(b, callee, instr);
+        self.bind(instr.result, made);
+    } elif op == MirOp.SELECT {
+        self.bind(
+            instr.result,
+            b.select(
+                self.value(instr.operands[0]),
+                self.value(instr.operands[1]),
+                self.value(instr.operands[2])
+            )
+        );
+    } elif op == MirOp.BITCAST {
+        self.bind(
+            instr.result,
+            b.bitcast(self.value(instr.operands[0]), self.llvm_type(type_arg_of(instr)))
+        );
+    } elif op in MEMORY_OPS {
+        self.emit_memory(b, instr);
+    } elif op == MirOp.CALL {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR call to undeclared function {instr.callee}");
+        }
+        made = self.call_declared(b, callee, instr);
+        self.bind(instr.result, made);
+    } elif op == MirOp.RAISE {
+        self.emit_raise(b, instr);
+    } elif op == MirOp.CALL_PYTHON {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR Python call to undeclared bridge {instr.callee}");
+        }
+        made = self.call_declared(b, callee, instr);
+        if type_arg_of(instr).kind != MirKind.NONE {
+            self.bind(instr.result, made);
+        }
+    } elif op in (MirOp.YIELD, MirOp.FRAME_NEW, MirOp.FRAME_FIELD) {
+        raise MirEmitError(f"MIR {op.value} survived the generator pass");
+    } elif op in C_OPS {
+        self.emit_c(b, instr);
+    } elif op == MirOp.BR {
+        b.branch(self.blocks[instr.targets[0]]);
+    } elif op == MirOp.COND_BR {
+        b.cbranch(
+            self.value(instr.operands[0]),
+            self.blocks[instr.targets[0]],
+            self.blocks[instr.targets[1]]
+        );
+    } elif op == MirOp.RET {
+        if instr.operands
+            and instr.operands[0].type.kind not in (MirKind.NONE, MirKind.VOID) {
+            b.ret(self.value(instr.operands[0]));
+        } elif instr.operands
+            and isinstance(b.function.ftype.return_type, ir.IntType) {
+            b.ret(ir.Constant(b.function.ftype.return_type, 0));
+        } else {
+            b.ret_void();
+        }
+    } elif op == MirOp.UNREACHABLE {
+        b.unreachable();
+    } else {
+        raise MirEmitError(f"no emitter for MIR instruction {op.value}");
+    }
+}
+
+impl MirEmitter.emit_bin(b: ir.IRBuilder, instr: MirInstr) -> ir.Value {
+    l = self.value(instr.operands[0]);
+    r = self.value(instr.operands[1]);
+    t = instr.operands[0].type;
+    op = instr.sub;
+    if t.kind == MirKind.FLOAT {
+        if op == "add" {
+            return b.fadd(l, r);
+        }
+        if op == "sub" {
+            return b.fsub(l, r);
+        }
+        if op == "mul" {
+            return b.fmul(l, r);
+        }
+        if op == "div" {
+            return b.fdiv(l, r);
+        }
+        if op == "floordiv" {
+            floor_fn = self.extern(f"llvm.floor.f{t.width}", l.type, [l.type]);
+            return b.call(floor_fn, [b.fdiv(l, r)]);
+        }
+        if op == "mod" {
+            return self.emit_float_mod(b, l, r);
+        }
+    } else {
+        if op == "add" {
+            return b.add(l, r);
+        }
+        if op == "sub" {
+            return b.sub(l, r);
+        }
+        if op == "mul" {
+            return b.mul(l, r);
+        }
+        if op == "and" {
+            return b.and_(l, r);
+        }
+        if op == "or" {
+            return b.or_(l, r);
+        }
+        if op == "xor" {
+            return b.xor(l, r);
+        }
+        if op == "shl" {
+            return b.shl(l, r);
+        }
+        if op == "shr" {
+            return b.ashr(l, r) if t.signed else b.lshr(l, r);
+        }
+        if op == "floordiv" {
+            return self.emit_floordiv(b, l, r, t.signed);
+        }
+        if op == "mod" {
+            return self.emit_mod(b, l, r, t.signed);
+        }
+    }
+    raise MirEmitError(f"no emitter for MIR {op} on {t.render()}");
+}
+
+impl MirEmitter.emit_floordiv(
+    b: ir.IRBuilder, l: ir.Value, r: ir.Value, signed: bool
+) -> ir.Value {
+    if not signed {
+        return b.udiv(l, r);
+    }
+    zero = ir.Constant(l.type, 0);
+    q = b.sdiv(l, r);
+    rem = b.srem(l, r);
+    adjust = b.and_(
+        b.icmp_signed("!=", rem, zero),
+        b.icmp_unsigned(
+            "!=", b.icmp_signed("<", rem, zero), b.icmp_signed("<", r, zero)
+        )
+    );
+    return b.select(adjust, b.sub(q, ir.Constant(l.type, 1)), q);
+}
+
+impl MirEmitter.emit_mod(
+    b: ir.IRBuilder, l: ir.Value, r: ir.Value, signed: bool
+) -> ir.Value {
+    if not signed {
+        return b.urem(l, r);
+    }
+    zero = ir.Constant(l.type, 0);
+    rem = b.srem(l, r);
+    adjust = b.and_(
+        b.icmp_signed("!=", rem, zero),
+        b.icmp_unsigned(
+            "!=", b.icmp_signed("<", rem, zero), b.icmp_signed("<", r, zero)
+        )
+    );
+    return b.select(adjust, b.add(rem, r), rem);
+}
+
+impl MirEmitter.emit_float_mod(b: ir.IRBuilder, l: ir.Value, r: ir.Value) -> ir.Value {
+    zero = ir.Constant(l.type, 0.0);
+    rem = b.frem(l, r);
+    adjust = b.and_(
+        b.fcmp_ordered("!=", rem, zero),
+        b.icmp_unsigned(
+            "!=", b.fcmp_ordered("<", rem, zero), b.fcmp_ordered("<", r, zero)
+        )
+    );
+    return b.select(adjust, b.fadd(rem, r), rem);
+}
+
+impl MirEmitter.emit_ovf(b: ir.IRBuilder, instr: MirInstr) -> ir.Value {
+    l = self.value(instr.operands[0]);
+    r = self.value(instr.operands[1]);
+    t = instr.operands[0].type;
+    if instr.sub == "floordiv" {
+        if not t.signed {
+            return ir.Constant(ir.IntType(1), 0);
+        }
+        half = 1 << (t.width - 2);
+        lowest = ir.Constant(l.type, -half - half);
+        return b.and_(
+            b.icmp_signed("==", l, lowest),
+            b.icmp_signed("==", r, ir.Constant(l.type, -1))
+        );
+    }
+    prefix = "s" if t.signed else "u";
+    pair = ir.LiteralStructType([l.type, ir.IntType(1)]);
+    intrinsic = self.extern(
+        f"llvm.{prefix}{instr.sub}.with.overflow.i{t.width}", pair, [l.type, l.type]
+    );
+    return b.extract_value(b.call(intrinsic, [l, r]), 1);
+}
+
+impl MirEmitter.emit_cmp(b: ir.IRBuilder, instr: MirInstr) -> ir.Value {
+    l = self.value(instr.operands[0]);
+    r = self.value(instr.operands[1]);
+    t = instr.operands[0].type;
+    symbol = CMP_SYMBOLS[instr.sub];
+    if t.kind == MirKind.FLOAT {
+        if instr.sub == "ne" {
+            return b.fcmp_unordered("!=", l, r);
+        }
+        return b.fcmp_ordered(symbol, l, r);
+    }
+    if t.kind == MirKind.INT and t.signed {
+        return b.icmp_signed(symbol, l, r);
+    }
+    return b.icmp_unsigned(symbol, l, r);
+}
+
+impl MirEmitter.emit_conv(
+    b: ir.IRBuilder, value: ir.Value, src: MirType, dst: MirType
+) -> ir.Value {
+    if src.kind == MirKind.ENUM {
+        return self.emit_conv(b, value, mir_int(), dst);
+    }
+    if dst.kind == MirKind.ENUM {
+        return self.emit_conv(b, value, src, mir_int());
+    }
+    to = self.llvm_type(dst);
+    if dst.kind == MirKind.BOOL {
+        if src.kind == MirKind.FLOAT {
+            return b.fcmp_unordered("!=", value, ir.Constant(value.type, 0.0));
+        }
+        return b.icmp_unsigned("!=", value, ir.Constant(value.type, 0));
+    }
+    if dst.kind == MirKind.FLOAT {
+        if src.kind == MirKind.FLOAT {
+            if src.width < dst.width {
+                return b.fpext(value, to);
+            }
+            return b.fptrunc(value, to) if src.width > dst.width else value;
+        }
+        if src.kind == MirKind.INT and src.signed {
+            return b.sitofp(value, to);
+        }
+        return b.uitofp(value, to);
+    }
+    if dst.kind == MirKind.INT {
+        if src.kind == MirKind.FLOAT {
+            return b.fptosi(value, to) if dst.signed else b.fptoui(value, to);
+        }
+        if src.width < dst.width {
+            if src.kind == MirKind.INT and src.signed {
+                return b.sext(value, to);
+            }
+            return b.zext(value, to);
+        }
+        return b.trunc(value, to) if src.width > dst.width else value;
+    }
+    raise MirEmitError(f"no conversion from {src.render()} to {dst.render()}");
+}
+
+impl MirEmitter.emit_raise(b: ir.IRBuilder, instr: MirInstr) {
+    i8p = ir.IntType(8).as_pointer();
+    raiser = self.extern(RAISE_BUILTIN_SYMBOL, ir.VoidType(), [ir.IntType(32), i8p]);
+    type_id = JAC_TYPE_REGISTRY.exception_type_id(instr.callee);
+    b.call(
+        raiser, [ir.Constant(ir.IntType(32), type_id), self.cstring(b, instr.str_value)]
+    );
+    b.unreachable();
+}
+
+impl emission_order(fn: MirFunction) -> list[MirBlock] {
+    if not fn.blocks {
+        return [];
+    }
+    by_label = {blk.label: blk for blk in fn.blocks};
+    seen: set[str] = set();
+    finished: list[MirBlock] = [];
+    pending: list[tuple[MirBlock, int]] = [(fn.blocks[0], 0)];
+    seen.add(fn.blocks[0].label);
+    while pending {
+        (blk, at) = pending[-1];
+        targets = list(blk.instrs[-1].targets) if blk.instrs else [];
+        if at < len(targets) {
+            pending[-1] = (blk, at + 1);
+            following = by_label.get(targets[at]);
+            if following is not None and following.label not in seen {
+                seen.add(following.label);
+                pending.append((following, 0));
+            }
+            continue;
+        }
+        pending.pop();
+        finished.append(blk);
+    }
+    ordered = list(reversed(finished));
+    return ordered
+        + [
+            blk
+            for blk in fn.blocks
+            if blk.label not in seen
+        ];
+}
+
+impl result_of(instr: MirInstr) -> MirValue {
+    found = instr.result;
+    if found is None {
+        raise MirEmitError(f"MIR {instr.op.value} has no result");
+    }
+    return found;
+}
+
+impl type_arg_of(instr: MirInstr) -> MirType {
+    found = instr.type_arg;
+    if found is None {
+        raise MirEmitError(f"MIR {instr.op.value} has no type argument");
+    }
+    return found;
+}
+
+impl MirEmitter.c_struct(name: str) -> ir.Type {
+    label = f"jac.c.{name}";
+    made = self.module.context.get_identified_type(label);
+    if name in self.building or label in self.defined {
+        return made;
+    }
+    if not made.is_opaque {
+        raise MirEmitError(
+            f"C struct {name} already has a body this module did not give it"
+        );
+    }
+    layout = self.mir.structs.get(name);
+    if layout is None {
+        raise MirEmitError(f"no layout for C struct {name}");
+    }
+    self.building.add(name);
+    members = [self.llvm_type(member.type) for member in layout.fields];
+    self.building.discard(name);
+    made.set_body(*members);
+    self.defined.add(label);
+    return made;
+}
+
+impl MirEmitter.tls_block(label: str, size: int) -> ir.GlobalVariable {
+    found = self.module.globals.get(label);
+    if isinstance(found, ir.GlobalVariable) {
+        return found;
+    }
+    cell = ir.ArrayType(ir.IntType(64), (size + 7) // 8);
+    made = ir.GlobalVariable(self.module, cell, name=label);
+    made.linkage = "weak";
+    made.initializer = ir.Constant(cell, None);
+    made.thread_local = True;
+    made.tls_model = "initialexec";
+    return made;
+}
+
+impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    i32 = ir.IntType(32);
+    if op == MirOp.PTR_NULL {
+        self.bind(instr.result, ir.Constant(self.llvm_type(type_arg_of(instr)), None));
+    } elif op == MirOp.PTR_CAST {
+        source = self.value(instr.operands[0]);
+        to = self.llvm_type(type_arg_of(instr));
+        if isinstance(source.type, ir.IntType) {
+            self.bind(instr.result, b.inttoptr(source, to));
+        } else {
+            self.bind(instr.result, b.bitcast(source, to));
+        }
+    } elif op == MirOp.PTR_INT {
+        self.bind(
+            instr.result,
+            b.ptrtoint(
+                self.value(instr.operands[0]), self.llvm_type(type_arg_of(instr))
+            )
+        );
+    } elif op == MirOp.PTR_OFFSET {
+        self.bind(
+            instr.result,
+            b.gep(self.value(instr.operands[0]), [self.value(instr.operands[1])])
+        );
+    } elif op == MirOp.CSTR {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.cstring(b, instr.str_value), self.llvm_type(type_arg_of(instr))
+            )
+        );
+    } elif op == MirOp.VIEW {
+        shape = self.llvm_type(type_arg_of(instr));
+        made = b.insert_value(
+            ir.Constant(shape, None), self.value(instr.operands[0]), 0
+        );
+        self.bind(instr.result, b.insert_value(made, self.value(instr.operands[1]), 1));
+    } elif op == MirOp.VIEW_LEN {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 1));
+    } elif op == MirOp.ELEM_ADDR {
+        base = b.extract_value(self.value(instr.operands[0]), 0);
+        self.bind(instr.result, b.gep(base, [self.value(instr.operands[1])]));
+    } elif op == MirOp.FIELD_ADDR {
+        self.bind(
+            instr.result,
+            b.gep(
+                self.value(instr.operands[0]),
+                [ir.Constant(i32, 0), ir.Constant(i32, instr.int_value)]
+            )
+        );
+    } elif op == MirOp.GLOBAL_ADDR {
+        held = self.module.globals[instr.str_value];
+        wanted = self.llvm_type(result_of(instr).type);
+        self.bind(instr.result, held if held.type == wanted else held.bitcast(wanted));
+    } elif op == MirOp.TLS_BLOCK {
+        if self.single_threaded() {
+            block = self.global_block(instr.str_value, instr.int_value);
+            self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+        } elif self.native_tls and instr.int_value <= TLS_DIRECT_BLOCK_BYTES {
+            block = self.tls_block(instr.str_value, instr.int_value);
+            self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+        } elif self.native_tls {
+            self.bind(
+                instr.result,
+                b.call(self.tls_lazy_block_fn(instr.str_value, instr.int_value), [])
+            );
+        } else {
+            self.bind(
+                instr.result,
+                b.call(self.keyed_block_fn(instr.str_value, instr.int_value), [])
+            );
+        }
+    } elif op == MirOp.ALLOCA {
+        i64 = ir.IntType(64);
+        if instr.operands {
+            count = self.value(instr.operands[0]);
+            words = b.sdiv(b.add(count, ir.Constant(i64, 7)), ir.Constant(i64, 8));
+            self.bind(instr.result, b.alloca(i64, size=words));
+        } else {
+            buffer = b.alloca(ir.ArrayType(i64, max(instr.int_value, 1)));
+            self.bind(instr.result, b.bitcast(buffer, i64.as_pointer()));
+        }
+    } elif op == MirOp.EXC_FRAME {
+        frame = b.alloca(ir.ArrayType(ir.IntType(64), EXC_FRAME_BYTES // 8));
+        self.bind(instr.result, b.bitcast(frame, ir.IntType(8).as_pointer()));
+    } elif op == MirOp.SETJMP {
+        i8p = ir.IntType(8).as_pointer();
+        i32 = ir.IntType(32);
+        env = self.value(instr.operands[0]);
+        if self.builtin_sjlj() {
+            b.function.attributes.add("noinline");
+            words = b.bitcast(env, i8p.as_pointer());
+            frame = b.call(
+                self.extern("llvm.frameaddress.p0", i8p, [i32]), [ir.Constant(i32, 0)]
+            );
+            b.store(frame, words);
+            stack = b.call(self.extern("llvm.stacksave.p0", i8p, []), []);
+            b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
+            jump = self.extern("llvm.eh.sjlj.setjmp", i32, [i8p]);
+        } else {
+            jump = self.extern(self.jmp_symbols()[0], i32, [i8p]);
+        }
+        armed = b.call(jump, [env]);
+        armed.attributes.add("returns_twice");
+        self.bind(instr.result, armed);
+    } elif op == MirOp.LONGJMP {
+        i8p = ir.IntType(8).as_pointer();
+        env = b.inttoptr(self.value(instr.operands[0]), i8p);
+        if self.builtin_sjlj() {
+            b.call(self.extern("llvm.eh.sjlj.longjmp", ir.VoidType(), [i8p]), [env]);
+        } else {
+            b.call(
+                self.extern(
+                    self.jmp_symbols()[1], ir.VoidType(), [i8p, ir.IntType(32)]
+                ),
+                [env, ir.Constant(ir.IntType(32), 1)]
+            );
+        }
+    } elif op == MirOp.VA_START {
+        i8p = ir.IntType(8).as_pointer();
+        storage = b.alloca(ir.ArrayType(ir.IntType(64), 4));
+        raw = b.bitcast(storage, i8p);
+        b.call(self.extern("llvm.va_start", ir.VoidType(), [i8p]), [raw]);
+        self.bind(
+            instr.result, b.call(self.extern("__jac_va_list", i8p, [i8p]), [raw])
+        );
+    } elif op == MirOp.SIZEOF {
+        shape = self.llvm_type(type_arg_of(instr));
+        pointee: ir.Type = shape;
+        if isinstance(shape, ir.PointerType) and shape.pointee is not None {
+            pointee = shape.pointee;
+        }
+        past = b.gep(
+            ir.Constant(pointee.as_pointer(), None), [ir.Constant(ir.IntType(32), 1)]
+        );
+        self.bind(instr.result, b.ptrtoint(past, ir.IntType(64)));
+    } elif op == MirOp.VTABLE_ADDR {
+        obj_def = self.mir.objects[instr.str_value];
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.vtable_global(obj_def), ir.IntType(8).as_pointer().as_pointer()
+            )
+        );
+    } elif op == MirOp.CLASS_ADDR {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.class_global(self.mir.objects[instr.str_value]),
+                ir.IntType(8).as_pointer()
+            )
+        );
+    } elif op == MirOp.GLOBAL_BLOCK {
+        block = self.global_block(instr.str_value, instr.int_value);
+        self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+    } elif op == MirOp.FN_ADDR {
+        target = self.functions.get(instr.callee);
+        if target is None {
+            raise MirEmitError(f"MIR address of undeclared function {instr.callee}");
+        }
+        self.bind(instr.result, target);
+    } elif op == MirOp.CALL_DTOR {
+        i8p = ir.IntType(8).as_pointer();
+        dtor_type = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
+        b.call(
+            b.inttoptr(self.value(instr.operands[0]), dtor_type),
+            [b.inttoptr(self.value(instr.operands[1]), i8p)]
+        );
+    } elif op == MirOp.CALL_C {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR C call to undeclared function {instr.callee}");
+        }
+        made = self.call_c_abi(b, callee, instr)
+            if instr.callee in self.c_plans
+            else self.call_declared(b, callee, instr);
+        if type_arg_of(instr).kind != MirKind.NONE {
+            self.bind(instr.result, made);
+        }
+    } elif op == MirOp.CALL_FNPTR {
+        pointer = instr.operands[0];
+        made = b.call(
+            self.value(pointer),
+            [self.value(v) for v in instr.operands[1:]],
+            cconv=pointer.type.name
+                if pointer.type.kind == MirKind.C_FN and pointer.type.name
+                else None,
+            tail="musttail" if instr.sub == "musttail" else False
+        );
+        if type_arg_of(instr).kind != MirKind.NONE {
+            self.bind(instr.result, made);
+        }
+    } else {
+        raise MirEmitError(f"no emitter for MIR instruction {op.value}");
+    }
+}
+
+impl MirEmitter.global_block(label: str, size: int) -> ir.GlobalVariable {
+    found = self.module.globals.get(label);
+    if isinstance(found, ir.GlobalVariable) {
+        return found;
+    }
+    shape = ir.ArrayType(ir.IntType(64), (max(size, 1) + 7) // 8);
+    made = ir.GlobalVariable(self.module, shape, name=label);
+    made.linkage = "weak";
+    made.initializer = ir.Constant(shape, None);
+    made.align = 16;
+    return made;
+}
+
+impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
+    found = self.module.globals.get(glob_def.symbol);
+    if isinstance(found, ir.GlobalVariable) {
+        return found;
+    }
+    shape = self.llvm_type(glob_def.type);
+    if glob_def.count >= 0 {
+        shape = ir.ArrayType(shape, glob_def.count);
+    }
+    made = ir.GlobalVariable(self.module, shape, name=glob_def.symbol);
+    made.linkage = glob_def.linkage;
+    if glob_def.thread_local {
+        made.thread_local = True;
+        made.tls_model = "initialexec";
+    }
+    if glob_def.linkage == "external" {
+        return made;
+    }
+    if glob_def.c_data {
+        made.initializer = ir.Constant(shape, None);
+    } elif glob_def.type.kind == MirKind.FLOAT {
+        made.initializer = ir.Constant(shape, glob_def.float_value);
+    } elif glob_def.type.kind in (MirKind.INT, MirKind.BOOL) {
+        made.initializer = ir.Constant(shape, glob_def.int_value);
+    } else {
+        made.initializer = ir.Constant(shape, None);
+    }
+    return made;
+}
+
+impl MirEmitter.keyed_block_fn(label: str, size: int) -> ir.Function {
+    name = f"__jac_tls_block.{label}";
+    found = self.module.globals.get(name);
+    if isinstance(found, ir.Function) {
+        return found;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    key_gv = ir.GlobalVariable(self.module, i64, name=f"{label}.key");
+    key_gv.linkage = "weak";
+    key_gv.initializer = ir.Constant(i64, 0);
+    ready_gv = ir.GlobalVariable(self.module, i32, name=f"{label}.ready");
+    ready_gv.linkage = "weak";
+    ready_gv.initializer = ir.Constant(i32, 0);
+    func = ir.Function(self.module, ir.FunctionType(i64, []), name=name);
+    func.linkage = "linkonce_odr";
+    first = func.append_basic_block("entry");
+    claim = func.append_basic_block("claim");
+    make_key = func.append_basic_block("make_key");
+    spin = func.append_basic_block("spin");
+    keyed = func.append_basic_block("keyed");
+    create = func.append_basic_block("create");
+    done = func.append_basic_block("done");
+    b = ir.IRBuilder(first);
+    ready = b.load_atomic(ready_gv, "acquire", 4);
+    b.cbranch(b.icmp_unsigned("==", ready, ir.Constant(i32, 2)), keyed, claim);
+    b.position_at_end(claim);
+    pair = b.cmpxchg(
+        ready_gv, ir.Constant(i32, 0), ir.Constant(i32, 1), "acq_rel", "acquire"
+    );
+    b.cbranch(b.extract_value(pair, 1), make_key, spin);
+    b.position_at_end(make_key);
+    self.extern_call(
+        b,
+        "pthread_key_create",
+        i32,
+        [i8p, i8p],
+        [b.bitcast(key_gv, i8p), ir.Constant(i8p, None)]
+    );
+    b.store_atomic(ir.Constant(i32, 2), ready_gv, "release", 4);
+    b.branch(keyed);
+    b.position_at_end(spin);
+    again = b.load_atomic(ready_gv, "acquire", 4);
+    b.cbranch(b.icmp_unsigned("==", again, ir.Constant(i32, 2)), keyed, spin);
+    b.position_at_end(keyed);
+    key = b.load(key_gv);
+    held = self.extern_call(b, "pthread_getspecific", i8p, [i64], [key]);
+    b.cbranch(b.icmp_unsigned("==", held, ir.Constant(i8p, None)), create, done);
+    b.position_at_end(create);
+    made = self.extern_call(
+        b, "calloc", i8p, [i64, i64], [ir.Constant(i64, 1), ir.Constant(i64, size)]
+    );
+    self.extern_call(b, "pthread_setspecific", i32, [i64, i8p], [key, made]);
+    b.branch(done);
+    b.position_at_end(done);
+    block = b.phi(i8p);
+    block.add_incoming(held, keyed);
+    block.add_incoming(made, create);
+    b.ret(b.ptrtoint(block, i64));
+    return func;
+}
+
+impl MirEmitter.emit_memory(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    if op == MirOp.FENCE {
+        if instr.str_value != "monotonic" {
+            b.fence(instr.str_value);
+        }
+        return;
+    }
+    cell = self.llvm_type(
+        instr.operands[1].type
+            if op in (MirOp.MEM_STORE, MirOp.ATOMIC_STORE)
+            else type_arg_of(instr)
+    );
+    held = self.value(instr.operands[0]);
+    address: ir.Value;
+    if isinstance(held.type, ir.PointerType) {
+        address = held
+            if held.type == cell.as_pointer()
+            else b.bitcast(held, cell.as_pointer());
+    } else {
+        address = b.inttoptr(held, cell.as_pointer());
+    }
+    width = cell.width if isinstance(cell, ir.IntType) else 64;
+    align = max(width // 8, 1);
+    if op == MirOp.MEM_LOAD {
+        self.bind(instr.result, b.load(address));
+    } elif op == MirOp.MEM_STORE {
+        b.store(self.value(instr.operands[1]), address);
+    } elif op == MirOp.ATOMIC_LOAD {
+        self.bind(instr.result, b.load_atomic(address, instr.str_value, align));
+    } elif op == MirOp.ATOMIC_STORE {
+        b.store_atomic(self.value(instr.operands[1]), address, instr.str_value, align);
+    } elif op == MirOp.ATOMIC_RMW {
+        self.bind(
+            instr.result,
+            b.atomic_rmw(
+                instr.sub,
+                address,
+                self.value(instr.operands[1]),
+                ordering=instr.str_value
+            )
+        );
+    } elif op == MirOp.ATOMIC_CAS {
+        order = instr.str_value;
+        failure = "acquire"
+            if order == "acq_rel"
+            else ("monotonic" if order == "release" else order);
+        pair = b.cmpxchg(
+            address,
+            self.value(instr.operands[1]),
+            self.value(instr.operands[2]),
+            order,
+            failure
+        );
+        self.bind(instr.result, b.extract_value(pair, 0));
+    }
+}
+
+impl MirEmitter.str_type -> ir.Type {
+    shape = self.module.context.get_identified_type("JacStr");
+    if shape.is_opaque {
+        i8p = ir.IntType(8).as_pointer();
+        shape.set_body(i8p, i8p, ir.IntType(64));
+    }
+    return shape;
+}
+
+impl MirEmitter.jacval_type -> ir.Type {
+    shape = self.module.context.get_identified_type("JacVal");
+    if shape.is_opaque {
+        shape.set_body(ir.IntType(8), ir.IntType(64));
+    }
+    return shape;
+}
+
+impl MirEmitter.any_bits(b: ir.IRBuilder, value: ir.Value, t: MirType) -> ir.Value {
+    i64 = ir.IntType(64);
+    if isinstance(value.type, ir.PointerType) {
+        return b.ptrtoint(value, i64);
+    }
+    if t.kind == MirKind.FLOAT {
+        wide = b.fpext(value, ir.DoubleType()) if t.width == 32 else value;
+        return b.bitcast(wide, i64);
+    }
+    if isinstance(value.type, ir.IntType) and value.type.width < 64 {
+        if t.kind == MirKind.INT and t.signed {
+            return b.sext(value, i64);
+        }
+        return b.zext(value, i64);
+    }
+    if isinstance(value.type, ir.IntType) {
+        return value;
+    }
+    raise MirEmitError(f"no any payload for MIR type {t.render()}");
+}
+
+impl MirEmitter.emit_any(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    i8 = ir.IntType(8);
+    if op == MirOp.ANY_TAG {
+        self.bind(
+            instr.result,
+            b.zext(b.extract_value(self.value(instr.operands[0]), 0), ir.IntType(64))
+        );
+        return;
+    }
+    if op == MirOp.ANY_PAYLOAD {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 1));
+        return;
+    }
+    made: ir.Value = ir.Constant(self.jacval_type(), None);
+    if op == MirOp.ANY_BOX {
+        source = instr.operands[0];
+        made = b.insert_value(made, ir.Constant(i8, instr.int_value), 0);
+        made = b.insert_value(
+            made, self.any_bits(b, self.value(source), source.type), 1
+        );
+    } else {
+        made = b.insert_value(made, b.trunc(self.value(instr.operands[0]), i8), 0);
+        made = b.insert_value(made, self.value(instr.operands[1]), 1);
+    }
+    self.bind(instr.result, made);
+}
+
+impl MirEmitter.str_literal(b: ir.IRBuilder, text: str) -> ir.Value {
+    found = self.literals.get(text);
+    if found is None {
+        data = (text + "\0").encode("utf-8");
+        i64 = ir.IntType(64);
+        chars = ir.ArrayType(ir.IntType(8), len(data));
+        shape = ir.LiteralStructType([i64, i64, chars]);
+        found = ir.GlobalVariable(
+            self.module, shape, name=f".jac.str.{len(self.literals)}"
+        );
+        found.linkage = "private";
+        found.global_constant = True;
+        found.initializer = ir.Constant(
+            shape,
+            [
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(
+                    i64, str_len_tag(len(data) - 1, all(byte < 0x80 for byte in data))
+                ),
+                ir.Constant(chars, bytearray(data))
+            ]
+        );
+        self.literals[text] = found;
+    }
+    i32 = ir.IntType(32);
+    return b.gep(
+        found, [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
+    );
+}
+
+impl MirEmitter.bytes_literal(b: ir.IRBuilder, data: bytes) -> ir.Value {
+    key = data.decode("latin-1");
+    found = self.byte_literals.get(key);
+    if found is None {
+        i64 = ir.IntType(64);
+        i8p = ir.IntType(8).as_pointer();
+        chars = ir.ArrayType(ir.IntType(8), len(data));
+        shape = ir.LiteralStructType([i64, i8p, i64, i64, i64, chars]);
+        found = ir.GlobalVariable(
+            self.module, shape, name=f".jac.bytes.{len(self.byte_literals)}"
+        );
+        found.linkage = "private";
+        found.global_constant = True;
+        self.cstring(b, "bytes");
+        found.initializer = ir.Constant(
+            shape,
+            [
+                ir.Constant(i64, 0),
+                self.strings["bytes"].bitcast(i8p),
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(i64, 0),
+                ir.Constant(i64, len(data)),
+                ir.Constant(chars, bytearray(data))
+            ]
+        );
+        self.byte_literals[key] = found;
+    }
+    i32 = ir.IntType(32);
+    return b.bitcast(
+        b.gep(found, [ir.Constant(i32, 0), ir.Constant(i32, 4)]),
+        ir.IntType(8).as_pointer()
+    );
+}
+
+impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
+    subject = instr.operands[0];
+    if subject.type.kind == MirKind.ANY {
+        i64 = ir.IntType(64);
+        whole = self.value(subject);
+        tag = b.zext(b.extract_value(whole, 0), i64);
+        symbol = ANY_RETAIN_SYMBOL
+            if instr.op == MirOp.RETAIN
+            else (ANY_DROP_SYMBOL if self.mir.headerless else ANY_RELEASE_SYMBOL);
+        b.call(
+            self.extern(symbol, ir.VoidType(), [i64, i64]),
+            [tag, b.extract_value(whole, 1)]
+        );
+        if instr.op == MirOp.RETAIN {
+            self.bind(instr.result, whole);
+        }
+        return;
+    }
+    if subject.type.kind == MirKind.TUPLE {
+        whole = self.value(subject);
+        for (index, member) in enumerate(subject.type.args) {
+            if not mir_holds_ref(member) {
+                continue;
+            }
+            part = MirValue(id=-1, type=member);
+            self.values[-1] = b.extract_value(whole, index);
+            self.emit_rc(b, MirInstr(op=instr.op, operands=[part]));
+        }
+        self.values.pop(-1, None);
+        if instr.op == MirOp.RETAIN {
+            self.bind(instr.result, whole);
+        }
+        return;
+    }
+    if subject.type.kind == MirKind.OPT
+        and subject.type.payload().kind == MirKind.TUPLE {
+        whole = self.value(subject);
+        payload = b.extract_value(whole, 1);
+        if not isinstance(payload.type, ir.PointerType) {
+            held = b.function.append_basic_block(name="rc.opt.held");
+            after = b.function.append_basic_block(name="rc.opt.after");
+            b.cbranch(b.extract_value(whole, 0), held, after);
+            b.position_at_end(held);
+            part = MirValue(id=-2, type=subject.type.payload());
+            self.values[-2] = payload;
+            self.emit_rc(b, MirInstr(op=instr.op, operands=[part]));
+            self.values.pop(-2, None);
+            b.branch(after);
+            b.position_at_end(after);
+            if instr.op == MirOp.RETAIN {
+                self.bind(instr.result, whole);
+            }
+            return;
+        }
+    }
+    i8p = ir.IntType(8).as_pointer();
+    target = self.value(subject);
+    held_type = subject.type;
+    present: (ir.Value | None) = None;
+    if held_type.kind == MirKind.OPT {
+        present = b.extract_value(target, 0);
+        target = b.extract_value(target, 1);
+        held_type = held_type.payload();
+    }
+    if held_type.kind == MirKind.STR {
+        target = b.extract_value(target, 0);
+    } elif target.type != i8p {
+        target = b.bitcast(target, i8p);
+    }
+    if present is not None {
+        target = b.select(present, target, ir.Constant(i8p, None));
+    }
+    if instr.op == MirOp.RETAIN {
+        self.rc_call(
+            b,
+            PIN_SHARE_SYMBOL
+                if self.mir.headerless and held_type.kind == MirKind.C_PIN
+                else RETAIN_SYMBOL,
+            target
+        );
+        self.bind(instr.result, self.value(subject));
+        return;
+    }
+    acyclic = held_type.kind == MirKind.C_PIN or self.acyclic_type(held_type);
+    symbol = RELEASE_ACYCLIC_SYMBOL if acyclic else RELEASE_SYMBOL;
+    if self.mir.headerless {
+        symbol = DROP_TEXT_SYMBOL if acyclic else DROP_SYMBOL;
+    }
+    self.rc_call(b, symbol, target);
+}
+
+impl MirEmitter.acyclic_type(held: MirType) -> bool {
+    if held.kind
+        in (
+            MirKind.NONE,
+            MirKind.BOOL,
+            MirKind.INT,
+            MirKind.FLOAT,
+            MirKind.STR,
+            MirKind.STR_REF,
+            MirKind.BYTES,
+            MirKind.BYTEARRAY,
+            MirKind.ENUM,
+            MirKind.COMPLEX,
+            MirKind.RANGE
+        ) {
+        return True;
+    }
+    if held.kind == MirKind.OPT {
+        return self.acyclic_type(held.payload());
+    }
+    if held.kind == MirKind.OBJ {
+        obj_def = self.mir.objects.get(held.name);
+        return obj_def is not None and obj_def.is_acyclic;
+    }
+    if held.kind
+        in (MirKind.LIST, MirKind.LIST_AOS, MirKind.SET, MirKind.DICT, MirKind.TUPLE) {
+        return bool(held.args) and all(self.acyclic_type(arg) for arg in held.args);
+    }
+    return False;
+}
+
+impl MirEmitter.rc_call(b: ir.IRBuilder, symbol: str, target: ir.Value) {
+    self.extern_call(b, symbol, ir.VoidType(), [ir.IntType(8).as_pointer()], [target]);
+}
+
+impl MirEmitter.extern_call(
+    b: ir.IRBuilder,
+    symbol: str,
+    ret: ir.Type,
+    params: list[ir.Type],
+    values: list[ir.Value]
+) -> ir.Value {
+    callee = self.extern(symbol, ret, params);
+    passed = [
+        self.adapt(b, value, arg.type) for (value, arg) in zip(values, callee.args)
+    ];
+    made = b.call(callee, passed);
+    if isinstance(ret, ir.VoidType) {
+        return made;
+    }
+    return self.adapt(b, made, ret);
+}
+
+impl MirEmitter.call_declared(
+    b: ir.IRBuilder, callee: ir.Function, instr: MirInstr
+) -> ir.Value {
+    fixed = len(callee.args);
+    if len(instr.operands) != fixed
+        and not (callee.ftype.var_arg and len(instr.operands) > fixed) {
+        raise MirEmitError(
+            f"MIR call to {callee.name} passes {len(
+                instr.operands
+            )} arguments; it takes {len(callee.args)}"
+        );
+    }
+    passed = [
+        self.adapt(b, self.value(v), arg.type)
+        for (v, arg) in zip(instr.operands, callee.args)
+    ]
+        + [self.value(v) for v in instr.operands[fixed:]];
+    made = b.call(
+        callee, passed, tail="musttail" if instr.sub == "musttail" else False
+    );
+    if instr.result is None or isinstance(callee.ftype.return_type, ir.VoidType) {
+        return made;
+    }
+    wanted = self.llvm_type(instr.result.type);
+    if isinstance(wanted, ir.VoidType) {
+        return made;
+    }
+    return self.adapt(b, made, wanted);
+}
+
+impl MirEmitter.adapt(b: ir.IRBuilder, value: ir.Value, wanted: ir.Type) -> ir.Value {
+    have = value.type;
+    if have == wanted {
+        return value;
+    }
+    if isinstance(wanted, ir.IntType) and isinstance(have, ir.PointerType) {
+        return b.ptrtoint(value, wanted);
+    }
+    if isinstance(wanted, ir.PointerType) and isinstance(have, ir.IntType) {
+        return b.inttoptr(value, wanted);
+    }
+    if isinstance(wanted, ir.IntType) and isinstance(have, ir.IntType) {
+        return b.trunc(value, wanted)
+            if have.width > wanted.width
+            else b.zext(value, wanted);
+    }
+    return b.bitcast(value, wanted);
+}
+
+impl MirEmitter.object_struct(name: str) -> ir.Type {
+    shape = self.module.context.get_identified_type(name);
+    if name in self.building or name in self.defined {
+        return shape;
+    }
+    if not shape.is_opaque {
+        raise MirEmitError(
+            f"struct {name} already has a body this module did not give it"
+        );
+    }
+    obj_def = self.mir.objects.get(name);
+    if obj_def is None {
+        raise MirEmitError(f"MIR object {name} has no layout");
+    }
+    self.building.add(name);
+    i8p = ir.IntType(8).as_pointer();
+    slots: list[ir.Type] = [];
+    for _ in range(obj_def.slot_count) {
+        slots.append(ir.IntType(64));
+    }
+    if obj_def.vtable_slot >= 0 {
+        slots[obj_def.vtable_slot] = i8p.as_pointer();
+    }
+    if obj_def.reports_slot >= 0 {
+        slots[obj_def.reports_slot] = i8p;
+    }
+    for member in obj_def.fields {
+        slots[member.index] = self.slot_type(member.type);
+    }
+    shape.set_body(*slots);
+    self.building.discard(name);
+    self.defined.add(name);
+    return shape;
+}
+
+impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
+    found = self.module.globals.get(obj_def.vtable_symbol);
+    i8p = ir.IntType(8).as_pointer();
+    if isinstance(found, ir.GlobalVariable)
+        and (found.initializer is not None or not obj_def.local) {
+        return found;
+    }
+    shape = ir.ArrayType(i8p, len(obj_def.vtable_methods) + VTABLE_HEADER_SLOTS);
+    made = found
+        if isinstance(found, ir.GlobalVariable)
+        else ir.GlobalVariable(self.module, shape, name=obj_def.vtable_symbol);
+    if not obj_def.local {
+        return made;
+    }
+    lineage = [b_sym for b_sym in obj_def.ancestry];
+    lineage_shape = ir.ArrayType(i8p, len(lineage) + 1);
+    lineage_global = ir.GlobalVariable(
+        self.module, lineage_shape, name=f"{obj_def.vtable_symbol}.ancestry"
+    );
+    lineage_global.linkage = "private";
+    lineage_global.global_constant = True;
+    members: list[ir.Value] = [
+        self.vtable_ref(symbol, obj_def).bitcast(i8p) for symbol in lineage
+    ];
+    members.append(ir.Constant(i8p, None));
+    lineage_global.initializer = ir.Constant(lineage_shape, members);
+    dropper = self.functions.get(obj_def.drop_slot) if obj_def.drop_slot else None;
+    selector_members: list[ir.Value] = [
+        self.selector_global(name).bitcast(i8p) for name in obj_def.vtable_names
+    ];
+    selector_members.append(ir.Constant(i8p, None));
+    selector_shape = ir.ArrayType(i8p, len(selector_members));
+    selector_table = ir.GlobalVariable(
+        self.module, selector_shape, name=f"{obj_def.vtable_symbol}.selectors"
+    );
+    selector_table.linkage = "private";
+    selector_table.global_constant = True;
+    selector_table.initializer = ir.Constant(selector_shape, selector_members);
+    entries: list[ir.Value] = [
+        self.class_global(obj_def).bitcast(i8p),
+        lineage_global.bitcast(i8p),
+        dropper.bitcast(i8p) if dropper is not None else ir.Constant(i8p, None),
+        selector_table.bitcast(i8p),
+        self.field_remap_table(obj_def)
+    ];
+    for (index, symbol) in enumerate(obj_def.vtable_methods) {
+        target = self.functions.get(obj_def.vtable_entries.get(index, symbol));
+        entries.append(
+            target.bitcast(i8p) if target is not None else ir.Constant(i8p, None)
+        );
+    }
+    made.initializer = ir.Constant(shape, entries);
+    made.global_constant = True;
+    return made;
+}
+
+impl MirEmitter.vtable_ref(symbol: str, obj_def: MirObjectDef) -> ir.GlobalVariable {
+    i8p = ir.IntType(8).as_pointer();
+    holder = self.module.globals.get(symbol);
+    if isinstance(holder, ir.GlobalVariable) {
+        return holder;
+    }
+    owners = [
+        other
+        for other in self.mir.objects.values()
+        if other.vtable_symbol == symbol and other is not obj_def
+    ];
+    if owners {
+        return self.vtable_global(owners[0]);
+    }
+    return ir.GlobalVariable(
+        self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
+    );
+}
+
+impl MirEmitter.field_remap_table(obj_def: MirObjectDef) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    if not obj_def.field_remaps {
+        return ir.Constant(i8p, None);
+    }
+    shape = self.object_struct(obj_def.name);
+    origin = ir.Constant(shape.as_pointer(), None);
+    pairs: list[ir.Value] = [];
+    for (symbol, places) in obj_def.field_remaps.items() {
+        offsets = [
+            origin.gep([ir.Constant(i32, 0), ir.Constant(i32, at)]).ptrtoint(i64)
+                if at >= 0
+                else ir.Constant(i64, -1) for at in places
+        ];
+        offsets_shape = ir.ArrayType(i64, len(offsets));
+        offsets_global = ir.GlobalVariable(
+            self.module,
+            offsets_shape,
+            name=f"{obj_def.vtable_symbol}.fields.{len(pairs) // 2}"
+        );
+        offsets_global.linkage = "private";
+        offsets_global.global_constant = True;
+        offsets_global.initializer = ir.Constant(offsets_shape, offsets);
+        pairs.append(self.vtable_ref(symbol, obj_def).bitcast(i8p));
+        pairs.append(offsets_global.bitcast(i8p));
+    }
+    pairs.append(ir.Constant(i8p, None));
+    pairs_shape = ir.ArrayType(i8p, len(pairs));
+    table = ir.GlobalVariable(
+        self.module, pairs_shape, name=f"{obj_def.vtable_symbol}.fields"
+    );
+    table.linkage = "private";
+    table.global_constant = True;
+    table.initializer = ir.Constant(pairs_shape, pairs);
+    return table.bitcast(i8p);
+}
+
+impl MirEmitter.selector_global(name: str) -> ir.GlobalVariable {
+    glob_def = mir_selector_global(name);
+    made = self.global_variable(glob_def);
+    if glob_def.c_init is not None {
+        made.initializer = self.c_constant(glob_def.c_init, made.value_type);
+    }
+    made.global_constant = True;
+    return made;
+}
+
+impl MirEmitter.class_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
+    text = bytearray((obj_def.name + "\0").encode("utf-8"));
+    shape = ir.ArrayType(ir.IntType(8), len(text));
+    found = self.module.globals.get(obj_def.class_symbol);
+    if isinstance(found, ir.GlobalVariable) {
+        if obj_def.local and found.initializer is None {
+            found.initializer = ir.Constant(shape, text);
+            found.global_constant = True;
+        }
+        return found;
+    }
+    made = ir.GlobalVariable(self.module, shape, name=obj_def.class_symbol);
+    if obj_def.local {
+        made.initializer = ir.Constant(shape, text);
+        made.global_constant = True;
+    }
+    return made;
+}
+
+impl MirEmitter.c_layout(t: MirType) -> tuple[int, int, list[tuple[int, bool, int]]] {
+    if t.kind == MirKind.C_STRUCT {
+        offset = 0;
+        align = 1;
+        scalars: list[tuple[int, bool, int]] = [];
+        for field in self.mir.structs[t.name].fields {
+            (size, inner_align, inner) = self.c_layout(field.type);
+            offset = (offset + inner_align - 1) // inner_align * inner_align;
+            for (at, sse, bits) in inner {
+                scalars.append((offset + at, sse, bits));
+            }
+            offset += size;
+            align = max(align, inner_align);
+        }
+        return ((offset + align - 1) // align * align, align, scalars);
+    }
+    if t.kind == MirKind.FLOAT {
+        return (t.width // 8, t.width // 8, [(0, True, t.width)]);
+    }
+    if t.kind == MirKind.BOOL {
+        return (1, 1, [(0, False, 8)]);
+    }
+    if t.kind == MirKind.INT {
+        size = max(1, t.width // 8);
+        return (size, size, [(0, False, t.width)]);
+    }
+    return (8, 8, [(0, False, 64)]);
+}
+
+impl MirEmitter.c_classify(t: MirType) -> dict[str, any] {
+    (size, align, scalars) = self.c_layout(t);
+    return classify_struct(size, align, scalars, str(self.module.triple or ""));
+}
+
+impl MirEmitter.c_abi_extern(ext: MirExtern) -> ir.Function {
+    args: list[ir.Type] = [];
+    ret_plan: any = None;
+    ret_type = self.llvm_type(ext.ret);
+    if ext.ret.kind == MirKind.C_STRUCT {
+        shape = self.c_classify(ext.ret);
+        if shape["memory"] {
+            args.append(self.llvm_type(ext.ret).as_pointer());
+            ret_type = ir.VoidType();
+            ret_plan = ("sret", shape);
+        } else {
+            pieces: list[ir.Type] = shape["coerce"];
+            ret_type = pieces[0] if len(pieces) == 1 else ir.LiteralStructType(pieces);
+            ret_plan = ("coerce", shape);
+        }
+    }
+    plans: list[any] = [];
+    for param in ext.params {
+        if param.kind != MirKind.C_STRUCT {
+            plans.append(("plain", None, len(args)));
+            args.append(self.llvm_type(param));
+            continue;
+        }
+        shape = self.c_classify(param);
+        if shape["memory"] {
+            plans.append(("memory", shape, len(args)));
+            args.append(self.llvm_type(param).as_pointer());
+        } else {
+            plans.append(("coerce", shape, len(args)));
+            args.extend(shape["coerce"]);
+        }
+    }
+    made = ir.Function(
+        self.module,
+        ir.FunctionType(ret_type, args, var_arg=ext.variadic),
+        name=ext.symbol
+    );
+    if ext.symbol in RETURNS_TWICE_SYMBOLS {
+        made.attributes.add("returns_twice");
+    }
+    if ret_plan is not None and ret_plan[0] == "sret" {
+        made.args[0].add_attribute("sret");
+    }
+    for (plan, param) in zip(plans, ext.params) {
+        if plan[0] == "memory" and plan[1]["byval"] {
+            made.args[plan[2]].add_attribute("byval");
+        }
+    }
+    self.functions[ext.symbol] = made;
+    self.c_plans[ext.symbol] = (ret_plan, plans);
+    return made;
+}
+
+impl MirEmitter.entry_alloca(b: ir.IRBuilder, shape: ir.Type) -> ir.Value {
+    first = b.block.parent.blocks[0];
+    builder = b;
+    if b.block is not first {
+        builder = ir.IRBuilder(first);
+        builder.position_at_start(first);
+    }
+    made = builder.alloca(shape);
+    if isinstance(made, ir.AllocaInstr) {
+        made.align = 16;
+    }
+    return made;
+}
+
+impl MirEmitter.call_c_abi(
+    b: ir.IRBuilder, callee: ir.Function, instr: MirInstr
+) -> ir.Value {
+    (ret_plan, plans) = self.c_plans[instr.callee];
+    passed: list[ir.Value] = [];
+    attrs: dict[int, ir.ArgumentAttributes] = {};
+    result_shape = self.llvm_type(type_arg_of(instr));
+    sret_buf: (ir.Value | None) = None;
+    if ret_plan is not None and ret_plan[0] == "sret" {
+        sret_buf = self.entry_alloca(b, result_shape);
+        marked = ir.ArgumentAttributes();
+        marked.add("sret");
+        attrs[0] = marked;
+        passed.append(sret_buf);
+    }
+    for (operand, plan) in zip(instr.operands, plans) {
+        value = self.value(operand);
+        if plan[0] == "plain" {
+            passed.append(self.adapt(b, value, callee.args[len(passed)].type));
+            continue;
+        }
+        shape = plan[1];
+        struct_type = self.llvm_type(operand.type);
+        if plan[0] == "memory" {
+            buf = self.entry_alloca(b, struct_type);
+            b.store(value, buf);
+            if shape["byval"] {
+                carried = ir.ArgumentAttributes();
+                carried.add("byval");
+                attrs[len(passed)] = carried;
+            }
+            passed.append(buf);
+            continue;
+        }
+        pieces = ir.LiteralStructType(shape["coerce"]);
+        buf = self.entry_alloca(b, pieces);
+        b.store(value, b.bitcast(buf, struct_type.as_pointer()));
+        for index in range(len(shape["coerce"])) {
+            passed.append(
+                b.load(
+                    b.gep(
+                        buf,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), index)
+                        ]
+                    )
+                )
+            );
+        }
+    }
+    for operand in instr.operands[len(plans):] {
+        passed.append(self.value(operand));
+    }
+    made = b.call(callee, passed, arg_attrs=attrs);
+    if sret_buf is not None {
+        return b.load(sret_buf);
+    }
+    if ret_plan is not None {
+        returned = callee.ftype.return_type;
+        buf = self.entry_alloca(
+            b,
+            ir.LiteralStructType(ret_plan[1]["coerce"])
+                if len(ret_plan[1]["coerce"]) > 1
+                else ir.LiteralStructType([returned, result_shape])
+        );
+        b.store(made, b.bitcast(buf, returned.as_pointer()));
+        return b.load(b.bitcast(buf, result_shape.as_pointer()));
+    }
+    return made;
+}
+
+impl MirEmitter.c_thunk(fn: MirFunction) {
+    outer = self.functions[fn.c_symbol];
+    inner = self.functions[fn.symbol];
+    (ret_plan, plans) = self.c_plans[fn.c_symbol];
+    b = ir.IRBuilder(outer.append_basic_block("entry"));
+    args: list[ir.Value] = [];
+    for (param, plan) in zip(fn.params, plans) {
+        want = self.llvm_type(param.value.type);
+        if plan[0] == "plain" {
+            args.append(self.adapt(b, outer.args[plan[2]], want));
+        } elif plan[0] == "memory" {
+            args.append(b.load(outer.args[plan[2]]));
+        } else {
+            pieces: list[ir.Type] = plan[1]["coerce"];
+            buf = b.alloca(ir.LiteralStructType(pieces));
+            for index in range(len(pieces)) {
+                b.store(
+                    outer.args[plan[2] + index],
+                    b.gep(
+                        buf,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), index)
+                        ]
+                    )
+                );
+            }
+            args.append(b.load(b.bitcast(buf, want.as_pointer())));
+        }
+    }
+    made = b.call(inner, args);
+    returned = outer.ftype.return_type;
+    if ret_plan is not None and ret_plan[0] == "sret" {
+        b.store(made, outer.args[0]);
+        b.ret_void();
+    } elif ret_plan is not None {
+        shape = made.type;
+        buf = b.alloca(ir.LiteralStructType([returned, shape]));
+        b.store(made, b.bitcast(buf, shape.as_pointer()));
+        b.ret(b.load(b.bitcast(buf, returned.as_pointer())));
+    } elif isinstance(returned, ir.VoidType) {
+        b.ret_void();
+    } else {
+        b.ret(self.adapt(b, made, returned));
+    }
+}
+
+impl MirEmitter.single_threaded -> bool {
+    return "wasm" in str(self.module.triple or "").lower();
+}
+
+impl MirEmitter.builtin_sjlj -> bool {
+    return self.jmp_symbols()[0] == BUILTIN_SETJMP_SYMBOL;
+}
+
+impl MirEmitter.jmp_symbols -> tuple[str, str] {
+    triple = str(self.module.triple or "").lower();
+    if "wasm" in triple {
+        return ("__jac_wasm_setjmp", "__jac_wasm_longjmp");
+    }
+    if any(name in triple for name in ("windows", "win32", "mingw", "msvc")) {
+        return ("__jac_setjmp", "__jac_longjmp");
+    }
+    if self.native_sjlj and triple.startswith("x86_64") {
+        return (BUILTIN_SETJMP_SYMBOL, "llvm.eh.sjlj.longjmp");
+    }
+    return ("_setjmp", "_longjmp");
+}
+
+impl MirEmitter.tls_lazy_block_fn(label: str, size: int) -> ir.Function {
+    name = f"__jac_tls_lazy.{label}";
+    found = self.module.globals.get(name);
+    if isinstance(found, ir.Function) {
+        return found;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    cell_name = f"{label}.tlsp";
+    cell = self.module.globals.get(cell_name);
+    if not isinstance(cell, ir.GlobalVariable) {
+        cell = ir.GlobalVariable(self.module, i8p, name=cell_name);
+        cell.linkage = "weak";
+        cell.initializer = ir.Constant(i8p, None);
+        cell.thread_local = True;
+        cell.tls_model = "initialexec";
+    }
+    func = ir.Function(self.module, ir.FunctionType(i64, []), name=name);
+    func.linkage = "linkonce_odr";
+    first = func.append_basic_block("entry");
+    create = func.append_basic_block("create");
+    done = func.append_basic_block("done");
+    b = ir.IRBuilder(first);
+    held = b.load(cell);
+    b.cbranch(b.icmp_unsigned("==", held, ir.Constant(i8p, None)), create, done);
+    b.position_at_end(create);
+    made = self.extern_call(
+        b, "calloc", i8p, [i64, i64], [ir.Constant(i64, 1), ir.Constant(i64, size)]
+    );
+    b.store(made, cell);
+    b.branch(done);
+    b.position_at_end(done);
+    block = b.phi(i8p);
+    block.add_incoming(held, first);
+    block.add_incoming(made, create);
+    b.ret(b.ptrtoint(block, i64));
+    return func;
+}

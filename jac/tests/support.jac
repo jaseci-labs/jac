@@ -107,8 +107,10 @@ def jac_command(*args: str, compiler_root: str | None = None) -> list[str] {
 
 The retired .na.jac marker used to do this from the filename; tests that
 compile a fixture and expect a JIT engine now state the mandate explicitly.
-Forced placement keeps lowering failures loud (no server demotion), exactly
-like the old suffix.
+Forced placement is not a requirement: a function the backend refuses is
+demoted to Python (named in the unit interface's `demoted`), and a native
+caller that cannot reach it demotes with it. Only required native (kernel
+units, `[native] require`, the runtime units) turns a refusal into E5092.
 """
 def native_force_opts -> CompileOptions {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -470,6 +472,7 @@ def _compile_native_fixture(
 
 """Get a ctypes-callable function from a JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
+    assert ctypes.c_char_p not in argtypes , f"'{name}' takes a Jac str; call it through native_str_func, which passes MIR's string ABI";
     addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);

@@ -90,13 +90,25 @@ def c_string_literal(expr: (UniNode | None)) -> (str | None);
 
 def named_function_of(nd: (UniNode | None)) -> (UniNode | None);
 
-def final_glob_value(nd: (UniNode | None)) -> (Expr | None);
+def variant_module(prog: (JacProgram | None), mod: (Module | None)) -> (Module | None);
 
-def c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any];
+def variant_assignment(
+    prog: (JacProgram | None), asn: (Assignment | None), name: str = ""
+) -> (Assignment | None);
+
+def final_glob_value(
+    nd: (UniNode | None), prog: (JacProgram | None) = None
+) -> (Expr | None);
+
+def c_scalar_constant(
+    expr: (UniNode | None), depth: int = 0, prog: (JacProgram | None) = None
+) -> tuple[bool, any];
 
 def c_offset_address(expr: (UniNode | None)) -> tuple[(UniNode | None), int];
 
-def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any];
+def _fold_with_finals(
+    expr: UniNode, depth: int, prog: (JacProgram | None) = None
+) -> tuple[bool, any];
 
 def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None);
 

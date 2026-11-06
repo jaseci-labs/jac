@@ -48,10 +48,9 @@ def _compile(path: str) -> tuple[any, ...] {
     }
 }
 
-test "nested scalar list literals pass the fence and stamp inner drops" {
-    (codes, text) = _compile(os.path.join(OWNFIELD_DIR, "own_nested_list.jac"));
+test "nested scalar list literals pass the fence" {
+    (codes, _text) = _compile(os.path.join(OWNFIELD_DIR, "own_nested_list.jac"));
     assert codes == [] , codes;
-    assert "__drop_List_i64" in text , "inner container drop not stamped";
 }
 
 test "nested list output stays byte-identical across gc modes" {

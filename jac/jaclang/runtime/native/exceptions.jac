@@ -1,0 +1,66 @@
+import from c {
+    obj JacRtUnwindRecord {
+        has next: ptr[JacRtUnwindRecord],
+            target: ptr[u8],
+            cleanup: Callable[[ptr[u8]], None];
+    }  obj JacRtExcState {
+        has target: ptr[u8],
+            type_id: i32,
+            prev: ptr[JacRtExcState],
+            message: ptr[u8],
+            saved_unwind_top: ptr[JacRtUnwindRecord];
+    }  obj JacRtExcContext {
+        has handler: ptr[JacRtExcState],
+            unwind_top: ptr[JacRtUnwindRecord],
+            error_type: i32,
+            error_target: ptr[u8],
+            error_message: ptr[u8];
+    }  def write(fd: i32, buf: ptr[u8], count: i64) -> i64;  def strlen(
+        text: ptr[u8]
+    ) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;  def _exit(
+        code: i32
+    ) -> None;  def fflush(stream: ptr[u8]) -> i32;
+}
+
+glob EXC_STATE_HEADER: int = 40,
+     EXC_LINEAGE_SLOTS: int = 4096;
+
+def:pub __jac_rt_exit(code: int);
+
+def:pub __jac_rt_exc_context -> ptr[JacRtExcContext];
+
+def:pub __jac_rt_exc_jmp_buf(state: ptr[JacRtExcState]) -> ptr[u8];
+
+def:pub __jac_rt_exc_push(state: ptr[JacRtExcState]);
+
+def:pub __jac_rt_exc_pop(state: ptr[JacRtExcState]);
+
+def:pub __jac_rt_unwind_push(record: ptr[JacRtUnwindRecord]);
+
+def:pub __jac_rt_unwind_pop(record: ptr[JacRtUnwindRecord]);
+
+def:pub __jac_rt_raise(target: ptr[u8], type_id: i32, message: ptr[u8]);
+
+def:pub __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]);
+
+def:pub __jac_rt_unbound_check(bound: bool, type_id: i32, message: ptr[u8]);
+
+def:pub __jac_rt_exc_lineage_add(type_id: int, base_id: int);
+
+def:pub __jac_rt_exc_isa(type_id: int, base_id: int) -> bool;
+
+def _lineage_slot(key: int) -> int;
+
+def:pub __jac_rt_exc_class_add(name: ptr[u8], type_id: int);
+
+def:pub __jac_rt_exc_class_of(held: int, fallback: int) -> int;
+
+def _write_text(text: ptr[u8]);
+
+def _report_uncaught(message: ptr[u8]);
+
+def:pub __jac_rt_gen_close_failed(
+    state: ptr[JacRtExcState], exit_id: int, stop_id: int
+);
+
+def:pub __jac_rt_gen_ignored_exit;

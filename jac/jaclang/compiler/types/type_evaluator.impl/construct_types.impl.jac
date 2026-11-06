@@ -254,6 +254,25 @@ impl TypeEvaluator._get_iterable_element_type(
             is_incomplete=iterable_type.is_incomplete
         );
     }
+    if isinstance(iterable_type, UnionType) {
+        elements: list[TypeBase] = [];
+        for member_type in iterable_type.types {
+            element = self._get_iterable_element_type(
+                member_type, node_for_error, is_async
+            );
+            if element is None {
+                continue;
+            }
+            if element.is_any_instance() or isinstance(element, AnyType) {
+                return element;
+            }
+            self._collect_unique_types(element, elements);
+        }
+        if not elements {
+            return None;
+        }
+        return elements[0] if len(elements) == 1 else UnionType(types=elements);
+    }
     if isinstance(iterable_type, ClassType) and not is_async {
         members: list[TypeBase] = [];
         if iterable_type.is_namedtuple() {
@@ -447,6 +466,18 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                 );
             }
             ret_type = self._extern_scalar_type(node_.signature.return_type);
+            ret_expr = node_.signature.return_type;
+            if isinstance(ret_type, AnyType)
+                and ret_type.foreign_scalar is None
+                and isinstance(ret_expr, Expr) {
+                declared = self._convert_to_instance(
+                    self.get_type_of_expression(ret_expr)
+                );
+                if isinstance(declared, ClassType)
+                    and declared.shared.class_name == "str" {
+                    ret_type = declared;
+                }
+            }
         }
         extern_fn = FunctionType(
             func_name=node_.name_spec.sym_name,
@@ -857,6 +888,11 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
         if self._is_typed_c_declaration(declared) {
             return self._convert_to_instance(declared);
         }
+        instance = self._convert_to_instance(declared);
+        if isinstance(instance, ClassType)
+            and instance.shared.class_name == "NoneType" {
+            return instance;
+        }
     }
     return AnyType(is_foreign=True);
 }
@@ -948,7 +984,6 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
     declared = self.get_type_of_expression(tag);
     if isinstance(declared, FunctionType) {
         param_types: list[TypeBase] = [];
-        typed = False;
         for p in declared.parameters or [] {
             parameter_type = p.param_type;
             pn = numeric_name_of(parameter_type);
@@ -956,7 +991,6 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
                 and pn is not None
                 and JAC_TYPE_REGISTRY.is_sized(pn) {
                 param_types.append(parameter_type);
-                typed = True;
             } else {
                 param_types.append(AnyType(is_foreign=True, foreign_scalar=pn));
             }
@@ -965,15 +999,16 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
         rn = numeric_name_of(return_type);
         ret_type: TypeBase = AnyType(is_foreign=True, foreign_scalar=rn);
         if return_type is not None
-            and rn is not None
-            and JAC_TYPE_REGISTRY.is_sized(rn) {
+            and (
+                (rn is not None and JAC_TYPE_REGISTRY.is_sized(rn))
+                or self._is_typed_c_declaration(return_type)
+            ) {
             ret_type = return_type;
-            typed = True;
+        } elif isinstance(return_type, ClassType)
+            and return_type.shared.class_name == "NoneType" {
+            ret_type = return_type;
         }
-        if typed {
-            return create_callable_type(param_types, ret_type, is_gradual=False);
-        }
-        return AnyType(is_foreign=True);
+        return create_callable_type(param_types, ret_type, is_gradual=False);
     }
     return self._extern_scalar_type(tag);
 }
@@ -986,4 +1021,125 @@ impl TypeEvaluator._get_class_from_module(
     }
     resolved = self._get_type_from_module(module, name);
     return resolved if isinstance(resolved, ClassType) else None;
+}
+
+impl TypeEvaluator.struct_format_fields(
+    fmt: str
+) -> (tuple[list[tuple[str, int, int]], int, bool] | None) {
+    big = False;
+    native = True;
+    body = fmt;
+    if body and body[0] in "@=<>!" {
+        native = body[0] == "@";
+        big = body[0] in ">!";
+        body = body[1:];
+    }
+    sizes: dict[str, int] = {
+        "x": 1,
+        "c": 1,
+        "b": 1,
+        "B": 1,
+        "?": 1,
+        "h": 2,
+        "H": 2,
+        "i": 4,
+        "I": 4,
+        "l": 8 if native else 4,
+        "L": 8 if native else 4,
+        "q": 8,
+        "Q": 8,
+        "n": 8,
+        "N": 8,
+        "f": 4,
+        "d": 8,
+        "s": 1
+    };
+    fields: list[tuple[str, int, int]] = [];
+    offset = 0;
+    count = "";
+    for ch in body {
+        if ch.isspace() {
+            continue;
+        }
+        if ch.isdigit() {
+            count += ch;
+            continue;
+        }
+        if ch not in sizes or (ch in "nN" and not native) {
+            return None;
+        }
+        repeat = int(count) if count else 1;
+        count = "";
+        size = sizes[ch];
+        if native and ch not in "xcbB?s" and offset % size {
+            offset += size - offset % size;
+        }
+        if ch == "s" {
+            fields.append((ch, offset, repeat, ));
+            offset += repeat;
+            continue;
+        }
+        for _ in range(repeat) {
+            if ch != "x" {
+                fields.append((ch, offset, size, ));
+            }
+            offset += size;
+        }
+    }
+    if count {
+        return None;
+    }
+    return (fields, offset, big, );
+}
+
+impl TypeEvaluator._native_struct_unpack_result(expr: FuncCall) -> TypeBase | None {
+    target = expr.target;
+    name = "";
+    if isinstance(target, AtomTrailer)
+        and target.is_attr
+        and isinstance(target.right, Name) {
+        owner = self.get_type_of_expression(target.target);
+        if not isinstance(owner, ModuleType) or owner.mod_name != "struct" {
+            return None;
+        }
+        name = target.right.value;
+    } elif isinstance(target, Name)
+        and target.sym is not None
+        and target.sym.decl is not None
+        and target.sym.decl.loc is not None
+        and os.path.basename(target.sym.decl.loc.mod_path)
+            in ("struct.pyi", "_struct.pyi") {
+        decl = target.sym.decl;
+        name = decl.value if isinstance(decl, Name) else target.value;
+    }
+    if name not in ("unpack", "unpack_from") or not expr.params {
+        return None;
+    }
+    fmt = literal_string_value(expr.params[0]);
+    layout = self.struct_format_fields(fmt) if isinstance(fmt, str) else None;
+    if layout is None or not self.prefetch or not self.prefetch.tuple_class {
+        return None;
+    }
+    self._evaluate_call_args(expr);
+    members: list[TypeBase] = [];
+    for (code, _, _) in layout[0] {
+        made: (ClassType | None) = self.prefetch.int_class;
+        if code in "fd" {
+            made = self.prefetch.float_class;
+        } elif code == "?" {
+            made = self.prefetch.bool_class;
+        } elif code in "cs" {
+            made = self.prefetch.bytes_class;
+        }
+        if made is None {
+            return None;
+        }
+        members.append(self._convert_to_instance(made));
+    }
+    result = self._convert_to_instance(self.prefetch.tuple_class);
+    if not isinstance(result, ClassType) or not members {
+        return None;
+    }
+    result.private.type_args = members;
+    return result;
 }

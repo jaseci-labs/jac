@@ -43,8 +43,14 @@ impl write_ir_value(w: CodegenIrWriter, v: object) {
     } elif isinstance(v, CgEllipsis) {
         w.emit_ellipsis();
     } elif isinstance(v, CgNode) {
-        for item in v.vals {
-            write_ir_value(w, item);
+        index = 0;
+        while index < len(v.vals) {
+            try {
+                write_ir_value(w, v.vals[index]);
+            } except ValueError as err {
+                raise ValueError(f"{err} (in {v.cls}.{v.keys[index]})");
+            }
+            index += 1;
         }
         w.emit_loc_needed(v.l1, v.c1, v.l2, v.c2);
         w.emit_node(v.cls, v.keys);
@@ -78,7 +84,7 @@ impl write_ir_value(w: CodegenIrWriter, v: object) {
             "CgSplice, bool, int, float, str, bytes, and a list of those; a "
             "value of any other type reached a recipe slot, most often "
             "because a producer put a live Python object where an encodable "
-            "one belongs."
+            f"one belongs. The value is a {type(v).__name__}"
         );
     }
 }

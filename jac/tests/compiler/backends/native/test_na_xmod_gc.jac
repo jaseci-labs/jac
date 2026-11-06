@@ -22,7 +22,19 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     ENFORCE = ["xmod_gc_entry*", "xmod_gc_lib*"];
+     ENFORCE = ["xmod_gc_entry*", "xmod_gc_lib*"],
+     RC_ENTRY_POINTS: list[str] = [
+         "__rc_",
+         "__jac_rt_retain",
+         "__jac_rt_release",
+         "__jac_rt_any_retain",
+         "__jac_rt_any_release"
+     ];
+
+"""Whether the IR text calls into the RC runtime."""
+def carries_rc(ir: str) -> bool {
+    return any(marker in ir for marker in RC_ENTRY_POINTS);
+}
 
 def _compile_ir(entry_path: str, gc_mode: str, enforce: list[any]) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
@@ -52,7 +64,7 @@ def _staged_entry(tmp: str) -> str {
 test "imported na modules inherit gc none: no RC in multi-module IR" {
     with tempfile.TemporaryDirectory() as tmp {
         ir = _compile_ir(_staged_entry(tmp), "none", ENFORCE);
-        assert "__rc_" not in ir , "imported module re-entered the RC world";
+        assert not carries_rc(ir) , "imported module re-entered the RC world";
     }
 }
 
@@ -81,8 +93,8 @@ test "gc-mode change invalidates the cross-module IR cache" {
     with tempfile.TemporaryDirectory() as tmp {
         `entry = _staged_entry(tmp);
         cycles_ir = _compile_ir(`entry, "cycles", []);
-        assert "__rc_" in cycles_ir , "cycles-mode build should carry RC";
+        assert carries_rc(cycles_ir) , "cycles-mode build should carry RC";
         nogc_ir = _compile_ir(`entry, "none", ENFORCE);
-        assert ("__rc_" not in nogc_ir) , "stale cycles-mode cache leaked into the gc-none build";
+        assert not carries_rc(nogc_ir) , "stale cycles-mode cache leaked into the gc-none build";
     }
 }

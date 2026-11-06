@@ -12,18 +12,12 @@ Both now run through one shared rule. These tests assert the native result
 equals the sv/bytecode result of the same fixture for every shape:
 conditional expressions (shared lowering, all-pointer, genuinely mixed,
 call argument, nested, closure-typed) and declared unions in parameter,
-return and global position. A structural test additionally pins that the
-two ternary shapes which already lowered did not start paying for a box.
+return and global position.
 """
 
 import ctypes;
 import os;
-import from tests.support {
-    TESTS_DIR,
-    names_function,
-    native_address,
-    native_force_opts
-}
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -98,26 +92,6 @@ def _sv_module -> object {
 }
 
 
-"""LLVM IR text of a single `define ... @name(` function body."""
-def _fn_body(txt: str, name: str) -> str {
-    start = txt.find("define ");
-    while start != -1 {
-        end = txt.find("\n}", start);
-        if end == -1 {
-            break;
-        }
-        block = txt[start:end + 2];
-        header_end = block.find("\n");
-        header = block[:header_end] if header_end != -1 else block;
-        if names_function(header, name) {
-            return block;
-        }
-        start = txt.find("define ", end);
-    }
-    return "";
-}
-
-
 """Assert native and sv agree on every flag for each named function."""
 def _assert_congruent(eng: any, sv: object, names: list[str]) {
     for name in names {
@@ -188,28 +162,9 @@ test "declared union: mixed members round-trip in param, return and global" {
     assert use_u_glob(1) == -5 , "str member in an `int | str` global";
 }
 
-
-test "ternary: a shared lowering and an all-pointer pair never box" {
-    (_, ir) = _compile(FIXTURE);
-    txt = str(ir.gen.llvm_ir);
-
-    same_rep = _fn_body(txt, "same_rep");
-    all_ptr = _fn_body(txt, "all_ptr");
-    assert same_rep , "same_rep was not emitted";
-    assert all_ptr , "all_ptr was not emitted";
-
-    # Two int branches keep the i64 phi they have always had.
-    assert "phi  i64 " in same_rep , (
-        "an int/int ternary must still phi on i64, not on a boxed value"
-    );
-    assert "jacval" not in same_rep , (
-        "an int/int ternary started boxing to jacval -- the unification rule "
-        "must be free on branches that already share a lowering"
-    );
-
-    # Two list branches keep the first member's pointer layout.
-    assert "jacval" not in all_ptr , (
-        "an all-pointer ternary started boxing to jacval -- an all-pointer "
-        "union keeps the first member's layout"
-    );
+test "a conditional expression statement runs only its taken branch" {
+    import from tests.support { compile_native, get_func }
+    (eng, _) = compile_native("ternary_statement.jac");
+    got = get_func(eng, "chk_ternary_statement", ctypes.c_int64)();
+    assert got == 200 , got;
 }

@@ -116,6 +116,8 @@ def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine;
 def unique_callbacks(bindings: list[InteropBinding]) -> list[InteropBinding];
 def callback_bind_exports(plan: LinkPlan) -> list[str];
 
+def bind_python_bridges(plan: LinkPlan, undefined: list[str]) -> list[any];
+
 obj UnitGlueSymbols {
     has declared: dict[str, str] = {},
         defined: list[str] = [];
@@ -219,6 +221,15 @@ def _has_global(module: ModuleRef, name: str) -> bool;
 def _mark_host_rc_threaded(engine: ExecutionEngine);
 
 def jit_engine(plan: LinkPlan) -> ExecutionEngine;
+
+def _jit_engine_from_objects(plan: LinkPlan, tm: TargetMachine) -> ExecutionEngine;
+
+def _finish_jit_engine(
+    plan: LinkPlan,
+    engine: ExecutionEngine,
+    libraries: dict[str, ctypes.CDLL],
+    bridges: list[any]
+) -> ExecutionEngine;
 
 def jit_engine_for_module(
     prog: JacProgram, module: any, options: CompileOptions

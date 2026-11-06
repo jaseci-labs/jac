@@ -567,6 +567,10 @@ graph import {
             unit_drift
         },
         dist.precompile_bytecode.seal_native { kernel_lib_name },
+        project.compiler_host._native_scan_path | project.kernel_check._record_outcome {
+            kernel_identity
+        },
+        project.kernel_check._replayed_outcome { kernel_identity },
     ]
     compiler.backends.native.kernel_resolve --> [
         project.kernel_check.analysis_kernel { KernelLoadError },
@@ -774,6 +778,9 @@ graph import {
     type compiler.driver.compiler ++> project.compiler_host
         | runtime.build_services
         | runtime.runtime { JacCompiler }
+    compiler.driver.host_products --> project.compiler_host.ProjectHost.register_host_products {
+        register_host_products
+    }
     compiler.driver.ifacecache --> [
         cli.commands.analysis.check { prime_iface_codec },
         dist.precompile_bytecode._unit_extra { DIAG_SCHEMA, IfaceRegistry },
@@ -853,6 +860,7 @@ graph import {
             drop_python_lane_products
         },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
+        project.compiler_host.ProjectHost.read_source { compiled_content_reads },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
         project.compiler_host._native_scan_path {
             get_jir_cache_dir,
@@ -1361,6 +1369,11 @@ graph import {
     compiler.placement.placement ++> cli.commands.fix._verify_claims {
         element_display_name
     }
+    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
+        | testing.cl_test_runner.module_is_client { module_record }
+    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
+        discover_spaces
+    }
     compiler.placement.placement_export --> [
         cli.commands.analysis._check_file_job { collect_placement_rows },
         cli.commands.analysis.explain { collect_placement_rows },
@@ -1373,16 +1386,11 @@ graph import {
         },
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
-        dist.publish.runtime_vendor._compile_runtime_module
-            | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
-        dist.precompile_bytecode.sealable_sources {
-            discover_spaces,
-            spaces_are_client_only
-        },
+        dist.precompile_bytecode.sealable_sources { spaces_are_client_only },
         project.compiler_host.ProjectHost.native_session_declares {
             session_declares_native
         },
@@ -2455,6 +2463,7 @@ graph import {
             read_file_with_encoding,
             span_for_file
         },
+        compiler.driver.jir { CONTENT_CONFLICTS },
         dist.seal.make_sealed_image | scale.injector.bundle.source_filter_for {
             read_jacignore_patterns
         },
@@ -2662,19 +2671,20 @@ graph import {
         walk_edges,
         walk_nodes
     }
-    runtime.interop_bridge --> compiler.backends.native.na_compile_pass.NativeCompilePass._run_impl
-        | compiler.driver.compiler.JacCompiler._load_native_from_cache {
-        register_py_callbacks
-    }
-    runtime.memory ++> server.session { Memory }
-    runtime.native_library --> [
-        compiler.driver.compiler.JacCompiler._load_native_from_cache {
-            SharedNativeEngine
+    runtime.interop_bridge --> [
+        compiler.backends.native.link_plan.bind_python_bridges {
+            BRIDGE_SYMBOLS,
+            register_py_callbacks
         },
-        compiler.driver.compiler.JacCompiler._sealed_native_engine {
-            shared_engine_for
+        compiler.backends.native.na_compile_pass.NativeCompilePass._run_impl
+            | compiler.driver.compiler.JacCompiler._load_native_from_cache {
+            register_py_callbacks
         },
     ]
+    runtime.memory ++> server.session { Memory }
+    runtime.native_library --> compiler.driver.compiler.JacCompiler._sealed_native_engine {
+        shared_engine_for
+    }
     type runtime.native_library ++> cli.commands.execution
         | compiler.driver.compiler
         | compiler.frontend.codeinfo { SharedNativeEngine }
@@ -2733,7 +2743,8 @@ graph import {
         isolate_request_walk_stack
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
-        | compiler.backends.native.na_ir_gen_pass
+        | compiler.backends.native.mir.backend
+        | compiler.backends.native.mir.lower
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
         | compiler.jc_unit._alert_tag
         | compiler.native_compiler
@@ -3517,6 +3528,8 @@ graph import {
     runtime.scalars ++> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._apply_fw_coercion
             | compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_print
+            | compiler.backends.native.mir.lower
+            | compiler.backends.native.mir.lower_types
             | compiler.backends.py.jcir_gen_pass
             | compiler.types.ct_eval
             | comptime._scalar_size_align { shape_of },
@@ -3529,7 +3542,6 @@ graph import {
         },
         compiler.backends.es.jac_runtime_js._build_types_runtime_js { numeric_shapes },
         compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_wrapping { is_sized },
-        compiler.backends.native.na_ir_gen_pass { ScalarShape, range_of, shape_of },
         compiler.backends.py.jcir_facts | compiler.boundary_rules.json_refusal {
             sized_scalar_names
         },
@@ -5493,9 +5505,13 @@ graph import compiler {
         tests.xbackend_equiv._prelude_cwd { stage_jac_prelude_package },
         tests.xbackend_equiv.run_js_module_fixture { stage_jac_prelude_package },
     ]
+    backends.native.kernel_resolve ++> driver.compiler.JacCompiler._adopt_kernel_compile {
+        kernel_identity
+    }
     backends.native.kernel_resolve --> native_compiler.ensure_loaded { resolve_kernel }
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
+        driver.compiler.JacCompiler.kernel_native_entry { LinkPlanError },
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
         driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
@@ -5504,12 +5520,17 @@ graph import compiler {
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
-    backends.native.lowering ++> [
-        driver.nativecache.NativeUnitRegistry.adopt_lowered { native_fallbacks_in_ir },
-        tests.test_prim_equivalence { native_lowering_issues },
-    ]
+    backends.native.lowering ++> driver.nativecache.NativeUnitRegistry.adopt_lowered {
+        native_fallbacks_in_ir
+    }
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
+    backends.native.mir.backend --> [
+        driver.pipeline.codegen_passes { MirNativePass },
+        driver.pipeline.native_ir_passes { MirNativePass },
+        driver.pipeline.native_lower_passes { MirNativePass },
+    ]
     backends.native.na_compile_pass ++> [
+        driver.host_products.native_object_passes { NativeCompilePass },
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
             unit_bitcode,
@@ -5519,7 +5540,6 @@ graph import compiler {
             emit_unit_object,
             optimize_unit_ir
         },
-        driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
         driver.nativecache.NativeBuildSession.compact_ir {
@@ -5538,11 +5558,6 @@ graph import compiler {
         FACT_PACKAGE_STORE,
         FACT_SEP
     }
-    backends.native.na_ir_gen_pass ++> [
-        driver.pipeline.native_ir_passes { NaIRGenPass },
-        driver.pipeline.native_lower_passes { NaIRGenPass },
-    ]
-    backends.native.na_ir_gen_pass --> driver.pipeline.codegen_passes { NaIRGenPass }
     backends.native.wasm_build ++> [
         driver.pipeline_runner.wasm_artifact_inputs { emit_wasm_from_ir },
         driver.pipeline_runner.wasm_ir_units {
@@ -5567,7 +5582,7 @@ graph import compiler {
             generated_python
         },
     ]
-    backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
+    backends.py.jcir_bc_gen_pass ++> driver.host_products.bytecode_passes {
         JcirBytecodeGenPass
     }
     backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir {
@@ -5592,7 +5607,7 @@ graph import compiler {
         },
     ]
     c_interop ++> [
-        backends.native.na_ir_gen_pass {
+        backends.native.mir.lower {
             c_array_elem,
             c_builtin_kind,
             c_bytes_array_values,
@@ -5602,36 +5617,24 @@ graph import compiler {
             c_scalar_constant,
             c_string_literal,
             c_type_arg,
-            c_variadic_param,
-            clib_block_defines,
             clib_global_of_name,
             clib_import_of,
-            foreign_field_of,
-            foreign_read_copies,
+            final_glob_value,
             foreign_struct_of_type,
             is_builtin_addressof_call,
             is_builtin_pin_call,
             is_pinned_type,
             is_ptr_type,
-            is_ptr_view_type,
             is_va_list_type,
-            named_function_of
+            named_function_of,
+            opaque_c_of_type,
+            variant_assignment,
+            variant_module
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_unary {
-            c_lent_arg_elem,
-            c_lent_param,
-            c_param_type
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_clib_struct
-            | passes.type_checker_pass.TypeCheckPass._foreign_struct_contains {
+        backends.native.mir.lower_types {
+            c_builtin_kind,
+            c_type_arg,
             foreign_struct_of_type
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._final_scalar_value {
-            c_scalar_constant,
-            final_glob_value
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value {
-            final_glob_value
         },
         backends.py.jcir_gen_pass
             | passes.type_checker_pass.TypeCheckPass._check_c_variadic_args {
@@ -5663,6 +5666,7 @@ graph import compiler {
         passes.ownership_check_pass {
             c_call_borrows_args,
             clib_import_of,
+            foreign_field_of,
             is_c_value_type,
             is_ptr_type,
             is_ptr_view_type,
@@ -5718,7 +5722,11 @@ graph import compiler {
         passes.type_checker_pass.TypeCheckPass._check_c_variadic_def {
             c_variadic_param
         },
+        passes.type_checker_pass.TypeCheckPass._foreign_struct_contains {
+            foreign_struct_of_type
+        },
         passes.type_checker_pass.TypeCheckPass._opaque_member { opaque_c_of_type },
+        types.ct_eval.CtEvaluator._eval_symbol { variant_assignment },
         types.type_evaluator { is_va_list_type },
         types.type_evaluator.TypeEvaluator._c_lent_args { c_abi_callee, c_lent_elem },
         types.type_evaluator.TypeEvaluator._is_typed_c_declaration { c_builtin_kind },
@@ -5860,7 +5868,7 @@ graph import compiler {
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
         placement.placement.summarize_module { module_own_native_anchor },
-        placement.placement_facts.discover_spaces
+        placement.placement_cache.discover_spaces
             | placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
         placement.placement_solver._pullable_by_client_reference {
@@ -5907,7 +5915,7 @@ graph import compiler {
         frontend.kernel_host { package_owned },
         passes.access_check_pass.AccessCheckPass._module_app_facts
             | placement.placement_pins { context_app },
-        placement.placement_facts.module_record { cache_scope, owner_scope_options },
+        placement.placement_cache.module_record { cache_scope, owner_scope_options },
         types.type_evaluator.TypeEvaluator._in_flight_module { program_for },
     ]
     driver.compile_options ++> [
@@ -5940,28 +5948,16 @@ graph import compiler {
         backends.native.llvm | backends.native.llvm.ir.types {
             env_typed_pointers_enabled
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._load_native_unit_module {
-            CompileOptions as _UnitOpts
-        },
         passes.context | passes.execution | tests.test_pipeline_products {
             CancelToken
         },
     ]
-    driver.compile_options --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._full_ast_of { env_na_debug },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
-            env_na_debug,
-            env_na_debug as _ti_dbg
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
-            env_na_debug as _er_dbg
-        },
-        tests.test_graph_fragment_equivalence
-            | tests.test_stubcat_roundtrip
-            | tests.xbackend_equiv
-            | tools.code_intel.CodeIntelligence._full_compile_one { CompileOptions },
-    ]
-    type driver.compile_options ++> backends.native.na_compile_pass
+    driver.compile_options --> tests.test_graph_fragment_equivalence
+        | tests.test_stubcat_roundtrip
+        | tests.xbackend_equiv
+        | tools.code_intel.CodeIntelligence._full_compile_one { CompileOptions }
+    type driver.compile_options ++> backends.native.mir.lower
+        | backends.native.na_compile_pass
         | frontend.host
         | placement.placement_facts { CompileOptions }
     driver.compiler ++> types.stubcat.build.build_catalog { JacCompiler }
@@ -5978,6 +5974,7 @@ graph import compiler {
             ct_dep_digest,
             running_compiler_digest
         },
+        backends.native.kernel_resolve.kernel_identity { set_kernel_producer },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
             running_compiler_digest,
@@ -5997,7 +5994,7 @@ graph import compiler {
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
-        placement.placement_facts._record_at {
+        placement.placement_cache._record_at {
             SEC_PLACEMENT,
             get_module_cache_path,
             is_module_cache_valid,
@@ -6021,7 +6018,8 @@ graph import compiler {
         },
         backends.native.link_plan.build_link_plan {
             begin_prepare_memo,
-            end_prepare_memo
+            end_prepare_memo,
+            pin_content_reads
         },
     ]
     driver.module_analysis ++> [
@@ -6030,19 +6028,9 @@ graph import compiler {
     ]
     type driver.module_analysis ++> frontend.host { ModuleAnalysis }
     driver.module_compile ++> frontend.kernel_host { compile_task }
-    driver.na_coverage ++> backends.native.link_plan._build_link_plan {
-        na_coverage_replay
-    }
-    driver.na_coverage --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._export_native_iface {
-            na_coverage_capture
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
-            na_coverage_seam
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python {
-            na_coverage_seam
-        },
+    driver.na_coverage ++> [
+        backends.native.link_plan._build_link_plan { na_coverage_replay },
+        backends.native.mir.backend.MirNativePass.note_demotions { na_coverage_seam },
     ]
     driver.native_iface ++> [
         backends.native.link_plan {
@@ -6050,9 +6038,12 @@ graph import compiler {
             layout_digest as layout_digest_of,
             merge_class_layouts
         },
-        backends.native.na_ir_gen_pass { NativeExport, NativeIface },
-        backends.native.na_ir_gen_pass.NaIRGenPass._export_native_iface {
+        backends.native.mir.backend {
+            EXPORT_FUNCTION,
+            EXPORT_METHOD,
+            EXPORT_TEST,
             NativeClassLayout,
+            NativeExport,
             NativeFieldSlot,
             NativeIface
         },
@@ -6076,13 +6067,8 @@ graph import compiler {
     driver.pass_driver as pass_driver ++> tests.test_pipeline_products;
     driver.pipeline ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_body_inference
             | passes.layout_pass.get_layout_registry
             | tools.lang_tools { CompilationProduct, require },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
-            CompilationProduct,
-            require
-        },
         jc_unit { early_passes },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file
@@ -6096,6 +6082,9 @@ graph import compiler {
         },
     ]
     driver.pipeline --> [
+        backends.native.mir.lower.MirLowering.body_types { require },
+        backends.native.mir.lower.MirLowering.declaration_types { require },
+        backends.native.mir.lower.MirLowering.variant_unit { require },
         frontend.kernel_host.KernelHost.lower_dependency { product_ready, require },
         placement.placement_solver.invalidate_importers_es { invalidate },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
@@ -6128,7 +6117,7 @@ graph import compiler {
             | tools.jac_formatter_pass
             | tools.normalize_pass
             | tools.unparse_pass { PassContract },
-        backends.native.na_ir_gen_pass
+        backends.native.mir.backend
             | passes.access_check_pass
             | passes.capability_check_pass
             | passes.cfg_build_pass
@@ -6159,6 +6148,18 @@ graph import compiler {
         },
     ]
     driver.pipeline_types --> [
+        backends.native.mir.lower.MirLowering.body_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.declaration_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.variant_unit {
+            AnalysisFact,
+            CompilationProduct
+        },
         frontend.kernel_host.KernelHost.lower_dependency
             | placement.placement_solver.invalidate_importers_es
             | tools.jac_formatter_pass.unparse_module { CompilationProduct },
@@ -6173,7 +6174,7 @@ graph import compiler {
             | backends.native.wasm_build.compile_to_wasm
             | frontend.kernel_analyze
             | frontend.kernel_host
-            | placement.placement_facts.discover_spaces
+            | placement.placement_cache.discover_spaces
             | placement.placement_solver._native_dep_scan
             | tests.test_batch_decl_identity
             | tests.test_client_codegen_facts
@@ -6204,6 +6205,9 @@ graph import compiler {
     type driver.program ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0
         | backends.native.link_plan
+        | backends.native.mir.backend
+        | backends.native.mir.lower
+        | c_interop
         | capability_notes
         | frontend.host
         | frontend.parser.frontend
@@ -6214,6 +6218,7 @@ graph import compiler {
         | passes.placement_pass
         | passes.wasm_contract
         | placement.placement
+        | placement.placement_cache
         | placement.placement_export
         | placement.placement_facts
         | placement.placement_pins
@@ -6265,18 +6270,10 @@ graph import compiler {
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-            erased_identity_call_arg
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ctxmgr_callee {
-            contextmanager_ability
-        },
+        backends.native.mir.lower { contextmanager_ability },
         field_semantics.is_field_marker { erased_import_binds },
     ]
     erased_imports --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-            contextmanager_ability
-        },
         passes.capability_check_pass.native_capability_violations {
             contextmanager_ability,
             is_contextmanager_decorator
@@ -6284,10 +6281,6 @@ graph import compiler {
         passes.rc_facts_pass.result_ownership { erased_identity_call_arg },
     ]
     expr_keys ++> [
-        backends.native.na_ir_gen_pass
-            | passes.ownership_check_pass
-            | passes.rc_facts_pass.method_returns_borrow
-            | types.ownership { type_tag_borrows },
         passes.cfg_build_pass.CFGBuildPass._wire_bool_operands {
             collect_narrowing_symbols
         },
@@ -6305,8 +6298,14 @@ graph import compiler {
         passes.cfg_build_pass.CFGBuildPass.exit_if_else_expr {
             collect_narrowing_symbols
         },
+        passes.ownership_check_pass
+            | passes.rc_facts_pass.method_returns_borrow
+            | types.ownership { type_tag_borrows },
         types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
             find_destructure_index_path
+        },
+        types.type_evaluator.TypeEvaluator._loop_back_edge_types {
+            collect_assignment_target_keys
         },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
@@ -6325,18 +6324,13 @@ graph import compiler {
         },
     ]
     field_semantics ++> [
-        backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_archetype {
+        backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
             positional_field_names
         },
-        backends.native.na_ir_gen_pass
+        backends.native.mir.lower
             | passes.type_checker_pass.TypeCheckPass.exit_has_var
             | types.type_evaluator.TypeEvaluator._build_field_params {
             field_initialization
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-            field_initialization,
-            is_field_marker
         },
         backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
     ]
@@ -6375,10 +6369,7 @@ graph import compiler {
             | backends.native.kernel_stage0.plan_kernel_prefix
             | backends.native.link_plan.LinkPlan.plan_digest
             | native_scope.package_host_edge { native_unit_identity },
-        backends.native.kernel_stage0.missing_kernel_entries
-            | backends.native.na_ir_gen_pass.NaIRGenPass._register_entry_globals {
-            native_def_symbol
-        },
+        backends.native.kernel_stage0.missing_kernel_entries { native_def_symbol },
         backends.native.kernel_stage0.running_kernel_target {
             KERNEL_UNIT_REL,
             jaclang_pkg_root
@@ -6386,137 +6377,52 @@ graph import compiler {
         backends.native.link_glue.inject_heap_accounting { HDR_TOTAL },
         backends.native.link_plan { JAC_ENTRY_SYMBOL, kernel_unit_path },
         backends.native.link_plan._build_link_plan
-            | backends.native.na_ir_gen_pass.NaIRGenPass._is_kernel_unit
             | driver.program.JacProgram.prefers_native_codespace {
             is_kernel_unit_path
         },
         backends.native.link_plan._write_sidecar { native_unit_identity },
-        backends.native.na_ir_gen_pass {
-            HDR_ALLOC_ID_OFF,
-            HDR_DTOR_OFF,
-            HDR_MAGIC,
-            HDR_MAGIC_SHIFT_BASE,
-            HDR_RC_OFF,
-            HDR_TAG_OFF,
-            HDR_TOTAL,
-            JACSTR_DESC_FIELDS,
-            NativeFuncLayout,
-            RC_SENTINEL,
-            STR_ASCII_TAG_BIT,
-            STR_LEN_PAYLOAD_MASK,
-            STR_LEN_TAG_BIT,
-            STR_LEN_TAG_SHIFT,
-            is_package_keyed_path,
-            native_unit_identity,
-            real_path,
-            str_len_tag
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__ { native_unit_prefix },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_display {
-            native_arch_display
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_entry {
-            native_entry_name,
-            native_runtime_probe_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_test { native_test_symbol },
-        backends.native.na_ir_gen_pass.NaIRGenPass._default_repr_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._demote_native_test {
-            native_test_symbol
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._discover_kernel_deps {
-            FMT_KERNEL_REL,
-            OSP_GRAPH_REL,
-            OSP_KERNEL_REL,
-            kernel_unit_path
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_class_display_fn
-            | native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_glob_init_func {
-            native_glob_init_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_jacval_slot_drop_fn {
-            native_safe_sym
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_fmt_kernel {
-            FMT_KERNEL_REL,
-            kernel_unit_path
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._eq_fn_new { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._export_native_iface {
-            native_glob_init_name,
-            native_module_key,
-            native_unit_spelling
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._export_native_layout {
-            NativeEnumLayout,
+        backends.native.mir.backend {
             NativeFieldInfo,
             NativeFuncLayout,
             NativeModuleLayout,
             NativeStructLayout,
             NativeTestLayout,
-            NativeTupleLayout
+            is_kernel_unit_path,
+            jaclang_pkg_root,
+            native_entry_name,
+            native_glob_init_name,
+            native_module_key,
+            native_unit_prefix,
+            native_unit_spelling
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value {
-            native_variant_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._find_source_ability
-            | native_bindings.import_gaps { resolve_native_module },
-        backends.native.na_ir_gen_pass.NaIRGenPass._forward_declare_imported_ability {
-            NativeModuleLayout
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._from_imported_intercept
-            | passes.layout_pass.record_interface_twins
-            | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
-        backends.native.na_ir_gen_pass.NaIRGenPass._maybe_declare_ability {
-            NativeModuleLayout
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports
-            | driver.program.JacProgram.stamp_boundary_facts {
-            is_bundled_native_module,
-            resolve_native_module
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
-            resolve_native_module
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
-            native_variant_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._osp_kernel_init_fns {
-            native_glob_init_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._pyb_base_of
-            | passes.capability_check_pass.base_expr_is_erased
-            | passes.layout_pass.is_erased_base_name { NATIVE_ERASED_BASES },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_osp_kernel_module {
+        backends.native.mir.emit { RC_SENTINEL, str_len_tag },
+        backends.native.mir.lower {
+            InteropBinding,
+            InteropContext,
+            NATIVE_ERASED_BASES,
             OSP_GRAPH_REL,
             OSP_KERNEL_REL,
-            kernel_unit_path
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_region_kernel {
+            OSP_NATIVE_REL,
             REGION_KERNEL_REL,
-            kernel_unit_path
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_dict_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_leaf_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_list_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_obj_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_set_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_str_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._repr_tuple_fn { native_safe_sym },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ret_tuple_hints {
-            NativeTupleLayout
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._symbol_for {
+            bundled_stdlib_module_of,
+            interop_callback_symbol,
+            is_bundled_native_module,
+            is_kernel_unit_path,
+            kernel_unit_path,
+            module_dotted_name,
             native_def_symbol,
+            native_entry_name,
+            native_glob_init_name,
             native_symbol_name,
+            native_test_symbol,
             native_unit_identity,
-            native_unit_spelling
+            native_unit_prefix,
+            native_unit_spelling,
+            resolve_native_module
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
-            native_symbol_name,
-            native_unit_spelling
-        },
+        backends.native.mir.lower_types.mir_class_type
+            | passes.layout_pass.record_interface_twins
+            | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6536,6 +6442,7 @@ graph import compiler {
             native_test_symbol,
             native_unit_prefix
         },
+        c_interop.variant_module { native_variant_of },
         driver.boundary_classify._default_codespace_for { effective_default_codespace },
         driver.boundary_classify.import_binds_client_native
             | driver.session_compile.drop_native_bindings {
@@ -6565,7 +6472,8 @@ graph import compiler {
         },
         driver.ifacecache.native_lowering_reads {
             is_compiler_source_path,
-            is_native_by_location
+            is_native_by_location,
+            is_native_compiler_unit
         },
         driver.jir {
             is_compiler_source_path,
@@ -6589,6 +6497,10 @@ graph import compiler {
         },
         driver.program.JacProgram.declared_codespace { is_client_by_location },
         driver.program.JacProgram.init { forget_real_paths },
+        driver.program.JacProgram.stamp_boundary_facts {
+            is_bundled_native_module,
+            resolve_native_module
+        },
         driver.session_compile.compile_in_session {
             get_effective_default_codespace_override,
             reset_native_unit_compile,
@@ -6612,6 +6524,8 @@ graph import compiler {
             is_bundled_native_module,
             resolve_native_module
         },
+        native_bindings.import_gaps { resolve_native_module },
+        native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
         native_scope.binds_bare_arch_names { kernel_unit_rels },
         native_scope.scope_allows_inferred_path
             | placement.placement_solver._native_deps_ok { native_unit_compile_active },
@@ -6625,6 +6539,8 @@ graph import compiler {
             interop_callback_symbol
         },
         passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
+        passes.capability_check_pass.base_expr_is_erased
+            | passes.layout_pass.is_erased_base_name { NATIVE_ERASED_BASES },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
         passes.endpoint_effect_pass.EndpointEffectPass._classify {
@@ -6652,31 +6568,6 @@ graph import compiler {
             | backends.py.jcir_gen_pass.JcirGenPass._sv_endpoint_effects
             | passes.boundary_analysis_pass.BoundaryAnalysisPass._collect_boundary_type {
             endpoint_key
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-            resolve_native_module
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
-            native_unit_compile_active as _typed_nuc
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_call_target {
-            NATIVE_STDLIB_EXTENSIONS
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
-            native_display_text
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python {
-            native_display_text
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._prefix_of_path {
-            native_unit_prefix
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._process_clib_imports {
-            is_bundled_native_module,
-            resolve_native_module
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._skip_is_other_module {
-            resolve_native_module
         },
         backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
             native_def_symbol,
@@ -6755,22 +6646,16 @@ graph import compiler {
         backends.native.na_compile_pass
             | backends.py.codegen_shim
             | driver.nativecache { CodeGenTarget },
-        backends.native.na_ir_gen_pass { NativeModuleLayout },
         driver.boundary_classify { InteropManifest },
         driver.client_graph { ClientArtifact, ClientManifest },
         driver.compiler { CodeGenTarget, NativeModuleLayout },
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
-    frontend.const_fold ++> [
-        backends.native.na_ir_gen_pass
-            | backends.py.jcir_gen_pass
-            | c_interop.c_scalar_constant
-            | passes.layout_pass
-            | types.enum_utils
-            | types.operations.get_pow_result_type { fold_const },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_const_expr { fold_const },
-        backends.native.na_ir_gen_pass.NaIRGenPass._folded_ord { fold_const },
-    ]
+    frontend.const_fold ++> backends.py.jcir_gen_pass
+        | c_interop.c_scalar_constant
+        | passes.layout_pass
+        | types.enum_utils
+        | types.operations.get_pow_result_type { fold_const }
     frontend.constant ++> [
         backends.es.esast_gen_pass | symbol_utils {
             CodeContext,
@@ -6788,103 +6673,12 @@ graph import compiler {
         backends.es.jac_runtime_js._build_types_runtime_js
             | passes.pyast_load_pass.PyastBuildPass.proc_aug_assign { TOKEN_MAP },
         backends.native.foreign
-            | backends.native.na_ir_gen_pass.NaIRGenPass._c_vararg
             | c_interop.c_lent_arg_elem
             | expr_keys.type_tag_borrows
             | passes.type_checker_pass.TypeCheckPass._check_c_function_def
             | types.type_evaluator.TypeEvaluator._c_lent_args { is_borrow_kind },
-        backends.native.na_ir_gen_pass {
-            CodeContext,
-            OwnershipKind,
-            SymbolAccess,
-            SymbolType,
-            Tokens as Tok
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable
-            | passes.capability_check_pass
-            | passes.sym_tab_build_pass.SymTabBuildPass._declare_global_vars
-            | types.type_evaluator.TypeEvaluator._merge_catalog_field_params
-            | types.types.ClassType.is_edge_type { SymbolType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._c_vararg_value
-            | c_interop.c_lent_param
-            | passes.type_checker_pass.TypeCheckPass._check_c_interop_import {
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._clib_abi_signature {
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._clib_param_borrowed {
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._clib_place_ptr { is_borrow_kind },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
-            SymbolStorage
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_clib_args {
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_unary {
-            OwnershipKind,
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ct_fold
-            | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
-            | passes.import_wiring_pass
-            | tools.reactive_use_walk { ExprCtx },
-        backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
-            | backends.native.primitives_native
-            | c_interop.c_offset_address
-            | driver.wiring
-            | expr_keys
-            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
-            | passes.graph_lowering_pass
-            | passes.mtir_gen_pass
-            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
-            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
-            | tools.cfg_dot.CoalesceBBPass._node_label
-            | tools.comment_attach_pass
-            | tools.jac_auto_lint_pass
-            | types.operations
-            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
-        backends.native.na_ir_gen_pass.NaIRGenPass._hl_view_base_licensed
-            | driver.boundary_classify.module_own_native_anchor
-            | passes.ownership_hints
-            | passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle
-            | passes.type_checker_pass.TypeCheckPass._borrowed_scalar_param
-            | passes.wasm_contract { OwnershipKind },
-        backends.native.na_ir_gen_pass.NaIRGenPass._nogc_borrow_local_assign {
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._nogc_consume_assigned_local {
-            OwnershipKind,
-            is_borrow_kind
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._null_safe_on_value
-            | types.type_evaluator.TypeEvaluator._scope_has_fields
-            | types.types.ClassType.is_node_type { SymbolType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._predeclare_nested_siblings
-            | types.types.ClassType.is_walker_type { SymbolType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_entry_globals {
-            SymbolStorage
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._try_flow_for_parallel
-            | passes.cfg_build_pass._bool_is_and
-            | passes.ownership_check_pass.OwnershipCheckPass._emit_sendability_diagnostics
-            | types.type_evaluator.TypeEvaluator.classify_condition { Tokens as Tok },
-        backends.native.na_ir_gen_pass.NaIRGenPass._try_flow_future
-            | passes.ownership_check_pass.OwnershipCheckPass._flow_for_stmts {
-            Tokens as Tok
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._unpack_into { SymbolStorage },
-        backends.py.jcir_gen_pass {
-            CodeContext,
-            OwnershipKind,
-            SymbolStorage,
-            Tokens as Tok,
-            is_borrow_kind
-        },
-        driver.boundary_classify { CodeContext, SymbolAccess, Tokens as Tok },
-        driver.ifacecache.IfaceRegistry._client_edges
+        backends.native.mir.backend
+            | driver.ifacecache.IfaceRegistry._client_edges
             | driver.module_compile
             | driver.program.JacProgram.stamp_boundary_facts
             | driver.unit_products
@@ -6897,6 +6691,36 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
+        backends.native.mir.lower | backends.py.jcir_gen_pass {
+            CodeContext,
+            OwnershipKind,
+            SymbolStorage,
+            Tokens as Tok,
+            is_borrow_kind
+        },
+        c_interop.c_lent_param
+            | passes.type_checker_pass.TypeCheckPass._check_c_interop_import {
+            is_borrow_kind
+        },
+        c_interop.c_offset_address
+            | driver.wiring
+            | expr_keys
+            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
+            | passes.graph_lowering_pass
+            | passes.mtir_gen_pass
+            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
+            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
+            | tools.cfg_dot.CoalesceBBPass._node_label
+            | tools.comment_attach_pass
+            | tools.jac_auto_lint_pass
+            | types.operations
+            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
+        driver.boundary_classify { CodeContext, SymbolAccess, Tokens as Tok },
+        driver.boundary_classify.module_own_native_anchor
+            | passes.ownership_hints
+            | passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle
+            | passes.type_checker_pass.TypeCheckPass._borrowed_scalar_param
+            | passes.wasm_contract { OwnershipKind },
         driver.module_analysis.run_analysis { CodeContext as _CodeCtx },
         native_bindings | types.type_utils { ParamKind, Tokens as Tok },
         passes.access_check_pass
@@ -6906,12 +6730,22 @@ graph import compiler {
             | passes.variant_agreement_pass { SymbolAccess },
         passes.ast_validation_pass { CodeContext, DeleteTargetError, Tokens as Tok },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._get_context { CodeContext },
+        passes.capability_check_pass
+            | passes.sym_tab_build_pass.SymTabBuildPass._declare_global_vars
+            | types.type_evaluator.TypeEvaluator._merge_catalog_field_params
+            | types.types.ClassType.is_edge_type { SymbolType },
+        passes.capability_check_pass.PortabilityWarnPass._check_js_globals
+            | passes.import_wiring_pass
+            | tools.reactive_use_walk { ExprCtx },
         passes.capability_check_pass.PortabilityWarnPass._check_js_keywords { ExprCtx },
         passes.capability_check_pass.native_capability_violations {
             CodeContext,
             ExprCtx,
             Tokens as Tok
         },
+        passes.cfg_build_pass._bool_is_and
+            | passes.ownership_check_pass.OwnershipCheckPass._emit_sendability_diagnostics
+            | types.type_evaluator.TypeEvaluator.classify_condition { Tokens as Tok },
         passes.endpoint_effect_pass { SymbolType, Tokens as Tok },
         passes.layout_pass | types.ct_eval { OwnershipKind, Tokens as Tok },
         passes.osp_analysis { CodeContext, Tokens as Tok },
@@ -6921,6 +6755,9 @@ graph import compiler {
             Tokens as Tok,
             is_borrow_kind,
             is_mut_kind
+        },
+        passes.ownership_check_pass.OwnershipCheckPass._flow_for_stmts {
+            Tokens as Tok
         },
         passes.ownership_check_pass.OwnershipCheckPass._flow_lend_joined {
             Tokens as Tok
@@ -6975,12 +6812,12 @@ graph import compiler {
             TOKEN_MAP,
             Tokens as Tok
         },
+        types.type_evaluator.TypeEvaluator._scope_has_fields
+            | types.types.ClassType.is_node_type { SymbolType },
         types.types { ParamKind },
+        types.types.ClassType.is_walker_type { SymbolType },
     ]
     frontend.constant --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
-            OwnershipKind
-        },
         backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
             Tokens as _NsTok
         },
@@ -7019,26 +6856,8 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
+        backends.native.mir.backend { E1145, E1158, E5092, E5095, E5114, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
-        backends.native.na_ir_gen_pass {
-            DiagnosticInfo,
-            E1145,
-            E1158,
-            E5026,
-            E5088,
-            E5089,
-            E5090,
-            E5091,
-            E5092,
-            E5095,
-            E5113,
-            E5114,
-            E9001,
-            E9002,
-            E9003
-        },
-        backends.native.primitives_native
-            | driver.module_compile.report_missing_native_ir { E5092 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
             E5001,
@@ -7056,6 +6875,7 @@ graph import compiler {
         },
         driver.ifacecache._alert_from_record
             | native_compiler.NativeCompiler.take_pass_results { DIAGNOSTICS },
+        driver.module_compile.report_missing_native_ir { E5092 },
         driver.program.JacProgram.module_scoped_errors { Category },
         passes.access_check_pass {
             E2034,
@@ -7426,7 +7246,8 @@ graph import compiler {
             | backends.es.free_ident_audit.client_ambient_globals
             | backends.es.jac_runtime_js.build_osp_core_js
             | backends.native.abi.struct_layouts
-            | backends.native.na_ir_gen_pass
+            | backends.native.mir.backend
+            | backends.native.mir.lower.MirLowering.dep_verdict
             | backends.py.artifact_imports
             | driver.application._kernel_units
             | driver.boundary_classify
@@ -7453,8 +7274,7 @@ graph import compiler {
             | tools.jac_auto_lint_pass
             | types.ct_eval.CtEvaluator._embed
             | types.type_evaluator.TypeEvaluator.__post_init__ { active_host },
-        backends.native.na_ir_gen_pass.NaIRGenPass._seam_warnings_on
-            | driver.compilation_context.compilation_scope
+        driver.compilation_context.compilation_scope
             | driver.ifacecache.IfaceRegistry.analysis_profile
             | driver.program.JacProgram.execution_hubs
             | driver.progstate.ModuleHub.is_fresh
@@ -7507,7 +7327,6 @@ graph import compiler {
     ]
     frontend.host --> [
         backends.es.client_paths.client_output_path
-            | backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable
             | driver.compilation_context.context_program
             | driver.compile_options.CompileOptions.effective_triple
             | driver.jir._memoized
@@ -7524,16 +7343,14 @@ graph import compiler {
             active_host
         },
         backends.es.client_paths.jac_js_path
-            | backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python
             | driver.jir._project_env_fingerprint_uncached
             | driver.program.JacProgram.compile
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
             active_host
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
-            | driver.program.JacProgram.iface_registry { active_host },
         driver.compiler.JacCompiler.enter_compile { active_host, install_host },
         driver.compiler.JacCompiler.finish_compile { install_host },
+        driver.program.JacProgram.iface_registry { active_host },
         driver.program.JacProgram.invalidate_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
@@ -7579,20 +7396,15 @@ graph import compiler {
             enclosing_loop,
             in_loop_else
         },
-        backends.native.na_ir_gen_pass {
-            LoopLinks,
-            LoopStmt,
-            PassLink,
-            enclosing_loop,
-            frame_owns
-        },
+        backends.native.mir.lower { LoopLinks, binding_sites },
         backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
         passes.ast_validation_pass { in_loop_else },
         passes.cfg_build_pass { enclosing_loop },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
-            | backends.native.na_ir_gen_pass
+            | backends.native.mir.backend
+            | backends.native.mir.lower
             | backends.py.jcir_gen_pass
             | driver.boundary_classify.is_server_anchored_module
             | driver.module_compile
@@ -7957,8 +7769,7 @@ graph import compiler {
         },
     ]
     frontend.roles ++> [
-        backends.native.na_ir_gen_pass
-            | backends.py.jcir_gen_pass
+        backends.py.jcir_gen_pass
             | driver.program
             | driver.progstate
             | passes.ast_validation_pass
@@ -8026,13 +7837,6 @@ graph import compiler {
     ]
     frontend.srcloc --> driver.compiler.assemble_jcir { Span }
     frontend.unitree ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable {
-            ability_of_symbol
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._record_generic_definition {
-            definition_qualname
-        },
-        backends.native.primitives_native { Expr, UniNode },
         backends.py.jcir_bc_gen_pass
             | driver.context_passes
             | driver.module_analysis
@@ -8200,6 +8004,7 @@ graph import compiler {
             Expr,
             GlobalVars,
             Import,
+            Module,
             Name,
             ParamVar,
             Symbol,
@@ -9027,7 +8832,9 @@ graph import compiler {
             IterForStmt,
             LambdaExpr,
             ListCompr,
+            MatchAs,
             MatchCase,
+            MatchStar,
             Module,
             ModuleItem,
             ModulePath,
@@ -9068,6 +8875,7 @@ graph import compiler {
             CodeBlockStmt,
             CompareExpr,
             DeleteStmt,
+            DictCompr,
             EdgeRefTrailer,
             ElseIf,
             Enum,
@@ -9075,6 +8883,7 @@ graph import compiler {
             Except,
             Expr,
             ExprAsItem,
+            ExprStmt,
             FilterCompr,
             FinallyStmt,
             FormattedValue,
@@ -9093,6 +8902,7 @@ graph import compiler {
             JsxElementName,
             KWPair,
             LambdaExpr,
+            ListCompr,
             ListVal,
             MatchArch,
             MatchAs,
@@ -9368,6 +9178,7 @@ graph import compiler {
         },
         types.type_evaluator {
             Ability,
+            ArchHas,
             ArchSpec,
             Archetype,
             AssertStmt,
@@ -9432,8 +9243,12 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
+            MatchKVPair,
+            MatchMapping,
             MatchOr,
             MatchPattern,
+            MatchSequence,
+            MatchStar,
             MatchStmt,
             MatchWild,
             Module,
@@ -9518,8 +9333,10 @@ graph import compiler {
         | backends.es.jsx_processor
         | backends.es.view_ir
         | backends.native.foreign
+        | backends.native.mir.backend
+        | backends.native.mir.lower
+        | backends.native.mir.lower_types
         | backends.native.na_compile_pass
-        | backends.native.na_ir_gen_pass
         | driver.boundary_classify
         | driver.compiler
         | driver.ifacecache.IfaceRegistry._client_edges
@@ -9576,24 +9393,16 @@ graph import compiler {
         boundary_rules.signature_refusals { unparse_node },
     ]
     frontend.unparse --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type
-            | passes.endpoint_effect_pass.EndpointEffectPass._apply { unparse_node },
+        passes.endpoint_effect_pass.EndpointEffectPass._apply { unparse_node },
         passes.endpoint_effect_pass.EndpointEffectPass._scan { unparse_node },
     ]
     intrinsic_registry ++> [
-        backends.native.na_ir_gen_pass { IntrinsicEntry },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call
-            | symbol_utils.intrinsic_registry_if_ready { INTRINSIC_REGISTRY },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_intrinsic {
-            IntrinsicDispatch
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_intrinsic_atomic {
-            IntrinsicDispatch
-        },
+        backends.native.mir.lower { INTRINSIC_REGISTRY, IntrinsicDispatch },
         passes.type_checker_pass.TypeCheckPass._check_intrinsic_collision
             | types.type_evaluator.TypeEvaluator._intrinsic_function_type {
             IntrinsicRegistry
         },
+        symbol_utils.intrinsic_registry_if_ready { INTRINSIC_REGISTRY },
     ]
     type intrinsic_registry ++> symbol_utils { IntrinsicRegistry }
     jc_ask ++> jc_unit { set_host_callback, take_host_answer }
@@ -9693,14 +9502,8 @@ graph import compiler {
     }
     passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
     passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
-    passes.capability_check_pass ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._fstring_spec_text {
-            static_fstring_spec_text
-        },
-        driver.pipeline.analysis_passes { PortabilityWarnPass },
-    ]
-    passes.capability_check_pass --> backends.native.na_ir_gen_pass.NaIRGenPass._process_clib_imports {
-        classify_native_import
+    passes.capability_check_pass ++> driver.pipeline.analysis_passes {
+        PortabilityWarnPass
     }
     passes.cfg_build_pass ++> [
         driver.pipeline.flow_passes | tests.test_pipeline_products { CFGBuildPass },
@@ -9717,13 +9520,14 @@ graph import compiler {
             | tools.jac_auto_lint_pass
             | tools.normalize_pass
             | tools.unparse_pass { TreePass },
-        backends.native.na_compile_pass
+        backends.native.mir.backend
+            | backends.native.na_compile_pass
             | backends.py.jcir_bc_gen_pass
             | driver.context_passes
             | placement.placement_solver
             | tools.comment_attach_pass
             | tools.jac_formatter_pass { CompilerPass },
-        backends.native.na_ir_gen_pass { Alert, CompilerPass },
+        driver.host_products { PassSchedule },
         driver.ifacecache._alert_from_record
             | driver.module_compile.report_missing_native_ir
             | driver.program
@@ -9740,17 +9544,17 @@ graph import compiler {
     ]
     passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
-        driver.compiler { Alert },
+        driver.compiler | driver.nativecache { Alert },
         native_compiler { Alert, PassResult },
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
-    passes.declaration_type_pass ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
-            importer_lowers_bodies
-        },
-        driver.pipeline.declaration_passes { DeclarationTypePass },
-    ]
+    passes.declaration_type_pass ++> driver.pipeline.declaration_passes {
+        DeclarationTypePass
+    }
+    passes.declaration_type_pass --> backends.native.mir.lower.MirLowering.declaration_types {
+        importer_lowers_bodies
+    }
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
@@ -9765,220 +9569,51 @@ graph import compiler {
         JsxIntrinsicGuardPass
     }
     passes.layout_pass ++> [
-        backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
+        backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
+            | backends.native.mir.backend {
             archetype_native_name,
             get_layout_registry
         },
-        backends.native.na_ir_gen_pass {
-            ACCESSOR_SLOT_SUFFIX,
-            ArchetypeLayout,
-            EnumLayout,
-            VTABLE_DROP_SLOT,
-            VTABLE_HEADER_SLOTS,
-            accessor_slot_name,
-            archetype_accessors,
-            native_type_key
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._aos_elem_name {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_is_acyclic {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_is_osp_name {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_is_walker_name {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_key { archetype_native_name },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_layout { get_layout_registry },
-        backends.native.na_ir_gen_pass.NaIRGenPass._arch_ref_key {
-            referenced_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._class_const_declarer {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._class_const_variants {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._class_expr_bound {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_archetype {
+        backends.native.mir.emit { VTABLE_HEADER_SLOTS },
+        backends.native.mir.lower {
             EXC_MESSAGE_FIELD,
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_class_form_enum_member {
-            class_form_enum_member
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_enum_layout {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_instantiation {
-            EXC_MESSAGE_FIELD
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_virtual_call {
-            get_layout_registry as _vd_glr
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._copy_candidates {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._drop_dispatches {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_dispatched_field_ptr {
-            get_layout_registry as _df_glr
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_exception_match {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_isa_hashed_fn {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_jid { get_layout_registry },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_subclass_str {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_enum_lowered {
-            class_form_enum_scalar,
+            EnumLayout,
+            EnumMemberLayout,
+            NON_DISPATCHED_METHODS,
+            VTABLE_DROP_SLOT,
+            VTABLE_FIELDS_SLOT,
+            VTABLE_HEADER_SLOTS,
+            VTABLE_SELECTOR_SLOT,
+            accessor_slot_name,
+            adopt_imported_bases,
+            archetype_accessors,
+            archetype_native_name,
+            class_type_native_name,
             enum_decl_of,
-            enum_value_type_of,
-            is_enum_class_type
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._enum_ctor_layout {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._erased_want {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._exc_message_slot {
-            EXC_MESSAGE_FIELD
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._exc_stored_message {
-            EXC_MESSAGE_FIELD
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._get_exc_descendants {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_enum_arch {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_graph_type {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._isinstance_needs_class_name {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._isinstance_unprovable_class {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._jc_reference_schema {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_class_type {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._mangled_of { native_type_key },
-        backends.native.na_ir_gen_pass.NaIRGenPass._match_arch_name {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._module_class_name {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._mro_of { get_layout_registry },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_archetypes {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._nogc_osp_skip {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._nogc_type_arg_mangles {
+            field_remap,
+            get_layout_registry,
+            is_enum_class_type,
+            layout_slot_count,
+            merge_imported_layouts,
             native_type_key
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_archetypes {
-            get_layout_registry,
-            get_layout_registry as _no_glr
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_class_consts {
-            class_form_enum_scalar
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_exc_lineage {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_hierarchy {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_struct_types {
-            adopt_imported_bases
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._report_unreachable_overrides {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._resolve_method {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._resolve_method_owner {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._store_exc_message {
-            EXC_MESSAGE_FIELD
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._visit_nonprimary_ancestor_methods {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._vtable_candidates {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._vtable_slot_certain {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._walk_imported_module_type_names {
-            record_interface_twins
-        },
+        backends.native.mir.lower_types { class_type_native_name, is_enum_class_type },
         boundary_rules.archetype_fields { referenced_archetype },
         driver.pipeline.layout_passes { LayoutPass },
         symbol_utils.collect_method_names { archetype_accessors },
     ]
-    passes.layout_pass --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_instantiation {
-            get_layout_registry as _ci_glr
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_plain_trailer {
-            class_form_enum_member,
-            class_form_enum_scalar
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_virtual_call {
-            get_layout_registry as _vc_glr
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._elem_arch_name_of {
-            class_type_native_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_default_obj_repr {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._receiver_routed_method_fn {
-            get_layout_registry as _sc_glr
-        },
+    type passes.layout_pass ++> [
+        backends.native.mir.lower { ArchetypeLayout, LayoutRegistry },
+        frontend.codeinfo { LayoutRegistry },
     ]
-    type passes.layout_pass ++> frontend.codeinfo { LayoutRegistry }
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
     passes.osp_analysis ++> [
         backends.es.esast_gen_pass { OspAnalysis, OspModel, OspSlot },
-        backends.es.esast_gen_pass.EsastGenPass._osp_model
-            | backends.native.na_ir_gen_pass.NaIRGenPass._compute_osp_model {
-            get_osp_model
-        },
-        backends.native.na_ir_gen_pass { OSP_ANY_TAGS },
-        backends.native.na_ir_gen_pass.NaIRGenPass._trigger_struct_names {
-            OspAnalysis
-        },
+        backends.es.esast_gen_pass.EsastGenPass._osp_model { get_osp_model },
+        backends.native.mir.lower { OSP_ANY_TAGS, OspAnalysis },
     ]
     type passes.osp_analysis ++> [
-        backends.native.na_ir_gen_pass { OspSlot },
+        backends.native.mir.lower { OspModel, OspSlot },
         frontend.codeinfo { OspModel },
     ]
     passes.ownership_check_pass ++> driver.pipeline.analysis_passes {
@@ -9986,68 +9621,22 @@ graph import compiler {
     }
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.placement_pass ++> [
-        backends.native.na_ir_gen_pass { NativeLegality, NativeRefusal, NativeRefused },
-        backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable {
-            refusal_from_alert
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_module {
-            build_native_legality
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._owner_required {
-            element_requirements
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._settle_module {
-            settle_native_module
-        },
+        backends.native.mir.backend { settle_native_module },
+        backends.native.mir.lower_types { NativeRefusal },
         driver.pipeline.analysis_passes { PlacementPass },
     ]
     passes.placement_pass --> backends.native.na_compile_pass.NativeCompilePass._run_impl {
         settle_native_module
     }
+    type passes.placement_pass ++> backends.native.mir.lower { NativeRefusal }
     passes.pyast_load_pass ++> [
-        driver.pipeline.python_ast_passes | tools.lang_tools { PyastBuildPass },
+        driver.host_products.python_ast_passes | tools.lang_tools { PyastBuildPass },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
     ]
     passes.rc_facts_pass ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_for_indexed {
-            loop_body_locals
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_forever {
-            loop_body_locals
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_iter_for {
-            loop_body_locals
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_open_stmt {
-            loop_body_locals
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_while { loop_body_locals },
-        backends.native.na_ir_gen_pass.NaIRGenPass._opt_result_owned {
-            Ownership,
-            result_ownership
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._try_chunked_for {
-            loop_body_locals
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._try_iter_protocol_for {
-            loop_body_locals
-        },
         driver.pipeline.codegen_passes { RcFactsPass },
         driver.pipeline.native_ir_passes { RcFactsPass },
         driver.pipeline.native_lower_passes { RcFactsPass },
-    ]
-    passes.rc_facts_pass --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_expr {
-            Ownership,
-            call_borrows_receiver,
-            result_ownership
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_with_recursive {
-            method_returns_borrow
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._try_flow_for_parallel {
-            loop_body_locals
-        },
     ]
     passes.region_infer_pass ++> driver.pipeline.analysis_passes { RegionInferPass }
     passes.scope_walk ++> tools.code_intel { ScopeWalker }
@@ -10069,14 +9658,13 @@ graph import compiler {
         driver.wiring.variant_base_file { VARIANT_SUFFIX },
     ]
     placement.placement ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._owner_element
-            | passes.placement_pass.element_requirements { element_display_name },
         driver.compiler.JacCompiler.native_entry_engine { summary_store },
         driver.unit_products.placement_record | symbol_utils.report_placement_warnings {
             get_module_summary
         },
         passes.placement_pass.PlacementPass._run_undecided { record_decided },
         passes.placement_pass.build_native_legality { native_blocker_scan },
+        passes.placement_pass.element_requirements { element_display_name },
         passes.placement_pass.settle_native_module { record_decided },
         symbol_utils.client_bridged_endpoint { project_has_server },
         symbol_utils.report_serverless_kind_errors { project_kind_name },
@@ -10093,6 +9681,9 @@ graph import compiler {
         driver.module_analysis.run_analysis { record_decided },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
+    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
+        module_record
+    }
     placement.placement_export ++> driver.unit_products.placement_record {
         summary_to_dict
     }
@@ -10102,8 +9693,8 @@ graph import compiler {
         frontend.kernel_host.KernelHost.python_module { summary_from_dict },
     ]
     placement.placement_facts ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._dep_is_native_unit { native_unit },
-        driver.compiler.JacCompiler.kernel_native_entry { module_record },
+        backends.native.mir.backend { native_placement_hard },
+        backends.native.mir.lower { pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -10120,9 +9711,6 @@ graph import compiler {
         passes.placement_pass.settle_native_module { settle_server },
     ]
     placement.placement_facts --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
-            native_unit as _typed_native_unit
-        },
         driver.module_analysis.run_analysis { settle_server },
         driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
         native_scope.package_host_edge { native_lowered, native_unit },
@@ -10217,29 +9805,9 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass.exit_module {
             report_client_bare_import_uses
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._callee_ability_of
-            | c_interop.c_abi_callee
+        c_interop.c_abi_callee
             | passes.ownership_check_pass.OwnershipCheckPass._callee_ability {
             resolved_callee
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_method_call_inner {
-            imported_module_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_synthetic_call
-            | passes.type_checker_pass.TypeCheckPass.exit_func_call {
-            ability_of_symbol,
-            classify_call,
-            resolve_expr_symbol
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_call_target {
-            imported_module_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._unregistered_class_target
-            | types.type_evaluator.TypeEvaluator.flow_pred_never_returns {
-            resolve_expr_symbol
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._visit_nonprimary_ancestor_methods {
-            collect_method_names
         },
         passes.ownership_check_pass { CallKind, classify_call },
         passes.placement_pass.PlacementPass._run_decided
@@ -10261,19 +9829,20 @@ graph import compiler {
             | types.type_evaluator.TypeEvaluator._intrinsic_function_type {
             intrinsic_registry_if_ready
         },
+        passes.type_checker_pass.TypeCheckPass.exit_func_call {
+            ability_of_symbol,
+            classify_call,
+            resolve_expr_symbol
+        },
         types.type_evaluator.TypeEvaluator._resolve_importer_path {
             resolve_importer_path_from_node
         },
+        types.type_evaluator.TypeEvaluator.flow_pred_never_returns {
+            resolve_expr_symbol
+        },
     ]
     symbol_utils --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_plain_trailer {
-            imported_module_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._copy_call_kind {
-            imported_module_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._isinstance_type_name
-            | backends.py.jcir_gen_pass.JcirGenPass._exit_func_call_impl {
+        backends.py.jcir_gen_pass.JcirGenPass._exit_func_call_impl {
             CallKind,
             classify_call
         },
@@ -10288,38 +9857,42 @@ graph import compiler {
     ]
     type target_spec ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0 { TargetSpec }
-    tools.cfg_dot ++> driver.pipeline.cfg_dot_passes { CoalesceBBPass }
+    tools.cfg_dot ++> driver.host_products.cfg_dot_passes { CoalesceBBPass }
     tools.code_intel ++> tests.test_code_intel { CodeIntelligence }
     tools.comment_attach_pass ++> [
-        driver.pipeline.format_lintfix_passes { CommentAttachPass },
-        driver.pipeline.format_passes { CommentAttachPass },
+        driver.host_products.format_lintfix_passes { CommentAttachPass },
+        driver.host_products.format_passes { CommentAttachPass },
     ]
     tools.doc_ir as doc --> frontend.codeinfo.CodeGenTarget.doc_ir.getter;
     type tools.doc_ir ++> frontend.codeinfo { Doc }
     tools.doc_ir_gen_pass ++> [
-        driver.pipeline.doc_passes { DocIRGenPass },
-        driver.pipeline.format_lintfix_passes { DocIRGenPass },
-        driver.pipeline.format_passes { DocIRGenPass },
+        driver.host_products.doc_passes { DocIRGenPass },
+        driver.host_products.format_lintfix_passes { DocIRGenPass },
+        driver.host_products.format_passes { DocIRGenPass },
     ]
-    tools.grammar_extract_pass ++> driver.pipeline.grammar_passes { GrammarExtractPass }
+    tools.grammar_extract_pass ++> driver.host_products.grammar_passes {
+        GrammarExtractPass
+    }
     tools.jac_auto_lint_pass ++> [
+        driver.host_products.format_lintfix_passes { JacAutoLintPass },
         driver.pipeline.analysis_passes { JacLintCheckPass },
-        driver.pipeline.format_lintfix_passes { JacAutoLintPass },
         driver.pipeline.lint_passes { JacLintCheckPass },
     ]
     tools.jac_formatter_pass ++> [
-        driver.pipeline.format_lintfix_passes { JacFormatPass },
-        driver.pipeline.format_passes { JacFormatPass },
-        driver.pipeline.format_text_passes { JacFormatPass },
+        driver.host_products.format_lintfix_passes { JacFormatPass },
+        driver.host_products.format_passes { JacFormatPass },
+        driver.host_products.format_text_passes { JacFormatPass },
     ]
-    tools.normalize_pass ++> driver.pipeline.normalize_passes { NormalizePass }
-    tools.unparse_pass ++> driver.pipeline.unparse_passes { UnparsePass }
+    tools.normalize_pass ++> driver.host_products.normalize_passes { NormalizePass }
+    tools.unparse_pass ++> driver.host_products.unparse_passes { UnparsePass }
     type_registry ++> [
         backends.es.esast_gen_pass.EsastGenPass._audit_free_identifiers
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
-            | backends.native.host_facts.primitive_methods_fact
-            | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
+            | backends.native.mir.emit
+            | backends.native.mir.generators
+            | backends.native.mir.lower
+            | backends.native.mir.lower_types
             | c_interop._spec_for_name
             | passes.declaration_type_pass
             | passes.layout_pass
@@ -10332,7 +9905,6 @@ graph import compiler {
             | types.type_utils.primitive_type_name_of { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass._ensure_emitters
             | backends.es.jac_runtime_js._build_types_runtime_js
-            | backends.native.na_ir_gen_pass.NaIRGenPass._anchor_immutable
             | c_interop.c_bytes_elem_shape
             | passes.type_checker_pass.TypeCheckPass._c_plain_data
             | passes.wasm_contract.value_contract
@@ -10340,40 +9912,21 @@ graph import compiler {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass._primitive_type_ref
-            | backends.native.na_ir_gen_pass.NaIRGenPass._anchor_plain
             | c_interop.c_scalar_constant
             | passes.type_checker_pass.TypeCheckPass._stamp_fixed_width
             | types.type_evaluator.TypeEvaluator._extern_scalar_type {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_archetype
-            | backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm
             | passes.type_checker_pass.TypeCheckPass.exit_archetype
             | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_raise_stmt
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
             | passes.type_checker_pass.TypeCheckPass.exit_type_alias {
             JAC_TYPE_REGISTRY
         },
-        backends.es.esast_gen_pass._raised_exc_identity
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call {
-            JAC_TYPE_REGISTRY
-        },
-        backends.native.na_ir_gen_pass { JacTypeEntry },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_emitters {
-            JAC_TYPE_REGISTRY
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._get_exc_descendants {
-            JAC_TYPE_REGISTRY
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._get_or_register_exc_type {
-            JAC_TYPE_REGISTRY
-        },
-        backends.native.na_ir_gen_pass._caught_exception_class_name {
-            JAC_TYPE_REGISTRY
-        },
+        backends.es.esast_gen_pass._raised_exc_identity { JAC_TYPE_REGISTRY },
         types.fixed_width | types.operations.is_int_kind_type {
             JAC_TYPE_REGISTRY,
             NumericKind
@@ -10385,7 +9938,6 @@ graph import compiler {
             | types.type_evaluator.TypeEvaluator._assign_class { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass.exit_try_stmt { JAC_TYPE_REGISTRY },
     ]
-    type types.ct_eval ++> backends.native.na_ir_gen_pass { CtEvaluator }
     types.ct_value ++> [
         backends.es.esast_gen_pass {
             CtBool,
@@ -10400,19 +9952,7 @@ graph import compiler {
             CtValue,
             int_host
         },
-        backends.native.na_ir_gen_pass {
-            CtBool,
-            CtBytes,
-            CtFloat,
-            CtInt,
-            CtNone,
-            CtStr,
-            CtValue,
-            ct_iter,
-            ct_mangle,
-            ct_truthy
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._instantiate_generic { ct_mangle },
+        backends.native.mir.lower { CtBool, CtFloat, CtInt, CtNone, CtStr, int_host },
         backends.py.jcir_gen_pass.JcirGenPass._ct_kind {
             CtDict,
             CtEnumMember,
@@ -10477,9 +10017,6 @@ graph import compiler {
     ]
     types.operations ++> [
         backends.es.esast_gen_pass { AUG_TO_BINARY_MAP },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_arch_dunder_binop {
-            BINARY_OPERATOR_MAP
-        },
         passes.type_checker_pass {
             ARITHMETIC_OPERATORS,
             AUG_OPERATOR_MAP,
@@ -10535,6 +10072,7 @@ graph import compiler {
             IncoherentInterface,
             PackagePathMapper
         },
+        driver.ifacecache.IfaceRegistry.resolve_shared { collect_scope_members },
         driver.jir.JirPaths.encode { encode_package_path },
         frontend.kernel_host.record_interface {
             IncoherentInterface,
@@ -10553,40 +10091,14 @@ graph import compiler {
     }
     types.type_utils ++> [
         backends.es.esast_gen_pass.EsastGenPass._expr_type_name { expr_primitive_name },
-        backends.es.esast_gen_pass.EsastGenPass._resolve_primitive_type_name
-            | backends.native.na_ir_gen_pass.NaIRGenPass._container_class_name {
+        backends.es.esast_gen_pass.EsastGenPass._resolve_primitive_type_name {
             primitive_type_name_of
         },
         backends.es.esast_gen_pass.EsastGenPass._try_primitive_op {
             expr_primitive_name
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._check_native_import_names {
-            lookup_symtab
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_boolean_result_expr {
-            primitive_type_name_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_number_slot {
-            primitive_type_name_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._key_elem_unsigned {
-            primitive_type_name_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_coercion {
-            primitive_type_name_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_partition_unpack
-            | passes.ownership_check_pass { is_builtin_region_type },
-        backends.native.na_ir_gen_pass.NaIRGenPass._scalar_shape {
-            primitive_type_name_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable {
-            primitive_type_name_of
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_unsigned {
-            primitive_type_name_of
-        },
         native_bindings { collect_member_syms },
+        passes.ownership_check_pass { is_builtin_region_type },
         passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
             expr_is_builtin_region
         },
@@ -10599,35 +10111,18 @@ graph import compiler {
         },
         tests.test_property_write_kind { PropertyWriteKind },
     ]
-    types.type_utils --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
-            is_builtin_region_type
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_method_call_inner {
-            is_builtin_region_type
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._match_subj_ty {
-            convert_to_instance
-        },
-        passes.static_analysis_pass.StaticAnalysisPass._check_semantic_patterns {
-            expr_primitive_name
-        },
-    ]
+    types.type_utils --> passes.static_analysis_pass.StaticAnalysisPass._check_semantic_patterns {
+        expr_primitive_name
+    }
     types.types ++> [
-        backends.es.esast_gen_pass
-            | backends.native.na_ir_gen_pass.NaIRGenPass._register_exc_lineage {
-            ClassType,
-            TypeBase
-        },
+        backends.es.esast_gen_pass { ClassType, TypeBase },
         backends.es.esast_gen_pass.EsastGenPass._arch_kind_of_type
-            | backends.native.na_ir_gen_pass.NaIRGenPass._agg_key_args
             | passes.capability_check_pass
             | passes.layout_pass.class_form_enum_scalar
             | passes.ownership_check_pass.OwnershipCheckPass._raised_class_names {
             ClassType
         },
         backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call
-            | backends.native.na_ir_gen_pass.NaIRGenPass._container_class_name
             | passes.layout_pass.class_type_native_name
             | passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {
             ClassType
@@ -10640,56 +10135,43 @@ graph import compiler {
             ClassType as _ClassType
         },
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
-            | backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name
             | passes.layout_pass.declaring_module_path
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
-            | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable
             | passes.layout_pass.enum_class_of { ClassType },
-        backends.native.na_ir_gen_pass {
+        backends.native.mir.lower {
+            AnyType,
+            ClassDetailsPrivate,
             ClassType,
-            FunctionType as SemanticFunctionType,
-            ModuleType,
-            Parameter,
-            TypeBase,
-            UnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm {
-            ClassType as _CClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_jid
-            | frontend.unitree.DeleteStmt.type_may_hold_graph { ClassType, UnionType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._enum_name_of {
-            ClassType as EnumClassType,
             EnumMemberType,
-            TypeBase,
-            UnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_graph_type {
-            ClassType as _GtClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_object_union_key {
-            ClassType,
-            UnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_clib_function_type {
-            FunctionType as CallbackType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_return_type
-            | c_interop.c_param_type { FunctionType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._typed_elem_llvm_of {
-            TypeVarType as _TeTypeVar
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._typevar_bound_struct
-            | frontend.unitree.DeleteStmt.type_has_graph_member {
-            ClassType,
+            FunctionType,
+            ModuleType,
+            OverloadedType,
             TypeVarType,
-            UnionType
+            UnionType,
+            UnknownType
         },
+        backends.native.mir.lower_types {
+            AnyType,
+            ClassType,
+            EnumMemberType,
+            FunctionType,
+            NeverType,
+            TypeVarType,
+            UnionType,
+            UnknownType
+        },
+        c_interop.c_param_type { FunctionType },
         c_interop.c_type_spec
             | passes.layout_pass.LayoutPass._is_layout_compatible_semantic_type
             | passes.ownership_check_pass { ClassType, FunctionType, UnionType },
         frontend.kernel_host { ClassDetailsShared, ClassType, TypeBase },
+        frontend.unitree.DeleteStmt.type_has_graph_member {
+            ClassType,
+            TypeVarType,
+            UnionType
+        },
+        frontend.unitree.DeleteStmt.type_may_hold_graph { ClassType, UnionType },
         native_bindings { ClassType, FunctionType, OverloadedType, TypeBase },
         passes.capability_check_pass._class_bounded_typevar { ClassType, TypeVarType },
         passes.layout_pass.class_form_enum_member { EnumMemberType },
@@ -10727,112 +10209,6 @@ graph import compiler {
         tests.test_stubcat_roundtrip { ClassType, FunctionType, OverloadedType },
     ]
     types.types --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._aos_elem_name {
-            ClassType as _AeClassType,
-            TypeVarType as _AeTypeVarType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._apply_flow_narrowing {
-            ClassType as _ClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._class_expr_bound { TypeVarType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_archetype {
-            FunctionType as _ClibFnType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._elem_arch_name_of {
-            ClassType as _ClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._elem_storage_llvm {
-            ClassType as _EsClassType,
-            UnionType as _EsUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._enum_union_tags {
-            ClassType as _EnClassType,
-            EnumMemberType as _EnMemberType,
-            UnionType as _EnUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._erased_decl {
-            ClassType as _EdClassType,
-            TypeVarType as _EdTypeVarType,
-            UnionType as _EdUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._erased_decl_names {
-            TypeVarType as _EnTypeVarType,
-            UnionType as _EnUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._erased_seq_type {
-            ClassType as _EsqClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._erased_typevar_names {
-            TypeVarType as _EtvTypeVarType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._foreign_optional_field {
-            ClassType as _FofClassType,
-            TypeVarType as _FofTypeVarType,
-            UnionType as _FofUnionType,
-            UnknownType as _FofUnknownType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._instantiate_generic_for_target {
-            FunctionType as _A5FnType,
-            TypeVarType as _A5TypeVar
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._is_runtime_class_tuple {
-            ClassType as _SeqClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._isinstance_abc_reduction {
-            ClassType as _AbcClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_type {
-            AnyType as _AnyType,
-            ClassType as _ClassType,
-            EnumMemberType as _EnumMemberType,
-            FunctionType as _FunctionType,
-            NeverType as _NeverType,
-            TypeVarType as _TypeVarType,
-            UnionType as _UnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._lower_view_container {
-            ClassType as _VcClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._opt_sole_member {
-            ClassType as _OsClassType,
-            UnionType as _OsUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._osp_disc_list_operand {
-            ClassType as _DiscClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._resolve_field_type {
-            TypeVarType as _RfTypeVarType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._solve_generic_call {
-            ClassType as _CT,
-            TypeVarType as _TVT,
-            UnionType as _UT
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable { UnknownType },
-        backends.native.na_ir_gen_pass.NaIRGenPass._spec_union_agreement {
-            ClassType as _SuClassType,
-            UnionType as _SuUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._syntactic_bind_type_params {
-            ClassType as _SbCT
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._type_base_is_unknown {
-            UnknownType as _UnknownType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._typevar_optional_field {
-            ClassType as _TvoClassType,
-            TypeVarType as _TvoTypeVarType,
-            UnionType as _TvoUnionType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._unbox_narrowed_member {
-            ClassType as _ClassType
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._variadic_tuple_seq_type {
-            UnknownType as _VtUnknown
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._widened_tuple_decl_type {
-            ClassType as _WdClassType
-        },
         backends.py.jcir_gen_pass.JcirGenPass._clib_block_desc { FunctionType },
         c_interop._ambient_c_call_returns { FunctionType, OverloadedType },
         c_interop.c_type_arg { AnyType, ClassType, UnknownType },
@@ -10842,7 +10218,8 @@ graph import compiler {
         },
     ]
     type types.types ++> [
-        backends.native.primitives_native
+        backends.native.mir.lower
+            | backends.native.mir.lower_types
             | frontend.unitree
             | passes.ownership_check_pass { TypeBase },
         c_interop { ClassType, TypeBase },
@@ -10867,9 +10244,9 @@ graph import compiler {
 
 graph import compiler.backends {
     common.primitives ++> [
-        es.esast_gen_pass
-            | es.jac_runtime_js._build_types_runtime_js
-            | native.na_ir_gen_pass { PrimitiveEmitter },
+        es.esast_gen_pass | es.jac_runtime_js._build_types_runtime_js {
+            PrimitiveEmitter
+        },
         es.primitives_es {
             BuiltinEmitter,
             BytesEmitter,
@@ -10880,20 +10257,6 @@ graph import compiler.backends {
             IntEmitter,
             ListEmitter,
             PrimitiveEmitter,
-            RangeEmitter,
-            SetEmitter,
-            StrEmitter,
-            TupleEmitter
-        },
-        native.primitives_native {
-            BuiltinEmitter,
-            BytesEmitter,
-            ComplexEmitter,
-            DictEmitter,
-            FloatEmitter,
-            FrozensetEmitter,
-            IntEmitter,
-            ListEmitter,
             RangeEmitter,
             SetEmitter,
             StrEmitter,
@@ -11089,20 +10452,12 @@ graph import compiler.backends.es.backends {
 
 graph import compiler.backends.native {
     abi ++> [
-        na_ir_gen_pass { classify_foreign_fn },
-        na_ir_gen_pass.NaIRGenPass._build_jc_layout { struct_layouts },
+        mir.backend { struct_layouts },
+        mir.emit { classify_struct },
     ]
-    foreign ++> [
-        abi.classify_foreign_fn | na_ir_gen_pass.NaIRGenPass._clib_struct_layout {
-            foreign_struct_layout
-        },
-        na_ir_gen_pass.NaIRGenPass._foreign_fns { collect_foreign_fns },
-        na_ir_gen_pass.NaIRGenPass._foreign_model { collect_foreign_structs },
-    ]
-    foreign --> na_ir_gen_pass.NaIRGenPass._codegen_call { declared_type_name }
+    foreign ++> abi.classify_foreign_fn { foreign_struct_layout }
     kernel_resolve ++> kernel_stage0 { KERNEL_LINK_MODE, kernel_plan }
     kernel_stage0 ++> kernel_resolve.build_kernel { link_kernel }
-    lexical_scope ++> na_ir_gen_pass { FunctionSource, LexicalScope }
     link_glue ++> [
         link_plan {
             GlueSpec,
@@ -11149,25 +10504,18 @@ graph import compiler.backends.native {
         na_compile_pass { ModuleRef, TargetMachine },
         wasm_build { ModuleRef, TargetMachine, ValueRef },
     ]
-    llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
+    llvm.binding.value ++> [
+        link_plan.internalize_native_implementation { Visibility },
+        wasm_build.prepare_wasm_module { Linkage },
+    ]
     type llvm.binding.value ++> link_plan { ValueRef }
-    llvm.ir as ir ++> abi
-        | lexical_scope
-        | lowering
-        | na_ir_gen_pass
-        | primitives_native;
+    llvm.ir as ir ++> abi | lexical_scope | lowering | mir.backend | mir.emit;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
     lowering ++> [
         entry_points.validate_native_application | na_compile_pass.unit_fallbacks {
             native_fallbacks_in_ir
         },
         kernel_stage0.unit_issue_details { native_lowering_issues },
-        na_ir_gen_pass {
-            DEMOTED_SUFFIX,
-            NativeLoweringIssue,
-            NativeLoweringKind,
-            native_fallbacks
-        },
     ]
     type lowering ++> na_compile_pass { NativeFallbacks }
     na_compile_pass ++> [
@@ -11188,55 +10536,13 @@ graph import compiler.backends.native {
             FACT_CODEC_TABLES,
             FACT_IMPORT_PATHS,
             FACT_PACKAGE_STORE,
-            FACT_PRIMITIVE_METHODS,
             FACT_SEALED_RUNTIME,
             FACT_SEP,
             FACT_STRUCT_LAYOUTS,
             FACT_TARGET
         },
-        na_ir_gen_pass {
-            ALLOC_ID_MASK,
-            CLASS_DISPLAY_OFF,
-            CLASS_RECORD_ANCESTRY,
-            CLASS_RECORD_STATICS,
-            CLASS_RECORD_STATICS_COUNT,
-            EXC_LINEAGE_BITS,
-            EXC_LINEAGE_MIX,
-            EXC_LINEAGE_SLOTS,
-            FACT_CODEC_NAME,
-            FACT_CODEC_TABLES,
-            FACT_PRIMITIVE_METHODS,
-            FACT_SEALED_RUNTIME,
-            FACT_SEP,
-            FACT_TARGET,
-            JACVAL_ELLIPSIS_TAG,
-            LIVE_NODE_NEXT_OFF,
-            LIVE_NODE_RC_OFF,
-            LIVE_NODE_SIZE,
-            LIVE_NODE_TAG_OFF,
-            LIVE_NODE_USER_OFF,
-            NATIVE_CONTAINER_CODES,
-            NATIVE_COPY_FUNCS,
-            NATIVE_OSPATH_FUNCS,
-            NATIVE_OS_FUNCS,
-            POOL_CLASS_MASK,
-            POOL_CLASS_SHIFT,
-            RC_BUFFERED_BIT,
-            RC_COLOR_BLACK,
-            RC_COLOR_GRAY,
-            RC_COLOR_PURPLE,
-            RC_COLOR_SHIFT,
-            RC_COLOR_WHITE,
-            RC_CYCLE_PACE,
-            RC_CYCLE_THRESHOLD,
-            RC_UNTRACED_BIT,
-            UNBOUND_CAUGHT,
-            VTABLE_SET_BUCKETS,
-            VTABLE_SET_SYMBOL,
-            stdlib_intercepted
-        },
+        mir.backend.MirNativePass._run_impl { FACT_SEP, FACT_TARGET },
     ]
-    type na_ir_gen_pass ++> primitives_native { NaIRGenPass }
     native_link ++> [
         link_plan {
             MACHO_SYSTEM_DYLIB,
@@ -11260,18 +10566,7 @@ graph import compiler.backends.native {
         POSIX_FLOOR_IR_MACOS_AARCH64,
         POSIX_FLOOR_IR_MACOS_X86_64
     }
-    primitives_native ++> na_ir_gen_pass {
-        NativeDictEmitter,
-        NativeEmitCtx,
-        NativeSetEmitter
-    }
-    primitives_native as _pm_pn ++> na_ir_gen_pass.NaIRGenPass._dispatch_primitive_method;
-    primitives_native as _pn ++> [
-        na_ir_gen_pass.NaIRGenPass._ensure_emitters,
-        na_ir_gen_pass._native_emitter_of,
-    ]
-    primitives_native as emitters ++> host_facts.primitive_methods_fact;
-    region_abi ++> na_ir_gen_pass { REGION_KERNEL_ABI }
+    region_abi ++> mir.lower { REGION_KERNEL_ABI }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },
         wasm_build { rename_wasm_imports },
@@ -11378,6 +10673,188 @@ graph import compiler.backends.native.llvm.ir {
     values --> types.ArrayType.wrap_constant_value { Constant, Value }
     values as values ++> builder | module;
     type values ++> types { Constant, Value }
+}
+
+graph import compiler.backends.native.mir {
+    emit ++> backend { emit_mir_module }
+    generators ++> backend { mir_lower_generators }
+    ir ++> [
+        backend { MirModule },
+        emit {
+            MirBlock,
+            MirConst,
+            MirExtern,
+            MirFunction,
+            MirGlobal,
+            MirInstr,
+            MirModule,
+            MirObjectDef,
+            MirOp,
+            MirValue,
+            mir_selector_global
+        },
+        generators {
+            MirBlock,
+            MirBuilder,
+            MirExtern,
+            MirFrame,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
+        lower {
+            MirBlock,
+            MirBuilder,
+            MirConst,
+            MirExtern,
+            MirFunction,
+            MirGlobal,
+            MirInstr,
+            MirModule,
+            MirObjectDef,
+            MirObjectField,
+            MirOp,
+            MirParam,
+            MirStructDef,
+            MirStructField,
+            MirValue,
+            mir_selector_global
+        },
+        rc {
+            MirBlock,
+            MirExtern,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
+    ]
+    lower ++> backend { MirLowering }
+    lower_types ++> lower {
+        ANY_BOXABLE,
+        C_ABI_KINDS,
+        MirPosition,
+        MirRefused,
+        mir_c_elem,
+        mir_class_type_named,
+        mir_refusal,
+        mir_spec_type,
+        mir_type_of,
+        pop_erased_units,
+        push_erased_units,
+        refusal_of,
+        stub_archetype,
+        stub_scope
+    }
+    rc ++> backend { mir_insert_rc, mir_insert_unwind }
+    runtime_abi ++> [
+        emit { mir_runtime_abi },
+        generators | rc { mir_runtime_signature },
+        lower { mir_osp_signature, mir_runtime_signature },
+    ]
+    types ++> [
+        backend { MirKind, MirType },
+        emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_int, mir_is_container },
+        generators {
+            MirKind,
+            MirType,
+            mir_bool,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_holds_ref,
+            mir_int,
+            mir_none
+        },
+        ir { MirKind, MirType, mir_bool, mir_c_ptr, mir_holds_ref, mir_int, mir_str },
+        lower {
+            MirKind,
+            MirType,
+            mir_any,
+            mir_bool,
+            mir_bytearray,
+            mir_bytes,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_c_view,
+            mir_class,
+            mir_complex,
+            mir_dict,
+            mir_float,
+            mir_fn,
+            mir_holds_ref,
+            mir_int,
+            mir_is_container,
+            mir_is_var_tuple,
+            mir_iter,
+            mir_list,
+            mir_none,
+            mir_obj,
+            mir_opt,
+            mir_range,
+            mir_ref,
+            mir_region,
+            mir_set,
+            mir_str,
+            mir_str_ref,
+            mir_tuple,
+            mir_void
+        },
+        lower_types {
+            MirKind,
+            MirType,
+            mir_any,
+            mir_bool,
+            mir_bytearray,
+            mir_bytes,
+            mir_c_fn,
+            mir_c_pin,
+            mir_c_ptr,
+            mir_c_struct,
+            mir_c_view,
+            mir_class,
+            mir_complex,
+            mir_dict,
+            mir_enum,
+            mir_file,
+            mir_float,
+            mir_fn,
+            mir_int,
+            mir_iter,
+            mir_list,
+            mir_none,
+            mir_obj,
+            mir_opt,
+            mir_range,
+            mir_ref,
+            mir_region,
+            mir_set,
+            mir_str,
+            mir_str_ref,
+            mir_tuple,
+            mir_var_tuple
+        },
+        rc { MirKind, MirType, mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
+        runtime_abi {
+            MirType,
+            mir_any,
+            mir_bool,
+            mir_c_ptr,
+            mir_float,
+            mir_fn,
+            mir_int,
+            mir_list,
+            mir_none,
+            mir_opt,
+            mir_ref,
+            mir_str,
+            mir_str_ref
+        },
+    ]
 }
 
 graph import compiler.backends.py {
@@ -11584,6 +11061,7 @@ graph import compiler.driver {
         ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
             discover_annex_files
         },
+        ifacecache.IfaceRegistry._owned_alerts { discover_annex_files },
     ]
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },
@@ -11737,6 +11215,7 @@ graph import compiler.driver {
             SEC_NBITCODE,
             SEC_NOBJ,
             SEC_PLACEMENT,
+            SEC_PRODUCER,
             cache_mode,
             carried_module_bytecode,
             compute_content_sha256,
@@ -11837,7 +11316,8 @@ graph import compiler.driver {
         compiler.JacCompiler._get_bytecode {
             PRECOMPILE_SENTINEL,
             SEC_CTDEPS as _CARRY_CTDEPS,
-            SEC_CTDEPS as _PC_CTDEPS
+            SEC_CTDEPS as _PC_CTDEPS,
+            compiled_content_scope
         },
         compiler.JacCompiler._precompiled_jir_data {
             bundle_dir_allowed,
@@ -11894,6 +11374,11 @@ graph import compiler.driver {
             | module_analysis.ModuleAnalysis.require
             | nativecache.NativeBuildSession._finish { require },
         compiler.JacCompiler.assemble_python { require },
+        host_products.register_host_products {
+            ProductSpec,
+            drop_native_object,
+            register_product
+        },
         module_analysis.ModuleAnalysis.ready { product_ready },
         module_compile { product_passes, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
@@ -11916,9 +11401,9 @@ graph import compiler.driver {
     pipeline_types ++> [
         compiler { AnalysisFact, CompilationProduct },
         context_passes { PassContract },
+        host_products | module_compile { CompilationProduct, ProductRequest },
         ifacecache { AnalysisFact },
         module_analysis { AnalysisFact, CompilationProduct, ProductRequest },
-        module_compile { CompilationProduct, ProductRequest },
         nativecache.NativeBuildSession._finish
             | source_failures.bootstrap_tier_failure_details { CompilationProduct },
         pipeline {
@@ -12027,7 +11512,9 @@ graph import compiler.driver {
             canonical_wiring_source,
             is_arch_file
         },
+        ifacecache.IfaceRegistry._owned_alerts { wiring_for_path },
         jir.stored_wiring_digest {
+            UNSETTLED_WIRING,
             arch_file_for,
             import_prefix_for,
             is_arch_file,
@@ -13674,9 +13161,12 @@ graph import compiler.placement {
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
-    type placement ++> placement_facts { PlacementSummary }
-    placement_export ++> placement_facts._record_at { summary_from_bytes }
-    placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
+    type placement ++> placement_cache { PlacementSummary }
+    placement_export ++> placement_cache._record_at { summary_from_bytes }
+    placement_facts ++> [
+        placement_cache.discover_spaces { SPACE_SERVER, module_spaces },
+        placement_solver.native_closure_blocker { pinned_module_space },
+    ]
     placement_pins ++> [
         placement.module_anchor_reasons
             | placement_facts.pinned_module_space
@@ -13874,8 +13364,7 @@ graph import compiler.types {
             ct_setitem,
             ct_symbol,
             ct_unary,
-            int_add,
-            int_cmp
+            int_add
         },
         ct_format {
             ct_binop,
@@ -13984,6 +13473,7 @@ graph import compiler.types {
             ct_truthy,
             ct_type_name,
             dict_set,
+            int_cmp,
             mk_bool,
             mk_bytes,
             mk_dict,
@@ -14123,12 +13613,14 @@ graph import compiler.types {
             SYMF_DEFER,
             SYMF_HAS_DEFAULT
         },
+        types.ClassType.lookup_member_symbol { SYMF_INIT_PARAM },
     ]
     stubcat.reader ++> [
         ct_eval { CatModule },
         type_evaluator.TypeEvaluator._build_field_params
             | types.ClassType.get_class_symbol { CatScope },
-        type_evaluator.TypeEvaluator._is_instance_method_member { CatProvider },
+        type_evaluator.TypeEvaluator._is_instance_method_member
+            | types.ClassType.lookup_member_symbol { CatProvider },
         type_evaluator.TypeEvaluator._merge_catalog_field_params { CatProvider },
         type_evaluator.TypeEvaluator._metaclass_of | types._class_scope_category {
             CatScope
@@ -14184,7 +13676,11 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._classify_property_symbol { PropertyWriteKind },
         type_evaluator.TypeEvaluator._heal_ancestry { ensure_mro_fresh },
         type_evaluator.TypeEvaluator._heal_class_bases { linearize_mro, mro_signature },
+        type_evaluator.TypeEvaluator._inherited_member_declared_type {
+            ensure_mro_fresh
+        },
         type_evaluator.TypeEvaluator._lookup_class_member { ensure_mro_fresh },
+        type_evaluator.TypeEvaluator._same_type_args { types_equivalent },
         type_evaluator.TypeEvaluator._super_owner_for { collect_member_syms },
         type_evaluator.TypeEvaluator._type_in_list { types_equivalent },
         type_evaluator.TypeEvaluator.get_getter_type_from_property {
@@ -14394,6 +13890,7 @@ graph import compiler.types.stubcat {
             SYMF_DEFER,
             SYMF_FINAL,
             SYMF_HAS_DEFAULT,
+            SYMF_INIT_PARAM,
             SYMF_INSTANCE_METHOD,
             SYMF_NA_ESCAPES,
             SYMF_NA_REGION_HANDLE,
@@ -14443,7 +13940,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        reader.StubCatalog.symbol_in_module { collect_scope_members },
+    ]
 }
 
 graph import data {
@@ -15166,6 +14666,7 @@ graph import runtime {
             | python.modules.sha3 { new_core },
     ]
     type na_stdlib._digest ++> python.modules.hashlib { DigestCore }
+    native.rc ++> osp_native { __jac_rt_alloc, __jac_rt_release, __jac_rt_retain }
     object_interop ++> typecache { fields, is_record }
     object_model ++> [
         archetype { ObjectField, asdict, fields, is_jac_object, make_object },
@@ -15175,6 +14676,28 @@ graph import runtime {
         runtime { make_object },
     ]
     object_pydantic ++> object_model._pydantic_schema { object_schema }
+    osp_graph ++> osp_native {
+        osp_conn,
+        osp_destroy,
+        osp_destroy_all,
+        osp_disconn_between,
+        osp_disconn_between_many,
+        osp_disconn_between_pred,
+        osp_filter,
+        osp_forget_edge,
+        osp_forget_node,
+        osp_is_a,
+        osp_is_dead,
+        osp_jid,
+        osp_keep_toward,
+        osp_pin_refs,
+        osp_refs,
+        osp_refs_edge_pred,
+        osp_refs_many,
+        osp_register_type,
+        osp_take_unpinned,
+        osp_unpinned_count
+    }
     osp_graph as _graph ++> osp_graph_sv;
     osp_graph_sv ++> [
         graph_utils.traverse_graph { sv_register_hydrated },
@@ -15198,6 +14721,27 @@ graph import runtime {
             OspWalkScope,
             OspWalkerDesc,
             UNTYPED
+        },
+        osp_native {
+            OspNodeDesc,
+            OspRuntime,
+            OspSlot,
+            OspWalkScope,
+            OspWalkerDesc,
+            _current_scope,
+            osp_disengage,
+            osp_forget,
+            osp_forget_all,
+            osp_kernel_pending,
+            osp_kernel_pin_refs,
+            osp_node_desc,
+            osp_register_desc,
+            osp_report,
+            osp_skip_rest,
+            osp_spawn,
+            osp_take_acquired,
+            osp_take_released,
+            osp_visit
         },
         runtime.JacBuiltin.log_report { _current_scope, osp_report },
         runtime.JacGraph.clear_edges { osp_forget },
@@ -15282,7 +14826,7 @@ graph import runtime.na_stdlib {
         string { is_id_start, is_word },
     ]
     _bz2_native ++> bz2 { bz2_compress, bz2_decompress }
-    _csprng_native ++> secrets | uuid { csprng_bytes }
+    _csprng_native ++> random | secrets | uuid { csprng_bytes }
     _datetime_native ++> datetime {
         dt_epoch_us,
         dt_fmt_buf,
@@ -15301,8 +14845,8 @@ graph import runtime.na_stdlib {
     ]
     type _digest ++> hashlib | hmac { DigestCore }
     _directory_native ++> [
+        _os_native | pathlib { directory_names },
         glob | shutil | uuid | zoneinfo { try_directory_names },
-        pathlib { directory_names },
     ]
     _dirent_native ++> _directory_native { dirent_name }
     _errno_native ++> [
@@ -15311,6 +14855,7 @@ graph import runtime.na_stdlib {
             raise_os_error
         },
         _directory_native { clear_errno, last_errno, raise_os_error },
+        _os_native { last_errno, raise_path_error },
         _socket_native | shutil | socket { errno_message },
         _time_common { last_errno, raise_errno },
         _time_native { raise_errno },
@@ -15318,18 +14863,21 @@ graph import runtime.na_stdlib {
         termios { errno_message, last_errno },
     ]
     _errno_platform ++> _errno_native { errno_address }
-    _fcntl_native ++> fcntl {
-        _F_GETFD,
-        _F_GETFL,
-        _F_SETFD,
-        _F_SETFL,
-        _F_SETOWN,
-        _O_APPEND,
-        _O_ASYNC,
-        _O_NONBLOCK,
-        do_fcntl,
-        do_ioctl
-    }
+    _fcntl_native ++> [
+        _os_native { _O_APPEND, _O_NONBLOCK },
+        fcntl {
+            _F_GETFD,
+            _F_GETFL,
+            _F_SETFD,
+            _F_SETFL,
+            _F_SETOWN,
+            _O_APPEND,
+            _O_ASYNC,
+            _O_NONBLOCK,
+            do_fcntl,
+            do_ioctl
+        },
+    ]
     _fd_native ++> _replace_native { AT_FDCWD }
     _file_native ++> [
         gettext | mimetypes | pathlib | uuid | zoneinfo { read_file_bytes },
@@ -15409,6 +14957,32 @@ graph import runtime.na_stdlib {
         _default_types_ext,
         _default_types_val
     }
+    _posix_native ++> [
+        _os_native {
+            S_IFDIR,
+            S_IFMT,
+            cwd_path,
+            env_set,
+            env_unset,
+            env_value,
+            make_dir,
+            process_id,
+            remove_dir,
+            remove_file,
+            rename_file,
+            run_shell,
+            stat_fields
+        },
+        os.path {
+            S_IFDIR,
+            S_IFMT,
+            S_IFREG,
+            cwd_path,
+            env_value,
+            resolved_path,
+            stat_fields
+        },
+    ]
     _replace_native ++> _os_native { replace_file }
     _repr ++> [
         difflib { str_gt },
@@ -15678,6 +15252,162 @@ graph import runtime.na_stdlib {
         tcgetattr,
         tcsetattr
     }
+}
+
+graph import runtime.native {
+    anys ++> [
+        dicts {
+            __jac_rt_any_as_kind,
+            __jac_rt_cstr_eq,
+            __jac_rt_elem_box,
+            __jac_rt_type_name
+        },
+        lists {
+            __jac_rt_any_as_kind,
+            __jac_rt_any_box,
+            __jac_rt_any_equal,
+            __jac_rt_any_order,
+            __jac_rt_elem_box,
+            __jac_rt_elem_tag
+        },
+    ]
+    bytes ++> anys { __jac_rt_bytes_has, __jac_rt_bytes_repr }
+    dicts ++> [
+        anys {
+            __jac_rt_dict_find,
+            __jac_rt_dict_key_at,
+            __jac_rt_dict_len,
+            __jac_rt_dict_new,
+            __jac_rt_dict_next,
+            __jac_rt_dict_rekind,
+            __jac_rt_dict_set,
+            __jac_rt_dict_val_at
+        },
+        iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
+    ]
+    exceptions ++> [
+        bytes { __jac_rt_raise_builtin },
+        closures { __jac_rt_raise },
+    ]
+    format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
+    iterators ++> anys { __jac_rt_iter_new, __jac_rt_range_len }
+    lists ++> [
+        anys {
+            __jac_rt_elem_release,
+            __jac_rt_elem_retain,
+            __jac_rt_list_extend,
+            __jac_rt_list_kind,
+            __jac_rt_list_new,
+            __jac_rt_list_push,
+            __jac_rt_list_rekind,
+            __jac_rt_tuple_new,
+            __jac_rt_tuple_set
+        },
+        bytes { __jac_rt_list_new, __jac_rt_list_push },
+        closures { __jac_rt_elem_release, __jac_rt_elem_retain },
+        dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain },
+        iterators { __jac_rt_elem_retain },
+        text { __jac_rt_list_new, __jac_rt_list_push, __jac_rt_list_reverse },
+    ]
+    rc ++> [
+        anys {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_retain,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
+        bytes {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_retain,
+            __jac_rt_set_type
+        },
+        closures | iterators {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_retain,
+            __jac_rt_set_type
+        },
+        dicts {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
+        format { __jac_rt_release_acyclic },
+        lists {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_retain,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
+        strings { __jac_rt_alloc, __jac_rt_retain, __jac_rt_set_type },
+        text { __jac_rt_is_heap, __jac_rt_release_acyclic },
+    ]
+    strings ++> [
+        anys {
+            __jac_rt_str_cmp,
+            __jac_rt_str_concat,
+            __jac_rt_str_new,
+            __jac_rt_str_size
+        },
+        bytes { __jac_rt_str_new },
+        dicts | iterators { __jac_rt_str_size },
+        format | text { __jac_rt_str_new, __jac_rt_str_size },
+        lists { __jac_rt_str_cmp, __jac_rt_str_size },
+    ]
+    text ++> [
+        anys {
+            __jac_rt_repr_enter,
+            __jac_rt_repr_leave,
+            __jac_rt_sb_add,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_new,
+            __jac_rt_str_contains,
+            __jac_rt_str_cp_total,
+            __jac_rt_str_index,
+            __jac_rt_str_repeat,
+            __jac_rt_str_repr,
+            __jac_rt_utf8_width
+        },
+        bytes {
+            __jac_rt_sb_add,
+            __jac_rt_sb_byte,
+            __jac_rt_sb_data,
+            __jac_rt_sb_drop,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_len,
+            __jac_rt_sb_new,
+            __jac_rt_utf8_width
+        },
+        format {
+            __jac_rt_sb_add,
+            __jac_rt_sb_byte,
+            __jac_rt_sb_data,
+            __jac_rt_sb_drop,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_len,
+            __jac_rt_sb_new,
+            __jac_rt_sb_truncate,
+            __jac_rt_str_chr,
+            __jac_rt_str_repr,
+            __jac_rt_utf8_width
+        },
+        iterators { __jac_rt_str_unit, __jac_rt_utf8_width },
+    ]
 }
 
 graph import runtime.python {
@@ -16648,6 +16378,7 @@ graph import runtime.python {
             PyLong_AsSsize_t,
             PyLong_AsUnsignedLongLongMask,
             PyLong_AsUnsignedLongMask,
+            PyMem_Calloc,
             PyMem_Free,
             PyMem_Malloc,
             PyNumber_Index,
@@ -23008,6 +22739,7 @@ graph import runtime.python {
             jacpy_float_unpack,
             jacpy_is_bytearray,
             jacpy_is_bytes,
+            jacpy_is_exact_long,
             jacpy_is_long,
             jacpy_is_unicode,
             jacpy_long_address,
@@ -38805,7 +38537,13 @@ graph import runtime.python.bindings {
         clinic.lsprof { convert_bool, convert_double, defining_class, return_int },
         clinic.lzma { borrowed_none, convert_buffer, convert_int, convert_ssize },
         clinic.marshal { convert_bool, convert_buffer, convert_int },
-        clinic.math { borrowed_none, convert_double, return_bool, return_double },
+        clinic.math {
+            borrowed_none,
+            convert_double,
+            failed,
+            return_bool,
+            return_double
+        },
         clinic.md5 | clinic.sha1 | clinic.sha2 { convert_bool, defining_class },
         clinic.mmap {
             borrowed_none,
@@ -42967,6 +42705,7 @@ graph import runtime.python.modules {
             htons,
             if_nameindex_record,
             new_sockobject,
+            note_sock_cloexec,
             ntohl,
             ntohs,
             set_gaierror,
@@ -43008,6 +42747,8 @@ graph import runtime.python.modules {
             init_sockobject,
             internal_setblocking,
             module_of_type,
+            note_accept4,
+            note_sock_cloexec,
             set_error,
             set_sock_fd,
             set_sock_timeout,

@@ -6,9 +6,12 @@ glob _JAC_TEXT_ENCODINGS: list[str] = [
          'utf-16',
          'utf-16le',
          'utf-16be'
-     ];
+     ],
+     CONTENT_CONFLICTS: str = "\x1fconflicts";
 
-def read_file_with_encoding(file_path: str) -> str;
+def read_file_with_encoding(
+    file_path: str, reads: (dict[str, str] | None) = None
+) -> str;
 
 def read_jacignore_patterns(project_root: str) -> list[str];
 

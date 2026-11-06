@@ -1,6 +1,6 @@
 """Clib struct pointer subscript read/write (#6707, #6708).
 
-buf[i] on a named struct pointer must GEP + load (read) or GEP + store (write).
+buf[i] on a `ptr[Struct]` must GEP + load (read) or GEP + store (write).
 The single-index GEP advances by one whole struct, giving true array semantics.
 
 Uses a logical `import from m { ... }` (not a pinned absolute path) so compile
@@ -22,24 +22,24 @@ import from m {
 
 # -- Reads (#6708) -----------------------------------------------------------
 
-def:pub read_color_r(buf: Color, i: int) -> int {
+def:pub read_color_r(buf: ptr[Color], i: int) -> int {
     c: Color = buf[i];
     return c.r;
 }
 
-def:pub read_color_g(buf: Color, i: int) -> int {
+def:pub read_color_g(buf: ptr[Color], i: int) -> int {
     c: Color = buf[i];
     return c.g;
 }
 
-def:pub read_vec2_x(buf: Vec2, i: int) -> float {
+def:pub read_vec2_x(buf: ptr[Vec2], i: int) -> float {
     v: Vec2 = buf[i];
     return v.x;
 }
 
 # -- Writes (#6707) ----------------------------------------------------------
 
-def:pub write_color(buf: Color, i: int, r: int, g: int, b: int, a: int) {
+def:pub write_color(buf: ptr[Color], i: int, r: int, g: int, b: int, a: int) {
     c = Color(r=u8(r), g=u8(g), b=u8(b), a=u8(a));
     buf[i] = c;
 }

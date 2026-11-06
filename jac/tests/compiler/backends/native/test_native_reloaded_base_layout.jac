@@ -1,22 +1,17 @@
 """A consumer lays out an imported subclass from its defining module's layout.
 
-`_register_imported_hierarchy` merges every imported module's layout registry
-into the consumer's, and an importer's registry also carries the layouts it
-took from its own imports. `adopt_imported_bases` then gives an imported
-subclass its base's slots by rewriting the layout object the consumer holds,
-and `_codegen_archetype` emits the struct from the layout the defining module
-holds. The two are one object until the defining module's tree is laid out
-again, which the link plan does whenever it reloads a unit to compile it: a
-sibling importer lowered earlier still holds the old, already adopted layout.
-The merge kept whichever copy arrived first, so a consumer that reached the
-sibling before the defining module adopted the stale copy and emitted the
-reloaded, unadopted one. Its struct lacked the base's slots, every write to
-the subclass's own fields landed on the base's, and the unit was cached that
-way for every later link. In a game this was `restore()` writing a pickup's
-`active` flag over its position and then storing through a null `visual`.
+The link plan lays a unit's tree out again whenever it reloads the unit to
+compile it, so a sibling importer lowered earlier holds types that point into
+the old, released tree. Under the old backend the consumer adopted the stale,
+already adopted copy and emitted the reloaded, unadopted one: its struct
+lacked the base's slots, and every write to the subclass's own fields landed
+on the base's -- in a game, `restore()` writing a pickup's `active` flag over
+its position and then storing through a null `visual`.
 
-The defining module's layout now replaces any copy that reached the consumer
-first, so adoption and emission agree on one object.
+MIR lays an imported class out from its defining module. A class or function
+reached through the released tree is taken from the reloaded module of the
+same path, so the consumer lowers against the slots the defining module
+holds and its stores land on the subclass's own fields.
 """
 
 import os;
@@ -46,9 +41,19 @@ def loaded(prog: JacProgram, path: str) -> (uni.Module | None) {
 """Lower the sibling importer, reload `Pickup`'s defining module the way the
 link plan does before compiling it again, then lower the consumer."""
 def compile_after_reload -> tuple[JacProgram, uni.Module, uni.Module] {
+    (prog, level, save, _) = compile_with_stale();
+    return (prog, level, save);
+}
+
+"""`compile_after_reload`, also handing back Pickup's module from before the
+reload."""
+def compile_with_stale -> tuple[JacProgram, uni.Module, uni.Module, uni.Module] {
     prog = JacProgram();
     level = prog.compile(file_path=LEVEL, options=native_force_opts());
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    stale_mod = loaded(prog, PICKUP);
+    assert stale_mod is not None , "the sibling importer did not load Pickup's module";
+    get_layout_registry(stale_mod, prog);
     for key in list(prog.mod.hub.keys()) {
         if os.path.realpath(key) == os.path.realpath(PICKUP) {
             del prog.mod.hub[key];
@@ -57,14 +62,14 @@ def compile_after_reload -> tuple[JacProgram, uni.Module, uni.Module] {
     save = prog.compile(file_path=SAVE, options=native_force_opts());
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
     assert save is not None and level is not None;
-    return (prog, level, save);
+    return (prog, level, save, stale_mod);
 }
 
-test "the sibling importer still holds the layout from before the reload" {
-    (prog, level, save) = compile_after_reload();
+test "the reload lays Pickup out again" {
+    (prog, level, save, stale_mod) = compile_with_stale();
     pickup = loaded(prog, PICKUP);
     assert pickup is not None , "the consumer did not load Pickup's module";
-    stale = by_source_name(get_layout_registry(level, prog).layouts).get("Pickup");
+    stale = by_source_name(get_layout_registry(stale_mod, prog).layouts).get("Pickup");
     fresh = by_source_name(get_layout_registry(pickup, prog).layouts).get("Pickup");
     assert stale is not None and fresh is not None;
     assert stale is not fresh , "the reload did not lay Pickup out again";
@@ -75,34 +80,24 @@ def slots_of(fields: list[any]) -> list[tuple[str, int]] {
     return [(str(fld.name), int(fld.index)) for fld in fields];
 }
 
-test "a consumer lays out a reloaded subclass with its base's slots" {
+test "the reloaded defining module lays Pickup out with its base's slots" {
     (prog, level, save) = compile_after_reload();
-    exported = save.gen.native_layout;
-    assert exported is not None , "the consumer exported no native layout";
-    structs = by_source_name(exported.structs);
-    assert "Pickup" in structs , f"no Pickup struct in {list(structs)}";
-    got = slots_of(structs["Pickup"].fields);
-    assert got == SLOTS , f"consumer's Pickup slots {got}, defining module's {SLOTS}";
     pickup = loaded(prog, PICKUP);
-    assert pickup is not None;
+    assert pickup is not None , "the consumer did not load Pickup's module";
     defining = by_source_name(get_layout_registry(pickup, prog).layouts)["Pickup"];
-    assert slots_of(defining.fields) == SLOTS;
+    assert slots_of(defining.fields) == SLOTS , slots_of(defining.fields);
 }
 
-"""The body of `Pickup`'s struct type in `mod`'s lowered IR."""
-def pickup_struct(mod: uni.Module) -> str {
-    for line in str(mod.gen.llvm_ir or "").split("\n") {
-        if line.startswith('%"Pickup$') and " = type " in line {
-            return line.split(" = type ", 1)[1].strip();
-        }
-    }
-    return "";
-}
-
-test "the consumer emits the struct its sibling importer emits" {
+test "the consumer writes a reloaded subclass's own fields, not its base's" {
+    # MIR lays an imported class out from its defining module, so the
+    # consumer's stores land on Pickup's own slots: `deactivate` clears
+    # `active` and sets `respawn`, and the base's `pos` and `yaw` survive.
+    import ctypes;
+    import from tests.support { get_func }
     (prog, level, save) = compile_after_reload();
-    sibling = pickup_struct(level);
-    consumer = pickup_struct(save);
-    assert sibling == "{i8**, i64, i64, double, i1, double, i8*}" , sibling;
-    assert consumer == sibling , f"consumer {consumer} vs sibling {sibling}";
+    layout: any = save.gen.native_layout;
+    assert "deactivate" in layout.functions , sorted(layout.functions);
+    assert "deactivate_probe" in layout.functions , sorted(layout.functions);
+    probe = get_func(save.gen.native_engine, "deactivate_probe", ctypes.c_int64);
+    assert probe() == 7 * 10000 + 15 * 100 + 9 * 10 + 0 , probe();
 }

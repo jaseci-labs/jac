@@ -1238,7 +1238,17 @@ impl wiring_digest_for(file_path: str) -> str {
     }
     spec = wiring_for_path(file_path);
     if spec is None {
-        return "";
+        arch = arch_file_for(file_path);
+        if arch is None or os.path.dirname(arch) not in _building {
+            return "";
+        }
+        try {
+            with open(arch, "rb") as fh {
+                return UNSETTLED_WIRING + hashlib.sha256(fh.read()).hexdigest();
+            }
+        } except OSError {
+            return UNSETTLED_WIRING;
+        }
     }
     consumer = spec.module_name(file_path);
     if consumer is None {
@@ -1477,8 +1487,8 @@ impl render_wiring(
 ) -> str {
     heads: dict[str, str] = {};
     payloads: dict[tuple[str, str, str, str, str], list[tuple[str, str]]] = {};
-    groups:
-        dict[tuple[str, str, str, str, str, tuple[tuple[str, str], ...]], list[str]] = {};
+    groups: dict[tuple[str, str, str, str, str, str], list[str]] = {};
+    group_lists: dict[str, list[tuple[str, str]]] = {"": []};
     for (consumer, binding) in facts {
         if consumer not in heads {
             split = spec.split_consumer(consumer);
@@ -1488,7 +1498,7 @@ impl render_wiring(
         arrow = "++>" if binding.injected else "-->";
         if binding.is_module_form() {
             held = groups.setdefault(
-                (block, binding.provider, binding.form, binding.alias, arrow, ()), []
+                (block, binding.provider, binding.form, binding.alias, arrow, ""), []
             );
             if consumer not in held {
                 held.append(consumer);
@@ -1504,11 +1514,10 @@ impl render_wiring(
         }
     }
     for ((block, provider, form, arrow, consumer), items) in payloads.items() {
-        groups.setdefault(
-            (block, provider, form, "", arrow, tuple(sorted(items))), []
-        ).append(
-            consumer
-        );
+        ordered = sorted(items);
+        key = "\x1f".join([f"{name}\x1e{alias}" for (name, alias) in ordered]);
+        group_lists.setdefault(key, ordered);
+        groups.setdefault((block, provider, form, "", arrow, key), []).append(consumer);
     }
     statements:
         dict[
@@ -1540,7 +1549,7 @@ impl render_wiring(
             statements.setdefault((block, provider, prefix, alias, arrow), []).append(
                 (
                     [block_relative(block, c) for c in taken],
-                    None if module_form else list(group_items)
+                    None if module_form else list(group_lists[group_items])
                 )
             );
             pending = rest;
@@ -1585,7 +1594,7 @@ impl render_wiring(
             for b in wires.keys()
             if b
         ],
-        key=lambda (b: str) { b.split("."); }
+        key=lambda (b: str) -> str { b.replace(".", "\x00"); }
     ) {
         blocks.append(
             _block_text(block, [text for (_key, text) in sorted(wires[block])])

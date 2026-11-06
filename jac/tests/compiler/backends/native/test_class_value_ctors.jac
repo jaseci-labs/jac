@@ -89,10 +89,10 @@ test "class-value construction holds under every memory profile" {
     }
 }
 
-"""A class with more than 63 constructor parameters cannot have a construct
-entry of its own (the given-arguments mask is one 64-bit word), but it is
-still constructed through a base-typed class value: its entry for that base
-takes the base's parameters and leaves the rest to their defaults. The
+"""A class with more than 63 defaulted constructor parameters marks which of
+them were given across several mask words, so it has a construct entry of its
+own and is constructed through a base-typed class value: its entry for that
+base takes the base's parameters and leaves the rest to their defaults. The
 compiler's own passes are such classes."""
 test "a class with more than 63 fields constructs through a base-typed class value" {
     expected = ["x:228", "x/8", "x"];

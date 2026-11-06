@@ -134,132 +134,51 @@ glob FORBIDDEN: dict[str, str] = {
              "field type-name map for the spawn argument payload - the "
              "declared annotation is the consumed fact, not a resolved type"
          ),
-         ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
-             5,
-             "generic-template declared-annotation reads where the "
-             "declaration IS the fact: (1) the _solve_generic_call fallback "
-             "(a bundled/imported template compiled symtab_ir_only has no "
-             "stamped FunctionType, and an uninstantiated template has no "
-             "per-callsite resolved type to consume); (2)+(3) "
-             "_instantiate_generic_for_target (#7626 A5) matches the "
-             "template's declared TypeVar param annotations against the "
-             "binding's concrete Callable annotation to derive the "
-             "monomorphization solution - the template is uninstantiated, "
-             "so the declared annotations are the only TypeVar surface"
-         ),
-         ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_evaluator"): (
+         ("native/mir/impl/lower.impl.jac", "type_evaluator"): (
              1,
-             "_ct_eval reads the program's CtEvaluator, the central "
-             "compile-time evaluation service, to evaluate expressions that "
-             "depend on a comptime parameter under one instantiation's "
-             "bindings. The bindings exist only while that instantiation "
-             "is being stamped, so no earlier pass can precompute them; "
-             "every binding-free comptime value is consumed from the "
-             "stamped Expr.ct_value"
+             "MirLowering.declared_type, MIR's one read of the evaluator: "
+             "get_type_of_symbol on an already-resolved declaration symbol - a "
+             "function's signature, a has-var's or C struct field's declared "
+             "type, an archetype's ClassType (its MRO, imported-layout adoption, "
+             "exception ids) and a generic template's parameters. The evaluator "
+             "memoizes the type of a declared symbol; every MIR file asks this "
+             "accessor for that central fact and none infers an expression "
+             "(annotation types are read from the stamped Expr.type)"
          ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             4,
-             "imported_module_name reads the stamped ModuleType and import "
-             "declaration to preserve aliased module identity. "
-             "resolved_callee consumes the resolved call declaration for "
-             "ownership transfer and raises-effect lowering. "
-             "classify_call as the shadowing-aware builtin test for the "
-             "`type(None)` isinstance argument form (#6957) - consuming the "
-             "central classification instead of re-implementing name "
-             "resolution. The former classify_call fallback is deleted "
-             "(#7418): call_kind is stamped authoritatively by the required "
-             "inference schedule. The erased-import predicates "
-             "(erased_identity_call_arg, contextmanager_ability) are pure "
-             "declaration-surface reads of the module's own import list, so "
-             "they live in the leaf erased_imports.jac rather than here. "
-             "The is_builtin_region_name read (#7491) is gone from here and "
-             "from stmt.impl.jac, whose entry left this table entirely: the "
-             "predicate is pure unitree syntax that was marooned in "
-             "symbol_utils, whose own imports reach compiler/driver/compiler.jac, so "
-             "sealing wave 3 hoisted it to the leaf expr_keys.jac. The "
-             "backend stopped reaching into the analysis module for it rather "
-             "than merely renaming the reach"
-         ),
-         ("native/na_ir_gen_pass.impl/copy.impl.jac", "symbol_utils"): (
+         ("native/mir/impl/lower.format.impl.jac", "type_evaluator"): (
              1,
-             "imported_module_name reads the stamped ModuleType and the "
-             "import declaration so `copy.copy` is recognised through an "
-             "aliased `import copy as cp`, the same declaration-surface read "
-             "calls.impl.jac is sanctioned for"
+             "struct_format_fields, the central struct-format layout table: the "
+             "checker types struct.pack/unpack results from it, and MIR reads the "
+             "same table for the field offsets so the two cannot disagree. It is "
+             "a pure function of the literal format string, no inference"
          ),
-         ("native/na_ir_gen_pass.impl/expr.impl.jac", "symbol_utils"): (
-             1,
-             "imported_module_name consumes the stamped ModuleType and "
-             "resolved import declaration for native module attributes"
-         ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
-             3,
-             "resolve_expr_symbol reads the expression attached symbol; "
-             "imported_module_name reads its stamped ModuleType and import "
-             "declaration. Neither asks the evaluator to resolve a type. "
-             "collect_method_names as the central ancestor-method walk over "
-             "an already-resolved archetype symbol - a symbol-FACT reader, "
-             "not a re-run of member resolution"
-         ),
-         ("native/na_ir_gen_pass.impl/core.impl.jac", "type_tag.tag"): (
-             3,
-             "declaration-surface reads at interop layout export, plus the "
-             "quiet lowerability probe on imported globs (the py-side "
-             "carve-out for dual-codespace modules) which reads the same "
-             "declared annotation the adjacent _resolve_jac_type consumes"
-         ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "type_tag.tag"): (
+         ("native/mir/impl/lower.generics.impl.jac", "type_tag.tag"): (
              2,
-             "declaration-surface read of foreign extern signatures: the "
-             "clib membrane needs the DECLARED str params/returns of a "
-             "foreign call to route them through the JacStr wrap/unwrap "
-             "shims (#7870 strings step 2) - the C membrane always "
-             "trafficks NUL-terminated char*. Plus the mono isinstance "
-             "substitution: inside a stamped monomorph body a type[X] "
-             "parameter names its concrete mangle through its own declared "
-             "tag - the declaration is the binding surface"
+             "template_value: a generic template bound to an annotated name "
+             "(f: Callable[[int], int] = template) is monomorphized against the "
+             "binding's declared Callable annotation, read as its stamped "
+             "Expr.type - the template is uninstantiated, so the declared "
+             "annotation is the only solution surface (NaIRGen's #7626 A5 entry)"
          ),
-         ("native/na_ir_gen_pass.impl/types.impl.jac", "type_tag.tag"): (
-             2,
-             "declared-annotation resolution for has/param vars: "
-             "_resolve_jac_type maps the declared tag to its IR type - the "
-             "annotation is the input to layout resolution, not a re-run "
-             "of analysis"
-         ),
-         ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
-             4,
-             "scalar LLVM materialization from declared clib annotations "
-             "at the declaration site - the backend's lowering role "
-             "(sysv sig planning + fixed-param lowering, #6707, #6708)"
-         ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
+         ("native/mir/impl/lower.interop.impl.jac", "type_tag.tag"): (
              1,
-             "declaration-surface read during archetype field lowering: "
-             "the field's declared annotation node is read once into a "
-             "local and feeds both the enum-name map and the container "
-             "element-key map the sealed layout exports. Keep it one read "
-             "- consumers of the annotation are added to the local, never "
-             "by reaching for type_tag.tag again"
+             "c_param_plan: the declared annotation of a clib parameter, read as "
+             "its stamped Expr.type, when the parameter itself carries none - the "
+             "declaration IS the C wire fact, as for native/impl/foreign.impl.jac"
          ),
-         ("native/na_ir_gen_pass.impl/lists.impl.jac", "type_tag.tag"): (
+         ("native/mir/impl/lower.closures.impl.jac", ".lookup("): (
              1,
-             "declared-vs-inferred bare list is a declaration-surface "
-             "distinction central facts do not carry (the checker stamps "
-             "unannotated empties as bare list too); the empty-literal "
-             "storage-family decision must key on the explicit annotation"
+             "super_self: the receiver binding `self` that the enclosing method "
+             "declares, for a super reference lowered inside a closure. The "
+             "declared NAME is the fact (super has no symbol of its own); no "
+             "user name is re-resolved"
          ),
-         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
-             7,
-             "surface-shape dispatch on declared annotation forms "
-             "(assessed train 4: legitimately kept); the "
-             "escaping-closure value-hint guard (#7593 item 12), a "
-             "presence-only test that fires when NO annotation is "
-             "declared - the declaration surface's absence is the "
-             "consumed fact, not a re-derived type; plus the generic-"
-             "as-value hook (#7626 A5): a presence test and a handoff of "
-             "the annotation NODE to _instantiate_generic_for_target, "
-             "which needs the declared Callable annotation itself (the "
-             "template is uninstantiated, so no resolved type exists)"
+         ("native/mir/impl/lower.impl.jac", ".lookup("): (
+             1,
+             "import_item_of: the checker resolves a from-imported name straight "
+             "through to its origin, so the importing module's own binding - the "
+             "import item E1145 and the bundled-twin call key off - is found by "
+             "its declared NAME in the name's scope"
          ),
          ("native/impl/host_facts.impl.jac", ".lookup("): (
              1,

@@ -165,6 +165,7 @@ glob KERNEL_UNIT_REL: tuple[str, ...] = (
      ),
      OSP_KERNEL_REL: str = "runtime/osp_kernel.jac",
      OSP_GRAPH_REL: str = "runtime/osp_graph.jac",
+     OSP_NATIVE_REL: str = "runtime/osp_native.jac",
      REGION_KERNEL_REL: str = "runtime/region_native.jac",
      FMT_KERNEL_REL: str = "compiler/backends/common/fmt_kernel.jac";
 
@@ -180,6 +181,7 @@ def is_package_keyed_path(source_path: str) -> bool;
 
 def kernel_unit_path(rel: str) -> str;
 
+
 def kernel_unit_paths -> list[str];
 
 glob _REAL_PATHS: dict[str, str] = {};
@@ -190,7 +192,10 @@ def forget_real_paths;
 
 def is_kernel_unit_path(path: str) -> bool;
 
-glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"},
+glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {
+         "os": "_os_native",
+         "sys": "_sys_native"
+     },
      NOGC_NATIVE_STDLIB: set[str] = {
          "time",
          "_time_native",
@@ -255,6 +260,8 @@ def is_toolchain_unit(file_path: str) -> bool;
 def bundled_native_module_names -> list[str];
 
 def is_native_by_location(file_path: str) -> bool;
+
+def is_native_compiler_unit(file_path: str) -> bool;
 
 def bundled_stdlib_module_of(file_path: str) -> (str | None);
 

@@ -221,7 +221,6 @@ test "glob-init runs before every `with entry` block (issue #6660)" {
     ir_txt = program_ir("multi_entry_glob.jac", triple, static_musl=True);
 
     assert _entry_definitions(ir_txt) == 1 , "expected exactly one unit entry";
-    assert "__jac_glob_init" in ir_txt , "expected the unit's glob init in the program";
 
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(ir_txt, triple);

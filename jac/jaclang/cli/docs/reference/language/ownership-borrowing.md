@@ -860,4 +860,4 @@ The native backend does hand the checked facts to the optimizer: heap-typed para
 
 - [Ownership Checker Specification](../../internals/ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the facts contract backends consume.
 - [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- ownership, view, place, and zero-RC enforcement diagnostics.
-- [Native Compilation Reference](native-pathway.md#memory-management) -- the `--memory` profiles, zero-RC ownership compilation, and how the native backend proves [reference-count elision](native-pathway.md#reference-count-elision) independently of this checker.
+- [Native Compilation Reference](native-pathway.md#memory-management) -- the `--memory` profiles, zero-RC ownership compilation, and how the native backend inserts [reference counting](native-pathway.md#reference-counting) independently of this checker.

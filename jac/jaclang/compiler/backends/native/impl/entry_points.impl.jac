@@ -37,6 +37,12 @@ impl _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
     for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
         syms.add(m.group(0));
     }
+    for m in re.finditer(
+        r'call [^\n]*@"?(__jac_rt_(?:any_)?(?:retain|release)(?:_acyclic)?)"?\(',
+        llvm_ir_str
+    ) {
+        syms.add(m.group(1));
+    }
     probes: list[str] = [];
     for probe in ["JAC_GC"] {
         if probe in llvm_ir_str {

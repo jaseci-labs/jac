@@ -2,15 +2,13 @@
 
 A fixed-arity tuple stored into a `tuple[Any, ...]` slot is boxed element by
 element into the slot's sequence instead of being bitcast into it, and a range
-subscript the native backend cannot slice is refused instead of being lowered
-as an index read at the range's start.
+subscript is sliced or refused, never lowered as an index read at the range's
+start.
 """
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
+import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -55,22 +53,22 @@ test "a slice of a None-narrowed optional string still lowers" {
     assert get_func(eng, "narrowed_str_tail", ctypes.c_int64)() == 3;
 }
 
-test "a fixed tuple slice is refused rather than read as an index" {
+test "a fixed tuple slice demotes or is built, never read as an index" {
+    import contextlib;
+    import io;
     path = os.path.join(FIXTURES, "tuple_slice_refusal.jac");
     prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(file_path=path, options=CompileOptions(force_codespace='native'));
-    } finally {
-        coverage = na_coverage_end();
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        ir = prog.compile(file_path=path, options=native_force_opts());
     }
-    rec = coverage.get(os.path.realpath(path));
-    seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
-    owned = [
-        s
-        for s in seams
-        if s.startswith("tail_of_three: ")
-    ];
-    assert len(owned) == 1 , str(seams);
-    assert "slice" in owned[0] , owned[0];
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    iface: any = ir.gen.native_iface;
+    if "tail_of_three" in iface.demoted {
+        log = buf.getvalue();
+        assert "demoting tail_of_three" in log and "slice" in log , log;
+    } else {
+        tail = get_func(ir.gen.native_engine, "tail_of_three", ctypes.c_int64);
+        assert tail() == 267 , "t[1:3] must build (6, 7)";
+    }
 }

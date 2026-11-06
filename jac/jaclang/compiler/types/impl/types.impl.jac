@@ -395,7 +395,7 @@ impl ClassType.init(
 impl ModuleType.init(
     *,
     mod_name: str = "",
-    file_uri: Path = Path(""),
+    file_uri: str = "",
     symbol_table: (SymbolTable | None) = None,
     is_external: bool = False,
     flags: TypeFlags = TypeFlags.Null
@@ -842,7 +842,7 @@ impl ModuleType.__str__ -> str {
     if self.mod_name {
         return f"<module {self.mod_name}>";
     }
-    if self.file_uri and str(self.file_uri) != "." {
+    if self.file_uri and self.file_uri != "." {
         return f"<module {self.file_uri}>";
     }
     return "<module>";
@@ -1044,8 +1044,23 @@ impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list[Symbol] | None = None
 ) -> (Symbol | None) {
     ensure_mro_fresh(self);
+    def init_param_member(sym: Symbol) -> bool {
+        decl = sym.decl;
+        if decl is not None
+            and isinstance(decl.name_of, ParamVar)
+            and isinstance(sym.parent_tab, Archetype) {
+            return True;
+        }
+        provider = sym.provider;
+        return isinstance(provider, CatProvider)
+            and (provider.symbits & SYMF_INIT_PARAM) != 0;
+    }
     for cls in self.shared.mro {
-        all_syms = collect_member_syms(cls.shared.symbol_table, member);
+        all_syms = [
+            s
+            for s in collect_member_syms(cls.shared.symbol_table, member)
+            if not init_param_member(s)
+        ];
         if all_syms {
             if r_overloaded is not None and len(all_syms) > 1 {
                 r_overloaded.extend(all_syms[1:]);
@@ -1057,6 +1072,11 @@ impl ClassType.lookup_member_symbol(
     for cls in self.shared.mro {
         arch = cls.shared.symbol_table;
         if not isinstance(arch, Archetype) {
+            for recorded in collect_member_syms(arch, member) {
+                if init_param_member(recorded) {
+                    return recorded;
+                }
+            }
             continue;
         }
         is_class = arch.arch_type.name == 'KW_CLASS';

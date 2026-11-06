@@ -181,6 +181,14 @@ impl TypeCheckPass.exit_gen_compr with GenCompr exit {
     }
 }
 
+impl TypeCheckPass.exit_expr_stmt with ExprStmt exit {
+    if isinstance(here.expr, (ListCompr, DictCompr))
+        and here.expr.type is None
+        and self._lambda_depth == 0 {
+        self.evaluator.get_type_of_expression(here.expr);
+    }
+}
+
 impl TypeCheckPass.exit_func_call with FuncCall exit {
     if self._lambda_depth > 0 {
         here.call_kind = classify_call(here).value;
@@ -318,10 +326,7 @@ impl TypeCheckPass._diag_erased_membership(
     }
     hay_t = self.evaluator.get_type_of_expression(hay);
 
-    if hay_t is None
-        or isinstance(hay_t, UnknownType)
-        or hay_t.is_any_type()
-        or hay_t.is_any_instance() {
+    if hay_t is None or isinstance(hay_t, UnknownType) {
         shown = str(hay_t) if hay_t is not None else "<unknown>";
         if native {
             self.ctx.emit(E1124, node_override=hay, op=op_text, type=shown);
@@ -2717,9 +2722,8 @@ impl TypeCheckPass._c_const_problem(
         fields = list(arch.get_has_vars());
         for (i, param) in enumerate(expr.params or []) {
             field: (HasVar | None) = None;
-            value: Expr = param;
+            value: Expr = param.value if isinstance(param, KWPair) else param;
             if isinstance(param, KWPair) {
-                value = param.value;
                 field = next(
                     (
                         f
@@ -2992,18 +2996,22 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
         return;
     }
     if is_builtin_pin_call(nd) {
-        args = [
-            p
-            for p in (nd.params or [])
-            if not isinstance(p, KWPair)
-        ];
-        if args {
+        pinned: list[Expr] = [];
+        for p in (nd.params or []) {
+            if not isinstance(p, KWPair) {
+                pinned.append(p);
+            }
+        }
+        if pinned {
             arg_type = self.evaluator._convert_to_instance(
-                self.evaluator.get_type_of_expression(args[0])
+                self.evaluator.get_type_of_expression(pinned[0])
             );
             if not self._c_plain_data(arg_type) {
                 self.ctx.emit(
-                    E1152, node_override=args[0], what="pin(value)", type=str(arg_type)
+                    E1152,
+                    node_override=pinned[0],
+                    what="pin(value)",
+                    type=str(arg_type)
                 );
             }
         }

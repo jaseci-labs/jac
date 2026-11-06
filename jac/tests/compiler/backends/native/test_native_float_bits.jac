@@ -3,7 +3,7 @@ __bits_float lower through the intrinsic registry, never through user stubs.
 
 INTRINSIC_REGISTRY is the single authority for the reserved intrinsic set:
 classify_call tags these calls INTRINSIC before any user symbol can claim
-them, and NaIRGenPass._codegen_call dispatches through the registry entry.
+them, and native lowering dispatches through the registry entry.
 The fixture's stub definitions draw the W6008 collision warning and return
 deliberately wrong values (0 / 0.0), so every assertion here distinguishes
 the real bitcast from a stub fallthrough.

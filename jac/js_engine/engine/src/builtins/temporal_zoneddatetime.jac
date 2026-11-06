@@ -118,6 +118,7 @@ import from engine.src.runtime.bignat {
     _BN_DIV_REM
 }
 import from engine.src.builtins.temporal {
+    temporal_reject_epoch_ns_out_of_range,
     js_duration_create,
     js_zoned_datetime_create,
     js_zoned_datetime_init,

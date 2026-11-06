@@ -220,7 +220,8 @@ impl LinkPlan.glue_spec(
         triple=self.triple,
         clib_paths=self.clib_paths(),
         needs_atexit_shim=(is_elf and (kind == ArtifactKind.SHARED or not static_musl)),
-        needs_region_hook=not hook_supplied
+        needs_region_hook=not hook_supplied,
+        gc_mode=self.options.na_gc_mode or "cycles"
     );
 }
 
@@ -353,8 +354,13 @@ impl build_link_plan(
     registry.session = session;
 
     target_token = push_native_target(opts.native_target or "");
-    import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
+    import from jaclang.compiler.driver.jir {
+        begin_prepare_memo,
+        end_prepare_memo,
+        pin_content_reads
+    }
     memo = begin_prepare_memo();
+    pin_content_reads();
     try {
         plan = _build_link_plan(prog, roots, opts, mode, native_unit);
         session.finish([unit.path for unit in plan.units]);
@@ -386,6 +392,12 @@ impl _build_link_plan(
     }
     registry = prog.native_units();
     real_roots = [os.path.realpath(r) for r in roots];
+    dep_opts = opts;
+    if opts.no_ir_cache and not any(os.path.isfile(r) for r in real_roots) {
+        import copy;
+        dep_opts = copy.copy(opts);
+        dep_opts.no_ir_cache = False;
+    }
     units: dict[str, LinkUnit] = {};
     edges: dict[str, list[str]] = {};
     virtual_sources: dict[str, str] = {};
@@ -397,7 +409,8 @@ impl _build_link_plan(
         if path in stack {
             return;
         }
-        for dep in registry.known_native_deps(path, opts) {
+        unit_opts = opts if path in real_roots else dep_opts;
+        for dep in registry.known_native_deps(path, unit_opts) {
             if os.path.isfile(dep) {
                 walk_unit(dep, stack + [path]);
             }
@@ -405,10 +418,10 @@ impl _build_link_plan(
         errs_before = len(prog.errors_had);
 
         ent = registry.ensure(
-            path, compile_on_miss=False, options=opts, check_deps=True
+            path, compile_on_miss=False, options=unit_opts, check_deps=True
         );
         if ent is None and os.path.isfile(path) {
-            ent = registry.compile_unit(path, opts);
+            ent = registry.compile_unit(path, unit_opts);
         }
         if ent is None {
             why = [
@@ -742,6 +755,55 @@ impl callback_bind_exports(plan: LinkPlan) -> list[str] {
         '__jac_bind_' + binding.symbol
         for binding in unique_callbacks(plan.callback_bindings)
     ];
+}
+
+impl bind_python_bridges(plan: LinkPlan, undefined: list[str]) -> list[any] {
+    wanted = {
+        name
+        for name in undefined
+        if name.startswith("__jac_na_import_")
+    };
+    held: list[any] = [];
+    if not wanted {
+        return held;
+    }
+    import from jaclang.runtime.interop_bridge { BRIDGE_SYMBOLS, register_py_callbacks }
+    wanted = wanted - BRIDGE_SYMBOLS;
+    bound: set[str] = set();
+    for unit in plan.units {
+        module = plan.prog.mod.hub.get(unit.path);
+        if module is None or module.gen is None {
+            continue;
+        }
+        callable = [
+            binding
+            for binding in module.gen.interop_manifest.callable_native_imports
+            if binding.symbol in wanted
+        ];
+        bound.update(binding.symbol for binding in callable);
+        if unit.is_root or not callable {
+            continue;
+        }
+        register_py_callbacks(
+            callable, module.gen.interop_py_funcs, held, llvm.add_symbol
+        );
+    }
+    for name in sorted(wanted - bound) {
+        def _unbound(symbol: str) -> any {
+            def stop {
+                sys.stderr.write(
+                    f"Native code called the Python bridge {symbol}, which no unit of this link binds; the process stops.\n"
+                );
+                sys.stderr.flush();
+                os.abort();
+            }
+            return stop;
+        }
+        stub = ctypes.CFUNCTYPE(None)(_unbound(name));
+        held.append(stub);
+        llvm.add_symbol(name, ctypes.cast(stub, ctypes.c_void_p).value);
+    }
+    return held;
 }
 
 impl callback_glue_ir(plan: LinkPlan) -> str {
@@ -1536,6 +1598,9 @@ impl _mark_host_rc_threaded(engine: ExecutionEngine) {
 
 impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     tm = _target_machine(plan, ArtifactKind.JIT);
+    if plan.mode == NATIVE_LINK_MODE_OBJECTS {
+        return _jit_engine_from_objects(plan, tm);
+    }
     registry = plan.prog.native_units();
     image = _jit_image_path(plan);
     merged: (ModuleRef | None) = None;
@@ -1569,6 +1634,7 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
             f"undefined: {undefined_functions(merged)}\n"
         );
     }
+    bridges = bind_python_bridges(plan, undefined_functions(merged));
     libraries: dict[str, ctypes.CDLL] = {};
     symbols: dict[str, int] = {};
     symbol_lib = plan.clib_symbol_lib();
@@ -1603,10 +1669,107 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     if has_rc_flag {
         _mark_host_rc_threaded(engine);
     }
+    return _finish_jit_engine(plan, engine, libraries, bridges);
+}
+
+impl _jit_engine_from_objects(plan: LinkPlan, tm: TargetMachine) -> ExecutionEngine {
+    registry = plan.prog.native_units();
+    paths = [u.path for u in plan.units];
+    registry.emit_objects(paths, plan.options);
+    objects: list[bytes] = [];
+    for u in plan.units {
+        object_bytes = registry.object_for(u.path, plan.options);
+        if object_bytes is None {
+            raise LinkPlanError(f"no object for native unit {u.path}");
+        }
+        objects.append(object_bytes);
+    }
+    spec = plan.glue_spec(ArtifactKind.JIT, _platform_of(plan.triple), False);
+    (glue, _exports) = _glue_module(plan, spec, tm);
+    defined: set[str] = set();
+    wanted: set[str] = set(undefined_functions(glue));
+    for blob in objects {
+        mangled = blob[:4] == b"\xcf\xfa\xed\xfe";
+        (blob_defined, blob_undefined) = llvm.object_symbols(blob);
+        defined.update(_unmangled(symbol, mangled) for symbol in blob_defined);
+        wanted.update(_unmangled(symbol, mangled) for symbol in blob_undefined);
+    }
+    for fn in glue.functions {
+        if not fn.is_declaration {
+            defined.add(str(fn.name));
+        }
+    }
+    undefined = sorted(
+        name
+        for name in wanted - defined
+        if not name.startswith("llvm.")
+    );
+    if env_na_debug() {
+        sys.stderr.write(
+            f"[jit] {len(plan.units)} unit object(s), inits {plan.init_symbols()}, "
+            f"undefined: {undefined}\n"
+        );
+    }
+    bridges = bind_python_bridges(plan, undefined);
+    libraries: dict[str, ctypes.CDLL] = {};
+    symbol_lib = plan.clib_symbol_lib();
+    for symbol in undefined {
+        lib_path = symbol_lib.get(symbol);
+        if lib_path is None or lib_path in ("libc.so", "libc.dylib", "c.dll") {
+            continue;
+        }
+        if lib_path not in libraries {
+            libraries[lib_path] = load_jit_library(lib_path);
+        }
+        try {
+            address = ctypes.cast(
+                getattr(libraries[lib_path], symbol), ctypes.c_void_p
+            ).value;
+        } except AttributeError {
+            raise LinkPlanError(f"C symbol '{symbol}' not found in '{lib_path}'");
+        }
+        if address is None {
+            raise LinkPlanError(
+                f"C symbol '{symbol}' has a null address in '{lib_path}'"
+            );
+        }
+        llvm.add_symbol(symbol, address);
+    }
+    engine = llvm.create_mcjit_compiler(glue, tm);
+    assert isinstance(engine, llvm.ExecutionEngine);
+    unbound = [
+        name
+        for name in undefined
+        if not llvm.address_of_symbol(name)
+    ];
+    if unbound {
+        raise LinkPlanError(
+            "the JIT link cannot resolve "
+                + ", ".join(unbound)
+                + ": every symbol the units import must be bound before the engine is finalized"
+        );
+    }
+    for blob in objects {
+        engine.add_object_file(llvm.ObjectFileRef.from_data(blob));
+    }
+    engine.finalize_object();
+    if RC_THREADED_SYMBOL in defined {
+        _mark_host_rc_threaded(engine);
+    }
+    return _finish_jit_engine(plan, engine, libraries, bridges);
+}
+
+impl _finish_jit_engine(
+    plan: LinkPlan,
+    engine: ExecutionEngine,
+    libraries: dict[str, ctypes.CDLL],
+    bridges: list[any]
+) -> ExecutionEngine {
     engine.static_init_symbols = list(plan.init_symbols());
     engine.static_init_chained = {JAC_ENTRY_SYMBOL};
     engine_any: any = engine;
     engine_any._jac_libraries = libraries;
+    engine_any._jac_bridges = bridges;
     engine_any._jac_unit_ifaces = [u.iface for u in plan.units];
     root_u = plan.root_unit();
     try {
@@ -1623,16 +1786,14 @@ impl jit_engine_for_module(
         return None;
     }
     prog.native_units().record_module(module, options);
-    plan = build_link_plan(
-        prog, [module.loc.mod_path], options, mode=NATIVE_LINK_MODE_BITCODE
-    );
+    plan = build_link_plan(prog, [module.loc.mod_path], options);
     return jit_engine(plan);
 }
 
 impl jit_engine_for_cached(
     prog: JacProgram, path: str, options: CompileOptions
 ) -> (ExecutionEngine | None) {
-    plan = build_link_plan(prog, [path], options, mode=NATIVE_LINK_MODE_BITCODE);
+    plan = build_link_plan(prog, [path], options);
     return jit_engine(plan);
 }
 

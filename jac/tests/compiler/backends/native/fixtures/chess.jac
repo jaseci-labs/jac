@@ -57,62 +57,57 @@ def tuple_to_algebraic(pos: tuple[int, int]) -> str {
 # ===================== Move =====================
 obj Move {
     has from_pos: tuple[int, int],
-        to_pos: tuple[int, int];
-
-    has is_castling: bool = False,
+        to_pos: tuple[int, int],
+        is_castling: bool = False,
         is_en_passant: bool = False,
         is_promotion: bool = False,
-        is_double_push: bool = False;
+        is_double_push: bool = False,
+        rook_from_col: int = -1,
+        rook_to_col: int = -1,
+        captured_piece: Piece | None = None,
+        promoted_from: Piece | None = None,
+        prev_has_moved: bool = False,
+        prev_ep_pos: tuple[int, int] = (-1, -1),
+        prev_castling_rights: int = 0b1111;
 
-    has rook_from_col: int = -1,
-        rook_to_col: int = -1;
-
-    has captured_piece: Piece | None = None,
-        promoted_from: Piece | None = None;
-
-    has prev_has_moved: bool = False,
-        prev_ep_pos: tuple[int, int] = (-1, -1);
-
-    has prev_castling_rights: int = 0b1111;  # Binary literal for all castling rights
-
-    def get_from_row() -> int {
+    def get_from_row -> int {
         return self.from_pos[0];
     }
 
-    def get_from_col() -> int {
+    def get_from_col -> int {
         return self.from_pos[1];
     }
 
-    def get_to_row() -> int {
+    def get_to_row -> int {
         return self.to_pos[0];
     }
 
-    def get_to_col() -> int {
+    def get_to_col -> int {
         return self.to_pos[1];
     }
 }
 
+# Binary literal for all castling rights
 # ===================== Piece Base =====================
 obj Piece {
     has color: Color,
         kind: PieceKind,
-        pos: tuple[int, int];  # Using tuple for position
+        pos: tuple[int, int],
+        has_moved: bool = False;  # Using tuple for position
 
-    has has_moved: bool = False;
-
-    def get_row() -> int {
+    def get_row -> int {
         return self.pos[0];
     }
 
-    def get_col() -> int {
+    def get_col -> int {
         return self.pos[1];
     }
 
-    def set_pos(row: int, col: int) -> None {
+    def set_pos(row: int, col: int) {
         self.pos = (row, col);
     }
 
-    def get_symbol() -> str {
+    def get_symbol -> str {
         if self.color == Color.WHITE {
             return WHITE_SYMBOLS[self.kind];
         }
@@ -388,7 +383,7 @@ def create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
 # Global variable for simple random state (Linear Congruential Generator)
 glob _rand_state: int = 12345;
 
-def seed_random(seed: int) -> None {
+def seed_random(seed: int) {
     _rand_state = seed;
 }
 
@@ -407,13 +402,13 @@ obj Board {
         ep_pos: tuple[int, int] = (-1, -1),
         castling_rights: int = 0b1111;  # All castling available initially
 
-    def postinit() {
+    def postinit {
         # Initialize board using list comprehension
         self.squares = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)];
         self.setup_pieces();
     }
 
-    def setup_pieces() -> None {
+    def setup_pieces {
         back_rank: list[PieceKind] = [
             PieceKind.ROOK,
             PieceKind.KNIGHT,
@@ -440,15 +435,14 @@ obj Board {
         return self.squares[row][col];
     }
 
-    def set_piece(row: int, col: int, piece: Piece | None) -> None {
+    def set_piece(row: int, col: int, piece: Piece | None) {
         self.squares[row][col] = piece;
     }
 
     def get_all_pieces(color: Color) -> list[Piece] {
         # List comprehension with nested iteration
         return [
-            self.squares[r][c]
-            for r in range(BOARD_SIZE)
+            self.squares[r][c] for r in range(BOARD_SIZE)
             for c in range(BOARD_SIZE)
             if self.squares[r][c] is not None and self.squares[r][c].color == color
         ];
@@ -457,8 +451,7 @@ obj Board {
     def get_piece_positions(color: Color) -> dict[tuple[int, int], Piece] {
         # Dict comprehension for position -> piece mapping
         return {
-            (r, c): self.squares[r][c]
-            for r in range(BOARD_SIZE)
+            (r, c): self.squares[r][c] for r in range(BOARD_SIZE)
             for c in range(BOARD_SIZE)
             if self.squares[r][c] is not None and self.squares[r][c].color == color
         };
@@ -707,7 +700,7 @@ obj Board {
         return score;
     }
 
-    def display() -> None {
+    def display {
         output: str = "\n   a  b  c  d  e  f  g  h\n";  # Will use augmented assignment
 
         for r in range(BOARD_SIZE) {
@@ -727,7 +720,7 @@ obj Board {
         print(output);
     }
 
-    def to_fen_piece_placement() -> str {
+    def to_fen_piece_placement -> str {
         # Build FEN string with augmented assignment
         fen: str = "";
         for r in range(BOARD_SIZE) {
@@ -762,7 +755,7 @@ obj Game {
         is_over: bool = False,
         move_count: int = 0;
 
-    def postinit() {
+    def postinit {
         self.board = Board();
     }
 
@@ -917,14 +910,14 @@ obj Game {
         return (from_row, from_col, to_row, to_col);  # Return as tuple
     }
 
-    def get_move_history_summary() -> str {
+    def get_move_history_summary -> str {
         # Use modulo and floor division for move numbering
         full_moves = self.move_count // 2;  # Floor division
         half_move = self.move_count % 2;  # Modulo
         return f"Move {full_moves + 1}" + ("..." if half_move == 1 else "");
     }
 
-    def play() -> None {
+    def play -> None {
         while not self.is_over {
             self.board.display();
             color_name = "White" if self.current_turn == Color.WHITE else "Black";
@@ -955,9 +948,14 @@ obj Game {
                 print(f"{color_name} is in CHECK!");
             }
 
-            move_str = input(
-                f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): "
-            );
+            move_str = "";
+            try {
+                move_str = input(
+                    f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): "
+                );
+            } except EOFError {
+                move_str = "";
+            }
 
             if move_str == "quit" {
                 print("Game ended.");
@@ -1000,7 +998,7 @@ obj Game {
                     m
                     for m in legal_moves
                     if m.from_pos == (from_row, from_col)
-                    and m.to_pos == (to_row, to_col)
+                        and m.to_pos == (to_row, to_col)
                 ];
                 if len(matching) == 0 {
                     print("Illegal move. Try again.");

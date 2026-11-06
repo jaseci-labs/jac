@@ -21,6 +21,7 @@ import from engine.src.runtime.temporal_iso {
     iso_validate_datetime_within_limits
 }
 import from engine.src.runtime.jsvalue {
+    jsv_is_any_object,
     JSValue,
     js_undefined,
     js_int,

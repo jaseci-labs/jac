@@ -546,6 +546,43 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+impl TypeEvaluator._inherited_member_declared_type(
+    symbol: Symbol
+) -> (TypeBase | None) {
+    owner = symbol.parent_tab;
+    if not isinstance(owner, Archetype) {
+        return None;
+    }
+    cls_type = self.get_type_of_class(owner);
+    if not isinstance(cls_type, ClassType) {
+        return None;
+    }
+    self._heal_ancestry(cls_type);
+    ensure_mro_fresh(cls_type);
+    for base in cls_type.shared.mro[1:] {
+        overloaded: list[Symbol] = [];
+        inherited = base.lookup_member_symbol(symbol.sym_name, overloaded);
+        if inherited is None or inherited is symbol {
+            continue;
+        }
+        site = inherited.decl.name_of if inherited.decl else None;
+        declared = isinstance(site, HasVar)
+            or (
+                isinstance(site, Name)
+                and isinstance(site.parent, AtomTrailer)
+                and isinstance(site.parent.parent, Assignment)
+                and site.parent.parent.type_tag is not None
+            );
+        if not declared {
+            return None;
+        }
+        return self.get_type_of_member(
+            ClassMember(inherited, base, overloaded), cls_type.clone_as_instance()
+        );
+    }
+    return None;
+}
+
 impl TypeEvaluator._is_type_subscript(class_type: ClassType) -> bool {
     return (
         class_type.is_builtin("type")
@@ -823,7 +860,8 @@ impl TypeEvaluator._report_rejected_method_call(
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
     for existing in type_list {
         if isinstance(ty, ClassType) and isinstance(existing, ClassType) {
-            if ty.shared.same_class(existing.shared) {
+            if ty.shared.same_class(existing.shared)
+                and self._same_type_args(ty, existing) {
                 return True;
             }
         } elif ty is existing {
@@ -833,6 +871,56 @@ impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> boo
             and not isinstance(existing, ClassType)
             and types_equivalent(ty, existing)
         ) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeEvaluator._same_type_args(ty: ClassType, existing: ClassType) -> bool {
+    mine = ty.private.type_args;
+    theirs = existing.private.type_args;
+    if not mine or not theirs {
+        return True;
+    }
+    if len(mine) != len(theirs) {
+        return False;
+    }
+    for (left, right) in zip(mine, theirs) {
+        if left is right
+            or isinstance(left, (UnknownType, AnyType))
+            or isinstance(right, (UnknownType, AnyType)) {
+            continue;
+        }
+        if isinstance(left, ClassType) and isinstance(right, ClassType) {
+            if not left.shared.same_class(right.shared)
+                or not self._same_type_args(left, right) {
+                return False;
+            }
+            continue;
+        }
+        if not types_equivalent(left, right) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl TypeEvaluator._literal_member_known(
+    ty: TypeBase, type_list: list[TypeBase]
+) -> bool {
+    for existing in type_list {
+        if isinstance(ty, ClassType)
+            and isinstance(existing, ClassType)
+            and ty.shared.same_class(existing.shared)
+            and ty.private.type_args
+            and existing.private.type_args
+            and not (
+                self.assign_type(ty, existing) and self.assign_type(existing, ty)
+            ) {
+            continue;
+        }
+        if self._type_in_list(ty, [existing]) {
             return True;
         }
     }
@@ -852,7 +940,7 @@ impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -
 }
 
 impl TypeEvaluator._get_expected_container_type(
-    expected_type: TypeBase | None, container_class: TypeBase
+    expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
 ) -> ClassType | None {
     if not isinstance(container_class, ClassType) {
         return None;
@@ -873,13 +961,50 @@ impl TypeEvaluator._get_expected_container_type(
             found = candidate;
         }
     }
+    if found is not None or not empty {
+        return found;
+    }
+    for candidate in candidates {
+        if isinstance(candidate, ClassType)
+            and candidate.private
+            and candidate.private.type_args
+            and candidate.shared.class_name
+                in (
+                    "Sequence",
+                    "MutableSequence",
+                    "Collection",
+                    "Iterable",
+                    "Mapping",
+                    "MutableMapping",
+                    "AbstractSet",
+                    "MutableSet"
+                )
+            and not any(
+                isinstance(arg, TypeVarType)
+                    or (
+                        isinstance(arg, ClassType)
+                        and arg.shared.class_name.startswith("Supports")
+                    ) for arg in candidate.private.type_args
+            )
+            and any(
+                isinstance(base, ClassType)
+                    and base._shared is not None
+                    and base.shared.same_class(candidate.shared)
+                for base in container_class.shared.mro
+            ) {
+            if found is not None {
+                return None;
+            }
+            found = candidate;
+        }
+    }
     return found;
 }
 
 impl TypeEvaluator._get_expected_element_type(
-    expected_type: TypeBase | None, container_class: TypeBase
+    expected_type: TypeBase | None, container_class: TypeBase, empty: bool = False
 ) -> TypeBase | None {
-    expected = self._get_expected_container_type(expected_type, container_class);
+    expected = self._get_expected_container_type(expected_type, container_class, empty);
     if expected is not None and expected.private.type_args {
         return self._convert_to_instance(expected.private.type_args[0]);
     }
@@ -887,9 +1012,9 @@ impl TypeEvaluator._get_expected_element_type(
 }
 
 impl TypeEvaluator._get_expected_kv_types(
-    expected_type: TypeBase | None, dict_class: TypeBase
+    expected_type: TypeBase | None, dict_class: TypeBase, empty: bool = False
 ) -> tuple[TypeBase, TypeBase] | None {
-    expected = self._get_expected_container_type(expected_type, dict_class);
+    expected = self._get_expected_container_type(expected_type, dict_class, empty);
     if expected is not None
         and expected.private.type_args
         and len(expected.private.type_args) >= 2 {
@@ -1216,6 +1341,18 @@ impl TypeEvaluator._resolution_scope_for(expr: UniNode) -> UniScopeNode | None {
     scope = expr.find_parent_of_type(UniScopeNode);
     if scope is None {
         return None;
+    }
+    if isinstance(scope, InnerCompr)
+        and isinstance(scope.parent, (ListCompr, DictCompr))
+        and scope.parent.compr
+        and scope.parent.compr[0] is scope {
+        walk: UniNode | None = expr;
+        while walk is not None and walk is not scope.collection and walk is not scope {
+            walk = walk.parent;
+        }
+        if walk is scope.collection {
+            return scope.parent.find_parent_of_type(UniScopeNode) or scope;
+        }
     }
     if isinstance(scope, Archetype) and scope.base_classes {
         cur: UniNode | None = expr;
@@ -2028,16 +2165,16 @@ impl TypeEvaluator._get_special_form_type(
     return None;
 }
 
-impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> Path {
+impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> str {
     if from_mod.level > 0 and not from_mod.path {
-        base = Path(from_mod.loc.mod_path).parent;
+        base = os.path.dirname(from_mod.loc.mod_path);
         for _ in range(max(from_mod.level - 1, 0)) {
-            base = base.parent;
+            base = os.path.dirname(base);
         }
         return base;
     }
 
-    return Path(from_mod.resolve_relative_path());
+    return from_mod.resolve_relative_path();
 }
 
 impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None) {

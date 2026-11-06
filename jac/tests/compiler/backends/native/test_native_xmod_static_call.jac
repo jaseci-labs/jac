@@ -1,18 +1,16 @@
 """A cross-module static call into a Python-side class refuses out loud.
 
-A module whose class inherits a Python-side base is classified Python-side by
-the native import walk for every importing unit, so the walk registers no
-struct type for that class. The cross-module *free-function* crossing has
-always ended at a terminal diagnostic when nothing native answers the name,
-but the class-qualified form had no such arm: `Merger.merge(...)` found no
-`Merger` in `struct_types`, skipped the static arm entirely, and fell through
-`_codegen_method_call` to a bare `return None`. Codegen dropped the call and
-said nothing -- the silent-wrong-answer class (#7685 family, found by wave 1's
-parity canary weaving two statements where bytecode wove four).
+The old backend's import walk registered no struct type for a class over a
+Python-side base, and the class-qualified form `Merger.merge(...)` fell
+through to a bare `return None`: codegen dropped the call and said nothing --
+the silent-wrong-answer class (#7685 family).
 
-The two forms now land the same way, and where they land is #8206's
-partition: a module-scope call has no owning callable and stays module-fatal,
-a body-scoped one demotes its own function and leaves its siblings native.
+Under MIR a module whose only Python-side trait is an `async` method lowers
+natively, so the merge module here is made genuinely Python-side by pinning
+it to the server. The call into it is refused, naming the callee, and under
+forced (not required) native placement it demotes to Python -- the entry
+block for a module-scope call, the owning function for a body-scoped one --
+while its siblings stay native (#8206's partition).
 
 The control is the same three files with the Python base removed. It must
 still lower and still agree with the Python lane, so the refusal reads as a
@@ -31,7 +29,6 @@ import from tests.support {
     source_spelled
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -40,7 +37,7 @@ glob FIXTURES = os.path.join(
      MERGED = 7;
 
 
-"""Forced-native options that skip the IR cache so the coverage always runs."""
+"""Forced-native options: a refusal demotes the code that holds it."""
 def _opts -> CompileOptions {
     return CompileOptions(force_codespace='native');
 }
@@ -54,26 +51,37 @@ def _compile_native(fixture: str) -> tuple[any, ...] {
 }
 
 
-"""Compile a fixture under the demotion coverage; return (program, module, coverage)."""
-def _compile_with_coverage(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
-    } finally {
-        coverage = na_coverage_end();
+"""Copy `fixture` and the modules it imports into a project that pins the
+merge module to the server, so `Merger` is Python-side for every importer."""
+def _pinned_copy(fixture: str, scratch: str) -> str {
+    import shutil;
+    with open(os.path.join(scratch, "jac.toml"), "w") as f {
+        f.write(
+            '[project]\nname = "xmod_static"\n\n[placement.pins]\n'
+                + '"xmod_static_pybase_merge" = "server"\n'
+        );
     }
-    return (prog, ir, coverage);
+    for name in [fixture, "xmod_static_pybase_merge.jac", "xmod_static_types.jac"] {
+        shutil.copyfile(os.path.join(FIXTURES, name), os.path.join(scratch, name));
+    }
+    return os.path.join(scratch, fixture);
 }
 
-
-"""The coverage seam list recorded for a fixture path."""
-def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
-    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
-    if rec is None {
-        return [];
+"""Compile a pinned copy of a fixture on the native pathway; return
+(program, module, stderr)."""
+def _compile_logged(fixture: str) -> tuple[any, ...] {
+    import contextlib;
+    import io;
+    import tempfile;
+    buf = io.StringIO();
+    with tempfile.TemporaryDirectory() as scratch {
+        path = _pinned_copy(fixture, scratch);
+        with contextlib.redirect_stderr(buf) {
+            prog = JacProgram();
+            ir = prog.compile(file_path=path, options=_opts());
+        }
     }
-    return [source_spelled(str(s)) for s in (rec.get("seams") or [])];
+    return (prog, ir, source_spelled(buf.getvalue()));
 }
 
 
@@ -102,31 +110,27 @@ def _run_py_lane(stem: str, func_name: str) -> object {
 }
 
 
-test "a module-scope static call into a Python-side class refuses" {
-    (prog, ir) = _compile_native("xmod_static_pybase_main.jac");
-    texts = [str(e) for e in prog.errors_had];
-    codes = [
-        str(alrt.code.code)
-        for alrt in prog.errors_had
-        if alrt.code is not None
-    ];
-    assert "E5092" in codes , (
-        "the call resolved to no native `Merger`, so codegen dropped it and "
-        f"the entry block wove nothing: {texts}"
+test "a module-scope static call into a Python-side class demotes the entry" {
+    (prog, ir, log) = _compile_logged("xmod_static_pybase_main.jac");
+    assert not prog.errors_had , (
+        f"forced native placement demotes, it does not fail: {[
+            str(e) for e in prog.errors_had
+        ]}"
     );
-    assert any("Merger.merge" in t for t in texts) , (
-        f"the diagnostic must name the callee it refuses, the way the "
-        f"free-function crossing names its function: {texts}"
+    iface: any = ir.gen.native_iface;
+    assert iface is not None and iface.entry_symbol == "" , (
+        "the call resolved to no native `Merger`, so the entry block must not "
+        "lower with the call quietly removed"
     );
-    assert ir.gen.llvm_ir is None , (
-        "a module whose entry silently loses a statement is worse than a "
-        "refusal, so nothing may lower here"
+    assert "Merger.merge" in log , (
+        f"the demotion must name the callee it refuses, the way the "
+        f"free-function crossing names its function: {log}"
     );
 }
 
 
 test "a body-scoped static call demotes only its owning function" {
-    (prog, ir, coverage) = _compile_with_coverage("xmod_static_pybase_seam.jac");
+    (prog, ir, log) = _compile_logged("xmod_static_pybase_seam.jac");
     assert not prog.errors_had , (
         f"a function owns this violation, so it demotes rather than failing "
         f"the module: {[str(e) for e in prog.errors_had]}"
@@ -136,22 +140,13 @@ test "a body-scoped static call demotes only its owning function" {
     assert "clean" in layout.functions , (
         f"the clean sibling was lost: {sorted(layout.functions)}"
     );
-    assert "probe" not in layout.functions , (
+    iface: any = ir.gen.native_iface;
+    assert "probe" in iface.demoted and "probe" not in layout.functions , (
         "the calling function must be demoted out of the native layout, not "
         "lowered with the call quietly removed"
     );
-    seams = [
-        s
-        for s in _seams_of(coverage, "xmod_static_pybase_seam.jac")
-        if s.startswith("probe: ")
-    ];
-    assert len(seams) == 1 , (
-        f"expected exactly one coverage seam for probe, got: {_seams_of(
-            coverage, 'xmod_static_pybase_seam.jac'
-        )}"
-    );
-    assert "Merger.merge" in seams[0] , (
-        f"the seam reason must name the callee: {seams[0]}"
+    assert "demoting probe" in log and "Merger" in log , (
+        f"the demotion reason must name the callee: {log}"
     );
 }
 
@@ -167,8 +162,11 @@ test "the same call with no Python base still lowers" {
     assert "run_merge" in layout.functions , (
         f"the caller was demoted: {sorted(layout.functions)}"
     );
-    assert "Merger.merge" in by_source_name(layout.methods) , (
-        f"the imported static method lost its native lowering: {sorted(layout.methods)}"
+    (merge_prog, merge_ir) = _compile_native("xmod_static_native_merge.jac");
+    assert not merge_prog.errors_had , [str(e) for e in merge_prog.errors_had];
+    merge_layout: any = merge_ir.gen.native_layout;
+    assert "Merger.merge" in by_source_name(merge_layout.methods) , (
+        f"the static method lost its native lowering: {sorted(merge_layout.methods)}"
     );
 }
 
