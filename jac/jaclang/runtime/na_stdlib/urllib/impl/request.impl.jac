@@ -164,7 +164,60 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
         if resp.status >= 300 and resp.status < 400 {
             loc: str | None = resp.getheader("location", "");
             if loc is not None and len(loc) > 0 {
-                cur = _resolve_redirect(pu, loc);
+                target = _resolve_redirect(pu, loc);
+                next_url: _Url = _parse_url(target);
+                if pu.scheme == "https" and next_url.scheme == "http" {
+                    raise OSError("refusing an HTTPS to HTTP redirect");
+                }
+                changed_origin = (
+                    pu.scheme != next_url.scheme
+                    or pu.host.lower() != next_url.host.lower()
+                    or pu.port != next_url.port
+                );
+                next_headers: dict[str, str] = {};
+                for name in request.headers {
+                    lower_name = name.lower();
+                    if lower_name == "host" {
+                        continue;
+                    }
+                    if changed_origin and (
+                        lower_name == "authorization"
+                        or lower_name == "cookie"
+                        or lower_name == "proxy-authorization"
+                    ) {
+                        continue;
+                    }
+                    next_headers[name] = request.headers[name];
+                }
+                next_method = request.method;
+                next_data = request.data;
+                switch_to_get = (
+                    resp.status == 303 and request.method.upper() != "HEAD"
+                ) or (
+                    (resp.status == 301 or resp.status == 302)
+                    and request.method.upper() == "POST"
+                );
+                if switch_to_get {
+                    next_method = "GET";
+                    next_data = b"";
+                    clean_headers: dict[str, str] = {};
+                    for name in next_headers {
+                        lower_name = name.lower();
+                        if lower_name != "content-length"
+                            and lower_name != "content-type"
+                            and lower_name != "transfer-encoding" {
+                            clean_headers[name] = next_headers[name];
+                        }
+                    }
+                    next_headers = clean_headers;
+                }
+                request = Request(
+                    url=target,
+                    data=next_data,
+                    headers=next_headers,
+                    method=next_method
+                );
+                cur = target;
                 redirects += 1;
                 continue;
             }
