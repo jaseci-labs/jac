@@ -16543,7 +16543,7 @@ graph import runtime.python {
             type_name
         },
         bindings.zstd | modules.decimal_context { c_string_text },
-        constant_input { boundary_failure, read_buffer },
+        constant_input { boundary_failure, read_buffer, type_name },
         constant_output { checked, required, text_object, write_buffer },
         modules.binary_scalars { required },
         modules.cmath { boundary_failure, object_error, required },
