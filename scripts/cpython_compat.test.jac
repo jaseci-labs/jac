@@ -125,6 +125,20 @@ test "the memory cap reaches each regrtest module and is optional" {
     assert "-M" not in command;
 }
 
+test "comparison rejects different memory caps" {
+    stock = results(False, {});
+    jac = results(True, {});
+    validate_comparison_runs(stock, jac);
+    jac["memlimit"] = "2.5Gb";
+    caught = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught = True;
+    }
+    assert caught;
+}
+
 test "only what stock CPython passes counts against JacPython" {
     stock = results(
         False,
