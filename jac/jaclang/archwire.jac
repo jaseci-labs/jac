@@ -15469,6 +15469,7 @@ graph import runtime.na_stdlib {
         last_error,
         ssl_close,
         ssl_new_client,
+        ssl_pending,
         ssl_read,
         ssl_write_all,
         verify_message,

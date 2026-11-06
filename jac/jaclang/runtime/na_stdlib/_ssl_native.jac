@@ -14,6 +14,7 @@ import from ssl { def SSL_connect(ssl: int) -> i32;  }
 import from ssl { def SSL_get_verify_result(ssl: int) -> i64;  }
 import from ssl { def SSL_get_error(ssl: int, ret: i32) -> i32;  }
 import from ssl { def SSL_read(ssl: int, buf: bytes, num: i32) -> i32;  }
+import from ssl { def SSL_pending(ssl: int) -> i32;  }
 import from ssl { def SSL_write(ssl: int, buf: bytes, num: i32) -> i32;  }
 import from ssl { def SSL_shutdown(ssl: int) -> i32;  }
 import from ssl { def SSL_free(ssl: int) -> None;  }
@@ -66,6 +67,8 @@ def:pub ssl_write_all(ssl: int, data: bytes) -> int;
 
 
 def:pub ssl_read(ssl: int, bufsize: int) -> bytes;
+
+def:pub ssl_pending(ssl: int) -> int;
 
 
 def:pub ssl_close(ssl: int);
