@@ -266,3 +266,66 @@ test "an unrelated sqlstate is still raised" {
         );
     }
 }
+
+
+def _has_anchors(store: PgStore) -> bool {
+    return bool(store.rows("SELECT to_regclass('anchors') IS NOT NULL", {})[0][0]);
+}
+
+
+test "a database recreated under the same name gets its schema again" {
+    with TemporaryDirectory() as td {
+        (rt, info) = _fresh_db(td);
+        first = PgStore(conninfo=info, ensure_cb=rt.ensure);
+        first.ensure_schema_once({});
+        first.close();
+        rt.drop_database(info.database, force=True);
+        second = PgStore(conninfo=rt.ensure(), ensure_cb=rt.ensure);
+        try {
+            second.ensure_schema_once({});
+            assert _has_anchors(second) , (
+                'the schema memo outlived the database it described'
+            );
+        } finally {
+            second.close();
+            rt.drop_database(info.database, force=True);
+        }
+    }
+}
+
+
+test "a database dropped during schema setup is recreated without hanging" {
+    import os;
+    import subprocess;
+    import from tests.support { JAC_ROOT, jac_command }
+    fixture = os.path.join(
+        JAC_ROOT, "tests", "runtimelib", "fixtures", "schema_drop_mid_setup.jac"
+    );
+    with TemporaryDirectory() as td {
+        rt = PgRuntime(
+            data_dir=shared_pg_data_dir(),
+            database=project_db_name(td, str(Path(td) / 'app.jac')),
+            owner_path=td
+        );
+        try {
+            result = subprocess.run(
+                jac_command("run", fixture),
+                capture_output=True,
+                text=True,
+                timeout=180,
+                cwd=JAC_ROOT,
+                env=dict(os.environ, JAC_SCHEMA_TEST_DIR=td)
+            );
+        } except subprocess.TimeoutExpired {
+            rt.drop_database(rt.database, force=True);
+            assert False , (
+                'schema setup hung: recreating the database inside ensure_schema '
+                'asked for the schema gate that the same thread already held'
+            );
+        }
+        assert result.returncode == 0 , result.stdout + result.stderr;
+        assert "dropped=True anchors=True" in result.stdout , (
+            f'schema setup on the recreated database ended with: {result.stdout}{result.stderr}'
+        );
+    }
+}

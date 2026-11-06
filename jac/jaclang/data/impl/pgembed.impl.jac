@@ -412,6 +412,7 @@ impl PgRuntime._ensure_database -> None {
         created = not rows;
         if created {
             conn.run(f'CREATE DATABASE "{self.database}"');
+            forget_schema(self.conninfo());
         }
         record_database(
             conn, self.database, self.kind, self.owner_path, pid=self.owner_pid
