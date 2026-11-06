@@ -105,15 +105,13 @@ test "the package manager runs in a child process, on the engine when one is cur
             "subprocess.run", side_effect=child
         ) {
             js_runtime.run_pm(["x", "vite"], "/proj", capture=True);
-            js_runtime.run_pm(["install"], "/proj", release_age_days=0.5);
             return js_runtime.run_pm(["add", "vite"], "/proj", capture=True);
         }
     }
     assert _with_engine(None, with_bun) == (0, "out");
-    assert [argv for (argv, _) in ran[-3:]]
+    assert [argv for (argv, _) in ran[-2:]]
         == [
             ["/opt/bun", "x", "vite"],
-            ["/opt/bun", "install", "--minimum-release-age=43200"],
             ["/opt/bun", "add", "--minimum-release-age=86400", "vite"]
         ];
 }

@@ -2146,7 +2146,8 @@ graph import {
         cli.commands.project._create_body { find_project_root },
         cli.mcp.mode { JacConfig, get_config, set_config },
         client.cli.get_config { get_config as _get_config },
-        client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
+        client.js_runtime.release_age_settings
+            | client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
             | client.targets.react_native.scaffold._project_native_deps
             | scale.config.app_config
             | scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer._resolve_fleet
@@ -5146,7 +5147,6 @@ graph import client {
             js_runtime_path,
             run_pm
         },
-        config_loader.JacClientConfig.get_default_config { MIN_RELEASE_AGE_DAYS },
         js_engine.node_executable { ensure_node_link },
         npm_provider.regenerate_and_install { js_runtime_path },
     ]

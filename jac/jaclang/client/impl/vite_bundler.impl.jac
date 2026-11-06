@@ -227,18 +227,12 @@ impl ViteBundler.install_packages(
     if configs_npmrc.exists() and not build_npmrc.exists() {
         shutil.copy2(configs_npmrc, build_npmrc);
     }
-    build_bunfig = self.write_bunfig(build_dir);
 
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
         (returncode, error_output) = run_pm(
-            ['install'],
-            str(build_dir),
-            capture=capture_output,
-            release_age_days=float(
-                self.config_loader.get_npm_config()['min_release_age_days']
-            )
+            ['install'], str(build_dir), capture=capture_output
         );
         elapsed = time.time() - start_time;
         if returncode != 0 {
@@ -272,9 +266,6 @@ impl ViteBundler.install_packages(
         }
         if build_npmrc.exists() {
             build_npmrc.unlink();
-        }
-        if build_bunfig.exists() {
-            build_bunfig.unlink();
         }
 
         build_bun_lockb = build_dir / 'bun.lockb';
@@ -1240,16 +1231,6 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     }
     npmrc_path.write_text('\n'.join(lines) + '\n', encoding='utf-8');
     return npmrc_path;
-}
-
-impl ViteBundler.write_bunfig(self: ViteBundler, build_dir: Path) -> Path {
-    excludes = list(self.config_loader.get_npm_config()['min_release_age_excludes']);
-    bunfig_path = build_dir / 'bunfig.toml';
-    bunfig_path.write_text(
-        f"[install]\nminimumReleaseAgeExcludes = {json.dumps(excludes)}\n",
-        encoding='utf-8'
-    );
-    return bunfig_path;
 }
 
 def _toml_config_to_js(config_data: dict[str, any]) -> str;

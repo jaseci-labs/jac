@@ -126,7 +126,6 @@ class ViteBundler {
     def create_tsconfig(self: ViteBundler) -> Path;
     def create_config_files(self: ViteBundler) -> list[Path];
     def create_npmrc(self: ViteBundler) -> Optional[Path];
-    def write_bunfig(self: ViteBundler, build_dir: Path) -> Path;
     def start_dev_server(
         self: ViteBundler,
         port: int = 3000,

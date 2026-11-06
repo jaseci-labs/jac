@@ -33,10 +33,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
         'paths': {},
         'routing': {'auth_redirect': '/login'},
         'assets': {'dir': '', 'custom_extensions': []},
-        'npm': {
-            'min_release_age_days': MIN_RELEASE_AGE_DAYS,
-            'min_release_age_excludes': []
-        },
+        'npm': {},
         'package': {
             'name': '',
             'version': '1.0.0',

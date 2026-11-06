@@ -74,9 +74,6 @@ def _engine -> (str | None);
 
 def js_runtime_path -> str;
 
-def run_pm(
-    args: list[str],
-    cwd: str,
-    capture: bool = False,
-    release_age_days: float = MIN_RELEASE_AGE_DAYS
-) -> tuple[int, str];
+def release_age_settings(cwd: str) -> tuple[float, list[str]];
+
+def run_pm(args: list[str], cwd: str, capture: bool = False) -> tuple[int, str];
