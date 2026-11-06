@@ -21,6 +21,28 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
+glob EXPECTED_AUG_BOOL = (
+         "float aug 5.0 4.5 1.5 4.0 19.0 1.5\n"
+         "float /= 0.0 ZeroDivisionError\n"
+         "seq aug {'a': 1, 'b': 2} [1, 2, 1, 2] ababab [7]\n"
+         "bool() False True False True False True\n"
+         "bool() text False True True 2 1\n"
+         "bool as float 0.25 0.5 0.5 2.5 1.0\n"
+         "bool() count x ab [1] []\n"
+         "True count x ab [1] []\n"
+         "divmod (1, 0) (1, 0) (5, 0)\n"
+         "round 1 1 0\n"
+         "def bool() False False False False False\n"
+         "def bool() True True True True True\n"
+         "def bool as float 11.0 11.0 1.5 0.5 0.5 0.0\n"
+         "def bool() count x ab [1] []\n"
+         "def True count x ab [1] []\n"
+         "def divmod (1, 0) (1, 0) (5, 0)\n"
+         "def round 1 1 0\n"
+         "def set {False, True} {False, True}\n"
+         "def seq aug [1, 2, 1, 2] ababab {'a': 1, 'b': 2}\n"
+     );
+
 test "entry globals: lambda reads an entry-assigned name late-bound" {
     (eng, _) = compile_native("entry_globals.jac");
     entry_fn = get_func(eng, "jac_entry", None);
@@ -40,9 +62,9 @@ test "entry globals: a free def reads entry-assigned module state" {
     assert f() == 100 , "def sees the final entry-assigned value of k";
 }
 
-test "entry globals: float /= and %= store the result, not the right-hand side" {
+test "entry globals: augmented assignment and bool() rows match Python" {
     out = assert_native_identity(
-        os.path.join(FIXTURES, "entry_float_aug.jac"), profiles=["managed"]
+        os.path.join(FIXTURES, "entry_aug_bool.jac"), profiles=["managed"]
     );
-    assert out == ("5.0\n4.5\n1.5\n4.0\n19.0\nZeroDivisionError\n") , f"got {out!r}";
+    assert out == EXPECTED_AUG_BOOL , f"got {out!r}";
 }

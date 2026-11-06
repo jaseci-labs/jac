@@ -87,26 +87,3 @@ test "print of a str predicate matches the Python backend" {
     );
     assert out.startswith("True False False\n") , f"got {out!r}";
 }
-
-test "print of a bool() call matches the Python backend" {
-    out = assert_native_identity(
-        os.path.join(FIXTURES, "bool_call_print.jac"), profiles=["managed"]
-    );
-    assert out
-        == (
-            "False True\n"
-            "False\n"
-            "True False True False False True\n"
-            "False True True False\n"
-            "2 True 1\n"
-            "False False False False False\n"
-            "True True True True True\n"
-        ) , f"got {out!r}";
-}
-
-test "a bool used as a float is 1.0, not -1.0" {
-    out = assert_native_identity(
-        os.path.join(FIXTURES, "bool_to_float.jac"), profiles=["managed"]
-    );
-    assert out == "11.0 9.0 0.5 0.5 2.5 1.0\n11.0 11.0 0.5 0.5 0.0\n" , f"got {out!r}";
-}

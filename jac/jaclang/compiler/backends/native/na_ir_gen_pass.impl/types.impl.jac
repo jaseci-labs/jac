@@ -3544,6 +3544,13 @@ impl NaIRGenPass._emit_binary_op(
     if right_payload is not None {
         right = self._coerce_type(right, right_payload);
     }
+    if op == Tok.STAR_MUL {
+        if left.type == ir.IntType(1) and isinstance(right.type, ir.PointerType) {
+            left = self._widen_list_int(left, True);
+        } elif right.type == ir.IntType(1) and isinstance(left.type, ir.PointerType) {
+            right = self._widen_list_int(right, True);
+        }
+    }
     i8p_type = ir.IntType(8).as_pointer();
     if op == Tok.PLUS and left.type == i8p_type and right.type == i8p_type {
         _i8p_cc = ir.IntType(8).as_pointer();

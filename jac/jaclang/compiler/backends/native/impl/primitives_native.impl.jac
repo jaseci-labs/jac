@@ -5223,9 +5223,12 @@ impl NativeBuiltinEmitter.emit_round(
     if len(args) > 2 {
         return None;
     }
-    arg_val = args[0];
     p = ctx.pass_ref;
     b = get_builder(p);
+    arg_val = args[0];
+    if arg_val.type == ir.IntType(1) {
+        arg_val = p._widen_list_int(arg_val, True);
+    }
     i64 = ir.IntType(64);
     f64 = ir.DoubleType();
 
@@ -5758,6 +5761,7 @@ impl NativeBuiltinEmitter.emit_divmod(
     a = args[0];
     v = args[1];
     if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
+        (a, v) = p._unify_int_widths(a, v);
         izero = ir.Constant(i64, 0);
         is_zero = b.icmp_signed("==", v, izero, name="divmod.zero.chk");
         p._emit_runtime_raise(
@@ -6195,35 +6199,13 @@ impl NativeBuiltinEmitter.emit_bool(
     }
     arg_val = args[0];
     p = ctx.pass_ref;
-    b = get_builder(p);
-    i64 = ir.IntType(64);
-    if isinstance(arg_val.type, ir.IntType) {
-        if arg_val.type.width == 1 {
-            return arg_val;
-        }
-        return b.icmp_signed(
-            "!=", arg_val, ir.Constant(arg_val.type, 0), name="bool.nz"
+    if arg_val.type == ir.IntType(8).as_pointer() {
+        b = get_builder(p);
+        slen = p._call_str_len(b, arg_val, name="bool.slen");
+        return b.icmp_unsigned(
+            "!=", slen, ir.Constant(ir.IntType(64), 0), name="bool.nonempty"
         );
     }
-    if isinstance(arg_val.type, (ir.DoubleType, ir.FloatType)) {
-        return b.fcmp_unordered(
-            "!=", arg_val, ir.Constant(arg_val.type, 0.0), name="bool.fnz"
-        );
-    }
-    if isinstance(arg_val.type, ir.PointerType) {
-        i8p = ir.IntType(8).as_pointer();
-        if arg_val.type == i8p {
-            slen = p._call_str_len(b, arg_val, name="bool.slen");
-            return b.icmp_unsigned(
-                "!=", slen, ir.Constant(i64, 0), name="bool.nonempty"
-            );
-        }
-
-        if p._is_bytes_value(arg_val) {
-            return p._emit_bytes_truthy(arg_val);
-        }
-    }
-
     return p._to_bool(arg_val);
 }
 

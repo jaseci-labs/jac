@@ -2776,10 +2776,16 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         );
                     }
                 } elif aug_op_val == "*=" {
+                    _rep = self._emit_binary_op(Tok.STAR_MUL, current, value)
+                        if not isinstance(current.type, ir.IntType)
+                            and isinstance(value.type, ir.IntType)
+                        else None;
                     if isinstance(current.type, ir.IntType) {
                         value = self._emit_overflow_op(
                             "mul", current, coerced, self._is_unsigned_node(target_expr)
                         );
+                    } elif _rep is not None {
+                        value = _rep;
                     } else {
                         value = self.builder.fmul(
                             current, coerced, name=f"{var_name}.fmul"
@@ -3231,6 +3237,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                     current = self._str_norm(current);
                     value = self._str_norm(value);
                 }
+                _g_rhs = value;
                 _gscalar_aug: (ir.Value | None) = None;
                 if isinstance(current.type, (ir.IntType, ir.FloatType, ir.DoubleType))
                     and isinstance(
@@ -3315,6 +3322,11 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         value = self.builder.fmul(
                             current, coerced, name=f"glob.{var_name}.fmul"
                         );
+                    } elif isinstance(value.type, ir.IntType) {
+                        _g_rep = self._emit_binary_op(Tok.STAR_MUL, current, value);
+                        if _g_rep is not None {
+                            value = _g_rep;
+                        }
                     }
                 } elif aug_op_val == "%=" {
                     if isinstance(current.type, ir.IntType) {
@@ -3356,10 +3368,25 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         }
                     }
                 } elif aug_op_val == "|=" {
+                    _g_dict_key = self._dict_key_reconcile(
+                        self._dict_key_of(target_expr), current
+                    )
+                        if isinstance(current.type, ir.PointerType)
+                        else None;
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.or_(
                             current, coerced, name=f"glob.{var_name}.or"
                         );
+                    } elif _g_dict_key is not None {
+                        _de = self._ensure_emitters().get("dict");
+                        if isinstance(_de, NativeDictEmitter) {
+                            _de.emit_update(
+                                NativeEmitCtx(pass_ref=self, type_key=_g_dict_key),
+                                current,
+                                [coerced]
+                            );
+                            value = current;
+                        }
                     } elif isinstance(current.type, ir.PointerType) {
                         _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
@@ -3449,6 +3476,16 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                                 else self._emit_plain_int_shr(current, coerced)
                         );
                     }
+                }
+                if value is _g_rhs {
+                    self.emit(
+                        E5092,
+                        node_override=nd,
+                        kind="augmented assignment",
+                        name=f"{var_name} {aug_op_val}",
+                        help_text="This operator has no native lowering for a module-level variable of this type. Assign the full expression instead."
+                    );
+                    continue;
                 }
             }
             _jacval_global = (
