@@ -479,6 +479,7 @@ impl IdentityStorage.unlink_sso_account(user_id: str, platform: str) -> dict[str
     if not self._remove_sso_identity(user_id, platform) {
         return {'error': 'SSO account not found for this provider'};
     }
+    self._take_oauth_grant(user_id, platform);
     return {
         'message': 'SSO account unlinked successfully',
         'user_id': user_id,

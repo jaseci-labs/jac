@@ -1986,7 +1986,7 @@ def _vm_bitop(op: int, va: JSValue, vb: JSValue) -> JSValue {
         return js_int(bo_x >> (bo_y & 31));
     }
     if op == 29 {
-        bo_x = (bo_x << (bo_y & 31)) & 4294967295;
+        bo_x = shl32(bo_x, bo_y & 31);
         if bo_x > 2147483647 {
             bo_x = bo_x - 4294967296;
         }
@@ -3706,6 +3706,12 @@ def js_to_num(v: JSValue) -> float {
         return 0.0;
     }
     return jsv_coerce_to_number(v);
+}
+
+"""The low 32 bits of `x << shift` (0 <= shift < 32), masking first so the
+shift never leaves 32 bits."""
+def shl32(x: int, shift: int) -> int {
+    return ((x & 4294967295) & ((1 << (32 - shift)) - 1)) << shift;
 }
 
 """ECMAScript ToInt32 — convert an arbitrary Python integer to a signed 32-bit
@@ -32478,7 +32484,7 @@ obj VM {
                             bnd_v = js_int(bnd_x >> (bnd_y & 31));
                         } elif op == Opcode.SHL {
                             # ToInt32 of the shifted low 32 bits.
-                            bnd_l: int = (bnd_x << (bnd_y & 31)) & 4294967295;
+                            bnd_l: int = shl32(bnd_x, bnd_y & 31);
                             if bnd_l > 2147483647 {
                                 bnd_l = bnd_l - 4294967296;
                             }
@@ -37525,7 +37531,7 @@ obj VM {
                     } elif op == 38 {
                         vr = js_int(xi >> (yi & 31));
                     } elif op == 37 {
-                        xi = (xi << (yi & 31)) & 4294967295;
+                        xi = shl32(xi, yi & 31);
                         if xi > 2147483647 {
                             xi = xi - 4294967296;
                         }
@@ -37584,7 +37590,7 @@ obj VM {
                     } elif op == 30 {
                         vr = js_int(xi >> (yi & 31));
                     } elif op == 29 {
-                        xi = (xi << (yi & 31)) & 4294967295;
+                        xi = shl32(xi, yi & 31);
                         if xi > 2147483647 {
                             xi = xi - 4294967296;
                         }

@@ -94,7 +94,6 @@ obj Lexer {
     def scan_jsx_tag_token -> LexToken;
     def scan_jsx_content -> LexToken;
     def scan_regular_token -> LexToken;
-    def scan_pynline -> LexToken;
     def scan_operator -> LexToken;
     def next_token -> LexToken;
     def tokenize -> list[LexToken];

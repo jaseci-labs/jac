@@ -403,11 +403,6 @@ impl native_capability_violations(
             if isinstance(nd, Import) {
                 continue;
             }
-            if isinstance(nd, NATIVE_REJECT_NODES) {
-                kind = "expression" if isinstance(nd, Expr) else "statement";
-                out.append((nd, kind, type(nd).__name__, None));
-                continue;
-            }
             if isinstance(nd, Assignment) {
                 _targets = (
                     nd.target if isinstance(nd.target, (list, tuple)) else [nd.target]

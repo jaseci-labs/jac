@@ -3630,8 +3630,8 @@ impl NativeListEmitter._emit_value_sort(
     );
     p._emit_runtime_raise(too_large, "MemoryError", "sort workspace is too large");
     nbytes = b.mul(length, ir.Constant(i64, itemsize));
-    malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
-    free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    malloc = p._heap_extern("malloc");
+    free = p._heap_extern("free");
     memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     raw = b.call(malloc, [b.mul(nbytes, ir.Constant(i64, 2))], name="sort.workspace");
     p._emit_runtime_raise(
@@ -6011,8 +6011,15 @@ impl NativeBuiltinEmitter.emit_int(
     if not args {
         return None;
     }
-    arg_val = args[0];
     p = ctx.pass_ref;
+    arg_val = p._opt_unwrap_guarded(
+        args[0],
+        "int",
+        "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+    );
+    if arg_val is None {
+        return None;
+    }
     b = get_builder(p);
     i64 = ir.IntType(64);
 

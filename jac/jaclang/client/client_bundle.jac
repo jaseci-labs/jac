@@ -46,3 +46,11 @@ def emitted_tree_digest(tree_root: Path) -> str;
 
 
 def client_program(program: JacProgram | None) -> JacProgram;
+
+
+def client_source_root(project_dir: Path, entry_path: Path) -> Path;
+
+
+def client_context_program(
+    program: JacProgram, source_root: (Path | None)
+) -> JacProgram;

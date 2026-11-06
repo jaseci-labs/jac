@@ -1780,6 +1780,9 @@ impl NaIRGenPass._osp_own_handles(typed: ir.Value) -> None {
         self.builder.store(
             self.builder.ptrtoint(_ptr_release, i64, name="osp.own.dtor.fn"), _slot
         );
+        self._emit_set_type_tag(
+            self.builder, _raw, _ptr_release.name[len("__rc_release_"):]
+        );
     }
 }
 

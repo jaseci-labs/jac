@@ -1355,7 +1355,11 @@ __JAC_DEV_HEAD__
     <div id="root"></div>
     <script type="module">
     if (import.meta.hot) {
+      // leaving the page cancels its pending imports; that is not a load failure
+      var leaving = false;
+      window.addEventListener("beforeunload", function() { leaving = true; });
       function report(d) {
+        if (leaving) return;
         try { import.meta.hot.send("jac:client-error", d); } catch(e) {}
       }
       window.addEventListener("error", function(e) {

@@ -110,7 +110,7 @@ impl run_jab_image(
         console.error(f"{label}: sealed entry '{entry_rel}' missing from image.");
         return 1;
     }
-    servable = kind in ["service", "service-mesh", "web-app", "web-static"];
+    servable = jab_serves(kind);
     if serve_only or servable {
         (arg_port, accepted) = _bundle_serve_args(args, label);
         if not accepted {
@@ -570,7 +570,12 @@ impl serve(
                 watch_paths = application_watch_roots(
                     base, prepared, Jac.get_program()
                 );
-                watcher = JacFileWatcher(watch_paths=watch_paths);
+                compiler_source_roots = [
+                    str(part.`root) for part in [prepared, *prepared.applications]
+                ];
+                watcher = JacFileWatcher(
+                    watch_paths=watch_paths, compiler_source_roots=compiler_source_roots
+                );
                 client_compiler = None;
                 if not no_client {
                     try {

@@ -41,8 +41,18 @@ glob _EXCLUDE_DIRS: set[str] = {
 
 glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
+glob _CLIENT_DIST: tuple[str, ...] = (".jac", "client", "dist");
+
+glob _BUNDLE_REQUIRED: tuple[tuple[str, ...], ...] = (
+         _CLIENT_DIST,
+         (".jac", "admin")
+     );
+
 
 def _is_bundle_required(rel: Path) -> bool;
+
+
+def _may_hold_bundle_required(rel: Path) -> bool;
 
 
 def _is_client_dist(rel: Path) -> bool;
@@ -171,6 +181,12 @@ def _legacy_sealer_script_for(
 
 
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
+
+
+def sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str;
+
+
+def staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None);
 
 
 def require_serve_manifest(stage: Path, detail: str = "") -> Path;

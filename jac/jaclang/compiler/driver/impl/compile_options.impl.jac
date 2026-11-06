@@ -87,24 +87,34 @@ impl CompileOptions.effective_triple -> str {
     return active_host().default_target_triple();
 }
 
+impl CompileOptions.native_options_identity -> str {
+    return ("tls=1;" if self.native_tls else "")
+        + ("sjlj=1;" if self.native_sjlj else "")
+        + ("rawview=1;" if self.native_unchecked_views else "")
+        + ("directc=1;" if self.native_direct_c_entries else "")
+        + (f"heap={self.native_heap};" if self.native_heap else "");
+}
+
 impl CompileOptions.codegen_identity -> str {
-    return ";".join(
-        [
-            f"native_required={int(self.native_required)}",
-            "native_require=" + ",".join(sorted(self.native_require or [])),
-            f"gc={self.na_gc_mode}",
-            f"nogc_all={int(bool(self.nogc_enforce_all))}",
-            "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
-            "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
-            f"rc_debug={int(bool(self.rc_debug_codegen))}",
-            f"target={self.native_target}",
-            f"native_debug={int(bool(self.native_debug))}",
-            f"opt={self.opt_level}",
-            f"threads={self.native_threads}",
-            f"app={self.target_app}",
-            f"app_kind={self.app_kind}"
-        ]
-    )
+    return self.native_options_identity()
+        + ";".join(
+            [
+                f"native_required={int(self.native_required)}",
+                "native_require=" + ",".join(sorted(self.native_require or [])),
+                f"gc={self.na_gc_mode}",
+                f"nogc_all={int(bool(self.nogc_enforce_all))}",
+                "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
+                "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
+                f"rc_debug={int(bool(self.rc_debug_codegen))}",
+                f"target={self.native_target}",
+                f"native_debug={int(bool(self.native_debug))}",
+                f"opt={self.opt_level}",
+                f"threads={self.native_threads}",
+                f"app={self.target_app}",
+                f"app_kind={self.app_kind}"
+            ]
+        )
+        + ("" if self.na_borrow_infer else ";borrow_infer=0")
         + ("" if self.na_move_flow else ";move_flow=0")
         + (
             f";client_root={self.client_source_root}" if self.client_source_root else ""
@@ -135,6 +145,7 @@ impl CompileOptions.artifact_identity -> str {
             f"app_kind={self.app_kind}"
         ]
     )
+        + ("" if self.na_borrow_infer else ";borrow_infer=0")
         + ("" if self.na_move_flow else ";move_flow=0");
 }
 
@@ -144,19 +155,20 @@ impl CompileOptions.analysis_fingerprint -> str {
 }
 
 impl CompileOptions.base_codegen_identity -> str {
-    return ";".join(
-        [
-            f"gc={self.na_gc_mode}",
-            f"nogc_all={int(bool(self.nogc_enforce_all))}",
-            "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
-            "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
-            f"rc_debug={int(bool(self.rc_debug_codegen))}",
-            f"target={self.native_target}",
-            f"native_debug={int(bool(self.native_debug))}",
-            f"opt={self.opt_level}",
-            f"threads={self.native_threads}"
-        ]
-    );
+    return self.native_options_identity()
+        + ";".join(
+            [
+                f"gc={self.na_gc_mode}",
+                f"nogc_all={int(bool(self.nogc_enforce_all))}",
+                "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
+                "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
+                f"rc_debug={int(bool(self.rc_debug_codegen))}",
+                f"target={self.native_target}",
+                f"native_debug={int(bool(self.native_debug))}",
+                f"opt={self.opt_level}",
+                f"threads={self.native_threads}"
+            ]
+        );
 }
 
 impl CompileOptions.unit_codegen_identity(path: str) -> str {
@@ -170,6 +182,7 @@ impl CompileOptions.dependency_projection(path: str) -> str {
             self.unit_codegen_identity(path),
             f"app_kind={self.app_kind}",
             f"aot={int(bool(self.aot_mode))}",
+            f"native_import={int(self.native_import)}",
             f"force_cs={self.force_codespace}",
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}"
@@ -186,6 +199,7 @@ impl CompileOptions.module_projection -> str {
             self.artifact_identity(),
             self.codegen_identity(),
             f"aot={int(bool(self.aot_mode))}",
+            f"native_import={int(self.native_import)}",
             f"force_cs={self.force_codespace}",
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}",
@@ -197,18 +211,21 @@ impl CompileOptions.module_projection -> str {
 impl CompileOptions.keeps_interfaces -> bool {
     return not (
         self.aot_mode
-            or bool(self.force_codespace)
-            or self.default_codespace == 'native'
+        or bool(self.force_codespace)
+        or self.default_codespace == 'native'
     );
 }
 
-impl CompileOptions.for_symbols(need_tree: bool = False) -> CompileOptions {
+impl CompileOptions.for_symbols(
+    need_tree: bool = False, need_bodies: bool = False
+) -> CompileOptions {
     import copy;
     result = copy.copy(self);
     result.no_cgen = True;
     result.symtab_ir_only = True;
     result.iface_ok = not need_tree;
     result.need_full_ast = need_tree;
+    result.body_demand = need_bodies;
     result.native_parity = False;
 
     return result;
@@ -221,19 +238,26 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         no_ir_cache=self.no_ir_cache,
         native_required=self.native_required,
         native_require=list(self.native_require or []),
-        aot_mode=True,
+        aot_mode=self.aot_mode or bool(self.force_codespace),
+        native_import=True,
         default_codespace='native',
         native_unit=self.native_unit,
         kernel_build=self.kernel_build,
         native_link_mode=self.native_link_mode,
         na_gc_mode=self.na_gc_mode,
         nogc_enforce_all=self.nogc_enforce_all,
+        na_borrow_infer=self.na_borrow_infer,
         memory_profile=self.memory_profile,
         native_threads=self.native_threads,
         memory_enforce=list(self.memory_enforce or []),
         memory_exempt=list(self.memory_exempt or []),
         rc_debug_codegen=self.rc_debug_codegen,
         native_target=self.native_target,
+        native_tls=self.native_tls,
+        native_sjlj=self.native_sjlj,
+        native_unchecked_views=self.native_unchecked_views,
+        native_direct_c_entries=self.native_direct_c_entries,
+        native_heap=self.native_heap,
         native_debug=self.native_debug,
         opt_level=self.opt_level,
         dump_ir_path=self.dump_ir_path,

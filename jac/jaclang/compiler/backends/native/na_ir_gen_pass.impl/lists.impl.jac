@@ -728,8 +728,8 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
     merge_bb = func.append_basic_block(name="anylen.end");
     b.cbranch(is_str, str_bb, cont_bb);
     b.position_at_end(str_bb);
-    sp = b.inttoptr(payload, i8p, name="anylen.sp");
-    sl = self._call_str_len(b, sp, name="anylen.strlen");
+    sl = self._jacval_text_len(tag, payload, "anylen");
+    str_end = b.block;
     b.branch(merge_bb);
     b.position_at_end(cont_bb);
     lp = b.inttoptr(payload, i64.as_pointer(), name="anylen.lp");
@@ -737,7 +737,7 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
     b.branch(merge_bb);
     b.position_at_end(merge_bb);
     phi = b.phi(i64, name="anylen");
-    phi.add_incoming(sl, str_bb);
+    phi.add_incoming(sl, str_end);
     phi.add_incoming(cl, cont_bb);
     return phi;
 }
