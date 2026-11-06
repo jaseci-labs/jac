@@ -156,7 +156,13 @@ define double @probe(double %a, double %b) {
   ret double %c
 }
 
+define double @direct(double %a, double %b) {
+  %r = call double @fmod(double %a, double %b)
+  ret double %r
+}
+
 declare double @llvm.copysign.f64(double, double)
+declare double @fmod(double, double)
 """;
 
 def defined_functions(text: str) -> set[str] {
@@ -164,12 +170,15 @@ def defined_functions(text: str) -> set[str] {
         line.split("@", 1)[1].split("(", 1)[0]
         for line in text.splitlines()
         if line.startswith("define ")
+        and not line.startswith(("define internal ", "define private "))
     };
 }
 
 """The C writer that ejects a wasm module as source turns frem and the
 float intrinsics into libm calls, and the ejected source links with no libc:
-the module it translates keeps the vendored definitions those calls need."""
+the module it translates keeps the vendored definitions those calls need,
+externally visible: an internal definition is written as a static the
+lowered call does not name (fmod, called directly elsewhere in the module)."""
 test "a module prepared for the C writer keeps the libm it will call" {
     _require_libc();
     native = defined_functions(str(prepare_wasm_module(LIBM_PROBE_IR)[0]));
