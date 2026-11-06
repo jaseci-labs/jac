@@ -431,6 +431,15 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac b
 !!! tip "Fixing `E1132` (a type-only binding used as a value)"
     An `import type` binding is registered with the checker and nothing else -- neither backend emits a runtime import for it -- so calling it, reading an attribute off it, passing it to `isinstance`/`issubclass`, decorating with it, inheriting from it, or assigning it reaches a name nothing binds. This holds on the server too: the `typing.TYPE_CHECKING` guard means a guarded `UserId(raw)` would be a `NameError`, not a brand. Annotations, `has` field types, return types, generic arguments, `as` casts, and `type` alias right-hand sides are type position and stay legal. If the name really is needed at runtime, import it with a plain `import from` instead, which requires that it actually has a runtime binding in the importing module's codespace. The error blocks codegen.
 
+### Type Parameters
+
+| Code | Message |
+|------|---------|
+| `E1163` | '{name}' is a type parameter and cannot be used as a value |
+
+!!! tip "Fixing `E1163` (a type parameter used as a value)"
+    A type parameter such as `T` in `def f[T: Exception](e: T)` names a type for the checker only; no backend binds it at runtime to the class it stands for. The Python backend drops a function's type parameters, so `return T`, `x = T`, `raise T`, `isinstance(e, T)` or `cast(T, v)` is a `NameError` when it runs, and inside a class `T` is a bare `TypeVar`, not the class. Annotations, `has` field types, return types, generic arguments, `as` casts and `type` alias right-hand sides are type position and stay legal, and so is a `comptime` parameter, which is a value. To use the class at runtime, pass it in: `def f[T: Exception](cls: type[T])`, then `raise cls()` or `isinstance(e, cls)`. Write `v as T` instead of `cast(T, v)`.
+
 ### Type Warnings
 
 | Code | Message |
