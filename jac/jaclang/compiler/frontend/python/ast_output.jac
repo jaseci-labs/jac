@@ -1,4 +1,7 @@
 """Typed conversion from Jac-owned AST nodes to retained CPython AST values."""
+import from c {
+    def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  def Py_LeaveRecursiveCall;
+}
 
 def ast_output_checked(handle: ptr[PyObject]) -> ptr[PyObject] {
     if handle == 0 {
@@ -3737,7 +3740,7 @@ def ast_write_TypeVarTuple(value: TypeVarTuple) -> ptr[PyObject] {
     }
 }
 
-def:pub ast_write_node(value: ast_node) -> ptr[PyObject] {
+def:priv ast_write_node_inner(value: ast_node) -> ptr[PyObject] {
     kind = value.node_kind();
     if kind == ast_kind.Module and isinstance(value, Module) {
         return ast_write_Module(value);
@@ -4079,4 +4082,15 @@ def:pub ast_write_node(value: ast_node) -> ptr[PyObject] {
         return ast_write_TypeVarTuple(value);
     }
     raise ValueError("Unsupported AST node");
+}
+
+def:pub ast_write_node(value: ast_node) -> ptr[PyObject] {
+    if Py_EnterRecursiveCall(ptr[u8](" while converting AST")) != 0 {
+        return ptr[PyObject]();
+    }
+    try {
+        return ast_write_node_inner(value);
+    } finally {
+        Py_LeaveRecursiveCall();
+    }
 }

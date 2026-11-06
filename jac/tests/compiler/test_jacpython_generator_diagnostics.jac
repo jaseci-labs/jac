@@ -1,5 +1,6 @@
 """Generator diagnostics cross the shipped native Python compiler boundary."""
 import from builtins { compile as pycompile }
+import ast;
 import warnings;
 
 test "yield and yield-from diagnostics preserve expression identity" {
@@ -160,5 +161,18 @@ test "invalid escape warnings match CPython's suggestion text" {
         assert len(recorded) == 1 , len(recorded);
         assert str(recorded[0].message)
             == r'"\z" is an invalid escape sequence. Did you mean "\\z"? A raw string is also an option.';
+    }
+}
+
+test "AST output reports deep expressions instead of exhausting the stack" {
+    for suffix in ["()", ".b", "[0]", "*a"] {
+        assert ast.parse("a" + suffix * 200, mode="eval") is not None;
+        caught = False;
+        try {
+            ast.parse("a" + suffix * 5000, mode="eval");
+        } except RecursionError {
+            caught = True;
+        }
+        assert caught , suffix;
     }
 }
