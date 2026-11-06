@@ -224,6 +224,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "SSL_CTX_new SSL_CTX_set_verify SSL_CTX_load_verify_locations "
         "SSL_CTX_set_default_verify_paths SSL_CTX_free SSL_new SSL_set_fd SSL_ctrl "
         "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
+        "SSL_pending "
         "SSL_write SSL_shutdown SSL_free X509_verify_cert_error_string "
         "ERR_reason_error_string ERR_get_error ERR_peek_error "
         "Py_DecRef PyBool_FromLong PyBytes_AsString PyDict_New PyDict_SetItemString "

@@ -16,33 +16,10 @@ impl socket._connect_sa(sa: bytes) -> bool {
     return sock_connect(self._fd, sa) == 0;
 }
 
-def _connect_one(sock: socket, sa: bytes, timeout: (float | None)) -> bool {
-    if timeout is None {
-        return sock._connect_sa(sa);
-    }
-    flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFL);
-    fcntl.fcntl(sock.fileno(), fcntl.F_SETFL, flags | fcntl.O_NONBLOCK);
-    connected: bool = sock._connect_sa(sa);
-    if not connected {
-        err = last_errno();
-        if err == errno.EINPROGRESS or err == errno.EALREADY
-            or err == errno.EWOULDBLOCK {
-            (_readable, writable, _exceptional) = select.select(
-                [], [sock.fileno()], [], timeout
-            );
-            if sock.fileno() in writable {
-                connected = sock_error(sock.fileno()) == 0;
-            }
-        }
-    }
-    fcntl.fcntl(sock.fileno(), fcntl.F_SETFL, flags);
-    return connected;
-}
+def _connect_one(sock: socket, sa: bytes, timeout: (float | None)) -> bool;
 
 
-impl socket.connect(
-    address: tuple[(str, int)], timeout: (float | None)
-) -> None {
+impl socket.connect(address: tuple[(str, int)], timeout: (float | None)) -> None {
     if self._fd < 0 {
         raise OSError("socket() failed: " + errno_message());
     }
@@ -131,9 +108,7 @@ impl socket.close {
     }
 }
 
-impl create_connection(
-    address: tuple[(str, int)], timeout: (float | None)
-) -> socket {
+impl create_connection(address: tuple[(str, int)], timeout: (float | None)) -> socket {
     host = address[0];
     port = address[1];
     service = str(port);
@@ -158,4 +133,28 @@ impl create_connection(
     raise OSError(
         "create_connection to " + host + ":" + service + " failed: " + errno_message()
     );
+}
+
+impl _connect_one(sock: socket, sa: bytes, timeout: (float | None)) -> bool {
+    if timeout is None {
+        return sock._connect_sa(sa);
+    }
+    flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFL);
+    fcntl.fcntl(sock.fileno(), fcntl.F_SETFL, flags | fcntl.O_NONBLOCK);
+    connected: bool = sock._connect_sa(sa);
+    if not connected {
+        err = last_errno();
+        if err == errno.EINPROGRESS
+            or err == errno.EALREADY
+            or err == errno.EWOULDBLOCK {
+            (_readable, writable, _exceptional) = select.select(
+                [], [sock.fileno()], [], timeout
+            );
+            if sock.fileno() in writable {
+                connected = sock_error(sock.fileno()) == 0;
+            }
+        }
+    }
+    fcntl.fcntl(sock.fileno(), fcntl.F_SETFL, flags);
+    return connected;
 }

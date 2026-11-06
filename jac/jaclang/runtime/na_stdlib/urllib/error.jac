@@ -1,5 +1,3 @@
-"""Native urllib error types shared by the request and app surfaces."""
-
 import from http.client { HTTPResponse }
 
 
