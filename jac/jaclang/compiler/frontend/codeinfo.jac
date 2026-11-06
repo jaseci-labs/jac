@@ -212,7 +212,10 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "jac_effective_default_codespace"
      ),
      _native_unit_ctx: ContextVar[bool] = ContextVar("jac_native_unit_compile"),
-     _native_target_ctx: ContextVar[str | None] = ContextVar("jac_native_target");
+     _native_target_ctx: ContextVar[str | None] = ContextVar("jac_native_target"),
+     _native_variant_os_ctx: ContextVar[str | None] = ContextVar(
+         "jac_native_variant_os"
+     );
 
 glob NATIVE_ERASED_ABC_BASES: frozenset[str] = frozenset({"ABC"});
 
@@ -285,6 +288,10 @@ def is_shared_runtime_module(file_path: str) -> bool;
 def is_bundled_native_module(module_name: str) -> bool;
 
 def set_native_target_override(triple: str | None) -> (str | None);
+
+def set_native_variant_os(os_name: str | None) -> (str | None);
+
+def importer_variant_os(path: str) -> str;
 
 def effective_native_target -> str;
 
