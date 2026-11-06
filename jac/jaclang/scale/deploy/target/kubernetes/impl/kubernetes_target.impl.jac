@@ -159,7 +159,23 @@ impl KubernetesTargetBase._deploy_databases(
         )
     );
     try {
-        core_v1.read_namespaced_service(name=pg_service_name, namespace=namespace);
+        existing = core_v1.read_namespaced_service(
+            name=pg_service_name, namespace=namespace
+        );
+        # clusterIP is immutable, so an older headless Service is recreated.
+        if existing.spec.cluster_ip == 'None' {
+            core_v1.delete_namespaced_service(
+                name=pg_service_name, namespace=namespace
+            );
+            core_v1.create_namespaced_service(
+                namespace=namespace, body=pg_result['service']
+            );
+            if self.logger {
+                self.logger.info(
+                    f"Recreated '{pg_service_name}' as a ClusterIP Service"
+                );
+            }
+        }
     } except ApiException as e {
         if (e.status == 404) {
             core_v1.create_namespaced_service(
