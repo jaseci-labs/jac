@@ -16,6 +16,7 @@ with entry {
 }
 
 glob seen: list[str] = [];
+
 with entry {
     for it in TABLE {
         seen.append(str(it.v) if it is not None else "-");
