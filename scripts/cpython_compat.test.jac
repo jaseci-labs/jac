@@ -90,6 +90,8 @@ def results(jacpython: bool, modules: dict[str, any]) -> dict[str, any] {
         "jacpython": jacpython,
         "resources": "",
         "memlimit": "",
+        "full_suite": True,
+        "module_names": sorted(modules),
         "modules": modules
     };
 }
@@ -126,8 +128,9 @@ test "the memory cap reaches each regrtest module and is optional" {
 }
 
 test "comparison rejects different memory caps" {
-    stock = results(False, {});
-    jac = results(True, {});
+    record = {"state": "passed", "detail": "", "cases": {}};
+    stock = results(False, {"test_a": record});
+    jac = results(True, {"test_a": record});
     validate_comparison_runs(stock, jac);
     jac["memlimit"] = "2.5Gb";
     caught = False;
@@ -137,6 +140,39 @@ test "comparison rejects different memory caps" {
         caught = True;
     }
     assert caught;
+}
+
+test "comparison rejects partial or mismatched suite inventories" {
+    record = {"state": "passed", "detail": "", "cases": {}};
+    stock = results(False, {"test_a": record});
+    jac = results(True, {"test_a": record});
+    jac["full_suite"] = False;
+    caught_partial = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught_partial = True;
+    }
+    assert caught_partial;
+
+    jac = results(True, {"test_b": record});
+    caught_mismatch = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught_mismatch = True;
+    }
+    assert caught_mismatch;
+
+    jac = results(True, {"test_a": record});
+    jac["module_names"] = ["test_a", "test_missing"];
+    caught_incomplete = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught_incomplete = True;
+    }
+    assert caught_incomplete;
 }
 
 test "only what stock CPython passes counts against JacPython" {
@@ -342,6 +378,21 @@ test "a cached archive that does not match the pin is fetched again" {
             }
         }
         assert fetched == [pin["url"], "refused"];
+    }
+}
+
+test "the pinned test tree replaces an existing interpreter test tree" {
+    with tempfile.TemporaryDirectory() as scratch {
+        base_dir = Path(scratch);
+        source = base_dir / "pinned" / "test";
+        target = base_dir / "runtime" / "test";
+        source.mkdir(parents=True);
+        target.mkdir(parents=True);
+        (source / "test_bool.py").write_text("pinned\n");
+        (target / "test_old.py").write_text("unverified\n");
+        replace_pinned_tree(source, target);
+        assert (target / "test_bool.py").read_text() == "pinned\n";
+        assert not (target / "test_old.py").exists();
     }
 }
 

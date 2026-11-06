@@ -252,6 +252,18 @@ def build_test_extensions(python: str, source_root: Path) {
     }
 }
 
+def replace_pinned_tree(source: Path, target: Path) {
+    if not source.is_dir() {
+        raise RuntimeError(f"pinned CPython test tree is missing: {source}");
+    }
+    if target.is_symlink() or target.is_file() {
+        target.unlink();
+    } elif target.exists() {
+        shutil.rmtree(target);
+    }
+    shutil.copytree(source, target);
+}
+
 def install_tests(python: str, cache: Path, test_extensions: bool = False) -> str {
     pin = pinned_cpython();
     version = probe(python, "import platform; print(platform.python_version())");
@@ -271,12 +283,6 @@ def install_tests(python: str, cache: Path, test_extensions: bool = False) -> st
         # compatibility-test interpreter tree.
         "Lib/pydoc_data/": stdlib / "pydoc_data"
     };
-    missing = {
-        prefix: target
-        for (prefix, target) in targets.items()
-        if not target.is_dir()
-            or (prefix == "Lib/test/" and not (target / "libregrtest").is_dir())
-    };
     suffix = probe(
         python, "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))"
     );
@@ -286,20 +292,22 @@ def install_tests(python: str, cache: Path, test_extensions: bool = False) -> st
             not (extension_dir / f"{name}{suffix}").is_file()
             for name in TEST_EXTENSIONS
         );
-    if not missing and not missing_extensions {
-        return version;
-    }
     archive = source_archive(cache);
     archive_prefix = f"Python-{pin['version']}/";
     with tempfile.TemporaryDirectory() as scratch {
         with tarfile.open(archive, mode="r:gz") as bundle {
             archive_members = bundle.getmembers();
-            for prefix in missing {
+            for prefix in targets {
                 members = [
                     m
                     for m in archive_members
                     if m.name.startswith(archive_prefix + prefix)
                 ];
+                if not members {
+                    raise RuntimeError(
+                        f"pinned CPython source archive has no {prefix} tree"
+                    );
+                }
                 bundle.extractall(scratch, members=members, filter="data");
             }
             if missing_extensions {
@@ -312,9 +320,9 @@ def install_tests(python: str, cache: Path, test_extensions: bool = False) -> st
                 bundle.extractall(scratch, members=module_members, filter="data");
             }
         }
-        for (prefix, target) in missing.items() {
+        for (prefix, target) in targets.items() {
             source = Path(scratch) / archive_prefix / prefix.rstrip("/");
-            shutil.copytree(source, target);
+            replace_pinned_tree(source, target);
         }
         if missing_extensions {
             build_test_extensions(python, Path(scratch) / archive_prefix);
@@ -324,13 +332,13 @@ def install_tests(python: str, cache: Path, test_extensions: bool = False) -> st
     return version;
 }
 
-def isolated_compatibility_runtime(python: Path, cache: Path) -> Path {
+def isolated_compatibility_runtime(python: Path, cache: Path, label: str) -> Path {
     prefix = Path(probe(str(python), "import sys; print(sys.prefix)")).resolve();
     executable = Path(
         probe(str(python), "import sys; print(sys.executable)")
     ).resolve();
     relative = executable.relative_to(prefix);
-    destination = cache.resolve().parent / "jacpython-compat-runtime";
+    destination = cache.resolve().parent / f"{label}-compat-runtime";
     shutil.rmtree(destination, ignore_errors=True);
     try {
         shutil.copytree(prefix, destination, copy_function=os.link);
@@ -532,12 +540,9 @@ def run(args: any) -> int {
             f"{python} is {'' if jacpython else 'not '}JacPython, but the label is {args.label}"
         );
     }
-    # Keep test C extensions and the upstream Lib/test tree out of the cached
-    # release prefix. Hardlinks make the temporary copy cheap; all additions
-    # happen in its private directories.
-    if jacpython {
-        python = str(isolated_compatibility_runtime(base_python, cache));
-    }
+    # Keep the pinned test corpus and test C extensions out of either cached
+    # interpreter prefix. Hardlinks make the disposable copies cheap.
+    python = str(isolated_compatibility_runtime(base_python, cache, args.label));
     version = install_tests(python, cache, jacpython);
     module_names = args.modules or list_modules(python, out / "work");
     jobs = args.jobs or os.cpu_count() or 1;
@@ -575,6 +580,8 @@ def run(args: any) -> int {
                 "jacpython": jacpython,
                 "resources": args.resources,
                 "memlimit": args.memlimit,
+                "full_suite": not bool(args.modules),
+                "module_names": sorted(module_names),
                 "seconds": round(time.monotonic() - started),
                 "modules": {
                     name: {
@@ -772,6 +779,22 @@ def validate_comparison_runs(stock: dict[str, any], jac: dict[str, any]) {
         raise RuntimeError(
             "compare needs stock CPython and JacPython results with matching "
                 + "version, resources, and memory cap"
+        );
+    }
+    if stock.get("full_suite") != True or jac.get("full_suite") != True {
+        raise RuntimeError("compare needs full-suite CPython and JacPython results");
+    }
+    stock_names = stock.get("module_names", []);
+    jac_names = jac.get("module_names", []);
+    if not stock_names
+        or not jac_names
+        or stock_names != sorted(stock_names)
+        or jac_names != sorted(jac_names)
+        or stock_names != sorted(stock["modules"])
+        or jac_names != sorted(jac["modules"])
+        or stock_names != jac_names {
+        raise RuntimeError(
+            "compare needs complete results with the same full-suite module inventory"
         );
     }
 }
