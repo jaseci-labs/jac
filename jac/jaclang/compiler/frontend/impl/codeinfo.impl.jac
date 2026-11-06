@@ -203,7 +203,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
         "pthread_setspecific sched_yield "
-        "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
+        "socket connect send recv getsockopt shutdown getaddrinfo freeaddrinfo gai_strerror "
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "
         "__jac_errno __jac_stdio __jac_platform_id __jac_stat __jac_opendir "
