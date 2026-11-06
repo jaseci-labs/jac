@@ -109,6 +109,13 @@ test "a second turn grows the same list and keeps every earlier message" {
         f"the pre-seeded message was dropped on turn 2: {contents}"
     );
     assert any("Paris" in c for c in contents) , f"turn 1's message was dropped: {contents}";
+
+    answers = [
+        m.get("content")
+        for m in by_role(history, "assistant")
+        if m.get("content")
+    ];
+    assert answers == [first, second] , f"each turn's answer must be saved: {answers}";
 }
 
 
@@ -145,9 +152,9 @@ def assert_written_back(label: str, history: list[dict[str, any]], answer: str) 
 }
 
 
-"""One streamed turn: a tool call, the finish call, then the answer."""
+"""One streamed turn: a tool call, then the finish call that carries the answer."""
 def _stream_replies(answer: str = "Paris is sunny right now.") -> list[any] {
-    return [call("get_weather", {"city": "Paris"}), finish(answer), say(answer)];
+    return [call("get_weather", {"city": "Paris"}), finish(answer)];
 }
 
 

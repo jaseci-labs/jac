@@ -36,7 +36,13 @@ def _turn(
             if mode == "streamed" {
                 out = "".join(out);
             } elif mode == "events" {
-                out = chunk_text(stream_events(out));
+                text = "";
+                for ev in stream_events(out) {
+                    text = ""
+                        if ev.event_type == "stream_reset"
+                        else text + chunk_text([ev]);
+                }
+                out = text;
             }
             return (out, conv);
         } except OutputTruncatedError as e {
@@ -87,9 +93,26 @@ test "a reply cut off at max_tokens never passes as a finished answer" {
             "partial answer",
             0
         ),
-        ("empty stop", [say("", finish_reason="stop")], "", 0)
+        ("empty stop", [say("", finish_reason="stop")], "", 0),
+        (
+            "cut-off finish_tool answer, after part of it streamed",
+            [
+                call(
+                    "finish_tool",
+                    {"final_output": "partial ans"},
+                    finish_reason="length"
+                ),
+                finish("saved it")
+            ],
+            {
+                "plain": "saved it",
+                "streamed": OutputTruncatedError,
+                "events": "saved it"
+            },
+            0
+        )
     ];
-    for (label, replies, expected, iters) in rows {
+    for (label, replies, by_mode, iters) in rows {
         modes = ["plain", "streamed", "events"];
         if not any(r.tool_calls for r in replies) {
             modes.append("async");
@@ -97,6 +120,7 @@ test "a reply cut off at max_tokens never passes as a finished answer" {
         for mode in modes {
             (answer, conv) = _turn(replies, mode, iters);
             where = f"{label} / {mode}";
+            expected = by_mode[mode] if isinstance(by_mode, dict) else by_mode;
             assert conv , f"{where}: conversation was not written back";
             if expected is OutputTruncatedError {
                 assert isinstance(answer, OutputTruncatedError)
@@ -104,7 +128,9 @@ test "a reply cut off at max_tokens never passes as a finished answer" {
             } else {
                 assert answer == expected , f"{where}: got {answer!r}";
             }
-            if replies[0].tool_calls and replies[0].finish_reason == "length" {
+            if replies[0].tool_calls
+                and replies[0].tool_calls[0].tool == "save_data"
+                and replies[0].finish_reason == "length" {
                 results = [
                     str(m.get("content"))
                     for m in conv
