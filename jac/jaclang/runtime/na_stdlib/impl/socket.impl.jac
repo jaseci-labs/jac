@@ -49,6 +49,9 @@ impl socket.connect(
     host = address[0];
     port = address[1];
     service = str(port);
+    effective_timeout: (float | None) = (
+        timeout if timeout is not None else self._timeout
+    );
     (addrs, rc) = resolve_all(host, service);
     if len(addrs) == 0 {
         raise OSError(
@@ -57,8 +60,8 @@ impl socket.connect(
     }
     for sa in addrs {
         fam = address_family(sa);
-        if fam == self.family and _connect_one(self, sa, timeout) {
-            self._timeout = timeout;
+        if fam == self.family and _connect_one(self, sa, effective_timeout) {
+            self._timeout = effective_timeout;
             return;
         }
     }

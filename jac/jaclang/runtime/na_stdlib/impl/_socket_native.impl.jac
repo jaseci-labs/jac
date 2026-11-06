@@ -44,9 +44,16 @@ impl sock_connect(fd: int, sa: bytes) -> int {
 }
 
 impl sock_error(fd: int) -> int {
+    import from platform { system }
     value: bytes = b"\x00" * 4;
     size: bytes = (4).to_bytes(4, "little");
-    rc = getsockopt(i32(fd), 1, 4, value, size);
+    level: int = 1;
+    option: int = 4;
+    if system() == "Darwin" {
+        level = 65535;
+        option = 4103;
+    }
+    rc = getsockopt(i32(fd), i32(level), i32(option), value, size);
     if rc < 0 {
         return last_errno();
     }

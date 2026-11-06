@@ -39,7 +39,7 @@ impl SSLSocket.send(data: bytes) -> int {
 
 impl SSLSocket.recv(bufsize: int) -> bytes {
     timeout = self._sock.gettimeout();
-    if timeout is not None {
+    if timeout is not None and ssl_pending(self._ssl) <= 0 {
         (readable, _writable, _exceptional) = select.select(
             [self.fileno()], [], [], timeout
         );

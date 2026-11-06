@@ -96,6 +96,10 @@ impl ssl_read(ssl: int, bufsize: int) -> bytes {
     return b"";
 }
 
+impl ssl_pending(ssl: int) -> int {
+    return int(SSL_pending(ssl));
+}
+
 impl ssl_close(ssl: int) {
     if ssl != 0 {
         SSL_shutdown(ssl);
