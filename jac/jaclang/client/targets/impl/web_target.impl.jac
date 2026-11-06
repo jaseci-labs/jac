@@ -8,7 +8,8 @@ import from typing { Optional, cast }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
-     JAC_LANG_ID = "jac";
+     JAC_LANG_ID = "jac",
+     PUBLIC_LEDGER = ".jac-public-files";
 
 def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
@@ -23,6 +24,8 @@ def _walk_public(
 ) -> None;
 
 def _public_files(public_dir: Path) -> list[tuple[str, Path]];
+
+def _clear_public_outputs(dist_dir: Path) -> None;
 
 def _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str];
 
@@ -141,6 +144,7 @@ impl WebTarget.build(
             clear_seo_files,
             scan_routes
         }
+        _clear_public_outputs(dist_dir);
         clear_seo_files(dist_dir);
         if seo_config.get('site_url') {
             base_path = bundler.config_loader.get_base_path();
@@ -220,9 +224,8 @@ impl _public_files(public_dir: Path) -> list[tuple[str, Path]] {
     return found;
 }
 
-impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
-    import shutil;
-    ledger = dist_dir / ".jac-public-files";
+impl _clear_public_outputs(dist_dir: Path) -> None {
+    ledger = dist_dir / PUBLIC_LEDGER;
     try {
         previous = ledger.read_text().splitlines();
     } except OSError {
@@ -242,6 +245,11 @@ impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
         }
     }
     ledger.unlink(missing_ok=True);
+}
+
+impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
+    import shutil;
+    ledger = dist_dir / PUBLIC_LEDGER;
     planned: dict[str, Path] = {};
     skipped: list[str] = [];
     for public_dir in public_dirs {

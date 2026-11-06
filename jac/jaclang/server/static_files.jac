@@ -54,7 +54,8 @@ glob ROOT_ASSET_EXTENSIONS: set[str] = DEFAULT_ASSET_EXTENSIONS
 glob SEO_ROOT_FILES: set[str] = {ROBOTS_PATH, SITEMAP_PATH};
 
 glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
-     _seo_logged: set[str] = set();
+     _seo_logged: set[str] = set(),
+     SEO_LOG_LIMIT: int = 32;
 
 def served_host(host: str) -> str;
 

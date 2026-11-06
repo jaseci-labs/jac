@@ -20,6 +20,8 @@ import from jaclang.project.client_paths { client_seo_config }
 import from jaclang.project.config { JacConfig, ServeConfigError }
 import from jaclang.server.static_files {
     DISALLOW_ALL_ROBOTS,
+    SEO_LOG_LIMIT,
+    _seo_logged,
     logger as serve_logger,
     robots_override
 }
@@ -239,7 +241,15 @@ test "robots.txt keeps protected routes out but never the bundle, stylesheet or 
 
 test "[client.seo] needs an absolute http(s) site_url and lists of strings" {
     assert normalized_site_url("https://example.org/") == SITE;
-    for bad in ["example.org", "/docs", "ftp://example.org", "https://"] {
+    for bad in [
+        "example.org",
+        "/docs",
+        "ftp://example.org",
+        "https://",
+        "https://example.org/#home",
+        "https://example.org/?ref=a",
+        "https://example.org?"
+    ] {
         try {
             normalized_site_url(bad);
             assert False , f"accepted site_url {bad!r}";
@@ -301,6 +311,12 @@ test "robots.txt on a host other than site_url disallows everything" {
     }
     assert warning.call_count == 1 , warning.call_args_list;
     assert "once.preview.example.net" in str(warning.call_args) , warning.call_args;
+    for n in range(SEO_LOG_LIMIT + 5) {
+        robots_override(SITE, f"pr-{n}.flood.example.net", []);
+    }
+    assert len(_seo_logged) <= SEO_LOG_LIMIT , (
+        f"every new Host is remembered: {len(_seo_logged)} entries"
+    );
 }
 
 test "a build with site_url writes robots.txt and sitemap.xml from its pages" {
@@ -371,6 +387,10 @@ test "a rebuild drops the robots.txt and sitemap.xml the last build generated" {
             "the hand-written robots.txt did not replace the last build's generated one"
         );
         (project_dir / "public" / "robots.txt").unlink();
+        dist = build_web(project_dir, entry_path);
+        assert f"Sitemap: {SITE}/sitemap.xml" in (dist / "robots.txt").read_text() , (
+            "removing the hand-written robots.txt did not bring the generated one back"
+        );
         (project_dir / "jac.toml").write_text(
             '[project]\nname = "site"\nkind = "web-app"\n'
         );

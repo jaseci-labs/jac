@@ -2,10 +2,14 @@ impl normalized_site_url(site_url: str) -> str {
     import from urllib.parse { urlparse }
     value = site_url.strip();
     parsed = urlparse(value);
-    if parsed.scheme not in ("http", "https") or not parsed.hostname {
+    if parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.query
+        or parsed.fragment
+        or value.endswith(("?", "#")) {
         raise RuntimeError(
-            "[client.seo] site_url must be an absolute http(s) URL such as "
-            f"'https://example.org', got '{site_url}'."
+            "[client.seo] site_url must be an absolute http(s) URL with no query "
+            f"or fragment, such as 'https://example.org', got '{site_url}'."
         );
     }
     return value.rstrip("/");

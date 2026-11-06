@@ -217,7 +217,7 @@ impl robots_override(site_url: str, host: str, site_hosts: list[str]) -> (str | 
     if name and name in {canonical} | {served_host(h) for h in site_hosts} {
         return None;
     }
-    if name not in _seo_logged {
+    if name not in _seo_logged and len(_seo_logged) < SEO_LOG_LIMIT {
         _seo_logged.add(name);
         logger.warning(
             f"/robots.txt on host {host!r} answers 'Disallow: /': it is not the "
@@ -242,7 +242,7 @@ impl robots_response(
     try {
         seo = client_seo_config(get_config_for_dir(str(base)), entry_path);
     } except ServeConfigError as err {
-        if str(err) not in _seo_logged {
+        if str(err) not in _seo_logged and len(_seo_logged) < SEO_LOG_LIMIT {
             _seo_logged.add(str(err));
             logger.error(f"/robots.txt is served as built: {err}");
         }
