@@ -2683,7 +2683,7 @@ graph import {
             | data.contracts
             | data.schema_rules
             | data.serializer
-            | project.config.apply_table
+            | project.config._walk_table
             | server.serving.model
             | server.settings { fields, is_record },
         byllm.schema | server.serving.coerce { is_record },
@@ -14926,10 +14926,13 @@ graph import project {
         modresolver._resolve_path_alias { get_config },
     ]
     type config ++> client_paths { JacConfig }
-    config_schema ++> plugin_config.PluginConfigBase._validate_layer {
-        report_schema_findings,
-        validate_against_schema
-    }
+    config_schema ++> [
+        config._walk_table { closest_key },
+        plugin_config.PluginConfigBase._validate_layer {
+            report_schema_findings,
+            validate_against_schema
+        },
+    ]
     dependencies ++> [
         config { PackageDep },
         config.JacConfig.merge_dependency_tables { split_dependency_table },
