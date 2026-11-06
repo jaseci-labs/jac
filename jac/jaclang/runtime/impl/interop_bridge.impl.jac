@@ -61,7 +61,31 @@ impl NativeLibrary.initialize -> None {
     self.initialized = True;
 }
 
-impl _pyb_import_module(mod_path: str, package: str) -> object {
+impl _pyb_import_module(mod_path: str) -> object {
+    import os;
+    key = os.path.abspath(mod_path);
+    cached = _pyb_module_memo.get(key);
+    if cached is not None {
+        return cached;
+    }
+    import sys;
+    stem = os.path.splitext(os.path.basename(key))[0];
+    existing = sys.modules.get(stem);
+    if (
+        existing is not None
+        and os.path.abspath(getattr(existing, "__file__", "") or "") == key
+    ) {
+        _pyb_module_memo[key] = existing;
+        return existing;
+    }
+    import from jaclang.runtime.runtime { JacModule }
+    mods = JacModule.jac_import(target=stem, base_path=os.path.dirname(key));
+    mod = mods[0] if isinstance(mods, tuple) else mods;
+    _pyb_module_memo[key] = mod;
+    return mod;
+}
+
+impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     import os;
     key = os.path.abspath(mod_path);
     cache_key = key + "|" + package;
@@ -119,7 +143,7 @@ impl pyb_mirror_member(mod_path: str, name: str, package: str) -> object {
     attributes. Server-side modules that import a native-owned Jac module
     therefore resolve the member from the module's Python image explicitly.
     """
-    member = getattr(_pyb_import_module(mod_path, package), name, None);
+    member = getattr(_pyb_mirror_module(mod_path, package), name, None);
     if member is None {
         raise AttributeError(
             f"native-placed module '{mod_path}' exposes no '{name}' "

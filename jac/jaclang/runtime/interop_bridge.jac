@@ -37,7 +37,9 @@ glob CALLBACK_VOID_RETURNS: tuple[str, ...] = ('None', 'void'),
      _pyb_class_memo: dict[(tuple[any, ...], type)] = {},
      _pyb_module_memo: dict[(str, object)] = {};
 
-def _pyb_import_module(mod_path: str, package: str) -> object;
+def _pyb_import_module(mod_path: str) -> object;
+
+def _pyb_mirror_module(mod_path: str, package: str) -> object;
 
 def pyb_mirror_member(mod_path: str, name: str, package: str) -> object;
 
