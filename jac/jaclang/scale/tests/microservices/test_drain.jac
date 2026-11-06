@@ -134,6 +134,7 @@ test "start runs the drain hooks once, past one that raises or exits" {
         state = DrainState();
         state.start("test");
         state.start("again");
+        state.wait_for_hooks();
         assert seen == ["first", "last"];
     } finally {
         DRAIN_HOOKS.clear();

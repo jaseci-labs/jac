@@ -1,5 +1,6 @@
 """Records each `on_drain` hook with the pid that ran it, in the file HOOK_MARK names."""
 
+import asyncio;
 import os;
 
 def _mark(stage: str) {
@@ -11,6 +12,12 @@ def _mark(stage: str) {
 @on_drain
 def stop_background_work {
     _mark("decorated");
+}
+
+@on_drain
+async def flush_async {
+    await asyncio.sleep(0);
+    _mark("async");
 }
 
 with entry {

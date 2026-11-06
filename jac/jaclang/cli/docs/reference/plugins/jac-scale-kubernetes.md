@@ -915,9 +915,11 @@ with entry {
 }
 ```
 
-Drain hooks run in the order they were registered, when the server starts draining and before it waits on in-flight requests, so keep them short: set a flag, stop a loop. A hook that raises is logged and the others still run.
+Drain hooks start when the server starts draining. They run on their own thread, in the order they were registered, alongside the requests still in flight, and a coroutine function is awaited. The server waits for them up to what is left of `[serve.timeouts] drain`, so a hook slower than that is cut off at exit. A hook that raises is logged and the others still run.
 
-With `[serve.workers] count` above one, hooks registered while the app loads run in the supervisor, where threads started at load time live, and forked workers do not inherit them.
+With `[serve.workers] count` above one, hooks registered while the app loads run in the supervisor, where threads started at load time live, and forked workers do not inherit them. Requests run in the workers, so a load-time hook cannot see what they changed: one that flushes a buffer finds it empty in the supervisor, and the workers' copies are never flushed. To run a hook in a worker, call `on_drain` from code that runs there, such as a walker.
+
+---
 
 ## Health Checks
 

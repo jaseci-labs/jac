@@ -6,14 +6,30 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
     self.started_at = time.monotonic();
     self.reason = reason;
     logger.warning(f"drain: started ({reason}, budget {self.timeout:.1f}s)");
+    self.hooks_thread = threading.Thread(
+        target=_run_drain_hooks, name='jac-drain-hooks', daemon=True
+    );
+    self.hooks_thread.start();
+    return True;
+}
+
+impl _run_drain_hooks {
     for hook in list(DRAIN_HOOKS) {
         try {
-            hook();
+            result = hook();
+            if inspect.iscoroutine(result) {
+                asyncio.run(result);
+            }
         } except BaseException {
             logger.exception("drain hook failed");
         }
     }
-    return True;
+}
+
+impl DrainState.wait_for_hooks {
+    if self.hooks_thread is not None {
+        self.hooks_thread.join(timeout=self.remaining());
+    }
 }
 
 impl DrainState.remaining -> float {
