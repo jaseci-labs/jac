@@ -259,8 +259,7 @@ def _runtime_dep_app -> Path {
     );
     (base / "shared.jac").write_text("def word -> str { return \"pong\"; }\n");
     (base / "svc.jac").write_text(
-        "import from shared { word }\n"
-            + "def:pub ping -> str { return word(); }\n"
+        "import from shared { word }\n" + "def:pub ping -> str { return word(); }\n"
     );
     return base;
 }

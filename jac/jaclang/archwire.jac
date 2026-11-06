@@ -1654,14 +1654,16 @@ graph import {
         client.js_runtime.BunArtifact.build { fetch_bun },
         compiler.types.stubcat.locate.TypeshedArtifact.build { fetch_typeshed },
     ]
-    dist.precompile_bytecode ++> cli.commands.precompile.precompile { run_precompile }
+    dist.precompile_bytecode ++> [
+        cli.commands.precompile.precompile { run_precompile },
+        scale.injector.bundle.pack_jab { RESULT_NAME },
+    ]
     dist.precompile_bytecode --> scale.tests.microservices.test_app_precompile {
         main as seal_main,
         placement_facts_map,
         sealable_sources
     }
     dist.precompile_bytecode as precompiler --> scale.tests.microservices.test_app_precompile;
-    dist.precompile_bytecode ++> scale.injector.bundle.pack_jab { RESULT_NAME }
     dist.publish.builder ++> cli.commands.project._bundle_wheel { WheelBuilder }
     dist.publish.builder --> cli.commands.project.install { WheelBuilder }
     dist.publish.npm_builder ++> cli.commands.project._bundle_npm { NpmBuilder }
