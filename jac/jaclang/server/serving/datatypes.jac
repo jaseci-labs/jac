@@ -1,6 +1,7 @@
 import mimetypes;
 import os;
 import from json { dumps, loads }
+import from math { isfinite }
 import from urllib.parse { parse_qs, quote }
 
 
@@ -93,6 +94,8 @@ obj Request {
 def _normalize_headers(headers: any) -> Headers;
 
 def _json_default(o: any) -> str;
+
+def _json_safe(value: any) -> any;
 
 class Response {
     def init(
