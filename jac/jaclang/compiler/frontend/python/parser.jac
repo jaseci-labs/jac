@@ -22887,6 +22887,24 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
             rule_statement_newline(p);
         }
     }
+    if p.tok.paren_stack
+        and p.tok.error is None
+        and not p.tok.string_modes
+        and not p.tok.extra_tokens {
+        opener = p.tok.paren_stack[-1];
+        location = p.tok.paren_locations[-1];
+        raise_source_error(
+            p,
+            syntax_failure(
+                "'" + opener + "' was never closed",
+                filename=p.filename,
+                lineno=location[0],
+                offset=location[1] + 1,
+                end_lineno=location[0],
+                end_offset=location[1] + 2
+            )
+        );
+    }
     kind = "SyntaxError";
     message = "invalid syntax";
     if first_bad is not None and first_bad.tok_type in (INDENT, DEDENT) {

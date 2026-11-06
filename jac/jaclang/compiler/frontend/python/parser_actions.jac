@@ -1736,6 +1736,9 @@ def pa_raise_syntax(p: peg_parser, on_next: bool, message: str) -> None {
     if peg_has_error(p) {
         return None;
     }
+    if "%d" in message and p.mark > 0 {
+        message = message.replace("%d", str(p.tokens[p.mark - 1].lineno));
+    }
     peg_raise_syntax_error(p, on_next, message);
     return None;
 }
