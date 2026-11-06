@@ -115,7 +115,14 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
             }
 
             binding.type = UnknownType(is_diagnosed=True);
-            self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            if self._relative_import_must_resolve(import_node.from_loc) {
+                sep = "" if from_mod_name.endswith(".") else ".";
+                self.emit_diag(
+                    E1134, binding, module=f"{from_mod_name}{sep}{item_name}"
+                );
+            } else {
+                self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            }
             return binding.type;
         } else {
             if not isinstance(from_mod_type, ModuleType) {
