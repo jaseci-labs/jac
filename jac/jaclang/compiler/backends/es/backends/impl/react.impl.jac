@@ -296,10 +296,8 @@ impl ReactBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expr
 
 impl ReactBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     setter_arg: es.Expression = u.value;
-    if u.aug_op {
-        setter_arg = es.BinaryExpression(
-            operator=u.aug_op, left=self.lower_state_read(u.name), right=u.value
-        );
+    if u.combine {
+        setter_arg = u.combine(self.lower_state_read(u.name));
     }
     return es.CallExpression(
         callee=self._state_cell_member(u.name, 'set'), arguments=[setter_arg]

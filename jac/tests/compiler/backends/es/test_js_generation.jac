@@ -5,6 +5,7 @@ Migrated from test_js_generation.py to native Jac test format.
 
 import json;
 import os;
+import re;
 import shutil;
 import subprocess;
 import sys;
@@ -32,6 +33,7 @@ import from jaclang.compiler.backends.es.primitives_es { ESDictEmitter, ESEmitCt
 import from jaclang.compiler.backends.es.js_paths { convert_to_js_import_path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -1390,6 +1392,91 @@ test "tuple assignment targets destructure with a rest pattern" {
     } finally {
         os.unlink(temp_path);
     }
+}
+
+test "a star before the last target unpacks plain locals like Python under node" {
+    prog = JacProgram();
+    module = prog.compile(
+        "mid_star_locals.jac",
+        use_str="""
+def middle(items: list[int]) -> list[any] {
+    (a, *mid, b) = items;
+    return [a, mid, b];
+}
+
+def nested(items: list[any]) -> list[any] {
+    (head, (x, *inner, y), *tail, last) = items;
+    return [head, x, inner, y, tail, last];
+}
+
+def as_list(items: list[int]) -> list[any] {
+    [*front, c, d] = items;
+    return [front, c, d];
+}
+
+def closures -> list[any] {
+    fns = [];
+    for (h, *mid, l) in [[1, 2, 3], [4, 5, 6]] {
+        fns.append(lambda { return mid; });
+    }
+    return [f() for f in fns];
+}
+
+def after_loop -> list[any] {
+    for (h, *mid, l) in [[1, 2, 3], [4, 5, 6]] {
+    }
+    return [h, mid, l];
+}
+
+def outer_rows -> list[any] {
+    rows = [0, 0];
+    for (x, *m, rows[0]) in [[1, 2, 3]] {
+    }
+    return rows;
+}
+
+def repeated -> list[any] {
+    seen = [];
+    for (x, *mid, x) in [[1, 2, 3]] {
+        seen.append(x);
+    }
+    return seen;
+}
+
+def probe -> list[any] {
+    return [
+        middle([1, 2, 3, 4]),
+        middle([1, 2]),
+        nested([0, [1, 2, 3, 4], 5, 6, 7]),
+        as_list([1, 2, 3]),
+        closures(),
+        after_loop(),
+        outer_rows(),
+        repeated()
+    ];
+}
+""",
+        options=CompileOptions(force_codespace="client", no_cgen=True)
+    );
+    run_pass(EsastGenPass, module, prog);
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    js_code = module.gen.js;
+    assert re.search(r"\.\.\.\w+\s*,", js_code) is None , (
+        f"a rest element must be the last element:\n{js_code}"
+    );
+    result = run_js_module(js_code + "\nconsole.log(JSON.stringify(probe()));");
+    assert result.returncode == 0 , f"{result.stderr}\njs:\n{js_code}";
+    assert json.loads(result.stdout.strip())
+        == [
+            [1, [2, 3], 4],
+            [1, [], 2],
+            [0, 1, [2, 3], 4, [5, 6], 7],
+            [[1], 2, 3],
+            [[2], [5]],
+            [4, [5], 6],
+            [3, 0],
+            [3]
+        ] , result.stdout;
 }
 
 # ============================================================================

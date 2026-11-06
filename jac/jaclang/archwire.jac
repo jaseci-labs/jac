@@ -8378,6 +8378,7 @@ graph import compiler {
             TryStmt,
             TupleVal,
             TypeAlias,
+            UnaryExpr,
             UniNode,
             WhileStmt,
             WithStmt,

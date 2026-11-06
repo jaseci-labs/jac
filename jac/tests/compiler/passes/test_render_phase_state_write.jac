@@ -21,12 +21,13 @@ test "render-phase state writes are rejected, deferred writes are legal" {
         for e in prog.errors_had
         if "E0082" in e.pretty_print()
     ];
-    assert len(hits) == 2 , (
-        f"expected exactly the two direct body writes to E0082, got "
+    assert len(hits) == 6 , (
+        f"expected the two direct body writes, both fields of the tuple write, the loop "
+        f"target and the walrus, got "
         f"{len(hits)}: {[e.pretty_print() for e in prog.errors_had]}"
     );
     lines = sorted([e.loc.first_line for e in hits]);
-    assert lines == [13, 15] , (
-        f"E0082 must anchor the two body writes (lines 13 and 15), got {lines}"
+    assert lines == [13, 15, 60, 60, 61, 62] , (
+        f"E0082 must anchor the body writes (lines 13, 15, 60, 61 and 62), got {lines}"
     );
 }
