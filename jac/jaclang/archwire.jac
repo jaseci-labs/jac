@@ -7262,6 +7262,7 @@ graph import compiler {
             E1161,
             E1162,
             E1163,
+            E1164,
             E2015,
             W1036,
             W1037,
@@ -8993,7 +8994,8 @@ graph import compiler {
             UniNode,
             UniScopeNode,
             WhileStmt,
-            in_type_position
+            in_type_position,
+            names_except_type
         },
         passes.static_analysis_pass.StaticAnalysisPass._check_undefined_names {
             JsxElementName
@@ -9122,6 +9124,7 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
+            names_except_type,
             type_only_import_of,
             type_param_of
         },

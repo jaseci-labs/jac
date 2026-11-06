@@ -35,6 +35,18 @@ impl TypeCheckPass.exit_name with Name exit {
         if isinstance(here.parent, ModuleCode) and here.parent.name is here {
             return;
         }
+        if names_except_type(here) {
+            self.evaluator._diagnostic_suppression_depth += 1;
+            try {
+                name_type = self.evaluator.get_type_of_expression(here);
+            } finally {
+                self.evaluator._diagnostic_suppression_depth -= 1;
+            }
+            if isinstance(name_type, UnknownType) {
+                here.type = UnknownType(is_diagnosed=True);
+            }
+            return;
+        }
         self.evaluator.get_type_of_expression(here);
     }
     if here.sym is not None {
@@ -2172,10 +2184,16 @@ impl TypeCheckPass.exit_except with Except exit {
             if isinstance(member, UnaryExpr) and member.op.name == Tok.STAR_MUL {
                 continue;
             }
+            if isinstance(member, Name) {
+                param = type_param_of(member);
+                if param is not None and not param.is_comptime {
+                    continue;
+                }
+            }
             member_type = self.evaluator.get_type_of_expression(member);
             allow_tuple = not isinstance(handler, TupleVal);
             if not self._is_exception_class_operand(member_type, allow_tuple) {
-                self.ctx.emit(E1162, node_override=member, type=str(member_type));
+                self.ctx.emit(E1164, node_override=member, type=str(member_type));
             }
         }
     }

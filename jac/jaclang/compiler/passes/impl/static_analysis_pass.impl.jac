@@ -193,7 +193,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             }
         }
 
-        if self._names_except_type(name_nd) {
+        if names_except_type(name_nd) {
             self.ctx.emit(E2001, node_override=name_nd, name=name_nd.value);
             continue;
         }
@@ -236,20 +236,6 @@ impl StaticAnalysisPass._enclosing_class_member(name_nd: Name) -> (str | None) {
         cur = cur.decl_parent;
     }
     return None;
-}
-
-impl StaticAnalysisPass._names_except_type(name_nd: Name) -> bool {
-    site: UniNode = name_nd;
-    while isinstance(site.parent, AtomUnit) {
-        site = site.parent;
-    }
-    if isinstance(site.parent, TupleVal) {
-        site = site.parent;
-        while isinstance(site.parent, AtomUnit) {
-            site = site.parent;
-        }
-    }
-    return isinstance(site.parent, Except) and site.parent.ex_type is site;
 }
 
 impl StaticAnalysisPass._literal_case_suggestion(name: str) -> (str | None) {

@@ -139,19 +139,19 @@ def catch_starred_tuple {
 def catch_non_exception_class {
     try {
         raise ValueError("x");
-    } except NotAnError {}  # <-- E1162
+    } except NotAnError {}  # <-- E1164
 }
 
 def catch_exception_instance(e: ValueError) {
     try {
         raise ValueError("y");
-    } except e {}  # <-- E1162
+    } except e {}  # <-- E1164
 }
 
 def catch_int_in_tuple {
     try {
         raise ValueError("z");
-    } except (ValueError, 5) {}  # <-- E1162
+    } except (ValueError, 5) {}  # <-- E1164
 }
 
 def catch_undefined_name {
@@ -183,11 +183,23 @@ def catch_parenthesized_undefined {
 def catch_function {
     try {
         raise ValueError("f");
-    } except not_a_handler {}  # <-- E1162
+    } except not_a_handler {}  # <-- E1164
 }
 
 def catch_nested_tuple {
     try {
         raise ValueError("n");
-    } except (ValueError, (TypeError, )) {}  # <-- E1162
+    } except (ValueError, (TypeError, )) {}  # <-- E1164
+}
+
+def catch_type_param[T: Exception](e: T) {
+    try {
+        raise ValueError("p");
+    } except T {}  # <-- E1163
+}
+
+def catch_type_param_in_tuple[T: Exception](e: T) {
+    try {
+        raise ValueError("q");
+    } except (KeyError, T) {}  # <-- E1163
 }

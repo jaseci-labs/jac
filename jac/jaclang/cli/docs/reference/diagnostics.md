@@ -328,7 +328,7 @@ A `Final` field with no value is set exactly once, by the first write in its obj
 |------|---------|
 | `E1090` | Cannot raise {type} (not an exception type) |
 | `E1161` | Cannot use {type} as an exception cause (not an exception type or None) |
-| `E1162` | Cannot catch {type} (not an exception class) |
+| `E1164` | Cannot catch {type} (not an exception class) |
 | `E1091` | Type {type} cannot be used in 'with' statement (no \_\_enter\_\_ method) |
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |

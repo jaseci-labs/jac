@@ -616,8 +616,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot use {type} as an exception cause (not an exception type or None)"
      ),
-     E1162 = _err(
-         "E1162",
+     E1164 = _err(
+         "E1164",
          Category.TYPE,
          "Cannot catch {type} (not an exception class)",
          help="An except clause names the exception classes it handles, alone or in a tuple; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`."
@@ -1553,7 +1553,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2001",
          Category.SEMANTIC,
          "Name '{name}' in an except clause is not defined",
-         help="An except clause names the exception classes it handles; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`."
+         help="An except clause names the exception classes it handles; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`. In client code, a JavaScript-only class such as `DOMException` or `Error` is not a name the checker knows: `except Exception as e` catches it, and `e.name` tells which one it is."
      ),
      W2001 = _warn("W2001", Category.SEMANTIC, "Name '{name}' may be undefined"),
      W2002 = _warn("W2002", Category.SEMANTIC, "Unreachable code detected"),
