@@ -76,6 +76,13 @@ impl _portable_manifest(manifest: dict[str, any]) -> dict[str, any] {
 }
 
 impl build_serve_manifest(
+    entry_file: Path, proj_root: Path
+) -> (dict[str, any] | None) {
+    prepared = prepare_serve_payloads(entry_file, proj_root);
+    return prepared[0] if prepared is not None else None;
+}
+
+impl prepare_serve_payloads(
     entry_file: Path, proj_root: Path, client: bool = False
 ) -> (tuple[dict[str, any], str] | None) {
     program = JacProgram();
@@ -98,6 +105,10 @@ impl build_serve_manifest(
             client=client,
             dev=False if client else None
         );
+        bundled = prepared.client_compiler if client else None;
+        if bundled is not None {
+            bundled.vite_bundler.build(entry_file=bundled.compiled_dir / '_entry.js');
+        }
         result = _portable_manifest(prepared.manifests[str(entry_file.resolve())]);
         result['module_manifests'] = {
             os.path.relpath(path, prepared.root).replace(os.sep, '/'): _portable_manifest(
@@ -187,7 +198,7 @@ impl bake_serve_payloads(
     }
 
     Jac.set_full_target_path(str(entry_file));
-    built = build_serve_manifest(entry_file, Path(config.project_root), bake_client);
+    built = prepare_serve_payloads(entry_file, Path(config.project_root), bake_client);
     if built is None {
         return False;
     }

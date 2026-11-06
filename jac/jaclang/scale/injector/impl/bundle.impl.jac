@@ -968,6 +968,7 @@ impl seal_input_digest(
     ];
     if bake_client {
         parts.append("client");
+        parts.extend(client_build_env());
     }
     return _input_digest(base, sources, seal_binary, parts, tomls);
 }

@@ -494,9 +494,9 @@ graph import {
     client.targets.web_target ++> dist.seal.ensure_client_dist
         | dist.seal.finish_prepared_client { WebTarget }
     client.vite_bundler ++> [
-        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
-            client_build_env
-        },
+        dist.seal.sealed_image_key
+            | scale.injector.bundle.client_input_digest
+            | scale.injector.bundle.seal_input_digest { client_build_env },
         dist.source.client.write_client { ViteBundler },
     ]
     client.vite_bundler --> [
@@ -665,7 +665,7 @@ graph import {
         boundary_audit
     }
     compiler.driver.application ++> cli.commands.execution._load_executable
-        | dist.seal.build_serve_manifest
+        | dist.seal.prepare_serve_payloads
         | dist.source.project.export_project
         | scale.tests.data.test_eager_spawn
         | scale.tests.microservices.test_microservice
@@ -2137,7 +2137,7 @@ graph import {
             | client.artifact.client_output_dir
             | client.serving
             | dist.precompile_bytecode.app_metadata
-            | dist.seal.build_serve_manifest
+            | dist.seal.prepare_serve_payloads
             | scale.config.dev_config.local_pod_binary
             | scale.injector.bundle._project_config { get_config_for_path },
         cli.commands.execution._pin_run_scope {
@@ -3634,7 +3634,7 @@ graph import {
             gateway_colocates as _gateway_colocates,
             service_apps as _service_apps
         },
-        dist.seal.build_serve_manifest { service_apps },
+        dist.seal.prepare_serve_payloads { service_apps },
         dist.source.project.export_project { gateway_colocates, service_apps },
     ]
     server.assembly --> [
@@ -3844,7 +3844,7 @@ graph import {
         },
         dist.precompile_bytecode.seal_runtime_closure { SERVE_MANIFEST_REL },
         dist.seal.bake_serve_payloads { CLIENT_DIST_REL, SERVE_MANIFEST_REL },
-        dist.seal.build_serve_manifest { serve_manifest_stamp },
+        dist.seal.prepare_serve_payloads { serve_manifest_stamp },
     ]
     server.sealed_serve --> [
         compiler.driver.application.prepare_application {
