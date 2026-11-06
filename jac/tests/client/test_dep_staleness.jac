@@ -101,17 +101,18 @@ test "dev server re-syncs node_modules after a jac.toml dependency edit" {
 }
 
 
-test "an install passes min_release_age_days and its excludes to bun" {
+test "an install passes the app's min_release_age_days and excludes to bun" {
     import json;
     import from unittest.mock { patch }
     base = Path(tempfile.mkdtemp(prefix="jacage_"));
     (base / "jac.toml").write_text(
-        '[project]\nname = "app"\nversion = "0.1.0"\n\n[client.npm]\n'
-        'min_release_age_days = 0.5\nmin_release_age_excludes = ["react"]\n'
+        '[project]\nname = "app"\nversion = "0.1.0"\n\n[apps.web]\nkind = "web-app"\n'
+        'entry-point = "web.main"\n\n[client.npm]\nmin_release_age_days = 0.5\n'
+        'min_release_age_excludes = ["react"]\n\n[apps.web.client.npm]\n'
+        'min_release_age_days = 0\nmin_release_age_excludes = ["vite"]\n'
     );
-    build_dir = base / "client";
-    (build_dir / "configs").mkdir(parents=True);
-    (build_dir / "configs" / "package.json").write_text(json.dumps({"name": "app"}));
+    (base / "web").mkdir();
+    (base / "web" / "main.jac").write_text("");
     seen: list[tuple[list[str], str]] = [];
     def bun(argv: list[str], **kwargs: any) -> any {
         seen.append((argv[1:], (Path(kwargs["cwd"]) / "bunfig.toml").read_text()));
@@ -122,18 +123,29 @@ test "an install passes min_release_age_days and its excludes to bun" {
         }
         return _Done();
     }
-    with patch("subprocess.run", side_effect=bun) {
-        ViteBundler(base).install_packages(
-            install_dir=build_dir, force=True, capture_output=True
+    for app_entry in ["", str(base / "web" / "main.jac")] {
+        build_dir = base / "client";
+        (build_dir / "configs").mkdir(parents=True, exist_ok=True);
+        (build_dir / "configs" / "package.json").write_text(
+            json.dumps({"name": "app"})
         );
+        with patch("subprocess.run", side_effect=bun) {
+            ViteBundler(base, entry_path=app_entry).install_packages(
+                install_dir=build_dir, force=True, capture_output=True
+            );
+        }
+        assert not (build_dir / "bunfig.toml").exists() , "bunfig.toml left behind";
     }
     assert seen
         == [
             (
                 ["install", "--minimum-release-age=43200"],
                 '[install]\nminimumReleaseAgeExcludes = ["react"]\n'
+            ),
+            (
+                ["install", "--minimum-release-age=0"],
+                '[install]\nminimumReleaseAgeExcludes = ["vite"]\n'
             )
         ] , seen;
-    assert not (build_dir / "bunfig.toml").exists() , "bunfig.toml left behind";
     shutil.rmtree(base);
 }

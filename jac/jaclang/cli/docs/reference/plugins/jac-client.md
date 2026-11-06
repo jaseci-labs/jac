@@ -1413,7 +1413,7 @@ min_release_age_days = 3                          # 0 turns it off
 min_release_age_excludes = ["react", "vite@7.1.2"] # a package name, or name@version for one version
 ```
 
-If the only version that matches a dependency is too new, for example when you pin a version released today, the install fails with a `minimum-release-age` error. Add that package to `min_release_age_excludes` to install it anyway. Both settings apply to every install in the project, including desktop and mobile setup, and `jac install --npm --global` uses the project it is run from. If the install folder already has its own `bunfig.toml`, Jac leaves it alone and does not add the excludes to it.
+If the only version that matches a dependency is too new, for example when you pin a version released today, the install fails with a `minimum-release-age` error. Add that package to `min_release_age_excludes` to install it anyway. Both settings apply to every install in the project, including desktop and mobile setup, and `jac install --npm --global` uses the project it is run from. A client build also honours an app's own `[apps.<name>.client.npm]` values. If the install folder already has its own `bunfig.toml`, Jac leaves it alone and does not add the excludes to it.
 
 ### Import Path Aliases
 

@@ -2146,7 +2146,7 @@ graph import {
         cli.commands.project._create_body { find_project_root },
         cli.mcp.mode { JacConfig, get_config, set_config },
         client.cli.get_config { get_config as _get_config },
-        client.js_runtime.release_age_settings
+        client.js_runtime._project_npm
             | client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
             | client.targets.react_native.scaffold._project_native_deps
             | scale.config.app_config
@@ -5143,12 +5143,13 @@ graph import client {
     jac_to_js ++> jac_client_compiler { JacToJSCompiler }
     js_engine --> js_runtime.js_runtime_path { node_executable }
     js_runtime ++> [
-        cli.run_npm_add_global | targets.node_tooling_common | vite_bundler {
+        cli.run_npm_add_global | targets.node_tooling_common {
             js_runtime_path,
             run_pm
         },
         js_engine.node_executable { ensure_node_link },
         npm_provider.regenerate_and_install { js_runtime_path },
+        vite_bundler { js_runtime_path, release_age_settings, run_pm },
     ]
     npm_provider ++> [
         client_deps._default_client_deps {

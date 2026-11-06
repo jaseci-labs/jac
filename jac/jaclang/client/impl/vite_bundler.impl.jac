@@ -232,7 +232,10 @@ impl ViteBundler.install_packages(
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
         (returncode, error_output) = run_pm(
-            ['install'], str(build_dir), capture=capture_output
+            ['install'],
+            str(build_dir),
+            capture=capture_output,
+            release_age=release_age_settings(self.config_loader.get_npm_config())
         );
         elapsed = time.time() - start_time;
         if returncode != 0 {
