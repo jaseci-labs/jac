@@ -207,3 +207,16 @@ test "shortcoming_34_never_calls_end_control_flow" {
     assert any("'conditional'" in message for message in implicit);
     assert any("'ordinary'" in message for message in implicit);
 }
+
+test "a type parameter cannot be used as a value" {
+    program = compile_and_check("checker_bug_type_param_value.jac");
+    found = {
+        (e.code.code, e.loc.first_line)
+        for e in program.errors_had
+        if e.code
+    };
+    expected = {("E1163", line) for line in (48, 52, 56, 60, 64, 69, 73, 78, 83, 87)};
+    assert found == expected , f"expected {sorted(expected)}, got {sorted(found)}";
+    messages = [str(e) for e in program.errors_had];
+    assert all("'T' is a type parameter" in m for m in messages) , messages;
+}
