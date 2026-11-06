@@ -35,15 +35,15 @@ import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline { PassKind, product_passes }
 import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
     ProductRequest
 }
 
 """The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
-def codegen_lane(native: bool) -> list[type] {
-    lane: list[type] = [];
+def codegen_lane(native: bool) -> list[PassKind] {
+    lane: list[PassKind] = [];
     for product in (
         CompilationProduct.CODEGEN,
         CompilationProduct.PY_IR,
@@ -927,11 +927,11 @@ with entry {
     assert mod.gen.jcir , "a compiled module must carry its codegen container";
     assert mod.gen.py_bytecode;
     sched = codegen_lane(False);
-    assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
-    assert JcirBytecodeGenPass not in sched;
+    assert PassKind.JCIR_GEN in sched , f"jcir is not in the codegen schedule: {sched}";
+    assert PassKind.JCIR_BYTECODE_GEN not in sched;
     for `entry in sched {
-        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
-            f"a legacy emitter is back in the codegen schedule: {`entry.__name__}"
+        assert "Pyast" not in entry.value and "PyBytecode" not in entry.value , (
+            f"a legacy emitter is back in the codegen schedule: {entry.value}"
         );
     }
     piped_code = marshal.loads(mod.gen.py_bytecode);

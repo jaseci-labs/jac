@@ -231,7 +231,7 @@ from jaclang.compiler.driver.pipeline_types import CompilationProduct, ProductRe
 from jaclang.compiler.driver.toolchain import _native_env_memo
 assert not _native_env_memo, _native_env_memo
 schedule = resolve(CompilationProduct.CODEGEN, ProductRequest(native=True))[0]
-names = [p.__name__ for p in schedule or []]
+names = [p.value for p in schedule or []]
 assert 'NaIRGenPass' not in names, names
 assert 'EsastGenPass' in names, names
 """;
