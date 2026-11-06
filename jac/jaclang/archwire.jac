@@ -7914,7 +7914,6 @@ graph import compiler {
             split_source_lines,
             syntax_failure
         },
-        backends.py.jacpython.product_compile { split_source_lines, syntax_failure },
     ]
     frontend.relations ++> [
         driver.program | driver.progstate | passes.scope_walk { ScopeChild },
