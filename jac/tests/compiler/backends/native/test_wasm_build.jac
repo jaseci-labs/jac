@@ -170,7 +170,7 @@ def defined_functions(text: str) -> set[str] {
         line.split("@", 1)[1].split("(", 1)[0]
         for line in text.splitlines()
         if line.startswith("define ")
-        and not line.startswith(("define internal ", "define private "))
+            and not line.startswith(("define internal ", "define private "))
     };
 }
 

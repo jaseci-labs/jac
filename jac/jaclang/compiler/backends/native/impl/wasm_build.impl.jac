@@ -213,8 +213,7 @@ impl prepare_wasm_module(
         defined = {
             str(fn.name)
             for fn in _mod_functions(mod)
-            if not fn.is_declaration
-            and fn.linkage.name not in ("internal", "private")
+            if not fn.is_declaration and fn.linkage.name not in ("internal", "private")
         };
         missing = _c_writer_libcalls(str(mod)) - defined - keep;
         if not missing {
