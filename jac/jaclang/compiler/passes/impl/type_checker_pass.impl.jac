@@ -40,6 +40,7 @@ impl TypeCheckPass.exit_name with Name exit {
     if here.sym is not None {
         self._check_comptime_only_use(here);
         self._check_type_only_value_use(here);
+        self._check_type_param_value_use(here);
         self._check_c_global_use(here);
     }
 }
@@ -2107,6 +2108,17 @@ impl TypeCheckPass._check_type_only_value_use(nd: Name) -> None {
         return;
     }
     self.ctx.emit(E1132, node_override=nd, name=nd.sym_name);
+}
+
+impl TypeCheckPass._check_type_param_value_use(nd: Name) -> None {
+    if isinstance(nd.parent, AtomTrailer) and nd.parent.right is nd {
+        return;
+    }
+    param = type_param_of(nd);
+    if param is None or param.is_comptime or in_type_position(nd) {
+        return;
+    }
+    self.ctx.emit(E1163, node_override=nd, name=nd.sym_name);
 }
 
 impl TypeCheckPass.exit_if_stmt with IfStmt exit {

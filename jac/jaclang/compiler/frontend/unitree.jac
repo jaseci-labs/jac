@@ -2575,4 +2575,6 @@ def is_comptime_stmt(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
+def type_param_of(nd: NameAtom) -> (TypeParam | None);
+
 def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

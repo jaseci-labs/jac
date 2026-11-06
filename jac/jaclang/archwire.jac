@@ -1969,7 +1969,10 @@ graph import {
         compiler.driver.program.JacProgram.stamp_app_facts { UI_MOBUI },
         runtime.source_app.main { kind_has_server },
     ]
-    project.apps ++> scale.injector.bundle._entry_module_spec { resolve_entry_path }
+    project.apps ++> [
+        scale.injector.bundle._entry_module_spec { resolve_entry_path },
+        scale.injector.bundle.sealed_entry_module { resolve_entry_path },
+    ]
     project.apps --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry {
         resolve_entry_path
     }
@@ -2158,7 +2161,10 @@ graph import {
             | server.endpoints.colocated.served_app_route
             | studio.app { get_config_for_dir },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
-        packages.migrate { serialize_toml, toml_minimal_update },
+        packages.migrate | scale.injector.bundle.staged_jac_toml {
+            serialize_toml,
+            toml_minimal_update
+        },
         scale.config.dev_config.resolve_dev_channel
             | scale.injector.bundle.fat_bundle_setting { get_config_for_path },
         scale.config.dev_config.resolve_experimental_pr
@@ -2297,7 +2303,9 @@ graph import {
         },
         compiler.backends.py.artifact_imports.resolve_imports
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
-        dist.publish.py_imports { resolve_module },
+        compiler.tests.test_missing_local_import | dist.publish.py_imports {
+            resolve_module
+        },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
             resolve_client_npm_declarations,
@@ -7078,6 +7086,7 @@ graph import compiler {
             E1159,
             E1161,
             E1162,
+            E1163,
             E2015,
             W1036,
             W1037,
@@ -8925,7 +8934,8 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
-            type_only_import_of
+            type_only_import_of,
+            type_param_of
         },
         passes.variant_agreement_pass {
             Ability,
@@ -45108,9 +45118,8 @@ graph import scale {
             privileged_pss_labels
         },
     ]
-    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity {
-        KubectlCluster
-    }
+    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity
+        | tests.microservices.test_pvc_injector { KubectlCluster }
     deploy.target.registry ++> config.validation { DeploymentTargetRegistry }
     deploy.target.registry --> tests.misc.test_config_validation {
         BUILTIN_TARGET_TYPES
@@ -45355,6 +45364,10 @@ graph import scale {
         sdk.client { CallbackSink, EventSink, NoopSink, ProgressEvent },
         sdk.events { EventSink, ProgressEvent },
     ]
+    models.progress --> tests.deploy.test_superseded_deployment_reap {
+        CallbackSink,
+        ProgressEvent
+    }
     models.resource_status ++> [
         admin.deploy_health { assess_workload },
         deploy.autoscale.autoscaler {
@@ -45608,12 +45621,13 @@ graph import scale {
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
         tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
+        tests.microservices.test_bundle_jacignore { solo_fleet },
     ]
     runtime.fleet --> [
         admin.logs._fleet_names | admin.traces._trace_services { fleet_member_names },
         tests.apps.test_fleet_from_apps { _compiled_app_edges },
         tests.deploy.test_client_build_stage { FleetMember, FleetSpec },
-        tests.microservices.test_app_precompile { fleet_from_config },
+        tests.microservices.test_app_precompile { fleet_from_config, solo_fleet },
     ]
     runtime.gateway.dispatch ++> [
         tests.apps.test_fleet_from_apps { ROUTE_PROXY, classify_route },

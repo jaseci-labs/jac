@@ -94,6 +94,7 @@ walker TypeCheckPass(TreePass) {
     def _in_comptime_context(nd: UniNode) -> bool;
     def _check_comptime_only_use(nd: Name) -> None;
     def _check_type_only_value_use(nd: Name) -> None;
+    def _check_type_param_value_use(nd: Name) -> None;
     can exit_if_stmt with IfStmt exit;
     can exit_else_if with ElseIf exit;
     can exit_while_stmt with WhileStmt exit;
