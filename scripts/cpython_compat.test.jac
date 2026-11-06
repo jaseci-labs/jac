@@ -1,6 +1,7 @@
 """Exercise the regrtest result parsing and the stock-vs-JacPython comparison."""
 
 import from unittest.mock { patch }
+import from pathlib { Path }
 
 glob PASSED_LOG: str = """0:00:00 load avg: 2.0 [1/1] test_bool passed
 
@@ -88,8 +89,40 @@ def results(jacpython: bool, modules: dict[str, any]) -> dict[str, any] {
         "version": "3.14.6",
         "jacpython": jacpython,
         "resources": "",
+        "memlimit": "",
         "modules": modules
     };
+}
+
+obj _RegrtestArgs {
+    has resources: str,
+        memlimit: str,
+        test_timeout: int;
+}
+
+test "the memory cap reaches each regrtest module and is optional" {
+    capped = _RegrtestArgs(resources="", memlimit="2.5Gb", test_timeout=1200);
+    command = regrtest_command(
+        "/path/python", "test_bigmem", Path("/tmp/test_bigmem.xml"), capped
+    );
+    assert command
+        == [
+            "/path/python",
+            "-m",
+            "test",
+            "-j1",
+            "--rerun",
+            "--timeout=1200",
+            "-M",
+            "2.5Gb",
+            "--junit-xml=/tmp/test_bigmem.xml",
+            "test_bigmem"
+        ];
+    uncapped = _RegrtestArgs(resources="", memlimit="", test_timeout=1200);
+    command = regrtest_command(
+        "/path/python", "test_bool", Path("/tmp/test_bool.xml"), uncapped
+    );
+    assert "-M" not in command;
 }
 
 test "only what stock CPython passes counts against JacPython" {

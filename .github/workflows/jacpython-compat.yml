@@ -9,8 +9,9 @@ name: JacPython compatibility
 # only when stock CPython passes it and JacPython fails or skips it, so
 # failures the runner's environment causes on both do not. No test corpus is
 # checked in: scripts/cpython_compat.jac fetches the pinned tests into each
-# interpreter's standard library inside the job. No -M memory tier is enabled;
-# very large memory tests remain unverified until a per-run memory budget is set.
+# interpreter's standard library inside the job. The default -M cap enables the
+# first big-memory tier; tests needing more than 2.5Gb remain skipped and must be
+# treated as unverified. Four module workers bound simultaneous memory demand.
 #
 # This is the one place CI runs stock CPython: as the reference of a
 # compatibility verdict, never to build or run jac
@@ -33,6 +34,14 @@ on:
         description: regrtest -u resources (empty uses this default)
         type: string
         default: all,-network,-urlfetch,-gui,-audio,-largefile
+      memlimit:
+        description: regrtest -M memory cap
+        type: string
+        default: 2.5Gb
+      jobs:
+        description: Number of regrtest modules to run concurrently
+        type: string
+        default: "4"
   pull_request:
     branches: [main, 'release/**']
     types: [opened, synchronize, reopened, labeled]
@@ -66,7 +75,7 @@ jobs:
     # Native JacPython lowering was terminated on both Blacksmith 8 vCPU and
     # standard GitHub-hosted runners. Use the larger native-build runner tier.
     runs-on: ${{ inputs.runner || 'blacksmith-16vcpu-ubuntu-2404' }}
-    timeout-minutes: 300
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
 
@@ -151,13 +160,15 @@ jobs:
           PYTHON: ${{ steps.python.outputs.bin }}
           LABEL: ${{ matrix.python }}
           RESOURCES: ${{ inputs.resources || 'all,-network,-urlfetch,-gui,-audio,-largefile' }}
+          MEMLIMIT: ${{ inputs.memlimit || '2.5Gb' }}
+          JOBS: ${{ inputs.jobs || '4' }}
           MODULES: ${{ inputs.modules }}
         run: |
           set -euo pipefail -f
           # $MODULES is split into module names on purpose.
           jac run scripts/cpython_compat.jac run --python "$PYTHON" --label "$LABEL" \
             --out "$RUNNER_TEMP/results" --cache "$RUNNER_TEMP/cpython-source" \
-            --resources "$RESOURCES" $MODULES
+            --resources "$RESOURCES" --memlimit "$MEMLIMIT" --jobs "$JOBS" $MODULES
 
       - uses: actions/upload-artifact@v4
         if: always()
