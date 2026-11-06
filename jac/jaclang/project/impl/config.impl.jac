@@ -302,7 +302,11 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             try {
                 _apply_serve_table(self.serve, data[section], "serve");
             } except ServeConfigError as e {
-                raise ServeConfigError(f"{toml_path.name}: {e}") from e;
+                raise ServeConfigError(
+                    "\n".join(
+                        f"{toml_path.name}: {line}" for line in str(e).splitlines()
+                    )
+                ) from e;
             }
         } elif section in data {
             data_section: dict[str, any] = data[section];
@@ -1359,27 +1363,55 @@ impl table_value(current: any, raw: any, label: str) -> any {
 impl apply_table(
     target: object, table: dict[str, any], section: str, moved: dict[str, str]
 ) -> None {
+    problems: list[str] = [];
+    _walk_table(target, table, section, moved, problems, False);
+    if problems {
+        raise ServeConfigError("\n".join(problems));
+    }
+    _walk_table(target, table, section, moved, problems, True);
+}
+
+impl _walk_table(
+    target: object,
+    table: dict[str, any],
+    section: str,
+    moved: dict[str, str],
+    problems: list[str],
+    write: bool
+) -> None {
     names = [f.name for f in fields(target)];
-    for key in table {
-        if key in names {
+    for (name, raw) in table.items() {
+        if name not in names {
+            near = closest_key(name, names);
+            if name in moved {
+                problems.append(f"[{section}] {name} has moved to {moved[name]}");
+            } elif near {
+                problems.append(
+                    f"[{section}] has no key {name!r}; did you mean {near!r}?"
+                );
+            } else {
+                problems.append(
+                    f"[{section}] has no key {name!r}; its keys are {', '.join(names)}"
+                );
+            }
             continue;
         }
-        if key in moved {
-            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
-        }
-        raise ServeConfigError(
-            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
-        );
-    }
-    for (name, raw) in table.items() {
         current = getattr(target, name);
         if not (is_record(current) or isinstance(current, dict)) {
-            setattr(target, name, table_value(current, raw, f"[{section}] {name}"));
+            try {
+                value = table_value(current, raw, f"[{section}] {name}");
+            } except ServeConfigError as bad {
+                problems.append(str(bad));
+                continue;
+            }
+            if write {
+                setattr(target, name, value);
+            }
         } elif not isinstance(raw, dict) {
-            raise ServeConfigError(f"[{section}.{name}] must be a table");
+            problems.append(f"[{section}.{name}] must be a table");
         } elif is_record(current) {
-            apply_table(current, raw, f"{section}.{name}", {});
-        } else {
+            _walk_table(current, raw, f"{section}.{name}", {}, problems, write);
+        } elif write {
             setattr(target, name, _deep_merge(current, raw));
         }
     }
