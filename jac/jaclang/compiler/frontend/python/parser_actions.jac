@@ -90,7 +90,13 @@ def pa_name_from_token(tok: peg_token | None) -> Name | None {
     );
 }
 
-def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
+def pa_warn_escape(
+    escape: str,
+    tok: peg_token | None,
+    line_offset: int = 0,
+    column: int = 0,
+    end_column: int = -1
+) {
     if tok is not None and tok.warned {
         return;
     }
@@ -110,7 +116,9 @@ def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
     warn(
         message,
         tok.filename if tok is not None else "<unknown>",
-        (tok.lineno if tok is not None else 1) + line_offset
+        (tok.lineno if tok is not None else 1) + line_offset,
+        column,
+        end_column
     );
 }
 
@@ -130,13 +138,32 @@ def pa_escape_line_offset(data: bytes, upto: int) -> int {
     return lines;
 }
 
+def pa_escape_column_offset(data: bytes, upto: int, body_column: int) -> int {
+    last_newline = -1;
+    k = 0;
+    while k < upto {
+        if data[k] == 10 {
+            last_newline = k;
+        }
+        k += 1;
+    }
+    return upto - last_newline - 1 if last_newline >= 0 else body_column + upto;
+}
+
 # One backslash escape, judged against the set its literal kind allows.
 def pa_check_escape(
-    data: bytes, i: int, size: int, valid: set[int], tok: peg_token | None
+    data: bytes,
+    i: int,
+    size: int,
+    valid: set[int],
+    tok: peg_token | None,
+    body_column: int
 ) {
     following = data[i + 1];
+    line_offset = pa_escape_line_offset(data, i);
+    column = pa_escape_column_offset(data, i, body_column);
     if following not in valid {
-        pa_warn_escape(chr(following), tok, pa_escape_line_offset(data, i));
+        pa_warn_escape(chr(following), tok, line_offset, column, column + 2);
     } elif following >= ord("4")
         and following <= ord("7")
         and i + 3 < size
@@ -145,7 +172,7 @@ def pa_check_escape(
         and data[i + 3] >= ord("0")
         and data[i + 3] <= ord("7") {
         pa_warn_escape(
-            data[i + 1:i + 4].decode("utf-8"), tok, pa_escape_line_offset(data, i)
+            data[i + 1:i + 4].decode("utf-8"), tok, line_offset, column, column + 4
         );
     }
 }
@@ -158,7 +185,12 @@ def pa_check_escape(
 # runs; only a character the codec cannot take as written breaks a run: a
 # non-ASCII character, spelled as a \U escape, and a backslash in front of one,
 # spelled as an escaped backslash.
-def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
+def pa_decode_escape_body(
+    body: str, tok: peg_token | None = None, body_column: int = -1
+) -> str {
+    if body_column < 0 {
+        body_column = tok.col_offset if tok is not None else 0;
+    }
     data = body.encode("utf-8");
     size = len(data);
     parts: list[str] = [];
@@ -167,7 +199,7 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
     while i < size {
         c = data[i];
         if c == ord("\\") and i + 1 < size and data[i + 1] < 128 {
-            pa_check_escape(data, i, size, VALID_ESCAPE_POINTS, tok);
+            pa_check_escape(data, i, size, VALID_ESCAPE_POINTS, tok, body_column);
             i += 2;
             continue;
         }
@@ -194,13 +226,16 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
 }
 
 def pa_decode_bytes_escape_body(
-    body: str, raw: bool, tok: peg_token | None = None
+    body: str, raw: bool, tok: peg_token | None = None, body_column: int = -1
 ) -> list[int] {
     if not body.isascii() {
         raise syntax_failure("bytes can only contain ASCII literal characters");
     }
     if raw {
         return list(body.encode("utf-8"));
+    }
+    if body_column < 0 {
+        body_column = tok.col_offset if tok is not None else 0;
     }
     # A raw literal escapes nothing, so only the cooked body is judged. The
     # decode itself is the runtime's, so the scan is the warning's own pass.
@@ -209,7 +244,7 @@ def pa_decode_bytes_escape_body(
     i = 0;
     while i < size {
         if data[i] == ord("\\") and i + 1 < size {
-            pa_check_escape(data, i, size, VALID_BYTES_ESCAPE_POINTS, tok);
+            pa_check_escape(data, i, size, VALID_BYTES_ESCAPE_POINTS, tok, body_column);
             i += 2;
             continue;
         }
@@ -266,13 +301,14 @@ def pa_decode_string_literal_spelling(
         return None;
     }
     body = spelling[start:end];
+    body_column = (tok.col_offset if tok is not None else 0) + start;
     if is_bytes {
-        return pa_decode_bytes_escape_body(body, raw, tok);
+        return pa_decode_bytes_escape_body(body, raw, tok, body_column);
     }
     if raw {
         return body;
     }
-    return pa_decode_escape_body(body, tok);
+    return pa_decode_escape_body(body, tok, body_column);
 }
 
 def pa_constant_from_fstring_middle(

@@ -133,6 +133,8 @@ test "turning an invalid escape warning into an error drops the warning lead-in"
             caught = True;
             assert error.msg
                 == r'"\z" is an invalid escape sequence. Did you mean "\\z"? A raw string is also an option.' , error.msg;
+            assert error.offset == 10 , error.offset;
+            assert error.end_offset == 12 , error.end_offset;
         }
         assert caught;
     }

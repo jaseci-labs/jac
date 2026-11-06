@@ -8,7 +8,9 @@ def decode_unicode(value: str) -> str;
 
 def decode_bytes(value: str) -> list[int];
 
-def warn(message: str, filename: str, line: int, column: int = 0);
+def warn(
+    message: str, filename: str, line: int, column: int = 0, end_column: int = -1
+);
 
 def parse_integer(value: str) -> PyObj;
 
@@ -58,7 +60,9 @@ impl decode_bytes(value: str) -> list[int] {
     return list(take_buffer(handle));
 }
 
-impl warn(message: str, filename: str, line: int, column: int = 0) {
+impl warn(
+    message: str, filename: str, line: int, column: int = 0, end_column: int = -1
+) {
     message_text = jacpy_unicode_from_text(message);
     filename_text = jacpy_unicode_from_text(filename);
     status: i32 = -1;
@@ -81,7 +85,8 @@ impl warn(message: str, filename: str, line: int, column: int = 0) {
                 message.replace(". Such sequences will not work in the future.", "."),
                 filename=filename,
                 lineno=line,
-                offset=column + 1
+                offset=column + 1,
+                end_offset=end_column + 1 if end_column >= 0 else column + 2
             );
         }
         raise boundary_failure();
