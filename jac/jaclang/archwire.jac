@@ -4135,6 +4135,12 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.files ++> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_spa_fallback {
+        file_response
+    }
+    server.serving.files ++> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.static_file {
+        file_response
+    }
     server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
         cors_pair_problem
     }

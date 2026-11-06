@@ -41,6 +41,25 @@ impl is_compressible(media_type: str) -> bool {
     return False;
 }
 
+impl _gzip_cached(body: bytes, level: int, etag: (str | None)) -> bytes {
+    if not etag {
+        return gzip.compress(body, compresslevel=level, mtime=0);
+    }
+    key = (etag, level, len(body), zlib.crc32(body));
+    packed = _GZIP_CACHE.pop(key, None);
+    if packed is None {
+        packed = gzip.compress(body, compresslevel=level, mtime=0);
+        if len(packed) > GZIP_CACHE_MAX_BYTES {
+            return packed;
+        }
+    }
+    _GZIP_CACHE[key] = packed;
+    while sum(len(v) for v in _GZIP_CACHE.values()) > GZIP_CACHE_MAX_BYTES {
+        _GZIP_CACHE.pop(next(iter(_GZIP_CACHE)));
+    }
+    return packed;
+}
+
 impl _gzip_stream(source: any, level: int) -> AsyncIterator[bytes] {
     comp = zlib.compressobj(level, zlib.DEFLATED, GZIP_WBITS);
     if inspect.isasyncgen(source) or hasattr(source, '__aiter__') {
@@ -109,7 +128,8 @@ impl CompressionPolicy.apply(
     if body is None or len(body) < self.min_bytes {
         return body;
     }
-    packed = gzip.compress(body, compresslevel=self.level, mtime=0);
+    etag = response.headers.get('ETag') if response.status_code == 200 else None;
+    packed = _gzip_cached(body, self.level, etag);
     response.headers.remove('Content-Length');
     response.headers.set('Content-Encoding', 'gzip');
     return packed;

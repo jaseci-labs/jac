@@ -927,7 +927,7 @@ test "serve static returns file with correct mime type" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("assets/app.js");
+    resp = gw.serve_static(Request(), "assets/app.js");
     assert resp is not None;
     assert "javascript" in resp.media_type;
     assert b"hello" in resp.body;
@@ -942,7 +942,7 @@ test "serve static returns none for missing file" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("nonexistent.js");
+    resp = gw.serve_static(Request(), "nonexistent.js");
     assert resp is None;
 
     import shutil;
@@ -955,7 +955,7 @@ test "serve static blocks path traversal" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("../../etc/passwd");
+    resp = gw.serve_static(Request(), "../../etc/passwd");
     assert resp is None;
 
     import shutil;
@@ -970,7 +970,7 @@ test "serve static css file returns text content type" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("style.css");
+    resp = gw.serve_static(Request(), "style.css");
     assert resp is not None;
     assert resp.media_type == "text/css";
 
@@ -987,7 +987,7 @@ test "serve_extra_static serves a file from a configured local dir" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_extra_static(str(assets), "logo.png");
+    resp = gw.serve_extra_static(Request(), str(assets), "logo.png");
     assert resp is not None;
     assert b"PNG_DATA" in resp.body;
     assert "image/png" in resp.media_type;
@@ -1000,7 +1000,7 @@ test "serve_extra_static returns None when local_dir is empty" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
 
-    resp = gw.serve_extra_static("", "anything.txt");
+    resp = gw.serve_extra_static(Request(), "", "anything.txt");
     assert resp is None;
 }
 
@@ -1009,7 +1009,7 @@ test "serve_extra_static returns None for missing file" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
 
-    resp = gw.serve_extra_static(tmp, "nonexistent.png");
+    resp = gw.serve_extra_static(Request(), tmp, "nonexistent.png");
     assert resp is None;
 
     import shutil;
@@ -1027,7 +1027,7 @@ test "serve_extra_static blocks path traversal escape" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
 
-    resp = gw.serve_extra_static(str(assets), "../secret.txt");
+    resp = gw.serve_extra_static(Request(), str(assets), "../secret.txt");
     assert resp is None;
 
     import shutil;
@@ -1127,7 +1127,7 @@ test "spa fallback serves index.html" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_spa_fallback();
+    resp = gw.serve_spa_fallback(Request());
     assert resp is not None;
     assert b"SPA" in resp.body;
 
@@ -1141,7 +1141,7 @@ test "spa fallback returns none when no index.html" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_spa_fallback();
+    resp = gw.serve_spa_fallback(Request());
     assert resp is None;
 
     import shutil;
@@ -1181,6 +1181,65 @@ test "gateway serves spa fallback for html navigation" {
     resp = client.get("/dashboard", headers={"Accept": "text/html"});
     assert resp.status_code == 200;
     assert "SPA App" in resp.text;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "gateway static files revalidate by etag and hashed names are immutable" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "assets").mkdir();
+    bundle = ("console.log('ok');\r\n" * 200).encode("utf-8");
+    (Path(tmp) / "client.Ab3dE9xQ.js").write_bytes(bundle);
+    (Path(tmp) / "styles.css").write_text("body { color: red; }");
+    logo = bytes([137, 80, 78, 71, 13, 10, 26, 10, 0, 255]);
+    (Path(tmp) / "assets" / "logo.png").write_bytes(logo);
+    (Path(tmp) / "index.html").write_text("<html>SPA App</html>");
+
+    gw = MicroserviceGateway(registry=ServiceRegistry(), client_dist_dir=tmp);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+
+    # Hashed bundle: exact bytes on disk, an ETag, and a year-long immutable cache.
+    first = client.get("/client.Ab3dE9xQ.js");
+    assert first.status_code == 200;
+    assert first.content == bundle;
+    assert "javascript" in first.headers.get("content-type", "");
+    tag = first.headers.get("etag");
+    assert tag;
+    cache = first.headers.get("cache-control");
+    assert cache == "public, max-age=31536000, immutable";
+
+    again = client.get("/client.Ab3dE9xQ.js", headers={"If-None-Match": tag});
+    assert again.status_code == 304;
+    assert again.content == b"";
+
+    # Unhashed names must revalidate, never sit in a long-lived cache.
+    css = client.get("/styles.css");
+    assert css.status_code == 200;
+    assert css.headers.get("content-type") == "text/css; charset=utf-8";
+    assert css.headers.get("cache-control") == "no-cache";
+
+    png = client.get("/assets/logo.png");
+    assert png.status_code == 200;
+    assert png.content == logo;
+    assert png.headers.get("content-type") == "image/png";
+    assert png.headers.get("cache-control") == "no-cache";
+
+    # The SPA shell is revalidated too, so a deploy is picked up immediately.
+    page = client.get("/dashboard", headers={"Accept": "text/html"});
+    assert page.status_code == 200;
+    assert "SPA App" in page.text;
+    assert page.headers.get("cache-control") == "no-cache";
+    page_tag = page.headers.get("etag");
+    assert page_tag;
+    page_again = client.get(
+        "/dashboard", headers={"Accept": "text/html", "If-None-Match": page_tag}
+    );
+    assert page_again.status_code == 304;
+    assert page_again.content == b"";
 
     import shutil;
     shutil.rmtree(tmp);

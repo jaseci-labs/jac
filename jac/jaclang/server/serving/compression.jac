@@ -12,7 +12,9 @@ glob COMPRESSIBLE_TYPES: list[str] = [
          'application/wasm',
          'application/manifest+json'
      ],
-     GZIP_WBITS: int = 31;
+     GZIP_WBITS: int = 31,
+     GZIP_CACHE_MAX_BYTES: int = 32 * 1024 * 1024,
+     _GZIP_CACHE: dict[tuple[str, int, int, int], bytes] = {};
 
 
 def _quality(token: str) -> float;
@@ -22,6 +24,9 @@ def accepts_gzip(headers: Headers) -> bool;
 
 
 def is_compressible(media_type: str) -> bool;
+
+
+def _gzip_cached(body: bytes, level: int, etag: (str | None)) -> bytes;
 
 
 async def _gzip_stream(source: any, level: int) -> AsyncIterator[bytes];
