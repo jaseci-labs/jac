@@ -332,6 +332,7 @@ test "every [scale.kubernetes] key a user writes reaches the resolved config" {
         "monitoring_enabled",
         "k8s_metrics_enabled",
         "prometheus_admin_password",
+        "metrics_endpoint",
         "service_dependencies"
     };
     written: dict[str, any] = {};
@@ -383,14 +384,17 @@ test "every [scale.kubernetes] key a user writes reaches the resolved config" {
 
 
 test "a value from another section reaches the kubernetes config" {
-    # admin_username is emitted by the loader from [scale.admin], not written
-    # under [scale.kubernetes], so it exercises the hand-off the sweep skips.
+    # admin_username and metrics_endpoint are emitted by the loader from
+    # [scale.admin] and [scale.monitoring], so they exercise the hand-off the
+    # sweep skips.
     with tempfile.TemporaryDirectory() as project {
         (Path(project) / "jac.toml").write_text(
             '[project]\nname = "admin-app"\nversion = "0.0.1"\n\n'
-            '[scale.admin]\nusername = "metrics-admin"\n'
+            '[scale.admin]\nusername = "metrics-admin"\n\n'
+            '[scale.monitoring]\nendpoint = "/app-metrics"\n'
         );
         resolved = JacScaleConfig(project_dir=Path(project)).get_kubernetes_config();
         assert resolved["admin_username"] == "metrics-admin";
+        assert resolved["metrics_endpoint"] == "/app-metrics";
     }
 }

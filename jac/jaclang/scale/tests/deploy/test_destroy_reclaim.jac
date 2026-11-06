@@ -376,7 +376,7 @@ test "removing the application spares the database and monitoring beside it" {
         ("Service", [core_v1.list_namespaced_service.call_args_list[0].kwargs])
     ] {
         for kwargs in selectors {
-            assert kwargs["label_selector"] == target_mod.FLEET_SELECTOR , (
+            assert kwargs["label_selector"] == utils.FLEET_SELECTOR , (
                 f"the {kind} sweep selects '{kwargs['label_selector']}', which "
                 "reaches objects that are not the application's"
             );
@@ -410,7 +410,7 @@ test "removing the application also removes the fleet's Services and PDBs built 
         }
         def delete_budgets(namespace: str, label_selector: str) {
             events.append(("delete budgets", label_selector));
-            if label_selector == target_mod.FLEET_SELECTOR {
+            if label_selector == utils.FLEET_SELECTOR {
                 raise ApiException(status=403);
             }
         }
@@ -440,7 +440,7 @@ test "removing the application also removes the fleet's Services and PDBs built 
         }
         assert failed , f"the 403 on the PDB sweep (component '{component}') was swallowed";
 
-        swept_first = events.index(("delete deployments", target_mod.FLEET_SELECTOR));
+        swept_first = events.index(("delete deployments", utils.FLEET_SELECTOR));
         assert ("delete budgets", legacy) in events[:swept_first]
             and ("list services", legacy) in events[:swept_first] , (
             f"destroy (component '{component}') swept the pre-role objects after "

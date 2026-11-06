@@ -46,6 +46,15 @@ memory_request = "1Gi"
 TOML
     echo "# appended the e2e-harness memory_request for cart_app to jac.toml"
 fi
+if ! grep -q "e2e-harness monitoring" "${PROJECT_DIR}/jac.toml"; then
+    cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
+
+# --- e2e-harness monitoring (appended by k8s_microservice_real_e2e.sh) ---
+[scale.monitoring]
+enabled = true
+TOML
+    echo "# appended the e2e-harness monitoring switch to jac.toml"
+fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
@@ -76,6 +85,9 @@ cleanup() {
     fi
     if [ -n "${LOKI_PORT_FORWARD_PID:-}" ]; then
         kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
+    fi
+    if [ -n "${PROM_PORT_FORWARD_PID:-}" ]; then
+        kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
     fi
     if [ "${rc}" != "0" ] && [ "${E2E_KEEP_NS_ON_FAIL:-1}" = "1" ]; then
         echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
@@ -459,6 +471,39 @@ else
             exit 1
         fi
     done
+
+    echo "  every gateway and app pod is an up target of Prometheus job '${APP_NAME}'..."
+    PROM_LOCAL_PORT="${PROM_LOCAL_PORT:-19090}"
+    PROM_TARGETS_URL="http://localhost:${PROM_LOCAL_PORT}/api/v1/targets?state=active"
+    kubectl port-forward -n "${NAMESPACE}" "svc/${APP_NAME}-prometheus-service" \
+        "${PROM_LOCAL_PORT}:9090" >/dev/null 2>&1 &
+    PROM_PORT_FORWARD_PID=$!
+    sleep 3
+    FLEET_PODS=0
+    SCRAPE_STATE=""
+    for attempt in $(seq 1 24); do
+        FLEET_PODS=$(kubectl get pods -n "${NAMESPACE}" \
+            -l "managed=jac-scale,jac-scale.role in (microservice,gateway)" \
+            --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || true)
+        SCRAPE_STATE=$(curl -s --max-time 5 "${PROM_TARGETS_URL}" \
+            | jac -c 'import sys,json; t=[x for x in json.load(sys.stdin)["data"]["activeTargets"] if x["scrapePool"]==sys.argv[1]]; print(sum(x["health"]=="up" for x in t), len(t), sep="/")' \
+            "${APP_NAME}" 2>/dev/null || echo "0/0")
+        if [ "${FLEET_PODS}" -gt 0 ] && [ "${SCRAPE_STATE}" = "${FLEET_PODS}/${FLEET_PODS}" ]; then
+            break
+        fi
+        echo "    attempt ${attempt}/24: up/targets=${SCRAPE_STATE}, fleet pods=${FLEET_PODS}, retrying in 5s..."
+        sleep 5
+    done
+    if [ "${FLEET_PODS}" -eq 0 ] || [ "${SCRAPE_STATE}" != "${FLEET_PODS}/${FLEET_PODS}" ]; then
+        echo "FAIL: Prometheus job '${APP_NAME}' has up/targets=${SCRAPE_STATE}, expected all ${FLEET_PODS} gateway and app pods up"
+        curl -s --max-time 5 "${PROM_TARGETS_URL}" \
+            | jac -c 'import sys,json; [print(x["scrapePool"], x["scrapeUrl"], x["health"], x["lastError"]) for x in json.load(sys.stdin)["data"]["activeTargets"]]' \
+            || true
+        exit 1
+    fi
+    echo "  Prometheus job '${APP_NAME}': ${SCRAPE_STATE} targets up"
+    kill "${PROM_PORT_FORWARD_PID}" 2>/dev/null || true
+    PROM_PORT_FORWARD_PID=""
 
     echo "  waiting on Alloy DaemonSet..."
     if ! kubectl rollout status "daemonset/${ALLOY_DS}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then

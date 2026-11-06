@@ -747,14 +747,7 @@ impl KubernetesTarget._deploy_observability(app_name: str) -> None {
         );
     }
     monitoring = MonitoringDeployer(obs_config, self.logger);
-    monitoring.deploy(
-        app_name,
-        obs_config.namespace,
-        apps_v1,
-        core_v1,
-        provider,
-        scrape_target_service="gateway-service"
-    );
+    monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1);
 }
 
 impl KubernetesTarget.ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None {

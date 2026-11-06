@@ -122,6 +122,7 @@ glob _LOADER_DERIVED: set[str] = {
          "monitoring_enabled",
          "k8s_metrics_enabled",
          "prometheus_admin_password",
+         "metrics_endpoint",
          "service_dependencies"
      },
      _DERIVED_DEFAULT: set[str] = {"app_name"};

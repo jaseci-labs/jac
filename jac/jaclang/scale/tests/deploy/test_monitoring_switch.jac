@@ -4,6 +4,8 @@ handed the deployer, so a configured `false` was overridden and a configured
 `true` alone never reached the deployer at all. Real config objects, no mocks:
 `gateway_config` is injected as a plain dict, which is the same seam
 `_gateway_cfg` reads in production."""
+import re;
+import yaml;
 
 def _target(
     monitoring: bool, logs: bool = False, tracing: bool = False
@@ -75,4 +77,63 @@ test "kube-state-metrics reads no secrets or configmaps and watches only what it
     binding = rbac["cluster_role_binding"];
     assert binding["roleRef"]["name"] == rbac["cluster_role"]["metadata"]["name"];
     assert binding["subjects"][0]["namespace"] == "t-ns";
+}
+
+
+def _relabel(rules: list[dict[str, any]], meta: dict[str, str]) -> (dict[str, str] | None) {
+    labels = dict(meta);
+    for rule in rules {
+        value = ";".join([labels.get(src, "") for src in rule.get("source_labels", [])]);
+        matched = re.fullmatch(str(rule.get("regex", "(.*)")), value);
+        if rule.get("action", "replace") == "keep" {
+            if not matched {
+                return None;
+            }
+        } elif matched {
+            replacement = str(rule.get("replacement", "$1")).replace("$1", "\\1");
+            labels[rule["target_label"]] = matched.expand(replacement);
+        }
+    }
+    return labels;
+}
+
+
+test "prometheus scrapes every fleet pod on the app port at the path its role serves" {
+    config = KubernetesConfig(
+        app_name="t", namespace="t-ns", container_port=8000, metrics_endpoint="/app-metrics"
+    );
+    scrape = yaml.safe_load(MonitoringDeployer(k8s_config=config)._scrape_config("t", "t-ns"));
+    job = {j["job_name"]: j for j in scrape["scrape_configs"]}["t"];
+    assert job["kubernetes_sd_configs"]
+        == [
+            {
+                "role": "pod",
+                "namespaces": {"names": ["t-ns"]},
+                "selectors": [{"role": "pod", "label": FLEET_SELECTOR}]
+            }
+        ];
+    assert job["basic_auth"]["password_file"] == "/etc/prometheus/scrape-secret/password";
+    for (role, port, want_path) in [
+        ("gateway", "8000", "/metrics"),
+        ("microservice", "8000", "/app-metrics"),
+        ("microservice", "", None)
+    ] {
+        target = _relabel(
+            job["relabel_configs"],
+            {
+                "__metrics_path__": job["metrics_path"],
+                "__meta_kubernetes_pod_label_jac_scale_role": role,
+                "__meta_kubernetes_pod_container_port_number": port,
+                "__meta_kubernetes_pod_label_app": "svc",
+                "__meta_kubernetes_pod_name": "svc-0"
+            }
+        );
+        if want_path is None {
+            assert target is None , (role, port);
+            continue;
+        }
+        assert target is not None , (role, port);
+        assert target["__metrics_path__"] == want_path , (role, target);
+        assert (target["role"], target["app"], target["pod"]) == (role, "svc", "svc-0");
+    }
 }
