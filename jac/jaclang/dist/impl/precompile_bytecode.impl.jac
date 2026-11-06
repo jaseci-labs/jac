@@ -75,11 +75,6 @@ impl find_jac_files(package_dir: str) -> list[str] {
         rel_path = jac_file.relative_to(pkg);
         rel = str(rel_path);
 
-        # A platform source variant is an alternative implementation of its
-        # base module, not an independent source unit. Keeping a non-host
-        # variant in the Python precompile set makes its native-only fields
-        # type-check against the host Python module shape (for example the
-        # native subprocess Popen pipe descriptors).
         if variant_selected(str(jac_file)) is False {
             continue;
         }
@@ -1781,11 +1776,7 @@ impl run_precompile(
                     "message": f"FAIL (native unit did not lower): {rel}"
                 };
             }
-            # `jac_files` can contain the resolved host variant while the
-            # source inventory contains the same path through a different
-            # symlink spelling. Re-evaluate the fact at the path being
-            # precompiled so selected native-only variants always receive
-            # their sealed interface JIR, never a Python bytecode unit.
+
             if native_only(jac_path) {
                 jir_bytes: (bytes | None) = write_precompiled_jir(
                     None,

@@ -436,10 +436,6 @@ impl _toml_line_content(raw_line: str) -> str {
     return raw_line.strip();
 }
 
-"""Read [project].name from a jac.toml without tomllib (which can't lower
-natively — the kernel compiles this file). A line scan is enough: track the
-current TOML section and take the first `name = "..."` inside [project].
-"""
 impl _jac_toml_project_name(toml_path: str) -> (str | None) {
     fh = open(toml_path, "r");
     try {
@@ -454,7 +450,7 @@ impl _jac_toml_project_name(toml_path: str) -> (str | None) {
             continue;
         }
         if line.startswith("[") {
-            in_project = (line == "[project]");
+            in_project = line == "[project]";
             continue;
         }
         if in_project and line.startswith("name") and line[4:5] in (" ", "=", "\t") {
@@ -969,7 +965,8 @@ impl resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True
 ) -> tuple[(str | None, str | None)] {
     import os;
-    if os.path.isabs(module_name) and module_name.endswith('.jac')
+    if os.path.isabs(module_name)
+        and module_name.endswith('.jac')
         and os.path.isfile(module_name) {
         path = real_path(module_name);
         return (path, path);

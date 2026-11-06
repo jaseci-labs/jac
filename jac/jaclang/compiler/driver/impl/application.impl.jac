@@ -485,6 +485,11 @@ impl prepare_application(
     dev: (bool | None) = None,
     force_codespace: str = ''
 ) -> PreparedApplication {
+    import from jaclang.compiler.frontend.codeinfo {
+        effective_default_codespace,
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
     dev_mode = True if dev is None else dev;
     `entry = os.path.realpath(`entry);
     `root = os.path.realpath((`root or os.path.dirname(`entry)));

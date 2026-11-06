@@ -71,10 +71,6 @@ impl NaIRGenPass._maybe_declare_ability(
 
     param_types: list[ir.Type] = [];
     for p in c_params {
-        # Function declarations are ABIs. Nominal object types whose concrete
-        # layout is owned by another native module must use the same opaque
-        # pointer boundary as method signatures, rather than failing native
-        # lowering while resolving the caller's local struct layout.
         param_types.append(self._resolve_sig_type(p));
     }
 
@@ -86,9 +82,6 @@ impl NaIRGenPass._maybe_declare_ability(
         assert iterator_type is not None;
         ret_type = iterator_type.as_pointer();
     } else {
-        # Function returns cross the same ABI boundary as parameters. A
-        # consumer may know an imported nominal type but not own its concrete
-        # struct layout; preserve its opaque pointer representation there.
         ret_type = self._resolve_sig_type(sig.return_type);
         if symbol is None {
             ret_type = self._byvalue_ret_type(ret_type);

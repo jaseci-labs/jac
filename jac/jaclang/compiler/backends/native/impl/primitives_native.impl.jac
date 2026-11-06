@@ -5841,12 +5841,7 @@ impl NativeBuiltinEmitter.emit_hasattr(
     methods = p.vtable_method_indices.get(type_name, {});
     static_prefix = type_name + ".";
     i1 = ir.IntType(1);
-    # No compile-time fast path for a literal name: reading the literal needs
-    # either `getattr(node, "lit_value", None)` (a 3-arg FuncCall the native
-    # backend refuses) or a `uni.String` isinstance, and an un-lowerable body
-    # turns into an abort() stub when this file is compiled into the kernel
-    # (jaseci-labs/jac#10485, #10492). The runtime strcmp loop below is
-    # semantically identical; it only costs a few compares.
+
     i8p = ir.IntType(8).as_pointer();
     if args[1].type != i8p {
         return None;
@@ -5864,9 +5859,7 @@ impl NativeBuiltinEmitter.emit_hasattr(
         }
     }
     b = get_builder(p);
-    strcmp = p._get_or_declare_extern(
-        "strcmp", ir.IntType(32), [i8p, i8p]
-    );
+    strcmp = p._get_or_declare_extern("strcmp", ir.IntType(32), [i8p, i8p]);
     result: ir.Value = ir.Constant(i1, 0);
     for field_name in fields.keys() {
         cmp = b.call(
@@ -5899,8 +5892,7 @@ impl NativeBuiltinEmitter.emit_hasattr(
                 name="hasattr.static.cmp"
             );
             matches = b.icmp_signed(
-                "==", cmp, ir.Constant(ir.IntType(32), 0),
-                name="hasattr.static.match"
+                "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.static.match"
             );
             result = b.or_(result, matches, name="hasattr.static.or");
         }

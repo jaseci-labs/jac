@@ -18,11 +18,6 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
         if anchor_root is not None {
-            # Native identities use [project].name when the source root has
-            # jac.toml. During `jac test`, sources stay under the app root
-            # (e.g. .../app), while sealed builds stage them under a directory
-            # named after the project (e.g. .../jackal). Resolve against the
-            # same identity rule rather than the physical directory basename.
             if _native_unit_root_name(anchor_root) == root_name {
                 return os.path.join(anchor_root, rel);
             }
