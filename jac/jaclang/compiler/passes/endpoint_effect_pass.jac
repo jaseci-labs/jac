@@ -1,5 +1,7 @@
 def _literal_names(value: (Expr | None)) -> (list[str] | None);
 
+def _is_effects_decorator(sym: (Symbol | None)) -> bool;
+
 obj CallableKey {
     has owner: (UniScopeNode | None) = None,
         key: str = "";
