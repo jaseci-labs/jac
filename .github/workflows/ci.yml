@@ -87,6 +87,8 @@ jobs:
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
               - 'scripts/test_ci_cache_keys.sh'
+              - 'scripts/ci_carry_verdict.sh'
+              - 'scripts/test_ci_carry_verdict.sh'
             scale:
               - 'jac/jaclang/scale/**'
             byllm:
@@ -1148,6 +1150,8 @@ jobs:
         run: zig build test --summary all
       - name: Cache key mutation tests
         run: bash scripts/test_ci_cache_keys.sh
+      - name: Carry-over verdict tests
+        run: bash scripts/test_ci_carry_verdict.sh
 
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
@@ -1937,38 +1941,20 @@ jobs:
     steps:
       # A label-only run skips every suite, and the newest Everything Passed on
       # a commit is the one that gates it, so that run repeats the verdict of
-      # the newest earlier run that ran the suites (waiting for it if it is
-      # still going). Contribution Checks is judged again here, so its earlier
-      # result is dropped, and so is test-scale-k8s once the PR has skip-k8s.
+      # an earlier run (scripts/ci_carry_verdict.sh says which).
+      - name: Check out the carry-over script
+        if: needs.changes.result == 'skipped'
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci_carry_verdict.sh
+          sparse-checkout-cone-mode: false
       - name: Carry the previous run's verdict over a label-only run
         if: needs.changes.result == 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
           SKIP_K8S: ${{ contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
-        run: |
-          waived='^(Everything Passed|Contribution Checks)$'
-          if [ "$SKIP_K8S" = true ]; then
-            waived='^(Everything Passed|Contribution Checks|test-scale-k8s)$'
-          fi
-          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --limit 50 \
-              --json databaseId --jq ".[] | select(.databaseId < $GITHUB_RUN_ID) | .databaseId"); do
-            gh run watch "$id" --repo "$GITHUB_REPOSITORY" --interval 60 > /dev/null || true
-            jobs=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json conclusion,jobs)
-            [ "$(jq -r .conclusion <<<"$jobs")" = cancelled ] && continue
-            [ "$(jq -r '.jobs[] | select(.name == "changes") | .conclusion' <<<"$jobs")" = success ] || continue
-            bad=$(jq -r '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | .name' <<<"$jobs" \
-              | grep -Ev "$waived" || true)
-            if [ -n "$bad" ]; then
-              echo "::error::Run $id on $SHA did not pass:"
-              echo "$bad"
-              exit 1
-            fi
-            echo "Carried the verdict of run $id."
-            exit 0
-          done
-          echo "::error::No earlier CI run on $SHA ran the suites to carry over; push or rerun CI."
-          exit 1
+        run: bash scripts/ci_carry_verdict.sh
       - name: Fail if any dependency failed or was cancelled
         if: >-
           contains(needs.*.result, 'failure') ||
