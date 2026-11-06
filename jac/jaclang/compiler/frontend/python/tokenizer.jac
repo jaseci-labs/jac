@@ -1337,9 +1337,30 @@ def tokenizer_from_string(source: str, filename: str, exec_input: bool) -> tok_s
     if exec_input and buf and not buf.endswith("\n") {
         buf += "\n";
     }
-    return tok_state(
-        data=buf.encode("utf-8"), filename=filename, exec_input=exec_input
-    );
+    data = buf.encode("utf-8");
+    state = tok_state(data=data, filename=filename, exec_input=exec_input);
+    nul = data.find(b"\x00");
+    if nul >= 0 {
+        line = 1;
+        column = 0;
+        index = 0;
+        while index < nul {
+            if data[index] == ord("\n") {
+                line += 1;
+                column = 0;
+            } else {
+                column += 1;
+            }
+            index += 1;
+        }
+        state.error = mk_diag(
+            "SyntaxError",
+            "source code cannot contain null bytes",
+            tok_loc_span(line, line, column, column),
+            filename
+        );
+    }
+    return state;
 }
 
 def _endmarker_lineno(st: tok_state) -> int {

@@ -109,6 +109,20 @@ test "missing indented blocks interpolate the header line" {
     assert caught;
 }
 
+test "null-byte errors preserve the source prefix and its location" {
+    caught = False;
+    try {
+        pycompile("x = '\x00' trailing", "null_byte.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg == "source code cannot contain null bytes" , error.msg;
+        assert error.filename == "null_byte.py";
+        assert error.lineno == 1 , error.lineno;
+        assert error.text == "x = '" , repr(error.text);
+    }
+    assert caught;
+}
+
 test "turning an invalid escape warning into an error drops the warning lead-in" {
     with warnings.catch_warnings() {
         warnings.simplefilter("error", SyntaxWarning);

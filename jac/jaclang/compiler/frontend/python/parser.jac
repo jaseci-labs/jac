@@ -22927,6 +22927,9 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
     }
     lines = decode_source_lines(p.tok.data);
     text = lines[line - 1] if line > 0 and line <= len(lines) else "";
+    if message == "source code cannot contain null bytes" and "\x00" in text {
+        text = text.split("\x00", 1)[0];
+    }
     if message.startswith("unterminated") {
         text = text.rstrip("\r\n");
     }
