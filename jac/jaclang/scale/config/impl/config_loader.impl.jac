@@ -182,6 +182,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
     k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
+    k8s_config['metrics_endpoint'] = monitoring['endpoint'];
 
     k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
 

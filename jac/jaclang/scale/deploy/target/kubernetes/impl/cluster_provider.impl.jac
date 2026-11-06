@@ -13,10 +13,6 @@ impl AWSProvider.service_url(
     return None;
 }
 
-impl AWSProvider.prometheus_scrape_port(container_port: int) -> int {
-    return container_port;
-}
-
 impl AWSProvider.ingress_controller_service(
     service_name: str, namespace: str, controller_name: str, ingress_node_port: int
 ) -> dict[str, any] {
@@ -92,10 +88,6 @@ impl LocalProvider.service_url(
     lb_endpoint: (str | None), ingress_node_port: int
 ) -> (str | None) {
     return f"http://localhost:{ingress_node_port}";
-}
-
-impl LocalProvider.prometheus_scrape_port(container_port: int) -> int {
-    return container_port;
 }
 
 impl LocalProvider.ingress_controller_service(

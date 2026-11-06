@@ -10,8 +10,7 @@ glob MINTED_SECRET_NOTES: dict[str, str] = {
          "default_password to control it yourself."
      },
      logger = logging.getLogger(__name__),
-     REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision",
-     FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
+     REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision";
 
 
 def _revision_sort_key(item: dict[str, any]) -> int;
