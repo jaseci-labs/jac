@@ -96,11 +96,14 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     }
     import sys;
     import types;
+    import hashlib;
     stem = os.path.splitext(os.path.basename(key))[0];
+    path_tag = hashlib.sha1(key.encode()).hexdigest()[:12];
     mirror_name = (
         (package_name + "." if package_name else "")
         + stem
         + "__jac_server_mirror"
+        + path_tag
     );
     existing = sys.modules.get(mirror_name);
     if existing is not None {
