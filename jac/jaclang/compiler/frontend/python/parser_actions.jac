@@ -110,7 +110,7 @@ def pa_warn_escape(
         + escaped
         + '" is an invalid '
         + kind
-        + '. Such sequences will not work in the future. Did you mean "\\'
+        + '. Did you mean "\\'
         + escaped
         + '"? A raw string is also an option.';
     warn(

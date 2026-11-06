@@ -82,7 +82,7 @@ impl warn(
         if PyErr_ExceptionMatches(PyExc_SyntaxWarning) != 0 {
             take_error_text();
             raise syntax_failure(
-                message.replace(". Such sequences will not work in the future.", "."),
+                message,
                 filename=filename,
                 lineno=line,
                 offset=column + 1,
