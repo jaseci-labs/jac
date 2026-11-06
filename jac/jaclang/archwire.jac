@@ -9121,7 +9121,6 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
-            names_except_type,
             type_only_import_of,
             type_param_of
         },
@@ -9509,6 +9508,9 @@ graph import compiler {
     ]
     frontend.unitree --> types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
         in_type_position
+    }
+    frontend.unitree --> types.type_evaluator.TypeEvaluator.get_type_of_expression {
+        names_except_type
     }
     frontend.unitree as uni ++> backends.es.backends.react
         | backends.es.backends.solid
