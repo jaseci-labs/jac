@@ -35,18 +35,6 @@ impl TypeCheckPass.exit_name with Name exit {
         if isinstance(here.parent, ModuleCode) and here.parent.name is here {
             return;
         }
-        if names_except_type(here) {
-            self.evaluator._diagnostic_suppression_depth += 1;
-            try {
-                name_type = self.evaluator.get_type_of_expression(here);
-            } finally {
-                self.evaluator._diagnostic_suppression_depth -= 1;
-            }
-            if isinstance(name_type, UnknownType) {
-                here.type = UnknownType(is_diagnosed=True);
-            }
-            return;
-        }
         self.evaluator.get_type_of_expression(here);
     }
     if here.sym is not None {
