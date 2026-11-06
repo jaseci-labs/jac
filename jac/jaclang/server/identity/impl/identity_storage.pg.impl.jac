@@ -131,8 +131,7 @@ impl PgIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | Non
 impl PgIdentityStorage.identity_taken(value: str) -> bool {
     normalized = value.lower().strip();
     rows = self.store.rows(
-        'SELECT 1 FROM identity_lookups WHERE value_normalized = :v',
-        {'v': normalized}
+        'SELECT 1 FROM identity_lookups WHERE value_normalized = :v', {'v': normalized}
     );
     return bool(rows);
 }

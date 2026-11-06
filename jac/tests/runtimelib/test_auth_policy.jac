@@ -428,7 +428,10 @@ test "every write path is held to the policy and existing accounts are grandfath
                 [{'type': 'username', 'value': old_name}],
                 {'type': 'password', 'password': 'other'}
             )
-                == {'error': 'Username is already registered', 'code': 'IDENTITY_TAKEN'};
+                == {
+                    'error': 'Username is already registered',
+                    'code': 'IDENTITY_TAKEN'
+                };
             storage.update_user_fields(old_id, {'status': 'active'});
 
             configure_identity(
