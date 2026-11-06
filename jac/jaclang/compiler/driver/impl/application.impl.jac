@@ -968,7 +968,8 @@ impl _prepare_revision(
         entries,
         client,
         dev
-    );
+    )
+        + ((tuple(client_build_env()), ) if client else ());
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev

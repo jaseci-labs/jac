@@ -494,7 +494,8 @@ graph import {
     client.targets.web_target ++> dist.seal.ensure_client_dist
         | dist.seal.finish_prepared_client { WebTarget }
     client.vite_bundler ++> [
-        dist.seal.sealed_image_key
+        compiler.driver.application._prepare_revision
+            | dist.seal.sealed_image_key
             | scale.injector.bundle.client_input_digest
             | scale.injector.bundle.seal_input_digest { client_build_env },
         dist.source.client.write_client { ViteBundler },
