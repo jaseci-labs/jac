@@ -29,3 +29,5 @@ obj ReadOnlyRetry(WriteConflict) {
 obj TransactionLost(WriteConflict) {
     def message -> str;
 }
+
+obj PartialCommitError(RuntimeError) {}

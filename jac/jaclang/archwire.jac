@@ -2632,8 +2632,13 @@ graph import {
         server.middleware | server.server._abegin_user_request_context {
             MissingAnchorError
         },
-        server.server { ReadOnlyRetry, WriteConflict },
-        server.session { ReadOnlyRetry, TransactionLost, WriteConflict },
+        server.server { PartialCommitError, ReadOnlyRetry, WriteConflict },
+        server.session {
+            PartialCommitError,
+            ReadOnlyRetry,
+            TransactionLost,
+            WriteConflict
+        },
     ]
     runtime.graph_query ++> [
         data.query_planner | data.sqlcompile { GraphQuery, QHop, QPred },
@@ -3495,6 +3500,8 @@ graph import {
         },
         data.query_planner._acl_pushdown_root { JacRuntimeInterface },
         server.sv_client._scale_transport { _scale_provider },
+        server.sv_client.call { JacRuntime },
+        server.sv_client.spawn_walker { JacRuntime },
         testing.test_runner._fresh_jac_state { JacRuntime, JacRuntimeInterface },
     ]
     runtime.runtime --> [
