@@ -9,7 +9,7 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
     for hook in list(DRAIN_HOOKS) {
         try {
             hook();
-        } except Exception {
+        } except BaseException {
             logger.exception("drain hook failed");
         }
     }

@@ -46897,8 +46897,11 @@ graph import scale.tests {
             | microservices.test_k8s_health_probe
             | server.test_examples { get_free_port },
         microservices.test_stop_signal_scope { stop_server },
-        microservices.test_typed_boundary { get_free_port, start_server, stop_server },
-        server.test_drain_hooks { get_free_port, start_server },
+        microservices.test_typed_boundary | server.test_drain_hooks {
+            get_free_port,
+            start_server,
+            stop_server
+        },
         server.test_metrics_workers | server.test_serve {
             cleanup_db_files,
             get_free_port,

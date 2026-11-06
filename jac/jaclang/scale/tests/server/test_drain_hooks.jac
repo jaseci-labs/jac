@@ -20,8 +20,12 @@ def _serve_and_stop(workers: int) -> tuple[int, list[str], str] {
         get_free_port(),
         env={"HOOK_MARK": mark, "JAC_SERVE_WORKERS": str(workers)}
     );
-    server.send_signal(signal.SIGTERM);
-    (stdout, stderr) = server.communicate(timeout=60);
+    try {
+        server.send_signal(signal.SIGTERM);
+        (stdout, stderr) = server.communicate(timeout=60);
+    } finally {
+        stop_server(server);
+    }
     lines: list[str] = Path(mark).read_text().split() if os.path.exists(mark) else [];
     return (server.returncode, lines, stdout + stderr);
 }
