@@ -201,6 +201,7 @@ test "an explicit provision request wins over ambient JAC_DB_URL and serves Post
             (None, 0, 1),
             ("None", 1, 1),
             ("10.96.0.42", 0, 0),
+
         ] {
             cfg = KubernetesConfig(
                 app_name="tenant-app", namespace="tenant-a", database_mode="provision"
@@ -217,8 +218,10 @@ test "an explicit provision request wins over ambient JAC_DB_URL and serves Post
 
             assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 1;
             assert "valueFrom" in apis["env_list"][0];
-            assert core_v1.delete_namespaced_service.call_count == deletes , existing_ip;
-            assert core_v1.create_namespaced_service.call_count == creates , existing_ip;
+            assert core_v1.delete_namespaced_service.call_count
+                == deletes , existing_ip;
+            assert core_v1.create_namespaced_service.call_count
+                == creates , existing_ip;
             if creates {
                 body = core_v1.create_namespaced_service.call_args.kwargs["body"];
                 assert body["spec"].get("clusterIP") != "None" , body;

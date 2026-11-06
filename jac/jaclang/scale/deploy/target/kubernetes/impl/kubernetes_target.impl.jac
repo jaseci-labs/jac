@@ -162,7 +162,7 @@ impl KubernetesTargetBase._deploy_databases(
         existing = core_v1.read_namespaced_service(
             name=pg_service_name, namespace=namespace
         );
-        # clusterIP is immutable, so an older headless Service is recreated.
+
         if existing.spec.cluster_ip == 'None' {
             core_v1.delete_namespaced_service(
                 name=pg_service_name, namespace=namespace
