@@ -123,6 +123,19 @@ test "null-byte errors preserve the source prefix and its location" {
     assert caught;
 }
 
+test "unparenthesized generator diagnostics underline the for keyword" {
+    caught = False;
+    try {
+        pycompile("f(4, x for x in range(1))", "generator.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg == "Generator expression must be parenthesized" , error.msg;
+        assert error.offset == 8 , error.offset;
+        assert error.end_offset == 11 , error.end_offset;
+    }
+    assert caught;
+}
+
 test "turning an invalid escape warning into an error drops the warning lead-in" {
     with warnings.catch_warnings() {
         warnings.simplefilter("error", SyntaxWarning);

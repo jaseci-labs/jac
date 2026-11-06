@@ -1847,26 +1847,15 @@ def pa_raise_syntax_known_range(
     }
     if message == "Generator expression must be parenthesized"
         and isinstance(b, comprehension) {
-        start_expr: expr | None = None;
-        if isinstance(a, Call) and (a as Call).args {
-            start_expr = (a as Call).args[-1];
-        } elif isinstance(a, expr) {
-            start_expr = a as expr;
-        }
-        end_expr = (b as comprehension).iter;
-        if (b as comprehension).ifs {
-            end_expr = (b as comprehension).ifs[-1];
-        }
+        clause = b as comprehension;
         p.error = mk_diag(
             "SyntaxError",
             message,
             tok_loc(
-                lineno=start_expr.lineno if start_expr is not None else b.for_lineno,
-                end_lineno=end_expr.end_lineno or end_expr.lineno,
-                col_offset=start_expr.col_offset
-                    if start_expr is not None
-                    else b.for_col_offset,
-                end_col_offset=end_expr.end_col_offset or end_expr.col_offset
+                lineno=clause.for_lineno,
+                end_lineno=clause.for_end_lineno or clause.for_lineno,
+                col_offset=clause.for_col_offset,
+                end_col_offset=clause.for_end_col_offset or clause.for_col_offset + 3
             ),
             p.filename
         );
