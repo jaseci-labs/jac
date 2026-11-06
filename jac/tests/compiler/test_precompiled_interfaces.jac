@@ -41,19 +41,74 @@ test "precompiled interfaces are independent of the staging directory" {
 }
 
 test "precompiled modules carry their type interface on cold and cached builds" {
-    with TemporaryDirectory() as directory {
-        package = _package(Path(directory));
-        source = package / "api.jac";
-        source.write_text("def answer() -> int { return 42; }\n");
-        for _attempt in range(2) {
-            data = precompile_unit(str(source), str(package), collect=False);
-            assert data is not None , "precompilation produced no artifact";
-            assert read_section_bytes(data, SEC_IFACE) is not None , (
-                "precompilation discarded the dependency's type interface"
-            );
-            assert read_section_bytes(data, SEC_DIAG) is not None , (
-                "precompilation discarded the interface's analysis diagnostics"
-            );
+    import contextlib;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
+    import from jaclang.dist.precompile_bytecode { precompile_unit_context }
+    import from jaclang.runtime.prepared { forget }
+    for (kind, sealed_under) in (("", ""), ("service", "server"), ("cli", "native")) {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            source = package / "api.jac";
+            source.write_text("def answer() -> int { return 42; }\n");
+            reuses_prepare = sealed_under == "server";
+            with (contextlib.chdir(package) if kind else contextlib.nullcontext()) {
+                if kind {
+                    (package / "jac.toml").write_text(
+                        f'[project]\nname = "library"\nkind = "{kind}"\n'
+                    );
+                    app_main = package / "main.jac";
+                    app_main.write_text(
+                        "import from api { answer }\n"
+                            + "def:pub hello -> int { return answer(); }\n"
+                    );
+                    prepare_application(str(app_main), JacProgram(), str(package));
+                    forget(str(app_main));
+                    (package / ".jac" / "serve_manifest.json").write_text("{}");
+                    prepared = {
+                        str(p) for p in (package / ".jac" / "cache").rglob("api.*.jir")
+                    };
+                    with precompile_unit_context(
+                        str(source), str(package)
+                    ) as _program {
+                        codespace = effective_default_codespace();
+                        looked = str(get_module_cache_path(str(source)));
+                    }
+                    assert codespace == sealed_under , (
+                        f"a {kind} app's seal compiles under {codespace!r}, expected {sealed_under!r}"
+                    );
+                    if reuses_prepare {
+                        assert looked in prepared , (
+                            f"the seal looks up {looked}; the prepare wrote {sorted(
+                                prepared
+                            )}"
+                        );
+                    }
+                }
+                for _attempt in range(2) {
+                    recompile = patch.object(
+                        JacCompiler,
+                        'get_bytecode',
+                        side_effect=AssertionError(
+                            "the seal compiled the module again instead of reusing its prepare"
+                        )
+                    );
+                    with (recompile if reuses_prepare else contextlib.nullcontext()) {
+                        data = precompile_unit(str(source), str(package), collect=False);
+                    }
+                    assert data is not None , "precompilation produced no artifact";
+                    assert read_section_bytes(data, SEC_IFACE) is not None , (
+                        "precompilation discarded the dependency's type interface"
+                    );
+                    assert read_section_bytes(data, SEC_DIAG) is not None , (
+                        "precompilation discarded the interface's analysis diagnostics"
+                    );
+                }
+            }
         }
     }
 }

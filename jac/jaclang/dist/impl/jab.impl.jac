@@ -72,6 +72,10 @@ impl _materialize_jab_data(
     return dest;
 }
 
+impl jab_serves(kind: str) -> bool {
+    return kind in ["service", "service-mesh", "web-app", "web-static"];
+}
+
 impl jab_app_meta(img_root: Path) -> dict[str, any] {
     raw = json.loads(
         (img_root / "_precompiled" / MANIFEST_NAME).read_text(encoding="utf-8")
