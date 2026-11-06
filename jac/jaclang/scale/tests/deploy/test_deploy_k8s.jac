@@ -136,6 +136,13 @@ def _run_fleet_rollout(
     timeout: int = 30
 ) -> (Exception | None) {
     caught: (Exception | None) = None;
+    now: list[float] = [0.0];
+    def _sleep(seconds: float) -> None {
+        now[0] += seconds;
+    }
+    def _monotonic() -> float {
+        return now[0];
+    }
     with unittest.mock.patch(
         "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
@@ -147,13 +154,17 @@ def _run_fleet_rollout(
                 "jaclang.scale.deploy.target.kubernetes.target.client.CoreV1Api",
                 return_value=fake_core_v1
             ) {
-                with unittest.mock.patch.object(time, "sleep") {
-                    try {
-                        deployment_target._wait_for_fleet_rollout(
-                            bundle, timeout=timeout
-                        );
-                    } except Exception as e {
-                        caught = e;
+                with unittest.mock.patch.object(time, "sleep", side_effect=_sleep) {
+                    with unittest.mock.patch.object(
+                        time, "monotonic", side_effect=_monotonic
+                    ) {
+                        try {
+                            deployment_target._wait_for_fleet_rollout(
+                                bundle, timeout=timeout
+                            );
+                        } except Exception as e {
+                            caught = e;
+                        }
                     }
                 }
             }

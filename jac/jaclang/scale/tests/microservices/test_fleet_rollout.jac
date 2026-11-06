@@ -94,15 +94,29 @@ def _apis(ready: int, pods: list[any]) -> tuple[any, ...] {
     return (apps, core);
 }
 
+# Runs the rollout wait on a fake clock: the patched sleep advances it, and so
+# does anything a test does to it (an API call that takes time), so durations
+# the loop measures are wall time, not just the time it slept.
 def _run(
     target: any,
     bundle: dict[str, any],
     apps: object,
     core: object,
     timeout: int,
-    naps: (list[float] | None) = None
+    naps: (list[float] | None) = None,
+    clock: (list[float] | None) = None
 ) -> object {
     err = None;
+    now: list[float] = clock if clock is not None else [0.0];
+    def _sleep(seconds: float) -> None {
+        now[0] += seconds;
+        if naps is not None {
+            naps.append(seconds);
+        }
+    }
+    def _monotonic() -> float {
+        return now[0];
+    }
     with unittest.mock.patch.object(
         kubernetes.client, "AppsV1Api", return_value=apps
     ) {
@@ -110,14 +124,15 @@ def _run(
             kubernetes.client, "CoreV1Api", return_value=core
         ) {
             with unittest.mock.patch.object(target, "_load_cluster_config") {
-                with unittest.mock.patch.object(time, "sleep") as sleeper {
-                    try {
-                        target._wait_for_fleet_rollout(bundle, timeout=timeout);
-                    } except Exception as e {
-                        err = e;
-                    }
-                    if naps is not None {
-                        naps.extend([c.args[0] for c in sleeper.call_args_list]);
+                with unittest.mock.patch.object(time, "sleep", side_effect=_sleep) {
+                    with unittest.mock.patch.object(
+                        time, "monotonic", side_effect=_monotonic
+                    ) {
+                        try {
+                            target._wait_for_fleet_rollout(bundle, timeout=timeout);
+                        } except Exception as e {
+                            err = e;
+                        }
                     }
                 }
             }
@@ -368,8 +383,33 @@ test "pod stuck ContainerCreating with FailedMount events is healed" {
         ]
     );
 
-    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 400);
+    # Each round's API reads take 3 s of wall time on top of the 2 s sleep. The
+    # wedge threshold is wall time, so the heal must land near 300 s, not after
+    # 300 s of sleeping alone (about 750 s here).
+    clock: list[float] = [0.0];
+    healed_at: list[float] = [];
+    def _slow_read(*args: any, **kwargs: any) -> object {
+        clock[0] += 3.0;
+        return _dep(0);
+    }
+    def _record_heal(*args: any, **kwargs: any) -> None {
+        healed_at.append(clock[0]);
+    }
+    apps.read_namespaced_deployment.side_effect = _slow_read;
+    core.delete_namespaced_pod.side_effect = _record_heal;
 
+    err = _run(
+        target,
+        _bundle("gateway-deployment", "gateway"),
+        apps,
+        core,
+        400,
+        clock=clock
+    );
+
+    assert healed_at and healed_at[0] <= 310 , (
+        f"mount-wedge heal ran at {healed_at} s of wall time, expected about 300"
+    );
     assert core.delete_namespaced_pod.call_count == 1 , (
         f"expected one mount-wedge heal, got "
         f"{core.delete_namespaced_pod.call_count}"

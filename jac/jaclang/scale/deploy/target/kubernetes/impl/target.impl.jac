@@ -502,6 +502,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
     core_v1 = client.CoreV1Api();
     ns = self.k8s_config.namespace;
     total = len(names);
+    started = time.monotonic();
     elapsed = 0;
     ready = 0;
     interactive = bool(sys.stdout.isatty());
@@ -655,7 +656,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                 last_heartbeat = elapsed;
             }
             time.sleep(ROLLOUT_POLL_SECONDS);
-            elapsed += ROLLOUT_POLL_SECONDS;
+            elapsed = int(time.monotonic() - started);
         }
     }
     timeout_detail = "";
