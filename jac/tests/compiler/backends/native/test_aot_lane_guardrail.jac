@@ -18,15 +18,15 @@ import subprocess;
 import tempfile;
 import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline { PassKind, product_passes }
 import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
     ProductRequest
 }
 
 """The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
-def codegen_lane(native: bool) -> list[type] {
-    lane: list[type] = [];
+def codegen_lane(native: bool) -> list[PassKind] {
+    lane: list[PassKind] = [];
     for product in (
         CompilationProduct.CODEGEN,
         CompilationProduct.PY_IR,
@@ -49,11 +49,11 @@ test "the native codegen schedule carries the native passes" {
     import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
     import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
     sched = codegen_lane(True);
-    names = [p.__name__ for p in sched];
-    assert NaIRGenPass in sched , (
+    names = [p.value for p in sched];
+    assert PassKind.NA_IR_GEN in sched , (
         f"native codegen schedule lost NaIRGenPass: {names}"
     );
-    assert NativeCompilePass not in sched , (
+    assert PassKind.NATIVE_COMPILE not in sched , (
         f"machine code is the host's assembly step, not a scheduled pass: {names}"
     );
 }
