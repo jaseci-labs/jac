@@ -202,6 +202,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0055 = _err(
          "E0055", Category.SYNTAX, "'yield' is only valid inside a function body"
      ),
+     E0057 = _err(
+         "E0057",
+         Category.SYNTAX,
+         "'return' is only valid inside a function body",
+         help="A `with entry` block runs as module code, not as a function, so it has nothing to return from. Move the code into a `def` and call it from the entry block, or invert the condition so the rest of the block runs only when it should."
+     ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0063 = _err(
          "E0063",
