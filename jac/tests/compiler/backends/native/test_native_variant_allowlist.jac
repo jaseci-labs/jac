@@ -22,11 +22,13 @@ glob ALLOWED: dict[str, str] = {
          "_signal_native.darwin.jac": "the SIG* numbers and the signal-description text each libc has its own way",
          "_signal_native.linux.jac": "the SIG* numbers and the signal-description text each libc has its own way",
          "_subprocess_native.linux.jac": "posix_spawn subprocesses exist only on Linux so far",
+         "_subprocess_native.darwin.jac": "posix_spawn subprocesses use Darwin's libc and spawn interfaces",
          "_termios_native.darwin.jac": "struct termios layout (tcflag_t width, NCCS), the c_cc indices and TIOCGWINSZ per libc",
          "_termios_native.linux.jac": "struct termios layout (tcflag_t width, NCCS), the c_cc indices and TIOCGWINSZ per libc",
          "signal.darwin.jac": "the SIG* numbers each libc has its own way",
          "signal.linux.jac": "the SIG* numbers each libc has its own way",
          "subprocess.linux.jac": "posix_spawn subprocesses exist only on Linux so far",
+         "subprocess.darwin.jac": "posix_spawn subprocesses use Darwin's libc and spawn interfaces",
          "_zlib_abi.windows.jac": "z_stream under Windows' 32-bit long, another layout class",
          "errno.darwin.jac": "errno's names and values as CPython exposes them per platform",
          "errno.linux.jac": "errno's names and values as CPython exposes them per platform"
