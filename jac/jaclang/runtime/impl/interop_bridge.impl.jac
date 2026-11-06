@@ -88,7 +88,8 @@ impl _pyb_import_module(mod_path: str) -> object {
 impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     import os;
     key = os.path.abspath(mod_path);
-    cache_key = key + "|" + package;
+    package_name: str = package or "";
+    cache_key = key + "|" + package_name;
     cached = _pyb_module_memo.get(cache_key);
     if cached is not None {
         return cached;
@@ -96,7 +97,11 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     import sys;
     import types;
     stem = os.path.splitext(os.path.basename(key))[0];
-    mirror_name = (package + "." if package else "") + stem + "__jac_server_mirror";
+    mirror_name = (
+        (package_name + "." if package_name else "")
+        + stem
+        + "__jac_server_mirror"
+    );
     existing = sys.modules.get(mirror_name);
     if existing is not None {
         _pyb_module_memo[cache_key] = existing;
@@ -122,7 +127,7 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     }
     mod = types.ModuleType(mirror_name);
     mod.__file__ = key;
-    mod.__package__ = package;
+    mod.__package__ = package_name;
     mod.__builtins__ = __builtins__;
     sys.modules[mirror_name] = mod;
     try {
