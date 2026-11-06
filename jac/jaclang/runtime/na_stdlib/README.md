@@ -360,6 +360,12 @@ native layout records the emitted name separately from its source-level key.
   rather than CPython's `OSError` subclasses. `rmtree` and `move` errors name
   the path that failed and end with the `strerror` text.
 
+- **`tempfile.jac`** -- native `mkdtemp` for app/test code, generating a
+  collision-resistant directory name from native UUID4 and creating it with
+  mode 0700. The current native surface intentionally covers only the
+  temporary-directory API used by Jackal; file-backed temporary objects and
+  the other CPython helpers are not implemented.
+
 - **`keyword.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
   `issoftkeyword` mirroring CPython's lists verbatim, ordering included
   (stable since 3.10's soft-keyword additions).
