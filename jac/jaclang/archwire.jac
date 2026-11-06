@@ -1632,7 +1632,7 @@ graph import {
     dist.fused_binary --> cli.commands.cache._live_keys { running_runtime_entries }
     dist.jab ++> [
         cli.commands.execution._run_jab { materialize_jab },
-        cli.commands.execution.run_jab_image { jab_app_meta },
+        cli.commands.execution.run_jab_image { jab_app_meta, jab_serves },
     ]
     dist.jab --> [
         cli.cli_boot._run_bundled_app { materialize_jab_bytes },
@@ -14544,7 +14544,10 @@ graph import dist {
             runtime_trailer
         },
     ]
-    jab ++> seal.build_jab { jab_app_meta }
+    jab ++> [
+        precompile_bytecode._served_codespace { jab_serves },
+        seal.build_jab { jab_app_meta },
+    ]
     jab_vendor ++> [
         jab { activate_vendored },
         seal.vendor_jab_deps { download_wheels, wheels_dir, write_vendor_manifest },

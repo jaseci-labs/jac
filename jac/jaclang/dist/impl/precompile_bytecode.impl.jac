@@ -467,8 +467,13 @@ impl precompile_native_unit(jac_path: str, collect: bool = True) -> str {
     return ent.digest if ent is not None else "";
 }
 
-impl _served_codespace(pkg_root: str) -> str {
-    return 'server' if (Path(pkg_root) / SERVE_MANIFEST_REL).is_file() else '';
+impl _served_codespace(pkg_root: str, app: str = "") -> str {
+    pkg_path = Path(pkg_root);
+    if not (pkg_path / SERVE_MANIFEST_REL).is_file() {
+        return '';
+    }
+    kind = str(app_metadata(pkg_path, pkg_path.name, app).get("kind") or "cli");
+    return 'server' if jab_serves(kind) else '';
 }
 
 impl precompile_context(
@@ -494,7 +499,7 @@ impl precompile_context(
             entry_point=entry_path,
             project_root=pkg_root,
             skip_native_engine=True,
-            default_codespace=_served_codespace(pkg_root)
+            default_codespace=_served_codespace(pkg_root, app)
         )
     );
     options = bind_options(jac_path, program, options);
@@ -513,7 +518,7 @@ impl precompile_unit_context(
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
-    with served_codespace(pkg_root) {
+    with served_codespace(pkg_root, app) {
         selected = precompile_context(jac_path, pkg_root, program, source_app);
         compiler.unit_collect = collect;
         owner_options = owner_scope_options(selected);
@@ -534,9 +539,9 @@ impl precompile_unit_context(
     }
 }
 
-impl served_codespace(pkg_root: str) -> Iterator[None] {
+impl served_codespace(pkg_root: str, app: str = "") -> Iterator[None] {
     previous = get_effective_default_codespace_override();
-    codespace = _served_codespace(pkg_root);
+    codespace = _served_codespace(pkg_root, app);
     if codespace {
         set_effective_default_codespace(codespace);
     }
@@ -1048,7 +1053,7 @@ impl seal_finalize(
     identity = compiler_identity();
     _phase("completeness check");
     foreign: list[str] = [];
-    with served_codespace(str(pkg_path)) {
+    with served_codespace(str(pkg_path), app) {
         for p in sealable_sources(str(pkg_path), app) {
             rel = Path(p).relative_to(pkg_path);
             jir = precompiled_dir / pyver / rel.with_suffix(".jir");
@@ -1772,7 +1777,7 @@ impl run_precompile(
     }
 
     def unit_job(request: dict[(str, any)]) -> dict[(str, any)] {
-        with served_codespace(package_dir) {
+        with served_codespace(package_dir, app) {
             jac_path = str(request["path"]);
             rel = Path(jac_path).relative_to(pkg_path);
             jir_path = out_dir / rel.with_suffix(".jir");
