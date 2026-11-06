@@ -32,6 +32,7 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
         "Connection: close",
         "User-Agent: jac-urllib/1.0",
         "Accept: */*",
+
     ];
     for name in request.headers {
         lines.append(name + ": " + request.headers[name]);
@@ -180,11 +181,12 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
                     if lower_name == "host" {
                         continue;
                     }
-                    if changed_origin and (
-                        lower_name == "authorization"
-                        or lower_name == "cookie"
-                        or lower_name == "proxy-authorization"
-                    ) {
+                    if changed_origin
+                        and (
+                            lower_name == "authorization"
+                            or lower_name == "cookie"
+                            or lower_name == "proxy-authorization"
+                        ) {
                         continue;
                     }
                     next_headers[name] = request.headers[name];
@@ -193,10 +195,11 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
                 next_data = request.data;
                 switch_to_get = (
                     resp.status == 303 and request.method.upper() != "HEAD"
-                ) or (
-                    (resp.status == 301 or resp.status == 302)
-                    and request.method.upper() == "POST"
-                );
+                )
+                    or (
+                        (resp.status == 301 or resp.status == 302)
+                        and request.method.upper() == "POST"
+                    );
                 if switch_to_get {
                     next_method = "GET";
                     next_data = b"";
@@ -212,10 +215,7 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
                     next_headers = clean_headers;
                 }
                 request = Request(
-                    url=target,
-                    data=next_data,
-                    headers=next_headers,
-                    method=next_method
+                    url=target, data=next_data, headers=next_headers, method=next_method
                 );
                 cur = target;
                 redirects += 1;
