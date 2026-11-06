@@ -270,9 +270,18 @@ impl js_runtime_path -> str {
     return bun.path;
 }
 
-impl run_pm(args: list[str], cwd: str, capture: bool = False) -> tuple[int, str] {
+impl run_pm(
+    args: list[str],
+    cwd: str,
+    capture: bool = False,
+    release_age_days: float = MIN_RELEASE_AGE_DAYS
+) -> tuple[int, str] {
     import subprocess;
     runtime = js_runtime_path();
+    if args and args[0] in ("install", "add") {
+        age = int(release_age_days * 86400);
+        args = [args[0], f"--minimum-release-age={age}"] + list(args[1:]);
+    }
     env = dict(os.environ);
     if _engine() is not None {
         env["PATH"] = os.path.dirname(runtime) + os.pathsep + env.get("PATH", "");

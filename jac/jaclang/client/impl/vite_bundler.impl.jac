@@ -233,7 +233,12 @@ impl ViteBundler.install_packages(
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
         (returncode, error_output) = run_pm(
-            ['install'], str(build_dir), capture=capture_output
+            ['install'],
+            str(build_dir),
+            capture=capture_output,
+            release_age_days=float(
+                self.config_loader.get_npm_config()['min_release_age_days']
+            )
         );
         elapsed = time.time() - start_time;
         if returncode != 0 {
@@ -241,7 +246,7 @@ impl ViteBundler.install_packages(
                 hint = "";
                 if "minimum-release-age" in error_output {
                     hint = (
-                        "\n\nThat version is newer than [client.npm] min_release_age in "
+                        "\n\nThat version is newer than [client.npm] min_release_age_days in "
                         "jac.toml. Add the package to min_release_age_excludes to "
                         "install it anyway."
                     );
@@ -1237,44 +1242,11 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     return npmrc_path;
 }
 
-impl release_age_seconds(value: any) -> int {
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0 {
-        return value;
-    }
-    if isinstance(value, str) {
-        text = value.strip().lower();
-        unit = 's';
-        if text and text[-1] in RELEASE_AGE_UNITS {
-            unit = text[-1];
-            text = text[:-1].strip();
-        }
-        if text.isdigit() {
-            return int(text) * RELEASE_AGE_UNITS[unit];
-        }
-    }
-    raise ClientBundleError(
-        "[client.npm] min_release_age must be a number of seconds or a string "
-        f"like \"12h\" or \"3d\", not {value!r}"
-    );
-}
-
 impl ViteBundler.write_bunfig(self: ViteBundler, build_dir: Path) -> Path {
-    npm_config = self.config_loader.get_npm_config();
-    age = release_age_seconds(
-        npm_config.get('min_release_age', DEFAULT_MIN_RELEASE_AGE_SECONDS)
-    );
-    excludes = npm_config.get('min_release_age_excludes', []);
-    if not isinstance(excludes, list)
-        or not all(isinstance(name, str) for name in excludes) {
-        raise ClientBundleError(
-            "[client.npm] min_release_age_excludes must be a list of package names"
-        );
-    }
+    excludes = list(self.config_loader.get_npm_config()['min_release_age_excludes']);
     bunfig_path = build_dir / 'bunfig.toml';
     bunfig_path.write_text(
-        "[install]\n"
-        f"minimumReleaseAge = {age}\n"
-        f"minimumReleaseAgeExcludes = {json.dumps(excludes)}\n",
+        f"[install]\nminimumReleaseAgeExcludes = {json.dumps(excludes)}\n",
         encoding='utf-8'
     );
     return bunfig_path;

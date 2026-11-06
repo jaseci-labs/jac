@@ -1373,7 +1373,7 @@ The `[client.npm]` section configures custom npm registries and authentication f
 | `settings` | `dict` | Global `.npmrc` key-value settings (registry, always-auth, strict-ssl, proxy, etc.) |
 | `scoped_registries` | `dict` | Maps npm scopes to registry URLs |
 | `auth` | `dict` | Registry authentication tokens |
-| `min_release_age` | `int` or `str` | Skip package versions newer than this (default `"1d"`) |
+| `min_release_age_days` | `float` | Skip package versions published fewer than this many days ago (default `1`) |
 | `min_release_age_excludes` | `list` | Packages the age limit does not apply to |
 
 **Global settings** emit arbitrary `.npmrc` key-value pairs:
@@ -1405,11 +1405,11 @@ The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environmen
 
 The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac run`, or `jac build`).
 
-**Minimum release age.** When Jac installs client dependencies, it skips any package version published less than a day ago and picks the newest older version that still matches. Brand-new versions can fail to download for several minutes after they are published, and waiting a day also gives the npm community time to catch a bad release. Versions already in your lockfile are not affected.
+**Minimum release age.** When Jac installs npm dependencies (client builds, global tools, desktop and mobile setup), it skips any package version published less than a day ago and picks the newest older version that still matches. Brand-new versions can fail to download for several minutes after they are published, and waiting a day also gives the npm community time to catch a bad release. Versions already in your lockfile are not affected.
 
 ```toml
 [client.npm]
-min_release_age = "3d"                            # seconds, or a number with s, m, h, d or w; 0 turns it off
+min_release_age_days = 3                          # 0 turns it off
 min_release_age_excludes = ["react", "vite@7.1.2"] # a package name, or name@version for one version
 ```
 

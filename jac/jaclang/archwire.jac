@@ -5146,6 +5146,7 @@ graph import client {
             js_runtime_path,
             run_pm
         },
+        config_loader.JacClientConfig.get_default_config { MIN_RELEASE_AGE_DAYS },
         js_engine.node_executable { ensure_node_link },
         npm_provider.regenerate_and_install { js_runtime_path },
     ]

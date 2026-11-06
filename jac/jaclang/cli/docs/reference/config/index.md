@@ -1015,11 +1015,11 @@ This generates an `.npmrc` file during dependency installation for private/scope
 
 ```toml
 [client.npm]
-min_release_age = "1d"         # default; 0 turns it off
+min_release_age_days = 1        # default; 0 turns it off
 min_release_age_excludes = []  # packages the age limit does not apply to
 ```
 
-Dependency installs skip package versions published more recently than `min_release_age` and use the newest older version that still matches.
+Dependency installs skip package versions published more recently than `min_release_age_days` and use the newest older version that still matches.
 
 **Build-Time Constants (jac-client):**
 
