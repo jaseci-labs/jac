@@ -3978,6 +3978,20 @@ impl type_param_of(nd: NameAtom) -> (TypeParam | None) {
     return owner if isinstance(owner, TypeParam) else None;
 }
 
+impl names_except_type(nd: Name) -> bool {
+    site: UniNode = nd;
+    while isinstance(site.parent, AtomUnit) {
+        site = site.parent;
+    }
+    if isinstance(site.parent, TupleVal) {
+        site = site.parent;
+        while isinstance(site.parent, AtomUnit) {
+            site = site.parent;
+        }
+    }
+    return isinstance(site.parent, Except) and site.parent.ex_type is site;
+}
+
 impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
     cur: UniNode = nd;
     parent = cur.parent;

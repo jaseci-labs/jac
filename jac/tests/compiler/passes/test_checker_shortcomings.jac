@@ -125,9 +125,25 @@ test "shortcoming_30_try_except_no_narrowing" {
         ("E1090", 96),
         ("E1090", 100),
         ("E1161", 104),
-        ("E1161", 108)
+        ("E1161", 108),
+        ("E1164", 142),
+        ("E1164", 148),
+        ("E1164", 154),
+        ("E2001", 160),
+        ("E2001", 166),
+        ("E2001", 180),
+        ("E1164", 186),
+        ("E1164", 192),
+        ("E1163", 198),
+        ("E1163", 204)
     };
     assert found == expected , f"#30: expected {sorted(expected)}, got {sorted(found)}";
+    unresolved = [
+        w.loc.first_line
+        for w in program.warnings_had
+        if w.code and w.code.code in ("W1051", "W2001")
+    ];
+    assert unresolved == [] , f"#30: E2001 lines also warned at {unresolved}";
 }
 
 # =========================================================================
