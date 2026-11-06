@@ -531,3 +531,71 @@ test "extra dots climb past the working directory when the module is given by a 
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "a module named by import from . that is not where the dots point is E1134" {
+    cases = [
+        ("feat/a.jac", "import from . { nosuch_zz }\n", ".nosuch_zz"),
+        ("feat/b.jac", "import from . { top }\n", ".top"),
+        ("feat/c.jac", "import from .. { nosuch_zz }\n", "..nosuch_zz"),
+        ("feat/deep/d.jac", "import from .. { top }\n", "..top")
+    ];
+    base = _rooted_project({rel: src for (rel, src, _) in cases});
+    try {
+        for (rel, _, spec) in cases {
+            prog = JacProgram();
+            prog.compile(os.path.join(base, rel));
+            named = [
+                str(e)
+                for e in prog.errors_had
+                if e.code and e.code.code == "E1134"
+            ];
+            assert any([spec in m for m in named]) , (
+                f"{rel}: expected E1134 for '{spec}', got errors {_codes(prog)}"
+                f" and warnings {_warn_codes(prog)}"
+            );
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "import from . still accepts sibling modules, namespace packages and names its __init__ defines" {
+    base = _rooted_project(
+        {
+            "feat/sib.jac": "def:pub s -> int {\n    return 2;\n}\n",
+            "feat/ok.jac": "import from . { sib }\n",
+            "feat/up.jac": "import from .. { top }\n",
+            "feat/subpkg/leaf.jac": "def:pub v -> int {\n    return 5;\n}\n",
+            "feat/ns.jac": "import from . { subpkg }\n",
+            "pkg/__init__.jac": "def:pub helper -> int {\n    return 3;\n}\n",
+            "pkg/user.jac": "import from . { helper }\n",
+            "feat/guarded.jac": (
+                "def:pub load -> any {\n"
+                "    try {\n"
+                "        import from . { nosuch_zz }\n"
+                "        return nosuch_zz;\n"
+                "    } except ImportError {\n"
+                "        return None;\n"
+                "    }\n"
+                "}\n"
+            )
+        }
+    );
+    try {
+        for rel in [
+            "feat/ok.jac",
+            "feat/up.jac",
+            "feat/ns.jac",
+            "pkg/user.jac",
+            "feat/guarded.jac"
+        ] {
+            prog = JacProgram();
+            prog.compile(os.path.join(base, rel));
+            assert not _codes(prog) , f"{rel}: {_codes(prog)}";
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
