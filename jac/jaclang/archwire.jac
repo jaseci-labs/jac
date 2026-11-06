@@ -490,7 +490,12 @@ graph import {
         rn_tag_suggestions
     }
     client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
-    client.vite_bundler ++> dist.source.client.write_client { ViteBundler }
+    client.vite_bundler ++> [
+        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
+            client_build_env
+        },
+        dist.source.client.write_client { ViteBundler },
+    ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },

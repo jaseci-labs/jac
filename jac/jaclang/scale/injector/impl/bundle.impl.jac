@@ -936,16 +936,11 @@ impl client_input_digest(
     sanitized: (str | None),
     tomls: dict[str, str]
 ) -> str {
-    vite_env = [
-        f"{name}={value}"
-        for (name, value) in sorted(os.environ.items())
-        if name.startswith("VITE_")
-    ];
     return _input_digest(
         base,
         sources,
         jac_binary,
-        ["client", entry_rel, sanitized or "", *vite_env],
+        ["client", entry_rel, sanitized or "", *client_build_env()],
         tomls
     );
 }

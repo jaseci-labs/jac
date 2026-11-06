@@ -286,14 +286,52 @@ test "an unchanged project reuses its client build instead of building again" {
         assert builds() == 1 , (
             "a file the bundle never ships invalidated the client build"
         );
+        os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 2 , (
+            "a new API base URL reused a client built for the old one"
+        );
         Path(project_dir, "svc.jac").write_text(
             "def:pub ping -> str { return \"pong!\"; }\n"
         );
         assert _run_build(_builder(project_dir), project_dir, rec) is None;
-        assert builds() == 2 , "a source edit reused the previous client build";
+        assert builds() == 3 , "a source edit reused the previous client build";
         Path(project_dir, "svc.jac").chmod(0o755);
         assert _run_build(_builder(project_dir), project_dir, rec) is None;
-        assert builds() == 3 , "a file mode change reused the previous client build";
+        assert builds() == 4 , "a file mode change reused the previous client build";
+    } finally {
+        os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+        _seam.stop();
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+test "a client built from staged files that no longer match its key is not kept" {
+    project_dir = _app(_PARKED);
+    rec = tempfile.mkdtemp(prefix="client-stage-rec-");
+    script = Path(_recording_jac(rec, rec));
+    script.write_text(
+        script.read_text().replace(
+            'if [ "$1" != "build" ]; then exit 0; fi',
+            'if [ "$1" != "build" ]; then echo "# drift" >> svc.jac; exit 0; fi'
+        )
+    );
+    def builds -> int {
+        path = os.path.join(rec, "builds");
+        return len(_read(path).splitlines()) if os.path.isfile(path) else 0;
+    }
+    _seam = patch(
+        "jaclang.scale.runtime.context.util.jac_executable", return_value=str(script)
+    );
+    _seam.start();
+    try {
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 2 , (
+            "a build whose staged sources changed under it was kept and reused"
+        );
     } finally {
         _seam.stop();
         shutil.rmtree(project_dir, ignore_errors=True);
