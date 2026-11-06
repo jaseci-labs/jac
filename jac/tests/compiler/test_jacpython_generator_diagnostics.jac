@@ -152,3 +152,13 @@ test "turning an invalid escape warning into an error drops the warning lead-in"
         assert caught;
     }
 }
+
+test "invalid escape warnings match CPython's suggestion text" {
+    with warnings.catch_warnings(record=True) as recorded {
+        warnings.simplefilter("always", SyntaxWarning);
+        pycompile("value = '\\z'", "escape_warning.py", "exec");
+        assert len(recorded) == 1 , len(recorded);
+        assert str(recorded[0].message)
+            == r'"\z" is an invalid escape sequence. Did you mean "\\z"? A raw string is also an option.';
+    }
+}
