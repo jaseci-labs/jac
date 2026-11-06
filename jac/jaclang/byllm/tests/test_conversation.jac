@@ -145,9 +145,9 @@ def assert_written_back(label: str, history: list[dict[str, any]], answer: str) 
 }
 
 
-"""One streamed turn: a tool call, the finish call, then the answer."""
+"""One streamed turn: a tool call, then the finish call that carries the answer."""
 def _stream_replies(answer: str = "Paris is sunny right now.") -> list[any] {
-    return [call("get_weather", {"city": "Paris"}), finish(answer), say(answer)];
+    return [call("get_weather", {"city": "Paris"}), finish(answer)];
 }
 
 

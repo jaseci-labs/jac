@@ -7,6 +7,7 @@ and the answer arrives on the `chunk` channel; tool activity arrives before it.
 import asyncio;
 import contextvars;
 import from jaclang.byllm.exceptions { ConfigurationError }
+import from jaclang.byllm.types { StreamEvent }
 import from jaclang.byllm.telemetry { _current_invocation_id }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.lib { MockLLM }
@@ -131,20 +132,58 @@ test "a logging stream with tools reports the call, the result, then the answer"
 }
 
 
-test "an empty final-answer restream falls back to the committed answer" {
-    committed = "The weather in London is sunny, 25 degrees.";
-    llm = MockLLM(outputs=[finish(committed), call("get_weather", {"city": "London"})]);
+test "a finish_tool answer streams to the caller as committed, with no second call" {
+    # The model's finish_tool argument is the answer, streamed as the model writes
+    # it. byLLM used to ask the model to restate it, and that reply replaced it.
+    # The second answer's escapes (quote, newline, an emoji's surrogate pair) split
+    # across the 12-character fragments.
+    for committed in [
+        "The weather in London is sunny, 25 degrees.",
+        'London: "sunny"\n25°C bright 😀 all day'
+    ] {
+        for mode in ["plain", "logging", "handler"] {
+            history: list[dict[str, any]] = [];
+            seen: list[StreamEvent] = [];
+            llm = MockLLM(
+                outputs=[
+                    call("get_weather", {"city": "London"}),
+                    finish(committed),
+                    say("A different restated answer.")
+                ]
+            );
 
-    def check_weather(question: str) -> str by llm(
-        tools=[get_weather], stream=True, logging=True
-    );
+            def check_weather(question: str) -> str by llm(
+                tools=[get_weather],
+                stream=True,
+                logging=mode == "logging",
+                stream_handler=seen.append if mode == "handler" else None,
+                conversation=history
+            );
 
-    events = stream_events(check_weather("What is the weather in London?"));
-    assert chunk_text(events) == committed , (
-        f"the committed answer must survive an empty final stream, got {chunk_text(
-            events
-        )!r}"
-    );
+            out: any = check_weather("What is the weather in London?");
+            if mode == "plain" {
+                pieces = list(out);
+                got = "".join(pieces);
+            } else {
+                events = list(out) if mode == "logging" else seen;
+                pieces = [e.data["content"] for e in events_of(events, "chunk")];
+                got = out if mode == "handler" else "".join(pieces);
+            }
+            assert "".join(pieces) == committed and len(pieces) > 1 , (
+                f"{mode}: the answer must stream in pieces, got {pieces}"
+            );
+            assert got == committed , f"{mode}: the caller received {got!r}";
+            assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(
+                llm.seen
+            )}";
+            answers = [
+                m.get("content")
+                for m in history
+                if m.get("role") == "assistant" and m.get("content")
+            ];
+            assert answers == [committed] , f"{mode}: the conversation saved {answers}";
+        }
+    }
 }
 
 

@@ -1476,7 +1476,7 @@ with entry {
 | `tokens_before`, `tokens_after` | byLLM's own size estimate (about four characters per token), the figure the applied-or-discarded decision compares. These are not provider token counts |
 | `iteration` | The ReAct iteration whose reply triggered the compaction |
 
-A compaction on the reply that ends the turn arrives just before `steps_done`. The built-in summariser's own call is billed as a `compaction` call in `usage_step` and `usage`. Calls that do not stream list their applied compactions in the `compactions` field of the [telemetry record](#telemetry-record-fields), as the same dicts without `iteration`.
+A compaction on the reply that ends the turn arrives just before `steps_done`, or after the answer when that reply streamed it. The built-in summariser's own call is billed as a `compaction` call in `usage_step` and `usage`. Calls that do not stream list their applied compactions in the `compactions` field of the [telemetry record](#telemetry-record-fields), as the same dicts without `iteration`.
 
 ### `CompactionNotEffectiveError`
 
@@ -1507,7 +1507,7 @@ The function returns a generator that yields raw string tokens as they arrive fr
 
 ### Streaming with Tools
 
-Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is streamed token by token:
+Streaming works with tool calling. The ReAct loop runs as usual, and the **final answer** streams token by token while the model writes it in its `finish_tool` call, without a second request to the model. When the loop is cut short by `max_react_iterations` or `ABORT_WITH_SUMMARY`, there is no answer yet, so byLLM asks for one and streams that:
 
 ```jac
 def get_weather(city: str) -> str {
@@ -1528,6 +1528,8 @@ with entry {
 
 !!! note
     With `stream=True` alone (no `logging`), the user sees nothing during intermediate tool calls -- only the final answer is streamed. For visibility into intermediate steps, add `logging=True`.
+
+    Yielded text cannot be taken back, so if the answer breaks off after part of it was yielded (a dropped connection or `max_tokens`), the call raises instead of starting the answer over. With `logging=True` or a `stream_handler`, byLLM sends a `stream_reset` and retries.
 
 ### Streaming with Logging (`StreamEvent`)
 
@@ -1674,7 +1676,7 @@ with entry {
 | `call_kind` | When it happens |
 |---|---|
 | `react_iteration` | A normal turn of the ReAct loop - the calls you actually asked for |
-| `final_answer_restream` | byLLM re-asking the model to reproduce its already-known answer as a stream, once tool calls are done |
+| `final_answer_restream` | byLLM asking the model for a final answer after the loop was cut short by `max_react_iterations` or `ABORT_WITH_SUMMARY` |
 | `recovery` | byLLM re-prompting after the model skipped `finish_tool` on a structured/typed call |
 | `compaction` | The summarisation call that shrinks message history when auto-compaction fires |
 
