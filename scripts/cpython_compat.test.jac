@@ -402,12 +402,17 @@ test "the pinned Setup file supplies the selected C test extension sources" {
         modules = source_root / "Modules";
         modules.mkdir();
         rows = ["# Test modules"];
-        for name in sorted(TEST_EXTENSIONS) {
+        for name in sorted(TEST_EXTENSIONS - {"xxlimited", "xxlimited_35"}) {
             source = modules / f"{name}.c";
             source.write_text("/* test fixture */\n");
             rows.append(f"@MODULE_{name.upper()}_TRUE@{name} {name}.c");
         }
         rows.append("# Limited API template modules; must be built as shared modules.");
+        for name in ["xxlimited", "xxlimited_35"] {
+            source = modules / f"{name}.c";
+            source.write_text("/* test fixture */\n");
+            rows.append(f"@MODULE_{name.upper()}_TRUE@{name} {name}.c");
+        }
         (modules / "Setup.stdlib.in").write_text("\n".join(rows));
         found = test_extension_sources(source_root);
         assert {name for (name, _) in found} == TEST_EXTENSIONS;
