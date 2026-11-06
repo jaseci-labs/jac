@@ -28,15 +28,17 @@ def route_sort_key(route: CompiledRoute) -> tuple[int, int, int, int, str];
 
 obj Router {
     has routes: dict[(str, list[CompiledRoute])] = {},
-        ws_routes: list[CompiledRoute] = [];
+        ws_routes: list[CompiledRoute] = [],
+        catchalls: set[int] = set();
 
     def add(endpoint: JEndPoint);
     def add_ws(endpoint: WSEndPoint);
     def clear;
     def resolve(
-        method: str, path: str
+        method: str, path: str, declared_only: bool = False
     ) -> tuple[(JEndPoint | None), dict[(str, str)], list[str]];
 
+    def is_catchall(endpoint: JEndPoint) -> bool;
     def resolve_ws(path: str) -> tuple[(WSEndPoint | None), dict[(str, str)]];
     def all_endpoints -> list[JEndPoint];
 }
