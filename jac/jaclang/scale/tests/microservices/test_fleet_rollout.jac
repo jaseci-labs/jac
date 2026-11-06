@@ -95,7 +95,12 @@ def _apis(ready: int, pods: list[any]) -> tuple[any, ...] {
 }
 
 def _run(
-    target: any, bundle: dict[str, any], apps: object, core: object, timeout: int
+    target: any,
+    bundle: dict[str, any],
+    apps: object,
+    core: object,
+    timeout: int,
+    naps: (list[float] | None) = None
 ) -> object {
     err = None;
     with unittest.mock.patch.object(
@@ -105,11 +110,14 @@ def _run(
             kubernetes.client, "CoreV1Api", return_value=core
         ) {
             with unittest.mock.patch.object(target, "_load_cluster_config") {
-                with unittest.mock.patch.object(time, "sleep") {
+                with unittest.mock.patch.object(time, "sleep") as sleeper {
                     try {
                         target._wait_for_fleet_rollout(bundle, timeout=timeout);
                     } except Exception as e {
                         err = e;
+                    }
+                    if naps is not None {
+                        naps.extend([c.args[0] for c in sleeper.call_args_list]);
                     }
                 }
             }
@@ -190,6 +198,24 @@ test "ready fleet returns without raising" {
     apps.read_namespaced_deployment.return_value = _dep(0, desired=0, floor=0);
     err = _run(target, _bundle("worker-deployment", "worker"), apps, core, 60);
     assert err is None , f"an idle scale-to-zero service should not raise: {err}";
+}
+
+test "a fleet that turns ready is noticed within a couple of seconds" {
+    # The deploy waits on this loop, so every second it sleeps past the moment
+    # the fleet is ready is a second added to the deploy.
+    target = KubernetesTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    (apps, core) = _apis(0, []);
+    apps.read_namespaced_deployment.side_effect = [_dep(0), _dep(1)];
+    naps: list[float] = [];
+
+    err = _run(
+        target, _bundle("gateway-deployment", "gateway"), apps, core, 60, naps
+    );
+
+    assert err is None , f"a fleet that turns ready should not raise: {err}";
+    assert sum(naps) <= 2 , f"slept {sum(naps)}s after the fleet was ready";
 }
 
 test "a fleet that already reads serving is still scanned for crash-looping pods" {
@@ -313,13 +339,10 @@ test "a heal that unwedges the pod lets the rollout succeed" {
     (apps, core) = _apis(0, [pod]);
     not_ready = _dep(0);
     ready = _dep(1);
-    apps.read_namespaced_deployment.side_effect = [
-        not_ready,
-        not_ready,
-        ready,
-        ready,
-        ready
-    ];
+    def _read(*args: any, **kwargs: any) -> object {
+        return ready if core.delete_namespaced_pod.call_count else not_ready;
+    }
+    apps.read_namespaced_deployment.side_effect = _read;
 
     err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 120);
 
