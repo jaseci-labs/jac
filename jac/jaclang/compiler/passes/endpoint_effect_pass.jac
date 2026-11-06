@@ -41,6 +41,5 @@ walker EndpointEffectPass(TreePass) {
     def _declared_effects(call: FuncCall) -> dict[str, list[str]] | None;
     def _declaration_effects(decl: Ability) -> dict[str, list[str]] | None;
     def _callee_ability(call: FuncCall) -> (Ability | None);
-    def _callee_body(call: FuncCall) -> list[UniNode];
     def _resolved_body(owner: UniNode) -> list[UniNode];
 }

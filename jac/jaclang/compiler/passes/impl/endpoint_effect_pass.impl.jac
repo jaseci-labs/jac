@@ -293,12 +293,14 @@ impl EndpointEffectPass._scan(nd: (UniNode | None)) -> None {
                 self._declared_writes.update(declared["writes"]);
                 self._assumptions.add("Declared effects of " + unparse_node(nd.target));
             } else {
-                callee = self._callee_ability(nd) if self._recording else None;
-                recorded = self._summary(callee) if callee is not None else None;
+                callee = self._callee_ability(nd);
+                recorded = self._summary(callee)
+                    if self._recording and callee is not None
+                    else None;
                 if recorded is not None {
                     self._apply(recorded, nd);
-                } else {
-                    body = self._callee_body(nd);
+                } elif callee is None or id(callee) not in self._visited {
+                    body = self._resolved_body(callee) if callee is not None else [];
                     if not body {
                         served = self._served_effects(nd);
                         if served is not None {
@@ -306,6 +308,8 @@ impl EndpointEffectPass._scan(nd: (UniNode | None)) -> None {
                         } else {
                             self._unknown = True;
                         }
+                    } else {
+                        self._visited.add(id(callee));
                     }
                     for stmt in body {
                         self._scan(stmt);
@@ -418,11 +422,6 @@ impl EndpointEffectPass._callee_ability(call: FuncCall) -> (Ability | None) {
         return defn_node.decl_parent;
     }
     return None;
-}
-
-impl EndpointEffectPass._callee_body(call: FuncCall) -> list[UniNode] {
-    ability = self._callee_ability(call);
-    return self._resolved_body(ability) if ability is not None else [];
 }
 
 impl EndpointEffectPass._resolved_body(owner: UniNode) -> list[UniNode] {
