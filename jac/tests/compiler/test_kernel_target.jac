@@ -106,6 +106,8 @@ test "a kernel target retargets the package predicates at a staging copy" {
         identity = native_unit_identity(unitree_self);
         math_copy = os.path.join(copy, "runtime", "na_stdlib", "math.jac");
         fragment_copy = os.path.join(copy, "runtime", "graph_fragment.jac");
+        archetype_copy = os.path.join(copy, "runtime", "archetype.jac");
+        constructs_copy = os.path.join(copy, "runtime", "constructs.jac");
         assert not is_native_by_location(math_copy);
         assert bundled_stdlib_module_of(math_copy) is None;
 
@@ -118,6 +120,8 @@ test "a kernel target retargets the package predicates at a staging copy" {
         assert bundled_stdlib_module_of(math_copy) == "math";
         assert is_toolchain_unit(math_copy);
         assert is_shared_runtime_module(fragment_copy);
+        assert is_shared_runtime_module(archetype_copy);
+        assert is_shared_runtime_module(constructs_copy);
         real_copy = os.path.realpath(copy) + os.sep;
         assert os.path.realpath(kernel_root_path()).startswith(real_copy) , kernel_root_path();
         for p in native_scope_paths() {
