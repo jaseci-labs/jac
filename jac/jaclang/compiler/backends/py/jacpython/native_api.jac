@@ -237,9 +237,6 @@ obj compile_request(native_request) {
     }
 
     def compile_text(text: str) -> ptr[PyObject] {
-        if "\x00" in text {
-            raise syntax_failure("source code string cannot contain null bytes");
-        }
         if not (self.flags & PyCF_ONLY_AST) {
             return code_result(
                 compile_source(
