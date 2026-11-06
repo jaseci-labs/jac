@@ -5,7 +5,8 @@ import platform;
 glob BUN_VERSION: str = "1.3.11",
      RECORD_SUFFIX: str = ".artifact.json",
      ENGINE_LIBRARY: str = "libjs_engine.so",
-     ENGINE_SOURCES: tuple[str, ...] = ("engine/src", "napi/src", "native", "jac.toml");
+     ENGINE_SOURCES: tuple[str, ...] = ("engine/src", "napi/src", "native", "jac.toml"),
+     MIN_RELEASE_AGE_DAYS: float = 1;
 
 def bun_name -> str;
 
@@ -73,4 +74,13 @@ def _engine -> (str | None);
 
 def js_runtime_path -> str;
 
-def run_pm(args: list[str], cwd: str, capture: bool = False) -> tuple[int, str];
+def release_age_settings(npm: dict[str, any]) -> tuple[float, list[str]];
+
+def _project_npm(cwd: str) -> dict[str, any];
+
+def run_pm(
+    args: list[str],
+    cwd: str,
+    capture: bool = False,
+    release_age: (tuple[float, list[str]] | None) = None
+) -> tuple[int, str];
