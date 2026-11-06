@@ -18,7 +18,7 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
         if anchor_root is not None {
-            if os.path.basename(anchor_root) == root_name {
+            if _native_unit_root_name(anchor_root) == root_name {
                 return os.path.join(anchor_root, rel);
             }
             sibling = os.path.join(os.path.dirname(anchor_root), ref);
