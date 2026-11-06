@@ -72,28 +72,36 @@ impl PgIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
         """,
         {'u': user_id, 'd': json.dumps(user_doc, `default=_pg_json_default)}
     );
-    for identity in user_doc.get('identities', []) {
-        if identity.get('type') == 'sso' and identity.get('provider') {
-            self.store.rows(
-                """
-                INSERT INTO sso_lookups (provider, external_id, user_id)
-                VALUES (:p, :e, :u) ON CONFLICT DO NOTHING
-                """,
-                {
-                    'p': identity['provider'],
-                    'e': identity.get('external_id', ''),
-                    'u': user_id
-                }
-            );
-        } elif identity.get('value_normalized') {
-            self.store.rows(
-                """
-                INSERT INTO identity_lookups (value_normalized, user_id)
-                VALUES (:v, :u) ON CONFLICT DO NOTHING
-                """,
-                {'v': identity['value_normalized'], 'u': user_id}
-            );
+    try {
+        for identity in user_doc.get('identities', []) {
+            if identity.get('type') == 'sso' and identity.get('provider') {
+                self.store.rows(
+                    """
+                    INSERT INTO sso_lookups (provider, external_id, user_id)
+                    VALUES (:p, :e, :u)
+                    """,
+                    {
+                        'p': identity['provider'],
+                        'e': identity.get('external_id', ''),
+                        'u': user_id
+                    }
+                );
+            } elif identity.get('value_normalized') {
+                self.store.rows(
+                    """
+                    INSERT INTO identity_lookups (value_normalized, user_id)
+                    VALUES (:v, :u)
+                    """,
+                    {'v': identity['value_normalized'], 'u': user_id}
+                );
+            }
         }
+    } except Exception as e {
+        if _pg_unique_violation(e) {
+            self.delete_user(user_id);
+            raise IdentityTakenError();
+        }
+        raise;
     }
 }
 
