@@ -10494,7 +10494,10 @@ graph import compiler.backends.native {
         na_compile_pass { ModuleRef, TargetMachine },
         wasm_build { ModuleRef, TargetMachine, ValueRef },
     ]
-    llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
+    llvm.binding.value ++> [
+        link_plan.internalize_native_implementation { Visibility },
+        wasm_build.prepare_wasm_module { Linkage },
+    ]
     type llvm.binding.value ++> link_plan { ValueRef }
     llvm.ir as ir ++> abi | lexical_scope | lowering | mir.backend | mir.emit;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
