@@ -668,6 +668,20 @@ def pa_ast_expression(body: expr) -> Expression {
     return Expression(body=body);
 }
 
+glob PY_AST_DEPTH_LIMIT: int = 1000;
+
+def pa_ast_check_depth(ast_value: expr, children: list[expr]) -> expr {
+    depth = 1;
+    for child in children {
+        depth = max(depth, child.tree_depth + 1);
+    }
+    if depth > PY_AST_DEPTH_LIMIT {
+        raise RecursionError("maximum recursion depth exceeded during parsing");
+    }
+    ast_value.tree_depth = depth;
+    return ast_value;
+}
+
 def pa_ast_binop(
     left: expr,
     op: operator,
@@ -677,7 +691,7 @@ def pa_ast_binop(
     end_lineno: int,
     end_col_offset: int
 ) -> BinOp {
-    return BinOp(
+    built_ast = BinOp(
         left=left,
         op=op,
         right=right,
@@ -686,6 +700,8 @@ def pa_ast_binop(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [left, right];
+    return pa_ast_check_depth(built_ast, children) as BinOp;
 }
 
 def pa_ast_unaryop(
@@ -754,7 +770,7 @@ def pa_ast_call(
     end_col_offset: int
 ) -> Call {
     kws = keywords if keywords is not None else [];
-    return Call(
+    built_ast = Call(
         func=func,
         args=args,
         keywords=kws,
@@ -763,6 +779,14 @@ def pa_ast_call(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [func];
+    for child in args {
+        children.append(child);
+    }
+    for child in kws {
+        children.append(child.value);
+    }
+    return pa_ast_check_depth(built_ast, children) as Call;
 }
 
 def pa_ast_starred(
@@ -1322,7 +1346,7 @@ def pa_ast_attribute(
     end_lineno: int,
     end_col_offset: int
 ) -> Attribute {
-    return Attribute(
+    built_ast = Attribute(
         value=value,
         attr=attr_name,
         ctx=ctx,
@@ -1331,6 +1355,8 @@ def pa_ast_attribute(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [value];
+    return pa_ast_check_depth(built_ast, children) as Attribute;
 }
 
 def pa_ast_subscript(
@@ -1342,7 +1368,7 @@ def pa_ast_subscript(
     end_lineno: int,
     end_col_offset: int
 ) -> Subscript {
-    return Subscript(
+    built_ast = Subscript(
         value=value,
         slice=slice_expr,
         ctx=ctx,
@@ -1351,6 +1377,8 @@ def pa_ast_subscript(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [value, slice_expr];
+    return pa_ast_check_depth(built_ast, children) as Subscript;
 }
 
 def pa_ast_slice(

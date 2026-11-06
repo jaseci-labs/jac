@@ -571,7 +571,8 @@ obj expr(ast_node) {
     has lineno: int,
         col_offset: int,
         end_lineno: int | None,
-        end_col_offset: int | None;
+        end_col_offset: int | None,
+        tree_depth: int = 1;
 }
 
 obj BoolOp(expr) {
