@@ -2683,10 +2683,10 @@ graph import {
             | data.contracts
             | data.schema_rules
             | data.serializer
-            | project.config_schema
+            | project.config._walk_table
             | server.serving.model
             | server.settings { fields, is_record },
-        byllm.schema | project.config._fill_table | server.serving.coerce { is_record },
+        byllm.schema | server.serving.coerce { is_record },
         byllm.systemone._record_fields | server.server {
             fields as record_fields,
             is_record
@@ -14927,13 +14927,12 @@ graph import project {
     ]
     type config ++> client_paths { JacConfig }
     config_schema ++> [
-        config.apply_table { check_table, rules_from_record },
+        config._walk_table { closest_key },
         plugin_config.PluginConfigBase._validate_layer {
             report_schema_findings,
             validate_against_schema
         },
     ]
-    type config_schema ++> config { TableRule }
     dependencies ++> [
         config { PackageDep },
         config.JacConfig.merge_dependency_tables { split_dependency_table },

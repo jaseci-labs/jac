@@ -1328,36 +1328,86 @@ impl _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, a
     return result;
 }
 
+impl table_value(current: any, raw: any, label: str) -> any {
+    if isinstance(current, bool) {
+        if not isinstance(raw, bool) {
+            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, int) {
+        if isinstance(raw, bool) or not isinstance(raw, int) {
+            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, float) {
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
+            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
+        }
+        return float(raw);
+    }
+    if isinstance(current, list) {
+        if not isinstance(raw, list)
+            or not all(isinstance(item, str) for item in raw) {
+            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
+        }
+        return list(raw);
+    }
+    if not isinstance(raw, str) {
+        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
+    }
+    return raw;
+}
+
 impl apply_table(
     target: object, table: dict[str, any], section: str, moved: dict[str, str]
 ) -> None {
-    if not table {
-        return;
-    }
-    rules = rules_from_record(target);
-    problems = check_table(table, rules, section, moved);
+    problems: list[str] = [];
+    writes: list[tuple[object, str, any]] = [];
+    _walk_table(target, table, section, moved, problems, writes);
     if problems {
-        raise ServeConfigError("\n".join(problem.describe() for problem in problems));
+        raise ServeConfigError("\n".join(problems));
     }
-    _fill_table(target, table, rules);
+    for (owner, name, value) in writes {
+        setattr(owner, name, value);
+    }
 }
 
-impl _fill_table(
-    target: object, table: dict[str, any], rules: dict[str, TableRule]
+impl _walk_table(
+    target: object,
+    table: dict[str, any],
+    section: str,
+    moved: dict[str, str],
+    problems: list[str],
+    writes: list[tuple[object, str, any]]
 ) -> None {
+    names = [f.name for f in fields(target)];
     for (name, raw) in table.items() {
-        rule = rules[name];
-        current = getattr(target, name);
-        if rule.kind == "table" and is_record(current) {
-            _fill_table(current, raw, rule.keys or {});
-        } elif rule.kind == "dict" and isinstance(current, dict) {
-            setattr(target, name, _deep_merge(current, raw));
-        } elif rule.kind == "float" and raw is not None {
-            setattr(target, name, float(raw));
-        } elif rule.kind == "list" and raw is not None {
-            setattr(target, name, list(raw));
+        if name in moved and name not in names {
+            problems.append(f"[{section}] {name} has moved to {moved[name]}");
+        } elif name not in names {
+            near = closest_key(name, names);
+            hint = f"did you mean {near!r}?"
+                if near
+                else f"its keys are {', '.join(names)}";
+            problems.append(f"[{section}] has no key {name!r}; {hint}");
         } else {
-            setattr(target, name, raw);
+            current = getattr(target, name);
+            if not (is_record(current) or isinstance(current, dict)) {
+                try {
+                    value = table_value(current, raw, f"[{section}] {name}");
+                    writes.append((target, name, value));
+                } except ServeConfigError as bad {
+                    problems.append(str(bad));
+                }
+            } elif not isinstance(raw, dict) {
+                problems.append(f"[{section}.{name}] must be a table");
+            } elif is_record(current) {
+                _walk_table(current, raw, f"{section}.{name}", {}, problems, writes);
+            } else {
+                writes.append((target, name, _deep_merge(current, raw)));
+            }
         }
     }
 }
