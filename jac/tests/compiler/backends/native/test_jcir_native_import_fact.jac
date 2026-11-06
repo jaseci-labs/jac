@@ -155,7 +155,7 @@ def _anchor_project(proj: str) {
     }
 }
 
-test "an import the python side names survives in an inferred-native module" {
+test "an import the python side names is mirrored in an inferred-native module" {
     with tempfile.TemporaryDirectory() as proj {
         _anchor_project(proj);
         prog = JacProgram();
@@ -175,9 +175,10 @@ test "an import the python side names survives in an inferred-native module" {
         assert native_only_import_target(imports[0], prog) is not None , (
             "anchor_lib's C import must make it a native-only target"
         );
-        assert not imports[0].native_only_drop , (
-            "the python side of anchor_user evaluates `Counter()` in a field "
-            "default, so dropping the import leaves the name unbound there"
+        assert imports[0].native_only_drop , (
+            "anchor_user evaluates `Counter()` in a field default on the "
+            "Python side, so its native-only import must be replaced by a "
+            "server mirror binding rather than removed"
         );
     }
 }
