@@ -278,23 +278,23 @@ graph import {
             | client.targets.web_target._copy_public_dirs
             | compiler.driver.application.prepare_dynamic_module
             | project.config._apply_memory_native_placement
-            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
             | server.server.JacAPIServer.start { console },
         client.cli.run_client_setup
-            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._start_client_build
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
             | server.server.print_endpoint_docs { console },
-        client.cli.run_client_start { console },
-        client.cli.run_npm_add { console },
+        client.cli.run_client_start
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
+            console
+        },
+        client.cli.run_npm_add
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._start_client_build {
+            console
+        },
         client.cli.run_npm_add_global { console },
         client.cli.run_npm_remove { console },
         client.cli.setup { console },
         runtime.runtime.JacBuiltin.get_console { JacConsole },
-        scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
-            console
-        },
-        scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
-            console
-        },
     ]
     cli.console --> [
         client.npm_provider.app_npm_deps._add
