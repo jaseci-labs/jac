@@ -2013,6 +2013,21 @@ impl NaIRGenPass._apply_scalar_aug_op(
     return result;
 }
 
+impl NaIRGenPass._seq_imul(seq: ir.Value, count: ir.Value) -> (ir.Value | None) {
+    for (_key, _lt) in self.list_types.items() {
+        if seq.type == _lt.as_pointer() and _key in self.list_helpers {
+            _rep = self._emit_binary_op(Tok.STAR_MUL, seq, count);
+            if _rep is None {
+                return None;
+            }
+            self._dispatch_primitive_method("list", "clear", seq, [], _key);
+            self._dispatch_primitive_method("list", "extend", seq, [_rep], _key);
+            return seq;
+        }
+    }
+    return self._emit_binary_op(Tok.STAR_MUL, seq, count);
+}
+
 impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
     if not isinstance(nd.value, uni.Null) {
         return None;
@@ -2776,7 +2791,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         );
                     }
                 } elif aug_op_val == "*=" {
-                    _rep = self._emit_binary_op(Tok.STAR_MUL, current, value)
+                    _rep = self._seq_imul(current, value)
                         if not isinstance(current.type, ir.IntType)
                             and isinstance(value.type, ir.IntType)
                         else None;
@@ -2785,6 +2800,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                             "mul", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } elif _rep is not None {
+                        is_inplace_set_op = _rep is current;
                         value = _rep;
                     } else {
                         value = self.builder.fmul(
@@ -2881,6 +2897,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                                     pass_ref=self, type_key=dict_type_key
                                 );
                                 _de.emit_update(_ctx, current, [coerced]);
+                                self._release_owned_args([coerced], op="dict_ior");
                             }
                             value = current;
                             is_inplace_set_op = True;
@@ -3323,7 +3340,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                             current, coerced, name=f"glob.{var_name}.fmul"
                         );
                     } elif isinstance(value.type, ir.IntType) {
-                        _g_rep = self._emit_binary_op(Tok.STAR_MUL, current, value);
+                        _g_rep = self._seq_imul(current, value);
                         if _g_rep is not None {
                             value = _g_rep;
                         }
@@ -3385,6 +3402,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                                 current,
                                 [coerced]
                             );
+                            self._release_owned_args([coerced], op="dict_ior");
                             value = current;
                         }
                     } elif isinstance(current.type, ir.PointerType) {

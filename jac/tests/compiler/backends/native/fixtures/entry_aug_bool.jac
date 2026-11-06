@@ -35,6 +35,13 @@ def in_def {
     d = {"a": 1};
     d |= {"b": 2};
     print("def seq aug", l, s, d);
+    al = [1];
+    bl = al;
+    al *= 2;
+    cl = [3, 4];
+    el = cl;
+    cl *= 0;
+    print("def list alias", bl, el);
 }
 
 with entry {
@@ -69,6 +76,13 @@ with entry {
     once = [7];
     once *= bool(1);
     print("seq aug", d, lst, txt, once);
+    al = [1];
+    bl = al;
+    al *= 2;
+    cl = [3, 4];
+    el = cl;
+    cl *= 0;
+    print("list alias", bl, el);
     print(
         "bool()", bool(0), bool(2.5), bool(""), bool("a"), bool(-0.0), bool(math.nan)
     );

@@ -25,6 +25,7 @@ glob EXPECTED_AUG_BOOL = (
          "float aug 5.0 4.5 1.5 4.0 19.0 1.5\n"
          "float /= 0.0 ZeroDivisionError\n"
          "seq aug {'a': 1, 'b': 2} [1, 2, 1, 2] ababab [7]\n"
+         "list alias [1, 1] []\n"
          "bool() False True False True False True\n"
          "bool() text False True True 2 1\n"
          "bool as float 0.25 0.5 0.5 2.5 1.0\n"
@@ -41,6 +42,7 @@ glob EXPECTED_AUG_BOOL = (
          "def round 1 1 0\n"
          "def set {False, True} {False, True}\n"
          "def seq aug [1, 2, 1, 2] ababab {'a': 1, 'b': 2}\n"
+         "def list alias [1, 1] []\n"
      );
 
 test "entry globals: lambda reads an entry-assigned name late-bound" {
