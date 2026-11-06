@@ -490,6 +490,9 @@ impl EsastGenPass._build_compr_expr(
             for cond in compr.conditional {
                 cond_expr = cast(es.Expression, cond.gen.es_ast);
                 if cond_expr {
+                    cond_expr = self._build_jac_call(
+                        ["_jac", "builtin", "bool"], [cond_expr], cond
+                    );
                     filter_arrow = self.sync_loc(
                         es.ArrowFunctionExpression(
                             params=[param], body=cond_expr, expression=True
