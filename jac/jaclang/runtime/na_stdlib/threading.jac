@@ -6,6 +6,8 @@ obj Lock {
     has _mutex: int = 0;
 
     def init();
+    def __enter__ -> Lock;
+    def __exit__(exc_type: any, exc: any, tb: any) -> bool;
     def acquire(blocking: bool = True, timeout: float = -1.0) -> bool;
     def release() -> None;
     def __del__() -> None;

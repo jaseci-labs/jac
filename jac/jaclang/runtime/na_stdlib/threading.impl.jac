@@ -27,6 +27,16 @@ impl Lock.init() {
     }
 }
 
+impl Lock.__enter__ -> Lock {
+    self.acquire();
+    return self;
+}
+
+impl Lock.__exit__(exc_type: any, exc: any, tb: any) -> bool {
+    self.release();
+    return False;
+}
+
 impl Lock.acquire(blocking: bool, timeout: float) -> bool {
     if not self._mutex {
         raise RuntimeError("acquire on uninitialized lock");
