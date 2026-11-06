@@ -239,10 +239,14 @@ def _measure_indent(st: tok_state) -> tuple[int, int] {
             # The first nonzero indentation before a continuation determines
             # the logical line's indentation. Blank continuations stay blank.
             continuation_col = continuation_col or col;
+            start_lineno = st.lineno;
+            start_col = st.col_offset;
             _advance(st);
             _advance(st);
             if not _has_source(st) {
-                _string_syntax_error(st, "unexpected EOF while parsing", st.col_offset);
+                _string_syntax_error(
+                    st, "unexpected EOF while parsing", start_col + 1, start_lineno
+                );
                 st.eof_reached = True;
                 break;
             }
@@ -861,7 +865,9 @@ def _is_string_start(st: tok_state) -> bool {
     return False;
 }
 
-def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
+def _string_syntax_error(
+    st: tok_state, msg: str, start_col: int, start_lineno: int = 0
+) -> tok_diag {
     st.eof_reached = st.pos >= len(st.data)
         and (
             msg.startswith("unterminated")
@@ -869,7 +875,7 @@ def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
             or "expecting '}'" in msg
             or "was never closed" in msg
         );
-    line = st.lineno;
+    line = start_lineno if start_lineno > 0 else st.lineno;
     if msg == "EOL while scanning string literal" and st.string_modes {
         mode = st.string_modes[-1];
         kind = "t-string" if mode.template else "f-string";
@@ -912,8 +918,19 @@ def _unterminated_string_message(
             + str(start_lineno)
             + "); perhaps you escaped the end quote";
     }
+    if not st.string_modes {
+        detected_lineno = st.lineno;
+        if st.pos >= len(st.data) and st.data and st.data[-1] == ord("\n") {
+            detected_lineno = detected_lineno - 1;
+        }
+        return "unterminated "
+            + ("triple-quoted " if qlen == 3 else "")
+            + "string literal (detected at line "
+            + str(detected_lineno)
+            + ")";
+    }
     return "EOL while scanning string literal"
-        if st.string_modes and quote == st.string_modes[-1].quote
+        if quote == st.string_modes[-1].quote
         else "unterminated string literal";
 }
 
@@ -1245,7 +1262,8 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
                 return _string_syntax_error(
                     st,
                     _unterminated_string_message(st, quote, start_lineno, qlen),
-                    start_col
+                    start_col,
+                    start_lineno
                 );
             }
             if ch == ord("\\") {
@@ -1302,7 +1320,10 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
         _advance(st);
     }
     return _string_syntax_error(
-        st, _unterminated_string_message(st, quote, start_lineno, qlen), start_col
+        st,
+        _unterminated_string_message(st, quote, start_lineno, qlen),
+        start_col,
+        start_lineno
     );
 }
 
@@ -1442,6 +1463,8 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             and (_byte_at(st, 1) == ord("\n") or _byte_at(st, 1) == ord("\r")) {
             # Explicit line continuation: backslash-newline joins physical lines,
             # emitting no NEWLINE and doing no indentation processing.
+            start_lineno = st.lineno;
+            start_col = st.col_offset;
             _advance(st);
             if _peek(st) == ord("\r") {
                 _advance(st);
@@ -1453,7 +1476,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             }
             if not _has_source(st) {
                 bad = _string_syntax_error(
-                    st, "unexpected EOF while parsing", st.col_offset
+                    st, "unexpected EOF while parsing", start_col + 1, start_lineno
                 );
                 st.eof_reached = True;
                 return bad;

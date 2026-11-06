@@ -78,7 +78,10 @@ impl warn(message: str, filename: str, line: int, column: int = 0) {
         if PyErr_ExceptionMatches(PyExc_SyntaxWarning) != 0 {
             take_error_text();
             raise syntax_failure(
-                message, filename=filename, lineno=line, offset=column + 1
+                message.replace(". Such sequences will not work in the future.", "."),
+                filename=filename,
+                lineno=line,
+                offset=column + 1
             );
         }
         raise boundary_failure();
