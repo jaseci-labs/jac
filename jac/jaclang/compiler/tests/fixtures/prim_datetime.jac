@@ -21,6 +21,9 @@ def datetime_py -> dict[any, any] {
     # A pre-1970 (negative) POSIX timestamp pins the floor-division/modulo path:
     # 1969-12-30T23:59:59 UTC, a Tuesday (weekday 1).
     dt_neg = datetime.fromtimestamp(-86401.0, timezone.utc);
+    # A pre-1900 timestamp pins the signed struct-tm read: tm_year is
+    # negative (-57 for 1843), so any unsigned narrow load corrupts it.
+    dt_old = datetime.fromtimestamp(-3977452800.0, timezone.utc);
     now = datetime.now(timezone.utc);
     td = timedelta(days=1, seconds=3661, microseconds=42);
     d = date(2020, 2, 29);
@@ -51,6 +54,8 @@ def datetime_py -> dict[any, any] {
         "neg_second": dt_neg.second,
         "neg_weekday": dt_neg.weekday(),
         "neg_iso": dt_neg.isoformat(),
+        "old_year": dt_old.year,
+        "old_iso": dt_old.isoformat(),
         "now_year_ok": 1 if now.year >= 2024 else 0,
         "now_month_ok": 1 if now.month >= 1 and now.month <= 12 else 0,
         "now_day_ok": 1 if now.day >= 1 and now.day <= 31 else 0,
@@ -100,6 +105,7 @@ def datetime_cl -> dict[any, any] {
 def datetime_na -> dict[str, any] {
     dt: datetime = datetime.fromtimestamp(1700000000.0, timezone.utc);
     dt_neg: datetime = datetime.fromtimestamp(-86401.0, timezone.utc);
+    dt_old: datetime = datetime.fromtimestamp(-3977452800.0, timezone.utc);
     now: datetime = datetime.now(timezone.utc);
     td: timedelta = timedelta(days=1, seconds=3661, microseconds=42);
     d: date = date(2020, 2, 29);
@@ -130,6 +136,8 @@ def datetime_na -> dict[str, any] {
         "neg_second": dt_neg.second,
         "neg_weekday": dt_neg.weekday(),
         "neg_iso": dt_neg.isoformat(),
+        "old_year": dt_old.year,
+        "old_iso": dt_old.isoformat(),
         "now_year_ok": 1 if now.year >= 2024 else 0,
         "now_month_ok": 1 if now.month >= 1 and now.month <= 12 else 0,
         "now_day_ok": 1 if now.day >= 1 and now.day <= 31 else 0,

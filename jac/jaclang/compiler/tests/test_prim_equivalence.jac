@@ -338,6 +338,33 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          ("math", "prim_math.jac", "math_py", "math_cl", "math_na", ["na"]),
+         (
+             "binascii bundled",
+             "prim_binascii.jac",
+             "binascii_py",
+             "binascii_cl",
+             "binascii_na",
+             ["na"]
+         ),
+         (
+             "array bundled",
+             "prim_array.jac",
+             "array_py",
+             "array_cl",
+             "array_na",
+             ["na"],
+             [
+                 "ext_set_g0",
+                 "ext_frozenset_g0",
+                 "ctor_set_g0",
+                 "ctor_frozenset_g0",
+                 "ctor_tuple_g1",
+                 "ctor_range_g2",
+                 "ctor_dict_g1",
+                 "ext_tuple_g1"
+             ]
+         ),
+         ("mmap bundled", "prim_mmap.jac", "mmap_py", "mmap_cl", "mmap_na", ["na"]),
          ("time", "prim_time.jac", "time_py", "time_cl", "time_na", ["na"]),
          ("sys", "prim_sys.jac", "sys_py", "sys_cl", "sys_na", ["na"]),
          ("os", "prim_os.jac", "os_py", "os_cl", "os_na", ["na"]),
@@ -871,6 +898,35 @@ test "bundled shutil" {
     run_with_both(
         "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
     );
+}
+
+test "mmap file-size checks apply only to regular files" {
+    # CPython gates the empty-file/offset/length validation on S_ISREG, so a
+    # character device like /dev/zero must skip it and reach the mmap syscall
+    # (which fails with ENODEV on darwin, succeeds on linux). Regular files
+    # keep the checks.
+    import platform;
+    if platform.system() not in ("Darwin", "Linux") {
+        testskip("fd probe needs /dev/zero and /etc/hosts (posix only)");
+    }
+    (eng, na_ir) = compile_native("prim_mmap_fd.jac");
+    res = run_native_function(eng, "mmap_fd_probe", na_ir);
+    assert res["zero_fd"] > 0 and res["hosts_fd"] > 0 , (
+        f"probe fds did not open: {res}"
+    );
+    assert res["zero_isreg"] == 0 , f"/dev/zero must not classify as regular: {res}";
+    assert res["hosts_isreg"] == 1 , f"/etc/hosts must classify as regular: {res}";
+    assert res["hosts_huge"] == "valueerror" , (
+        f"oversized map of a regular file must raise ValueError: {res}"
+    );
+    assert res["hosts_small"] == "ok" , f"small map of a regular file must succeed: {res}";
+    if platform.system() == "Darwin" {
+        assert res["zero_map"] == "oserror" , (
+            f"darwin refuses device mmap with ENODEV: {res}"
+        );
+    } else {
+        assert res["zero_map"] == "ok" , f"linux mmaps /dev/zero fine: {res}";
+    }
 }
 
 test "native sort never silently orders object-returning keys" {

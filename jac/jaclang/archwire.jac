@@ -13744,6 +13744,7 @@ graph import compiler.tests {
             compile_native_errors,
             get_func,
             run_js_function,
+            run_native_function,
             run_py_fixture,
             run_with_both
         },
