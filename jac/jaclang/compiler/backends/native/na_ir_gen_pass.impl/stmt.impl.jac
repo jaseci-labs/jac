@@ -2013,6 +2013,21 @@ impl NaIRGenPass._apply_scalar_aug_op(
     return result;
 }
 
+impl NaIRGenPass._seq_imul(seq: ir.Value, count: ir.Value) -> (ir.Value | None) {
+    for (_key, _lt) in self.list_types.items() {
+        if seq.type == _lt.as_pointer() and _key in self.list_helpers {
+            _rep = self._emit_binary_op(Tok.STAR_MUL, seq, count);
+            if _rep is None {
+                return None;
+            }
+            self._dispatch_primitive_method("list", "clear", seq, [], _key);
+            self._dispatch_primitive_method("list", "extend", seq, [_rep], _key);
+            return seq;
+        }
+    }
+    return self._emit_binary_op(Tok.STAR_MUL, seq, count);
+}
+
 impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
     if not isinstance(nd.value, uni.Null) {
         return None;
@@ -2776,10 +2791,17 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         );
                     }
                 } elif aug_op_val == "*=" {
+                    _rep = self._seq_imul(current, value)
+                        if not isinstance(current.type, ir.IntType)
+                            and isinstance(value.type, ir.IntType)
+                        else None;
                     if isinstance(current.type, ir.IntType) {
                         value = self._emit_overflow_op(
                             "mul", current, coerced, self._is_unsigned_node(target_expr)
                         );
+                    } elif _rep is not None {
+                        is_inplace_set_op = _rep is current;
+                        value = _rep;
                     } else {
                         value = self.builder.fmul(
                             current, coerced, name=f"{var_name}.fmul"
@@ -2875,6 +2897,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                                     pass_ref=self, type_key=dict_type_key
                                 );
                                 _de.emit_update(_ctx, current, [coerced]);
+                                self._release_owned_args([coerced], op="dict_ior");
                             }
                             value = current;
                             is_inplace_set_op = True;
@@ -3231,8 +3254,27 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                     current = self._str_norm(current);
                     value = self._str_norm(value);
                 }
+                _g_rhs = value;
+                _gscalar_aug: (ir.Value | None) = None;
+                if isinstance(current.type, (ir.IntType, ir.FloatType, ir.DoubleType))
+                    and isinstance(
+                        value.type, (ir.IntType, ir.FloatType, ir.DoubleType)
+                    )
+                    and aug_op_val != "**=" {
+                    _gscalar_aug = self._apply_scalar_aug_op(
+                        current,
+                        value,
+                        aug_op_val,
+                        nd.value,
+                        target_type=target_expr.type,
+                        unsigned=self._is_unsigned_node(target_expr),
+                        sized=self._is_sized_node(target_expr)
+                    );
+                }
                 coerced = self._coerce_type(value, current.type);
-                if aug_op_val == "+=" {
+                if _gscalar_aug is not None {
+                    value = _gscalar_aug;
+                } elif aug_op_val == "+=" {
                     if isinstance(current.type, ir.IntType) {
                         value = self._emit_overflow_op(
                             "add", current, coerced, self._is_unsigned_node(target_expr)
@@ -3297,6 +3339,11 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         value = self.builder.fmul(
                             current, coerced, name=f"glob.{var_name}.fmul"
                         );
+                    } elif isinstance(value.type, ir.IntType) {
+                        _g_rep = self._seq_imul(current, value);
+                        if _g_rep is not None {
+                            value = _g_rep;
+                        }
                     }
                 } elif aug_op_val == "%=" {
                     if isinstance(current.type, ir.IntType) {
@@ -3338,10 +3385,26 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                         }
                     }
                 } elif aug_op_val == "|=" {
+                    _g_dict_key = self._dict_key_reconcile(
+                        self._dict_key_of(target_expr), current
+                    )
+                        if isinstance(current.type, ir.PointerType)
+                        else None;
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.or_(
                             current, coerced, name=f"glob.{var_name}.or"
                         );
+                    } elif _g_dict_key is not None {
+                        _de = self._ensure_emitters().get("dict");
+                        if isinstance(_de, NativeDictEmitter) {
+                            _de.emit_update(
+                                NativeEmitCtx(pass_ref=self, type_key=_g_dict_key),
+                                current,
+                                [coerced]
+                            );
+                            self._release_owned_args([coerced], op="dict_ior");
+                            value = current;
+                        }
                     } elif isinstance(current.type, ir.PointerType) {
                         _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
@@ -3431,6 +3494,16 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                                 else self._emit_plain_int_shr(current, coerced)
                         );
                     }
+                }
+                if value is _g_rhs {
+                    self.emit(
+                        E5092,
+                        node_override=nd,
+                        kind="augmented assignment",
+                        name=f"{var_name} {aug_op_val}",
+                        help_text="This operator has no native lowering for a module-level variable of this type. Assign the full expression instead."
+                    );
+                    continue;
                 }
             }
             _jacval_global = (
