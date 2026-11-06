@@ -79,6 +79,8 @@ obj KubernetesTarget(KubernetesTargetBase) {
     def _deploy_observability(app_name: str) -> None;
     def ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None;
     def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None;
+    def _release_privileged_namespace(core_v1: any, namespace: str) -> None;
+    def _workloads_escaping_baseline(namespace: str) -> list[str];
     def _build_observability_config -> KubernetesConfig;
     def _read_gateway_logs_config -> dict[str, any];
     def _read_gateway_tracing_config -> dict[str, any];

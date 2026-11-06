@@ -400,6 +400,117 @@ impl privileged_pss_labels(existing: dict[str, str]) -> dict[str, str] | None {
 }
 
 
+impl released_pss_labels(
+    namespace: str, existing: dict[str, str]
+) -> dict[str, str | None] {
+    if existing.get(PSS_ENFORCE_LABEL, "") != "privileged"
+        or existing.get(PSS_SOURCE_LABEL, "") != "privileged" {
+        return {};
+    }
+    if namespace == "default" {
+        return {PSS_ENFORCE_LABEL: None, PSS_SOURCE_LABEL: None};
+    }
+    return {PSS_ENFORCE_LABEL: "baseline", PSS_SOURCE_LABEL: "baseline"};
+}
+
+
+impl security_context_escapes_baseline(ctx: any) -> bool {
+    if ctx is None {
+        return False;
+    }
+    if ctx?.windows_options?.host_process {
+        return True;
+    }
+    if ctx?.seccomp_profile?.type == "Unconfined"
+        or ctx?.app_armor_profile?.type == "Unconfined" {
+        return True;
+    }
+    selinux = ctx?.se_linux_options;
+    if selinux is not None {
+        if selinux?.user or selinux?.role {
+            return True;
+        }
+        if selinux?.type and selinux?.type not in BASELINE_SELINUX_TYPES {
+            return True;
+        }
+    }
+    return False;
+}
+
+
+impl pod_spec_escapes_baseline(spec: any) -> bool {
+    if spec is None {
+        return False;
+    }
+    if getattr(spec, "host_network", False)
+        or getattr(spec, "host_pid", False)
+        or getattr(spec, "host_ipc", False) {
+        return True;
+    }
+    pod_ctx = spec?.security_context;
+    if security_context_escapes_baseline(pod_ctx) {
+        return True;
+    }
+    for sysctl in pod_ctx?.sysctls or [] {
+        if sysctl?.name not in BASELINE_SAFE_SYSCTLS {
+            return True;
+        }
+    }
+    for volume in spec?.volumes or [] {
+        if volume?.host_path is not None {
+            return True;
+        }
+    }
+    containers = list(spec?.containers or []) + list(spec?.init_containers or []);
+    for container in containers {
+        ctx = container?.security_context;
+        if ctx is not None {
+            if getattr(ctx, "privileged", False)
+                or security_context_escapes_baseline(ctx) {
+                return True;
+            }
+            if ctx?.proc_mount and ctx?.proc_mount != "Default" {
+                return True;
+            }
+            caps = ctx?.capabilities;
+            added: list[str] = list(caps?.add or []) if caps is not None else [];
+            for cap in added {
+                if cap not in BASELINE_ALLOWED_CAPABILITIES {
+                    return True;
+                }
+            }
+        }
+        for port in container?.ports or [] {
+            if port?.host_port {
+                return True;
+            }
+        }
+        for handler in [
+            container?.liveness_probe,
+            container?.readiness_probe,
+            container?.startup_probe,
+            container?.lifecycle?.post_start,
+            container?.lifecycle?.pre_stop
+        ] {
+            if handler?.http_get?.host or handler?.tcp_socket?.host {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+
+impl job_finished(job: any) -> bool {
+    for cond in job?.status?.conditions or [] {
+        if cond?.type in ("Complete", "Failed") and cond?.status == "True" {
+            return True;
+        }
+    }
+    return False;
+}
+
+
 impl ensure_namespace_exists(namespace: str, owner: str) -> None {
     if (namespace == 'default') {
         return;
