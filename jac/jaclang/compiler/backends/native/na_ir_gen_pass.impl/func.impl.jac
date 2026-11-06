@@ -71,7 +71,7 @@ impl NaIRGenPass._maybe_declare_ability(
 
     param_types: list[ir.Type] = [];
     for p in c_params {
-        param_types.append(self._resolve_jac_type(p));
+        param_types.append(self._resolve_sig_type(p));
     }
 
     ret_type: ir.Type;
@@ -82,7 +82,7 @@ impl NaIRGenPass._maybe_declare_ability(
         assert iterator_type is not None;
         ret_type = iterator_type.as_pointer();
     } else {
-        ret_type = self._resolve_return_type(sig.return_type);
+        ret_type = self._resolve_sig_type(sig.return_type);
         if symbol is None {
             ret_type = self._byvalue_ret_type(ret_type);
         }

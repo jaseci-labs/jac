@@ -1200,6 +1200,8 @@ impl NaIRGenPass._native_imports(
         if not mod_name {
             continue;
         }
+        _pinned_native_target = native_only_import_target(imp, self.prog);
+        _target_name = _pinned_native_target or mod_name;
         if (not imp.from_loc) and (not imp.is_absorb) {
             if not _has_native_code {
                 continue;
@@ -1223,11 +1225,12 @@ impl NaIRGenPass._native_imports(
             }
         }
         wq.append(
-            (mod_name, entry_base, None, bool(imp.is_typed), bool(imp.is_comptime))
+            (_target_name, entry_base, None, bool(imp.is_typed), bool(imp.is_comptime))
         );
 
         if imp.from_loc and imp.items {
-            _bound_path = resolve_native_module(mod_name, entry_base)[1];
+            _bound_path = _pinned_native_target
+                or resolve_native_module(mod_name, entry_base)[1];
             if _bound_path is not None {
                 for _it in imp.items {
                     if isinstance(_it, uni.ModuleItem) and _it.alias is None {
