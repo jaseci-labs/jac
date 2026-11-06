@@ -2,7 +2,6 @@ import os;
 import datetime;
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.server.bridge { BridgeError }
-import from core.scoring { Score, reputation }
 
 node Profile {
     has username: str;

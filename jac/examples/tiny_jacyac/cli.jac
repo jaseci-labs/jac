@@ -7,7 +7,6 @@ import sys;
 import urllib.request;
 import from pathlib { Path }
 import from jaclang.server { sv_client }
-import from core.feed { join, publish, toggle_like, remove_post, load_feed }
 
 def auth_request(base: str, username: str, password: str) -> str {
     payload = json.dumps(
