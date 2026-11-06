@@ -20,7 +20,7 @@ test "a released module and its functions are freed without the cyclic collector
     gc.disable();
     try {
         module.release();
-        del module , callee , caller , builder , total;
+        del module , callee , caller , builder , total , block , i64;
         assert all(ref() is None for ref in refs) , [ref() for ref in refs];
     } finally {
         gc.enable();
