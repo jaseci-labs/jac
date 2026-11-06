@@ -1,3 +1,4 @@
+import logging;
 import from pathlib { Path }
 
 
@@ -52,11 +53,16 @@ glob ROOT_ASSET_EXTENSIONS: set[str] = DEFAULT_ASSET_EXTENSIONS
 
 glob SEO_ROOT_FILES: set[str] = {ROBOTS_PATH, SITEMAP_PATH};
 
-def site_url_for(base_path: str) -> str;
+glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
+     _seo_logged: set[str] = set();
 
-def robots_override(site_url: str, host: str) -> (str | None);
+def served_host(host: str) -> str;
 
-def robots_response(request: Request, base_path: str) -> (Response | None);
+def robots_override(site_url: str, host: str, site_hosts: list[str]) -> (str | None);
+
+def robots_response(
+    request: Request, base_path: str, entry_path: str = ''
+) -> (Response | None);
 
 
 def find_root_asset(

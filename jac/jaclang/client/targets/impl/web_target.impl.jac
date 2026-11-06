@@ -90,6 +90,8 @@ impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
@@ -133,9 +135,7 @@ impl WebTarget.build(
         apply_pwa(dist_dir, project_dir);
     }
     if dist_dir {
-        entry_path = str(entry_file.resolve());
         public_dirs = bundler.config_loader.get_public_dirs(entry_path);
-        seo_config = bundler.config_loader.get_seo_config(entry_path);
         import from jaclang.client.targets.seo_build {
             apply_seo,
             clear_seo_files,

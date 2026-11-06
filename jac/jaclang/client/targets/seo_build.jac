@@ -1,6 +1,7 @@
 import from pathlib { Path }
 
-glob SITEMAP_NS: str = "http://www.sitemaps.org/schemas/sitemap/0.9";
+glob SITEMAP_NS: str = "http://www.sitemaps.org/schemas/sitemap/0.9",
+     URL_SAFE: str = "/:@!$&'()*+,;=?#%";
 
 def normalized_site_url(site_url: str) -> str;
 
@@ -15,6 +16,12 @@ def sitemap_paths(
 ) -> list[str];
 
 def robots_disallows(routes: list[RouteEntry], disallow: list[str]) -> list[str];
+
+def robots_blocks(rule: str, path: str) -> bool;
+
+def crawl_rules(
+    routes: list[RouteEntry], exclude: list[str], extra: list[str], disallow: list[str]
+) -> tuple[list[str], list[str], list[str]];
 
 def render_sitemap(site_url: str, paths: list[str]) -> str;
 

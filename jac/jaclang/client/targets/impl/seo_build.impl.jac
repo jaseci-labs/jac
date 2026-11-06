@@ -18,8 +18,9 @@ impl _is_enumerable(path: str) -> bool {
 }
 
 impl _as_path(item: str) -> str {
+    import from urllib.parse { quote }
     value = str(item).strip();
-    return value if value.startswith("/") else f"/{value}";
+    return quote(value if value.startswith("/") else f"/{value}", safe=URL_SAFE);
 }
 
 impl _crawl_prefix(path: str) -> str {
@@ -37,7 +38,7 @@ impl sitemap_paths(
     routes: list[RouteEntry], exclude: list[str], extra: list[str]
 ) -> list[str] {
     candidates: list[str] = [
-        route.path
+        _as_path(route.path)
         for route in routes
         if not route.auth_required
             and not route.is_layout
@@ -60,10 +61,20 @@ impl sitemap_paths(
 impl robots_disallows(routes: list[RouteEntry], disallow: list[str]) -> list[str] {
     out: list[str] = [];
     for route in routes {
-        if route.auth_required and not route.is_layout {
-            prefix = _crawl_prefix(route.path);
-            if prefix not in out {
-                out.append(prefix);
+        if not route.auth_required or route.is_layout {
+            continue;
+        }
+        path = _as_path(route.path);
+        if not _is_enumerable(route.path) or route.is_catch_all {
+            rules = [_as_path(_crawl_prefix(route.path))];
+        } elif path == "/" {
+            rules = ["/$"];
+        } else {
+            rules = [f"{path}$", f"{path}/"];
+        }
+        for rule in rules {
+            if rule not in out {
+                out.append(rule);
             }
         }
     }
@@ -74,6 +85,32 @@ impl robots_disallows(routes: list[RouteEntry], disallow: list[str]) -> list[str
         }
     }
     return out;
+}
+
+impl robots_blocks(rule: str, path: str) -> bool {
+    import re;
+    anchored = rule.endswith("$");
+    body = rule[:-1] if anchored else rule;
+    pattern = ".*".join(re.escape(part) for part in body.split("*"));
+    return re.match(pattern + ("$" if anchored else ""), path) is not None;
+}
+
+impl crawl_rules(
+    routes: list[RouteEntry], exclude: list[str], extra: list[str], disallow: list[str]
+) -> tuple[list[str], list[str], list[str]] {
+    own_rules = [_as_path(item) for item in disallow];
+    paths = [
+        path
+        for path in sitemap_paths(routes, exclude, extra)
+        if not any(robots_blocks(rule, path) for rule in own_rules)
+    ];
+    disallows = robots_disallows(routes, disallow);
+    allows = [
+        f"{path}$"
+        for path in paths
+        if any(robots_blocks(rule, path) for rule in disallows)
+    ];
+    return (paths, allows, disallows);
 }
 
 impl render_sitemap(site_url: str, paths: list[str]) -> str {
@@ -122,21 +159,15 @@ impl apply_seo(
 ) -> list[str] {
     site_url = normalized_site_url(str(seo_config.get("site_url", "")));
     sitemap_cfg = seo_config.get("sitemap", {}) or {};
-    robots_cfg = seo_config.get("robots", {}) or {};
+    (paths, allows, disallows) = crawl_rules(
+        routes,
+        list(sitemap_cfg.get("exclude", [])),
+        list(sitemap_cfg.get("extra", [])),
+        list((seo_config.get("robots", {}) or {}).get("disallow", []))
+    );
     rendered: dict[str, str] = {
-        SITEMAP_PATH: render_sitemap(
-            site_url,
-            sitemap_paths(
-                routes,
-                list(sitemap_cfg.get("exclude", [])),
-                list(sitemap_cfg.get("extra", []))
-            )
-        ),
-        ROBOTS_PATH: render_robots(
-            site_url,
-            robots_disallows(routes, list(robots_cfg.get("disallow", []))),
-            asset_paths
-        )
+        SITEMAP_PATH: render_sitemap(site_url, paths),
+        ROBOTS_PATH: render_robots(site_url, disallows, asset_paths + allows)
     };
     written: list[str] = [];
     for (name, text) in rendered.items() {

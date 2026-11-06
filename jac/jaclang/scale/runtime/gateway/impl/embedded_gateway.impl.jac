@@ -116,7 +116,10 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
         }
     }
     accept: str = str(request.headers.get("accept") or "");
-    blocked = robots_response(request, self.base_path);
+    root_entry = self.registry.root_entry();
+    blocked = robots_response(
+        request, self.base_path, root_entry.file if root_entry else ""
+    );
     if blocked is not None {
         return blocked;
     }

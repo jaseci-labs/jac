@@ -7,15 +7,22 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.client.route_scanner { RouteEntry }
 import from jaclang.client.targets.seo_build {
+    crawl_rules,
     normalized_site_url,
     render_robots,
-    robots_disallows,
+    robots_blocks,
     sitemap_paths
 }
 import from jaclang.client.targets.web_target { WebTarget }
 import from jaclang.client.vite_bundler { ViteBundler }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
-import from jaclang.server.static_files { DISALLOW_ALL_ROBOTS, robots_override }
+import from jaclang.project.client_paths { client_seo_config }
+import from jaclang.project.config { JacConfig, ServeConfigError }
+import from jaclang.server.static_files {
+    DISALLOW_ALL_ROBOTS,
+    logger as serve_logger,
+    robots_override
+}
 
 glob SITE: str = "https://example.org",
      PREVIEW_HOST: str = "pr-12.preview.example.net",
@@ -81,6 +88,27 @@ def build_web(project_dir: Path, entry_path: Path) -> Path {
     return bundle_path.parent;
 }
 
+"""RFC 9309: the longest matching rule decides, and Allow wins a tie."""
+def crawlable(path: str, allows: list[str], disallows: list[str]) -> bool {
+    allowed = max(
+        [
+            len(r)
+            for r in allows
+            if robots_blocks(r, path)
+        ],
+        `default=-1
+    );
+    blocked = max(
+        [
+            len(r)
+            for r in disallows
+            if robots_blocks(r, path)
+        ],
+        `default=-1
+    );
+    return allowed >= blocked;
+}
+
 def header(resp: any, name: str) -> str {
     for (key, value) in dict(resp.headers).items() {
         if key.lower() == name {
@@ -114,7 +142,14 @@ test "the sitemap lists public pages only, with exclude and extra applied" {
             ["/blog/launch", "faq"],
             ["/", "/about", "/docs/intro", "/blog/launch", "/faq"]
         ),
-        ("no file routes", [], [], [], ["/"])
+        ("no file routes", [], [], [], ["/"]),
+        (
+            "paths are percent-encoded",
+            [],
+            [],
+            ["/café menu", "/caf%C3%A9%20menu", "/search?q=a&b=c"],
+            ["/", "/caf%C3%A9%20menu", "/search?q=a&b=c"]
+        )
     ];
     for (label, scanned, exclude, extra, want) in rows {
         got = sitemap_paths(scanned, exclude, extra);
@@ -122,28 +157,87 @@ test "the sitemap lists public pages only, with exclude and extra applied" {
     }
 }
 
-test "robots.txt keeps protected routes out but never the bundle or stylesheet" {
-    routes = [
-        route("/"),
-        route("/dashboard", auth=True),
-        route("/users/:id/settings", auth=True)
+test "robots.txt keeps protected routes out but never the bundle, stylesheet or a sitemap URL" {
+    rows = [
+        (
+            "protected routes and disallow",
+            [
+                route("/"),
+                route("/dashboard", auth=True),
+                route("/users/:id/settings", auth=True)
+            ],
+            ["/internal", "admin"],
+            ["/dashboard$", "/dashboard/", "/users/", "/internal", "/admin"],
+            ["/"],
+            []
+        ),
+        (
+            "an (auth) home",
+            [route("/", auth=True), route("/about"), route("/pricing")],
+            [],
+            ["/$"],
+            ["/about", "/pricing"],
+            []
+        ),
+        (
+            "an (auth) route a public route starts with",
+            [route("/admin", auth=True), route("/administrators-guide")],
+            [],
+            ["/admin$", "/admin/"],
+            ["/administrators-guide"],
+            []
+        ),
+        (
+            "a dynamic (auth) route beside a public page",
+            [
+                route("/:org", auth=True),
+                route("/users/:id", auth=True),
+                route("/about")
+            ],
+            [],
+            ["/", "/users/"],
+            ["/about"],
+            ["/about$"]
+        ),
+        (
+            "a disallowed page leaves the sitemap",
+            [route("/"), route("/internal/docs")],
+            ["/internal"],
+            ["/internal"],
+            ["/"],
+            []
+        )
     ];
-    disallows = robots_disallows(routes, ["/internal", "admin"]);
-    assert disallows == ["/dashboard", "/users/", "/internal", "/admin"] , disallows;
-    text = render_robots(SITE, disallows, ["/client.abc123.js", "/styles.css"]);
+    for (label, routes, listed, want_disallows, want_paths, want_allows) in rows {
+        (paths, allows, disallows) = crawl_rules(routes, [], [], listed);
+        assert disallows == want_disallows , f"{label}: {disallows}";
+        assert paths == want_paths , f"{label}: sitemap {paths}";
+        assert allows == want_allows , f"{label}: allows {allows}";
+        for path in paths {
+            assert crawlable(path, allows, disallows) , (
+                f"{label}: robots.txt blocks sitemap URL {path}: {disallows}"
+            );
+            if not allows {
+                assert not any(robots_blocks(r, path) for r in disallows) , (
+                    f"{label}: a Disallow matches sitemap URL {path}: {disallows}"
+                );
+            }
+        }
+    }
+    text = render_robots(SITE, ["/dashboard$"], ["/client.abc123.js", "/styles.css"]);
     lines = text.splitlines();
     assert lines[0] == "User-agent: *" , text;
     for asset in ["/client.abc123.js", "/styles.css"] {
         assert f"Allow: {asset}" in lines , f"robots.txt may block {asset}:\n{text}";
     }
-    assert "Disallow: /dashboard" in lines , text;
+    assert "Disallow: /dashboard$" in lines , text;
     assert f"Sitemap: {SITE}/sitemap.xml" in lines , text;
     open_text = render_robots(SITE, [], ["/client.abc123.js"]);
     assert "Allow: /" in open_text.splitlines() , open_text;
     assert "Disallow" not in open_text , open_text;
 }
 
-test "site_url must be an absolute http(s) URL" {
+test "[client.seo] needs an absolute http(s) site_url and lists of strings" {
     assert normalized_site_url("https://example.org/") == SITE;
     for bad in ["example.org", "/docs", "ftp://example.org", "https://"] {
         try {
@@ -153,20 +247,60 @@ test "site_url must be an absolute http(s) URL" {
             assert "site_url" in str(err) , f"{bad!r}: {err}";
         }
     }
+    good = f'[client.seo]\nsite_url = "{SITE}"\nsite_hosts = ["www.example.org"]\n'
+        + '[client.seo.sitemap]\nexclude = ["/a"]\nextra = ["/b"]\n'
+        + '[client.seo.robots]\ndisallow = ["/c"]\n';
+    seo = client_seo_config(JacConfig.from_toml_str(good));
+    assert seo["site_hosts"] == ["www.example.org"] , seo;
+    rows = [
+        ("exclude", '[client.seo.sitemap]\nexclude = "/about"\n'),
+        ("extra", '[client.seo.sitemap]\nextra = [1]\n'),
+        ("disallow", '[client.seo.robots]\ndisallow = "/internal"\n'),
+        ("site_hosts", '[client.seo]\nsite_hosts = "www.example.org"\n'),
+        ("site_urll", '[client.seo]\nsite_urll = "https://example.org"\n'),
+        ("[client.seo]", '[client]\nseo = "https://example.org"\n')
+    ];
+    for (key, toml) in rows {
+        try {
+            client_seo_config(JacConfig.from_toml_str(toml));
+            assert False , f"accepted {toml!r}";
+        } except ServeConfigError as err {
+            assert key in str(err) , f"{toml!r}: {err}";
+        }
+    }
 }
 
 test "robots.txt on a host other than site_url disallows everything" {
+    cdn_origin = "origin.cdn.example.net";
     rows = [
-        ("canonical host", SITE, "example.org", None),
-        ("canonical host with a port", SITE, "example.org:443", None),
-        ("host in another case", SITE, "Example.ORG", None),
-        ("preview host", SITE, PREVIEW_HOST, DISALLOW_ALL_ROBOTS),
-        ("no site_url", "", PREVIEW_HOST, None)
+        ("canonical host", SITE, "example.org", [], None),
+        ("canonical host with a port", SITE, "example.org:443", [], None),
+        ("host in another case", SITE, "Example.ORG", [], None),
+        ("host with a trailing dot", SITE, "example.org.", [], None),
+        ("preview host", SITE, PREVIEW_HOST, [], DISALLOW_ALL_ROBOTS),
+        ("www host", SITE, "www.example.org", [], DISALLOW_ALL_ROBOTS),
+        ("www host in site_hosts", SITE, "www.example.org", ["WWW.example.org"], None),
+        (
+            "CDN origin host in site_hosts",
+            SITE,
+            f"{cdn_origin}:8080",
+            [cdn_origin],
+            None
+        ),
+        ("malformed host", SITE, "[::1", [], DISALLOW_ALL_ROBOTS),
+        ("no site_url", "", PREVIEW_HOST, [], None)
     ];
-    for (label, site_url, host, want) in rows {
-        got = robots_override(site_url, host);
+    for (label, site_url, host, site_hosts, want) in rows {
+        got = robots_override(site_url, host, site_hosts);
         assert got == want , f"{label}: {got!r}";
     }
+    with patch.object(serve_logger, "warning") as warning {
+        for _ in range(2) {
+            robots_override(SITE, "once.preview.example.net", []);
+        }
+    }
+    assert warning.call_count == 1 , warning.call_args_list;
+    assert "once.preview.example.net" in str(warning.call_args) , warning.call_args;
 }
 
 test "a build with site_url writes robots.txt and sitemap.xml from its pages" {
@@ -178,10 +312,12 @@ test "a build with site_url writes robots.txt and sitemap.xml from its pages" {
             "(auth)/dashboard.jac": page("Dashboard"),
             "users/[id].jac": page("User")
         };
-        entry_path = make_project(project_dir, f'site_url = "{SITE}/"', pages, {});
+        seo = f'site_url = "{SITE}/"\n[client.seo.sitemap]\n'
+            + 'extra = ["/search?q=a&b=c", "/café menu"]';
+        entry_path = make_project(project_dir, seo, pages, {});
         dist = build_web(project_dir, entry_path);
         sitemap = (dist / "sitemap.xml").read_text();
-        for path in ["/", "/about"] {
+        for path in ["/", "/about", "/search?q=a&amp;b=c", "/caf%C3%A9%20menu"] {
             assert f"<loc>{SITE}{path}</loc>" in sitemap , f"{path} missing:\n{sitemap}";
         }
         for path in ["/dashboard", "/users"] {
@@ -190,7 +326,7 @@ test "a build with site_url writes robots.txt and sitemap.xml from its pages" {
         assert "lastmod" not in sitemap , sitemap;
         robots = (dist / "robots.txt").read_text();
         robots_lines = robots.splitlines();
-        assert "Disallow: /dashboard" in robots_lines , robots;
+        assert "Disallow: /dashboard$" in robots_lines , robots;
         assert "Allow: /client.test.js" in robots_lines , robots;
         assert f"Sitemap: {SITE}/sitemap.xml" in robots_lines , robots;
         (project_dir / "pages" / "contact.jac").write_text(page("Contact"));
@@ -264,7 +400,10 @@ test "the gateways and jac run --serve answer robots.txt per host" {
     import from jaclang.scale.runtime.gateway.microservice_gateway {
         MicroserviceGateway
     }
-    import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
+    import from jaclang.scale.runtime.gateway.service_registry {
+        ServiceEntry,
+        ServiceRegistry
+    }
     import from jaclang.scale.runtime.transport.transport { InProcessTransport }
     import from jaclang.testing.testing { JacTestClient }
     import from jaclang.testing.testkit { ServingTestClient }
@@ -329,6 +468,56 @@ test "the gateways and jac run --serve answer robots.txt per host" {
             }
         } finally {
             server.close();
+        }
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        workspace = Path(tmp).resolve();
+        for name in ("web", "api") {
+            (workspace / name).mkdir();
+            (workspace / name / "main.jac").write_text(
+                'def:pub ping -> str { return "pong"; }\n'
+            );
+        }
+        (workspace / "jac.toml").write_text(
+            '[project]\nname = "ws"\n\n'
+                + '[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n'
+                + '[apps.api]\nkind = "service"\nentry-point = "api.main"\n\n'
+                + f'[apps.web.client.seo]\nsite_url = "{SITE}"\n'
+        );
+        (workspace / "robots.txt").write_text(HAND_WRITTEN);
+        registry = ServiceRegistry();
+        registry.register(
+            ServiceEntry(name="web", file="web/main.jac", prefix="/web", is_root=True)
+        );
+        gateways: list[tuple[str, any]] = [
+            (
+                "microservice gateway",
+                MicroserviceGateway(
+                    registry=registry,
+                    client_dist_dir=str(workspace),
+                    base_path=str(workspace)
+                )
+            ),
+            (
+                "embedded gateway",
+                EmbeddedGateway(
+                    registry=registry,
+                    transport=InProcessTransport(),
+                    client_dist_dir=str(workspace),
+                    base_path=str(workspace)
+                )
+            )
+        ];
+        for (label, gateway) in gateways {
+            gateway.setup();
+            client = ServingTestClient(gateway.app);
+            preview = client.get("/robots.txt", headers={"host": PREVIEW_HOST});
+            assert preview.text == DISALLOW_ALL_ROBOTS , (
+                f"{label} in a workspace without default-app served the "
+                f"production robots.txt to a preview host: {preview.text!r}"
+            );
+            canonical = client.get("/robots.txt", headers={"host": "example.org"});
+            assert canonical.text == HAND_WRITTEN , f"{label}: {canonical.text!r}";
         }
     }
 }

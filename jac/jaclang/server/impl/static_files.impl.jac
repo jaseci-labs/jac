@@ -197,30 +197,61 @@ impl sibling_app_names(config: any, base_path: str) -> list[str] {
     ];
 }
 
-impl site_url_for(base_path: str) -> str {
-    config = get_config_for_dir(str(resolve_static_base(base_path)));
-    return str(client_seo_config(config).get('site_url') or '').strip();
+impl served_host(host: str) -> str {
+    import from urllib.parse { urlparse }
+    try {
+        name = urlparse(f'//{host.strip()}').hostname or '';
+    } except ValueError {
+        return '';
+    }
+    return name.rstrip('.').lower();
 }
 
-impl robots_override(site_url: str, host: str) -> (str | None) {
+impl robots_override(site_url: str, host: str, site_hosts: list[str]) -> (str | None) {
     import from urllib.parse { urlparse }
-    canonical = (urlparse(site_url.strip()).hostname or '') if site_url else '';
+    canonical = served_host(urlparse(site_url.strip()).netloc);
     if not canonical {
         return None;
     }
-    served_host = urlparse(f'//{host.strip()}').hostname or '';
-    if served_host == canonical.lower() {
+    name = served_host(host);
+    if name and name in {canonical} | {served_host(h) for h in site_hosts} {
         return None;
+    }
+    if name not in _seo_logged {
+        _seo_logged.add(name);
+        logger.warning(
+            f"/robots.txt on host {host!r} answers 'Disallow: /': it is not the "
+            f"host of [client.seo] site_url {site_url!r}. If this host serves "
+            "production, add it to [client.seo] site_hosts."
+        );
     }
     return DISALLOW_ALL_ROBOTS;
 }
 
-impl robots_response(request: Request, base_path: str) -> (Response | None) {
+impl robots_response(
+    request: Request, base_path: str, entry_path: str = ''
+) -> (Response | None) {
     if request.method != 'GET' or request.url.path.lstrip('/') != ROBOTS_PATH {
         return None;
     }
+    base = resolve_static_base(base_path);
+    if entry_path and not Path(entry_path).is_absolute() {
+        entry_path = str(base / entry_path);
+    }
+    import from jaclang.project.config { ServeConfigError }
+    try {
+        seo = client_seo_config(get_config_for_dir(str(base)), entry_path);
+    } except ServeConfigError as err {
+        if str(err) not in _seo_logged {
+            _seo_logged.add(str(err));
+            logger.error(f"/robots.txt is served as built: {err}");
+        }
+        return None;
+    }
     host = request.url.netloc or str(request.headers.get('host') or '');
-    blocked = robots_override(site_url_for(base_path), host);
+    blocked = robots_override(
+        str(seo.get('site_url') or ''), host, list(seo.get('site_hosts', []))
+    );
     if blocked is None {
         return None;
     }

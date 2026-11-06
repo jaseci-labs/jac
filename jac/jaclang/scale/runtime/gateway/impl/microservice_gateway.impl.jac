@@ -754,7 +754,10 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     if not file_path {
         return None;
     }
-    blocked = robots_response(request, self.base_path);
+    root_entry = self.root_member();
+    blocked = robots_response(
+        request, self.base_path, root_entry.file if root_entry else ""
+    );
     if blocked is not None {
         return blocked;
     }

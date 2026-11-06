@@ -74,6 +74,7 @@ Set the site's public URL and `jac build` writes both files into `dist/`:
 ```toml
 [client.seo]
 site_url = "https://example.org"   # required: nothing is generated without it
+site_hosts = ["www.example.org"]   # other hosts that serve production
 
 [client.seo.sitemap]
 exclude = ["/preview-auth"]        # paths to leave out
@@ -88,21 +89,31 @@ disallow = ["/internal"]           # paths to block, on top of the (auth) routes
   listed. An app without `pages/` lists `/`. It has no `<lastmod>`.
 - `robots.txt` disallows the `(auth)` routes and everything in `disallow`, always
   allows the client bundle and stylesheet so crawlers can render the app, and
-  points at the sitemap.
+  points at the sitemap. An `(auth)` route `/admin` becomes `Disallow: /admin$` and
+  `Disallow: /admin/`, so a public `/administrators-guide` stays crawlable, and an
+  `(auth)` home page becomes `Disallow: /$`. A sitemap URL is never blocked: one that
+  an `(auth)` rule would cover gets its own `Allow:` line, and one that `disallow`
+  covers leaves the sitemap.
+- Paths are percent-encoded (`/café menu` becomes `/caf%C3%A9%20menu`).
+- Every list must be a list of strings, and an unknown key is an error.
 - A file of the same name in `public/` wins: the build uses it instead and says so.
 
 `jac run --serve` and the jac-scale gateways compare the host of a `/robots.txt`
-request with `site_url`. The host is the `Host` header, or `X-Forwarded-Host` when
+request with the host of `site_url` and the hosts in `site_hosts`, ignoring case,
+the port and a trailing dot. The host is the `Host` header, or `X-Forwarded-Host` when
 the request comes from a proxy listed in `[serve.proxy] trusted`. Behind a proxy
 that rewrites `Host`, list the proxy there, or the production host is not
 recognized either. On any other host, such as a preview or staging deployment, they
 answer `User-agent: *` / `Disallow: /` ahead of any route the app declares, whether
-the file was generated or hand-written, so previews are not indexed. In a
+the file was generated or hand-written, so previews are not indexed, and log a
+warning naming the host the first time. A CDN that sends its own origin name as
+`Host` is such a host: add that name to `site_hosts`. In a
 microservice deployment only the gateway checks: the apps behind it see the
 gateway's address, not the public host, so a `/robots.txt` it forwards to them is
 answered as is. Both files are served with `Cache-Control: no-cache`. In a
 workspace, `[client.seo]` applies to every app; `[apps.<name>.client.seo]`
-overrides it for one app.
+overrides it for one app. The build reads the settings of the app it builds, and a
+gateway those of the app it serves at `/`.
 
 ### Client Code Is Inferred
 

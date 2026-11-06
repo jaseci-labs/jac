@@ -43,7 +43,12 @@ impl client_seo_config(
     }
     effective = config.effective_for_app(app.name) if app is not None else config;
     seo = effective.get_plugin_config('client').get('seo', {});
-    return seo if isinstance(seo, dict) else {};
+    import from jaclang.project.config { ServeConfigError, apply_table }
+    if not isinstance(seo, dict) {
+        raise ServeConfigError("[client.seo] must be a table");
+    }
+    apply_table(SeoConfig(), seo, "client.seo", {});
+    return seo;
 }
 
 impl client_input_dirs(

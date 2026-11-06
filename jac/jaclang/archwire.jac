@@ -2206,6 +2206,7 @@ graph import {
             set_config
         },
         scale.tests.misc.test_config_validation { JacConfig },
+        server.static_files.robots_response { ServeConfigError },
     ]
     type project.config ++> [
         cli.commands.build { AppConfig },
@@ -14902,6 +14903,7 @@ graph import project {
         tool_paths { JacConfig, get_config },
     ]
     config --> [
+        client_paths.client_seo_config { ServeConfigError, apply_table },
         compiler_host.ProjectHost.check_settings | modresolver._get_path_aliases {
             get_config
         },
