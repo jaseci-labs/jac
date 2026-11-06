@@ -579,6 +579,12 @@ test "serve call function with defaults" {
         data = response.data;
         assert "result" in data;
         assert data["result"] == "Hello, World!";
+        for _ in range(2) {
+            typed = client.post("/function/describe_defaults", json={});
+            assert typed.ok , typed.data;
+            assert typed.data["result"]
+                == {"on": False, "n": 5, "tags": ["x"], "note": None};
+        }
         client.close();
     }
 }

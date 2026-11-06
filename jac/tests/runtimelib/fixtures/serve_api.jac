@@ -97,6 +97,13 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
+def:protect describe_defaults(
+    on: bool = False, n: int = 5, tags: list[str] = [], note: str | None = None
+) -> dict[str, any] {
+    tags.append("x");
+    return {"on": on, "n": n, "tags": tags, "note": note};
+}
+
 glob WELCOME_TITLE: str = "Runtime Test";
 
 def:pub client_page -> JsxElement {
