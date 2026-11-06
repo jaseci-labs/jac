@@ -6305,9 +6305,6 @@ graph import compiler {
         passes.cfg_build_pass.CFGBuildPass.exit_if_else_expr {
             collect_narrowing_symbols
         },
-        types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
-            find_destructure_index_path
-        },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },

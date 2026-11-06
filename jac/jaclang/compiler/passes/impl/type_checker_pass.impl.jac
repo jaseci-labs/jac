@@ -340,6 +340,7 @@ impl TypeCheckPass.exit_binary_expr with BinaryExpr exit {
     self.evaluator.get_type_of_expression(here);
     if isinstance(here.op, Token) and here.op.name == Tok.WALRUS_EQ {
         self._check_immutable_write(here.left);
+        self._check_rebind_types(here.left, here);
     }
 }
 
@@ -402,7 +403,12 @@ impl TypeCheckPass._is_unannotated_rebind(prior: Symbol, target: Name) -> bool {
         site = site.parent;
     }
     return (isinstance(site, Assignment) and site.type_tag is None)
-        or isinstance(site, InForStmt);
+        or isinstance(site, InForStmt)
+        or (
+            isinstance(site, BinaryExpr)
+            and isinstance(site.op, Token)
+            and site.op.name == Tok.WALRUS_EQ
+        );
 }
 
 impl TypeCheckPass._is_exempt_rebind(
@@ -416,22 +422,32 @@ impl TypeCheckPass._is_exempt_rebind(
         and any(d.name_of.find_parent_of_type(Import) is not None for d in prior.defn);
 }
 
-impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
-    scope = find_python_scope_node_of(nd);
-    if scope is None {
-        return;
+impl TypeCheckPass._check_rebind_types(target: (Expr | None), site: UniNode) -> None {
+    if target is not None {
+        self._deferred_rebinds.append((target, site));
     }
-    loop_at = (nd.loc.first_line, nd.loc.col_start);
-    for leaf in self._write_leaves(nd.target) {
+}
+
+impl TypeCheckPass._flush_rebind_types -> None {
+    pending = self._deferred_rebinds;
+    self._deferred_rebinds = [];
+    for (target, site) in pending {
+        self._judge_rebind_types(target, site);
+    }
+}
+
+impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
+    for leaf in self._write_leaves(target) {
         if not isinstance(leaf, Name) or leaf.sym is None {
             continue;
         }
-        prior = scope.lookup(leaf.value, deep=False);
-        if prior is None or prior is leaf.sym or prior.decl is None {
+        prior = self._rebound_enclosing_symbol(site, leaf);
+        if prior is None or prior.decl is None or prior.decl.name_of is leaf {
             continue;
         }
         if not isinstance(prior.decl.name_of, ParamVar)
-            and (prior.decl.loc.first_line, prior.decl.loc.col_start) >= loop_at {
+            and (prior.decl.loc.first_line, prior.decl.loc.col_start)
+                >= (leaf.loc.first_line, leaf.loc.col_start) {
             continue;
         }
         declared = self.evaluator.get_type_of_symbol(prior);
@@ -443,18 +459,36 @@ impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
             or self._is_exempt_rebind(prior, leaf, declared) {
             continue;
         }
-        bound = self.evaluator.get_type_of_expression(leaf);
-        if isinstance(bound, UnknownType) {
+        source = site.right
+            if isinstance(site, BinaryExpr)
+            else self.evaluator._get_source_of_unpack_target(leaf);
+        bound = self._rebound_value_type(leaf, source, declared);
+        if bound is None or isinstance(bound, UnknownType) {
             continue;
         }
-        if not self.evaluator.assign_type(
-            bound, declared, strict=self.evaluator._is_strict_site(nd)
-        ) {
+        verdict = self.evaluator.assign_expr(
+            source, bound, declared, strict=self.evaluator._is_strict_site(site)
+        );
+        if not verdict.ok and not verdict.diagnosed {
             self.ctx.emit(
                 E1001, node_override=leaf, actual=str(bound), expected=str(declared)
             );
         }
     }
+}
+
+impl TypeCheckPass._rebound_value_type(
+    leaf: Name, source: (Expr | None), declared: TypeBase
+) -> (TypeBase | None) {
+    if source is not None {
+        return self.evaluator.get_type_of_expression(source, expected_type=declared);
+    }
+    if leaf.sym is not None
+        and leaf.sym.decl is not None
+        and leaf.sym.decl.name_of is leaf {
+        return self.evaluator.get_type_of_expression(leaf);
+    }
+    return self.evaluator._get_type_of_lhs_assignment(leaf);
 }
 
 impl TypeCheckPass._check_immutable_write(
@@ -738,6 +772,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
             }
         } elif isinstance(target, (TupleVal, ListVal)) {
             self._eval_unpacking_names(target);
+            self._check_rebind_types(target, here);
             right_type = self.evaluator.get_type_of_expression(here.value);
             if not isinstance(right_type, UnknownType)
                 and not right_type.is_any_instance() {
@@ -1035,6 +1070,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
         }
     } else {
         for target in here.target {
+            if here.value is not None and here.aug_op is None {
+                self._check_rebind_types(target, here);
+            }
             if isinstance(target, Name) and target.sym {
                 target_type = self.evaluator.get_type_of_symbol(target.sym);
                 if not (
@@ -1639,6 +1677,7 @@ impl TypeCheckPass._install_client_state_setters -> None {
 impl TypeCheckPass.postinit -> None {
     self.evaluator = self.prog.get_type_evaluator();
     self._deferred_writes = [];
+    self._deferred_rebinds = [];
 }
 
 impl TypeCheckPass.initialize with entry {
@@ -1670,6 +1709,7 @@ impl TypeCheckPass.prepare with entry {
 
 impl TypeCheckPass.finish with exit {
     self._flush_immutable_writes();
+    self._flush_rebind_types();
     if self.ctx.nested_depth {
         return;
     }
@@ -1843,7 +1883,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self.evaluator.get_type_of_expression(here.target);
     }
     self._check_immutable_write(here.target, rebind_scope=here);
-    self._check_for_target_rebinds(here);
+    self._check_rebind_types(here.target, here);
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);
 
@@ -2133,6 +2173,7 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
         self._check_immutable_write(ctx_item.alias, rebind_scope=here);
+        self._check_rebind_types(ctx_item.alias, here);
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
         if not isinstance(expr_type, UnknownType) and not expr_type.is_any_instance() {
             enter_result = self.evaluator.get_type_of_magic_method_call(
@@ -2162,6 +2203,7 @@ impl TypeCheckPass.exit_except with Except exit {
         self.evaluator.get_type_of_expression(here.ex_type);
     }
     self._check_immutable_write(here.name, rebind_scope=here);
+    self._check_rebind_types(here.name, here);
 }
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {

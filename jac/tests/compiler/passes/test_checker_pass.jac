@@ -2577,14 +2577,15 @@ test "agentvisitor_connect_no_errors" {
 test "inferred_local_type_frozen" {
     # An unannotated local is frozen to the type inferred at its first
     # binding; reassigning an incompatible type is an error, and so is a
-    # `for` target that reuses the name, unannotated or annotated (#9972).
+    # `for` target that reuses the name, unannotated or annotated (#9972),
+    # or any other binder that writes it (#10405).
     # The `None`-sentinel pattern is the one exception (the type evolves).
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
         options=NO_TC
     );
-    assert len(program.errors_had) == 5 , f"Expected 5 type errors, but got {len(
+    assert len(program.errors_had) == 17 , f"Expected 17 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
@@ -2621,6 +2622,90 @@ test "inferred_local_type_frozen" {
             """
         for x in ["bad"] {  # <-- Error
         Cannot assign str to int
+    """
+        ),
+        (
+            5,
+            """
+        (kind, title) = ("k", "x");  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            6,
+            """
+        [kind, title] = ["k", "x"];  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            7,
+            """
+        other = title="x";  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            8,
+            """
+        if (title := "x") {  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            9,
+            """
+        with open("x.txt") as title {  # <-- Error
+        Cannot assign TextIOWrapper to Label
+    """
+        ),
+        (
+            10,
+            """
+        } except ValueError as title {  # <-- Error
+        Cannot assign ValueError to Label
+    """
+        ),
+        (
+            11,
+            """
+        (kind, *title) = ("k", "x", "y");  # <-- Error
+        Cannot assign list[
+    """
+        ),
+        (
+            12,
+            """
+        (kind, *middle, title) = ("k", Label(), "x");  # <-- Error: the last element
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            13,
+            """
+        (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            14,
+            """
+        for [kind, title] in [["k", "x"]] {  # <-- Error
+        Cannot assign str to Label
+    """
+        ),
+        (
+            15,
+            """
+        for (title, title) in [(Label(), "x")] {  # <-- Error: the second write
+        Cannot assign str to Label
+    """
+        ),
+        (
+            16,
+            """
+        for (key, count) in {"ab": 1} {  # <-- Error
+        Cannot assign LiteralString to int
     """
         )
     ] {
@@ -3263,11 +3348,15 @@ test "starred_unpack_barrier" {
     # After `(head, *rest) = ...` inside `if rest is not None`, rest
     # must reset to list[int] | None. The typed-local assignment then
     # fails because list[int] | None is not assignable to list[int].
-    assert len(program.errors_had) == 1 , "Expected 1 type error, but got "
+    # A target after the star narrows to the last element, not the one
+    # at its own index.
+    assert len(program.errors_had) == 2 , "Expected 2 type errors, but got "
         + f"{len(program.errors_had)}:\n"
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
     assert 'Cannot assign list[int] | NoneType to list[int]' in msg , f"Expected starred-unpack reset error, got: {msg}";
+    msg = program.errors_had[1].pretty_print();
+    assert 'Cannot assign str to int' in msg , f"Expected the last element's type, got: {msg}";
 }
 
 """Tuple-unpacking assignment acts as a narrowing barrier."""
