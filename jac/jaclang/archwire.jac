@@ -15938,11 +15938,11 @@ graph import runtime.python {
         modules.elementtree
             | modules.pyexpat
             | modules.select_platform
+            | modules.select_platform.darwin
+            | modules.select_platform.linux
             | modules.sqlite3 { MemberField },
         modules.multiprocessing | modules.posix_stat { MemberField, MemberType },
         modules.pickle { record_int, record_set_int },
-        modules.select_platform.darwin { MemberField },
-        modules.select_platform.linux { MemberField },
         modules.unicodedata { record_set_address },
     ]
     bindings.members --> modules.lzma {
@@ -21730,9 +21730,10 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
-        modules.posix_fileio_platform | object_model.mystrtoul { jacpy_set_errno },
-        modules.posix_fileio_platform.darwin { jacpy_set_errno },
-        modules.posix_fileio_platform.linux { jacpy_set_errno },
+        modules.posix_fileio_platform
+            | modules.posix_fileio_platform.darwin
+            | modules.posix_fileio_platform.linux
+            | object_model.mystrtoul { jacpy_set_errno },
         modules.posix_files {
             NULL,
             PyBytes_AsString,
@@ -37915,6 +37916,7 @@ graph import runtime.python {
             | modules.posix_fileio
             | modules.posix_ids
             | modules.posix_stat_platform.darwin
+            | modules.posix_stat_platform.linux
             | modules.pwd
             | modules.resource
             | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
@@ -37925,10 +37927,6 @@ graph import runtime.python {
         },
         modules.posix_process | modules.posix_stat | modules.time {
             PyStructSequence_GetItem,
-            PyStructSequence_New,
-            PyStructSequence_SetItem
-        },
-        modules.posix_stat_platform.linux {
             PyStructSequence_New,
             PyStructSequence_SetItem
         },
@@ -42412,9 +42410,9 @@ graph import runtime.python.modules {
             TIOCSCTTY,
             _SC_TTY_NAME_MAX
         },
-        posix_fileio_platform { ENOSYS },
-        posix_fileio_platform.darwin { ENOSYS },
-        posix_fileio_platform.linux { ENOSYS },
+        posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux { ENOSYS },
         posix_files {
             AT_EACCESS,
             AT_REMOVEDIR,
@@ -43316,13 +43314,14 @@ graph import runtime.python.modules {
         io_fileio { S_IFCHR, S_IFDIR, S_IFMT },
         posix_stat { S_IFDIR, S_IFLNK, S_IFMT, S_IFREG },
     ]
-    stat_records ++> [
-        io_fileio | marshal | mmap | posix_stat | posix_stat_platform | signal {
-            _Py_stat_struct
-        },
-        posix_stat_platform.darwin { _Py_stat_struct },
-        posix_stat_platform.linux { _Py_stat_struct },
-    ]
+    stat_records ++> io_fileio
+        | marshal
+        | mmap
+        | posix_stat
+        | posix_stat_platform
+        | posix_stat_platform.darwin
+        | posix_stat_platform.linux
+        | signal { _Py_stat_struct }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     termios_constants ++> termios { ICANON, NCCS, TIOCGWINSZ, TIOCSWINSZ, VMIN, VTIME }
     termios_records ++> termios {
@@ -43354,13 +43353,19 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
-        core_platform | select | signal { timespec, timeval },
-        core_platform.darwin { timespec, timeval },
-        core_platform.linux { timespec, timeval },
+        core_platform | core_platform.darwin | core_platform.linux | select | signal {
+            timespec,
+            timeval
+        },
         datetime_date | datetime_datetime | datetime_format { tm },
-        posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
-        posix_fileio_platform.darwin | time_platform.darwin { timespec },
-        posix_fileio_platform.linux | time_platform.linux { timespec },
+        posix_fileio
+            | posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux
+            | posix_files
+            | time_platform
+            | time_platform.darwin
+            | time_platform.linux { timespec },
         posix_process_platform.darwin { tms },
         posix_process_platform.linux { timespec, tms },
         time { timespec, timeval, tm, tms },
