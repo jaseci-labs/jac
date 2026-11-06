@@ -1560,8 +1560,10 @@ graph import {
     data.serializer ++> [
         compiler.tests.xbackend_equiv.encode_py_wire
             | runtime.builtin._get_archetype_alias.factory.decorator
+            | server.endpoints.introspection
             | server.endpoints.walkers
             | server.server
+            | server.serving.openapi
             | server.session.Session._expired
             | studio.session { Serializer },
         server.session { frozen_fields },
@@ -2686,7 +2688,7 @@ graph import {
             | project.config.apply_table
             | server.serving.model
             | server.settings { fields, is_record },
-        byllm.schema | server.serving.coerce { is_record },
+        byllm.schema | server.endpoints.walkers | server.serving.coerce { is_record },
         byllm.systemone._record_fields | server.server {
             fields as record_fields,
             is_record

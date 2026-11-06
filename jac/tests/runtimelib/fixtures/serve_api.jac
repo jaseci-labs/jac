@@ -97,11 +97,39 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
-def:protect describe_defaults(
-    on: bool = False, n: int = 5, tags: list[str] = [], note: str | None = None
+obj EchoBox {
+    has hits: int = 0;
+}
+
+"""Optional parameters of each kind, echoed so a caller sees what each received.
+
+`tags` and `box` are changed so a shared default would show up on the next call.
+`limit` and `grid` have no plain JSON form.
+"""
+def:pub echo_defaults(
+    count: int = 5,
+    ratio: float = 0.5,
+    flag: bool = False,
+    title: str = "seed",
+    tags: list[str] = [],
+    note: str | None = None,
+    box: EchoBox = EchoBox(),
+    limit: float = float("inf"),
+    grid: dict[tuple[int, int], str] = {(1, 2): "x"}
 ) -> dict[str, any] {
-    tags.append("x");
-    return {"on": on, "n": n, "tags": tags, "note": note};
+    tags.append("seen");
+    box.hits += 1;
+    return {
+        "count": count,
+        "ratio": ratio,
+        "flag": flag,
+        "title": title,
+        "tags": tags,
+        "note": note,
+        "hits": box.hits,
+        "limit": limit,
+        "grid": grid
+    };
 }
 
 glob WELCOME_TITLE: str = "Runtime Test";

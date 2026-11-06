@@ -392,6 +392,11 @@ impl function_callback(
         if mismatch is not None {
             return mismatch;
         }
+        for (pname, param) in signature(func_obj).parameters.items() {
+            if kwargs.get(pname) is param.`default and is_record(param.`default) {
+                kwargs[pname] = deepcopy(param.`default);
+            }
+        }
         caller = username or Con.GUEST.value;
         idem = idempotency_key(request, caller, server.module_name, func_name);
         replay = replay_cached(idem);

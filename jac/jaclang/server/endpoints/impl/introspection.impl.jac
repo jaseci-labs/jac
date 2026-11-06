@@ -39,7 +39,10 @@ impl register_introspection_endpoints(server: JacAPIServer) {
         return TransportResponse.success(
             data={
                 'name': name,
-                'signature': server.introspector.introspect_callable(functions[name])
+                'signature': Serializer.serialize(
+                    server.introspector.introspect_callable(functions[name]),
+                    api_mode=True
+                )
             },
             meta=Meta(extra={'http_status': 200})
         );

@@ -151,7 +151,9 @@ impl build_openapi(app: ServingApp) -> dict[str, any] {
                 location = str(kind.value);
                 param_schema = _param_schema(param, component_schemas);
                 if not param.required and param.default_value is not None {
-                    param_schema['default'] = param.default_value;
+                    param_schema['default'] = Serializer.serialize(
+                        param.default_value, api_mode=True
+                    );
                 }
                 params_out.append(
                     {
@@ -171,7 +173,9 @@ impl build_openapi(app: ServingApp) -> dict[str, any] {
             } else {
                 body_schema = _param_schema(param, component_schemas);
                 if not param.required and param.default_value is not None {
-                    body_schema['default'] = param.default_value;
+                    body_schema['default'] = Serializer.serialize(
+                        param.default_value, api_mode=True
+                    );
                 }
                 body_props[param.name] = body_schema;
                 if param.required {
