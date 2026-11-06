@@ -324,6 +324,19 @@ test "a seal that builds the client ships its dist and reuses it with the seal" 
         f"an unchanged project with a client sealed the app again: {again_log}"
     );
     assert again == first , "the reused bundle differs from the one the seal built";
+    os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+    try {
+        (moved, moved_log) = _pack_logged(base, binary, bake_client=True);
+    } finally {
+        os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+    }
+    assert not any("Reusing the sealed bundle" in m for m in moved_log) , (
+        "a new API base URL reused a client built for the old one"
+    );
+    stamp = ".jac/client/dist/.jac-build-inputs";
+    assert _bundle_member(moved, stamp) != _bundle_member(first, stamp) , (
+        "the client was not rebuilt for the new API base URL"
+    );
 }
 
 
