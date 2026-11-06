@@ -183,6 +183,12 @@ def _legacy_sealer_script_for(
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
 
 
+def sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str;
+
+
+def staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None);
+
+
 def require_serve_manifest(stage: Path, detail: str = "") -> Path;
 
 

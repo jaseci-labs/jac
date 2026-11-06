@@ -1961,7 +1961,10 @@ graph import {
         compiler.driver.program.JacProgram.stamp_app_facts { UI_MOBUI },
         runtime.source_app.main { kind_has_server },
     ]
-    project.apps ++> scale.injector.bundle._entry_module_spec { resolve_entry_path }
+    project.apps ++> [
+        scale.injector.bundle._entry_module_spec { resolve_entry_path },
+        scale.injector.bundle.sealed_entry_module { resolve_entry_path },
+    ]
     project.apps --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry {
         resolve_entry_path
     }
@@ -2150,7 +2153,10 @@ graph import {
             | server.endpoints.colocated.served_app_route
             | studio.app { get_config_for_dir },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
-        packages.migrate { serialize_toml, toml_minimal_update },
+        packages.migrate | scale.injector.bundle.staged_jac_toml {
+            serialize_toml,
+            toml_minimal_update
+        },
         scale.config.dev_config.resolve_dev_channel
             | scale.injector.bundle.fat_bundle_setting { get_config_for_path },
         scale.config.dev_config.resolve_experimental_pr
@@ -45871,12 +45877,13 @@ graph import scale {
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
         tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
+        tests.microservices.test_bundle_jacignore { solo_fleet },
     ]
     runtime.fleet --> [
         admin.logs._fleet_names | admin.traces._trace_services { fleet_member_names },
         tests.apps.test_fleet_from_apps { _compiled_app_edges },
         tests.deploy.test_client_build_stage { FleetMember, FleetSpec },
-        tests.microservices.test_app_precompile { fleet_from_config },
+        tests.microservices.test_app_precompile { fleet_from_config, solo_fleet },
     ]
     runtime.gateway.dispatch ++> [
         tests.apps.test_fleet_from_apps { ROUTE_PROXY, classify_route },
