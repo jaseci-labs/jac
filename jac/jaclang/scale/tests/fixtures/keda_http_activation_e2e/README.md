@@ -8,7 +8,8 @@ scale-to-zero activation (#7475).
 ```
 keda_http_activation_e2e/
   app.jac    A single public walker (`echo`) reporting a JSON message.
-  jac.toml   [scale.kubernetes.http_activation] config; deploys as app "echo".
+  jac.toml   [scale.kubernetes.http_activation] config; its app name is long
+             enough that jac-scale has to shorten the ScaledObject name.
 ```
 
 This fixture is a real Jac app deployed through the normal CLI path, not a
@@ -33,9 +34,9 @@ No mocking. The flow:
 4. Port-forward the HTTP Add-on interceptor and `POST /walker/echo` through
    it; this should block on the cold start, then return 200 once the target
    is Ready.
-5. Wait for `echo` to scale 0 to 1 and become Available.
+5. Wait for the app to scale 0 to 1 and become Available.
 6. Stop traffic and wait for the cooldown period to elapse, then confirm
-   `echo` scales back down to 0.
+   the app scales back down to 0.
 
 ## Prerequisites
 

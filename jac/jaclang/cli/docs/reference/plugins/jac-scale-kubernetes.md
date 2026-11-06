@@ -831,7 +831,7 @@ with entry {
 
 `trigger_active` and `scaler_ready` are tri-state on purpose. A plain HPA has nothing corresponding to a trigger firing, and a ScaledObject that could not be read leaves both unknown, so `None` is not `False`: reporting `False` would assert a scaler failure nobody observed. A pod whose Role predates the `keda.sh` read rule gets a 403 here, and the result falls back to the workload's own state rather than raising.
 
-The caller passes a **scale target**, not an autoscaler resource name. Which resource is live depends on the scaling mode (`{target}-scaledobject`, `{target}-http-scaledobject`, `{target}-hpa`), and deriving that is the abstraction's job.
+The caller passes a **scale target**, not an autoscaler resource name. Which resource is live depends on the scaling mode (`{target}-scaledobject`, `{target}-http-scaledobject`, `{target}-hpa`, with a ScaledObject name KEDA would refuse as too long replaced by a short hash), and deriving that is the abstraction's job.
 
 ### Observing transitions
 
