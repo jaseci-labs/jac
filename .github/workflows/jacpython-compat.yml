@@ -9,7 +9,8 @@ name: JacPython compatibility
 # only when stock CPython passes it and JacPython fails or skips it, so
 # failures the runner's environment causes on both do not. No test corpus is
 # checked in: scripts/cpython_compat.jac fetches the pinned tests into each
-# interpreter's standard library inside the job.
+# interpreter's standard library inside the job. No -M memory tier is enabled;
+# very large memory tests remain unverified until a per-run memory budget is set.
 #
 # This is the one place CI runs stock CPython: as the reference of a
 # compatibility verdict, never to build or run jac
