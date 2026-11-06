@@ -202,6 +202,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0055 = _err(
          "E0055", Category.SYNTAX, "'yield' is only valid inside a function body"
      ),
+     E0057 = _err(
+         "E0057",
+         Category.SYNTAX,
+         "'return' is only valid inside a function body",
+         help="A `with entry` block runs as module code, not as a function, so it has nothing to return from. Move the code into a `def` and call it from the entry block, or invert the condition so the rest of the block runs only when it should."
+     ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0063 = _err(
          "E0063",
@@ -952,6 +958,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " requires that it actually has a runtime export.",
          blocks_codegen=True
      ),
+     E1163 = _err(
+         "E1163",
+         Category.TYPE,
+         "'{name}' is a type parameter and cannot be used as a value",
+         help="A type parameter names a type for the checker only: no backend"
+         " binds it at runtime to the class it stands for. The Python backend"
+         " drops a function's type parameters, so returning, assigning,"
+         " raising or passing '{name}' to `isinstance`/`issubclass` reaches a"
+         " name nothing binds; inside a class it is a bare `TypeVar`."
+         " Annotations, `as` casts, `has` field types, generic arguments and"
+         " `type` alias right-hand sides are type position and stay legal. To"
+         " use the class at runtime, pass it in as a value: `cls: type[{name}]`."
+     ),
      E1133 = _err(
          "E1133",
          Category.TYPE,
@@ -965,10 +984,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1134",
          Category.IMPORT,
          "Relative import '{module}' names no module",
-         help="A dotted relative import addresses a file inside this project, so"
-         " its target has to sit beside the importing module: '{module}'"
-         " resolves to no .jac, .py, .pyi or .js file and to no package"
-         " directory. Create the module, correct the spelling, or drop the"
+         help="A dotted relative import addresses a file inside this project,"
+         " counted from the importing module's folder: one dot is that folder"
+         " and each further dot climbs one level. '{module}' resolves there to"
+         " no .jac, .py, .pyi or .js file and to no package directory, and is"
+         " not looked for anywhere else, such as the project root. Create the"
+         " module, correct the spelling or the number of dots, or drop the"
          " import. Leaving it unresolved erases the binding from the emitted"
          " client bundle, where it fails as an undefined name at runtime. Two"
          " shapes are exempt: a bare specifier, which can name an npm package"

@@ -97,7 +97,10 @@ obj KubernetesTarget(KubernetesTargetBase) {
         apps_v1: any, namespace: str, bundle: dict[str, any]
     );
 
-    def _fleet_deployment_names(apps_v1: any, namespace: str) -> list[str];
+    def _fleet_deployment_names(
+        apps_v1: any, namespace: str, strict: bool = False
+    ) -> list[str];
+
     def _fleet_app_labels(apps_v1: any, namespace: str) -> list[str];
     def _owned_replica_sets(
         apps_v1: any, namespace: str, strict: bool = False
@@ -107,6 +110,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
     def _assert_own_app(app_name: str);
     def list_revisions(app_name: str) -> list[dict[str, any]];
     def referenced_bundle_keys(app_name: str) -> set[str];
+    def _bundle_keep_set -> set[str];
     def _restore_templates(
         apps_v1: any, namespace: str, names: list[str], undo: dict[str, any]
     ) -> list[str];

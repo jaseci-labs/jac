@@ -311,7 +311,10 @@ both. A variable that is empty or only whitespace counts as unset, so the
 `0/false/no/off` (any case), and any other value stops the server with a
 message naming the variable. An empty `JAC_SERVE_CORS_ORIGINS` therefore keeps
 the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
-`cors_origins = []` in `jac.toml`.
+`cors_origins = []` in `jac.toml`. `cors_credentials = true` lets the origins in
+`cors_origins` send cookies; the server refuses to start if the list also holds
+`"*"`, because browsers reject a response that allows every origin together
+with credentials.
 
 The `[serve]` tables are checked when the configuration loads, in every layer
 (`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
@@ -334,6 +337,7 @@ main = true              # Run as main module
 docs_enabled = true      # /docs and /openapi.json
 graph_enabled = true     # /graph, /graph/node and /graph/neighbors (turn off in production)
 cors_origins = ["*"]     # Origins allowed by the CORS middleware
+cors_credentials = false # Access-Control-Allow-Credentials for listed origins; refused with "*"
 
 # Optimistic-concurrency policy for concurrent check-then-create races
 # (see Persistence -> Concurrent writes).
