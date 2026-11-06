@@ -15140,6 +15140,12 @@ graph import runtime {
         prepared.execute_module { NativeLibrary },
         source_app._load_application { NativeLibrary, native_callback_of },
     ]
+    compiler.driver.compile_options --> runtime.interop_bridge._pyb_import_module {
+        CompileOptions
+    }
+    compiler.driver.program --> runtime.interop_bridge._pyb_import_module {
+        JacProgram
+    }
     memory ++> context { Memory }
     na_stdlib._digest ++> [
         python.modules.blake2 { new_blake2 },
