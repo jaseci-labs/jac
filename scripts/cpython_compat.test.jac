@@ -260,3 +260,22 @@ test "a cached archive that does not match the pin is fetched again" {
         assert fetched == [pin["url"], "refused"];
     }
 }
+
+test "the pinned Setup file supplies the selected C test extension sources" {
+    with tempfile.TemporaryDirectory() as scratch {
+        source_root = Path(scratch);
+        modules = source_root / "Modules";
+        modules.mkdir();
+        rows = ["# Test modules"];
+        for name in sorted(TEST_EXTENSIONS) {
+            source = modules / f"{name}.c";
+            source.write_text("/* test fixture */\n");
+            rows.append(f"@MODULE_{name.upper()}_TRUE@{name} {name}.c");
+        }
+        rows.append("# Limited API template modules; must be built as shared modules.");
+        (modules / "Setup.stdlib.in").write_text("\n".join(rows));
+        found = test_extension_sources(source_root);
+        assert {name for (name, _) in found} == TEST_EXTENSIONS;
+        assert all(sources == [modules / f"{name}.c"] for (name, sources) in found);
+    }
+}

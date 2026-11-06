@@ -49,6 +49,22 @@ glob REPO: Path = Path(__file__).resolve().parents[1],
          "test.test_sys.TestRemoteExec": "remote debugging is not built",
          "test_perf_profiler": "perf trampolines are not built"
      },
+     # Test-only C extensions that unlock the largest upstream test groups.
+     # Their source list is read from the pinned release's Setup.stdlib.in.
+     TEST_EXTENSIONS: set[str] = {
+         "_testbuffer",
+         "_testcapi",
+         "_testclinic",
+         "_testclinic_limited",
+         "_testimportmultiple",
+         "_testinternalcapi",
+         "_testlimitedcapi",
+         "_testmultiphase",
+         "_testsinglephase",
+         "xxlimited",
+         "xxlimited_35",
+         "xxsubtype"
+     },
      DETAIL_LIMIT: int = 240;
 
 def pinned_cpython -> dict[str, str] {
@@ -79,7 +95,161 @@ def probe(python: str, code: str) -> str {
     return done.stdout.strip();
 }
 
-def install_tests(python: str, cache: Path) -> str {
+def source_archive(cache: Path) -> Path {
+    pin = pinned_cpython();
+    archive = cache / f"Python-{pin['version']}-{pin['sha256']}.tgz";
+    data = archive.read_bytes() if archive.is_file() else b"";
+    if hashlib.sha256(data).hexdigest() != pin["sha256"] {
+        cache.mkdir(parents=True, exist_ok=True);
+        with urllib.request.urlopen(pin["url"], timeout=300) as response {
+            data = response.read();
+        }
+        if hashlib.sha256(data).hexdigest() != pin["sha256"] {
+            raise RuntimeError("CPython source archive checksum mismatch");
+        }
+        archive.write_bytes(data);
+    }
+    return archive;
+}
+
+def test_extension_sources(source_root: Path) -> list[tuple[str, list[Path]]] {
+    setup = (source_root / "Modules/Setup.stdlib.in").read_text();
+    in_test_section = False;
+    found: list[tuple[str, list[Path]]] = [];
+    for line in setup.splitlines() {
+        if line.strip() == "# Test modules" {
+            in_test_section = True;
+            continue;
+        }
+        if not in_test_section {
+            continue;
+        }
+        if line.strip()
+            == "# Limited API template modules; must be built as shared modules." {
+            break;
+        }
+        matched = re.match(r"@MODULE_[A-Z0-9_]+_TRUE@(\S+)\s+(.+)$", line.strip());
+        if not matched {
+            continue;
+        }
+        name = matched.group(1);
+        if name not in TEST_EXTENSIONS {
+            continue;
+        }
+        sources = [source_root / "Modules" / path for path in matched.group(2).split()];
+        if any(not path.is_file() for path in sources) {
+            missing = [
+                str(path)
+                for path in sources
+                if not path.is_file()
+            ];
+            raise RuntimeError(
+                f"pinned CPython test extension {name} has missing sources: {missing}"
+            );
+        }
+        found.append((name, sources));
+    }
+    present = {name for (name, _) in found};
+    if present != TEST_EXTENSIONS {
+        raise RuntimeError(
+            "pinned CPython Setup.stdlib.in test modules differ: "
+            f"missing={sorted(TEST_EXTENSIONS - present)}, "
+            f"extra={sorted(present - TEST_EXTENSIONS)}"
+        );
+    }
+    return found;
+}
+
+def build_test_extensions(python: str, source_root: Path) {
+    extensions = test_extension_sources(source_root);
+    zig = shutil.which("zig");
+    if not zig {
+        raise RuntimeError(
+            "Zig must be on PATH to build JacPython compatibility test extensions"
+        );
+    }
+    include_dir = Path(
+        probe(python, "import sysconfig; print(sysconfig.get_path('include'))")
+    );
+    stdlib = Path(
+        probe(python, "import sysconfig; print(sysconfig.get_path('stdlib'))")
+    );
+    suffix = probe(
+        python, "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))"
+    );
+    if not suffix {
+        raise RuntimeError("JacPython has no configured extension suffix");
+    }
+    module_dir = source_root / "Modules";
+    destination = stdlib / "lib-dynload";
+    destination.mkdir(parents=True, exist_ok=True);
+    unavailable: list[str] = [];
+    for (name, sources) in extensions {
+        output = destination / f"{name}{suffix}";
+        command = [
+            zig,
+            "cc",
+            "-bundle" if sys.platform == "darwin" else "-shared",
+            "-fPIC",
+            "-pthread",
+            f"-I{include_dir}",
+            f"-I{include_dir / 'internal'}",
+            f"-I{include_dir / 'internal/mimalloc'}",
+            f"-I{module_dir}",
+            f"-I{module_dir / 'clinic'}",
+            "-o",
+            str(output)
+        ];
+        if sys.platform == "darwin" {
+            command.extend(["-undefined", "dynamic_lookup"]);
+        }
+        command.extend(str(source) for source in sources);
+        built = subprocess.run(
+            command,
+            cwd=source_root,
+            capture_output=True,
+            text=True,
+            env=clean_env(source_root)
+        );
+        if built.returncode != 0 {
+            output.unlink(missing_ok=True);
+            unavailable.append(name);
+            print(
+                f"Unavailable pinned CPython test extension {name}; build failed:\n"
+                f"{built.stdout}{built.stderr}",
+                flush=True
+            );
+            continue;
+        }
+        loaded = subprocess.run(
+            [python, "-I", "-c", f"import {name}"],
+            capture_output=True,
+            text=True,
+            env=clean_env(source_root)
+        );
+        if loaded.returncode != 0 {
+            output.unlink(missing_ok=True);
+            unavailable.append(name);
+            print(
+                f"Unavailable pinned CPython test extension {name}; import failed:\n"
+                f"{loaded.stdout}{loaded.stderr}",
+                flush=True
+            );
+            continue;
+        }
+        print(f"Built and loaded pinned CPython test extension {name}", flush=True);
+    }
+    if unavailable {
+        print(
+            f"JacPython compatibility test extensions unavailable: {sorted(
+                unavailable
+            )}",
+            flush=True
+        );
+    }
+}
+
+def install_tests(python: str, cache: Path, test_extensions: bool = False) -> str {
     pin = pinned_cpython();
     version = probe(python, "import platform; print(platform.python_version())");
     if version != pin["version"] {
@@ -104,40 +274,70 @@ def install_tests(python: str, cache: Path) -> str {
         if not target.is_dir()
             or (prefix == "Lib/test/" and not (target / "libregrtest").is_dir())
     };
-    if not missing {
+    suffix = probe(
+        python, "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))"
+    );
+    extension_dir = stdlib / "lib-dynload";
+    missing_extensions = test_extensions
+        and any(
+            not (extension_dir / f"{name}{suffix}").is_file()
+            for name in TEST_EXTENSIONS
+        );
+    if not missing and not missing_extensions {
         return version;
     }
-    archive = cache / f"Python-{pin['version']}-{pin['sha256']}.tgz";
-    data = archive.read_bytes() if archive.is_file() else b"";
-    if hashlib.sha256(data).hexdigest() != pin["sha256"] {
-        cache.mkdir(parents=True, exist_ok=True);
-        with urllib.request.urlopen(pin["url"], timeout=300) as response {
-            data = response.read();
-        }
-        if hashlib.sha256(data).hexdigest() != pin["sha256"] {
-            raise RuntimeError("CPython source archive checksum mismatch");
-        }
-        archive.write_bytes(data);
-    }
+    archive = source_archive(cache);
     archive_prefix = f"Python-{pin['version']}/";
     with tempfile.TemporaryDirectory() as scratch {
         with tarfile.open(archive, mode="r:gz") as bundle {
+            archive_members = bundle.getmembers();
             for prefix in missing {
                 members = [
                     m
-                    for m in bundle
+                    for m in archive_members
                     if m.name.startswith(archive_prefix + prefix)
                 ];
                 bundle.extractall(scratch, members=members, filter="data");
+            }
+            if missing_extensions {
+                modules_prefix = archive_prefix + "Modules/";
+                module_members = [
+                    m
+                    for m in archive_members
+                    if m.name.startswith(modules_prefix)
+                ];
+                bundle.extractall(scratch, members=module_members, filter="data");
             }
         }
         for (prefix, target) in missing.items() {
             source = Path(scratch) / archive_prefix / prefix.rstrip("/");
             shutil.copytree(source, target);
         }
+        if missing_extensions {
+            build_test_extensions(python, Path(scratch) / archive_prefix);
+        }
     }
     print(f"Installed pinned CPython {version} test support into {stdlib}", flush=True);
     return version;
+}
+
+def isolated_compatibility_runtime(python: Path, cache: Path) -> Path {
+    prefix = Path(probe(str(python), "import sys; print(sys.prefix)")).resolve();
+    executable = Path(
+        probe(str(python), "import sys; print(sys.executable)")
+    ).resolve();
+    relative = executable.relative_to(prefix);
+    destination = cache.resolve().parent / "jacpython-compat-runtime";
+    shutil.rmtree(destination, ignore_errors=True);
+    try {
+        shutil.copytree(prefix, destination, copy_function=os.link);
+    } except OSError {
+        shutil.rmtree(destination, ignore_errors=True);
+        shutil.copytree(prefix, destination);
+    }
+    relocated = destination / relative;
+    probe(str(relocated), "import sys; print(sys.prefix)");
+    return relocated;
 }
 
 def list_modules(python: str, work: Path) -> list[str] {
@@ -304,8 +504,10 @@ def run(args: any) -> int {
     for sub in ("logs", "junit", "work") {
         (out / sub).mkdir(parents=True, exist_ok=True);
     }
-    python = str(Path(args.python).resolve());
-    version = install_tests(python, Path(args.cache));
+    base_python = Path(args.python).resolve();
+    cache = Path(args.cache).resolve();
+    python = str(base_python);
+    version = probe(python, "import platform; print(platform.python_version())");
     jacpython = (
         probe(
             python,
@@ -319,22 +521,29 @@ def run(args: any) -> int {
             f"{python} is {'' if jacpython else 'not '}JacPython, but the label is {args.label}"
         );
     }
-    modules = args.modules or list_modules(python, out / "work");
+    # Keep test C extensions and the upstream Lib/test tree out of the cached
+    # release prefix. Hardlinks make the temporary copy cheap; all additions
+    # happen in its private directories.
+    if jacpython {
+        python = str(isolated_compatibility_runtime(base_python, cache));
+    }
+    version = install_tests(python, cache, jacpython);
+    module_names = args.modules or list_modules(python, out / "work");
     jobs = args.jobs or os.cpu_count() or 1;
     print(
-        f"{args.label}: CPython {version} suite, {len(modules)} modules, {jobs} at a time",
+        f"{args.label}: CPython {version} suite, {len(module_names)} modules, {jobs} at a time",
         flush=True
     );
     records: dict[str, dict[str, any]] = {};
     started = time.monotonic();
     with ThreadPoolExecutor(max_workers=jobs) as pool {
         pending = [
-            pool.submit(run_module, python, name, out, args) for name in modules
+            pool.submit(run_module, python, name, out, args) for name in module_names
         ];
         for future in as_completed(pending) {
             record = future.result();
             records[record["name"]] = record;
-            progress = f"[{len(records)}/{len(modules)}] {record['name']}";
+            progress = f"[{len(records)}/{len(module_names)}] {record['name']}";
             note = f" -- {record['detail']}" if record["detail"] else "";
             print(
                 f"{progress} {record['state']} ({record['seconds']:.0f}s){note}",
