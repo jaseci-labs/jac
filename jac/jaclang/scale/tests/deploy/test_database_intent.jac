@@ -4,6 +4,7 @@ import jaclang;
 import os;
 import unittest.mock;
 import from pathlib { Path }
+import from types { SimpleNamespace }
 
 import from jaclang.scale.deploy.database { kubernetes_postgres as pg_module }
 
@@ -36,9 +37,11 @@ def _mock_apis -> dict[str, any] {
 
 
 # Run the database half of a deploy against API doubles and report what it did.
-def _run_deploy(cfg: KubernetesConfig, app_name: str) -> dict[str, any] {
+def _run_deploy(
+    cfg: KubernetesConfig, app_name: str, apis: (dict[str, any] | None) = None
+) -> dict[str, any] {
     target = KubernetesTargetBase(config=cfg);
-    apis = _mock_apis();
+    apis = apis or _mock_apis();
     target._deploy_databases(app_name, cfg.namespace, apis["apps_v1"], apis["core_v1"]);
     apis["env_list"] = list(target.env_list);
     return apis;
@@ -189,16 +192,41 @@ test "the external database url is written to a labelled secret the deploy owns"
 }
 
 
-test "an explicit provision request wins over ambient JAC_DB_URL" {
+test "an explicit provision request wins over ambient JAC_DB_URL and serves Postgres on a ClusterIP" {
+    # A headless Service stops resolving while its pod is unready.
     prior = _set_ambient_db_url(PLATFORM_DB_URL);
     try {
-        cfg = KubernetesConfig(
-            app_name="tenant-app", namespace="tenant-a", database_mode="provision"
-        );
-        apis = _run_deploy(cfg, "tenant-app");
+        # (existing Service clusterIP or None for no Service, deletes, creates)
+        for (existing_ip, deletes, creates) in [
+            (None, 0, 1),
+            ("None", 1, 1),
+            ("10.96.0.42", 0, 0),
 
-        assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 1;
-        assert "valueFrom" in apis["env_list"][0];
+        ] {
+            cfg = KubernetesConfig(
+                app_name="tenant-app", namespace="tenant-a", database_mode="provision"
+            );
+            apis = _mock_apis();
+            core_v1 = apis["core_v1"];
+            if existing_ip is not None {
+                core_v1.read_namespaced_service.side_effect = None;
+                core_v1.read_namespaced_service.return_value = SimpleNamespace(
+                    spec=SimpleNamespace(cluster_ip=existing_ip)
+                );
+            }
+            apis = _run_deploy(cfg, "tenant-app", apis);
+
+            assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 1;
+            assert "valueFrom" in apis["env_list"][0];
+            assert core_v1.delete_namespaced_service.call_count
+                == deletes , existing_ip;
+            assert core_v1.create_namespaced_service.call_count
+                == creates , existing_ip;
+            if creates {
+                body = core_v1.create_namespaced_service.call_args.kwargs["body"];
+                assert body["spec"].get("clusterIP") != "None" , body;
+            }
+        }
     } finally {
         _set_ambient_db_url(prior);
     }
