@@ -902,6 +902,10 @@ impl NativeBuildSession.lower(
         or (use_str is None and resolved in self.unlowerable) {
         return None;
     }
+    completed = self.registry.entries.get(resolved);
+    if resolved in self.lowered and completed is not None {
+        return completed;
+    }
     self.heap.take();
     self.registry.building.add(resolved);
     import from jaclang.compiler.frontend.codeinfo {
@@ -993,7 +997,7 @@ impl NativeBuildSession.lower(
                 # Remember it across build sessions so importing roots do not
                 # repeat full compiler analysis of declaration-only modules.
                 source_key = self.source_keys.get(resolved);
-                if source_key is not None {
+                if len(self.prog.errors_had) == errors_before and source_key is not None {
                     self.registry.not_native[resolved] = source_key;
                 }
                 self.registry.failures[resolved] = (
