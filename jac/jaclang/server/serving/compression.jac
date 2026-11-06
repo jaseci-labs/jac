@@ -12,9 +12,7 @@ glob COMPRESSIBLE_TYPES: list[str] = [
          'application/wasm',
          'application/manifest+json'
      ],
-     GZIP_WBITS: int = 31,
-     GZIP_CACHE_MAX_BYTES: int = 32 * 1024 * 1024,
-     _GZIP_CACHE: dict[tuple[str, int, int, int], bytes] = {};
+     GZIP_WBITS: int = 31;
 
 
 def _quality(token: str) -> float;
@@ -26,10 +24,18 @@ def accepts_gzip(headers: Headers) -> bool;
 def is_compressible(media_type: str) -> bool;
 
 
-def _gzip_cached(body: bytes, level: int, etag: (str | None)) -> bytes;
-
-
 async def _gzip_stream(source: any, level: int) -> AsyncIterator[bytes];
+
+
+obj GzipCache {
+    has max_bytes: int = 32 * 1024 * 1024,
+        entries: dict[tuple[str, int, int, int], bytes] = {},
+        total: int = 0;
+
+    def pack(body: bytes, level: int, etag: (str | None)) -> bytes;
+}
+
+glob GZIP_CACHE: GzipCache = GzipCache();
 
 
 obj CompressionPolicy {

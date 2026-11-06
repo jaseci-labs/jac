@@ -41,21 +41,23 @@ impl is_compressible(media_type: str) -> bool {
     return False;
 }
 
-impl _gzip_cached(body: bytes, level: int, etag: (str | None)) -> bytes {
+impl GzipCache.pack(body: bytes, level: int, etag: (str | None)) -> bytes {
     if not etag {
         return gzip.compress(body, compresslevel=level, mtime=0);
     }
     key = (etag, level, len(body), zlib.crc32(body));
-    packed = _GZIP_CACHE.pop(key, None);
+    packed = self.entries.pop(key, None);
     if packed is None {
         packed = gzip.compress(body, compresslevel=level, mtime=0);
-        if len(packed) > GZIP_CACHE_MAX_BYTES {
+        if len(packed) > self.max_bytes {
             return packed;
         }
+        self.total += len(packed);
     }
-    _GZIP_CACHE[key] = packed;
-    while sum(len(v) for v in _GZIP_CACHE.values()) > GZIP_CACHE_MAX_BYTES {
-        _GZIP_CACHE.pop(next(iter(_GZIP_CACHE)));
+    self.entries[key] = packed;
+    while self.total > self.max_bytes {
+        oldest = next(iter(self.entries));
+        self.total -= len(self.entries.pop(oldest));
     }
     return packed;
 }
@@ -95,7 +97,10 @@ impl CompressionPolicy._negotiable(request: Request, response: Response) -> bool
     if not self.enabled or request.method == 'HEAD' {
         return False;
     }
-    if response.status_code in (204, 304) or response.status_code < 200 {
+    if response.status_code in (204, 206, 304) or response.status_code < 200 {
+        return False;
+    }
+    if response.headers.get('Content-Range') is not None {
         return False;
     }
     if response.headers.get('Content-Encoding') is not None {
@@ -129,7 +134,7 @@ impl CompressionPolicy.apply(
         return body;
     }
     etag = response.headers.get('ETag') if response.status_code == 200 else None;
-    packed = _gzip_cached(body, self.level, etag);
+    packed = GZIP_CACHE.pack(body, self.level, etag);
     response.headers.remove('Content-Length');
     response.headers.set('Content-Encoding', 'gzip');
     return packed;
