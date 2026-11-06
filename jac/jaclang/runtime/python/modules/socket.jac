@@ -42,6 +42,11 @@ import from c {
          ];
 }
 
+# The bindings module initializes this process-wide lock through the owner.
+def set_netdb_lock(lock: ptr) {
+    netdb_lock = lock;
+}
+
 glob:priv HOST_BUFFER_SIZE: int = 16384,
      HOSTENT_SIZE: int = 32;
 
@@ -551,9 +556,9 @@ impl socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         error = jacpy_errno();
         if sock_cloexec_works == -1 {
             if ret >= 0 {
-                sock_cloexec_works = i32(1);
+                set_sock_cloexec_works(i32(1));
             } elif error == EINVAL {
-                sock_cloexec_works = i32(0);
+                set_sock_cloexec_works(i32(0));
                 ret = socketpair(family, type, proto, sv);
                 error = jacpy_errno();
             }

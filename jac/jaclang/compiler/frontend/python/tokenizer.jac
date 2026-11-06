@@ -84,6 +84,7 @@ obj tok_state {
         pending: int = 0,
         paren_level: int = 0,
         paren_stack: list[str] = [],
+        paren_locations: list[tuple[int, int]] = [],
         comments: dict[int, list[tuple[int, int]]] = {},
         string_modes: list[string_mode] = [];
 
@@ -238,10 +239,14 @@ def _measure_indent(st: tok_state) -> tuple[int, int] {
             # The first nonzero indentation before a continuation determines
             # the logical line's indentation. Blank continuations stay blank.
             continuation_col = continuation_col or col;
+            start_lineno = st.lineno;
+            start_col = st.col_offset;
             _advance(st);
             _advance(st);
             if not _has_source(st) {
-                _string_syntax_error(st, "unexpected EOF while parsing", st.col_offset);
+                _string_syntax_error(
+                    st, "unexpected EOF while parsing", start_col + 1, start_lineno
+                );
                 st.eof_reached = True;
                 break;
             }
@@ -860,7 +865,9 @@ def _is_string_start(st: tok_state) -> bool {
     return False;
 }
 
-def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
+def _string_syntax_error(
+    st: tok_state, msg: str, start_col: int, start_lineno: int = 0
+) -> tok_diag {
     st.eof_reached = st.pos >= len(st.data)
         and (
             msg.startswith("unterminated")
@@ -868,7 +875,7 @@ def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
             or "expecting '}'" in msg
             or "was never closed" in msg
         );
-    line = st.lineno;
+    line = start_lineno if start_lineno > 0 else st.lineno;
     if msg == "EOL while scanning string literal" and st.string_modes {
         mode = st.string_modes[-1];
         kind = "t-string" if mode.template else "f-string";
@@ -892,6 +899,64 @@ def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
     st.error = bad;
     st.done = True;
     return bad;
+}
+
+def _escaped_terminal_quote(st: tok_state, quote: int) -> bool {
+    end = len(st.data);
+    while end > 0
+        and (st.data[end - 1] == ord("\n") or st.data[end - 1] == ord("\r")) {
+        end = end - 1;
+    }
+    return end >= 2 and st.data[end - 1] == quote and st.data[end - 2] == ord("\\");
+}
+
+def _unterminated_string_message(
+    st: tok_state, quote: int, start_lineno: int, qlen: int
+) -> str {
+    if qlen == 1 and not st.string_modes and _escaped_terminal_quote(st, quote) {
+        return "unterminated string literal (detected at line "
+            + str(start_lineno)
+            + "); perhaps you escaped the end quote";
+    }
+    if not st.string_modes {
+        detected_lineno = st.lineno;
+        if st.pos >= len(st.data) and st.data and st.data[-1] == ord("\n") {
+            detected_lineno = detected_lineno - 1;
+        }
+        return "unterminated "
+            + ("triple-quoted " if qlen == 3 else "")
+            + "string literal (detected at line "
+            + str(detected_lineno)
+            + ")";
+    }
+    return "EOL while scanning string literal"
+        if quote == st.string_modes[-1].quote
+        else "unterminated string literal";
+}
+
+def _string_prefix_error(prefix: str) -> str {
+    if "u" in prefix and "b" in prefix {
+        return "'u' and 'b' prefixes are incompatible";
+    }
+    if "u" in prefix and "r" in prefix {
+        return "'u' and 'r' prefixes are incompatible";
+    }
+    if "u" in prefix and "f" in prefix {
+        return "'u' and 'f' prefixes are incompatible";
+    }
+    if "u" in prefix and "t" in prefix {
+        return "'u' and 't' prefixes are incompatible";
+    }
+    if "b" in prefix and "f" in prefix {
+        return "'b' and 'f' prefixes are incompatible";
+    }
+    if "b" in prefix and "t" in prefix {
+        return "'b' and 't' prefixes are incompatible";
+    }
+    if "f" in prefix and "t" in prefix {
+        return "'f' and 't' prefixes are incompatible";
+    }
+    return "string prefixes are incompatible";
 }
 
 def _fstring_emit_middle(
@@ -1157,7 +1222,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
     prefix = st.data[start:st.pos].decode("utf-8").lower();
     if prefix
         not in ("", "u", "r", "b", "br", "rb", "f", "fr", "rf", "t", "tr", "rt") {
-        return _string_syntax_error(st, "string prefixes are incompatible", start_col);
+        return _string_syntax_error(st, _string_prefix_error(prefix), start_col);
     }
     quote = _peek(st);
     if quote != ord("'") and quote != ord("\"") {
@@ -1196,10 +1261,9 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
             if ch == ord("\n") or ch == ord("\r") {
                 return _string_syntax_error(
                     st,
-                    "EOL while scanning string literal"
-                        if st.string_modes and quote == st.string_modes[-1].quote
-                        else "unterminated string literal",
-                    start_col
+                    _unterminated_string_message(st, quote, start_lineno, qlen),
+                    start_col,
+                    start_lineno
                 );
             }
             if ch == ord("\\") {
@@ -1257,10 +1321,9 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
     }
     return _string_syntax_error(
         st,
-        "EOL while scanning string literal"
-            if st.string_modes and quote == st.string_modes[-1].quote
-            else "unterminated string literal",
-        start_col
+        _unterminated_string_message(st, quote, start_lineno, qlen),
+        start_col,
+        start_lineno
     );
 }
 
@@ -1274,9 +1337,30 @@ def tokenizer_from_string(source: str, filename: str, exec_input: bool) -> tok_s
     if exec_input and buf and not buf.endswith("\n") {
         buf += "\n";
     }
-    return tok_state(
-        data=buf.encode("utf-8"), filename=filename, exec_input=exec_input
-    );
+    data = buf.encode("utf-8");
+    state = tok_state(data=data, filename=filename, exec_input=exec_input);
+    nul = data.find(b"\x00");
+    if nul >= 0 {
+        line = 1;
+        column = 0;
+        index = 0;
+        while index < nul {
+            if data[index] == ord("\n") {
+                line += 1;
+                column = 0;
+            } else {
+                column += 1;
+            }
+            index += 1;
+        }
+        state.error = mk_diag(
+            "SyntaxError",
+            "source code cannot contain null bytes",
+            tok_loc_span(line, line, column, column),
+            filename
+        );
+    }
+    return state;
 }
 
 def _endmarker_lineno(st: tok_state) -> int {
@@ -1400,6 +1484,8 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             and (_byte_at(st, 1) == ord("\n") or _byte_at(st, 1) == ord("\r")) {
             # Explicit line continuation: backslash-newline joins physical lines,
             # emitting no NEWLINE and doing no indentation processing.
+            start_lineno = st.lineno;
+            start_col = st.col_offset;
             _advance(st);
             if _peek(st) == ord("\r") {
                 _advance(st);
@@ -1411,7 +1497,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             }
             if not _has_source(st) {
                 bad = _string_syntax_error(
-                    st, "unexpected EOF while parsing", st.col_offset
+                    st, "unexpected EOF while parsing", start_col + 1, start_lineno
                 );
                 st.eof_reached = True;
                 return bad;
@@ -1503,6 +1589,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                     );
                 }
                 st.paren_stack.append(op.spelling);
+                st.paren_locations.append((op.lineno, op.col_offset));
             } elif op.tok_type == RPAR
                 or op.tok_type == RSQB
                 or op.tok_type == RBRACE {
@@ -1530,6 +1617,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 }
                 if st.paren_stack {
                     st.paren_stack.pop();
+                    st.paren_locations.pop();
                 }
             }
 
@@ -1563,6 +1651,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             st.paren_level = st.paren_level + _track_paren_delta(op.tok_type);
             return op;
         }
+        error_col = st.col_offset + 1 if ch == ord("\\") else st.col_offset;
         bad = mk_diag(
             "SyntaxError",
             "unexpected character after line continuation character"
@@ -1570,7 +1659,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 else "invalid non-printable character U+" + format(ch, "04X")
                     if not unicode_printable(ch)
                     else "invalid character in identifier",
-            tok_loc_span(st.lineno, st.lineno, st.col_offset, st.col_offset + 1),
+            tok_loc_span(st.lineno, st.lineno, error_col, error_col + 1),
             st.filename
         );
         st.error = bad;
@@ -1583,6 +1672,20 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
     st.eof_reached = True;
     if st.string_modes and st.string_modes[-1].fields {
         return _string_syntax_error(st, "'{' was never closed", st.col_offset);
+    }
+    if st.paren_stack and not st.extra_tokens {
+        opener = st.paren_stack[-1];
+        location = st.paren_locations[-1];
+        message = "'" + opener + "' was never closed";
+        bad = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc_span(location[0], location[0], location[1], location[1] + 1),
+            st.filename
+        );
+        st.error = bad;
+        st.done = True;
+        return bad;
     }
     if st.at_bol {
         if _process_bol_indent(st) < 0 {

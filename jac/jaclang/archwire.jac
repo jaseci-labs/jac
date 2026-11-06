@@ -13318,6 +13318,7 @@ graph import compiler.frontend.python {
             arguments,
             boolop,
             cmpop,
+            comprehension,
             expr,
             expr_context,
             keyword,
@@ -13395,11 +13396,13 @@ graph import compiler.frontend.python {
         pa_function_def_decorators,
         pa_get_cmpops,
         pa_get_exprs,
+        pa_get_genexp_start_expr,
         pa_get_keys,
         pa_get_last_comprehension_item,
         pa_get_pattern_keys,
         pa_get_patterns,
         pa_get_values,
+        pa_has_keyword_unpacking,
         pa_interactive_exit,
         pa_interpolation,
         pa_join_names_with_dot,
@@ -13416,6 +13419,7 @@ graph import compiler.frontend.python {
         pa_name_default_pair,
         pa_name_from_token,
         pa_name_id,
+        pa_next_token_is_augassign,
         pa_nonparen_genexp_in_call,
         pa_number_from_token,
         pa_or_pattern_singleton,
@@ -13482,8 +13486,10 @@ graph import compiler.frontend.python {
             peg_update_memo
         },
         parser_actions {
+            DEL_TARGETS,
             peg_has_error,
             peg_parser,
+            peg_peek_type,
             peg_raise_syntax_error,
             peg_raise_syntax_error_on_token,
             peg_token
@@ -13514,11 +13520,12 @@ graph import compiler.frontend.python {
             TSTRING_START,
             TYPE_COMMENT
         },
-        parser_actions { mk_diag, tok_loc },
+        parser_actions { ENDMARKER, NEWLINE, SEMI, mk_diag, tok_loc },
         peg_runtime {
             COMMENT,
             ENDMARKER,
             ERRORTOKEN,
+            FSTRING_START,
             NAME,
             NEWLINE,
             NL,
@@ -16450,7 +16457,7 @@ graph import runtime.python {
             type_name
         },
         bindings.zstd | modules.decimal_context { c_string_text },
-        constant_input { boundary_failure, read_buffer },
+        constant_input { boundary_failure, read_buffer, type_name },
         constant_output { checked, required, text_object, write_buffer },
         modules.binary_scalars { required },
         modules.cmath { boundary_failure, object_error, required },
@@ -35239,17 +35246,14 @@ graph import runtime.python {
         MPD_MIN_ETINY,
         MPD_Overflow,
         MPD_Underflow,
-        mpd_callocfunc,
         mpd_callocfunc_em,
         mpd_context_t,
-        mpd_free,
-        mpd_mallocfunc,
         mpd_maxcontext,
-        mpd_reallocfunc,
         mpd_round_string,
         mpd_setminalloc,
-        mpd_traphandler,
-        mpd_version
+        mpd_version,
+        set_mpd_memory_hooks,
+        set_mpd_trap_handler
     }
     modules.multibytecodec ++> [
         bindings.clinic.multibytecodec {
@@ -36173,6 +36177,7 @@ graph import runtime.python {
         },
         bindings.socket {
             netdb_lock,
+            set_netdb_lock,
             socket_CMSG_LEN,
             socket_CMSG_SPACE,
             socket_close,
@@ -42971,6 +42976,7 @@ graph import runtime.python.modules {
             ntohs,
             set_gaierror,
             set_herror,
+            set_sock_cloexec_works,
             sock_cloexec_works,
             socket_error,
             socket_parse_timeout,
@@ -43009,6 +43015,7 @@ graph import runtime.python.modules {
             internal_setblocking,
             module_of_type,
             set_error,
+            set_sock_cloexec_works,
             set_sock_fd,
             set_sock_timeout,
             sock_call,

@@ -65,15 +65,19 @@ def source_encoding(source: bytes) -> str {
         line = source[start:end];
         encoding = cookie_encoding(line);
         if encoding is not None {
+            if bom and encoding != "utf-8" {
+                raise syntax_failure(
+                    "encoding problem: " + encoding + " with BOM",
+                    lineno=line_index + 1,
+                    text=line.decode("utf-8", "replace").rstrip("\r\n")
+                );
+            }
             if jacpy_codec_valid(encoding) == 0 {
                 if PyErr_ExceptionMatches(PyExc_LookupError) != 0 {
                     take_error_text();
                     raise syntax_failure("unknown encoding: " + encoding);
                 }
                 raise boundary_failure();
-            }
-            if bom and encoding != "utf-8" {
-                raise syntax_failure("encoding problem: utf-8");
             }
             return "utf-8-sig" if bom else encoding;
         }

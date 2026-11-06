@@ -37,8 +37,9 @@ import from pathlib { Path }
 glob REPO: Path = Path(__file__).resolve().parents[1],
      RAN: set[str] = {"passed", "flaky", "env_changed"},
      BROKEN: set[str] = {"failed", "crashed", "timeout", "died"},
-     CASE_OK: set[str] = {"passed", "xfail"},
-     CASE_BAD: set[str] = {"failed", "error", "xpass"},
+     # Expected failures are not passing cases; only stock-passed cases gate JacPython.
+     CASE_OK: set[str] = {"passed"},
+     CASE_BAD: set[str] = {"failed", "error", "xfail", "xpass"},
      REPORT_LIMIT: int = 150,
      # What JacPython leaves out by decision, by module, class or test:
      # reported, never counted.
@@ -48,6 +49,24 @@ glob REPO: Path = Path(__file__).resolve().parents[1],
          "test.test_audit.AuditTest.test_sys_remote_exec": "remote debugging is not built",
          "test.test_sys.TestRemoteExec": "remote debugging is not built",
          "test_perf_profiler": "perf trampolines are not built"
+     },
+     # Test-only C extensions that unlock the largest upstream test groups.
+     # Their source list is read from the pinned release's Setup.stdlib.in.
+     TEST_EXTENSIONS: set[str] = {
+         "_ctypes_test",
+         "_testbuffer",
+         "_testcapi",
+         "_testclinic",
+         "_testclinic_limited",
+         "_testimportmultiple",
+         "_testinternalcapi",
+         "_testlimitedcapi",
+         "_testmultiphase",
+         "_testsinglephase",
+         "_xxtestfuzz",
+         "xxlimited",
+         "xxlimited_35",
+         "xxsubtype"
      },
      DETAIL_LIMIT: int = 240;
 
@@ -79,21 +98,8 @@ def probe(python: str, code: str) -> str {
     return done.stdout.strip();
 }
 
-def install_tests(python: str, cache: Path) -> str {
+def source_archive(cache: Path) -> Path {
     pin = pinned_cpython();
-    version = probe(python, "import platform; print(platform.python_version())");
-    if version != pin["version"] {
-        raise RuntimeError(
-            f"{python} is Python {version}; the pinned tests are {pin['version']}"
-        );
-    }
-    stdlib = Path(
-        probe(python, "import sysconfig; print(sysconfig.get_path('stdlib'))")
-    );
-    target = stdlib / "test";
-    if (target / "libregrtest").is_dir() {
-        return version;
-    }
     archive = cache / f"Python-{pin['version']}-{pin['sha256']}.tgz";
     data = archive.read_bytes() if archive.is_file() else b"";
     if hashlib.sha256(data).hexdigest() != pin["sha256"] {
@@ -106,20 +112,239 @@ def install_tests(python: str, cache: Path) -> str {
         }
         archive.write_bytes(data);
     }
-    prefix = f"Python-{pin['version']}/Lib/test/";
+    return archive;
+}
+
+def test_extension_sources(source_root: Path) -> list[tuple[str, list[Path]]] {
+    setup = (source_root / "Modules/Setup.stdlib.in").read_text();
+    in_test_section = False;
+    found: list[tuple[str, list[Path]]] = [];
+    for line in setup.splitlines() {
+        if line.strip() == "# Test modules" {
+            in_test_section = True;
+            continue;
+        }
+        if not in_test_section {
+            continue;
+        }
+        matched = re.match(r"@MODULE_[A-Z0-9_]+_TRUE@(\S+)\s+(.+)$", line.strip());
+        if not matched {
+            continue;
+        }
+        name = matched.group(1);
+        if name not in TEST_EXTENSIONS {
+            continue;
+        }
+        sources = [source_root / "Modules" / path for path in matched.group(2).split()];
+        if any(not path.is_file() for path in sources) {
+            missing = [
+                str(path)
+                for path in sources
+                if not path.is_file()
+            ];
+            raise RuntimeError(
+                f"pinned CPython test extension {name} has missing sources: {missing}"
+            );
+        }
+        found.append((name, sources));
+    }
+    present = {name for (name, _) in found};
+    if present != TEST_EXTENSIONS {
+        raise RuntimeError(
+            "pinned CPython Setup.stdlib.in test modules differ: "
+            f"missing={sorted(TEST_EXTENSIONS - present)}, "
+            f"extra={sorted(present - TEST_EXTENSIONS)}"
+        );
+    }
+    return found;
+}
+
+def build_test_extensions(python: str, source_root: Path) {
+    extensions = test_extension_sources(source_root);
+    zig = shutil.which("zig");
+    if not zig {
+        raise RuntimeError(
+            "Zig must be on PATH to build JacPython compatibility test extensions"
+        );
+    }
+    include_dir = Path(
+        probe(python, "import sysconfig; print(sysconfig.get_path('include'))")
+    );
+    stdlib = Path(
+        probe(python, "import sysconfig; print(sysconfig.get_path('stdlib'))")
+    );
+    suffix = probe(
+        python, "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))"
+    );
+    if not suffix {
+        raise RuntimeError("JacPython has no configured extension suffix");
+    }
+    module_dir = source_root / "Modules";
+    destination = stdlib / "lib-dynload";
+    destination.mkdir(parents=True, exist_ok=True);
+    unavailable: list[str] = [];
+    for (name, sources) in extensions {
+        output = destination / f"{name}{suffix}";
+        command = [
+            zig,
+            "cc",
+            "-bundle" if sys.platform == "darwin" else "-shared",
+            "-fPIC",
+            "-pthread",
+            f"-I{include_dir}",
+            f"-I{include_dir / 'internal'}",
+            f"-I{include_dir / 'internal/mimalloc'}",
+            f"-I{module_dir}",
+            f"-I{module_dir / 'clinic'}",
+            "-o",
+            str(output)
+        ];
+        if sys.platform == "darwin" {
+            command.extend(["-undefined", "dynamic_lookup"]);
+        }
+        command.extend(str(source) for source in sources);
+        built = subprocess.run(
+            command,
+            cwd=source_root,
+            capture_output=True,
+            text=True,
+            env=clean_env(source_root)
+        );
+        if built.returncode != 0 {
+            output.unlink(missing_ok=True);
+            unavailable.append(name);
+            print(
+                f"Unavailable pinned CPython test extension {name}; build failed:\n"
+                f"{built.stdout}{built.stderr}",
+                flush=True
+            );
+            continue;
+        }
+        loaded = subprocess.run(
+            [python, "-I", "-c", f"import {name}"],
+            capture_output=True,
+            text=True,
+            env=clean_env(source_root)
+        );
+        if loaded.returncode != 0 {
+            output.unlink(missing_ok=True);
+            unavailable.append(name);
+            print(
+                f"Unavailable pinned CPython test extension {name}; import failed:\n"
+                f"{loaded.stdout}{loaded.stderr}",
+                flush=True
+            );
+            continue;
+        }
+        print(f"Built and loaded pinned CPython test extension {name}", flush=True);
+    }
+    if unavailable {
+        print(
+            f"JacPython compatibility test extensions unavailable: {sorted(
+                unavailable
+            )}",
+            flush=True
+        );
+    }
+}
+
+def replace_pinned_tree(source: Path, target: Path) {
+    if not source.is_dir() {
+        raise RuntimeError(f"pinned CPython test tree is missing: {source}");
+    }
+    if target.is_symlink() or target.is_file() {
+        target.unlink();
+    } elif target.exists() {
+        shutil.rmtree(target);
+    }
+    shutil.copytree(source, target);
+}
+
+def install_tests(python: str, cache: Path, test_extensions: bool = False) -> str {
+    pin = pinned_cpython();
+    version = probe(python, "import platform; print(platform.python_version())");
+    if version != pin["version"] {
+        raise RuntimeError(
+            f"{python} is Python {version}; the pinned tests are {pin['version']}"
+        );
+    }
+    stdlib = Path(
+        probe(python, "import sysconfig; print(sysconfig.get_path('stdlib'))")
+    );
+    targets = {
+        "Lib/test/": stdlib / "test",
+        # CPython's runtime build omits documentation data. The regression
+        # suite's pydoc tests need the pinned documentation tables as well as
+        # Lib/test; these files are installed only into the ephemeral
+        # compatibility-test interpreter tree.
+        "Lib/pydoc_data/": stdlib / "pydoc_data"
+    };
+    suffix = probe(
+        python, "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))"
+    );
+    extension_dir = stdlib / "lib-dynload";
+    missing_extensions = test_extensions
+        and any(
+            not (extension_dir / f"{name}{suffix}").is_file()
+            for name in TEST_EXTENSIONS
+        );
+    archive = source_archive(cache);
+    archive_prefix = f"Python-{pin['version']}/";
     with tempfile.TemporaryDirectory() as scratch {
         with tarfile.open(archive, mode="r:gz") as bundle {
-            members = [
-                m
-                for m in bundle
-                if m.name.startswith(prefix)
-            ];
-            bundle.extractall(scratch, members=members, filter="data");
+            archive_members = bundle.getmembers();
+            for prefix in targets {
+                members = [
+                    m
+                    for m in archive_members
+                    if m.name.startswith(archive_prefix + prefix)
+                ];
+                if not members {
+                    raise RuntimeError(
+                        f"pinned CPython source archive has no {prefix} tree"
+                    );
+                }
+                bundle.extractall(scratch, members=members, filter="data");
+            }
+            if missing_extensions {
+                modules_prefix = archive_prefix + "Modules/";
+                module_members = [
+                    m
+                    for m in archive_members
+                    if m.name.startswith(modules_prefix)
+                ];
+                bundle.extractall(scratch, members=module_members, filter="data");
+            }
         }
-        shutil.copytree(Path(scratch) / prefix, target);
+        for (prefix, target) in targets.items() {
+            source = Path(scratch) / archive_prefix / prefix.rstrip("/");
+            replace_pinned_tree(source, target);
+        }
+        if missing_extensions {
+            build_test_extensions(python, Path(scratch) / archive_prefix);
+        }
     }
-    print(f"Installed the CPython {version} test package into {target}", flush=True);
+    print(f"Installed pinned CPython {version} test support into {stdlib}", flush=True);
     return version;
+}
+
+def isolated_compatibility_runtime(python: Path, cache: Path, label: str) -> Path {
+    prefix = Path(probe(str(python), "import sys; print(sys.prefix)")).resolve();
+    executable = Path(
+        probe(str(python), "import sys; print(sys.executable)")
+    ).resolve();
+    relative = executable.relative_to(prefix);
+    destination = cache.resolve().parent / f"{label}-compat-runtime";
+    shutil.rmtree(destination, ignore_errors=True);
+    try {
+        shutil.copytree(prefix, destination, copy_function=os.link);
+    } except OSError {
+        shutil.rmtree(destination, ignore_errors=True);
+        shutil.copytree(prefix, destination);
+    }
+    relocated = destination / relative;
+    probe(str(relocated), "import sys; print(sys.prefix)");
+    return relocated;
 }
 
 def list_modules(python: str, work: Path) -> list[str] {
@@ -224,10 +449,7 @@ def parse_junit(text: str) -> dict[str, tuple[str, str]] {
     return cases;
 }
 
-def run_module(python: str, name: str, out: Path, args: any) -> dict[str, any] {
-    work = out / "work" / name;
-    work.mkdir(parents=True, exist_ok=True);
-    xml_path = out / "junit" / f"{name}.xml";
+def regrtest_command(python: str, name: str, xml_path: Path, args: any) -> list[str] {
     command = [
         python,
         "-m",
@@ -239,7 +461,18 @@ def run_module(python: str, name: str, out: Path, args: any) -> dict[str, any] {
     if args.resources {
         command.extend(["-u", args.resources]);
     }
+    if args.memlimit {
+        command.extend(["-M", args.memlimit]);
+    }
     command.extend([f"--junit-xml={xml_path}", name]);
+    return command;
+}
+
+def run_module(python: str, name: str, out: Path, args: any) -> dict[str, any] {
+    work = out / "work" / name;
+    work.mkdir(parents=True, exist_ok=True);
+    xml_path = out / "junit" / f"{name}.xml";
+    command = regrtest_command(python, name, xml_path, args);
     started = time.monotonic();
     returncode: int | None = None;
     with open(out / "logs" / f"{name}.log", "wb") as log {
@@ -286,8 +519,10 @@ def run(args: any) -> int {
     for sub in ("logs", "junit", "work") {
         (out / sub).mkdir(parents=True, exist_ok=True);
     }
-    python = str(Path(args.python).resolve());
-    version = install_tests(python, Path(args.cache));
+    base_python = Path(args.python).resolve();
+    cache = Path(args.cache).resolve();
+    python = str(base_python);
+    version = probe(python, "import platform; print(platform.python_version())");
     jacpython = (
         probe(
             python,
@@ -301,22 +536,26 @@ def run(args: any) -> int {
             f"{python} is {'' if jacpython else 'not '}JacPython, but the label is {args.label}"
         );
     }
-    modules = args.modules or list_modules(python, out / "work");
+    # Keep the pinned test corpus and test C extensions out of either cached
+    # interpreter prefix. Hardlinks make the disposable copies cheap.
+    python = str(isolated_compatibility_runtime(base_python, cache, args.label));
+    version = install_tests(python, cache, jacpython);
+    module_names = args.modules or list_modules(python, out / "work");
     jobs = args.jobs or os.cpu_count() or 1;
     print(
-        f"{args.label}: CPython {version} suite, {len(modules)} modules, {jobs} at a time",
+        f"{args.label}: CPython {version} suite, {len(module_names)} modules, {jobs} at a time",
         flush=True
     );
     records: dict[str, dict[str, any]] = {};
     started = time.monotonic();
     with ThreadPoolExecutor(max_workers=jobs) as pool {
         pending = [
-            pool.submit(run_module, python, name, out, args) for name in modules
+            pool.submit(run_module, python, name, out, args) for name in module_names
         ];
         for future in as_completed(pending) {
             record = future.result();
             records[record["name"]] = record;
-            progress = f"[{len(records)}/{len(modules)}] {record['name']}";
+            progress = f"[{len(records)}/{len(module_names)}] {record['name']}";
             note = f" -- {record['detail']}" if record["detail"] else "";
             print(
                 f"{progress} {record['state']} ({record['seconds']:.0f}s){note}",
@@ -336,6 +575,9 @@ def run(args: any) -> int {
                 "version": version,
                 "jacpython": jacpython,
                 "resources": args.resources,
+                "memlimit": args.memlimit,
+                "full_suite": not bool(args.modules),
+                "module_names": sorted(module_names),
                 "seconds": round(time.monotonic() - started),
                 "modules": {
                     name: {
@@ -474,7 +716,8 @@ def render(
     lines = [
         f"## CPython {jac['version']} regression suite: JacPython vs stock CPython",
         "",
-        f"**{verdict}** (resources: `{jac['resources'] or 'none'}`)",
+        f"**{verdict}** (resources: `{jac['resources'] or 'none'}`, "
+            + f"memory cap: `{jac.get('memlimit') or 'disabled'}`)",
         "",
         "| | modules | passed | flaky | failed | crashed | timeout | skipped | denied | tests passed | tests failed | tests skipped |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|"
@@ -523,16 +766,39 @@ def render(
     return "\n".join(lines) + "\n";
 }
 
+def validate_comparison_runs(stock: dict[str, any], jac: dict[str, any]) {
+    if stock["version"] != jac["version"]
+        or stock["jacpython"]
+        or not jac["jacpython"]
+        or stock.get("resources") != jac.get("resources")
+        or stock.get("memlimit", "") != jac.get("memlimit", "") {
+        raise RuntimeError(
+            "compare needs stock CPython and JacPython results with matching "
+                + "version, resources, and memory cap"
+        );
+    }
+    if stock.get("full_suite") != True or jac.get("full_suite") != True {
+        raise RuntimeError("compare needs full-suite CPython and JacPython results");
+    }
+    stock_names = stock.get("module_names", []);
+    jac_names = jac.get("module_names", []);
+    if not stock_names
+        or not jac_names
+        or stock_names != sorted(stock_names)
+        or jac_names != sorted(jac_names)
+        or stock_names != sorted(stock["modules"])
+        or jac_names != sorted(jac["modules"])
+        or stock_names != jac_names {
+        raise RuntimeError(
+            "compare needs complete results with the same full-suite module inventory"
+        );
+    }
+}
+
 def compare(args: any) -> int {
     stock = json.loads((Path(args.stock) / "results.json").read_text());
     jac = json.loads((Path(args.jacpython) / "results.json").read_text());
-    if stock["version"] != jac["version"]
-        or stock["jacpython"]
-        or not jac["jacpython"] {
-        raise RuntimeError(
-            "compare needs a stock CPython result and a JacPython result of one version"
-        );
-    }
+    validate_comparison_runs(stock, jac);
     found = compare_results(stock, jac);
     markdown = render(stock, jac, found);
     print(markdown);
@@ -571,6 +837,11 @@ def main -> int {
         "--resources",
         `default="all,-network,-urlfetch,-gui,-audio,-largefile",
         help="regrtest -u value; empty runs without optional resources"
+    );
+    runner.add_argument(
+        "--memlimit",
+        `default="",
+        help="regrtest -M memory cap; empty leaves big-memory tests disabled"
     );
     runner.add_argument(
         "--jobs", `type=int, `default=0, help="Modules at a time (0: CPUs)"

@@ -41,6 +41,8 @@ import from c {
         exc: ptr[PyObject]
     ) -> i32;  def PyErr_GetRaisedException -> ptr[PyObject];  def PyErr_Clear;  def PyObject_GetAttrString(
         op: ptr[PyObject], name: ptr[u8]
+    ) -> ptr[PyObject];  def PyObject_CallMethod(
+        obj_: ptr[PyObject], name: str, format_: str, *args: any
     ) -> ptr[PyObject];  def PyUnicode_FSDecoder(
         arg: ptr[PyObject], addr: ptr
     ) -> i32;  def PyType_FromModuleAndSpec(
@@ -489,6 +491,92 @@ import from c {
         }
         result = _PyJac_CompileObject(source, filename, start, flags, optimize);
         object_decref(source);
+        return result;
+    }  def:pub _PyCompile_CleanDoc(doc: ptr[PyObject]) -> ptr[PyObject] {
+        expanded = PyObject_CallMethod(doc, "expandtabs", "");
+        if not expanded {
+            return NULL;
+        }
+        length: i64 = 0;
+        text = PyUnicode_AsUTF8AndSize(expanded, &mut length);
+        if not text {
+            object_decref(expanded);
+            return NULL;
+        }
+
+        scan = i64(0);
+        while scan < length and ptr[u8](int(text) + scan).view(1)[0] != u8(10) {
+            scan += 1;
+        }
+        if scan < length {
+            scan += 1;
+        }
+        margin = length + 1;
+        while scan < length {
+            line_start = scan;
+            while scan < length and ptr[u8](int(text) + scan).view(1)[0] == u8(32) {
+                scan += 1;
+            }
+            if scan < length and ptr[u8](int(text) + scan).view(1)[0] != u8(10) {
+                margin = min(margin, scan - line_start);
+            }
+            while scan < length and ptr[u8](int(text) + scan).view(1)[0] != u8(10) {
+                scan += 1;
+            }
+            if scan < length {
+                scan += 1;
+            }
+        }
+        if margin == length + 1 {
+            margin = 0;
+        }
+
+        first = i64(0);
+        while first < length and ptr[u8](int(text) + first).view(1)[0] == u8(32) {
+            first += 1;
+        }
+        if first == 0 and margin == 0 {
+            return expanded;
+        }
+
+        buffer = ptr[u8](PyMem_Malloc(u64(length)));
+        if not buffer {
+            object_decref(expanded);
+            PyErr_NoMemory();
+            return NULL;
+        }
+        read = first;
+        written = i64(0);
+        while read < length {
+            ch = ptr[u8](int(text) + read).view(1)[0];
+            ptr[u8](int(buffer) + written).view(1)[0] = ch;
+            read += 1;
+            written += 1;
+            if ch == u8(10) {
+                break;
+            }
+        }
+        while read < length {
+            indent = i64(0);
+            while indent < margin
+                and read < length
+                and ptr[u8](int(text) + read).view(1)[0] == u8(32) {
+                read += 1;
+                indent += 1;
+            }
+            while read < length {
+                ch = ptr[u8](int(text) + read).view(1)[0];
+                ptr[u8](int(buffer) + written).view(1)[0] = ch;
+                read += 1;
+                written += 1;
+                if ch == u8(10) {
+                    break;
+                }
+            }
+        }
+        result = PyUnicode_Decode(buffer, written, ptr[u8]("utf-8"), ptr[u8]("strict"));
+        PyMem_Free(ptr(buffer));
+        object_decref(expanded);
         return result;
     }  def _Py_Mangle(privateobj: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
         if not privateobj

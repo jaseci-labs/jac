@@ -317,6 +317,9 @@ impl AcceptCall.run(fd: i32) -> bool {
     if HAS_ACCEPT4 and accept4_works != 0 {
         self.result = accept_cloexec(fd, addr, paddrlen, i32(SOCK_CLOEXEC));
         if self.result == INVALID_SOCKET and accept4_works == -1 {
+            # This store reaches the shared socket_core static: a method body
+            # binds wire imports directly (module-level defs would shadow the
+            # glob and must write through set_sock_cloexec_works instead).
             accept4_works = i32(1) if jacpy_errno() != ENOSYS else i32(0);
         }
     }
@@ -2132,9 +2135,9 @@ impl sock_init(
             error = jacpy_errno();
             if sock_cloexec_works == -1 {
                 if fd >= 0 {
-                    sock_cloexec_works = i32(1);
+                    set_sock_cloexec_works(i32(1));
                 } elif error == EINVAL {
-                    sock_cloexec_works = i32(0);
+                    set_sock_cloexec_works(i32(0));
                     fd = socket(i32(fam), i32(typ), i32(pro));
                     error = jacpy_errno();
                 }
@@ -2164,7 +2167,7 @@ impl set_inheritable_new(fd: i32) -> int {
     if HAS_SOCK_CLOEXEC {
         works = sock_cloexec_works;
         status = _Py_set_inheritable(fd, 0, &mut works);
-        sock_cloexec_works = works;
+        set_sock_cloexec_works(works);
         return int(status);
     }
     return int(_Py_set_inheritable(fd, 0, None));

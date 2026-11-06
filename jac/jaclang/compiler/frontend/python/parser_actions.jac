@@ -90,7 +90,13 @@ def pa_name_from_token(tok: peg_token | None) -> Name | None {
     );
 }
 
-def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
+def pa_warn_escape(
+    escape: str,
+    tok: peg_token | None,
+    line_offset: int = 0,
+    column: int = 0,
+    end_column: int = -1
+) {
     if tok is not None and tok.warned {
         return;
     }
@@ -110,7 +116,9 @@ def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
     warn(
         message,
         tok.filename if tok is not None else "<unknown>",
-        (tok.lineno if tok is not None else 1) + line_offset
+        (tok.lineno if tok is not None else 1) + line_offset,
+        column,
+        end_column
     );
 }
 
@@ -130,13 +138,32 @@ def pa_escape_line_offset(data: bytes, upto: int) -> int {
     return lines;
 }
 
+def pa_escape_column_offset(data: bytes, upto: int, body_column: int) -> int {
+    last_newline = -1;
+    k = 0;
+    while k < upto {
+        if data[k] == 10 {
+            last_newline = k;
+        }
+        k += 1;
+    }
+    return upto - last_newline - 1 if last_newline >= 0 else body_column + upto;
+}
+
 # One backslash escape, judged against the set its literal kind allows.
 def pa_check_escape(
-    data: bytes, i: int, size: int, valid: set[int], tok: peg_token | None
+    data: bytes,
+    i: int,
+    size: int,
+    valid: set[int],
+    tok: peg_token | None,
+    body_column: int
 ) {
     following = data[i + 1];
+    line_offset = pa_escape_line_offset(data, i);
+    column = pa_escape_column_offset(data, i, body_column);
     if following not in valid {
-        pa_warn_escape(chr(following), tok, pa_escape_line_offset(data, i));
+        pa_warn_escape(chr(following), tok, line_offset, column, column + 2);
     } elif following >= ord("4")
         and following <= ord("7")
         and i + 3 < size
@@ -145,7 +172,7 @@ def pa_check_escape(
         and data[i + 3] >= ord("0")
         and data[i + 3] <= ord("7") {
         pa_warn_escape(
-            data[i + 1:i + 4].decode("utf-8"), tok, pa_escape_line_offset(data, i)
+            data[i + 1:i + 4].decode("utf-8"), tok, line_offset, column, column + 4
         );
     }
 }
@@ -158,7 +185,12 @@ def pa_check_escape(
 # runs; only a character the codec cannot take as written breaks a run: a
 # non-ASCII character, spelled as a \U escape, and a backslash in front of one,
 # spelled as an escaped backslash.
-def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
+def pa_decode_escape_body(
+    body: str, tok: peg_token | None = None, body_column: int = -1
+) -> str {
+    if body_column < 0 {
+        body_column = tok.col_offset if tok is not None else 0;
+    }
     data = body.encode("utf-8");
     size = len(data);
     parts: list[str] = [];
@@ -167,7 +199,7 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
     while i < size {
         c = data[i];
         if c == ord("\\") and i + 1 < size and data[i + 1] < 128 {
-            pa_check_escape(data, i, size, VALID_ESCAPE_POINTS, tok);
+            pa_check_escape(data, i, size, VALID_ESCAPE_POINTS, tok, body_column);
             i += 2;
             continue;
         }
@@ -194,13 +226,16 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
 }
 
 def pa_decode_bytes_escape_body(
-    body: str, raw: bool, tok: peg_token | None = None
+    body: str, raw: bool, tok: peg_token | None = None, body_column: int = -1
 ) -> list[int] {
     if not body.isascii() {
         raise syntax_failure("bytes can only contain ASCII literal characters");
     }
     if raw {
         return list(body.encode("utf-8"));
+    }
+    if body_column < 0 {
+        body_column = tok.col_offset if tok is not None else 0;
     }
     # A raw literal escapes nothing, so only the cooked body is judged. The
     # decode itself is the runtime's, so the scan is the warning's own pass.
@@ -209,7 +244,7 @@ def pa_decode_bytes_escape_body(
     i = 0;
     while i < size {
         if data[i] == ord("\\") and i + 1 < size {
-            pa_check_escape(data, i, size, VALID_BYTES_ESCAPE_POINTS, tok);
+            pa_check_escape(data, i, size, VALID_BYTES_ESCAPE_POINTS, tok, body_column);
             i += 2;
             continue;
         }
@@ -266,13 +301,14 @@ def pa_decode_string_literal_spelling(
         return None;
     }
     body = spelling[start:end];
+    body_column = (tok.col_offset if tok is not None else 0) + start;
     if is_bytes {
-        return pa_decode_bytes_escape_body(body, raw, tok);
+        return pa_decode_bytes_escape_body(body, raw, tok, body_column);
     }
     if raw {
         return body;
     }
-    return pa_decode_escape_body(body, tok);
+    return pa_decode_escape_body(body, tok, body_column);
 }
 
 def pa_constant_from_fstring_middle(
@@ -632,6 +668,20 @@ def pa_ast_expression(body: expr) -> Expression {
     return Expression(body=body);
 }
 
+glob PY_AST_DEPTH_LIMIT: int = 1000;
+
+def pa_ast_check_depth(ast_value: expr, children: list[expr]) -> expr {
+    depth = 1;
+    for child in children {
+        depth = max(depth, child.tree_depth + 1);
+    }
+    if depth > PY_AST_DEPTH_LIMIT {
+        raise RecursionError("maximum recursion depth exceeded during parsing");
+    }
+    ast_value.tree_depth = depth;
+    return ast_value;
+}
+
 def pa_ast_binop(
     left: expr,
     op: operator,
@@ -641,7 +691,7 @@ def pa_ast_binop(
     end_lineno: int,
     end_col_offset: int
 ) -> BinOp {
-    return BinOp(
+    built_ast = BinOp(
         left=left,
         op=op,
         right=right,
@@ -650,6 +700,8 @@ def pa_ast_binop(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [left, right];
+    return pa_ast_check_depth(built_ast, children) as BinOp;
 }
 
 def pa_ast_unaryop(
@@ -718,7 +770,7 @@ def pa_ast_call(
     end_col_offset: int
 ) -> Call {
     kws = keywords if keywords is not None else [];
-    return Call(
+    built_ast = Call(
         func=func,
         args=args,
         keywords=kws,
@@ -727,6 +779,14 @@ def pa_ast_call(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [func];
+    for child in args {
+        children.append(child);
+    }
+    for child in kws {
+        children.append(child.value);
+    }
+    return pa_ast_check_depth(built_ast, children) as Call;
 }
 
 def pa_ast_starred(
@@ -1286,7 +1346,7 @@ def pa_ast_attribute(
     end_lineno: int,
     end_col_offset: int
 ) -> Attribute {
-    return Attribute(
+    built_ast = Attribute(
         value=value,
         attr=attr_name,
         ctx=ctx,
@@ -1295,6 +1355,8 @@ def pa_ast_attribute(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [value];
+    return pa_ast_check_depth(built_ast, children) as Attribute;
 }
 
 def pa_ast_subscript(
@@ -1306,7 +1368,7 @@ def pa_ast_subscript(
     end_lineno: int,
     end_col_offset: int
 ) -> Subscript {
-    return Subscript(
+    built_ast = Subscript(
         value=value,
         slice=slice_expr,
         ctx=ctx,
@@ -1315,6 +1377,8 @@ def pa_ast_subscript(
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+    children: list[expr] = [value, slice_expr];
+    return pa_ast_check_depth(built_ast, children) as Subscript;
 }
 
 def pa_ast_slice(
@@ -1736,6 +1800,9 @@ def pa_raise_syntax(p: peg_parser, on_next: bool, message: str) -> None {
     if peg_has_error(p) {
         return None;
     }
+    if "%d" in message and p.mark > 0 {
+        message = message.replace("%d", str(p.tokens[p.mark - 1].lineno));
+    }
     peg_raise_syntax_error(p, on_next, message);
     return None;
 }
@@ -1776,11 +1843,126 @@ def pa_raise_syntax_known_expr(
 def pa_raise_syntax_known_range(
     p: peg_parser, on_next: bool, a: object | None, b: object | None, message: str
 ) -> None {
+    if (
+        message == "Missing parentheses in call to '%U'. Did you mean %U(...)?"
+        and isinstance(a, Name)
+    ) {
+        name = (a as Name).id;
+        return pa_raise_syntax(
+            p,
+            on_next,
+            "Missing parentheses in call to '"
+                + name
+                + "'. Did you mean "
+                + name
+                + "(...)?"
+        );
+    }
+    if isinstance(a, peg_token) and isinstance(b, peg_token) and not peg_has_error(p) {
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=(a as peg_token).lineno,
+                end_lineno=(b as peg_token).end_lineno,
+                col_offset=(a as peg_token).col_offset,
+                end_col_offset=(b as peg_token).end_col_offset
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
+    if message == "Generator expression must be parenthesized"
+        and isinstance(b, comprehension) {
+        clause = b as comprehension;
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=clause.for_lineno,
+                end_lineno=clause.for_end_lineno or clause.for_lineno,
+                col_offset=clause.for_col_offset,
+                end_col_offset=clause.for_end_col_offset or clause.for_col_offset + 3
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
     return pa_raise_syntax(p, on_next, message);
 }
 
-def pa_raise_invalid_target(p: peg_parser, kind: object, `node: object | None) -> None {
+def pa_get_genexp_start_expr(`node: object, clauses: object) -> expr | None {
+    if isinstance(`node, Call) and (`node as Call).args {
+        args = (`node as Call).args;
+        first_for: comprehension | None = None;
+        if isinstance(clauses, list) and (clauses as list[object]) {
+            first = (clauses as list[object])[0];
+            if isinstance(first, comprehension) {
+                first_for = first as comprehension;
+            }
+        }
+        candidate: expr | None = None;
+        for arg in args {
+            if first_for is None
+                or arg.lineno < first_for.for_lineno
+                or (
+                    arg.lineno == first_for.for_lineno
+                    and arg.col_offset < first_for.for_col_offset
+                ) {
+                candidate = arg;
+            }
+        }
+        return candidate if candidate is not None else args[-1];
+    }
+    if isinstance(`node, expr) {
+        return `node as expr;
+    }
+    return None;
+}
+
+def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> None {
+    if kind == DEL_TARGETS {
+        next = peg_peek_type(p);
+        if next not in (NEWLINE, ENDMARKER, SEMI) {
+            return None;
+        }
+    }
+    if isinstance(`node, expr) {
+        target_name = pa_get_expr_name(`node as expr, kind == 1);
+        action = "delete" if kind == 1 else "assign to";
+        return pa_raise_syntax_known_expr(
+            p, False, `node, "cannot " + action + " " + target_name
+        );
+    }
     return pa_raise_syntax(p, False, "invalid assignment target");
+}
+
+def pa_next_token_is_augassign(p: peg_parser) -> bool {
+    if p.mark >= len(p.tokens) and not peg_fill_token(p) {
+        return False;
+    }
+    if p.mark >= len(p.tokens) {
+        return False;
+    }
+    spelling = p.tokens[p.mark].spelling;
+    return spelling
+        in [
+            "+=",
+            "-=",
+            "*=",
+            "@=",
+            "/=",
+            "//=",
+            "%=",
+            "**=",
+            "<<=",
+            ">>=",
+            "&=",
+            "|=",
+            "^="
+        ];
 }
 
 def pa_raise_type_param_error(
@@ -1841,12 +2023,29 @@ def pa_nonparen_genexp_in_call(a: object, b: object) -> object {
     return None;
 }
 
-def pa_arguments_parsing_error(`node: object) -> object {
+def pa_arguments_parsing_error(p: peg_parser, `node: object) -> object {
+    if isinstance(`node, Call) and (`node as Call).keywords {
+        keyword_unpacking = False;
+        for kw in (`node as Call).keywords {
+            if kw.arg is None {
+                keyword_unpacking = True;
+                break;
+            }
+        }
+        return pa_raise_syntax(
+            p,
+            False,
+            "positional argument follows keyword argument unpacking"
+                if keyword_unpacking
+                else "positional argument follows keyword argument"
+        );
+    }
     return None;
 }
 
 def pa_check_legacy_stmt(p: peg_parser, `node: object) -> bool {
-    return False;
+    return isinstance(`node, Name)
+        and ((`node as Name).id == "print" or (`node as Name).id == "exec");
 }
 
 def pa_concatenate_tstrings(parts: list[expr]) -> expr | None {
@@ -1896,7 +2095,7 @@ def pa_ensure_real(p: peg_parser, value: expr) -> expr | None {
     return value;
 }
 
-def pa_get_expr_name(`node: expr) -> str {
+def pa_get_expr_name(`node: expr, is_delete: bool = False) -> str {
     if isinstance(`node, Attribute) {
         return "attribute";
     }
@@ -1910,9 +2109,23 @@ def pa_get_expr_name(`node: expr) -> str {
         return "name";
     }
     if isinstance(`node, List) {
+        for elt in (`node as List).elts {
+            elt_name = pa_get_expr_name(elt, is_delete);
+            if elt_name not in ["name", "attribute", "subscript", "list", "tuple"]
+                and (is_delete or elt_name != "starred") {
+                return elt_name;
+            }
+        }
         return "list";
     }
     if isinstance(`node, Tuple) {
+        for elt in (`node as Tuple).elts {
+            elt_name = pa_get_expr_name(elt, is_delete);
+            if elt_name not in ["name", "attribute", "subscript", "list", "tuple"]
+                and (is_delete or elt_name != "starred") {
+                return elt_name;
+            }
+        }
         return "tuple";
     }
     if isinstance(`node, Lambda) {
@@ -1982,7 +2195,27 @@ def pa_get_expr_name(`node: expr) -> str {
 }
 
 def pa_get_last_comprehension_item(`node: object) -> object {
+    if isinstance(`node, comprehension) {
+        return `node;
+    }
+    if isinstance(`node, list) and (`node as list[object]) {
+        last = (`node as list[object])[-1];
+        if isinstance(last, comprehension) {
+            return last;
+        }
+    }
     return None;
+}
+
+def pa_has_keyword_unpacking(`node: object) -> bool {
+    if isinstance(`node, Call) {
+        for kw in (`node as Call).keywords {
+            if kw.arg is None {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 def pa_join_names_with_dot(a: expr, b: expr) -> expr {

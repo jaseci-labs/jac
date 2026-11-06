@@ -7,40 +7,71 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
 import sys
+from enum import Enum
+from pathlib import Path
 
-root = Path(sys.argv[1]).resolve()
-output = Path(sys.argv[2]).resolve()
-triple = {
-    "linux-x86_64": "x86_64-unknown-linux-gnu",
-    "linux-aarch64": "aarch64-unknown-linux-gnu",
-    "macos-x86_64": "x86_64-apple-macosx12.0.0",
-    "macos-aarch64": "arm64-apple-macosx11.0.0",
-}[sys.argv[3]]
-# Jac modules this build wrote for the object (the frozen modules that
-# scripts/jacpython/gen_frozen.jac writes and the _PyRuntime that
-# gen_runtime_image.jac writes). They are lowered with the runtime
-# but are not sources: the build key covers their generators and inputs.
-generated = [Path(path).resolve() for path in sys.argv[4:]]
-pin = json.loads((root / "bootstrap/python/sources.json").read_text())["cpython"]
-if tuple(map(int, pin["version"].split("."))) != sys.version_info[:3]:
-    raise RuntimeError("Build JacPython with pinned CPython " + pin["version"])
-sys.path.insert(0, str(root))
-os.environ.pop("JAC_HANDOFF", None)
-output.mkdir(parents=True, exist_ok=True)
 
-import jaclang
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.compile_options import CompileOptions
-from jaclang.compiler.backends.native.lowering import native_fallbacks_in_ir
-from jaclang.compiler.backends.native.link_glue import init_object_codegen
-from jaclang.compiler.backends.native.link_plan import (
-    ArtifactKind, build_link_plan, whole_program_module,
-    internalize_native_implementation, _platform_of,
-)
-import jaclang.compiler.backends.native.llvm.binding as llvm
-from jaclang.compiler.backends.native.llvm.binding.value import Linkage, Visibility
+class SymbolKind(Enum):
+    FUNCTION = "function"
+    GLOBAL = "global"
+
+
+# The static types the surviving C objects name as extern globals (PyAPI_DATA
+# declarations), so the merged module must export each by name. The rest of
+# CPython's static types bind through object_model/object.jac's static_types
+# table and are never referenced by symbol.
+STATIC_TYPE_EXPORTS = [
+    "PyCell_Type", "PyEnum_Type", "_PyInterpolation_Type", "PyPickleBuffer_Type",
+    "PyRange_Type", "PyRangeIter_Type", "PyLongRangeIter_Type", "PyReversed_Type",
+    "_PyTemplate_Type", "_PyTemplateIter_Type",
+]
+
+
+def registered_exports(root):
+    """Return the PyInit_* symbols required by the built-in module registry."""
+    registry = root / "bootstrap/python/jacpython-modules.txt"
+    return [
+        "PyInit_" + line.split()[0]
+        for line in registry.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def missing_exports(expected, exported):
+    """Return required symbols absent from a list of exported names."""
+    present = set(exported)
+    return [name for name in expected if name not in present]
+
+
+def undefined_exports(module, expected, kind=SymbolKind.FUNCTION):
+    """Return expected symbols that are absent or only declared in a module."""
+    if kind is SymbolKind.FUNCTION:
+        lookup = module.get_function
+    elif kind is SymbolKind.GLOBAL:
+        lookup = module.get_global_variable
+    else:
+        raise ValueError("unknown symbol kind: " + repr(kind))
+    missing = []
+    for name in expected:
+        try:
+            value = lookup(name)
+        except NameError:
+            missing.append(name)
+            continue
+        if value.is_declaration:
+            missing.append(name)
+    return missing
+
+
+def export_contract_violations(module, expected_exports):
+    """Return the registered entry points and static type globals a module does
+    not define. PyInit_* symbols are functions and the static types are globals,
+    so each is looked up the way it was emitted."""
+    return undefined_exports(module, expected_exports) + undefined_exports(
+        module, STATIC_TYPE_EXPORTS, SymbolKind.GLOBAL,
+    )
+
 
 # 128-bit unsigned division for x86_64 Linux, as compiler-rt's __udivti3 and
 # __umodti3 compute it. libmpdec's uint128 path calls them. Without a
@@ -280,176 +311,232 @@ declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 attributes #0 = { nounwind }
 """
 
-program = JacProgram()
-# The roots of the native object: the compiler's entry points and the C
-# entries the interpreter calls them through, the table of
-# built-in modules (its PyInit addresses root every native extension module)
-# and the object model and interpreter ports, which define interpreter types
-# and functions under their C names for C callers no Jac module imports.
-entries = [
-    root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
-    root / "jaclang/compiler/backends/py/jacpython/native_bridge.jac",
-    root / "jaclang/runtime/python/inittab.jac",
-    *sorted(
-        path
-        for package in ("object_model", "interpreter")
-        for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
-        if path.name != "__init__.jac"
-    ),
-    *generated,
-]
-options = CompileOptions(
-    aot_mode=True, default_codespace="native", skip_native_engine=True,
-    native_required=True,
-    memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
-    # libpython is linked by the system linker, which takes TLS relocations,
-    # and every frame arms through LLVM's builtin setjmp.
-    native_tls=True, native_sjlj=True,
-    # The runtime reads C memory through pointer views on every path, so views
-    # are not null-checked. The instruction handlers (preserve_none C entries)
-    # tail-call each other once per instruction and allocate nothing Jac
-    # manages, so they jump straight into their bodies; other C entries still
-    # escape the region a compile request runs in.
-    native_unchecked_views=True, native_direct_c_entries=True,
-    # The runtime's own heap (reference-counted objects and the storage of
-    # their lists, dicts and sets) is the mimalloc this object links, not libc
-    # malloc: one compile request allocates and frees hundreds of them, and
-    # mimalloc's thread-local heaps take frees from any thread. Memory the Jac
-    # sources allocate through their C imports (malloc, PyMem_RawMalloc) stays
-    # libc's.
-    native_heap="mi",
-)
-plan = build_link_plan(program, [str(entry) for entry in entries], options)
-if program.errors_had:
-    for error in program.errors_had:
-        print(error.pretty_print(), file=sys.stderr)
-    raise RuntimeError("JacPython native compilation failed")
-init_object_codegen()
-spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
-compiled, runtime_exports = whole_program_module(plan, spec)
-if triple.startswith("x86_64") and "linux" in triple:
-    division = llvm.parse_assembly(INT128_DIVISION_IR)
-    division.triple = compiled.triple
-    division.data_layout = compiled.data_layout
-    compiled.link_in(division)
-    runtime_exports = runtime_exports + ["__udivti3", "__umodti3"]
-compiled_ir = str(compiled)
-native_fallbacks_in_ir(compiled_ir).require()
-# Every unit must agree on how thread-local slots are held and how frames
-# arm: the accessors and the raise path are shared, so a unit lowered without
-# these options would bring back the pthread-key lookup or libc's setjmp. The
-# C API's thread-specific storage (PyThread_tss_get and the old key API) is
-# the one place that calls pthread_getspecific by design. Only x86_64 arms
-# through LLVM's builtin setjmp; other targets keep _setjmp under native_sjlj.
-by_design = {"PyThread_tss_get", "PyThread_get_key_value"}
-builtin_sjlj = plan.triple.startswith("x86_64")
-for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "native_sjlj")):
-    if option == "native_sjlj" and not builtin_sjlj:
-        continue
-    if not getattr(options, option) or symbol not in compiled_ir:
-        continue
-    for function in re.finditer(r'^define [^\n]*?@"?([\w.$]+)"?\((.*?)^\}', compiled_ir, re.M | re.S):
-        name = function.group(1).split(".")[0]
-        if not re.search('@"?' + re.escape(symbol[1:]) + r'"?\(', function.group(2)):
+def main(argv):
+    root = Path(argv[1]).resolve()
+    output = Path(argv[2]).resolve()
+    triple = {
+        "linux-x86_64": "x86_64-unknown-linux-gnu",
+        "linux-aarch64": "aarch64-unknown-linux-gnu",
+        "macos-x86_64": "x86_64-apple-macosx12.0.0",
+        "macos-aarch64": "arm64-apple-macosx11.0.0",
+    }[argv[3]]
+    # Jac modules this build wrote for the object (the frozen modules that
+    # scripts/jacpython/gen_frozen.jac writes and the _PyRuntime that
+    # gen_runtime_image.jac writes). They are lowered with the runtime
+    # but are not sources: the build key covers their generators and inputs.
+    generated = [Path(path).resolve() for path in argv[4:]]
+    pin = json.loads((root / "bootstrap/python/sources.json").read_text())["cpython"]
+    if tuple(map(int, pin["version"].split("."))) != sys.version_info[:3]:
+        raise RuntimeError("Build JacPython with pinned CPython " + pin["version"])
+    sys.path.insert(0, str(root))
+    os.environ.pop("JAC_HANDOFF", None)
+    output.mkdir(parents=True, exist_ok=True)
+
+    import jaclang
+    from jaclang.compiler.driver.program import JacProgram
+    from jaclang.compiler.driver.compile_options import CompileOptions
+    from jaclang.compiler.backends.native.lowering import native_fallbacks_in_ir
+    from jaclang.compiler.backends.native.link_glue import init_object_codegen
+    from jaclang.compiler.backends.native.link_plan import (
+        ArtifactKind, build_link_plan, whole_program_module,
+        internalize_native_implementation, _platform_of,
+    )
+    import jaclang.compiler.backends.native.llvm.binding as llvm
+    from jaclang.compiler.backends.native.llvm.binding.value import Linkage, Visibility
+
+    program = JacProgram()
+    # The roots of the native object: the compiler's entry points and the C
+    # entries the interpreter calls them through, the table of
+    # built-in modules (its PyInit addresses root every native extension module)
+    # and the object model and interpreter ports, which define interpreter types
+    # and functions under their C names for C callers no Jac module imports.
+    entries = [
+        root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
+        root / "jaclang/compiler/backends/py/jacpython/native_bridge.jac",
+        root / "jaclang/runtime/python/inittab.jac",
+        *sorted(
+            path
+            for package in ("object_model", "interpreter")
+            for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
+            if path.name != "__init__.jac"
+        ),
+        *generated,
+    ]
+    options = CompileOptions(
+        aot_mode=True, default_codespace="native", skip_native_engine=True,
+        native_required=True,
+        memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
+        # libpython is linked by the system linker, which takes TLS relocations,
+        # and every frame arms through LLVM's builtin setjmp.
+        native_tls=True, native_sjlj=True,
+        # The runtime reads C memory through pointer views on every path, so views
+        # are not null-checked. The instruction handlers (preserve_none C entries)
+        # tail-call each other once per instruction and allocate nothing Jac
+        # manages, so they jump straight into their bodies; other C entries still
+        # escape the region a compile request runs in.
+        native_unchecked_views=True, native_direct_c_entries=True,
+        # The runtime's own heap (reference-counted objects and the storage of
+        # their lists, dicts and sets) is the mimalloc this object links, not libc
+        # malloc: one compile request allocates and frees hundreds of them, and
+        # mimalloc's thread-local heaps take frees from any thread. Memory the Jac
+        # sources allocate through their C imports (malloc, PyMem_RawMalloc) stays
+        # libc's.
+        native_heap="mi",
+    )
+    plan = build_link_plan(program, [str(entry) for entry in entries], options)
+    if program.errors_had:
+        for error in program.errors_had:
+            print(error.pretty_print(), file=sys.stderr)
+        raise RuntimeError("JacPython native compilation failed")
+    expected_exports = registered_exports(root)
+    missing = missing_exports(expected_exports + STATIC_TYPE_EXPORTS, plan.pub_exports())
+    if missing:
+        raise RuntimeError(
+            "JacPython export contract is broken; compiled roots do not export: "
+            + ", ".join(missing)
+        )
+    init_object_codegen()
+    spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
+    compiled, runtime_exports = whole_program_module(plan, spec)
+    missing = export_contract_violations(compiled, expected_exports)
+    if missing:
+        raise RuntimeError(
+            "JacPython export contract is broken; merged module does not define: "
+            + ", ".join(missing)
+        )
+    if triple.startswith("x86_64") and "linux" in triple:
+        division = llvm.parse_assembly(INT128_DIVISION_IR)
+        division.triple = compiled.triple
+        division.data_layout = compiled.data_layout
+        compiled.link_in(division)
+        runtime_exports = runtime_exports + ["__udivti3", "__umodti3"]
+    compiled_ir = str(compiled)
+    native_fallbacks_in_ir(compiled_ir).require()
+    # Every unit must agree on how thread-local slots are held and how frames
+    # arm: the accessors and the raise path are shared, so a unit lowered without
+    # these options would bring back the pthread-key lookup or libc's setjmp. The
+    # C API's thread-specific storage (PyThread_tss_get and the old key API) is
+    # the one place that calls pthread_getspecific by design. Only x86_64 arms
+    # through LLVM's builtin setjmp; other targets keep _setjmp under native_sjlj.
+    by_design = {"PyThread_tss_get", "PyThread_get_key_value"}
+    builtin_sjlj = plan.triple.startswith("x86_64")
+    for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "native_sjlj")):
+        if option == "native_sjlj" and not builtin_sjlj:
             continue
-        if name not in by_design:
-            raise RuntimeError(f"a JacPython unit was lowered without {option} ({name})")
-internalize_native_implementation(
-    compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
-)
-# CPython compiles with -fno-semantic-interposition: libpython's own references
-# to its exported functions and data bind inside the library. Protected
-# visibility keeps a definition exported and makes it dso_local, so Jac code
-# reaches the instruction table and the C API without the GOT or the PLT.
-# The C API names this object only declares (`_PyRuntime`, `_Py_Dealloc`, the
-# C modules' tables) are defined by libpython's remaining C objects, so they
-# bind the same way.
-for value in [*compiled.functions, *compiled.global_variables]:
-    if value.name.startswith("llvm."):
-        continue
-    if value.linkage in (Linkage.internal, Linkage.private) or value.visibility != Visibility.default:
-        continue
-    if value.is_declaration and not re.match(r"_?Py", value.name):
-        continue
-    value.visibility = Visibility.protected
-compiled.verify()
-machine = llvm.Target.from_triple(triple).create_target_machine(
-    opt=2, reloc="pic", codemodel="small",
-)
-# Every unit carries private copies of the same runtime helpers (the raise
-# path, reference-count release, list append, UTF-8 cursors): merging the
-# identical bodies leaves one copy of each in the object. The option is
-# process-wide; this process builds nothing after the object.
-llvm.set_option("", "-enable-merge-functions=true")
-# The functions that only set or report an error mark their call sites as
-# unlikely, so the error paths are placed after the hot code that tests for
-# them instead of between its instructions.
-ERROR_PATHS = {
-    "PyErr_SetString", "PyErr_SetObject", "PyErr_SetNone", "PyErr_Format",
-    "PyErr_FormatV", "PyErr_NoMemory", "PyErr_BadInternalCall",
-    "PyErr_BadArgument", "PyErr_SetFromErrno", "PyErr_SetFromErrnoWithFilename",
-    "PyErr_SetFromErrnoWithFilenameObject", "PyErr_SetFromErrnoWithFilenameObjects",
-    "PyErr_FormatUnraisable", "PyErr_WriteUnraisable", "PyErr_SetImportError",
-    "_PyErr_SetString", "_PyErr_SetObject", "_PyErr_SetNone", "_PyErr_Format",
-    "_PyErr_FormatFromCause", "_PyErr_NoMemory", "_PyErr_BadInternalCall",
-    "_PyErr_SetKeyError", "_PyArg_BadArgument", "Py_FatalError",
-    "_Py_FatalErrorFunc", "_Py_FatalErrorFormat", "object_error",
-    "__jac_exception_context_slow",
-}
-for function in compiled.functions:
-    if function.is_declaration:
-        continue
-    name = function.name
-    base = name[:-4] if name.endswith(".jac") else name
-    if base in ERROR_PATHS or base.rsplit(".", 1)[-1] in ERROR_PATHS:
-        function.add_function_attribute("cold")
-# Units are optimized one at a time; the merged module is where bindings,
-# algorithms and object-API calls from different units can inline. The object
-# reaches the CPython link as machine code, so ThinLTO cannot do this later.
-builder = llvm.create_pass_builder(
-    machine, llvm.create_pipeline_tuning_options(speed_level=2),
-)
-builder.getModulePassManager().run(compiled, builder)
-compiled.verify()
-object_bytes = machine.emit_object(compiled)
-(output / "jacpython.o").write_bytes(object_bytes)
-(output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
-
-
-def lowered_sources():
-    """Every source the object was lowered from, relative to the jac root: the
-    plan's units, their annexes and their compile-time inputs. A dependency can
-    only be added by editing one of these, so they key the object exactly. The
-    generated modules are left out: they live in the build tree."""
-    from jaclang.compiler.driver.jir import _related_files, _ct_dep_rows, _ct_row_path
-    registry = program.native_units()
-    paths = set()
-    skipped = {os.path.realpath(path) for path in generated}
-    for unit in plan.units:
-        real = os.path.realpath(unit.path)
-        if real in skipped:
+        if not getattr(options, option) or symbol not in compiled_ir:
             continue
-        paths.add(real)
-        for rel, _digest in _related_files(unit.path):
-            paths.add(os.path.realpath(os.path.join(os.path.dirname(real), rel)))
-        ent = registry.entries.get(real)
-        if ent is not None and ent.compile_deps:
-            for dep, _digest, _body in _ct_dep_rows(ent.compile_deps.decode("utf-8")):
-                paths.add(os.path.realpath(_ct_row_path(dep, ent.compile_deps_base)))
-    jac_root = os.path.realpath(str(root))
-    rels = []
-    for path in sorted(paths):
-        rel = os.path.relpath(path, jac_root)
-        if rel.startswith(".."):
-            raise RuntimeError(f"JacPython lowered a source outside the jac root: {path}")
-        rels.append(rel.replace(os.sep, "/"))
-    return rels
+        for function in re.finditer(r'^define [^\n]*?@"?([\w.$]+)"?\((.*?)^\}', compiled_ir, re.M | re.S):
+            name = function.group(1).split(".")[0]
+            if not re.search('@"?' + re.escape(symbol[1:]) + r'"?\(', function.group(2)):
+                continue
+            if name not in by_design:
+                raise RuntimeError(f"a JacPython unit was lowered without {option} ({name})")
+    internalize_native_implementation(
+        compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
+    )
+    # CPython compiles with -fno-semantic-interposition: libpython's own references
+    # to its exported functions and data bind inside the library. Protected
+    # visibility keeps a definition exported and makes it dso_local, so Jac code
+    # reaches the instruction table and the C API without the GOT or the PLT.
+    # The C API names this object only declares (`_PyRuntime`, `_Py_Dealloc`, the
+    # C modules' tables) are defined by libpython's remaining C objects, so they
+    # bind the same way.
+    for value in [*compiled.functions, *compiled.global_variables]:
+        if value.name.startswith("llvm."):
+            continue
+        if value.linkage in (Linkage.internal, Linkage.private) or value.visibility != Visibility.default:
+            continue
+        if value.is_declaration and not re.match(r"_?Py", value.name):
+            continue
+        value.visibility = Visibility.protected
+    compiled.verify()
+    machine = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, reloc="pic", codemodel="small",
+    )
+    # Every unit carries private copies of the same runtime helpers (the raise
+    # path, reference-count release, list append, UTF-8 cursors): merging the
+    # identical bodies leaves one copy of each in the object. The option is
+    # process-wide; this process builds nothing after the object.
+    llvm.set_option("", "-enable-merge-functions=true")
+    # The functions that only set or report an error mark their call sites as
+    # unlikely, so the error paths are placed after the hot code that tests for
+    # them instead of between its instructions.
+    ERROR_PATHS = {
+        "PyErr_SetString", "PyErr_SetObject", "PyErr_SetNone", "PyErr_Format",
+        "PyErr_FormatV", "PyErr_NoMemory", "PyErr_BadInternalCall",
+        "PyErr_BadArgument", "PyErr_SetFromErrno", "PyErr_SetFromErrnoWithFilename",
+        "PyErr_SetFromErrnoWithFilenameObject", "PyErr_SetFromErrnoWithFilenameObjects",
+        "PyErr_FormatUnraisable", "PyErr_WriteUnraisable", "PyErr_SetImportError",
+        "_PyErr_SetString", "_PyErr_SetObject", "_PyErr_SetNone", "_PyErr_Format",
+        "_PyErr_FormatFromCause", "_PyErr_NoMemory", "_PyErr_BadInternalCall",
+        "_PyErr_SetKeyError", "_PyArg_BadArgument", "Py_FatalError",
+        "_Py_FatalErrorFunc", "_Py_FatalErrorFormat", "object_error",
+        "__jac_exception_context_slow",
+    }
+    for function in compiled.functions:
+        if function.is_declaration:
+            continue
+        name = function.name
+        base = name[:-4] if name.endswith(".jac") else name
+        if base in ERROR_PATHS or base.rsplit(".", 1)[-1] in ERROR_PATHS:
+            function.add_function_attribute("cold")
+    # Units are optimized one at a time; the merged module is where bindings,
+    # algorithms and object-API calls from different units can inline. The object
+    # reaches the CPython link as machine code, so ThinLTO cannot do this later.
+    builder = llvm.create_pass_builder(
+        machine, llvm.create_pipeline_tuning_options(speed_level=2),
+    )
+    builder.getModulePassManager().run(compiled, builder)
+    missing = export_contract_violations(compiled, expected_exports)
+    if missing:
+        raise RuntimeError(
+            "JacPython export contract is broken after optimization: "
+            + ", ".join(missing)
+        )
+    compiled.verify()
+    object_bytes = machine.emit_object(compiled)
+    (output / "jacpython.o").write_bytes(object_bytes)
+    (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
 
 
-(output / "sources").write_text("".join(rel + "\n" for rel in lowered_sources()))
-print("JacPython: built native compiler object; no interpreted demotions", flush=True)
-# This one-shot emitter has closed both artifact files. Let the OS reclaim its
-# compiler graph and LLVM context rather than traversing them again at Python
-# shutdown; no runtime initialization or cache work is deferred to that phase.
-sys.stderr.flush()
-os._exit(0)
+    def lowered_sources():
+        """Every source the object was lowered from, relative to the jac root: the
+        plan's units, their annexes and their compile-time inputs. A dependency can
+        only be added by editing one of these, so they key the object exactly. The
+        generated modules are left out: they live in the build tree."""
+        from jaclang.compiler.driver.jir import _related_files, _ct_dep_rows, _ct_row_path
+        registry = program.native_units()
+        paths = set()
+        skipped = {os.path.realpath(path) for path in generated}
+        for unit in plan.units:
+            real = os.path.realpath(unit.path)
+            if real in skipped:
+                continue
+            paths.add(real)
+            for rel, _digest in _related_files(unit.path):
+                paths.add(os.path.realpath(os.path.join(os.path.dirname(real), rel)))
+            ent = registry.entries.get(real)
+            if ent is not None and ent.compile_deps:
+                for dep, _digest, _body in _ct_dep_rows(ent.compile_deps.decode("utf-8")):
+                    paths.add(os.path.realpath(_ct_row_path(dep, ent.compile_deps_base)))
+        jac_root = os.path.realpath(str(root))
+        rels = []
+        for path in sorted(paths):
+            rel = os.path.relpath(path, jac_root)
+            if rel.startswith(".."):
+                raise RuntimeError(f"JacPython lowered a source outside the jac root: {path}")
+            rels.append(rel.replace(os.sep, "/"))
+        return rels
+
+
+    (output / "sources").write_text("".join(rel + "\n" for rel in lowered_sources()))
+    print("JacPython: built native compiler object; no interpreted demotions", flush=True)
+    # This one-shot emitter has closed both artifact files. Let the OS reclaim its
+    # compiler graph and LLVM context rather than traversing them again at Python
+    # shutdown; no runtime initialization or cache work is deferred to that phase.
+    sys.stderr.flush()
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    main(sys.argv)

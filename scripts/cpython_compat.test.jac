@@ -1,6 +1,7 @@
 """Exercise the regrtest result parsing and the stock-vs-JacPython comparison."""
 
 import from unittest.mock { patch }
+import from pathlib { Path }
 
 glob PASSED_LOG: str = """0:00:00 load avg: 2.0 [1/1] test_bool passed
 
@@ -88,8 +89,90 @@ def results(jacpython: bool, modules: dict[str, any]) -> dict[str, any] {
         "version": "3.14.6",
         "jacpython": jacpython,
         "resources": "",
+        "memlimit": "",
+        "full_suite": True,
+        "module_names": sorted(modules),
         "modules": modules
     };
+}
+
+obj _RegrtestArgs {
+    has resources: str,
+        memlimit: str,
+        test_timeout: int;
+}
+
+test "the memory cap reaches each regrtest module and is optional" {
+    capped = _RegrtestArgs(resources="", memlimit="2.5Gb", test_timeout=1200);
+    command = regrtest_command(
+        "/path/python", "test_bigmem", Path("/tmp/test_bigmem.xml"), capped
+    );
+    assert command
+        == [
+            "/path/python",
+            "-m",
+            "test",
+            "-j1",
+            "--rerun",
+            "--timeout=1200",
+            "-M",
+            "2.5Gb",
+            "--junit-xml=/tmp/test_bigmem.xml",
+            "test_bigmem"
+        ];
+    uncapped = _RegrtestArgs(resources="", memlimit="", test_timeout=1200);
+    command = regrtest_command(
+        "/path/python", "test_bool", Path("/tmp/test_bool.xml"), uncapped
+    );
+    assert "-M" not in command;
+}
+
+test "comparison rejects different memory caps" {
+    record = {"state": "passed", "detail": "", "cases": {}};
+    stock = results(False, {"test_a": record});
+    jac = results(True, {"test_a": record});
+    validate_comparison_runs(stock, jac);
+    jac["memlimit"] = "2.5Gb";
+    caught = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught = True;
+    }
+    assert caught;
+}
+
+test "comparison rejects partial or mismatched suite inventories" {
+    record = {"state": "passed", "detail": "", "cases": {}};
+    stock = results(False, {"test_a": record});
+    jac = results(True, {"test_a": record});
+    jac["full_suite"] = False;
+    caught_partial = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught_partial = True;
+    }
+    assert caught_partial;
+
+    jac = results(True, {"test_b": record});
+    caught_mismatch = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught_mismatch = True;
+    }
+    assert caught_mismatch;
+
+    jac = results(True, {"test_a": record});
+    jac["module_names"] = ["test_a", "test_missing"];
+    caught_incomplete = False;
+    try {
+        validate_comparison_runs(stock, jac);
+    } except RuntimeError {
+        caught_incomplete = True;
+    }
+    assert caught_incomplete;
 }
 
 test "only what stock CPython passes counts against JacPython" {
@@ -154,6 +237,43 @@ test "only what stock CPython passes counts against JacPython" {
     assert [row[0] for row in found["fixed_on_jacpython"]] == ["test_d"];
     assert [row[0] for row in found["flaky_on_jacpython"]] == ["test_e"];
     assert "4 incompatibilities" in render(stock, jac, found);
+}
+
+test "expected failures are compared only when stock CPython passes" {
+    stock = results(
+        False,
+        {
+            "test_passed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_passed": ["passed", ""]}
+            },
+            "test_xfailed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_xfailed": ["xfail", ""]}
+            }
+        }
+    );
+    jac = results(
+        True,
+        {
+            "test_passed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_passed": ["xfail", "expected failure"]}
+            },
+            "test_xfailed": {
+                "state": "passed",
+                "detail": "",
+                "cases": {"test_was_xfailed": ["passed", ""]}
+            }
+        }
+    );
+    found = compare_results(stock, jac);
+    assert found["case_regressions"]
+        == [["test_was_passed", "xfail", "expected failure", "passed"]];
+    assert not found["cases_not_run"];
 }
 
 test "a difference JacPython makes by decision is reported, not counted" {
@@ -258,5 +378,44 @@ test "a cached archive that does not match the pin is fetched again" {
             }
         }
         assert fetched == [pin["url"], "refused"];
+    }
+}
+
+test "the pinned test tree replaces an existing interpreter test tree" {
+    with tempfile.TemporaryDirectory() as scratch {
+        base_dir = Path(scratch);
+        source = base_dir / "pinned" / "test";
+        target = base_dir / "runtime" / "test";
+        source.mkdir(parents=True);
+        target.mkdir(parents=True);
+        (source / "test_bool.py").write_text("pinned\n");
+        (target / "test_old.py").write_text("unverified\n");
+        replace_pinned_tree(source, target);
+        assert (target / "test_bool.py").read_text() == "pinned\n";
+        assert not (target / "test_old.py").exists();
+    }
+}
+
+test "the pinned Setup file supplies the selected C test extension sources" {
+    with tempfile.TemporaryDirectory() as scratch {
+        source_root = Path(scratch);
+        modules = source_root / "Modules";
+        modules.mkdir();
+        rows = ["# Test modules"];
+        for name in sorted(TEST_EXTENSIONS - {"xxlimited", "xxlimited_35"}) {
+            source = modules / f"{name}.c";
+            source.write_text("/* test fixture */\n");
+            rows.append(f"@MODULE_{name.upper()}_TRUE@{name} {name}.c");
+        }
+        rows.append("# Limited API template modules; must be built as shared modules.");
+        for name in ["xxlimited", "xxlimited_35"] {
+            source = modules / f"{name}.c";
+            source.write_text("/* test fixture */\n");
+            rows.append(f"@MODULE_{name.upper()}_TRUE@{name} {name}.c");
+        }
+        (modules / "Setup.stdlib.in").write_text("\n".join(rows));
+        found = test_extension_sources(source_root);
+        assert {name for (name, _) in found} == TEST_EXTENSIONS;
+        assert all(sources == [modules / f"{name}.c"] for (name, sources) in found);
     }
 }

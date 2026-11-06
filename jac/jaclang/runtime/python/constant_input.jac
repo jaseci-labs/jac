@@ -66,5 +66,5 @@ def read_constant(handle: ptr[PyObject], depth: int = 0) -> PyObj {
         }
         return PySet(t="frozenset", frozen=True, items=mapping);
     }
-    raise TypeError("Invalid AST constant");
+    raise TypeError("got an invalid type in Constant: " + type_name(handle));
 }
