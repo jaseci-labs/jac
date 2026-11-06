@@ -238,7 +238,7 @@ impl _range_text(name: str) -> tuple[str, str] {
     return (str(lo), str(hi));
 }
 
-impl _numeric_dest(evaluator: TypeEvaluator, dest: TypeBase) -> ClassType | None {
+impl _numeric_dest(evaluator: any, dest: TypeBase) -> ClassType | None {
     if isinstance(dest, UnionType) {
         members = [
             m
@@ -264,7 +264,7 @@ impl annotate_coercion(expr: Expr | None, target: ClassType) {
 }
 
 impl adopt_literal(
-    evaluator: TypeEvaluator,
+    evaluator: any,
     expr: Expr,
     value: int | float | WideLiteral,
     target: ClassType,
@@ -310,7 +310,7 @@ impl is_brand(t: TypeBase | None) -> bool {
 }
 
 impl assign_numeric_expr(
-    evaluator: TypeEvaluator,
+    evaluator: any,
     expr: Expr | None,
     src: TypeBase,
     dest: TypeBase,
@@ -359,7 +359,7 @@ impl assign_numeric_expr(
 }
 
 impl unify_numeric_operands(
-    evaluator: TypeEvaluator,
+    evaluator: any,
     left_type: TypeBase,
     right_type: TypeBase,
     left_node: Expr | None,
@@ -431,7 +431,7 @@ impl unify_numeric_operands(
     return right_inst;
 }
 
-impl arithmetic_result_type(evaluator: TypeEvaluator, t: TypeBase) -> TypeBase {
+impl arithmetic_result_type(evaluator: any, t: TypeBase) -> TypeBase {
     int_class = evaluator.prefetch.int_class if evaluator.prefetch else None;
     if numeric_name_of(t) == "bool" and int_class is not None {
         return evaluator._convert_to_instance(int_class);
@@ -456,7 +456,7 @@ impl is_unsigned_type(t: TypeBase | None) -> bool {
         and not `entry.signed;
 }
 
-impl _is_jac_builtin_fn(evaluator: TypeEvaluator, callee: Expr, name: str) -> bool {
+impl _is_jac_builtin_fn(evaluator: any, callee: Expr, name: str) -> bool {
     if not isinstance(callee, Name) or callee.sym_name != name {
         return False;
     }
@@ -475,7 +475,7 @@ impl _is_jac_builtin_fn(evaluator: TypeEvaluator, callee: Expr, name: str) -> bo
 }
 
 impl fixed_width_call_type(
-    evaluator: TypeEvaluator, call: FuncCall, callee_type: TypeBase
+    evaluator: any, call: FuncCall, callee_type: TypeBase
 ) -> TypeBase | None {
     args = [
         a
@@ -539,7 +539,7 @@ impl fixed_width_call_type(
 }
 
 impl shift_result_type(
-    evaluator: TypeEvaluator,
+    evaluator: any,
     left_type: TypeBase,
     right_type: TypeBase,
     left_node: Expr | None,

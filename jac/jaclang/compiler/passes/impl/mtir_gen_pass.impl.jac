@@ -1,5 +1,4 @@
 import from pathlib { Path }
-
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
     self._owned = [];
     for nd in ir_in.get_all_sub_nodes(Ability) {
