@@ -321,19 +321,6 @@ test "E0055: yield outside function" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0055"));
 }
 
-test "E0057: return in a module entry block" {
-    (has_err, prog) = parse_and_validate(
-        'with entry { x = 1; if x { return; } for i in [1] { return i; } }'
-    );
-    assert has_err and prog is not None;
-    assert count_diagnostic_code(prog, "E0057") == 2;
-}
-
-test "E0057: return in an archetype's entry block" {
-    (has_err, prog) = parse_and_validate('obj Holder { with entry { return; } }');
-    assert has_err and prog is not None and has_diagnostic_code(prog, "E0057");
-}
-
 test "E0057: return inside any function body is valid" {
     for src in [
         'def f -> int { return 1; }',
@@ -840,6 +827,9 @@ glob MUST_REJECT_NEW: dict[str, str] = {
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
          "E0057_return_in_entry": "with entry { return; }",
+         "E0057_return_in_entry_if": "with entry { x = 1; if x { return; } }",
+         "E0057_return_in_entry_loop": "with entry { for i in [1] { return i; } }",
+         "E0057_return_in_archetype_entry": "obj Holder { with entry { return; } }",
          "E0058_break_no_loop": "with entry { break; }",
          "E0058_continue_no_loop": "with entry { continue; }"
      };
@@ -852,6 +842,9 @@ glob IMPLEMENTED_REJECT: set[str] = {
      IMPLEMENTED_VALIDATE: set[str] = {
          "E0055_yield_in_entry",
          "E0057_return_in_entry",
+         "E0057_return_in_entry_if",
+         "E0057_return_in_entry_loop",
+         "E0057_return_in_archetype_entry",
          "E0058_break_no_loop",
          "E0058_continue_no_loop"
      };
@@ -871,8 +864,13 @@ def validate_reject_test(name_snippet: tuple[any, ...]) {
     if name not in IMPLEMENTED_VALIDATE {
         testskip(f"{name} not yet implemented");
     }
-    (has_errors, _) = parse_and_validate(snippet);
+    (has_errors, prog) = parse_and_validate(snippet);
     assert has_errors , f"Validation must reject '{name}': {snippet}";
+    code = name.split("_")[0];
+    assert prog is not None and count_diagnostic_code(prog, code) == 1 , (
+        name,
+        [str(e) for e in prog.errors_had] if prog else "parse failed"
+    );
 }
 
 # ══════════════════════════════════════════════════════════════════
