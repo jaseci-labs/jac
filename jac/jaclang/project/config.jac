@@ -155,6 +155,7 @@ obj ServeConfig {
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ["*"],
+        cors_credentials: bool = False,
         public_origin: str = "",
         on_conflict: str = "retry",
         conflict_max_attempts: int = 5,

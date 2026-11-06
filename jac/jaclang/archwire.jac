@@ -722,7 +722,7 @@ graph import {
         packages.api.package_surface { compilation_scope },
         project.compiler_host.ProjectHost.lint_settings { context_app },
     ]
-    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
+    compiler.driver.compilation_context --> client.client_bundle.client_context_program {
         context_program
     }
     compiler.driver.compile_options ++> [
@@ -1961,7 +1961,10 @@ graph import {
         compiler.driver.program.JacProgram.stamp_app_facts { UI_MOBUI },
         runtime.source_app.main { kind_has_server },
     ]
-    project.apps ++> scale.injector.bundle._entry_module_spec { resolve_entry_path }
+    project.apps ++> [
+        scale.injector.bundle._entry_module_spec { resolve_entry_path },
+        scale.injector.bundle.sealed_entry_module { resolve_entry_path },
+    ]
     project.apps --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry {
         resolve_entry_path
     }
@@ -2150,7 +2153,10 @@ graph import {
             | server.endpoints.colocated.served_app_route
             | studio.app { get_config_for_dir },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
-        packages.migrate { serialize_toml, toml_minimal_update },
+        packages.migrate | scale.injector.bundle.staged_jac_toml {
+            serialize_toml,
+            toml_minimal_update
+        },
         scale.config.dev_config.resolve_dev_channel
             | scale.injector.bundle.fat_bundle_setting { get_config_for_path },
         scale.config.dev_config.resolve_experimental_pr
@@ -2289,7 +2295,9 @@ graph import {
         },
         compiler.backends.py.artifact_imports.resolve_imports
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
-        dist.publish.py_imports { resolve_module },
+        compiler.tests.test_missing_local_import | dist.publish.py_imports {
+            resolve_module
+        },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
             resolve_client_npm_declarations,
@@ -2593,11 +2601,10 @@ graph import {
             NodeArchetype
         },
         server.endpoints.pages.register_graph_endpoints.graph_target
-            | server.server.ExecutionManager.spawn_walker_async { NodeArchetype },
+            | server.server._spawn_target { NodeArchetype },
         server.identity.identity_storage.IdentityStorage.create_user { Root },
         server.identity.identity_storage.IdentityStorage.ensure_user_by_id { Root },
         server.identity.identity_storage.IdentityStorage.reset_root { Root },
-        server.server.ExecutionManager.spawn_walker_sync { NodeArchetype },
         server.server.ModuleIntrospector.target { WalkerArchetype },
         server.session._ancestry_of {
             Archetype,
@@ -2743,8 +2750,14 @@ graph import {
         compiler.placement.placement_solver { supports },
         compiler.placement.placement_solver._py_import_client_portable { supports },
     ]
-    runtime.preparation_lock ++> server.hmr.HotReloader._reload_server_module
-        | server.server.JacAPIServer._refresh_dev_endpoints { PREPARATION_LOCK }
+    runtime.preparation_lock ++> [
+        compiler.driver.application._prepare_revision { SourcesChanged },
+        server.hmr.HotReloader._reload_server_module { PREPARATION_LOCK },
+        server.server.JacAPIServer._refresh_dev_endpoints {
+            PREPARATION_LOCK,
+            SourcesChanged
+        },
+    ]
     runtime.preparation_lock --> [
         compiler.driver.application.prepare_application { PREPARATION_LOCK },
         compiler.driver.application.prepare_dynamic_module { PREPARATION_LOCK },
@@ -3890,6 +3903,7 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
+            | scale.tests.server.test_error_envelope
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
@@ -4121,6 +4135,9 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
+        cors_pair_problem
+    }
     server.serving.middleware --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
         cors_middleware
     }
@@ -4352,7 +4369,8 @@ graph import {
     testing.testkit ++> [
         scale.server.inprocess.prepare_inprocess_runtime
             | scale.tests.microservices.test_gateway_docs_precedence
-            | scale.tests.microservices.test_gateway_webapp { ServingTestClient },
+            | scale.tests.microservices.test_gateway_webapp
+            | scale.tests.server.test_error_envelope { ServingTestClient },
         scale.tests.data.test_eager_spawn
             | scale.tests.microservices.test_embedded_gateway
             | scale.tests.microservices.test_microservice
@@ -4985,6 +5003,11 @@ graph import client {
         compiler.ViteCompiler.prepare_bundle { client_program },
         jac_client_compiler | npm_provider | route_scanner | vite_bundler {
             ClientBundleError
+        },
+        jac_client_compiler.JacClientCompiler.compile { client_source_root },
+        targets.web_target.WebTarget.build {
+            client_context_program,
+            client_source_root
         },
         vite_client_bundle {
             ClientBuildInputs,
@@ -7065,6 +7088,7 @@ graph import compiler {
             E0051,
             E0052,
             E0055,
+            E0057,
             E0058,
             E0063,
             E0065,
@@ -7246,6 +7270,8 @@ graph import compiler {
             E1158,
             E1159,
             E1161,
+            E1162,
+            E1163,
             E2015,
             W1036,
             W1037,
@@ -8347,6 +8373,7 @@ graph import compiler {
             ReturnStmt,
             SpecialVarRef,
             SwitchStmt,
+            Test,
             Token,
             TryStmt,
             TupleVal,
@@ -8501,7 +8528,7 @@ graph import compiler {
             UniNode
         },
         passes.context { ImplDef, Module, Source, TreeWalker, UniNode },
-        passes.dataflow { UniCFGNode },
+        passes.dataflow { AstElseBodyNode, UniCFGNode },
         passes.decl_impl_match_pass {
             Ability,
             Archetype,
@@ -8658,7 +8685,6 @@ graph import compiler {
             Ability,
             Archetype,
             Assignment,
-            AstElseBodyNode,
             AtomTrailer,
             AwaitExpr,
             BinaryExpr,
@@ -9056,6 +9082,7 @@ graph import compiler {
             Expr,
             ExprAsItem,
             FilterCompr,
+            FinallyStmt,
             FormattedValue,
             FuncCall,
             FuncSignature,
@@ -9090,9 +9117,11 @@ graph import compiler {
             SubTag,
             Symbol,
             Token,
+            TryStmt,
             TupleVal,
             TypeAlias,
             UnaryExpr,
+            UniCFGNode,
             UniNode,
             VisitStmt,
             WhileStmt,
@@ -9101,7 +9130,8 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
-            type_only_import_of
+            type_only_import_of,
+            type_param_of
         },
         passes.variant_agreement_pass {
             Ability,
@@ -12139,6 +12169,7 @@ graph import compiler.frontend {
         Absorbs,
         CalleeDecl,
         CalleeSignature,
+        CfgCatch,
         CfgFalse,
         CfgSucc,
         CfgTrue,
@@ -13583,11 +13614,13 @@ graph import compiler.passes {
         ownership_check_pass {
             DataflowTransfer,
             SymId,
+            is_scope_exit,
             solve_backward,
             solve_forward,
             solve_forward_must
         },
         rc_facts_pass { SymId, solve_backward_gen_kill },
+        type_checker_pass { SymId, is_scope_exit, solve_forward },
     ]
     execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
@@ -45258,7 +45291,8 @@ graph import scale {
             _CLIENT_BUILD_ATTEMPTS,
             _CLIENT_BUILD_RETRY_PAUSE_S,
             _is_transient_client_build_failure,
-            _membership_diagnosis
+            _membership_diagnosis,
+            _run_until_quiet
         },
         tests.deploy.test_deployment_overlay {
             CONFIG_REVISION_ANNOTATION,
@@ -45353,9 +45387,8 @@ graph import scale {
             privileged_pss_labels
         },
     ]
-    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity {
-        KubectlCluster
-    }
+    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity
+        | tests.microservices.test_pvc_injector { KubectlCluster }
     deploy.target.registry ++> config.validation { DeploymentTargetRegistry }
     deploy.target.registry --> tests.misc.test_config_validation {
         BUILTIN_TARGET_TYPES
@@ -45600,6 +45633,10 @@ graph import scale {
         sdk.client { CallbackSink, EventSink, NoopSink, ProgressEvent },
         sdk.events { EventSink, ProgressEvent },
     ]
+    models.progress --> tests.deploy.test_superseded_deployment_reap {
+        CallbackSink,
+        ProgressEvent
+    }
     models.resource_status ++> [
         admin.deploy_health { assess_workload },
         deploy.autoscale.autoscaler {
@@ -45853,12 +45890,13 @@ graph import scale {
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
         tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
+        tests.microservices.test_bundle_jacignore { solo_fleet },
     ]
     runtime.fleet --> [
         admin.logs._fleet_names | admin.traces._trace_services { fleet_member_names },
         tests.apps.test_fleet_from_apps { _compiled_app_edges },
         tests.deploy.test_client_build_stage { FleetMember, FleetSpec },
-        tests.microservices.test_app_precompile { fleet_from_config },
+        tests.microservices.test_app_precompile { fleet_from_config, solo_fleet },
     ]
     runtime.gateway.dispatch ++> [
         tests.apps.test_fleet_from_apps { ROUTE_PROXY, classify_route },
@@ -46421,7 +46459,7 @@ graph import scale.deploy.target.kubernetes {
 
 graph import scale.emailer {
     emailer ++> [
-        emailers { EmailAttachment, Emailer },
+        emailers { EmailAttachment, Emailer, MAX_HEADER_LINE },
         factory { Emailer },
     ]
     emailers --> factory.create { SMTPEmailer }
@@ -46949,7 +46987,7 @@ graph import server {
         register_walker_endpoints
     }
     exchange ++> [
-        endpoints.colocated { refusal_status, settle_envelope },
+        endpoints.colocated { settle_envelope },
         endpoints.walkers {
             apply_response_choice,
             has_response_choice,
@@ -47142,10 +47180,10 @@ graph import server {
     serving.health ++> server.JacAPIServer.register_endpoints {
         register_health_endpoints
     }
-    serving.middleware ++> server.JacAPIServer.build_app {
-        cors_middleware,
-        custom_headers_middleware
-    }
+    serving.middleware ++> [
+        server.JacAPIServer.build_app { cors_middleware, custom_headers_middleware },
+        settings.ServeSettings.validate { cors_pair_problem },
+    ]
     serving.model ++> identity.auth_models { ApiModel, require_str }
     serving.openapi ++> [
         server.JacAPIServer._refresh_dev_endpoints { register_docs_endpoints },
@@ -47237,7 +47275,7 @@ graph import server {
 graph import server.endpoints {
     auth ++> second_factor { fail, ok, throttled }
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller }
 }
 
 graph import server.identity {
