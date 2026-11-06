@@ -78,6 +78,7 @@ obj ClientErrorLimiter {
 
     def admit(client: str) -> int;
     def _admit_locked(client: str, now: float) -> int;
+    def _window_locked(client: str, now: float) -> ClientErrorWindow;
     def is_repeat(client: str, message: str) -> bool;
 }
 

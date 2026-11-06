@@ -91,13 +91,25 @@ impl build_client_error_limit_middleware(cfg: dict[str, any]) -> any {
     limiter = StateBackendRateLimiter(
         backend=backend, rate_per_sec=rpm / 60.0, capacity=float(rpm)
     );
+    storage: dict[str, bool] = {"failing": False};
 
     async def client_error_limit(request: any, call_next: any) -> any {
         if request.method != "POST" or request.url.path != CLIENT_ERROR_PATH {
             return await call_next(request);
         }
         key = f"{NAMESPACE}:client_error:{request.client_host or 'unknown'}";
-        (ok, retry_in) = limiter.consume(key);
+        try {
+            (ok, retry_in) = await asyncio.to_thread(limiter.consume, key);
+        } except Exception as e {
+            if not storage["failing"] {
+                logger.warning(
+                    f"Error-report limit storage failed, so the gateway passes reports through and each service limits them per client: {e}"
+                );
+            }
+            storage["failing"] = True;
+            return await call_next(request);
+        }
+        storage["failing"] = False;
         if ok {
             return await call_next(request);
         }

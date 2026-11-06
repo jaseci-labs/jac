@@ -304,15 +304,27 @@ impl ClientErrorLimiter.admit(client: str) -> int {
     retry = consume_limit(
         "client-error", client, self.max_per_window, self.window_seconds
     );
-    if retry >= 0 {
-        return retry;
-    }
     with self._lock {
-        return self._admit_locked(client, time.time());
+        if retry < 0 {
+            return self._admit_locked(client, time.time());
+        }
+        if retry == 0 {
+            self._window_locked(client, time.time());
+        }
+        return retry;
     }
 }
 
 impl ClientErrorLimiter._admit_locked(client: str, now: float) -> int {
+    window = self._window_locked(client, now);
+    if window.count >= self.max_per_window {
+        return max(1, math.ceil(window.started + self.window_seconds - now));
+    }
+    window.count += 1;
+    return 0;
+}
+
+impl ClientErrorLimiter._window_locked(client: str, now: float) -> ClientErrorWindow {
     window = self._clients.get(client);
     if window is None or now - window.started >= self.window_seconds {
         self._clients.pop(client, None);
@@ -327,11 +339,7 @@ impl ClientErrorLimiter._admit_locked(client: str, now: float) -> int {
         window = ClientErrorWindow(started=now);
         self._clients[client] = window;
     }
-    if window.count >= self.max_per_window {
-        return max(1, math.ceil(window.started + self.window_seconds - now));
-    }
-    window.count += 1;
-    return 0;
+    return window;
 }
 
 impl ClientErrorLimiter.is_repeat(client: str, message: str) -> bool {

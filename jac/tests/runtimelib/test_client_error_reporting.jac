@@ -8,6 +8,7 @@ import io;
 import json;
 import logging;
 import uuid;
+import from contextlib { AbstractContextManager }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.testing.testing { JacTestClient }
@@ -341,14 +342,16 @@ def error_report(message: str, stack: str = APP_STACK) -> dict[str, any] {
     return {"message": message, "stack": stack, "source": "window.onerror"};
 }
 
-"""Statuses, Retry-After values and the first 429 body for reports posted
-round-robin across `clients`, each standing in for one worker."""
+"""Statuses, Retry-After values, the first 429 body and how many accepted
+reports were dropped as repeats, for reports posted round-robin across
+`clients`, each standing in for one worker."""
 def post_reports(
     clients: list[JacTestClient], messages: list[str]
-) -> tuple[list[int], list[any], dict[str, dict[str, str]] | None] {
+) -> tuple[list[int], list[any], dict[str, dict[str, str]] | None, int] {
     statuses: list[int] = [];
     retry_after: list[any] = [];
     refused: dict[str, dict[str, str]] | None = None;
+    repeats = 0;
     for (i, message) in enumerate(messages) {
         resp = clients[i % len(clients)].post(
             "/cl/__error__", json=error_report(message)
@@ -357,9 +360,24 @@ def post_reports(
         if resp.status_code == 429 {
             retry_after.append(resp.headers.get("Retry-After"));
             refused = refused or resp.json();
+        } elif resp.json().get("throttled") {
+            repeats += 1;
         }
     }
-    return (statuses, retry_after, refused);
+    return (statuses, retry_after, refused, repeats);
+}
+
+"""Count the JSON bodies the server parses while the block runs."""
+def count_body_parses -> tuple[AbstractContextManager[object], list[int]] {
+    import from unittest.mock { patch }
+    import from jaclang.server.serving.datatypes { Request }
+    parses: list[int] = [0];
+    original = Request.json_sync;
+    def counted(request: Request) -> object {
+        parses[0] += 1;
+        return original(request);
+    }
+    return (patch.object(Request, "json_sync", counted), parses);
 }
 
 def assert_backs_off(label: str, statuses: list[int], retry_after: list[any]) {
@@ -387,34 +405,55 @@ test "a client past its error-report budget gets 429 with Retry-After, across wo
     import from jaclang.server.identity.rate_limit { consume_limit }
     tag = uuid.uuid4().hex;
     rows = [
-        ("distinct reports", [f"distinct {tag} {i}" for i in range(40)], 1, True),
-        ("the same report in a loop", [f"looping {tag}"] * 40, 1, True),
+        (
+            "distinct reports",
+            [f"distinct {tag} {i}" for i in range(40)],
+            1,
+            True,
+            False
+        ),
+        ("the same report in a loop", [f"looping {tag}"] * 40, 1, True, True),
         (
             "distinct reports across two workers",
             [f"spread {tag} {i}" for i in range(40)],
             2,
-            True
+            True,
+            False
         ),
         (
             "no shared store, so each worker counts",
             [f"local {tag} {i}" for i in range(40)],
             1,
+            False,
             False
+        ),
+        (
+            "the same report in a loop, no shared store",
+            [f"local looping {tag}"] * 40,
+            1,
+            False,
+            True
         )
     ];
-    for (label, messages, workers, shared) in rows {
+    for (label, messages, workers, shared, looping) in rows {
+        (counting, parses) = count_body_parses();
         with TemporaryDirectory() as tmpdir {
             clients = [make_client(tmpdir) for _ in range(workers)];
             try {
-                if shared {
-                    (statuses, retry_after, refused) = post_reports(clients, messages);
-                } else {
-                    with patch(
-                        consume_limit.__module__ + ".shared_store", return_value=None
-                    ) {
-                        (statuses, retry_after, refused) = post_reports(
+                with counting {
+                    if shared {
+                        (statuses, retry_after, refused, repeats) = post_reports(
                             clients, messages
                         );
+                    } else {
+                        with patch(
+                            consume_limit.__module__ + ".shared_store",
+                            return_value=None
+                        ) {
+                            (statuses, retry_after, refused, repeats) = post_reports(
+                                clients, messages
+                            );
+                        }
                     }
                 }
             } finally {
@@ -425,6 +464,13 @@ test "a client past its error-report budget gets 429 with Retry-After, across wo
         }
         assert_backs_off(label, statuses, retry_after);
         assert_rate_limited_body(label, refused);
+        accepted = statuses.count(200);
+        assert repeats == (accepted - 1 if looping else 0) , (
+            f"{label}: {repeats} of {accepted} accepted reports were dropped as repeats"
+        );
+        assert parses[0] == accepted , (
+            f"{label}: {parses[0]} bodies parsed for {accepted} accepted reports"
+        );
     }
 
     limiter = ClientErrorLimiter();
@@ -501,19 +547,25 @@ test "one client's flood does not mute another client's report" {
 }
 
 test "an oversized error report is refused with 413" {
+    (counting, parses) = count_body_parses();
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         try {
-            normal = client.post(
-                "/cl/__error__", json=error_report("normal " + "x" * 8000)
-            );
-            oversized = client.post(
-                "/cl/__error__", json=error_report("oversized " + "x" * 200000)
-            );
+            with counting {
+                normal = client.post(
+                    "/cl/__error__", json=error_report("normal " + "x" * 8000)
+                );
+                oversized = client.post(
+                    "/cl/__error__", json=error_report("oversized " + "x" * 200000)
+                );
+            }
         } finally {
             client.close();
         }
     }
+    assert parses[0] == 1 , f"{parses[
+        0
+    ]} bodies parsed; the oversized one should not be";
     assert normal.status_code == 200 , normal.status_code;
     assert oversized.status_code == 413 , (
         f"a 200 KB report was accepted: {oversized.status_code} {oversized.text[:80]}"
@@ -627,7 +679,9 @@ test "the gateway refuses an error-report flood only when it can tell clients ap
         ServiceRegistry,
         ServiceStatus
     }
+    import asyncio;
     import from jaclang.scale.runtime.middleware.rate_limit {
+        StateBackendRateLimiter,
         client_error_limit_skipped
     }
     import from jaclang.scale.state.factory { _backend_holder }
@@ -640,15 +694,28 @@ test "the gateway refuses an error-report flood only when it can tell clients ap
     assert client_error_limit_skipped(limit, [], False) == "";
     assert client_error_limit_skipped({"client_error_rpm": 0}, [], True) == "";
 
-    gateway_logger = logging.getLogger(
-        "jaclang.scale.runtime.gateway.microservice_gateway"
-    );
+    gateway_logger = logging.getLogger("jaclang.scale.runtime");
+    original_consume = StateBackendRateLimiter.consume;
     rows = [
-        ("outside a cluster", "", "", True),
-        ("in a cluster, the ingress trusted", "10.96.0.1", "10.0.0.0/8", True),
-        ("in a cluster, nothing trusted", "10.96.0.1", "", False)
+        ("outside a cluster", "", "", True, False),
+        ("in a cluster, the ingress trusted", "10.96.0.1", "10.0.0.0/8", True, False),
+        ("in a cluster, nothing trusted", "10.96.0.1", "", False, False),
+        ("the limit's storage is down", "", "", False, True)
     ];
-    for (label, cluster_host, trusted, should_limit) in rows {
+    for (label, cluster_host, trusted, should_limit, store_down) in rows {
+        on_event_loop: list[bool] = [];
+        def consume(limiter: StateBackendRateLimiter, key: str) -> tuple[bool, float] {
+            try {
+                asyncio.get_running_loop();
+                on_event_loop.append(True);
+            } except RuntimeError {
+                on_event_loop.append(False);
+            }
+            if store_down {
+                raise RuntimeError("the database went away");
+            }
+            return original_consume(limiter, key);
+        }
         _backend_holder.clear();
         (srv, port, hits) = serve_counting_upstream();
         registry = ServiceRegistry();
@@ -672,7 +739,9 @@ test "the gateway refuses an error-report flood only when it can tell clients ap
         with TemporaryDirectory() as tmp {
             (buf, handler, old_level) = capture_log_start(gateway_logger, logging.INFO);
             try {
-                with patch.dict(os.environ, env) {
+                with patch.dict(os.environ, env), patch.object(
+                    StateBackendRateLimiter, "consume", consume
+                ) {
                     gateway = MicroserviceGateway(registry=registry, base_path=tmp);
                     gateway.setup();
                     client = ServingTestClient(gateway.app);
@@ -710,8 +779,13 @@ test "the gateway refuses an error-report flood only when it can tell clients ap
                 hits
             )} of 60 reports reached the service";
         }
+        assert not any(on_event_loop) , f"{label}: the limit was counted on the event loop";
+        failures = buf.getvalue().count("Error-report limit storage failed");
+        assert failures == (1 if store_down else 0) , (
+            f"{label}: storage failure logged {failures} times"
+        );
         noted = "client_error_rpm is not applied" in buf.getvalue();
-        assert noted == (not should_limit) , (
+        assert noted == (not should_limit and not store_down) , (
             f"{label}: expected the gateway to say it skips the limit: {not should_limit}; got {buf.getvalue()!r}"
         );
     }

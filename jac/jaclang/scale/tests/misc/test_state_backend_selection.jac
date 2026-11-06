@@ -46,7 +46,25 @@ test "outside a fleet, unshared state stays in this process" {
     _reset();
     try {
         assert not in_fleet();
-        assert isinstance(get_state_backend(False), InProcessStateBackend);
+        backend = get_state_backend(False);
+        assert isinstance(backend, InProcessStateBackend);
+        for i in range(100) {
+            backend.set(f"rl:client-{i}", "1:0", ttl_seconds=1);
+        }
+        backend.set("kept", "1");
+        backend._next_sweep = 0.0;
+        backend.set("rl:latest", "1:0", ttl_seconds=60);
+        assert len(backend._values) == 102 , "live entries were swept";
+        backend._next_sweep = 0.0;
+        for (key, (value, _)) in list(backend._values.items()) {
+            if key.startswith("rl:client-") {
+                backend._values[key] = (value, 1.0);
+            }
+        }
+        backend.increment("rl:other", ttl_seconds=60);
+        assert sorted(backend._values) == ["kept", "rl:latest", "rl:other"] , (
+            f"{len(backend._values)} entries kept after every client's window expired"
+        );
     } finally {
         _set_env(previous);
         _reset();
