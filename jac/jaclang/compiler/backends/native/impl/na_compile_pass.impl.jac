@@ -100,6 +100,67 @@ impl unit_bitcode(unit_ir: any) -> bytes {
     return module_bitcode(llvm.parse_assembly(str(unit_ir), llvm.create_context()));
 }
 
+impl unit_snapshot_text(ir_text: str) -> UnitIRSnapshot {
+    (bitcode, defined, declared, function_counts) = unit_snapshot_text_values(ir_text);
+    return UnitIRSnapshot(
+        bitcode=bitcode,
+        defined=defined,
+        declared=declared,
+        function_counts=function_counts
+    );
+}
+
+impl unit_snapshot_text_values(
+    ir_text: str
+) -> tuple[bytes, set[str], set[str], tuple[int, int]] {
+    return unit_snapshot_module_values(
+        llvm.parse_assembly(ir_text, llvm.create_context())
+    );
+}
+
+impl unit_snapshot_module(mod: ModuleRef) -> UnitIRSnapshot {
+    (bitcode, defined, declared, function_counts) = unit_snapshot_module_values(mod);
+    return UnitIRSnapshot(
+        bitcode=bitcode,
+        defined=defined,
+        declared=declared,
+        function_counts=function_counts
+    );
+}
+
+impl unit_snapshot_module_values(
+    mod: ModuleRef
+) -> tuple[bytes, set[str], set[str], tuple[int, int]] {
+    defined: set[str] = set();
+    declared: set[str] = set();
+    declared_functions = 0;
+    defined_functions = 0;
+    for fn in module_functions(mod) {
+        name = str(fn.name);
+        if fn.is_declaration {
+            declared.add(name);
+            declared_functions += 1;
+        } else {
+            defined.add(name);
+            defined_functions += 1;
+        }
+    }
+    for global_var in mod.global_variables {
+        name = str(global_var.name);
+        if global_var.is_declaration {
+            declared.add(name);
+        } else {
+            defined.add(name);
+        }
+    }
+    return (
+        module_bitcode(mod),
+        defined,
+        declared,
+        (declared_functions, defined_functions)
+    );
+}
+
 impl unit_module_copy(unit_ir: any, context: any) -> ModuleRef {
     if isinstance(unit_ir, llvm.ModuleRef) {
         return llvm.parse_bitcode(module_bitcode(unit_ir), context);
@@ -132,18 +193,51 @@ impl optimize_unit_bitcode(
 impl optimize_unit_bitcodes(
     bitcodes: list[bytes], options: CompileOptions, opt_level: int
 ) -> list[bytes] {
+    return optimize_unit_bitcodes_with_config(
+        bitcodes, options.native_target or "", bool(options.native_debug), opt_level
+    );
+}
+
+impl optimize_unit_bitcodes_with_config(
+    bitcodes: list[bytes], native_target: str, native_debug: bool, opt_level: int
+) -> list[bytes] {
     import functools;
-    create_unit_target_machine(options);
+    create_unit_target_machine_with_config(native_target, native_debug);
     return codegen_map(
-        functools.partial(optimize_unit_bitcode, options=options, opt_level=opt_level),
+        functools.partial(
+            optimize_unit_bitcode_with_config,
+            native_target=native_target,
+            native_debug=native_debug,
+            opt_level=opt_level
+        ),
         bitcodes
     );
+}
+
+impl optimize_unit_bitcode_with_config(
+    bitcode: bytes, native_target: str, native_debug: bool, opt_level: int
+) -> bytes {
+    mod = llvm.parse_bitcode(bitcode, llvm.create_context());
+    mod.verify();
+    optimize_unit(
+        mod,
+        create_unit_target_machine_with_config(native_target, native_debug),
+        opt_level
+    );
+    return module_bitcode(mod);
 }
 
 impl create_unit_target_machine(
     options: CompileOptions, jit: bool = False
 ) -> TargetMachine {
-    target_ovr = options.native_target or "";
+    return create_unit_target_machine_with_config(
+        options.native_target or "", bool(options.native_debug), jit
+    );
+}
+
+impl create_unit_target_machine_with_config(
+    target_ovr: str, native_debug: bool, jit: bool = False
+) -> TargetMachine {
     if target_ovr {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
@@ -156,7 +250,7 @@ impl create_unit_target_machine(
         target = llvm.Target.from_default_triple();
     }
     assert isinstance(target, llvm.Target);
-    opt = 0 if options.native_debug else 2;
+    opt = 0 if native_debug else 2;
     tm = target.create_target_machine(
         opt=opt, reloc=NATIVE_RELOC_MODEL, codemodel=NATIVE_CODE_MODEL, jit=jit
     );
@@ -401,9 +495,13 @@ impl native_linked_ir_text(module: uni.Module) -> str {
 }
 
 
-impl unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks {
+impl unit_fallbacks(
+    gen: CodeGenTarget, ir_text: (str | None) = None
+) -> NativeFallbacks {
     if gen.native_fallbacks is None {
-        gen.native_fallbacks = native_fallbacks_in_ir(str(gen.llvm_ir));
+        gen.native_fallbacks = native_fallbacks_in_ir(
+            ir_text if ir_text is not None else str(gen.llvm_ir)
+        );
     }
     return gen.native_fallbacks;
 }

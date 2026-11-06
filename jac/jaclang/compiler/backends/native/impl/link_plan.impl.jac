@@ -361,9 +361,15 @@ impl build_link_plan(
         return plan;
     } finally {
         registry.session = None;
-        session.close();
-        end_prepare_memo(memo);
-        pop_native_target(target_token);
+        try {
+            session.close();
+        } finally {
+            try {
+                end_prepare_memo(memo);
+            } finally {
+                pop_native_target(target_token);
+            }
+        }
     }
 }
 

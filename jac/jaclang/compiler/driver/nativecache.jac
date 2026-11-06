@@ -160,13 +160,6 @@ obj NativeUnitRegistry {
     def _live_gen(resolved: str) -> (CodeGenTarget | None);
 }
 
-obj NativeIRSnapshot {
-    has bitcode: bytes,
-        defined: set[str],
-        declared: set[str],
-        referenced: (set[str] | None) = None;
-}
-
 obj SessionHeap {
     has held: bool = False,
         declined: bool = False,
@@ -182,12 +175,15 @@ obj NativeBuildSession {
         options: CompileOptions,
         prog: JacProgram postinit,
         lowered: dict[str, Module] = {},
-        ir_snapshots: dict[str, NativeIRSnapshot] = {},
+        ir_snapshots: dict[str, UnitIRSnapshot] = {},
         compact_on_lower: bool = False,
         source_keys: dict[str, str | None] = {},
         deferred: list[set[str]] = [],
         discovery_open: list[bool] = [],
         unlowerable: set[str] = set(),
+        async_snapshots: bool = False,
+        snapshot_pipeline: NativeSnapshotPipeline postinit,
+        optimized_units: set[str] = set(),
         heap: SessionHeap = SessionHeap();
 
     def discovering -> bool;
@@ -197,6 +193,10 @@ obj NativeBuildSession {
     def settle_heap;
     def lower(path: str, use_str: (str | None) = None) -> (NativeUnitEntry | None);
     def compact_ir(paths: list[str]);
+    def enqueue_snapshot(path: str);
+    def await_snapshot(path: (str | None) = None);
+    def schedule_snapshot_optimization(path: str, snapshot: UnitIRSnapshot);
+    def record_snapshot_optimization(batch: NativeOptimizationBatch);
     def unbound_symbols(path: str, deps: list[str]) -> (list[str] | None);
     def finish(paths: list[str]);
     def _optimize_in_parallel(paths: list[str]) -> set[str];
