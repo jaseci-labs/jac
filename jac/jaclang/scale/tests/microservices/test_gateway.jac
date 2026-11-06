@@ -1245,6 +1245,51 @@ test "gateway static files revalidate by etag and hashed names are immutable" {
     shutil.rmtree(tmp);
 }
 
+test "gateway honours If-Range so a stale resume gets the whole file" {
+    tmp = tempfile.mkdtemp();
+    body = bytes(range(256)) * 16;
+    (Path(tmp) / "data.bin").write_bytes(body);
+
+    gw = MicroserviceGateway(registry=ServiceRegistry(), client_dist_dir=tmp);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+
+    first = client.get("/data.bin");
+    assert first.status_code == 200;
+    tag = first.headers.get("etag");
+    modified = first.headers.get("last-modified");
+    assert tag;
+    assert modified;
+
+    # A validator that still matches resumes with the requested slice.
+    part = client.get("/data.bin", headers={"Range": "bytes=0-99", "If-Range": tag});
+    assert part.status_code == 206;
+    assert part.content == body[:100];
+    dated = client.get(
+        "/data.bin", headers={"Range": "bytes=0-99", "If-Range": modified}
+    );
+    assert dated.status_code == 206;
+
+    # A stale validator must get the whole current file, never a mixed slice.
+    stale = client.get(
+        "/data.bin", headers={"Range": "bytes=0-99", "If-Range": 'W/"stale"'}
+    );
+    assert stale.status_code == 200;
+    assert stale.content == body;
+    assert stale.headers.get("content-range") is None;
+    old = client.get(
+        "/data.bin",
+        headers={"Range": "bytes=0-99", "If-Range": "Mon, 01 Jan 2001 00:00:00 GMT"}
+    );
+    assert old.status_code == 200;
+    assert old.content == body;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
 test "gateway returns 404 for missing static and no spa" {
     tmp = tempfile.mkdtemp();
 

@@ -50,6 +50,23 @@ impl _not_modified(request: Request, etag: str, mtime: float) -> bool {
     return False;
 }
 
+impl _if_range_matches(request: Request, etag: str, mtime: float) -> bool {
+    cond = request.headers.get('If-Range');
+    if cond is None {
+        return True;
+    }
+    cond = cond.strip();
+    if cond.endswith('"') {
+        return cond == etag;
+    }
+    try {
+        since = parsedate_to_datetime(cond).timestamp();
+    } except (TypeError, ValueError) {
+        return False;
+    }
+    return mtime > 0 and int(mtime) == int(since);
+}
+
 impl _parse_range(header: str, size: int) -> (tuple[int, int] | None) {
     spec = header.strip();
     if not spec.lower().startswith('bytes=') {
@@ -115,7 +132,9 @@ impl file_response(
     }
     size = stat.st_size;
     range_header = request.headers.get('Range');
-    if range_header is not None and request.method == 'GET' {
+    if range_header is not None
+        and request.method == 'GET'
+        and _if_range_matches(request, etag, stat.st_mtime) {
         span = _parse_range(range_header, size);
         if span is None {
             resp = Response(
