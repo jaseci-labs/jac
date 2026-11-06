@@ -15,7 +15,13 @@ def _without_keys(record: dict[str, any], dropped: str) -> dict[str, any];
 
 def _portable_manifest(manifest: dict[str, any]) -> dict[str, any];
 
-def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None);
+def build_serve_manifest(
+    entry_file: Path, proj_root: Path, client: bool = False
+) -> (tuple[dict[str, any], str] | None);
+
+def finish_prepared_client(
+    entry_file: Path, proj_root: Path, client_dist: str, exports: list[str]
+) -> (Path | None);
 
 
 def ensure_client_dist(config: any, entry_file: Path) -> (Path | None);

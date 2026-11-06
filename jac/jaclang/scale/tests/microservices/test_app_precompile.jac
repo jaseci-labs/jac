@@ -167,7 +167,7 @@ class _SealLog(logging.Handler) {
 
 
 def _pack_logged(
-    base: Path, binary: bytes, client_ready: any = None
+    base: Path, binary: bytes, client_ready: any = None, bake_client: bool = False
 ) -> tuple[bytes, list[str]] {
     log = logging.getLogger("jaclang.scale.injector.bundle");
     seen = _SealLog();
@@ -175,7 +175,9 @@ def _pack_logged(
     log.setLevel(logging.INFO);
     log.addHandler(seen);
     try {
-        raw = pack_jab(str(base), binary, client_ready=client_ready);
+        raw = pack_jab(
+            str(base), binary, client_ready=client_ready, bake_client=bake_client
+        );
     } finally {
         log.removeHandler(seen);
         log.setLevel(previous);
@@ -295,6 +297,33 @@ test "a seeded seal reuses a runtime dependency instead of compiling it again" {
     assert not _bundle_jir(dropped, "shared") , (
         "a runtime dependency nothing imports any more still shipped"
     );
+}
+
+
+test "a seal that builds the client ships its dist and reuses it with the seal" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[dependencies.npm]\nreact = \"^19.2.0\"\nreact-dom = \"^19.2.0\"\n"
+    );
+    (base / "svc.jac").write_text(
+        "def:pub ping -> str { return \"pong\"; }\n\n"
+            + "def:pub app() -> JsxElement {\n    return <div>mini</div>;\n}\n"
+    );
+    (first, first_log) = _pack_logged(base, binary, bake_client=True);
+    names = _names(first);
+    assert ".jac/client/dist/index.html" in names , (
+        f"the sealed bundle shipped no client page: {first_log}"
+    );
+    assert any(
+        name.startswith(".jac/client/dist/") and name.endswith(".js") for name in names
+    ) , names;
+    (again, again_log) = _pack_logged(base, binary, bake_client=True);
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        f"an unchanged project with a client sealed the app again: {again_log}"
+    );
+    assert again == first , "the reused bundle differs from the one the seal built";
 }
 
 

@@ -255,6 +255,8 @@ graph import {
             | project.template_loader
             | scale.deploy.target.factory.ensure_deploy_tooling
             | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector
             | scale.deploy.target.kubernetes.target.KubernetesTarget._wait_for_fleet_rollout
             | scale.deploy.target.kubernetes.utils.kubernetes_utils
             | scale.injector.binary_injector.select_injector
@@ -489,7 +491,8 @@ graph import {
     client.targets.react_native.html_tag_map --> compiler.passes.jsx_intrinsic_guard_pass._suggestion_for {
         rn_tag_suggestions
     }
-    client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
+    client.targets.web_target ++> dist.seal.ensure_client_dist
+        | dist.seal.finish_prepared_client { WebTarget }
     client.vite_bundler ++> [
         dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
             client_build_env
@@ -5269,7 +5272,7 @@ graph import client.targets {
         run_manifest_install as _node_run_manifest_install
     }
     pwa_build --> [
-        web_target.WebTarget.build { apply_pwa, refresh_pwa_precache },
+        web_target.WebTarget.finish_dist { apply_pwa, refresh_pwa_precache },
         web_target.WebTarget.setup { ensure_pwa_icons },
     ]
     react_native.build ++> mobile_target {
@@ -45430,6 +45433,7 @@ graph import scale {
     ]
     injector.binary ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
+            | deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client
             | runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac {
             host_toolchain_path
         },
@@ -45499,8 +45503,7 @@ graph import scale {
             nested_sanitized_tomls,
             release_binary_env,
             remember_client_dist,
-            remove_stage_root,
-            source_filter_for
+            remove_stage_root
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_pod_spec
             | tests.deploy.test_pod_env._entrypoint_run { APP_MOUNT_PATH },
@@ -45509,11 +45512,17 @@ graph import scale {
             source_filter_for,
             unresolved_toml_references
         },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
+            source_filter_for
+        },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._pod_entrypoint {
             APP_MOUNT_PATH
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._project_config {
             _project_config
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
+            entry_module_rel
         },
         deploy.target.kubernetes.runtime_bootstrap {
             APP_MOUNT_PATH,
