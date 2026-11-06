@@ -250,38 +250,51 @@ test "a broadcast serializes once and every live connection gets the same bytes"
         peers: list[any] = [];
         writers: list[any] = [];
         results: list[str] = [];
-        for i in range(3) {
-            (ours, theirs) = socket.socketpair();
-            (reader, writer) = await asyncio.open_connection(sock=ours);
-            ws = WebSocket(reader=reader, writer=writer, accepted=True);
-            ctx = ConnectionContext(
-                websocket=ws, target_kind='walker', target_name='X', conn_id=f"c{i}"
+        received: list[bytes] = [];
+        try {
+            for i in range(3) {
+                (ours, theirs) = socket.socketpair();
+                peers.append(theirs);
+                (reader, writer) = await asyncio.open_connection(sock=ours);
+                writers.append(writer);
+                ws = WebSocket(reader=reader, writer=writer, accepted=True);
+                ctx = ConnectionContext(
+                    websocket=ws, target_kind='walker', target_name='X', conn_id=f"c{i}"
+                );
+                results.append(str(await mgr.register(ctx)));
+            }
+            # A socket that already went away must not stop the others.
+            dead = ConnectionContext(
+                websocket=WebSocket(closed=True),
+                target_kind='walker',
+                target_name='X',
+                conn_id='dead'
             );
-            results.append(str(await mgr.register(ctx)));
-            peers.append(theirs);
-            writers.append(writer);
-        }
-        # A socket that already went away must not stop the others.
-        dead = ConnectionContext(
-            websocket=WebSocket(closed=True),
-            target_kind='walker',
-            target_name='X',
-            conn_id='dead'
-        );
-        results.append(str(await mgr.register(dead)));
-        await mgr.broadcast_target('walker', 'X', {'items': [value]});
-        received = [peer.recv(65536) for peer in peers];
-        for writer in writers {
-            writer.close();
-        }
-        for peer in peers {
-            peer.close();
+            results.append(str(await mgr.register(dead)));
+            await mgr.broadcast_target('walker', 'X', {'items': [value]});
+            for peer in peers {
+                # A missing frame reads as b'' after the deadline instead of hanging.
+                peer.settimeout(2.0);
+                try {
+                    received.append(peer.recv(65536));
+                } except TimeoutError {
+                    received.append(b'');
+                }
+            }
+        } finally {
+            for writer in writers {
+                writer.close();
+            }
+            for peer in peers {
+                peer.close();
+            }
         }
         return (value.renders, received, results);
     }
     (renders, received, results) = asyncio.run(body());
     assert results == ['None', 'None', 'None', 'None'] , f"register: {results}";
     assert renders == 1 , f"message was serialized {renders} times for 4 sockets";
+    assert b'' not in received , f"a live connection got no frame: {received}";
     assert len(received) == 3 and len(set(received)) == 1 , f"got {received}";
     assert received[0].endswith(b'{"items": ["counted"]}') , f"got {received[0]}";
 }
