@@ -25,7 +25,8 @@ async def serve_ws_connection(
 
 
 obj WebSocketExtension(ServerExtension) {
-    has manager: (WebSocketConnectionManager | None) = None;
+    has manager: (WebSocketConnectionManager | None) = None,
+        _app: ServingApp | None = None;
 
     def validate(server: JacAPIServer) -> list[str];
     def ws_manager(server: JacAPIServer) -> WebSocketConnectionManager;

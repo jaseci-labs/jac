@@ -179,7 +179,8 @@ impl WebSocketExtension.validate(server: JacAPIServer) -> list[str] {
 }
 
 impl WebSocketExtension.ws_manager(server: JacAPIServer) -> WebSocketConnectionManager {
-    if self.manager is None {
+    app = server.require_app();
+    if self.manager is None or self._app is not app {
         ws_cfg = get_scale_config().get_websocket_config();
         manager = WebSocketConnectionManager(
             max_per_target=int(ws_cfg['max_connections_per_target']),
@@ -190,10 +191,11 @@ impl WebSocketExtension.ws_manager(server: JacAPIServer) -> WebSocketConnectionM
             metrics=server.metrics
         );
         self.manager = manager;
+        self._app = app;
         async def _shutdown {
             await manager.shutdown();
         }
-        server.add_shutdown_hook(_shutdown);
+        app.add_shutdown_hook(_shutdown);
     }
     return self.manager;
 }

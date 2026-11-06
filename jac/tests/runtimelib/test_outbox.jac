@@ -359,6 +359,90 @@ test "start_worker is idempotent and the daemon thread delivers on its own" {
 }
 
 
+test "outbox claims remain isolated across fork and administrative replacement" {
+    import multiprocessing;
+    if not hasattr(os, "fork") {
+        testskip("outbox worker isolation requires fork");
+    }
+    context = multiprocessing.get_context("fork");
+    (receiver, sender) = context.Pipe(duplex=False);
+    with TemporaryDirectory() as tmp {
+        store = SqliteOutboxStore(path=os.path.join(tmp, "parent.sqlite"));
+        def in_child {
+            receiver.close();
+            child_store = SqliteOutboxStore(path=os.path.join(tmp, "child.sqlite"));
+            try {
+                use_store(child_store);
+                owner = object();
+                start_worker(interval_s=0.02, owner=owner);
+                child_worker = outbox_mod._state.worker;
+                started = worker_running();
+                stop_worker(owner=owner);
+                sender.send(
+                    [
+                        started,
+                        not worker_running(),
+                        child_worker is not None and not child_worker.is_alive()
+                    ]
+                );
+            } except BaseException as exc {
+                sender.send(str(exc));
+            } finally {
+                stop_worker();
+                use_store(None);
+                child_store.close();
+                sender.close();
+            }
+        }
+        child = context.Process(target=in_child);
+        try {
+            use_store(store);
+            start_worker(interval_s=0.02);
+            parent_worker = outbox_mod._state.worker;
+            assert parent_worker is not None and parent_worker.is_alive();
+            owner = object();
+            start_worker(owner=owner);
+            stop_worker(owner=owner);
+            assert outbox_mod._state.worker is parent_worker
+                and parent_worker.is_alive();
+            child.start();
+            sender.close();
+            assert receiver.poll(5.0) , "forked outbox worker did not finish";
+            result = receiver.recv();
+            child.join(5.0);
+            assert not child.is_alive();
+            assert child.exitcode == 0;
+            assert result == [True, True, True] , str(result);
+            assert outbox_mod._state.worker is parent_worker;
+            assert parent_worker.is_alive();
+            start_worker(owner=owner);
+            stop_worker();
+            assert not parent_worker.is_alive();
+            replacement_owner = object();
+            start_worker(owner=replacement_owner);
+            replacement = outbox_mod._state.worker;
+            stop_worker(owner=owner);
+            assert outbox_mod._state.worker is replacement;
+            assert replacement is not None and replacement.is_alive();
+            stop_worker(owner=replacement_owner);
+            assert not replacement.is_alive() and not worker_running();
+        } finally {
+            if child.pid is not None {
+                if child.is_alive() {
+                    child.kill();
+                }
+                child.join(5.0);
+            }
+            receiver.close();
+            sender.close();
+            stop_worker();
+            use_store(None);
+            store.close();
+        }
+    }
+}
+
+
 test "a claimed lease blocks a second worker until it expires" {
     with TemporaryDirectory() as tmp {
         store = SqliteOutboxStore(path=os.path.join(tmp, "outbox.sqlite"));
