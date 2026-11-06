@@ -1293,8 +1293,25 @@ impl seal_native(
             }
             continue;
         }
-        _refresh_native_twin(out_dir / mod_entry["jir"], u.path, str(pkg_path));
-        jir_bytes = (out_dir / mod_entry["jir"]).read_bytes();
+        twin = out_dir / mod_entry["jir"];
+        _refresh_native_twin(twin, u.path, str(pkg_path));
+        twin_bytes = twin.read_bytes();
+        header = parse_header(twin_bytes[:HEADER_SIZE]);
+        if header is None {
+            raise RuntimeError(f"native unit {rel} has an invalid sealed JIR header");
+        }
+        magic: any = SECTIONS_MAGIC;
+        section_pos = twin_bytes.find(magic, HEADER_SIZE);
+        if section_pos < 0 {
+            raise RuntimeError(f"native unit {rel} has no sealed JIR sections");
+        }
+        sections = read_sections(twin_bytes, section_pos + len(magic));
+        sections[SEC_NIFACE] = stamp.pack(u.iface.to_bytes());
+        bytecode = sections.pop(SEC_BYTECODE, None);
+        module_key = (sections.pop(SEC_MODKEY, b"") or b"").decode("utf-8");
+        twin_bytes = write_precompiled_jir(bytecode, module_key, header.flags, sections);
+        twin.write_bytes(twin_bytes);
+        jir_bytes = twin_bytes;
         mod_entry["sha256"] = hashlib.sha256(jir_bytes).hexdigest();
         sealed_iface = NativeIface.verified_digest(
             native_section_payload(_rsb(jir_bytes, SEC_NIFACE), stamp)
