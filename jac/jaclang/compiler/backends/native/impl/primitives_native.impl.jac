@@ -5838,6 +5838,8 @@ impl NativeBuiltinEmitter.emit_hasattr(
         return None;
     }
     fields = p.struct_field_indices[type_name];
+    methods = p.vtable_method_indices.get(type_name, {});
+    static_prefix = type_name + ".";
     i1 = ir.IntType(1);
     # No compile-time fast path for a literal name: reading the literal needs
     # either `getattr(node, "lit_value", None)` (a 3-arg FuncCall the native
@@ -5849,8 +5851,17 @@ impl NativeBuiltinEmitter.emit_hasattr(
     if args[1].type != i8p {
         return None;
     }
-    if not fields {
-        return ir.Constant(i1, 0);
+    if not fields and not methods {
+        has_static = False;
+        for static_name in p.static_fields {
+            if static_name.startswith(static_prefix) {
+                has_static = True;
+                break;
+            }
+        }
+        if not has_static {
+            return ir.Constant(i1, 0);
+        }
     }
     b = get_builder(p);
     strcmp = p._get_or_declare_extern(
@@ -5867,6 +5878,32 @@ impl NativeBuiltinEmitter.emit_hasattr(
             "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.match"
         );
         result = b.or_(result, matches, name="hasattr.or");
+    }
+    for method_name in methods.keys() {
+        cmp = b.call(
+            strcmp,
+            [args[1], p._make_global_string(method_name, name_prefix=".hasattr")],
+            name="hasattr.method.cmp"
+        );
+        matches = b.icmp_signed(
+            "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.method.match"
+        );
+        result = b.or_(result, matches, name="hasattr.method.or");
+    }
+    for static_name in p.static_fields {
+        if static_name.startswith(static_prefix) {
+            member_name = static_name[len(static_prefix):];
+            cmp = b.call(
+                strcmp,
+                [args[1], p._make_global_string(member_name, name_prefix=".hasattr")],
+                name="hasattr.static.cmp"
+            );
+            matches = b.icmp_signed(
+                "==", cmp, ir.Constant(ir.IntType(32), 0),
+                name="hasattr.static.match"
+            );
+            result = b.or_(result, matches, name="hasattr.static.or");
+        }
     }
     return result;
 }
