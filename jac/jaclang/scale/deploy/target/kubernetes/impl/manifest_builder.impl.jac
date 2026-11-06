@@ -601,8 +601,9 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
         staged = [Path(stage) / path.relative_to(base) for path in sources];
         if all(path.is_file() for path in staged)
             and client_input_digest(
-            Path(stage), staged, jac_binary, entry_rel.as_posix(), sanitized, tomls
-        ) == key {
+                Path(stage), staged, jac_binary, entry_rel.as_posix(), sanitized, tomls
+            )
+                == key {
             remember_client_dist(base, key, dist);
         } else {
             console.print(
