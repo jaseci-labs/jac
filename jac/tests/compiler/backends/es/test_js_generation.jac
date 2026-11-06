@@ -1435,6 +1435,14 @@ def outer_rows -> list[any] {
     return rows;
 }
 
+def repeated -> list[any] {
+    seen = [];
+    for (x, *mid, x) in [[1, 2, 3]] {
+        seen.append(x);
+    }
+    return seen;
+}
+
 def probe -> list[any] {
     return [
         middle([1, 2, 3, 4]),
@@ -1443,7 +1451,8 @@ def probe -> list[any] {
         as_list([1, 2, 3]),
         closures(),
         after_loop(),
-        outer_rows()
+        outer_rows(),
+        repeated()
     ];
 }
 """,
@@ -1465,7 +1474,8 @@ def probe -> list[any] {
             [[1], 2, 3],
             [[2], [5]],
             [4, [5], 6],
-            [3, 0]
+            [3, 0],
+            [3]
         ] , result.stdout;
 }
 

@@ -820,7 +820,7 @@ impl EsastGenPass.exit_in_for_stmt with uni.InForStmt exit {
                     es.VariableDeclaration(
                         declarations=[
                             es.VariableDeclarator(id=es.Identifier(name=name))
-                            for (name, _) in bound
+                            for name in dict.fromkeys(name for (name, _) in bound)
                         ],
                         kind='let'
                     )
