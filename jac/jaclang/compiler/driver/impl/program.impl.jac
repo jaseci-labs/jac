@@ -713,9 +713,7 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
     imports = list(mod.get_all_sub_nodes(uni.Import));
     for imp in imports {
         target = native_only_import_target(imp, self);
-        # Native-owned app modules cannot be imported as ordinary Python
-        # modules. Preserve their server-side import surface through the
-        # pyb_mirror_member splice, including for server consumers.
+
         native_app_target = target is not None
             and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target);
         drop = native_app_target or (needs_native and bool(imp.clib_decls));

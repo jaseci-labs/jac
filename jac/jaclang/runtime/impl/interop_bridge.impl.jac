@@ -114,16 +114,12 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     prog = JacProgram();
     options = CompileOptions(
-        force_codespace="server",
-        default_codespace="server",
-        no_ir_cache=True
+        force_codespace="server", default_codespace="server", no_ir_cache=True
     );
     mod_ir = prog.compile(file_path=key, options=options);
     if prog.errors_had {
         errors = "\n".join(str(alert) for alert in prog.errors_had);
-        raise ImportError(
-            f"could not build server mirror for {key}: {errors}"
-        );
+        raise ImportError(f"could not build server mirror for {key}: {errors}");
     }
     if not mod_ir.gen.py_ast {
         raise ImportError(f"server mirror for {key} produced no Python image");
@@ -145,12 +141,6 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
 }
 
 impl pyb_mirror_member(mod_path: str, name: str, package: str) -> object {
-    """Load the server image of a native-owned Jac module member.
-
-    Native units do not publish their declarations as Python module
-    attributes. Server-side modules that import a native-owned Jac module
-    therefore resolve the member from the module's Python image explicitly.
-    """
     member = getattr(_pyb_mirror_module(mod_path, package), name, None);
     if member is None {
         raise AttributeError(
