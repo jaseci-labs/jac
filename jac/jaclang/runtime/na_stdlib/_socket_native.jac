@@ -1,5 +1,10 @@
 import from c { def socket(domain: i32, socktype: i32, protocol: i32) -> i32;  }
 import from c { def __connect(fd: i32, addr: bytes, addrlen: i32) -> i32;  }
+import from c {
+    def getsockopt(
+        fd: i32, level: i32, optname: i32, optval: bytes, optlen: bytes
+    ) -> i32;
+}
 import from c { def send(fd: i32, buf: bytes, n: u64, flags: i32) -> i64;  }
 import from c { def recv(fd: i32, buf: bytes, n: u64, flags: i32) -> i64;  }
 import from c { def close(fd: i32) -> i32;  }
@@ -10,6 +15,7 @@ import from c {
 import from c { def freeaddrinfo(res: int) -> None;  }
 import from c { def gai_strerror(errcode: i32) -> str;  }
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
+import from _errno_native { last_errno }
 
 glob _SOCKADDR_MAX: int = 128;
 
@@ -24,6 +30,9 @@ def:pub sock_open(family: int, socktype: int, proto: int) -> int;
 
 
 def:pub sock_connect(fd: int, sa: bytes) -> int;
+
+
+def:pub sock_error(fd: int) -> int;
 
 
 def:pub sock_send(fd: int, data: bytes, off: int) -> int;

@@ -43,6 +43,23 @@ impl sock_connect(fd: int, sa: bytes) -> int {
     return __connect(i32(fd), sa, i32(len(sa)));
 }
 
+impl sock_error(fd: int) -> int {
+    import from platform { system }
+    value: bytes = b"\x00" * 4;
+    size: bytes = (4).to_bytes(4, "little");
+    level: int = 1;
+    option: int = 4;
+    if system() == "Darwin" {
+        level = 65535;
+        option = 4103;
+    }
+    rc = getsockopt(i32(fd), i32(level), i32(option), value, size);
+    if rc < 0 {
+        return last_errno();
+    }
+    return int.from_bytes(value, "little");
+}
+
 impl sock_send(fd: int, data: bytes, off: int) -> int {
     n = len(data);
     if off >= n {

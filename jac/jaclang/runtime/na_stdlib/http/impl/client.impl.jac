@@ -8,6 +8,22 @@ impl HTTPResponse.read(amt: (int | None) = None) -> bytes {
     return self._body[start:end];
 }
 
+
+impl HTTPResponse.readline -> str {
+    if self._pos >= len(self._body) {
+        return "";
+    }
+    end = self._body.find(b"\n", self._pos);
+    if end < 0 {
+        end = len(self._body);
+    } else {
+        end += 1;
+    }
+    line: bytes = self._body[self._pos:end];
+    self._pos = end;
+    return line.decode("utf-8", "replace");
+}
+
 impl HTTPResponse.getheader(name: str, `default: (str | None) = None) -> (str | None) {
     wanted = name.lower();
     i: int = 0;

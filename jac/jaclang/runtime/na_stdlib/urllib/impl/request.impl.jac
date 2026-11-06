@@ -25,17 +25,28 @@ impl _parse_url(u: str) -> _Url {
     return _Url(scheme=scheme, host=host, port=port, path=path);
 }
 
-impl _request_text(host: str, path: str) -> str {
-    return "GET "
-        + path
-        + " HTTP/1.0\r\nHost: "
-        + host
-        + "\r\nConnection: close\r\nUser-Agent: jac-urllib/1.0\r\nAccept: */*\r\n\r\n";
+impl _request_bytes(host: str, path: str, request: Request) -> bytes {
+    lines: list[str] = [
+        request.method + " " + path + " HTTP/1.0",
+        "Host: " + host,
+        "Connection: close",
+        "User-Agent: jac-urllib/1.0",
+        "Accept: */*",
+
+    ];
+    for name in request.headers {
+        lines.append(name + ": " + request.headers[name]);
+    }
+    if len(request.data) > 0 {
+        lines.append("Content-Length: " + str(len(request.data)));
+    }
+    header: bytes = ("\r\n".join(lines) + "\r\n\r\n").encode();
+    return header + request.data;
 }
 
-impl _fetch_raw(pu: _Url) -> bytes {
-    sock = create_connection((pu.host, pu.port));
-    reqb = _request_text(pu.host, pu.path).encode();
+impl _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes {
+    sock = create_connection((pu.host, pu.port), timeout);
+    reqb = _request_bytes(pu.host, pu.path, request);
     raw = b"";
     if pu.scheme == "https" {
         ctx = create_default_context();
@@ -106,13 +117,20 @@ impl _parse_response(raw: bytes, url: str) -> HTTPResponse {
         }
         i += 1;
     }
+    header_map: dict[str, str] = {};
+    j: int = 0;
+    while j < len(names) {
+        header_map[names[j]] = values[j];
+        j += 1;
+    }
     return HTTPResponse(
         status=status,
         reason=reason,
         _url=url,
         _body=body,
         _header_names=names,
-        _header_values=values
+        _header_values=values,
+        headers=header_map,
     );
 }
 
@@ -127,22 +145,84 @@ impl _resolve_redirect(pu: _Url, loc: str) -> str {
     return base + "/" + loc;
 }
 
-impl urlopen(url: str) -> HTTPResponse {
-    cur = url;
+impl urlopen(url: any, timeout: (float | None)) -> HTTPResponse {
+    request: Request;
+    if isinstance(url, str) {
+        request = Request(url=url);
+    } else {
+        request = url as Request;
+    }
+    return _urlopen_request(request, timeout);
+}
+
+impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse {
+    cur: str = request.url;
     redirects: int = 0;
     while redirects < 10 {
-        pu = _parse_url(cur);
-        raw = _fetch_raw(pu);
-        resp = _parse_response(raw, cur);
+        pu: _Url = _parse_url(cur);
+        raw: bytes = _fetch_raw(pu, request, timeout);
+        resp: HTTPResponse = _parse_response(raw, cur);
         if resp.status >= 300 and resp.status < 400 {
-            loc = resp.getheader("location", "");
+            loc: str | None = resp.getheader("location", "");
             if loc is not None and len(loc) > 0 {
-                cur = _resolve_redirect(pu, loc);
+                target = _resolve_redirect(pu, loc);
+                next_url: _Url = _parse_url(target);
+                if pu.scheme == "https" and next_url.scheme == "http" {
+                    raise OSError("refusing an HTTPS to HTTP redirect");
+                }
+                changed_origin = (
+                    pu.scheme != next_url.scheme
+                    or pu.host.lower() != next_url.host.lower()
+                    or pu.port != next_url.port
+                );
+                next_headers: dict[str, str] = {};
+                for name in request.headers {
+                    lower_name = name.lower();
+                    if lower_name == "host" {
+                        continue;
+                    }
+                    if changed_origin
+                        and (
+                            lower_name == "authorization"
+                            or lower_name == "cookie"
+                            or lower_name == "proxy-authorization"
+                        ) {
+                        continue;
+                    }
+                    next_headers[name] = request.headers[name];
+                }
+                next_method = request.method;
+                next_data = request.data;
+                switch_to_get = (
+                    resp.status == 303 and request.method.upper() != "HEAD"
+                )
+                    or (
+                        (resp.status == 301 or resp.status == 302)
+                        and request.method.upper() == "POST"
+                    );
+                if switch_to_get {
+                    next_method = "GET";
+                    next_data = b"";
+                    clean_headers: dict[str, str] = {};
+                    for name in next_headers {
+                        lower_name = name.lower();
+                        if lower_name != "content-length"
+                            and lower_name != "content-type"
+                            and lower_name != "transfer-encoding" {
+                            clean_headers[name] = next_headers[name];
+                        }
+                    }
+                    next_headers = clean_headers;
+                }
+                request = Request(
+                    url=target, data=next_data, headers=next_headers, method=next_method
+                );
+                cur = target;
                 redirects += 1;
                 continue;
             }
         }
         return resp;
     }
-    raise Exception("urlopen: too many redirects (>10) for " + url);
+    raise Exception("urlopen: too many redirects (>10) for " + request.url);
 }

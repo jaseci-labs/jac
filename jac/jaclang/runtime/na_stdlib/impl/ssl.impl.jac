@@ -1,14 +1,35 @@
+import select;
+
+
 impl SSLSocket.fileno -> int {
     return self._sock.fileno();
 }
 
 impl SSLSocket.sendall(data: bytes) {
+    timeout = self._sock.gettimeout();
+    if timeout is not None {
+        (_readable, writable, _exceptional) = select.select(
+            [], [self.fileno()], [], timeout
+        );
+        if self.fileno() not in writable {
+            raise TimeoutError("TLS write timed out");
+        }
+    }
     if ssl_write_all(self._ssl, data) < 0 {
         raise SSLError("TLS write failed: " + last_error());
     }
 }
 
 impl SSLSocket.send(data: bytes) -> int {
+    timeout = self._sock.gettimeout();
+    if timeout is not None {
+        (_readable, writable, _exceptional) = select.select(
+            [], [self.fileno()], [], timeout
+        );
+        if self.fileno() not in writable {
+            raise TimeoutError("TLS write timed out");
+        }
+    }
     n = ssl_write_all(self._ssl, data);
     if n < 0 {
         raise SSLError("TLS write failed: " + last_error());
@@ -17,11 +38,30 @@ impl SSLSocket.send(data: bytes) -> int {
 }
 
 impl SSLSocket.recv(bufsize: int) -> bytes {
+    timeout = self._sock.gettimeout();
+    if timeout is not None and ssl_pending(self._ssl) <= 0 {
+        (readable, _writable, _exceptional) = select.select(
+            [self.fileno()], [], [], timeout
+        );
+        if self.fileno() not in readable {
+            raise TimeoutError("TLS read timed out");
+        }
+    }
     try {
         return ssl_read(self._ssl, bufsize);
     } except OSError as e {
         raise SSLError("TLS read error");
     }
+}
+
+
+impl SSLSocket.settimeout(timeout: (float | None)) -> None {
+    self._sock.settimeout(timeout);
+}
+
+
+impl SSLSocket.gettimeout -> (float | None) {
+    return self._sock.gettimeout();
 }
 
 impl SSLSocket.close {
