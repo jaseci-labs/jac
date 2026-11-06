@@ -30,7 +30,8 @@ glob logger = getLogger(__name__),
      ),
      _default_base_path_dir: list[str | None] = [os.getcwd()],
      _default_full_target_path: list[str | None] = [None],
-     _shared_root_resolver: list[any] = [None, None];
+     _shared_root_resolver: list[any] = [None, None],
+     _org_root_resolver: list[any] = [None, {}];
 
 glob _scale_provider_cache: list[type | None] = [],
      _scale_provider_error: list[Exception | None] = [None];
@@ -96,6 +97,11 @@ class JacPersistence {
     static async def aget_object(id: str) -> (Archetype | None);
     static def object_ref(`obj: Archetype) -> str;
     static def save(`obj: (Archetype | Anchor), owner: (UUID | None) = None) -> None;
+    static def _save_plan(
+        anchor: Anchor, owner: (UUID | None)
+    ) -> list[tuple[(Anchor, (UUID | None))]];
+
+    static def _apply_save(plan: list[tuple[(Anchor, (UUID | None))]]) -> None;
     static def owner_of(`obj: (Archetype | Anchor)) -> (UUID | None);
     static def destroy(objs: any, strict: bool = False) -> None;
     static def _destroy_anchors(objs: any, strict: bool) -> list[Anchor];
@@ -117,6 +123,10 @@ class JacAccessValidation {
     ) -> bool;
 
     static def _is_shared_root(to: Anchor) -> bool;
+    static def _is_org_owned(to: Anchor) -> bool;
+    static def _check_acl_write(to: Anchor) -> bool;
+    static def _carries_acl(to: Anchor) -> bool;
+    static def _org_acl_denied(to: Anchor, owner: (UUID | None)) -> PermissionDenied;
     static def allow_root(
         archetype: Archetype,
         root_id: UUID,
@@ -433,6 +443,10 @@ class JacRuntime(JacRuntimeInterface) {
     static def get_shared_root -> Root;
     static def set_shared_root_resolver(
         resolver: (Callable[([], (str | None))] | None)
+    ) -> None;
+
+    static def set_org_root_resolver(
+        resolver: (Callable[([str], bool)] | None)
     ) -> None;
 
     static def set_context(context: ExecutionContext) -> None;
