@@ -780,6 +780,25 @@ impl seal_timeout_setting(project_dir: str) -> int {
     return val if val > 0 else DEFAULT_SEAL_TIMEOUT_S;
 }
 
+impl seal_cache_setting(project_dir: str) -> (Path | None) {
+    configured = os.environ.get("JAC_SEAL_CACHE", "");
+    if not configured {
+        try {
+            config = get_config_for_path(Path(project_dir));
+        } except Exception as exc {
+            logger.debug(f"seal_cache check skipped, jac.toml unparseable: {exc}");
+            return None;
+        }
+        section = config.get_section("scale") if config is not None else None;
+        if section is None or not section.get("seal_cache") {
+            return None;
+        }
+        configured = str(section.get("seal_cache"));
+    }
+    path = Path(configured).expanduser();
+    return path if path.is_absolute() else Path(project_dir).resolve() / path;
+}
+
 impl _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "") {
     jac_path = stage.parent / ".seal-jac";
     jac_path.write_bytes(seal_binary);
@@ -1093,8 +1112,8 @@ impl _seed_precompiled(stage: Path, seed: (Path | None)) -> int {
     return seeded;
 }
 
-impl _cached_seal(base: Path, key: str) -> (bytes | None) {
-    cached = _seal_cache_dir(base) / f"{key}.jab";
+impl _cached_seal(cache: Path, key: str) -> (bytes | None) {
+    cached = cache / f"{key}.jab";
     try {
         raw = cached.read_bytes();
     } except OSError {
@@ -1118,8 +1137,13 @@ impl _bundle_ships(raw: bytes, member: str) -> bool {
     }
 }
 
-impl _remember_seal(base: Path, key: str, raw: bytes) {
-    cache = _seal_cache_dir(base);
+impl _seal_reusable(raw: (bytes | None), manifest: str, bake_client: bool) -> bool {
+    return raw is not None
+        and _bundle_ships(raw, manifest)
+        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX));
+}
+
+impl _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP) {
     partial = "";
     try {
         cache.mkdir(parents=True, exist_ok=True);
@@ -1130,9 +1154,11 @@ impl _remember_seal(base: Path, key: str, raw: bytes) {
             out.write(raw);
         }
         os.replace(partial, cache / f"{key}.jab");
-        kept = sorted(cache.`glob("*.jab"), key=_mtime, reverse=True);
-        for stale in kept[SEAL_CACHE_KEEP:] {
-            stale.unlink(missing_ok=True);
+        if keep > 0 {
+            kept = sorted(cache.`glob("*.jab"), key=_mtime, reverse=True);
+            for stale in kept[keep:] {
+                stale.unlink(missing_ok=True);
+            }
         }
     } except OSError as exc {
         logger.warning(f"Could not keep the sealed bundle for reuse: {exc}");
@@ -1204,13 +1230,30 @@ impl pack_jab(
     ];
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
-    cached = _cached_seal(base, key);
-    if cached is not None
-        and _bundle_ships(cached, SERVE_MANIFEST_REL)
-        and (not bake_client or _bundle_ships(cached, BAKED_CLIENT_INDEX)) {
+    shared = seal_cache_setting(project_dir);
+    cached = _cached_seal(_seal_cache_dir(base), key);
+    if _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
+        if shared is not None and not os.path.isfile(shared / f"{key}.jab") {
+            _remember_seal(shared, key, cached, keep=0);
+        }
+    } elif shared is not None {
+        cached = _cached_seal(shared, key);
+        if _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+            logger.info(
+                f"Reusing the sealed bundle for unchanged inputs ({key[:12]}) from "
+                f"the shared seal cache {shared}; skipping the seal."
+            );
+            _remember_seal(_seal_cache_dir(base), key, cached);
+        } else {
+            cached = None;
+        }
+    } else {
+        cached = None;
+    }
+    if cached is not None {
         if client_ready is not None {
             client_ready();
         }
@@ -1358,7 +1401,10 @@ impl pack_jab(
             unchanged = False;
         }
         if unchanged {
-            _remember_seal(base, key, raw);
+            _remember_seal(_seal_cache_dir(base), key, raw);
+            if shared is not None {
+                _remember_seal(shared, key, raw, keep=0);
+            }
         } else {
             logger.info(
                 "The project changed while it was sealed; not keeping this bundle for reuse."
