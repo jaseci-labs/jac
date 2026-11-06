@@ -564,6 +564,50 @@ impl sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
     return fleet.root_app;
 }
 
+impl sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str {
+    served = fleet.root_member() if fleet is not None else None;
+    if served is None or not served.file {
+        return "";
+    }
+    config = _project_config(project_dir);
+    if config is not None and config.is_workspace {
+        return "";
+    }
+    base = Path(project_dir).resolve();
+    rel = Path(_fleet_entry_rel(base, served.app, served.file));
+    parts = [*rel.parent.parts, rel.stem];
+    if not all(part.isidentifier() for part in parts) {
+        raise ValueError(
+            f"App '{served.app}' boots '{rel.as_posix()}', which is not an "
+            "importable module name, so the deploy cannot seal it. Rename it "
+            "so every part of its path is a plain identifier, such as "
+            "'my_app.jac'."
+        );
+    }
+    module = ".".join(parts);
+    resolved = Path(resolve_entry_path(module, str(base))).resolve();
+    if resolved != (base / rel).resolve() {
+        raise ValueError(
+            f"App '{served.app}' boots '{rel.as_posix()}', but its module name "
+            f"'{module}' resolves to '{resolved.relative_to(base).as_posix()}', "
+            "so the deploy would seal the wrong file. Rename one of the two."
+        );
+    }
+    return module;
+}
+
+impl staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None) {
+    if not entry_module {
+        return sanitized;
+    }
+    text = sanitized if sanitized is not None else PLACEHOLDER_JAC_TOML;
+    old_doc = tomllib.loads(text);
+    project = {** old_doc.get("project", {}), "entry-point": entry_module};
+    new_doc = {** old_doc, "project": project};
+    return toml_minimal_update(text, old_doc, new_doc, ["project"])
+        or serialize_toml(new_doc);
+}
+
 impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
     serve_manifest = stage / SERVE_MANIFEST_REL;
     if not serve_manifest.is_file() {
@@ -1038,7 +1082,10 @@ impl pack_jab(
         );
     }
     excluded = source_filter_for(base);
-    assert_entry_module_ships(base, excluded);
+    entry_module = sealed_entry_module(project_dir, fleet);
+    if not entry_module {
+        assert_entry_module_ships(base, excluded);
+    }
     sources = bundle_source_files(base);
     check_fleet_entries(
         base, [path.relative_to(base).as_posix() for path in sources], excluded, fleet
@@ -1049,7 +1096,7 @@ impl pack_jab(
             f"while staging the app bundle."
         );
     }
-    sanitized = sanitized_jac_toml(base);
+    sanitized = staged_jac_toml(sanitized_jac_toml(base), entry_module);
     app_name = sealed_app_name(project_dir, fleet);
     tomls = nested_sanitized_tomls(base);
     def input_key(tree: Path, files: list[Path]) -> str {

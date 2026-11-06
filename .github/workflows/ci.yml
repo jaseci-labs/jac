@@ -32,14 +32,16 @@ on:
   push:
     branches: [main]
 
-# Adding a label CI never reads (one outside the list below, which the
-# `changes` job repeats) must neither rerun the suites nor cancel the run in
-# flight, so that run gets a group of its own and only Everything Passed runs.
+# Adding a label that does not add a lane (one outside the list below, which
+# the `changes` job repeats) must neither rerun the suites nor cancel the run in
+# flight, so that run gets a group of its own and only Contribution Checks and
+# Everything Passed run. The skip-* labels are such labels: they only waive a
+# check, so Everything Passed drops the waived job from the verdict it carries.
 concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -55,7 +57,7 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -85,6 +87,8 @@ jobs:
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
               - 'scripts/test_ci_cache_keys.sh'
+              - 'scripts/ci_carry_verdict.sh'
+              - 'scripts/test_ci_carry_verdict.sh'
             scale:
               - 'jac/jaclang/scale/**'
             byllm:
@@ -593,7 +597,10 @@ jobs:
   contribution-checks:
     name: Contribution Checks
     needs: changes
-    if: ${{ github.event_name != 'push' || needs.changes.outputs.docs == 'true' }}
+    if: >-
+      !cancelled()
+      && (needs.changes.result == 'success' || github.event.action == 'labeled')
+      && (github.event_name != 'push' || needs.changes.outputs.docs == 'true')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -1143,6 +1150,8 @@ jobs:
         run: zig build test --summary all
       - name: Cache key mutation tests
         run: bash scripts/test_ci_cache_keys.sh
+      - name: Carry-over verdict tests
+        run: bash scripts/test_ci_carry_verdict.sh
 
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
@@ -1930,22 +1939,22 @@ jobs:
     permissions:
       actions: read
     steps:
-      # A label-only run skips every job, and the newest Everything Passed on a
-      # commit is the one that gates it, so that run repeats the verdict of the
-      # run before it (waiting for it if it is still going) instead of passing.
+      # A label-only run skips every suite, and the newest Everything Passed on
+      # a commit is the one that gates it, so that run repeats the verdict of
+      # an earlier run (scripts/ci_carry_verdict.sh says which).
+      - name: Check out the carry-over script
+        if: needs.changes.result == 'skipped'
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci_carry_verdict.sh
+          sparse-checkout-cone-mode: false
       - name: Carry the previous run's verdict over a label-only run
         if: needs.changes.result == 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --limit 50 \
-            --json databaseId --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID)] | first | .databaseId // empty")
-          if [ -z "$prev" ]; then
-            echo "::error::No earlier CI run on $SHA to carry over; push or rerun CI."
-            exit 1
-          fi
-          gh run watch "$prev" --repo "$GITHUB_REPOSITORY" --exit-status --interval 60
+          SKIP_K8S: ${{ contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
+        run: bash scripts/ci_carry_verdict.sh
       - name: Fail if any dependency failed or was cancelled
         if: >-
           contains(needs.*.result, 'failure') ||
