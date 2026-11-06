@@ -20,4 +20,19 @@ with entry {
     print(json.dumps(data, sort_keys=True, ensure_ascii=False));
     print(json.dumps([float("nan"), float("inf"), float("-inf"), 1.0, -0.5]));
     print(json.dumps(json.loads(json.dumps(data, separators=(",", ":")))));
+    print(json.dumps(data, indent=2));
+    print(json.dumps([1, 2], indent=0));
+    print(json.dumps(data, indent="--", sort_keys=True));
+    print(json.dumps(json.loads("[NaN, Infinity, -Infinity]")));
+    dec = json.JSONDecoder();
+    (v, end) = dec.raw_decode(" [1, 2] x", 2);
+    print(json.dumps(v), end);
+    enc = json.JSONEncoder(sort_keys=True);
+    print(enc.encode({"b": 1, "a": 2}));
+    print("".join(enc.iterencode({"z": 0})));
+    try {
+        json.loads("1 2");
+    } except json.JSONDecodeError as e {
+        print(e.lineno, e.colno, e.pos, "-", e.msg);
+    }
 }
