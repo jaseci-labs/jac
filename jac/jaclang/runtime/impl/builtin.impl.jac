@@ -265,6 +265,11 @@ impl schedule(**kwargs: any) -> Callable {
     return decorator;
 }
 
+impl on_drain(hook: Callable[[], any]) -> Callable[[], any] {
+    DRAIN_HOOKS.append(hook);
+    return hook;
+}
+
 impl JacListView.__len__ -> int {
     return self.stop - self.start;
 }

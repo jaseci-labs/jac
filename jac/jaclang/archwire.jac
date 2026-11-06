@@ -4085,6 +4085,9 @@ graph import {
         scale.tests.server.test_stream_ws._spawn_upstream.sse { StreamingResponse },
     ]
     server.serving.drain ++> [
+        runtime.builtin.on_drain | runtime.runtime.JacRuntime.after_fork_in_child {
+            DRAIN_HOOKS
+        },
         scale.runtime.gateway.microservice_gateway { DrainState },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
             drain_middleware
@@ -4092,6 +4095,7 @@ graph import {
         scale.server.extensions { HEALTH_PATHS },
         scale.tests.microservices.test_drain { DrainState, drain_middleware },
     ]
+    server.serving.drain --> scale.tests.microservices.test_drain { DRAIN_HOOKS }
     server.serving.endpoint ++> [
         client.targets.desktop.native.broker_extension
             | scale.admin.admin_portal
@@ -46894,6 +46898,7 @@ graph import scale.tests {
             | server.test_examples { get_free_port },
         microservices.test_stop_signal_scope { stop_server },
         microservices.test_typed_boundary { get_free_port, start_server, stop_server },
+        server.test_drain_hooks { get_free_port, start_server },
         server.test_metrics_workers | server.test_serve {
             cleanup_db_files,
             get_free_port,
@@ -47359,7 +47364,7 @@ graph import server.serving {
     datatypes --> server.ServingServer._dispatch { JSONResponse }
     drain ++> [
         accesslog { HEALTH_PATHS },
-        health { DrainState },
+        health | supervisor { DrainState },
         server { DrainState, HEALTH_PATHS },
     ]
     endpoint ++> [

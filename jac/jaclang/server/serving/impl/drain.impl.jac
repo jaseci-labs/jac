@@ -6,6 +6,13 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
     self.started_at = time.monotonic();
     self.reason = reason;
     logger.warning(f"drain: started ({reason}, budget {self.timeout:.1f}s)");
+    for hook in list(DRAIN_HOOKS) {
+        try {
+            hook();
+        } except Exception {
+            logger.exception("drain hook failed");
+        }
+    }
     return True;
 }
 

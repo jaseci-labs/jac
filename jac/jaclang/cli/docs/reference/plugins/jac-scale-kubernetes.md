@@ -896,6 +896,29 @@ jac scale destroy app.jac --component monitoring
 
 ---
 
+## Shutdown Hooks
+
+jac owns `SIGTERM` while it serves, so a handler an app installs with `signal.signal` never runs. Register shutdown code with the `on_drain` builtin instead. It takes a function with no arguments and returns it, so it also works as a decorator:
+
+```jac
+import threading;
+
+glob stop_dispatcher: threading.Event = threading.Event();
+
+@on_drain
+def stop_background_work {
+    stop_dispatcher.set();
+}
+
+with entry {
+    on_drain(lambda { print("draining"); });
+}
+```
+
+Drain hooks run in the order they were registered, when the server starts draining and before it waits on in-flight requests, so keep them short: set a flag, stop a loop. A hook that raises is logged and the others still run.
+
+With `[serve.workers] count` above one, hooks registered while the app loads run in the supervisor, where threads started at load time live, and forked workers do not inherit them.
+
 ## Health Checks
 
 The scale server registers built-in endpoints for Kubernetes probes:
