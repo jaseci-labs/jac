@@ -2601,11 +2601,10 @@ graph import {
             NodeArchetype
         },
         server.endpoints.pages.register_graph_endpoints.graph_target
-            | server.server.ExecutionManager.spawn_walker_async { NodeArchetype },
+            | server.server._spawn_target { NodeArchetype },
         server.identity.identity_storage.IdentityStorage.create_user { Root },
         server.identity.identity_storage.IdentityStorage.ensure_user_by_id { Root },
         server.identity.identity_storage.IdentityStorage.reset_root { Root },
-        server.server.ExecutionManager.spawn_walker_sync { NodeArchetype },
         server.server.ModuleIntrospector.target { WalkerArchetype },
         server.session._ancestry_of {
             Archetype,
@@ -3904,6 +3903,7 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
+            | scale.tests.server.test_error_envelope
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
@@ -4369,7 +4369,8 @@ graph import {
     testing.testkit ++> [
         scale.server.inprocess.prepare_inprocess_runtime
             | scale.tests.microservices.test_gateway_docs_precedence
-            | scale.tests.microservices.test_gateway_webapp { ServingTestClient },
+            | scale.tests.microservices.test_gateway_webapp
+            | scale.tests.server.test_error_envelope { ServingTestClient },
         scale.tests.data.test_eager_spawn
             | scale.tests.microservices.test_embedded_gateway
             | scale.tests.microservices.test_microservice
