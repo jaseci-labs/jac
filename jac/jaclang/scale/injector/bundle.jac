@@ -297,7 +297,7 @@ def _cached_seal(cache: Path, key: str) -> (bytes | None);
 def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
-def _seal_reusable(raw: (bytes | None), manifest: str, bake_client: bool) -> bool;
+def _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool;
 
 
 def _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP);
