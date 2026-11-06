@@ -1623,6 +1623,7 @@ impl run_precompile(
     app: str = ""
 ) {
     require_exact_compiler_products();
+    import from jaclang.compiler.placement.placement_facts { native_only }
     exclude_seed = seal or seal_compile;
     package_dir = find_package_dir(source_dir);
     if package_dir is None {
@@ -1672,7 +1673,6 @@ impl run_precompile(
     native_units_set: set[str] = set();
     native_only_units: list[str] = [];
     if exclude_seed {
-        import from jaclang.compiler.placement.placement_facts { native_only }
         for unit in package_native_units(package_dir) {
             native_units_set.add(unit);
             if native_only(unit) {
