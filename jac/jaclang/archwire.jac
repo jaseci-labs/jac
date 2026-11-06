@@ -2289,7 +2289,9 @@ graph import {
         },
         compiler.backends.py.artifact_imports.resolve_imports
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
-        dist.publish.py_imports { resolve_module },
+        compiler.tests.test_missing_local_import | dist.publish.py_imports {
+            resolve_module
+        },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
             resolve_client_npm_declarations,
@@ -7259,6 +7261,7 @@ graph import compiler {
             E1159,
             E1161,
             E1162,
+            E1163,
             E2015,
             W1036,
             W1037,
@@ -9117,7 +9120,8 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
-            type_only_import_of
+            type_only_import_of,
+            type_param_of
         },
         passes.variant_agreement_pass {
             Ability,
