@@ -46,7 +46,6 @@ import from engine.src.pm.depspec {
     BEH_BUNDLED,
     dep_less_than
 }
-import from engine.src.ffi.libc { time }
 import from engine.src.pm.registry { pm_http_get }
 import from engine.src.pm.http { HttpResponse }
 import from engine.src.pm.bytes { ByteBuf, bytebuf_free }
@@ -67,14 +66,6 @@ import from engine.src.runtime.mem {
 
 glob:pub NPM_ACCEPT: str = "Accept: application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
-# The abbreviated packument has no `time` map, so minimumReleaseAge needs the full one.
-glob:pub NPM_ACCEPT_FULL: str = "Accept: application/json";
-
-# MVersion.published when the manifest has no time for a version (allowed), or
-# has one that does not parse (blocked), as bun does.
-glob:pub PUBLISHED_UNKNOWN: int = -1,
-     PUBLISHED_INVALID: int = -2;
-
 """One dependency of a manifest version."""
 obj:pub MDep {
     has name: str,
@@ -93,13 +84,10 @@ obj:pub MVersion {
         tarball: str = "",
         integrity: str = "",
         has_install_script: bool = False,
-        deprecated: str = "",
-        published: int = -1;
+        deprecated: str = "";
 }
 
 # sorted like bun (behavior, name)
-# min_age is the minimumReleaseAge applied (seconds); blocked holds the versions
-# and dist-tags it removed, so "no version" errors can name the cause.
 obj:pub Manifest {
     has ok: bool = False,
         error: str = "",
@@ -107,11 +95,7 @@ obj:pub Manifest {
         dist_tags: dict[str, str] = {},
         releases: list[MVersion] = [],
         prereleases: list[MVersion] = [],
-        by_version: dict[str, MVersion] = {},
-        has_time: bool = False,
-        min_age: int = 0,
-        blocked: list[MVersion] = [],
-        blocked_tags: list[str] = [];
+        by_version: dict[str, MVersion] = {};
 }
 
 # ascending
@@ -342,238 +326,8 @@ def:pub manifest_parse_bytes(ptr: int, n: int, expected_name: str) -> Manifest {
             }
         }
     }
-    times: JVal = jv_get(top, "time");
-    if jv_is_obj(times) {
-        m.has_time = True;
-        for tv in m.by_version {
-            if tv in times.keys {
-                stamp: JVal = times.vals[tv];
-                if jv_is_str(stamp) {
-                    m.by_version[tv].published = _iso_epoch_s(jv_str(stamp));
-                } else {
-                    m.by_version[tv].published = PUBLISHED_INVALID;
-                }
-            }
-        }
-    }
     m.ok = True;
     return m;
-}
-
-# ── publish times / minimumReleaseAge ─────────────────────────────────────────
-
-def _digits(s: str, a: int, b: int) -> int {
-    v: int = 0;
-    i: int = a;
-    while i < b {
-        c: int = str_byte(s, i);
-        if c < 48 or c > 57 {
-            return -1;
-        }
-        v = v * 10 + (c - 48);
-        i = i + 1;
-    }
-    return v;
-}
-
-# Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's
-# days_from_civil); Jac's `//` floors, so no negative-year bias is needed.
-def _days_from_civil(y: int, m: int, d: int) -> int {
-    adj_y: int = y;
-    if m <= 2 {
-        adj_y = adj_y - 1;
-    }
-    era: int = adj_y // 400;
-    yoe: int = adj_y - era * 400;
-    mp: int = m - 3;
-    if m <= 2 {
-        mp = m + 9;
-    }
-    doy: int = (153 * mp + 2) // 5 + d - 1;
-    doe: int = yoe * 365 + yoe // 4 - yoe // 100 + doy;
-    return era * 146097 + doe - 719468;
-}
-
-# Seconds since the epoch for an npm `time` stamp (YYYY-MM-DDTHH:MM:SS[.fff]
-# then Z or ±HH:MM), or PUBLISHED_INVALID when it does not parse.
-def _iso_epoch_s(s: str) -> int {
-    n: int = str_nbytes(s);
-    if n < 20 {
-        return PUBLISHED_INVALID;
-    }
-    if str_byte(s, 4) != 45
-        or str_byte(s, 7) != 45
-        or str_byte(s, 10) != 84
-        or str_byte(s, 13) != 58
-        or str_byte(s, 16) != 58 {
-        return PUBLISHED_INVALID;
-    }
-    y: int = _digits(s, 0, 4);
-    mo: int = _digits(s, 5, 7);
-    d: int = _digits(s, 8, 10);
-    h: int = _digits(s, 11, 13);
-    mi: int = _digits(s, 14, 16);
-    sec: int = _digits(s, 17, 19);
-    if y < 0
-        or mo < 1
-        or mo > 12
-        or d < 1
-        or d > 31
-        or h < 0
-        or h > 23
-        or mi < 0
-        or mi > 59
-        or sec < 0
-        or sec > 60 {
-        return PUBLISHED_INVALID;
-    }
-    i: int = 19;
-    if str_byte(s, i) == 46 {
-        i = i + 1;
-        start: int = i;
-        while i < n and str_byte(s, i) >= 48 and str_byte(s, i) <= 57 {
-            i = i + 1;
-        }
-        if i == start {
-            return PUBLISHED_INVALID;
-        }
-    }
-    offset: int = 0;
-    if i < n and str_byte(s, i) == 90 {
-        i = i + 1;
-    } elif i + 6 == n
-        and (str_byte(s, i) == 43 or str_byte(s, i) == 45)
-        and str_byte(s, i + 3) == 58 {
-        oh: int = _digits(s, i + 1, i + 3);
-        om: int = _digits(s, i + 4, i + 6);
-        if oh < 0 or om < 0 {
-            return PUBLISHED_INVALID;
-        }
-        offset = oh * 3600 + om * 60;
-        if str_byte(s, i) == 45 {
-            offset = 0 - offset;
-        }
-        i = n;
-    } else {
-        return PUBLISHED_INVALID;
-    }
-    if i != n {
-        return PUBLISHED_INVALID;
-    }
-    return _days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + sec - offset;
-}
-
-# True when minimumReleaseAgeExcludes names the package (every version) or
-# `name@version` for this exact version.
-def _age_exempt(name: str, version: str, excludes: list[str]) -> bool {
-    for e in excludes {
-        if e == name {
-            return True;
-        }
-        at: int = str_nbytes(e) - 1;
-        while at > 0 and str_byte(e, at) != 64 {
-            at = at - 1;
-        }
-        if at > 0
-            and str_bslice(e, 0, at) == name
-            and str_bslice(e, at + 1, str_nbytes(e)) == version {
-            return True;
-        }
-    }
-    return False;
-}
-
-def _age_blocks(m: Manifest, mv: MVersion, cutoff: int, excludes: list[str]) -> bool {
-    if _age_exempt(m.name, mv.version_str, excludes) {
-        return False;
-    }
-    if mv.published == PUBLISHED_INVALID {
-        return True;
-    }
-    return mv.published != PUBLISHED_UNKNOWN and mv.published > cutoff;
-}
-
-# Drop the versions published less than `min_age` seconds before `now`; a dist-tag
-# on a dropped version moves to the newest kept release at or below it.
-def:pub manifest_apply_min_age(
-    m: Manifest, min_age: int, excludes: list[str], now: int
-) -> None {
-    if min_age <= 0 or not m.ok {
-        return;
-    }
-    m.min_age = min_age;
-    cutoff: int = now - min_age;
-    kept: list[MVersion] = [];
-    for r in m.releases {
-        if _age_blocks(m, r, cutoff, excludes) {
-            m.blocked.append(r);
-        } else {
-            kept.append(r);
-        }
-    }
-    kept_pre: list[MVersion] = [];
-    for p in m.prereleases {
-        if _age_blocks(m, p, cutoff, excludes) {
-            m.blocked.append(p);
-        } else {
-            kept_pre.append(p);
-        }
-    }
-    if len(m.blocked) == 0 {
-        return;
-    }
-    m.releases = kept;
-    m.prereleases = kept_pre;
-    by_version: dict[str, MVersion] = {};
-    for k in kept {
-        by_version[k.version_str] = k;
-    }
-    for kp in kept_pre {
-        by_version[kp.version_str] = kp;
-    }
-    tags: dict[str, str] = {};
-    for t in m.dist_tags {
-        target: str = m.dist_tags[t];
-        if target in by_version or not (target in m.by_version) {
-            tags[t] = target;
-            continue;
-        }
-        tagged: SemVer = m.by_version[target].ver;
-        i: int = len(kept);
-        moved: str = "";
-        while i > 0 {
-            i = i - 1;
-            if semver_order(kept[i].ver, tagged) <= 0 {
-                moved = kept[i].version_str;
-                break;
-            }
-        }
-        if moved != "" {
-            tags[t] = moved;
-        } else {
-            m.blocked_tags.append(t);
-        }
-    }
-    m.dist_tags = tags;
-    m.by_version = by_version;
-}
-
-# " (blocked by minimum-release-age: N seconds)" when the age limit removed a
-# version `g` would have matched, else "".
-def:pub manifest_blocked_suffix(m: Manifest, g: SemGroup) -> str {
-    for b in m.blocked {
-        if semver_satisfies(g, b.ver) {
-            return " (blocked by minimum-release-age: " + str(m.min_age) + " seconds)";
-        }
-    }
-    return "";
-}
-
-def:pub manifest_blocked_tag_suffix(m: Manifest, tag: str) -> str {
-    if tag in m.blocked_tags {
-        return " (blocked by minimum-release-age: " + str(m.min_age) + " seconds)";
-    }
-    return "";
 }
 
 """Version named by a dist-tag, or an empty MVersion (version_str "")."""
@@ -674,25 +428,22 @@ def _manifest_cache_path(cfg: PmConfig, name: str) -> str {
     return cfg.cache_dir + "/manifests/" + name.replace("/", "%2F") + ".json";
 }
 
-# A cached abbreviated packument has no publish times, so `full` skips it.
-def _manifest_load(cfg: PmConfig, name: str, refresh: bool, full: bool) -> Manifest {
+"""Manifest for `name`: disk cache first (unless `refresh`), else HTTP.
+`error` describes a 404 / network failure; `ok` false then."""
+def:pub manifest_fetch(cfg: PmConfig, name: str, refresh: bool) -> Manifest {
     cache_path: str = _manifest_cache_path(cfg, name);
     if not refresh and not cfg.cache_disable_manifest and fsx_is_file(cache_path) {
         b: ByteBuf = fsx_read_bytes(cache_path);
         if b.len > 0 {
             m: Manifest = manifest_parse_bytes(b.ptr, b.len, name);
             bytebuf_free(b);
-            if m.ok and (m.has_time or not full) {
+            if m.ok {
                 return m;
             }
         }
     }
     url: str = _manifest_url(cfg, name);
-    accept: str = NPM_ACCEPT;
-    if full {
-        accept = NPM_ACCEPT_FULL;
-    }
-    resp: HttpResponse = pm_http_get(cfg, url, [accept]);
+    resp: HttpResponse = pm_http_get(cfg, url, [NPM_ACCEPT]);
     bad: Manifest = Manifest(name=name);
     if resp.error != "" {
         bad.error = "GET " + url + " - " + resp.error;
@@ -715,17 +466,4 @@ def _manifest_load(cfg: PmConfig, name: str, refresh: bool, full: bool) -> Manif
     }
     bytebuf_free(resp.body);
     return m2;
-}
-
-"""Manifest for `name`: disk cache first (unless `refresh`), else HTTP.
-`error` describes a 404 / network failure; `ok` false then."""
-def:pub manifest_fetch(cfg: PmConfig, name: str, refresh: bool) -> Manifest {
-    full: bool = cfg.minimum_release_age > 0;
-    m: Manifest = _manifest_load(cfg, name, refresh, full);
-    if full {
-        manifest_apply_min_age(
-            m, cfg.minimum_release_age, cfg.minimum_release_age_excludes, time(0)
-        );
-    }
-    return m;
 }

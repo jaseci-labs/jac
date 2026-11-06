@@ -97,9 +97,7 @@ import from engine.src.pm.manifest {
     manifest_fetch,
     manifest_find_best,
     manifest_find_dist_tag,
-    manifest_find_exact,
-    manifest_blocked_suffix,
-    manifest_blocked_tag_suffix
+    manifest_find_exact
 }
 import from engine.src.pm.lockfile {
     Lockfile,
@@ -112,7 +110,10 @@ import from engine.src.pm.lockfile {
 import from engine.src.pm.project { PkgJson, pm_read_package_json, pm_workspace_dirs }
 import from engine.src.pm.platform { pm_current_os, pm_current_cpu }
 
-import from engine.src.runtime.mem { str_bslice, str_nbytes }
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
 
 obj:pub ResolveResult {
     has ok: bool = False,
@@ -427,15 +428,6 @@ def _resolve_dep(ctx: _Ctx, pkg_id: int, idx: int) -> str {
         }
         mv: MVersion = manifest_find_best(m, spec.range);
         if mv.version_str == "" {
-            blocked: str = manifest_blocked_suffix(m, spec.range);
-            if blocked != "" {
-                return "No version matching \""
-                    + spec.name
-                    + "\" found for specifier \""
-                    + spec.literal
-                    + "\""
-                    + blocked;
-            }
             return "No version matching \""
                 + spec.literal
                 + "\" found for specifier \""
@@ -466,8 +458,7 @@ def _resolve_dep(ctx: _Ctx, pkg_id: int, idx: int) -> str {
                 + spec.name
                 + "\" with tag \""
                 + spec.dist_tag
-                + "\" not found"
-                + manifest_blocked_tag_suffix(m2, spec.dist_tag);
+                + "\" not found";
         }
         same2: int = graph_find_exact(ctx.g, spec.name, "npm", mv2.version_str);
         if same2 >= 0 {
