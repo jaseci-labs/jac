@@ -105,10 +105,6 @@ impl prepare_serve_payloads(
             client=client,
             dev=False if client else None
         );
-        bundled = prepared.client_compiler if client else None;
-        if bundled is not None {
-            bundled.vite_bundler.build(entry_file=bundled.compiled_dir / '_entry.js');
-        }
         result = _portable_manifest(prepared.manifests[str(entry_file.resolve())]);
         result['module_manifests'] = {
             os.path.relpath(path, prepared.root).replace(os.sep, '/'): _portable_manifest(
