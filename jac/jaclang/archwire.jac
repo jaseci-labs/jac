@@ -1371,7 +1371,7 @@ graph import {
             module_spaces,
             spaces_are_client_only
         },
-        dist.precompile_bytecode.find_jac_files { native_only },
+        dist.precompile_bytecode.find_jac_files { native_only, variant_selected },
         dist.precompile_bytecode.package_native_units { native_units_of },
         dist.publish.runtime_vendor._compile_runtime_module
             | testing.cl_test_runner.module_is_client { module_record },
@@ -5781,6 +5781,9 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
+            native_only_import_target
+        },
         backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
         backends.py.jcir_gen_pass.JcirGenPass.exit_import {
             CrossAppKind,
@@ -6569,6 +6572,7 @@ graph import compiler {
             native_unit_identity,
             native_unit_root
         },
+        driver.native_iface.resolve_native_unit_ref { _native_unit_root_name },
         driver.nativecache.NativeUnitRegistry._source_key {
             get_effective_default_codespace_override,
             set_effective_default_codespace
@@ -6674,6 +6678,7 @@ graph import compiler {
             endpoint_key
         },
         driver.application.prepare_application {
+            effective_default_codespace,
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
@@ -13778,7 +13783,10 @@ graph import compiler.types {
         ct_type_attr,
         ct_value_attr
     }
-    ct_eval ++> type_evaluator { CtEvaluator }
+    ct_eval ++> [
+        type_evaluator { CtEvaluator },
+        type_evaluator.TypeEvaluator.__post_init__ { CtEvaluator },
+    ]
     ct_format ++> [
         ct_builtins { ct_binary, ct_format, ct_str_format },
         ct_eval { ct_binary, ct_convert, ct_format, ct_inplace },
@@ -14087,9 +14095,10 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._extern_field_type { numeric_name_of },
         type_evaluator.TypeEvaluator._literal_type_from_expr { folded_number },
     ]
-    fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
-        numeric_name_of
-    }
+    fixed_width --> [
+        type_evaluator.TypeEvaluator._get_type_from_flow_node { numeric_name_of },
+        type_evaluator.TypeEvaluator._validate_call_type { fixed_width_call_type },
+    ]
     operations ++> type_evaluator {
         BINARY_OPERATOR_MAP,
         get_type_of_binary_operation,
@@ -14427,7 +14436,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        build._build_catalog_inner { CatalogWriter },
+    ]
 }
 
 graph import data {
@@ -14909,7 +14921,7 @@ graph import project {
         validate_against_schema
     }
     dependencies ++> [
-        config { PackageDep },
+        config { PackageDep, split_dependency_table },
         config.JacConfig.merge_dependency_tables { split_dependency_table },
     ]
     kernel_check ++> kernel_compile.kernel_compile_reported { alert_of }
@@ -14967,7 +14979,7 @@ graph import project {
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [
-        config { PersistenceConfig },
+        config { PersistenceConfig, parse_persistence },
         config._parse_toml_data { parse_persistence },
     ]
     placement ++> kinds.resolve_app_kind { match_pin, validate_pins }
@@ -14997,7 +15009,8 @@ graph import project {
     ]
     textio --> config.JacConfig.save { read_file_with_encoding }
     tomlio ++> [
-        config.JacConfig.load | template_loader { read_toml_with_encoding },
+        config | template_loader { read_toml_with_encoding },
+        config.JacConfig.load { read_toml_with_encoding },
         config.JacConfig.merge_from_toml_file { read_toml_with_encoding },
     ]
     tomlio --> config.JacConfig.save { MalformedJacTomlError }
@@ -15937,11 +15950,11 @@ graph import runtime.python {
         modules.elementtree
             | modules.pyexpat
             | modules.select_platform
-            | modules.select_platform.darwin
-            | modules.select_platform.linux
             | modules.sqlite3 { MemberField },
         modules.multiprocessing | modules.posix_stat { MemberField, MemberType },
         modules.pickle { record_int, record_set_int },
+        modules.select_platform.darwin { MemberField },
+        modules.select_platform.linux { MemberField },
         modules.unicodedata { record_set_address },
     ]
     bindings.members --> modules.lzma {
@@ -21729,10 +21742,9 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
-        modules.posix_fileio_platform
-            | modules.posix_fileio_platform.darwin
-            | modules.posix_fileio_platform.linux
-            | object_model.mystrtoul { jacpy_set_errno },
+        modules.posix_fileio_platform | object_model.mystrtoul { jacpy_set_errno },
+        modules.posix_fileio_platform.darwin { jacpy_set_errno },
+        modules.posix_fileio_platform.linux { jacpy_set_errno },
         modules.posix_files {
             NULL,
             PyBytes_AsString,
@@ -37915,7 +37927,6 @@ graph import runtime.python {
             | modules.posix_fileio
             | modules.posix_ids
             | modules.posix_stat_platform.darwin
-            | modules.posix_stat_platform.linux
             | modules.pwd
             | modules.resource
             | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
@@ -37926,6 +37937,10 @@ graph import runtime.python {
         },
         modules.posix_process | modules.posix_stat | modules.time {
             PyStructSequence_GetItem,
+            PyStructSequence_New,
+            PyStructSequence_SetItem
+        },
+        modules.posix_stat_platform.linux {
             PyStructSequence_New,
             PyStructSequence_SetItem
         },
@@ -42409,9 +42424,9 @@ graph import runtime.python.modules {
             TIOCSCTTY,
             _SC_TTY_NAME_MAX
         },
-        posix_fileio_platform
-            | posix_fileio_platform.darwin
-            | posix_fileio_platform.linux { ENOSYS },
+        posix_fileio_platform { ENOSYS },
+        posix_fileio_platform.darwin { ENOSYS },
+        posix_fileio_platform.linux { ENOSYS },
         posix_files {
             AT_EACCESS,
             AT_REMOVEDIR,
@@ -43313,14 +43328,13 @@ graph import runtime.python.modules {
         io_fileio { S_IFCHR, S_IFDIR, S_IFMT },
         posix_stat { S_IFDIR, S_IFLNK, S_IFMT, S_IFREG },
     ]
-    stat_records ++> io_fileio
-        | marshal
-        | mmap
-        | posix_stat
-        | posix_stat_platform
-        | posix_stat_platform.darwin
-        | posix_stat_platform.linux
-        | signal { _Py_stat_struct }
+    stat_records ++> [
+        io_fileio | marshal | mmap | posix_stat | posix_stat_platform | signal {
+            _Py_stat_struct
+        },
+        posix_stat_platform.darwin { _Py_stat_struct },
+        posix_stat_platform.linux { _Py_stat_struct },
+    ]
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     termios_constants ++> termios { ICANON, NCCS, TIOCGWINSZ, TIOCSWINSZ, VMIN, VTIME }
     termios_records ++> termios {
@@ -43352,19 +43366,13 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
-        core_platform | core_platform.darwin | core_platform.linux | select | signal {
-            timespec,
-            timeval
-        },
+        core_platform | select | signal { timespec, timeval },
+        core_platform.darwin { timespec, timeval },
+        core_platform.linux { timespec, timeval },
         datetime_date | datetime_datetime | datetime_format { tm },
-        posix_fileio
-            | posix_fileio_platform
-            | posix_fileio_platform.darwin
-            | posix_fileio_platform.linux
-            | posix_files
-            | time_platform
-            | time_platform.darwin
-            | time_platform.linux { timespec },
+        posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
+        posix_fileio_platform.darwin | time_platform.darwin { timespec },
+        posix_fileio_platform.linux | time_platform.linux { timespec },
         posix_process_platform.darwin { tms },
         posix_process_platform.linux { timespec, tms },
         time { timespec, timeval, tm, tms },
