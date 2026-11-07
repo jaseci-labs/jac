@@ -538,6 +538,40 @@ test "a seal that cannot yield a bootable .jab fails the pack instead of the pod
 }
 
 
+test "a pinned seal binary that predates prepared clients still prepares serving metadata" {
+    python = shutil.which("python3");
+    assert python , "python3 is required to stand in for an older seal binary";
+    stub = Path(tempfile.mkdtemp(prefix="jac-old-seal-"));
+    for pkg in ["jaclang", "jaclang/dist", "jaclang/project"] {
+        (stub / pkg).mkdir(parents=True, exist_ok=True);
+        (stub / pkg / "__init__.py").write_text("");
+    }
+    (stub / "jaclang" / "project" / "config.py").write_text(
+        "def get_config_for_path(path):\n    return None\n"
+    );
+    (stub / "jaclang" / "dist" / "seal.py").write_text(
+        "from pathlib import Path\n"
+            + "def bake_serve_payloads(config, pkg_copy, app='', bake_client=True):\n"
+            + "    out = Path(pkg_copy) / '.jac'\n"
+            + "    out.mkdir(exist_ok=True)\n"
+            + "    (out / 'serve_manifest.json').write_text('{}')\n"
+            + "    return True\n"
+    );
+    binary = f'#!/bin/sh\nPYTHONPATH="{stub}" exec "{python}" -S "$@"\n';
+    for bake_client in [False, True] {
+        caught = "";
+        try {
+            _precompile_app(
+                Path(_mini_app()), binary.encode(), None, 120, bake_client=bake_client
+            );
+        } except Exception as e {
+            caught = f"{type(e).__name__}: {e}";
+        }
+        assert "metadata preparation failed" not in caught , (bake_client, caught);
+    }
+}
+
+
 test "the seal and vendor subprocesses run without persistent storage (issue 8094)" {
     import from jaclang.scale.injector.bundle { seal_step_env }
     import from jaclang.server.session { SCRATCH_ENV }
