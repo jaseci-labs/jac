@@ -263,18 +263,31 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     return ir.Constant(ir.IntType(64), 0);
 }
 
-# Matches the stream by the symbol it resolves to, not its spelling, so
-# `sys.stderr`, `s.stderr` and a from-imported `stderr as err` all lower.
 impl NaIRGenPass._sys_stream_of(value: uni.Expr) -> (str | None) {
     if "sys" not in self._native_stdlib_modules {
         return None;
     }
-    import from jaclang.compiler.symbol_utils { stdlib_member }
-    origin = stdlib_member(value);
-    if origin is None or origin[0] != "sys" or origin[1] not in ("stdout", "stderr") {
+    named = value;
+    if isinstance(value, uni.AtomTrailer) and value.is_attr {
+        named = value.right;
+    }
+    if not isinstance(named, uni.Name) or named.sym is None {
         return None;
     }
-    return origin[1];
+    sym = named.sym;
+    if sym.sym_name not in ("stdout", "stderr") {
+        return None;
+    }
+    owner = sym.parent_tab;
+    if not isinstance(owner, uni.Module) or owner.loc is None {
+        return None;
+    }
+    if not owner.loc.mod_path.replace("\\", "/").endswith(
+        "typeshed/stdlib/sys/__init__.pyi"
+    ) {
+        return None;
+    }
+    return sym.sym_name;
 }
 
 impl NaIRGenPass._emit_print_call(

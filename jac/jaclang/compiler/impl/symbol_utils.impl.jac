@@ -79,32 +79,6 @@ impl imported_module_name(expr: Expr) -> str | None {
     return None;
 }
 
-# The (module, member) of the typeshed stdlib declaration `expr` resolves to,
-# so `sys.stderr` and a from-imported or aliased `stderr` give the same answer.
-impl stdlib_member(expr: Expr) -> (tuple[str, str] | None) {
-    sym = resolve_expr_symbol(expr);
-    if sym is None {
-        return None;
-    }
-    owner = sym.parent_tab;
-    if not isinstance(owner, Module) or owner.loc is None {
-        return None;
-    }
-    path = owner.loc.mod_path.replace("\\", "/");
-    marker = "vendor/typeshed/stdlib/";
-    idx = path.rfind(marker);
-    if idx < 0 {
-        return None;
-    }
-    rel = path[idx + len(marker):];
-    for suffix in ("/__init__.pyi", ".pyi") {
-        if rel.endswith(suffix) {
-            return (rel[:-len(suffix)].replace("/", "."), sym.sym_name);
-        }
-    }
-    return None;
-}
-
 impl _is_user_symbol(sym: Symbol) -> bool {
     scope: (UniScopeNode | None) = sym.parent_tab;
     while scope is not None {

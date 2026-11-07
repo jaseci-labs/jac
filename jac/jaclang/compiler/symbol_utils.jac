@@ -15,8 +15,6 @@ def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol |
 
 def imported_module_name(expr: Expr) -> str | None;
 
-def stdlib_member(expr: Expr) -> (tuple[str, str] | None);
-
 def _is_user_symbol(sym: Symbol) -> bool;
 
 def intrinsic_registry_if_ready -> (IntrinsicRegistry | None);
