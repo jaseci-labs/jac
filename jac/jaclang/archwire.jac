@@ -45545,6 +45545,7 @@ graph import scale {
         tests.deploy.test_client_build_stage { bundle_source_files, source_filter_for },
         tests.microservices.test_app_precompile {
             DEFAULT_SEAL_TIMEOUT_S,
+            _precompile_app,
             _stage_app,
             nested_sanitized_tomls,
             pack_jab,
