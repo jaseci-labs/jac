@@ -34993,7 +34993,8 @@ obj VM {
     `fnv.apply(t, args)` enters fnv with this = t and the elements of `args`
     in list mode when no step can be observed -- `args` absent, null,
     undefined, or a dense Array / unmapped arguments object
-    (_vm_dense_list_from) -- else 0 (the handler takes it, TDZ included)."""
+    (_vm_dense_list_from) -- else 0 (the handler takes it, and a TDZ-flagged
+    argument, even one apply ignores, throws there)."""
     def _reg_fn_apply_enter(
         frame: CallFrame,
         st: ExecState,
@@ -35004,21 +35005,24 @@ obj VM {
         orig: int,
         resume_pc: int
     ) -> int {
+        # Every argument's TDZ check first, those apply ignores included: the
+        # handler throws for any of them before the call.
+        fa_k: int = 0;
+        while fa_k < argc {
+            fa_w: int = frame.func.rcode[argpc + fa_k];
+            if (fa_w & 32768) != 0
+                and js_is_tdz(frame.locals[frame.lb + (fa_w & 32767)]) {
+                return 0;
+            }
+            fa_k = fa_k + 1;
+        }
         fa_this: JSValue = js_undefined();
         fa_list: list[JSValue] = [];
         if argc >= 1 {
-            fa_w0: int = frame.func.rcode[argpc];
-            fa_this = frame.locals[frame.lb + (fa_w0 & 32767)];
-            if (fa_w0 & 32768) != 0 and js_is_tdz(fa_this) {
-                return 0;
-            }
+            fa_this = frame.locals[frame.lb + (frame.func.rcode[argpc] & 32767)];
         }
         if argc >= 2 {
-            fa_w1: int = frame.func.rcode[argpc + 1];
-            fa_arr: JSValue = frame.locals[frame.lb + (fa_w1 & 32767)];
-            if (fa_w1 & 32768) != 0 and js_is_tdz(fa_arr) {
-                return 0;
-            }
+            fa_arr: JSValue = frame.locals[frame.lb + (frame.func.rcode[argpc + 1] & 32767)];
             if not (jsv_is_null(fa_arr) or jsv_is_undefined(fa_arr))
                 and not _vm_dense_list_from(fa_arr, fa_list) {
                 return 0;
