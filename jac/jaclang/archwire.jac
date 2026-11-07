@@ -3990,6 +3990,8 @@ graph import {
     server.serving.client --> scale.tests.server.test_serve { aws_connect }
     server.serving.client as sv_http ++> scale.tests.server.test_sv_auth_forward;
     server.serving.compression ++> scale.tests.microservices.test_sse_framing {
+        CompressionPolicy,
+        GzipCache,
         _gzip_stream
     }
     server.serving.datatypes ++> [
@@ -4054,6 +4056,7 @@ graph import {
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
             | scale.tests.server.test_serve { Headers, Request, URL },
+        scale.tests.microservices.test_sse_framing { Headers, Request, Response },
         scale.tests.server.test_bodiless_status { Response, StreamingResponse },
         scale.tests.server.test_oauth_providers._callback_request { QueryParams, URL },
         scale.tests.server.test_sso {
@@ -4134,6 +4137,14 @@ graph import {
     server.serving.endpoint --> [
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
+    ]
+    server.serving.files ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_spa_fallback {
+            file_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.static_file {
+            file_response
+        },
     ]
     server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
         cors_pair_problem
