@@ -2447,6 +2447,11 @@ def _vm_add_prim(v: JSValue) -> bool {
 ToPrimitive) or both objects / callables (identity) — _abstract_equal then
 answers without side effects."""
 def _vm_eq_simple(a: JSValue, b: JSValue) -> bool {
+    # null / undefined against anything: abstract equality converts nothing
+    # (§7.2.15 steps 2-5; `obj == null` is false, document.all's included)
+    if jsv_is_null(a) or jsv_is_undefined(a) or jsv_is_null(b) or jsv_is_undefined(b) {
+        return True;
+    }
     es_a: bool = jsv_is_object_cell(a) or is_fn_val(a) or is_native_val(a);
     es_b: bool = jsv_is_object_cell(b) or is_fn_val(b) or is_native_val(b);
     return es_a == es_b;
@@ -2458,6 +2463,13 @@ prototype walk)."""
 def _vm_instanceof_plain(fn: JSValue) -> bool {
     ip_h: JSValue = _fn_prop(fn, SYMBOL_KEY_BASE + SYMBOL_HAS_INSTANCE);
     return is_native_val(ip_h) and get_native_kind(ip_h) == NATIVE_KIND_FN_HAS_INSTANCE;
+}
+
+"""`fn` is a built-in constructor whose @@hasInstance is %Function.prototype%'s
+default (`v instanceof Map`, `instanceof Error`): OrdinaryHasInstance."""
+def _vm_instanceof_native(fn: JSValue) -> bool {
+    in_h: JSValue = _native_prop(fn, SYMBOL_KEY_BASE + SYMBOL_HAS_INSTANCE);
+    return is_native_val(in_h) and get_native_kind(in_h) == NATIVE_KIND_FN_HAS_INSTANCE;
 }
 
 """GET_PROP on an object cell without user code, or the hole: the ordinary
@@ -34977,6 +34989,47 @@ obj VM {
         );
     }
 
+    """R_CALLM of %Function.prototype.apply% on a closure receiver:
+    `fnv.apply(t, args)` enters fnv with this = t and the elements of `args`
+    in list mode when no step can be observed -- `args` absent, null,
+    undefined, or a dense Array / unmapped arguments object
+    (_vm_dense_list_from) -- else 0 (the handler takes it, TDZ included)."""
+    def _reg_fn_apply_enter(
+        frame: CallFrame,
+        st: ExecState,
+        fnv: JSValue,
+        dst: int,
+        argpc: int,
+        argc: int,
+        orig: int,
+        resume_pc: int
+    ) -> int {
+        fa_this: JSValue = js_undefined();
+        fa_list: list[JSValue] = [];
+        if argc >= 1 {
+            fa_w0: int = frame.func.rcode[argpc];
+            fa_this = frame.locals[frame.lb + (fa_w0 & 32767)];
+            if (fa_w0 & 32768) != 0 and js_is_tdz(fa_this) {
+                return 0;
+            }
+        }
+        if argc >= 2 {
+            fa_w1: int = frame.func.rcode[argpc + 1];
+            fa_arr: JSValue = frame.locals[frame.lb + (fa_w1 & 32767)];
+            if (fa_w1 & 32768) != 0 and js_is_tdz(fa_arr) {
+                return 0;
+            }
+            if not (jsv_is_null(fa_arr) or jsv_is_undefined(fa_arr))
+                and not _vm_dense_list_from(fa_arr, fa_list) {
+                return 0;
+            }
+        }
+        self.reg_call_args = fa_list;
+        return self._reg_call_enter(
+            frame, st, fnv, fa_this, dst, -1, len(fa_list), orig, resume_pc
+        );
+    }
+
     """R_CALLM of an array callback built-in (forEach, map, filter, reduce,
     find, some, every, sort, flatMap) on `this_val`: the dispatcher the
     bridged CALL_METHOD handler ends in, given the argument registers (3 =
@@ -35307,8 +35360,12 @@ obj VM {
         } else {
             frame.locals[frame.lb + (dst)] = js_undefined();
         }
-        # (the CALL_METHOD generic branch drains pending stream callbacks)
-        if rn_mode == 7 and frame.func.code[orig].opcode == Opcode.CALL_METHOD {
+        # (the CALL_METHOD generic branch drains pending stream callbacks;
+        # then / catch, which it handles on their own, do not)
+        if rn_mode == 7
+            and frame.func.code[orig].opcode == Opcode.CALL_METHOD
+            and rn_kind != NATIVE_KIND_PROMISE_THEN
+            and rn_kind != NATIVE_KIND_PROMISE_CATCH {
             self._drain_stream_pending();
         }
         return True;
@@ -35389,7 +35446,10 @@ obj VM {
                 return jsv_hole();
             }
         }
+        # (a callee that never reads the module globals needs no swap: its
+        # closures take their module lexically)
         if jsv_is_object_cell(jc_jac_module(cl))
+            and _JC_FUNC[cl].mod_free != 1
             and not (jc_jac_module(cl) == self._reg_cur_module()) {
             return jsv_hole();
         }
@@ -37005,6 +37065,23 @@ obj VM {
             }
         }
         gs_key: int = frame.func.code[c].arg2;
+        # A megamorphic site's inherited getter (the cache keyed by shape,
+        # [[Prototype]] and key): entered before the reads below, whose walk
+        # of the whole chain finds only the hole for an accessor.
+        if gs_key != 0 and len(_MGC_SID) > 0 and jsv_is_object_cell(va) {
+            gs_ms: int = js_object_ic_shape(va);
+            if gs_ms >= 0 {
+                gs_mg: JSValue = _vm_mgc_getter(gs_key, va, gs_ms);
+                if not jsv_is_hole(gs_mg) {
+                    gs_rm: int = self._reg_call_enter(
+                        frame, st, gs_mg, va, (w >> 8) & 65535, pc, 0, c, pc
+                    );
+                    if gs_rm != 0 {
+                        return gs_rm;
+                    }
+                }
+            }
+        }
         gs_v: JSValue = _vm_prim_get(gs_key, va);
         if not jsv_is_hole(gs_v) and gs_key != 0 {
             if jsv_is_object_cell(va) {
@@ -37451,6 +37528,7 @@ obj VM {
             and (
                 (is_fn_val(vb) and _vm_instanceof_plain(vb))
                 or (jsv_is_object_cell(vb) and _vm_instanceof_class(vb))
+                or (is_native_val(vb) and _vm_instanceof_native(vb))
             ) {
             # OrdinaryHasInstance: a prototype walk; a bound or prototype-less
             # callee reports through the native exception channel.
@@ -38289,6 +38367,15 @@ obj VM {
                             cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
                         }
                         if cr == 0
+                            and zi == NATIVE_KIND_FN_APPLY
+                            and br >= 0
+                            and len(frame.with_objs) == 0
+                            and is_fn_val(vb) {
+                            # fn.apply(t, array) on a closure: enter fn with
+                            # this = t and the array's elements
+                            cr = self._reg_fn_apply_enter(frame, st, vb, a, xi, c, xo, yi);
+                        }
+                        if cr == 0
                             and zi == NATIVE_KIND_FN_CALL
                             and br >= 0
                             and c >= 1
@@ -38587,6 +38674,15 @@ obj VM {
                             and not is_native_val(vb) {
                             # fn.call(t, args...) on a closure: enter fn with this = t
                             cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
+                        }
+                        if cr == 0
+                            and zi == NATIVE_KIND_FN_APPLY
+                            and br >= 0
+                            and len(frame.with_objs) == 0
+                            and is_fn_val(vb) {
+                            # fn.apply(t, array) on a closure: enter fn with
+                            # this = t and the array's elements
+                            cr = self._reg_fn_apply_enter(frame, st, vb, a, xi, c, xo, yi);
                         }
                         if cr == 0
                             and zi == NATIVE_KIND_FN_CALL
@@ -48515,9 +48611,7 @@ def _nf_init {
         NATIVE_KIND_MODULE_EXT_JSON,
         NATIVE_KIND_MODULE_EXT_NODE,
         NATIVE_KIND_MODULE_SYNC_BUILTIN_ESM,
-        NATIVE_KIND_PROMISE_CATCH,
         NATIVE_KIND_PROMISE_FINALLY,
-        NATIVE_KIND_PROMISE_THEN,
         NATIVE_KIND_REGEXP_SYMBOL_MATCH,
         NATIVE_KIND_REGEXP_SYMBOL_REPLACE,
         NATIVE_KIND_REQUIRE,
