@@ -35,6 +35,23 @@ test "start flips draining once and keeps the first reason" {
 }
 
 
+test "a hook registered twice runs once, however many drains start" {
+    ran: list[str] = [];
+
+    def hook {
+        ran.append("hook");
+    }
+    on_drain(hook);
+    on_drain(hook);
+    for reason in ["first", "second"] {
+        state = DrainState();
+        state.start(reason);
+        state.wait_for_hooks();
+    }
+    assert ran == ["hook"];
+}
+
+
 test "remaining counts down from the budget once draining" {
     state = DrainState(timeout=10.0);
     state.start("test");

@@ -266,7 +266,9 @@ impl schedule(**kwargs: any) -> Callable {
 }
 
 impl on_drain(hook: Callable[[], any]) -> Callable[[], any] {
-    DRAIN_HOOKS.append(hook);
+    if hook not in DRAIN_HOOKS {
+        DRAIN_HOOKS.append(hook);
+    }
     return hook;
 }
 

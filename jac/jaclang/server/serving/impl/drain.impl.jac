@@ -14,7 +14,9 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
 }
 
 impl _run_drain_hooks {
-    for hook in list(DRAIN_HOOKS) {
+    hooks = list(DRAIN_HOOKS);
+    DRAIN_HOOKS.clear();
+    for hook in hooks {
         try {
             result = hook();
             if inspect.iscoroutine(result) {
