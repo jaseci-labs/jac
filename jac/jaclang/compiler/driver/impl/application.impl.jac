@@ -634,6 +634,10 @@ impl _prepare(
     console: any
 ) -> PreparedApplication {
     program.forget_failed_modules();
+    if client {
+        import from jaclang.client.config_loader { JacClientConfig }
+        JacClientConfig(Path(`root), entry_path=`entry).load();
+    }
     inputs: dict[str, str] = {};
     selfhost = program._get_compiler().selfhost;
     def capture(path: str) {
