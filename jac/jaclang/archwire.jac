@@ -5479,12 +5479,8 @@ graph import compiler {
         driver.unit_products.client_artifact_of { es_to_js_with_map },
         tests.xbackend_equiv { es_to_js },
     ]
-    backends.es.esast_gen_pass ++> [
-        driver.pipeline.client_passes | tests.test_client_codegen_facts {
-            EsastGenPass
-        },
-        driver.pipeline.codegen_passes { EsastGenPass },
-    ]
+    backends.es.esast_gen_pass ++> tests.test_client_codegen_facts { EsastGenPass }
+    backends.es.esast_gen_pass --> driver.pipeline.pass_class_of { EsastGenPass }
     backends.es.estree ++> tools.lang_tools { Node as EsNode }
     backends.es.estree --> driver.unit_products.client_artifact_of
         | tests.xbackend_equiv { Node as EsNode }
@@ -5523,7 +5519,6 @@ graph import compiler {
             emit_unit_object,
             optimize_unit_ir
         },
-        driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
         driver.nativecache.NativeBuildSession.compact_ir {
@@ -5536,17 +5531,15 @@ graph import compiler {
         },
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
+        driver.pipeline.pass_class_of { NativeCompilePass },
     ]
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
         FACT_IMPORT_PATHS,
         FACT_PACKAGE_STORE,
         FACT_SEP
     }
-    backends.native.na_ir_gen_pass ++> [
-        driver.pipeline.native_ir_passes { NaIRGenPass },
-        driver.pipeline.native_lower_passes { NaIRGenPass },
-    ]
-    backends.native.na_ir_gen_pass --> driver.pipeline.codegen_passes { NaIRGenPass }
+    backends.native.na_ir_gen_pass ++> driver.pipeline.native_ir_alert { NaIRGenPass }
+    backends.native.na_ir_gen_pass --> driver.pipeline.pass_class_of { NaIRGenPass }
     backends.native.wasm_build ++> [
         driver.pipeline_runner.wasm_artifact_inputs { emit_wasm_from_ir },
         driver.pipeline_runner.wasm_ir_units {
@@ -5571,15 +5564,11 @@ graph import compiler {
             generated_python
         },
     ]
-    backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
-        JcirBytecodeGenPass
-    }
-    backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir {
-        JcirBytecodeGenPass
-    }
-    backends.py.jcir_gen_pass ++> driver.module_compile | driver.pipeline.py_ir_passes {
-        JcirGenPass
-    }
+    backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir
+        | driver.pipeline.pass_class_of { JcirBytecodeGenPass }
+    backends.py.jcir_gen_pass ++> driver.module_compile
+        | driver.pipeline.native_ir_alert { JcirGenPass }
+    backends.py.jcir_gen_pass --> driver.pipeline.pass_class_of { JcirGenPass }
     boundary_rules ++> [
         passes.placement_pass.NativeLegality.settle { ability_crossing },
         passes.placement_pass.bridged_use_crosses { ability_crossing },
@@ -6072,7 +6061,6 @@ graph import compiler {
         NativeUnitRegistry
     }
     driver.pass_driver ++> [
-        driver.pipeline.run_scheduled_pass { run_pass },
         tests.test_client_codegen_facts { run_pass },
         tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__ {
             diagnostic_policy_for
@@ -6088,7 +6076,7 @@ graph import compiler {
             CompilationProduct,
             require
         },
-        jc_unit { early_passes, run_early_pass, PassKind },
+        jc_unit { PassKind, early_passes, run_early_pass },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file
             | tools.jac_formatter_pass.format_module
@@ -9689,7 +9677,7 @@ graph import compiler {
         frontend.codeinfo.native_arch_scope { binds_bare_arch_names },
     ]
     passes ++> tools.code_intel { Alert }
-    passes.access_check_pass ++> driver.pipeline.analysis_passes { AccessCheckPass }
+    passes.access_check_pass --> driver.pipeline.pass_class_of { AccessCheckPass }
     passes.annex_weave ++> [
         driver.wiring { WovenAnnex, import_form },
         frontend.parser.frontend { WovenAnnex, merge_annex_into },
@@ -9699,22 +9687,28 @@ graph import compiler {
         WovenAnnex
     }
     passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
+    passes.ast_validation_pass --> driver.pipeline.pass_class_of { ASTValidationPass }
     passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
-    passes.capability_check_pass ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._fstring_spec_text {
-            static_fstring_spec_text
-        },
-        driver.pipeline.analysis_passes { PortabilityWarnPass },
-    ]
-    passes.capability_check_pass --> backends.native.na_ir_gen_pass.NaIRGenPass._process_clib_imports {
-        classify_native_import
+    passes.boundary_analysis_pass --> driver.pipeline.pass_class_of {
+        BoundaryAnalysisPass
     }
+    passes.capability_check_pass ++> backends.native.na_ir_gen_pass.NaIRGenPass._fstring_spec_text {
+        static_fstring_spec_text
+    }
+    passes.capability_check_pass --> [
+        backends.native.na_ir_gen_pass.NaIRGenPass._process_clib_imports {
+            classify_native_import
+        },
+        driver.pipeline.pass_class_of { PortabilityWarnPass },
+    ]
     passes.cfg_build_pass ++> [
-        driver.pipeline.flow_passes | tests.test_pipeline_products { CFGBuildPass },
-        driver.pipeline.ir_passes { CFGBuildPass },
+        tests.test_pipeline_products { CFGBuildPass },
         tools.cfg_dot { is_structural_child, unwrap_to_bool },
     ]
-    passes.comptime_resolve_pass --> driver.pipeline.ir_passes { ComptimeResolvePass }
+    passes.cfg_build_pass --> driver.pipeline.pass_class_of { CFGBuildPass }
+    passes.comptime_resolve_pass --> driver.pipeline.pass_class_of {
+        ComptimeResolvePass
+    }
     passes.context ++> [
         backends.es.esast_gen_pass
             | backends.py.jcir_gen_pass
@@ -9740,8 +9734,8 @@ graph import compiler {
         driver.pass_driver { Alert, CompilerPass, DiagnosticPolicy },
         driver.pipeline {
             Alert,
-            CompilerPass,
             CompileContext,
+            CompilerPass,
             DiagnosticInfo,
             PassKind,
             PassSchedule
@@ -9759,96 +9753,28 @@ graph import compiler {
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
-    passes.declaration_type_pass ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
-            importer_lowers_bodies
-        },
-        driver.pipeline.declaration_passes { DeclarationTypePass },
-    ]
-    passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
-    passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
-    passes.execution --> driver.pipeline.run_early_pass { run_walker }
-    driver.context_passes ++> driver.pipeline.pass_class_of {
-        AppContextPass,
-        AbsorbImportsPass,
-        BoundaryFactsPass,
-        NativeImportFactsPass
+    passes.decl_impl_match_pass --> driver.pipeline.pass_class_of { DeclImplMatchPass }
+    passes.declaration_type_pass ++> backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+        importer_lowers_bodies
     }
-    passes.graph_lowering_pass ++> driver.pipeline.pass_class_of { GraphLoweringPass }
-    passes.ast_validation_pass ++> driver.pipeline.pass_class_of { ASTValidationPass }
-    passes.sym_tab_build_pass ++> driver.pipeline.pass_class_of { SymTabBuildPass }
-    passes.decl_impl_match_pass ++> driver.pipeline.pass_class_of { DeclImplMatchPass }
-    placement.placement_solver ++> driver.pipeline.pass_class_of { PlacementApplyPass }
-    passes.semantic_analysis_pass ++> driver.pipeline.pass_class_of {
-        SemanticAnalysisPass
-    }
-    passes.import_wiring_pass ++> driver.pipeline.pass_class_of { ImportWiringPass }
-    passes.package_boundary_pass ++> driver.pipeline.pass_class_of { PackageBoundaryPass }
-    passes.sem_def_match_pass ++> driver.pipeline.pass_class_of { SemDefMatchPass }
-    passes.cfg_build_pass ++> driver.pipeline.pass_class_of { CFGBuildPass }
-    passes.mtir_gen_pass ++> driver.pipeline.pass_class_of { MTIRGenPass }
-    passes.jsx_intrinsic_guard_pass ++> driver.pipeline.pass_class_of {
-        JsxIntrinsicGuardPass
-    }
-    passes.comptime_resolve_pass ++> driver.pipeline.pass_class_of {
-        ComptimeResolvePass
-    }
-    passes.region_infer_pass ++> driver.pipeline.pass_class_of { RegionInferPass }
-    passes.variant_agreement_pass ++> driver.pipeline.pass_class_of {
-        VariantAgreementPass
-    }
-    passes.type_checker_pass ++> driver.pipeline.pass_class_of { TypeCheckPass }
-    passes.static_analysis_pass ++> driver.pipeline.pass_class_of {
-        StaticAnalysisPass
-    }
-    passes.access_check_pass ++> driver.pipeline.pass_class_of { AccessCheckPass }
-    passes.ownership_check_pass ++> driver.pipeline.pass_class_of { OwnershipCheckPass }
-    passes.placement_pass ++> driver.pipeline.pass_class_of { PlacementPass }
-    passes.capability_check_pass ++> driver.pipeline.pass_class_of { PortabilityWarnPass }
-    tools.jac_auto_lint_pass ++> driver.pipeline.pass_class_of {
-        JacLintCheckPass,
-        JacAutoLintPass
-    }
-    passes.declaration_type_pass ++> driver.pipeline.pass_class_of {
+    passes.declaration_type_pass --> driver.pipeline.pass_class_of {
         DeclarationTypePass
     }
-    passes.boundary_analysis_pass ++> driver.pipeline.pass_class_of {
-        BoundaryAnalysisPass
-    }
-    passes.endpoint_effect_pass ++> driver.pipeline.pass_class_of { EndpointEffectPass }
-    backends.es.esast_gen_pass ++> driver.pipeline.pass_class_of { EsastGenPass }
-    passes.layout_pass ++> driver.pipeline.pass_class_of { LayoutPass }
-    passes.rc_facts_pass ++> driver.pipeline.pass_class_of { RcFactsPass }
-    backends.native.na_ir_gen_pass ++> driver.pipeline.pass_class_of
-        | driver.pipeline.native_ir_alert { NaIRGenPass }
-    backends.py.jcir_gen_pass ++> driver.pipeline.pass_class_of
-        | driver.pipeline.native_ir_alert { JcirGenPass }
-    passes.freeze_structure_pass ++> driver.pipeline.pass_class_of {
-        FreezeStructurePass
-    }
-    backends.py.jcir_bc_gen_pass ++> driver.pipeline.pass_class_of {
-        JcirBytecodeGenPass
-    }
-    backends.native.na_compile_pass ++> driver.pipeline.pass_class_of {
-        NativeCompilePass
-    }
-    tools.comment_attach_pass ++> driver.pipeline.pass_class_of { CommentAttachPass }
-    tools.doc_ir_gen_pass ++> driver.pipeline.pass_class_of { DocIRGenPass }
-    tools.jac_formatter_pass ++> driver.pipeline.pass_class_of { JacFormatPass }
-    passes.pyast_load_pass ++> driver.pipeline.pass_class_of { PyastBuildPass }
-    tools.grammar_extract_pass ++> driver.pipeline.pass_class_of { GrammarExtractPass }
-    tools.cfg_dot ++> driver.pipeline.pass_class_of { CoalesceBBPass }
-    tools.normalize_pass ++> driver.pipeline.pass_class_of { NormalizePass }
-    tools.unparse_pass ++> driver.pipeline.pass_class_of { UnparsePass }
-    passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
+    passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
+    passes.endpoint_effect_pass --> driver.pipeline.pass_class_of { EndpointEffectPass }
+    passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
+    passes.execution --> driver.pipeline.run_early_pass { run_walker }
+    passes.freeze_structure_pass --> driver.pipeline.pass_class_of {
         FreezeStructurePass
     }
     passes.graph_lowering_pass ++> driver.pipeline { GraphLoweringPass }
+    passes.graph_lowering_pass --> driver.pipeline.pass_class_of { GraphLoweringPass }
     passes.import_wiring_pass ++> [
         driver.pipeline { ImportWiringPass },
         tools.jac_auto_lint_pass { ScopeReads, is_effect_binding },
     ]
-    passes.jsx_intrinsic_guard_pass ++> driver.pipeline.ir_passes {
+    passes.import_wiring_pass --> driver.pipeline.pass_class_of { ImportWiringPass }
+    passes.jsx_intrinsic_guard_pass --> driver.pipeline.pass_class_of {
         JsxIntrinsicGuardPass
     }
     passes.layout_pass ++> [
@@ -10027,7 +9953,6 @@ graph import compiler {
             record_interface_twins
         },
         boundary_rules.archetype_fields { referenced_archetype },
-        driver.pipeline.layout_passes { LayoutPass },
         symbol_utils.collect_method_names { archetype_accessors },
     ]
     passes.layout_pass --> [
@@ -10050,9 +9975,10 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._receiver_routed_method_fn {
             get_layout_registry as _sc_glr
         },
+        driver.pipeline.pass_class_of { LayoutPass },
     ]
     type passes.layout_pass ++> frontend.codeinfo { LayoutRegistry }
-    passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
+    passes.mtir_gen_pass --> driver.pipeline.pass_class_of { MTIRGenPass }
     passes.osp_analysis ++> [
         backends.es.esast_gen_pass { OspAnalysis, OspModel, OspSlot },
         backends.es.esast_gen_pass.EsastGenPass._osp_model
@@ -10068,10 +9994,11 @@ graph import compiler {
         backends.native.na_ir_gen_pass { OspSlot },
         frontend.codeinfo { OspModel },
     ]
-    passes.ownership_check_pass ++> driver.pipeline.analysis_passes {
-        OwnershipCheckPass
-    }
+    passes.ownership_check_pass --> driver.pipeline.pass_class_of { OwnershipCheckPass }
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
+    passes.package_boundary_pass --> driver.pipeline.pass_class_of {
+        PackageBoundaryPass
+    }
     passes.placement_pass ++> [
         backends.native.na_ir_gen_pass { NativeLegality, NativeRefusal, NativeRefused },
         backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable {
@@ -10086,15 +10013,18 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._settle_module {
             settle_native_module
         },
-        driver.pipeline.analysis_passes { PlacementPass },
     ]
-    passes.placement_pass --> backends.native.na_compile_pass.NativeCompilePass._run_impl {
-        settle_native_module
-    }
+    passes.placement_pass --> [
+        backends.native.na_compile_pass.NativeCompilePass._run_impl {
+            settle_native_module
+        },
+        driver.pipeline.pass_class_of { PlacementPass },
+    ]
     passes.pyast_load_pass ++> [
-        driver.pipeline.python_ast_passes | tools.lang_tools { PyastBuildPass },
+        tools.lang_tools { PyastBuildPass },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
     ]
+    passes.pyast_load_pass --> driver.pipeline.pass_class_of { PyastBuildPass }
     passes.rc_facts_pass ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_for_indexed {
             loop_body_locals
@@ -10119,9 +10049,6 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._try_iter_protocol_for {
             loop_body_locals
         },
-        driver.pipeline.codegen_passes { RcFactsPass },
-        driver.pipeline.native_ir_passes { RcFactsPass },
-        driver.pipeline.native_lower_passes { RcFactsPass },
     ]
     passes.rc_facts_pass --> [
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_expr {
@@ -10135,26 +10062,29 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._try_flow_for_parallel {
             loop_body_locals
         },
+        driver.pipeline.pass_class_of { RcFactsPass },
     ]
-    passes.region_infer_pass ++> driver.pipeline.analysis_passes { RegionInferPass }
+    passes.region_infer_pass --> driver.pipeline.pass_class_of { RegionInferPass }
     passes.scope_walk ++> tools.code_intel { ScopeWalker }
-    passes.sem_def_match_pass ++> driver.pipeline.ir_passes { SemDefMatchPass }
+    passes.sem_def_match_pass --> driver.pipeline.pass_class_of { SemDefMatchPass }
     passes.semantic_analysis_pass ++> driver.pipeline { SemanticAnalysisPass }
-    passes.static_analysis_pass ++> driver.pipeline.analysis_passes {
-        StaticAnalysisPass
+    passes.semantic_analysis_pass --> driver.pipeline.pass_class_of {
+        SemanticAnalysisPass
     }
+    passes.static_analysis_pass --> driver.pipeline.pass_class_of { StaticAnalysisPass }
     passes.sym_tab_build_pass ++> driver.pipeline | jc_unit { SymTabBuildPass }
-    passes.sym_tab_build_pass --> driver.program.JacProgram.load_dependency_module {
-        SymTabBuildPass
-    }
-    passes.type_checker_pass ++> driver.pipeline.analysis_passes
-        | tests.test_pipeline_products
+    passes.sym_tab_build_pass --> driver.pipeline.pass_class_of
+        | driver.program.JacProgram.load_dependency_module { SymTabBuildPass }
+    passes.type_checker_pass ++> tests.test_pipeline_products
         | tests.xbackend_equiv.compile_fixture_to_js { TypeCheckPass }
+    passes.type_checker_pass --> driver.pipeline.pass_class_of { TypeCheckPass }
     passes.variant_agreement_pass ++> [
-        driver.pipeline.analysis_passes { VariantAgreementPass },
         driver.wiring.unnamed_module_label { ANNEX_MARKERS },
         driver.wiring.variant_base_file { VARIANT_SUFFIX },
     ]
+    passes.variant_agreement_pass --> driver.pipeline.pass_class_of {
+        VariantAgreementPass
+    }
     placement.placement ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._owner_element
             | passes.placement_pass.element_requirements { element_display_name },
@@ -10274,6 +10204,7 @@ graph import compiler {
     placement.placement_solver --> [
         driver.boundary_classify.plain_native_import_target { _materialize_module },
         driver.module_analysis.run_analysis { placement_work },
+        driver.pipeline.pass_class_of { PlacementApplyPass },
         driver.program.JacProgram.parse_source { native_placement_candidate },
         frontend.codeinfo._inferred_native_path { native_default_path_ok },
     ]
@@ -10375,32 +10306,20 @@ graph import compiler {
     ]
     type target_spec ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0 { TargetSpec }
-    tools.cfg_dot ++> driver.pipeline.cfg_dot_passes { CoalesceBBPass }
+    tools.cfg_dot --> driver.pipeline.pass_class_of { CoalesceBBPass }
     tools.code_intel ++> tests.test_code_intel { CodeIntelligence }
-    tools.comment_attach_pass ++> [
-        driver.pipeline.format_lintfix_passes { CommentAttachPass },
-        driver.pipeline.format_passes { CommentAttachPass },
-    ]
+    tools.comment_attach_pass --> driver.pipeline.pass_class_of { CommentAttachPass }
     tools.doc_ir as doc --> frontend.codeinfo.CodeGenTarget.doc_ir.getter;
     type tools.doc_ir ++> frontend.codeinfo { Doc }
-    tools.doc_ir_gen_pass ++> [
-        driver.pipeline.doc_passes { DocIRGenPass },
-        driver.pipeline.format_lintfix_passes { DocIRGenPass },
-        driver.pipeline.format_passes { DocIRGenPass },
-    ]
-    tools.grammar_extract_pass ++> driver.pipeline.grammar_passes { GrammarExtractPass }
-    tools.jac_auto_lint_pass ++> [
-        driver.pipeline.analysis_passes { JacLintCheckPass },
-        driver.pipeline.format_lintfix_passes { JacAutoLintPass },
-        driver.pipeline.lint_passes { JacLintCheckPass },
-    ]
-    tools.jac_formatter_pass ++> [
-        driver.pipeline.format_lintfix_passes { JacFormatPass },
-        driver.pipeline.format_passes { JacFormatPass },
-        driver.pipeline.format_text_passes { JacFormatPass },
-    ]
-    tools.normalize_pass ++> driver.pipeline.normalize_passes { NormalizePass }
-    tools.unparse_pass ++> driver.pipeline.unparse_passes { UnparsePass }
+    tools.doc_ir_gen_pass --> driver.pipeline.pass_class_of { DocIRGenPass }
+    tools.grammar_extract_pass --> driver.pipeline.pass_class_of { GrammarExtractPass }
+    tools.jac_auto_lint_pass --> driver.pipeline.pass_class_of {
+        JacAutoLintPass,
+        JacLintCheckPass
+    }
+    tools.jac_formatter_pass --> driver.pipeline.pass_class_of { JacFormatPass }
+    tools.normalize_pass --> driver.pipeline.pass_class_of { NormalizePass }
+    tools.unparse_pass --> driver.pipeline.pass_class_of { UnparsePass }
     type_registry ++> [
         backends.es.esast_gen_pass.EsastGenPass._audit_free_identifiers
             | backends.es.jac_runtime_js._build_exc_runtime_js
@@ -11786,6 +11705,12 @@ graph import compiler.driver {
         BoundaryFactsPass,
         NativeImportFactsPass
     }
+    context_passes --> pipeline.pass_class_of {
+        AbsorbImportsPass,
+        AppContextPass,
+        BoundaryFactsPass,
+        NativeImportFactsPass
+    }
     ifacecache ++> program.JacProgram.iface_registry { IfaceRegistry }
     type ifacecache ++> program { IfaceRegistry }
     jir ++> [
@@ -11966,8 +11891,10 @@ graph import compiler.driver {
         application._prepare | session_compile.compile_in_session { compile_progress },
         ifacecache.IfaceRegistry.analysis_profile { diagnostic_policy_for },
         module_compile.report_missing_native_ir { deliver_alerts },
-        pipeline.execute_passes { build_diagnostic_policy, run_pass },
-        pipeline.run_utility { run_pass },
+        pipeline { DiagnosticPolicy },
+        pipeline.execute_passes { build_diagnostic_policy },
+        pipeline.run_scheduled_pass { run_pass },
+        pipeline.run_utility { build_diagnostic_policy, run_pass },
     ]
     pass_driver --> [
         application.prepare_application | compiler.JacCompiler._adopt_kernel_compile {
@@ -11992,9 +11919,9 @@ graph import compiler.driver {
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
         compiler.JacCompiler.ensure_client_codegen
             | ifacecache.IfaceRegistry._ensure_in_context { require },
-        module_compile { native_ir_alert },
         compiler.JacCompiler.jac_file_linter { require },
         ifacecache.IfaceRegistry._prepare { product_facts },
+        module_compile { native_ir_alert },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
     ]
     pipeline_runner --> [
