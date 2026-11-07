@@ -31,7 +31,11 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None);
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool;
 
 def bake_serve_payloads(
-    config: any, pkg_copy: Path, app: str = "", bake_client: bool = True
+    config: any,
+    pkg_copy: Path,
+    app: str = "",
+    bake_client: bool = True,
+    prepared_client: bool = False
 ) -> bool;
 
 def vendor_packages(config: any, pkg_copy: Path);

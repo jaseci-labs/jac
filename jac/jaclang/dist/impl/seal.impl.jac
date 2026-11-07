@@ -183,7 +183,11 @@ impl bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
 }
 
 impl bake_serve_payloads(
-    config: any, pkg_copy: Path, app: str = "", bake_client: bool = True
+    config: any,
+    pkg_copy: Path,
+    app: str = "",
+    bake_client: bool = True,
+    prepared_client: bool = False
 ) -> bool {
     import json;
     import shutil;
@@ -194,7 +198,9 @@ impl bake_serve_payloads(
     }
 
     Jac.set_full_target_path(str(entry_file));
-    built = prepare_serve_payloads(entry_file, Path(config.project_root), bake_client);
+    built = prepare_serve_payloads(
+        entry_file, Path(config.project_root), bake_client and prepared_client
+    );
     if built is None {
         return False;
     }

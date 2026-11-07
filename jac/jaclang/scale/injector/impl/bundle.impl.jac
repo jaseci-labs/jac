@@ -652,7 +652,9 @@ impl _precompile_app(
             + "project = Path('app').resolve()\n"
             + "config = get_config_for_path(project)\n"
             + "if not bake_serve_payloads(\n"
-            + f"    config, project, app={repr(app)}, bake_client={repr(bake_client)}\n"
+            + f"    config, project, app={repr(app)},\n"
+            + f"    bake_client={repr(bake_client)},\n"
+            + f"    prepared_client={repr(bake_client)}\n"
             + "):\n"
             + "    raise RuntimeError('Serving metadata preparation failed')\n";
         prepared = subprocess.run(

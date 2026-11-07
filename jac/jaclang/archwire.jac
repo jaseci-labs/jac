@@ -412,9 +412,10 @@ graph import {
     client.client_surface --> server.hmr.HotReloader._recompile_client_code
         | testing.cl_test_runner._run_harness { prepend_active_runtime_globals }
     type client.compiler ++> runtime.prepared { ViteCompiler }
-    client.config_loader --> compiler.driver.application._prepare_revision {
-        JacClientConfig
-    }
+    client.config_loader --> [
+        compiler.driver.application._prepare { JacClientConfig },
+        compiler.driver.application._prepare_revision { JacClientConfig },
+    ]
     client.desktop_plugin_config --> project.template_registry._register_builtin_client_templates {
         JacDesktopPluginConfig
     }
