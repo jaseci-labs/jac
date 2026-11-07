@@ -646,16 +646,18 @@ impl _precompile_app(
         jac_path.write_bytes(seal_binary);
         jac_path.chmod(0o755);
 
-        serve_payloads = "from pathlib import Path\n"
+        # A pinned older seal binary has no prepared_client parameter.
+        serve_payloads = "import inspect\n"
+            + "from pathlib import Path\n"
             + "from jaclang.project.config import get_config_for_path\n"
             + "from jaclang.dist.seal import bake_serve_payloads\n"
             + "project = Path('app').resolve()\n"
             + "config = get_config_for_path(project)\n"
-            + "if not bake_serve_payloads(\n"
-            + f"    config, project, app={repr(app)},\n"
-            + f"    bake_client={repr(bake_client)},\n"
-            + f"    prepared_client={repr(bake_client)}\n"
-            + "):\n"
+            + f"options = dict(app={repr(app)}, bake_client={repr(bake_client)})\n"
+            + "accepted = inspect.signature(bake_serve_payloads).parameters\n"
+            + "if options['bake_client'] and 'prepared_client' in accepted:\n"
+            + "    options['prepared_client'] = True\n"
+            + "if not bake_serve_payloads(config, project, **options):\n"
             + "    raise RuntimeError('Serving metadata preparation failed')\n";
         prepared = subprocess.run(
             [str(jac_path), "-c", serve_payloads],
