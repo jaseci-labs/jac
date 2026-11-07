@@ -122,6 +122,9 @@ def run_flow(
     patch(
         "jaclang.dist.fused_binary.running_executable", return_value=str(target)
     ).start();
+    patch(
+        "jaclang.dist.self_update.platform_triple", return_value=("linux", "x86_64")
+    ).start();
     if linked is not None {
         patch(
             "jaclang.dist.fused_binary.linked_source_dir", return_value=linked
@@ -276,6 +279,22 @@ test "flow: downloads, checksum-verifies, replaces atomically" {
         assert sent.digest == hashlib.sha256(payload).hexdigest();
         assert tags == [""];  # latest-release lookup
         assert sorted(p.name for p in tmp.iterdir()) == [".jac-install", "jac"];
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "flow fixture uses its declared platform on a different host" {
+    with patch("platform.system", return_value="Linux") {
+        with patch("platform.machine", return_value="aarch64") {
+            (rc, target, fetchm, tags, tmp) = run_flow();
+        }
+    }
+    try {
+        assert rc == 0;
+        assert fetchm.call_count == 1;
+        assert fetchm.call_args[0][0].platform == "linux-x86_64";
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }

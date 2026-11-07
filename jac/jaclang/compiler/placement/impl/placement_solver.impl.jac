@@ -438,7 +438,11 @@ impl _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | 
 }
 
 impl _closure_pullable(
-    top: uni.UniNode, module: uni.Module, prog: JacProgram, seen: set[int]
+    top: uni.UniNode,
+    module: uni.Module,
+    prog: JacProgram,
+    seen: set[int],
+    indexes: (dict[int, PullClosureIndex] | None) = None
 ) -> bool {
     work = placement_work(prog);
     work.observe(module);
@@ -449,6 +453,9 @@ impl _closure_pullable(
     if isinstance(top, uni.ContextAwareNode)
         and top.code_context == CodeContext.CLIENT {
         return True;
+    }
+    if indexes is None {
+        indexes = {};
     }
     if isinstance(top, uni.Import) {
         if _is_sv_import(top) {
@@ -466,7 +473,7 @@ impl _closure_pullable(
             }
             item_top = _named_top_element(source_mod, item.name.value);
             if item_top is None
-                or not _closure_pullable(item_top, source_mod, prog, seen) {
+                or not _closure_pullable(item_top, source_mod, prog, seen, indexes) {
                 return False;
             }
         }
@@ -487,13 +494,20 @@ impl _closure_pullable(
     ) {
         return False;
     }
-    elem_by_id: dict[int, uni.UniNode] = {id(stmt): stmt for stmt in module.elements};
-    for ref_id in work.refs(module).get(id(top), set()) {
-        ref_elem = elem_by_id.get(ref_id);
+    references = work.refs(module);
+    cached = indexes.get(id(module));
+    if cached is None or cached.references is not references {
+        cached = PullClosureIndex(
+            references=references, elements={id(stmt): stmt for stmt in module.elements}
+        );
+        indexes[id(module)] = cached;
+    }
+    for ref_id in references.get(id(top), set()) {
+        ref_elem = cached.elements.get(ref_id);
         if ref_elem is None {
             continue;
         }
-        if not _closure_pullable(ref_elem, module, prog, seen) {
+        if not _closure_pullable(ref_elem, module, prog, seen, indexes) {
             return False;
         }
     }
