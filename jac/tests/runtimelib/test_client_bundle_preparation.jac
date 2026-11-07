@@ -193,3 +193,26 @@ test "an edit to a client module the entry imports re-prepares the application" 
         assert compiled and '"two"' in compiled[0].read_text() , "the client bundle kept the old annex";
     }
 }
+
+test "a client prepare of a project on the legacy jac-client-node package succeeds" {
+    import from jaclang.testing.requires { require_tool }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.runtime.prepared { forget }
+    require_tool('bun');
+    with TemporaryDirectory(prefix='jac-legacy-meta-') as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "legacymeta"\nentry-point = "main"\n\n[client]\n\n'
+                + '[dependencies.npm]\njac-client-node = "1.0.4"\n'
+        );
+        path = base / 'main.jac';
+        path.write_text('def:pub app -> JsxElement {\n    <div>legacy</div>\n}\n');
+        try {
+            prepare_application(str(path), JacProgram(), tmp, client=True);
+        } finally {
+            forget(str(path));
+        }
+        assert 'jac-client-node' not in (base / 'jac.toml').read_text();
+    }
+}

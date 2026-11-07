@@ -167,7 +167,7 @@ class _SealLog(logging.Handler) {
 
 
 def _pack_logged(
-    base: Path, binary: bytes, client_ready: any = None
+    base: Path, binary: bytes, client_ready: any = None, bake_client: bool = False
 ) -> tuple[bytes, list[str]] {
     log = logging.getLogger("jaclang.scale.injector.bundle");
     seen = _SealLog();
@@ -175,7 +175,9 @@ def _pack_logged(
     log.setLevel(logging.INFO);
     log.addHandler(seen);
     try {
-        raw = pack_jab(str(base), binary, client_ready=client_ready);
+        raw = pack_jab(
+            str(base), binary, client_ready=client_ready, bake_client=bake_client
+        );
     } finally {
         log.removeHandler(seen);
         log.setLevel(previous);
@@ -227,6 +229,228 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
     (_, mode_log) = _pack_logged(base, binary);
     assert not any("Reusing the sealed bundle" in m for m in mode_log) , (
         "a file mode change reused the previous seal"
+    );
+}
+
+
+test "a precompile report left in the project does not block reusing the seal" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    report_file = base / "_precompiled" / "PRECOMPILE_RESULT.json";
+    report_file.parent.mkdir();
+    report_file.write_text('{"total": 1, "compiled": 1, "reused": 0, "failed": 0}\n');
+    (first, first_log) = _pack_logged(base, binary);
+    assert not any("changed while it was sealed" in m for m in first_log) , (
+        f"the seal's own report counted as a project edit: {first_log}"
+    );
+    (again, again_log) = _pack_logged(base, binary);
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        f"a project holding a precompile report sealed the app again: {again_log}"
+    );
+    assert again == first;
+}
+
+
+def _set_seal_cache_env(value: (str | None)) -> (str | None) {
+    prior = os.environ.pop("JAC_SEAL_CACHE", None);
+    if value is not None {
+        os.environ["JAC_SEAL_CACHE"] = value;
+    }
+    return prior;
+}
+
+
+def _restore_seal_cache_env(prior: (str | None)) {
+    os.environ.pop("JAC_SEAL_CACHE", None);
+    if prior is not None {
+        os.environ["JAC_SEAL_CACHE"] = prior;
+    }
+}
+
+
+def _cache_setting_under(cache: (str | None), project: Path) -> (Path | None) {
+    prior = _set_seal_cache_env(cache);
+    try {
+        return seal_cache_setting(str(project));
+    } finally {
+        _restore_seal_cache_env(prior);
+    }
+}
+
+
+def _pack_shared(
+    project: Path, binary: bytes, cache: (str | None)
+) -> tuple[bytes, list[str]] {
+    prior = _set_seal_cache_env(cache);
+    try {
+        return _pack_logged(project, binary);
+    } finally {
+        _restore_seal_cache_env(prior);
+    }
+}
+
+
+def _checkout_of(project: Path) -> Path {
+    # A fresh checkout: same sources at another path, no project .jac/ cache.
+    target = Path(tempfile.mkdtemp(prefix="jac-checkout-")) / "app";
+    shutil.copytree(project, target, ignore=shutil.ignore_patterns(".jac"));
+    assert not (target / ".jac").exists();
+    return target;
+}
+
+
+test "the shared seal cache comes from [scale] seal_cache, JAC_SEAL_CACHE wins" {
+    plain = Path(_mini_app()).resolve();
+    assert _cache_setting_under(None, plain) is None;
+    base = Path(_mini_app()).resolve();
+    with open(base / "jac.toml", "a") as toml {
+        toml.write("\n[scale]\nseal_cache = \"../shared-seals\"\n");
+    }
+    assert _cache_setting_under(None, base) == base / "../shared-seals";
+    elsewhere = tempfile.mkdtemp(prefix="jac-shared-seal-");
+    assert _cache_setting_under(elsewhere, base) == Path(elsewhere);
+}
+
+
+test "a fresh checkout reuses a bundle sealed elsewhere through the shared cache" {
+    binary = require_pod_binary().read_bytes();
+    shared = Path(tempfile.mkdtemp(prefix="jac-shared-seal-"));
+    first_project = Path(_mini_app());
+    (first, first_log) = _pack_shared(first_project, binary, str(shared));
+    assert not any("Reusing the sealed bundle" in m for m in first_log);
+    assert [n.endswith(".jab") for n in os.listdir(shared)] == [True] , (
+        f"the fresh seal was not written through to the shared cache: "
+        f"{os.listdir(shared)}"
+    );
+    checkout = _checkout_of(first_project);
+    (again, again_log) = _pack_shared(checkout, binary, str(shared));
+    assert any(
+        "Reusing the sealed bundle" in m and "shared seal cache" in m for m in again_log
+    ) , f"a fresh checkout sealed again despite the shared cache: {again_log}";
+    assert again == first , "the shared bundle differs from the one sealed";
+    assert len(list((checkout / ".jac" / "seal-cache").glob("*.jab"))) == 1 , (
+        "a shared hit was not copied into the project cache"
+    );
+    (checkout / "svc.jac").write_text("def:pub ping -> str { return \"pong!\"; }\n");
+    (edited, edited_log) = _pack_shared(checkout, binary, str(shared));
+    assert not any("Reusing the sealed bundle" in m for m in edited_log) , (
+        "a source edit reused the shared seal"
+    );
+    assert edited != first;
+    assert sorted(n.endswith(".jab") for n in os.listdir(shared)) == [True, True] , (
+        f"the shared cache holds partial or pruned bundles: {os.listdir(shared)}"
+    );
+    unshared = _checkout_of(first_project);
+    (_, unshared_log) = _pack_shared(unshared, binary, None);
+    assert not any("Reusing the sealed bundle" in m for m in unshared_log) , (
+        "a checkout without a shared cache reused a bundle"
+    );
+}
+
+
+test "an unwritable shared seal cache only warns and the deploy still seals" {
+    binary = require_pod_binary().read_bytes();
+    blocker = Path(tempfile.mkdtemp(prefix="jac-shared-seal-")) / "not-a-dir";
+    blocker.write_text("a file where the shared cache directory should be\n");
+    base = Path(_mini_app());
+    (raw, log) = _pack_shared(base, binary, str(blocker));
+    assert ".jac/serve_manifest.json" in _names(raw);
+    assert any("Could not keep the sealed bundle for reuse" in m for m in log) , (
+        f"an unwritable shared cache did not warn: {log}"
+    );
+    (again, again_log) = _pack_shared(base, binary, str(blocker));
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        "the project cache was not kept when the shared cache failed"
+    );
+    assert again == raw;
+}
+
+
+"""An app whose server entry imports a module pinned to the client, so the seal
+compiles that module as a runtime dependency rather than as a unit."""
+def _runtime_dep_app -> Path {
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[placement.pins]\n\"shared*\" = \"client\"\n"
+    );
+    (base / "shared.jac").write_text("def word -> str { return \"pong\"; }\n");
+    (base / "svc.jac").write_text(
+        "import from shared { word }\n" + "def:pub ping -> str { return word(); }\n"
+    );
+    return base;
+}
+
+
+test "a seeded seal reuses a runtime dependency instead of compiling it again" {
+    binary = require_pod_binary().read_bytes();
+    base = _runtime_dep_app();
+    (first, first_log) = _pack_logged(base, binary);
+    assert any("Sealing runtime dependency: shared.jac" in m for m in first_log) , (
+        f"the fixture's import is not a runtime dependency: {first_log}"
+    );
+    (base / "svc.jac").write_text(
+        "import from shared { word }\n"
+            + "def:pub ping -> str { return word() + \"!\"; }\n"
+    );
+    (edited, edited_log) = _pack_logged(base, binary);
+    assert any("Seeded" in m for m in edited_log) , edited_log;
+    assert not any("Sealing runtime dependency" in m for m in edited_log) , (
+        f"the seeded runtime dependency was compiled again: {edited_log}"
+    );
+    assert _bundle_jir(edited, "shared") == _bundle_jir(first, "shared") , (
+        "the reused runtime dependency did not ship"
+    );
+    (base / "shared.jac").write_text("def word -> str { return \"pang\"; }\n");
+    (dep_edited, dep_log) = _pack_logged(base, binary);
+    assert any("Sealing runtime dependency: shared.jac" in m for m in dep_log) , (
+        f"an edited runtime dependency shipped its seeded code: {dep_log}"
+    );
+    assert _bundle_jir(dep_edited, "shared") != _bundle_jir(edited, "shared");
+    (base / "svc.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
+    (dropped, _) = _pack_logged(base, binary);
+    assert not _bundle_jir(dropped, "shared") , (
+        "a runtime dependency nothing imports any more still shipped"
+    );
+}
+
+
+test "a seal that builds the client ships its dist and reuses it with the seal" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[dependencies.npm]\nreact = \"^19.2.0\"\nreact-dom = \"^19.2.0\"\n"
+    );
+    (base / "svc.jac").write_text(
+        "def:pub ping -> str { return \"pong\"; }\n\n"
+            + "def:pub app() -> JsxElement {\n    return <div>mini</div>;\n}\n"
+    );
+    (first, first_log) = _pack_logged(base, binary, bake_client=True);
+    names = _names(first);
+    assert ".jac/client/dist/index.html" in names , (
+        f"the sealed bundle shipped no client page: {first_log}"
+    );
+    assert any(
+        name.startswith(".jac/client/dist/") and name.endswith(".js") for name in names
+    ) , names;
+    (again, again_log) = _pack_logged(base, binary, bake_client=True);
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        f"an unchanged project with a client sealed the app again: {again_log}"
+    );
+    assert again == first , "the reused bundle differs from the one the seal built";
+    os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+    try {
+        (moved, moved_log) = _pack_logged(base, binary, bake_client=True);
+    } finally {
+        os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+    }
+    assert not any("Reusing the sealed bundle" in m for m in moved_log) , (
+        "a new API base URL reused a client built for the old one"
+    );
+    stamp = ".jac/client/dist/.jac-build-inputs";
+    assert _bundle_member(moved, stamp) != _bundle_member(first, stamp) , (
+        "the client was not rebuilt for the new API base URL"
     );
 }
 
@@ -425,6 +649,40 @@ test "a seal that cannot yield a bootable .jab fails the pack instead of the pod
         for text in expected {
             assert text in caught , (label, text, caught);
         }
+    }
+}
+
+
+test "a pinned seal binary that predates prepared clients still prepares serving metadata" {
+    python = shutil.which("python3");
+    assert python , "python3 is required to stand in for an older seal binary";
+    stub = Path(tempfile.mkdtemp(prefix="jac-old-seal-"));
+    for pkg in ["jaclang", "jaclang/dist", "jaclang/project"] {
+        (stub / pkg).mkdir(parents=True, exist_ok=True);
+        (stub / pkg / "__init__.py").write_text("");
+    }
+    (stub / "jaclang" / "project" / "config.py").write_text(
+        "def get_config_for_path(path):\n    return None\n"
+    );
+    (stub / "jaclang" / "dist" / "seal.py").write_text(
+        "from pathlib import Path\n"
+            + "def bake_serve_payloads(config, pkg_copy, app='', bake_client=True):\n"
+            + "    out = Path(pkg_copy) / '.jac'\n"
+            + "    out.mkdir(exist_ok=True)\n"
+            + "    (out / 'serve_manifest.json').write_text('{}')\n"
+            + "    return True\n"
+    );
+    binary = f'#!/bin/sh\nPYTHONPATH="{stub}" exec "{python}" -S "$@"\n';
+    for bake_client in [False, True] {
+        caught = "";
+        try {
+            _precompile_app(
+                Path(_mini_app()), binary.encode(), None, 120, bake_client=bake_client
+            );
+        } except Exception as e {
+            caught = f"{type(e).__name__}: {e}";
+        }
+        assert "metadata preparation failed" not in caught , (bake_client, caught);
     }
 }
 

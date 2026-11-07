@@ -628,7 +628,8 @@ impl _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None
+    seed: (Path | None) = None,
+    bake_client: bool = False
 ) -> Path {
     stage_root = _stage_app(base, sanitized_toml, sources, tomls);
     stage = stage_root / "app";
@@ -645,14 +646,17 @@ impl _precompile_app(
         jac_path.write_bytes(seal_binary);
         jac_path.chmod(0o755);
 
-        serve_payloads = "from pathlib import Path\n"
+        serve_payloads = "import inspect\n"
+            + "from pathlib import Path\n"
             + "from jaclang.project.config import get_config_for_path\n"
             + "from jaclang.dist.seal import bake_serve_payloads\n"
             + "project = Path('app').resolve()\n"
             + "config = get_config_for_path(project)\n"
-            + "if not bake_serve_payloads(\n"
-            + f"    config, project, app={repr(app)}, bake_client=False\n"
-            + "):\n"
+            + f"options = dict(app={repr(app)}, bake_client={repr(bake_client)})\n"
+            + "accepted = inspect.signature(bake_serve_payloads).parameters\n"
+            + "if options['bake_client'] and 'prepared_client' in accepted:\n"
+            + "    options['prepared_client'] = True\n"
+            + "if not bake_serve_payloads(config, project, **options):\n"
             + "    raise RuntimeError('Serving metadata preparation failed')\n";
         prepared = subprocess.run(
             [str(jac_path), "-c", serve_payloads],
@@ -774,6 +778,25 @@ impl seal_timeout_setting(project_dir: str) -> int {
         return DEFAULT_SEAL_TIMEOUT_S;
     }
     return val if val > 0 else DEFAULT_SEAL_TIMEOUT_S;
+}
+
+impl seal_cache_setting(project_dir: str) -> (Path | None) {
+    configured = os.environ.get("JAC_SEAL_CACHE", "");
+    if not configured {
+        try {
+            config = get_config_for_path(Path(project_dir));
+        } except Exception as exc {
+            logger.debug(f"seal_cache check skipped, jac.toml unparseable: {exc}");
+            return None;
+        }
+        section = config.get_section("scale") if config is not None else None;
+        if section is None or not section.get("seal_cache") {
+            return None;
+        }
+        configured = str(section.get("seal_cache"));
+    }
+    path = Path(configured).expanduser();
+    return path if path.is_absolute() else Path(project_dir).resolve() / path;
 }
 
 impl _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "") {
@@ -918,25 +941,16 @@ impl _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int) {
     write_venv_deps_marker(venv, specs);
 }
 
-impl seal_input_digest(
+impl _input_digest(
     base: Path,
     sources: list[Path],
-    seal_binary: bytes,
-    pod_arch: str,
-    app_name: str,
-    sanitized: (str | None),
-    fat: bool,
+    binary: bytes,
+    parts: list[str],
     tomls: dict[str, str]
 ) -> str {
     digest = hashlib.sha256();
-    digest.update(hashlib.sha256(seal_binary).digest());
-    for part in (
-        pod_arch,
-        app_name,
-        "fat" if fat else "thin",
-        os.environ.get("JAC_SEAL_SKIP_VENV", ""),
-        sanitized or ""
-    ) {
+    digest.update(hashlib.sha256(binary).digest());
+    for part in parts {
         digest.update(part.encode("utf-8"));
         digest.update(b"\0");
     }
@@ -956,8 +970,95 @@ impl seal_input_digest(
     return digest.hexdigest();
 }
 
+impl seal_input_digest(
+    base: Path,
+    sources: list[Path],
+    seal_binary: bytes,
+    pod_arch: str,
+    app_name: str,
+    sanitized: (str | None),
+    fat: bool,
+    tomls: dict[str, str],
+    bake_client: bool = False
+) -> str {
+    parts = [
+        pod_arch,
+        app_name,
+        "fat" if fat else "thin",
+        os.environ.get("JAC_SEAL_SKIP_VENV", ""),
+        sanitized or ""
+    ];
+    if bake_client {
+        parts.append("client");
+        parts.extend(client_build_env());
+    }
+    return _input_digest(base, sources, seal_binary, parts, tomls);
+}
+
+impl client_input_digest(
+    base: Path,
+    sources: list[Path],
+    jac_binary: bytes,
+    entry_rel: str,
+    sanitized: (str | None),
+    tomls: dict[str, str]
+) -> str {
+    return _input_digest(
+        base,
+        sources,
+        jac_binary,
+        ["client", entry_rel, sanitized or "", *client_build_env()],
+        tomls
+    );
+}
+
 impl _seal_cache_dir(base: Path) -> Path {
     return base / ".jac" / "seal-cache";
+}
+
+impl _client_cache_dir(base: Path) -> Path {
+    return base / ".jac" / "client-cache";
+}
+
+impl cached_client_dist(base: Path, key: str) -> (Path | None) {
+    cached = _client_cache_dir(base) / key;
+    if not (cached / "index.html").is_file() {
+        return None;
+    }
+    try {
+        os.utime(cached, None);
+    } except OSError as exc {
+        logger.debug(f"Could not touch the reused client build: {exc}");
+    }
+    return cached;
+}
+
+impl remember_client_dist(base: Path, key: str, dist: str) {
+    cache = _client_cache_dir(base);
+    partial = cache / f"{key}.partial-{os.getpid()}";
+    try {
+        cache.mkdir(parents=True, exist_ok=True);
+        shutil.rmtree(partial, ignore_errors=True);
+        shutil.copytree(dist, partial);
+        shutil.rmtree(cache / key, ignore_errors=True);
+        os.replace(partial, cache / key);
+        kept = sorted(
+            [
+                child
+                for child in cache.iterdir()
+                if child.is_dir() and ".partial-" not in child.name
+            ],
+            key=_mtime,
+            reverse=True
+        );
+        for stale in kept[CLIENT_CACHE_KEEP:] {
+            shutil.rmtree(stale, ignore_errors=True);
+        }
+    } except OSError as exc {
+        logger.warning(f"Could not keep the client build for reuse: {exc}");
+    } finally {
+        shutil.rmtree(partial, ignore_errors=True);
+    }
 }
 
 impl _mtime(path: Path) -> float {
@@ -1011,8 +1112,8 @@ impl _seed_precompiled(stage: Path, seed: (Path | None)) -> int {
     return seeded;
 }
 
-impl _cached_seal(base: Path, key: str) -> (bytes | None) {
-    cached = _seal_cache_dir(base) / f"{key}.jab";
+impl _cached_seal(cache: Path, key: str) -> (bytes | None) {
+    cached = cache / f"{key}.jab";
     try {
         raw = cached.read_bytes();
     } except OSError {
@@ -1036,8 +1137,12 @@ impl _bundle_ships(raw: bytes, member: str) -> bool {
     }
 }
 
-impl _remember_seal(base: Path, key: str, raw: bytes) {
-    cache = _seal_cache_dir(base);
+impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool {
+    return _bundle_ships(raw, manifest)
+        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX));
+}
+
+impl _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP) {
     partial = "";
     try {
         cache.mkdir(parents=True, exist_ok=True);
@@ -1048,9 +1153,11 @@ impl _remember_seal(base: Path, key: str, raw: bytes) {
             out.write(raw);
         }
         os.replace(partial, cache / f"{key}.jab");
-        kept = sorted(cache.`glob("*.jab"), key=_mtime, reverse=True);
-        for stale in kept[SEAL_CACHE_KEEP:] {
-            stale.unlink(missing_ok=True);
+        if keep > 0 {
+            kept = sorted(cache.`glob("*.jab"), key=_mtime, reverse=True);
+            for stale in kept[keep:] {
+                stale.unlink(missing_ok=True);
+            }
         }
     } except OSError as exc {
         logger.warning(f"Could not keep the sealed bundle for reuse: {exc}");
@@ -1066,7 +1173,8 @@ impl pack_jab(
     seal_binary: bytes,
     pod_arch: str = "",
     fleet: any = None,
-    client_ready: any = None
+    client_ready: any = None,
+    bake_client: bool = False
 ) -> bytes {
     if not seal_binary {
         raise ValueError(
@@ -1108,25 +1216,48 @@ impl pack_jab(
             app_name,
             sanitized,
             fat_bundle_setting(project_dir)[0],
-            tomls
+            tomls,
+            bake_client
         );
     }
+    report_rel = Path("_precompiled") / RESULT_NAME;
     seal_sources = [
         path
         for path in sources
         if not _is_client_dist(path.relative_to(base))
+            and path.relative_to(base) != report_rel
     ];
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
-    cached = _cached_seal(base, key);
-    if cached is not None and _bundle_ships(cached, SERVE_MANIFEST_REL) {
+    shared = seal_cache_setting(project_dir);
+    cached = _cached_seal(_seal_cache_dir(base), key);
+    if cached is not None and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
+        if shared is not None and not os.path.isfile(shared / f"{key}.jab") {
+            _remember_seal(shared, key, cached, keep=0);
+        }
+    } elif shared is not None {
+        cached = _cached_seal(shared, key);
+        if cached is not None
+            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+            logger.info(
+                f"Reusing the sealed bundle for unchanged inputs ({key[:12]}) from "
+                f"the shared seal cache {shared}; skipping the seal."
+            );
+            _remember_seal(_seal_cache_dir(base), key, cached);
+        } else {
+            cached = None;
+        }
+    } else {
+        cached = None;
+    }
+    if cached is not None {
         if client_ready is not None {
             client_ready();
         }
-        return _with_client_dist(cached, base);
+        return cached if bake_client else _with_client_dist(cached, base);
     }
     staged = _precompile_app(
         base,
@@ -1136,7 +1267,8 @@ impl pack_jab(
         app_name,
         seal_sources,
         tomls,
-        _latest_seal(base)
+        _latest_seal(base),
+        bake_client
     );
 
     try {
@@ -1227,6 +1359,24 @@ impl pack_jab(
                         f"install."
                     );
                 }
+                if bake_client {
+                    baked = staged / Path(*_CLIENT_DIST);
+                    if not (baked / "index.html").is_file() {
+                        raise RuntimeError(
+                            "The seal was asked to build the client but left no "
+                            f"index.html under {baked}."
+                        );
+                    }
+                    add_source_members(
+                        tar,
+                        staged,
+                        sources=sorted(
+                            path
+                            for path in baked.rglob("*")
+                            if path.is_file()
+                        )
+                    );
+                }
                 if sanitized is not None {
                     data = sanitized.encode("utf-8");
                     info = tarfile.TarInfo(name="jac.toml");
@@ -1251,7 +1401,10 @@ impl pack_jab(
             unchanged = False;
         }
         if unchanged {
-            _remember_seal(base, key, raw);
+            _remember_seal(_seal_cache_dir(base), key, raw);
+            if shared is not None {
+                _remember_seal(shared, key, raw, keep=0);
+            }
         } else {
             logger.info(
                 "The project changed while it was sealed; not keeping this bundle for reuse."
@@ -1263,7 +1416,7 @@ impl pack_jab(
     if client_ready is not None {
         client_ready();
     }
-    return _with_client_dist(raw, base);
+    return raw if bake_client else _with_client_dist(raw, base);
 }
 
 impl _with_client_dist(raw: bytes, base: Path) -> bytes {

@@ -426,6 +426,11 @@ echo "  namespace owned by '${APP}', co-tenant '${COTENANT}' adopted it"
 seed_user_ops_account "${COTENANT_NS}" "${COTENANT}"
 
 _t "C deployed"
+# Hold the co-tenant's bundle PVC in Terminating past its destroy, the state a
+# redeploy right after a destroy can meet before the claim is gone.
+kubectl patch pvc "${COTENANT}-bundles" -n "${COTENANT_NS}" --type=merge \
+    -p '{"metadata":{"finalizers":["kubernetes.io/pvc-protection","jac.test/hold"]}}' >/dev/null \
+    || fail "${COTENANT_NS}" "could not hold pvc/${COTENANT}-bundles for the redeploy check"
 # Destroying the co-tenant must take the adopted path and spare the namespace.
 destroy_app "${COTENANT}" "${COTENANT_NS}"
 
@@ -446,8 +451,24 @@ _t "C adopted-app destroy PASSED"
 
 # The other direction: the owner label names the app that created the
 # namespace, never the number of apps still in it, so destroying the owner
-# while a co-tenant is deployed must take the shared path too.
+# while a co-tenant is deployed must take the shared path too. The redeploy
+# meets the co-tenant's bundle PVC still Terminating, so it must wait for the
+# claim to go and create it again instead of mounting one about to vanish.
+[ -n "$(deletion_timestamp "${COTENANT_NS}" pvc "${COTENANT}-bundles")" ] \
+    || fail "${COTENANT_NS}" "pvc/${COTENANT}-bundles was not held Terminating for the redeploy check"
+(
+    waited=0
+    while [ "${waited}" -lt 120 ] \
+        && ! kubectl get pod "${COTENANT}-bundle-loader" -n "${COTENANT_NS}" >/dev/null 2>&1; do
+        sleep 5
+        waited=$(( waited + 5 ))
+    done
+    kubectl patch pvc "${COTENANT}-bundles" -n "${COTENANT_NS}" --type=json \
+        -p '[{"op":"remove","path":"/metadata/finalizers"}]' >/dev/null 2>&1 || true
+) &
+RELEASE_PID=$!
 deploy_app "${COTENANT}" "${COTENANT_NS}"
+wait "${RELEASE_PID}" || true
 OWNER_BEFORE="$(ns_owner "${COTENANT_NS}")"
 [ "${OWNER_BEFORE}" = "${APP}" ] \
     || fail "${COTENANT_NS}" "expected namespace still owned by '${APP}', got '${OWNER_BEFORE}'"

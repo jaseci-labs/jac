@@ -22,7 +22,8 @@ glob APP_VOLUME_NAME: str = "jac-app",
      STAGE_REAP_AGE_S: int = 86400;
 
 glob _stage_roots: list[str] = [],
-     SEAL_CACHE_KEEP: int = 2;
+     SEAL_CACHE_KEEP: int = 2,
+     CLIENT_CACHE_KEEP: int = 2;
 
 glob _reported_prunes: set[str] = set();
 
@@ -42,6 +43,8 @@ glob _EXCLUDE_DIRS: set[str] = {
 glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
 glob _CLIENT_DIST: tuple[str, ...] = (".jac", "client", "dist");
+
+glob BAKED_CLIENT_INDEX: str = ".jac/client/dist/index.html";
 
 glob _BUNDLE_REQUIRED: tuple[tuple[str, ...], ...] = (
          _CLIENT_DIST,
@@ -200,7 +203,8 @@ def _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None
+    seed: (Path | None) = None,
+    bake_client: bool = False
 ) -> Path;
 
 
@@ -211,6 +215,9 @@ def fat_bundle_enabled(project_dir: str) -> bool;
 
 
 def seal_timeout_setting(project_dir: str) -> int;
+
+
+def seal_cache_setting(project_dir: str) -> (Path | None);
 
 
 def _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "");
@@ -231,6 +238,15 @@ def _prune_seed_pip(site: Path, specs: list[str]);
 def _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int);
 
 
+def _input_digest(
+    base: Path,
+    sources: list[Path],
+    binary: bytes,
+    parts: list[str],
+    tomls: dict[str, str]
+) -> str;
+
+
 def seal_input_digest(
     base: Path,
     sources: list[Path],
@@ -239,8 +255,28 @@ def seal_input_digest(
     app_name: str,
     sanitized: (str | None),
     fat: bool,
+    tomls: dict[str, str],
+    bake_client: bool = False
+) -> str;
+
+
+def client_input_digest(
+    base: Path,
+    sources: list[Path],
+    jac_binary: bytes,
+    entry_rel: str,
+    sanitized: (str | None),
     tomls: dict[str, str]
 ) -> str;
+
+
+def _client_cache_dir(base: Path) -> Path;
+
+
+def cached_client_dist(base: Path, key: str) -> (Path | None);
+
+
+def remember_client_dist(base: Path, key: str, dist: str);
 
 
 def _seal_cache_dir(base: Path) -> Path;
@@ -255,13 +291,16 @@ def _latest_seal(base: Path) -> (Path | None);
 def _seed_precompiled(stage: Path, seed: (Path | None)) -> int;
 
 
-def _cached_seal(base: Path, key: str) -> (bytes | None);
+def _cached_seal(cache: Path, key: str) -> (bytes | None);
 
 
 def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
-def _remember_seal(base: Path, key: str, raw: bytes);
+def _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool;
+
+
+def _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP);
 
 
 def pack_jab(
@@ -269,7 +308,8 @@ def pack_jab(
     seal_binary: bytes,
     pod_arch: str = "",
     fleet: any = None,
-    client_ready: any = None
+    client_ready: any = None,
+    bake_client: bool = False
 ) -> bytes;
 
 
