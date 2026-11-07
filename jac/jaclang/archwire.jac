@@ -9768,153 +9768,78 @@ graph import compiler {
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.execution --> driver.pipeline.run_early_pass { run_walker }
-    driver.context_passes ++> [
-        driver.pipeline.run_scheduled_pass {
-            AppContextPass,
-            AbsorbImportsPass,
-            BoundaryFactsPass,
-            NativeImportFactsPass
-        },
-        driver.pipeline.run_early_pass { AppContextPass, AbsorbImportsPass },
-    ]
-    passes.graph_lowering_pass ++> [
-        driver.pipeline.run_scheduled_pass { GraphLoweringPass },
-        driver.pipeline.run_early_pass { GraphLoweringPass },
-    ]
-    passes.ast_validation_pass ++> [
-        driver.pipeline.run_scheduled_pass { ASTValidationPass },
-        driver.pipeline.run_early_pass { ASTValidationPass },
-    ]
-    passes.sym_tab_build_pass ++> [
-        driver.pipeline.run_scheduled_pass { SymTabBuildPass },
-        driver.pipeline.run_early_pass { SymTabBuildPass },
-    ]
-    passes.decl_impl_match_pass ++> [
-        driver.pipeline.run_scheduled_pass { DeclImplMatchPass },
-        driver.pipeline.run_early_pass { DeclImplMatchPass },
-    ]
-    placement.placement_solver ++> [
-        driver.pipeline.run_scheduled_pass { PlacementApplyPass },
-    ]
-    passes.semantic_analysis_pass ++> [
-        driver.pipeline.run_scheduled_pass { SemanticAnalysisPass },
-        driver.pipeline.run_early_pass { SemanticAnalysisPass },
-    ]
-    passes.import_wiring_pass ++> [
-        driver.pipeline.run_scheduled_pass { ImportWiringPass },
-    ]
-    passes.package_boundary_pass ++> [
-        driver.pipeline.run_scheduled_pass { PackageBoundaryPass },
-    ]
-    passes.sem_def_match_pass ++> [
-        driver.pipeline.run_scheduled_pass { SemDefMatchPass },
-        driver.pipeline.run_early_pass { SemDefMatchPass },
-    ]
-    passes.cfg_build_pass ++> [
-        driver.pipeline.run_scheduled_pass { CFGBuildPass },
-        driver.pipeline.run_early_pass { CFGBuildPass },
-    ]
-    passes.mtir_gen_pass ++> [
-        driver.pipeline.run_scheduled_pass { MTIRGenPass },
-    ]
-    passes.jsx_intrinsic_guard_pass ++> [
-        driver.pipeline.run_scheduled_pass { JsxIntrinsicGuardPass },
-        driver.pipeline.run_early_pass { JsxIntrinsicGuardPass },
-    ]
-    passes.comptime_resolve_pass ++> [
-        driver.pipeline.run_scheduled_pass { ComptimeResolvePass },
-    ]
-    passes.region_infer_pass ++> [
-        driver.pipeline.run_scheduled_pass { RegionInferPass },
-    ]
-    passes.variant_agreement_pass ++> [
-        driver.pipeline.run_scheduled_pass { VariantAgreementPass },
-    ]
-    passes.type_checker_pass ++> [
-        driver.pipeline.run_scheduled_pass { TypeCheckPass },
-    ]
-    passes.static_analysis_pass ++> [
-        driver.pipeline.run_scheduled_pass { StaticAnalysisPass },
-    ]
-    passes.access_check_pass ++> [
-        driver.pipeline.run_scheduled_pass { AccessCheckPass },
-    ]
-    passes.ownership_check_pass ++> [
-        driver.pipeline.run_scheduled_pass { OwnershipCheckPass },
-    ]
-    passes.placement_pass ++> [
-        driver.pipeline.run_scheduled_pass { PlacementPass },
-    ]
-    passes.capability_check_pass ++> [
-        driver.pipeline.run_scheduled_pass { PortabilityWarnPass },
-    ]
-    tools.jac_auto_lint_pass ++> [
-        driver.pipeline.run_scheduled_pass {
-            JacLintCheckPass,
-            JacAutoLintPass
-        },
-    ]
-    passes.declaration_type_pass ++> [
-        driver.pipeline.run_scheduled_pass { DeclarationTypePass },
-    ]
-    passes.boundary_analysis_pass ++> [
-        driver.pipeline.run_scheduled_pass {
-            BoundaryAnalysisPass
-        },
-    ]
-    passes.endpoint_effect_pass ++> [
-        driver.pipeline.run_scheduled_pass { EndpointEffectPass },
-    ]
-    backends.es.esast_gen_pass ++> [
-        driver.pipeline.run_scheduled_pass { EsastGenPass },
-    ]
-    passes.layout_pass ++> [
-        driver.pipeline.run_scheduled_pass { LayoutPass },
-    ]
-    passes.rc_facts_pass ++> [
-        driver.pipeline.run_scheduled_pass { RcFactsPass },
-    ]
-    backends.native.na_ir_gen_pass ++> [
-        driver.pipeline.run_scheduled_pass
-            | driver.pipeline.native_ir_alert { NaIRGenPass },
-    ]
-    backends.py.jcir_gen_pass ++> [
-        driver.pipeline.run_scheduled_pass
-            | driver.pipeline.native_ir_alert { JcirGenPass },
-    ]
-    passes.freeze_structure_pass ++> [
-        driver.pipeline.run_scheduled_pass { FreezeStructurePass },
-    ]
-    backends.py.jcir_bc_gen_pass ++> [
-        driver.pipeline.run_scheduled_pass { JcirBytecodeGenPass },
-    ]
-    backends.native.na_compile_pass ++> [
-        driver.pipeline.run_scheduled_pass { NativeCompilePass },
-    ]
-    tools.comment_attach_pass ++> [
-        driver.pipeline.run_scheduled_pass { CommentAttachPass },
-    ]
-    tools.doc_ir_gen_pass ++> [
-        driver.pipeline.run_scheduled_pass { DocIRGenPass },
-    ]
-    tools.jac_formatter_pass ++> [
-        driver.pipeline.run_scheduled_pass { JacFormatPass },
-    ]
-    passes.pyast_load_pass ++> [
-        driver.pipeline.run_scheduled_pass { PyastBuildPass },
-    ]
-    tools.grammar_extract_pass ++> [
-        driver.pipeline.run_scheduled_pass { GrammarExtractPass },
-    ]
-    tools.cfg_dot ++> [
-        driver.pipeline.run_scheduled_pass { CoalesceBBPass },
-    ]
-    tools.normalize_pass ++> [
-        driver.pipeline.run_scheduled_pass { NormalizePass },
-    ]
-    tools.unparse_pass ++> [
-        driver.pipeline.run_scheduled_pass { UnparsePass },
-    ]
+    driver.context_passes ++> driver.pipeline.pass_class_of {
+        AppContextPass,
+        AbsorbImportsPass,
+        BoundaryFactsPass,
+        NativeImportFactsPass
+    }
+    passes.graph_lowering_pass ++> driver.pipeline.pass_class_of { GraphLoweringPass }
+    passes.ast_validation_pass ++> driver.pipeline.pass_class_of { ASTValidationPass }
+    passes.sym_tab_build_pass ++> driver.pipeline.pass_class_of { SymTabBuildPass }
+    passes.decl_impl_match_pass ++> driver.pipeline.pass_class_of { DeclImplMatchPass }
+    placement.placement_solver ++> driver.pipeline.pass_class_of { PlacementApplyPass }
+    passes.semantic_analysis_pass ++> driver.pipeline.pass_class_of {
+        SemanticAnalysisPass
+    }
+    passes.import_wiring_pass ++> driver.pipeline.pass_class_of { ImportWiringPass }
+    passes.package_boundary_pass ++> driver.pipeline.pass_class_of { PackageBoundaryPass }
+    passes.sem_def_match_pass ++> driver.pipeline.pass_class_of { SemDefMatchPass }
+    passes.cfg_build_pass ++> driver.pipeline.pass_class_of { CFGBuildPass }
+    passes.mtir_gen_pass ++> driver.pipeline.pass_class_of { MTIRGenPass }
+    passes.jsx_intrinsic_guard_pass ++> driver.pipeline.pass_class_of {
+        JsxIntrinsicGuardPass
+    }
+    passes.comptime_resolve_pass ++> driver.pipeline.pass_class_of {
+        ComptimeResolvePass
+    }
+    passes.region_infer_pass ++> driver.pipeline.pass_class_of { RegionInferPass }
+    passes.variant_agreement_pass ++> driver.pipeline.pass_class_of {
+        VariantAgreementPass
+    }
+    passes.type_checker_pass ++> driver.pipeline.pass_class_of { TypeCheckPass }
+    passes.static_analysis_pass ++> driver.pipeline.pass_class_of {
+        StaticAnalysisPass
+    }
+    passes.access_check_pass ++> driver.pipeline.pass_class_of { AccessCheckPass }
+    passes.ownership_check_pass ++> driver.pipeline.pass_class_of { OwnershipCheckPass }
+    passes.placement_pass ++> driver.pipeline.pass_class_of { PlacementPass }
+    passes.capability_check_pass ++> driver.pipeline.pass_class_of { PortabilityWarnPass }
+    tools.jac_auto_lint_pass ++> driver.pipeline.pass_class_of {
+        JacLintCheckPass,
+        JacAutoLintPass
+    }
+    passes.declaration_type_pass ++> driver.pipeline.pass_class_of {
+        DeclarationTypePass
+    }
+    passes.boundary_analysis_pass ++> driver.pipeline.pass_class_of {
+        BoundaryAnalysisPass
+    }
+    passes.endpoint_effect_pass ++> driver.pipeline.pass_class_of { EndpointEffectPass }
+    backends.es.esast_gen_pass ++> driver.pipeline.pass_class_of { EsastGenPass }
+    passes.layout_pass ++> driver.pipeline.pass_class_of { LayoutPass }
+    passes.rc_facts_pass ++> driver.pipeline.pass_class_of { RcFactsPass }
+    backends.native.na_ir_gen_pass ++> driver.pipeline.pass_class_of
+        | driver.pipeline.native_ir_alert { NaIRGenPass }
+    backends.py.jcir_gen_pass ++> driver.pipeline.pass_class_of
+        | driver.pipeline.native_ir_alert { JcirGenPass }
+    passes.freeze_structure_pass ++> driver.pipeline.pass_class_of {
+        FreezeStructurePass
+    }
+    backends.py.jcir_bc_gen_pass ++> driver.pipeline.pass_class_of {
+        JcirBytecodeGenPass
+    }
+    backends.native.na_compile_pass ++> driver.pipeline.pass_class_of {
+        NativeCompilePass
+    }
+    tools.comment_attach_pass ++> driver.pipeline.pass_class_of { CommentAttachPass }
+    tools.doc_ir_gen_pass ++> driver.pipeline.pass_class_of { DocIRGenPass }
+    tools.jac_formatter_pass ++> driver.pipeline.pass_class_of { JacFormatPass }
+    passes.pyast_load_pass ++> driver.pipeline.pass_class_of { PyastBuildPass }
+    tools.grammar_extract_pass ++> driver.pipeline.pass_class_of { GrammarExtractPass }
+    tools.cfg_dot ++> driver.pipeline.pass_class_of { CoalesceBBPass }
+    tools.normalize_pass ++> driver.pipeline.pass_class_of { NormalizePass }
+    tools.unparse_pass ++> driver.pipeline.pass_class_of { UnparsePass }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
         FreezeStructurePass
     }

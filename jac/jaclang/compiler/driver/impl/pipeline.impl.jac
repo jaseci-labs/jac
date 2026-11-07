@@ -51,12 +51,10 @@ impl ir_passes(request: ProductRequest) -> PassSchedule {
             PassKind.CFG_BUILD
         ];
     if request.gen_mtir {
-        import from jaclang.compiler.passes.mtir_gen_pass { MTIRGenPass }
         passes.append(PassKind.MTIR_GEN);
     }
     passes.append(PassKind.JSX_INTRINSIC_GUARD);
     passes.append(PassKind.PLACEMENT_APPLY);
-    import from jaclang.compiler.passes.comptime_resolve_pass { ComptimeResolvePass }
     passes.append(PassKind.COMPTIME_RESOLVE);
     return passes;
 }
@@ -101,7 +99,6 @@ impl layout_passes(request: ProductRequest) -> PassSchedule {
 impl codegen_passes(request: ProductRequest) -> PassSchedule {
     passes: PassSchedule = [PassKind.RC_FACTS, PassKind.ESAST_GEN];
     if request.native and not unavailable(CompilationProduct.NATIVE_LOWER) {
-        import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
         passes.append(PassKind.NA_IR_GEN);
     }
     return passes;
@@ -252,6 +249,7 @@ impl contract_of(pass_kind: PassKind) -> PassContract {
     } elif pass_kind == PassKind.CFG_BUILD {
         contract = PassContract(
             provides=(
+                AnalysisFact.CFG_CATCH,
                 AnalysisFact.CFG_SUCC,
                 AnalysisFact.CFG_TRUE,
                 AnalysisFact.CFG_FALSE
@@ -317,6 +315,103 @@ impl contract_of(pass_kind: PassKind) -> PassContract {
     return contract;
 }
 
+impl pass_class_of(pass_kind: PassKind) -> type[CompilerPass] {
+    if pass_kind == PassKind.APP_CONTEXT {
+        return AppContextPass;
+    } elif pass_kind == PassKind.GRAPH_LOWERING {
+        return GraphLoweringPass;
+    } elif pass_kind == PassKind.AST_VALIDATION {
+        return ASTValidationPass;
+    } elif pass_kind == PassKind.ABSORB_IMPORTS {
+        return AbsorbImportsPass;
+    } elif pass_kind == PassKind.SYM_TAB_BUILD {
+        return SymTabBuildPass;
+    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
+        return DeclImplMatchPass;
+    } elif pass_kind == PassKind.PLACEMENT_APPLY {
+        return PlacementApplyPass;
+    } elif pass_kind == PassKind.SEMANTIC_ANALYSIS {
+        return SemanticAnalysisPass;
+    } elif pass_kind == PassKind.IMPORT_WIRING {
+        return ImportWiringPass;
+    } elif pass_kind == PassKind.PACKAGE_BOUNDARY {
+        return PackageBoundaryPass;
+    } elif pass_kind == PassKind.SEM_DEF_MATCH {
+        return SemDefMatchPass;
+    } elif pass_kind == PassKind.CFG_BUILD {
+        return CFGBuildPass;
+    } elif pass_kind == PassKind.MTIR_GEN {
+        return MTIRGenPass;
+    } elif pass_kind == PassKind.JSX_INTRINSIC_GUARD {
+        return JsxIntrinsicGuardPass;
+    } elif pass_kind == PassKind.COMPTIME_RESOLVE {
+        return ComptimeResolvePass;
+    } elif pass_kind == PassKind.REGION_INFER {
+        return RegionInferPass;
+    } elif pass_kind == PassKind.VARIANT_AGREEMENT {
+        return VariantAgreementPass;
+    } elif pass_kind == PassKind.TYPE_CHECK {
+        return TypeCheckPass;
+    } elif pass_kind == PassKind.STATIC_ANALYSIS {
+        return StaticAnalysisPass;
+    } elif pass_kind == PassKind.ACCESS_CHECK {
+        return AccessCheckPass;
+    } elif pass_kind == PassKind.OWNERSHIP_CHECK {
+        return OwnershipCheckPass;
+    } elif pass_kind == PassKind.PLACEMENT {
+        return PlacementPass;
+    } elif pass_kind == PassKind.PORTABILITY_WARN {
+        return PortabilityWarnPass;
+    } elif pass_kind == PassKind.JAC_LINT_CHECK {
+        return JacLintCheckPass;
+    } elif pass_kind == PassKind.DECLARATION_TYPE {
+        return DeclarationTypePass;
+    } elif pass_kind == PassKind.BOUNDARY_FACTS {
+        return BoundaryFactsPass;
+    } elif pass_kind == PassKind.BOUNDARY_ANALYSIS {
+        return BoundaryAnalysisPass;
+    } elif pass_kind == PassKind.ENDPOINT_EFFECT {
+        return EndpointEffectPass;
+    } elif pass_kind == PassKind.ESAST_GEN {
+        return EsastGenPass;
+    } elif pass_kind == PassKind.LAYOUT {
+        return LayoutPass;
+    } elif pass_kind == PassKind.RC_FACTS {
+        return RcFactsPass;
+    } elif pass_kind == PassKind.NA_IR_GEN {
+        return NaIRGenPass;
+    } elif pass_kind == PassKind.NATIVE_IMPORT_FACTS {
+        return NativeImportFactsPass;
+    } elif pass_kind == PassKind.JCIR_GEN {
+        return JcirGenPass;
+    } elif pass_kind == PassKind.FREEZE_STRUCTURE {
+        return FreezeStructurePass;
+    } elif pass_kind == PassKind.JCIR_BYTECODE_GEN {
+        return JcirBytecodeGenPass;
+    } elif pass_kind == PassKind.NATIVE_COMPILE {
+        return NativeCompilePass;
+    } elif pass_kind == PassKind.COMMENT_ATTACH {
+        return CommentAttachPass;
+    } elif pass_kind == PassKind.DOC_IR_GEN {
+        return DocIRGenPass;
+    } elif pass_kind == PassKind.JAC_FORMAT {
+        return JacFormatPass;
+    } elif pass_kind == PassKind.JAC_AUTO_LINT {
+        return JacAutoLintPass;
+    } elif pass_kind == PassKind.PYAST_BUILD {
+        return PyastBuildPass;
+    } elif pass_kind == PassKind.GRAMMAR_EXTRACT {
+        return GrammarExtractPass;
+    } elif pass_kind == PassKind.COALESCE_BB {
+        return CoalesceBBPass;
+    } elif pass_kind == PassKind.NORMALIZE {
+        return NormalizePass;
+    } elif pass_kind == PassKind.UNPARSE {
+        return UnparsePass;
+    }
+    raise ValueError(f"unknown compiler pass: {pass_kind.value}");
+}
+
 impl run_scheduled_pass(
     pass_kind: PassKind,
     module: Module,
@@ -324,125 +419,27 @@ impl run_scheduled_pass(
     cancel_token: (CancelToken | None),
     policy: DiagnosticPolicy
 ) -> Module {
-    if pass_kind == PassKind.APP_CONTEXT {
-        return run_pass(AppContextPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.GRAPH_LOWERING {
-        return run_pass(GraphLoweringPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.AST_VALIDATION {
-        return run_pass(ASTValidationPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.ABSORB_IMPORTS {
-        return run_pass(AbsorbImportsPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.SYM_TAB_BUILD {
-        return run_pass(SymTabBuildPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
-        return run_pass(DeclImplMatchPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.PLACEMENT_APPLY {
-        return run_pass(PlacementApplyPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.SEMANTIC_ANALYSIS {
-        return run_pass(SemanticAnalysisPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.IMPORT_WIRING {
-        return run_pass(ImportWiringPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.PACKAGE_BOUNDARY {
-        return run_pass(PackageBoundaryPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.SEM_DEF_MATCH {
-        return run_pass(SemDefMatchPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.CFG_BUILD {
-        return run_pass(CFGBuildPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.MTIR_GEN {
-        return run_pass(MTIRGenPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.JSX_INTRINSIC_GUARD {
-        return run_pass(JsxIntrinsicGuardPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.COMPTIME_RESOLVE {
-        return run_pass(ComptimeResolvePass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.REGION_INFER {
-        return run_pass(RegionInferPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.VARIANT_AGREEMENT {
-        return run_pass(VariantAgreementPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.TYPE_CHECK {
-        return run_pass(TypeCheckPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.STATIC_ANALYSIS {
-        return run_pass(StaticAnalysisPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.ACCESS_CHECK {
-        return run_pass(AccessCheckPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.OWNERSHIP_CHECK {
-        return run_pass(OwnershipCheckPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.PLACEMENT {
-        return run_pass(PlacementPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.PORTABILITY_WARN {
-        return run_pass(PortabilityWarnPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.JAC_LINT_CHECK {
-        return run_pass(JacLintCheckPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.DECLARATION_TYPE {
-        return run_pass(DeclarationTypePass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.BOUNDARY_FACTS {
-        return run_pass(BoundaryFactsPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.BOUNDARY_ANALYSIS {
-        return run_pass(BoundaryAnalysisPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.ENDPOINT_EFFECT {
-        return run_pass(EndpointEffectPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.ESAST_GEN {
-        return run_pass(EsastGenPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.LAYOUT {
-        return run_pass(LayoutPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.RC_FACTS {
-        return run_pass(RcFactsPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.NA_IR_GEN {
-        return run_pass(NaIRGenPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.NATIVE_IMPORT_FACTS {
-        return run_pass(NativeImportFactsPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.JCIR_GEN {
-        return run_pass(JcirGenPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.FREEZE_STRUCTURE {
-        return run_pass(FreezeStructurePass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.JCIR_BYTECODE_GEN {
-        return run_pass(JcirBytecodeGenPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.NATIVE_COMPILE {
-        return run_pass(NativeCompilePass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.COMMENT_ATTACH {
-        return run_pass(CommentAttachPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.DOC_IR_GEN {
-        return run_pass(DocIRGenPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.JAC_FORMAT {
-        return run_pass(JacFormatPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.JAC_AUTO_LINT {
-        return run_pass(JacAutoLintPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.PYAST_BUILD {
-        return run_pass(PyastBuildPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.GRAMMAR_EXTRACT {
-        return run_pass(GrammarExtractPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.COALESCE_BB {
-        return run_pass(CoalesceBBPass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.NORMALIZE {
-        return run_pass(NormalizePass, module, program, cancel_token, policy).module;
-    } elif pass_kind == PassKind.UNPARSE {
-        return run_pass(UnparsePass, module, program, cancel_token, policy).module;
-    }
-    raise ValueError(f"unknown compiler pass: {pass_kind.value}");
+    return run_pass(
+        pass_class_of(pass_kind), module, program, cancel_token, policy
+    ).module;
 }
 
 impl run_early_pass(pass_kind: PassKind, module: Module) -> CompileContext {
-    if pass_kind == PassKind.APP_CONTEXT {
-        return run_walker(AppContextPass, module=module).ctx;
-    } elif pass_kind == PassKind.GRAPH_LOWERING {
-        return run_walker(GraphLoweringPass, module=module).ctx;
-    } elif pass_kind == PassKind.AST_VALIDATION {
-        return run_walker(ASTValidationPass, module=module).ctx;
-    } elif pass_kind == PassKind.ABSORB_IMPORTS {
-        return run_walker(AbsorbImportsPass, module=module).ctx;
-    } elif pass_kind == PassKind.SYM_TAB_BUILD {
-        return run_walker(SymTabBuildPass, module=module).ctx;
-    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
-        return run_walker(DeclImplMatchPass, module=module).ctx;
-    } elif pass_kind == PassKind.SEMANTIC_ANALYSIS {
-        return run_walker(SemanticAnalysisPass, module=module).ctx;
-    } elif pass_kind == PassKind.SEM_DEF_MATCH {
-        return run_walker(SemDefMatchPass, module=module).ctx;
-    } elif pass_kind == PassKind.CFG_BUILD {
-        return run_walker(CFGBuildPass, module=module).ctx;
-    } elif pass_kind == PassKind.JSX_INTRINSIC_GUARD {
-        return run_walker(JsxIntrinsicGuardPass, module=module).ctx;
+    if pass_kind not in (
+        PassKind.APP_CONTEXT,
+        PassKind.GRAPH_LOWERING,
+        PassKind.AST_VALIDATION,
+        PassKind.ABSORB_IMPORTS,
+        PassKind.SYM_TAB_BUILD,
+        PassKind.DECL_IMPL_MATCH,
+        PassKind.SEMANTIC_ANALYSIS,
+        PassKind.SEM_DEF_MATCH,
+        PassKind.CFG_BUILD,
+        PassKind.JSX_INTRINSIC_GUARD
+    ) {
+        raise ValueError(f"pass is not available during early parse: {pass_kind.value}");
     }
-    raise ValueError(f"pass is not available during early parse: {pass_kind.value}");
+    return run_walker(pass_class_of(pass_kind), module=module).ctx;
 }
 
 impl native_ir_alert(
@@ -676,6 +673,34 @@ impl cancelled(cancel_token: (CancelToken | None)) -> bool {
     return cancel_token is not None and cancel_token.is_set();
 }
 
+impl pass_class_importable(pass_kind: PassKind) -> bool {
+    try {
+        pass_class_of(pass_kind);
+        return True;
+    } except Exception as e {
+        if type(e).__name__ in ("ImportError", "CompilerSourceError") {
+            return False;
+        }
+        raise e;
+    }
+}
+
+impl runnable_schedule(schedule: PassSchedule) -> ((PassSchedule | None), bool) {
+    runnable: PassSchedule = [];
+    degraded = False;
+    for pass_kind in schedule {
+        if pass_class_importable(pass_kind) {
+            runnable.append(pass_kind);
+        } else {
+            degraded = True;
+        }
+    }
+    if not runnable {
+        return (None, True);
+    }
+    return (runnable, degraded);
+}
+
 impl produce(
     program: JacProgram,
     module: Module,
@@ -703,6 +728,13 @@ impl produce(
         peer_fell_back,
         module.loc.mod_path or module.source.file_path
     );
+    if schedule is not None {
+        (schedule, degraded) = runnable_schedule(schedule);
+        fell_back = fell_back or degraded;
+        if schedule is None {
+            return None;
+        }
+    }
     if task is not None {
         task.import_fallback = fell_back;
     }

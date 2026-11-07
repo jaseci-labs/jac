@@ -268,6 +268,12 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
 
 def contract_of(pass_kind: PassKind) -> PassContract;
 
+def pass_class_of(pass_kind: PassKind) -> type[CompilerPass];
+
+def pass_class_importable(pass_kind: PassKind) -> bool;
+
+def runnable_schedule(schedule: PassSchedule) -> ((PassSchedule | None), bool);
+
 def run_scheduled_pass(
     pass_kind: PassKind,
     module: Module,
