@@ -6470,7 +6470,6 @@ graph import compiler {
             NativeModuleLayout
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._from_imported_intercept
-            | backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of
             | passes.layout_pass.record_interface_twins
             | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
         backends.native.na_ir_gen_pass.NaIRGenPass._maybe_declare_ability {
@@ -6517,6 +6516,9 @@ graph import compiler {
             native_symbol_name,
             native_unit_identity,
             native_unit_spelling
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {
+            bundled_stdlib_module_of
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
             native_symbol_name,
