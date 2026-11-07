@@ -324,8 +324,7 @@ test "a fresh checkout reuses a bundle sealed elsewhere through the shared cache
     checkout = _checkout_of(first_project);
     (again, again_log) = _pack_shared(checkout, binary, str(shared));
     assert any(
-        "Reusing the sealed bundle" in m and "shared seal cache" in m
-        for m in again_log
+        "Reusing the sealed bundle" in m and "shared seal cache" in m for m in again_log
     ) , f"a fresh checkout sealed again despite the shared cache: {again_log}";
     assert again == first , "the shared bundle differs from the one sealed";
     assert len(list((checkout / ".jac" / "seal-cache").glob("*.jab"))) == 1 , (
