@@ -8,6 +8,11 @@ obj NativeDepScan {
         deps: list[str];
 }
 
+obj PullClosureIndex {
+    has references: dict[int, set[int]],
+        elements: dict[int, uni.UniNode];
+}
+
 glob _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -74,7 +79,11 @@ def _materialize_module(
 def _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | None);
 
 def _closure_pullable(
-    top: uni.UniNode, module: uni.Module, prog: JacProgram, seen: set[int]
+    top: uni.UniNode,
+    module: uni.Module,
+    prog: JacProgram,
+    seen: set[int],
+    indexes: (dict[int, PullClosureIndex] | None) = None
 ) -> bool;
 
 def _module_externally_pinned(mod_path: str) -> bool;
