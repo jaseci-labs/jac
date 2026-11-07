@@ -646,7 +646,6 @@ impl _precompile_app(
         jac_path.write_bytes(seal_binary);
         jac_path.chmod(0o755);
 
-        # A pinned older seal binary has no prepared_client parameter.
         serve_payloads = "import inspect\n"
             + "from pathlib import Path\n"
             + "from jaclang.project.config import get_config_for_path\n"
