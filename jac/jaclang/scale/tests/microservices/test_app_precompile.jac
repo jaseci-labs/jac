@@ -300,8 +300,9 @@ def _checkout_of(project: Path) -> Path {
 
 
 test "the shared seal cache comes from [scale] seal_cache, JAC_SEAL_CACHE wins" {
+    plain = Path(_mini_app()).resolve();
+    assert _cache_setting_under(None, plain) is None;
     base = Path(_mini_app()).resolve();
-    assert _cache_setting_under(None, base) is None;
     with open(base / "jac.toml", "a") as toml {
         toml.write("\n[scale]\nseal_cache = \"../shared-seals\"\n");
     }
