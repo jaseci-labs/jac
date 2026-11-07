@@ -1344,7 +1344,53 @@ def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
-def setup_dev_mode_server -> subprocess.Popen {
+"""Capture a polled server's full output without a finite pipe blocking boot."""
+obj _CapturedDevServer(subprocess.Popen) {
+    has _stdout_capture: any = None,
+        _stderr_capture: any = None;
+
+    def init(args: list[str], **kwargs: any) {
+        self._stdout_capture = tempfile.NamedTemporaryFile(mode="w+", delete=False);
+        try {
+            self._stderr_capture = tempfile.NamedTemporaryFile(mode="w+", delete=False);
+            super.init(
+                args,
+                stdout=self._stdout_capture,
+                stderr=self._stderr_capture,
+                text=True,
+                **kwargs
+            );
+        } except BaseException {
+            self.close_output();
+            raise;
+        }
+    }
+
+    override def communicate(
+        input: any = None, timeout: float | None = None
+    ) -> tuple[str, str] {
+        super.communicate(input=input, timeout=timeout);
+        encoding: str | None = _as_any(self).encoding;
+        errors: str | None = _as_any(self).errors;
+        # Open separate readers: seeking an inherited descriptor would also
+        # move the write offset for any child still finishing its last log.
+        return (
+            Path(self._stdout_capture.name).read_text(encoding=encoding, errors=errors),
+            Path(self._stderr_capture.name).read_text(encoding=encoding, errors=errors)
+        );
+    }
+
+    def close_output {
+        for stream in (self._stdout_capture, self._stderr_capture) {
+            if stream is not None {
+                stream.close();
+                Path(stream.name).unlink(missing_ok=True);
+            }
+        }
+    }
+}
+
+def setup_dev_mode_server -> _CapturedDevServer {
     if not dm_test_file.exists() {
         raise FileNotFoundError(f"Test fixture not found: {dm_test_file}");
     }
@@ -1368,12 +1414,11 @@ def setup_dev_mode_server -> subprocess.Popen {
     # A server that never comes up is killed mid-preparation and says nothing
     # about where it was. With this set, a preparation that runs long writes
     # its stack to stderr, which the failure below prints.
-    server_process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env={** os.environ, "JAC_KERNEL_TIMING": "1"}
+    # The readiness loop does not call communicate until a failure. A dev
+    # server's children inherit these destinations too, so keep both complete
+    # streams in files rather than letting an undrained PIPE stall startup.
+    server_process = _CapturedDevServer(
+        cmd, env={** os.environ, "JAC_KERNEL_TIMING": "1"}
     );
 
     max_attempts = 60;
@@ -1382,6 +1427,7 @@ def setup_dev_mode_server -> subprocess.Popen {
     for _ in range(max_attempts) {
         if server_process.poll() is not None {
             (stdout, stderr) = server_process.communicate();
+            server_process.close_output();
             raise RuntimeError(
                 f"Server process terminated unexpectedly.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
@@ -1410,6 +1456,7 @@ def setup_dev_mode_server -> subprocess.Popen {
             server_process.kill();
             (stdout, stderr) = server_process.communicate();
         }
+        server_process.close_output();
         raise RuntimeError(
             f"Server failed to start in dev mode after {max_attempts} attempts.\n"
             f"STDOUT: {stdout}\nSTDERR: {stderr}"
@@ -1419,9 +1466,128 @@ def setup_dev_mode_server -> subprocess.Popen {
     return server_process;
 }
 
-def teardown_dev_mode_server(sp: subprocess.Popen | None) {
-    stop_server(sp);
-    cleanup_db_files(dm_fixtures_dir);
+def teardown_dev_mode_server(sp: _CapturedDevServer | None) {
+    try {
+        stop_server(sp);
+    } finally {
+        if sp {
+            sp.close_output();
+        }
+        cleanup_db_files(dm_fixtures_dir);
+    }
+}
+
+"""A real HTTP child that must flush two large streams before serving healthz."""
+def _chatty_dev_server(directory: Path, fail_after_output: bool = False) -> str {
+    import shlex;
+    import sys;
+    child = '''import http.server, os, pathlib, sys, threading
+state = pathlib.Path(sys.argv[1])
+state.write_text("writing_output")
+def blocked_exit():
+    state.write_text("watchdog_before_readiness")
+    os._exit(73)
+watchdog = threading.Timer(10, blocked_exit)
+watchdog.daemon = True
+watchdog.start()
+sys.stdout.write("STDOUT-BEGIN\\n" + "o" * (2 * 1024 * 1024) + "\\nSTDOUT-END\\n")
+sys.stdout.flush()
+sys.stderr.write("STDERR-BEGIN\\n" + "e" * (2 * 1024 * 1024) + "\\nSTDERR-END\\n")
+sys.stderr.flush()
+watchdog.cancel()
+if _FAIL_AFTER_OUTPUT_:
+    state.write_text("exited_after_output")
+    sys.exit(23)
+class Health(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+port = int(sys.argv[sys.argv.index("--api-port") + 1])
+with http.server.HTTPServer(("127.0.0.1", port), Health) as server:
+    state.write_text("ready")
+    server.serve_forever()
+'''.replace(
+        "_FAIL_AFTER_OUTPUT_", "True" if fail_after_output else "False"
+    );
+    script = directory / "chatty-dev-server";
+    script.write_text(
+        "#!/bin/sh\nexec "
+            + shlex.quote(sys.executable)
+            + " -c "
+            + shlex.quote(child)
+            + " "
+            + shlex.quote(str(directory / "state"))
+            + ' "$@"\n'
+    );
+    script.chmod(0o755);
+    return str(script);
+}
+
+test "dev mode output capture keeps chatty startup ready" {
+    import unittest.mock;
+    with tempfile.TemporaryDirectory(prefix="dev-output-") as directory {
+        capture_dir = Path(directory);
+        script = _chatty_dev_server(capture_dir);
+        sp: any = None;
+        try {
+            with unittest.mock.patch.dict(
+                _as_any(setup_dev_mode_server).__globals__,
+                {"jac_executable": unittest.mock.Mock(return_value=script)}
+            ) {
+                try {
+                    sp = setup_dev_mode_server();
+                } except RuntimeError as error {
+                    state = (capture_dir / "state").read_text();
+                    raise AssertionError(
+                        f"Chatty child failed before readiness (state={state}).\n{error}"
+                    ) from error;
+                }
+            }
+            assert (capture_dir / "state").read_text() == "ready";
+            assert requests.get(f"{dm_base_url}/healthz", timeout=2).status_code == 200;
+            stop_server(sp);
+            (stdout, stderr) = sp.communicate(timeout=5);
+            assert stdout
+                == "STDOUT-BEGIN\n" + "o" * (2 * 1024 * 1024) + "\nSTDOUT-END\n";
+            assert stderr.startswith(
+                "STDERR-BEGIN\n" + "e" * (2 * 1024 * 1024) + "\nSTDERR-END\n"
+            );
+            assert stderr.count('"GET /healthz HTTP/1.1" 200 -') == 2;
+        } finally {
+            teardown_dev_mode_server(sp);
+        }
+    }
+}
+
+test "dev mode output capture keeps complete failed startup diagnostics" {
+    import unittest.mock;
+    with tempfile.TemporaryDirectory(prefix="dev-output-failure-") as directory {
+        capture_dir = Path(directory);
+        script = _chatty_dev_server(capture_dir, fail_after_output=True);
+        detail: str | None = None;
+        sp: any = None;
+        try {
+            with unittest.mock.patch.dict(
+                _as_any(setup_dev_mode_server).__globals__,
+                {"jac_executable": unittest.mock.Mock(return_value=script)}
+            ) {
+                try {
+                    sp = setup_dev_mode_server();
+                } except RuntimeError as error {
+                    detail = str(error);
+                }
+            }
+            assert (capture_dir / "state").read_text() == "exited_after_output";
+            assert detail is not None;
+            assert "Server process terminated unexpectedly." in detail;
+            stdout = "STDOUT-BEGIN\n" + "o" * (2 * 1024 * 1024) + "\nSTDOUT-END\n";
+            stderr = "STDERR-BEGIN\n" + "e" * (2 * 1024 * 1024) + "\nSTDERR-END\n";
+            assert f"STDOUT: {stdout}\nSTDERR: {stderr}" in detail;
+        } finally {
+            teardown_dev_mode_server(sp);
+        }
+    }
 }
 
 test "dev mode operations" {
