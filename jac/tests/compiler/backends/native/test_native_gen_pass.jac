@@ -4003,12 +4003,13 @@ test "native sys stream write returns count and hits the real fds" {
     assert got2 == b"err-7\n" , f"fd2 bytes wrong: {got2!r}";
 }
 
-test "native sys streams bound by a from-import hit the real fds" {
+test "native sys streams reached by a from-import or an alias hit the real fds" {
     (eng, _) = compile_native("sys_streams_from_import.jac");
     for (fn_name, fd, want_n, want_bytes) in [
         ("write_out", 1, 10, b"out-bytes\n"),
         ("write_err", 2, 6, b"err-7\n"),
-        ("print_err", 2, 1, b"p-err\n")
+        ("print_err", 2, 1, b"p-err\n"),
+        ("print_module_alias_err", 2, 1, b"s-err\n")
     ] {
         func = get_func(eng, fn_name, ctypes.c_int64);
         (r, w) = os.pipe();

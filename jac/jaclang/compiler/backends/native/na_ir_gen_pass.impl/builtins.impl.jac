@@ -279,12 +279,10 @@ impl NaIRGenPass._sys_stream_of(value: uni.Expr) -> (str | None) {
         return None;
     }
     owner = sym.parent_tab;
-    if not isinstance(owner, uni.Module) or owner.loc is None {
-        return None;
-    }
-    if not owner.loc.mod_path.replace("\\", "/").endswith(
-        "typeshed/stdlib/sys/__init__.pyi"
-    ) {
+    if not isinstance(owner, uni.Module)
+        or not owner.stub_only
+        or owner.loc is None
+        or bundled_stdlib_module_of(owner.loc.mod_path) != "sys" {
         return None;
     }
     return sym.sym_name;
