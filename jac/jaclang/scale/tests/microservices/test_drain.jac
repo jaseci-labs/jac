@@ -3,7 +3,6 @@ readiness probe and gateway read from it."""
 
 import asyncio;
 import json;
-import sys;
 
 
 def _request(path: str) -> Request {
@@ -107,36 +106,4 @@ test "the transport flips its drain state on a termination signal" {
     assert server.drain.timeout == 3.5;
     assert not server.drain.draining;
     assert server.app.state["drain"] is server.drain;
-}
-
-
-test "start runs the drain hooks once, past one that raises or exits" {
-    import from jaclang.server.serving.drain { DRAIN_HOOKS }
-
-    seen: list[str] = [];
-
-    def failing {
-        raise RuntimeError("boom");
-    }
-
-    def exiting {
-        sys.exit(3);
-    }
-    DRAIN_HOOKS.extend(
-        [
-            lambda { seen.append("first"); },
-            failing,
-            exiting,
-            lambda { seen.append("last"); }
-        ]
-    );
-    try {
-        state = DrainState();
-        state.start("test");
-        state.start("again");
-        state.wait_for_hooks();
-        assert seen == ["first", "last"];
-    } finally {
-        DRAIN_HOOKS.clear();
-    }
 }

@@ -4095,7 +4095,6 @@ graph import {
         scale.server.extensions { HEALTH_PATHS },
         scale.tests.microservices.test_drain { DrainState, drain_middleware },
     ]
-    server.serving.drain --> scale.tests.microservices.test_drain { DRAIN_HOOKS }
     server.serving.endpoint ++> [
         client.targets.desktop.native.broker_extension
             | scale.admin.admin_portal
