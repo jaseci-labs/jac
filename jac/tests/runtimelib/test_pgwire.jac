@@ -11,14 +11,18 @@ backend. SCRAM-over-TCP is covered by the k8s path.
 """
 
 import select;
+import struct;
 import threading;
 import time;
+import from collections { OrderedDict }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from unittest.mock { patch }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.pgload { connect as pg_connect }
 import from jaclang.server.session { shared_pg_data_dir, project_db_name }
 import from jaclang.data.pgwire {
+    PgWireConnection,
     PgWireError,
     STATEMENT_CACHE_SIZE,
     _array_literal,
@@ -26,6 +30,168 @@ import from jaclang.data.pgwire {
     _parse_error_fields,
     _rewrite_named,
     _scram_proofs
+}
+
+
+obj _WriteProbe {
+    has sent: list[bytes] = [];
+
+    def sendall(data: bytes) {
+        assert type(data) is bytes;
+        self.sent.append(data);
+    }
+}
+
+
+test "bind frames preserve null empty binary and multibyte parameter lengths" {
+    conn: any = object.__new__(PgWireConnection);
+    conn._closed = False;
+    conn._stmts = OrderedDict();
+    conn._stmt_seq = 0;
+    conn._evicted = [];
+    probe = _WriteProbe();
+    conn._sock = probe;
+    text = 'café 🧬';
+    with patch.object(PgWireConnection, '_read_message', return_value=('Z', b'I')), patch.object(
+        PgWireConnection, '_drain_async'
+    ) {
+        assert conn.run(
+            'SELECT :missing, :empty, :text, :blob, :flag, :number',
+            missing=None,
+            empty='',
+            text=text,
+            blob=b'\x00\xff',
+            flag=False,
+            number=42
+        )
+            == [];
+    }
+    wire = probe.sent[0];
+    pos = 0;
+    kinds: list[str] = [];
+    bind = b'';
+    while pos < len(wire) {
+        kind = chr(wire[pos]);
+        length = struct.unpack_from('!i', wire, pos + 1)[0];
+        kinds.append(kind);
+        if kind == 'B' {
+            bind = wire[pos + 5:pos + 1 + length];
+        }
+        pos += 1 + length;
+    }
+    assert pos == len(wire);
+    assert kinds == ['P', 'B', 'D', 'E', 'S'];
+    assert bind[:4] == b'\x00j1\x00';
+    assert struct.unpack_from('!hh', bind, 4) == (0, 6);
+    pos = 8;
+    values: list[any] = [];
+    for _ in range(6) {
+        length = struct.unpack_from('!i', bind, pos)[0];
+        pos += 4;
+        if length == -1 {
+            values.append(None);
+        } else {
+            values.append(bind[pos:pos + length]);
+            pos += length;
+        }
+    }
+    assert values == [None, b'', text.encode('utf-8'), b'\\x00ff', b'false', b'42'];
+    assert bind[pos:] == b'\x00\x00';
+    assert bind
+        == (
+            b'\x00j1\x00\x00\x00\x00\x06'
+            + b'\xff\xff\xff\xff'
+            + b'\x00\x00\x00\x00'
+            + b'\x00\x00\x00\x0acaf\xc3\xa9 \xf0\x9f\xa7\xac'
+            + b'\x00\x00\x00\x06\\x00ff'
+            + b'\x00\x00\x00\x05false'
+            + b'\x00\x00\x00\x0242'
+            + b'\x00\x00'
+        );
+}
+
+
+test "custom encoded chunks retain immutable prefix and framing operators" {
+    class NextValue {
+        has value: str = 'plain';
+
+        def __str__(self: NextValue) -> str {
+            return self.value;
+        }
+    }
+    for mutable_result in (False, True) {
+        second = NextValue();
+        calls: list[tuple[str, int]] = [];
+        framing: list[str] = [];
+        class FramedBuffer(bytearray) {
+            def __bytes__(self: FramedBuffer) -> bytes {
+                raise AssertionError('a custom prefix must reach framing unchanged');
+            }
+
+            def __radd__(self: FramedBuffer, prefix: any) -> bytes {
+                framing.append(type(prefix).__name__);
+                return bytes(prefix) + bytes(memoryview(self));
+            }
+        }
+        class Encoded(`bytes) {
+            def __radd__(self: Encoded, prefix: any) -> any {
+                calls.append((type(prefix).__name__, len(prefix)));
+                if len(calls) == 2 and type(prefix) is bytes {
+                    second.value = 'mutated';
+                }
+                combined = bytes(prefix) + bytes(self);
+                if len(calls) == 2 and mutable_result {
+                    return FramedBuffer(combined);
+                }
+                return Encoded(combined);
+            }
+        }
+        class CodecText(`str) {
+            def encode(
+                self: CodecText, encoding: str = 'utf-8', errors: str = 'strict'
+            ) -> bytes {
+                return Encoded(b'first');
+            }
+        }
+        class FirstValue {
+            def __str__(self: FirstValue) -> str {
+                return CodecText('first');
+            }
+        }
+        conn: any = object.__new__(PgWireConnection);
+        conn._closed = False;
+        conn._stmts = OrderedDict();
+        conn._stmt_seq = 0;
+        conn._evicted = [];
+        probe = _WriteProbe();
+        conn._sock = probe;
+        with patch.object(PgWireConnection, '_read_message', return_value=('Z', b'I')), patch.object(
+            PgWireConnection, '_drain_async'
+        ) {
+            assert conn.run('SELECT :first, :second', first=FirstValue(), second=second)
+                == [];
+        }
+        assert calls == [('bytes', 4), ('bytes', 8)];
+        assert framing == (['bytes'] if mutable_result else []);
+        wire = probe.sent[0];
+        pos = 0;
+        bind = b'';
+        while pos < len(wire) {
+            length = struct.unpack_from('!i', wire, pos + 1)[0];
+            if wire[pos] == ord('B') {
+                bind = wire[pos + 5:pos + 1 + length];
+            }
+            pos += 1 + length;
+        }
+        assert pos == len(wire);
+        assert bind
+            == (
+                b'\x00j1\x00\x00\x00\x00\x02'
+                + b'\x00\x00\x00\x05first'
+                + b'\x00\x00\x00\x07mutated'
+                + b'\x00\x00'
+            );
+    }
 }
 
 

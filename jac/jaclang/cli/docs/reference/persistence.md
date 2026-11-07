@@ -34,6 +34,8 @@ Anchors live in an `anchors` table with `jsonb` payloads; the same database also
 
 `PgWireConnection.run` and `PgStore.rows` accept named SQL parameters such as `:name`. Only executable placeholders are bound: ordinary strings, quoted identifiers, dollar-quoted strings, `E'...'` escape strings, and SQL comments retain their text. Repeated names share one positional parameter, and PostgreSQL `::` casts remain unchanged.
 
+Large parameterized writes assemble their parameter payload in a growable buffer before transmission, avoiding repeated copies of values already encoded. Parameter order, SQL `NULL` values, binary values, and UTF-8 byte lengths follow the same encoding rules for small and large writes.
+
 ### Array NULL parameters
 
 When using `PgWireConnection.run` directly, `None` inside an array parameter represents a SQL `NULL` element. For example, binding `[1, None, 3]` to `:values::int[]` preserves the missing middle value. Strings such as `"None"`, `"NULL"`, and the empty string remain text values in a `text[]` parameter.
