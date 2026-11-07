@@ -78,6 +78,13 @@ impl _portable_manifest(manifest: dict[str, any]) -> dict[str, any] {
 impl build_serve_manifest(
     entry_file: Path, proj_root: Path
 ) -> (dict[str, any] | None) {
+    prepared = prepare_serve_payloads(entry_file, proj_root);
+    return prepared[0] if prepared is not None else None;
+}
+
+impl prepare_serve_payloads(
+    entry_file: Path, proj_root: Path, client: bool = False
+) -> (tuple[dict[str, any], str] | None) {
     program = JacProgram();
     program.options = CompileOptions(skip_native_engine=True);
 
@@ -94,7 +101,9 @@ impl build_serve_manifest(
             str(entry_file.resolve()),
             program,
             str(proj_root.resolve()),
-            services=[svc.entry_path(str(proj_root.resolve())) for svc in services]
+            services=[svc.entry_path(str(proj_root.resolve())) for svc in services],
+            client=client,
+            dev=False if client else None
         );
         result = _portable_manifest(prepared.manifests[str(entry_file.resolve())]);
         result['module_manifests'] = {
@@ -104,13 +113,28 @@ impl build_serve_manifest(
             for (path, manifest) in application.manifests.items()
         };
         result.update(serve_manifest_stamp());
-        return result;
+        return (result, prepared.client_dist if client else "");
     } except Exception as e {
         console.error(f"Seal aborted: application preparation failed: {e}");
         return None;
     } finally {
         program.release_compile_closure();
     }
+}
+
+impl finish_prepared_client(
+    entry_file: Path, proj_root: Path, client_dist: str, exports: list[str]
+) -> (Path | None) {
+    if not client_dist or not Path(client_dist).is_dir() {
+        return None;
+    }
+    try {
+        WebTarget().finish_dist(entry_file, proj_root, exports);
+    } except Exception as e {
+        console.error(f"Client finish failed: {e}");
+        return None;
+    }
+    return Path(client_dist);
 }
 
 impl ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
@@ -159,7 +183,11 @@ impl bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
 }
 
 impl bake_serve_payloads(
-    config: any, pkg_copy: Path, app: str = "", bake_client: bool = True
+    config: any,
+    pkg_copy: Path,
+    app: str = "",
+    bake_client: bool = True,
+    prepared_client: bool = False
 ) -> bool {
     import json;
     import shutil;
@@ -170,10 +198,13 @@ impl bake_serve_payloads(
     }
 
     Jac.set_full_target_path(str(entry_file));
-    sm = build_serve_manifest(entry_file, Path(config.project_root));
-    if sm is None {
+    built = prepare_serve_payloads(
+        entry_file, Path(config.project_root), bake_client and prepared_client
+    );
+    if built is None {
         return False;
     }
+    (sm, prepared_dist) = built;
     dest_manifest = pkg_copy / SERVE_MANIFEST_REL;
     dest_manifest.parent.mkdir(parents=True, exist_ok=True);
     dest_manifest.write_text(
@@ -185,15 +216,25 @@ impl bake_serve_payloads(
         or not (client_meta.get('has_client') or client_meta.get('exports')) {
         return True;
     }
-    dist_src = ensure_client_dist(config, entry_file);
+    dist_src = finish_prepared_client(
+        entry_file,
+        Path(config.project_root),
+        prepared_dist,
+        list(client_meta.get('exports') or [])
+    );
+    if dist_src is None {
+        dist_src = ensure_client_dist(config, entry_file);
+    }
     if dist_src is None {
         return False;
     }
     dest_dist = pkg_copy / CLIENT_DIST_REL;
-    if dest_dist.exists() {
-        shutil.rmtree(dest_dist);
+    if dest_dist.resolve() != Path(dist_src).resolve() {
+        if dest_dist.exists() {
+            shutil.rmtree(dest_dist);
+        }
+        shutil.copytree(dist_src, dest_dist);
     }
-    shutil.copytree(dist_src, dest_dist);
     n_files = sum(
         1
         for p in dest_dist.rglob('*')
@@ -417,12 +458,9 @@ impl sealed_image_key(
     if lock.is_file() {
         h.update(file_sha256(str(lock)).encode("utf-8"));
     }
-    for (env_key, env_value) in sorted(os.environ.items()) {
-        if env_key.startswith("VITE_")
-            or env_key in ("NODE_ENV", "JAC_CLIENT_API_BASE_URL") {
-            h.update(f"{env_key}={env_value}".encode("utf-8"));
-            h.update(b"\x00");
-        }
+    for row in client_build_env() {
+        h.update(row.encode("utf-8"));
+        h.update(b"\x00");
     }
     for (dirpath, dirnames, filenames) in os.walk(proj_root, followlinks=True) {
         skipped = set(ignore(dirpath, dirnames + filenames));
