@@ -108,13 +108,13 @@ def _run(
 ) -> object {
     err = None;
     now: list[float] = clock if clock is not None else [0.0];
-    def _sleep(seconds: float) -> None {
+    def _sleep(seconds: float) {
         now[0] += seconds;
         if naps is not None {
             naps.append(seconds);
         }
     }
-    def _monotonic() -> float {
+    def _monotonic -> float {
         return now[0];
     }
     with unittest.mock.patch.object(
@@ -225,9 +225,7 @@ test "a fleet that turns ready is noticed within a couple of seconds" {
     apps.read_namespaced_deployment.side_effect = [_dep(0), _dep(1)];
     naps: list[float] = [];
 
-    err = _run(
-        target, _bundle("gateway-deployment", "gateway"), apps, core, 60, naps
-    );
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60, naps);
 
     assert err is None , f"a fleet that turns ready should not raise: {err}";
     assert sum(naps) <= 2 , f"slept {sum(naps)}s after the fleet was ready";
@@ -392,19 +390,14 @@ test "pod stuck ContainerCreating with FailedMount events is healed" {
         clock[0] += 3.0;
         return _dep(0);
     }
-    def _record_heal(*args: any, **kwargs: any) -> None {
+    def _record_heal(*args: any, **kwargs: any) {
         healed_at.append(clock[0]);
     }
     apps.read_namespaced_deployment.side_effect = _slow_read;
     core.delete_namespaced_pod.side_effect = _record_heal;
 
     err = _run(
-        target,
-        _bundle("gateway-deployment", "gateway"),
-        apps,
-        core,
-        400,
-        clock=clock
+        target, _bundle("gateway-deployment", "gateway"), apps, core, 400, clock=clock
     );
 
     assert healed_at and healed_at[0] <= 310 , (

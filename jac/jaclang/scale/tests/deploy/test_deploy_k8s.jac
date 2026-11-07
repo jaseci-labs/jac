@@ -137,10 +137,10 @@ def _run_fleet_rollout(
 ) -> (Exception | None) {
     caught: (Exception | None) = None;
     now: list[float] = [0.0];
-    def _sleep(seconds: float) -> None {
+    def _sleep(seconds: float) {
         now[0] += seconds;
     }
-    def _monotonic() -> float {
+    def _monotonic -> float {
         return now[0];
     }
     with unittest.mock.patch(
