@@ -1691,24 +1691,45 @@ impl KubernetesTarget._apply_or_replace_pvc(
     core_v1: any, namespace: str, manifest: dict[str, any]
 ) {
     name: str = manifest["metadata"]["name"];
-    try {
-        core_v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace);
-        if self.logger {
+    (elapsed, timeout, poll) = (0.0, 300.0, 2.0);
+    while True {
+        try {
+            existing = core_v1.read_namespaced_persistent_volume_claim(
+                name=name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+            break;
+        }
+        if existing.metadata?.deletion_timestamp is None {
+            if self.logger {
+                self.logger.info(
+                    f"PVC '{name}' already exists; skipping patch. To apply "
+                    f"size/storage-class changes, delete the PVC manually or "
+                    f"run `jac scale destroy <file.jac>`."
+                );
+            }
+            return;
+        }
+        if elapsed >= timeout {
+            raise RuntimeError(
+                f"PVC '{name}' in '{namespace}' is still being deleted after "
+                f"{int(timeout)}s; a new one cannot be created until it is gone."
+            );
+        }
+        if elapsed == 0.0 and self.logger {
             self.logger.info(
-                f"PVC '{name}' already exists; skipping patch. To apply "
-                f"size/storage-class changes, delete the PVC manually or "
-                f"run `jac scale destroy <file.jac>`."
+                f"PVC '{name}' is still being deleted; waiting to create it again."
             );
         }
-    } except ApiException as e {
-        if e.status == 404 {
-            core_v1.create_namespaced_persistent_volume_claim(
-                namespace=namespace, body=manifest
-            );
-        } else {
-            raise;
-        }
+        time.sleep(poll);
+        elapsed = elapsed + poll;
     }
+    core_v1.create_namespaced_persistent_volume_claim(
+        namespace=namespace, body=manifest
+    );
 }
 
 impl KubernetesTarget._destroy_fleet_workloads(
