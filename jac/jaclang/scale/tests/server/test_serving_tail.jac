@@ -282,8 +282,10 @@ test "frame masking is byte-identical to the per-byte reference both ways" {
             );
             plain = encode_frame(OP_TEXT, payload);
             ref_frame = (
-                bytes([plain[0], plain[1] | 0x80]) + plain[2:hdr] + fixed_key
-                    + _ref_mask(payload, fixed_key)
+                bytes([plain[0], plain[1] | 0x80])
+                + plain[2:hdr]
+                + fixed_key
+                + _ref_mask(payload, fixed_key)
             );
             for raw in [encoded, ref_frame] {
                 reader = asyncio.StreamReader();
