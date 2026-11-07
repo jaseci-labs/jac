@@ -66,6 +66,8 @@ glob:pub _KEY_IS_ARRAY: int = 1000001,
      _KEY_THENABLE_VALUE: int = 1004002,
      _KEY_THENABLE_THEN: int = 1004003,
      _KEY_PRESOLVED: int = 1004004,
+     _KEY_AG_QUEUE: int = 1004005,
+     _KEY_AG_BUSY: int = 1004006,
      _KEY_IS_VM_CONTEXT: int = 1005001,
      _KEY_FROM_ASYNC_RESULT: int = 1002001,
      _KEY_FROM_ASYNC_OUT: int = 1002002,
@@ -125,6 +127,10 @@ glob:pub _KEY_IS_ARRAY: int = 1000001,
 # [[AlreadyResolved]]). Resolution with a thenable leaves the promise PENDING
 # while the job is queued, so "already settled" is not enough to tell that a
 # later reject must be ignored.
+
+# An async generator's request queue (§27.6.3 AsyncGeneratorEnqueue: an array
+# of [mode, value, promise]) and the flag set while its body is suspended at an
+# await: next/throw/return calls then wait in the queue for the next yield.
 
 # ── vm.createContext contextified sandbox marker ──────────────────────────────
 # Set on a sandbox by vm.createContext(); read back by vm.isContext().  Lives

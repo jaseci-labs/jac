@@ -3056,6 +3056,10 @@ _installGlobal('ShadowRealm', ShadowRealm);
 
   const P = globalThis.Promise;
   if (!P) return;
+  // Promise.resolve(x) for C = %Promise% when nothing about it is observable
+  // (dispatch.jac _dn_native_kind_promise_resolve_fast); undefined otherwise.
+  const resolveFast = globalThis.__jacPromiseResolveFast;
+  delete globalThis.__jacPromiseResolveFast;
 
   // §27.2.1.5 NewPromiseCapability(C). Built via `new C(executor)` so that
   // subclasses and any thenable-producing constructor work uniformly. The
@@ -3470,6 +3474,10 @@ _installGlobal('ShadowRealm', ShadowRealm);
   Object.defineProperty(P, 'resolve', {
     value: function resolve(x) {
       const C = this;
+      if (C === P && resolveFast !== undefined) {
+        const fast = resolveFast(x);
+        if (fast !== undefined) return fast;
+      }
       if (C === null || typeof C !== 'object' && typeof C !== 'function') {
         throw new TypeError('Promise.resolve called on a non-object');
       }

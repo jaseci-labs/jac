@@ -33,7 +33,6 @@ import from engine.src.runtime.jsvalue {
     jsv_to_table_id,
     jsv_set_bigint_zero_id
 }
-import from engine.src.runtime.fn_meta { fn_meta_bind_closures }
 import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
 import from engine.src.runtime.jsobject {
     js_object_mark_global,
@@ -388,6 +387,7 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_PROMISE_THEN,
     NATIVE_KIND_PROMISE_THEN_RAW,
     NATIVE_KIND_PROMISE_THEN_SETUP,
+    NATIVE_KIND_PROMISE_RESOLVE_FAST,
     NATIVE_KIND_PROMISE_CATCH,
     NATIVE_KIND_PROMISE_FINALLY,
     NATIVE_KIND_PROMISE_STATIC_RESOLVE,
@@ -931,6 +931,8 @@ import from engine.src.runtime.jssymbol {
 }
 
 import from engine.src.vm.vm {
+    vm_r1_plain_set,
+    vm_r1_check_set,
     VM,
     make_vm,
     vm_set_realm,
@@ -951,7 +953,7 @@ import from engine.src.bytecode.optimizer {
     bcopt_gate_enabled,
     bcopt_p3_gate_enabled
 }
-import from engine.src.bytecode.regisa {
+import from engine.src.bytecode.regisa { reg_modfree_set,
     reg_isa_gate_set,
     reg_isa_gate_enabled,
     reg_isa_debug_set
@@ -2246,6 +2248,15 @@ def:pub init_global(ctx: GlobalContext) {
     # function's translation outcome.
     reg_isa_gate_set(env_gate_on("JS_REG_ISA"));
     reg_isa_debug_set(getenv("JS_REG_DEBUG") == "1");
+    if getenv("JS_R1_PLAIN") == "0" {
+        vm_r1_plain_set(False);
+    }
+    if getenv("JS_R1_CHECK") == "1" {
+        vm_r1_check_set(True);
+    }
+    if getenv("JS_R1_MODFREE") == "0" {
+        reg_modfree_set(False);
+    }
     vm_reg_verify_set(getenv("JS_REG_VERIFY") == "1");
     vm_reg_stats_set(getenv("JS_REG_STATS") == "1");
     register_index_interner(_dense_index_intern);
@@ -4706,6 +4717,11 @@ def:pub init_global(ctx: GlobalContext) {
         str_intern("__jacPromiseThenSetup"),
         js_native_create("__jacPromiseThenSetup", 2, NATIVE_KIND_PROMISE_THEN_SETUP)
     );
+    js_object_set(
+        gv,
+        str_intern("__jacPromiseResolveFast"),
+        js_native_create("resolve", 1, NATIVE_KIND_PROMISE_RESOLVE_FAST)
+    );
 
     # SetData size for ES2024 Set algebra (bypasses receiver .size accessor overrides).
     js_object_set(
@@ -6115,7 +6131,6 @@ Bun Zig: VirtualMachine.create()
 def:pub create_vm(ctx: GlobalContext) -> VM {
     vm: VM = make_vm();
     vm.realm = ctx.realm;
-    fn_meta_bind_closures(vm.realm.closures);
     vm.global_this = ctx.global_obj.object;
     _populate_vm_globals(vm, ctx);
     # From here on, writes through globalThis are recorded so the VM's bare-name

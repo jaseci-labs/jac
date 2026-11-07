@@ -355,6 +355,44 @@ def _unescape_string(raw: str) -> str {
 # 3.  Compiler
 # ══════════════════════════════════════════════════════════════════════════════
 
+"""The seven stack opcodes whose `arg` is a code index (optimizer.jac's audit)."""
+def _tdz_is_jump(op: Opcode) -> bool {
+    return op == Opcode.JUMP
+        or op == Opcode.JUMP_IF_TRUE
+        or op == Opcode.JUMP_IF_FALSE
+        or op == Opcode.JUMP_IF_NULL
+        or op == Opcode.JUMP_IF_UNDEFINED
+        or op == Opcode.PUSH_CATCH
+        or op == Opcode.PUSH_FINALLY;
+}
+
+"""_tdz_elide's transfer for instruction `i` on the bit set `cur`: a store
+of a tracked slot sets it, unless it stores the TDZ sentinel (TDZ_CLASS /
+NOP just before it in the same block), which clears it."""
+def _tdz_step(
+    code: list[Instruction], i: int, lead: list[bool], idx: dict[int, int], cur: list[int]
+) {
+    ts_ins: Instruction = code[i];
+    if (ts_ins.opcode == Opcode.STORE_LOCAL or ts_ins.opcode == Opcode.STORE_NEW_CELL)
+        and ts_ins.arg in idx {
+        ts_j: int = idx[ts_ins.arg];
+        ts_bit: int = 1 << (ts_j % 60);
+        ts_tdz: bool = lead[i]
+            or (
+                i > 0
+                and (
+                    code[i - 1].opcode == Opcode.TDZ_CLASS
+                    or code[i - 1].opcode == Opcode.NOP
+                )
+            );
+        if ts_tdz {
+            cur[ts_j // 60] = cur[ts_j // 60] & (-1 - ts_bit);
+        } else {
+            cur[ts_j // 60] = cur[ts_j // 60] | ts_bit;
+        }
+    }
+}
+
 """
 Compiles an AST tree to a CompiledFunction (bytecode + constants + metadata).
 
@@ -370,6 +408,8 @@ obj Compiler {
         finalizer_stack: list[FinalizerEntry],
         all_fns: list[CompiledFunction],
         cell_slots: list[list[int]],
+        tdz_pre: list[dict[int, bool]] = [],
+        tdz_redund: list[list[int]] = [],
         esm_live_names: dict[str, bool] = {},
         esm_export_aliases: dict[str, str] = {},
         esm_import_bindings: dict[str, str] = {},
@@ -1804,6 +1844,234 @@ obj Compiler {
         return "var";
     }
 
+    """TDZ elision over a finished function's stack code (before cells are
+    rewritten): a let/const read (LOAD_LOCAL_CHECKED) that every path reaches
+    after a store of a real value reads plainly, and a slot none of whose reads
+    can then meet its TDZ sentinel drops its TDZ stores (FILLER: the length,
+    hence every jump target, stays). A forward must-analysis over the basic
+    blocks: a TDZ store (TDZ_CLASS / NOP then STORE_LOCAL / STORE_NEW_CELL)
+    clears a slot, any other store sets it; entry and handler entries (catch,
+    finally) start with nothing set. Cells are left alone (a closure reads
+    them at any time), and so is code that reaches slots by name (with,
+    LOAD_NAME / STORE_NAME, eval)."""
+    def _tdz_elide(fn: CompiledFunction, cells: list[int]) {
+        te_code: list[Instruction] = fn.code;
+        te_n: int = len(te_code);
+        if te_n == 0 or "eval" in fn.constants.values {
+            return;
+        }
+        # tracked slots: read checked somewhere, not cells; dense indices
+        te_idx: dict[int, int] = {};
+        te_i: int = 0;
+        while te_i < te_n {
+            te_op: Opcode = te_code[te_i].opcode;
+            if te_op == Opcode.WITH_PUSH
+                or te_op == Opcode.LOAD_NAME
+                or te_op == Opcode.STORE_NAME
+                or te_op == Opcode.DEL_NAME {
+                return;
+            }
+            if te_op == Opcode.LOAD_LOCAL_CHECKED
+                and te_code[te_i].arg >= 0
+                and te_code[te_i].arg not in cells
+                and te_code[te_i].arg not in te_idx {
+                te_idx[te_code[te_i].arg] = len(te_idx);
+            }
+            te_i = te_i + 1;
+        }
+        te_k: int = len(te_idx);
+        if te_k == 0 {
+            return;
+        }
+        te_wn: int = (te_k + 59) // 60;
+        # basic blocks
+        te_lead: list[bool] = [];
+        te_hnd: list[bool] = [];
+        te_i = 0;
+        while te_i <= te_n {
+            te_lead.append(False);
+            te_hnd.append(False);
+            te_i = te_i + 1;
+        }
+        te_lead[0] = True;
+        te_i = 0;
+        while te_i < te_n {
+            te_op2: Opcode = te_code[te_i].opcode;
+            if _tdz_is_jump(te_op2) {
+                te_t: int = te_code[te_i].arg;
+                if te_t >= 0 and te_t < te_n {
+                    te_lead[te_t] = True;
+                    if te_op2 == Opcode.PUSH_CATCH or te_op2 == Opcode.PUSH_FINALLY {
+                        te_hnd[te_t] = True;
+                    }
+                }
+                te_lead[te_i + 1] = True;
+            } elif te_op2 == Opcode.RETURN
+                or te_op2 == Opcode.RETURN_UNDEFINED
+                or te_op2 == Opcode.THROW
+                or te_op2 == Opcode.TAIL_CALL {
+                te_lead[te_i + 1] = True;
+            }
+            te_i = te_i + 1;
+        }
+        te_bs: list[int] = [];
+        te_bof: list[int] = [];
+        te_i = 0;
+        while te_i < te_n {
+            if te_lead[te_i] {
+                te_bs.append(te_i);
+            }
+            te_bof.append(len(te_bs) - 1);
+            te_i = te_i + 1;
+        }
+        te_nb: int = len(te_bs);
+        te_bs.append(te_n);
+        # predecessors (block -> list of blocks); handler entries take none
+        te_preds: list[list[int]] = [];
+        te_b: int = 0;
+        while te_b < te_nb {
+            te_preds.append([]);
+            te_b = te_b + 1;
+        }
+        te_b = 0;
+        while te_b < te_nb {
+            te_last: Instruction = te_code[te_bs[te_b + 1] - 1];
+            te_lop: Opcode = te_last.opcode;
+            te_falls: bool = not (
+                te_lop == Opcode.JUMP
+                or te_lop == Opcode.RETURN
+                or te_lop == Opcode.RETURN_UNDEFINED
+                or te_lop == Opcode.THROW
+                or te_lop == Opcode.TAIL_CALL
+            );
+            if te_falls and te_b + 1 < te_nb {
+                te_preds[te_b + 1].append(te_b);
+            }
+            if _tdz_is_jump(te_lop)
+                and te_lop != Opcode.PUSH_CATCH
+                and te_lop != Opcode.PUSH_FINALLY
+                and te_last.arg >= 0
+                and te_last.arg < te_n {
+                te_preds[te_bof[te_last.arg]].append(te_b);
+            }
+            te_b = te_b + 1;
+        }
+        # OUT states, all set (top) to start; entry / handler blocks use none
+        te_out: list[int] = [];
+        te_b = 0;
+        while te_b < te_nb * te_wn {
+            te_out.append(-1);
+            te_b = te_b + 1;
+        }
+        te_cur: list[int] = [];
+        te_w: int = 0;
+        while te_w < te_wn {
+            te_cur.append(0);
+            te_w = te_w + 1;
+        }
+        te_changed: bool = True;
+        while te_changed {
+            te_changed = False;
+            te_b = 0;
+            while te_b < te_nb {
+                self._tdz_block_in(te_b, te_preds, te_out, te_hnd[te_bs[te_b]], te_cur, te_wn);
+                te_i = te_bs[te_b];
+                while te_i < te_bs[te_b + 1] {
+                    _tdz_step(te_code, te_i, te_lead, te_idx, te_cur);
+                    te_i = te_i + 1;
+                }
+                te_w = 0;
+                while te_w < te_wn {
+                    if te_out[te_b * te_wn + te_w] != te_cur[te_w] {
+                        te_out[te_b * te_wn + te_w] = te_cur[te_w];
+                        te_changed = True;
+                    }
+                    te_w = te_w + 1;
+                }
+                te_b = te_b + 1;
+            }
+        }
+        # rewrite the proven reads; note the slots still observable as TDZ
+        te_keep: list[bool] = [];
+        te_i = 0;
+        while te_i < te_k {
+            te_keep.append(False);
+            te_i = te_i + 1;
+        }
+        te_b = 0;
+        while te_b < te_nb {
+            self._tdz_block_in(te_b, te_preds, te_out, te_hnd[te_bs[te_b]], te_cur, te_wn);
+            te_i = te_bs[te_b];
+            while te_i < te_bs[te_b + 1] {
+                te_ins: Instruction = te_code[te_i];
+                if (te_ins.opcode == Opcode.LOAD_LOCAL_CHECKED or te_ins.opcode == Opcode.LOAD_LOCAL)
+                    and te_ins.arg in te_idx {
+                    te_j: int = te_idx[te_ins.arg];
+                    te_set: bool = ((te_cur[te_j // 60] >> (te_j % 60)) & 1) == 1;
+                    if te_set and te_ins.opcode == Opcode.LOAD_LOCAL_CHECKED {
+                        te_code[te_i] = make_instruction(
+                            Opcode.LOAD_LOCAL, te_ins.arg, te_ins.arg2, te_ins.line
+                        );
+                    } elif not te_set {
+                        te_keep[te_j] = True;
+                    }
+                }
+                _tdz_step(te_code, te_i, te_lead, te_idx, te_cur);
+                te_i = te_i + 1;
+            }
+            te_b = te_b + 1;
+        }
+        # TDZ stores of the slots no read can see in TDZ any more
+        te_i = 1;
+        while te_i < te_n {
+            te_st: Instruction = te_code[te_i];
+            if (te_st.opcode == Opcode.STORE_LOCAL or te_st.opcode == Opcode.STORE_NEW_CELL)
+                and te_st.arg2 == 0
+                and te_st.arg in te_idx
+                and not te_keep[te_idx[te_st.arg]]
+                and not te_lead[te_i]
+                and (
+                    te_code[te_i - 1].opcode == Opcode.TDZ_CLASS
+                    or te_code[te_i - 1].opcode == Opcode.NOP
+                ) {
+                te_code[te_i - 1] = make_instruction(
+                    Opcode.FILLER, 0, 0, te_code[te_i - 1].line
+                );
+                te_code[te_i] = make_instruction(Opcode.FILLER, 0, 0, te_st.line);
+            }
+            te_i = te_i + 1;
+        }
+    }
+
+    """_tdz_elide's block entry state into `cur`: the meet (intersection) of
+    the predecessors' OUT states; none for the entry block, a handler entry or
+    a block no edge reaches."""
+    def _tdz_block_in(
+        b: int,
+        preds: list[list[int]],
+        outs: list[int],
+        hnd: bool,
+        cur: list[int],
+        wn: int
+    ) {
+        bi_w: int = 0;
+        if b == 0 or hnd or len(preds[b]) == 0 {
+            while bi_w < wn {
+                cur[bi_w] = 0;
+                bi_w = bi_w + 1;
+            }
+            return;
+        }
+        while bi_w < wn {
+            bi_v: int = -1;
+            for bi_p in preds[b] {
+                bi_v = bi_v & outs[bi_p * wn + bi_w];
+            }
+            cur[bi_w] = bi_v;
+            bi_w = bi_w + 1;
+        }
+    }
+
     """Emit TDZ_CLASS + STORE_LOCAL for a let/const slot."""
     def _emit_tdz_store(slot: int) {
         self._op(Opcode.TDZ_CLASS);
@@ -1852,6 +2120,10 @@ obj Compiler {
         self.fn_stack.append(fn);
         self.fn_scope_base.append(len(self.scope_stack));
         self.cell_slots.append([]);
+        # slots the open blocks gave a TDZ sentinel at entry, and the
+        # declaration-site TDZ stores of those slots (see _pop_fn)
+        self.tdz_pre.append({});
+        self.tdz_redund.append([]);
         self._push_scope(True);
     }
 
@@ -1925,6 +2197,30 @@ obj Compiler {
         n_cell: int = len(self.cell_slots);
         cells: list[int] = self.cell_slots[n_cell - 1];
         del self.cell_slots[n_cell - 1];
+        # A let/const declaration re-stored the TDZ sentinel its block's entry
+        # had just stored: nothing can write the slot in between (assigning it
+        # throws), so for a slot no closure captures (no fresh per-iteration
+        # cell to make) the pair is a dead store, run on every pass through a
+        # loop body. FILLER keeps the code length (jump targets stay put).
+        n_tr: int = len(self.tdz_redund);
+        tr_sites: list[int] = self.tdz_redund[n_tr - 1];
+        del self.tdz_redund[n_tr - 1];
+        del self.tdz_pre[len(self.tdz_pre) - 1];
+        for tr_ci in tr_sites {
+            if tr_ci + 1 < len(fn.code)
+                and fn.code[tr_ci].opcode == Opcode.TDZ_CLASS {
+                tr_st: Instruction = fn.code[tr_ci + 1];
+                if (
+                    tr_st.opcode == Opcode.STORE_LOCAL
+                    or tr_st.opcode == Opcode.STORE_NEW_CELL
+                )
+                    and tr_st.arg not in cells {
+                    fn.code[tr_ci] = make_instruction(Opcode.FILLER, 0, 0, fn.code[tr_ci].line);
+                    fn.code[tr_ci + 1] = make_instruction(Opcode.FILLER, 0, 0, tr_st.line);
+                }
+            }
+        }
+        self._tdz_elide(fn, cells);
         if len(cells) > 0 {
             # : rewrite opcodes in-place
             ci: int = 0;
@@ -2870,6 +3166,7 @@ obj Compiler {
         # restore the prior flag state at block exit so scopes stay independent.
         blk_predeclared: list[str] = [];
         blk_prior_flag: dict[str, bool] = {};
+        blk_tdz_slots: list[int] = [];
         for stmt in nd.children {
             if stmt.ntype == ASTNodeType.VariableDeclaration {
                 vd_kind: str = stmt.value;
@@ -2884,6 +3181,8 @@ obj Compiler {
                                 tdz_slot: int = self._declare(tdz_name, vd_kind);
                                 if tdz_slot >= 0 {
                                     self._emit_tdz_store(tdz_slot);
+                                    self.tdz_pre[len(self.tdz_pre) - 1][tdz_slot] = True;
+                                    blk_tdz_slots.append(tdz_slot);
                                     # hoist_predeclared is keyed per function-base
                                     # (_hoist_predecl_key), which doesn't distinguish
                                     # sibling blocks in the same function — so still
@@ -2980,6 +3279,12 @@ obj Compiler {
                 self.hoist_predeclared[bpn] = True;
             } elif bpn in self.hoist_predeclared {
                 del self.hoist_predeclared[bpn];
+            }
+        }
+        bt_pre: dict[int, bool] = self.tdz_pre[len(self.tdz_pre) - 1];
+        for bts in blk_tdz_slots {
+            if bts in bt_pre {
+                del bt_pre[bts];
             }
         }
         self._pop_scope();
@@ -3094,6 +3399,9 @@ obj Compiler {
                 }
                 if kind == "let" or kind == "const" {
                     if slot >= 0 {
+                        if slot in self.tdz_pre[len(self.tdz_pre) - 1] {
+                            self.tdz_redund[len(self.tdz_redund) - 1].append(len(self._fn().code));
+                        }
                         self._emit_tdz_store(slot);
                     }
                 }
@@ -8541,7 +8849,112 @@ obj Compiler {
 
     # ── object ─────────────────────────────────────────────────────────────
 
+    """An object literal whose properties are all plain `key: value` or shorthand
+    ones (identifier or string keys, printable ASCII, distinct, none an array
+    index or starting with "__"; no spread, computed key, accessor or method),
+    at most 32: its values in order (each compiled as compile_object would),
+    then NEW_OBJECT_LIT n, keys. No user code can observe the object before it
+    is complete, so building it after the values is the same. False (nothing
+    emitted) for any other literal."""
+    def _compile_object_lit(nd: ASTNode) -> bool {
+        ol_n: int = len(nd.properties);
+        if ol_n == 0 or ol_n > 32 {
+            return False;
+        }
+        ol_keys: list[str] = [];
+        for ol_p in nd.properties {
+            if ol_p.ntype == ASTNodeType.SpreadElement
+                or ol_p.computed
+                or ol_p.kind != "init"
+                or ol_p.key is None {
+                return False;
+            }
+            if ol_p.expression is not None
+                and ol_p.expression.ntype == ASTNodeType.FunctionExpression
+                and ol_p.expression.is_method {
+                return False;
+            }
+            ol_k: str = "";
+            if ol_p.key.ntype == ASTNodeType.Literal {
+                if ol_p.key.kind != "string" {
+                    return False;
+                }
+                ol_k = _unescape_string(ol_p.key.value);
+            } elif ol_p.key.ntype == ASTNodeType.Identifier {
+                ol_k = ol_p.key.name;
+            } else {
+                return False;
+            }
+            if not _obj_lit_key_ok(ol_k) or ol_k in ol_keys {
+                return False;
+            }
+            ol_keys.append(ol_k);
+        }
+        ol_i: int = 0;
+        ol_dyn: int = 0;
+        ol_enc: str = "";
+        for ol_q in nd.properties {
+            ol_spec: str = "$";
+            if ol_q.expression is not None and not ol_q.shorthand {
+                ol_spec = self._obj_lit_const_spec(ol_q.expression);
+            }
+            if ol_spec != "$" {
+                # a constant: in the template, not pushed
+            } elif ol_q.expression is not None {
+                self.pending_super_prop = True;
+                self.pending_super_call = False;
+                self.compile_expr(ol_q.expression);
+                if not ol_q.shorthand and ol_keys[ol_i] != "" {
+                    self._maybe_infer_fn_name(ol_q.expression, ol_keys[ol_i]);
+                }
+                ol_dyn = ol_dyn + 1;
+            } elif ol_q.shorthand and ol_q.key is not None {
+                self.compile_identifier(ol_q.key);
+                ol_dyn = ol_dyn + 1;
+            } else {
+                self._op(Opcode.LOAD_UNDEFINED);
+                ol_dyn = ol_dyn + 1;
+            }
+            ol_enc = ol_enc + str(len(ol_keys[ol_i])) + ":" + ol_keys[ol_i] + ol_spec;
+            ol_i = ol_i + 1;
+        }
+        self._emit(make_instruction(Opcode.NEW_OBJECT_LIT, ol_dyn, self._intern(ol_enc), 0));
+        return True;
+    }
+
+    """An object-literal value the template can hold (_compile_object_lit): a
+    string or number literal (`#<constant index>;`, the constant
+    compile_literal would load), `T` / `F` / `N` for true / false / null;
+    `$` (pushed) for anything else."""
+    def _obj_lit_const_spec(ex: ASTNode) -> str {
+        if ex.ntype != ASTNodeType.Literal {
+            return "$";
+        }
+        if ex.kind == "string" {
+            return "#" + str(self._fn().constants.add("s:" + _unescape_string(ex.value))) + ";";
+        }
+        if ex.kind == "number" {
+            return "#" + str(self._fn().constants.add("n:" + _strip_numeric_separators(ex.value))) + ";";
+        }
+        if ex.kind == "bigint" or ex.kind == "regexp" {
+            return "$";
+        }
+        if ex.value == "true" {
+            return "T";
+        }
+        if ex.value == "false" {
+            return "F";
+        }
+        if ex.value == "null" {
+            return "N";
+        }
+        return "$";
+    }
+
     def compile_object(nd: ASTNode) {
+        if self._compile_object_lit(nd) {
+            return;
+        }
         self._op(Opcode.NEW_OBJECT);
         for prop in nd.properties {
             if prop.ntype == ASTNodeType.SpreadElement {
@@ -11372,4 +11785,26 @@ def _src_word_at(src: str, pos: int, wl: int, word: str) -> bool {
         j = j + 1;
     }
     return True;
+}
+
+"""A key NEW_OBJECT_LIT may carry (compiler _compile_object_lit): printable
+ASCII, not starting with "__" (`__proto__` and the engine's internal key
+prefixes), not all digits (an array index goes to the elements)."""
+def _obj_lit_key_ok(k: str) -> bool {
+    if not k.isascii() {
+        return False;
+    }
+    if len(k) >= 2 and k[0:2] == "__" {
+        return False;
+    }
+    ok_digits: bool = len(k) > 0;
+    for ok_c in k {
+        if ok_c < " " or ok_c > "~" {
+            return False;
+        }
+        if ok_c < "0" or ok_c > "9" {
+            ok_digits = False;
+        }
+    }
+    return not ok_digits;
 }

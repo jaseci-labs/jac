@@ -55,8 +55,7 @@ import from engine.src.runtime.mem {
     byte_chr,
     str_bfind,
     str_byte,
-    str_nbytes
-}
+    str_nbytes, write_i64 }
 
 # ── Gate / diagnostics (JS_REG_ISA=0, JS_REG_DEBUG=1; wired by init_global) ──
 glob _REG_GATE: int = 1,
@@ -69,6 +68,35 @@ def:pub reg_isa_gate_set(on: bool) {
 """True unless JS_REG_ISA=0 (read back by feature_gates_report)."""
 def:pub reg_isa_gate_enabled -> bool {
     return _REG_GATE == 1;
+}
+
+"""True when the function's own code never reads or writes the CommonJS
+`module` / `exports` globals and has no direct eval (which could): a call
+into it from another module can skip the globals swap of
+vm.jac's _reg_mod_swap_enter, and keep every global IC valid."""
+def _reg_mod_free(fn: CompiledFunction) -> bool {
+    for mf_ins in fn.code {
+        if mf_ins.opcode == Opcode.LOAD_GLOBAL
+            or mf_ins.opcode == Opcode.STORE_GLOBAL
+            or mf_ins.opcode == Opcode.STORE_MODULE_GLOBAL
+            or mf_ins.opcode == Opcode.CREATE_GLOBAL_FN_BINDING {
+            mf_name: str = fn.constants.get(mf_ins.arg);
+            if mf_name == "module" or mf_name == "exports" {
+                return False;
+            }
+        } elif (mf_ins.opcode == Opcode.CALL or mf_ins.opcode == Opcode.TAIL_CALL)
+            and (mf_ins.arg3 & 7) != 0 {
+            return False;
+        }
+    }
+    return True;
+}
+
+glob _REG_MODFREE: int = 1;
+
+"""JS_R1_MODFREE=0: every cross-module call swaps the CommonJS globals again."""
+def:pub reg_modfree_set(on: bool) {
+    _REG_MODFREE = 1 if on else 0;
 }
 
 def:pub reg_isa_debug_set(on: bool) {
@@ -388,6 +416,7 @@ def _eff_table_init {
 """Opcodes whose stack effect depends on the instruction's operands."""
 def _effect_is_dynamic(op: Opcode) -> bool {
     return op == Opcode.NEW_ARRAY
+        or op == Opcode.NEW_OBJECT_LIT
         or op == Opcode.CALL
         or op == Opcode.CALL_METHOD
         or op == Opcode.NEW
@@ -481,7 +510,7 @@ def _reg_effect_slow(ins: Instruction) -> int {
     if op == Opcode.NEW_OBJECT {
         return _pk(0, 1, K_NORMAL);
     }
-    if op == Opcode.NEW_ARRAY {
+    if op == Opcode.NEW_ARRAY or op == Opcode.NEW_OBJECT_LIT {
         return _pk(ins.arg, 1, K_NORMAL);
     }
     if op == Opcode.GET_PROP {
@@ -1840,6 +1869,13 @@ obj RegTranslator {
             self.push_result(len(self.rcode) - 1);
             return True;
         }
+        if op == Opcode.MAKE_ARROW and ins.arg >= 0 and ins.arg < 8388606 {
+            # (NEWOBJECT flagged by c = function index + 1: MAKE_ARROW's arg)
+            self.flush_checks(0);
+            self.e(R_NEWOBJECT, self.dest(d, -1), 0, ins.arg + 1);
+            self.push_result(len(self.rcode) - 1);
+            return True;
+        }
         if op == Opcode.ADD
             or op == Opcode.SUB
             or op == Opcode.MUL
@@ -2269,6 +2305,30 @@ obj RegTranslator {
             self.last_pos = -1;
             return True;
         }
+        if op == Opcode.NEW_OBJECT_LIT and ins.arg >= 0 and ins.arg < 32768 {
+            # An object-literal template: the values materialized into
+            # consecutive temporaries as for `[a, b, c]`, then a NEWARRAY word
+            # flagged by count bit 15 (orig in c: the keys and the site's
+            # learned shape) that leaves the object in the first of them.
+            ol_n: int = ins.arg;
+            self.flush_checks(ol_n);
+            self.mat_top(ol_n);
+            ol_base: int = self.temp(d - ol_n);
+            if ol_n > 0 {
+                self.claim(ol_base, d - ol_n);
+            } else {
+                self.claim(ol_base, -1);
+            }
+            self.e(R_NEWARRAY, ol_base, ol_n | 32768, i);
+            ol_k: int = 0;
+            while ol_k < ol_n {
+                self.vpop();
+                ol_k = ol_k + 1;
+            }
+            self.vpush(VS_REG, ol_base);
+            self.last_pos = -1;
+            return True;
+        }
         if op == Opcode.YIELD or op == Opcode.AWAIT or op == Opcode.YIELD_STAR {
             # The frame suspends in the handler; the value it resumes with is
             # written into dst by the generator machinery (_reg_resume_value).
@@ -2669,6 +2729,40 @@ def _ric_raw(n: int) -> int {
     return ri_p;
 }
 
+"""Bit 63 on the raw copy of a CALL / CALLM word whose argument registers
+carry no TDZ flag: the plain entry skips its scan (the loop hands the bit
+over as bit 23 of argc). Bits 0-62 are the word's operands, so no other
+bit is free. The operand words after a call (argc, one more for CALLM's
+receiver) are not instructions and are skipped. The list copy keeps the
+plain words."""
+def _rcode_mark_calls(fn: CompiledFunction) {
+    mc_i: int = 0;
+    mc_n: int = len(fn.rcode);
+    while mc_i < mc_n {
+        mc_w: int = fn.rcode[mc_i];
+        mc_op: int = mc_w & 255;
+        if mc_op == R_CALL or mc_op == R_CALLM {
+            mc_argc: int = (mc_w >> 40) & 8388607;
+            mc_first: int = mc_i + 1 if mc_op == R_CALL else mc_i + 2;
+            mc_clean: bool = True;
+            mc_k: int = 0;
+            while mc_k < mc_argc {
+                if mc_first + mc_k < mc_n and (fn.rcode[mc_first + mc_k] & 32768) != 0 {
+                    mc_clean = False;
+                }
+                mc_k = mc_k + 1;
+            }
+            if mc_clean {
+                write_i64(fn.rcode_ptr, mc_i * 8, mc_w | (-9223372036854775807 - 1));
+            }
+            mc_i = mc_i + (mc_argc if mc_op == R_CALL else mc_argc + 1);
+        } elif mc_op == R_TAILCALL or mc_op == R_NEW {
+            mc_i = mc_i + ((mc_w >> 40) & 8388607);
+        }
+        mc_i = mc_i + 1;
+    }
+}
+
 """A raw copy of the register words: the register loop fetches from it with no
 bounds check (the terminator reg_translate_fn appends keeps pc inside it) and
 switches frames by reloading one integer instead of a counted list reference.
@@ -2729,6 +2823,7 @@ def:pub reg_translate_fn(fn: CompiledFunction) -> None {
     fn.rcode.append(R_RETUNDEF);
     fn.rorig.append(len(fn.code) - 1);
     fn.rcode_ptr = _rcode_raw(fn.rcode);
+    _rcode_mark_calls(fn);
     fn.ric_ptr = _ric_raw(len(fn.code));
     fn.rhandler = t.rhandler;
     fn.reg_gen_start = t.reg_gen_start;
@@ -2737,6 +2832,7 @@ def:pub reg_translate_fn(fn: CompiledFunction) -> None {
     fn.risa = 1;
     fn.reg_simple = not (fn.is_generator or fn.is_async or fn.is_bound)
         and (fn.arguments_slot < 0 or fn.is_strict);
+    fn.mod_free = 1 if _REG_MODFREE == 1 and _reg_mod_free(fn) else -1;
     if _REG_DEBUG == 1 {
         dmsg: str = "";
         if not t.defer_ok {

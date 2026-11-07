@@ -42,6 +42,7 @@ Bun reference: bun/src/sys.zig  (Syscall.Error, errno helpers)
 
 import from engine.src.ffi.libc {
     calloc,
+    realloc,
     free,
     write,
     abort,
@@ -53,6 +54,16 @@ import from engine.src.ffi.libc {
 }
 
 # ── Type aliases ─────────────────────────────────────────────────────────────
+
+"""calloc for modules that keep their own raw tables (jsstring.jac)."""
+def:pub mem_calloc(n: int, size: int) -> int {
+    return calloc(n, size);
+}
+
+"""realloc for modules that keep their own raw tables (jsstring.jac)."""
+def:pub mem_realloc(p: int, size: int) -> int {
+    return realloc(p, size);
+}
 
 """Pointer-sized integer (i64 on x86-64). Use instead of bare `int` wherever
 a value represents a raw memory address.""" type Ptr = int;

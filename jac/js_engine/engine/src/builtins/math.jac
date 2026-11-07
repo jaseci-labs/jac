@@ -227,6 +227,11 @@ def js_math_floor(args: list[JSValue]) -> JSValue {
     return _ret_f(floor(_math_arg(args, 0)));
 }
 
+"""Math.floor of a double (js_math_floor without the argument list)."""
+def:pub js_math_floor_num(v: JSValue) -> JSValue {
+    return _ret_f(floor(jsv_to_double(v)));
+}
+
 """Math.fround — coerce to nearest float32 and back to float64.
    Uses a cast via a temporary to force single-precision rounding.
    (In Jac native there is no float32; apply the double value directly

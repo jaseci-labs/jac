@@ -5,6 +5,9 @@ Trap dispatch lives in src/vm/vm.na.jac (requires vm_call_js_fn).
 """
 
 import from engine.src.runtime.encoding { jsv_is_closure_cell }
+import from engine.src.runtime.jsobj_type {
+    jo_set_class_id
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -43,7 +46,7 @@ import from engine.src.runtime.error {
     vm_throw_native,
     vm_has_native_exc
 }
-import from engine.src.runtime.jsobj_type { JSObject, ProxyState }
+import from engine.src.runtime.jsobj_type { ProxyState }
 import from engine.src.builtins.native_kinds {
     NATIVE_KIND_PROXY_REVOKE,
     native_kind_is_constructible
@@ -57,8 +60,8 @@ def:pub proxy_init_keys {
     _K_PROXY_REF = str_intern("_jacProxyRef");
 }
 
-def _proxy_raw(idx: int) -> JSObject {
-    return js_object_table_get(idx);
+def _proxy_raw(idx: int) -> int {
+    return idx;
 }
 
 # Proxy internal slots live in realm.proxy_slots[idx] (a ProxyState row created
@@ -180,8 +183,8 @@ def:pub js_proxy_create(target: JSValue, handler: JSValue) -> JSValue {
         return js_undefined();
     }
     idx: int = js_object_alloc_slot(-1);
-    raw: JSObject = _proxy_raw(idx);
-    raw.class_id = CLASS_ID_PROXY;
+    raw: int = _proxy_raw(idx);
+    jo_set_class_id(raw, CLASS_ID_PROXY);
     # Compute the callable/constructible snapshots BEFORE inserting the row —
     # for a proxy-of-a-proxy they read the target proxy's own row.
     px_call: bool = _proxy_compute_callable(target);

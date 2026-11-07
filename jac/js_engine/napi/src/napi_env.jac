@@ -7,7 +7,6 @@ Bun reference: bun/src/bun.js/bindings/NapiHandleScope.h (NapiEnv struct).
 """
 
 import from engine.src.runtime.realm { Realm }
-import from engine.src.vm.closure_type { JSClosure }
 
 obj:pub NapiEnv {
     # Unique integer ID passed as napi_env to the C shim.

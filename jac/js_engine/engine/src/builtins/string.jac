@@ -46,6 +46,8 @@ import from engine.src.runtime.jsstring {
     js_string_unit_str,
     str_cell_ascii,
     str_heap_ascii,
+    str_heap_ascii_n,
+    str_heap_n,
     str_cell_len,
     str_slice_cell,
     str_substr_cell,
@@ -267,6 +269,10 @@ reused as keys — route them to the collectible heap (str_heap) instead of the
 immortal intern table. `str_heap("")` returns the canonical empty id 6, so the
 many `_mk_str("")` early-returns are unaffected. Single-char results
 (charAt/at/fromCharCode) use `_mk_char` (interned) — a bounded, deduped set."""
+# A runtime 1: `view * _ONE` is an owned copy of a borrowed slice view
+# (jsstring.jac str_substr).
+glob _ONE: int = 1;
+
 def _mk_str(s: str) -> JSValue {
     return jsv_from_string_id(str_heap(s));
 }
@@ -1142,6 +1148,30 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
         }
         return _lazy_slice(v, lz_id, lz_st, lz_en);
     }
+    # A string cell known to be ASCII: its length is the cell's, the cut is
+    # one byte copy and the result's length is known.
+    if jsv_is_string_cell(v) and str_cell_ascii(jsv_to_table_id(v)) == 1 {
+        fa_id: int = jsv_to_table_id(v);
+        fa_n: int = str_cell_len(fa_id);
+        fa_st: int = _rel_index(_to_int_or_inf(start), fa_n);
+        if vm_has_native_exc() {
+            return js_undefined();
+        }
+        fa_en: int = fa_n;
+        if not jsv_is_undefined(end_v) {
+            fa_en = _rel_index(_to_int_or_inf(end_v), fa_n);
+            if vm_has_native_exc() {
+                return js_undefined();
+            }
+        }
+        if fa_st >= fa_en {
+            return _mk_str("");
+        }
+        # (an inline call-result temp, released: see below)
+        return jsv_from_string_id(
+            str_heap_ascii_n(str_bslice_in(str_from_id(fa_id), fa_st, fa_en) * _ONE, fa_en - fa_st)
+        );
+    }
     s: str = _raw(string_value_of(v));
     if vm_has_native_exc() {
         return js_undefined();
@@ -1192,7 +1222,24 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
             b0_x: int = u16ix_unit_to_byte(ix_sl, s, st_x);
             b1_x: int = u16ix_unit_to_byte(ix_sl, s, en_x);
             if b0_x >= 0 and b1_x >= 0 {
-                return _mk_str(str_substr_in(s, b0_x, b1_x));
+                # As many bytes as units: the piece is ASCII (UTF-8 spends more
+                # than one byte per unit on anything else) -- most pieces of a
+                # mostly-ASCII source. A long one is a lazy slice of this cell,
+                # as on the ASCII path; the rest are copies whose length and
+                # flag are known (no rescan of the copy).
+                if b1_x - b0_x == en_x - st_x {
+                    if b1_x - b0_x >= LAZY_SLICE_MIN {
+                        return jsv_from_string_id(
+                            str_slice_cell(jsv_to_table_id(v), b0_x, b1_x - b0_x, 1)
+                        );
+                    }
+                    return jsv_from_string_id(
+                        str_heap_ascii_n(str_substr_in(s, b0_x, b1_x), b1_x - b0_x)
+                    );
+                }
+                return jsv_from_string_id(
+                    str_heap_n(str_substr_in(s, b0_x, b1_x), b1_x - b0_x, 2)
+                );
             }
             # A bound splits a surrogate pair: cut the code units instead.
             return _units_substr(js_string_utf16_units(s), st_x, en_x);

@@ -18,7 +18,82 @@ ECMAScript spec refs:
   §10.1.8  [[Get]]  / §10.1.9  [[Set]]  / §10.1.10 [[Delete]]
 """
 
-import from engine.src.runtime.gc_barrier { gc_gen_on, gc_rem_obj }
+import from engine.src.runtime.gc_barrier { gc_gen_on, gc_rem_obj, gc_young_note }
+import from engine.src.runtime.jsobj_type {
+    jo_acc_ro,
+    jo_acc_rw,
+    jo_all_keys,
+    jo_arguments_obj,
+    jo_bkind,
+    jo_brand,
+    jo_bslot,
+    jo_cell_flags,
+    jo_class_id,
+    jo_count,
+    jo_delete,
+    jo_drop_ext,
+    jo_eclear,
+    jo_eget,
+    jo_einit,
+    jo_einit_range,
+    jo_elem_or_hole,
+    jo_elems_kind,
+    jo_elen,
+    jo_ensure_sparse,
+    jo_ent_ro,
+    jo_ent_rw,
+    jo_ep,
+    jo_epush,
+    jo_eset,
+    jo_eshift,
+    jo_ext_rw,
+    jo_get,
+    jo_get_property,
+    jo_has_acc,
+    jo_has_ent,
+    jo_has_key,
+    jo_has_own_data,
+    jo_has_own_plain,
+    jo_is_ext,
+    jo_ko_ro,
+    jo_ko_rw,
+    jo_mapped_args,
+    jo_mode,
+    jo_new_id,
+    jo_ord_slot,
+    jo_own_elem_or_data,
+    jo_p,
+    jo_pm_ensure_dict,
+    jo_prototype_idx,
+    jo_s0,
+    jo_s1,
+    jo_s2,
+    jo_s3,
+    jo_sclear,
+    jo_set,
+    jo_set_arguments,
+    jo_set_brand,
+    jo_set_cell_flags,
+    jo_set_elems_kind,
+    jo_set_mapped_args,
+    jo_set_non_ext,
+    jo_set_prototype_idx,
+    jo_set_s0,
+    jo_set_s1,
+    jo_set_s2,
+    jo_set_s3,
+    jo_set_shape_id,
+    jo_set_version,
+    jo_sget,
+    jo_shape_id,
+    jo_slen,
+    jo_sp,
+    jo_spush,
+    jo_sset,
+    jo_version,
+    jo_wb,
+    jo_wb_all
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     jsv_is_object_cell,
@@ -46,11 +121,11 @@ import from engine.src.runtime.jsvalue {
     JS_CELL_KIND_NATIVE
 }
 import from engine.src.runtime.jsobj_type {
+    proto_epoch,
     proto_epoch_bump,
     proto_epoch_bump_gc,
     global_obj_note_write,
     JSProperty,
-    JSObject,
     JSObjectExt,
     ProxyState,
     ArgsState,
@@ -95,7 +170,7 @@ import from engine.src.runtime.shape {
     shape_change_attrs,
     SHAPE_ATTR_ACCESSOR
 }
-import from engine.src.runtime.realm { Realm, gc_note_alloc, gc_mark_byte, objmark_push }
+import from engine.src.runtime.realm { Realm, gc_note_alloc, gc_note_alloc_n, gc_mark_byte, objmark_push }
 import from engine.src.runtime.mem {
     read_byte,
     write_byte,
@@ -104,7 +179,7 @@ import from engine.src.runtime.mem {
     str_byte,
     str_nbytes
 }
-import from engine.src.ffi.libc { getenv, write }
+import from engine.src.ffi.libc { getenv, write, calloc, realloc, abort }
 import from engine.src.runtime.encoding {
     PROTO_MAX_DEPTH,
     SYMBOL_KEY_BASE,
@@ -112,6 +187,7 @@ import from engine.src.runtime.encoding {
 }
 import from engine.src.runtime.jsstring {
     str_intern_index,
+    hs_free_n,
     str_from_id,
     str_intern,
     str_intern_lookup,
@@ -173,6 +249,19 @@ def:pub obj_set_realm(r: Realm) {
 
 # gc_gen_on() latched on first use (it is fixed before the first allocation).
 glob _OBJ_GEN_ON: int = -1;
+# The last [[Prototype]] id _obj_alloc flagged a prototype (0: none).
+glob _OBJ_PROTO_NOTED: int = 0;
+# Freed object ids: a raw stack of 8-byte ids, _OBJ_FREE_N in use. Only a
+# sweep pushes, so between collections the stack only shrinks: the ids
+# _obj_alloc handed out since the last collection are the entries at
+# [_OBJ_FREE_N, _OBJ_FREE_GC) plus the new ids above _OBJ_COUNT_GC
+# (jo_sweep_young). _OBJ_NOTE: allocations not yet accounted (batched).
+glob _OBJ_FREE: int = 0,
+     _OBJ_FREE_CAP: int = 0,
+     _OBJ_FREE_N: int = 0,
+     _OBJ_FREE_GC: int = 0,
+     _OBJ_COUNT_GC: int = 0,
+     _OBJ_NOTE: int = 0;
 
 def _obj_gen -> bool {
     if _OBJ_GEN_ON < 0 {
@@ -186,17 +275,17 @@ protector: an index-keyed prop landing on any flagged object clears it).
 First time only: also scan for index props it may have acquired BEFORE
 becoming a prototype. Amortized once per prototype object."""
 def _obj_note_proto(prototype_idx: int) {
-    pa_raw: JSObject = _OBJ_REALM.objects[prototype_idx - 1];
-    pa_raw.cell_flags = pa_raw.cell_flags | FLAG_IS_PROTO;
+    pa_raw: int = prototype_idx;
+    jo_set_cell_flags(pa_raw, jo_cell_flags(pa_raw) | FLAG_IS_PROTO);
     if idx_protector_ok() {
         # A Proxy prototype traps EVERY inherited [[Set]]/[[Get]] —
         # no index-key scan can prove it inert.
-        if pa_raw.class_id != 0 {
+        if jo_class_id(pa_raw) != 0 {
             idx_protector_clear();
-        } elif pa_raw.elems_kind != ELEMS_NONE and pa_raw.elen() > 0 {
+        } elif jo_elems_kind(pa_raw) != ELEMS_NONE and jo_elen(pa_raw) > 0 {
             idx_protector_clear();
         } else {
-            for pa_k in pa_raw.all_keys() {
+            for pa_k in jo_all_keys(pa_raw) {
                 if _obj_is_array_index_key_id(pa_k) {
                     idx_protector_clear();
                     break;
@@ -206,116 +295,272 @@ def _obj_note_proto(prototype_idx: int) {
     }
 }
 
-"""Allocate a JSObject in the global table; return its 1-based index."""
-def _obj_alloc(prototype_idx: int) -> int {
-    gc_note_alloc(_OBJ_REALM);  # G0.4: account this object allocation (reuse or append path)
-    if prototype_idx > 0
-        and prototype_idx <= len(_OBJ_REALM.objects)
-        and (_OBJ_REALM.objects[prototype_idx - 1].cell_flags & FLAG_IS_PROTO) == 0 {
-        _obj_note_proto(prototype_idx);
-    }
-    # A2.4: reuse a tombstoned slot from the GC free-list if available.
-    if len(_OBJ_REALM.free_object_slots) > 0 {
-        last: int = len(_OBJ_REALM.free_object_slots) - 1;
-        idx: int = _OBJ_REALM.free_object_slots[last];
-        del _OBJ_REALM.free_object_slots[last];
-        # RE-INITIALISE IN PLACE — do NOT `objects[idx-1] = JSObject(...)`.
-        # Overwriting the list element drops the tombstoned instance, but the
-        # native list-element store does not recursively release the dropped
-        # archetype's container fields (properties map + accessor/elems lists).
-        # So every reuse leaked the swept object's containers: ~2.4GB across a
-        # vite build's ~4.7M reuses, OOMing under --gc. A field store DOES
-        # release its old value, so we mutate the existing instance instead.
-        #
-        # gc_sweep_objects is the ONLY producer of free_object_slots, and it
-        # already emptied properties.{entries,key_order,slots}, elems and nulled
-        # the accessors table before parking the slot — so those stay untouched
-        # here (re-emptying would just churn empty containers). Every OTHER field
-        # is reset to its fresh-JSObject default (gc_sweep does not touch them).
-        ro: JSObject = _OBJ_REALM.objects[idx - 1];
-        # The sweep parks a dead row without reading it (lazy sweep), so the
-        # old tenant's payload is released here, where the row is read anyway:
-        # a freed prototype's id is about to name an unrelated object (the
-        # inherited-read ICs key on it), and a minimal slot buffer (cap <= 4)
-        # is kept for the new tenant while a larger one is freed. (The row's
-        # FLAG_SLOTS_BIG tells which without loading the cold buffer.)
-        if (ro.cell_flags & FLAG_IS_PROTO) != 0 {
-            proto_epoch_bump_gc();
-        }
-        if (ro.cell_flags & FLAG_SLOTS_BIG) == 0 {
-            ro.sreset();
+"""JAC_DBG_OBJ=1: the table and free-list sizes every 500000 new ids (out of
+_obj_alloc: this str local would make every allocation register an unwind
+frame)."""
+def _obj_dbg_table(idx: int) -> None {
+    if _OBJDBG < 0 {
+        if getenv("JAC_DBG_OBJ") != None {
+            _OBJDBG = 1;
         } else {
-            ro.sclear();
+            _OBJDBG = 0;
         }
-        ro.elems_kind = 0;  # ELEMS_NONE
-        ro.prototype_idx = prototype_idx;
-        ro.version = 0;
-        ro.shape_id = 0;
-        ro.mode = MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT;
-        ro.class_id = 0;
-        # extensible/is_mapped_args/is_arguments are cell_flags bits now (P5);
-        # the `ro.cell_flags = 0` below resets all three to their defaults.
-        # Proxy/args state lives in realm side-tables (Phase 1); gc_sweep_objects
-        # dels the rows when the slot is reclaimed, but drop them defensively here
-        # too so a reused slot can never inherit a prior object's exotic state.
-        if ro.class_id == 1 and idx in _OBJ_REALM.proxy_slots {
-            del _OBJ_REALM.proxy_slots[idx];
+    }
+    if _OBJDBG == 1 and (idx % 500000) == 0 {
+        odm: str = "[OBJTBL] table="
+            + str(idx)
+            + " freelist="
+            + str(_OBJ_FREE_N)
+            + " live="
+            + str(idx - _OBJ_FREE_N)
+            + " gc_on="
+            + str(_OBJ_REALM.gc_enabled)
+            + "\n";
+        write(2, odm, str_nbytes(odm));
+    }
+}
+
+"""Allocate an object record; return its 1-based table id. The common case —
+a parked row whose old tenant left no payload, a [[Prototype]] already
+flagged (or none), the accounting batch not due — is short enough to inline
+where objects are made; everything else is _obj_alloc_full."""
+def _obj_alloc(prototype_idx: int) -> int {
+    qa_t: int = _OBJ_FREE_N;
+    if qa_t > 0
+        and _OBJ_NOTE < 31
+        and (prototype_idx <= 0 or prototype_idx == _OBJ_PROTO_NOTED) {
+        qa_id: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(qa_t - 1, 8)));
+        qa_p: int = jo_p(qa_id);
+        qa_e: int = __mem_load_i64(wrapping_add(qa_p, 128));
+        if qa_id != _OBJ_PROTO_NOTED
+            and (__mem_load_i64(wrapping_add(qa_p, 104)) & (FLAG_IS_PROTO | FLAG_SLOTS_BIG | FLAG_MAPPED_ARGS)) == 0
+            and __mem_load_i64(wrapping_add(qa_p, 144)) == 0
+            and (qa_e == 0 or __mem_load_i64(wrapping_add(qa_e, 8)) <= 16) {
+            _OBJ_FREE_N = qa_t - 1;
+            _OBJ_NOTE = _OBJ_NOTE + 1;
+            if qa_e != 0 {
+                __mem_store_i64(qa_e, 0);  # a kept elements buffer, emptied
+            }
+            __mem_store_i64(qa_p, prototype_idx);
+            __mem_store_i64(wrapping_add(qa_p, 8), 0);  # version
+            __mem_store_i64(wrapping_add(qa_p, 16), 0);  # shape_id
+            __mem_store_i64(wrapping_add(qa_p, 24), 0);  # sn (a kept buffer stays)
+            __mem_store_i64(
+                wrapping_add(qa_p, 72), MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT
+            );
+            __mem_store_i64(wrapping_add(qa_p, 80), 0);  # class_id
+            __mem_store_i64(wrapping_add(qa_p, 88), 0);  # binary_kind
+            __mem_store_i64(wrapping_add(qa_p, 96), -1);  # binary_slot
+            __mem_store_i64(wrapping_add(qa_p, 104), 0);  # cell_flags
+            # (oid, word 112: a parked row keeps its own id)
+            __mem_store_i64(wrapping_add(qa_p, 120), 0);  # elems_kind
+            __mem_store_i64(wrapping_add(qa_p, 136), 0);  # brand
+            __mem_store_i8(wrapping_add(_OBJ_REALM.objmark_ptr, wrapping_add(qa_id, -1)), 0);
+            return qa_id;
         }
-        if (ro.cell_flags & FLAG_MAPPED_ARGS) != 0 and idx in _OBJ_REALM.args_slots {
-            del _OBJ_REALM.args_slots[idx];
+    }
+    return _obj_alloc_full(prototype_idx);
+}
+
+"""Allocate an object record; return its 1-based table id. A row the GC
+parked (free_object_slots) is reused in place: the sweep parks dead rows
+without reading them, so the old tenant's payload is released here — a slot
+buffer larger than the minimum (FLAG_SLOTS_BIG; a small one is kept for the
+new tenant), the elements, the extension record, a mapped-arguments row —
+and a freed prototype's id bumps the epoch (inherited-read ICs key on it).
+Then the header words are stored through one record address (records are
+raw memory, see jsobj_type.jac); a new id's record comes zeroed."""
+def _obj_alloc_full(prototype_idx: int) -> int {
+    # G0.4: account the allocation (batched: _obj_note_flush)
+    _OBJ_NOTE = _OBJ_NOTE + 1;
+    if _OBJ_NOTE >= 32 {
+        _obj_note_flush();
+    }
+    # (_OBJ_PROTO_NOTED: the last prototype id flagged; the flag is only ever
+    # set, so it holds until that row is reused below)
+    if prototype_idx > 0 and prototype_idx != _OBJ_PROTO_NOTED {
+        if prototype_idx <= jo_count()
+            and (jo_cell_flags(prototype_idx) & FLAG_IS_PROTO) == 0 {
+            _obj_note_proto(prototype_idx);
         }
-        # Release the lazy containers (P2/P3b/P4); sweep already nulled them, but
-        # drop defensively so a reused slot can never inherit stale property state.
-        ro.ext = None;  # dict maps, accessor table
-        ro.eclear();
-        ro.binary_kind = 0;
-        ro.binary_slot = -1;
-        ro.cell_flags = 0;  # clears FLAG_MODULE_NS (former is_module_namespace) too
-        ro.brand = 0;
-        ro.oid = idx;
-        write_byte(_OBJ_REALM.objmark_ptr, idx - 1, 0);
-        if _obj_gen() {
-            _OBJ_REALM.gc_young_alloc.append(idx);
+        _OBJ_PROTO_NOTED = prototype_idx;
+    }
+    oa_mode: int = MAP_MODE_DICT;
+    if shape_gate_enabled() {
+        oa_mode = MAP_MODE_SHAPE;
+    }
+    oa_t: int = _OBJ_FREE_N;
+    if oa_t > 0 {
+        oa_t = oa_t - 1;
+        idx: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(oa_t, 8)));
+        _OBJ_FREE_N = oa_t;
+        oa_p: int = jo_p(idx);
+        if idx == _OBJ_PROTO_NOTED {
+            _OBJ_PROTO_NOTED = 0;
         }
+        if (__mem_load_i64(wrapping_add(oa_p, 104)) & (FLAG_IS_PROTO | FLAG_SLOTS_BIG | FLAG_MAPPED_ARGS)) != 0
+            or __mem_load_i64(wrapping_add(oa_p, 128)) != 0
+            or __mem_load_i64(wrapping_add(oa_p, 144)) != 0 {
+            _obj_reuse_clean(idx, oa_p);
+        }
+        __mem_store_i64(oa_p, prototype_idx);
+        __mem_store_i64(wrapping_add(oa_p, 8), 0);  # version
+        __mem_store_i64(wrapping_add(oa_p, 16), 0);  # shape_id
+        __mem_store_i64(wrapping_add(oa_p, 24), 0);  # sn (a kept buffer stays)
+        __mem_store_i64(wrapping_add(oa_p, 72), oa_mode);
+        __mem_store_i64(wrapping_add(oa_p, 80), 0);  # class_id
+        __mem_store_i64(wrapping_add(oa_p, 88), 0);  # binary_kind
+        __mem_store_i64(wrapping_add(oa_p, 96), -1);  # binary_slot
+        __mem_store_i64(wrapping_add(oa_p, 104), 0);  # cell_flags
+        __mem_store_i64(wrapping_add(oa_p, 112), idx);  # oid
+        __mem_store_i64(wrapping_add(oa_p, 120), 0);  # elems_kind
+        __mem_store_i64(wrapping_add(oa_p, 136), 0);  # brand
+        __mem_store_i8(wrapping_add(_OBJ_REALM.objmark_ptr, wrapping_add(idx, -1)), 0);
         return idx;
     }
-    idx: int = len(_OBJ_REALM.objects) + 1;  # reserve 0 as null sentinel
+    return _obj_alloc_new(prototype_idx, oa_mode);
+}
+
+"""Account the batched allocations (gc_note_alloc for each, 192 bytes)."""
+def _obj_note_flush -> None {
+    nf_n: int = _OBJ_NOTE;
+    _OBJ_NOTE = 0;
+    gc_note_alloc_n(_OBJ_REALM, nf_n, nf_n * 192);
+}
+
+"""Double the parked-id stack's capacity."""
+def _obj_free_grow -> None {
+    fg_cap: int = 4096 if _OBJ_FREE_CAP == 0 else _OBJ_FREE_CAP * 2;
+    fg_p: int = realloc(_OBJ_FREE, fg_cap * 8);
+    if fg_p == 0 {
+        _obj_oom_abort();
+    }
+    _OBJ_FREE = fg_p;
+    _OBJ_FREE_CAP = fg_cap;
+}
+
+"""Park object id `id` (a sweep found it dead) for _obj_alloc to reuse."""
+def:pub jo_free_push(id: int) -> None {
+    if _OBJ_FREE_N >= _OBJ_FREE_CAP {
+        fp_cap: int = 4096 if _OBJ_FREE_CAP == 0 else _OBJ_FREE_CAP * 2;
+        fp_p: int = realloc(_OBJ_FREE, fp_cap * 8);
+        if fp_p == 0 {
+            _obj_oom_abort();
+        }
+        _OBJ_FREE = fp_p;
+        _OBJ_FREE_CAP = fp_cap;
+    }
+    __mem_store_i64(wrapping_add(_OBJ_FREE, wrapping_mul(_OBJ_FREE_N, 8)), id);
+    _OBJ_FREE_N = _OBJ_FREE_N + 1;
+}
+
+"""Number of parked object ids."""
+def:pub jo_free_n -> int {
+    return _OBJ_FREE_N;
+}
+
+"""A collection ended: the ids handed out from here on are the next young ones."""
+def:pub jo_cycle_end -> None {
+    _OBJ_FREE_GC = _OBJ_FREE_N;
+    _OBJ_COUNT_GC = jo_count();
+}
+
+"""The object ids handed out since the last collection (GC verification)."""
+def:pub jo_young_ids -> list[int] {
+    yi_out: list[int] = [];
+    yi_p: int = _OBJ_FREE_N;
+    while yi_p < _OBJ_FREE_GC {
+        yi_out.append(__mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(yi_p, 8))));
+        yi_p = yi_p + 1;
+    }
+    yi_i: int = _OBJ_COUNT_GC + 1;
+    while yi_i <= jo_count() {
+        yi_out.append(yi_i);
+        yi_i = yi_i + 1;
+    }
+    return yi_out;
+}
+
+"""A minor collection's object sweep over the ids handed out since the last
+collection (mark bytes at `mp`, `mlen` of them): an unmarked one (byte 0) is
+dead — byte 255 and back on the free stack. The popped stack entries are
+compacted in place (the write position never passes the read one). Returns
+the number freed."""
+def:pub jo_sweep_young(mp: int, mlen: int) -> int {
+    sy_freed: int = 0;
+    sy_w: int = _OBJ_FREE_N;
+    sy_p: int = _OBJ_FREE_N;
+    while sy_p < _OBJ_FREE_GC {
+        sy_id: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(sy_p, 8)));
+        if sy_id > 0 and sy_id <= mlen
+            and __mem_load_i8(wrapping_add(mp, wrapping_add(sy_id, -1))) == 0 {
+            __mem_store_i8(wrapping_add(mp, wrapping_add(sy_id, -1)), -1);  # 255: parked
+            __mem_store_i64(wrapping_add(_OBJ_FREE, wrapping_mul(sy_w, 8)), sy_id);
+            sy_w = sy_w + 1;
+            sy_freed = sy_freed + 1;
+        }
+        sy_p = sy_p + 1;
+    }
+    _OBJ_FREE_N = sy_w;
+    sy_i: int = _OBJ_COUNT_GC + 1;
+    sy_n: int = jo_count();
+    # (room for every new id first, so the loop stores without a check)
+    while sy_i <= sy_n and _OBJ_FREE_N + (sy_n - sy_i + 1) > _OBJ_FREE_CAP {
+        _obj_free_grow();
+    }
+    sy_w = _OBJ_FREE_N;
+    while sy_i <= sy_n {
+        if sy_i <= mlen and __mem_load_i8(wrapping_add(mp, wrapping_add(sy_i, -1))) == 0 {
+            __mem_store_i8(wrapping_add(mp, wrapping_add(sy_i, -1)), -1);  # 255: parked
+            __mem_store_i64(wrapping_add(_OBJ_FREE, wrapping_mul(sy_w, 8)), sy_i);
+            sy_w = sy_w + 1;
+            sy_freed = sy_freed + 1;
+        }
+        sy_i = sy_i + 1;
+    }
+    _OBJ_FREE_N = sy_w;
+    return sy_freed;
+}
+
+"""_obj_alloc's reused row whose old tenant left a payload: a slot buffer
+larger than the minimum, elements, an extension record, a mapped-arguments
+row; a freed prototype's id bumps the epoch (inherited-read ICs key on it)."""
+def _obj_reuse_clean(idx: int, oa_p: int) -> None {
+    oa_cf: int = __mem_load_i64(wrapping_add(oa_p, 104));
+    if (oa_cf & FLAG_IS_PROTO) != 0 {
+        proto_epoch_bump_gc();
+    }
+    if (oa_cf & FLAG_SLOTS_BIG) != 0 {
+        jo_sclear(idx);
+    }
+    rc_e: int = __mem_load_i64(wrapping_add(oa_p, 128));
+    if rc_e != 0 {
+        if __mem_load_i64(wrapping_add(rc_e, 8)) <= 16 {
+            __mem_store_i64(rc_e, 0);  # a small elements buffer is kept, emptied
+        } else {
+            jo_eclear(idx);
+        }
+    }
+    if __mem_load_i64(wrapping_add(oa_p, 144)) != 0 {
+        jo_drop_ext(idx);
+    }
+    if (oa_cf & FLAG_MAPPED_ARGS) != 0 and idx in _OBJ_REALM.args_slots {
+        del _OBJ_REALM.args_slots[idx];
+    }
+}
+
+"""_obj_alloc with no parked row: a new id (its record comes zeroed)."""
+def _obj_alloc_new(prototype_idx: int, oa_mode: int) -> int {
+    idx: int = jo_new_id();  # reserve 0 as null sentinel
     if _OBJDBG != 0 {
-        if _OBJDBG < 0 {
-            if getenv("JAC_DBG_OBJ") != None {
-                _OBJDBG = 1;
-            } else {
-                _OBJDBG = 0;
-            }
-        }
-        if _OBJDBG == 1 and (idx % 500000) == 0 {
-            odm: str = "[OBJTBL] table="
-                + str(idx)
-                + " freelist="
-                + str(len(_OBJ_REALM.free_object_slots))
-                + " live="
-                + str(idx - len(_OBJ_REALM.free_object_slots))
-                + " gc_on="
-                + str(_OBJ_REALM.gc_enabled)
-                + "\n";
-            write(2, odm, str_nbytes(odm));
-        }
+        _obj_dbg_table(idx);
     }
-    _OBJ_REALM.objects.append(
-        JSObject(
-            prototype_idx=prototype_idx,
-            version=0,
-            shape_id=0,
-            mode=(MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT),
-            class_id=0,
-            elems_kind=0,
-            oid=idx
-        )
-    );
-    objmark_push(_OBJ_REALM, 0);  # GC mark byte
-    if _obj_gen() {
-        _OBJ_REALM.gc_young_alloc.append(idx);
-    }
+    on_p: int = jo_p(idx);
+    __mem_store_i64(on_p, prototype_idx);
+    __mem_store_i64(wrapping_add(on_p, 72), oa_mode);
+    __mem_store_i64(wrapping_add(on_p, 96), -1);  # binary_slot
+    __mem_store_i64(wrapping_add(on_p, 112), idx);  # oid
+    objmark_push(_OBJ_REALM, 0);  # GC mark byte (a new id is young: above _OBJ_COUNT_GC)
     return idx;
 }
 
@@ -325,9 +570,11 @@ property add from the empty root shape without the transition. `sid` must
 be learned from an object built the ordinary way."""
 def:pub js_object_new_shaped1(proto_idx: int, sid: int, v0: JSValue) -> JSValue {
     sh1_idx: int = _obj_alloc(proto_idx);
-    _OBJ_REALM.objects[sh1_idx - 1].shape_id = sid;
-    _OBJ_REALM.objects[sh1_idx - 1].spush(v0);
-    _OBJ_REALM.objects[sh1_idx - 1].version = 1;
+    sh1_p: int = jo_p(sh1_idx);
+    __mem_store_i64(wrapping_add(sh1_p, 16), sid);
+    __mem_store_i64(wrapping_add(sh1_p, 32), v0);
+    __mem_store_i64(wrapping_add(sh1_p, 24), 1);
+    __mem_store_i64(wrapping_add(sh1_p, 8), 1);
     return _obj_wrap(sh1_idx);
 }
 
@@ -340,11 +587,44 @@ def:pub js_object_new_shaped2(
     proto_idx: int, sid: int, v0: JSValue, v1: JSValue
 ) -> JSValue {
     sh2_idx: int = _obj_alloc(proto_idx);
-    _OBJ_REALM.objects[sh2_idx - 1].shape_id = sid;
-    _OBJ_REALM.objects[sh2_idx - 1].spush(v0);
-    _OBJ_REALM.objects[sh2_idx - 1].spush(v1);
-    _OBJ_REALM.objects[sh2_idx - 1].version = 2;
+    sh2_p: int = jo_p(sh2_idx);
+    __mem_store_i64(wrapping_add(sh2_p, 16), sid);
+    __mem_store_i64(wrapping_add(sh2_p, 32), v0);
+    __mem_store_i64(wrapping_add(sh2_p, 40), v1);
+    __mem_store_i64(wrapping_add(sh2_p, 24), 2);
+    __mem_store_i64(wrapping_add(sh2_p, 8), 2);
     return _obj_wrap(sh2_idx);
+}
+
+"""js_object_new_shaped2 for a three-property shape `sid` (inline slots)."""
+def:pub js_object_new_shaped3(
+    proto_idx: int, sid: int, v0: JSValue, v1: JSValue, v2: JSValue
+) -> JSValue {
+    sh3_idx: int = _obj_alloc(proto_idx);
+    sh3_p: int = jo_p(sh3_idx);
+    __mem_store_i64(wrapping_add(sh3_p, 16), sid);
+    __mem_store_i64(wrapping_add(sh3_p, 32), v0);
+    __mem_store_i64(wrapping_add(sh3_p, 40), v1);
+    __mem_store_i64(wrapping_add(sh3_p, 48), v2);
+    __mem_store_i64(wrapping_add(sh3_p, 24), 3);
+    __mem_store_i64(wrapping_add(sh3_p, 8), 3);
+    return _obj_wrap(sh3_idx);
+}
+
+"""js_object_new_shaped2 for a four-property shape `sid` (inline slots)."""
+def:pub js_object_new_shaped4(
+    proto_idx: int, sid: int, v0: JSValue, v1: JSValue, v2: JSValue, v3: JSValue
+) -> JSValue {
+    sh4_idx: int = _obj_alloc(proto_idx);
+    sh4_p: int = jo_p(sh4_idx);
+    __mem_store_i64(wrapping_add(sh4_p, 16), sid);
+    __mem_store_i64(wrapping_add(sh4_p, 32), v0);
+    __mem_store_i64(wrapping_add(sh4_p, 40), v1);
+    __mem_store_i64(wrapping_add(sh4_p, 48), v2);
+    __mem_store_i64(wrapping_add(sh4_p, 56), v3);
+    __mem_store_i64(wrapping_add(sh4_p, 24), 4);
+    __mem_store_i64(wrapping_add(sh4_p, 8), 4);
+    return _obj_wrap(sh4_idx);
 }
 
 """The shape of `v` when it is the shape-mode Array js_array_create builds:
@@ -352,7 +632,7 @@ the array marker `mk` (slot 0, a data property) then a writable-only
 `length` (slot 1), nothing else. -1 otherwise."""
 def:pub js_object_array_shape(v: JSValue, mk: int) -> int {
     as_sid: int = js_object_ic_shape(v);
-    if as_sid < 0 or _OBJ_REALM.objects[jsv_to_table_id(v) - 1].mode != MAP_MODE_SHAPE {
+    if as_sid < 0 or jo_mode(jsv_to_table_id(v)) != MAP_MODE_SHAPE {
         return -1;
     }
     if shape_key_count(as_sid) != 2 {
@@ -369,6 +649,160 @@ def:pub js_object_array_shape(v: JSValue, mk: int) -> int {
     return as_sid;
 }
 
+"""The Array header of a fresh record at `p` (from _obj_alloc: young, no
+slots): shape `sid`, slot 0 the marker (true), slot 1 `length` `len_v`,
+version 2 (the two adds), the Array brand."""
+def _obj_init_array(p: int, sid: int, len_v: JSValue) -> None {
+    __mem_store_i64(wrapping_add(p, 16), sid);
+    __mem_store_i64(wrapping_add(p, 32), js_true());
+    __mem_store_i64(wrapping_add(p, 40), len_v);
+    __mem_store_i64(wrapping_add(p, 24), 2);
+    __mem_store_i64(wrapping_add(p, 8), 2);
+    __mem_store_i64(wrapping_add(p, 136), BRAND_ARRAY);
+}
+
+"""Out of memory for a slot buffer."""
+def _obj_oom_abort -> None {
+    om_msg: str = "[OBJ] out of memory for a slot buffer\n";
+    write(2, om_msg, str_nbytes(om_msg));
+    abort();
+}
+
+# The values of a literal being born from its template (js_object_new_literal_t),
+# a growing scratch buffer. No GC runs while they are copied into the record.
+glob _OBJ_LIT_SCRATCH: int = 0,
+     _OBJ_LIT_SCRATCH_N: int = 0;
+
+"""Scratch for `n` literal values."""
+def _obj_lit_scratch(n: int) -> int {
+    if n > _OBJ_LIT_SCRATCH_N {
+        _OBJ_LIT_SCRATCH = realloc(_OBJ_LIT_SCRATCH, (n + 4) * 8);
+        if _OBJ_LIT_SCRATCH == 0 {
+            _obj_oom_abort();
+        }
+        _OBJ_LIT_SCRATCH_N = n + 4;
+    }
+    return _OBJ_LIT_SCRATCH;
+}
+
+"""js_object_new_literal from a site's template `tmpl` ([n][v0 .. v(n-1)],
+the hole where the next value at `src` goes)."""
+def:pub js_object_new_literal_t(sid: int, tmpl: int, src: int) -> JSValue {
+    nt_n: int = __mem_load_i64(tmpl);
+    nt_buf: int = _obj_lit_scratch(nt_n);
+    nt_k: int = 0;
+    nt_d: int = 0;
+    while nt_k < nt_n {
+        nt_v: JSValue = __mem_load_i64(wrapping_add(tmpl, wrapping_mul(nt_k + 1, 8)));
+        if jsv_is_hole(nt_v) {
+            nt_v = __mem_load_i64(wrapping_add(src, wrapping_mul(nt_d, 8)));
+            nt_d = nt_d + 1;
+        }
+        __mem_store_i64(wrapping_add(nt_buf, wrapping_mul(nt_k, 8)), nt_v);
+        nt_k = nt_k + 1;
+    }
+    return js_object_new_literal(sid, nt_buf, nt_n);
+}
+
+"""A fresh ordinary object (the `{}` prototype) at shape `sid` with the `n`
+values at raw address `src` (8-byte words) in its slots: what `n` define-own
+adds from the root shape build (an object-literal site learns `sid` from an
+object built that way, vm.jac _obj_lit_make). The hole when objects do not
+start in shape mode (the caller then takes the ordinary path)."""
+def:pub js_object_new_literal(sid: int, src: int, n: int) -> JSValue {
+    if not shape_gate_enabled() {
+        return jsv_hole();
+    }
+    nl_proto: int = -1;
+    if jsv_is_object_cell(_ORDINARY_OBJECT_PROTO)
+        and jsv_to_table_id(_ORDINARY_OBJECT_PROTO) > 0 {
+        nl_proto = jsv_to_table_id(_ORDINARY_OBJECT_PROTO);
+    }
+    nl_idx: int = 0;
+    lq_t: int = _OBJ_FREE_N;
+    if lq_t > 0 and _OBJ_NOTE < 31 and (nl_proto <= 0 or nl_proto == _OBJ_PROTO_NOTED) {
+        lq_c: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(lq_t - 1, 8)));
+        lq_q: int = jo_p(lq_c);
+        lq_e: int = __mem_load_i64(wrapping_add(lq_q, 128));
+        if lq_c != _OBJ_PROTO_NOTED
+            and (__mem_load_i64(wrapping_add(lq_q, 104)) & (FLAG_IS_PROTO | FLAG_SLOTS_BIG | FLAG_MAPPED_ARGS)) == 0
+            and __mem_load_i64(wrapping_add(lq_q, 144)) == 0
+            and (lq_e == 0 or __mem_load_i64(wrapping_add(lq_e, 8)) <= 16) {
+            _OBJ_FREE_N = lq_t - 1;
+            _OBJ_NOTE = _OBJ_NOTE + 1;
+            if lq_e != 0 {
+                __mem_store_i64(lq_e, 0);  # a kept elements buffer, emptied
+            }
+            __mem_store_i64(lq_q, nl_proto);
+            __mem_store_i64(wrapping_add(lq_q, 8), 0);
+            __mem_store_i64(wrapping_add(lq_q, 16), 0);
+            __mem_store_i64(wrapping_add(lq_q, 24), 0);
+            __mem_store_i64(
+                wrapping_add(lq_q, 72), MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT
+            );
+            __mem_store_i64(wrapping_add(lq_q, 80), 0);
+            __mem_store_i64(wrapping_add(lq_q, 88), 0);
+            __mem_store_i64(wrapping_add(lq_q, 96), -1);
+            __mem_store_i64(wrapping_add(lq_q, 104), 0);
+            __mem_store_i64(wrapping_add(lq_q, 120), 0);
+            __mem_store_i64(wrapping_add(lq_q, 136), 0);
+            __mem_store_i8(wrapping_add(_OBJ_REALM.objmark_ptr, wrapping_add(lq_c, -1)), 0);
+            nl_idx = lq_c;
+        }
+    }
+    if nl_idx == 0 {
+        nl_idx = _obj_alloc_full(nl_proto);
+    }
+    nl_p: int = jo_p(nl_idx);
+    __mem_store_i64(wrapping_add(nl_p, 16), sid);
+    nl_k: int = 0;
+    while nl_k < n and nl_k < 4 {
+        __mem_store_i64(
+            wrapping_add(nl_p, wrapping_add(32, wrapping_mul(nl_k, 8))),
+            __mem_load_i64(wrapping_add(src, wrapping_mul(nl_k, 8)))
+        );
+        nl_k = nl_k + 1;
+    }
+    if n > 4 {
+        # Slots 4.. in one buffer of the capacity the appends would reach
+        # (4, 8, 16, ...: jo_spush's growth), reusing a kept one that fits.
+        nl_cap: int = 4;
+        while nl_cap < n - 4 {
+            nl_cap = nl_cap * 2;
+        }
+        nl_b: int = __mem_load_i64(wrapping_add(nl_p, 64));
+        nl_have: int = 0;
+        if nl_b != 0 {
+            nl_have = __mem_load_i64(wrapping_add(nl_b, 8));
+        }
+        if nl_have < nl_cap {
+            nl_nb: int = realloc(nl_b, 16 + nl_cap * 8);
+            if nl_nb == 0 {
+                _obj_oom_abort();
+            }
+            gc_young_note((nl_cap - nl_have) * 8 + (16 if nl_have == 0 else 0));
+            __mem_store_i64(wrapping_add(nl_nb, 8), nl_cap);
+            __mem_store_i64(wrapping_add(nl_p, 64), nl_nb);
+            nl_b = nl_nb;
+            if nl_cap > 4 {
+                __mem_store_i64(
+                    wrapping_add(nl_p, 104), __mem_load_i64(wrapping_add(nl_p, 104)) | FLAG_SLOTS_BIG
+                );
+            }
+        }
+        while nl_k < n {
+            __mem_store_i64(
+                wrapping_add(nl_b, wrapping_add(16, wrapping_mul(nl_k - 4, 8))),
+                __mem_load_i64(wrapping_add(src, wrapping_mul(nl_k, 8)))
+            );
+            nl_k = nl_k + 1;
+        }
+    }
+    __mem_store_i64(wrapping_add(nl_p, 24), nl_k);
+    __mem_store_i64(wrapping_add(nl_p, 8), n);
+    return _obj_wrap(nl_idx);
+}
+
 """A fresh Array with [[Prototype]] table id `proto_idx`, already at shape
 `sid` (js_object_array_shape) with the marker true, `length` `len_v` and
 `elements` as its dense elements: what js_array_create's marker add, length
@@ -377,14 +811,8 @@ def:pub js_object_new_array(
     proto_idx: int, sid: int, elements: list[JSValue], len_v: JSValue
 ) -> JSValue {
     na_idx: int = _obj_alloc(proto_idx);
-    _OBJ_REALM.objects[na_idx - 1].shape_id = sid;
-    _OBJ_REALM.objects[na_idx - 1].spush(js_true());
-    _OBJ_REALM.objects[na_idx - 1].spush(len_v);
-    _OBJ_REALM.objects[na_idx - 1].version = 2;
-    _OBJ_REALM.objects[na_idx - 1].brand = BRAND_ARRAY;
-    _OBJ_REALM.objects[na_idx - 1].elems_kind = _OBJ_REALM.objects[na_idx - 1].einit(
-        elements
-    );
+    _obj_init_array(jo_p(na_idx), sid, len_v);
+    __mem_store_i64(wrapping_add(jo_p(na_idx), 120), jo_einit(na_idx, elements));
     return _obj_wrap(na_idx);
 }
 
@@ -393,16 +821,241 @@ them built first)."""
 def:pub js_object_new_array_range(
     proto_idx: int, sid: int, vals: list[JSValue], off: int, n: int, len_v: JSValue
 ) -> JSValue {
-    nr_idx: int = _obj_alloc(proto_idx);
-    _OBJ_REALM.objects[nr_idx - 1].shape_id = sid;
-    _OBJ_REALM.objects[nr_idx - 1].spush(js_true());
-    _OBJ_REALM.objects[nr_idx - 1].spush(len_v);
-    _OBJ_REALM.objects[nr_idx - 1].version = 2;
-    _OBJ_REALM.objects[nr_idx - 1].brand = BRAND_ARRAY;
-    _OBJ_REALM.objects[nr_idx - 1].elems_kind = _OBJ_REALM.objects[nr_idx - 1].einit_range(
-        vals, off, n
-    );
+    nr_idx: int = 0;
+    nq_t: int = _OBJ_FREE_N;
+    if nq_t > 0 and _OBJ_NOTE < 31 and (proto_idx <= 0 or proto_idx == _OBJ_PROTO_NOTED) {
+        nq_c: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(nq_t - 1, 8)));
+        nq_q: int = jo_p(nq_c);
+        nq_e: int = __mem_load_i64(wrapping_add(nq_q, 128));
+        if nq_c != _OBJ_PROTO_NOTED
+            and (__mem_load_i64(wrapping_add(nq_q, 104)) & (FLAG_IS_PROTO | FLAG_SLOTS_BIG | FLAG_MAPPED_ARGS)) == 0
+            and __mem_load_i64(wrapping_add(nq_q, 144)) == 0
+            and (nq_e == 0 or __mem_load_i64(wrapping_add(nq_e, 8)) <= 16) {
+            _OBJ_FREE_N = nq_t - 1;
+            _OBJ_NOTE = _OBJ_NOTE + 1;
+            if nq_e != 0 {
+                __mem_store_i64(nq_e, 0);  # a kept elements buffer, emptied
+            }
+            # (the header _obj_init_array leaves, written once)
+            __mem_store_i64(nq_q, proto_idx);
+            __mem_store_i64(wrapping_add(nq_q, 8), 2);
+            __mem_store_i64(wrapping_add(nq_q, 16), sid);
+            __mem_store_i64(wrapping_add(nq_q, 24), 2);
+            __mem_store_i64(wrapping_add(nq_q, 32), js_true());
+            __mem_store_i64(wrapping_add(nq_q, 40), len_v);
+            __mem_store_i64(
+                wrapping_add(nq_q, 72), MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT
+            );
+            __mem_store_i64(wrapping_add(nq_q, 80), 0);
+            __mem_store_i64(wrapping_add(nq_q, 88), 0);
+            __mem_store_i64(wrapping_add(nq_q, 96), -1);
+            __mem_store_i64(wrapping_add(nq_q, 104), 0);
+            __mem_store_i64(wrapping_add(nq_q, 136), BRAND_ARRAY);
+            __mem_store_i8(wrapping_add(_OBJ_REALM.objmark_ptr, wrapping_add(nq_c, -1)), 0);
+            nr_idx = nq_c;
+        }
+    }
+    if nr_idx == 0 {
+        nr_idx = _obj_alloc_full(proto_idx);
+        _obj_init_array(jo_p(nr_idx), sid, len_v);
+    }
+    nr_p: int = jo_p(nr_idx);
+    if n == 0 {
+        # (what jo_einit_range answers for no elements, without the call)
+        __mem_store_i64(wrapping_add(nr_p, 120), ELEMS_DENSE);
+    } else {
+        __mem_store_i64(wrapping_add(nr_p, 120), jo_einit_range(nr_idx, vals, off, n));
+    }
     return _obj_wrap(nr_idx);
+}
+
+"""`[]`: js_object_new_array_range of no values (its own copy, so that one
+keeps a single caller and inlines into NEWARRAY)."""
+def:pub js_object_new_array_empty(proto_idx: int, sid: int) -> JSValue {
+    ner_idx: int = 0;
+    ne_t: int = _OBJ_FREE_N;
+    if ne_t > 0 and _OBJ_NOTE < 31 and (proto_idx <= 0 or proto_idx == _OBJ_PROTO_NOTED) {
+        ne_c: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(ne_t - 1, 8)));
+        ne_q: int = jo_p(ne_c);
+        ne_e: int = __mem_load_i64(wrapping_add(ne_q, 128));
+        if ne_c != _OBJ_PROTO_NOTED
+            and (__mem_load_i64(wrapping_add(ne_q, 104)) & (FLAG_IS_PROTO | FLAG_SLOTS_BIG | FLAG_MAPPED_ARGS)) == 0
+            and __mem_load_i64(wrapping_add(ne_q, 144)) == 0
+            and (ne_e == 0 or __mem_load_i64(wrapping_add(ne_e, 8)) <= 16) {
+            _OBJ_FREE_N = ne_t - 1;
+            _OBJ_NOTE = _OBJ_NOTE + 1;
+            if ne_e != 0 {
+                __mem_store_i64(ne_e, 0);  # a kept elements buffer, emptied
+            }
+            # (the header _obj_init_array leaves, written once)
+            __mem_store_i64(ne_q, proto_idx);
+            __mem_store_i64(wrapping_add(ne_q, 8), 2);
+            __mem_store_i64(wrapping_add(ne_q, 16), sid);
+            __mem_store_i64(wrapping_add(ne_q, 24), 2);
+            __mem_store_i64(wrapping_add(ne_q, 32), js_true());
+            __mem_store_i64(wrapping_add(ne_q, 40), js_int(0));
+            __mem_store_i64(
+                wrapping_add(ne_q, 72), MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT
+            );
+            __mem_store_i64(wrapping_add(ne_q, 80), 0);
+            __mem_store_i64(wrapping_add(ne_q, 88), 0);
+            __mem_store_i64(wrapping_add(ne_q, 96), -1);
+            __mem_store_i64(wrapping_add(ne_q, 104), 0);
+            __mem_store_i64(wrapping_add(ne_q, 136), BRAND_ARRAY);
+            __mem_store_i8(wrapping_add(_OBJ_REALM.objmark_ptr, wrapping_add(ne_c, -1)), 0);
+            ner_idx = ne_c;
+        }
+    }
+    if ner_idx == 0 {
+        ner_idx = _obj_alloc_full(proto_idx);
+        _obj_init_array(jo_p(ner_idx), sid, js_int(0));
+    }
+    __mem_store_i64(wrapping_add(jo_p(ner_idx), 120), ELEMS_DENSE);
+    return _obj_wrap(ner_idx);
+}
+
+"""Whether Array `arr` has the canonical array shape `sid` and holds every
+element in its dense buffer (the buffer's count is its length): no index is
+an own accessor or other property, and a read runs no JS."""
+def:pub js_object_array_dense_full(arr: JSValue, sid: int) -> bool {
+    df_p: int = jo_p(jsv_to_table_id(arr));
+    if __mem_load_i64(wrapping_add(df_p, 16)) != sid
+        or __mem_load_i64(wrapping_add(df_p, 120)) == ELEMS_NONE {
+        return False;
+    }
+    df_e: int = __mem_load_i64(wrapping_add(df_p, 128));
+    df_n: int = 0;
+    if df_e != 0 {
+        df_n = __mem_load_i64(df_e);
+    }
+    df_len: JSValue = __mem_load_i64(wrapping_add(df_p, 40));
+    return jsv_is_int32(df_len) and jsv_to_int32(df_len) == df_n;
+}
+
+"""Whether `v` is a plain object: an object cell with no class, binary kind
+or brand (not an array, String object, typed array, proxy or other
+built-in) and not a module namespace."""
+def:pub js_object_is_plain(v: JSValue) -> bool {
+    if not jsv_is_object_cell(v) or jsv_to_table_id(v) <= 0 {
+        return False;
+    }
+    ip_p: int = jo_p(jsv_to_table_id(v));
+    return __mem_load_i64(wrapping_add(ip_p, 80)) == 0
+        and __mem_load_i64(wrapping_add(ip_p, 88)) == 0
+        and __mem_load_i64(wrapping_add(ip_p, 136)) == 0
+        and (__mem_load_i64(wrapping_add(ip_p, 104)) & FLAG_MODULE_NS) == 0;
+}
+
+"""indexOf's scan of `arr`'s dense elements [start, n) for `v`, whose
+strict equality is identity there (an int32, boolean, null, undefined or an
+object cell; the caller checks): the first index, -1 when absent, -2 when
+the scan cannot decide (no element buffer of the length, a hole, a double:
+the general loop then runs)."""
+def:pub js_object_dense_index_of(arr: JSValue, v: JSValue, start: int, n: int) -> int {
+    if not jsv_is_object_cell(arr) {
+        return -2;
+    }
+    di_e: int = __mem_load_i64(wrapping_add(jo_p(jsv_to_table_id(arr)), 128));
+    if di_e == 0 or __mem_load_i64(di_e) < n {
+        return -2;
+    }
+    di_i: int = start;
+    while di_i < n {
+        di_x: JSValue = __mem_load_i64(wrapping_add(di_e, wrapping_add(16, wrapping_mul(di_i, 8))));
+        if di_x == v {
+            return di_i;
+        }
+        if jsv_is_hole(di_x) or jsv_is_double(di_x) {
+            return -2;
+        }
+        di_i = di_i + 1;
+    }
+    return -1;
+}
+
+"""push(v) of one value onto the Array `arr` while it has the canonical array
+shape `sid` (the marker, then a writable `length` in slot 1), is
+extensible, shape-mode, with an element buffer whose count is its length:
+the append and the length write (as _vm_array_push's dense arm); the hole
+otherwise."""
+def:pub js_object_array_push1(arr: JSValue, sid: int, v: JSValue) -> JSValue {
+    ap_id: int = jsv_to_table_id(arr);
+    ap_p: int = jo_p(ap_id);
+    if __mem_load_i64(wrapping_add(ap_p, 16)) != sid
+        or __mem_load_i64(wrapping_add(ap_p, 72)) != MAP_MODE_SHAPE
+        or (__mem_load_i64(wrapping_add(ap_p, 104)) & FLAG_NON_EXTENSIBLE) != 0
+        or __mem_load_i64(wrapping_add(ap_p, 120)) == ELEMS_NONE {
+        return jsv_hole();
+    }
+    ap_e: int = __mem_load_i64(wrapping_add(ap_p, 128));
+    ap_n: int = 0;
+    if ap_e != 0 {
+        ap_n = __mem_load_i64(ap_e);
+    }
+    ap_len: JSValue = __mem_load_i64(wrapping_add(ap_p, 40));
+    if not jsv_is_int32(ap_len) or jsv_to_int32(ap_len) != ap_n or ap_n >= 2147483646 {
+        return jsv_hole();
+    }
+    jo_epush(ap_id, v);
+    jo_sset(ap_id, 1, js_int(ap_n + 1));
+    return js_int(ap_n + 1);
+}
+
+"""GETFIELD's flat cache entry for a data slot one prototype up (vm.jac
+_ric_fill_inh: w0 = -2 - (receiver shape << 1 | proto epoch << 26), w1 =
+holder id << 32 | slot) applied to `v`: the slot's value while `v` has that
+shape, the holder is its [[Prototype]] and the proto epoch stands
+(js_object_proto_ic_ok's conditions); the hole otherwise."""
+def:pub js_object_ric_get_inh(v: JSValue, w0: int, w1: int) -> JSValue {
+    if not jsv_is_object_cell(v) {
+        return jsv_hole();
+    }
+    gi_p: int = jo_p(jsv_to_table_id(v));
+    gi_enc: int = -2 - w0;
+    if (gi_enc & 1) != 0
+        or __mem_load_i64(wrapping_add(gi_p, 16)) != ((gi_enc >> 1) & 33554431)
+        or (gi_enc >> 26) != proto_epoch()
+        or __mem_load_i64(gi_p) != (w1 >> 32)
+        or __mem_load_i64(wrapping_add(gi_p, 72)) != MAP_MODE_SHAPE
+        or __mem_load_i64(wrapping_add(gi_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(gi_p, 88)) != 0
+        or (
+            __mem_load_i64(wrapping_add(gi_p, 104))
+            & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS | FLAG_MODULE_NS | FLAG_IS_GLOBAL)
+        )
+            != 0 {
+        return jsv_hole();
+    }
+    return js_object_slot_at_id(w1 >> 32, w1 & 4294967295);
+}
+
+"""GETFIELD's flat cache entry for an inherited getter (vm.jac
+_ric_fill_getter: w0 = -2 - (receiver shape << 1 | 1 | proto epoch << 26),
+w1 = getter closure id << 32 | [[Prototype]] + 1) on `v`: the getter's
+closure id while `v` has that shape and [[Prototype]], the proto epoch
+stands and `v` is a plain shape-mode object (the getter IC's conditions);
+-1 otherwise."""
+def:pub js_object_ric_getter(v: JSValue, w0: int, w1: int) -> int {
+    if not jsv_is_object_cell(v) {
+        return -1;
+    }
+    rg_p: int = jo_p(jsv_to_table_id(v));
+    rg_enc: int = -2 - w0;
+    if (rg_enc & 1) == 0
+        or __mem_load_i64(wrapping_add(rg_p, 16)) != ((rg_enc >> 1) & 33554431)
+        or (rg_enc >> 26) != proto_epoch()
+        or wrapping_add(__mem_load_i64(rg_p), 1) != (w1 & 4294967295)
+        or __mem_load_i64(wrapping_add(rg_p, 72)) != MAP_MODE_SHAPE
+        or __mem_load_i64(wrapping_add(rg_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(rg_p, 88)) != 0
+        or (
+            __mem_load_i64(wrapping_add(rg_p, 104))
+            & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS | FLAG_MODULE_NS | FLAG_IS_GLOBAL)
+        )
+            != 0 {
+        return -1;
+    }
+    return w1 >> 32;
 }
 
 """Record that the object with table id `id` is an ArrayBuffer: the lazy
@@ -412,9 +1065,9 @@ def:pub js_object_note_array_buffer(id: int) -> None {
     _OBJ_REALM.gc_ab_rows[id] = True;
 }
 
-"""Retrieve a JSObject from the global table by index (for Proxy / internal use)."""
-def:pub js_object_table_get(idx: int) -> JSObject {
-    return _obj_get(idx);
+"""An object's table id (for Proxy / internal use; records are addressed by id)."""
+def:pub js_object_table_get(idx: int) -> int {
+    return idx;
 }
 
 # Scalar reads of one object's fields for the VM's hottest paths. They go
@@ -425,7 +1078,7 @@ def:pub js_object_table_get(idx: int) -> JSObject {
 
 """binary_kind of the object with table id `id`."""
 def:pub js_object_binary_kind_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].bkind();
+    return jo_bkind(id);
 }
 
 """Element `i` of `v`'s dense elements when it is there (an own data element:
@@ -436,11 +1089,18 @@ def:pub js_object_dense_elem(v: JSValue, i: int) -> JSValue {
         return jsv_hole();
     }
     de_id: int = jsv_to_table_id(v);
-    if de_id <= 0 or _OBJ_REALM.objects[de_id - 1].elems_kind == ELEMS_NONE {
+    if de_id <= 0 {
         return jsv_hole();
     }
-    # One table access, no object reference taken.
-    return _OBJ_REALM.objects[de_id - 1].elem_or_hole(i);
+    de_p: int = jo_p(de_id);
+    if __mem_load_i64(wrapping_add(de_p, 120)) == ELEMS_NONE {
+        return jsv_hole();
+    }
+    de_e: int = __mem_load_i64(wrapping_add(de_p, 128));
+    if de_e == 0 or i >= __mem_load_i64(de_e) {
+        return jsv_hole();
+    }
+    return __mem_load_i64(wrapping_add(de_e, wrapping_add(16, wrapping_mul(i, 8))));
 }
 
 """[[Set]] of element `i` of `v` when it is a PRESENT dense element of a
@@ -452,16 +1112,16 @@ def:pub js_object_dense_set_present(v: JSValue, i: int, val: JSValue) -> bool {
         return False;
     }
     dp_id: int = jsv_to_table_id(v);
-    if dp_id <= 0 or _OBJ_REALM.objects[dp_id - 1].elems_kind == ELEMS_NONE {
+    if dp_id <= 0 or jo_elems_kind(dp_id) == ELEMS_NONE {
         return False;
     }
-    if (_OBJ_REALM.objects[dp_id - 1].cell_flags & FLAG_IS_PROTO) != 0 {
+    if (jo_cell_flags(dp_id) & FLAG_IS_PROTO) != 0 {
         return False;
     }
-    if jsv_is_hole(_OBJ_REALM.objects[dp_id - 1].elem_or_hole(i)) {
+    if jsv_is_hole(jo_elem_or_hole(dp_id, i)) {
         return False;
     }
-    _OBJ_REALM.objects[dp_id - 1].eset(i, val);
+    jo_eset(dp_id, i, val);
     return True;
 }
 
@@ -476,47 +1136,63 @@ def:pub js_object_ic_hit(v: JSValue, sid: int, si: int) -> JSValue {
     if ih_id <= 0 {
         return jsv_hole();
     }
-    # The row's own IC test (JSObject.ic_slot) and slot read (sget), as
-    # table-row field reads: the GETFIELD hit runs ~50M times per build and
-    # paid two dispatched method calls here.
-    if _OBJ_REALM.objects[ih_id - 1].shape_id != sid
-        or _OBJ_REALM.objects[ih_id - 1].class_id != 0
-        or _OBJ_REALM.objects[ih_id - 1].mode != MAP_MODE_SHAPE
-        or (_OBJ_REALM.objects[ih_id - 1].cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+    ih_p: int = jo_p(ih_id);
+    if __mem_load_i64(wrapping_add(ih_p, 16)) != sid
+        or __mem_load_i64(wrapping_add(ih_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(ih_p, 72)) != MAP_MODE_SHAPE
+        or (__mem_load_i64(wrapping_add(ih_p, 104)) & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
         return jsv_hole();
     }
-    # (_obj_slot_read spelled out: the inliner left it a call on this path)
-    if si < 2 {
-        if si == 0 {
-            return _OBJ_REALM.objects[ih_id - 1].s0;
-        }
-        return _OBJ_REALM.objects[ih_id - 1].s1;
-    }
     if si < 4 {
-        if si == 2 {
-            return _OBJ_REALM.objects[ih_id - 1].s2;
-        }
-        return _OBJ_REALM.objects[ih_id - 1].s3;
+        return __mem_load_i64(wrapping_add(ih_p, wrapping_add(32, wrapping_mul(si, 8))));
     }
-    return read_u64(_OBJ_REALM.objects[ih_id - 1].sp, si * 8 - 16);
+    return __mem_load_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(ih_p, 64)), wrapping_add(wrapping_mul(si, 8), -16))
+    );
+}
+
+"""Address of the entry for shape `sid` in a polymorphic GETFIELD site's
+table at `tbl` (16 entries of [shape id, slot], vm.jac _ric_fill_get)."""
+def:pub js_object_poly_entry(tbl: int, sid: int) -> int {
+    return wrapping_add(tbl, wrapping_mul((sid ^ (sid >> 4) ^ (sid >> 8)) & 15, 16));
+}
+
+"""A polymorphic GETFIELD site's table (`tbl`) applied to `v`: the slot its
+shape's entry names, under js_object_ic_hit's conditions; the hole when `v`
+is not such an object or its shape has no entry."""
+def:pub js_object_poly_get(v: JSValue, tbl: int) -> JSValue {
+    if not jsv_is_object_cell(v) {
+        return jsv_hole();
+    }
+    pg_p: int = jo_p(jsv_to_table_id(v));
+    pg_sid: int = __mem_load_i64(wrapping_add(pg_p, 16));
+    pg_e: int = js_object_poly_entry(tbl, pg_sid);
+    if __mem_load_i64(pg_e) != pg_sid
+        or pg_sid <= 0
+        or __mem_load_i64(wrapping_add(pg_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(pg_p, 72)) != MAP_MODE_SHAPE
+        or (__mem_load_i64(wrapping_add(pg_p, 104)) & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+        return jsv_hole();
+    }
+    pg_si: int = __mem_load_i64(wrapping_add(pg_e, 8));
+    if pg_si < 4 {
+        return __mem_load_i64(wrapping_add(pg_p, wrapping_add(32, wrapping_mul(pg_si, 8))));
+    }
+    return __mem_load_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(pg_p, 64)), wrapping_add(wrapping_mul(pg_si, 8), -16))
+    );
 }
 
 """slots[si] of table row `id` read in place (JSObject.sget without the
 dispatch): the four inline slots, then the slot buffer."""
 def _obj_slot_read(id: int, si: int) -> JSValue {
-    if si < 2 {
-        if si == 0 {
-            return _OBJ_REALM.objects[id - 1].s0;
-        }
-        return _OBJ_REALM.objects[id - 1].s1;
-    }
+    sr_p: int = jo_p(id);
     if si < 4 {
-        if si == 2 {
-            return _OBJ_REALM.objects[id - 1].s2;
-        }
-        return _OBJ_REALM.objects[id - 1].s3;
+        return __mem_load_i64(wrapping_add(sr_p, wrapping_add(32, wrapping_mul(si, 8))));
     }
-    return read_u64(_OBJ_REALM.objects[id - 1].sp, si * 8 - 16);
+    return __mem_load_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(sr_p, 64)), wrapping_add(wrapping_mul(si, 8), -16))
+    );
 }
 
 """The SET IC's hit test and write in one table access (see js_object_ic_hit)."""
@@ -528,41 +1204,194 @@ def:pub js_object_ic_set_hit(v: JSValue, sid: int, si: int, val: JSValue) -> boo
     if is_id <= 0 {
         return False;
     }
-    if _OBJ_REALM.objects[is_id - 1].shape_id != sid
-        or _OBJ_REALM.objects[is_id - 1].class_id != 0
-        or _OBJ_REALM.objects[is_id - 1].mode != MAP_MODE_SHAPE
-        or (_OBJ_REALM.objects[is_id - 1].cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+    if jo_shape_id(is_id) != sid
+        or jo_class_id(is_id) != 0
+        or jo_mode(is_id) != MAP_MODE_SHAPE
+        or (jo_cell_flags(is_id) & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
         return False;
     }
     # JSObject.wb, in place: an old row that is not yet remembered joins the
     # remembered set when a cell is stored into it.
-    if (_OBJ_REALM.objects[is_id - 1].cell_flags & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD
+    if (jo_cell_flags(is_id) & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD
         and jsv_is_cell(val) {
-        _OBJ_REALM.objects[is_id - 1].cell_flags = _OBJ_REALM.objects[is_id - 1].cell_flags
-            | FLAG_REMEMBERED;
+        jo_set_cell_flags(is_id, jo_cell_flags(is_id)
+            | FLAG_REMEMBERED);
         gc_rem_obj(is_id);
     }
     if si < 2 {
         if si == 0 {
-            _OBJ_REALM.objects[is_id - 1].s0 = val;
+            jo_set_s0(is_id, val);
         } else {
-            _OBJ_REALM.objects[is_id - 1].s1 = val;
+            jo_set_s1(is_id, val);
         }
     } elif si < 4 {
         if si == 2 {
-            _OBJ_REALM.objects[is_id - 1].s2 = val;
+            jo_set_s2(is_id, val);
         } else {
-            _OBJ_REALM.objects[is_id - 1].s3 = val;
+            jo_set_s3(is_id, val);
         }
     } else {
-        write_i64(_OBJ_REALM.objects[is_id - 1].sp, si * 8 - 16, val);
+        write_i64(jo_sp(is_id), si * 8 - 16, val);
     }
     return True;
 }
 
+"""The register SETFIELD's flat IC entry at address `e` (two words; vm.jac
+_ric_fill_set / _ric_fill_add) applied to `v`. w0 > 0: an own-slot write
+(shape w0, slot w1; js_object_ic_set_hit). w0 <= -2: a leaf add, with
+enc = -2 - w0 = before-shape << 1 | 0 for an object-literal define, or
+epoch << 26 | before-shape << 1 | 1 for a [[Set]] add (w1's high half then
+the receiver's [[Prototype]] + 1); w1's low half is the after-shape. The add
+appends `val` under the after-shape when `v` is an ordinary extensible
+shape-mode object, not a prototype, at the before-shape, and for a [[Set]]
+add has the fill's [[Prototype]] while the proto epoch is the fill's (what
+the site's holder 3 / 4 IC replays); a function value on a define keeps the
+handler (its [[HomeObject]]). False: nothing done."""
+def:pub js_object_ric_set(v: JSValue, e: int, val: JSValue) -> bool {
+    rs_w0: int = __mem_load_i64(e);
+    if rs_w0 > 0 {
+        return js_object_ic_set_hit(v, rs_w0, __mem_load_i64(wrapping_add(e, 8)), val);
+    }
+    if rs_w0 > -2 or not jsv_is_object_cell(v) {
+        return False;
+    }
+    rs_id: int = jsv_to_table_id(v);
+    if rs_id <= 0 {
+        return False;
+    }
+    rs_p: int = jo_p(rs_id);
+    rs_enc: int = -2 - rs_w0;
+    if __mem_load_i64(wrapping_add(rs_p, 16)) != ((rs_enc >> 1) & 33554431)
+        or __mem_load_i64(wrapping_add(rs_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(rs_p, 72)) != MAP_MODE_SHAPE
+        or (
+            __mem_load_i64(wrapping_add(rs_p, 104))
+            & (FLAG_MODULE_NS | FLAG_IS_GLOBAL | FLAG_NON_EXTENSIBLE | FLAG_IS_PROTO)
+        )
+            != 0 {
+        return False;
+    }
+    rs_w1: int = __mem_load_i64(wrapping_add(e, 8));
+    if (rs_enc & 1) != 0 {
+        if (rs_enc >> 26) != proto_epoch()
+            or wrapping_add(__mem_load_i64(rs_p), 1) != (rs_w1 >> 32) {
+            return False;
+        }
+    } elif jsv_is_cell(val) and jsv_cell_kind(val) == JS_CELL_KIND_NATIVE {
+        return False;
+    }
+    __mem_store_i64(wrapping_add(rs_p, 16), rs_w1 & 4294967295);
+    rs_sn: int = __mem_load_i64(wrapping_add(rs_p, 24));
+    if rs_sn < 4 and (__mem_load_i64(wrapping_add(rs_p, 104)) & FLAG_OLD) == 0 {
+        # an inline slot of a young object: no buffer, no barrier
+        __mem_store_i64(wrapping_add(rs_p, wrapping_add(32, wrapping_mul(rs_sn, 8))), val);
+        __mem_store_i64(wrapping_add(rs_p, 24), rs_sn + 1);
+    } else {
+        jo_spush(rs_id, val);
+    }
+    __mem_store_i64(
+        wrapping_add(rs_p, 8), wrapping_add(__mem_load_i64(wrapping_add(rs_p, 8)), 1)
+    );
+    return True;
+}
+
+# The `new` class-metadata cache (js_object_class_meta): 256 entries of four
+# words [shape id, [[Prototype]], proto epoch, packed], raw memory calloc'd on
+# first use, indexed by the class object's shape id.
+glob _NC_TAB: int = 0;
+
+"""Where `new` finds the metadata of class object `id`: packed = the slot of
+own data property `kc` (WK_CTOR) | that of `kp` (WK_PROTOTYPE) << 16 |
+(that of `kf` (WK_FIELDS) + 1) << 32 | 1 << 48 when `ks` (WK_SUPER) is own.
+The caller reads the slots (values are live; a shape fixes the layout). kf's
++ 1 is 0 when it is not own: then for a base class (no ks) a [[Get]] of it
+finds nothing on the whole chain either. -1 when the object does not fit
+(not ordinary shape-mode, a key missing or an accessor, an inherited kf on a
+base class, a chain the check cannot prove). Cached per shape id with the
+[[Prototype]] and proto epoch the chain check saw."""
+def:pub js_object_class_meta(id: int, kc: int, kp: int, kf: int, ks: int) -> int {
+    cm_p: int = jo_p(id);
+    if __mem_load_i64(wrapping_add(cm_p, 72)) != MAP_MODE_SHAPE
+        or __mem_load_i64(wrapping_add(cm_p, 80)) != 0 {
+        return -1;
+    }
+    cm_sid: int = __mem_load_i64(wrapping_add(cm_p, 16));
+    cm_pr: int = __mem_load_i64(cm_p);
+    if _NC_TAB != 0 {
+        cm_e: int = wrapping_add(_NC_TAB, wrapping_mul(cm_sid & 255, 32));
+        if __mem_load_i64(cm_e) == cm_sid
+            and __mem_load_i64(wrapping_add(cm_e, 8)) == cm_pr
+            and __mem_load_i64(wrapping_add(cm_e, 16)) == proto_epoch() {
+            return __mem_load_i64(wrapping_add(cm_e, 24));
+        }
+    }
+    return _obj_class_meta_fill(cm_sid, cm_pr, kc, kp, kf, ks);
+}
+
+"""js_object_class_meta's miss: the four own-key lookups, the chain check
+for a base class without own fields, then the cache entry."""
+def _obj_class_meta_fill(sid: int, pr: int, kc: int, kp: int, kf: int, ks: int) -> int {
+    mf_c: int = shape_lookup(sid, kc);
+    mf_p: int = shape_lookup(sid, kp);
+    mf_f: int = shape_lookup(sid, kf);
+    mf_s: int = shape_lookup(sid, ks);
+    if mf_c < 0 or mf_p < 0 or ((mf_c | mf_p) & SHAPE_ATTR_ACCESSOR) != 0 {
+        return -1;
+    }
+    if (mf_f >= 0 and (mf_f & SHAPE_ATTR_ACCESSOR) != 0)
+        or (mf_s >= 0 and (mf_s & SHAPE_ATTR_ACCESSOR) != 0) {
+        return -1;
+    }
+    if (mf_c >> 4) >= 65535 or (mf_p >> 4) >= 65535 or (mf_f >> 4) >= 65534 {
+        return -1;
+    }
+    mf_packed: int = (mf_c >> 4) | ((mf_p >> 4) << 16);
+    if mf_f >= 0 {
+        mf_packed = mf_packed | (((mf_f >> 4) + 1) << 32);
+    }
+    if mf_s >= 0 {
+        mf_packed = mf_packed | (1 << 48);
+    } elif mf_f < 0 {
+        # A base class reads kf with [[Get]]: no object up the chain has it.
+        # Each one is (now) flagged a prototype, so a key added to it later
+        # bumps the proto epoch and this entry misses.
+        mf_q: int = pr;
+        mf_n: int = 0;
+        while mf_q > 0 {
+            if mf_n >= PROTO_MAX_DEPTH {
+                return -1;
+            }
+            mf_qp: int = jo_p(mf_q);
+            if __mem_load_i64(wrapping_add(mf_qp, 72)) != MAP_MODE_SHAPE
+                or __mem_load_i64(wrapping_add(mf_qp, 80)) != 0
+                or __mem_load_i64(wrapping_add(mf_qp, 120)) != ELEMS_NONE
+                or shape_lookup(__mem_load_i64(wrapping_add(mf_qp, 16)), kf) >= 0 {
+                return -1;
+            }
+            if (__mem_load_i64(wrapping_add(mf_qp, 104)) & FLAG_IS_PROTO) == 0 {
+                _obj_note_proto(mf_q);
+            }
+            mf_q = __mem_load_i64(mf_qp);
+            mf_n = mf_n + 1;
+        }
+    }
+    if _NC_TAB == 0 {
+        _NC_TAB = calloc(256, 32);
+        if _NC_TAB == 0 {
+            return mf_packed;
+        }
+    }
+    mf_e: int = wrapping_add(_NC_TAB, wrapping_mul(sid & 255, 32));
+    __mem_store_i64(mf_e, sid);
+    __mem_store_i64(wrapping_add(mf_e, 8), pr);
+    __mem_store_i64(wrapping_add(mf_e, 16), proto_epoch());
+    __mem_store_i64(wrapping_add(mf_e, 24), mf_packed);
+    return mf_packed;
+}
+
 """[[Prototype]] table id of the object with table id `id` (0 = null)."""
 def:pub js_object_proto_idx_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].prototype_idx;
+    return jo_prototype_idx(id);
 }
 
 """CreateDataProperty(`v`, i, val) for a plain extensible Array with dense
@@ -580,26 +1409,26 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
     if dp_id <= 0 {
         return False;
     }
-    dp_raw: JSObject = _obj_get(dp_id);
-    if dp_raw.class_id != 0
-        or dp_raw.elems_kind == ELEMS_NONE
-        or (dp_raw.brand & BRAND_ARRAY) == 0 {
+    dp_raw: int = dp_id;
+    if jo_class_id(dp_raw) != 0
+        or jo_elems_kind(dp_raw) == ELEMS_NONE
+        or (jo_brand(dp_raw) & BRAND_ARRAY) == 0 {
         return False;
     }
-    if (dp_raw.cell_flags & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
+    if (jo_cell_flags(dp_raw) & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
         return False;
     }
-    dp_n: int = dp_raw.elen();
+    dp_n: int = jo_elen(dp_raw);
     if i < dp_n {
-        dp_raw.eset(i, val);
+        jo_eset(dp_raw, i, val);
         return True;
     }
-    if i == dp_n and dp_raw.mode == MAP_MODE_SHAPE {
-        dp_lk: int = shape_lookup(dp_raw.shape_id, KEY_LENGTH);
+    if i == dp_n and jo_mode(dp_raw) == MAP_MODE_SHAPE {
+        dp_lk: int = shape_lookup(jo_shape_id(dp_raw), KEY_LENGTH);
         if dp_lk >= 0 and (dp_lk & SHAPE_ATTR_ACCESSOR) == 0 {
-            dp_len: JSValue = dp_raw.sget(dp_lk // 16);
+            dp_len: JSValue = jo_sget(dp_raw, dp_lk // 16);
             if jsv_is_int32(dp_len) and i < jsv_to_int32(dp_len) {
-                dp_raw.epush(val);
+                jo_epush(dp_raw, val);
                 return True;
             }
             # At or past the length (filter's result starts at length 0):
@@ -609,8 +1438,8 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
                 and i >= jsv_to_int32(dp_len)
                 and (dp_lk & PROP_WRITABLE) != 0
                 and i < 2147483647 {
-                dp_raw.epush(val);
-                dp_raw.sset(dp_lk // 16, js_int(i + 1));
+                jo_epush(dp_raw, val);
+                jo_sset(dp_raw, dp_lk // 16, js_int(i + 1));
                 return True;
             }
         }
@@ -634,35 +1463,79 @@ def:pub js_object_dense_shift(v: JSValue) -> JSValue {
     if ds_id <= 0 {
         return jsv_hole();
     }
-    ds_raw: JSObject = _obj_get(ds_id);
-    if ds_raw.class_id != 0
-        or ds_raw.elems_kind == ELEMS_NONE
-        or (ds_raw.brand & BRAND_ARRAY) == 0
-        or ds_raw.mode != MAP_MODE_SHAPE {
+    ds_raw: int = ds_id;
+    if jo_class_id(ds_raw) != 0
+        or jo_elems_kind(ds_raw) == ELEMS_NONE
+        or (jo_brand(ds_raw) & BRAND_ARRAY) == 0
+        or jo_mode(ds_raw) != MAP_MODE_SHAPE {
         return jsv_hole();
     }
-    if (ds_raw.cell_flags & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
+    if (jo_cell_flags(ds_raw) & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
         return jsv_hole();
     }
-    ds_n: int = ds_raw.elen();
+    ds_n: int = jo_elen(ds_raw);
     if ds_n == 0 {
         return jsv_hole();
     }
-    ds_lk: int = shape_lookup(ds_raw.shape_id, KEY_LENGTH);
+    ds_lk: int = shape_lookup(jo_shape_id(ds_raw), KEY_LENGTH);
     if ds_lk < 0 or (ds_lk & SHAPE_ATTR_ACCESSOR) != 0 or (ds_lk & PROP_WRITABLE) == 0 {
         return jsv_hole();
     }
-    ds_len: JSValue = ds_raw.sget(ds_lk // 16);
+    ds_len: JSValue = jo_sget(ds_raw, ds_lk // 16);
     if not jsv_is_int32(ds_len) or jsv_to_int32(ds_len) != ds_n {
         return jsv_hole();
     }
-    ds_first: JSValue = ds_raw.eget(0);
-    ds_raw.eshift();
-    ds_raw.sset(ds_lk // 16, js_int(ds_n - 1));
+    ds_first: JSValue = jo_eget(ds_raw, 0);
+    jo_eshift(ds_raw);
+    jo_sset(ds_raw, ds_lk // 16, js_int(ds_n - 1));
     if jsv_is_hole(ds_first) {
         return js_undefined();
     }
     return ds_first;
+}
+
+"""Array.prototype.pop on the arrays js_object_dense_shift takes (idx_protector_ok
+checked by the caller): dropping the last element word and storing the new
+length is the spec's Get / DeletePropertyOrThrow / Set sequence, which
+nothing can observe. An empty array (length 0) gives undefined, as the spec's
+Set of length 0 changes nothing. Returns the removed element (undefined for a
+hole), or the hole when `v` does not qualify."""
+def:pub js_object_dense_pop(v: JSValue) -> JSValue {
+    if not jsv_is_object_cell(v) {
+        return jsv_hole();
+    }
+    dpo_id: int = jsv_to_table_id(v);
+    if dpo_id <= 0 {
+        return jsv_hole();
+    }
+    if jo_class_id(dpo_id) != 0
+        or jo_elems_kind(dpo_id) == ELEMS_NONE
+        or (jo_brand(dpo_id) & BRAND_ARRAY) == 0
+        or jo_mode(dpo_id) != MAP_MODE_SHAPE {
+        return jsv_hole();
+    }
+    if (jo_cell_flags(dpo_id) & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
+        return jsv_hole();
+    }
+    dpo_lk: int = shape_lookup(jo_shape_id(dpo_id), KEY_LENGTH);
+    if dpo_lk < 0 or (dpo_lk & SHAPE_ATTR_ACCESSOR) != 0 or (dpo_lk & PROP_WRITABLE) == 0 {
+        return jsv_hole();
+    }
+    dpo_n: int = jo_elen(dpo_id);
+    dpo_len: JSValue = jo_sget(dpo_id, dpo_lk // 16);
+    if not jsv_is_int32(dpo_len) or jsv_to_int32(dpo_len) != dpo_n {
+        return jsv_hole();
+    }
+    if dpo_n == 0 {
+        return js_undefined();
+    }
+    dpo_last: JSValue = jo_eget(dpo_id, dpo_n - 1);
+    write_i64(jo_ep(dpo_id), 0, dpo_n - 1);
+    jo_sset(dpo_id, dpo_lk // 16, js_int(dpo_n - 1));
+    if jsv_is_hole(dpo_last) {
+        return js_undefined();
+    }
+    return dpo_last;
 }
 
 """True for an ordinary object cell: no class (Proxy, String / Date …
@@ -676,10 +1549,10 @@ def:pub js_object_is_plain_ordinary(v: JSValue) -> bool {
     if po_id <= 0 {
         return False;
     }
-    return _OBJ_REALM.objects[po_id - 1].class_id == 0
-        and _OBJ_REALM.objects[po_id - 1].bkind() == 0
+    return jo_class_id(po_id) == 0
+        and jo_bkind(po_id) == 0
         and (
-            _OBJ_REALM.objects[po_id - 1].cell_flags
+            jo_cell_flags(po_id)
             & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)
         )
             == 0;
@@ -693,34 +1566,34 @@ def:pub js_object_plain_shape_id(v: JSValue) -> int {
         return -1;
     }
     ps_id: int = jsv_to_table_id(v);
-    if _OBJ_REALM.objects[ps_id - 1].mode != MAP_MODE_SHAPE
-        or _OBJ_REALM.objects[ps_id - 1].elems_kind != ELEMS_NONE
-        or _OBJ_REALM.objects[ps_id - 1].has_acc()
-        or (_OBJ_REALM.objects[ps_id - 1].brand & BRAND_STRING_OBJ) != 0
-        or (_OBJ_REALM.objects[ps_id - 1].cell_flags & FLAG_MAPPED_ARGS) != 0 {
+    if jo_mode(ps_id) != MAP_MODE_SHAPE
+        or jo_elems_kind(ps_id) != ELEMS_NONE
+        or jo_has_acc(ps_id)
+        or (jo_brand(ps_id) & BRAND_STRING_OBJ) != 0
+        or (jo_cell_flags(ps_id) & FLAG_MAPPED_ARGS) != 0 {
         return -1;
     }
-    return _OBJ_REALM.objects[ps_id - 1].shape_id;
+    return jo_shape_id(ps_id);
 }
 
 """cell_flags of the object with table id `id`."""
 def:pub js_object_cell_flags_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].cell_flags;
+    return jo_cell_flags(id);
 }
 
 """class_id of the object with table id `id`."""
 def:pub js_object_class_id_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].class_id;
+    return jo_class_id(id);
 }
 
 """elems_kind of the object with table id `id`."""
 def:pub js_object_elems_kind_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].elems_kind;
+    return jo_elems_kind(id);
 }
 
 """binary_slot of the object with table id `id`."""
 def:pub js_object_binary_slot_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].bslot();
+    return jo_bslot(id);
 }
 
 """Flag `v` as the realm's global object (FLAG_IS_GLOBAL): its writes are
@@ -733,9 +1606,9 @@ def:pub js_object_mark_global(v: JSValue) -> None {
     if mg_id <= 0 {
         return;
     }
-    mg_raw: JSObject = _obj_get(mg_id);
-    if (mg_raw.cell_flags & FLAG_IS_GLOBAL) == 0 {
-        mg_raw.cell_flags = mg_raw.cell_flags | FLAG_IS_GLOBAL;
+    mg_raw: int = mg_id;
+    if (jo_cell_flags(mg_raw) & FLAG_IS_GLOBAL) == 0 {
+        jo_set_cell_flags(mg_raw, jo_cell_flags(mg_raw) | FLAG_IS_GLOBAL);
     }
 }
 
@@ -749,39 +1622,25 @@ def:pub js_object_ic_shape(v: JSValue) -> int {
     if is_id <= 0 {
         return -1;
     }
-    if _OBJ_REALM.objects[is_id - 1].class_id != 0 {
+    is_p: int = jo_p(is_id);
+    if __mem_load_i64(wrapping_add(is_p, 80)) != 0
+        or (__mem_load_i64(wrapping_add(is_p, 104)) & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0
+        or __mem_load_i64(wrapping_add(is_p, 72)) != MAP_MODE_SHAPE {
         return -1;
     }
-    if (_OBJ_REALM.objects[is_id - 1].cell_flags & FLAG_MODULE_NS) != 0 {
-        return -1;
-    }
-    # The global object stays off the ICs: an IC-hit write would store the slot
-    # directly and skip global_obj_note_write (bare global reads would miss it).
-    if (_OBJ_REALM.objects[is_id - 1].cell_flags & FLAG_IS_GLOBAL) != 0 {
-        return -1;
-    }
-    if _OBJ_REALM.objects[is_id - 1].mode != MAP_MODE_SHAPE {
-        return -1;
-    }
-    return _OBJ_REALM.objects[is_id - 1].shape_id;
+    return __mem_load_i64(wrapping_add(is_p, 16));
 }
 
 """slots[si] of the object with table id `id` (an IC hit: the caller has
 matched the shape, so the slot exists)."""
 def:pub js_object_slot_at_id(id: int, si: int) -> JSValue {
-    if si < 2 {
-        if si == 0 {
-            return _OBJ_REALM.objects[id - 1].s0;
-        }
-        return _OBJ_REALM.objects[id - 1].s1;
-    }
+    sa_p: int = jo_p(id);
     if si < 4 {
-        if si == 2 {
-            return _OBJ_REALM.objects[id - 1].s2;
-        }
-        return _OBJ_REALM.objects[id - 1].s3;
+        return __mem_load_i64(wrapping_add(sa_p, wrapping_add(32, wrapping_mul(si, 8))));
     }
-    return read_u64(_OBJ_REALM.objects[id - 1].sp, si * 8 - 16);
+    return __mem_load_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(sa_p, 64)), wrapping_add(wrapping_mul(si, 8), -16))
+    );
 }
 
 """Table slot index of `v`'s own data property `key` when `v` is an ordinary
@@ -791,7 +1650,7 @@ def:pub js_object_own_data_slot(v: JSValue, key: int) -> int {
     if js_object_ic_shape(v) < 0 {
         return -1;
     }
-    ds_p: int = shape_lookup(_OBJ_REALM.objects[jsv_to_table_id(v) - 1].shape_id, key);
+    ds_p: int = shape_lookup(jo_shape_id(jsv_to_table_id(v)), key);
     if ds_p < 0 or (ds_p & SHAPE_ATTR_ACCESSOR) != 0 {
         return -1;
     }
@@ -807,32 +1666,30 @@ def:pub js_object_shape_slot_set(v: JSValue, sid: int, si: int, val: JSValue) ->
     }
     sw_id: int = jsv_to_table_id(v);
     if (
-        _OBJ_REALM.objects[sw_id - 1].cell_flags
+        jo_cell_flags(sw_id)
         & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)
     )
         != 0 {
         return False;
     }
-    _OBJ_REALM.objects[sw_id - 1].sset(si, val);
+    jo_sset(sw_id, si, val);
     return True;
 }
 
 """slots[si] = val on the object with table id `id` (a SET IC hit: the
 caller has matched the shape, which guarantees a writable data slot)."""
 def:pub js_object_slot_set_at_id(id: int, si: int, val: JSValue) {
-    _OBJ_REALM.objects[id - 1].sset(si, val);
+    jo_sset(id, si, val);
 }
 
 """Inherited-data IC guard on the receiver (table id `id`): its
 [[Prototype]] is still `proto_idx`, it is not a binary view, and it is
 neither an arguments object nor a class."""
 def:pub js_object_proto_ic_ok(id: int, proto_idx: int) -> bool {
-    return _OBJ_REALM.objects[id - 1].prototype_idx == proto_idx
-        and _OBJ_REALM.objects[id - 1].bkind() == 0
-        and (
-            _OBJ_REALM.objects[id - 1].cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)
-        )
-            == 0;
+    pk_p: int = jo_p(id);
+    return __mem_load_i64(pk_p) == proto_idx
+        and __mem_load_i64(wrapping_add(pk_p, 88)) == 0
+        and (__mem_load_i64(wrapping_add(pk_p, 104)) & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) == 0;
 }
 
 """BRAND_* bits of `v` (jsobj_type.brand_bit_for_key), 0 for a non-object.
@@ -846,14 +1703,13 @@ def:pub js_object_brand(v: JSValue) -> int {
     if ob_id <= 0 {
         return 0;
     }
-    return _OBJ_REALM.objects[ob_id - 1].brand;
+    return jo_brand(ob_id);
 }
 
-"""Retrieve a JSObject from the global table by index."""
-def _obj_get(idx: int) -> JSObject {
-    # _OBJ_REALM.objects is 0-based but we allocate starting at index 1;
-    # adjust: real index in list = idx - 1
-    return _OBJ_REALM.objects[idx - 1];
+"""An object's table id (records are addressed by id: kept for callers that
+fetched a JSObject handle)."""
+def _obj_get(idx: int) -> int {
+    return idx;
 }
 
 # Mapped-arguments aliasing storage lives in realm.args_slots[idx], not on the
@@ -871,17 +1727,14 @@ glob _ACC_EMPTY: AccessorTable = AccessorTable();
 
 """Accessor table for READ access: the object's own table, or the shared empty one
 when it has no accessors. Result must not be mutated (see _acc_rw for writes)."""
-def _acc_ro(raw: JSObject) -> AccessorTable {
-    if raw.ext is not None and raw.ext.accessors is not None {
-        return raw.ext.accessors;
-    }
-    return _ACC_EMPTY;
+def _acc_ro(raw: int) -> AccessorTable {
+    return jo_acc_ro(raw, _ACC_EMPTY);
 }
 
 """Accessor table for WRITE access, materializing it (and the owning edge) on the
 object's first accessor install."""
-def _acc_rw(raw: JSObject) -> AccessorTable {
-    return raw.ensure_accessors();
+def _acc_rw(raw: int) -> AccessorTable {
+    return jo_acc_rw(raw);
 }
 
 """Wrap an object table index as a JSValue with tag=Object."""
@@ -913,7 +1766,41 @@ def:pub js_object_create(proto: JSValue) -> JSValue {
     if jsv_is_object_cell(proto) {
         proto_idx = jsv_to_table_id(proto);
     }
-    idx: int = _obj_alloc(proto_idx);
+    idx: int = 0;
+    oc_t: int = _OBJ_FREE_N;
+    if oc_t > 0 and _OBJ_NOTE < 31 and (proto_idx <= 0 or proto_idx == _OBJ_PROTO_NOTED) {
+        oc_c: int = __mem_load_i64(wrapping_add(_OBJ_FREE, wrapping_mul(oc_t - 1, 8)));
+        oc_q: int = jo_p(oc_c);
+        oc_e: int = __mem_load_i64(wrapping_add(oc_q, 128));
+        if oc_c != _OBJ_PROTO_NOTED
+            and (__mem_load_i64(wrapping_add(oc_q, 104)) & (FLAG_IS_PROTO | FLAG_SLOTS_BIG | FLAG_MAPPED_ARGS)) == 0
+            and __mem_load_i64(wrapping_add(oc_q, 144)) == 0
+            and (oc_e == 0 or __mem_load_i64(wrapping_add(oc_e, 8)) <= 16) {
+            _OBJ_FREE_N = oc_t - 1;
+            _OBJ_NOTE = _OBJ_NOTE + 1;
+            if oc_e != 0 {
+                __mem_store_i64(oc_e, 0);  # a kept elements buffer, emptied
+            }
+            __mem_store_i64(oc_q, proto_idx);
+            __mem_store_i64(wrapping_add(oc_q, 8), 0);
+            __mem_store_i64(wrapping_add(oc_q, 16), 0);
+            __mem_store_i64(wrapping_add(oc_q, 24), 0);
+            __mem_store_i64(
+                wrapping_add(oc_q, 72), MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT
+            );
+            __mem_store_i64(wrapping_add(oc_q, 80), 0);
+            __mem_store_i64(wrapping_add(oc_q, 88), 0);
+            __mem_store_i64(wrapping_add(oc_q, 96), -1);
+            __mem_store_i64(wrapping_add(oc_q, 104), 0);
+            __mem_store_i64(wrapping_add(oc_q, 120), 0);
+            __mem_store_i64(wrapping_add(oc_q, 136), 0);
+            __mem_store_i8(wrapping_add(_OBJ_REALM.objmark_ptr, wrapping_add(oc_c, -1)), 0);
+            idx = oc_c;
+        }
+    }
+    if idx == 0 {
+        idx = _obj_alloc_full(proto_idx);
+    }
     return _obj_wrap(idx);
 }
 
@@ -1063,43 +1950,31 @@ def:pub js_object_get(jsobj: JSValue, key: int) -> JSValue {
         return js_undefined();
     }
     current_idx: int = jsv_to_table_id(jsobj);
-    # Guard: as_ptr <= 0 means this is a fn_val or native_val, not a
-    # regular object-table entry.  Attempting _obj_get on such a value
-    # would index out of bounds and crash.
     if current_idx <= 0 {
         return js_undefined();
     }
-    # Depth limit of 1000 guards against prototype cycles.
-    # Guard <= 0: -1 is the null-proto sentinel; any other non-positive value
-    # (e.g. a fn_val as_ptr leaked via a buggy set_prototype call) must also
-    # terminate the walk rather than being passed to _obj_get.
-    # The array index `key` names (-1: none), found on the first level that
-    # has dense elements (-2: none yet).
+    # Each level read through its record address (one computation per level).
+    # Dense elements: an in-range non-hole element is the own property.
+    # Holes/out-of-range fall through (the map holds no index keys while
+    # dense — invariant) and continue up the prototype chain.
     gt_dix: int = -2;
     for _depth in range(PROTO_MAX_DEPTH) {
         if current_idx <= 0 {
             return js_undefined();
         }
-        # Each level is read through its table row, a borrowed reference (an
-        # owned _obj_get handle cost a retain and a release per level).
-        # Dense elements: an in-range non-hole element is the own property.
-        # Holes/out-of-range fall through (the map holds no index keys while
-        # dense — invariant) and continue up the prototype chain. The own-data
-        # read is non-materializing: get_property() allocates a JSProperty.
-        if gt_dix == -2 and _OBJ_REALM.objects[current_idx - 1].elems_kind != ELEMS_NONE {
+        gt_p: int = jo_p(current_idx);
+        if gt_dix == -2 and __mem_load_i64(wrapping_add(gt_p, 120)) != ELEMS_NONE {
             gt_dix = _obj_index_of_key(key);
         }
-        gt_own: JSValue = _OBJ_REALM.objects[current_idx - 1].own_elem_or_data(
-            key, gt_dix
-        );
+        gt_own: JSValue = jo_own_elem_or_data(current_idx, key, gt_dix);
         if not jsv_is_hole(gt_own) {
             # Mapped arguments: an aliased index reads the live parameter slot.
-            if _OBJ_REALM.objects[current_idx - 1].mapped_args() {
+            if (__mem_load_i64(wrapping_add(gt_p, 104)) & FLAG_MAPPED_ARGS) != 0 {
                 return _go_mapped_arg(current_idx, key, gt_own);
             }
             return gt_own;
         }
-        current_idx = _OBJ_REALM.objects[current_idx - 1].prototype_idx;
+        current_idx = __mem_load_i64(gt_p);
     }
     return js_undefined();
 }
@@ -1138,13 +2013,13 @@ def:pub js_object_get_ordinary(jsobj: JSValue, key: int) -> JSValue {
         if go_idx <= 0 {
             return js_undefined();
         }
-        if (_OBJ_REALM.objects[go_idx - 1].brand & BRAND_STRING_OBJ) != 0
+        if (jo_brand(go_idx) & BRAND_STRING_OBJ) != 0
             and (key == KEY_LENGTH or _obj_is_array_index_key_id(key)) {
             return jsv_hole();
         }
-        go_c: int = _OBJ_REALM.objects[go_idx - 1].ord_slot(key);
+        go_c: int = jo_ord_slot(go_idx, key);
         if go_c >= 0 {
-            return _OBJ_REALM.objects[go_idx - 1].sget(go_c);
+            return jo_sget(go_idx, go_c);
         }
         if go_c == -2 {
             return jsv_hole();
@@ -1152,7 +2027,7 @@ def:pub js_object_get_ordinary(jsobj: JSValue, key: int) -> JSValue {
         if go_c <= -3 {
             return _go_ordinary_slow(go_idx, key);
         }
-        go_idx = _OBJ_REALM.objects[go_idx - 1].prototype_idx;
+        go_idx = jo_prototype_idx(go_idx);
     }
     return jsv_hole();
 }
@@ -1168,42 +2043,42 @@ def _go_ordinary_slow(go_start: int, key: int) -> JSValue {
         # A String wrapper is exotic only for `length` and integer-index keys
         # (ES §10.4.3); any other key — every String.prototype method name —
         # resolves like an ordinary object's.
-        if (_OBJ_REALM.objects[go_idx - 1].brand & BRAND_STRING_OBJ) != 0
+        if (jo_brand(go_idx) & BRAND_STRING_OBJ) != 0
             and (key == KEY_LENGTH or _obj_is_array_index_key_id(key)) {
             return jsv_hole();
         }
         # The common level (shape mode, no accessor tables) is read through
         # the table row, a borrowed reference; see JSObject.ord_slot.
-        go_c: int = _OBJ_REALM.objects[go_idx - 1].ord_slot(key);
+        go_c: int = jo_ord_slot(go_idx, key);
         if go_c >= 0 {
-            return _OBJ_REALM.objects[go_idx - 1].sget(go_c);
+            return jo_sget(go_idx, go_c);
         }
         if go_c == -2 {
             return jsv_hole();
         }
         if go_c <= -3 {
-            go_raw: JSObject = _obj_get(go_idx);
+            go_raw: int = go_idx;
             # Accessors first, as the full [[Get]] does: a key can be in both
             # the accessor tables and `entries`, and the accessor wins.
-            if go_raw.has_acc() and _go_acc_tables_have(go_raw, key) {
+            if jo_has_acc(go_raw) and _go_acc_tables_have(go_raw, key) {
                 return jsv_hole();
             }
-            if go_raw.mode == MAP_MODE_SHAPE {
-                go_packed: int = shape_lookup(go_raw.shape_id, key);
+            if jo_mode(go_raw) == MAP_MODE_SHAPE {
+                go_packed: int = shape_lookup(jo_shape_id(go_raw), key);
                 if go_packed >= 0 {
                     if (go_packed & SHAPE_ATTR_ACCESSOR) != 0 {
                         return jsv_hole();
                     }
-                    return go_raw.sget(go_packed // 16);
+                    return jo_sget(go_raw, go_packed // 16);
                 }
             } else {
-                go_ent: dict[int, JSProperty] = go_raw.ent_ro();
+                go_ent: dict[int, JSProperty] = jo_ent_ro(go_raw);
                 if key in go_ent {
                     return go_ent[key].value;
                 }
             }
         }
-        go_idx = _OBJ_REALM.objects[go_idx - 1].prototype_idx;
+        go_idx = jo_prototype_idx(go_idx);
     }
     return jsv_hole();
 }
@@ -1211,12 +2086,12 @@ def _go_ordinary_slow(go_start: int, key: int) -> JSValue {
 """True if `raw` takes plain own-data writes: an ordinary, extensible object
 that is not an array, String wrapper, process.env, class, binary view, module
 namespace, mapped `arguments` or dense-elements holder."""
-def _go_write_plain(raw: JSObject) -> bool {
-    return raw.class_id == 0
-        and raw.bkind() == 0
-        and raw.elems_kind == ELEMS_NONE
+def _go_write_plain(raw: int) -> bool {
+    return jo_class_id(raw) == 0
+        and jo_bkind(raw) == 0
+        and jo_elems_kind(raw) == ELEMS_NONE
         and (
-            raw.cell_flags
+            jo_cell_flags(raw)
             & (
                 FLAG_MODULE_NS
                 | FLAG_MAPPED_ARGS
@@ -1228,12 +2103,12 @@ def _go_write_plain(raw: JSObject) -> bool {
             )
         )
             == 0
-        and (raw.brand & (BRAND_STRING_OBJ | BRAND_ARRAY | BRAND_ENV_OBJ)) == 0;
+        and (jo_brand(raw) & (BRAND_STRING_OBJ | BRAND_ARRAY | BRAND_ENV_OBJ)) == 0;
 }
 
 """True if `key` is in `raw`'s accessor side tables (get/set/attribute maps —
 an accessor whose get and set are both undefined shows only in the latter)."""
-def _go_acc_tables_have(raw: JSObject, key: int) -> bool {
+def _go_acc_tables_have(raw: int, key: int) -> bool {
     ga_acc: AccessorTable = _acc_ro(raw);
     return key in ga_acc.getters
         or key in ga_acc.setters
@@ -1242,14 +2117,14 @@ def _go_acc_tables_have(raw: JSObject, key: int) -> bool {
 }
 
 """True if `raw` has an accessor (getter and/or setter) own property `key`."""
-def _go_has_accessor(raw: JSObject, key: int) -> bool {
-    if raw.mode == MAP_MODE_SHAPE {
-        ga_p: int = shape_lookup(raw.shape_id, key);
+def _go_has_accessor(raw: int, key: int) -> bool {
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        ga_p: int = shape_lookup(jo_shape_id(raw), key);
         if ga_p >= 0 and (ga_p & SHAPE_ATTR_ACCESSOR) != 0 {
             return True;
         }
     }
-    if raw.has_acc() {
+    if jo_has_acc(raw) {
         return _go_acc_tables_have(raw, key);
     }
     return False;
@@ -1265,17 +2140,17 @@ def:pub js_object_add_data_ordinary(jsobj: JSValue, key: int, val: JSValue) -> b
     if ad_idx <= 0 {
         return False;
     }
-    ad_raw: JSObject = _obj_get(ad_idx);
+    ad_raw: int = ad_idx;
     if not _go_write_plain(ad_raw) {
         return False;
     }
-    if ad_raw.has_key(key) or _go_has_accessor(ad_raw, key) {
+    if jo_has_key(ad_raw, key) or _go_has_accessor(ad_raw, key) {
         return False;
     }
     if _obj_is_array_index_key_id(key) {
         return False;
     }
-    return ad_raw.set(key, val, PROP_DEFAULT) == 0;
+    return jo_set(ad_raw, key, val, PROP_DEFAULT) == 0;
 }
 
 """
@@ -1292,54 +2167,54 @@ def:pub js_object_set_ordinary(jsobj: JSValue, key: int, val: JSValue) -> bool {
     if so_idx <= 0 {
         return False;
     }
-    so_raw: JSObject = _obj_get(so_idx);
+    so_raw: int = so_idx;
     if not _go_write_plain(so_raw) {
         return False;
     }
     if _go_has_accessor(so_raw, key) {
         return False;
     }
-    if so_raw.mode == MAP_MODE_SHAPE {
-        so_p: int = shape_lookup(so_raw.shape_id, key);
+    if jo_mode(so_raw) == MAP_MODE_SHAPE {
+        so_p: int = shape_lookup(jo_shape_id(so_raw), key);
         if so_p >= 0 {
             if (so_p & SHAPE_ATTR_ACCESSOR) != 0 or (so_p & PROP_WRITABLE) == 0 {
                 return False;
             }
-            so_raw.sset(so_p // 16, val);
+            jo_sset(so_raw, so_p // 16, val);
             return True;
         }
     } else {
-        so_ent: dict[int, JSProperty] = so_raw.ent_ro();
+        so_ent: dict[int, JSProperty] = jo_ent_ro(so_raw);
         if key in so_ent {
             so_prop: JSProperty = so_ent[key];
             if not so_prop.writable {
                 return False;
             }
             so_prop.value = val;
-            so_raw.wb(val);
+            jo_wb(so_raw, val);
             return True;
         }
     }
     # Not own: an inherited setter, read-only data property or exotic object
     # decides the outcome — leave those to the full path.
-    so_pidx: int = so_raw.prototype_idx;
+    so_pidx: int = jo_prototype_idx(so_raw);
     for _so_depth in range(PROTO_MAX_DEPTH) {
         if so_pidx <= 0 {
             break;
         }
-        so_pr: JSObject = _obj_get(so_pidx);
-        if so_pr.class_id != 0
-            or so_pr.bkind() != 0
-            or so_pr.elems_kind != ELEMS_NONE
-            or (so_pr.cell_flags & (FLAG_MODULE_NS | FLAG_MAPPED_ARGS)) != 0
-            or (so_pr.brand & BRAND_STRING_OBJ) != 0 {
+        so_pr: int = so_pidx;
+        if jo_class_id(so_pr) != 0
+            or jo_bkind(so_pr) != 0
+            or jo_elems_kind(so_pr) != ELEMS_NONE
+            or (jo_cell_flags(so_pr) & (FLAG_MODULE_NS | FLAG_MAPPED_ARGS)) != 0
+            or (jo_brand(so_pr) & BRAND_STRING_OBJ) != 0 {
             return False;
         }
         if _go_has_accessor(so_pr, key) {
             return False;
         }
-        if so_pr.mode == MAP_MODE_SHAPE {
-            so_pp: int = shape_lookup(so_pr.shape_id, key);
+        if jo_mode(so_pr) == MAP_MODE_SHAPE {
+            so_pp: int = shape_lookup(jo_shape_id(so_pr), key);
             if so_pp >= 0 {
                 if (so_pp & PROP_WRITABLE) == 0 {
                     return False;
@@ -1347,7 +2222,7 @@ def:pub js_object_set_ordinary(jsobj: JSValue, key: int, val: JSValue) -> bool {
                 break;
             }
         } else {
-            so_pent: dict[int, JSProperty] = so_pr.ent_ro();
+            so_pent: dict[int, JSProperty] = jo_ent_ro(so_pr);
             if key in so_pent {
                 if not so_pent[key].writable {
                     return False;
@@ -1355,12 +2230,12 @@ def:pub js_object_set_ordinary(jsobj: JSValue, key: int, val: JSValue) -> bool {
                 break;
             }
         }
-        so_pidx = so_pr.prototype_idx;
+        so_pidx = jo_prototype_idx(so_pr);
     }
     if _obj_is_array_index_key_id(key) {
         return False;
     }
-    return so_raw.set(key, val, PROP_DEFAULT) == 0;
+    return jo_set(so_raw, key, val, PROP_DEFAULT) == 0;
 }
 
 """`o.k += delta` for an own writable int32 data property of a plain object
@@ -1374,18 +2249,18 @@ def:pub js_object_own_int_add(jsobj: JSValue, key: int, delta: int) -> JSValue {
     if oi_idx <= 0 {
         return jsv_hole();
     }
-    oi_raw: JSObject = _obj_get(oi_idx);
-    if oi_raw.mode != MAP_MODE_SHAPE or not _go_write_plain(oi_raw) {
+    oi_raw: int = oi_idx;
+    if jo_mode(oi_raw) != MAP_MODE_SHAPE or not _go_write_plain(oi_raw) {
         return jsv_hole();
     }
-    if oi_raw.has_acc() and _go_acc_tables_have(oi_raw, key) {
+    if jo_has_acc(oi_raw) and _go_acc_tables_have(oi_raw, key) {
         return jsv_hole();
     }
-    oi_p: int = shape_lookup(oi_raw.shape_id, key);
+    oi_p: int = shape_lookup(jo_shape_id(oi_raw), key);
     if oi_p < 0 or (oi_p & SHAPE_ATTR_ACCESSOR) != 0 or (oi_p & PROP_WRITABLE) == 0 {
         return jsv_hole();
     }
-    oi_old: JSValue = oi_raw.sget(oi_p // 16);
+    oi_old: JSValue = jo_sget(oi_raw, oi_p // 16);
     if not jsv_is_int32(oi_old) {
         return jsv_hole();
     }
@@ -1393,7 +2268,7 @@ def:pub js_object_own_int_add(jsobj: JSValue, key: int, delta: int) -> JSValue {
     if oi_new < -2147483648 or oi_new > 2147483647 {
         return jsv_hole();
     }
-    oi_raw.sset(oi_p // 16, js_int(oi_new));
+    jo_sset(oi_raw, oi_p // 16, js_int(oi_new));
     return oi_old;
 }
 
@@ -1406,7 +2281,7 @@ def:pub js_object_map_version(jsobj: JSValue) -> int {
     if idx <= 0 {
         return -1;
     }
-    return _obj_get(idx).version;
+    return jo_version(idx);
 }
 
 # ── Object-footprint measurement (docs/OBJECT_FOOTPRINT_PLAN.md, Phase 0) ────
@@ -1443,52 +2318,52 @@ def:pub obj_stats_report {
     ent_objs: int = 0;
     elem_objs: int = 0;
     i: int = 0;
-    n: int = len(_OBJ_REALM.objects);
+    n: int = jo_count();
     while i < n {
-        os_o: JSObject = _OBJ_REALM.objects[i];
-        if os_o.cell_flags != CELL_FLAG_DEAD and (
+        os_o: int = i + 1;
+        if jo_cell_flags(os_o) != CELL_FLAG_DEAD and (
             i >= _OBJ_REALM.objmark_len
             or read_byte(_OBJ_REALM.objmark_ptr, i) != 255
         ) {
             live = live + 1;
-            if os_o.mode == 0 {
+            if jo_mode(os_o) == 0 {
                 dictm = dictm + 1;
             } else {
                 shapem = shapem + 1;
             }
-            sslots = sslots + os_o.slen();
-            sentries = sentries + len(os_o.ent_ro());
-            sko = sko + len(os_o.ko_ro());
-            if os_o.has_ent() {
+            sslots = sslots + jo_slen(os_o);
+            sentries = sentries + len(jo_ent_ro(os_o));
+            sko = sko + len(jo_ko_ro(os_o));
+            if jo_has_ent(os_o) {
                 ent_objs = ent_objs + 1;
             }
             if len(_acc_ro(os_o).getters) > 0 or len(_acc_ro(os_o).setters) > 0 {
                 acc_objs = acc_objs + 1;
             }
-            if os_o.mapped_args() {
+            if jo_mapped_args(os_o) {
                 mapped = mapped + 1;
             }
-            if os_o.elems_kind != ELEMS_NONE {
+            if jo_elems_kind(os_o) != ELEMS_NONE {
                 arr_objs = arr_objs + 1;
-                selems = selems + os_o.elen();
+                selems = selems + jo_elen(os_o);
             }
-            if os_o.ep != 0 {
+            if jo_ep(os_o) != 0 {
                 elem_objs = elem_objs + 1;
             }
-            if os_o.class_id != 0 {
+            if jo_class_id(os_o) != 0 {
                 classful = classful + 1;
             }
-            if os_o.bkind() != 0 {
+            if jo_bkind(os_o) != 0 {
                 binaries = binaries + 1;
             }
-            if (os_o.cell_flags & FLAG_MODULE_NS) != 0 {
+            if (jo_cell_flags(os_o) & FLAG_MODULE_NS) != 0 {
                 modns = modns + 1;
             }
         }
         i = i + 1;
     }
     heap_live: int = len(_OBJ_REALM.heap_strings)
-        - len(_OBJ_REALM.free_heap_string_slots);
+        - hs_free_n();
     intern_n: int = len(_OBJ_REALM.intern_by_str);
     # Base per-object container (the shape-mode `slots` list, P4) + the 2-container
     # ArgsState row each mapped-args object carries (P1) + each accessor object's
@@ -1555,15 +2430,15 @@ def:pub js_object_get_own_data_ic(jsobj: JSValue, key: int) -> list[JSValue] {
     if idx <= 0 {
         return out;
     }
-    raw: JSObject = _obj_get(idx);
-    if raw.mapped_args() {
+    raw: int = idx;
+    if jo_mapped_args(raw) {
         return out;
     }  # aliased indices need the slow path
     # Non-materializing own-data lookup: get_property() would allocate a fresh
     # JSProperty per call, and on this ~75M-calls/build hot path the owned
     # result local leaked (~3GB, OOMed vite builds under --gc). has_own_data()
     # + get() are both scalar-returning and allocation-free.
-    if not raw.has_own_data(key) {
+    if not jo_has_own_data(raw, key) {
         return out;
     }
     # Accessor own properties are stored with getter/setter tables — if a getter
@@ -1572,7 +2447,7 @@ def:pub js_object_get_own_data_ic(jsobj: JSValue, key: int) -> list[JSValue] {
         return out;
     }
     out[0] = js_int(1);
-    out[1] = raw.get(key);
+    out[1] = jo_get(raw, key);
     return out;
 }
 
@@ -1589,48 +2464,48 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
     # An index-keyed prop landing on a PROTOTYPE object invalidates the dense
     # fast paths that skip prototype walks (hole/out-of-range reads, appends).
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0
         and idx_protector_ok()
         and _obj_is_array_index_key_id(key) {
         idx_protector_clear();
     }
     # Dense elements: in-range write / append / small-gap hole-fill stay
     # dense; big gaps or non-extensible new indices degrade or reject.
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         dsi: int = _obj_array_index_sort_key(key);
-        dsn: int = raw.elen();
+        dsn: int = jo_elen(raw);
         if dsi < dsn {
-            raw.eset(dsi, val);
+            jo_eset(raw, dsi, val);
             return 0;
         }
         # An arguments object's elements never grow past the arguments it was
         # made with: an index at or beyond them is an ordinary property (its
         # `length` does not follow, and an iterator over it stops at `length`).
-        if (raw.cell_flags & FLAG_IS_ARGUMENTS) != 0 {
-            raw.ensure_sparse();
-        } elif raw.is_ext() {
+        if (jo_cell_flags(raw) & FLAG_IS_ARGUMENTS) != 0 {
+            jo_ensure_sparse(raw);
+        } elif jo_is_ext(raw) {
             if dsi == dsn {
-                raw.epush(val);
+                jo_epush(raw, val);
                 return 0;
             }
             if dsi <= dsn + DENSE_GAP_MAX {
-                while raw.elen() < dsi {
-                    raw.epush(jsv_hole());
+                while jo_elen(raw) < dsi {
+                    jo_epush(raw, jsv_hole());
                 }
-                raw.epush(val);
-                raw.elems_kind = ELEMS_HOLEY;
+                jo_epush(raw, val);
+                jo_set_elems_kind(raw, ELEMS_HOLEY);
                 return 0;
             }
-            raw.ensure_sparse();
+            jo_ensure_sparse(raw);
         } else {
             return 1;
         }
@@ -1641,8 +2516,8 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
     # Accessor-owned keys also convert first: dict-mode [[Set]] treats an
     # accessor-only key as "no data property" (VM handles the setter before
     # ever reaching here) and that semantic must survive the mode change.
-    if raw.mode == MAP_MODE_SHAPE {
-        sgp: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        sgp: int = shape_lookup(jo_shape_id(raw), key);
         w_acc: bool = sgp >= 0 and (sgp & SHAPE_ATTR_ACCESSOR) != 0;
         w_idx: bool = _obj_is_array_index_key_id(key);
         # An existing writable data property: [[Set]] only replaces the
@@ -1652,12 +2527,12 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
         if sgp >= 0
             and not w_acc
             and not w_idx
-            and not raw.mapped_args()
-            and not raw.has_acc() {
+            and not jo_mapped_args(raw)
+            and not jo_has_acc(raw) {
             if (sgp & PROP_WRITABLE) == 0 {
                 return 1;
             }
-            raw.sset(sgp // 16, val);
+            jo_sset(raw, sgp // 16, val);
             return 0;
         }
         if w_acc or w_idx {
@@ -1683,23 +2558,23 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
                     write(2, dm, str_nbytes(dm));
                 }
             }
-            raw.pm_ensure_dict();
+            jo_pm_ensure_dict(raw);
         }
     }
-    if raw.has_key(key) {
-        prop: JSProperty = raw.get_property(key);
+    if jo_has_key(raw, key) {
+        prop: JSProperty = jo_get_property(raw, key);
         if not prop.writable {
             return 1;
         }
         # Mapped arguments: writing an aliased index writes the live parameter slot
         # (and the stored value, kept in sync for descriptor reads).
-        if raw.mapped_args() {
+        if jo_mapped_args(raw) {
             st_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));
             if key in st_ars.slot_map {
                 ms: int = st_ars.slot_map[key];
                 if ms >= 0 and ms < len(st_ars.locals) {
                     st_ars.locals[ms] = val;
-                    raw.wb(val);
+                    jo_wb(raw, val);
                 }
             }
         }
@@ -1714,18 +2589,18 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
         if prop.configurable {
             existing_flags = existing_flags | PROP_CONFIGURABLE;
         }
-        if raw.set(key, val, existing_flags) != 0 {
-            raw.pm_ensure_dict();
-            raw.set(key, val, existing_flags);
+        if jo_set(raw, key, val, existing_flags) != 0 {
+            jo_pm_ensure_dict(raw);
+            jo_set(raw, key, val, existing_flags);
         }
         return 0;
     }
-    if not raw.is_ext() {
+    if not jo_is_ext(raw) {
         return 1;
     }
-    if raw.set(key, val, PROP_DEFAULT) != 0 {
-        raw.pm_ensure_dict();
-        raw.set(key, val, PROP_DEFAULT);
+    if jo_set(raw, key, val, PROP_DEFAULT) != 0 {
+        jo_pm_ensure_dict(raw);
+        jo_set(raw, key, val, PROP_DEFAULT);
     }
     return 0;
 }
@@ -1742,18 +2617,18 @@ def:pub js_object_set_flags(jsobj: JSValue, key: int, val: JSValue, flags: int) 
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
-        raw.ensure_sparse();
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        jo_ensure_sparse(raw);
     }
-    if raw.mode == MAP_MODE_SHAPE {
-        sgf: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        sgf: int = shape_lookup(jo_shape_id(raw), key);
         if (sgf >= 0 and (sgf & SHAPE_ATTR_ACCESSOR) != 0)
             or _obj_is_array_index_key_id(key) {
-            raw.pm_ensure_dict();
+            jo_pm_ensure_dict(raw);
         } else {
             # A data property or a new key: the shape entry is the property
             # record. has_key + get_property (which built a JSProperty) +
@@ -1763,30 +2638,30 @@ def:pub js_object_set_flags(jsobj: JSValue, key: int, val: JSValue, flags: int) 
                     return 1;
                 }
                 if (sgf & 15) == (flags & 7) {
-                    raw.sset(sgf // 16, val);
+                    jo_sset(raw, sgf // 16, val);
                     return 0;
                 }
-            } elif not raw.is_ext() {
+            } elif not jo_is_ext(raw) {
                 return 1;
             }
-            if raw.set(key, val, flags) != 0 {
-                raw.pm_ensure_dict();
-                raw.set(key, val, flags);
+            if jo_set(raw, key, val, flags) != 0 {
+                jo_pm_ensure_dict(raw);
+                jo_set(raw, key, val, flags);
             }
             return 0;
         }
     }
-    if raw.has_key(key) {
-        prop: JSProperty = raw.get_property(key);
+    if jo_has_key(raw, key) {
+        prop: JSProperty = jo_get_property(raw, key);
         if not prop.writable {
             return 1;
         }
-    } elif not raw.is_ext() {
+    } elif not jo_is_ext(raw) {
         return 1;
     }
-    if raw.set(key, val, flags) != 0 {
-        raw.pm_ensure_dict();
-        raw.set(key, val, flags);
+    if jo_set(raw, key, val, flags) != 0 {
+        jo_pm_ensure_dict(raw);
+        jo_set(raw, key, val, flags);
     }
     return 0;
 }
@@ -1804,15 +2679,15 @@ def:pub js_object_remove_own_keep_order(jsobj: JSValue, key: int) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return False;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
-        raw.ensure_sparse();
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        jo_ensure_sparse(raw);
     }
-    if raw.mode == MAP_MODE_SHAPE and raw.has_key(key) {
-        raw.pm_ensure_dict();
+    if jo_mode(raw) == MAP_MODE_SHAPE and jo_has_key(raw, key) {
+        jo_pm_ensure_dict(raw);
     }
     if key in _acc_ro(raw).getters
         or key in _acc_ro(raw).setters
@@ -1837,25 +2712,25 @@ def:pub js_object_remove_own_keep_order(jsobj: JSValue, key: int) -> bool {
         if key in _acc_ro(raw).configurable {
             del _acc_ro(raw).configurable[key];
         }
-        if raw.has_key(key) {
-            raw.delete(key);
+        if jo_has_key(raw, key) {
+            jo_delete(raw, key);
         }
         return True;
     }
-    prop: JSProperty = raw.get_property(key);
+    prop: JSProperty = jo_get_property(raw, key);
     if prop.key == 0 {
         return True;
     }
     if not prop.configurable {
         return False;
     }
-    if raw.mapped_args() {
+    if jo_mapped_args(raw) {
         dl_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));
         if key in dl_ars.slot_map {
             del dl_ars.slot_map[key];
         }
     }
-    raw.delete(key);
+    jo_delete(raw, key);
     return True;
 }
 
@@ -1871,26 +2746,26 @@ def:pub js_object_delete(jsobj: JSValue, key: int) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return False;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
     # Dense elements are configurable by construction: delete = punch a hole.
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         ddel: int = _obj_array_index_sort_key(key);
-        if ddel < raw.elen() and not jsv_is_hole(raw.eget(ddel)) {
-            raw.eset(ddel, jsv_hole());
-            raw.elems_kind = ELEMS_HOLEY;
+        if ddel < jo_elen(raw) and not jsv_is_hole(jo_eget(raw, ddel)) {
+            jo_eset(raw, ddel, jsv_hole());
+            jo_set_elems_kind(raw, ELEMS_HOLEY);
         }
         return True;
     }
     # Shape mode: any delete of an existing key (data or accessor) leaves
     # shape mode first, then the dict logic below applies verbatim.
-    if raw.mode == MAP_MODE_SHAPE and raw.has_key(key) {
-        raw.pm_ensure_dict();
+    if jo_mode(raw) == MAP_MODE_SHAPE and jo_has_key(raw, key) {
+        jo_pm_ensure_dict(raw);
     }
     # Accessor property: honour its configurable attribute, then remove it from the
     # accessor dicts and the insertion order.
@@ -1917,15 +2792,15 @@ def:pub js_object_delete(jsobj: JSValue, key: int) -> bool {
         # Drop the key from the insertion order (inline; adding a helper here risks
         # the jsobject.na.jac parser function-count limit).
         acc_ko_new: list[int] = [];
-        for acc_kk in raw.ko_ro() {
+        for acc_kk in jo_ko_ro(raw) {
             if acc_kk != key {
                 acc_ko_new.append(acc_kk);
             }
         }
-        raw.ext_rw().key_order = acc_ko_new;
+        jo_ext_rw(raw).key_order = acc_ko_new;
         return True;
     }
-    prop: JSProperty = raw.get_property(key);
+    prop: JSProperty = jo_get_property(raw, key);
     has_getter: bool = key in _acc_ro(raw).getters;
     has_setter: bool = key in _acc_ro(raw).setters;
     if prop.key == 0 and not has_getter and not has_setter {
@@ -1938,14 +2813,14 @@ def:pub js_object_delete(jsobj: JSValue, key: int) -> bool {
     }
     # Mapped arguments: deleting an aliased index removes the parameter mapping
     # (ES §10.4.4.4) — a later re-add of the index must NOT re-alias the parameter.
-    if raw.mapped_args() {
+    if jo_mapped_args(raw) {
         dl_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));
         if key in dl_ars.slot_map {
             del dl_ars.slot_map[key];
         }
     }
     if prop.key != 0 {
-        raw.delete(key);
+        jo_delete(raw, key);
     }
     # Purge accessor tables so HasProperty / [[Get]] no longer see a stale
     # getter/setter after the property is deleted (R18).
@@ -1977,12 +2852,12 @@ NO `entries` row, so testing `entries` alone would silently delete every getter
 and setter from enumeration. That is exactly what broke ~30 suites on the first
 attempt at this. Rebuilding preserves relative order, so insertion order is
 unaffected."""
-def _compact_key_order(raw: JSObject) -> None {
-    if raw.mode == MAP_MODE_SHAPE {
+def _compact_key_order(raw: int) -> None {
+    if jo_mode(raw) == MAP_MODE_SHAPE {
         return;
     }  # no tombstones in shape mode
-    ko_c: list[int] = raw.ko_ro();
-    ent_c: dict[int, JSProperty] = raw.ent_ro();
+    ko_c: list[int] = jo_ko_ro(raw);
+    ent_c: dict[int, JSProperty] = jo_ent_ro(raw);
     ko_len: int = len(ko_c);
     if ko_len <= 16 {
         return;
@@ -2000,7 +2875,7 @@ def _compact_key_order(raw: JSObject) -> None {
         }
         koi = koi + 1;
     }
-    raw.ext_rw().key_order = ko_new;
+    jo_ext_rw(raw).key_order = ko_new;
 }
 
 
@@ -2020,16 +2895,16 @@ def:pub js_object_has_own(jsobj: JSValue, key: int) -> bool {
     # Read through the table row (borrowed) unless the accessor tables are
     # needed: an owned _obj_get handle cost a retain and a release per call.
     ho_dix: int = -1;
-    if _OBJ_REALM.objects[ho_id - 1].elems_kind != ELEMS_NONE {
+    if jo_elems_kind(ho_id) != ELEMS_NONE {
         ho_dix = _obj_index_of_key(key);
     }
-    if _OBJ_REALM.objects[ho_id - 1].has_own_plain(key, ho_dix) {
+    if jo_has_own_plain(ho_id, key, ho_dix) {
         return True;
     }
     # No accessor side table: nothing else can hold the key. (The common
     # miss — marker-key probes on plain objects — paid four empty-table
     # lookups, each through its own AccessorTable reference.)
-    if not _OBJ_REALM.objects[ho_id - 1].has_acc() {
+    if not jo_has_acc(ho_id) {
         return False;
     }
     return _ho_in_acc_tables(ho_id, key);
@@ -2038,7 +2913,7 @@ def:pub js_object_has_own(jsobj: JSValue, key: int) -> bool {
 """js_object_has_own's accessor-table probe (an owned row handle, kept out
 of the common path)."""
 def _ho_in_acc_tables(ho_id: int, key: int) -> bool {
-    raw: JSObject = _obj_get(ho_id);
+    raw: int = ho_id;
     return (
         key in _acc_ro(raw).getters
         or key in _acc_ro(raw).setters
@@ -2061,9 +2936,9 @@ def:pub js_object_has_own_accessor(jsobj: JSValue, key: int) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return False;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.mode == MAP_MODE_SHAPE {
-        hac: int = shape_lookup(raw.shape_id, key);
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        hac: int = shape_lookup(jo_shape_id(raw), key);
         return hac >= 0 and (hac & SHAPE_ATTR_ACCESSOR) != 0;
     }
     if key in _acc_ro(raw).getters or key in _acc_ro(raw).setters {
@@ -2091,22 +2966,22 @@ def:pub js_object_has(jsobj: JSValue, key: int) -> bool {
         if current_idx <= 0 {
             return False;
         }
-        current: JSObject = _obj_get(current_idx);
-        if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        current: int = current_idx;
+        if jo_elems_kind(current) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dhp: int = _obj_array_index_sort_key(key);
-            if dhp < current.elen()
-                and not jsv_is_hole(current.eget(dhp)) {
+            if dhp < jo_elen(current)
+                and not jsv_is_hole(jo_eget(current, dhp)) {
                 return True;
             }
         }
-        if current.has_key(key) {
+        if jo_has_key(current, key) {
             return True;
         }
-        if current.has_acc()
+        if jo_has_acc(current)
             and (key in _acc_ro(current).getters or key in _acc_ro(current).setters) {
             return True;
         }
-        current_idx = current.prototype_idx;
+        current_idx = jo_prototype_idx(current);
     }
     return False;
 }
@@ -2353,14 +3228,14 @@ def:pub js_object_array_is_dataonly_fast(jsobj: JSValue) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return False;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.class_id != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_class_id(raw) != 0 {
         return False;
     }
     if len(_acc_ro(raw).getters) != 0 or len(_acc_ro(raw).setters) != 0 {
         return False;
     }
-    if raw.mapped_args() or (raw.cell_flags & FLAG_MODULE_NS) != 0 {
+    if jo_mapped_args(raw) or (jo_cell_flags(raw) & FLAG_MODULE_NS) != 0 {
         return False;
     }
     return True;
@@ -2389,18 +3264,18 @@ def:pub js_object_next_present_index_ge(jsobj: JSValue, from_idx: int, n: int) -
     if jsv_to_table_id(jsobj) <= 0 {
         return n;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.elems_kind != ELEMS_NONE {
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_elems_kind(raw) != ELEMS_NONE {
         de_i: int = from_idx;
         if de_i < 0 {
             de_i = 0;
         }
-        de_n: int = raw.elen();
+        de_n: int = jo_elen(raw);
         if de_n > n {
             de_n = n;
         }
         while de_i < de_n {
-            if not jsv_is_hole(raw.eget(de_i)) {
+            if not jsv_is_hole(jo_eget(raw, de_i)) {
                 return de_i;
             }
             de_i = de_i + 1;
@@ -2415,7 +3290,7 @@ def:pub js_object_next_present_index_ge(jsobj: JSValue, from_idx: int, n: int) -
     pr_i: int = from_idx;
     while pr_i < pr_end {
         pr_k: int = str_intern_lookup(str(pr_i));
-        if pr_k >= 0 and raw.has_key(pr_k) {
+        if pr_k >= 0 and jo_has_key(raw, pr_k) {
             return pr_i;
         }
         pr_i = pr_i + 1;
@@ -2425,7 +3300,7 @@ def:pub js_object_next_present_index_ge(jsobj: JSValue, from_idx: int, n: int) -
     }
     # A gap wider than the window: the minimum array-index key in [pr_end, n).
     best: int = n;
-    for kid in raw.all_keys() {
+    for kid in jo_all_keys(raw) {
         if kid < 0 {
             continue;
         }
@@ -2448,16 +3323,16 @@ def:pub js_object_own_key_is_enumerable_now(jsobj: JSValue, kid: int) -> bool {
         return False;
     }
     en_id: int = jsv_to_table_id(jsobj);
-    if _OBJ_REALM.objects[en_id - 1].elems_kind != ELEMS_NONE
+    if jo_elems_kind(en_id) != ELEMS_NONE
         and _obj_is_array_index_key_id(kid) {
         den: int = _obj_array_index_sort_key(kid);
-        return den < _OBJ_REALM.objects[en_id - 1].elen()
-            and not jsv_is_hole(_OBJ_REALM.objects[en_id - 1].eget(den));
+        return den < jo_elen(en_id)
+            and not jsv_is_hole(jo_eget(en_id, den));
     }
     # Shape mode: data AND accessor entries answer from the packed attrs
     # (get_property reports accessors as not-found, so it can't be used here).
-    if _OBJ_REALM.objects[en_id - 1].mode == MAP_MODE_SHAPE {
-        oke: int = shape_lookup(_OBJ_REALM.objects[en_id - 1].shape_id, kid);
+    if jo_mode(en_id) == MAP_MODE_SHAPE {
+        oke: int = shape_lookup(jo_shape_id(en_id), kid);
         if oke >= 0 {
             return (oke & PROP_ENUMERABLE) != 0;
         }
@@ -2469,8 +3344,8 @@ def:pub js_object_own_key_is_enumerable_now(jsobj: JSValue, kid: int) -> bool {
 """js_object_own_key_is_enumerable_now's dict-mode half (an owned row
 handle and a descriptor, kept out of the shape-mode path)."""
 def _own_key_enumerable_dict(en_id: int, kid: int) -> bool {
-    raw_e: JSObject = _obj_get(en_id);
-    p_e: JSProperty = raw_e.get_property(kid);
+    raw_e: int = en_id;
+    p_e: JSProperty = jo_get_property(raw_e, kid);
     if p_e.key != 0 {
         return p_e.enumerable;
     }
@@ -2507,13 +3382,13 @@ def:pub js_object_spread_plan(v: JSValue) -> list[int] {
     if sp_id <= 0 {
         return sp_none;
     }
-    if _OBJ_REALM.objects[sp_id - 1].mode != MAP_MODE_SHAPE
-        or _OBJ_REALM.objects[sp_id - 1].elems_kind != ELEMS_NONE
-        or _OBJ_REALM.objects[sp_id - 1].class_id != 0
-        or _OBJ_REALM.objects[sp_id - 1].bkind() != 0
-        or _OBJ_REALM.objects[sp_id - 1].brand != 0
+    if jo_mode(sp_id) != MAP_MODE_SHAPE
+        or jo_elems_kind(sp_id) != ELEMS_NONE
+        or jo_class_id(sp_id) != 0
+        or jo_bkind(sp_id) != 0
+        or jo_brand(sp_id) != 0
         or (
-            _OBJ_REALM.objects[sp_id - 1].cell_flags
+            jo_cell_flags(sp_id)
             & (
                 FLAG_MODULE_NS
                 | FLAG_IS_GLOBAL
@@ -2525,7 +3400,7 @@ def:pub js_object_spread_plan(v: JSValue) -> list[int] {
             != 0 {
         return sp_none;
     }
-    sp_sid: int = _OBJ_REALM.objects[sp_id - 1].shape_id;
+    sp_sid: int = jo_shape_id(sp_id);
     if sp_sid in _SPREAD_PLANS {
         return _SPREAD_PLANS[sp_sid];
     }
@@ -2562,11 +3437,11 @@ def:pub js_object_keys(jsobj: JSValue) -> list[int] {
     # An ordinary shape-mode object without element storage: the answer is a
     # function of its shape (V4.20) — cached per shape id, a copy returned.
     ok_sid: int = -1;
-    if _OBJ_REALM.objects[ok_id - 1].mode == MAP_MODE_SHAPE
-        and _OBJ_REALM.objects[ok_id - 1].elems_kind == ELEMS_NONE
-        and _OBJ_REALM.objects[ok_id - 1].class_id == 0
-        and _OBJ_REALM.objects[ok_id - 1].bkind() == 0 {
-        ok_sid = _OBJ_REALM.objects[ok_id - 1].shape_id;
+    if jo_mode(ok_id) == MAP_MODE_SHAPE
+        and jo_elems_kind(ok_id) == ELEMS_NONE
+        and jo_class_id(ok_id) == 0
+        and jo_bkind(ok_id) == 0 {
+        ok_sid = jo_shape_id(ok_id);
         if ok_sid in _OKEYS_BY_SHAPE {
             ok_c: list[int] = _OKEYS_BY_SHAPE[ok_sid];
             ok_out: list[int] = [];
@@ -2610,17 +3485,17 @@ def:pub js_object_accessor_getter_keys(jsobj: JSValue) -> list[int] {
     if jsv_to_table_id(jsobj) <= 0 {
         return empty;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     result: list[int] = [];
-    if raw.mode == MAP_MODE_SHAPE {
-        agk: list[int] = shape_keys(raw.shape_id);
-        agk_n: int = shape_key_count(raw.shape_id);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        agk: list[int] = shape_keys(jo_shape_id(raw));
+        agk_n: int = shape_key_count(jo_shape_id(raw));
         agi: int = 0;
         while agi < agk_n {
-            agp: int = shape_lookup(raw.shape_id, agk[agi]);
+            agp: int = shape_lookup(jo_shape_id(raw), agk[agi]);
             if agp >= 0
                 and (agp & SHAPE_ATTR_ACCESSOR) != 0
-                and not jsv_is_undefined(raw.sget(agp // 16)) {
+                and not jsv_is_undefined(jo_sget(raw, agp // 16)) {
                 result.append(agk[agi]);
             }
             agi = agi + 1;
@@ -2646,33 +3521,33 @@ def:pub js_object_all_keys(jsobj: JSValue) -> list[int] {
     if jsv_to_table_id(jsobj) <= 0 {
         return empty;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.elems_kind != ELEMS_NONE {
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_elems_kind(raw) != ELEMS_NONE {
         akd: list[int] = [];
         akd_i: int = 0;
-        while akd_i < raw.elen() {
-            if not jsv_is_hole(raw.eget(akd_i)) {
+        while akd_i < jo_elen(raw) {
+            if not jsv_is_hole(jo_eget(raw, akd_i)) {
                 akd.append(str_intern_index(akd_i));
             }
             akd_i = akd_i + 1;
         }
-        for akd_k in raw.all_keys() {
+        for akd_k in jo_all_keys(raw) {
             akd.append(akd_k);
         }
         return akd;
     }
     # Shape mode: the shape chain IS the insertion order — data and accessor
     # entries alike — with no tombstones, so no liveness or dedupe filtering.
-    if raw.mode == MAP_MODE_SHAPE {
-        return raw.all_keys();
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        return jo_all_keys(raw);
     }
     # Walk insertion order, including accessor-only keys (which live in the
     # accessor dicts, not `entries`, but were appended to key_order on install).
     # Dedupe stale key_order entries (safety net if delete missed a purge).
     result: list[int] = [];
     seen: dict[int, bool] = {};
-    ko_ak: list[int] = raw.ko_ro();
-    ent_ak: dict[int, JSProperty] = raw.ent_ro();
+    ko_ak: list[int] = jo_ko_ro(raw);
+    ent_ak: dict[int, JSProperty] = jo_ent_ro(raw);
     ki: int = 0;
     while ki < len(ko_ak) {
         k: int = ko_ak[ki];
@@ -2719,39 +3594,39 @@ def:pub js_object_gc_push_children(idx: int, work: list[JSValue]) -> None {
     if idx <= 0 {
         return;
     }
-    raw: JSObject = _obj_get(idx);
+    raw: int = idx;
     pc_mp: int = _OBJ_REALM.objmark_ptr;
     pc_mn: int = _OBJ_REALM.objmark_len;
     pc_epoch: int = gc_mark_byte(_OBJ_REALM);
     si: int = 0;
-    sn: int = raw.slen();
+    sn: int = jo_slen(raw);
     while si < sn {
-        pc_sv: JSValue = raw.sget(si);
+        pc_sv: JSValue = jo_sget(raw, si);
         if _gc_child_pending(pc_sv, pc_mp, pc_mn, pc_epoch) {
             work.append(pc_sv);
         }
         si = si + 1;
     }
-    if raw.ep != 0 {
+    if jo_ep(raw) != 0 {
         ei: int = 0;
-        en: int = raw.elen();
+        en: int = jo_elen(raw);
         while ei < en {
-            pc_ev: JSValue = raw.eget(ei);
+            pc_ev: JSValue = jo_eget(raw, ei);
             if _gc_child_pending(pc_ev, pc_mp, pc_mn, pc_epoch) {
                 work.append(pc_ev);
             }
             ei = ei + 1;
         }
     }
-    if raw.has_ent() {
-        pc_ent: dict[int, JSProperty] = raw.ent_ro();
+    if jo_has_ent(raw) {
+        pc_ent: dict[int, JSProperty] = jo_ent_ro(raw);
         for k in pc_ent {
             if jsv_is_cell(pc_ent[k].value) {
                 work.append(pc_ent[k].value);
             }
         }
     }
-    if raw.has_acc() {
+    if jo_has_acc(raw) {
         for k in _acc_ro(raw).getters {
             work.append(_acc_ro(raw).getters[k]);
         }
@@ -2761,11 +3636,11 @@ def:pub js_object_gc_push_children(idx: int, work: list[JSValue]) -> None {
     }
     # Proxy [[ProxyTarget]] / [[ProxyHandler]] and the mapped-arguments row:
     # see js_object_gc_children below.
-    if raw.class_id == 1 and idx in _OBJ_REALM.proxy_slots {
+    if jo_class_id(raw) == 1 and idx in _OBJ_REALM.proxy_slots {
         work.append(_OBJ_REALM.proxy_slots[idx].target);
         work.append(_OBJ_REALM.proxy_slots[idx].handler);
     }
-    if raw.mapped_args() and idx in _OBJ_REALM.args_slots {
+    if jo_mapped_args(raw) and idx in _OBJ_REALM.args_slots {
         pc_ai: int = 0;
         while pc_ai < len(_OBJ_REALM.args_slots[idx].locals) {
             work.append(_OBJ_REALM.args_slots[idx].locals[pc_ai]);
@@ -2788,22 +3663,22 @@ def:pub js_object_gc_children(idx: int) -> list[JSValue] {
     if idx <= 0 {
         return out;
     }
-    raw: JSObject = _obj_get(idx);
+    raw: int = idx;
     # Shape-mode values live in the flat slots list. Missing this walk is a
     # use-after-free factory: slot values would be invisible to the marker.
     si: int = 0;
-    while si < raw.slen() {
-        out.append(raw.sget(si));
+    while si < jo_slen(raw) {
+        out.append(jo_sget(raw, si));
         si = si + 1;
     }
     # Dense array elements likewise (hole sentinels are non-cells — the
     # tracer ignores them, so no filtering needed here).
     ei: int = 0;
-    while ei < raw.elen() {
-        out.append(raw.eget(ei));
+    while ei < jo_elen(raw) {
+        out.append(jo_eget(raw, ei));
         ei = ei + 1;
     }
-    ent_gc: dict[int, JSProperty] = raw.ent_ro();
+    ent_gc: dict[int, JSProperty] = jo_ent_ro(raw);
     for k in ent_gc {
         out.append(ent_gc[k].value);
     }
@@ -2828,14 +3703,14 @@ def:pub js_object_gc_children(idx: int) -> list[JSValue] {
     # class_id == CLASS_ID_PROXY (1); default fields are js_undefined (a non-cell
     # the tracer ignores) so the guard is just to avoid two no-op appends per
     # ordinary object.
-    if raw.class_id == 1 and idx in _OBJ_REALM.proxy_slots {
+    if jo_class_id(raw) == 1 and idx in _OBJ_REALM.proxy_slots {
         px_gc: ProxyState = _OBJ_REALM.proxy_slots[idx];
         out.append(px_gc.target);
         out.append(px_gc.handler);
     }
     # Mapped-arguments row: `locals` aliases the activation's live locals list, so
     # its entries must stay reachable while the arguments object is live (Phase 1).
-    if raw.mapped_args() and idx in _OBJ_REALM.args_slots {
+    if jo_mapped_args(raw) and idx in _OBJ_REALM.args_slots {
         ar_gc: ArgsState = _OBJ_REALM.args_slots[idx];
         as_i: int = 0;
         while as_i < len(ar_gc.locals) {
@@ -2896,15 +3771,15 @@ def:pub js_object_create_data_property_or_throw(
     cd_sid: int = js_object_plain_shape_id(jsobj);
     if cd_sid >= 0 and not _obj_is_array_index_key_id(key) {
         cd_id: int = jsv_to_table_id(jsobj);
-        if (_OBJ_REALM.objects[cd_id - 1].cell_flags & FLAG_IS_GLOBAL) == 0 {
+        if (jo_cell_flags(cd_id) & FLAG_IS_GLOBAL) == 0 {
             cd_p: int = shape_lookup(cd_sid, key);
             if cd_p >= 0 {
                 if (cd_p & 15) == PROP_DEFAULT {
-                    _OBJ_REALM.objects[cd_id - 1].sset(cd_p // 16, val);
+                    jo_sset(cd_id, cd_p // 16, val);
                     return 0;
                 }
-            } elif _OBJ_REALM.objects[cd_id - 1].is_ext()
-                and _OBJ_REALM.objects[cd_id - 1].set(key, val, PROP_DEFAULT) == 0 {
+            } elif jo_is_ext(cd_id)
+                and jo_set(cd_id, key, val, PROP_DEFAULT) == 0 {
                 return 0;
             }
         }
@@ -2960,21 +3835,21 @@ def:pub js_object_freeze(jsobj: JSValue) -> int {
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     # Integrity ops rewrite every descriptor in place — dict mode's job
     # (Phase 6 may revisit with frozen-shape flags; freeze is rare).
-    raw.ensure_sparse();
-    raw.pm_ensure_dict();
-    ks: list[int] = raw.all_keys();
+    jo_ensure_sparse(raw);
+    jo_pm_ensure_dict(raw);
+    ks: list[int] = jo_all_keys(raw);
     for k in ks {
-        prop: JSProperty = raw.get_property(k);
+        prop: JSProperty = jo_get_property(raw, k);
         if prop.key != 0 {
             # Clear writable + configurable; preserve enumerable.
             flags: int = 0;
             if prop.enumerable {
                 flags = flags | PROP_ENUMERABLE;
             }
-            raw.set(k, prop.value, flags);
+            jo_set(raw, k, prop.value, flags);
         }
     }
     # Accessors: clear configurable only (writable is N/A).
@@ -2984,7 +3859,7 @@ def:pub js_object_freeze(jsobj: JSValue) -> int {
     for ak2 in _acc_ro(raw).setters {
         _acc_rw(raw).configurable[ak2] = False;
     }
-    raw.set_non_ext();
+    jo_set_non_ext(raw);
     return 0;
 }
 
@@ -3011,12 +3886,12 @@ def:pub js_object_seal(jsobj: JSValue) -> int {
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    raw.ensure_sparse();
-    raw.pm_ensure_dict();  # in-place descriptor rewrite below is dict-only
-    ks: list[int] = raw.all_keys();
+    raw: int = jsv_to_table_id(jsobj);
+    jo_ensure_sparse(raw);
+    jo_pm_ensure_dict(raw);  # in-place descriptor rewrite below is dict-only
+    ks: list[int] = jo_all_keys(raw);
     for k in ks {
-        prop: JSProperty = raw.get_property(k);
+        prop: JSProperty = jo_get_property(raw, k);
         if prop.key != 0 {
             flags: int = 0;
             if prop.writable {
@@ -3026,7 +3901,7 @@ def:pub js_object_seal(jsobj: JSValue) -> int {
                 flags = flags | PROP_ENUMERABLE;
             }
             # configurable cleared
-            raw.set(k, prop.value, flags);
+            jo_set(raw, k, prop.value, flags);
         }
     }
     for ak in _acc_ro(raw).getters {
@@ -3035,7 +3910,7 @@ def:pub js_object_seal(jsobj: JSValue) -> int {
     for ak2 in _acc_ro(raw).setters {
         _acc_rw(raw).configurable[ak2] = False;
     }
-    raw.set_non_ext();
+    jo_set_non_ext(raw);
     return 0;
 }
 
@@ -3049,8 +3924,8 @@ def:pub js_object_prevent_extensions(jsobj: JSValue) -> int {
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    raw.set_non_ext();
+    raw: int = jsv_to_table_id(jsobj);
+    jo_set_non_ext(raw);
     return 0;
 }
 
@@ -3062,14 +3937,14 @@ def:pub js_object_is_extensible(jsobj: JSValue) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return False;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     # Module Namespace Exotic [[IsExtensible]] always returns false (§10.4.6.3),
     # even while the engine still allows privileged export-key installation
     # (raw.is_ext() may remain true until finalize).
-    if (raw.cell_flags & FLAG_MODULE_NS) != 0 {
+    if (jo_cell_flags(raw) & FLAG_MODULE_NS) != 0 {
         return False;
     }
-    return raw.is_ext();
+    return jo_is_ext(raw);
 }
 
 """True if `jsobj` is a Module Namespace Exotic Object (§10.4.6)."""
@@ -3083,10 +3958,10 @@ def:pub js_is_module_namespace(jsobj: JSValue) -> bool {
     # Scalar read of the flags (no owned JSObject handle): asked ~50M times in a
     # vite build, on every namespace-sensitive property access.
     mn_id: int = jsv_to_table_id(jsobj);
-    if mn_id > len(_OBJ_REALM.objects) {
+    if mn_id > jo_count() {
         return False;
     }
-    return (_OBJ_REALM.objects[mn_id - 1].cell_flags & FLAG_MODULE_NS) != 0;
+    return (jo_cell_flags(mn_id) & FLAG_MODULE_NS) != 0;
 }
 
 """
@@ -3102,8 +3977,8 @@ def:pub js_object_mark_module_namespace(jsobj: JSValue) -> None {
     if jsv_to_table_id(jsobj) <= 0 {
         return;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    raw.cell_flags = raw.cell_flags | FLAG_MODULE_NS;
+    raw: int = jsv_to_table_id(jsobj);
+    jo_set_cell_flags(raw, jo_cell_flags(raw) | FLAG_MODULE_NS);
 }
 
 """
@@ -3127,15 +4002,15 @@ def:pub js_object_namespace_export_set(jsobj: JSValue, key: int, val: JSValue) -
     if key == 6 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     # Namespace objects get non-default flags and later in-place descriptor
     # rewrites (finalize) — dict mode from the first binding.
-    raw.pm_ensure_dict();
+    jo_pm_ensure_dict(raw);
     flags: int = PROP_WRITABLE | PROP_ENUMERABLE;
     if key >= SYMBOL_KEY_BASE {
         flags = 0;
     }
-    raw.set(key, val, flags);
+    jo_set(raw, key, val, flags);
     return 0;
 }
 
@@ -3152,10 +4027,10 @@ def:pub js_object_finalize_module_namespace(jsobj: JSValue) -> None {
     if jsv_to_table_id(jsobj) <= 0 {
         return;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    raw.pm_ensure_dict();  # in-place entries rewrite below is dict-only
-    raw.cell_flags = raw.cell_flags | FLAG_MODULE_NS;
-    keys: list[int] = raw.all_keys();
+    raw: int = jsv_to_table_id(jsobj);
+    jo_pm_ensure_dict(raw);  # in-place entries rewrite below is dict-only
+    jo_set_cell_flags(raw, jo_cell_flags(raw) | FLAG_MODULE_NS);
+    keys: list[int] = jo_all_keys(raw);
     for ak in _acc_ro(raw).getters {
         found_ak: bool = False;
         ki0: int = 0;
@@ -3197,8 +4072,8 @@ def:pub js_object_finalize_module_namespace(jsobj: JSValue) -> None {
             if kid not in _acc_ro(raw).enumerable {
                 _acc_rw(raw).enumerable[kid] = True;
             }
-        } elif kid in raw.ent_ro() {
-            prop: JSProperty = raw.ent_ro()[kid];
+        } elif kid in jo_ent_ro(raw) {
+            prop: JSProperty = jo_ent_ro(raw)[kid];
             is_sym: bool = kid >= SYMBOL_KEY_BASE;
             w: bool = True;
             e: bool = True;
@@ -3206,7 +4081,7 @@ def:pub js_object_finalize_module_namespace(jsobj: JSValue) -> None {
                 w = False;
                 e = False;
             }
-            raw.ent_rw()[kid] = JSProperty(
+            jo_ent_rw(raw)[kid] = JSProperty(
                 key=kid,
                 value=prop.value,
                 writable=w,
@@ -3217,7 +4092,7 @@ def:pub js_object_finalize_module_namespace(jsobj: JSValue) -> None {
         }
         ki = ki + 1;
     }
-    raw.set_non_ext();
+    jo_set_non_ext(raw);
 }
 
 """Object.isFrozen(jsobj). ECMAScript §20.1.2.12."""
@@ -3228,14 +4103,14 @@ def:pub js_object_is_frozen(jsobj: JSValue) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return True;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.is_ext() {
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_is_ext(raw) {
         return False;
     }
-    if raw.elems_kind != ELEMS_NONE {
+    if jo_elems_kind(raw) != ELEMS_NONE {
         ifd: int = 0;
-        while ifd < raw.elen() {
-            if not jsv_is_hole(raw.eget(ifd)) {
+        while ifd < jo_elen(raw) {
+            if not jsv_is_hole(jo_eget(raw, ifd)) {
                 return False;
             }
             ifd = ifd + 1;
@@ -3243,12 +4118,12 @@ def:pub js_object_is_frozen(jsobj: JSValue) -> bool {
     }
     # Shape mode: get_property hides accessors (and freeze converts to dict),
     # so a non-frozen shape object answers from the packed attrs directly.
-    if raw.mode == MAP_MODE_SHAPE {
-        ifk: list[int] = shape_keys(raw.shape_id);
-        ifk_n: int = shape_key_count(raw.shape_id);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        ifk: list[int] = shape_keys(jo_shape_id(raw));
+        ifk_n: int = shape_key_count(jo_shape_id(raw));
         ifi: int = 0;
         while ifi < ifk_n {
-            ifp: int = shape_lookup(raw.shape_id, ifk[ifi]);
+            ifp: int = shape_lookup(jo_shape_id(raw), ifk[ifi]);
             if ifp >= 0 {
                 if (ifp & PROP_CONFIGURABLE) != 0 {
                     return False;
@@ -3261,9 +4136,9 @@ def:pub js_object_is_frozen(jsobj: JSValue) -> bool {
         }
         return True;
     }
-    ks: list[int] = raw.all_keys();
+    ks: list[int] = jo_all_keys(raw);
     for k in ks {
-        prop: JSProperty = raw.get_property(k);
+        prop: JSProperty = jo_get_property(raw, k);
         if prop.writable or prop.configurable {
             return False;
         }
@@ -3300,25 +4175,25 @@ def:pub js_object_is_sealed(jsobj: JSValue) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return True;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.is_ext() {
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_is_ext(raw) {
         return False;
     }
-    if raw.elems_kind != ELEMS_NONE {
+    if jo_elems_kind(raw) != ELEMS_NONE {
         isd: int = 0;
-        while isd < raw.elen() {
-            if not jsv_is_hole(raw.eget(isd)) {
+        while isd < jo_elen(raw) {
+            if not jsv_is_hole(jo_eget(raw, isd)) {
                 return False;
             }
             isd = isd + 1;
         }
     }
-    if raw.mode == MAP_MODE_SHAPE {
-        isk: list[int] = shape_keys(raw.shape_id);
-        isk_n: int = shape_key_count(raw.shape_id);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        isk: list[int] = shape_keys(jo_shape_id(raw));
+        isk_n: int = shape_key_count(jo_shape_id(raw));
         isi: int = 0;
         while isi < isk_n {
-            isp: int = shape_lookup(raw.shape_id, isk[isi]);
+            isp: int = shape_lookup(jo_shape_id(raw), isk[isi]);
             if isp >= 0 and (isp & PROP_CONFIGURABLE) != 0 {
                 return False;
             }
@@ -3326,9 +4201,9 @@ def:pub js_object_is_sealed(jsobj: JSValue) -> bool {
         }
         return True;
     }
-    ks: list[int] = raw.all_keys();
+    ks: list[int] = jo_all_keys(raw);
     for k in ks {
-        prop: JSProperty = raw.get_property(k);
+        prop: JSProperty = jo_get_property(raw, k);
         if prop.configurable {
             return False;
         }
@@ -3373,11 +4248,11 @@ def:pub js_object_get_prototype(jsobj: JSValue) -> JSValue {
     if jsv_to_table_id(jsobj) <= 0 {
         return js_null();
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.prototype_idx == -1 {
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_prototype_idx(raw) == -1 {
         return js_null();
     }
-    return _obj_wrap(raw.prototype_idx);
+    return _obj_wrap(jo_prototype_idx(raw));
 }
 
 """
@@ -3397,7 +4272,7 @@ def _proto_would_cycle(obj_idx: int, proto_idx: int) -> bool {
         if walk == obj_idx {
             return True;
         }
-        walk = _obj_get(walk).prototype_idx;
+        walk = jo_prototype_idx(walk);
     }
     return True;
 }
@@ -3410,33 +4285,33 @@ def:pub js_object_set_prototype(jsobj: JSValue, proto: JSValue) -> int {
     if obj_idx <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(obj_idx);
+    raw: int = obj_idx;
     new_proto_idx: int = -1;
     if jsv_is_object_cell(proto) and jsv_to_table_id(proto) > 0 {
         new_proto_idx = jsv_to_table_id(proto);
     }
     # ES §10.1.14 / Reflect.setPrototypeOf: same current [[Prototype]] succeeds
     # even when the object is non-extensible (before the extensibility rejection).
-    if raw.prototype_idx == new_proto_idx {
+    if jo_prototype_idx(raw) == new_proto_idx {
         return 0;
     }
     # Module Namespace Exotic [[SetPrototypeOf]] → SetImmutablePrototype (§10.4.6.2):
     # only the current [[Prototype]] (always null) is accepted; any other V → false.
-    if (raw.cell_flags & FLAG_MODULE_NS) != 0 {
+    if (jo_cell_flags(raw) & FLAG_MODULE_NS) != 0 {
         return 1;
     }
-    if not raw.is_ext() {
+    if not jo_is_ext(raw) {
         return 1;
     }
     if _proto_would_cycle(obj_idx, new_proto_idx) {
         return 1;
     }
-    raw.prototype_idx = new_proto_idx;
-    raw.wb_all();
+    jo_set_prototype_idx(raw, new_proto_idx);
+    jo_wb_all(raw);
     # Re-linking a prototype changes the chain of every object inheriting from
     # it: invalidate inherited-read ICs (a non-prototype receiver's own link is
     # checked by the IC itself).
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
     # Dense-elements protector: the new prototype may ALREADY carry index
@@ -3445,12 +4320,12 @@ def:pub js_object_set_prototype(jsobj: JSValue, proto: JSValue) -> int {
     # it. Objects deeper in its chain were already prototypes — any index
     # props they gained cleared the protector at write time.
     if new_proto_idx > 0 {
-        np_raw: JSObject = _obj_get(new_proto_idx);
-        np_raw.cell_flags = np_raw.cell_flags | FLAG_IS_PROTO;
+        np_raw: int = new_proto_idx;
+        jo_set_cell_flags(np_raw, jo_cell_flags(np_raw) | FLAG_IS_PROTO);
         if idx_protector_ok() {
-            if np_raw.class_id != 0 {
+            if jo_class_id(np_raw) != 0 {
                 idx_protector_clear();
-            } elif np_raw.elems_kind != ELEMS_NONE and np_raw.elen() > 0 {
+            } elif jo_elems_kind(np_raw) != ELEMS_NONE and jo_elen(np_raw) > 0 {
                 idx_protector_clear();
             } else {
                 for np_k in js_object_all_keys(proto) {
@@ -3517,11 +4392,11 @@ def:pub js_object_define_property(
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
     # Accessor-owned keys must not grow a parallel data property.  ValidateAndApply
@@ -3530,42 +4405,42 @@ def:pub js_object_define_property(
     if key in _acc_ro(raw).getters or key in _acc_ro(raw).setters {
         return 1;
     }
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0
         and idx_protector_ok()
         and _obj_is_array_index_key_id(key) {
         idx_protector_clear();
     }
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         if descriptor.writable and descriptor.enumerable and descriptor.configurable {
             ddi: int = _obj_array_index_sort_key(key);
-            ddn: int = raw.elen();
+            ddn: int = jo_elen(raw);
             if ddi < ddn {
-                raw.eset(ddi, descriptor.value);
+                jo_eset(raw, ddi, descriptor.value);
                 return 0;
             }
-            if ddi == ddn and raw.is_ext() {
-                raw.epush(descriptor.value);
+            if ddi == ddn and jo_is_ext(raw) {
+                jo_epush(raw, descriptor.value);
                 return 0;
             }
         }
-        raw.ensure_sparse();
+        jo_ensure_sparse(raw);
     }
-    if raw.mode == MAP_MODE_SHAPE {
-        dpk: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        dpk: int = shape_lookup(jo_shape_id(raw), key);
         if dpk >= 0 and (dpk & SHAPE_ATTR_ACCESSOR) != 0 {
             return 1;
         }
         if _obj_is_array_index_key_id(key) {
-            raw.pm_ensure_dict();
+            jo_pm_ensure_dict(raw);
         }
     }
-    existing: JSProperty = raw.get_property(key);
+    existing: JSProperty = jo_get_property(raw, key);
     # Mapped arguments index: validate against the *live* parameter value, not the
     # stale stored one (ES §10.4.4.2 runs OrdinaryDefineOwnProperty on the current
     # state, which for a mapped index is the parameter binding).
     dpf_idx: int = jsv_to_table_id(jsobj);
     dp_is_mapped: bool = False;
-    if raw.mapped_args() and existing.key != 0 {
+    if jo_mapped_args(raw) and existing.key != 0 {
         if key in _args_row(dpf_idx).slot_map {
             dp_is_mapped = True;
         }
@@ -3575,11 +4450,11 @@ def:pub js_object_define_property(
         dpm_slot: int = dpf_ars.slot_map[key];
         if dpm_slot >= 0 and dpm_slot < len(dpf_ars.locals) {
             existing.value = dpf_ars.locals[dpm_slot];
-            raw.wb(existing.value);
+            jo_wb(raw, existing.value);
         }
     }
     if existing.key == 0 {
-        if not raw.is_ext() {
+        if not jo_is_ext(raw) {
             return 1;
         }
     } else {
@@ -3613,9 +4488,9 @@ def:pub js_object_define_property(
     if descriptor.configurable {
         flags = flags | PROP_CONFIGURABLE;
     }
-    if raw.set(key, descriptor.value, flags) != 0 {
-        raw.pm_ensure_dict();
-        raw.set(key, descriptor.value, flags);
+    if jo_set(raw, key, descriptor.value, flags) != 0 {
+        jo_pm_ensure_dict(raw);
+        jo_set(raw, key, descriptor.value, flags);
     }
     # Mapped-arguments post-step (ES §10.4.4.2): write the new value to the
     # parameter, then de-map if the redefinition made it non-writable.
@@ -3624,7 +4499,7 @@ def:pub js_object_define_property(
         dpm_slot2: int = dpf_ars2.slot_map[key];
         if dpm_slot2 >= 0 and dpm_slot2 < len(dpf_ars2.locals) {
             dpf_ars2.locals[dpm_slot2] = descriptor.value;
-            raw.wb(descriptor.value);
+            jo_wb(raw, descriptor.value);
         }
         if not descriptor.writable {
             del dpf_ars2.slot_map[key];
@@ -3648,45 +4523,45 @@ def:pub js_object_apply_validated_descriptor(
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
     if key in _acc_ro(raw).getters or key in _acc_ro(raw).setters {
         return 1;
     }
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0
         and idx_protector_ok()
         and _obj_is_array_index_key_id(key) {
         idx_protector_clear();
     }
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         if descriptor.writable and descriptor.enumerable and descriptor.configurable {
             avi: int = _obj_array_index_sort_key(key);
-            avn: int = raw.elen();
+            avn: int = jo_elen(raw);
             if avi < avn {
-                raw.eset(avi, descriptor.value);
+                jo_eset(raw, avi, descriptor.value);
                 return 0;
             }
-            if avi == avn and raw.is_ext() {
-                raw.epush(descriptor.value);
+            if avi == avn and jo_is_ext(raw) {
+                jo_epush(raw, descriptor.value);
                 return 0;
             }
         }
-        raw.ensure_sparse();
+        jo_ensure_sparse(raw);
     }
-    if raw.mode == MAP_MODE_SHAPE {
-        avk: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        avk: int = shape_lookup(jo_shape_id(raw), key);
         if avk >= 0 and (avk & SHAPE_ATTR_ACCESSOR) != 0 {
             return 1;
         }
         if _obj_is_array_index_key_id(key) {
-            raw.pm_ensure_dict();
+            jo_pm_ensure_dict(raw);
         }
     }
     av_idx: int = jsv_to_table_id(jsobj);
     dp_is_mapped: bool = False;
-    if raw.mapped_args() {
+    if jo_mapped_args(raw) {
         if key in _args_row(av_idx).slot_map {
             dp_is_mapped = True;
         }
@@ -3701,16 +4576,16 @@ def:pub js_object_apply_validated_descriptor(
     if descriptor.configurable {
         flags = flags | PROP_CONFIGURABLE;
     }
-    if raw.set(key, descriptor.value, flags) != 0 {
-        raw.pm_ensure_dict();
-        raw.set(key, descriptor.value, flags);
+    if jo_set(raw, key, descriptor.value, flags) != 0 {
+        jo_pm_ensure_dict(raw);
+        jo_set(raw, key, descriptor.value, flags);
     }
     if dp_is_mapped {
         av_ars: ArgsState = _args_row(av_idx);
         dpm_slot2: int = av_ars.slot_map[key];
         if dpm_slot2 >= 0 and dpm_slot2 < len(av_ars.locals) {
             av_ars.locals[dpm_slot2] = descriptor.value;
-            raw.wb(descriptor.value);
+            jo_wb(raw, descriptor.value);
         }
         if not descriptor.writable {
             del av_ars.slot_map[key];
@@ -3745,14 +4620,14 @@ def:pub js_object_get_own_property_descriptor(jsobj: JSValue, key: int) -> JSPro
             deleted=True
         );
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     # Dense element: a plain writable/enumerable/configurable data descriptor.
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         dgp: int = _obj_array_index_sort_key(key);
-        if dgp < raw.elen() and not jsv_is_hole(raw.eget(dgp)) {
+        if dgp < jo_elen(raw) and not jsv_is_hole(jo_eget(raw, dgp)) {
             return JSProperty(
                 key=key,
-                value=raw.eget(dgp),
+                value=jo_eget(raw, dgp),
                 writable=True,
                 enumerable=True,
                 configurable=True,
@@ -3762,8 +4637,8 @@ def:pub js_object_get_own_property_descriptor(jsobj: JSValue, key: int) -> JSPro
     }
     # Shape-mode accessor: surface the present, correctly-flagged descriptor
     # from the packed attrs (get/set values come from get_own_accessor_*).
-    if raw.mode == MAP_MODE_SHAPE {
-        gsk: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        gsk: int = shape_lookup(jo_shape_id(raw), key);
         if gsk >= 0 and (gsk & SHAPE_ATTR_ACCESSOR) != 0 {
             return JSProperty(
                 key=key,
@@ -3805,9 +4680,9 @@ def:pub js_object_get_own_property_descriptor(jsobj: JSValue, key: int) -> JSPro
             deleted=False
         );
     }
-    gopd_p: JSProperty = raw.get_property(key);
+    gopd_p: JSProperty = jo_get_property(raw, key);
     # Mapped arguments: the descriptor's value reflects the live parameter slot.
-    if gopd_p.key != 0 and raw.mapped_args() {
+    if gopd_p.key != 0 and jo_mapped_args(raw) {
         gopd_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));
         if key in gopd_ars.slot_map {
             gms: int = gopd_ars.slot_map[key];
@@ -3844,7 +4719,7 @@ def:pub js_object_mark_arguments(argobj: JSValue) -> None {
     if oid <= 0 {
         return;
     }
-    _obj_get(oid).set_arguments();
+    jo_set_arguments(oid);
 }
 
 def:pub js_object_set_mapped_args(
@@ -3857,9 +4732,9 @@ def:pub js_object_set_mapped_args(
         return;
     }
     ma_idx: int = jsv_to_table_id(argobj);
-    raw: JSObject = _obj_get(ma_idx);
-    raw.pm_ensure_dict();  # aliased indices never take the shape path
-    raw.set_mapped_args();
+    raw: int = ma_idx;
+    jo_pm_ensure_dict(raw);  # aliased indices never take the shape path
+    jo_set_mapped_args(raw);
     _OBJ_REALM.args_slots[ma_idx] = ArgsState(locals=locals, slot_map=slot_map);
 }
 
@@ -3874,8 +4749,8 @@ def:pub js_object_unmap_arg(argobj: JSValue, key: int) -> None {
         return;
     }
     ua_idx: int = jsv_to_table_id(argobj);
-    raw: JSObject = _obj_get(ua_idx);
-    if raw.mapped_args() {
+    raw: int = ua_idx;
+    if jo_mapped_args(raw) {
         ua_ars: ArgsState = _args_row(ua_idx);
         if key in ua_ars.slot_map {
             del ua_ars.slot_map[key];
@@ -3893,8 +4768,8 @@ def:pub js_object_mapped_arg_value(argobj: JSValue, key: int) -> JSValue {
         return js_undefined();
     }
     mv_idx: int = jsv_to_table_id(argobj);
-    raw: JSObject = _obj_get(mv_idx);
-    if raw.mapped_args() {
+    raw: int = mv_idx;
+    if jo_mapped_args(raw) {
         mv_ars: ArgsState = _args_row(mv_idx);
         if key in mv_ars.slot_map {
             ms: int = mv_ars.slot_map[key];
@@ -3915,7 +4790,7 @@ def:pub js_object_is_arguments(v: JSValue) -> bool {
     if oid <= 0 {
         return False;
     }
-    return _obj_get(oid).mapped_args() or _obj_get(oid).arguments_obj();
+    return jo_mapped_args(oid) or jo_arguments_obj(oid);
 }
 
 """True if argobj has a live parameter mapping for key."""
@@ -3927,8 +4802,8 @@ def:pub js_object_is_arg_mapped(argobj: JSValue, key: int) -> bool {
         return False;
     }
     am_idx: int = jsv_to_table_id(argobj);
-    raw: JSObject = _obj_get(am_idx);
-    if not raw.mapped_args() {
+    raw: int = am_idx;
+    if not jo_mapped_args(raw) {
         return False;
     }
     return key in _args_row(am_idx).slot_map;
@@ -3947,54 +4822,54 @@ def:pub js_object_set_accessor_getter(
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
     if idx_protector_ok()
         and _obj_is_array_index_key_id(key)
-        and (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+        and (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         idx_protector_clear();
     }
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
-        raw.ensure_sparse();
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        jo_ensure_sparse(raw);
     }
     # Shape mode: accessors are 2-slot (getter, setter) shape entries with
     # SHAPE_ATTR_ACCESSOR. New keys transition; an existing accessor rewrites
     # its getter slot in place; a data→accessor kind change goes to dict mode.
     # (Mapped-arguments objects are always dict mode — the de-map below never
     # applies on the shape arm.)
-    if raw.mode == MAP_MODE_SHAPE {
-        sag: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        sag: int = shape_lookup(jo_shape_id(raw), key);
         if sag >= 0 and (sag & SHAPE_ATTR_ACCESSOR) != 0 {
-            raw.sset(sag // 16, getter_fn);
+            jo_sset(raw, sag // 16, getter_fn);
             return 0;
         }
         if sag < 0 {
             sag_child: int = shape_transition_add(
-                raw.shape_id,
+                jo_shape_id(raw),
                 key,
                 SHAPE_ATTR_ACCESSOR | PROP_ENUMERABLE | PROP_CONFIGURABLE
             );
             if sag_child > 0 {
-                raw.shape_id = sag_child;
-                raw.spush(getter_fn);
-                raw.spush(js_undefined());
-                raw.version = raw.version + 1;
+                jo_set_shape_id(raw, sag_child);
+                jo_spush(raw, getter_fn);
+                jo_spush(raw, js_undefined());
+                jo_set_version(raw, jo_version(raw) + 1);
                 return 0;
             }
         }
-        raw.pm_ensure_dict();
+        jo_pm_ensure_dict(raw);
     }
     _register_accessor_key(raw, key);
     _acc_rw(raw).getters[key] = getter_fn;
-    raw.wb(getter_fn);
+    jo_wb(raw, getter_fn);
     # Mapped arguments: turning an aliased index into an accessor de-maps it
     # (ES §10.4.4.2 — an accessor descriptor removes the parameter mapping).
-    if raw.mapped_args() {
+    if jo_mapped_args(raw) {
         sa_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));
         if key in sa_ars.slot_map {
             del sa_ars.slot_map[key];
@@ -4010,27 +4885,27 @@ for-in), and seed its descriptor flags (enumerable/configurable = true by
 default — object-literal & defineProperty-default semantics).  Idempotent: a key
 already present as a data property or a prior accessor is left in place.
 """
-def _register_accessor_key(raw: JSObject, key: int) {
+def _register_accessor_key(raw: int, key: int) {
     # Accessor storage lives in the side dicts + key_order until Phase 4 —
     # a shape-mode object leaves shape mode at its first accessor.
-    raw.pm_ensure_dict();
+    jo_pm_ensure_dict(raw);
     # Append only when absent from insertion order.  Data→accessor conversion
     # deletes the data entry but leaves the key in key_order; re-appending
     # duplicates enumeration (Object.keys / entries live semantics).
     in_order: bool = False;
-    for ko in raw.ko_ro() {
+    for ko in jo_ko_ro(raw) {
         if ko == key {
             in_order = True;
             break;
         }
     }
     if not in_order {
-        raw.ko_rw().append(key);
+        jo_ko_rw(raw).append(key);
     }
     # Drop any stale data-property sentinel so it cannot fight accessor
     # [[Enumerable]]/[[Configurable]] during later DefineOwnProperty / integrity.
-    if key in raw.ent_ro() {
-        raw.delete(key);
+    if key in jo_ent_ro(raw) {
+        jo_delete(raw, key);
     }
     if key not in _acc_ro(raw).enumerable {
         _acc_rw(raw).enumerable[key] = True;
@@ -4051,18 +4926,18 @@ def:pub js_object_set_accessor_enumerable(
     if jsv_to_table_id(jsobj) <= 0 {
         return;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     # An absent key gets a blind side-dict row below, which makes it an own
     # accessor: that can shadow an inherited property an IC cached.
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
     # Shape mode: an existing accessor's flag flip is an attrs-change replay —
     # the common class-installation pattern (install getter, then
     # enumerable=false) stays in shape mode. Anything else (data key, absent
     # key) reproduces dict mode's blind side-dict seed after converting.
-    if raw.mode == MAP_MODE_SHAPE {
-        sae: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        sae: int = shape_lookup(jo_shape_id(raw), key);
         if sae >= 0 and (sae & SHAPE_ATTR_ACCESSOR) != 0 {
             sae_new: int = (sae & 15) & (15 - PROP_ENUMERABLE);
             if enumerable {
@@ -4071,13 +4946,13 @@ def:pub js_object_set_accessor_enumerable(
             if sae_new == (sae & 15) {
                 return;
             }
-            sae_sid: int = shape_change_attrs(raw.shape_id, key, sae_new);
+            sae_sid: int = shape_change_attrs(jo_shape_id(raw), key, sae_new);
             if sae_sid >= 0 {
-                raw.shape_id = sae_sid;
+                jo_set_shape_id(raw, sae_sid);
                 return;
             }
         }
-        raw.pm_ensure_dict();
+        jo_pm_ensure_dict(raw);
     }
     _acc_rw(raw).enumerable[key] = enumerable;
 }
@@ -4092,13 +4967,13 @@ def:pub js_object_set_accessor_configurable(
     if jsv_to_table_id(jsobj) <= 0 {
         return;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
+    raw: int = jsv_to_table_id(jsobj);
     # See js_object_set_accessor_enumerable: may create an own accessor row.
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
-    if raw.mode == MAP_MODE_SHAPE {
-        sac: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        sac: int = shape_lookup(jo_shape_id(raw), key);
         if sac >= 0 and (sac & SHAPE_ATTR_ACCESSOR) != 0 {
             sac_new: int = (sac & 15) & (15 - PROP_CONFIGURABLE);
             if configurable {
@@ -4107,13 +4982,13 @@ def:pub js_object_set_accessor_configurable(
             if sac_new == (sac & 15) {
                 return;
             }
-            sac_sid: int = shape_change_attrs(raw.shape_id, key, sac_new);
+            sac_sid: int = shape_change_attrs(jo_shape_id(raw), key, sac_new);
             if sac_sid >= 0 {
-                raw.shape_id = sac_sid;
+                jo_set_shape_id(raw, sac_sid);
                 return;
             }
         }
-        raw.pm_ensure_dict();
+        jo_pm_ensure_dict(raw);
     }
     _acc_rw(raw).configurable[key] = configurable;
 }
@@ -4131,48 +5006,48 @@ def:pub js_object_set_accessor_setter(
     if jsv_to_table_id(jsobj) <= 0 {
         return 1;
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    raw: int = jsv_to_table_id(jsobj);
+    if (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
-    if (raw.cell_flags & FLAG_IS_GLOBAL) != 0 {
+    if (jo_cell_flags(raw) & FLAG_IS_GLOBAL) != 0 {
         global_obj_note_write(key);
     }
     if idx_protector_ok()
         and _obj_is_array_index_key_id(key)
-        and (raw.cell_flags & FLAG_IS_PROTO) != 0 {
+        and (jo_cell_flags(raw) & FLAG_IS_PROTO) != 0 {
         idx_protector_clear();
     }
-    if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
-        raw.ensure_sparse();
+    if jo_elems_kind(raw) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        jo_ensure_sparse(raw);
     }
-    if raw.mode == MAP_MODE_SHAPE {
-        sas: int = shape_lookup(raw.shape_id, key);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        sas: int = shape_lookup(jo_shape_id(raw), key);
         if sas >= 0 and (sas & SHAPE_ATTR_ACCESSOR) != 0 {
-            raw.sset(sas // 16 + 1, setter_fn);
+            jo_sset(raw, sas // 16 + 1, setter_fn);
             return 0;
         }
         if sas < 0 {
             sas_child: int = shape_transition_add(
-                raw.shape_id,
+                jo_shape_id(raw),
                 key,
                 SHAPE_ATTR_ACCESSOR | PROP_ENUMERABLE | PROP_CONFIGURABLE
             );
             if sas_child > 0 {
-                raw.shape_id = sas_child;
-                raw.spush(js_undefined());
-                raw.spush(setter_fn);
-                raw.version = raw.version + 1;
+                jo_set_shape_id(raw, sas_child);
+                jo_spush(raw, js_undefined());
+                jo_spush(raw, setter_fn);
+                jo_set_version(raw, jo_version(raw) + 1);
                 return 0;
             }
         }
-        raw.pm_ensure_dict();
+        jo_pm_ensure_dict(raw);
     }
     _register_accessor_key(raw, key);
     _acc_rw(raw).setters[key] = setter_fn;
-    raw.wb(setter_fn);
+    jo_wb(raw, setter_fn);
     # Mapped arguments: an accessor setter de-maps the aliased index (see getter).
-    if raw.mapped_args() {
+    if jo_mapped_args(raw) {
         sa_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));
         if key in sa_ars.slot_map {
             del sa_ars.slot_map[key];
@@ -4193,11 +5068,11 @@ def:pub js_object_get_own_accessor_getter(jsobj: JSValue, key: int) -> JSValue {
     if jsv_to_table_id(jsobj) <= 0 {
         return js_undefined();
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.mode == MAP_MODE_SHAPE {
-        gag: int = shape_lookup(raw.shape_id, key);
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        gag: int = shape_lookup(jo_shape_id(raw), key);
         if gag >= 0 and (gag & SHAPE_ATTR_ACCESSOR) != 0 {
-            return raw.sget(gag // 16);
+            return jo_sget(raw, gag // 16);
         }
         return js_undefined();
     }
@@ -4219,11 +5094,11 @@ def:pub js_object_get_own_accessor_setter(jsobj: JSValue, key: int) -> JSValue {
     if jsv_to_table_id(jsobj) <= 0 {
         return js_undefined();
     }
-    raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw.mode == MAP_MODE_SHAPE {
-        gas: int = shape_lookup(raw.shape_id, key);
+    raw: int = jsv_to_table_id(jsobj);
+    if jo_mode(raw) == MAP_MODE_SHAPE {
+        gas: int = shape_lookup(jo_shape_id(raw), key);
         if gas >= 0 and (gas & SHAPE_ATTR_ACCESSOR) != 0 {
-            return raw.sget(gas // 16 + 1);
+            return jo_sget(raw, gas // 16 + 1);
         }
         return js_undefined();
     }
@@ -4253,20 +5128,20 @@ def:pub js_object_lookup_getter(jsobj: JSValue, key: int) -> JSValue {
         if current_idx <= 0 {
             return js_undefined();
         }
-        current: JSObject = _obj_get(current_idx);
-        if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        current: int = current_idx;
+        if jo_elems_kind(current) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dlg: int = _obj_array_index_sort_key(key);
-            if dlg < current.elen()
-                and not jsv_is_hole(current.eget(dlg)) {
+            if dlg < jo_elen(current)
+                and not jsv_is_hole(jo_eget(current, dlg)) {
                 return js_undefined();  # own data element shadows prototypes
             }
         }
-        if current.mode == MAP_MODE_SHAPE {
-            lgp: int = shape_lookup(current.shape_id, key);
+        if jo_mode(current) == MAP_MODE_SHAPE {
+            lgp: int = shape_lookup(jo_shape_id(current), key);
             if lgp >= 0 {
                 if (lgp & SHAPE_ATTR_ACCESSOR) != 0 {
                     # Getter slot; undefined correctly shadows (setter-only).
-                    return current.sget(lgp // 16);
+                    return jo_sget(current, lgp // 16);
                 }
                 return js_undefined();  # own data property shadows prototypes
             }
@@ -4275,11 +5150,11 @@ def:pub js_object_lookup_getter(jsobj: JSValue, key: int) -> JSValue {
                 return _acc_ro(current).getters[key];
             }
             # Own accessor without [[Get]], or own data property: shadow prototypes.
-            if key in _acc_ro(current).setters or current.has_key(key) {
+            if key in _acc_ro(current).setters or jo_has_key(current, key) {
                 return js_undefined();
             }
         }
-        current_idx = current.prototype_idx;
+        current_idx = jo_prototype_idx(current);
     }
     return js_undefined();
 }
@@ -4304,19 +5179,19 @@ def:pub js_object_lookup_setter(jsobj: JSValue, key: int) -> JSValue {
         if current_idx <= 0 {
             return js_undefined();
         }
-        current: JSObject = _obj_get(current_idx);
-        if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
+        current: int = current_idx;
+        if jo_elems_kind(current) != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dls: int = _obj_array_index_sort_key(key);
-            if dls < current.elen()
-                and not jsv_is_hole(current.eget(dls)) {
+            if dls < jo_elen(current)
+                and not jsv_is_hole(jo_eget(current, dls)) {
                 return js_undefined();
             }
         }
-        if current.mode == MAP_MODE_SHAPE {
-            lsp: int = shape_lookup(current.shape_id, key);
+        if jo_mode(current) == MAP_MODE_SHAPE {
+            lsp: int = shape_lookup(jo_shape_id(current), key);
             if lsp >= 0 {
                 if (lsp & SHAPE_ATTR_ACCESSOR) != 0 {
-                    return current.sget(lsp // 16 + 1);
+                    return jo_sget(current, lsp // 16 + 1);
                 }
                 return js_undefined();  # own data property shadows prototypes
             }
@@ -4325,11 +5200,11 @@ def:pub js_object_lookup_setter(jsobj: JSValue, key: int) -> JSValue {
                 return _acc_ro(current).setters[key];
             }
             # Own accessor without [[Set]], or own data property: shadow prototypes.
-            if key in _acc_ro(current).getters or current.has_key(key) {
+            if key in _acc_ro(current).getters or jo_has_key(current, key) {
                 return js_undefined();
             }
         }
-        current_idx = current.prototype_idx;
+        current_idx = jo_prototype_idx(current);
     }
     return js_undefined();
 }
