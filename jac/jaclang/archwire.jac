@@ -490,7 +490,12 @@ graph import {
         rn_tag_suggestions
     }
     client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
-    client.vite_bundler ++> dist.source.client.write_client { ViteBundler }
+    client.vite_bundler ++> [
+        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
+            client_build_env
+        },
+        dist.source.client.write_client { ViteBundler },
+    ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },
@@ -1654,7 +1659,10 @@ graph import {
         client.js_runtime.BunArtifact.build { fetch_bun },
         compiler.types.stubcat.locate.TypeshedArtifact.build { fetch_typeshed },
     ]
-    dist.precompile_bytecode ++> cli.commands.precompile.precompile { run_precompile }
+    dist.precompile_bytecode ++> [
+        cli.commands.precompile.precompile { run_precompile },
+        scale.injector.bundle.pack_jab { RESULT_NAME },
+    ]
     dist.precompile_bytecode --> scale.tests.microservices.test_app_precompile {
         main as seal_main,
         placement_facts_map,
@@ -4187,6 +4195,7 @@ graph import {
     server.serving.ws ++> [
         scale.runtime.gateway.microservice_gateway
             | scale.server.websocket_ext
+            | scale.tests.server.test_ws_hardening
             | scale.websocket.protocol
             | scale.websocket.websocket { WebSocket },
         scale.tests.server.test_serving_tail {
@@ -4197,6 +4206,9 @@ graph import {
             OP_TEXT,
             encode_frame,
             read_frame
+        },
+        scale.websocket.websocket.WebSocketConnectionManager._local_fanout {
+            _ws_json_default
         },
     ]
     server.session ++> [
@@ -10355,18 +10367,17 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass.exit_archetype
             | backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm
             | passes.type_checker_pass.TypeCheckPass.exit_archetype
-            | types.type_evaluator.TypeEvaluator._has_numeric_member {
+            | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_raise_stmt
             | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
             | passes.type_checker_pass.TypeCheckPass.exit_type_alias
-            | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
+            | types.type_evaluator.TypeEvaluator._numeric_instance {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass._raised_exc_identity
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call
-            | types.type_evaluator.TypeEvaluator._numeric_args_invariant {
+            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call {
             JAC_TYPE_REGISTRY
         },
         backends.native.na_ir_gen_pass { JacTypeEntry },
@@ -45502,8 +45513,12 @@ graph import scale {
     injector.bundle ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle {
             _stage_app,
+            cached_client_dist,
             client_build_sources,
+            client_input_digest,
+            nested_sanitized_tomls,
             release_binary_env,
+            remember_client_dist,
             remove_stage_root,
             source_filter_for
         },

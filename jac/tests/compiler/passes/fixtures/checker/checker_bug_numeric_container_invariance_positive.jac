@@ -2,7 +2,11 @@
 
 Non-numeric element types keep plain covariance, generic inference is
 untouched (TypeVar arguments are skipped), and literal elements still
-widen to the container's declared numeric element type.
+widen to the container's declared numeric element type. Declared
+variance still wins: a covariant type parameter, and the immutable and
+read-only containers that declare one (tuple, Sequence, frozenset), keep
+covariance for numeric elements too, and a union destination only holds
+the numeric members it can store back.
 """
 
 def take_anything(xs: list[object]) -> object {
@@ -22,6 +26,18 @@ def first[T](xs: list[T]) -> T {
 }
 
 def take_objects(xs: list[object | None]) -> object | None {
+    return xs[0];
+}
+
+def take_seq_floats(xs: Sequence[float]) -> float {
+    return xs[0];
+}
+
+def take_pair(xs: tuple[float, float]) -> float {
+    return xs[0];
+}
+
+def take_mixed(xs: list[int | object]) -> object {
     return xs[0];
 }
 
@@ -51,6 +67,22 @@ def take_num_box(b: Box[int | float]) -> int | float {
     return b.v;
 }
 
+glob CV = TypeVar('CV', covariant=True);
+
+obj Source(Generic[CV]) {
+    def read -> CV {
+        return self.v;
+    }
+
+    has v: CV;
+}
+
+obj IntSource(Source[int]) {}
+
+def take_float_source(s: Source[float]) -> float {
+    return s.read();
+}
+
 with entry {
     ints: list[int] = [1, 2, 3];
     words: list[str] = ["a"];
@@ -68,4 +100,10 @@ with entry {
     same_nums: list[int | float] = nums;
     strs: list[str | None] = ["a", None];
     o3: object | None = take_objects(strs);
+    f3: float = take_seq_floats(ints);
+    f4: float = take_pair((1, 2));
+    mixed: list[int | str] = [1, "a"];
+    o4: object = take_mixed(mixed);
+    isrc: IntSource = IntSource(v=1);
+    f5: float = take_float_source(isrc);
 }
