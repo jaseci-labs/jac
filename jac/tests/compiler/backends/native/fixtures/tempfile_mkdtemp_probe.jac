@@ -1,25 +1,24 @@
-"""Probe for the native `tempfile.mkdtemp`: argv[1] is the mode.
+"""Native tempfile entry points used by the in-process regression test."""
 
-`default` creates a directory under the environment's temp dir; `affix`
-exercises `prefix`/`suffix`; `dir` places the directory under argv[2];
-`missing` targets a nonexistent parent so the real errno must surface
-instead of a generic retry-exhaustion failure.
-"""
-import os;
-import sys;
 import tempfile;
 
-glob mode = sys.argv[1];
+def make_default -> str {
+    return tempfile.mkdtemp();
+}
 
-with entry {
-    if mode == "affix" {
-        print(tempfile.mkdtemp(suffix="-sfx", prefix="jacp-"));
-    } elif mode == "dir" {
-        print(tempfile.mkdtemp(dir=sys.argv[2]));
-    } elif mode == "missing" {
-        tempfile.mkdtemp(dir=sys.argv[2]);
-        print("unreachable");
-    } else {
-        print(tempfile.mkdtemp());
+def make_affixed -> str {
+    return tempfile.mkdtemp(suffix="-sfx", prefix="jacp-");
+}
+
+def make_in_dir(path: str) -> str {
+    return tempfile.mkdtemp(dir=path);
+}
+
+def missing_dir_error(path: str) -> str {
+    try {
+        tempfile.mkdtemp(dir=path);
+    } except OSError as e {
+        return str(e);
     }
+    return "unreachable";
 }

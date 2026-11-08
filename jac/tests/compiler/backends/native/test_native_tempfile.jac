@@ -1,105 +1,67 @@
-"""The native `tempfile.mkdtemp` must exclusively create mode-0700 dirs.
+"""The native `tempfile.mkdtemp` creates fresh private directories.
 
-`mkdtemp` is a security boundary: it must detect a name collision through
-mkdir(2)'s EEXIST and retry like CPython, propagate the real errno when the
-target parent is unusable, and return an absolute path. Compile a probe
-natively and check the directories it reports against the host filesystem.
+Exercise the native implementation through the existing in-process JIT
+harness, then inspect the created directories from the host test process.
 """
 
+import ctypes;
 import os;
 import stat;
-import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { jac_command }
+import from tests.support { compile_native, native_str_func }
 
-glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
-
-def build_probe -> str {
-    src = os.path.join(FIXTURES, "tempfile_mkdtemp_probe.jac");
-    out_bin = os.path.join(tempfile.mkdtemp(), "mkdtemp_probe");
-    comp = subprocess.run(
-        jac_command("build", "--native", src, "-o", out_bin),
-        capture_output=True,
-        text=True,
-        timeout=900
+test "native tempfile.mkdtemp creates private directories and reports errors" {
+    (engine, _ir) = compile_native("tempfile_mkdtemp_probe.jac");
+    make_default = native_str_func(engine, "make_default", ctypes.c_char_p);
+    make_affixed = native_str_func(engine, "make_affixed", ctypes.c_char_p);
+    make_in_dir = native_str_func(
+        engine, "make_in_dir", ctypes.c_char_p, ctypes.c_char_p
     );
-    assert comp.returncode == 0 , "nacompile failed: "
-        + (comp.stdout + comp.stderr)[-3000:];
-    return out_bin;
-}
-
-test "mkdtemp returns a fresh mode-0700 absolute directory under TMPDIR" {
-    probe = build_probe();
-    tmp = Path(tempfile.mkdtemp());
-    env = os.environ.copy();
-    env["TMPDIR"] = str(tmp);
-    # The probe takes its mode from argv[1]; "default" is the no-options call.
-    runs = [
-        subprocess.run(
-            [probe, "default"], capture_output=True, text=True, timeout=120, env=env
-        ) for _ in range(2)
-    ];
-    paths = [];
-    for proc in runs {
-        assert proc.returncode == 0 , proc.stderr;
-        paths.append(Path(proc.stdout.strip()));
+    missing_dir_error = native_str_func(
+        engine, "missing_dir_error", ctypes.c_char_p, ctypes.c_char_p
+    );
+    old_tmpdir = os.environ.get("TMPDIR");
+    try {
+        with tempfile.TemporaryDirectory() as tmpdir {
+            tmp = Path(tmpdir);
+            os.environ["TMPDIR"] = tmpdir;
+            paths = [Path(make_default().decode()) for _ in range(2)];
+            assert paths[0] != paths[1] , "mkdtemp must not reuse a directory";
+            for path in paths {
+                assert path.is_dir() and path.is_absolute() , path;
+                assert path.parent == tmp , path;
+                assert stat.S_IMODE(path.stat().st_mode) == 0o700 , (
+                    f"mkdtemp must create mode-0700 directories: {path}"
+                );
+            }
+            affixed = Path(make_affixed().decode());
+            assert affixed.parent == tmp and affixed.is_dir();
+            assert affixed.name.startswith("jacp-") and affixed.name.endswith("-sfx") , affixed.name;
+            base = tmp / "base";
+            base.mkdir();
+            explicit = Path(make_in_dir(str(base)).decode());
+            assert explicit.parent == base and explicit.is_dir();
+            relative = tmp / "relative";
+            relative.mkdir();
+            old_cwd = os.getcwd();
+            try {
+                os.chdir(tmpdir);
+                relative_result = Path(make_in_dir("relative").decode());
+            } finally {
+                os.chdir(old_cwd);
+            }
+            assert relative_result.is_absolute();
+            assert relative_result.parent == relative.resolve();
+            error = missing_dir_error(str(tmp / "missing")).decode();
+            assert "No such file or directory" in error , error;
+            assert "unreachable" not in error , error;
+        }
+    } finally {
+        if old_tmpdir is None {
+            os.environ.pop("TMPDIR", None);
+        } else {
+            os.environ["TMPDIR"] = old_tmpdir;
+        }
     }
-    assert paths[0] != paths[1] , "mkdtemp must not reuse a directory";
-    for p in paths {
-        assert p.is_dir();
-        assert p.is_absolute();
-        assert p.parent == tmp;
-        assert stat.S_IMODE(p.stat().st_mode) == 0o700 , "mkdtemp must create with mode 0700";
-    }
-}
-
-test "mkdtemp honors prefix, suffix, and an explicit dir" {
-    probe = build_probe();
-    tmp = Path(tempfile.mkdtemp());
-    env = os.environ.copy();
-    env["TMPDIR"] = str(tmp);
-    proc = subprocess.run(
-        [probe, "affix"], capture_output=True, text=True, timeout=120, env=env
-    );
-    assert proc.returncode == 0 , proc.stderr;
-    made = Path(proc.stdout.strip());
-    assert made.parent == tmp and made.is_dir();
-    assert made.name.startswith("jacp-") and made.name.endswith("-sfx") , made.name;
-    base = tmp / "base";
-    base.mkdir();
-    proc = subprocess.run(
-        [probe, "dir", str(base)], capture_output=True, text=True, timeout=120
-    );
-    assert proc.returncode == 0 , proc.stderr;
-    made = Path(proc.stdout.strip());
-    assert made.parent == base and made.is_dir();
-}
-
-test "mkdtemp under a relative dir still returns an absolute path" {
-    probe = build_probe();
-    tmp = Path(tempfile.mkdtemp());
-    (tmp / "rel").mkdir();
-    proc = subprocess.run(
-        [probe, "dir", "rel"], capture_output=True, text=True, timeout=120, cwd=str(tmp)
-    );
-    assert proc.returncode == 0 , proc.stderr;
-    made = Path(proc.stdout.strip());
-    assert made.is_absolute();
-    assert made.parent == (tmp / "rel").resolve();
-}
-
-test "mkdtemp on a missing dir reports the real errno on the first attempt" {
-    probe = build_probe();
-    tmp = Path(tempfile.mkdtemp());
-    proc = subprocess.run(
-        [probe, "missing", str(tmp / "no-such-dir")],
-        capture_output=True,
-        text=True,
-        timeout=120
-    );
-    assert proc.returncode != 0;
-    output = proc.stdout + proc.stderr;
-    assert "unreachable" not in output;
-    assert "No such file or directory" in output , f"the real errno must propagate, not a generic retry failure:\n{output}";
 }
