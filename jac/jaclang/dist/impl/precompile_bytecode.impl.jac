@@ -1764,10 +1764,12 @@ impl run_precompile(
         source = pkg_path / rel_jir.with_suffix(".jac");
         if keep_seeded and source.is_file() {
             existing = old_jir.read_bytes();
-            if precompiled_jir_matches_source(
-                existing, str(source), package_root=package_dir
-            )
-                and embed_src == (read_debug_source(existing) is not None) {
+            with served_codespace(package_dir) {
+                seeded = precompiled_jir_matches_source(
+                    existing, str(source), package_root=package_dir
+                );
+            }
+            if seeded and embed_src == (read_debug_source(existing) is not None) {
                 continue;
             }
         }
