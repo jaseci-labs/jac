@@ -49,7 +49,10 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
         if anchor_root is not None {
             if _native_unit_root_name(anchor_root) == root_name {
-                return os.path.join(anchor_root, rel);
+                anchor_candidate = os.path.join(anchor_root, rel);
+                if os.path.isfile(anchor_candidate) or root_name != "jaclang" {
+                    return anchor_candidate;
+                }
             }
             sibling = _named_project_file(os.path.dirname(anchor_root), root_name, rel);
             if sibling is not None {

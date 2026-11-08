@@ -5,6 +5,7 @@ share one symbol prefix."""
 import os;
 import sys;
 import tempfile;
+import jaclang;
 import from jaclang.compiler.driver.jir {
     NativeStamp,
     SEC_BYTECODE,
@@ -141,6 +142,15 @@ test "a unit reference to an installed package resolves through the import path"
     resolved_own_unit = resolve_native_unit_ref("jaclang/unit.jac", own_unit);
     assert os.path.realpath(resolved_own_unit) == os.path.realpath(own_unit) , (
         resolved_own_unit
+    );
+    bundled_runtime = resolve_native_unit_ref(
+        "jaclang/runtime/region_native.jac", own_unit
+    );
+    expected_runtime = os.path.join(
+        os.path.dirname(jaclang.__file__), "runtime", "region_native.jac"
+    );
+    assert os.path.realpath(bundled_runtime) == os.path.realpath(expected_runtime) , (
+        bundled_runtime
     );
 }
 
