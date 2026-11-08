@@ -5,10 +5,10 @@ lowering, so the alias below emits nothing that could read the Python module
 it names, and the module-import gate must not refuse it.
 """
 
-import threading;
+import queue;
 
 
-type EventLike = threading.Event;
+type QueueLike = queue.Queue;
 
 
 def run -> int {
