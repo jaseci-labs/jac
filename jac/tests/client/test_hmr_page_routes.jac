@@ -16,6 +16,8 @@ import from pathlib { Path }
 import from tempfile { mkdtemp }
 
 import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
 
@@ -152,4 +154,36 @@ test "removing a page drops its route and forces a reload" {
         f"a removed page must lose its route; got:\n{after}"
     );
     assert raised , "dropping a route must reach the browser too";
+}
+
+
+test "scanning the routes compiles each page once, in the bundle's own program" {
+    proj = mkdtemp(prefix="jacroutes-");
+    try {
+        _write(
+            os.path.join(proj, "jac.toml"),
+            '[project]\nname = "site"\nkind = "web-app"\nentry-point = "main"\n'
+        );
+        _write(
+            os.path.join(proj, "main.jac"),
+            'def:pub page -> JsxPage {\n    return <div>home</div>;\n}\n'
+        );
+        page = os.path.join(proj, "pages", "index.jac");
+        _write(page, 'def:pub page -> JsxPage {\n    return <div>home</div>;\n}\n');
+        builder = make_client_bundle_builder(base_path=Path(proj));
+        compiler = builder._get_compiler();
+        assert compiler.jac_client_compiler._scan_and_compile_pages();
+        key = JacProgram.hub_key(os.path.realpath(page));
+        shared = Jac.get_program();
+        holders = {
+            id(program)
+            for program in [shared] + list(shared.contexts.values())
+            if key in program.hub.client_artifacts
+        };
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    assert len(holders) == 1 , (
+        f"the page was compiled in {len(holders)} programs, not once"
+    );
 }
