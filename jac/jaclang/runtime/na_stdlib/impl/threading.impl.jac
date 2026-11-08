@@ -1,19 +1,13 @@
 impl Lock.init {
-    self._mutex = th_alloc(64);
+    self._mutex = th_alloc(8);
     if not self._mutex {
-        raise MemoryError("cannot allocate native mutex");
+        raise MemoryError("cannot allocate native lock state");
     }
-    rc = th_mutex_init(self._mutex);
-    if rc != 0 {
-        th_free(self._mutex);
-        self._mutex = 0;
-        raise RuntimeError("pthread_mutex_init failed: " + str(rc));
-    }
+    ptr[i64](self._mutex).view(1)[0] = 0;
 }
 
 impl Lock.drop {
     if self._mutex {
-        th_mutex_destroy(self._mutex);
         th_free(self._mutex);
         self._mutex = 0;
     }
@@ -39,45 +33,24 @@ impl Lock.acquire(blocking: bool = True, timeout: float = -1.0) -> bool {
     if timeout < -1.0 {
         raise ValueError("Invalid value for timeout");
     }
-    ok = False;
-    if blocking and timeout < 0.0 {
-        rc = th_mutex_lock(self._mutex);
-        if rc != 0 {
-            raise RuntimeError("pthread_mutex_lock failed: " + str(rc));
-        }
-        ok = True;
-    } elif not blocking {
-        ok = th_mutex_trylock(self._mutex) == 0;
-    } else {
-        deadline = time.monotonic() + timeout;
-        while True {
-            if th_mutex_trylock(self._mutex) == 0 {
-                ok = True;
-                break;
-            }
-            if time.monotonic() >= deadline {
-                break;
-            }
-            time.sleep(0.001);
-        }
+    if not blocking {
+        return __atomic_xchg_i64(self._mutex, 1) == 0;
     }
-    if ok {
-        self._held = True;
-        self._owner = th_self();
+    deadline = time.monotonic() + timeout if timeout >= 0.0 else 0.0;
+    while True {
+        if __atomic_xchg_i64(self._mutex, 1) == 0 {
+            return True;
+        }
+        if timeout >= 0.0 and time.monotonic() >= deadline {
+            return False;
+        }
+        time.sleep(0.001);
     }
-    return ok;
 }
 
 impl Lock.release -> None {
-    if not self._mutex or not self._held or self._owner != th_self() {
+    if not self._mutex or __atomic_xchg_i64(self._mutex, 0) == 0 {
         raise RuntimeError("cannot release un-acquired lock");
-    }
-
-    self._held = False;
-    self._owner = 0;
-    rc = th_mutex_unlock(self._mutex);
-    if rc != 0 {
-        raise RuntimeError("pthread_mutex_unlock failed: " + str(rc));
     }
 }
 
@@ -91,6 +64,7 @@ impl Event.is_set -> bool {
 impl Event.set -> None {
     self._lock.acquire();
     self._flag = True;
+    self._generation += 1;
     self._lock.release();
 }
 
@@ -101,20 +75,28 @@ impl Event.clear -> None {
 }
 
 impl Event.`wait(timeout: (float | None) = None) -> bool {
-    if timeout is None {
-        while not self.is_set() {
-            time.sleep(0.005);
-        }
+    self._lock.acquire();
+    initial_generation = self._generation;
+    ready = self._flag;
+    self._lock.release();
+    if ready {
         return True;
     }
-    limit = time.monotonic() + max(0.0, float(timeout));
-    while not self.is_set() {
-        if time.monotonic() >= limit {
+    limit: float = time.monotonic() + max(0.0, float(timeout))
+        if timeout is not None
+        else 0.0;
+    while True {
+        self._lock.acquire();
+        ready = self._flag or self._generation != initial_generation;
+        self._lock.release();
+        if ready {
+            return True;
+        }
+        if timeout is not None and time.monotonic() >= limit {
             return False;
         }
         time.sleep(0.005);
     }
-    return True;
 }
 
 impl Thread.init(
@@ -167,15 +149,20 @@ impl Thread.join(timeout: (float | None) = None) -> None {
     if not self._started {
         raise RuntimeError("cannot join thread before it is started");
     }
-    if timeout is None {
-        while self.is_alive() {
-            time.sleep(0.005);
+    limit: float = time.monotonic() + max(0.0, float(timeout))
+        if timeout is not None
+        else 0.0;
+    while self.is_alive() {
+        if timeout is not None and time.monotonic() >= limit {
+            return;
         }
-        return;
-    }
-    limit = time.monotonic() + max(0.0, float(timeout));
-    while self.is_alive() and time.monotonic() < limit {
         time.sleep(0.005);
+    }
+    _TASKS_LOCK.acquire();
+    handle: (int | None) = _JOINABLE.pop(self._task_id, None);
+    _TASKS_LOCK.release();
+    if handle is not None {
+        th_join(handle);
     }
 }
 
@@ -203,6 +190,7 @@ impl _join_unfinished -> None {
     for task_id in _JOINABLE.keys() {
         handles.append(_JOINABLE[task_id]);
     }
+    _JOINABLE.clear();
     _TASKS_LOCK.release();
     for handle in handles {
         th_join(handle);

@@ -3,22 +3,14 @@ import time;
 import from _threading_native {
     th_alloc,
     th_free,
-    th_mutex_init,
-    th_mutex_destroy,
-    th_mutex_lock,
-    th_mutex_trylock,
-    th_mutex_unlock,
     th_spawn,
     th_detach,
     th_join,
-    th_self,
     th_at_exit
 }
 
 obj:pub Lock {
-    has _mutex: int = 0,
-        _held: bool = False,
-        _owner: int = 0;
+    has _mutex: int = 0;
 
     def init;
     def drop;
@@ -31,7 +23,8 @@ obj:pub Lock {
 
 obj:pub Event {
     has _lock: Lock = Lock(),
-        _flag: bool = False;
+        _flag: bool = False,
+        _generation: int = 0;
 
     def is_set -> bool;
     def set -> None;

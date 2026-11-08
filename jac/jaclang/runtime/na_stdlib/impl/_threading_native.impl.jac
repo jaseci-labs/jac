@@ -8,26 +8,6 @@ impl th_free(ptr: int) {
     }
 }
 
-impl th_mutex_init(mutex: int) -> int {
-    return pthread_mutex_init(mutex, 0);
-}
-
-impl th_mutex_destroy(mutex: int) -> int {
-    return pthread_mutex_destroy(mutex);
-}
-
-impl th_mutex_lock(mutex: int) -> int {
-    return pthread_mutex_lock(mutex);
-}
-
-impl th_mutex_trylock(mutex: int) -> int {
-    return pthread_mutex_trylock(mutex);
-}
-
-impl th_mutex_unlock(mutex: int) -> int {
-    return pthread_mutex_unlock(mutex);
-}
-
 impl th_spawn(start: int, arg: int) -> int {
     cell = malloc(u64(8));
     if not cell {
@@ -49,10 +29,6 @@ impl th_detach(handle: int) -> int {
 
 impl th_join(handle: int) -> int {
     return pthread_join(handle, 0);
-}
-
-impl th_self -> int {
-    return pthread_self();
 }
 
 impl th_at_exit(handler: int) -> int {

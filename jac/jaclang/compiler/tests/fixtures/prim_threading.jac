@@ -17,7 +17,11 @@ import time;
 glob _counter: list[int] = [0],
      _done: list[int] = [0],
      _lock: threading.Lock = threading.Lock(),
-     _ev: threading.Event = threading.Event();
+     _ev: threading.Event = threading.Event(),
+     _pulse: threading.Event = threading.Event(),
+     _pulse_started: threading.Event = threading.Event(),
+     _pulse_done: list[int] = [0],
+     _cross_lock: threading.Lock = threading.Lock();
 
 def _bump {
     for i in range(200) {
@@ -42,10 +46,22 @@ def _slow {
     time.sleep(0.2);
 }
 
+def _wait_pulse {
+    _pulse_started.set();
+    _pulse_done[0] = 1 if _pulse.wait(2.0) else 0;
+}
+
+def _release_cross_lock {
+    _cross_lock.release();
+}
+
 
 def threading_py -> dict[any, any] {
     _counter[0] = 0;
     _done[0] = 0;
+    _pulse_done[0] = 0;
+    _pulse.clear();
+    _pulse_started.clear();
     _ev.clear();
     threads: list[threading.Thread] = [];
     for i in range(8) {
@@ -114,6 +130,21 @@ def threading_py -> dict[any, any] {
     s.start();
     wt.join();
     s.join();
+    pulse_waiter = threading.Thread(target=_wait_pulse);
+    pulse_waiter.start();
+    _pulse_started.wait(1.0);
+    time.sleep(0.05);
+    _pulse.set();
+    _pulse.clear();
+    pulse_waiter.join();
+    _cross_lock.acquire();
+    cross_releaser = threading.Thread(target=_release_cross_lock);
+    cross_releaser.start();
+    cross_releaser.join();
+    cross_release_ok = _cross_lock.acquire(False);
+    if cross_release_ok {
+        _cross_lock.release();
+    }
     with_ok: bool = False;
     with _lock {
         with_ok = True;
@@ -139,6 +170,8 @@ def threading_py -> dict[any, any] {
         "ev_timeout": ev_timeout,
         "ev_set_wait": ev_set_wait,
         "ev_handoff": _done[0],
+        "event_pulse": _pulse_done[0],
+        "cross_thread_release": cross_release_ok,
         "with_block": with_ok,
         "daemon_flag": daemon_flag,
         "join_timeout_alive": join_timeout_alive,
@@ -156,6 +189,9 @@ def threading_cl -> dict[any, any] {
 def threading_na -> dict[str, any] {
     _counter[0] = 0;
     _done[0] = 0;
+    _pulse_done[0] = 0;
+    _pulse.clear();
+    _pulse_started.clear();
     _ev.clear();
     threads: list[threading.Thread] = [];
     for i in range(8) {
@@ -224,6 +260,21 @@ def threading_na -> dict[str, any] {
     s.start();
     wt.join();
     s.join();
+    pulse_waiter = threading.Thread(target=_wait_pulse);
+    pulse_waiter.start();
+    _pulse_started.wait(1.0);
+    time.sleep(0.05);
+    _pulse.set();
+    _pulse.clear();
+    pulse_waiter.join();
+    _cross_lock.acquire();
+    cross_releaser = threading.Thread(target=_release_cross_lock);
+    cross_releaser.start();
+    cross_releaser.join();
+    cross_release_ok = _cross_lock.acquire(False);
+    if cross_release_ok {
+        _cross_lock.release();
+    }
     with_ok: bool = False;
     with _lock {
         with_ok = True;
@@ -249,6 +300,8 @@ def threading_na -> dict[str, any] {
         "ev_timeout": 1 if ev_timeout else 0,
         "ev_set_wait": 1 if ev_set_wait else 0,
         "ev_handoff": _done[0],
+        "event_pulse": _pulse_done[0],
+        "cross_thread_release": cross_release_ok,
         "with_block": 1 if with_ok else 0,
         "daemon_flag": 1 if daemon_flag else 0,
         "join_timeout_alive": 1 if join_timeout_alive else 0,
