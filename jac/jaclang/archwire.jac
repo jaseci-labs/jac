@@ -4198,6 +4198,7 @@ graph import {
     server.serving.ws ++> [
         scale.runtime.gateway.microservice_gateway
             | scale.server.websocket_ext
+            | scale.tests.server.test_ws_hardening
             | scale.websocket.protocol
             | scale.websocket.websocket { WebSocket },
         scale.tests.server.test_serving_tail {
@@ -4208,6 +4209,9 @@ graph import {
             OP_TEXT,
             encode_frame,
             read_frame
+        },
+        scale.websocket.websocket.WebSocketConnectionManager._local_fanout {
+            _ws_json_default
         },
     ]
     server.session ++> [
