@@ -5799,9 +5799,6 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
-            native_only_import_target
-        },
         backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
         backends.py.jcir_gen_pass.JcirGenPass.exit_import {
             CrossAppKind,
@@ -6381,7 +6378,7 @@ graph import compiler {
         backends.native.kernel_resolve.unit_drift
             | backends.native.kernel_stage0.plan_kernel_prefix
             | backends.native.link_plan.LinkPlan.plan_digest
-            | native_scope.package_host_edge { native_unit_identity },
+            | native_scope.package_host_edge { native_unit_identity, native_unit_root },
         backends.native.kernel_stage0.missing_kernel_entries
             | backends.native.na_ir_gen_pass.NaIRGenPass._register_entry_globals {
             native_def_symbol
@@ -14117,10 +14114,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._extern_field_type { numeric_name_of },
         type_evaluator.TypeEvaluator._literal_type_from_expr { folded_number },
     ]
-    fixed_width --> [
-        type_evaluator.TypeEvaluator._get_type_from_flow_node { numeric_name_of },
-        type_evaluator.TypeEvaluator._validate_call_type { fixed_width_call_type },
-    ]
+    fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
+        numeric_name_of
+    }
     operations ++> type_evaluator {
         BINARY_OPERATOR_MAP,
         get_type_of_binary_operation,

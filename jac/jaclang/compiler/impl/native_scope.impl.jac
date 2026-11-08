@@ -3,6 +3,12 @@ impl package_host_edge(mod_path: str) -> bool {
     if not identity.startswith("jaclang/") or identity.startswith("jaclang/runtime/") {
         return False;
     }
+    unit_root = native_unit_root(os.path.dirname(os.path.realpath(mod_path)))
+        if mod_path
+        else None;
+    if unit_root is not None and os.path.isfile(os.path.join(unit_root, "jac.toml")) {
+        return False;
+    }
     import from jaclang.compiler.placement.placement_facts {
         native_lowered,
         native_unit
