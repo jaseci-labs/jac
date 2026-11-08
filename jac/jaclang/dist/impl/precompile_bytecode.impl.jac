@@ -548,6 +548,52 @@ impl precompile_unit(
     }
 }
 
+impl _reusable_unit_options(pkg_root: str) -> list[tuple[any, str]] {
+    import copy;
+    current = active_options();
+    scopes: list[tuple[any, str]] = [(current, '')];
+    if current is None or current.default_codespace {
+        return scopes;
+    }
+    for client_root in dict.fromkeys(['', pkg_root, os.path.realpath(pkg_root)]) {
+        prepared = copy.copy(current);
+        prepared.default_codespace = 'server';
+        prepared.client_source_root = client_root;
+        scopes.append((prepared, 'server'));
+    }
+    return scopes;
+}
+
+impl _cache_variant(options: any, codespace: str) -> Iterator[None] {
+    previous = get_effective_default_codespace_override();
+    set_effective_default_codespace(codespace or previous);
+    try {
+        with cache_scope(options) {
+            yield ;
+        }
+    } finally {
+        set_effective_default_codespace(previous);
+    }
+}
+
+impl _reusable_cache_entry(
+    jac_path: str, pkg_root: str, sections: tuple[int, ...] = ()
+) -> (tuple[any, str, Path] | None) {
+    for (options, codespace) in _reusable_unit_options(pkg_root) {
+        with _cache_variant(options, codespace) {
+            cache_path = get_module_cache_path(jac_path);
+            if not is_module_cache_valid(jac_path, cache_path) {
+                continue;
+            }
+            data = cache_path.read_bytes();
+            if all(read_section_bytes(data, sec) is not None for sec in sections) {
+                return (options, codespace, cache_path);
+            }
+        }
+    }
+    return None;
+}
+
 impl _precompile_unit(
     jac_path: str,
     pkg_root: str,
@@ -558,21 +604,23 @@ impl _precompile_unit(
     try {
         import from jaclang.compiler.driver.jir { cache_mode }
         (rebuild_units, _np) = cache_mode();
-        cache_path = get_module_cache_path(jac_path);
-        if (not rebuild_units) and is_module_cache_valid(jac_path, cache_path) {
-            cached_data = cache_path.read_bytes();
-            cached_bc = read_section_bytes(cached_data, SEC_BYTECODE);
-            if cached_bc is not None
-                and read_section_bytes(cached_data, SEC_IFACE) is not None {
-                rewrapped = patch_co_filenames_bytes(
-                    cached_bc, pkg_root, PRECOMPILE_SENTINEL
-                );
-                return write_precompiled_jir(
-                    rewrapped,
-                    compute_precompile_module_key(jac_path),
-                    FLAG_PRECOMPILED,
-                    _unit_extra(jac_path, pkg_root, embed_src)
-                );
+        hit = None
+            if rebuild_units
+            else _reusable_cache_entry(jac_path, pkg_root, (SEC_BYTECODE, SEC_IFACE));
+        if hit is not None {
+            (options, codespace, cache_path) = hit;
+            cached_bc = read_section_bytes(cache_path.read_bytes(), SEC_BYTECODE);
+            if cached_bc is not None {
+                with _cache_variant(options, codespace) {
+                    return write_precompiled_jir(
+                        patch_co_filenames_bytes(
+                            cached_bc, pkg_root, PRECOMPILE_SENTINEL
+                        ),
+                        compute_precompile_module_key(jac_path),
+                        FLAG_PRECOMPILED,
+                        _unit_extra(jac_path, pkg_root, embed_src)
+                    );
+                }
             }
         }
     } except Exception {}

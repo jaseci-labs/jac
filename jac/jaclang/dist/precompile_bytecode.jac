@@ -67,6 +67,15 @@ def precompile_unit(
     skip_analysis: bool = False
 ) -> bytes | None;
 
+def _reusable_unit_options(pkg_root: str) -> list[tuple[any, str]];
+
+@contextmanager
+def _cache_variant(options: any, codespace: str) -> Iterator[None];
+
+def _reusable_cache_entry(
+    jac_path: str, pkg_root: str, sections: tuple[int, ...] = ()
+) -> (tuple[any, str, Path] | None);
+
 def _precompile_unit(
     jac_path: str,
     pkg_root: str,

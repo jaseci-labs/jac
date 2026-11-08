@@ -713,6 +713,8 @@ graph import {
         | dist.publish.npm_sources { ClientLink }
     compiler.driver.compilation_context ++> [
         dist.precompile_bytecode._application_sources { bind_options },
+        dist.precompile_bytecode._cache_variant { cache_scope },
+        dist.precompile_bytecode._reusable_unit_options { active_options },
         dist.precompile_bytecode.precompile_context { bind_options, context_program },
         dist.precompile_bytecode.precompile_unit_context
             | project.compiler_host.ProjectHost.drop_python_lane_products {
@@ -1082,7 +1084,7 @@ graph import {
             | project.kernel_compile.kernel_route
             | project.kernel_snapshot
             | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
-        cli.commands.execution._exec_file {
+        cli.commands.execution._exec_file | dist.precompile_bytecode._cache_variant {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
