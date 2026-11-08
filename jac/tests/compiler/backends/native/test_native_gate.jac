@@ -34,8 +34,6 @@ def codegen_lane(native: bool) -> list[PassKind] {
 }
 
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"

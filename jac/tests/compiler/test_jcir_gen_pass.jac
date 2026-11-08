@@ -54,7 +54,6 @@ def codegen_lane(native: bool) -> list[PassKind] {
     return lane;
 }
 
-import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
 
@@ -929,9 +928,9 @@ with entry {
     sched = codegen_lane(False);
     assert PassKind.JCIR_GEN in sched , f"jcir is not in the codegen schedule: {sched}";
     assert PassKind.JCIR_BYTECODE_GEN not in sched;
-    for `entry in sched {
-        assert "Pyast" not in entry.value and "PyBytecode" not in entry.value , (
-            f"a legacy emitter is back in the codegen schedule: {entry.value}"
+    for pass_kind in sched {
+        assert "Pyast" not in pass_kind.value and "PyBytecode" not in pass_kind.value , (
+            f"a legacy emitter is back in the codegen schedule: {pass_kind.value}"
         );
     }
     piped_code = marshal.loads(mod.gen.py_bytecode);

@@ -39,6 +39,7 @@ import from jaclang.compiler.driver.pipeline {
     CODEGEN_LOADS,
     IR_LOADS,
     PassKind,
+    pass_class_of,
     providers_of,
     schedule_for,
     tier_reason
@@ -328,6 +329,10 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
     import from jaclang.bootstrap_manifest { is_seed_source }
     `root = os.path.dirname(str(jaclang.__file__));
 
+    def seed(mod_name: str) -> bool {
+        rel = mod_name.removeprefix("jaclang.").replace(".", os.sep) + ".jac";
+        return is_seed_source(rel);
+    }
     codegen = (schedule_for(CompilationProduct.CODEGEN) or [])
         + (schedule_for(CompilationProduct.PY_IR) or [])
         + (schedule_for(CompilationProduct.FROZEN) or []);
@@ -345,12 +350,15 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
             );
         }
         for pass_kind in passes {
-            assert isinstance(pass_kind, PassKind) , (
-                f"{origin}: class-valued pass escaped the static schedule: "
-                f"{pass_kind}"
-            );
-            assert pass_kind.value.endswith("Pass") , (
-                f"{origin}: malformed pass identifier {pass_kind.value}"
+            pass_cls = pass_class_of(pass_kind);
+            owner = pass_cls.__module__;
+            covered = seed(owner)
+                or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
+            assert covered , (
+                f"{origin}: pass {pass_kind.value} lives in {owner}, which is "
+                "neither a seed module nor in the schedule's dependency list; "
+                "a compile reached from its import would run the schedule "
+                "that needs it"
             );
         }
     }

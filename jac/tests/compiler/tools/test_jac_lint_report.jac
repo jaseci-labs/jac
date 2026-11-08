@@ -12,10 +12,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.pipeline { PassKind, product_passes }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
-import from jaclang.compiler.tools.jac_auto_lint_pass {
-    JacAutoLintPass,
-    JacLintCheckPass
-}
+import from jaclang.compiler.tools.jac_auto_lint_pass { JacAutoLintPass }
 import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 

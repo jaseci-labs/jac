@@ -44,9 +44,6 @@ def codegen_lane(native: bool) -> list[PassKind] {
     return lane;
 }
 
-import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-
 glob CANARY_SUITES: tuple[any, ...] = (
          "tests/compiler/test_compilation.jac",
          "tests/compiler/test_codegen_ir.jac",
@@ -145,10 +142,10 @@ test "the lane the canaries measure is the container, with no alternative" {
         "the codegen schedule transcribes JCIR itself; transcription is the "
         "host's assembly step, after the compiler hands JCIR over"
     );
-    for `entry in sched {
-        assert "Pyast" not in entry.value and "PyBytecode" not in entry.value , (
+    for pass_kind in sched {
+        assert "Pyast" not in pass_kind.value and "PyBytecode" not in pass_kind.value , (
             f"a second Python codegen emitter is back in the schedule "
-            f"({entry.value}); the manifest measures whichever lane runs, "
+            f"({pass_kind.value}); the manifest measures whichever lane runs, "
             "so two lanes make it ambiguous"
         );
     }
