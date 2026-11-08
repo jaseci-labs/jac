@@ -35,7 +35,7 @@ impl run_hooks(hooks: list[Callable[..., any]], what: str) {
             if inspect.isawaitable(result) {
                 await result;
             }
-        } except BaseException {
+        } except (Exception, SystemExit) {
             logger.exception(f"{what} failed");
         }
     }
