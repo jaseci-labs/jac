@@ -93,7 +93,14 @@ def cleanup_db_files(fixtures_dir: Path) {
     }
 }
 
-"""SIGKILL a started server's whole process group, workers included."""
+"""SIGKILL a started server's whole process group, workers included.
+
+Worker children inherit the harness's stdout and stderr pipes, so killing
+only the master orphans the workers: they keep running and hold the pipes
+open, and any later `communicate()` blocks on an EOF that never comes. A
+server started with `start_new_session=True` leads its own group, so the
+group kill reaches every worker; one that does not is signalled alone.
+"""
 def _kill_process_group(server: subprocess.Popen) {
     try {
         os.killpg(server.pid, int(signal.SIGKILL));

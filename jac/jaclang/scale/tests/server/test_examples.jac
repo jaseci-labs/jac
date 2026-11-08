@@ -68,9 +68,7 @@ obj JacScaleTestRunner {
             str(self.example_file)
         ];
 
-        # Own session so _kill_process_group can take the worker children
-        # down with the master (they inherit these pipes; orphans holding
-        # them make a later communicate() wait on EOF forever).
+        # Own session so _kill_process_group takes the workers down too.
         self.server_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,

@@ -147,22 +147,6 @@ def _beat_on_each(base: str, workers: list[int]) {
     }
 }
 
-"""SIGKILL a started server's whole process group, workers included.
-
-Worker children inherit the harness's stdout and stderr pipes, so killing
-only the master orphans the workers: they keep running and hold the pipes
-open, and any later communicate() blocks on an EOF that never comes. The
-server is launched in its own session, so the group kill reaches every
-worker. Falls back to the single-process kill when the group is gone.
-"""
-def _kill_process_group(server: subprocess.Popen) -> None {
-    try {
-        os.killpg(server.pid, signal.SIGKILL);
-    } except OSError {
-        server.kill();
-    }
-}
-
 def _stop_fleet(server: subprocess.Popen) {
     table = _process_table();
     (_parent, command) = table.get(server.pid, (0, ""));
@@ -247,11 +231,8 @@ test "a worker killed mid-request stops counting as in progress" {
     }
 }
 
-
 def _serve_exported(project: Path, port: int) -> subprocess.Popen {
-    # Own session so _kill_process_group can take the worker children down
-    # with the master (they inherit these pipes; orphans holding them make a
-    # later communicate() wait on EOF forever).
+    # Own session so _kill_process_group takes the workers down too.
     server = subprocess.Popen(
         [jac_executable(), "run", "main.py", "--port", str(port)],
         stdout=subprocess.PIPE,

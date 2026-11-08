@@ -9,7 +9,6 @@ import tempfile;
 import time;
 import uuid;
 import shutil;
-import signal;
 import requests;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
@@ -1369,9 +1368,7 @@ def setup_dev_mode_server -> subprocess.Popen {
     # A server that never comes up is killed mid-preparation and says nothing
     # about where it was. With this set, a preparation that runs long writes
     # its stack to stderr, which the failure below prints.
-    # Own session so _kill_process_group can take the worker children down
-    # with the master (they inherit these pipes; orphans holding them make a
-    # later communicate() wait on EOF forever).
+    # Own session so _kill_process_group takes the workers down too.
     server_process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -2042,8 +2039,7 @@ theme_color = "#000000"
         );
         # A [client.pwa] table is what makes this a PWA; there is no
         # separate PWA client target or --client flag.
-        # Own session so the finally can take worker children down with the
-        # master instead of leaving pipe-holding orphans behind.
+        # Own session so the finally can take the workers down too.
         server = subprocess.Popen(
             [jac_executable(), "run", "--serve", "-p", str(port), "main.jac"],
             cwd=temp_dir,
