@@ -52,11 +52,12 @@ test "the most specific platform variant of a native module wins" {
 }
 
 test "an importer that is a platform variant resolves its own os first" {
-    """subprocess.linux.jac importing ._subprocess_native must find the linux
-    variant even on a darwin host, where the host-os probe finds nothing.""";
+    # `subprocess.linux.jac` importing `._subprocess_native` must find the linux
+    # variant even on a darwin host, where the host-os probe finds nothing.
     assert importer_variant_os("/x/na_stdlib/signal.linux.jac") == "linux";
     assert importer_variant_os("/x/time_platform.darwin.aarch64.jac") == "darwin";
-    assert importer_variant_os("/x/mod.jac") == "";
+    assert importer_variant_os("/x/mod.jac") is None;
+    assert importer_variant_os("/x/darwin.jac") is None;
     with tempfile.TemporaryDirectory() as scratch {
         base = os.path.join(scratch, "records");
         for suffix in ["", ".darwin", ".linux"] {
@@ -64,9 +65,9 @@ test "an importer that is a platform variant resolves its own os first" {
                 handle.write("");
             }
         }
-        """The darwin target pin makes this non-vacuous on linux CI: if the
-        os override were ignored, the target probe would pick the darwin
-        variant, not the linux one the linux importer needs.""";
+        # The darwin target pin makes this non-vacuous on linux CI: if the os
+        # override were ignored, the target probe would pick the darwin variant,
+        # not the linux one the linux importer needs.
         prev_os = set_native_variant_os(importer_variant_os("/x/subprocess.linux.jac"));
         prev_target = set_native_target_override("x86_64-apple-darwin");
         try {

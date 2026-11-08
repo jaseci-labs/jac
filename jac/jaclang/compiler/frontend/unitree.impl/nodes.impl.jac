@@ -1920,8 +1920,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
         return None;
     }
     base = self.dot_path_str;
-    _pref = importer_variant_os(mod_path) if mod_path else "";
-    _prev = set_native_variant_os(_pref) if _pref else None;
+    _prev = set_native_variant_os(importer_variant_os(mod_path) if mod_path else None);
     try {
         if base in NATIVE_STDLIB_EXTENSIONS or not is_bundled_native_module(base) {
             return None;
@@ -1929,9 +1928,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
         base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
         (_src, full_path) = resolve_native_module(base, base_dir);
     } finally {
-        if _pref {
-            set_native_variant_os(_prev);
-        }
+        set_native_variant_os(_prev);
     }
     return full_path;
 }
@@ -1962,14 +1959,11 @@ impl ModulePath.native_variant_path -> (str | None) {
         importer_variant_os,
         set_native_variant_os
     }
-    _pref = importer_variant_os(mod_path);
-    _prev = set_native_variant_os(_pref) if _pref else None;
+    _prev = set_native_variant_os(importer_variant_os(mod_path));
     try {
         return _native_variant_path(candidate);
     } finally {
-        if _pref {
-            set_native_variant_os(_prev);
-        }
+        set_native_variant_os(_prev);
     }
 }
 

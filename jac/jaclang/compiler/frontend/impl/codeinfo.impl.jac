@@ -741,20 +741,20 @@ impl set_native_variant_os(os_name: str | None) -> (str | None) {
     return prev;
 }
 
-impl importer_variant_os(path: str) -> str {
+impl importer_variant_os(path: str) -> (str | None) {
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
-        return "";
+        return None;
     }
     parts = name[:-len(".jac")].split(".");
     if parts and parts[-1] in NATIVE_VARIANT_ARCHES {
         parts.pop();
     }
-    if parts and parts[-1] in NATIVE_VARIANT_OSES {
+    if len(parts) >= 2 and parts[-1] in NATIVE_VARIANT_OSES {
         return parts[-1];
     }
-    return "";
+    return None;
 }
 
 impl set_native_target_override(triple: str | None) -> (str | None) {

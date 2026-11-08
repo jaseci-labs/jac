@@ -291,7 +291,7 @@ def set_native_target_override(triple: str | None) -> (str | None);
 
 def set_native_variant_os(os_name: str | None) -> (str | None);
 
-def importer_variant_os(path: str) -> str;
+def importer_variant_os(path: str) -> (str | None);
 
 def effective_native_target -> str;
 

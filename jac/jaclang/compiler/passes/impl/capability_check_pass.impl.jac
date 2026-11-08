@@ -342,36 +342,24 @@ impl native_capability_violations(
                 _imp_os = (
                     importer_variant_os(mod.loc.mod_path)
                         if (mod?.loc and mod.loc.mod_path)
-                        else ""
+                        else None
                 );
-                _prev_os = set_native_variant_os(_imp_os) if _imp_os else None;
+                _prev_os = set_native_variant_os(_imp_os);
                 try {
                     if is_bundled_native_module(mod_name) {
                         continue;
                     }
-                } finally {
-                    if _imp_os {
-                        set_native_variant_os(_prev_os);
-                    }
-                }
-                _plain_module = (
-                    not stmt.is_absorb
-                    and isinstance(item, ModulePath)
-                    and item.path is not None
-                );
-                if stmt.is_absorb or _plain_module {
-                    _prev_os2 = set_native_variant_os(_imp_os) if _imp_os else None;
-                    _resolved = None;
-                    try {
-                        _resolved = resolve_native_module(mod_name, _base_dir)[1];
-                    } finally {
-                        if _imp_os {
-                            set_native_variant_os(_prev_os2);
-                        }
-                    }
-                    if _resolved is not None {
+                    _plain_module = (
+                        not stmt.is_absorb
+                        and isinstance(item, ModulePath)
+                        and item.path is not None
+                    );
+                    if (stmt.is_absorb or _plain_module)
+                        and resolve_native_module(mod_name, _base_dir)[1] is not None {
                         continue;
                     }
+                } finally {
+                    set_native_variant_os(_prev_os);
                 }
                 if isinstance(item, ModuleItem) {
                     if not _from_jac_known {
