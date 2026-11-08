@@ -177,6 +177,17 @@ test "native construction runtime does not admit compiler internals" {
             reset_native_unit_compile(previous);
         }
     }
+    previous = set_native_unit_compile(True);
+    try {
+        for module in ["jaclang.cli.cli", "jaclang.runtime.context"] {
+            (_, pinned) = resolve_native_module(module, base);
+            assert pinned is None , (
+                f"a pinned native unit must not admit {module}, got: {pinned}"
+            );
+        }
+    } finally {
+        reset_native_unit_compile(previous);
+    }
     (_, compiler) = resolve_native_module("jaclang.cli.cli", base);
     assert compiler is None;
 }
