@@ -45,9 +45,6 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     if not rel {
         return ref;
     }
-    if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(target_pkg_root()), ref);
-    }
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
         if anchor_root is not None {
@@ -59,6 +56,9 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
                 return sibling;
             }
         }
+    }
+    if root_name == "jaclang" {
+        return os.path.join(os.path.dirname(target_pkg_root()), ref);
     }
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.backends.native.na_constants {

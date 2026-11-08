@@ -128,6 +128,20 @@ test "a unit reference to an installed package resolves through the import path"
         handle.write("glob x = 1;\n");
     }
     assert native_unit_identity(nested_unit) == "nested/unit.jac";
+
+    named_jaclang = os.path.join(site, "named-jaclang");
+    os.makedirs(named_jaclang);
+    with open(os.path.join(named_jaclang, "jac.toml"), "w") as handle {
+        handle.write('["project"]\n"name" = "jaclang"\n');
+    }
+    own_unit = os.path.join(named_jaclang, "unit.jac");
+    with open(own_unit, "w") as handle {
+        handle.write("glob x = 2;\n");
+    }
+    resolved_own_unit = resolve_native_unit_ref("jaclang/unit.jac", own_unit);
+    assert os.path.realpath(resolved_own_unit) == os.path.realpath(own_unit) , (
+        resolved_own_unit
+    );
 }
 
 test "two units sharing a symbol prefix are refused by name" {
