@@ -26,7 +26,7 @@ def urllib_redirect_py -> dict[any, any] {
 }
 
 
-import from urllib.request { urlopen, Request }
+import from urllib.request { urlopen, Request, _request_bytes }
 
 def urlopen_status_na -> int {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
