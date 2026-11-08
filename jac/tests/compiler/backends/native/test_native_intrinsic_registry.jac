@@ -311,13 +311,12 @@ test "narrow memory loads sign extend into i64" {
     assert eng is not None;
     fn8 = _get_func(eng, "probe8", ctypes.c_int64, ctypes.c_int64);
     fn16 = _get_func(eng, "probe16", ctypes.c_int64, ctypes.c_int64);
-    assert fn8(255) == -1;
-    assert fn8(128) == -128;
-    assert fn8(127) == 127;
-    assert fn8(0) == 0;
-    assert fn16(32768) == -32768;
-    assert fn16(65535) == -1;
-    assert fn16(32767) == 32767;
+    for (value, expected) in [(255, -1), (128, -128), (127, 127), (0, 0)] {
+        assert fn8(value) == expected , f"i8 load of {value}: {fn8(value)}";
+    }
+    for (value, expected) in [(32768, -32768), (65535, -1), (32767, 32767)] {
+        assert fn16(value) == expected , f"i16 load of {value}: {fn16(value)}";
+    }
 }
 
 test "gc-gated intrinsic is a declared no-op outside its gc mode" {

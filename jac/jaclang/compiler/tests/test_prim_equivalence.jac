@@ -914,12 +914,14 @@ test "mmap file-size checks apply only to regular files" {
     assert res["zero_fd"] > 0 and res["hosts_fd"] > 0 , (
         f"probe fds did not open: {res}"
     );
-    assert res["zero_isreg"] == 0 , f"/dev/zero must not classify as regular: {res}";
-    assert res["hosts_isreg"] == 1 , f"/etc/hosts must classify as regular: {res}";
-    assert res["hosts_huge"] == "valueerror" , (
-        f"oversized map of a regular file must raise ValueError: {res}"
-    );
-    assert res["hosts_small"] == "ok" , f"small map of a regular file must succeed: {res}";
+    for (path, expected) in [("zero", 0), ("hosts", 1)] {
+        assert res[f"{path}_isreg"] == expected , (
+            f"{path} regular-file classification mismatch: {res}"
+        );
+    }
+    for (probe, expected) in [("hosts_huge", "valueerror"), ("hosts_small", "ok")] {
+        assert res[probe] == expected , f"{probe} mismatch: {res}";
+    }
     if platform.system() == "Darwin" {
         assert res["zero_map"] == "oserror" , (
             f"darwin refuses device mmap with ENODEV: {res}"
