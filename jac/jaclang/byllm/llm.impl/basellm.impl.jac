@@ -15,11 +15,9 @@ obj _ToolDeltaCoalescer {
 
 
 obj _AnswerStream {
-    has index: int = -1,
-        args: str = "",
-        text: str = "";
+    has text: str = "";
 
-    def observe(frag: dict[str, any]) -> str;
+    def observe(call: dict[str, str]) -> str;
 }
 
 
@@ -1352,8 +1350,16 @@ impl BaseLLM.dispatch_streaming_with_tools(
                         coalescer.observe(_frag);
                     }
                 }
-                answer_piece = "".join(answer_stream.observe(f) for f in frags)
-                    if answer_stream
+                finish = next(
+                    (
+                        c
+                        for c in streamed_calls.values()
+                        if c["name"] == "finish_tool"
+                    ),
+                    None
+                );
+                answer_piece = answer_stream.observe(finish)
+                    if answer_stream and finish and frags
                     else "";
                 delta_content = "";
                 if chunk?.choices and chunk?.choices?[0]?.delta {
@@ -2353,16 +2359,9 @@ impl _ToolDeltaCoalescer.flush {
 }
 
 
-impl _AnswerStream.observe(frag: dict[str, any]) -> str {
-    if self.index < 0 and frag.get("name") == "finish_tool" {
-        self.index = int(frag.get("index", 0));
-    }
-    if frag.get("index", 0) != self.index {
-        return "";
-    }
-    self.args += str(frag.get("fragment") or "");
+impl _AnswerStream.observe(call: dict[str, str]) -> str {
     try {
-        parsed = from_json(self.args, allow_partial="trailing-strings");
+        parsed = from_json(call["arguments"], allow_partial="trailing-strings");
     } except ValueError {
         return "";
     }
