@@ -6,6 +6,20 @@ import json;
 import sys;
 
 
+"""A callable that defines `__eq__`, so like a dataclass it is not hashable."""
+obj _Recorder {
+    has ran: list[str];
+
+    def __eq__(other: any) -> bool {
+        return self is other;
+    }
+
+    def __call__ {
+        self.ran.append("obj");
+    }
+}
+
+
 def _request(path: str) -> Request {
     return Request(method="GET", url=URL(path=path));
 }
@@ -56,14 +70,14 @@ test "drain hooks run once per process, awaited, past failures, including ones r
     def exits {
         sys.exit(3);
     }
-    for fn in [hook, raises, exits, async_hook, hook] {
+    for fn in [hook, raises, exits, _Recorder(ran), async_hook, hook] {
         on_drain(fn);
     }
     for reason in ["first", "second"] {
         state = DrainState();
         state.start(reason);
         state.wait_for_hooks();
-        assert ran == ["sync", "async", "late"] , reason;
+        assert ran == ["sync", "obj", "async", "late"] , reason;
     }
 }
 

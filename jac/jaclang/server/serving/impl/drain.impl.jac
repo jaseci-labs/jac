@@ -22,9 +22,9 @@ impl _run_drain_hooks {
     hooks = [
         hook
         for hook in DRAIN_HOOKS
-        if hook not in DRAIN_TAKEN
+        if id(hook) not in DRAIN_TAKEN
     ];
-    DRAIN_TAKEN.update(hooks);
+    DRAIN_TAKEN.update(id(hook) for hook in hooks);
     asyncio.run(run_hooks(hooks, "drain hook"));
 }
 
