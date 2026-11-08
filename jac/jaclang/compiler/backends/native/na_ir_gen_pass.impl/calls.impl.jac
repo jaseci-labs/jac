@@ -1698,7 +1698,7 @@ impl NaIRGenPass._emit_intrinsic_mem_store(
     if raw.type.width > intr.width {
         val = self.builder.trunc(raw, value_type, name="mem.st.narrow");
     } elif raw.type.width < intr.width {
-        val = self.builder.zext(raw, value_type, name="mem.st.wide");
+        val = self.builder.sext(raw, value_type, name="mem.st.wide");
     }
     slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
     self.builder.store(val, slot);
