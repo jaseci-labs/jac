@@ -12,6 +12,15 @@ def record -> dict[str, any] {
     };
 }
 
+def show_error(doc: str) {
+    try {
+        json.loads(doc);
+        print("no error", doc);
+    } except json.JSONDecodeError as e {
+        print(doc, e.lineno, e.colno, e.pos, "-", e.msg);
+    }
+}
+
 with entry {
     data = record();
     print(json.dumps(data));
@@ -30,9 +39,23 @@ with entry {
     enc = json.JSONEncoder(sort_keys=True);
     print(enc.encode({"b": 1, "a": 2}));
     print("".join(enc.iterencode({"z": 0})));
+    show_error("1 2");
+    show_error("");
+    show_error("-");
+    show_error("01");
+    show_error("1.");
+    show_error("1e");
+    show_error("1e+");
+    show_error("[1,]");
+    show_error("[1, ]");
+    show_error("{\"a\": 1,}");
+    show_error("\"abc");
+    show_error("\"a\\qb\"");
+    show_error("\"\\u12zz\"");
+    show_error("\"\\");
     try {
-        json.loads("1 2");
-    } except json.JSONDecodeError as e {
-        print(e.lineno, e.colno, e.pos, "-", e.msg);
+        json.dumps(float("inf"), allow_nan=False);
+    } except ValueError as e {
+        print("allow_nan:", e);
     }
 }

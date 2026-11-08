@@ -32,6 +32,8 @@ obj:pub JSONEncoder {
         sort_keys: bool = False,
         indent: (int | str | None) = None,
         separators: (tuple[str, str] | None) = None,
+        item_separator: str = ", ",
+        key_separator: str = ": ",
         _default_fn: (Callable[[any], any] | None) = None;
 
     def init(
@@ -127,6 +129,7 @@ obj _JsonParser {
         parse_constant: (Callable[[any], any] | None) = None;
 
     def _cc -> int;
+    def _peek(off: int) -> int;
     def _skip_ws;
     def _doc -> str;
     def _fail(msg: str, pos: int);
@@ -150,13 +153,7 @@ def _apply_hook(f: Callable[[any], any], v: any) -> any;
 def _is_digit(c: int) -> bool;
 
 
-def _hex_digit(v: int) -> str;
-
-
 def _hex4_str(n: int) -> str;
-
-
-def _type_name(v: any) -> str;
 
 
 def _indent_str(indent: (int | str | None)) -> (str | None);
@@ -169,7 +166,8 @@ def _make_style(
     allow_nan: bool,
     sort_keys: bool,
     indent: (int | str | None),
-    separators: (tuple[str, str] | None),
+    item_sep: str,
+    key_sep: str,
     default_fn: (Callable[[any], any] | None)
 ) -> _JsonStyle;
 

@@ -75,6 +75,15 @@ impl JSONEncoder.init(
     self.sort_keys = sort_keys;
     self.indent = indent;
     self.separators = separators;
+    self.item_separator = ", ";
+    self.key_separator = ": ";
+    if separators is not None {
+        (item_sep, key_sep) = separators;
+        self.item_separator = item_sep;
+        self.key_separator = key_sep;
+    } elif indent is not None {
+        self.item_separator = ",";
+    }
     self._default_fn = `default;
 }
 
@@ -82,7 +91,7 @@ impl JSONEncoder.`default(o: any) -> any {
     if self._default_fn is not None {
         return _apply_hook(self._default_fn, o);
     }
-    raise TypeError("Object of type " + _type_name(o) + " is not JSON serializable");
+    raise TypeError("Object of type " + typename(o) + " is not JSON serializable");
 }
 
 impl JSONEncoder.encode(o: any) -> str {
@@ -93,7 +102,8 @@ impl JSONEncoder.encode(o: any) -> str {
         self.allow_nan,
         self.sort_keys,
         self.indent,
-        self.separators,
+        self.item_separator,
+        self.key_separator,
         lambda (v: any) -> any { return self.`default(v); }
     );
     seen: list[any] = [];
@@ -212,6 +222,14 @@ impl _JsonParser._cc -> int {
         return -1;
     }
     return self.buf[self.pos];
+}
+
+impl _JsonParser._peek(off: int) -> int {
+    at: int = self.pos + off;
+    if at >= self.n {
+        return -1;
+    }
+    return self.buf[at];
 }
 
 impl _JsonParser._skip_ws {
@@ -334,6 +352,9 @@ impl _JsonParser._parse_string -> str {
             self.pos += 1;
             epos: int = self.pos;
             e: int = self._cc();
+            if e == -1 {
+                self._fail("Unterminated string starting at", str_start);
+            }
             self.pos += 1;
             while self.pos < self.n and (self.buf[self.pos] & 192) == 128 {
                 self.pos += 1;
@@ -357,7 +378,7 @@ impl _JsonParser._parse_string -> str {
             } elif e == 117 {
                 parts.append(chr(self._hex4_pair()));
             } else {
-                self._fail("Invalid \\escape", epos);
+                self._fail("Invalid \\escape", epos - 1);
             }
             run_start = self.pos;
         } else {
@@ -368,6 +389,7 @@ impl _JsonParser._parse_string -> str {
 }
 
 impl _JsonParser._hex4 -> int {
+    u_at: int = self.pos - 1;
     v: int = 0;
     k: int = 0;
     while k < 4 {
@@ -380,7 +402,7 @@ impl _JsonParser._hex4 -> int {
         } elif d >= 65 and d <= 70 {
             nib = d - 55;
         } else {
-            self._fail("Invalid \\uXXXX escape", self.pos);
+            self._fail("Invalid \\uXXXX escape", u_at);
         }
         v = v * 16 + nib;
         self.pos += 1;
@@ -414,13 +436,16 @@ impl _JsonParser._parse_number -> any {
     if self._cc() == 45 {
         self.pos += 1;
     }
-    if not _is_digit(self._cc()) {
+    if self._cc() == 48 {
+        self.pos += 1;
+    } elif _is_digit(self._cc()) {
+        while _is_digit(self._cc()) {
+            self.pos += 1;
+        }
+    } else {
         self._fail("Expecting value", start);
     }
-    while _is_digit(self._cc()) {
-        self.pos += 1;
-    }
-    if self._cc() == 46 {
+    if self._cc() == 46 and _is_digit(self._peek(1)) {
         is_float = 1;
         self.pos += 1;
         while _is_digit(self._cc()) {
@@ -429,14 +454,18 @@ impl _JsonParser._parse_number -> any {
     }
     c: int = self._cc();
     if c == 101 or c == 69 {
-        is_float = 1;
-        self.pos += 1;
-        sign: int = self._cc();
-        if sign == 43 or sign == 45 {
-            self.pos += 1;
+        nxt: int = self._peek(1);
+        sign: int = 0;
+        if nxt == 43 or nxt == 45 {
+            sign = 1;
+            nxt = self._peek(2);
         }
-        while _is_digit(self._cc()) {
-            self.pos += 1;
+        if _is_digit(nxt) {
+            is_float = 1;
+            self.pos += 1 + sign;
+            while _is_digit(self._cc()) {
+                self.pos += 1;
+            }
         }
     }
     numstr: str = self.buf[start:self.pos].decode();
@@ -478,7 +507,12 @@ impl _JsonParser._parse_array -> any {
         self._skip_ws();
         c: int = self._cc();
         if c == 44 {
+            comma: int = self.pos;
             self.pos += 1;
+            self._skip_ws();
+            if self._cc() == 93 {
+                self._fail("Illegal trailing comma before end of array", comma);
+            }
         } elif c == 93 {
             self.pos += 1;
             break;
@@ -509,7 +543,6 @@ impl _JsonParser._parse_object -> any {
     out: dict[str, any] = {};
     pairs: list[any] = [];
     while True {
-        self._skip_ws();
         if self._cc() != 34 {
             self._fail("Expecting property name enclosed in double quotes", self.pos);
         }
@@ -528,7 +561,12 @@ impl _JsonParser._parse_object -> any {
         self._skip_ws();
         c: int = self._cc();
         if c == 44 {
+            comma: int = self.pos;
             self.pos += 1;
+            self._skip_ws();
+            if self._cc() == 125 {
+                self._fail("Illegal trailing comma before end of object", comma);
+            }
         } elif c == 125 {
             self.pos += 1;
             break;
@@ -547,47 +585,8 @@ impl _is_digit(c: int) -> bool {
     return c >= 48 and c <= 57;
 }
 
-impl _hex_digit(v: int) -> str {
-    if v < 10 {
-        return chr(48 + v);
-    }
-    return chr(97 + v - 10);
-}
-
 impl _hex4_str(n: int) -> str {
-    return (
-        _hex_digit((n // 4096) % 16)
-        + _hex_digit((n // 256) % 16)
-        + _hex_digit((n // 16) % 16)
-        + _hex_digit(n % 16)
-    );
-}
-
-impl _type_name(v: any) -> str {
-    if v is None {
-        return "NoneType";
-    } elif isinstance(v, bytearray) {
-        return "bytearray";
-    } elif isinstance(v, bytes) {
-        return "bytes";
-    } elif isinstance(v, str) {
-        return "str";
-    } elif isinstance(v, float) {
-        return "float";
-    } elif isinstance(v, bool) {
-        return "bool";
-    } elif isinstance(v, list) {
-        return "list";
-    } elif isinstance(v, tuple) {
-        return "tuple";
-    } elif isinstance(v, set) {
-        return "set";
-    } elif isinstance(v, dict) {
-        return "dict";
-    } elif isinstance(v, int) {
-        return "int";
-    }
-    return "object";
+    return hex2(n // 256) + hex2(n % 256);
 }
 
 impl _indent_str(indent: (int | str | None)) -> (str | None) {
@@ -612,7 +611,8 @@ impl _make_style(
     allow_nan: bool,
     sort_keys: bool,
     indent: (int | str | None),
-    separators: (tuple[str, str] | None),
+    item_sep: str,
+    key_sep: str,
     default_fn: (Callable[[any], any] | None)
 ) -> _JsonStyle {
     style: _JsonStyle = _JsonStyle(
@@ -621,17 +621,11 @@ impl _make_style(
         skipkeys=skipkeys,
         check_circular=check_circular,
         allow_nan=allow_nan,
+        item_sep=item_sep,
+        key_sep=key_sep,
         default_fn=default_fn
     );
     style.indent = _indent_str(indent);
-    if separators is not None {
-        (item_sep, key_sep) = separators;
-        style.item_sep = item_sep;
-        style.key_sep = key_sep;
-    } elif indent is not None {
-        style.item_sep = ",";
-        style.key_sep = ": ";
-    }
     return style;
 }
 
@@ -688,7 +682,9 @@ impl _dump_str(s: str, ensure_ascii: bool) -> str {
 impl _dump_float(f_val: float, allow_nan: bool) -> str {
     if f_val != f_val or f_val == float("inf") or f_val == float("-inf") {
         if not allow_nan {
-            raise ValueError("Out of range float values are not JSON compliant");
+            raise ValueError(
+                "Out of range float values are not JSON compliant: " + str(f_val)
+            );
         }
         if f_val != f_val {
             return "NaN";
@@ -727,7 +723,7 @@ impl _key_text(k: any, style: _JsonStyle) -> (str | None) {
     if style.skipkeys {
         return None;
     }
-    raise TypeError("keys must be str, int, float, bool or None, not " + _type_name(k));
+    raise TypeError("keys must be str, int, float, bool or None, not " + typename(k));
 }
 
 impl _num_key(v: any) -> (float | None) {
@@ -770,9 +766,9 @@ impl _key_cmp(a: any, b: any) -> int {
     }
     raise TypeError(
         "'<' not supported between instances of '"
-            + _type_name(a)
+            + typename(a)
             + "' and '"
-            + _type_name(b)
+            + typename(b)
             + "'"
     );
 }
@@ -943,7 +939,5 @@ impl _dump_value(value: any, style: _JsonStyle, depth: int, seen: list[any]) -> 
     if style.default_fn is not None {
         return _dump_value(_apply_hook(style.default_fn, value), style, depth, seen);
     }
-    raise TypeError(
-        "Object of type " + _type_name(value) + " is not JSON serializable"
-    );
+    raise TypeError("Object of type " + typename(value) + " is not JSON serializable");
 }

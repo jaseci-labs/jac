@@ -12903,6 +12903,7 @@ graph import runtime.na_stdlib {
     _replace_native ++> _os_native { replace_file }
     _repr ++> [
         difflib { str_gt },
+        json { hex2 },
         pprint | reprlib { repr_str, sorted_str_keys },
     ]
     _select_native ++> select {
@@ -13073,7 +13074,7 @@ graph import runtime.na_stdlib {
             time_sleep_ns
         },
     ]
-    _typename ++> hmac | secrets { typename }
+    _typename ++> hmac | json | secrets { typename }
     _unicodedata_tables ++> unicodedata {
         UNICODE_CATEGORIES,
         UNICODE_EAST_ASIAN_WIDTHS,
