@@ -69,7 +69,8 @@ obj LinkPlan {
         mode: str,
         triple: str,
         callback_bindings: list[InteropBinding] = [],
-        library_api: bool = False;
+        library_api: bool = False,
+        unit_aliases: dict[str, str] = {};
 
     def unit(path: str) -> (LinkUnit | None);
     def root_unit -> LinkUnit;
@@ -87,7 +88,9 @@ obj LinkPlan {
     def glue_spec(kind: ArtifactKind, platform: str, static_musl: bool) -> GlueSpec;
 }
 
-def initialization_order(units: list[LinkUnit], roots: list[str]) -> list[LinkUnit];
+def initialization_order(
+    units: list[LinkUnit], roots: list[str], aliases: (dict[str, str] | None) = None
+) -> list[LinkUnit];
 
 def _init_cycle_message(
     start: str, reads: dict[str, list[tuple[str, str]]], placed: set[str]

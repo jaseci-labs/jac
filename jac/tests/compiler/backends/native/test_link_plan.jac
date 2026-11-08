@@ -457,6 +457,142 @@ test "a stale recorded dependency is recompiled until the plan agrees" {
     }
 }
 
+"""Two same-prefix copies of one module plus a consumer of the second."""
+def _alias_copy_fixture -> tuple[str, str, str] {
+    scratch = Path(tempfile.mkdtemp(prefix="jac-plan-alias-"));
+    copy_a = scratch / "a" / "pkg" / "mod.jac";
+    copy_b = scratch / "b" / "pkg" / "mod.jac";
+    copy_a.parent.mkdir(parents=True);
+    copy_b.parent.mkdir(parents=True);
+    body = "def value -> int { return 7; }\n";
+    copy_a.write_text(body);
+    copy_b.write_text(body);
+    consumer = scratch / "consumer.jac";
+    consumer.write_text("def use -> int { return 0; }\n");
+    return (str(copy_a.resolve()), str(copy_b.resolve()), str(consumer.resolve()));
+}
+
+test "a consumer of a deduplicated copy binds the canonical unit without rebuilding" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    (copy_a, copy_b, consumer) = _alias_copy_fixture();
+    prog = JacProgram();
+    opts = _opts();
+    prog.options = opts;
+    registry = prog.native_units();
+    ent_a = registry.record(
+        copy_a, NativeIface(module="pkg.mod", prefix="mod_p"), opts
+    );
+    ent_a.bitcode = b"bc-a";
+    ent_b = registry.record(
+        copy_b, NativeIface(module="pkg.mod", prefix="mod_p"), opts
+    );
+    ent_b.bitcode = b"bc-b";
+    ent_c = registry.record(
+        consumer,
+        NativeIface(module="consumer", prefix="consumer_p", deps=[copy_b]),
+        opts,
+        dep_digests={copy_b: ent_b.digest}
+    );
+    ent_c.bitcode = b"bc-c";
+    def recompile(path: str, _options: CompileOptions) -> any {
+        assert False , f"consumer of a deduplicated copy must not rebuild: {path}";
+    }
+    with patch.object(registry, "compile_unit", side_effect=recompile) {
+        plan = build_link_plan(prog, [copy_a, consumer], opts);
+    }
+    paths = [u.path for u in plan.units];
+    assert copy_a in paths and consumer in paths , paths;
+    assert copy_b not in paths , paths;
+    canonical = plan.unit(copy_b);
+    assert canonical is not None and canonical.path == copy_a , canonical;
+    assert canonical.digest == ent_a.digest;
+}
+
+test "a rebuilt consumer of a deduplicated copy keeps its edge on the canonical unit" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    (copy_a, copy_b, consumer) = _alias_copy_fixture();
+    prog = JacProgram();
+    opts = _opts();
+    prog.options = opts;
+    registry = prog.native_units();
+    ent_a = registry.record(
+        copy_a, NativeIface(module="pkg.mod", prefix="mod_p"), opts
+    );
+    ent_a.bitcode = b"bc-a";
+    ent_b = registry.record(
+        copy_b, NativeIface(module="pkg.mod", prefix="mod_p"), opts
+    );
+    ent_b.bitcode = b"bc-b";
+    calls: list[str] = [];
+    def recompile(path: str, options: CompileOptions) -> any {
+        calls.append(path);
+        dep_digest = "0" * 64 if len(calls) == 1 else ent_b.digest;
+        ent = registry.record(
+            path,
+            NativeIface(module="consumer", prefix="consumer_p", deps=[copy_b]),
+            options,
+            dep_digests={copy_b: dep_digest}
+        );
+        ent.bitcode = b"bc-c";
+        return ent;
+    }
+    with patch.object(
+        registry, "compile_unit", side_effect=recompile
+    ) as compile_unit {
+        plan = build_link_plan(prog, [copy_a, consumer], opts);
+        assert compile_unit.call_count == 2 , calls;
+    }
+    paths = [u.path for u in plan.units];
+    assert copy_b not in paths , paths;
+    canonical = plan.unit(copy_b);
+    assert canonical is not None and canonical.path == copy_a;
+}
+
+test "same-prefix copies whose recorded dependencies differ are refused" {
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    (copy_a, copy_b, _) = _alias_copy_fixture();
+    scratch = Path(copy_a).parent.parent.parent;
+    helper_a = scratch / "a" / "pkg" / "helper.jac";
+    helper_b = scratch / "b" / "pkg" / "helper.jac";
+    helper_a.write_text("def helper_value -> int { return 1; }\n");
+    helper_b.write_text("def helper_value -> int { return 2; }\n");
+    prog = JacProgram();
+    opts = _opts();
+    prog.options = opts;
+    registry = prog.native_units();
+    ent_ha = registry.record(
+        str(helper_a.resolve()),
+        NativeIface(module="a.pkg.helper", prefix="helper_a_p"),
+        opts
+    );
+    ent_hb = registry.record(
+        str(helper_b.resolve()),
+        NativeIface(module="b.pkg.helper", prefix="helper_b_p"),
+        opts
+    );
+    registry.record(
+        copy_a,
+        NativeIface(module="pkg.mod", prefix="mod_p", deps=[str(helper_a.resolve())]),
+        opts,
+        dep_digests={str(helper_a.resolve()): ent_ha.digest}
+    );
+    registry.record(
+        copy_b,
+        NativeIface(module="pkg.mod", prefix="mod_p", deps=[str(helper_b.resolve())]),
+        opts,
+        dep_digests={str(helper_b.resolve()): ent_hb.digest}
+    );
+    try {
+        build_link_plan(prog, [copy_a, copy_b], opts);
+    } except LinkPlanError as err {
+        assert "mod_p" in str(err) , err;
+        return;
+    }
+    assert False , "divergent same-prefix copies must be refused";
+}
+
 test "two links from one cache are byte-identical" {
     if not _can_link_host() {
         import pytest;
