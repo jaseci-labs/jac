@@ -67,25 +67,7 @@ impl UnresolvedRef.reason -> str {
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    if start is None {
-        start = Path.cwd();
-    }
-    current = start.resolve();
-    if current.is_file() {
-        current = current.parent;
-    }
-    while current != current.parent {
-        toml_path = current / 'jac.toml';
-        if toml_path.exists() {
-            return (current, toml_path);
-        }
-        current = current.parent;
-    }
-    toml_path = current / 'jac.toml';
-    if toml_path.exists() {
-        return (current, toml_path);
-    }
-    return None;
+    return _find_project_root(start);
 }
 
 impl is_in_project -> bool {
