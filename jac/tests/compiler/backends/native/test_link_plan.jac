@@ -464,6 +464,8 @@ def _alias_copy_fixture -> tuple[str, str, str] {
     copy_b = scratch / "b" / "pkg" / "mod.jac";
     copy_a.parent.mkdir(parents=True);
     copy_b.parent.mkdir(parents=True);
+    (copy_a.parent / "jac.toml").write_text('[project]\nname = "pkg"\n');
+    (copy_b.parent / "jac.toml").write_text('[project]\nname = "pkg"\n');
     body = "def value -> int { return 7; }\n";
     copy_a.write_text(body);
     copy_b.write_text(body);
@@ -615,7 +617,26 @@ test "same-prefix copies whose recorded dependencies differ are refused" {
     assert copy_b not in [u.path for u in cycle_plan.units] , (
         "an incomplete cycle digest must be settled from equivalent dependencies"
     );
-    registry.entries[copy_b].compile_deps = b"different embedded payload";
+    payload_a = Path(copy_a).parent / "payload.txt";
+    payload_b = Path(copy_b).parent / "payload.txt";
+    payload_a.write_text("same payload");
+    payload_b.write_text("same payload");
+    same_digest = hashlib.sha256(b"same payload").hexdigest();
+    registry.entries[copy_a].compile_deps = (
+        f"{payload_a.resolve()}\t{same_digest}\t".encode()
+    );
+    registry.entries[copy_b].compile_deps = (
+        f"{payload_b.resolve()}\t{same_digest}\t".encode()
+    );
+    identical_inputs_plan = build_link_plan(prog, [copy_a, copy_b], opts);
+    assert copy_b not in [u.path for u in identical_inputs_plan.units] , (
+        "identical embedded inputs should alias across package copies"
+    );
+    payload_b.write_text("different payload");
+    different_digest = hashlib.sha256(b"different payload").hexdigest();
+    registry.entries[copy_b].compile_deps = (
+        f"{payload_b.resolve()}\t{different_digest}\t".encode()
+    );
     try {
         build_link_plan(prog, [copy_a, copy_b], opts);
     } except LinkPlanError as err {

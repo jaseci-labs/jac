@@ -97,6 +97,7 @@ def _init_cycle_message(
 ) -> str;
 
 def _platform_of(triple: str) -> str;
+def _compile_dep_signature(raw: bytes, unit_path: str) -> list[tuple[str, str, str]];
 
 def build_link_plan(
     prog: JacProgram,

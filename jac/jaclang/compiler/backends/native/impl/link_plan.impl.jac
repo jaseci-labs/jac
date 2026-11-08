@@ -445,7 +445,9 @@ impl _build_link_plan(
                 );
             }
             owner_ent = registry.entries.get(prefix_owner);
-            if owner_ent is None or ent.compile_deps != owner_ent.compile_deps {
+            if owner_ent is None
+                or _compile_dep_signature(ent.compile_deps, path)
+                    != _compile_dep_signature(owner_ent.compile_deps, prefix_owner) {
                 raise LinkPlanError(
                     f"{prefix_owner} and {path} share the native unit prefix "
                     f"{ent.iface.prefix} but their compile-time inputs differ: "
@@ -702,6 +704,35 @@ impl _build_link_plan(
         triple=triple,
         unit_aliases=dict(unit_aliases)
     );
+}
+
+impl _compile_dep_signature(raw: bytes, unit_path: str) -> list[tuple[str, str, str]] {
+    import from jaclang.compiler.frontend.codeinfo { native_unit_root }
+    if not raw {
+        return [];
+    }
+    package_root = native_unit_root(os.path.dirname(os.path.realpath(unit_path)));
+    rows: list[tuple[str, str, str]] = [];
+    for line in raw.decode("utf-8", errors="replace").splitlines() {
+        (stored_path, sep, rest) = line.partition("\t");
+        if not sep {
+            rows.append((stored_path, "", ""));
+            continue;
+        }
+        (digest, _sep2, flag) = rest.partition("\t");
+        normalized = stored_path;
+        if package_root is not None and os.path.isabs(stored_path) {
+            try {
+                if os.path.commonpath([stored_path, package_root]) == package_root {
+                    normalized = os.path.relpath(stored_path, package_root).replace(
+                        "\\", "/"
+                    );
+                }
+            } except ValueError {}
+        }
+        rows.append((normalized, digest, flag));
+    }
+    return sorted(rows);
 }
 
 impl _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine {
