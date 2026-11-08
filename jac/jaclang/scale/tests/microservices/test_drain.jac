@@ -41,6 +41,7 @@ test "drain hooks run once per process, awaited, past failures, including ones r
 
     def hook {
         ran.append("sync");
+        on_drain(hook);
         on_drain(lambda { ran.append("late"); });
     }
 

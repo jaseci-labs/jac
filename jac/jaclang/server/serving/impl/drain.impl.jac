@@ -19,8 +19,12 @@ impl _start_drain_hooks -> threading.Thread {
 }
 
 impl _run_drain_hooks {
-    hooks = list(DRAIN_HOOKS);
-    DRAIN_HOOKS.clear();
+    hooks = [
+        hook
+        for hook in DRAIN_HOOKS
+        if hook not in DRAIN_TAKEN
+    ];
+    DRAIN_TAKEN.update(hooks);
     asyncio.run(run_hooks(hooks, "drain hook"));
 }
 
@@ -41,7 +45,7 @@ impl DrainState.wait_for_hooks {
     if self.hooks_thread is not None {
         self.hooks_thread.join(timeout=self.remaining());
     }
-    if DRAIN_HOOKS {
+    if len(DRAIN_TAKEN) < len(DRAIN_HOOKS) {
         _start_drain_hooks().join(timeout=self.remaining());
     }
 }

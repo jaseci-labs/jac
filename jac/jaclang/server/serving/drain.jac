@@ -7,7 +7,8 @@ import time;
 glob logger: logging.Logger = logging.getLogger(__name__),
      HEALTH_PATHS: set[str] = {'/healthz', '/healthz/live', '/healthz/ready'},
      LIVENESS_PATHS: set[str] = {'/healthz', '/healthz/live'},
-     DRAIN_HOOKS: list[Callable[[], any]] = [];
+     DRAIN_HOOKS: list[Callable[[], any]] = [],
+     DRAIN_TAKEN: set[Callable[[], any]] = set();
 
 
 obj DrainState {
