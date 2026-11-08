@@ -716,17 +716,15 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
         }
         imp.native_only_drop = drop;
         imp.native_mirror_target = None;
+        imp.native_mirror_import_name = None;
         imp.native_mirror_names = [];
         if drop and native_app_target {
-            if py_refs is None {
-                py_refs = python_side_name_refs(mod);
-            }
             imp.native_mirror_target = target;
-            imp.native_mirror_names = [
-                name
-                for name in import_bound_names(imp)
-                if name in py_refs
-            ];
+            imp.native_mirror_import_name = (
+                imp.from_loc.dot_path_str if imp.from_loc is not None else None
+            );
+
+            imp.native_mirror_names = import_bound_names(imp);
         }
     }
 
@@ -744,6 +742,7 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
                 and any(name in kept for name in import_bound_names(imp)) {
                 imp.native_only_drop = False;
                 imp.native_mirror_target = None;
+                imp.native_mirror_import_name = None;
                 imp.native_mirror_names = [];
                 settled = False;
             }

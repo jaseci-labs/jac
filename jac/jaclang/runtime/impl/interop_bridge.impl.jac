@@ -85,10 +85,27 @@ impl _pyb_import_module(mod_path: str) -> object {
     return mod;
 }
 
-impl _pyb_mirror_module(mod_path: str, package: str) -> object {
+impl _pyb_mirror_module(mod_path: str, package: str, import_name: str) -> object {
     import os;
     key = os.path.abspath(mod_path);
+    resolved_name = import_name;
+    if import_name.startswith(".") {
+        level = len(import_name) - len(import_name.lstrip("."));
+        parent_parts = (package or "").split(".");
+        keep = max(0, len(parent_parts) - level + 1);
+        tail = import_name[level:];
+        resolved_name = ".".join(parent_parts[:keep] + ([tail] if tail else []));
+    }
     package_name: str = package or "";
+    if resolved_name and not os.path.isabs(resolved_name) {
+        if os.path.basename(key).startswith("__init__") {
+            package_name = resolved_name;
+        } elif "." in resolved_name {
+            package_name = resolved_name.rsplit(".", 1)[0];
+        } else {
+            package_name = "";
+        }
+    }
     cache_key = key + "|" + package_name;
     cached = _pyb_module_memo.get(cache_key);
     if cached is not None {
@@ -139,8 +156,10 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     return mod;
 }
 
-impl pyb_mirror_member(mod_path: str, name: str, package: str) -> object {
-    mod = _pyb_mirror_module(mod_path, package);
+impl pyb_mirror_member(
+    mod_path: str, name: str, package: str, import_name: str
+) -> object {
+    mod = _pyb_mirror_module(mod_path, package, import_name);
     if not hasattr(mod, name) {
         raise AttributeError(
             f"native-placed module '{mod_path}' exposes no '{name}' "

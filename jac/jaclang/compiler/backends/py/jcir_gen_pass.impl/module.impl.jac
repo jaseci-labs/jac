@@ -431,7 +431,8 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
 
 impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
     target = nd.native_mirror_target;
-    if not target or not nd.items or not nd.native_mirror_names {
+    import_name = nd.native_mirror_import_name;
+    if not target or not import_name or not nd.items or not nd.native_mirror_names {
         return False;
     }
     import json;
@@ -452,7 +453,8 @@ impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
         }
         parts.append(
             f"{local_name} = __jac_pyb_mirror_member({json.dumps(target)}, "
-                + f"{json.dumps(item_name)}, __package__)"
+                + f"{json.dumps(item_name)}, __package__, "
+                + f"{json.dumps(import_name)})"
         );
         names.append(local_name);
     }

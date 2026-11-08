@@ -686,6 +686,7 @@ node Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         boundary_facts: (ImportBoundaryFacts | None) postinit,
         native_only_drop: bool postinit,
         native_mirror_target: (str | None) postinit,
+        native_mirror_import_name: (str | None) postinit,
         native_mirror_names: list[str] postinit;
 
     has from_loc: (ModulePath | None) { getter; }

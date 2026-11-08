@@ -146,14 +146,13 @@ test "the stamped verdict is the computation it replaced" {
                 "a dropped native-app import must carry the resolved target "
                 "the emitter mirrors, not re-resolve it"
             );
-            assert imp.native_mirror_names
-                == [
-                    name
-                    for name in import_bound_names(imp)
-                    if name in py_refs
-                ] , (
-                "only bound names the python side references get mirrored; "
-                "the rest keep the old free drop"
+            assert imp.native_mirror_names == import_bound_names(imp) , (
+                "all module-level imported names remain available for "
+                "downstream re-exports"
+            );
+            assert imp.native_mirror_import_name == imp.from_loc.dot_path_str , (
+                "the mirror keeps the import identity for resolving its "
+                "own relative imports"
             );
         } else {
             assert imp.native_mirror_target is None;
@@ -201,7 +200,7 @@ test "an import the python side names is mirrored in an inferred-native module" 
         assert imports[0].native_mirror_target
             == native_only_import_target(imports[0], prog) , "the stamp must carry the resolved mirror target";
         assert imports[0].native_mirror_names == ["Counter"] , (
-            "the python side names Counter, so it -- and only it -- is mirrored"
+            "the module exports Counter through its import binding"
         );
     }
 }
