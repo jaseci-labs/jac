@@ -412,62 +412,22 @@ impl native_unit_root(directory: str) -> (str | None) {
     }
 }
 
-impl _toml_line_content(raw_line: str) -> str {
-    quote: str = "";
-    escaped: bool = False;
-    i: int = 0;
-    while i < len(raw_line) {
-        ch = raw_line[i];
-        if escaped {
-            escaped = False;
-        } elif quote == '"' and ch == "\\" {
-            escaped = True;
-        } elif quote {
-            if ch == quote {
-                quote = "";
-            }
-        } elif ch == '"' or ch == "'" {
-            quote = ch;
-        } elif ch == "#" {
-            return raw_line[:i].strip();
-        }
-        i += 1;
-    }
-    return raw_line.strip();
-}
-
 impl _jac_toml_project_name(toml_path: str) -> (str | None) {
-    fh = open(toml_path, "r");
     try {
-        text = fh.read();
-    } finally {
-        fh.close();
-    }
-    in_project = False;
-    for raw_line in text.split("\n") {
-        line = _toml_line_content(raw_line);
-        if not line or line.startswith("#") {
-            continue;
+        import from pathlib { Path }
+        unit_dir = Path(toml_path).parent;
+        config_mod = __import__(
+            "jaclang.project.config", fromlist=["get_config_for_path"]
+        );
+        cfg = config_mod.get_config_for_path(unit_dir);
+        if cfg is not None
+            and cfg.project_root is not None
+            and cfg.project_root.resolve() == unit_dir.resolve()
+            and cfg.project.name {
+            return str(cfg.project.name);
         }
-        if line.startswith("[") {
-            in_project = line == "[project]";
-            continue;
-        }
-        if in_project and line.startswith("name") and line[4:5] in (" ", "=", "\t") {
-            eq = line.find("=");
-            if eq < 0 {
-                continue;
-            }
-            value = line[eq + 1:].strip();
-            if len(value) >= 2
-                and (value.startswith('"') or value.startswith("'"))
-                and value.endswith(value[0]) {
-                inner = value[1:-1].strip();
-                if inner {
-                    return inner;
-                }
-            }
-        }
+    } except Exception {
+        return None;
     }
     return None;
 }
@@ -481,12 +441,10 @@ impl _native_unit_root_name(unit_root: str) -> str {
     name = os.path.basename(unit_root);
     toml_path = os.path.join(unit_root, "jac.toml");
     if os.path.isfile(toml_path) {
-        try {
-            pname = _jac_toml_project_name(toml_path);
-            if pname is not None {
-                name = pname;
-            }
-        } except Exception {}
+        pname = _jac_toml_project_name(toml_path);
+        if pname is not None {
+            name = pname;
+        }
     }
     _native_unit_root_name_memo[unit_root] = name;
     return name;
