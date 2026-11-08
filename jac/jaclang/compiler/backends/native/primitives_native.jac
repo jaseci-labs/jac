@@ -944,6 +944,18 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_clear_elements(
+        self: NativeListEmitter, ctx: NativeEmitCtx, target: ir.Value
+    ) -> None;
+
+    def _reserve_list_cap(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        need: ir.Value,
+        tag: str
+    ) -> None;
+
     def emit_index(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,

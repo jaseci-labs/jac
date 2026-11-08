@@ -2712,9 +2712,6 @@ impl NativeListEmitter.emit_extend(
     target_cap_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="ext.target.cap.ptr"
     );
-    target_data_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ext.target.data.ptr"
-    );
     target_len = b.load(target_len_ptr, name="ext.target.len");
     target_cap = b.load(target_cap_ptr, name="ext.target.cap");
     max_i64 = 9223372036854775807;
@@ -2746,24 +2743,7 @@ impl NativeListEmitter.emit_extend(
         ">", required_cap, max_elems, name="ext.bytes.overflow"
     );
     p._emit_runtime_raise(size_overflow, "MemoryError", "list extension is too large");
-    alloc_size = b.mul(required_cap, elem_size, name="ext.alloc.size");
-    i8p = ir.IntType(8).as_pointer();
-    malloc_fn = p._get_or_declare_extern("malloc", i8p, [i64]);
-    free_fn = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
-    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    new_raw = b.call(malloc_fn, [alloc_size], name="ext.newbuf");
-    p._emit_runtime_raise(
-        b.icmp_unsigned("==", new_raw, ir.Constant(i8p, None)),
-        "MemoryError",
-        "cannot allocate list extension"
-    );
-    old_data = b.load(target_data_ptr, name="ext.oldbuf");
-    old_bytes = b.mul(target_len, elem_size, name="ext.oldbytes");
-    b.call(memcpy_fn, [new_raw, b.bitcast(old_data, i8p), old_bytes]);
-    b.call(free_fn, [b.bitcast(old_data, i8p)]);
-    data_type = old_data.type;
-    b.store(b.bitcast(new_raw, data_type), target_data_ptr);
-    b.store(required_cap, target_cap_ptr);
+    self._reserve_list_cap(ctx, target, required_cap, "ext.self");
     b.branch(after_reserve_bb);
     b.position_at_start(after_reserve_bb);
     b.branch(loop_start_bb);
@@ -2834,7 +2814,6 @@ impl NativeListEmitter.emit_repeat_inplace(
     );
     orig_len = b.load(len_ptr, name="rep.orig.len");
     func = b.basic_block.function;
-    entry_bb = b.basic_block;
     zero_bb = func.append_basic_block(name="rep.zero");
     empty_bb = func.append_basic_block(name="rep.isempty");
     pre_bb = func.append_basic_block(name="rep.pre");
@@ -2847,77 +2826,7 @@ impl NativeListEmitter.emit_repeat_inplace(
     b.cbranch(nonpos, zero_bb, empty_bb);
 
     b.position_at_start(zero_bb);
-    if _aos_struct is None
-        and p._elem_kind(helpers["elem_type"]) != "raw"
-        and not p._nogc_headerless() {
-        _clr_data = b.load(
-            b.gep(
-                target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr.data.pp"
-            ),
-            name="clr.data"
-        );
-        _clr_loop_bb = func.append_basic_block(name="clr.loop");
-        _clr_body_bb = func.append_basic_block(name="clr.body");
-        _clr_end_bb = func.append_basic_block(name="clr.end");
-        _clr_i_a = p._entry_alloca(i64, "clr_i");
-        b.store(ir.Constant(i64, 0), _clr_i_a);
-        b.branch(_clr_loop_bb);
-
-        p.builder.position_at_end(_clr_loop_bb);
-        b = p.builder;
-        _clr_i = b.load(_clr_i_a, name="clr.i");
-        _clr_done = b.icmp_unsigned(">=", _clr_i, orig_len, name="clr.done");
-        b.cbranch(_clr_done, _clr_end_bb, _clr_body_bb);
-
-        p.builder.position_at_end(_clr_body_bb);
-        b = p.builder;
-        _clr_ev = b.load(b.gep(_clr_data, [_clr_i], name="clr.ep"), name="clr.ev");
-        p._emit_elem_release(b, helpers["elem_type"], _clr_ev);
-        _clr_next = b.add(_clr_i, ir.Constant(i64, 1), name="clr.next");
-        b.store(_clr_next, _clr_i_a);
-        b.branch(_clr_loop_bb);
-
-        p.builder.position_at_end(_clr_end_bb);
-        b = p.builder;
-    }
-    if _aos_struct is not None {
-        _clr_fields_fn = helpers.get("drop_fields");
-        if _clr_fields_fn is not None {
-            i8p = ir.IntType(8).as_pointer();
-            _clr_data = b.load(
-                b.gep(
-                    target,
-                    [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-                    name="clr.data.pp"
-                ),
-                name="clr.data"
-            );
-            _clr_loop_bb = func.append_basic_block(name="clr.loop");
-            _clr_body_bb = func.append_basic_block(name="clr.body");
-            _clr_end_bb = func.append_basic_block(name="clr.end");
-            _clr_i_a = p._entry_alloca(i64, "clr_i");
-            b.store(ir.Constant(i64, 0), _clr_i_a);
-            b.branch(_clr_loop_bb);
-
-            p.builder.position_at_end(_clr_loop_bb);
-            b = p.builder;
-            _clr_i = b.load(_clr_i_a, name="clr.i");
-            _clr_done = b.icmp_unsigned(">=", _clr_i, orig_len, name="clr.done");
-            b.cbranch(_clr_done, _clr_end_bb, _clr_body_bb);
-
-            p.builder.position_at_end(_clr_body_bb);
-            b = p.builder;
-            _clr_ep = b.gep(_clr_data, [_clr_i], name="clr.ep");
-            b.call(_clr_fields_fn, [b.bitcast(_clr_ep, i8p, name="clr.elem8")]);
-            _clr_next = b.add(_clr_i, ir.Constant(i64, 1), name="clr.next");
-            b.store(_clr_next, _clr_i_a);
-            b.branch(_clr_loop_bb);
-
-            p.builder.position_at_end(_clr_end_bb);
-            b = p.builder;
-        }
-    }
-    b.store(ir.Constant(i64, 0), len_ptr);
+    self._emit_clear_elements(ctx, target);
     b.branch(done_bb);
 
     b.position_at_start(empty_bb);
@@ -2926,7 +2835,6 @@ impl NativeListEmitter.emit_repeat_inplace(
 
     b.position_at_start(pre_bb);
     if _aos_struct is not None {
-        i8p = ir.IntType(8).as_pointer();
         _sz = _aos_size_of(b, _aos_struct, "rep");
         _sz_nonzero = b.icmp_unsigned(
             "!=", _sz, ir.Constant(i64, 0), name="rep.sz.nonzero"
@@ -2950,57 +2858,28 @@ impl NativeListEmitter.emit_repeat_inplace(
         p._emit_runtime_raise(
             _bytes_overflow, "MemoryError", "list repeat is too large"
         );
-        _total_bytes = b.mul(_total, _sz, name="rep.totalbytes");
         _cap_ptr = b.gep(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="rep.cap.ptr"
-        );
-        _data_pp = b.gep(
-            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rep.data.pp"
         );
         _cur_cap = b.load(_cap_ptr, name="rep.cap");
         _need = b.and_(
             b.icmp_unsigned(">", _total, _cur_cap), _sz_nonzero, name="rep.need"
         );
-        _pre_pass_pred = b.basic_block;
+        _pass_preds = [b.basic_block];
         b.cbranch(_need, reserve_bb, pass_bb);
 
         b.position_at_start(reserve_bb);
-        _malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
-        _free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
-        _memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-        _new_raw = b.call(_malloc, [_total_bytes], name="rep.newbuf");
-        p._emit_runtime_raise(
-            b.icmp_unsigned("==", _new_raw, ir.Constant(i8p, None)),
-            "MemoryError",
-            "cannot allocate repeated list"
-        );
-        _old = b.load(_data_pp, name="rep.oldbuf");
-        b.call(
-            _memcpy,
-            [
-                _new_raw,
-                b.bitcast(_old, i8p, name="rep.old8"),
-                b.mul(orig_len, _sz, name="rep.oldbytes")
-            ]
-        );
-        b.call(_free, [b.bitcast(_old, i8p, name="rep.old8f")]);
-        b.store(
-            b.bitcast(_new_raw, _aos_struct.as_pointer(), name="rep.newbuf.t"), _data_pp
-        );
-        b.store(_total, _cap_ptr);
-        _reserve_pass_pred = b.basic_block;
+        self._reserve_list_cap(ctx, target, _total, "rep");
+        _pass_preds.append(b.basic_block);
         b.branch(pass_bb);
     } else {
-        _pre_pass_pred = pre_bb;
-        b.branch(pass_bb);
-        b.position_at_start(reserve_bb);
-        _reserve_pass_pred = reserve_bb;
+        _pass_preds = [b.basic_block];
         b.branch(pass_bb);
     }
 
     b.position_at_start(pass_bb);
     pass_idx = b.phi(i64, name="rep.passidx");
-    for _pred in [_pre_pass_pred, _reserve_pass_pred] {
+    for _pred in _pass_preds {
         pass_idx.add_incoming(ir.Constant(i64, 1), _pred);
     }
     more_passes = b.icmp_signed("<", pass_idx, cnt, name="rep.more");
@@ -3292,6 +3171,13 @@ impl NativeListEmitter.emit_pop(
 impl NativeListEmitter.emit_clear(
     self: NativeListEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
+    self._emit_clear_elements(ctx, target);
+    return ir.Constant(ir.IntType(64), 0);
+}
+
+impl NativeListEmitter._emit_clear_elements(
+    self: NativeListEmitter, ctx: NativeEmitCtx, target: ir.Value
+) -> None {
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -3300,45 +3186,126 @@ impl NativeListEmitter.emit_clear(
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="clear.len.ptr"
     );
-
-    if helpers is not None
-        and p._elem_kind(helpers["elem_type"]) != "raw"
-        and not p._nogc_headerless() {
+    if helpers is not None {
         _cur_len_c = b.load(len_ptr, name="clr_len");
-        _data_pp_c = b.gep(
-            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr_data_pp"
-        );
-        _data_arr_c = b.load(_data_pp_c, name="clr_data");
-        _func_c = b.basic_block.function;
-        _clr_loop_bb = _func_c.append_basic_block("clr_loop");
-        _clr_body_bb = _func_c.append_basic_block("clr_body");
-        _clr_end_bb = _func_c.append_basic_block("clr_end");
-        _clr_i_a = p._entry_alloca(i64, "clr_i");
-        b.store(ir.Constant(i64, 0), _clr_i_a);
-        b.branch(_clr_loop_bb);
+        _drop_c = helpers.get("drop_fields");
+        if p._aos_elem_struct(ctx.type_key) is not None {
+            if _drop_c is not None {
+                _func_c = b.basic_block.function;
+                _data_pp_c = b.gep(
+                    target,
+                    [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+                    name="clr_data_pp"
+                );
+                _data_arr_c = b.load(_data_pp_c, name="clr_data");
+                _clr_loop_bb = _func_c.append_basic_block("clr_loop");
+                _clr_body_bb = _func_c.append_basic_block("clr_body");
+                _clr_end_bb = _func_c.append_basic_block("clr_end");
+                _clr_i_a = p._entry_alloca(i64, "clr_i");
+                b.store(ir.Constant(i64, 0), _clr_i_a);
+                b.branch(_clr_loop_bb);
 
-        p.builder.position_at_end(_clr_loop_bb);
-        b = p.builder;
-        _li_c = b.load(_clr_i_a, name="clr_li");
-        _clr_cmp = b.icmp_unsigned(">=", _li_c, _cur_len_c, name="clr_done");
-        b.cbranch(_clr_cmp, _clr_end_bb, _clr_body_bb);
+                p.builder.position_at_end(_clr_loop_bb);
+                b = p.builder;
+                _li_c = b.load(_clr_i_a, name="clr_li");
+                _clr_cmp = b.icmp_unsigned(">=", _li_c, _cur_len_c, name="clr_done");
+                b.cbranch(_clr_cmp, _clr_end_bb, _clr_body_bb);
 
-        p.builder.position_at_end(_clr_body_bb);
-        b = p.builder;
-        _li2_c = b.load(_clr_i_a, name="clr_li2");
-        _ep_c = b.gep(_data_arr_c, [_li2_c], name="clr_ep");
-        _ev_c = b.load(_ep_c, name="clr_ev");
-        p._emit_elem_release(b, helpers["elem_type"], _ev_c);
-        _li3_c = b.load(_clr_i_a, name="clr_li3");
-        _ni_c = b.add(_li3_c, ir.Constant(i64, 1), name="clr_ni");
-        b.store(_ni_c, _clr_i_a);
-        b.branch(_clr_loop_bb);
+                p.builder.position_at_end(_clr_body_bb);
+                b = p.builder;
+                _li2_c = b.load(_clr_i_a, name="clr_li2");
+                _ep_c = b.gep(_data_arr_c, [_li2_c], name="clr_ep");
+                b.call(
+                    _drop_c,
+                    [b.bitcast(_ep_c, ir.IntType(8).as_pointer(), name="clr_elem8")]
+                );
+                _li3_c = b.load(_clr_i_a, name="clr_li3");
+                _ni_c = b.add(_li3_c, ir.Constant(i64, 1), name="clr_ni");
+                b.store(_ni_c, _clr_i_a);
+                b.branch(_clr_loop_bb);
 
-        p.builder.position_at_end(_clr_end_bb);
-        b = p.builder;
+                p.builder.position_at_end(_clr_end_bb);
+                b = p.builder;
+            }
+        } elif p._elem_kind(helpers["elem_type"]) != "raw"
+            and not p._nogc_headerless() {
+            _data_pp_c = b.gep(
+                target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr_data_pp"
+            );
+            _data_arr_c = b.load(_data_pp_c, name="clr_data");
+            _func_c = b.basic_block.function;
+            _clr_loop_bb = _func_c.append_basic_block("clr_loop");
+            _clr_body_bb = _func_c.append_basic_block("clr_body");
+            _clr_end_bb = _func_c.append_basic_block("clr_end");
+            _clr_i_a = p._entry_alloca(i64, "clr_i");
+            b.store(ir.Constant(i64, 0), _clr_i_a);
+            b.branch(_clr_loop_bb);
+            p.builder.position_at_end(_clr_loop_bb);
+            b = p.builder;
+            _li_c = b.load(_clr_i_a, name="clr_li");
+            _clr_cmp = b.icmp_unsigned(">=", _li_c, _cur_len_c, name="clr_done");
+            b.cbranch(_clr_cmp, _clr_end_bb, _clr_body_bb);
+            p.builder.position_at_end(_clr_body_bb);
+            b = p.builder;
+            _li2_c = b.load(_clr_i_a, name="clr_li2");
+            _ep_c = b.gep(_data_arr_c, [_li2_c], name="clr_ep");
+            _ev_c = b.load(_ep_c, name="clr_ev");
+            p._emit_elem_release(b, helpers["elem_type"], _ev_c);
+            _li3_c = b.load(_clr_i_a, name="clr_li3");
+            _ni_c = b.add(_li3_c, ir.Constant(i64, 1), name="clr_ni");
+            b.store(_ni_c, _clr_i_a);
+            b.branch(_clr_loop_bb);
+            p.builder.position_at_end(_clr_end_bb);
+            b = p.builder;
+        }
     }
     b.store(ir.Constant(i64, 0), len_ptr);
-    return ir.Constant(i64, 0);
+}
+
+impl NativeListEmitter._reserve_list_cap(
+    self: NativeListEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    need: ir.Value,
+    tag: str
+) -> None {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    helpers = p.list_helpers[ctx.type_key];
+    _aos = p._aos_elem_struct(ctx.type_key);
+    elem_type = _aos if _aos is not None else helpers["elem_type"];
+    len_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"{tag}.len.ptr"
+    );
+    cap_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name=f"{tag}.cap.ptr"
+    );
+    data_pp = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{tag}.data.pp"
+    );
+    func = b.basic_block.function;
+    entry_bb = b.basic_block;
+    grow_bb = func.append_basic_block(name=f"{tag}.grow");
+    grown_bb = func.append_basic_block(name=f"{tag}.grown");
+    cap_entry = b.load(cap_ptr, name=f"{tag}.cap.entry");
+    b.cbranch(
+        b.icmp_unsigned("<", cap_entry, need, name=f"{tag}.short"), grow_bb, grown_bb
+    );
+    b.position_at_start(grow_bb);
+    cap_now = b.phi(i64, name=f"{tag}.cap.now");
+    cap_now.add_incoming(cap_entry, entry_bb);
+    cur_len = b.load(len_ptr, name=f"{tag}.len");
+    p._emit_grow_array(b, data_pp, elem_type, cur_len, cap_ptr, cap_now);
+    grown_to = b.load(cap_ptr, name=f"{tag}.cap.grown");
+    cap_now.add_incoming(grown_to, b.basic_block);
+    b.cbranch(
+        b.icmp_unsigned("<", grown_to, need, name=f"{tag}.still.short"),
+        grow_bb,
+        grown_bb
+    );
+    b.position_at_start(grown_bb);
 }
 
 impl NativeListEmitter.emit_index(

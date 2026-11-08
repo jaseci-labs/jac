@@ -186,3 +186,47 @@ def test_list_imul_str_nine() -> int {
     }
     return total * 100 + len(ws);
 }
+
+
+obj Cell {
+    has a: int = 0,
+        b: int = 0;
+}
+
+obj Bag {
+    has cells: list[int] = [];
+}
+
+def test_list_field_iadd_alias() -> int {
+    bag = Bag();
+    bag.cells = [1, 2];
+    alias = bag.cells;
+    bag.cells += [3];
+    return len(bag.cells) * 100 + len(alias);
+}
+
+def test_list_field_imul_alias() -> int {
+    bag = Bag();
+    bag.cells = [1, 2];
+    alias = bag.cells;
+    bag.cells *= 3;
+    return len(bag.cells) * 100 + len(alias);
+}
+
+def test_list_field_imul_zero_reuse() -> int {
+    bag = Bag();
+    bag.cells = [7, 8];
+    bag.cells *= 0;
+    bag.cells.append(9);
+    return len(bag.cells) * 100 + bag.cells[0];
+}
+
+def test_list_self_iadd() -> int {
+    cells: list[Cell] = [Cell(a=1), Cell(a=2), Cell(a=3), Cell(a=4), Cell(a=5)];
+    cells += cells;
+    total: int = 0;
+    for c in cells {
+        total += c.a;
+    }
+    return len(cells) * 100 + total;
+}

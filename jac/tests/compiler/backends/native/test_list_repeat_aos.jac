@@ -42,19 +42,24 @@ def _build_and_run(out_bin: str) -> list[str] {
 }
 
 test "list[own Cell] *= n grows once, clears, and skips empty repeats" {
-    out_bin = os.path.join(tempfile.mkdtemp(), "rep_aos.bin");
-    out = _build_and_run(out_bin);
-    # 9 cells of (a=7, b=11): each contributes 7*100 + 11 = 711.
-    assert out == ["6399", "0", "506", "0", "3010", "True", "6060", "4", "18", "end"] , f"aos list mutation output mismatch: {out}";
+    with tempfile.TemporaryDirectory() as scratch {
+        out_bin = os.path.join(scratch, "rep_aos.bin");
+        out = _build_and_run(out_bin);
+        # 9 cells of (a=7, b=11): each contributes 7*100 + 11 = 711.
+        assert out
+            == ["6399", "0", "506", "0", "3010", "True", "6060", "4", "18", "end"] , f"aos list mutation output mismatch: {out}";
+    }
 }
 
 test "list[own Cell] *= n binary is leak-free" {
     if shutil.which("leaks") {
-        out_bin = os.path.join(tempfile.mkdtemp(), "rep_aos_leaks.bin");
-        _build_and_run(out_bin);
-        lk = subprocess.run(
-            ["leaks", "--atExit", "--", out_bin], capture_output=True, text=True
-        );
-        assert "0 leaks for 0 total leaked bytes" in lk.stdout , lk.stdout[-2000:];
+        with tempfile.TemporaryDirectory() as scratch {
+            out_bin = os.path.join(scratch, "rep_aos_leaks.bin");
+            _build_and_run(out_bin);
+            lk = subprocess.run(
+                ["leaks", "--atExit", "--", out_bin], capture_output=True, text=True
+            );
+            assert "0 leaks for 0 total leaked bytes" in lk.stdout , lk.stdout[-2000:];
+        }
     }
 }
