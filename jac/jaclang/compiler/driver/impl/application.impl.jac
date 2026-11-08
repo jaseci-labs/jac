@@ -522,6 +522,11 @@ impl prepare_application(
             time.monotonic() - started
         ):.1f}s{current}';
     }
+    import from jaclang.compiler.frontend.codeinfo {
+        effective_default_codespace,
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
     import from jaclang.runtime.preparation_lock { PREPARATION_LOCK }
     with PREPARATION_LOCK {
         previous = get_effective_default_codespace_override();

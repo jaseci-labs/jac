@@ -1371,10 +1371,7 @@ graph import {
             module_spaces,
             spaces_are_client_only
         },
-        dist.precompile_bytecode.find_jac_files {
-            native_only,
-            variant_selected
-        },
+        dist.precompile_bytecode.find_jac_files { native_only, variant_selected },
         dist.precompile_bytecode.package_native_units { native_units_of },
         dist.publish.runtime_vendor._compile_runtime_module
             | testing.cl_test_runner.module_is_client { module_record },
@@ -5803,6 +5800,9 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
+            native_only_import_target
+        },
         backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
         backends.py.jcir_gen_pass.JcirGenPass.exit_import {
             CrossAppKind,
@@ -6655,10 +6655,6 @@ graph import compiler {
         },
         tools.comment_attach_pass { NodeComments },
     ]
-    driver.boundary_classify
-        ++> backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
-        native_only_import_target
-    }
     frontend.codeinfo --> [
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
             | backends.py.jcir_gen_pass.JcirGenPass._sv_endpoint_effects
@@ -13809,7 +13805,10 @@ graph import compiler.types {
         ct_type_attr,
         ct_value_attr
     }
-    ct_eval ++> type_evaluator { CtEvaluator }
+    ct_eval ++> [
+        type_evaluator { CtEvaluator },
+        type_evaluator.TypeEvaluator.__post_init__ { CtEvaluator },
+    ]
     ct_format ++> [
         ct_builtins { ct_binary, ct_format, ct_str_format },
         ct_eval { ct_binary, ct_convert, ct_format, ct_inplace },
@@ -14118,13 +14117,10 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._extern_field_type { numeric_name_of },
         type_evaluator.TypeEvaluator._literal_type_from_expr { folded_number },
     ]
-    fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
-        numeric_name_of
-    }
-    fixed_width --> type_evaluator.TypeEvaluator._validate_call_type {
-        fixed_width_call_type
-    }
-    ct_eval ++> type_evaluator.TypeEvaluator.__post_init__ { CtEvaluator }
+    fixed_width --> [
+        type_evaluator.TypeEvaluator._get_type_from_flow_node { numeric_name_of },
+        type_evaluator.TypeEvaluator._validate_call_type { fixed_width_call_type },
+    ]
     operations ++> type_evaluator {
         BINARY_OPERATOR_MAP,
         get_type_of_binary_operation,
@@ -14326,7 +14322,6 @@ graph import compiler.types {
 
 graph import compiler.types.stubcat {
     build ++> locate.StubcatArtifact.build { build_catalog }
-    writer ++> build._build_catalog_inner { CatalogWriter }
     format ++> [
         locate { FORMAT_VERSION },
         modiface { IFACE_HASH_LEN },
@@ -14463,7 +14458,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        build._build_catalog_inner { CatalogWriter },
+    ]
 }
 
 graph import data {
@@ -15032,9 +15030,9 @@ graph import project {
         compiler_host._git_ignored_under { drop_git_ignored },
     ]
     textio --> config.JacConfig.save { read_file_with_encoding }
-    tomlio ++> config { read_toml_with_encoding }
     tomlio ++> [
-        config.JacConfig.load | template_loader { read_toml_with_encoding },
+        config | template_loader { read_toml_with_encoding },
+        config.JacConfig.load { read_toml_with_encoding },
         config.JacConfig.merge_from_toml_file { read_toml_with_encoding },
     ]
     tomlio --> config.JacConfig.save { MalformedJacTomlError }
