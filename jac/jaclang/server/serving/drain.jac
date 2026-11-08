@@ -27,6 +27,9 @@ obj DrainState {
 async def run_hooks(hooks: list[Callable[..., any]], what: str);
 
 
+def _start_drain_hooks -> threading.Thread;
+
+
 def _run_drain_hooks;
 
 

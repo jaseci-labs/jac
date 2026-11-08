@@ -6,11 +6,16 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
     self.started_at = time.monotonic();
     self.reason = reason;
     logger.warning(f"drain: started ({reason}, budget {self.timeout:.1f}s)");
-    self.hooks_thread = threading.Thread(
+    self.hooks_thread = _start_drain_hooks();
+    return True;
+}
+
+impl _start_drain_hooks -> threading.Thread {
+    thread = threading.Thread(
         target=_run_drain_hooks, name='jac-drain-hooks', daemon=True
     );
-    self.hooks_thread.start();
-    return True;
+    thread.start();
+    return thread;
 }
 
 impl _run_drain_hooks {
@@ -35,6 +40,9 @@ impl run_hooks(hooks: list[Callable[..., any]], what: str) {
 impl DrainState.wait_for_hooks {
     if self.hooks_thread is not None {
         self.hooks_thread.join(timeout=self.remaining());
+    }
+    if DRAIN_HOOKS {
+        _start_drain_hooks().join(timeout=self.remaining());
     }
 }
 

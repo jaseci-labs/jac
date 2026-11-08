@@ -36,11 +36,12 @@ test "start flips draining once and keeps the first reason" {
 }
 
 
-test "drain hooks run once per process, awaited, past one that raises or exits" {
+test "drain hooks run once per process, awaited, past failures, including ones registered while draining" {
     ran: list[str] = [];
 
     def hook {
         ran.append("sync");
+        on_drain(lambda { ran.append("late"); });
     }
 
     async def async_hook {
@@ -61,8 +62,8 @@ test "drain hooks run once per process, awaited, past one that raises or exits" 
         state = DrainState();
         state.start(reason);
         state.wait_for_hooks();
+        assert ran == ["sync", "async", "late"] , reason;
     }
-    assert ran == ["sync", "async"];
 }
 
 
