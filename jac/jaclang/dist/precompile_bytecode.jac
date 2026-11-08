@@ -133,7 +133,12 @@ def adopt_kernel(
     pkg_path: Path, out_dir: Path, manifest_modules: dict[str, any], kernel_dir: str
 ) -> dict[str, any];
 
-def _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None;
+def _refresh_native_twin(
+    twin: Path,
+    jac_path: str,
+    pkg_root: str,
+    overrides: (dict[int, bytes] | None) = None
+) -> None;
 
 def _drop_native_twin(twin: Path) -> bool;
 

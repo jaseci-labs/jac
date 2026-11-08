@@ -270,3 +270,45 @@ test "a compiler module's sealed twin sheds its native sections and keeps the re
         assert not _drop_native_twin(twin) , "a lean twin is left as it is";
     }
 }
+
+"""The mirror of the shed: a third-party package's sealed twin keeps its native
+sections, but the module cache's NIFACE can be older than the interface the
+link plan finally recorded (issue #10638). The seal passes the linked unit's
+interface in as an override, so the twin provably carries what the artifact
+linked."""
+test "sealed twin takes the linked interface over a stale cached one" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.dist.precompile_bytecode { _refresh_native_twin }
+    import from jaclang.compiler.driver.jir {
+        SEC_MODKEY,
+        parse_header,
+        read_section_bytes
+    }
+    code = marshal.dumps(compile("X = 1", "<twin>", "exec"));
+    src = zlib.compress(b"with entry { X = 1; }");
+    with tempfile.TemporaryDirectory() as tmp {
+        twin = Path(tmp) / "unit.jir";
+        twin.write_bytes(
+            write_precompiled_jir(
+                code,
+                "unit-key",
+                FLAG_PRECOMPILED,
+                {SEC_DEBUG_SRC: src, SEC_NIFACE: b"stale-iface"}
+            )
+        );
+        # No module cache exists for the source path, so only the override
+        # can land: the same path the seal relies on for its NIFACE stamp.
+        missing = str(Path(tmp) / "absent.jac");
+        _refresh_native_twin(twin, missing, tmp, {SEC_NIFACE: b"linked-iface"});
+        synced = twin.read_bytes();
+        assert read_section_bytes(synced, SEC_NIFACE) == b"linked-iface";
+        assert read_section_bytes(synced, SEC_BYTECODE) == code;
+        assert read_section_bytes(synced, SEC_DEBUG_SRC) == src;
+        assert read_section_bytes(synced, SEC_MODKEY) == b"unit-key";
+        header = parse_header(synced[:HEADER_SIZE]);
+        assert header is not None and header.flags == FLAG_PRECOMPILED;
+        _refresh_native_twin(twin, missing, tmp, {SEC_NIFACE: b"linked-iface"});
+        assert twin.read_bytes() == synced , "a synced twin is left as it is";
+    }
+}

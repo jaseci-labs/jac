@@ -1285,35 +1285,10 @@ impl seal_native(
             continue;
         }
         twin = out_dir / mod_entry["jir"];
-        _refresh_native_twin(twin, u.path, str(pkg_path));
-        twin_bytes = twin.read_bytes();
-        header = parse_header(twin_bytes[:HEADER_SIZE]);
-        if header is None {
-            raise RuntimeError(f"native unit {rel} has an invalid sealed JIR header");
-        }
-        magic: any = SECTIONS_MAGIC;
-        section_pos = twin_bytes.find(magic, HEADER_SIZE);
-        if section_pos < 0 {
-            raise RuntimeError(f"native unit {rel} has no sealed JIR sections");
-        }
-        sections = read_sections(twin_bytes, section_pos + len(magic));
-        sections[SEC_NIFACE] = stamp.pack(u.iface.to_bytes());
-        bytecode = sections.pop(SEC_BYTECODE, None);
-        module_key = (sections.pop(SEC_MODKEY, b"") or b"").decode("utf-8");
-        twin_bytes = write_precompiled_jir(bytecode, module_key, header.flags, sections);
-        twin.write_bytes(twin_bytes);
-        jir_bytes = twin_bytes;
-        mod_entry["sha256"] = hashlib.sha256(jir_bytes).hexdigest();
-        sealed_iface = NativeIface.verified_digest(
-            native_section_payload(_rsb(jir_bytes, SEC_NIFACE), stamp)
+        _refresh_native_twin(
+            twin, u.path, str(pkg_path), {SEC_NIFACE: stamp.pack(u.iface.to_bytes())}
         );
-        if sealed_iface != u.digest {
-            raise RuntimeError(
-                f"native unit {rel}: the sealed JIR carries interface "
-                f"{(sealed_iface or 'none')[:12]} but the artifact linked "
-                f"{u.digest[:12]}; re-run the compile pass"
-            );
-        }
+        mod_entry["sha256"] = hashlib.sha256(twin.read_bytes()).hexdigest();
         unit_records[rel] = {"jir": mod_entry["jir"], "iface_digest": u.digest};
     }
     console.print(
@@ -1412,8 +1387,16 @@ impl adopt_kernel(
     };
 }
 
-impl _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
+impl _refresh_native_twin(
+    twin: Path,
+    jac_path: str,
+    pkg_root: str,
+    overrides: (dict[int, bytes] | None) = None
+) -> None {
     fresh = _native_extra(jac_path, pkg_root);
+    if overrides {
+        fresh.update(overrides);
+    }
     if not fresh {
         return;
     }
