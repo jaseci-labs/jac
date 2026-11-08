@@ -96,7 +96,6 @@ jobs:
       - name: Run JavaScript runtime review regressions
         run: jac/zig-out/js/bin/node jac/js_engine/engine/tests/runtime/test_review_regressions.js
 
-
       - name: Restore the test262 checkout
         uses: actions/cache@v4
         with:

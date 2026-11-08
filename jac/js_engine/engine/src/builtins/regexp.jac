@@ -63,7 +63,8 @@ import from engine.src.runtime.jsvalue {
     jsv_to_double,
     jsv_to_table_id,
     jsv_from_string_id,
-    jsv_hole
+    jsv_hole,
+    jsv_coerce_to_bool
 }
 import from engine.src.builtins.regexp_type { JSRegExpState }
 import from engine.src.runtime.realm { Realm }
@@ -113,7 +114,11 @@ import from engine.src.builtins.array { _KEY_IS_ARRAY }
 import from engine.src.builtins.markers { _KEY_IS_REGEXP_MARK }
 import from engine.src.builtins.array { js_array_create }
 import from engine.src.builtins.string { js_to_string_prim, js_coerce_to_string }
-import from engine.src.vm.vm_obs { js_to_string_observable, js_to_number_observable }
+import from engine.src.vm.vm_obs {
+    js_object_get_observable,
+    js_to_string_observable,
+    js_to_number_observable
+}
 import from engine.src.builtins.native_kinds {
     NATIVE_KIND_REGEXP,
     NATIVE_KIND_REGEXP_TEST,
@@ -3409,7 +3414,9 @@ def:pub js_str_replace_re(
 
 """Global regexp replace body: one PCRE2 scan per match, pieces joined once
 (was `out = out + piece` — O(n²) copying and a leaked intermediate per match)."""
-def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -> str {
+def _re_replace_global_build(
+    re10: JSRegExpState, s7: str, r7: str, asc: bool, full_unicode: bool
+) -> str {
     parts: list[str] = [];
     has_dollar: bool = str_bfind(r7, "$") >= 0;
     slen7: int = str_nbytes(s7);
@@ -3434,7 +3441,7 @@ def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -
         if res8[1] > res8[0] {
             pos7 = res8[1];
         } else {
-            pos7 = res8[1] + _re_char_len(s7, res8[1]);
+            pos7 = res8[1] + _re_char_len(s7, res8[1], full_unicode);
         }
     }
     parts.append(str_substr(s7, nsp7, slen7));
@@ -3442,12 +3449,23 @@ def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -
 }
 
 """Byte length of the UTF-8 character at byte `i` of `s` (1 past the end):
-the matchers' AdvanceStringIndex step."""
-def _re_char_len(s: str, i: int) -> int {
-    if i >= str_nbytes(s) {
+the matchers' AdvanceStringIndex step. In `full_unicode` mode a surrogate pair
+— which the string runtime stores as two CESU-8 3-byte sequences — advances as
+one character, as AdvanceStringIndex does for a RegExp whose `unicode` is true."""
+def _re_char_len(s: str, i: int, full_unicode: bool = False) -> int {
+    n: int = str_nbytes(s);
+    if i >= n {
         return 1;
     }
     cl_b: int = str_byte(s, i);
+    if full_unicode and cl_b == 237 and i + 5 < n {
+        b1: int = str_byte(s, i + 1);
+        b3: int = str_byte(s, i + 3);
+        b4: int = str_byte(s, i + 4);
+        if b1 >= 160 and b1 <= 175 and b3 == 237 and b4 >= 176 and b4 <= 191 {
+            return 6;
+        }
+    }
     if cl_b < 192 {
         return 1;
     }
