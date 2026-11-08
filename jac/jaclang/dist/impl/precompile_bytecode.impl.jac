@@ -611,16 +611,16 @@ impl _precompile_unit(
             (options, codespace, cache_path) = hit;
             cached_bc = read_section_bytes(cache_path.read_bytes(), SEC_BYTECODE);
             if cached_bc is not None {
+                module_key = compute_precompile_module_key(jac_path);
                 with _cache_variant(options, codespace) {
-                    return write_precompiled_jir(
-                        patch_co_filenames_bytes(
-                            cached_bc, pkg_root, PRECOMPILE_SENTINEL
-                        ),
-                        compute_precompile_module_key(jac_path),
-                        FLAG_PRECOMPILED,
-                        _unit_extra(jac_path, pkg_root, embed_src)
-                    );
+                    extra = _unit_extra(jac_path, pkg_root, embed_src);
                 }
+                return write_precompiled_jir(
+                    patch_co_filenames_bytes(cached_bc, pkg_root, PRECOMPILE_SENTINEL),
+                    module_key,
+                    FLAG_PRECOMPILED,
+                    extra
+                );
             }
         }
     } except Exception {}
