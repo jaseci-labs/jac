@@ -11,7 +11,10 @@ glob MINTED_SECRET_NOTES: dict[str, str] = {
      },
      logger = logging.getLogger(__name__),
      REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision",
-     FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
+     FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)",
+     ROLLOUT_POLL_SECONDS: int = 2,
+     IMAGE_PULL_PERSIST_SECONDS: int = 10,
+     MOUNT_WEDGE_SECONDS: int = 300;
 
 
 def _revision_sort_key(item: dict[str, any]) -> int;
