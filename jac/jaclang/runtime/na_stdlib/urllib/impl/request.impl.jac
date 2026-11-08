@@ -47,9 +47,7 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
     if "host" not in provided {
         lines.append("Host: " + host);
     }
-    if "connection" not in provided {
-        lines.append("Connection: close");
-    }
+    lines.append("Connection: close");
     if "user-agent" not in provided {
         lines.append("User-Agent: jac-urllib/1.0");
     }
@@ -57,7 +55,9 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
         lines.append("Accept: */*");
     }
     for name in request.headers {
-        lines.append(name + ": " + request.headers[name]);
+        if name.lower() != "connection" {
+            lines.append(name + ": " + request.headers[name]);
+        }
     }
     if len(request.data) > 0 and "content-length" not in provided {
         lines.append("Content-Length: " + str(len(request.data)));

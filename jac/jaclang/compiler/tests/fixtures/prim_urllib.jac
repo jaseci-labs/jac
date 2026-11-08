@@ -30,7 +30,8 @@ import from urllib.request { urlopen, Request }
 
 def urlopen_status_na -> int {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
-    resp = urlopen(base + "/hello");
+    req = Request(url=base + "/hello", headers={"Connection": "keep-alive"});
+    resp = urlopen(req);
     return resp.status;
 }
 
