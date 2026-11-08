@@ -268,6 +268,13 @@ impl schedule(**kwargs: any) -> Callable {
 impl on_drain(hook: Callable[[], any]) -> Callable[[], any] {
     if hook not in DRAIN_HOOKS {
         DRAIN_HOOKS.append(hook);
+        if len(DRAIN_HOOKS) == 101 {
+            import logging;
+            logging.getLogger(__name__).warning(
+                "on_drain: over 100 hooks registered, likely one per request. "
+                "Pass a module-level function, not a lambda."
+            );
+        }
     }
     return hook;
 }

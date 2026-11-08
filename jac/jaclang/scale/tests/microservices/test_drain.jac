@@ -3,6 +3,7 @@ readiness probe and gateway read from it."""
 
 import asyncio;
 import json;
+import logging;
 import sys;
 
 
@@ -79,6 +80,29 @@ test "drain hooks run once per process, awaited, past failures, including ones r
         state.wait_for_hooks();
         assert ran == ["sync", "obj", "async", "late"] , reason;
     }
+}
+
+
+test "on_drain warns once when hooks pile up, as a lambda registered per request does" {
+    warnings: list[str] = [];
+    def capture(record: any) {
+        warnings.append(record.getMessage());
+    }
+    handler = logging.Handler();
+    handler.emit = capture;
+    logging.getLogger().addHandler(handler);
+    for _ in range(150) {
+        on_drain(lambda { return None; });
+    }
+    logging.getLogger().removeHandler(handler);
+    assert len(
+        [
+            w
+            for w in warnings
+            if w.startswith("on_drain:")
+        ]
+    )
+        == 1;
 }
 
 
