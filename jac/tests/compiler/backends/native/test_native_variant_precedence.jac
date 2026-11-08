@@ -25,6 +25,14 @@ import from jaclang.compiler.frontend.codeinfo {
 import from tests.support { native_build, native_run }
 
 test "the most specific platform variant of a native module wins" {
+    for (path, expected_os) in [
+        ("/x/na_stdlib/signal.linux.jac", "linux"),
+        ("/x/time_platform.darwin.aarch64.jac", "darwin"),
+        ("/x/mod.jac", None),
+        ("/x/darwin.jac", None)
+    ] {
+        assert importer_variant_os(path) == expected_os;
+    }
     with tempfile.TemporaryDirectory() as scratch {
         base = os.path.join(scratch, "records");
         for suffix in ["", ".linux", ".x86_64", ".linux.x86_64"] {
@@ -49,15 +57,8 @@ test "the most specific platform variant of a native module wins" {
             );
         }
     }
-}
-
-test "an importer that is a platform variant resolves its own os first" {
     # `subprocess.linux.jac` importing `._subprocess_native` must find the linux
     # variant even on a darwin host, where the host-os probe finds nothing.
-    assert importer_variant_os("/x/na_stdlib/signal.linux.jac") == "linux";
-    assert importer_variant_os("/x/time_platform.darwin.aarch64.jac") == "darwin";
-    assert importer_variant_os("/x/mod.jac") is None;
-    assert importer_variant_os("/x/darwin.jac") is None;
     with tempfile.TemporaryDirectory() as scratch {
         base = os.path.join(scratch, "records");
         for suffix in ["", ".darwin", ".linux"] {
