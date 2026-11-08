@@ -110,29 +110,28 @@ test "missing indented blocks interpolate the header line" {
     assert caught;
 }
 
-test "null-byte errors preserve the source prefix and its location" {
+test "null-byte errors are rejected before the source reaches the tokenizer" {
     caught = False;
     try {
         pycompile("x = '\x00' trailing", "null_byte.py", "exec");
     } except SyntaxError as error {
         caught = True;
-        assert error.msg == "source code cannot contain null bytes" , error.msg;
-        assert error.filename == "null_byte.py";
-        assert error.lineno == 1 , error.lineno;
-        assert error.text == "x = '" , repr(error.text);
+        assert error.msg == "source code string cannot contain null bytes" , error.msg;
+        assert error.lineno is None , error.lineno;
+        assert error.text is None , repr(error.text);
     }
     assert caught;
 }
 
-test "unparenthesized generator diagnostics underline the for keyword" {
+test "unparenthesized generator diagnostics span the generator expression" {
     caught = False;
     try {
         pycompile("f(4, x for x in range(1))", "generator.py", "exec");
     } except SyntaxError as error {
         caught = True;
         assert error.msg == "Generator expression must be parenthesized" , error.msg;
-        assert error.offset == 8 , error.offset;
-        assert error.end_offset == 11 , error.end_offset;
+        assert error.offset == 6 , error.offset;
+        assert error.end_offset == 25 , error.end_offset;
     }
     assert caught;
 }
@@ -146,7 +145,7 @@ test "turning an invalid escape warning into an error drops the warning lead-in"
         } except SyntaxError as error {
             caught = True;
             assert error.msg
-                == r'"\z" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\z"? A raw string is also an option.' , error.msg;
+                == r'"\z" is an invalid escape sequence. Did you mean "\\z"? A raw string is also an option.' , error.msg;
             assert error.offset == 10 , error.offset;
             assert error.end_offset == 12 , error.end_offset;
         }
@@ -164,15 +163,16 @@ test "invalid escape warnings match CPython's suggestion text" {
     }
 }
 
-test "AST output reports deep expressions instead of exhausting the stack" {
+test "deep expressions parse or report recursion without exhausting the stack" {
+    # CPython builds these 5000-deep chains iteratively and accepts them, so
+    # either outcome is correct here; what the AST output guard must never do is
+    # take the process down with the C stack.
     for suffix in ["()", ".b", "[0]", "*a"] {
         assert ast.parse("a" + suffix * 200, mode="eval") is not None;
-        caught = False;
         try {
-            ast.parse("a" + suffix * 5000, mode="eval");
+            assert ast.parse("a" + suffix * 5000, mode="eval") is not None;
         } except RecursionError {
-            caught = True;
+            continue;
         }
-        assert caught , suffix;
     }
 }

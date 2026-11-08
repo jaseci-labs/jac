@@ -1875,15 +1875,25 @@ def pa_raise_syntax_known_range(
     }
     if message == "Generator expression must be parenthesized"
         and isinstance(b, comprehension) {
+        # CPython raises this over the range from the last argument to the end of
+        # the comprehension's last clause (python.gram's
+        # RAISE_SYNTAX_ERROR_KNOWN_RANGE over _PyPegen_get_last_comprehension_item).
         clause = b as comprehension;
+        last: expr = clause.ifs[-1] if clause.ifs else clause.iter;
+        start_lineno = last.lineno;
+        start_col = last.col_offset;
+        if isinstance(a, expr) {
+            start_lineno = (a as expr).lineno;
+            start_col = (a as expr).col_offset;
+        }
         p.error = mk_diag(
             "SyntaxError",
             message,
             tok_loc(
-                lineno=clause.for_lineno,
-                end_lineno=clause.for_end_lineno or clause.for_lineno,
-                col_offset=clause.for_col_offset,
-                end_col_offset=clause.for_end_col_offset or clause.for_col_offset + 3
+                lineno=start_lineno,
+                end_lineno=last.end_lineno or last.lineno,
+                col_offset=start_col,
+                end_col_offset=last.end_col_offset or last.col_offset + 1
             ),
             p.filename
         );
@@ -1930,8 +1940,9 @@ def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> N
         }
     }
     if isinstance(`node, expr) {
-        target_name = pa_get_expr_name(`node as expr, kind == 1);
-        action = "delete" if kind == 1 else "assign to";
+        is_delete = kind == DEL_TARGETS;
+        target_name = pa_get_expr_name(`node as expr, is_delete);
+        action = "delete" if is_delete else "assign to";
         return pa_raise_syntax_known_expr(
             p, False, `node, "cannot " + action + " " + target_name
         );
@@ -2025,18 +2036,11 @@ def pa_nonparen_genexp_in_call(a: object, b: object) -> object {
 
 def pa_arguments_parsing_error(p: peg_parser, `node: object) -> object {
     if isinstance(`node, Call) and (`node as Call).keywords {
-        keyword_unpacking = False;
-        for kw in (`node as Call).keywords {
-            if kw.arg is None {
-                keyword_unpacking = True;
-                break;
-            }
-        }
         return pa_raise_syntax(
             p,
             False,
             "positional argument follows keyword argument unpacking"
-                if keyword_unpacking
+                if pa_has_keyword_unpacking(`node)
                 else "positional argument follows keyword argument"
         );
     }

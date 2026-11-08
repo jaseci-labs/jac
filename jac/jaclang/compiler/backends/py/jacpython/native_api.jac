@@ -1,10 +1,17 @@
 """Native compiler entry points: each request returns a retained CPython value
 or zero with the Python exception set.
 
-Every replacement stdlib module is wired into this entry from
-jaclang/archwire.jac. Its binding must stay in this file's compilation closure:
-the interpreter link resolves each registered `PyInit_*` from this object, so
-a missing wire leaves the symbol undefined at link time.
+Every replacement stdlib module is wired into `inittab.jac` from
+jaclang/archwire.jac. Its binding must stay in the object's compilation
+closure: the interpreter link resolves each registered `PyInit_*` from this
+object, so a missing wire leaves the symbol undefined at link time.
+
+The binding modules are also wired into this entry as module wires
+(`bindings.<mod> ++> native_api`): `inittab.jac` declares each listed
+`PyInit_*` as a C import, so its name-targeted wires alone leave the binding's
+definition out of the closure. `prepare_native.py` checks the registry against
+the compiled plan and the merged module, so a binding that drops out of the
+closure fails the build by name.
 """
 
 # Object-model ports define interpreter types and objects under their C names

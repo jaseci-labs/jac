@@ -176,7 +176,7 @@ def main -> int {
         package.mkdir();
         (package / "__init__.jac").write_text("");
         (package / "archwire.jac").write_text((sources / "archwire.jac").read_text());
-        for relative in staged_sources(
+        staged = staged_sources(
             sources,
             [
                 "runtime/python/objects.jac",

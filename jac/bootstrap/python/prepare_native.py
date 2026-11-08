@@ -29,23 +29,35 @@ STATIC_TYPE_EXPORTS = [
 
 
 def registered_exports(root):
-    """Return the PyInit_* symbols required by the built-in module registry."""
+    """The PyInit_* entry points the build links as static built-ins.
+
+    jacpython-modules.txt is the one list of replaced modules; inittab.jac
+    holds each listed PyInit and build_jacpython.zig fails when it does not.
+    The link succeeds only when the merged object defines every entry point,
+    so the registry is also the export contract this build checks against
+    the compiled plan.
+    """
     registry = root / "bootstrap/python/jacpython-modules.txt"
-    return [
-        "PyInit_" + line.split()[0]
-        for line in registry.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
+    exports = []
+    for line in registry.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        exports.append("PyInit_" + line.split()[0])
+    return exports
 
 
 def missing_exports(expected, exported):
-    """Return required symbols absent from a list of exported names."""
+    """The expected entry points absent from a collection of symbol names."""
     present = set(exported)
     return [name for name in expected if name not in present]
 
 
 def undefined_exports(module, expected, kind=SymbolKind.FUNCTION):
-    """Return expected symbols that are absent or only declared in a module."""
+    """The expected symbols the merged module does not define itself.
+
+    PyInit_* entry points are functions and the static types are globals, so
+    each is looked up the way it was emitted."""
     if kind is SymbolKind.FUNCTION:
         lookup = module.get_function
     elif kind is SymbolKind.GLOBAL:
@@ -65,9 +77,7 @@ def undefined_exports(module, expected, kind=SymbolKind.FUNCTION):
 
 
 def export_contract_violations(module, expected_exports):
-    """Return the registered entry points and static type globals a module does
-    not define. PyInit_* symbols are functions and the static types are globals,
-    so each is looked up the way it was emitted."""
+    """The registered entry points and static type globals a module lacks."""
     return undefined_exports(module, expected_exports) + undefined_exports(
         module, STATIC_TYPE_EXPORTS, SymbolKind.GLOBAL,
     )
@@ -311,6 +321,7 @@ declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 attributes #0 = { nounwind }
 """
 
+
 def main(argv):
     root = Path(argv[1]).resolve()
     output = Path(argv[2]).resolve()
@@ -388,22 +399,22 @@ def main(argv):
         for error in program.errors_had:
             print(error.pretty_print(), file=sys.stderr)
         raise RuntimeError("JacPython native compilation failed")
+    # jacpython-modules.txt registers every static built-in this object must
+    # define, and the static types its surviving C objects name. Check the
+    # compiled plan's public exports so the build names the actual defect
+    # instead of a later linker error.
     expected_exports = registered_exports(root)
     missing = missing_exports(expected_exports + STATIC_TYPE_EXPORTS, plan.pub_exports())
     if missing:
         raise RuntimeError(
-            "JacPython export contract is broken; compiled roots do not export: "
+            "JacPython export contract is broken: bootstrap/python/"
+            "jacpython-modules.txt registers modules and static types whose "
+            "symbols the compilation closure does not export: "
             + ", ".join(missing)
         )
     init_object_codegen()
     spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
     compiled, runtime_exports = whole_program_module(plan, spec)
-    missing = export_contract_violations(compiled, expected_exports)
-    if missing:
-        raise RuntimeError(
-            "JacPython export contract is broken; merged module does not define: "
-            + ", ".join(missing)
-        )
     if triple.startswith("x86_64") and "linux" in triple:
         division = llvm.parse_assembly(INT128_DIVISION_IR)
         division.triple = compiled.triple
@@ -434,6 +445,15 @@ def main(argv):
     internalize_native_implementation(
         compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
     )
+    # The plan promises the symbols; the merged module must define them, not
+    # merely declare them. This is the last point before code generation where a
+    # dropped binding is still a readable error.
+    missing = export_contract_violations(compiled, expected_exports)
+    if missing:
+        raise RuntimeError(
+            "JacPython export contract is broken: the merged native module does "
+            "not define: " + ", ".join(missing)
+        )
     # CPython compiles with -fno-semantic-interposition: libpython's own references
     # to its exported functions and data bind inside the library. Protected
     # visibility keeps a definition exported and makes it dso_local, so Jac code

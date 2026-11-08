@@ -1,6 +1,6 @@
 """The JacPython build checks its registered PyInit_* exports against the
-compiled plan and merged module. native_api.jac contains no PyInit_* text:
-archwire.jac wires each binding module into its compilation closure."""
+compiled plan and merged module. inittab.jac declares each PyInit_* in C, so
+archwire.jac wires the binding modules into the object's compilation closure."""
 
 import os;
 import from pathlib { Path }
@@ -25,14 +25,14 @@ obj _Symbol {
 }
 
 obj _Merged {
-    has defined: dict[str, bool],
+    has declarations: dict[str, bool],
         globals: dict[str, bool] = {};
 
     def get_function(name: str) -> _Symbol {
-        if name not in self.defined {
+        if name not in self.declarations {
             raise NameError(name);
         }
-        return _Symbol(is_declaration=self.defined[name]);
+        return _Symbol(is_declaration=self.declarations[name]);
     }
 
     def get_global_variable(name: str) -> _Symbol {
@@ -71,7 +71,7 @@ test "a registered module absent from the compiled exports is reported" {
 
 test "a declared-only export is not accepted as a defined entry point" {
     prepare = _load_prepare();
-    merged = _Merged(defined={"PyInit__bisect": False, "PyInit_math": True});
+    merged = _Merged(declarations={"PyInit__bisect": False, "PyInit_math": True});
     assert prepare.undefined_exports(
         merged, ["PyInit__bisect", "PyInit_math", "PyInit__json"]
     )
@@ -84,7 +84,7 @@ test "the static type exports are validated as globals, not functions" {
     # follow how each symbol is emitted.
     prepare = _load_prepare();
     merged = _Merged(
-        defined={"PyInit__bisect": True},
+        declarations={"PyInit__bisect": True},
         globals={"PyRange_Type": False, "PyCell_Type": True}
     );
     assert prepare.undefined_exports(
@@ -109,7 +109,7 @@ test "the export contract checks registered modules and static type globals" {
         == prepare.STATIC_TYPE_EXPORTS;
 
     merged = _Merged(
-        defined={name: False for name in expected},
+        declarations={name: False for name in expected},
         globals={name: False for name in prepare.STATIC_TYPE_EXPORTS}
     );
     assert prepare.export_contract_violations(merged, expected) == [];
