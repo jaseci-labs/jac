@@ -32,6 +32,13 @@ impl _parse_url(u: str) -> _Url {
 }
 
 impl _request_bytes(host: str, path: str, request: Request) -> bytes {
+    if request.method.find("\r") != -1
+        or request.method.find("\n") != -1
+        or request.method.find(" ") != -1
+        or path.find("\r") != -1
+        or path.find("\n") != -1 {
+        raise ValueError("illegal request method or path");
+    }
     provided: dict[str, str] = {};
     for name in request.headers {
         value = request.headers[name];

@@ -59,3 +59,13 @@ def urlopen_request_data_length_na -> int {
     resp = urlopen(req, data=b"payload");
     return len(resp.read());
 }
+
+def request_line_injection_rejected_na -> int {
+    req = Request(url="http://127.0.0.1/", method="GET\r\nX-Test: 1");
+    try {
+        _request_bytes("127.0.0.1", "/", req);
+    } except ValueError {
+        return 1;
+    }
+    return 0;
+}

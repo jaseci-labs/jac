@@ -103,6 +103,7 @@ test "urllib.request.urlopen GET over the socket transport (sv<->na congruent)" 
         assert _call_na_int(eng, "urlopen_body_length_na") == py["body_length"] , (
             "body_length"
         );
+        assert _call_na_int(eng, "request_line_injection_rejected_na") == 1;
     } finally {
         srv.shutdown();
         os.environ.pop("JAC_URLLIB_TEST_PORT", None);
