@@ -281,6 +281,18 @@ test "openapi specs" {
         assert "/custom/func" in paths;
         assert "get" in paths["/custom/func"];
 
+        assert "/walker/GetWalker" in paths;
+        assert "get" in paths["/walker/GetWalker"];
+        assert "post" not in paths["/walker/GetWalker"];
+
+        assert "/walker/PostWalker" in paths;
+        assert "post" in paths["/walker/PostWalker"];
+        assert "get" not in paths["/walker/PostWalker"];
+
+        assert "/walker/DefaultWalker" in paths;
+        assert "post" in paths["/walker/DefaultWalker"];
+        assert "get" not in paths["/walker/DefaultWalker"];
+
         # A declared default fits the schema it's shown in, in a body or a query.
         body_ref = paths["/typed-fields"]["post"]["requestBody"]["content"][
             "application/json"

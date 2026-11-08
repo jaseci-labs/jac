@@ -22,6 +22,9 @@ impl _schema_for_type(
         return {'type': 'array', 'items': items, 'uniqueItems': True};
     }
     if shape is tuple {
+        if target is tuple or target is typing.Tuple {
+            return {'type': 'array'};
+        }
         return _tuple_schema(args, schemas);
     }
     if shape is dict {
@@ -125,8 +128,11 @@ impl _schema_default(value: any) -> any {
     if isinstance(value, (datetime, date, time)) {
         return value.isoformat();
     }
+    if isinstance(value, (list, tuple)) {
+        return [_schema_default(item) for item in value];
+    }
     if isinstance(value, (set, frozenset)) {
-        return sorted(value, key=str);
+        return [_schema_default(item) for item in sorted(value, key=str)];
     }
     return value;
 }

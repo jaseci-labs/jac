@@ -253,6 +253,9 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         return {coerce_value(v, item_t, text) for v in _as_item_list(value, text)};
     }
     if shape is tuple {
+        if target is tuple or target is typing.Tuple {
+            return tuple(_as_item_list(value, text));
+        }
         return _coerce_tuple(value, args, text);
     }
     if shape is dict {
@@ -290,8 +293,11 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
         if isinstance(value, target) {
             return value;
         }
+        members: list[any] = list(target);
         try {
-            return target(value);
+            return target(
+                _coerce_literal(value, tuple(m.value for m in members), text)
+            );
         } except ValueError {
             raise ValueError(f"invalid {target.__name__}") from None;
         }

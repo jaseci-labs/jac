@@ -19,6 +19,8 @@ glob REFUSED: object = object(),
 
 enum Color { RED = "red", BLUE = "blue" }
 
+enum Priority { LOW = 1, HIGH = 2 }
+
 obj Payload {
     has args: int,
         kwargs: str = "default";
@@ -72,6 +74,8 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ([1, 2, 3], tuple[int, ...], (1, 2, 3)),
                 ([1, "x"], tuple[int, ...], REFUSED),
                 ([1], tuple[()], REFUSED),
+                ([1, "x"], typing.Tuple, (1, "x")),
+                ([1, 2], tuple, (1, 2)),
                 ("a", Literal["a", "b"], "a"),
                 ("zzz", Literal["a", "b"], REFUSED),
                 (None, Literal["a", None], None),
@@ -100,6 +104,8 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("not-a-uuid", UUID, REFUSED),
                 ("red", Color, Color.RED),
                 ("nope", Color, REFUSED),
+                (2, Priority, Priority.HIGH),
+                (True, Priority, REFUSED),
                 (5, UploadFile | str, REFUSED),
                 ({"inner": {"args": "1"}}, Nested, REFUSED),
                 ({"items": [{"args": True}]}, Nested, REFUSED)
@@ -136,6 +142,7 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("12", int | str, 12),
                 ("12", str | int, "12"),
                 ("2", Literal[1, 2], 2),
+                ("2", Priority, Priority.HIGH),
                 ("3", "integer", 3),
                 ("x", Payload, REFUSED)
             ]
@@ -177,6 +184,7 @@ test "coercion and schemas follow the declared type and the public constructor" 
         (Literal["a", "b"], {"enum": ["a", "b"]}),
         (Color, {"enum": ["red", "blue"]}),
         (tuple[()], {"type": "array", "maxItems": 0}),
+        (typing.Tuple, {"type": "array"}),
         (
             set[int],
             {"type": "array", "items": {"type": "integer"}, "uniqueItems": True}
@@ -199,6 +207,7 @@ test "coercion and schemas follow the declared type and the public constructor" 
         (Color.RED, "red"),
         (datetime(2026, 1, 2), "2026-01-02T00:00:00"),
         ({2, 1}, [1, 2]),
+        ([Color.RED], ["red"]),
         (5, 5)
     ] {
         assert _schema_default(declared) == want , f"{declared!r}";
