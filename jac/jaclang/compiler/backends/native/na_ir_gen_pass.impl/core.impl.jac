@@ -1201,6 +1201,9 @@ impl NaIRGenPass._native_imports(
             continue;
         }
         _pinned_native_target = native_only_import_target(imp, self.prog);
+        if _pinned_native_target is not None {
+            _pinned_native_target = native_variant_of(_pinned_native_target);
+        }
         if (not imp.from_loc) and (not imp.is_absorb) {
             if not _has_native_code {
                 continue;
