@@ -145,6 +145,14 @@ test "JAC_IGNORE_PLACEMENT_PINS mutes pins to the empty-table baseline" {
             "[project]\nname = \"plain\"\n\n" "[placement.pins]\n"
         );
         plain = _write(plain_dir, "app.jac", "def helper -> int { return 1; }\n");
+        prog = JacProgram();
+        with patch.dict(os.environ, {"JAC_IGNORE_PLACEMENT_PINS": "0"}) {
+            warm_mod = prog.compile(pinned, no_cgen=True);
+            assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+            assert _stamp_of(warm_mod, "helper") == "client" , (
+                "the initial compile must warm the cache with the configured pin"
+            );
+        }
         with patch.dict(os.environ, {"JAC_IGNORE_PLACEMENT_PINS": "1"}) {
             assert placement_pins_muted();
             assert config_pin_for(pinned, "helper") == config_pin_for(plain, "helper");
@@ -152,9 +160,12 @@ test "JAC_IGNORE_PLACEMENT_PINS mutes pins to the empty-table baseline" {
             assert pins_digest(pinned) == pins_digest(plain) , (
                 "a muted project must digest like an empty [placement.pins] table"
             );
-            prog = JacProgram();
-            mod = prog.compile(pinned, no_cgen=True);
-            assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+            # A new program instance exercises the already-warmed disk cache.
+            muted_prog = JacProgram();
+            mod = muted_prog.compile(pinned, no_cgen=True);
+            assert not muted_prog.errors_had , f"{[
+                str(e) for e in muted_prog.errors_had
+            ]}";
             assert _stamp_of(mod, "helper") == "server" , (
                 "muted pins must leave the solver free to place the element"
             );
@@ -186,6 +197,45 @@ test "falsy JAC_IGNORE_PLACEMENT_PINS values keep pins authoritative" {
                     f"env value {value!r} must not mute pins"
                 );
             }
+        }
+    }
+}
+
+
+test "JAC_IGNORE_PLACEMENT_PINS mutes app override pins from a warm workspace" {
+    import from unittest.mock { patch }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        _write(
+            tmpdir,
+            "jac.toml",
+            "[project]\nname = \"pins\"\ndefault-app = \"web\"\n\n"
+            "[apps.web]\nkind = \"web-app\"\nentry-point = \"app\"\n\n"
+            "[apps.web.placement.pins]\n\"app.helper\" = \"client\"\n"
+        );
+        app = _write(
+            tmpdir,
+            "app.jac",
+            "def helper(x: int) -> int { return x * 7; }\n\n"
+            "def:pub use_it(x: int) -> int { return helper(x); }\n"
+        );
+        prog = JacProgram();
+        with patch.dict(os.environ, {"JAC_IGNORE_PLACEMENT_PINS": "0"}) {
+            assert config_pin_for(app, "helper") == "client";
+            warm_mod = prog.compile(app, no_cgen=True);
+            assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+            assert _stamp_of(warm_mod, "helper") == "client";
+        }
+        with patch.dict(os.environ, {"JAC_IGNORE_PLACEMENT_PINS": "1"}) {
+            assert config_pin_for(app, "helper") == "";
+            # Keep the workspace warm while making this a fresh compiler run.
+            muted_prog = JacProgram();
+            mod = muted_prog.compile(app, no_cgen=True);
+            assert not muted_prog.errors_had , f"{[
+                str(e) for e in muted_prog.errors_had
+            ]}";
+            assert _stamp_of(mod, "helper") == "server" , (
+                "muted app override pins must not survive a warm workspace/cache"
+            );
         }
     }
 }
