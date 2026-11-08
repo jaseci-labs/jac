@@ -437,7 +437,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     collected_globals: (dict[(str, any)] | None) = None,
     native: bool = False
 ) -> bool {
-    scanner = RouteScanner(self._app_root(), route_exports_of=resolve_route_exports);
+    scanner = RouteScanner(self._app_root(), route_exports_of=self._route_exports_of);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -496,7 +496,7 @@ impl JacClientCompiler._warn_unrouted_pages(
 }
 
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self._app_root(), route_exports_of=resolve_route_exports);
+    scanner = RouteScanner(self._app_root(), route_exports_of=self._route_exports_of);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -727,4 +727,16 @@ impl _bundle_runtime_js(
     parts.append(export_line);
     parts.append('__jacWirePlatformAdapters();');
     return '\n'.join(parts) + '\n';
+}
+
+impl JacClientCompiler._route_exports_of(
+    self: JacClientCompiler, module_path: Path
+) -> tuple[((str | None), (str | None))] {
+    source_root = self.jac_compiler.source_root or self.project_dir;
+    try {
+        artifact = self.jac_compiler._compile_to_js(module_path, source_root);
+    } except ClientBundleError {
+        return resolve_route_exports(module_path);
+    }
+    return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }

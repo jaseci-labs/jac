@@ -96,6 +96,10 @@ class JacClientCompiler {
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
+    def _route_exports_of(
+        self: JacClientCompiler, module_path: Path
+    ) -> tuple[((str | None), (str | None))];
+
     def _check_entry_renders_routes(
         self: JacClientCompiler, entry_manifest: any
     ) -> None;
