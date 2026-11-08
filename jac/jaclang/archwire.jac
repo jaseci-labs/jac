@@ -6616,6 +6616,10 @@ graph import compiler {
             native_unit_root
         },
         driver.native_iface.resolve_native_unit_ref { _native_unit_root_name },
+        driver.native_iface._named_project_file {
+            native_unit_root,
+            _native_unit_root_name
+        },
         driver.nativecache.NativeUnitRegistry._source_key {
             get_effective_default_codespace_override,
             set_effective_default_codespace

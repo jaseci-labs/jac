@@ -4,6 +4,39 @@ impl native_unit_ref(path: str) -> str {
     return ident if ident != rp else rp;
 }
 
+impl _named_project_file(search_dir: str, root_name: str, rel: str) -> (str | None) {
+    if not os.path.isdir(search_dir) {
+        return None;
+    }
+    current_root = native_unit_root(search_dir);
+    if current_root == search_dir
+        and _native_unit_root_name(current_root) == root_name {
+        candidate = os.path.join(current_root, rel);
+        if os.path.isfile(candidate) {
+            return candidate;
+        }
+    }
+    direct = os.path.join(search_dir, root_name, rel);
+    if os.path.isfile(direct) {
+        return direct;
+    }
+    for child in os.listdir(search_dir) {
+        child_dir = os.path.join(search_dir, child);
+        if not os.path.isdir(child_dir) {
+            continue;
+        }
+        project_root = native_unit_root(child_dir);
+        if project_root is not None
+            and _native_unit_root_name(project_root) == root_name {
+            candidate = os.path.join(project_root, rel);
+            if os.path.isfile(candidate) {
+                return candidate;
+            }
+        }
+    }
+    return None;
+}
+
 impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     if not ref or os.path.isabs(ref) {
         return ref;
@@ -21,8 +54,8 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             if _native_unit_root_name(anchor_root) == root_name {
                 return os.path.join(anchor_root, rel);
             }
-            sibling = os.path.join(os.path.dirname(anchor_root), ref);
-            if os.path.isfile(sibling) {
+            sibling = _named_project_file(os.path.dirname(anchor_root), root_name, rel);
+            if sibling is not None {
                 return sibling;
             }
         }
@@ -37,8 +70,8 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         FACT_SEP
     ) {
         if search_dir and os.path.isabs(search_dir) {
-            candidate = os.path.join(search_dir, ref);
-            if os.path.isfile(candidate) {
+            candidate = _named_project_file(search_dir, root_name, rel);
+            if candidate is not None {
                 return candidate;
             }
         }
@@ -52,8 +85,10 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
                 continue;
             }
             for name in sorted(os.listdir(org_dir)) {
-                candidate = os.path.join(org_dir, name, ref);
-                if os.path.isfile(candidate) {
+                candidate = _named_project_file(
+                    os.path.join(org_dir, name), root_name, rel
+                );
+                if candidate is not None {
                     return candidate;
                 }
             }

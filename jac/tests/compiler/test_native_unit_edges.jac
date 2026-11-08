@@ -22,6 +22,7 @@ import from jaclang.compiler.driver.jir {
     write_module_cache
 }
 import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
+import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
 import from jaclang.compiler.backends.native.link_plan {
     LinkPlanError,
     LinkUnit,
@@ -96,17 +97,37 @@ test "a unit reference found under no root never resolves against the working di
 
 test "a unit reference to an installed package resolves through the import path" {
     site = tempfile.mkdtemp(prefix="jac_native_site_");
-    os.makedirs(os.path.join(site, "edgepkg"));
-    target = os.path.join(site, "edgepkg", "unit.jac");
+    checkout = os.path.join(site, "checkout-b");
+    os.makedirs(checkout);
+    with open(os.path.join(checkout, "jac.toml"), "w") as handle {
+        handle.write('["project"]\n"name" = "edgepkg"\n');
+    }
+    target = os.path.join(checkout, "unit.jac");
     with open(target, "w") as handle {
         handle.write("glob x = 1;\n");
     }
     sys.path.append(site);
     try {
         assert resolve_native_unit_ref("edgepkg/unit.jac") == target;
+        assert native_unit_identity(target) == "edgepkg/unit.jac";
     } finally {
         sys.path.remove(site);
     }
+
+    parent = os.path.join(site, "parent");
+    nested = os.path.join(parent, "nested");
+    os.makedirs(nested);
+    with open(os.path.join(parent, "jac.toml"), "w") as handle {
+        handle.write('[project]\nname = "outer"\n');
+    }
+    with open(os.path.join(nested, "jac.toml"), "w") as handle {
+        handle.write('["project"]\n"name" = "nested"\n');
+    }
+    nested_unit = os.path.join(nested, "unit.jac");
+    with open(nested_unit, "w") as handle {
+        handle.write("glob x = 1;\n");
+    }
+    assert native_unit_identity(nested_unit) == "nested/unit.jac";
 }
 
 test "two units sharing a symbol prefix are refused by name" {

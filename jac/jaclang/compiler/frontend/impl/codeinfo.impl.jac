@@ -414,17 +414,16 @@ impl native_unit_root(directory: str) -> (str | None) {
 
 impl _jac_toml_project_name(toml_path: str) -> (str | None) {
     try {
-        import from pathlib { Path }
-        unit_dir = Path(toml_path).parent;
-        config_mod = __import__(
-            "jaclang.project.config", fromlist=["get_config_for_path"]
-        );
-        cfg = config_mod.get_config_for_path(unit_dir);
-        if cfg is not None
-            and cfg.project_root is not None
-            and cfg.project_root.resolve() == unit_dir.resolve()
-            and cfg.project.name {
-            return str(cfg.project.name);
+        import tomllib;
+        with open(toml_path, "rb") as f {
+            config = tomllib.load(f);
+        }
+        project = config.get("project", {});
+        if isinstance(project, dict) {
+            name = project.get("name");
+            if isinstance(name, str) and name.strip() {
+                return name;
+            }
         }
     } except Exception {
         return None;

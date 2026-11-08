@@ -32,9 +32,20 @@ test "inferred compiler dependencies respect the active native scope" {
         );
         assert policy.scope_allows_inferred_path(library);
         assert policy.scope_allows_inferred_path(checkout_entry);
-        assert not policy.scope_allows_inferred_path(
+        assert policy.scope_allows_inferred_path(
             os.path.join(checkout_root, "passes", "pyast_load_pass.jac")
-        );
+        ) , "a jac.toml project named jaclang is a user project, not the checkout";
+        plain_checkout = tempfile.TemporaryDirectory();
+        plain_package = os.path.join(plain_checkout.name, "jaclang");
+        Path(plain_package).mkdir(parents=True);
+        Path(os.path.join(plain_package, "jac0.py")).write_text("");
+        Path(os.path.join(plain_package, "__init__.py")).write_text("");
+        plain_root = os.path.join(plain_package, "compiler");
+        Path(plain_root).mkdir(parents=True);
+        assert not policy.scope_allows_inferred_path(
+            os.path.join(plain_root, "passes", "pyast_load_pass.jac")
+        ) , "compiler-package paths stay blocked outside a named project";
+        plain_checkout.cleanup();
     } finally {
         reset_native_unit_compile(previous);
         checkout.cleanup();
