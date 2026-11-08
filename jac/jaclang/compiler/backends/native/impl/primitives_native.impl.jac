@@ -5856,7 +5856,6 @@ impl NativeBuiltinEmitter.emit_hasattr(
             }
         }
     }
-    static_prefix = type_name + ".";
     i1 = ir.IntType(1);
 
     i8p = ir.IntType(8).as_pointer();
@@ -5865,9 +5864,15 @@ impl NativeBuiltinEmitter.emit_hasattr(
     }
     if not fields and not methods {
         has_static = False;
-        for static_name in p.static_fields {
-            if static_name.startswith(static_prefix) {
-                has_static = True;
+        for cls in p._mro_of(type_name) {
+            inherited_static_prefix = cls + ".";
+            for static_name in p.static_fields {
+                if static_name.startswith(inherited_static_prefix) {
+                    has_static = True;
+                    break;
+                }
+            }
+            if has_static {
                 break;
             }
         }
@@ -5876,12 +5881,12 @@ impl NativeBuiltinEmitter.emit_hasattr(
         }
     }
     b = get_builder(p);
-    strcmp = p._get_or_declare_extern("strcmp", ir.IntType(32), [i8p, i8p]);
     result: ir.Value = ir.Constant(i1, 0);
     for field_name in fields.keys() {
-        cmp = b.call(
-            strcmp,
-            [args[1], p._make_global_string(field_name, name_prefix=".hasattr")],
+        cmp = p._call_str_cmp(
+            b,
+            args[1],
+            p._make_global_string(field_name, name_prefix=".hasattr"),
             name="hasattr.cmp"
         );
         matches = b.icmp_signed(
@@ -5890,9 +5895,10 @@ impl NativeBuiltinEmitter.emit_hasattr(
         result = b.or_(result, matches, name="hasattr.or");
     }
     for method_name in methods.keys() {
-        cmp = b.call(
-            strcmp,
-            [args[1], p._make_global_string(method_name, name_prefix=".hasattr")],
+        cmp = p._call_str_cmp(
+            b,
+            args[1],
+            p._make_global_string(method_name, name_prefix=".hasattr"),
             name="hasattr.method.cmp"
         );
         matches = b.icmp_signed(
@@ -5900,18 +5906,25 @@ impl NativeBuiltinEmitter.emit_hasattr(
         );
         result = b.or_(result, matches, name="hasattr.method.or");
     }
-    for static_name in p.static_fields {
-        if static_name.startswith(static_prefix) {
-            member_name = static_name[len(static_prefix):];
-            cmp = b.call(
-                strcmp,
-                [args[1], p._make_global_string(member_name, name_prefix=".hasattr")],
-                name="hasattr.static.cmp"
-            );
-            matches = b.icmp_signed(
-                "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.static.match"
-            );
-            result = b.or_(result, matches, name="hasattr.static.or");
+    for cls in p._mro_of(type_name) {
+        inherited_static_prefix = cls + ".";
+        for static_name in p.static_fields {
+            if static_name.startswith(inherited_static_prefix) {
+                member_name = static_name[len(inherited_static_prefix):];
+                cmp = p._call_str_cmp(
+                    b,
+                    args[1],
+                    p._make_global_string(member_name, name_prefix=".hasattr"),
+                    name="hasattr.static.cmp"
+                );
+                matches = b.icmp_signed(
+                    "==",
+                    cmp,
+                    ir.Constant(ir.IntType(32), 0),
+                    name="hasattr.static.match"
+                );
+                result = b.or_(result, matches, name="hasattr.static.or");
+            }
         }
     }
     return result;
