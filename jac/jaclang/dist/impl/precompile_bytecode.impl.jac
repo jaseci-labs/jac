@@ -896,7 +896,13 @@ impl seal_runtime_closure(
 ) -> bool {
     base = str(pkg_path.resolve());
     sources = sealable_sources(base, app);
-    pending = list(out_dir.rglob("*.jir"));
+    pending: list[Path] = [];
+    for source in sources {
+        artifact = out_dir / Path(source).relative_to(pkg_path).with_suffix(".jir");
+        if artifact.is_file() {
+            pending.append(artifact);
+        }
+    }
     visited: set[str] = set();
     imports_of: dict[str, list[str]] = {};
 
@@ -958,6 +964,14 @@ impl seal_runtime_closure(
             Path(dependency).relative_to(pkg_path).as_posix()
             for dependency in dependencies
         );
+    }
+    reached = {
+        Path(source).relative_to(pkg_path).with_suffix(".jir") for source in sources
+    };
+    for artifact in sorted(out_dir.rglob("*.jir")) {
+        if artifact.relative_to(out_dir) not in reached {
+            artifact.unlink();
+        }
     }
     if serving.is_file() {
         recorded = json.loads(serving.read_text());
@@ -1720,10 +1734,23 @@ impl run_precompile(
     expected: set[str] = {
         str(Path(p).relative_to(pkg_path).with_suffix(".jir")) for p in jac_files
     };
+    keep_seeded = seal and pkg_name != "jaclang";
     for old_jir in sorted(out_dir.rglob("*.jir")) {
-        if str(old_jir.relative_to(out_dir)) not in expected {
-            old_jir.unlink();
+        rel_jir = old_jir.relative_to(out_dir);
+        if str(rel_jir) in expected {
+            continue;
         }
+        source = pkg_path / rel_jir.with_suffix(".jac");
+        if keep_seeded and source.is_file() {
+            existing = old_jir.read_bytes();
+            if precompiled_jir_matches_source(
+                existing, str(source), package_root=package_dir
+            )
+                and embed_src == (read_debug_source(existing) is not None) {
+                continue;
+            }
+        }
+        old_jir.unlink();
     }
 
     raw_jobs = jobs_setting("precompile", jobs_arg);

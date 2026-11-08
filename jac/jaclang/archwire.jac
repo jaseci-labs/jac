@@ -490,7 +490,12 @@ graph import {
         rn_tag_suggestions
     }
     client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
-    client.vite_bundler ++> dist.source.client.write_client { ViteBundler }
+    client.vite_bundler ++> [
+        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
+            client_build_env
+        },
+        dist.source.client.write_client { ViteBundler },
+    ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },
@@ -1655,7 +1660,10 @@ graph import {
         client.js_runtime.BunArtifact.build { fetch_bun },
         compiler.types.stubcat.locate.TypeshedArtifact.build { fetch_typeshed },
     ]
-    dist.precompile_bytecode ++> cli.commands.precompile.precompile { run_precompile }
+    dist.precompile_bytecode ++> [
+        cli.commands.precompile.precompile { run_precompile },
+        scale.injector.bundle.pack_jab { RESULT_NAME },
+    ]
     dist.precompile_bytecode --> scale.tests.microservices.test_app_precompile {
         main as seal_main,
         placement_facts_map,
@@ -3991,6 +3999,8 @@ graph import {
     server.serving.client --> scale.tests.server.test_serve { aws_connect }
     server.serving.client as sv_http ++> scale.tests.server.test_sv_auth_forward;
     server.serving.compression ++> scale.tests.microservices.test_sse_framing {
+        CompressionPolicy,
+        GzipCache,
         _gzip_stream
     }
     server.serving.datatypes ++> [
@@ -4055,6 +4065,7 @@ graph import {
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
             | scale.tests.server.test_serve { Headers, Request, URL },
+        scale.tests.microservices.test_sse_framing { Headers, Request, Response },
         scale.tests.server.test_bodiless_status { Response, StreamingResponse },
         scale.tests.server.test_oauth_providers._callback_request { QueryParams, URL },
         scale.tests.server.test_sso {
@@ -4136,6 +4147,14 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.files ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_spa_fallback {
+            file_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.static_file {
+            file_response
+        },
+    ]
     server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
         cors_pair_problem
     }
@@ -4188,6 +4207,7 @@ graph import {
     server.serving.ws ++> [
         scale.runtime.gateway.microservice_gateway
             | scale.server.websocket_ext
+            | scale.tests.server.test_ws_hardening
             | scale.websocket.protocol
             | scale.websocket.websocket { WebSocket },
         scale.tests.server.test_serving_tail {
@@ -4198,6 +4218,9 @@ graph import {
             OP_TEXT,
             encode_frame,
             read_frame
+        },
+        scale.websocket.websocket.WebSocketConnectionManager._local_fanout {
+            _ws_json_default
         },
     ]
     server.session ++> [
@@ -45513,8 +45536,12 @@ graph import scale {
     injector.bundle ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle {
             _stage_app,
+            cached_client_dist,
             client_build_sources,
+            client_input_digest,
+            nested_sanitized_tomls,
             release_binary_env,
+            remember_client_dist,
             remove_stage_root,
             source_filter_for
         },
