@@ -886,9 +886,13 @@ test "bundled configparser write preserves values and rejects ambiguous options"
     rejects_header = get_func(
         eng, "configparser_write_rejects_header_option", ctypes.c_int64
     );
+    rejects_value_header = get_func(
+        eng, "configparser_write_rejects_value_completed_header", ctypes.c_int64
+    );
     assert preserves_cr() == 1;
     assert rejects_delimiter() == 1;
     assert rejects_header() == 1;
+    assert rejects_value_header() == 1;
 }
 
 test "bundled shutil" {

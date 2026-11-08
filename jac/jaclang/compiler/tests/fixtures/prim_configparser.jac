@@ -273,6 +273,21 @@ def configparser_write_rejects_header_option -> int {
 }
 
 
+def configparser_write_rejects_value_completed_header -> int {
+    cp: ConfigParser = ConfigParser();
+    cp.add_section("s");
+    cp.set("s", "[abc", "x]");
+    try {
+        cp.write();
+    } except ValueError {
+        return 1;
+    } except Exception {
+        return 0;
+    }
+    return 0;
+}
+
+
 def configparser_cl -> dict[any, any] {
     return {};
 }

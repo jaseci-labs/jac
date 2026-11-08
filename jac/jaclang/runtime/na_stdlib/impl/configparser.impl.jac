@@ -687,6 +687,14 @@ impl ConfigParser._write_section(name: str, opts: dict[str, str], delim: str) ->
     for k in opts {
         self._validate_write_option(k);
         v: str = self._write_value(opts[k]);
+        line: str = k + delim + v;
+        nl: int = line.find("\n");
+        if nl >= 0 {
+            line = line[0:nl];
+        }
+        if self._sect_header(self._strip_comments(_strip(line))) != "" {
+            raise ValueError("option line cannot look like a section header");
+        }
         out += k + delim + v + "\n";
     }
     out += "\n";
@@ -713,9 +721,6 @@ impl ConfigParser._validate_write_option(option: str) {
         if delim and option.find(delim) >= 0 {
             raise ValueError("option name cannot contain a delimiter");
         }
-    }
-    if option.startswith("[") and option.rfind("]") >= 2 {
-        raise ValueError("option name cannot look like a section header");
     }
 }
 

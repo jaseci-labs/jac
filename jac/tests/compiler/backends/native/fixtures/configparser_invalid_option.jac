@@ -17,4 +17,14 @@ with entry {
     } except ValueError {
         print("invalid option name rejected");
     }
+
+    cpv: any = ConfigParser();
+    cpv.add_section("s");
+    cpv.set("s", "[abc", "x]");
+    try {
+        cpv.write();
+        print("value-completed header accepted");
+    } except ValueError {
+        print("value-completed header rejected");
+    }
 }
