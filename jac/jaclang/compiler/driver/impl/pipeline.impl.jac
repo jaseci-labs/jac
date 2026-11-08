@@ -232,92 +232,12 @@ impl require_typeshed_stubs -> None {
 }
 
 impl contract_of(pass_kind: PassKind) -> PassContract {
-    contract = PassContract();
-    if pass_kind == PassKind.GRAPH_LOWERING
-        or pass_kind == PassKind.AST_VALIDATION
-        or pass_kind == PassKind.SEMANTIC_ANALYSIS
-        or pass_kind == PassKind.SEM_DEF_MATCH
-        or pass_kind == PassKind.JSX_INTRINSIC_GUARD {
-        contract = PassContract(kernel_safe=True);
-    } elif pass_kind == PassKind.SYM_TAB_BUILD {
-        contract = PassContract(
-            provides=(
-                AnalysisFact.SYM_OF,
-                AnalysisFact.DEFINES,
-                AnalysisFact.IN_SCOPE,
-                AnalysisFact.SCOPE_CHILD
-            ),
-            kernel_safe=True
-        );
-    } elif pass_kind == PassKind.DECL_IMPL_MATCH {
-        contract = PassContract(
-            requires=(AnalysisFact.SYM_OF, ),
-            provides=(AnalysisFact.IMPL_OF, ),
-            kernel_safe=True
-        );
-    } elif pass_kind == PassKind.CFG_BUILD {
-        contract = PassContract(
-            provides=(
-                AnalysisFact.CFG_CATCH,
-                AnalysisFact.CFG_SUCC,
-                AnalysisFact.CFG_TRUE,
-                AnalysisFact.CFG_FALSE
-            ),
-            kernel_safe=True
-        );
-    } elif pass_kind == PassKind.IMPORT_WIRING
-        or pass_kind == PassKind.PACKAGE_BOUNDARY {
-        contract = PassContract(requires=(AnalysisFact.SYM_OF, ));
-    } elif pass_kind == PassKind.COMPTIME_RESOLVE {
-        contract = PassContract(provides=(AnalysisFact.COMPTIME, ));
-    } elif pass_kind == PassKind.REGION_INFER {
-        contract = PassContract(provides=(AnalysisFact.REGION_INFER, ));
-    } elif pass_kind == PassKind.VARIANT_AGREEMENT {
-        contract = PassContract(provides=(AnalysisFact.VARIANT_AGREEMENT, ));
-    } elif pass_kind == PassKind.TYPE_CHECK {
-        contract = PassContract(provides=(AnalysisFact.TYPE_OF, ));
-    } elif pass_kind == PassKind.STATIC_ANALYSIS {
-        contract = PassContract(provides=(AnalysisFact.STATIC_CHECKS, ));
-    } elif pass_kind == PassKind.ACCESS_CHECK {
-        contract = PassContract(provides=(AnalysisFact.ACCESS_CHECKS, ));
-    } elif pass_kind == PassKind.OWNERSHIP_CHECK {
-        contract = PassContract(
-            requires=(AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF),
-            provides=(AnalysisFact.OWNERSHIP, )
-        );
-    } elif pass_kind == PassKind.PLACEMENT {
-        contract = PassContract(
-            requires=(AnalysisFact.TYPE_OF, ),
-            provides=(AnalysisFact.CAPABILITY, AnalysisFact.CLIENT_CAPABILITY)
-        );
-    } elif pass_kind == PassKind.PORTABILITY_WARN {
-        contract = PassContract(provides=(AnalysisFact.PORTABILITY, ));
-    } elif pass_kind == PassKind.DECLARATION_TYPE {
-        contract = PassContract(provides=(AnalysisFact.DECL_TYPES, ));
-    } elif pass_kind == PassKind.PLACEMENT_APPLY {
-        contract = PassContract(
-            requires=(AnalysisFact.SYM_OF, ),
-            provides=(
-                AnalysisFact.PLACED_IN,
-                AnalysisFact.DECIDED_CODESPACE,
-                AnalysisFact.CODESPACE_PULL
-            )
-        );
-    } elif pass_kind == PassKind.RC_FACTS {
-        contract = PassContract(
-            requires=(AnalysisFact.CFG_SUCC, ), provides=(AnalysisFact.RC_FACTS, )
-        );
-    } elif pass_kind == PassKind.FREEZE_STRUCTURE {
-        contract = PassContract(provides=(AnalysisFact.FROZEN, ));
-    } elif pass_kind == PassKind.NA_IR_GEN {
-        contract = PassContract(
-            requires=(
-                AnalysisFact.TYPE_OF,
-                AnalysisFact.CFG_SUCC,
-                AnalysisFact.OWNERSHIP,
-                AnalysisFact.CAPABILITY,
-                AnalysisFact.RC_FACTS
-            )
+    contract = pass_class_of(pass_kind).contract;
+    if contract is None {
+        raise RuntimeError(
+            f"scheduling error: pass {pass_kind.value} declares no contract; "
+            "every scheduled pass states the analysis facts it requires and "
+            "provides"
         );
     }
     return contract;
@@ -512,19 +432,7 @@ impl run_scheduled_pass(
 }
 
 impl run_early_pass(pass_kind: PassKind, module: Module) -> CompileContext {
-    if pass_kind
-        not in (
-            PassKind.APP_CONTEXT,
-            PassKind.GRAPH_LOWERING,
-            PassKind.AST_VALIDATION,
-            PassKind.ABSORB_IMPORTS,
-            PassKind.SYM_TAB_BUILD,
-            PassKind.DECL_IMPL_MATCH,
-            PassKind.SEMANTIC_ANALYSIS,
-            PassKind.SEM_DEF_MATCH,
-            PassKind.CFG_BUILD,
-            PassKind.JSX_INTRINSIC_GUARD
-        ) {
+    if not contract_of(pass_kind).kernel_safe {
         raise ValueError(
             f"pass is not available during early parse: {pass_kind.value}"
         );

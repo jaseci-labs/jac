@@ -5566,8 +5566,7 @@ graph import compiler {
     ]
     backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir
         | driver.pipeline.pass_class_of { JcirBytecodeGenPass }
-    backends.py.jcir_gen_pass ++> driver.module_compile
-        | driver.pipeline.native_ir_alert { JcirGenPass }
+    backends.py.jcir_gen_pass ++> driver.pipeline.native_ir_alert { JcirGenPass }
     backends.py.jcir_gen_pass --> driver.pipeline.pass_class_of { JcirGenPass }
     boundary_rules ++> [
         passes.placement_pass.NativeLegality.settle { ability_crossing },
@@ -9686,9 +9685,7 @@ graph import compiler {
     type passes.annex_weave ++> frontend.host | frontend.kernel_host | native_compiler {
         WovenAnnex
     }
-    passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
     passes.ast_validation_pass --> driver.pipeline.pass_class_of { ASTValidationPass }
-    passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
     passes.boundary_analysis_pass --> driver.pipeline.pass_class_of {
         BoundaryAnalysisPass
     }
@@ -9726,7 +9723,6 @@ graph import compiler {
             | tools.jac_formatter_pass { CompilerPass },
         backends.native.na_ir_gen_pass { Alert, CompilerPass },
         driver.ifacecache._alert_from_record
-            | driver.module_compile.report_missing_native_ir
             | driver.program
             | frontend.kernel_analyze
             | frontend.parser.frontend
@@ -9752,7 +9748,6 @@ graph import compiler {
         native_compiler { Alert, PassResult },
         symbol_utils { CompilerPass },
     ]
-    passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
     passes.decl_impl_match_pass --> driver.pipeline.pass_class_of { DeclImplMatchPass }
     passes.declaration_type_pass ++> backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
         importer_lowers_bodies
@@ -9760,19 +9755,17 @@ graph import compiler {
     passes.declaration_type_pass --> driver.pipeline.pass_class_of {
         DeclarationTypePass
     }
-    passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.endpoint_effect_pass --> driver.pipeline.pass_class_of { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.execution --> driver.pipeline.run_early_pass { run_walker }
     passes.freeze_structure_pass --> driver.pipeline.pass_class_of {
         FreezeStructurePass
     }
-    passes.graph_lowering_pass ++> driver.pipeline { GraphLoweringPass }
     passes.graph_lowering_pass --> driver.pipeline.pass_class_of { GraphLoweringPass }
-    passes.import_wiring_pass ++> [
-        driver.pipeline { ImportWiringPass },
-        tools.jac_auto_lint_pass { ScopeReads, is_effect_binding },
-    ]
+    passes.import_wiring_pass ++> tools.jac_auto_lint_pass {
+        ScopeReads,
+        is_effect_binding
+    }
     passes.import_wiring_pass --> driver.pipeline.pass_class_of { ImportWiringPass }
     passes.jsx_intrinsic_guard_pass --> driver.pipeline.pass_class_of {
         JsxIntrinsicGuardPass
@@ -9995,7 +9988,6 @@ graph import compiler {
         frontend.codeinfo { OspModel },
     ]
     passes.ownership_check_pass --> driver.pipeline.pass_class_of { OwnershipCheckPass }
-    passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.package_boundary_pass --> driver.pipeline.pass_class_of {
         PackageBoundaryPass
     }
@@ -10067,12 +10059,10 @@ graph import compiler {
     passes.region_infer_pass --> driver.pipeline.pass_class_of { RegionInferPass }
     passes.scope_walk ++> tools.code_intel { ScopeWalker }
     passes.sem_def_match_pass --> driver.pipeline.pass_class_of { SemDefMatchPass }
-    passes.semantic_analysis_pass ++> driver.pipeline { SemanticAnalysisPass }
     passes.semantic_analysis_pass --> driver.pipeline.pass_class_of {
         SemanticAnalysisPass
     }
     passes.static_analysis_pass --> driver.pipeline.pass_class_of { StaticAnalysisPass }
-    passes.sym_tab_build_pass ++> driver.pipeline | jc_unit { SymTabBuildPass }
     passes.sym_tab_build_pass --> driver.pipeline.pass_class_of
         | driver.program.JacProgram.load_dependency_module { SymTabBuildPass }
     passes.type_checker_pass ++> tests.test_pipeline_products
@@ -11910,6 +11900,7 @@ graph import compiler.driver {
         compiler.JacCompiler.assemble_python { require },
         module_analysis.ModuleAnalysis.ready { product_ready },
         module_compile { unavailable },
+        module_compile.report_missing_native_ir { native_ir_alert },
         source_failures.bootstrap_tier_failure_details { tier_reason },
         toolchain { schedule_loading },
     ]
@@ -11921,7 +11912,6 @@ graph import compiler.driver {
             | ifacecache.IfaceRegistry._ensure_in_context { require },
         compiler.JacCompiler.jac_file_linter { require },
         ifacecache.IfaceRegistry._prepare { product_facts },
-        module_compile { native_ir_alert },
         nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
     ]
     pipeline_runner --> [
