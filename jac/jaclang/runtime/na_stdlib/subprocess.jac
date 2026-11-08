@@ -18,7 +18,6 @@ import from ._subprocess_native {
     sp_now_ms,
     sp_pollio
 }
-import from ._errno_native { EINTR, last_errno, raise_errno, raise_os_error }
 import from signal { signal, SIG_IGN, SIGPIPE }
 
 glob:pub PIPE: int = -1,

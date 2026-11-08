@@ -8,8 +8,6 @@ import from c { def usleep(usec: u32) -> i32;  }
 import from c { def clock_gettime(clk: i32, ts: bytes) -> i32;  }
 import from c { def poll(fds: int, nfds: u64, timeout: i32) -> i32;  }
 import from c { def strdup(s: str) -> int;  }
-import from c { def strlen(s: int) -> u64;  }
-import from c { def strndup(s: int, n: u64) -> str;  }
 import from c { def malloc(size: int) -> int;  }
 import from c { def free(p: int);  }
 import from c {
@@ -29,7 +27,6 @@ import from c {
     ) -> i32;
 }
 import from c { def posix_spawn_file_actions_addchdir_np(fa: int, path: str) -> i32;  }
-import from c { glob:priv environ: ptr[ptr[u8]]; }
 
 glob _CLOCK_MONOTONIC: int = 6,
      _EV_READ: int = 1,
@@ -60,8 +57,6 @@ def:pub sp_pollio(rfd1: int, rfd2: int, wfd: int, timeout_ms: int) -> list[int];
 def:pub sp_strvec(items: list[str]) -> int;
 
 def:pub sp_strvec_free(vec: int, n: int);
-
-def:pub sp_env_strings -> list[str];
 
 def:pub sp_fa_new -> int;
 

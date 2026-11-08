@@ -1061,7 +1061,7 @@ native layout records the emitted name separately from its source-level key.
   `OSError`/`select.error`. Timeout is truncated to milliseconds.
   Pinned sv<->na congruent by `prim_select.jac`.
 
-- **`subprocess.<os>.jac`** (Mechanism F) +
+- **`subprocess.jac`** (Mechanism F) +
   **`_subprocess_native.<os>.jac`** (libc FFI floor: `posix_spawnp` and its
   file-actions API, `pipe`, `waitpid`, `poll`, `kill`) -- `Popen`, `run`,
   `call`, `check_call`, `check_output`, `CompletedProcess`,
@@ -1079,7 +1079,9 @@ native layout records the emitted name separately from its source-level key.
   `SIG_IGN` -- so a write to a closed pipe fails with EPIPE instead of
   killing the caller.
   SCOPE/divergences:
-  Linux and Darwin variants (`.linux.`/`.darwin.` suffixes); `Popen` exposes `args`/`stdin`/`stdout`/
+  Linux and Darwin only (the module is one file; the floor's
+  `.linux.`/`.darwin.` split carries the per-OS `CLOCK_MONOTONIC` id);
+  `Popen` exposes `args`/`stdin`/`stdout`/
   `stderr`/`text`/`cwd`/`env`/`shell`/`pid`/`returncode` only -- no `start_new_session`,
   `executable`, `bufsize`, `encoding`, or the file-object stream API
   (`Popen.stdout` is an int sentinel, not a reader); `kill`/`terminate`

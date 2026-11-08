@@ -87,19 +87,6 @@ impl sp_strvec_free(vec: int, n: int) {
     free(vec);
 }
 
-impl sp_env_strings -> list[str] {
-    out: list[str] = [];
-    i: int = 0;
-    envp: int = int(environ);
-    p: int = int(__mem_load_i64(envp));
-    while p != 0 {
-        out.append(strndup(p, strlen(p)));
-        i += 1;
-        p = int(__mem_load_i64(envp + i * 8));
-    }
-    return out;
-}
-
 impl sp_fa_new -> int {
     fa = malloc(_FA_SIZE);
     posix_spawn_file_actions_init(fa);

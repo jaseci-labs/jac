@@ -95,6 +95,8 @@ jobs:
         run: >-
           jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
+      - name: Run signal/subprocess na<->sv congruence tests (darwin)
+        run: jac test jac/tests/compiler/backends/native/test_native_signal_subprocess.jac
       - name: Provision managed Ruby, CocoaPods, and native Node
         run: |
           mkdir -p "$RUNNER_TEMP/managed-ios"
