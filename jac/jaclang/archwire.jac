@@ -6377,8 +6377,8 @@ graph import compiler {
         backends.native.kernel_resolve.source_tree_kernel_path { jaclang_pkg_root },
         backends.native.kernel_resolve.unit_drift
             | backends.native.kernel_stage0.plan_kernel_prefix
-            | backends.native.link_plan.LinkPlan.plan_digest
-            | native_scope.package_host_edge { native_unit_identity, native_unit_root },
+            | backends.native.link_plan.LinkPlan.plan_digest { native_unit_identity },
+        native_scope.package_host_edge { native_unit_identity, native_unit_root },
         backends.native.kernel_stage0.missing_kernel_entries
             | backends.native.na_ir_gen_pass.NaIRGenPass._register_entry_globals {
             native_def_symbol
