@@ -5,10 +5,11 @@ compile-time positions must not accept a name a native unit would have to
 call.
 """
 
-import fractions;
+import queue;
 
 
 def run -> int {
-    value = fractions.Fraction(1, 2);
-    return value.numerator;
+    q = queue.Queue();
+    q.put(1);
+    return q.qsize();
 }
