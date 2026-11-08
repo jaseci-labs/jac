@@ -60,6 +60,9 @@ def _membership_diagnosis(output: str, base: any, excluded: any) -> str;
 def _vite_env_keys(base: any) -> dict[str, list[str]];
 
 
+def _install_client_dist(dist: str, project_dir: str);
+
+
 def pdb_spec(
     replica_floor: int, max_unavailable: int, min_available: (int | None) = None
 ) -> dict[str, any] | None;
