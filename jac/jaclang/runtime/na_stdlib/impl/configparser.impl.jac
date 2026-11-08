@@ -714,7 +714,7 @@ impl ConfigParser._validate_write_option(option: str) {
             raise ValueError("option name cannot contain a delimiter");
         }
     }
-    if option.startswith("[") {
+    if option.startswith("[") and option.rfind("]") >= 2 {
         raise ValueError("option name cannot look like a section header");
     }
 }
