@@ -39,8 +39,7 @@ impl match_pin(
 }
 
 impl placement_pins_muted -> bool {
-    raw = os.environ.get('JAC_IGNORE_PLACEMENT_PINS', '').strip().lower();
-    return raw not in ('', '0', 'false', 'off', 'no');
+    return pins_muted();
 }
 
 impl config_pins_for(source_path: str) -> dict[str, str] {

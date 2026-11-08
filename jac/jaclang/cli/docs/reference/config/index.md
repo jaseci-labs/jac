@@ -529,6 +529,8 @@ Element placement (server / client / native) is inferred by the compiler from ev
 
 A pinned element is immovable to the placement solver; everything else re-solves around it. Module-level `"server"` pins additionally give client imports of that module full service-boundary semantics (non-`:pub` items callable with auth, boundary types collected). Pins are part of the program: changing them invalidates the compilation cache, and `jac explain placement` reports them in each element's evidence chain.
 
+Set `JAC_IGNORE_PLACEMENT_PINS` to mute every `[placement.pins]` table during local development runs -- the project then behaves exactly as if the table were empty, so `jac run` skips the pinned placement without editing `jac.toml`. The variable is truthy-parsed: unset, empty, `0`, `false`, `off`, and `no` (any case) leave pins authoritative; any other value mutes them. Muting is applied where pins are read, before they feed workspace and compilation digests, so cached artifacts stay consistent with a no-pins project.
+
 `[apps.<name>.placement.pins]` merges over the project pins in that app's
 compilation context. Pins select codespaces. A service boundary is declared with
 `[apps.<name>] kind = "service"` and `entry-point`; imports of its public surface

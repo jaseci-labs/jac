@@ -2102,7 +2102,10 @@ graph import {
         compiler.driver.jir._module_cache_root { in_store },
         compiler.driver.jir._module_projection { is_dependency_module },
     ]
-    project.placement ++> cli.commands.fix._verify_claims { module_dot_path }
+    project.placement ++> [
+        cli.commands.fix._verify_claims { module_dot_path },
+        compiler.placement.placement_pins.placement_pins_muted { pins_muted },
+    ]
     project.plugin_config ++> [
         byllm.config_loader | client.desktop_config | scale.config.config_loader {
             PluginConfigBase
@@ -12486,7 +12489,10 @@ graph import project {
         config { PersistenceConfig },
         config._parse_toml_data { parse_persistence },
     ]
-    placement ++> kinds.resolve_app_kind { match_pin, validate_pins }
+    placement ++> [
+        kinds.resolve_app_kind { match_pin, pins_muted, validate_pins },
+        workspace._pins_of { pins_muted },
+    ]
     pyvenv ++> [
         capabilities.ensure_global_capability
             | providers.PythonProvider._install_global {

@@ -13,3 +13,6 @@ def module_dot_path(source_path: str, root_dir: str) -> str;
 def match_pin(
     source_path: str, root_dir: str, pins: dict[str, str], element_name: str = ''
 ) -> str;
+
+
+def pins_muted -> bool;
