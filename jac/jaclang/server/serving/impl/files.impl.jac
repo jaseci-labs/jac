@@ -57,7 +57,7 @@ impl _if_range_matches(request: Request, etag: str, mtime: float) -> bool {
     }
     cond = cond.strip();
     if cond.endswith('"') {
-        return cond == etag;
+        return not cond.startswith('W/') and cond == etag;
     }
     try {
         since = parsedate_to_datetime(cond).timestamp();

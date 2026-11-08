@@ -1263,10 +1263,11 @@ test "gateway honours If-Range so a stale resume gets the whole file" {
     assert tag;
     assert modified;
 
-    # A validator that still matches resumes with the requested slice.
-    part = client.get("/data.bin", headers={"Range": "bytes=0-99", "If-Range": tag});
-    assert part.status_code == 206;
-    assert part.content == body[:100];
+    # If-Range needs a strong validator, so the weak ETag sends the whole file.
+    whole = client.get("/data.bin", headers={"Range": "bytes=0-99", "If-Range": tag});
+    assert whole.status_code == 200;
+    assert whole.content == body;
+    assert whole.headers.get("content-range") is None;
     dated = client.get(
         "/data.bin", headers={"Range": "bytes=0-99", "If-Range": modified}
     );
