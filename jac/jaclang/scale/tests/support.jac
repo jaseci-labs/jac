@@ -102,11 +102,7 @@ server started with `start_new_session=True` leads its own group, so the
 group kill reaches every worker; one that does not is signalled alone.
 """
 def _kill_process_group(server: subprocess.Popen) {
-    try {
-        os.killpg(server.pid, int(signal.SIGKILL));
-    } except OSError {
-        server.kill();
-    }
+    _signal_group(server.pid, int(signal.SIGKILL));
 }
 
 """Unwrap a TransportResponse envelope down to its data payload.
