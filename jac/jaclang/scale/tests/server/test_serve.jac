@@ -1349,7 +1349,7 @@ def setup_dev_mode_server(jac_file: Path = dm_test_file) -> subprocess.Popen {
     if not jac_file.exists() {
         raise FileNotFoundError(f"Test fixture not found: {jac_file}");
     }
-    cleanup_db_files(dm_fixtures_dir);
+    cleanup_db_files(jac_file.parent);
 
     # Only --api_port is pinned: that is the one this suite talks to, and a
     # pinned port is now a contract that fails rather than relocating. The app
@@ -1618,8 +1618,13 @@ test "dev mode named endpoints" {
 
 test "dev mode HMR refresh" {
     greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
-    sp = setup_dev_mode_server(dm_hmr_file);
+    hmr_dir = Path(tempfile.mkdtemp(prefix="jac-hmr-"));
+    hmr_file = hmr_dir / dm_hmr_file.name;
+    shutil.copy2(dm_hmr_file, hmr_file);
+    shutil.copy2(dm_fixtures_dir / "jac.toml", hmr_dir / "jac.toml");
+    sp: (subprocess.Popen | None) = None;
     try {
+        sp = setup_dev_mode_server(hmr_file);
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
         assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} before HMR: {response.text[:300]!r}";
         paths = response.json().get("paths", {});
@@ -1628,41 +1633,55 @@ test "dev mode HMR refresh" {
         )}";
         assert "/walker/Greet" not in paths , "Greet route should not exist before the HMR edit";
 
-        with open(str(dm_hmr_file), 'a') as f {
+        with open(str(hmr_file), 'a') as f {
             f.write(greet_walker);
         }
 
         hmr_deadline = time.monotonic() + 30;
         paths: dict[str, any] = {};
         last_response = "no successful OpenAPI response";
+        last_build_status = "no /__build_status response";
         saw_compiling = False;
         next_openapi_check = 0.0;
         while time.monotonic() < hmr_deadline {
-            build_response = requests.get(f"{dm_base_url}/__build_status", timeout=5);
-            assert build_response.status_code == 200 , f"dev mode /__build_status returned {build_response.status_code} after the HMR edit: {build_response.text[:300]!r}";
-            build_status = build_response.json();
-            if build_status.get("status") == "compiling" {
-                saw_compiling = True;
-            } elif build_status.get("status") == "error" {
-                assert False , f"HMR compilation failed: {build_status.get(
-                    'diagnostics', []
-                )!r}";
+            try {
+                build_response = requests.get(
+                    f"{dm_base_url}/__build_status", timeout=5
+                );
+            } except (requests.ConnectionError, requests.Timeout) {
+                time.sleep(0.25);
+                continue;
             }
-            if build_status.get("status") == "ok"
-                and (saw_compiling or time.monotonic() >= next_openapi_check) {
-                try {
-                    response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-                } except (requests.ConnectionError, requests.Timeout) {
-                    time.sleep(0.25);
-                    continue;
+            last_build_status = f"HTTP {build_response.status_code}: {build_response.text[:300]!r}";
+            if build_response.status_code == 200 {
+                build_status = build_response.json();
+                if build_status.get("status") == "compiling" {
+                    saw_compiling = True;
+                } elif build_status.get("status") in ("error", "unavailable") {
+                    assert False , f"HMR build status is {build_status.get(
+                        'status'
+                    )!r}: {build_status.get('diagnostics', [])!r}";
                 }
-                assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} after the HMR edit: {response.text[:300]!r}";
-                last_response = f"HTTP {response.status_code}: {response.text[:300]!r}";
-                paths = response.json().get("paths", {});
-                if "/walker/Greet" in paths {
-                    break;
+                check_openapi_now = saw_compiling
+                    or time.monotonic() >= next_openapi_check;
+                if build_status.get("status") == "ok" and check_openapi_now {
+                    try {
+                        response = requests.get(
+                            f"{dm_base_url}/openapi.json", timeout=10
+                        );
+                    } except (requests.ConnectionError, requests.Timeout) {
+                        time.sleep(0.25);
+                        continue;
+                    }
+                    last_response = f"HTTP {response.status_code}: {response.text[:300]!r}";
+                    if response.status_code == 200 {
+                        paths = response.json().get("paths", {});
+                        if "/walker/Greet" in paths {
+                            break;
+                        }
+                    }
+                    next_openapi_check = time.monotonic() + 1;
                 }
-                next_openapi_check = time.monotonic() + 1;
             }
             time.sleep(0.25);
         }
@@ -1671,7 +1690,7 @@ test "dev mode HMR refresh" {
             (server_stdout, server_stderr) = sp.communicate();
             assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
                 paths.keys()
-            )}\nLast response: {last_response}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
+            )}\nLast /__build_status: {last_build_status}\nLast response: {last_response}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
         }
 
         response = requests.post(
@@ -1681,15 +1700,8 @@ test "dev mode HMR refresh" {
         data = _extract_data_dev(response.json());
         assert data["reports"][0]["message"] == "Hello, Jaseci!";
     } finally {
-        with open(str(dm_hmr_file), 'r') as f {
-            original = f.read();
-        }
-        if greet_walker in original {
-            with open(str(dm_hmr_file), 'w') as f {
-                f.write(original.replace(greet_walker, ''));
-            }
-        }
         teardown_dev_mode_server(sp);
+        shutil.rmtree(hmr_dir, ignore_errors=True);
     }
 }
 
