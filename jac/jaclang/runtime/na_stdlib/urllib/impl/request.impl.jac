@@ -179,6 +179,9 @@ impl urlopen(
     request: Request;
     if isinstance(url, Request) {
         request = url;
+        if data is not None {
+            request.data = data;
+        }
     } elif isinstance(url, str) {
         if data is not None {
             request = Request(url=url, data=data);

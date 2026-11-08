@@ -50,6 +50,14 @@ class _LoopbackHandler(BaseHTTPRequestHandler) {
         }
     }
 
+    def do_POST(self: _LoopbackHandler) {
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")));
+        self.send_response(200);
+        self.send_header("Content-Length", str(len(body)));
+        self.end_headers();
+        self.wfile.write(body);
+    }
+
     def log_message(self: _LoopbackHandler, fmt: str, *args: any) -> None {
         return;
     }
@@ -117,6 +125,20 @@ test "urllib.request.urlopen follows redirects over the socket transport (sv<->n
         );
         assert _call_na_int(eng, "urlopen_redirect_body_length_na")
             == (py["body_length"]) , "redirect body_length";
+    } finally {
+        srv.shutdown();
+        os.environ.pop("JAC_URLLIB_TEST_PORT", None);
+    }
+}
+
+test "urlopen data overrides a Request body (sv<->na)" {
+    (srv, port) = _start_server();
+    os.environ["JAC_URLLIB_TEST_PORT"] = str(port);
+    try {
+        py = run_py_fixture("prim_urllib_host", "urllib_request_data_py");
+        assert py["body"] == "payload" , py;
+        (eng, _) = compile_native("prim_urllib.jac");
+        assert _call_na_int(eng, "urlopen_request_data_length_na") == 7;
     } finally {
         srv.shutdown();
         os.environ.pop("JAC_URLLIB_TEST_PORT", None);

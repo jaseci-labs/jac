@@ -26,7 +26,7 @@ def urllib_redirect_py -> dict[any, any] {
 }
 
 
-import from urllib.request { urlopen }
+import from urllib.request { urlopen, Request }
 
 def urlopen_status_na -> int {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
@@ -49,5 +49,12 @@ def urlopen_redirect_status_na -> int {
 def urlopen_redirect_body_length_na -> int {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
     resp = urlopen(base + "/redirect");
+    return len(resp.read());
+}
+
+def urlopen_request_data_length_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    req = Request(url=base + "/echo", method="POST");
+    resp = urlopen(req, data=b"payload");
     return len(resp.read());
 }
