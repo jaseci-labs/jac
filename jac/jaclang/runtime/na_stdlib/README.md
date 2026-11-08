@@ -80,14 +80,34 @@ native layout records the emitted name separately from its source-level key.
   platform-specific `struct passwd` layouts and grows its buffer on `ERANGE`.
   Qualified `os.path` calls and direct/aliased imports use the same bundled
   implementation; no Python runtime is required.
-- **`json.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
-  `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
-  CPython's default `(', ', ': ')` separators and insertion-ordered keys.
-  One documented divergence: only the control set + JSON metacharacters are
-  escaped, so congruence holds for ASCII payloads (`ensure_ascii` of
-  non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
-  `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
-  pinned byte-for-byte against CPython in the native suite.)
+- **`json.jac`** (#6940 Phase 1, extended to the CPython surface in #10544) --
+  the CPython module's shape over boxed `any` (dict/list/tuple/str/int/float/
+  bool/None): `loads`/`load`/`dumps`/`dump`, `JSONEncoder` (`encode`,
+  `iterencode`, `default`, `item_separator`/`key_separator`), `JSONDecoder`
+  (`decode`, `raw_decode`, `strict`), and `JSONDecodeError` carrying
+  `msg`/`doc`/`pos`/`lineno`/`colno` with CPython's message text and positions.
+  `dumps` takes `skipkeys`, `ensure_ascii`, `check_circular`, `allow_nan`,
+  `indent` (int or str), `separators`, `default` and `sort_keys`; pretty
+  printing, non-ASCII escaping (`\uXXXX`, astral characters as surrogate
+  pairs), key coercion for int/float/bool/None keys, circular detection and the
+  `default` fallback match CPython byte for byte, as does float text (native
+  `str(float)` is the shortest-round-trip repr -- #6940 Phase 0.3). The
+  scanner reports the errors CPython's does, at the same `pos`/`lineno`/
+  `colno`: `Expecting value`, `Extra data`, `Expecting ',' delimiter`,
+  `Expecting ':' delimiter`, `Expecting property name enclosed in double
+  quotes`, `Illegal trailing comma before end of array`/`... object`,
+  `Unterminated string starting at`, `Invalid \escape`, `Invalid \uXXXX
+  escape` and `Invalid control character at`. `loads`/`load` take the six
+  decode hooks (`object_hook`, `object_pairs_hook`, `parse_float`,
+  `parse_int`, `parse_constant`), and the parser accepts the `NaN`/
+  `Infinity`/`-Infinity` literals. SCOPE divergences: `cls=` is accepted and
+  raises `NotImplementedError` (a call through a type value does not lower),
+  as does `json.tool.main` (`sys.stdin` does not lower); `loads`/`load` have
+  no `strict=` or `**kwds`, so `json.loads(s, strict=False)` is a placement
+  gap -- build a `JSONDecoder(strict=False)` instead; `iterencode` answers one
+  chunk (a `list[str]`) rather than a generator and takes no `_one_shot`;
+  `loads` takes `str`, not `bytes`/`bytearray`, and `load` does not sniff a
+  byte stream's encoding.
 - **`datetime.jac`** (#6940 Phase 1 / #6951, extended to the full surface) --
   a faithful port of CPython's `_pydatetime.py`: `timedelta`, `date`,
   `tzinfo`, `time`, `datetime`, `timezone`, `struct_time`, and the internal
