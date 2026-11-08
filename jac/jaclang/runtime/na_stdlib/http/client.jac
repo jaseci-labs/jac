@@ -9,7 +9,7 @@ obj:pub HTTPResponse {
         _pos: int = 0;
 
     def read(amt: (int | None) = None) -> bytes;
-    def readline -> str;
+    def readline(limit: int = -1) -> bytes;
     def getheader(name: str, `default: (str | None) = None) -> (str | None);
     def geturl -> str;
     def close;

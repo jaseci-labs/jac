@@ -1,6 +1,7 @@
 import from socket { create_connection }
-import from ssl { create_default_context }
+import from ssl { create_default_context, SSLError }
 import from http.client { HTTPResponse }
+import from urllib.error { HTTPError, URLError }
 
 
 obj:pub Request {
@@ -8,6 +9,8 @@ obj:pub Request {
         data: bytes = b"",
         headers: dict[str, str] = {},
         method: str = "GET";
+
+    def postinit;
 }
 
 
@@ -38,4 +41,6 @@ def _resolve_redirect(pu: _Url, loc: str) -> str;
 def _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse;
 
 
-def:pub urlopen(url: any, timeout: (float | None) = None) -> HTTPResponse;
+def:pub urlopen(
+    url: (str | Request), data: (bytes | None) = None, timeout: (float | None) = None
+) -> HTTPResponse;

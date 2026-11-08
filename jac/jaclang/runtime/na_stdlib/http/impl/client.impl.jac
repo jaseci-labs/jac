@@ -9,9 +9,9 @@ impl HTTPResponse.read(amt: (int | None) = None) -> bytes {
 }
 
 
-impl HTTPResponse.readline -> str {
+impl HTTPResponse.readline(limit: int = -1) -> bytes {
     if self._pos >= len(self._body) {
-        return "";
+        return b"";
     }
     end = self._body.find(b"\n", self._pos);
     if end < 0 {
@@ -19,9 +19,12 @@ impl HTTPResponse.readline -> str {
     } else {
         end += 1;
     }
+    if limit >= 0 and self._pos + limit < end {
+        end = self._pos + limit;
+    }
     line: bytes = self._body[self._pos:end];
     self._pos = end;
-    return line.decode("utf-8", "replace");
+    return line;
 }
 
 impl HTTPResponse.getheader(name: str, `default: (str | None) = None) -> (str | None) {

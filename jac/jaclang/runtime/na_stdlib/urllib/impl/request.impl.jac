@@ -1,3 +1,9 @@
+impl Request.postinit {
+    if self.method.upper() == "GET" and len(self.data) > 0 {
+        self.method = "POST";
+    }
+}
+
 impl _parse_url(u: str) -> _Url {
     scheme = "http";
     rest = u;
@@ -26,18 +32,34 @@ impl _parse_url(u: str) -> _Url {
 }
 
 impl _request_bytes(host: str, path: str, request: Request) -> bytes {
-    lines: list[str] = [
-        request.method + " " + path + " HTTP/1.0",
-        "Host: " + host,
-        "Connection: close",
-        "User-Agent: jac-urllib/1.0",
-        "Accept: */*",
-
-    ];
+    provided: dict[str, str] = {};
+    for name in request.headers {
+        value = request.headers[name];
+        if name.find("\r") != -1
+            or name.find("\n") != -1
+            or value.find("\r") != -1
+            or value.find("\n") != -1 {
+            raise ValueError("illegal header name or value");
+        }
+        provided[name.lower()] = value;
+    }
+    lines: list[str] = [request.method + " " + path + " HTTP/1.0"];
+    if "host" not in provided {
+        lines.append("Host: " + host);
+    }
+    if "connection" not in provided {
+        lines.append("Connection: close");
+    }
+    if "user-agent" not in provided {
+        lines.append("User-Agent: jac-urllib/1.0");
+    }
+    if "accept" not in provided {
+        lines.append("Accept: */*");
+    }
     for name in request.headers {
         lines.append(name + ": " + request.headers[name]);
     }
-    if len(request.data) > 0 {
+    if len(request.data) > 0 and "content-length" not in provided {
         lines.append("Content-Length: " + str(len(request.data)));
     }
     header: bytes = ("\r\n".join(lines) + "\r\n\r\n").encode();
@@ -45,27 +67,33 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
 }
 
 impl _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes {
-    sock = create_connection((pu.host, pu.port), timeout);
-    reqb = _request_bytes(pu.host, pu.path, request);
     raw = b"";
-    if pu.scheme == "https" {
-        ctx = create_default_context();
-        ss = ctx.wrap_socket(sock, server_hostname=pu.host);
-        ss.sendall(reqb);
-        chunk = ss.recv(8192);
-        while len(chunk) > 0 {
-            raw += chunk;
+    try {
+        sock = create_connection((pu.host, pu.port), timeout);
+        reqb = _request_bytes(pu.host, pu.path, request);
+        if pu.scheme == "https" {
+            ctx = create_default_context();
+            ss = ctx.wrap_socket(sock, server_hostname=pu.host);
+            ss.sendall(reqb);
             chunk = ss.recv(8192);
-        }
-        ss.close();
-    } else {
-        sock.sendall(reqb);
-        chunk = sock.recv(8192);
-        while len(chunk) > 0 {
-            raw += chunk;
+            while len(chunk) > 0 {
+                raw += chunk;
+                chunk = ss.recv(8192);
+            }
+            ss.close();
+        } else {
+            sock.sendall(reqb);
             chunk = sock.recv(8192);
+            while len(chunk) > 0 {
+                raw += chunk;
+                chunk = sock.recv(8192);
+            }
+            sock.close();
         }
-        sock.close();
+    } except OSError as e {
+        raise URLError(reason=e);
+    } except SSLError as e {
+        raise URLError(reason=e);
     }
     return raw;
 }
@@ -145,12 +173,20 @@ impl _resolve_redirect(pu: _Url, loc: str) -> str {
     return base + "/" + loc;
 }
 
-impl urlopen(url: any, timeout: (float | None)) -> HTTPResponse {
+impl urlopen(
+    url: (str | Request), data: (bytes | None), timeout: (float | None)
+) -> HTTPResponse {
     request: Request;
-    if isinstance(url, str) {
-        request = Request(url=url);
+    if isinstance(url, Request) {
+        request = url;
+    } elif isinstance(url, str) {
+        if data is not None {
+            request = Request(url=url, data=data);
+        } else {
+            request = Request(url=url);
+        }
     } else {
-        request = url as Request;
+        raise TypeError("urlopen: url must be a str or Request");
     }
     return _urlopen_request(request, timeout);
 }
@@ -222,7 +258,12 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
                 continue;
             }
         }
+        if resp.status >= 400 {
+            raise HTTPError(
+                url=cur, code=resp.status, msg=resp.reason, hdrs=resp.headers, fp=resp
+            );
+        }
         return resp;
     }
-    raise Exception("urlopen: too many redirects (>10) for " + request.url);
+    raise HTTPError(url=cur, msg="too many redirects (>10)");
 }

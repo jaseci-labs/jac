@@ -44,6 +44,10 @@ impl do_handshake(ssl: int) -> int {
     return SSL_connect(ssl);
 }
 
+impl ssl_get_error(ssl: int, ret: int) -> int {
+    return SSL_get_error(ssl, i32(ret));
+}
+
 impl verify_result(ssl: int) -> int {
     return SSL_get_verify_result(ssl);
 }

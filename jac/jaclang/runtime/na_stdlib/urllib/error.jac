@@ -1,7 +1,7 @@
 import from http.client { HTTPResponse }
 
 
-obj:pub URLError(Exception) {
+obj:pub URLError(OSError) {
     has reason: any = None;
 }
 

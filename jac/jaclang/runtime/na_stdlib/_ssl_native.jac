@@ -30,7 +30,9 @@ glob _SSL_CTRL_SET_TLSEXT_HOSTNAME: int = 55,
 glob _SSL_VERIFY_PEER: int = 1;
 
 glob _SSL_ERROR_ZERO_RETURN: int = 6,
-     _SSL_ERROR_SSL: int = 1;
+     _SSL_ERROR_SSL: int = 1,
+     _SSL_ERROR_WANT_READ: int = 2,
+     _SSL_ERROR_WANT_WRITE: int = 3;
 
 glob _ERR_REASON_MASK: int = 8388607,
      _SSL_R_UNEXPECTED_EOF_WHILE_READING: int = 294;
@@ -52,6 +54,9 @@ def:pub ssl_new_client(ctx: int, fd: int, hostname: str, check_hostname: bool) -
 
 
 def:pub do_handshake(ssl: int) -> int;
+
+
+def:pub ssl_get_error(ssl: int, ret: int) -> int;
 
 
 def:pub verify_result(ssl: int) -> int;

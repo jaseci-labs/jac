@@ -1,3 +1,5 @@
+import from platform { system }
+
 impl resolve_all(host: str, service: str) -> tuple[(list[bytes], int)] {
     out: list[bytes] = [];
     res_slot = b"\x00" * 8;
@@ -44,7 +46,6 @@ impl sock_connect(fd: int, sa: bytes) -> int {
 }
 
 impl sock_error(fd: int) -> int {
-    import from platform { system }
     value: bytes = b"\x00" * 4;
     size: bytes = (4).to_bytes(4, "little");
     level: int = 1;
