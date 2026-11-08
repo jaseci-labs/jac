@@ -336,8 +336,8 @@ test "guardrail: call to an undefined function is rejected" {
 # demotion fails on layout membership, and either way this test names it.
 test "hasattr lowers for Jac object fields with constant and dynamic names" {
     src = "obj HasAttrBase { has base_value: int = 1; }\n"
-    "obj HasAttrStaticBase { static has COUNT: int = 1; }\n"
-    "obj HasAttrChild(HasAttrBase, HasAttrStaticBase) { has nullable: str | None = None; }\n"
+    "obj HasAttrStaticBase(HasAttrBase) { static has COUNT: int = 1; }\n"
+    "obj HasAttrChild(HasAttrStaticBase) { has nullable: str | None = None; }\n"
     "obj HasAttrBox { has _width: int = 4, width: int { getter { return self._width; } }"
     " def measure -> int { return self._width; } }\n"
     "def probe(item: HasAttrBase) -> bool { return hasattr(item, 'nullable'); }\n"
