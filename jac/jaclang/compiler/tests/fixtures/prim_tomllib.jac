@@ -4,10 +4,9 @@ The SAME `import from tomllib { loads }` binds CPython's `tomllib` on the sv
 (Python) backend and the bundled `na_stdlib/tomllib.jac` Mechanism-B module on
 the na (native LLVM) backend. Values are extracted to SCALARS (lists are
 probed via len + indexed element reads; the harness reads returned lists as
-raw i64). Datetimes are probed for PRESENCE only (object types differ per
-lane -- na returns module-internal value objects -- and the harness cannot
-marshal datetime values); value correctness is covered by the module's
-differential audit against CPython (README).
+raw i64). Datetimes come back as `datetime.date`/`time`/`datetime` on both
+lanes; they are pinned through `isoformat()`/`tzname()`/`isinstance` probes
+since the harness compares scalars, not object identity.
 Integers >= 2^63 raise OverflowError natively (i64 machine) --
 not probed here; documented SCOPE divergence. Errors pinned as
 "TOMLDecodeError: " + str(e) with a WRONG-TYPE fallback arm so a wrong class
@@ -17,11 +16,12 @@ native->Python call boundary in the harness). ES/JS opts out.
 """
 
 import from tomllib { loads, TOMLDecodeError }
+import from datetime { date, time, datetime }
 
 
 def tomllib_py -> dict[any, any] {
     v: dict[any, any] = loads(
-        "title = \"bench\"\nlimit = 4_000\nratio = 0.7284\nflag = true\noff = false\nhexval = 0xdeadbee\noctval = 0o755\nbinval = 0b1010\nneg = -17\nexpf = 6.626e-34\nports = [80, 443, 8080]\nmatrix = [[1, 2], [3, 4]]\ninline = { a = 1, b = \"x\", c = { d = 2.5 } }\nlit = 'C:\\\\path\\\\x'\nmulti = \"\"\"\nfirst line\\\nstill first\"\"\"\nmlit = '''\nraw \\n text'''\n[owner]\nname = \"ops\"\ndob = 1979-05-27\n[server]\nenabled = true\nip = \"10.0.0.1\"\nrun_at = 2026-09-25T10:30:00Z\nlocal_at = 1979-05-27T07:32:00\ntea = 07:32:00.999999\n[server.tls]\nkey = \"k.pem\"\ncert = \"c.pem\"\nnested.x.y = 41\ntop.end = true\n[[items]]\nid = 0\nname = \"zero\"\nvec = [5, 6, 7]\n[[items]]\nid = 1\nname = \"one\"\nvec = [8, 9, 10]\n[[items]]\nid = 2\nname = \"two\"\nvec = [11, 12, 13]\n[[shape]]\n[shape.sides]\ncount = 3\n"
+        "title = \"bench\"\nlimit = 4_000\nratio = 0.7284\nflag = true\noff = false\nhexval = 0xdeadbee\noctval = 0o755\nbinval = 0b1010\nneg = -17\nexpf = 6.626e-34\nports = [80, 443, 8080]\nmatrix = [[1, 2], [3, 4]]\ninline = { a = 1, b = \"x\", c = { d = 2.5 } }\nlit = 'C:\\\\path\\\\x'\nmulti = \"\"\"\nfirst line\\\nstill first\"\"\"\nmlit = '''\nraw \\n text'''\n[owner]\nname = \"ops\"\ndob = 1979-05-27\n[server]\nenabled = true\nip = \"10.0.0.1\"\nrun_at = 2026-09-25T10:30:00Z\noff_at = 2026-09-25T10:30:00+02:30\nlocal_at = 1979-05-27T07:32:00\ntea = 07:32:00.999999\n[server.tls]\nkey = \"k.pem\"\ncert = \"c.pem\"\nnested.x.y = 41\ntop.end = true\n[[items]]\nid = 0\nname = \"zero\"\nvec = [5, 6, 7]\n[[items]]\nid = 1\nname = \"one\"\nvec = [8, 9, 10]\n[[items]]\nid = 2\nname = \"two\"\nvec = [11, 12, 13]\n[[shape]]\n[shape.sides]\ncount = 3\n"
     );
     items: any = v["items"];
     item1: any = items[1];
@@ -34,6 +34,11 @@ def tomllib_py -> dict[any, any] {
     inline: any = v["inline"];
     ic: any = inline["c"];
     shape: any = v["shape"];
+    run_at: datetime = server["run_at"];
+    off_at: datetime = server["off_at"];
+    local_at: datetime = server["local_at"];
+    tea: time = server["tea"];
+    dob: date = owner["dob"];
     e1: str = "";
     try {
         loads("a = \"abc");
@@ -126,10 +131,16 @@ def tomllib_py -> dict[any, any] {
         "item1_vec2": item1["vec"][2],
         "shape_sides": shape[0]["sides"]["count"],
         "zero_eof": loads("a=0")["a"],
-        "run_present": "run_at" in server,
-        "local_present": "local_at" in server,
-        "tea_present": "tea" in server,
-        "dob_present": "dob" in owner,
+        "run_iso": run_at.isoformat(),
+        "run_tz": run_at.tzname(),
+        "off_iso": off_at.isoformat(),
+        "off_tz": off_at.tzname(),
+        "local_iso": local_at.isoformat(),
+        "tea_iso": tea.isoformat(),
+        "dob_iso": dob.isoformat(),
+        "run_is_dt": isinstance(run_at, datetime),
+        "dob_is_date": isinstance(dob, date),
+        "tea_is_time": isinstance(tea, time),
         "e1": e1,
         "e2": e2,
         "e3": e3,
@@ -148,7 +159,7 @@ def tomllib_cl -> dict[any, any] {
 
 def tomllib_na -> dict[str, any] {
     v: dict[str, any] = loads(
-        "title = \"bench\"\nlimit = 4_000\nratio = 0.7284\nflag = true\noff = false\nhexval = 0xdeadbee\noctval = 0o755\nbinval = 0b1010\nneg = -17\nexpf = 6.626e-34\nports = [80, 443, 8080]\nmatrix = [[1, 2], [3, 4]]\ninline = { a = 1, b = \"x\", c = { d = 2.5 } }\nlit = 'C:\\\\path\\\\x'\nmulti = \"\"\"\nfirst line\\\nstill first\"\"\"\nmlit = '''\nraw \\n text'''\n[owner]\nname = \"ops\"\ndob = 1979-05-27\n[server]\nenabled = true\nip = \"10.0.0.1\"\nrun_at = 2026-09-25T10:30:00Z\nlocal_at = 1979-05-27T07:32:00\ntea = 07:32:00.999999\n[server.tls]\nkey = \"k.pem\"\ncert = \"c.pem\"\nnested.x.y = 41\ntop.end = true\n[[items]]\nid = 0\nname = \"zero\"\nvec = [5, 6, 7]\n[[items]]\nid = 1\nname = \"one\"\nvec = [8, 9, 10]\n[[items]]\nid = 2\nname = \"two\"\nvec = [11, 12, 13]\n[[shape]]\n[shape.sides]\ncount = 3\n"
+        "title = \"bench\"\nlimit = 4_000\nratio = 0.7284\nflag = true\noff = false\nhexval = 0xdeadbee\noctval = 0o755\nbinval = 0b1010\nneg = -17\nexpf = 6.626e-34\nports = [80, 443, 8080]\nmatrix = [[1, 2], [3, 4]]\ninline = { a = 1, b = \"x\", c = { d = 2.5 } }\nlit = 'C:\\\\path\\\\x'\nmulti = \"\"\"\nfirst line\\\nstill first\"\"\"\nmlit = '''\nraw \\n text'''\n[owner]\nname = \"ops\"\ndob = 1979-05-27\n[server]\nenabled = true\nip = \"10.0.0.1\"\nrun_at = 2026-09-25T10:30:00Z\noff_at = 2026-09-25T10:30:00+02:30\nlocal_at = 1979-05-27T07:32:00\ntea = 07:32:00.999999\n[server.tls]\nkey = \"k.pem\"\ncert = \"c.pem\"\nnested.x.y = 41\ntop.end = true\n[[items]]\nid = 0\nname = \"zero\"\nvec = [5, 6, 7]\n[[items]]\nid = 1\nname = \"one\"\nvec = [8, 9, 10]\n[[items]]\nid = 2\nname = \"two\"\nvec = [11, 12, 13]\n[[shape]]\n[shape.sides]\ncount = 3\n"
     );
     items: any = v["items"];
     item1: any = items[1];
@@ -161,6 +172,11 @@ def tomllib_na -> dict[str, any] {
     inline: any = v["inline"];
     ic: any = inline["c"];
     shape: any = v["shape"];
+    run_at: datetime = server["run_at"];
+    off_at: datetime = server["off_at"];
+    local_at: datetime = server["local_at"];
+    tea: time = server["tea"];
+    dob: date = owner["dob"];
     e1: str = "";
     try {
         loads("a = \"abc");
@@ -253,10 +269,16 @@ def tomllib_na -> dict[str, any] {
         "item1_vec2": item1["vec"][2],
         "shape_sides": shape[0]["sides"]["count"],
         "zero_eof": loads("a=0")["a"],
-        "run_present": "run_at" in server,
-        "local_present": "local_at" in server,
-        "tea_present": "tea" in server,
-        "dob_present": "dob" in owner,
+        "run_iso": run_at.isoformat(),
+        "run_tz": run_at.tzname(),
+        "off_iso": off_at.isoformat(),
+        "off_tz": off_at.tzname(),
+        "local_iso": local_at.isoformat(),
+        "tea_iso": tea.isoformat(),
+        "dob_iso": dob.isoformat(),
+        "run_is_dt": isinstance(run_at, datetime),
+        "dob_is_date": isinstance(dob, date),
+        "tea_is_time": isinstance(tea, time),
         "e1": e1,
         "e2": e2,
         "e3": e3,

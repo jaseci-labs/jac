@@ -1209,17 +1209,19 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
   immutable namespace` / `Duplicate inline table key` error family are the
   CPython algorithms verbatim; CRLF is normalized up front like CPython.
   Datetimes (all four TOML forms, fractional seconds truncated to microseconds)
-  return module-internal `_TDatetime` / `_TDate` / `_TTime` value objects whose
-  `isoformat()` / `str()` render byte-identical to the corresponding
-  `datetime` / `date` / `time` objects (Z normalizes to `+00:00`).
+  return real `datetime.date` / `datetime.time` / `datetime.datetime` values:
+  naive locals stay naive, `Z` maps to `timezone.utc`, and `+hh:mm`/`-hh:mm`
+  maps to `timezone(timedelta(...))` exactly like CPython's
+  `match_to_datetime`. `loads` also honors the keyword-only `parse_float`
+  hook (applied to every float spelling incl. `inf`/`nan`, raw matched text
+  passed through; `dict`/`list` returns raise `ValueError`, mirroring
+  `make_safe_parse_float`).
   Verified against CPython 3.14 by a 180-case battery and a 100,000-case
   differential fuzz (random token soup, seed-doc mutations, exhaustive-ish
   datetime space): zero mismatches in values, types, or error strings.
   SCOPE divergences: integers beyond the i64 range raise `OverflowError`
   (CPython returns a bignum); `load(fp)` is absent (CPython's takes a binary
-  file object -- read the file and use `loads`); datetimes are module-internal
-  types, not `datetime.*` instances (fields and rendering are congruent;
-  `isinstance(x, datetime.datetime)` checks do not carry over);
+  file object -- read the file and use `loads`);
   `MAX_KEY_PARTS` is fixed at 1000 rather than `sys.getrecursionlimit()`;
   `except ValueError` does not catch `TOMLDecodeError` natively (the known
   parent-class catch gap) -- catch `TOMLDecodeError` or `Exception`.
@@ -1240,7 +1242,11 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
   `ValueError`); `BasicInterpolation` implements `%(name)s` resolution
   (same section then defaults), `%%` literals, the depth budget of exactly
   10 nested expansions, and the four `Interpolation*Error` messages with
-  CPython's top-level `Raw value:` payload. `get`/`getint`/`getfloat`/
+  CPython's top-level `Raw value:` payload. The error hierarchy matches
+  CPython too: `Error` is the common base, the three `Interpolation*Error`s
+  sit under `InterpolationError`, and `MissingSectionHeaderError` under
+  `ParsingError` (parent-class catching is subject to the same native gap
+  noted for `tomllib`). `get`/`getint`/`getfloat`/
   `getboolean`, `set`, `items`, `add_section`, `remove_section`,
   `remove_option`, `defaults`, `read_string`, `read_file(lines: list[str])`,
   `read_dict`, and `write() -> str` (DEFAULT first, ` = ` separator,

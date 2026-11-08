@@ -1,4 +1,10 @@
-def:pub loads(s: str) -> dict[str, any];
+import from datetime { date, time, datetime, timedelta, timezone, tzinfo }
+import from _repr { repr_str }
+
+
+def:pub loads(
+    s: str, *, parse_float: (Callable[[str], any] | None) = None
+) -> dict[str, any];
 
 
 glob _FROZEN: int = 0,
@@ -7,52 +13,15 @@ glob _FROZEN: int = 0,
      _DEC_OVF: int = 922337203685477580;
 
 
-obj TOMLDecodeError(Exception) {
+obj:pub TOMLDecodeError(ValueError) {
     has msg: str = "",
         doc: str = "",
         pos: int = 0,
         lineno: int = 0,
         colno: int = 0,
-        at_eod: bool = False;
+        _at_eod: bool = False;
 
     def init(msg: str, doc: str, pos: int);
-    def __str__ -> str;
-}
-
-
-obj _TDate {
-    has year: int = 0,
-        month: int = 0,
-        day: int = 0;
-
-    def isoformat -> str;
-    def __str__ -> str;
-}
-
-
-obj _TTime {
-    has hour: int = 0,
-        minute: int = 0,
-        second: int = 0,
-        microsecond: int = 0;
-
-    def isoformat -> str;
-    def __str__ -> str;
-}
-
-
-obj _TDatetime {
-    has year: int = 0,
-        month: int = 0,
-        day: int = 0,
-        hour: int = 0,
-        minute: int = 0,
-        second: int = 0,
-        microsecond: int = 0,
-        offset_minutes: int = 0,
-        has_offset: bool = False;
-
-    def isoformat(sep: str = "T") -> str;
     def __str__ -> str;
 }
 
@@ -87,9 +56,10 @@ obj _Parser {
         pos: int = 0,
         out_data: _Data = _Data(),
         out_flags: _Flags = _Flags(),
-        header: list[str] = [];
+        header: list[str] = [],
+        parse_float: (Callable[[str], any] | None) = None;
 
-    def init(s: str);
+    def init(s: str, parse_float: (Callable[[str], any] | None) = None);
     def _cc(p: int) -> int;
     def _at(p: int) -> str;
     def _starts_at(q: str, p: int) -> bool;
@@ -124,6 +94,7 @@ obj _Parser {
     def _build_datetime(start: int, end: int) -> any;
     def _build_localtime(start: int, end: int) -> any;
     def _build_number(start: int, end: int) -> any;
+    def _parse_float_str(raw: str) -> any;
 }
 
 
@@ -158,33 +129,6 @@ def _dig4(s: str, i: int) -> int;
 
 
 def _day_valid(year: int, month: int, day: int) -> bool;
-
-
-def _pad2(n: int) -> str;
-
-
-def _pad4(n: int) -> str;
-
-
-def _pad6(n: int) -> str;
-
-
-def _offset_str(offset_min: int) -> str;
-
-
-def _char_repr(ch: int) -> str;
-
-
-def _str_repr(s: str) -> str;
-
-
-def _char_count(s: str) -> int;
-
-
-def _hex2(v: int) -> str;
-
-
-def _hex1(v: int) -> str;
 
 
 def _fmt_key(parts: list[str]) -> str;

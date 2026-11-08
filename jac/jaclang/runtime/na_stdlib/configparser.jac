@@ -1,3 +1,6 @@
+import from _repr { repr_str }
+
+
 glob:pub DEFAULTSECT: str = "DEFAULT",
      MAX_INTERPOLATION_DEPTH: int = 10;
 
@@ -10,19 +13,7 @@ obj _NoFallback {}
 glob _NO_FALLBACK: _NoFallback = _NoFallback();
 
 
-def _hexd(v: int) -> str;
-
-
-def _hex2(v: int) -> str;
-
-
 def _pad2(n: int) -> str;
-
-
-def _repr_str(s: str) -> str;
-
-
-def _is_ws_start(s: str, at: int) -> bool;
 
 
 def _is_ws(s: str, at: int) -> bool;
@@ -32,9 +23,6 @@ def _starts_at(s: str, sub: str, at: int) -> bool;
 
 
 def _find_from(s: str, sub: str, start: int) -> int;
-
-
-def _prefix_chars(s: str, end: int) -> str;
 
 
 def _lstrip(s: str) -> str;
@@ -70,7 +58,13 @@ def _dict_without(d: dict[str, str], key: str) -> dict[str, str];
 def _sect_without(d: dict[str, dict[str, str]], key: str) -> dict[str, dict[str, str]];
 
 
-obj:pub NoSectionError(Exception) {
+obj:pub Error(Exception) {}
+
+
+obj:pub InterpolationError(Error) {}
+
+
+obj:pub NoSectionError(Error) {
     has section: str;
 
     def init(section: str);
@@ -78,7 +72,7 @@ obj:pub NoSectionError(Exception) {
 }
 
 
-obj:pub DuplicateSectionError(Exception) {
+obj:pub DuplicateSectionError(Error) {
     has section: str,
         source: str = "",
         lineno: int = 0,
@@ -92,7 +86,7 @@ obj:pub DuplicateSectionError(Exception) {
 }
 
 
-obj:pub DuplicateOptionError(Exception) {
+obj:pub DuplicateOptionError(Error) {
     has section: str,
         option: str,
         source: str = "",
@@ -111,7 +105,7 @@ obj:pub DuplicateOptionError(Exception) {
 }
 
 
-obj:pub NoOptionError(Exception) {
+obj:pub NoOptionError(Error) {
     has option: str,
         section: str;
 
@@ -120,7 +114,7 @@ obj:pub NoOptionError(Exception) {
 }
 
 
-obj:pub InterpolationMissingOptionError(Exception) {
+obj:pub InterpolationMissingOptionError(InterpolationError) {
     has option: str,
         section: str,
         rawval: str,
@@ -131,7 +125,7 @@ obj:pub InterpolationMissingOptionError(Exception) {
 }
 
 
-obj:pub InterpolationSyntaxError(Exception) {
+obj:pub InterpolationSyntaxError(InterpolationError) {
     has option: str,
         section: str,
         msg: str;
@@ -141,7 +135,7 @@ obj:pub InterpolationSyntaxError(Exception) {
 }
 
 
-obj:pub InterpolationDepthError(Exception) {
+obj:pub InterpolationDepthError(InterpolationError) {
     has option: str,
         section: str,
         rawval: str;
@@ -151,7 +145,7 @@ obj:pub InterpolationDepthError(Exception) {
 }
 
 
-obj:pub ParsingError(Exception) {
+obj:pub ParsingError(Error) {
     has source: str,
         msg: str = "",
         n_errors: int = 0;
@@ -162,7 +156,7 @@ obj:pub ParsingError(Exception) {
 }
 
 
-obj:pub MissingSectionHeaderError(Exception) {
+obj:pub MissingSectionHeaderError(ParsingError) {
     has source: str,
         lineno: int,
         line: str;
@@ -219,7 +213,7 @@ obj:pub ConfigParser {
     ) -> any;
 
     def items(section: str, raw: bool = False) -> list[tuple[(str, str)]];
-    def read_string(s: str);
+    def read_string(s: str, source: str = "<string>");
     def read_file(lines: list[str]);
     def read_dict(dictionary: dict[str, dict[str, str]]);
     def write -> str;

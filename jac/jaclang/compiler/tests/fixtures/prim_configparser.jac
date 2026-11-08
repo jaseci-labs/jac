@@ -100,6 +100,12 @@ def configparser_py -> dict[any, any] {
     cpwi: ConfigParser = ConfigParser(inline_comment_prefixes=[";"]);
     cpwi.read_string("[s]\na = one\u00a0; comment\n");
     out["unicode_inline"] = cpwi.get("s", "a");
+    cpx: ConfigParser = ConfigParser();
+    cpx.read_string("[s]\nname = José\n");
+    out["accent_val"] = cpx.get("s", "name");
+    cpnel: ConfigParser = ConfigParser();
+    cpnel.read_string("[s]\na = first\n\u0085second\n");
+    out["nel_cont"] = cpnel.get("s", "a");
     try {
         ConfigParser().get("nope", "k");
     } except NoSectionError as e {
@@ -295,6 +301,12 @@ def configparser_na -> dict[str, any] {
     cpwi: ConfigParser = ConfigParser(inline_comment_prefixes=[";"]);
     cpwi.read_string("[s]\na = one\u00a0; comment\n");
     out["unicode_inline"] = cpwi.get("s", "a");
+    cpx: ConfigParser = ConfigParser();
+    cpx.read_string("[s]\nname = José\n");
+    out["accent_val"] = cpx.get("s", "name");
+    cpnel: ConfigParser = ConfigParser();
+    cpnel.read_string("[s]\na = first\n\u0085second\n");
+    out["nel_cont"] = cpnel.get("s", "a");
     try {
         ConfigParser().get("nope", "k");
     } except NoSectionError as e {

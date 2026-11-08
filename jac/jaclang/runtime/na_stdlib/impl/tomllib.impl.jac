@@ -1,18 +1,9 @@
-impl loads(s: str) -> dict[str, any] {
+impl loads(
+    s: str, *, parse_float: (Callable[[str], any] | None) = None
+) -> dict[str, any] {
     src: str = s.replace("\r\n", "\n");
-    p: _Parser = _Parser(src);
+    p: _Parser = _Parser(src, parse_float);
     return p._run();
-}
-
-
-impl _char_count(s: str) -> int {
-    count: int = 0;
-    i: int = 0;
-    while i < len(s) {
-        count += 1;
-        i += 1;
-    }
-    return count;
 }
 
 
@@ -31,15 +22,15 @@ impl TOMLDecodeError.init(msg: str, doc: str, pos: int) {
         i += 1;
     }
     self.lineno = nl + 1;
-    self.colno = _char_count(doc[last + 1:pos]) + 1;
+    self.colno = len(doc[last + 1:pos]) + 1;
     if pos >= len(doc) {
-        self.at_eod = True;
+        self._at_eod = True;
     }
 }
 
 
 impl TOMLDecodeError.__str__ -> str {
-    if self.at_eod {
+    if self._at_eod {
         return self.msg + " (at end of document)";
     }
     return self.msg
@@ -48,48 +39,6 @@ impl TOMLDecodeError.__str__ -> str {
         + ", column "
         + str(self.colno)
         + ")";
-}
-
-
-impl _TDate.isoformat -> str {
-    return _pad4(self.year) + "-" + _pad2(self.month) + "-" + _pad2(self.day);
-}
-
-
-impl _TDate.__str__ -> str {
-    return self.isoformat();
-}
-
-
-impl _TTime.isoformat -> str {
-    out: str = _pad2(self.hour) + ":" + _pad2(self.minute) + ":" + _pad2(self.second);
-    if self.microsecond != 0 {
-        out += "." + _pad6(self.microsecond);
-    }
-    return out;
-}
-
-
-impl _TTime.__str__ -> str {
-    return self.isoformat();
-}
-
-
-impl _TDatetime.isoformat(sep: str = "T") -> str {
-    out: str = _pad4(self.year) + "-" + _pad2(self.month) + "-" + _pad2(self.day);
-    out += sep + _pad2(self.hour) + ":" + _pad2(self.minute) + ":" + _pad2(self.second);
-    if self.microsecond != 0 {
-        out += "." + _pad6(self.microsecond);
-    }
-    if self.has_offset {
-        out += _offset_str(self.offset_minutes);
-    }
-    return out;
-}
-
-
-impl _TDatetime.__str__ -> str {
-    return self.isoformat(" ");
 }
 
 
@@ -249,12 +198,13 @@ impl _Data._append_nest_to_list(parts: list[str]) {
 }
 
 
-impl _Parser.init(s: str) {
+impl _Parser.init(s: str, parse_float: (Callable[[str], any] | None) = None) {
     self.src = s;
     self.pos = 0;
     self.out_data = _Data();
     self.out_flags = _Flags();
     self.header = [];
+    self.parse_float = parse_float;
 }
 
 
@@ -332,7 +282,7 @@ impl _Parser._skip_comment(p: int) -> int {
             return p;
         }
         if _is_illegal_basic(c) {
-            self._err("Found invalid character " + _char_repr(c), p);
+            self._err("Found invalid character " + repr_str(chr(c)), p);
         }
         p += 1;
     }
@@ -582,30 +532,43 @@ impl _Parser._parse_value -> any {
     }
     if self._starts_at("inf", self.pos) {
         self.pos += 3;
-        return float("inf");
+        return self._parse_float_str("inf");
     }
     if self._starts_at("nan", self.pos) {
         self.pos += 3;
-        return float("nan");
+        return self._parse_float_str("nan");
     }
     if self._starts_at("-inf", self.pos) {
         self.pos += 4;
-        return float("-inf");
+        return self._parse_float_str("-inf");
     }
     if self._starts_at("+inf", self.pos) {
         self.pos += 4;
-        return float("inf");
+        return self._parse_float_str("+inf");
     }
     if self._starts_at("-nan", self.pos) {
         self.pos += 4;
-        return float("nan");
+        return self._parse_float_str("-nan");
     }
     if self._starts_at("+nan", self.pos) {
         self.pos += 4;
-        return float("nan");
+        return self._parse_float_str("+nan");
     }
     self._err("Invalid value", self.pos);
     return None;
+}
+
+
+impl _Parser._parse_float_str(raw: str) -> any {
+    pf: any = self.parse_float;
+    if pf is None {
+        return float(raw);
+    }
+    v: any = pf(raw);
+    if isinstance(v, dict) or isinstance(v, list) {
+        raise ValueError("parse_float must not return dicts or lists");
+    }
+    return v;
 }
 
 
@@ -659,7 +622,7 @@ impl _Parser._parse_inline_table -> any {
         try {
             nest: dict[str, any] = nd._get_or_create_nest(parent, False);
             if stem in nest {
-                self._err("Duplicate inline table key " + _str_repr(stem), self.pos);
+                self._err("Duplicate inline table key " + repr_str(stem), self.pos);
             }
             nest[stem] = value;
         } except KeyError {
@@ -703,7 +666,7 @@ impl _Parser._parse_literal_str -> str {
     while scan < end {
         c2: int = ord(self.src[scan]);
         if _is_illegal_basic(c2) {
-            self._err("Found invalid character " + _char_repr(c2), scan);
+            self._err("Found invalid character " + repr_str(chr(c2)), scan);
         }
         scan += 1;
     }
@@ -730,7 +693,7 @@ impl _Parser._scan_ml_literal -> str {
     while scan < end {
         c2: int = ord(self.src[scan]);
         if _is_illegal_ml_basic(c2) {
-            self._err("Found invalid character " + _char_repr(c2), scan);
+            self._err("Found invalid character " + repr_str(chr(c2)), scan);
         }
         scan += 1;
     }
@@ -797,11 +760,11 @@ impl _Parser._parse_basic_str(multiline: bool) -> str {
         }
         if multiline {
             if _is_illegal_ml_basic(ch) {
-                self._err("Illegal character " + _char_repr(ch), self.pos);
+                self._err("Illegal character " + repr_str(chr(ch)), self.pos);
             }
         } else {
             if _is_illegal_basic(ch) {
-                self._err("Illegal character " + _char_repr(ch), self.pos);
+                self._err("Illegal character " + repr_str(chr(ch)), self.pos);
             }
         }
         self.pos += 1;
@@ -1135,7 +1098,7 @@ impl _Parser._build_datetime(start: int, end: int) -> any {
         if not _day_valid(year, month, day) {
             self._err("Invalid date or datetime", start);
         }
-        return _TDate(year=year, month=month, day=day);
+        return date(year, month, day);
     }
     hour: int = _dig2(self.src, start + 11);
     minute: int = _dig2(self.src, start + 14);
@@ -1154,11 +1117,13 @@ impl _Parser._build_datetime(start: int, end: int) -> any {
         }
     }
     has_off: bool = False;
+    is_zulu: bool = False;
     omin: int = 0;
     if i < end {
         oc: int = ord(self.src[i]);
         if oc == 90 or oc == 122 {
             has_off = True;
+            is_zulu = True;
         } elif oc == 43 or oc == 45 {
             sign: int = 1;
             if oc == 45 {
@@ -1173,17 +1138,15 @@ impl _Parser._build_datetime(start: int, end: int) -> any {
     if not _day_valid(year, month, day) {
         self._err("Invalid date or datetime", start);
     }
-    return _TDatetime(
-        year=year,
-        month=month,
-        day=day,
-        hour=hour,
-        minute=minute,
-        second=second,
-        microsecond=micros,
-        offset_minutes=omin,
-        has_offset=has_off
-    );
+    tz: (tzinfo | None) = None;
+    if has_off {
+        if is_zulu {
+            tz = timezone.utc;
+        } else {
+            tz = timezone(timedelta(minutes=omin));
+        }
+    }
+    return datetime(year, month, day, hour, minute, second, micros, tzinfo=tz);
 }
 
 
@@ -1204,7 +1167,7 @@ impl _Parser._build_localtime(start: int, end: int) -> any {
             i += 1;
         }
     }
-    return _TTime(hour=hour, minute=minute, second=second, microsecond=micros);
+    return time(hour, minute, second, micros);
 }
 
 
@@ -1258,6 +1221,9 @@ impl _Parser._build_number(start: int, end: int) -> any {
         k += 1;
     }
     if isf {
+        if self.parse_float is not None {
+            return self._parse_float_str(self.src[start:end]);
+        }
         clean: str = _strip_underscore(self.src, start, end);
         return float(clean);
     }
@@ -1391,113 +1357,13 @@ impl _day_valid(year: int, month: int, day: int) -> bool {
 }
 
 
-impl _pad2(n: int) -> str {
-    if n < 10 {
-        return "0" + str(n);
-    }
-    return str(n);
-}
-
-
-impl _pad4(n: int) -> str {
-    if n < 10 {
-        return "000" + str(n);
-    }
-    if n < 100 {
-        return "00" + str(n);
-    }
-    if n < 1000 {
-        return "0" + str(n);
-    }
-    return str(n);
-}
-
-
-impl _pad6(n: int) -> str {
-    if n < 10 {
-        return "00000" + str(n);
-    }
-    if n < 100 {
-        return "0000" + str(n);
-    }
-    if n < 1000 {
-        return "000" + str(n);
-    }
-    if n < 10000 {
-        return "00" + str(n);
-    }
-    if n < 100000 {
-        return "0" + str(n);
-    }
-    return str(n);
-}
-
-
-impl _offset_str(offset_min: int) -> str {
-    o: int = offset_min;
-    sign: str = "+";
-    if o < 0 {
-        sign = "-";
-        o = -o;
-    }
-    return sign + _pad2(o // 60) + ":" + _pad2(o % 60);
-}
-
-
-impl _char_repr(ch: int) -> str {
-    return _str_repr(chr(ch));
-}
-
-
-impl _str_repr(s: str) -> str {
-    out: str = "'";
-    n: int = len(s);
-    i: int = 0;
-    while i < n {
-        ch: int = ord(s[i]);
-        if ch == 92 {
-            out += "\\\\";
-        } elif ch == 39 {
-            out += "\\'";
-        } elif ch == 10 {
-            out += "\\n";
-        } elif ch == 13 {
-            out += "\\r";
-        } elif ch == 9 {
-            out += "\\t";
-        } elif ch < 32 or ch == 127 {
-            out += "\\x" + _hex2(ch);
-        } else {
-            out += s[i];
-        }
-        i += 1;
-    }
-    return out + "'";
-}
-
-
-impl _hex2(v: int) -> str {
-    hi: int = v // 16;
-    lo: int = v % 16;
-    return _hex1(hi) + _hex1(lo);
-}
-
-
-impl _hex1(v: int) -> str {
-    if v < 10 {
-        return chr(48 + v);
-    }
-    return chr(87 + v);
-}
-
-
 impl _fmt_key(parts: list[str]) -> str {
     n: int = len(parts);
     if n == 0 {
         return "()";
     }
     if n == 1 {
-        return "(" + _str_repr(parts[0]) + ",)";
+        return "(" + repr_str(parts[0]) + ",)";
     }
     out: str = "(";
     i: int = 0;
@@ -1505,7 +1371,7 @@ impl _fmt_key(parts: list[str]) -> str {
         if i > 0 {
             out += ", ";
         }
-        out += _str_repr(parts[i]);
+        out += repr_str(parts[i]);
         i += 1;
     }
     return out + ")";

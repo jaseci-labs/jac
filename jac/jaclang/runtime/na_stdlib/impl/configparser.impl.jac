@@ -1,18 +1,3 @@
-impl _hexd(v: int) -> str {
-    if v < 10 {
-        return chr(48 + v);
-    }
-    return chr(87 + v);
-}
-
-
-impl _hex2(v: int) -> str {
-    hi: int = v // 16;
-    lo: int = v % 16;
-    return _hexd(hi) + _hexd(lo);
-}
-
-
 impl _pad2(n: int) -> str {
     s: str = str(n);
     if n >= 10 {
@@ -22,110 +7,19 @@ impl _pad2(n: int) -> str {
 }
 
 
-impl _repr_str(s: str) -> str {
-    has_s: bool = s.find("'") >= 0;
-    has_d: bool = s.find("\"") >= 0;
-    q: str = "'";
-    if has_s and not has_d {
-        q = "\"";
-    }
-    out: str = q;
-    i: int = 0;
-    n: int = len(s);
-    while i < n {
-        ch: str = s[i];
-        code: int = ord(ch);
-        if ch == "\\" {
-            out += "\\\\";
-        } elif ch == q {
-            out += "\\";
-            out += q;
-        } elif code == 10 {
-            out += "\\n";
-        } elif code == 13 {
-            out += "\\r";
-        } elif code == 9 {
-            out += "\\t";
-        } elif code < 32 or code == 127 {
-            out += "\\x" + _hex2(code);
-        } else {
-            out += ch;
-        }
-        i += 1;
-    }
-    out += q;
-    return out;
-}
-
-
-impl _is_ws_start(s: str, at: int) -> bool {
+impl _is_ws(s: str, at: int) -> bool {
     c: int = ord(s[at]);
-    if c == 9
-        or c == 10
-        or c == 11
-        or c == 12
-        or c == 13
-        or c == 32
-        or (c >= 28 and c <= 32) {
-        return True;
-    }
-    if c == 160
+    return (c >= 9 and c <= 13)
+        or (c >= 28 and c <= 32)
+        or c == 133
+        or c == 160
         or c == 5760
         or (c >= 8192 and c <= 8202)
         or c == 8232
         or c == 8233
         or c == 8239
         or c == 8287
-        or c == 12288 {
-        return True;
-    }
-    if c == 194 and at + 1 < len(s) and ord(s[at + 1]) == 160 {
-        return True;
-    }
-    if c == 225
-        and at + 2 < len(s)
-        and ord(s[at + 1]) == 154
-        and ord(s[at + 2]) == 128 {
-        return True;
-    }
-    if c == 226 and at + 2 < len(s) and ord(s[at + 1]) == 128 {
-        c2: int = ord(s[at + 2]);
-        return (c2 >= 128 and c2 <= 138) or c2 == 160 or c2 == 161 or c2 == 175;
-    }
-    if c == 226
-        and at + 2 < len(s)
-        and ord(s[at + 1]) == 129
-        and ord(s[at + 2]) == 159 {
-        return True;
-    }
-    if c == 227
-        and at + 2 < len(s)
-        and ord(s[at + 1]) == 128
-        and ord(s[at + 2]) == 128 {
-        return True;
-    }
-    return False;
-}
-
-
-impl _is_ws(s: str, at: int) -> bool {
-    start: int = at;
-    while start >= 0 and at - start <= 2 {
-        if _is_ws_start(s, start) {
-            width: int = 1;
-            c: int = ord(s[start]);
-            if c == 194 {
-                width = 2;
-            } elif c == 225 or c == 226 or c == 227 {
-                width = 3;
-            }
-            if start + width - 1 == at {
-                return True;
-            }
-        }
-        start -= 1;
-    }
-    return False;
+        or c == 12288;
 }
 
 
@@ -159,65 +53,22 @@ impl _find_from(s: str, sub: str, start: int) -> int {
 }
 
 
-impl _prefix_chars(s: str, end: int) -> str {
-    out: str = "";
-    i: int = 0;
-    while i < end {
-        c: int = ord(s[i]);
-        cp: int = c;
-        width: int = 1;
-        if c >= 194 and c <= 223 {
-            width = 2;
-            cp = (c - 192) * 64 + ord(s[i + 1]) - 128;
-        } elif c >= 224 and c <= 239 {
-            width = 3;
-            cp = (c - 224) * 4096 + (ord(s[i + 1]) - 128) * 64 + ord(s[i + 2]) - 128;
-        } elif c >= 240 and c <= 244 {
-            width = 4;
-            cp = (c - 240) * 262144
-                + (ord(s[i + 1]) - 128) * 4096
-                + (ord(s[i + 2]) - 128) * 64
-                + ord(s[i + 3])
-                - 128;
-        }
-        out += chr(cp);
-        i += width;
-    }
-    return out;
-}
-
-
 impl _lstrip(s: str) -> str {
     n: int = len(s);
     start: int = 0;
-    while start < n {
-        width: int = 1;
-        c: int = ord(s[start]);
-        if c == 194 {
-            width = 2;
-        } elif c == 225 or c == 226 or c == 227 {
-            width = 3;
-        }
-        if not _is_ws(s, start + width - 1) {
-            break;
-        }
-        start += width;
+    while start < n and _is_ws(s, start) {
+        start += 1;
     }
     return s[start:n];
 }
 
 
 impl _rstrip(s: str) -> str {
-    n: int = len(s);
-    e: int = n;
-    while e > 0 {
-        if _is_ws(s, e - 1) {
-            e -= 1;
-        } else {
-            break;
-        }
+    e: int = len(s);
+    while e > 0 and _is_ws(s, e - 1) {
+        e -= 1;
     }
-    return _prefix_chars(s, e);
+    return s[0:e];
 }
 
 
@@ -352,7 +203,7 @@ impl NoSectionError.init(section: str) {
 
 
 impl NoSectionError.__str__ -> str {
-    return "No section: " + _repr_str(self.section);
+    return "No section: " + repr_str(self.section);
 }
 
 
@@ -368,13 +219,13 @@ impl DuplicateSectionError.init(
 
 impl DuplicateSectionError.__str__ -> str {
     if not self._has_source {
-        return "Section " + _repr_str(self.section) + " already exists";
+        return "Section " + repr_str(self.section) + " already exists";
     }
-    out: str = "While reading from " + _repr_str(self.source);
+    out: str = "While reading from " + repr_str(self.source);
     if self.lineno > 0 {
         out += " [line " + _pad2(self.lineno) + "]";
     }
-    out += ": section " + _repr_str(self.section) + " already exists";
+    out += ": section " + repr_str(self.section) + " already exists";
     return out;
 }
 
@@ -397,19 +248,19 @@ impl DuplicateOptionError.init(
 impl DuplicateOptionError.__str__ -> str {
     if not self._has_source {
         return "Option "
-            + _repr_str(self.option)
+            + repr_str(self.option)
             + " in section "
-            + _repr_str(self.section)
+            + repr_str(self.section)
             + " already exists";
     }
-    out: str = "While reading from " + _repr_str(self.source);
+    out: str = "While reading from " + repr_str(self.source);
     if self.lineno > 0 {
         out += " [line " + _pad2(self.lineno) + "]";
     }
     out += ": option "
-        + _repr_str(self.option)
+        + repr_str(self.option)
         + " in section "
-        + _repr_str(self.section)
+        + repr_str(self.section)
         + " already exists";
     return out;
 }
@@ -423,9 +274,9 @@ impl NoOptionError.init(option: str, section: str) {
 
 impl NoOptionError.__str__ -> str {
     return "No option "
-        + _repr_str(self.option)
+        + repr_str(self.option)
         + " in section: "
-        + _repr_str(self.section);
+        + repr_str(self.section);
 }
 
 
@@ -441,13 +292,13 @@ impl InterpolationMissingOptionError.init(
 
 impl InterpolationMissingOptionError.__str__ -> str {
     return "Bad value substitution: option "
-        + _repr_str(self.option)
+        + repr_str(self.option)
         + " in section "
-        + _repr_str(self.section)
+        + repr_str(self.section)
         + " contains an interpolation key "
-        + _repr_str(self.reference)
+        + repr_str(self.reference)
         + " which is not a valid option name. Raw value: "
-        + _repr_str(self.rawval);
+        + repr_str(self.rawval);
 }
 
 
@@ -472,25 +323,25 @@ impl InterpolationDepthError.init(option: str, section: str, rawval: str) {
 
 impl InterpolationDepthError.__str__ -> str {
     return "Recursion limit exceeded in value substitution: option "
-        + _repr_str(self.option)
+        + repr_str(self.option)
         + " in section "
-        + _repr_str(self.section)
+        + repr_str(self.section)
         + " contains an interpolation key which cannot be substituted in "
         + str(MAX_INTERPOLATION_DEPTH)
         + " steps. Raw value: "
-        + _repr_str(self.rawval);
+        + repr_str(self.rawval);
 }
 
 
 impl ParsingError.init(source: str) {
     self.source = source;
-    self.msg = "Source contains parsing errors: " + _repr_str(source);
+    self.msg = "Source contains parsing errors: " + repr_str(source);
 }
 
 
 impl ParsingError.append(lineno: int, line: str) {
     self.n_errors += 1;
-    self.msg += "\n\t[line " + _pad2(lineno) + "]: " + _repr_str(line);
+    self.msg += "\n\t[line " + _pad2(lineno) + "]: " + repr_str(line);
 }
 
 
@@ -508,11 +359,11 @@ impl MissingSectionHeaderError.init(source: str, lineno: int, line: str) {
 
 impl MissingSectionHeaderError.__str__ -> str {
     return "File contains no section headers.\nfile: "
-        + _repr_str(self.source)
+        + repr_str(self.source)
         + ", line: "
         + str(self.lineno)
         + "\n"
-        + _repr_str(self.line);
+        + repr_str(self.line);
 }
 
 
@@ -564,14 +415,13 @@ impl ConfigParser.sections -> list[str] {
 
 
 impl ConfigParser.has_section(section: str) -> bool {
-    r: bool = section in self._sections;
-    return r;
+    return section in self._sections;
 }
 
 
 impl ConfigParser.add_section(section: str) {
     if section == self.default_section {
-        raise ValueError("Invalid section name: " + _repr_str(section));
+        raise ValueError("Invalid section name: " + repr_str(section));
     }
     if section in self._sections {
         raise DuplicateSectionError(section);
@@ -785,8 +635,8 @@ impl ConfigParser.items(section: str, raw: bool = False) -> list[tuple[(str, str
 }
 
 
-impl ConfigParser.read_string(s: str) {
-    self._read_lines(_split_keepends(s), "<string>");
+impl ConfigParser.read_string(s: str, source: str = "<string>") {
+    self._read_lines(_split_keepends(s), source);
 }
 
 
@@ -872,7 +722,7 @@ impl ConfigParser._before_set(value: str) -> str {
     if p >= 0 {
         raise ValueError(
             "invalid interpolation syntax in "
-                + _repr_str(value)
+                + repr_str(value)
                 + " at position "
                 + str(p)
         );
@@ -914,7 +764,7 @@ impl ConfigParser._interp_some(
                 raise InterpolationSyntaxError(
                     option,
                     section,
-                    "bad interpolation variable reference " + _repr_str(rest)
+                    "bad interpolation variable reference " + repr_str(rest)
                 );
             }
             vcut: str = rest[2:mlen - 2];
@@ -936,7 +786,7 @@ impl ConfigParser._interp_some(
             raise InterpolationSyntaxError(
                 option,
                 section,
-                "'%' must be followed by '%' or '(', found: " + _repr_str(rest)
+                "'%' must be followed by '%' or '(', found: " + repr_str(rest)
             );
         }
     }
@@ -967,7 +817,7 @@ impl ConfigParser._strip_comments(text: str) -> str {
             while j3 < len(self.inline_comment_prefixes) {
                 prefix: str = self.inline_comment_prefixes[j3];
                 if _starts_at(text, prefix, i) {
-                    return _rstrip(_prefix_chars(text, i));
+                    return _rstrip(text[0:i]);
                 }
                 j3 += 1;
             }
