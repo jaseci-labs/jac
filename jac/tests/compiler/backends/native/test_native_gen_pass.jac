@@ -1846,10 +1846,6 @@ test "aug_assign" {
     _aug_assign__list_field_imul_alias(_eng, _ir);
     _aug_assign__list_field_imul_zero_reuse(_eng, _ir);
     _aug_assign__list_self_iadd(_eng, _ir);
-}
-
-test "aug_assign_glob" {
-    (_eng, _ir) = compile_native("aug_assign_glob.jac");
     _entry = get_func(_eng, "jac_entry", None);
     _entry();
     _iadd = get_func(_eng, "glob_iadd_alias", ctypes.c_int64);

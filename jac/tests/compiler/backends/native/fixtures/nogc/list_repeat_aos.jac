@@ -104,20 +104,3 @@ def self_extend_zero_sized -> int {
     es += es;
     return len(es);
 }
-
-def run {
-    print(repeat_cells(9));
-    print(clear_cells());
-    print(reuse_after_clear());
-    print(repeat_empty());
-    print(self_extend_cells());
-    print(overflow_repeat_raises());
-    print(extend_moves_source());
-    print(repeat_zero_sized());
-    print(self_extend_zero_sized());
-}
-
-with entry {
-    run();
-    print("end");
-}

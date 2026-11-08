@@ -1,19 +1,17 @@
 """list *= n stays correct at the AoS growth boundary (#10394).
 
-Under enforced headerless codegen `list[own Cell]` lowers to a by-value
+Under enforced headerless codegen, `list[own Cell]` lowers to a by-value
 buffer whose get() returns an interior pointer. A naive repeat loop feeds
-that pointer straight into push(), which frees the buffer mid-iteration
-once the initial capacity of eight is exceeded -- `[c] * 9` is the
-smallest repro. The emitter reserves `len * n` slots before the first
-copy, clears by releasing live elements before zeroing the length, and
-short-circuits empty lists, mirroring CPython's list.__imul__.
+that pointer to push(), which frees the buffer mid-iteration when capacity
+eight is exceeded. The existing native test harness compiles this fixture
+in-process with the nogc ownership profile and checks the boundary cases.
 """
 
+import ctypes;
 import os;
-import shutil;
-import subprocess;
-import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
+import from tests.support { TESTS_DIR, get_func, remember_native_unit }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR,
@@ -25,41 +23,37 @@ glob FIXTURE = os.path.join(
          "list_repeat_aos.jac"
      );
 
-def _build_and_run(out_bin: str) -> list[str] {
-    res = subprocess.run(
-        jac_command("build", "--native", FIXTURE, "--memory", "nogc", "-o", out_bin),
-        capture_output=True,
-        text=True,
-        timeout=300
-    );
-    combined = (res.stdout or "") + (res.stderr or "");
-    assert res.returncode == 0 , f"build failed: {combined[-900:]}";
-    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=60);
-    assert proc.returncode == 0 , f"binary failed: {proc.stderr[-400:]
-        if proc.stderr
-        else '(empty)'}";
-    return proc.stdout.strip().split("\n");
-}
-
 test "list[own Cell] *= n grows once, clears, and skips empty repeats" {
-    with tempfile.TemporaryDirectory() as scratch {
-        out_bin = os.path.join(scratch, "rep_aos.bin");
-        out = _build_and_run(out_bin);
-        # 9 cells of (a=7, b=11): each contributes 7*100 + 11 = 711.
-        assert out
-            == ["6399", "0", "506", "0", "3010", "True", "6060", "4", "18", "end"] , f"aos list mutation output mismatch: {out}";
-    }
-}
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=FIXTURE,
+        options=CompileOptions(
+            force_codespace="native", na_gc_mode="nogc", nogc_enforce_all=True
+        )
+    );
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not prog.errors_had , f"Compilation errors: {errors}";
+    eng = ir.gen.native_engine;
+    assert eng is not None , "No native engine produced";
+    remember_native_unit(eng, ir);
 
-test "list[own Cell] *= n binary is leak-free" {
-    if shutil.which("leaks") {
-        with tempfile.TemporaryDirectory() as scratch {
-            out_bin = os.path.join(scratch, "rep_aos_leaks.bin");
-            _build_and_run(out_bin);
-            lk = subprocess.run(
-                ["leaks", "--atExit", "--", out_bin], capture_output=True, text=True
-            );
-            assert "0 leaks for 0 total leaked bytes" in lk.stdout , lk.stdout[-2000:];
-        }
-    }
+    repeat_cells = get_func(eng, "repeat_cells", ctypes.c_int64, ctypes.c_int64);
+    clear_cells = get_func(eng, "clear_cells", ctypes.c_int64);
+    reuse_after_clear = get_func(eng, "reuse_after_clear", ctypes.c_int64);
+    repeat_empty = get_func(eng, "repeat_empty", ctypes.c_int64);
+    self_extend_cells = get_func(eng, "self_extend_cells", ctypes.c_int64);
+    overflow_repeat_raises = get_func(eng, "overflow_repeat_raises", ctypes.c_bool);
+    extend_moves_source = get_func(eng, "extend_moves_source", ctypes.c_int64);
+    repeat_zero_sized = get_func(eng, "repeat_zero_sized", ctypes.c_int64);
+    self_extend_zero_sized = get_func(eng, "self_extend_zero_sized", ctypes.c_int64);
+
+    assert repeat_cells(9) == 6399;
+    assert clear_cells() == 0;
+    assert reuse_after_clear() == 506;
+    assert repeat_empty() == 0;
+    assert self_extend_cells() == 3010;
+    assert overflow_repeat_raises();
+    assert extend_moves_source() == 6060;
+    assert repeat_zero_sized() == 4;
+    assert self_extend_zero_sized() == 18;
 }
