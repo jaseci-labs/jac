@@ -218,6 +218,7 @@ obj:pub ConfigParser {
     def read_dict(dictionary: dict[str, dict[str, str]]);
     def write -> str;
     def _write_section(name: str, opts: dict[str, str], delim: str) -> str;
+    def _validate_write_option(option: str);
     def _write_value(value: str) -> str;
     def _before_set(value: str) -> str;
     def _interp_some(

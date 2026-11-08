@@ -560,7 +560,7 @@ impl _Parser._parse_value -> any {
 
 
 impl _Parser._parse_float_str(raw: str) -> any {
-    pf: any = self.parse_float;
+    pf: Callable[[str], any] | None = self.parse_float;
     if pf is None {
         return float(raw);
     }

@@ -875,6 +875,22 @@ test "native print renders bools as True and False" {
     );
 }
 
+test "bundled configparser write preserves values and rejects ambiguous options" {
+    (eng, _) = compile_native("prim_configparser.jac");
+    preserves_cr = get_func(
+        eng, "configparser_write_preserves_carriage_returns", ctypes.c_int64
+    );
+    rejects_delimiter = get_func(
+        eng, "configparser_write_rejects_delimiter_option", ctypes.c_int64
+    );
+    rejects_header = get_func(
+        eng, "configparser_write_rejects_header_option", ctypes.c_int64
+    );
+    assert preserves_cr() == 1;
+    assert rejects_delimiter() == 1;
+    assert rejects_header() == 1;
+}
+
 test "bundled shutil" {
     import platform;
     if platform.system() == "Darwin" {

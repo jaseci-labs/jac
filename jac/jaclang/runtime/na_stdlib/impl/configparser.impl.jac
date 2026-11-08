@@ -685,11 +685,28 @@ impl ConfigParser.write -> str {
 impl ConfigParser._write_section(name: str, opts: dict[str, str], delim: str) -> str {
     out: str = "[" + name + "]\n";
     for k in opts {
+        self._validate_write_option(k);
         v: str = self._write_value(opts[k]);
         out += k + delim + v + "\n";
     }
     out += "\n";
     return out;
+}
+
+
+impl ConfigParser._validate_write_option(option: str) {
+    if option.find("\n") >= 0 or option.find("\r") >= 0 {
+        raise ValueError("option name cannot contain a newline");
+    }
+    for delim in self.delimiters {
+        if option.find(delim) >= 0 {
+            raise ValueError("option name cannot contain a delimiter");
+        }
+    }
+    stripped: str = _lstrip(option);
+    if stripped.startswith("[") and stripped.endswith("]") {
+        raise ValueError("option name cannot look like a section header");
+    }
 }
 
 
@@ -699,12 +716,7 @@ impl ConfigParser._write_value(value: str) -> str {
     n: int = len(value);
     while i < n {
         c: str = value[i];
-        if c == "\r" {
-            out += "\n\t";
-            if i + 1 < n and value[i + 1] == "\n" {
-                i += 1;
-            }
-        } elif c == "\n" {
+        if c == "\n" {
             out += "\n\t";
         } else {
             out += c;

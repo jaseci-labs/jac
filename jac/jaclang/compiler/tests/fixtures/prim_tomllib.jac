@@ -19,6 +19,11 @@ import from tomllib { loads, TOMLDecodeError }
 import from datetime { date, time, datetime }
 
 
+def parse_float_marker(raw: str) -> str {
+    return "float:" + raw;
+}
+
+
 def tomllib_py -> dict[any, any] {
     v: dict[any, any] = loads(
         "title = \"bench\"\nlimit = 4_000\nratio = 0.7284\nflag = true\noff = false\nhexval = 0xdeadbee\noctval = 0o755\nbinval = 0b1010\nneg = -17\nexpf = 6.626e-34\nports = [80, 443, 8080]\nmatrix = [[1, 2], [3, 4]]\ninline = { a = 1, b = \"x\", c = { d = 2.5 } }\nlit = 'C:\\\\path\\\\x'\nmulti = \"\"\"\nfirst line\\\nstill first\"\"\"\nmlit = '''\nraw \\n text'''\n[owner]\nname = \"ops\"\ndob = 1979-05-27\n[server]\nenabled = true\nip = \"10.0.0.1\"\nrun_at = 2026-09-25T10:30:00Z\noff_at = 2026-09-25T10:30:00+02:30\nlocal_at = 1979-05-27T07:32:00\ntea = 07:32:00.999999\n[server.tls]\nkey = \"k.pem\"\ncert = \"c.pem\"\nnested.x.y = 41\ntop.end = true\n[[items]]\nid = 0\nname = \"zero\"\nvec = [5, 6, 7]\n[[items]]\nid = 1\nname = \"one\"\nvec = [8, 9, 10]\n[[items]]\nid = 2\nname = \"two\"\nvec = [11, 12, 13]\n[[shape]]\n[shape.sides]\ncount = 3\n"
@@ -39,6 +44,7 @@ def tomllib_py -> dict[any, any] {
     local_at: datetime = server["local_at"];
     tea: time = server["tea"];
     dob: date = owner["dob"];
+    custom_float: any = loads("value = 1.25", parse_float=parse_float_marker)["value"];
     e1: str = "";
     try {
         loads("a = \"abc");
@@ -106,6 +112,7 @@ def tomllib_py -> dict[any, any] {
         "binval": v["binval"],
         "neg": v["neg"],
         "expf": v["expf"],
+        "custom_float": custom_float,
         "ports_n": len(ports),
         "ports_0": ports[0],
         "ports_2": ports[2],
@@ -177,6 +184,7 @@ def tomllib_na -> dict[str, any] {
     local_at: datetime = server["local_at"];
     tea: time = server["tea"];
     dob: date = owner["dob"];
+    custom_float: any = loads("value = 1.25", parse_float=parse_float_marker)["value"];
     e1: str = "";
     try {
         loads("a = \"abc");
@@ -244,6 +252,7 @@ def tomllib_na -> dict[str, any] {
         "binval": v["binval"],
         "neg": v["neg"],
         "expf": v["expf"],
+        "custom_float": custom_float,
         "ports_n": len(ports),
         "ports_0": ports[0],
         "ports_2": ports[2],
