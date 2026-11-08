@@ -5799,6 +5799,9 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
+            native_only_import_target
+        },
         backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
         backends.py.jcir_gen_pass.JcirGenPass.exit_import {
             CrossAppKind,
