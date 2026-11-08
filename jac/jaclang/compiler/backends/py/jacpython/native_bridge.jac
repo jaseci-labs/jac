@@ -2,7 +2,9 @@ import from c {
     def jac_str_new(data: ptr[u8], size: i64) -> ptr;  def jac_release(value: ptr);  def jacpy_compile_object(
         source: u64,
         filename: u64,
-        mode: ptr[u8],
+        mode_owner: ptr,
+        mode_data: ptr[u8],
+        mode_size: i64,
         optimize: i64,
         options: i64,
         feature: i64
@@ -255,7 +257,9 @@ import from c {
         native = jacpy_compile_object(
             u64(int(source)),
             u64(int(filename)),
+            mode_string,
             ptr[u8](mode_string),
+            length,
             i64(level),
             i64(options),
             i64(feature)
