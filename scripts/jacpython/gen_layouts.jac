@@ -17,8 +17,10 @@ The platform constants need `zig` (or `--zig`) to cross-compile their probe
 for each target, against that target's own pyconfig.h, which
 bootstrap/pyconfig_tool.zig writes from the build's probes. With --platform,
 only that target's table is regenerated: --config names an already-configured
-pyconfig.h for it (probed when omitted), --sysroot its SDK, and the other
-tables keep their generated values.
+pyconfig.h for it (probed when omitted), --sysroot its SDK (found with xcrun
+for darwin), and the other tables keep their generated values. Under --check
+that narrows the comparison to the one table and layouts_check.c, so the run
+without --platform is what gates drift.
 
 - jaclang/runtime/python/layouts.jac: one foreign struct per layout in LAYOUTS
   (and the structs they embed by value), function-pointer slots as
@@ -49,6 +51,7 @@ import argparse;
 import os;
 import re;
 import shlex;
+import shutil;
 import subprocess;
 import sys;
 import tempfile;
@@ -56,6 +59,7 @@ import from pathlib { Path }
 import from common {
     BOOTSTRAP,
     JAC,
+    REPO,
     RUNTIME,
     format_jac,
     generated_copy,
@@ -7523,6 +7527,7 @@ def render_platform(suffix: str, values: dict[str, int]) -> str {
 # (bootstrap/pyconfig_tool.zig).
 def platform_config(zig: str, suffix: str, target: str, scratch: Path) -> Path {
     (system, arch) = suffix.split(".");
+    os_name = "macos" if system == "darwin" else system;
     out = scratch / f"config-{suffix}";
     out.mkdir();
     result = subprocess.run(
@@ -7533,10 +7538,10 @@ def platform_config(zig: str, suffix: str, target: str, scratch: Path) -> Path {
             "--",
             zig,
             str(out),
-            "macos" if system == "darwin" else system,
+            os_name,
             arch,
             target,
-            ("macos" if system == "darwin" else system) + "-" + arch
+            f"{os_name}-{arch}"
         ],
         capture_output=True,
         text=True
@@ -7557,14 +7562,26 @@ def platform_configs(zig: str, scratch: Path) -> dict[str, Path] {
 }
 
 # A generated table's current PLATFORM_CONSTANTS, for the platforms a
-# --platform run does not probe.
+# --platform run does not probe. Every constant must be there: a table the
+# probe did not write keeps the value it was generated with, never a default.
 def existing_platform(suffix: str) -> dict[str, int] {
     table = RUNTIME / f"{PLATFORM_OUTPUT}.{suffix}.jac";
+    if not table.is_file() {
+        sys.exit(f"{table.relative_to(REPO)} is missing; rerun {COMMAND}");
+    }
     declared = jac_constants(table);
-    return {
-        name: declared[name][1] if name in declared else 0
+    missing = [
+        name
         for (name, _, _) in PLATFORM_CONSTANTS
-    };
+        if name not in declared
+    ];
+    if missing {
+        sys.exit(
+            f"{table.relative_to(REPO)} has no value for {', '.join(missing)}; "
+            f"rerun {COMMAND} without --platform"
+        );
+    }
+    return {name: declared[name][1] for (name, _, _) in PLATFORM_CONSTANTS};
 }
 
 # The platform suffix of this machine, whose configuration the asserts are
@@ -7712,20 +7729,18 @@ with entry:__main__ {
     with tempfile.TemporaryDirectory() as scratch {
         headers = stage_headers(Path(scratch));
         platform_values: dict[str, dict[str, int]] = {};
-        verify_flags: list[str] = [];
-        verify_compiler: list[str] = [];
         if args.platform {
-            target = "";
-            for (suffix, zig_target, _) in PLATFORMS {
-                if suffix == args.platform {
-                    target = zig_target;
-                }
-            }
+            targets = {suffix: zig_target for (suffix, zig_target, _) in PLATFORMS};
+            target = targets[args.platform];
             config = Path(args.config)
                 if args.config
                 else platform_config(args.zig, args.platform, target, Path(scratch));
             sysroot = args.sysroot or "";
-            if args.platform.startswith("darwin.") and not sysroot {
+            if (
+                args.platform.startswith("darwin.")
+                and not sysroot
+                and shutil.which("xcrun")
+            ) {
                 result = subprocess.run(
                     ["xcrun", "--sdk", "macosx", "--show-sdk-path"],
                     capture_output=True,
@@ -7744,13 +7759,12 @@ with entry:__main__ {
                     f"{sysroot}/usr/include"
                 ];
             }
-            for (suffix, _, _) in PLATFORMS {
-                platform_values[suffix] = extract(
-                    probe_flags(headers, config), target_compiler
-                )
-                    if suffix == args.platform
-                    else existing_platform(suffix);
-            }
+            platform_values = {
+                suffix: existing_platform(suffix) for (suffix, _, _) in PLATFORMS
+            };
+            platform_values[args.platform] = extract(
+                probe_flags(headers, config), target_compiler
+            );
             verify_flags = probe_flags(headers, config);
             verify_compiler = shlex.split(args.cc) if args.cc else target_compiler;
         } else {
@@ -7769,9 +7783,7 @@ with entry:__main__ {
     }
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
     suffixes = (
-        [suffix for (suffix, _, _) in PLATFORMS]
-            if not args.platform
-            else [args.platform]
+        [args.platform] if args.platform else [suffix for (suffix, _, _) in PLATFORMS]
     );
     for suffix in suffixes + [""] {
         table = RUNTIME
