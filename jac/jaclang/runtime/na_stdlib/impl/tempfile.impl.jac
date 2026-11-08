@@ -1,7 +1,19 @@
-import os;
-import from uuid { uuid4 }
-
-glob _DEFAULT_PREFIX: str = "tmp";
+impl _gettempdir -> str {
+    for name in ["TMPDIR", "TEMP", "TMP"] {
+        env_dir = os.getenv(name);
+        if env_dir is not None and env_dir != "" {
+            if os.path.isdir(env_dir) and access(env_dir, 3) == 0 {
+                return env_dir;
+            }
+        }
+    }
+    for cand in ["/tmp", "/var/tmp", "/usr/tmp"] {
+        if os.path.isdir(cand) and access(cand, 3) == 0 {
+            return cand;
+        }
+    }
+    return os.getcwd();
+}
 
 impl mkdtemp(
     suffix: (str | None) = None, prefix: (str | None) = None, dir: (str | None) = None
@@ -10,10 +22,7 @@ impl mkdtemp(
     if dir is not None {
         base = dir;
     } else {
-        base = str(os.environ.get("TMPDIR", ""));
-        if not base {
-            base = "/tmp";
-        }
+        base = _gettempdir();
     }
 
     stem: str = _DEFAULT_PREFIX;
@@ -25,12 +34,16 @@ impl mkdtemp(
         tail = suffix;
     }
 
-    for _ in range(100) {
+    for _ in range(_TMP_MAX) {
         path: str = os.path.join(base, stem + uuid4().hex + tail);
-        os.mkdir(path, 0o700);
-        if os.path.isdir(path) {
-            return path;
+        if mkdir(path, 0o700) == 0 {
+            return os.path.abspath(path);
         }
+        code: int = last_errno();
+        if code == EEXIST {
+            continue;
+        }
+        raise_os_error("mkdir", path, code);
     }
-    raise OSError("unable to create a unique temporary directory");
+    raise FileExistsError("no usable temporary directory name found");
 }
