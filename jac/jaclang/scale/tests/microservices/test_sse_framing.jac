@@ -1,5 +1,6 @@
 import asyncio;
 import gzip;
+import random;
 import threading;
 
 
@@ -234,4 +235,68 @@ test "sse_frame_stream rejects a non-generator argument with TypeError" {
         raised = True;
     }
     assert raised;
+}
+
+
+test "gzip cache reuses the packed bytes for a repeat body with the same etag" {
+    cache = GzipCache(max_bytes=1 << 20);
+    body = b"x" * 5000;
+    first = cache.pack(body, 4, 'W/"a"');
+    assert gzip.decompress(first) == body;
+    assert cache.pack(body, 4, 'W/"a"') is first;
+    assert len(cache.entries) == 1;
+    assert cache.total == len(first);
+}
+
+
+test "gzip cache keys tell level and etag apart and skip untagged bodies" {
+    cache = GzipCache(max_bytes=1 << 20);
+    body = b"y" * 5000;
+    cache.pack(body, 4, 'W/"a"');
+    cache.pack(body, 6, 'W/"a"');
+    cache.pack(body, 4, 'W/"b"');
+    untagged = cache.pack(body, 4, None);
+    assert gzip.decompress(untagged) == body;
+    assert len(cache.entries) == 3;
+    assert cache.total == sum(len(v) for v in cache.entries.values());
+}
+
+
+test "gzip cache evicts the oldest entries to stay under its byte limit" {
+    rng = random.Random(7);
+    bodies = [rng.randbytes(2000) for _ in range(4)];
+    one = len(gzip.compress(bodies[0], compresslevel=4, mtime=0));
+    cache = GzipCache(max_bytes=one * 2 + one // 2);
+    for (i, body) in enumerate(bodies) {
+        packed = cache.pack(body, 4, f'W/"{i}"');
+        assert gzip.decompress(packed) == body;
+        assert cache.total <= cache.max_bytes;
+    }
+    assert len(cache.entries) == 2;
+    assert sorted(k[0] for k in cache.entries) == ['W/"2"', 'W/"3"'];
+    assert cache.total == sum(len(v) for v in cache.entries.values());
+}
+
+
+test "gzip cache does not keep an entry larger than its limit" {
+    cache = GzipCache(max_bytes=100);
+    body = random.Random(3).randbytes(2000);
+    packed = cache.pack(body, 4, 'W/"big"');
+    assert gzip.decompress(packed) == body;
+    assert len(cache.entries) == 0;
+    assert cache.total == 0;
+}
+
+
+test "compression leaves a partial content response untouched" {
+    headers = Headers();
+    headers.set("Accept-Encoding", "gzip");
+    req = Request(headers=headers);
+    raw = b"a" * 4096;
+    resp = Response(content=raw, status_code=206, media_type="text/javascript");
+    resp.headers.set("Content-Range", "bytes 0-4095/9000");
+    out = CompressionPolicy().apply(req, resp, resp.body_bytes());
+    assert out == raw;
+    assert resp.headers.get("Content-Encoding") is None;
+    assert resp.headers.get("Content-Range") == "bytes 0-4095/9000";
 }
