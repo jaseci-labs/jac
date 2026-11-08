@@ -212,14 +212,14 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
     for (key, value) in endpoint_effects.items() {
         manifest.endpoint_effects[key] = value;
     }
-    native_host_imports: dict[str, any] = record.get('native_host_imports', {});
+    native_host_imports: dict[str, any] = record['native_host_imports'];
     for (key, value) in native_host_imports.items() {
         manifest.native_host_imports[key] = value;
     }
     for edge in record['app_edges'] {
         manifest.app_edges.append((str(edge[0]), str(edge[1])));
     }
-    provider_routes: dict[str, any] = record.get('provider_routes', {});
+    provider_routes: dict[str, any] = record['provider_routes'];
     for (key, value) in provider_routes.items() {
         manifest.provider_routes[key] = value;
     }
@@ -227,13 +227,13 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
 }
 
 impl _interop_context_of(value: str) -> InteropContext {
-    if value == 'native' {
+    if value == InteropContext.NATIVE.value {
         return InteropContext.NATIVE;
     }
-    if value == 'client' {
+    if value == InteropContext.CLIENT.value {
         return InteropContext.CLIENT;
     }
-    if value == 'server' {
+    if value == InteropContext.SERVER.value {
         return InteropContext.SERVER;
     }
     raise ValueError(f"unknown interop context: {value}");

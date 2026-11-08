@@ -1807,9 +1807,7 @@ impl NaIRGenPass._emit_intrinsic_list_data(
         and isinstance(lst.type.pointee, ir.IdentifiedStructType) {
         _ld_name = lst.type.pointee.name;
     }
-    if not isinstance(lst.type, ir.PointerType)
-        or len(_ld_name) < 5
-        or _ld_name[:5] != "List." {
+    if len(_ld_name) < 5 or _ld_name[:5] != "List." {
         self._emit_intrinsic_misuse(
             nd, intr, f"operand of type {lst.type} is not a list"
         );
