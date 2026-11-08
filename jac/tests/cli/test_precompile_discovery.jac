@@ -4,7 +4,12 @@ import from unittest.mock { patch }
 import from jaclang.compiler.driver.pipeline { PRODUCTS }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import jaclang.server.assembly;
+import from jaclang.compiler.driver.application { prepare_application }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.runtime.prepared { forget }
 import from jaclang.dist.precompile_bytecode {
+    _reusable_cache_entry,
+    precompile_unit_context,
     placement_facts_map,
     precompile_unit,
     sealable_sources
@@ -55,5 +60,35 @@ test "an app's client-only entry is sealed while its client modules are not" {
         sources = {Path(p).name for p in sealable_sources(str(base))};
         assert 'main.jac' in sources , sources;
         assert 'page.jac' not in sources , sources;
+    }
+}
+
+
+test "a precompiled unit finds the module the application prepare compiled" {
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "reuse"\nentry-point = "main"\n'
+        );
+        (base / '__init__.jac').write_text('');
+        (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'main.jac').write_text(
+            'import from helper { value }\ndef:pub read -> int { return value(); }\n'
+        );
+        main_path = str(base / "main.jac");
+        try {
+            prepare_application(main_path, JacProgram(), td);
+        } finally {
+            forget(main_path);
+        }
+        prepared = {p.resolve() for p in (base / '.jac').rglob('*.jir')};
+        for name in ['main.jac', 'helper.jac'] {
+            source = str(base / name);
+            with precompile_unit_context(source, td, collect=False) {
+                hit = _reusable_cache_entry(source, td);
+            }
+            assert hit is not None , name;
+            assert hit[2].resolve() in prepared , (name, str(hit[2]));
+        }
     }
 }
