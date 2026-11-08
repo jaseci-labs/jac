@@ -7,6 +7,7 @@ import from c { def write(fd: i32, buf: bytes, count: u64) -> i64;  }
 import from c { def usleep(usec: u32) -> i32;  }
 import from c { def clock_gettime(clk: i32, ts: bytes) -> i32;  }
 import from c { def poll(fds: int, nfds: u64, timeout: i32) -> i32;  }
+import from c { def fcntl(fd: i32, cmd: i32, arg: i32) -> i32;  }
 import from c { def strdup(s: str) -> int;  }
 import from c { def malloc(size: int) -> int;  }
 import from c { def free(p: int);  }
@@ -27,12 +28,16 @@ import from c {
     ) -> i32;
 }
 import from c { def posix_spawn_file_actions_addchdir_np(fa: int, path: str) -> i32;  }
+import from c { glob:protect environ: ptr[ptr[u8]]; }
 
 glob _CLOCK_MONOTONIC: int = 1,
      _EV_READ: int = 1,
      _EV_WRITE: int = 4,
      _OPEN_MODE_0666: int = 438,
-     _FA_SIZE: int = 256;
+     _FA_SIZE: int = 256,
+     _F_DUPFD: int = 0,
+     _F_SETFD: int = 4,
+     _FD_CLOEXEC: int = 1;
 
 def _lo32(buf: bytes, off: int) -> int;
 
@@ -57,6 +62,8 @@ def:pub sp_pollio(rfd1: int, rfd2: int, wfd: int, timeout_ms: int) -> list[int];
 def:pub sp_strvec(items: list[str]) -> int;
 
 def:pub sp_strvec_free(vec: int, n: int);
+
+def:pub sp_envp -> int;
 
 def:pub sp_fa_new -> int;
 

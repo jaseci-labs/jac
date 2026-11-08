@@ -115,10 +115,14 @@ impl Popen.postinit {
     child_pid = -1;
     argv_v = 0;
     envp = 0;
+    envp_owned = 0;
     if fa_rc == 0 {
         argv_v = sp_strvec(argv);
         if e is not None {
             envp = sp_strvec(envv);
+            envp_owned = envp;
+        } else {
+            envp = sp_envp();
         }
         r = sp_spawn(argv[0], fa, argv_v, envp);
         spawn_rc = r[0];
@@ -128,8 +132,8 @@ impl Popen.postinit {
     if argv_v != 0 {
         sp_strvec_free(argv_v, len(argv));
     }
-    if envp != 0 {
-        sp_strvec_free(envp, len(envv));
+    if envp_owned != 0 {
+        sp_strvec_free(envp_owned, len(envv));
     }
     if fa_rc != 0 or spawn_rc != 0 {
         for pair in [in_pipe, out_pipe, err_pipe] {
@@ -277,16 +281,31 @@ impl Popen._raise_timeout(timeout: (int | float | None), out: bytes, err: bytes)
 impl Popen.communicate(
     input: any = None, timeout: (int | float | None) = None
 ) -> tuple[(any, any)] {
-    deadline_ms = _deadline_ms(timeout);
-    has_out = self._stdout_r >= 0;
-    has_err = self._stderr_r >= 0;
-    out_acc = bytearray();
-    err_acc = bytearray();
-    in_data: bytes = b"";
-    if input is not None and self._stdin_w >= 0 {
-        in_data = _to_bytes(input, self.text);
+    if input is not None and self._comm_started {
+        raise ValueError("Cannot send input after starting communication");
     }
-    in_off = 0;
+    if self._comm_done {
+        done_out: any = self._render(b"") if self._comm_has_out else None;
+        done_err: any = self._render(b"") if self._comm_has_err else None;
+        return (done_out, done_err);
+    }
+    deadline_ms = _deadline_ms(timeout);
+    if not self._comm_started {
+        self._comm_started = True;
+        self._comm_has_out = self._stdout_r >= 0;
+        self._comm_has_err = self._stderr_r >= 0;
+        self._comm_out = bytearray();
+        self._comm_err = bytearray();
+        self._comm_in = b"";
+        if input is not None and self._stdin_w >= 0 {
+            self._comm_in = _to_bytes(input, self.text);
+        }
+        self._comm_in_off = 0;
+    }
+    out_acc = self._comm_out;
+    err_acc = self._comm_err;
+    in_data = self._comm_in;
+    in_off = self._comm_in_off;
     if self._stdin_w >= 0 and in_off >= len(in_data) {
         sp_close(self._stdin_w);
         self._stdin_w = -1;
@@ -294,6 +313,9 @@ impl Popen.communicate(
     while self._stdout_r >= 0
         or self._stderr_r >= 0
         or (self._stdin_w >= 0 and in_off < len(in_data)) {
+        if deadline_ms >= 0 and sp_now_ms() >= deadline_ms {
+            self._raise_timeout(timeout, bytes(out_acc), bytes(err_acc));
+        }
         wfd = self._stdin_w if in_off < len(in_data) else -1;
         wait_ms = -1;
         if deadline_ms >= 0 {
@@ -323,6 +345,7 @@ impl Popen.communicate(
                     self._stdin_w = -1;
                 } else {
                     in_off += n;
+                    self._comm_in_off = in_off;
                     if in_off >= len(in_data) {
                         sp_close(self._stdin_w);
                         self._stdin_w = -1;
@@ -357,10 +380,10 @@ impl Popen.communicate(
     }
     out_v: any = None;
     err_v: any = None;
-    if has_out {
+    if self._comm_has_out {
         out_v = self._render(bytes(out_acc));
     }
-    if has_err {
+    if self._comm_has_err {
         err_v = self._render(bytes(err_acc));
     }
     if deadline_ms >= 0 {
@@ -376,7 +399,23 @@ impl Popen.communicate(
     } else {
         self.`wait();
     }
+    self._comm_done = True;
     return (out_v, err_v);
+}
+
+impl Popen._close_pipes {
+    if self._stdin_w >= 0 {
+        sp_close(self._stdin_w);
+        self._stdin_w = -1;
+    }
+    if self._stdout_r >= 0 {
+        sp_close(self._stdout_r);
+        self._stdout_r = -1;
+    }
+    if self._stderr_r >= 0 {
+        sp_close(self._stderr_r);
+        self._stderr_r = -1;
+    }
 }
 
 impl Popen.kill {
@@ -441,6 +480,7 @@ impl run(
     } except TimeoutExpired as te {
         p.kill();
         p.`wait();
+        p._close_pipes();
         raise te;
     }
     prc = p.returncode;
@@ -486,7 +526,7 @@ impl check_output(
 ) -> any {
     cp = run(
         args,
-        capture_output=True,
+        stdout=PIPE,
         text=text,
         check=True,
         timeout=timeout,

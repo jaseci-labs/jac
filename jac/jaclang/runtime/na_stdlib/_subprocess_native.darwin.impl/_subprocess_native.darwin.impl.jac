@@ -15,7 +15,38 @@ impl sp_kill(pid: int, signum: int) -> int {
 impl sp_pipe -> list[int] {
     buf = b"\x00" * 8;
     rc = pipe(buf);
-    return [int(rc), _lo32(buf, 0), _lo32(buf, 4)];
+    if rc != 0 {
+        return [int(rc), -1, -1];
+    }
+    r = _lo32(buf, 0);
+    w = _lo32(buf, 4);
+    if r < 3 {
+        nr = int(fcntl(i32(r), i32(_F_DUPFD), i32(3)));
+        if nr < 0 {
+            close(i32(r));
+            close(i32(w));
+            return [-1, -1, -1];
+        }
+        close(i32(r));
+        r = nr;
+    }
+    if w < 3 {
+        nw = int(fcntl(i32(w), i32(_F_DUPFD), i32(3)));
+        if nw < 0 {
+            close(i32(r));
+            close(i32(w));
+            return [-1, -1, -1];
+        }
+        close(i32(w));
+        w = nw;
+    }
+    if fcntl(i32(r), i32(_F_SETFD), i32(_FD_CLOEXEC)) != 0
+        or fcntl(i32(w), i32(_F_SETFD), i32(_FD_CLOEXEC)) != 0 {
+        close(i32(r));
+        close(i32(w));
+        return [-1, -1, -1];
+    }
+    return [0, r, w];
 }
 
 impl sp_close(fd: int) -> int {
@@ -85,6 +116,10 @@ impl sp_strvec_free(vec: int, n: int) {
         i += 1;
     }
     free(vec);
+}
+
+impl sp_envp -> int {
+    return int(environ);
 }
 
 impl sp_fa_new -> int {
