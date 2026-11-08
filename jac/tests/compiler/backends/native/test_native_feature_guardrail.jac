@@ -337,20 +337,30 @@ test "guardrail: call to an undefined function is rejected" {
 test "hasattr lowers for Jac object fields with constant and dynamic names" {
     src = "obj HasAttrBase { has base_value: int = 1; }\n"
     "obj HasAttrChild(HasAttrBase) { has nullable: str | None = None; }\n"
+    "obj HasAttrBox { has _width: int = 4, width: int { getter { return self._width; } }"
+    " def measure -> int { return self._width; } }\n"
+    "def probe(item: HasAttrBase) -> bool { return hasattr(item, 'nullable'); }\n"
     "def answer() -> int {\n"
     "    item = HasAttrChild();\n"
+    "    box = HasAttrBox();\n"
     "    name: str = 'base_value';\n"
     "    return (1000 if hasattr(item, 'base_value') else 0) +\n"
     "        (100 if hasattr(item, 'absent') else 0) +\n"
     "        (10 if hasattr(item, 'nullable') else 0) +\n"
-    "        (1 if hasattr(item, name) else 0);\n"
+    "        (1 if hasattr(item, name) else 0) +\n"
+    "        (10000 if hasattr(box, 'width') else 0) +\n"
+    "        (100000 if hasattr(box, 'measure') else 0);\n"
     "}\n";
     (prog, ir, log) = compile_na_inline_demote("hasattr_fields", src);
     assert not prog.errors_had , fmt_errors(prog);
     assert ir.gen.native_layout is not None , log;
     assert "answer" in ir.gen.native_layout.functions , log;
-    assert native_answer(ir.gen.native_engine, "answer") == 1011;
-    assert server_answer("hasattr_fields_server", src, "answer") == 1011;
+    assert "probe" not in ir.gen.native_layout.functions , (
+        "hasattr on a base-typed value with known subclasses must demote "
+        "instead of answering from the base member set"
+    );
+    assert native_answer(ir.gen.native_engine, "answer") == 111011;
+    assert server_answer("hasattr_fields_server", src, "answer") == 111011;
 }
 
 test "for-loop over a set lowers, and both lanes answer the same sum" {

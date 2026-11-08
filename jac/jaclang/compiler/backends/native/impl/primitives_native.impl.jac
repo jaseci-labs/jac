@@ -5837,8 +5837,25 @@ impl NativeBuiltinEmitter.emit_hasattr(
     if type_name is None or type_name not in p.struct_field_indices {
         return None;
     }
+
+    if p._program_has_subclasses(type_name) {
+        return None;
+    }
     fields = p.struct_field_indices[type_name];
-    methods = p.vtable_method_indices.get(type_name, {});
+    methods: dict[str, int] = dict(p.vtable_method_indices.get(type_name, {}));
+    for cls in p._mro_of(type_name) {
+        layout = p._arch_layout(cls);
+        if layout is None {
+            continue;
+        }
+        for method_name in layout.method_index {
+            if method_name.endswith(".getter") {
+                methods[method_name[:-7]] = 0;
+            } elif not method_name.endswith(".setter") {
+                methods[method_name] = 0;
+            }
+        }
+    }
     static_prefix = type_name + ".";
     i1 = ir.IntType(1);
 
