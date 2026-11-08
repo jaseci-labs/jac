@@ -53,10 +53,7 @@ test "SIGTERM runs each drain hook once where it was registered, and the request
             marks = [line.split() for line in mark.read_text().splitlines()];
         }
         stages = [m[0] for m in marks];
-        assert stages == ["entry", "walker", "decorated", "async", "called"] , (
-            workers,
-            marks
-        );
+        assert stages == ["entry", "walker", "decorated", "called"] , (workers, marks);
         hook_pids = {
             m[1]
             for m in marks

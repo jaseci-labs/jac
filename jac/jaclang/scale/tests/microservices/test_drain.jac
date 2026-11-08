@@ -3,6 +3,7 @@ readiness probe and gateway read from it."""
 
 import asyncio;
 import json;
+import sys;
 
 
 def _request(path: str) -> Request {
@@ -35,20 +36,33 @@ test "start flips draining once and keeps the first reason" {
 }
 
 
-test "a hook registered twice runs once, however many drains start" {
+test "drain hooks run once per process, awaited, past one that raises or exits" {
     ran: list[str] = [];
 
     def hook {
-        ran.append("hook");
+        ran.append("sync");
     }
-    on_drain(hook);
-    on_drain(hook);
+
+    async def async_hook {
+        ran.append("async");
+    }
+
+    def raises {
+        raise RuntimeError("boom");
+    }
+
+    def exits {
+        sys.exit(3);
+    }
+    for fn in [hook, raises, exits, async_hook, hook] {
+        on_drain(fn);
+    }
     for reason in ["first", "second"] {
         state = DrainState();
         state.start(reason);
         state.wait_for_hooks();
     }
-    assert ran == ["hook"];
+    assert ran == ["sync", "async"];
 }
 
 

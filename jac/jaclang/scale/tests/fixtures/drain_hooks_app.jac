@@ -1,10 +1,7 @@
 """Records each `on_drain` hook and the walker with the pid that ran it, in the
-file HOOK_MARK names. A raising and an exiting hook sit between them, and the
-last hook outlasts the drain budget the test sets."""
+file HOOK_MARK names. The last hook outlasts the drain budget the test sets."""
 
-import asyncio;
 import os;
-import sys;
 import time;
 
 def _mark(stage: str) {
@@ -16,22 +13,6 @@ def _mark(stage: str) {
 @on_drain
 def stop_background_work {
     _mark("decorated");
-}
-
-@on_drain
-async def flush_async {
-    await asyncio.sleep(0);
-    _mark("async");
-}
-
-@on_drain
-def broken {
-    raise RuntimeError("boom");
-}
-
-@on_drain
-def exits {
-    sys.exit(3);
 }
 
 with entry {
