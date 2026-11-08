@@ -354,7 +354,7 @@ test "hasattr lowers for Jac object fields with constant and dynamic names" {
     "        (1000000 if hasattr(item, 'COUNT') else 0);\n"
     "}\n"
     "def nul_name() -> int {\n"
-    "    item = HasAttrBase();\n"
+    "    item = HasAttrChild();\n"
     "    try { return 1 if hasattr(item, 'base_value\\x00extra') else 0; }\n"
     "    except Exception { return 0; }\n"
     "}\n";
