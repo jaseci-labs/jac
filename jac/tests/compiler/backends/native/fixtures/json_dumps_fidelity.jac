@@ -1,5 +1,34 @@
 """json.dumps output natively, compared line for line with Python's."""
 import json;
+import os;
+
+def mark_object(value: any) -> dict[str, any] {
+    return {"hooked": value["x"]};
+}
+
+def mark_pairs(value: any) -> dict[str, any] {
+    return {"first": value[0][0], "second": value[1][0]};
+}
+
+def mark_int(value: any) -> str {
+    return f"int:{value}";
+}
+
+def mark_float(value: any) -> str {
+    return f"float:{value}";
+}
+
+def mark_constant(value: any) -> str {
+    return f"constant:{value}";
+}
+
+obj Label {
+    has value: str;
+}
+
+def encode_label(value: any) -> dict[str, any] {
+    return {"label": value.value};
+}
 
 def record -> dict[str, any] {
     edges: list[list[str]] = [["web", "api"], ["api", "db"]];
@@ -39,6 +68,40 @@ with entry {
     enc = json.JSONEncoder(sort_keys=True);
     print(enc.encode({"b": 1, "a": 2}));
     print("".join(enc.iterencode({"z": 0})));
+    print(json.dumps(json.loads("{\"x\": 3}", object_hook=mark_object)));
+    print(json.dumps(json.loads("{\"x\": 1, \"x\": 2}", object_pairs_hook=mark_pairs)));
+    print(
+        json.dumps(
+            json.loads(
+                "[1, 1.5, NaN]",
+                parse_int=mark_int,
+                parse_float=mark_float,
+                parse_constant=mark_constant
+            )
+        )
+    );
+    label = Label(value="native");
+    print(json.dumps(label, `default=encode_label));
+    custom_enc = json.JSONEncoder(`default=encode_label);
+    print(custom_enc.encode(Label(value="encoder")));
+    print(json.dumps({"keep": 1, (2, 3): "skip"}, skipkeys=True));
+}
+
+glob cycle: list[any] = [];
+with entry {
+    cycle.append(cycle);
+    try {
+        json.dumps(cycle);
+    } except ValueError as e {
+        print("circular:", e);
+    }
+    with open("/tmp/jac_json_dump_fidelity.txt", "w") as output {
+        json.dump({"written": [1, 2]}, output, separators=(",", ":"));
+    }
+    with open("/tmp/jac_json_dump_fidelity.txt", "r") as input {
+        print("dump:", input.read());
+    }
+    os.remove("/tmp/jac_json_dump_fidelity.txt");
     show_error("1 2");
     show_error("");
     show_error("-");
