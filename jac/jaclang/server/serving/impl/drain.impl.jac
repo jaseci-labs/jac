@@ -16,14 +16,18 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
 impl _run_drain_hooks {
     hooks = list(DRAIN_HOOKS);
     DRAIN_HOOKS.clear();
+    asyncio.run(run_hooks(hooks, "drain hook"));
+}
+
+impl run_hooks(hooks: list[Callable[..., any]], what: str) {
     for hook in hooks {
         try {
             result = hook();
-            if inspect.iscoroutine(result) {
-                asyncio.run(result);
+            if inspect.isawaitable(result) {
+                await result;
             }
         } except BaseException {
-            logger.exception("drain hook failed");
+            logger.exception(f"{what} failed");
         }
     }
 }

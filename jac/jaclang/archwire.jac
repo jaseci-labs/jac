@@ -47366,6 +47366,7 @@ graph import server.serving {
     datatypes --> server.ServingServer._dispatch { JSONResponse }
     drain ++> [
         accesslog { HEALTH_PATHS },
+        app { run_hooks },
         health | supervisor { DrainState },
         server { DrainState, HEALTH_PATHS },
     ]
