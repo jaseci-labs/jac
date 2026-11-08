@@ -1001,11 +1001,7 @@ impl NativeBuildSession.lower(
             return None;
         }
         async_snapshot = (
-            self.async_snapshots
-            and self.compact_on_lower
-            and not self.options.native_debug
-            and not self.options.dump_ir_path
-            and (self.options.aot_mode or self.options.skip_native_engine)
+            self.async_snapshots and self.compact_on_lower and self.compacts_ir
         );
         if not async_snapshot {
             import from jaclang.compiler.backends.native.na_compile_pass {
@@ -1060,16 +1056,20 @@ impl NativeBuildSession.lower(
     }
 }
 
+impl NativeBuildSession.compacts_ir -> bool {
+    return not self.options.native_debug
+        and not self.options.dump_ir_path
+        and (self.options.aot_mode or self.options.skip_native_engine);
+}
+
 impl NativeBuildSession.compact_ir(paths: list[str]) {
-    if self.options.native_debug
-        or self.options.dump_ir_path
-        or not (self.options.aot_mode or self.options.skip_native_engine) {
+    if not self.compacts_ir {
         return;
     }
     self.await_snapshot();
     import from jaclang.compiler.backends.native.na_compile_pass {
         unit_fallbacks,
-        unit_snapshot_module
+        unit_snapshot
     }
     for path in paths {
         resolved = os.path.realpath(path);
@@ -1077,13 +1077,11 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         if mod is None or mod.gen.llvm_ir is None {
             continue;
         }
-        ir = mod.gen.llvm_ir;
-        symbols = _ir_symbols(ir);
-        if symbols is None {
+        snapshot = unit_snapshot(mod.gen.llvm_ir);
+        if snapshot is None {
             continue;
         }
         _ = unit_fallbacks(mod.gen);
-        snapshot = unit_snapshot_module(ir);
         self.ir_snapshots[resolved] = snapshot;
         mod.gen.ir_module = None;
         mod.gen.llvm_ir = None;
@@ -1127,6 +1125,21 @@ impl NativeBuildSession.await_snapshot(path: (str | None) = None) {
     self.schedule_snapshot_optimization(resolved, snapshot);
 }
 
+impl NativeBuildSession._adopt_cached(mod: Module, cached: NativeUnitEntry) {
+    mod.gen.native_bitcode = cached.bitcode;
+    mod.gen.native_object = cached.object_bytes;
+}
+
+impl NativeBuildSession._record_optimized(path: str, bitcode: bytes) -> bool {
+    mod = self.lowered.get(path);
+    if mod is None {
+        return False;
+    }
+    mod.gen.native_bitcode = bitcode;
+    self.registry.note_codegen(path, False);
+    return True;
+}
+
 impl NativeBuildSession.schedule_snapshot_optimization(
     path: str, snapshot: UnitIRSnapshot
 ) {
@@ -1140,8 +1153,7 @@ impl NativeBuildSession.schedule_snapshot_optimization(
     }
     cached = self.registry.ensure(path, compile_on_miss=False, options=self.options);
     if cached is not None and cached.bitcode is not None {
-        mod.gen.native_bitcode = cached.bitcode;
-        mod.gen.native_object = cached.object_bytes;
+        self._adopt_cached(mod, cached);
         self.optimized_units.add(path);
         return;
     }
@@ -1152,10 +1164,7 @@ impl NativeBuildSession.schedule_snapshot_optimization(
 
 impl NativeBuildSession.record_snapshot_optimization(batch: NativeOptimizationBatch) {
     for unit in batch.units {
-        mod = self.lowered.get(unit.path);
-        if mod is not None {
-            mod.gen.native_bitcode = unit.bitcode;
-            self.registry.note_codegen(unit.path, False);
+        if self._record_optimized(unit.path, unit.bitcode) {
             self.optimized_units.add(unit.path);
         }
     }
@@ -1265,8 +1274,7 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
         }
         cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
         if cached is not None and cached.bitcode is not None {
-            mod.gen.native_bitcode = cached.bitcode;
-            mod.gen.native_object = cached.object_bytes;
+            self._adopt_cached(mod, cached);
             if path in self.ir_snapshots {
                 optimized.add(path);
             }
@@ -1293,9 +1301,8 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
     bitcodes = optimize_unit_bitcodes(bitcodes, opts, int(opts.opt_level or 0));
     self.registry._timed("NATIVE_OPTIMIZE", started);
     self.registry.note_slow_step("optimizing", "", started);
-    for ((path, mod), bitcode) in zip(todo, bitcodes) {
-        mod.gen.native_bitcode = bitcode;
-        self.registry.note_codegen(path, False);
+    for ((path, _mod), bitcode) in zip(todo, bitcodes) {
+        self._record_optimized(path, bitcode);
         optimized.add(path);
     }
     return optimized;

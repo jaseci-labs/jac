@@ -91,9 +91,9 @@ impl NativeSnapshotPipeline._await_optimization(
     }
     future = self.optimizer_future;
     self.optimizer_future = None;
-    (bitcodes, elapsed) = future.result();
     paths = self.optimizer_paths;
     self.optimizer_paths = [];
+    (bitcodes, elapsed) = future.result();
     batch = NativeOptimizationBatch(
         units=[
             NativeOptimizedUnit(path=path, bitcode=bitcode)

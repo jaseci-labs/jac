@@ -36,7 +36,7 @@ class _LazyLib {
     }
 
     def _apply_missing_signatures(self: _LazyLib) {
-        for (name, missing) in self._missing.items() {
+        for (name, missing) in list(self._missing.items()) {
             func = getattr(self._handle, name);
             if "argtypes" in missing.__dict__ {
                 func.argtypes = missing.__dict__["argtypes"];
@@ -44,8 +44,8 @@ class _LazyLib {
             if "restype" in missing.__dict__ {
                 func.restype = missing.__dict__["restype"];
             }
+            self._missing.pop(name, None);
         }
-        self._missing.clear();
     }
 
     def __getattr__(self: _LazyLib, name: str) -> any {

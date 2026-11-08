@@ -5536,7 +5536,7 @@ graph import compiler {
     backends.native.na_compile_pass --> [
         driver.nativecache.NativeBuildSession.compact_ir {
             unit_fallbacks,
-            unit_snapshot_module
+            unit_snapshot
         },
         driver.nativecache.NativeBuildSession.enqueue_snapshot { unit_fallbacks },
         driver.nativecache.NativeBuildSession.lower {

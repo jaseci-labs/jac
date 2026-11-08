@@ -25,6 +25,7 @@ def unit_snapshot_text_values(
 ) -> tuple[bytes, set[str], set[str], tuple[int, int]];
 
 def unit_snapshot_module(mod: ModuleRef) -> UnitIRSnapshot;
+def unit_snapshot(unit_ir: any) -> (UnitIRSnapshot | None);
 def unit_snapshot_module_values(
     mod: ModuleRef
 ) -> tuple[bytes, set[str], set[str], tuple[int, int]];

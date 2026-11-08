@@ -118,6 +118,13 @@ impl unit_snapshot_text_values(
     );
 }
 
+impl unit_snapshot(unit_ir: any) -> (UnitIRSnapshot | None) {
+    if not isinstance(unit_ir, llvm.ModuleRef) {
+        return None;
+    }
+    return unit_snapshot_module(unit_ir);
+}
+
 impl unit_snapshot_module(mod: ModuleRef) -> UnitIRSnapshot {
     (bitcode, defined, declared, function_counts) = unit_snapshot_module_values(mod);
     return UnitIRSnapshot(

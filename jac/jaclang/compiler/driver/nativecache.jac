@@ -192,9 +192,12 @@ obj NativeBuildSession {
     def postinit;
     def settle_heap;
     def lower(path: str, use_str: (str | None) = None) -> (NativeUnitEntry | None);
+    def compacts_ir -> bool;
     def compact_ir(paths: list[str]);
     def enqueue_snapshot(path: str);
     def await_snapshot(path: (str | None) = None);
+    def _adopt_cached(mod: Module, cached: NativeUnitEntry);
+    def _record_optimized(path: str, bitcode: bytes) -> bool;
     def schedule_snapshot_optimization(path: str, snapshot: UnitIRSnapshot);
     def record_snapshot_optimization(batch: NativeOptimizationBatch);
     def unbound_symbols(path: str, deps: list[str]) -> (list[str] | None);
