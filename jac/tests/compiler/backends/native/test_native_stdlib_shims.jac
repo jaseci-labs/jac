@@ -180,6 +180,11 @@ test "native ContextVar.set returns a Token that reset honors like CPython" {
     _same_lines(py_out, na_out, "contextvars token");
 }
 
+test "native ConfigParser rejects option names that cannot round-trip" {
+    (na_out, _na_err) = _na_run("configparser_invalid_option.jac");
+    assert na_out.strip() == "invalid option name rejected" , na_out;
+}
+
 test "a program's own Token lives beside the contextvars shim's token" {
     py_out = python_run(os.path.join(FIXTURES, "contextvars_own_token.jac"));
     (na_out, _na_err) = _na_run("contextvars_own_token.jac");

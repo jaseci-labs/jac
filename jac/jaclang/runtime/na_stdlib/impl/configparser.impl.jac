@@ -695,16 +695,26 @@ impl ConfigParser._write_section(name: str, opts: dict[str, str], delim: str) ->
 
 
 impl ConfigParser._validate_write_option(option: str) {
+    if not option {
+        raise ValueError("option name cannot be empty");
+    }
+    if _is_ws(option, 0) {
+        raise ValueError("option name cannot start with whitespace");
+    }
     if option.find("\n") >= 0 or option.find("\r") >= 0 {
         raise ValueError("option name cannot contain a newline");
     }
+    for prefix in self.comment_prefixes {
+        if option.startswith(prefix) {
+            raise ValueError("option name cannot start with a comment prefix");
+        }
+    }
     for delim in self.delimiters {
-        if option.find(delim) >= 0 {
+        if delim and option.find(delim) >= 0 {
             raise ValueError("option name cannot contain a delimiter");
         }
     }
-    stripped: str = _lstrip(option);
-    if stripped.startswith("[") and stripped.endswith("]") {
+    if option.startswith("[") {
         raise ValueError("option name cannot look like a section header");
     }
 }
