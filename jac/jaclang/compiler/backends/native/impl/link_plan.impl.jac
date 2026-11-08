@@ -445,10 +445,46 @@ impl _build_link_plan(
                 );
             }
             owner_ent = registry.entries.get(prefix_owner);
-            owner_dep_digests = sorted(owner_ent.dep_digests.values())
-                if owner_ent is not None
-                else [];
-            if sorted(ent.dep_digests.values()) != owner_dep_digests {
+            if owner_ent is None or ent.compile_deps != owner_ent.compile_deps {
+                raise LinkPlanError(
+                    f"{prefix_owner} and {path} share the native unit prefix "
+                    f"{ent.iface.prefix} but their compile-time inputs differ: "
+                    "their package roots have the same directory name; "
+                    "rename one root"
+                );
+            }
+            owner_dep_digests = sorted(owner_ent.dep_digests.values());
+            unit_dep_digests = sorted(ent.dep_digests.values());
+            has_incomplete_cycle = "" in owner_dep_digests or "" in unit_dep_digests;
+            same_dep_sources = False;
+            if has_incomplete_cycle {
+                owner_dep_sources: list[tuple[str, bytes]] = [];
+                for dep in owner_ent.iface.deps {
+                    dep_path = os.path.realpath(dep);
+                    dep_ent = registry.entries.get(dep_path);
+                    owner_dep_sources.append(
+                        (
+                            unit_source_digest(dep_path),
+                            dep_ent.compile_deps if dep_ent is not None else b""
+                        )
+                    );
+                }
+                unit_dep_sources: list[tuple[str, bytes]] = [];
+                for dep in ent.iface.deps {
+                    dep_path = os.path.realpath(dep);
+                    dep_ent = registry.entries.get(dep_path);
+                    unit_dep_sources.append(
+                        (
+                            unit_source_digest(dep_path),
+                            dep_ent.compile_deps if dep_ent is not None else b""
+                        )
+                    );
+                }
+                same_dep_sources = sorted(owner_dep_sources)
+                    == sorted(unit_dep_sources);
+            }
+            if unit_dep_digests != owner_dep_digests
+                and not (has_incomplete_cycle and same_dep_sources) {
                 raise LinkPlanError(
                     f"{prefix_owner} and {path} share the native unit prefix "
                     f"{ent.iface.prefix} but their dependencies' native "

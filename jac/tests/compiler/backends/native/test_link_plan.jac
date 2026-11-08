@@ -584,13 +584,45 @@ test "same-prefix copies whose recorded dependencies differ are refused" {
         opts,
         dep_digests={str(helper_b.resolve()): ent_hb.digest}
     );
+    registry.entries[copy_a].bitcode = b"bc-a";
+    registry.entries[copy_b].bitcode = b"bc-b";
+    registry.entries[str(helper_a.resolve())].bitcode = b"bc-helper-a";
+    registry.entries[str(helper_b.resolve())].bitcode = b"bc-helper-b";
+    refused_dependencies = False;
     try {
         build_link_plan(prog, [copy_a, copy_b], opts);
     } except LinkPlanError as err {
         assert "mod_p" in str(err) , err;
+        assert "dependencies' native interfaces differ" in str(err) , err;
+        refused_dependencies = True;
+    }
+    assert refused_dependencies , "divergent dependencies must be refused";
+    helper_b.write_text("def helper_value -> int { return 1; }\n");
+    ent_hb = registry.record(
+        str(helper_b.resolve()),
+        NativeIface(module="a.pkg.helper", prefix="helper_a_p"),
+        opts
+    );
+    ent_hb.bitcode = b"bc-helper-copy";
+    registry.record(
+        copy_b,
+        NativeIface(module="pkg.mod", prefix="mod_p", deps=[str(helper_b.resolve())]),
+        opts,
+        dep_digests={str(helper_b.resolve()): ""}
+    );
+    registry.entries[copy_b].bitcode = b"bc-b";
+    cycle_plan = build_link_plan(prog, [copy_a, copy_b], opts);
+    assert copy_b not in [u.path for u in cycle_plan.units] , (
+        "an incomplete cycle digest must be settled from equivalent dependencies"
+    );
+    registry.entries[copy_b].compile_deps = b"different embedded payload";
+    try {
+        build_link_plan(prog, [copy_a, copy_b], opts);
+    } except LinkPlanError as err {
+        assert "compile-time inputs differ" in str(err) , err;
         return;
     }
-    assert False , "divergent same-prefix copies must be refused";
+    assert False , "same-prefix copies with different embedded inputs must be refused";
 }
 
 test "two links from one cache are byte-identical" {
