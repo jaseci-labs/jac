@@ -34,9 +34,11 @@ test "mkdtemp returns a fresh mode-0700 absolute directory under TMPDIR" {
     tmp = Path(tempfile.mkdtemp());
     env = os.environ.copy();
     env["TMPDIR"] = str(tmp);
+    # The probe takes its mode from argv[1]; "default" is the no-options call.
     runs = [
-        subprocess.run([probe], capture_output=True, text=True, timeout=120, env=env)
-        for _ in range(2)
+        subprocess.run(
+            [probe, "default"], capture_output=True, text=True, timeout=120, env=env
+        ) for _ in range(2)
     ];
     paths = [];
     for proc in runs {
