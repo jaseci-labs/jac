@@ -714,7 +714,8 @@ graph import {
     ]
     compiler.driver.compile_options --> [
         cli.commands.execution._exec_file { CompileOptions as _RunOpts },
-        lsp.server.engine.JacLangServer.type_check_file { CompileOptions },
+        lsp.server.engine.JacLangServer.type_check_file
+            | runtime.interop_bridge._pyb_mirror_module { CompileOptions },
     ]
     type compiler.driver.compile_options ++> project.compiler_host { CompileOptions }
     compiler.driver.compiler ++> [
@@ -927,6 +928,7 @@ graph import {
     ]
     compiler.driver.program --> [
         dist.precompile_bytecode.sealable_sources
+            | runtime.interop_bridge._pyb_mirror_module
             | scale.tests.apps.test_fleet_from_apps { JacProgram },
         dist.publish.builder.WheelBuilder._assemble_src_data {
             JacProgram as JacProgramRt
@@ -12656,12 +12658,6 @@ graph import runtime {
         prepared.execute_module { NativeLibrary },
         source_app._load_application { NativeLibrary, native_callback_of },
     ]
-    compiler.driver.compile_options --> runtime.interop_bridge._pyb_import_module {
-        CompileOptions
-    }
-    compiler.driver.program --> runtime.interop_bridge._pyb_import_module {
-        JacProgram
-    }
     memory ++> context { Memory }
     object_interop ++> typecache { fields, is_record }
     object_model ++> [

@@ -127,7 +127,6 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
     mod = types.ModuleType(mirror_name);
     mod.__file__ = key;
     mod.__package__ = package_name;
-    mod.__builtins__ = __builtins__;
     sys.modules[mirror_name] = mod;
     try {
         code = compile(mod_ir.gen.py_ast[0], key, "exec");
@@ -141,14 +140,14 @@ impl _pyb_mirror_module(mod_path: str, package: str) -> object {
 }
 
 impl pyb_mirror_member(mod_path: str, name: str, package: str) -> object {
-    member = getattr(_pyb_mirror_module(mod_path, package), name, None);
-    if member is None {
+    mod = _pyb_mirror_module(mod_path, package);
+    if not hasattr(mod, name) {
         raise AttributeError(
             f"native-placed module '{mod_path}' exposes no '{name}' "
                 + "to mirror into the server codespace"
         );
     }
-    return member;
+    return getattr(mod, name);
 }
 
 impl _pyb_class_for(

@@ -430,11 +430,8 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
 }
 
 impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
-    if not nd.from_loc or not nd.items or not nd.from_loc.path {
-        return False;
-    }
-    target = nd.from_loc.resolve_relative_path();
-    if not isinstance(target, str) or not target {
+    target = nd.native_mirror_target;
+    if not target or not nd.items or not nd.native_mirror_names {
         return False;
     }
     import json;
@@ -443,12 +440,16 @@ impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
             + "__jac_pyb_mirror_member"
     ];
     names: list[str] = [];
+    mirrored: set[str] = set(nd.native_mirror_names);
     for item in nd.items {
         if not isinstance(item, ModuleItem) or not isinstance(item.name, Name) {
             continue;
         }
         item_name = item.name.value;
         local_name = item.alias.sym_name if item.alias is not None else item_name;
+        if local_name not in mirrored {
+            continue;
+        }
         parts.append(
             f"{local_name} = __jac_pyb_mirror_member({json.dumps(target)}, "
                 + f"{json.dumps(item_name)}, __package__)"
