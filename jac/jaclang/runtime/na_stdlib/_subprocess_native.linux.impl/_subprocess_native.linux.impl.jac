@@ -21,7 +21,7 @@ impl sp_pipe -> list[int] {
     r = _lo32(buf, 0);
     w = _lo32(buf, 4);
     if r < 3 {
-        nr = int(fcntl(i32(r), i32(_F_DUPFD), i32(3)));
+        nr = int(fcntl(i32(r), i32(_F_DUPFD), i64(3)));
         if nr < 0 {
             close(i32(r));
             close(i32(w));
@@ -31,7 +31,7 @@ impl sp_pipe -> list[int] {
         r = nr;
     }
     if w < 3 {
-        nw = int(fcntl(i32(w), i32(_F_DUPFD), i32(3)));
+        nw = int(fcntl(i32(w), i32(_F_DUPFD), i64(3)));
         if nw < 0 {
             close(i32(r));
             close(i32(w));
@@ -40,8 +40,8 @@ impl sp_pipe -> list[int] {
         close(i32(w));
         w = nw;
     }
-    if fcntl(i32(r), i32(_F_SETFD), i32(_FD_CLOEXEC)) != 0
-        or fcntl(i32(w), i32(_F_SETFD), i32(_FD_CLOEXEC)) != 0 {
+    if fcntl(i32(r), i32(_F_SETFD), i64(_FD_CLOEXEC)) != 0
+        or fcntl(i32(w), i32(_F_SETFD), i64(_FD_CLOEXEC)) != 0 {
         close(i32(r));
         close(i32(w));
         return [-1, -1, -1];

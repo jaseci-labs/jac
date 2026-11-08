@@ -7,7 +7,7 @@ import from c { def write(fd: i32, buf: bytes, count: u64) -> i64;  }
 import from c { def usleep(usec: u32) -> i32;  }
 import from c { def clock_gettime(clk: i32, ts: bytes) -> i32;  }
 import from c { def poll(fds: int, nfds: u64, timeout: i32) -> i32;  }
-import from c { def fcntl(fd: i32, cmd: i32, arg: i32) -> i32;  }
+import from c { def fcntl(fd: i32, cmd: i32, *args: VaList) -> i32;  }
 import from c { def strdup(s: str) -> int;  }
 import from c { def malloc(size: int) -> int;  }
 import from c { def free(p: int);  }
