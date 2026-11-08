@@ -7,7 +7,16 @@ import jaclang.server.assembly;
 import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.prepared { forget }
+import from jaclang.compiler.driver.jir {
+    SEC_BYTECODE,
+    SEC_IFACE,
+    precompiled_jir_matches_source,
+    read_section_bytes,
+    write_module_cache
+}
 import from jaclang.dist.precompile_bytecode {
+    _cache_variant,
+    compiler_identity,
     _reusable_cache_entry,
     precompile_unit_context,
     placement_facts_map,
@@ -90,5 +99,45 @@ test "a precompiled unit finds the module the application prepare compiled" {
             assert hit is not None , name;
             assert hit[2].resolve() in prepared , (name, str(hit[2]));
         }
+    }
+}
+
+test "a precompiled unit reused from the application prepare passes the seal check" {
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "reuse"\nentry-point = "main"\n'
+        );
+        (base / '__init__.jac').write_text('');
+        (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'main.jac').write_text(
+            'import from helper { value }\ndef:pub read -> int { return value(); }\n'
+        );
+        main_path = str(base / "main.jac");
+        try {
+            prepare_application(main_path, JacProgram(), td);
+        } finally {
+            forget(main_path);
+        }
+        helper = str(base / 'helper.jac');
+        with precompile_unit_context(helper, td, collect=False) {
+            hit = _reusable_cache_entry(helper, td);
+            assert hit is not None;
+            (options, codespace, cache_path) = hit;
+            bytecode = read_section_bytes(cache_path.read_bytes(), SEC_BYTECODE);
+            with _cache_variant(options, codespace) {
+                write_module_cache(helper, bytecode, {SEC_IFACE: b"iface"});
+            }
+        }
+        def compiled -> set[str] {
+            return {p.name for p in (base / '.jac').rglob('*.jir')};
+        }
+        before = compiled();
+        artifact = precompile_unit(helper, td);
+        assert artifact is not None;
+        assert compiled() == before , sorted(compiled() - before);
+        assert precompiled_jir_matches_source(
+            artifact, helper, compiler_identity(), td
+        ) , "the reused unit carries a module key the seal check rejects";
     }
 }
