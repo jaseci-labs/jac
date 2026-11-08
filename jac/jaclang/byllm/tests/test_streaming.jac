@@ -5,7 +5,9 @@ and the answer arrives on the `chunk` channel; tool activity arrives before it.
 """
 
 import asyncio;
+import contextlib;
 import contextvars;
+import from unittest { mock }
 import from jaclang.byllm.exceptions { ConfigurationError }
 import from jaclang.byllm.types { StreamEvent }
 import from jaclang.byllm.telemetry { _current_invocation_id }
@@ -136,10 +138,12 @@ test "a finish_tool answer streams to the caller as committed, with no second ca
     # The model's finish_tool argument is the answer, streamed as the model writes
     # it. byLLM used to ask the model to restate it, and that reply replaced it.
     # The second answer's escapes (quote, newline, an emoji's surrogate pair) split
-    # across the 12-character fragments.
-    for committed in [
-        "The weather in London is sunny, 25 degrees.",
-        'London: "sunny"\n25°C bright 😀 all day'
+    # across the 12-character fragments. The last provider cannot stream, so the
+    # answer arrives whole.
+    for (committed, streams) in [
+        ("The weather in London is sunny, 25 degrees.", True),
+        ('London: "sunny"\n25°C bright 😀 all day', True),
+        ("The weather in London is sunny, 25 degrees.", False)
     ] {
         for mode in ["plain", "logging", "handler"] {
             history: list[dict[str, any]] = [];
@@ -160,17 +164,25 @@ test "a finish_tool answer streams to the caller as committed, with no second ca
                 conversation=history
             );
 
-            out: any = check_weather("What is the weather in London?");
-            if mode == "plain" {
-                pieces = list(out);
-                got = "".join(pieces);
-            } else {
-                events = list(out) if mode == "logging" else seen;
-                pieces = [e.data["content"] for e in events_of(events, "chunk")];
-                got = out if mode == "handler" else "".join(pieces);
+            provider = contextlib.nullcontext()
+                if streams
+                else mock.patch.object(
+                    llm, "model_call_with_stream", side_effect=NotImplementedError
+                );
+            with provider {
+                out: any = check_weather("What is the weather in London?");
+                if mode == "plain" {
+                    pieces = list(out);
+                    got = "".join(pieces);
+                } else {
+                    events = list(out) if mode == "logging" else seen;
+                    pieces = [e.data["content"] for e in events_of(events, "chunk")];
+                    got = out if mode == "handler" else "".join(pieces);
+                }
             }
-            assert "".join(pieces) == committed and len(pieces) > 1 , (
-                f"{mode}: the answer must stream in pieces, got {pieces}"
+            assert "".join(pieces) == committed
+                and (len(pieces) > 1 if streams else pieces == [committed]) , (
+                f"{mode}, streams={streams}: the answer arrived as {pieces}"
             );
             assert got == committed , f"{mode}: the caller received {got!r}";
             assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(
