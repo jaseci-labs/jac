@@ -490,7 +490,12 @@ graph import {
         rn_tag_suggestions
     }
     client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
-    client.vite_bundler ++> dist.source.client.write_client { ViteBundler }
+    client.vite_bundler ++> [
+        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
+            client_build_env
+        },
+        dist.source.client.write_client { ViteBundler },
+    ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },
@@ -1654,7 +1659,10 @@ graph import {
         client.js_runtime.BunArtifact.build { fetch_bun },
         compiler.types.stubcat.locate.TypeshedArtifact.build { fetch_typeshed },
     ]
-    dist.precompile_bytecode ++> cli.commands.precompile.precompile { run_precompile }
+    dist.precompile_bytecode ++> [
+        cli.commands.precompile.precompile { run_precompile },
+        scale.injector.bundle.pack_jab { RESULT_NAME },
+    ]
     dist.precompile_bytecode --> scale.tests.microservices.test_app_precompile {
         main as seal_main,
         placement_facts_map,
@@ -45500,8 +45508,12 @@ graph import scale {
     injector.bundle ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle {
             _stage_app,
+            cached_client_dist,
             client_build_sources,
+            client_input_digest,
+            nested_sanitized_tomls,
             release_binary_env,
+            remember_client_dist,
             remove_stage_root,
             source_filter_for
         },
