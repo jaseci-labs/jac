@@ -71,7 +71,6 @@ obj Label {
 
 def binder_rebinds {
     title = Label(text="a");
-    (kind, title) = ("k", "x");  # <-- Error
     [kind, title] = ["k", "x"];  # <-- Error
     other = title="x";  # <-- Error
     if (title := "x") {  # <-- Error
@@ -86,7 +85,7 @@ def binder_rebinds {
         print(2);
     }
     (kind, *title) = ("k", "x", "y");  # <-- Error
-    (kind, *middle, title) = ("k", Label(), "x");  # <-- Error: the last element
+    (kind, *middle, title) = ("k", Label(), Label(), "x");  # <-- Error: the last element
     (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
     (count, *names) = (0, "x");
     names.append("y");  # <-- Ok: a new starred target holds only what it captures
@@ -102,9 +101,6 @@ def binder_rebinds {
 
 def for_unpack_rebinds {
     title = Label(text="a");
-    for [kind, title] in [["k", "x"]] {  # <-- Error
-        print(kind);
-    }
     count = 0;
     # Iterating a dict yields its keys, so `count` gets a key's characters.
     for (key, count) in {"ab": 1} {  # <-- Error

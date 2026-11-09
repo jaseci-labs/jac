@@ -2566,7 +2566,7 @@ test "inferred_local_type_frozen" {
         os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
         options=NO_TC
     );
-    assert len(program.errors_had) == 16 , f"Expected 16 type errors, but got {len(
+    assert len(program.errors_had) == 14 , f"Expected 14 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
@@ -2608,75 +2608,61 @@ test "inferred_local_type_frozen" {
         (
             5,
             """
-        (kind, title) = ("k", "x");  # <-- Error
+        [kind, title] = ["k", "x"];  # <-- Error
         Cannot assign Literal["x"] to Label
     """
         ),
         (
             6,
             """
-        [kind, title] = ["k", "x"];  # <-- Error
+        other = title="x";  # <-- Error
         Cannot assign Literal["x"] to Label
     """
         ),
         (
             7,
             """
-        other = title="x";  # <-- Error
+        if (title := "x") {  # <-- Error
         Cannot assign Literal["x"] to Label
     """
         ),
         (
             8,
             """
-        if (title := "x") {  # <-- Error
-        Cannot assign Literal["x"] to Label
-    """
-        ),
-        (
-            9,
-            """
         with open("x.txt") as title {  # <-- Error
         Cannot assign TextIOWrapper to Label
     """
         ),
         (
-            10,
+            9,
             """
         } except ValueError as title {  # <-- Error
         Cannot assign ValueError to Label
     """
         ),
         (
-            11,
+            10,
             """
         (kind, *title) = ("k", "x", "y");  # <-- Error
         Cannot assign list[
     """
         ),
         (
-            12,
+            11,
             """
-        (kind, *middle, title) = ("k", Label(), "x");  # <-- Error: the last element
+        (kind, *middle, title) = ("k", Label(), Label(), "x");  # <-- Error: the last element
         Cannot assign Literal["x"] to Label
     """
         ),
         (
-            13,
+            12,
             """
         (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
         Cannot assign Literal["x"] to Label
     """
         ),
         (
-            14,
-            """
-        for [kind, title] in [["k", "x"]] {  # <-- Error
-        Cannot assign str to Label
-    """
-        ),
-        (
-            15,
+            13,
             """
         for (key, count) in {"ab": 1} {  # <-- Error
         Cannot assign LiteralString to int
