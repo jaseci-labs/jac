@@ -276,11 +276,11 @@ def fetch_baseline(
         );
     }
 
-    def newest_first(run: dict[str, any]) -> int {
-        return -int(run["id"]);
+    def created(run: dict[str, any]) -> str {
+        return str(run.get("created_at", ""));
     }
 
-    for run in sorted(runs, key=newest_first) {
+    for run in sorted(runs, key=created, reverse=True) {
         short = [
             name
             for (name, values) in samples.items()
