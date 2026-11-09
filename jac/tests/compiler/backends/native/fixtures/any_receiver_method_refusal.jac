@@ -48,3 +48,19 @@ def typed_field_append -> int {
 def file_param_read(fp: File) -> int {
     return len(fp.read());
 }
+
+
+def any_list_sorted -> int {
+    items: list[any] = [3, 1, 2];
+    ordered = sorted(items);
+    first: int = ordered[0];
+    return first;
+}
+
+
+def any_list_sort -> int {
+    items: list[any] = [3, 1, 2];
+    items.sort();
+    first: int = items[0];
+    return first;
+}

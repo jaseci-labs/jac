@@ -417,12 +417,9 @@ impl sealed_image_key(
     if lock.is_file() {
         h.update(file_sha256(str(lock)).encode("utf-8"));
     }
-    for (env_key, env_value) in sorted(os.environ.items()) {
-        if env_key.startswith("VITE_")
-            or env_key in ("NODE_ENV", "JAC_CLIENT_API_BASE_URL") {
-            h.update(f"{env_key}={env_value}".encode("utf-8"));
-            h.update(b"\x00");
-        }
+    for row in client_build_env() {
+        h.update(row.encode("utf-8"));
+        h.update(b"\x00");
     }
     for (dirpath, dirnames, filenames) in os.walk(proj_root, followlinks=True) {
         skipped = set(ignore(dirpath, dirnames + filenames));

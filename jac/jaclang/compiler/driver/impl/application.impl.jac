@@ -1238,7 +1238,7 @@ impl _prepare_revision(
             ct_dep_digest(path, with_annexes=True) != digest
             for (path, digest) in inputs.items()
         ) {
-            raise RuntimeError(
+            raise SourcesChanged(
                 'Sources changed during preparation; retry with the new revision.'
             );
         }
@@ -1268,7 +1268,7 @@ impl _prepare_revision(
                 ct_dep_digest(path, with_annexes=True) != digest
                 for (path, digest) in client_modules.items()
             ) {
-            raise RuntimeError(
+            raise SourcesChanged(
                 'Sources changed during preparation; retry with the new revision.'
             );
         }
