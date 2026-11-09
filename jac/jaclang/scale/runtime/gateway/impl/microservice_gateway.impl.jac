@@ -406,7 +406,12 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
 impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | None {
     import json;
 
-    fwd_headers = self.build_forward_headers(request);
+    fwd_headers = {
+        k: v
+        for (k, v) in self.build_forward_headers(request).items()
+        if k.lower() != "accept-encoding"
+    };
+    fwd_headers["Accept-Encoding"] = "identity";
     service_auth = auth_headers();
     if service_auth {
         fwd_headers = {

@@ -554,9 +554,11 @@ test "GET /admin/schedules through the gateway route is admin-only and merges th
                 200
             )
         ] {
-            resp = client.get("/admin/schedules", headers=headers);
+            resp = client.get(
+                "/admin/schedules", headers={** headers, "Accept-Encoding": "gzip"}
+            );
             assert resp.status_code == status , (who, resp.status_code, resp.text);
-            body = resp.json();
+            body = _json_body(resp);
             if status == 200 {
                 rows = body["data"]["schedules"];
                 assert [(r["name"], r["service"], r["namespace"]) for r in rows]

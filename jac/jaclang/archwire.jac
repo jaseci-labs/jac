@@ -46739,9 +46739,11 @@ graph import scale.runtime {
     ]
     transport.http_forward ++> [
         gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules
-            | gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
             | gateway.openapi_agg.fetch_service_spec { raw_forward },
         gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
+        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
+            raw_forward
+        },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },
