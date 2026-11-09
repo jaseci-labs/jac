@@ -1350,16 +1350,12 @@ impl BaseLLM.dispatch_streaming_with_tools(
                         coalescer.observe(_frag);
                     }
                 }
-                finish = next(
-                    (
-                        c
-                        for c in streamed_calls.values()
-                        if c["name"] == "finish_tool"
-                    ),
-                    None
-                );
-                answer_piece = answer_stream.observe(finish)
-                    if answer_stream and finish and frags
+                first = streamed_calls[min(streamed_calls)] if streamed_calls else None;
+                answer_piece = answer_stream.observe(first)
+                    if answer_stream
+                        and frags
+                        and first
+                        and first["name"] == "finish_tool"
                     else "";
                 delta_content = "";
                 if chunk?.choices and chunk?.choices?[0]?.delta {
@@ -2950,22 +2946,29 @@ impl _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
 impl _split_at_finish(
     tool_calls: list[ToolCall]
 ) -> tuple[list[ToolCall], ToolCall | None, list[ToolCall]] {
-    before: list[ToolCall] = [];
     for (i, tc) in enumerate(tool_calls) {
         if tc.is_finish_call() {
-            return (before, tc, tool_calls[i + 1:]);
+            if i == 0 {
+                return ([], tc, tool_calls[1:]);
+            }
+            return (tool_calls[:i], None, tool_calls[i:]);
         }
-        before.append(tc);
     }
-    return (before, None, []);
+    return (list(tool_calls), None, []);
 }
 
 impl _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None {
     for tc in skipped {
         mt_run.add_message(
             ToolCallResultMsg(
-                content="Not executed: it came after finish_tool in the same response. "
-                "Call it again in a later response if it is still needed.",
+                content=(
+                    "Not executed: finish_tool came after other tool calls in the same "
+                    "response, so it was written before their results. Call it again "
+                    "now that you have them."
+                )
+                    if tc.is_finish_call()
+                    else "Not executed: it came after finish_tool in the same response. "
+                    "Call it again in a later response if it is still needed.",
                 tool_call_id=tc.call_id,
                 name=tc.tool.get_name()
             )

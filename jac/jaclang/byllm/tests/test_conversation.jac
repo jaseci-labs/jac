@@ -12,7 +12,16 @@ import from litellm.types.utils {
     Function,
     Message as LiteLLMMessage
 }
-import from support { call, calls, finish, mk_run, say, sent_messages }
+import from support {
+    call,
+    calls,
+    chunk_text,
+    finish,
+    mk_run,
+    say,
+    sent_messages,
+    stream_events
+}
 
 
 def get_weather(city: str) -> str {
@@ -240,20 +249,32 @@ def results(messages: list[any]) -> dict[str, str] {
 
 
 test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
-    for (label, entries, ran, skipped) in [
-        ("last", [_mul("c1"), _fin()], ["mul(2,3)"], []),
-        ("middle", [_mul("c1"), _fin(), _mul("c2")], ["mul(2,3)"], ["c2"]),
-        ("first", [_fin(), _mul("c1"), _mul("c2")], [], ["c1", "c2"]),
-        ("two finishes", [_mul("c1"), _fin(), _fin("cf2")], ["mul(2,3)"], [])
+    # A finish_tool after a real call was written before that call's result, so
+    # it is not executed and the model answers in its next reply ("done").
+    for (label, entries, ran, skipped, answer) in [
+        ("last", [_mul("c1"), _fin()], ["mul(2,3)"], ["cf"], "done"),
+        (
+            "middle",
+            [_mul("c1"), _fin(), _mul("c2")],
+            ["mul(2,3)"],
+            ["cf", "c2"],
+            "done"
+        ),
+        ("first", [_fin(), _mul("c1"), _mul("c2")], [], ["c1", "c2"], "6"),
+        (
+            "two finishes",
+            [_mul("c1"), _fin(), _fin("cf2")],
+            ["mul(2,3)"],
+            ["cf", "cf2"],
+            "done"
+        )
     ] {
         # events=False runs the sync tool loop, events=True the event loop.
         for events in [False, True] {
             where = f"{label}, events={events}";
             RAN.clear();
             history: list[dict[str, any]] = [];
-            llm = MockLLM(
-                outputs=[calls(entries)] + ([say("FINAL")] if events else [])
-            );
+            llm = MockLLM(outputs=[calls(entries), finish("done")]);
 
             def ask(q: str) -> str by llm(
                 tools=[mul], conversation=history, stream=events, logging=events
@@ -261,8 +282,13 @@ test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
 
             out = ask("go");
             if events {
-                list(out);
+                evs = stream_events(out);
+                kinds = [ev.event_type for ev in evs];
+                assert kinds.count("steps_done") == 1
+                    and "tool_result" not in kinds[kinds.index("steps_done"):] , f"{where}: {kinds}";
+                out = chunk_text(evs);
             }
+            assert out == answer , f"{where}: answered {out!r}";
             assert RAN == ran , f"{where}: ran {RAN}";
             for n in range(len(llm.seen)) {
                 assert dangling(sent_messages(llm, n))[0] == [] , f"{where}: request {n}";
@@ -274,8 +300,9 @@ test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
                     for tc in (m.get("tool_calls") or [])
                 ];
             assert "finish_tool" not in names , f"{where}: finish_tool was saved";
+            notes = results(sent_messages(llm, len(llm.seen) - 1)) | results(history);
             for cid in skipped {
-                note = results(history).get(cid, "");
+                note = notes.get(cid, "");
                 assert "not executed" in note.lower() , f"{where}: {cid} saved as {note!r}";
             }
         }
