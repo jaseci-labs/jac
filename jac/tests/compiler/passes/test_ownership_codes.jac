@@ -46,6 +46,24 @@ glob OWNERSHIP_CASES: list[tuple[any, ...]] = [
          ),
          (
              "managed borrows",
+             "an intrinsic call writes no field",
+             "managed_borrow_intrinsic_direct.jac",
+             []
+         ),
+         (
+             "managed borrows",
+             "a same-module function whose body is an intrinsic writes no field",
+             "managed_borrow_intrinsic_call.jac",
+             []
+         ),
+         (
+             "managed borrows",
+             "the destructor-running intrinsic may free anything",
+             "managed_borrow_dtor_call.jac",
+             ["E1322"]
+         ),
+         (
+             "managed borrows",
              "assigning through a shared borrow",
              "managed_borrow_shared_write.jac",
              ["E1320"]

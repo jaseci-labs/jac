@@ -67,3 +67,28 @@ test "borrow inference makes the unannotated walk a borrow as well" {
         "the unannotated walk still retains: " + owning
     );
 }
+
+test "a borrowed walk that calls a raw-memory helper answers the same" {
+    (eng, _) = compile_native("managed_borrow_intrinsic_walk.jac");
+    address = native_address(eng, "borrowed");
+    assert isinstance(address, int) and address != 0;
+    walk = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
+    for (rule_type, want) in [(1, 11), (2, 22), (3, 33), (9, -1)] {
+        got = walk(rule_type);
+        assert got == want , f"borrowed({rule_type}): {got} != {want}";
+    }
+}
+
+test "the raw-memory helper does not turn the walk back into a counted one" {
+    opts = native_force_opts();
+    opts.na_borrow_infer = False;
+    module = compile_native_ir("managed_borrow_intrinsic_walk.jac", options=opts);
+    ir = str(module.gen.llvm_ir);
+    borrowed = function_body(ir, re.escape(unit_symbol(module, "borrowed_walk")));
+    assert not re.findall(r"@\"?_*rc_retain", borrowed) , (
+        "the borrowed walk still retains: " + borrowed
+    );
+    assert not re.findall(r"@\"?_*rc_release", borrowed) , (
+        "the borrowed walk still releases: " + borrowed
+    );
+}
