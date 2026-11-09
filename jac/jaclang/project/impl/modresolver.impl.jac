@@ -634,14 +634,24 @@ impl resolve_module(
     actual_parts = parts[level:];
 
     base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
-    for _ in range(max((level - 1), 0)) {
-        base_dir = os.path.dirname(base_dir);
+    if level > 1 {
+        climbed = os.path.abspath(base_dir or '.');
+        for _ in range(level - 1) {
+            climbed = os.path.dirname(climbed);
+        }
+        if os.path.isabs(base_dir) {
+            base_dir = climbed;
+        } else {
+            rel = os.path.relpath(climbed);
+            base_dir = '' if rel == '.' else rel;
+        }
     }
     if level > 0 {
         res = resolve_local_module(base_dir, actual_parts);
         if res {
             return res;
         }
+        return (os.path.join(base_dir, *actual_parts), 'py');
     }
 
     for sp in get_jac_search_paths(base_path) {
@@ -651,11 +661,9 @@ impl resolve_module(
         }
     }
 
-    if level == 0 {
-        res = resolve_local_module(base_dir, actual_parts);
-        if res {
-            return res;
-        }
+    res = resolve_local_module(base_dir, actual_parts);
+    if res {
+        return res;
     }
     jacpath = os.getenv('JACPATH');
     if (jacpath and actual_parts) {
@@ -678,16 +686,14 @@ impl resolve_module(
             }
         }
     }
-    if not target.startswith('.') {
-        res = _namespace_candidate(base_dir, actual_parts);
+    res = _namespace_candidate(base_dir, actual_parts);
+    if res {
+        return res;
+    }
+    for sp in get_jac_search_paths(base_path) {
+        res = _namespace_candidate(sp, actual_parts);
         if res {
             return res;
-        }
-        for sp in get_jac_search_paths(base_path) {
-            res = _namespace_candidate(sp, actual_parts);
-            if res {
-                return res;
-            }
         }
     }
     return (os.path.join(base_dir, *actual_parts), 'py');

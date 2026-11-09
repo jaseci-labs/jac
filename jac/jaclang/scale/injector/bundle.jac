@@ -22,7 +22,8 @@ glob APP_VOLUME_NAME: str = "jac-app",
      STAGE_REAP_AGE_S: int = 86400;
 
 glob _stage_roots: list[str] = [],
-     SEAL_CACHE_KEEP: int = 2;
+     SEAL_CACHE_KEEP: int = 2,
+     CLIENT_CACHE_KEEP: int = 2;
 
 glob _reported_prunes: set[str] = set();
 
@@ -183,6 +184,12 @@ def _legacy_sealer_script_for(
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
 
 
+def sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str;
+
+
+def staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None);
+
+
 def require_serve_manifest(stage: Path, detail: str = "") -> Path;
 
 
@@ -225,6 +232,15 @@ def _prune_seed_pip(site: Path, specs: list[str]);
 def _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int);
 
 
+def _input_digest(
+    base: Path,
+    sources: list[Path],
+    binary: bytes,
+    parts: list[str],
+    tomls: dict[str, str]
+) -> str;
+
+
 def seal_input_digest(
     base: Path,
     sources: list[Path],
@@ -235,6 +251,25 @@ def seal_input_digest(
     fat: bool,
     tomls: dict[str, str]
 ) -> str;
+
+
+def client_input_digest(
+    base: Path,
+    sources: list[Path],
+    jac_binary: bytes,
+    entry_rel: str,
+    sanitized: (str | None),
+    tomls: dict[str, str]
+) -> str;
+
+
+def _client_cache_dir(base: Path) -> Path;
+
+
+def cached_client_dist(base: Path, key: str) -> (Path | None);
+
+
+def remember_client_dist(base: Path, key: str, dist: str);
 
 
 def _seal_cache_dir(base: Path) -> Path;

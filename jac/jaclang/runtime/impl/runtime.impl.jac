@@ -2163,6 +2163,7 @@ impl JacRuntime.after_fork_in_child -> None {
     }
     _shared_root_resolver[1] = None;
     JacRuntime.pool = ThreadPoolExecutor();
+    DRAIN_HOOKS.clear();
 }
 
 impl _scale_provider -> any {

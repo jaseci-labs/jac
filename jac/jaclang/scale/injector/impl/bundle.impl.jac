@@ -564,6 +564,50 @@ impl sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
     return fleet.root_app;
 }
 
+impl sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str {
+    served = fleet.root_member() if fleet is not None else None;
+    if served is None or not served.file {
+        return "";
+    }
+    config = _project_config(project_dir);
+    if config is not None and config.is_workspace {
+        return "";
+    }
+    base = Path(project_dir).resolve();
+    rel = Path(_fleet_entry_rel(base, served.app, served.file));
+    parts = [*rel.parent.parts, rel.stem];
+    if not all(part.isidentifier() for part in parts) {
+        raise ValueError(
+            f"App '{served.app}' boots '{rel.as_posix()}', which is not an "
+            "importable module name, so the deploy cannot seal it. Rename it "
+            "so every part of its path is a plain identifier, such as "
+            "'my_app.jac'."
+        );
+    }
+    module = ".".join(parts);
+    resolved = Path(resolve_entry_path(module, str(base))).resolve();
+    if resolved != (base / rel).resolve() {
+        raise ValueError(
+            f"App '{served.app}' boots '{rel.as_posix()}', but its module name "
+            f"'{module}' resolves to '{resolved.relative_to(base).as_posix()}', "
+            "so the deploy would seal the wrong file. Rename one of the two."
+        );
+    }
+    return module;
+}
+
+impl staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None) {
+    if not entry_module {
+        return sanitized;
+    }
+    text = sanitized if sanitized is not None else PLACEHOLDER_JAC_TOML;
+    old_doc = tomllib.loads(text);
+    project = {** old_doc.get("project", {}), "entry-point": entry_module};
+    new_doc = {** old_doc, "project": project};
+    return toml_minimal_update(text, old_doc, new_doc, ["project"])
+        or serialize_toml(new_doc);
+}
+
 impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
     serve_manifest = stage / SERVE_MANIFEST_REL;
     if not serve_manifest.is_file() {
@@ -874,25 +918,16 @@ impl _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int) {
     write_venv_deps_marker(venv, specs);
 }
 
-impl seal_input_digest(
+impl _input_digest(
     base: Path,
     sources: list[Path],
-    seal_binary: bytes,
-    pod_arch: str,
-    app_name: str,
-    sanitized: (str | None),
-    fat: bool,
+    binary: bytes,
+    parts: list[str],
     tomls: dict[str, str]
 ) -> str {
     digest = hashlib.sha256();
-    digest.update(hashlib.sha256(seal_binary).digest());
-    for part in (
-        pod_arch,
-        app_name,
-        "fat" if fat else "thin",
-        os.environ.get("JAC_SEAL_SKIP_VENV", ""),
-        sanitized or ""
-    ) {
+    digest.update(hashlib.sha256(binary).digest());
+    for part in parts {
         digest.update(part.encode("utf-8"));
         digest.update(b"\0");
     }
@@ -912,8 +947,95 @@ impl seal_input_digest(
     return digest.hexdigest();
 }
 
+impl seal_input_digest(
+    base: Path,
+    sources: list[Path],
+    seal_binary: bytes,
+    pod_arch: str,
+    app_name: str,
+    sanitized: (str | None),
+    fat: bool,
+    tomls: dict[str, str]
+) -> str {
+    return _input_digest(
+        base,
+        sources,
+        seal_binary,
+        [
+            pod_arch,
+            app_name,
+            "fat" if fat else "thin",
+            os.environ.get("JAC_SEAL_SKIP_VENV", ""),
+            sanitized or ""
+        ],
+        tomls
+    );
+}
+
+impl client_input_digest(
+    base: Path,
+    sources: list[Path],
+    jac_binary: bytes,
+    entry_rel: str,
+    sanitized: (str | None),
+    tomls: dict[str, str]
+) -> str {
+    return _input_digest(
+        base,
+        sources,
+        jac_binary,
+        ["client", entry_rel, sanitized or "", *client_build_env()],
+        tomls
+    );
+}
+
 impl _seal_cache_dir(base: Path) -> Path {
     return base / ".jac" / "seal-cache";
+}
+
+impl _client_cache_dir(base: Path) -> Path {
+    return base / ".jac" / "client-cache";
+}
+
+impl cached_client_dist(base: Path, key: str) -> (Path | None) {
+    cached = _client_cache_dir(base) / key;
+    if not (cached / "index.html").is_file() {
+        return None;
+    }
+    try {
+        os.utime(cached, None);
+    } except OSError as exc {
+        logger.debug(f"Could not touch the reused client build: {exc}");
+    }
+    return cached;
+}
+
+impl remember_client_dist(base: Path, key: str, dist: str) {
+    cache = _client_cache_dir(base);
+    partial = cache / f"{key}.partial-{os.getpid()}";
+    try {
+        cache.mkdir(parents=True, exist_ok=True);
+        shutil.rmtree(partial, ignore_errors=True);
+        shutil.copytree(dist, partial);
+        shutil.rmtree(cache / key, ignore_errors=True);
+        os.replace(partial, cache / key);
+        kept = sorted(
+            [
+                child
+                for child in cache.iterdir()
+                if child.is_dir() and ".partial-" not in child.name
+            ],
+            key=_mtime,
+            reverse=True
+        );
+        for stale in kept[CLIENT_CACHE_KEEP:] {
+            shutil.rmtree(stale, ignore_errors=True);
+        }
+    } except OSError as exc {
+        logger.warning(f"Could not keep the client build for reuse: {exc}");
+    } finally {
+        shutil.rmtree(partial, ignore_errors=True);
+    }
 }
 
 impl _mtime(path: Path) -> float {
@@ -1038,7 +1160,10 @@ impl pack_jab(
         );
     }
     excluded = source_filter_for(base);
-    assert_entry_module_ships(base, excluded);
+    entry_module = sealed_entry_module(project_dir, fleet);
+    if not entry_module {
+        assert_entry_module_ships(base, excluded);
+    }
     sources = bundle_source_files(base);
     check_fleet_entries(
         base, [path.relative_to(base).as_posix() for path in sources], excluded, fleet
@@ -1049,7 +1174,7 @@ impl pack_jab(
             f"while staging the app bundle."
         );
     }
-    sanitized = sanitized_jac_toml(base);
+    sanitized = staged_jac_toml(sanitized_jac_toml(base), entry_module);
     app_name = sealed_app_name(project_dir, fleet);
     tomls = nested_sanitized_tomls(base);
     def input_key(tree: Path, files: list[Path]) -> str {
@@ -1064,10 +1189,12 @@ impl pack_jab(
             tomls
         );
     }
+    report_rel = Path("_precompiled") / RESULT_NAME;
     seal_sources = [
         path
         for path in sources
         if not _is_client_dist(path.relative_to(base))
+            and path.relative_to(base) != report_rel
     ];
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
