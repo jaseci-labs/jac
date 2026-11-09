@@ -29,7 +29,8 @@ obj ExecutionContext {
         _own_session: bool = False,
         _system_root: (NodeAnchor | None) = None,
         _user_root: (NodeAnchor | None) = None,
-        _entry_node: (NodeAnchor | None) = None;
+        _entry_node: (NodeAnchor | None) = None,
+        _principals: (tuple[UUID, dict[str, any]] | None) = None;
 
     def postinit -> None;
     static async def for_target(

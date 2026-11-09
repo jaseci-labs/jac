@@ -981,9 +981,11 @@ walker:priv DeleteWithChildren {
 |----------|-------------|
 | `jid(node)` | Get unique Jac ID of object |
 | `jobj(node)` | Get Jac object wrapper |
-| `grant(node, level=AccessLevel.READ)` | Open a node to every other user at a level of the ambient `AccessLevel` enum - `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` (no import). Changing a node's grants is a write on the node: only a caller holding `WRITE` on it (its owner, the system root, or a root granted `WRITE`) may do so; anyone else gets a permission-denied diagnostic (a `PermissionError` under `JAC_STRICT_PERMISSIONS`) and nothing changes |
-| `revoke(node)` | Remove a `grant` (same `WRITE` requirement) |
-| `allroots()` | Get all root references |
+| `grant(node, level=AccessLevel.READ)` | Open a node to every other user at a level of the ambient `AccessLevel` enum - `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` (no import; never `ADMIN`). Only a caller holding `ADMIN` on the node (its owner, the system root, or an admin of the group that owns it) may change its access; anyone else gets a `PermissionError`. A call that changes nothing needs no rights |
+| `revoke(node)` | Remove a `grant` (same `ADMIN` requirement) |
+| `set_access(node, who, level)` | Give `who` (a user's root id, a root, or a group) `level` on the node **and everything under it**; `AccessLevel.NO_ACCESS` blocks. Needs `ADMIN`. See [Groups and membership](#8-groups-and-membership) |
+| `clear_access(node, who)` | Undo `set_access`. Needs `ADMIN`, except that anyone may clear their own membership |
+| `allroots()` | Get every user's root (group roots are reached through `Member` edges) |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
 | `on_commit(callback)` | Register a callback to run **after** the next successful commit (discarded on abort/replay) -- for deferred external side effects that must fire exactly once |
@@ -1074,9 +1076,40 @@ node Report {
 
 Always return `AccessLevel` members. String (`"WRITE"`) and int (`2`) spellings are accepted for compatibility, but a typo'd string raises `KeyError` at access-check time - in production, on the first cross-user request - while a misspelled member fails at check time, and the int mapping may change.
 
-**Grant or hook?** `grant`/`allow_root` are per-instance policy the *owner* decides at runtime - right for user-owned contributions (posts, profiles). `__jac_access__` is a per-archetype invariant the *author* decides - right for app-owned public structure (docs caches, catalogs, commons state), where a forgotten grant on one creation path only surfaces when a *second* user hits it. The owner and the system root always have `WRITE` regardless of the hook.
+**Grant or hook?** `grant`/`set_access` are per-instance policy the *owner* decides at runtime - right for user-owned contributions (posts, profiles). `__jac_access__` is a per-archetype invariant the *author* decides - right for app-owned public structure (docs caches, catalogs, commons state), where a forgotten grant on one creation path only surfaces when a *second* user hits it. The owner and the system root always have `ADMIN` regardless of the hook.
 
 Traversal authorizes the *node* being reached, and deleting an authorized node detaches its incident edges with it - but a non-owner reading, mutating, or deleting an edge object directly is checked against the *edge's* own level, so a fully open structure pairs a `PublicNode` base with a `PublicEdge` base as above.
+
+### 8 Groups and membership
+
+A **group** is a node that owns itself and that other roots belong to: a team, an organization, a shared folder. A user's root is a group of one. Membership is a built-in `Member` edge from the member to the group carrying the member's level, made and removed only by `set_access` and `clear_access`.
+
+```jac
+node Workspace(Root) { has name: str; }   # a group nobody logs in as
+node Doc { has title: str; }
+
+def set_up(bob_id: str, writer_id: str) -> list[Workspace] {
+    acme = Workspace(name="Acme");
+    save(acme);                                   # the caller becomes Acme's ADMIN
+    plan = acme ++> Doc(title="Plan");            # owned by Acme
+    specs = acme ++> Doc(title="Specs");
+    set_access(acme, bob_id, AccessLevel.WRITE);  # bob edits everything Acme owns
+    set_access(specs, writer_id, AccessLevel.WRITE);   # Specs and what is under it, nothing else
+    set_access(plan, bob_id, AccessLevel.NO_ACCESS);   # block bob on Plan
+    return [root ->:Member:->][?:Workspace];           # what I belong to
+}
+```
+
+How a request is decided:
+
+1. The caller acts as their own root plus every group reachable over `Member` edges. A chain is capped by its lowest level (WRITE in a team that is READ on a folder gives READ), and the highest chain wins.
+2. The owner of a node and the system root have `ADMIN`. A node owned by a group gives each member their level on that group.
+3. A block (`NO_ACCESS`) on the node, or on the group that owns it, wins over every grant and membership, except an `ADMIN` reached through a group above the block.
+4. Otherwise the highest of the node's public `grant`, its owner's public `grant`, and the caller's memberships wins. A grant never lowers a level.
+
+Sharing a node that is not a group yet makes it one: it owns itself and the nodes under it its old owner held, and the old owner keeps reaching it through a `Member(ADMIN)` edge, so everyone who could reach it before still can. New data attached under a group's node belongs to the group when the caller can write as it, and to the caller otherwise.
+
+The typed hops that compile to SQL apply the same rule, so `[node -->][?:Doc]` and `[node -->]` return the same set.
 
 ---
 

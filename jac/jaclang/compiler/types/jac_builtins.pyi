@@ -35,6 +35,7 @@ __all__ = [
     "Obj",
     "Root",
     "GenericEdge",
+    "Member",
     "JsxElement",
     "JsxPage",
     "JsxLayout",
@@ -72,6 +73,8 @@ __all__ = [
     "jobj",
     "grant",
     "revoke",
+    "set_access",
+    "clear_access",
     "allroots",
     "save",
     "commit",
@@ -147,6 +150,10 @@ class Root(Node):
     def shared(self) -> Root: ...
 
 class GenericEdge(Edge): ...
+
+# A member's level on a group (an AccessLevel value). Made only by set_access.
+class Member(Edge):
+    level: int
 
 # Route marker types for the client file-based router. A `pages/` module whose
 # public export returns `JsxPage` is a route; one returning `JsxLayout` is a
@@ -398,6 +405,8 @@ def jref(id_or_obj: object) -> object: ...
 def new(cls: type[_NewT], *args: object) -> _NewT: ...
 def grant(archetype: object, level: object = None) -> None: ...
 def revoke(archetype: object) -> None: ...
+def set_access(target: object, who: object, level: object) -> None: ...
+def clear_access(target: object, who: object) -> None: ...
 def allroots() -> list[Root]: ...
 def save(obj: object, owner: object = None) -> None: ...
 def commit(anchor: object = None) -> None: ...
@@ -493,6 +502,7 @@ class AccessLevel:
     READ: AccessLevel
     CONNECT: AccessLevel
     WRITE: AccessLevel
+    ADMIN: AccessLevel
 
 class ScheduleTrigger:
     STATIC: str

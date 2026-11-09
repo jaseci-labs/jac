@@ -2429,6 +2429,7 @@ graph import {
         | compiler.driver.compiler.JacCompiler._load_native_from_cache {
         register_py_callbacks
     }
+    runtime.membership ++> data.sqlcompile._acl_cond { principals }
     runtime.memory ++> server.session { Memory }
     runtime.native_library --> [
         compiler.driver.compiler.JacCompiler._load_native_from_cache {
@@ -12606,6 +12607,15 @@ graph import runtime {
             same_anchor
         },
         graph_walk.acl_read_ok { AccessLevel },
+        membership {
+            AccessLevel,
+            Anchor,
+            Archetype,
+            EdgeAnchor,
+            NodeAnchor,
+            Root,
+            access_level_cast
+        },
         memory { Anchor, Root },
         osp_graph_sv { Anchor, EdgeAnchor, NodeAnchor, anchor_key, same_anchor },
         osp_kernel_sv {
@@ -12652,6 +12662,7 @@ graph import runtime {
     cinterop as _cinterop_mod --> builtin.__getattr__;
     constants ++> [
         context { Constants as Con },
+        membership { EdgeDir },
         runtime { EdgeDir, colors },
     ]
     constructs ++> [
@@ -12697,6 +12708,22 @@ graph import runtime {
         prepared.execute_module { NativeLibrary },
         source_app._load_application { NativeLibrary, native_callback_of },
     ]
+    membership ++> [
+        runtime.JacAccessValidation.clear_access { clear_access },
+        runtime.JacAccessValidation.set_access { set_access },
+    ]
+    membership --> [
+        runtime.JacAccessValidation.allow_group { forget_principals },
+        runtime.JacAccessValidation.allow_root { forget_principals },
+        runtime.JacAccessValidation.check_access_level {
+            member_edge_level,
+            principals
+        },
+        runtime.JacAccessValidation.disallow_group { forget_principals },
+        runtime.JacAccessValidation.disallow_root { forget_principals },
+        runtime.JacGraph.heavy_edge { attach_owner },
+        runtime.JacPersistence.save { set_access },
+    ]
     memory ++> context { Memory }
     object_interop ++> typecache { fields, is_record }
     object_model ++> [
@@ -12710,8 +12737,8 @@ graph import runtime {
     osp_graph as _graph ++> osp_graph_sv;
     osp_graph_sv ++> [
         graph_utils.traverse_graph { sv_register_hydrated },
+        membership { sv_live_edges, sv_register_hydrated },
         osp_kernel_sv { cls_of_tag, tag_of_cls },
-        runtime.JacAccessValidation._groups_of { sv_live_edges, sv_register_hydrated },
         runtime.JacGraph.disconnect {
             sv_candidate_edges_between,
             sv_register_hydrated
@@ -12738,7 +12765,7 @@ graph import runtime {
         runtime.JacWalker.spawn_call { osp_spawn },
         runtime.JacWalker.visit { osp_visit, scope_of },
     ]
-    osp_kernel --> runtime.JacPersistence.destroy { osp_forget }
+    osp_kernel --> runtime.JacPersistence.drop_anchor { osp_forget }
     osp_kernel as _kernel ++> osp_kernel_sv;
     osp_kernel_sv ++> [
         runtime.JacWalker.async_spawn_call {
@@ -12770,7 +12797,7 @@ graph import runtime {
     region ++> cinterop { escape_regions, restore_regions }
     region --> [
         archetype.Archetype.__init_subclass__ { is_drop_hook },
-        runtime.JacPersistence.destroy { run_drop },
+        runtime.JacPersistence.drop_anchor { run_drop },
     ]
     region as _region_mod --> builtin.__getattr__;
     runtime ++> [
@@ -12781,6 +12808,7 @@ graph import runtime {
         },
         graph_utils.graph_node_view | graph_walk.acl_read_ok { JacRuntimeInterface },
         graph_utils.traverse_graph { JacRuntimeInterface },
+        membership { JacAccessValidation, JacRuntime, JacRuntimeInterface },
         prepared.load_prepared_module { JacRuntime as Jac },
     ]
     runtime --> [

@@ -9,6 +9,7 @@ glob __all__ = [
          'Obj',
          'Root',
          'GenericEdge',
+         'Member',
          'JsxElement',
          'PassLink',
          'DSFunc',
