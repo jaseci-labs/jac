@@ -460,7 +460,7 @@ impl native_ir_alert(
     return Alert(
         msg=code.format_message(kind='module', name=module_name),
         loc=module.loc.span(),
-        from_pass=NaIRGenPass,
+        from_pass=pass_class_of(PassKind.NA_IR_GEN),
         code=code,
         help_text=detail
     );
@@ -531,22 +531,10 @@ impl resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
     internal: bool = False,
-    peer_fell_back: bool = False,
-    source_path: str = ""
+    peer_fell_back: bool = False
 ) -> tuple[(PassSchedule | None), bool, bool] {
     spec = PRODUCTS[product];
     req = request if request is not None else ProductRequest();
-    if spec.tiered and source_path {
-        for load_name in spec.loads {
-            parts = load_name.split(".");
-            if parts and parts[0] == "jaclang" {
-                source_suffix = "jaclang" + os.sep + os.sep.join(parts[1:]) + ".jac";
-                if source_path.endswith(source_suffix) {
-                    return (spec.bootstrap(req), False, False);
-                }
-            }
-        }
-    }
     if spec.tiered and (peer_fell_back or tier_reason(product)) {
         return (spec.bootstrap(req), False, False);
     }
@@ -691,11 +679,7 @@ impl produce(
         }
     }
     (schedule, fell_back, full) = resolve(
-        product,
-        request,
-        program.internal,
-        peer_fell_back,
-        module.loc.mod_path or module.source.file_path
+        product, request, program.internal, peer_fell_back
     );
     if task is not None {
         task.import_fallback = fell_back;
