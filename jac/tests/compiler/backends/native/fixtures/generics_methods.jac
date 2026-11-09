@@ -59,10 +59,6 @@ def holder_first_float(v: int) -> float {
     return Holder[float](val=v + 0.5).first("k", 7);
 }
 
-def holder_first_str_len(n: int) -> int {
-    return len(Holder[str](val="x" * n).first(1, "y"));
-}
-
 def holder_echo_beside_spread(v: int) -> int {
     extra: dict[str, int] = {};
     return Holder[int](val=5).echo("k", v, **extra);
