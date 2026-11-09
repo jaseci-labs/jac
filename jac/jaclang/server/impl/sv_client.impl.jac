@@ -82,7 +82,8 @@ impl bridge_identity(authorization: (str | None)) -> str {
         return "";
     }
     presented = header[7:].strip();
-    if presented and hmac.compare_digest(presented, secret) {
+    if presented
+        and hmac.compare_digest(presented.encode("utf-8"), secret.encode("utf-8")) {
         return BRIDGE_USERNAME;
     }
     return "";

@@ -170,7 +170,7 @@ impl ServingApp.dispatch(request: Request) -> Response {
                 + traceback.format_exc()
         );
         return JSONResponse(
-            content={'error': f"{type(exc).__name__}: {exc}"}, status_code=500
+            content={'error': 'Internal Server Error'}, status_code=500
         );
     }
 }
