@@ -1526,7 +1526,8 @@ impl JacAPIServer.start(
             settings=settings,
             worker_main=self._worker_main,
             on_ready=_announce,
-            on_worker_exit=self._on_worker_exit
+            on_worker_exit=self._on_worker_exit,
+            drain=self.drain
         );
         return supervisor.run(port_retries=port_retries);
     }
