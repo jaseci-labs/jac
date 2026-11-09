@@ -27,6 +27,17 @@ def is_compressible(media_type: str) -> bool;
 async def _gzip_stream(source: any, level: int) -> AsyncIterator[bytes];
 
 
+obj GzipCache {
+    has max_bytes: int = 32 * 1024 * 1024,
+        entries: dict[tuple[str, int, int, int], bytes] = {},
+        total: int = 0;
+
+    def pack(body: bytes, level: int, etag: (str | None)) -> bytes;
+}
+
+glob GZIP_CACHE: GzipCache = GzipCache();
+
+
 obj CompressionPolicy {
     has enabled: bool = True,
         min_bytes: int = 1024,
