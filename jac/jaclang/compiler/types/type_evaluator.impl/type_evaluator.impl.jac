@@ -6256,7 +6256,7 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         case_node = case_node.parent;
     }
     if not isinstance(case_node, MatchCase) {
-        return None;
+        return self._nested_capture_type(capture, case_node);
     }
     stmt = case_node.parent;
     if not isinstance(stmt, MatchStmt) {
@@ -6284,6 +6284,35 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         return None;
     }
     return self._narrow_type_to(subject, pattern_type);
+}
+
+impl TypeEvaluator._nested_capture_type(
+    capture: MatchAs, slot: (UniNode | None)
+) -> TypeBase | None {
+    pattern_type = self._get_type_from_match_pattern(capture.pattern)
+        if capture.pattern is not None
+        else None;
+    field_type: (TypeBase | None) = None;
+    if isinstance(slot, MatchKVPair)
+        and isinstance(slot.parent, MatchArch)
+        and isinstance(slot.key, NameAtom) {
+        owner = self._convert_to_instance(
+            self.get_type_of_expression(slot.parent.name)
+        );
+        if isinstance(owner, ClassType) {
+            member = self._lookup_class_member(owner, slot.key.sym_name);
+            if member is not None {
+                field_type = self.get_type_of_member(member, owner);
+            }
+        }
+    }
+    if field_type is None {
+        return pattern_type;
+    }
+    if pattern_type is None {
+        return field_type;
+    }
+    return self._narrow_type_to(field_type, pattern_type);
 }
 
 impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {

@@ -14,6 +14,10 @@ obj Other {
     has code: int = 0;
 }
 
+obj Box {
+    has content: str = "";
+}
+
 def as_pattern(v: object) {
     title = Label(text="a");
     match v {
@@ -91,6 +95,33 @@ def subject_narrower_than_pattern(v: str) {
     s = "";
     match v {
         case object() as s:  # <-- Ok: a str subject binds a str
+            print(s);
+
+    }
+}
+
+def nested_positional(v: object) {
+    title = Label(text="a");
+    match v {
+        case Box(str() as title):  # <-- Error
+            print(title);
+
+    }
+}
+
+def nested_keyword_bare(v: object) {
+    title = Label(text="a");
+    match v {
+        case Box(content = title):  # <-- Error
+            print(title);
+
+    }
+}
+
+def nested_keyword_wider_pattern(v: object) {
+    s = "";
+    match v {
+        case Box(content = object() as s):  # <-- Ok: the field holds a str
             print(s);
 
     }
