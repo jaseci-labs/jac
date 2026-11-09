@@ -70,7 +70,7 @@ impl ServingServer._serve(
         self.drain.start(self.drain.reason or 'shutdown');
         self._server.close();
         await self._drain();
-        await asyncio.to_thread(self.drain.wait_for_hooks);
+        await self.drain.await_hooks();
         try {
             await asyncio.wait_for(
                 self._server.wait_closed(), timeout=self.settings.timeouts.close

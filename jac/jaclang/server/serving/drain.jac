@@ -20,6 +20,10 @@ obj DrainState {
 
     def start(reason: str = 'shutdown') -> bool;
     def wait_for_hooks;
+    """`wait_for_hooks` from an event loop, on its own thread: the default executor
+    holds request threads that may never free."""
+    async def await_hooks;
+
     def remaining -> float;
     def reset;
 }

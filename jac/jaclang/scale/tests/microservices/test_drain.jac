@@ -5,6 +5,8 @@ import asyncio;
 import json;
 import logging;
 import sys;
+import threading;
+import from concurrent.futures { ThreadPoolExecutor }
 
 
 """A callable that defines `__eq__`, so like a dataclass it is not hashable."""
@@ -226,4 +228,25 @@ test "a sync drain hook can run its own event loop" {
         _restore_hooks(saved);
     }
     assert ran == ["closed"];
+}
+
+
+test "waiting for drain hooks does not queue behind busy request threads" {
+    async def main {
+        loop = asyncio.get_running_loop();
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=1));
+        release = threading.Event();
+        busy = loop.run_in_executor(None, release.wait);
+        saved = _clear_hooks();
+        try {
+            state = DrainState(timeout=2.0);
+            state.start("test");
+            await asyncio.wait_for(state.await_hooks(), timeout=1.0);
+        } finally {
+            _restore_hooks(saved);
+            release.set();
+            await busy;
+        }
+    }
+    _run(main());
 }

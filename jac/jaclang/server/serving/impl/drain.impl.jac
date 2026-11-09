@@ -59,6 +59,16 @@ impl DrainState.wait_for_hooks {
     }
 }
 
+impl DrainState.await_hooks {
+    waiter = threading.Thread(
+        target=self.wait_for_hooks, name='jac-drain-wait', daemon=True
+    );
+    waiter.start();
+    while waiter.is_alive() {
+        await asyncio.sleep(0.05);
+    }
+}
+
 impl DrainState.remaining -> float {
     if not self.draining {
         return self.timeout;
