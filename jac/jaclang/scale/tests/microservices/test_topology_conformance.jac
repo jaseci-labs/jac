@@ -18,8 +18,12 @@ glob _FIXTURE: Path = Path(__file__).parent.parent / "fixtures" / "typed_boundar
 
 """Serve `project` in `topology`. Both topologies run from the same project,
 so they share its database and the colocated boot provisions the identity
-schema before the fleet's services start side by side. Returns the server and
-its base URL."""
+schema before the fleet's services start side by side (#10680: the identity
+tables are created outside the store's schema election, so services booting
+together against a fresh database can lose one to a catalog race). A fleet
+whose gateway is up while an app is still booting is a boot failure, not a
+set of divergent rows, so it is refused here. Returns the server and its base
+URL."""
 def _serve(project: Path, topology: str) -> tuple[any, str] {
     import jaclang;
     manifest = (_FIXTURE / "jac.toml").read_text(encoding="utf-8");
@@ -35,7 +39,15 @@ def _serve(project: Path, topology: str) -> tuple[any, str] {
     (project / "jac.toml").write_text(manifest, encoding="utf-8");
     port = get_free_port();
     server = start_server(project, project / "consumer.jac", port);
-    return (server, f"http://127.0.0.1:{port}");
+    base = f"http://127.0.0.1:{port}";
+    if topology == "fleet" {
+        health = requests.get(f"{base}/healthz", timeout=5).json();
+        if health.get("status") != "healthy" {
+            stop_server(server);
+            raise RuntimeError(f"fleet served with apps still booting: {health}");
+        }
+    }
+    return (server, base);
 }
 
 
