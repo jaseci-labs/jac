@@ -64,6 +64,12 @@ glob OWNERSHIP_CASES: list[tuple[any, ...]] = [
          ),
          (
              "managed borrows",
+             "collecting cycles may run a drop that writes the path",
+             "managed_borrow_collect_call.jac",
+             ["E1322"]
+         ),
+         (
+             "managed borrows",
              "assigning through a shared borrow",
              "managed_borrow_shared_write.jac",
              ["E1320"]
