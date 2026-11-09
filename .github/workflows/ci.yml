@@ -1298,7 +1298,7 @@ jobs:
       # the native engine needs WebKitGTK + a C toolchain to build libwebview,
       # patchelf for the $ORIGIN runpath, and a display to launch under.
       - name: Install desktop build deps
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           # The runner's mirror list uses HTTP, which can be unreachable while
           # HTTPS works. Keep Ubuntu's signed repositories and refresh over IPv4.

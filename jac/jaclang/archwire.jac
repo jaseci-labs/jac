@@ -2816,6 +2816,80 @@ graph import {
         | compiler.driver.build_services
         | data.type_identity
         | server.assembly { PreparedApplication }
+    runtime.python.bindings.abc ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.array ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.asyncio ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.atexit ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.binascii ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.bisect ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.blake2 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.bz2 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.cmath ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_cn ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_hk ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_iso2022 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_jp ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_kr ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_tw ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.collections ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.csv ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.datetime ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.decimal ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.elementtree ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.errno ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.fcntl ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.functools ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.grp ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.hashopenssl ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.heapq ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.hmac ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.itertools ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.json ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.locale ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.lsprof ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.lzma ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.math ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.md5 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.mmap ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.multibytecodec ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.multiprocessing ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.opcode ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.operator ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.pickle ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.posix ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.posixshmem ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.posixsubprocess ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.pwd ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.pyexpat ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.queue ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.random ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.resource ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.select ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sha1 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sha2 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sha3 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.socket ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sqlite3 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sre ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.ssl ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.stat ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.statistics ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.struct ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.suggestions ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sysconfig ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.syslog ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.termios ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.time ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.tracemalloc ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.types ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.typing ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.unicodedata ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.uuid ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.weakref ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.zlib ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.zoneinfo ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.zstd ++> compiler.backends.py.jacpython.native_api;
     runtime.python.capi ++> [
         compiler.backends.py.jacpython.native_api {
             boundary_failure,
@@ -3018,6 +3092,8 @@ graph import {
         compiler.frontend.python.parser_actions.pa_warn_escape { warn },
         compiler.frontend.python.source_encoding { take_buffer },
     ]
+    runtime.python.object_model.cell ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.enumerate ++> compiler.backends.py.jacpython.native_api;
     runtime.python.object_model.header ++> compiler.backends.py.jacpython.native_bridge {
         current_interp,
         object_decref,
@@ -3027,6 +3103,10 @@ graph import {
         object_xdecref,
         type_has_feature
     }
+    runtime.python.object_model.interpolation ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.picklebuffer ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.range ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.template ++> compiler.backends.py.jacpython.native_api;
     runtime.python.objects ++> [
         compiler.backends.py.jacpython.cpy_assemble { PyCode, PyObj },
         compiler.backends.py.jacpython.cpy_codegen {
@@ -13356,6 +13436,7 @@ graph import compiler.frontend.python {
             arguments,
             boolop,
             cmpop,
+            comprehension,
             expr,
             expr_context,
             keyword,
@@ -13433,11 +13514,13 @@ graph import compiler.frontend.python {
         pa_function_def_decorators,
         pa_get_cmpops,
         pa_get_exprs,
+        pa_get_genexp_start_expr,
         pa_get_keys,
         pa_get_last_comprehension_item,
         pa_get_pattern_keys,
         pa_get_patterns,
         pa_get_values,
+        pa_has_keyword_unpacking,
         pa_interactive_exit,
         pa_interpolation,
         pa_join_names_with_dot,
@@ -13454,6 +13537,7 @@ graph import compiler.frontend.python {
         pa_name_default_pair,
         pa_name_from_token,
         pa_name_id,
+        pa_next_token_is_augassign,
         pa_nonparen_genexp_in_call,
         pa_number_from_token,
         pa_or_pattern_singleton,
@@ -13520,8 +13604,10 @@ graph import compiler.frontend.python {
             peg_update_memo
         },
         parser_actions {
+            DEL_TARGETS,
             peg_has_error,
             peg_parser,
+            peg_peek_type,
             peg_raise_syntax_error,
             peg_raise_syntax_error_on_token,
             peg_token
@@ -13552,7 +13638,7 @@ graph import compiler.frontend.python {
             TSTRING_START,
             TYPE_COMMENT
         },
-        parser_actions { mk_diag, tok_loc },
+        parser_actions { ENDMARKER, NEWLINE, SEMI, mk_diag, tok_loc },
         peg_runtime {
             COMMENT,
             ENDMARKER,
@@ -16488,7 +16574,7 @@ graph import runtime.python {
             type_name
         },
         bindings.zstd | modules.decimal_context { c_string_text },
-        constant_input { boundary_failure, read_buffer },
+        constant_input { boundary_failure, read_buffer, type_name },
         constant_output { checked, required, text_object, write_buffer },
         modules.binary_scalars { required },
         modules.cmath { boundary_failure, object_error, required },
@@ -35277,17 +35363,14 @@ graph import runtime.python {
         MPD_MIN_ETINY,
         MPD_Overflow,
         MPD_Underflow,
-        mpd_callocfunc,
         mpd_callocfunc_em,
         mpd_context_t,
-        mpd_free,
-        mpd_mallocfunc,
         mpd_maxcontext,
-        mpd_reallocfunc,
         mpd_round_string,
         mpd_setminalloc,
-        mpd_traphandler,
-        mpd_version
+        mpd_version,
+        set_mpd_memory_hooks,
+        set_mpd_trap_handler
     }
     modules.multibytecodec ++> [
         bindings.clinic.multibytecodec {
@@ -36211,6 +36294,7 @@ graph import runtime.python {
         },
         bindings.socket {
             netdb_lock,
+            set_netdb_lock,
             socket_CMSG_LEN,
             socket_CMSG_SPACE,
             socket_close,
@@ -43009,6 +43093,7 @@ graph import runtime.python.modules {
             ntohs,
             set_gaierror,
             set_herror,
+            set_sock_cloexec_works,
             sock_cloexec_works,
             socket_error,
             socket_parse_timeout,
@@ -43047,6 +43132,7 @@ graph import runtime.python.modules {
             internal_setblocking,
             module_of_type,
             set_error,
+            set_sock_cloexec_works,
             set_sock_fd,
             set_sock_timeout,
             sock_call,

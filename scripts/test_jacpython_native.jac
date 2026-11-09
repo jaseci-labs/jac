@@ -25,7 +25,7 @@ def verify(library_path: Path) {
     if sys.version_info[:2] != (3, 14) {
         raise RuntimeError("The JacPython output oracle requires CPython 3.14");
     }
-    bridge = getattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion", None);
+    bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 4 {
         raise RuntimeError(
             "The JacPython output oracle runs inside the JacPython runtime (bridge 4)"
@@ -176,7 +176,7 @@ def main -> int {
         package.mkdir();
         (package / "__init__.jac").write_text("");
         (package / "archwire.jac").write_text((sources / "archwire.jac").read_text());
-        for relative in staged_sources(
+        staged = staged_sources(
             sources,
             [
                 "runtime/python/objects.jac",
@@ -191,12 +191,19 @@ def main -> int {
                 "runtime/python/constant_output.jac",
                 "compiler/frontend/python/syntax_error.jac"
             ]
-        ) {
+        );
+        if "runtime/python/impl/objects.impl.jac" not in staged {
+            raise AssertionError(
+                "native boundary probe omitted the Jac object implementation annex"
+            );
+        }
+        for relative in staged {
             destination = stage / "native_subject" / relative;
             destination.parent.mkdir(parents=True, exist_ok=True);
-            destination.write_text(
-                (sources / relative).read_text().replace("jaclang.", "native_subject.")
+            source_text = (sources / relative).read_text().replace(
+                "jaclang.", "native_subject."
             );
+            destination.write_text(source_text);
         }
         # Keep the probe isolated, but use the runtime's production import
         # wiring so its staged units resolve types like the real package.

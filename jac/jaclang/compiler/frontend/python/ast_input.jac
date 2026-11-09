@@ -2127,11 +2127,15 @@ def read_node_keyword(handle: ptr[PyObject], depth: int) -> keyword {
 }
 
 def read_node_alias(handle: ptr[PyObject], depth: int) -> alias {
+    lineno_value = field_int_optional(handle, ast_field.LINENO, depth + 1, True);
+    col_offset_value = field_int_optional(
+        handle, ast_field.COL_OFFSET, depth + 1, True
+    );
     return alias(
         name=field_str(handle, ast_field.NAME, depth + 1),
         asname=field_str_optional(handle, ast_field.ASNAME, depth + 1),
-        lineno=field_int(handle, ast_field.LINENO, depth + 1),
-        col_offset=field_int(handle, ast_field.COL_OFFSET, depth + 1),
+        lineno=0 if lineno_value is None else lineno_value,
+        col_offset=0 if col_offset_value is None else col_offset_value,
         end_lineno=field_int_optional(handle, ast_field.END_LINENO, depth + 1, True),
         end_col_offset=field_int_optional(
             handle, ast_field.END_COL_OFFSET, depth + 1, True
@@ -2310,6 +2314,9 @@ def read_node(handle: ptr[PyObject], depth: int = 0) -> ast_node {
     kind = int(jacpy_ast_kind(handle));
     if kind < -1 {
         raise boundary_failure();
+    }
+    if kind == -1 and jacpy_value_kind(handle) == 0 {
+        raise ValueError("None disallowed");
     }
     if kind == ast_kind.Module.value {
         return read_node_Module(handle, depth);
@@ -2650,5 +2657,5 @@ def read_node(handle: ptr[PyObject], depth: int = 0) -> ast_node {
     if kind == ast_kind.TypeVarTuple.value {
         return read_node_TypeVarTuple(handle, depth);
     }
-    raise TypeError("Expected a concrete AST node");
+    raise TypeError("Expected a concrete AST node, but got " + repr_value(handle));
 }

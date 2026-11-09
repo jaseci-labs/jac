@@ -1,5 +1,7 @@
 """Generator diagnostics cross the shipped native Python compiler boundary."""
 import from builtins { compile as pycompile }
+import ast;
+import warnings;
 
 test "yield and yield-from diagnostics preserve expression identity" {
     cases = [
@@ -49,5 +51,183 @@ test "invalid augmented targets identify the expression and its source span" {
             assert error.end_offset == end;
         }
         assert caught , source;
+    }
+}
+
+test "EOF diagnostics keep the opening token's line and column" {
+    cases = [
+        (
+            "value = '''first line\nsecond line",
+            "unterminated triple-quoted string literal (detected at line 2)",
+            1,
+            9,
+            "value = '''first line"
+        ),
+        ("value = 1\\", "unexpected EOF while parsing", 1, 11, "value = 1\\\n")
+    ];
+    for (source, message, line, offset, text) in cases {
+        caught = False;
+        try {
+            pycompile(source, "eof.py", "exec");
+        } except SyntaxError as error {
+            caught = True;
+            assert error.msg == message , error.msg;
+            assert error.filename == "eof.py";
+            assert error.lineno == line , error.lineno;
+            assert error.offset == offset , f"{source!r}: offset {error.offset}";
+            assert error.text == text , error.text;
+        }
+        assert caught , source;
+    }
+    caught = False;
+    try {
+        pycompile("ä = '''thîs is \na \ntest", "eof.py", "eval");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg
+            == "unterminated triple-quoted string literal (detected at line 3)" , error.msg;
+        assert error.offset == 5 , error.offset;
+        assert error.text == "ä = '''thîs is " , error.text;
+    }
+    assert caught;
+}
+
+test "unclosed delimiters take priority over the later syntax error" {
+    source = "a = ( 1, 2, 3\nb=3";
+    caught = False;
+    try {
+        pycompile(source, "paren.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg == "'(' was never closed" , error.msg;
+        assert error.filename == "paren.py";
+        assert error.lineno == 1 , error.lineno;
+        assert error.offset == 5 , error.offset;
+        assert (error.text or "").rstrip("\n") == "a = ( 1, 2, 3" , error.text;
+    }
+    assert caught;
+}
+
+test "missing indented blocks interpolate the header line" {
+    caught = False;
+    try {
+        pycompile("if True:\nprint('missing')", "indent.py", "exec");
+    } except IndentationError as error {
+        caught = True;
+        assert error.msg
+            == "expected an indented block after 'if' statement on line 1" , error.msg;
+        assert error.lineno == 2 , error.lineno;
+    }
+    assert caught;
+}
+
+test "null-byte errors are rejected before the source reaches the tokenizer" {
+    caught = False;
+    try {
+        pycompile("x = '\x00' trailing", "null_byte.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg == "source code string cannot contain null bytes" , error.msg;
+        assert error.lineno is None , error.lineno;
+        assert error.text is None , repr(error.text);
+    }
+    assert caught;
+}
+
+test "unparenthesized generator diagnostics span the generator expression" {
+    cases = [
+        ("f(4, x for x in range(1))", 6, 25),
+        ("foo(x,    y for y in range(3) for z in range(2) if z    , p)", 11, 53)
+    ];
+    for (source, offset, end_offset) in cases {
+        caught = False;
+        try {
+            pycompile(source, "generator.py", "exec");
+        } except SyntaxError as error {
+            caught = True;
+            assert error.msg == "Generator expression must be parenthesized" , error.msg;
+            assert error.offset == offset , error.offset;
+            assert error.end_offset == end_offset , error.end_offset;
+        }
+        assert caught;
+    }
+}
+
+test "expression assignment diagnostics use the known expression start" {
+    caught = False;
+    try {
+        pycompile("print(end1 + end2 = ' ')", "assignment.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg
+            == "expression cannot contain assignment, perhaps you meant \"==\"?" , error.msg;
+        assert error.offset == 7 , error.offset;
+    }
+    assert caught;
+}
+
+test "invalid AST fields use CPython's ValueError" {
+    caught = False;
+    try {
+        tree = ast.Module([ast.Assign([None], ast.Constant(3))], []);
+        ast.fix_missing_locations(tree);
+        pycompile(tree, "ast.py", "exec");
+    } except ValueError as error {
+        caught = True;
+        assert str(error).startswith("None disallowed") , str(error);
+    }
+    assert caught;
+}
+
+test "positional-only argument diagnostics avoid grammar capture names" {
+    caught = False;
+    try {
+        pycompile("def f(a, b = 5, /, c): pass", "arguments.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg
+            == "parameter without a default follows parameter with a default" , error.msg;
+    }
+    assert caught;
+}
+
+test "turning an invalid escape warning into an error drops the warning lead-in" {
+    with warnings.catch_warnings() {
+        warnings.simplefilter("error", SyntaxWarning);
+        caught = False;
+        try {
+            pycompile("value = '\\z'", "escape.py", "exec");
+        } except SyntaxError as error {
+            caught = True;
+            assert error.msg
+                == r'"\z" is an invalid escape sequence. Did you mean "\\z"? A raw string is also an option.' , error.msg;
+            assert error.offset == 10 , error.offset;
+            assert error.end_offset == 12 , error.end_offset;
+        }
+        assert caught;
+    }
+}
+
+test "invalid escape warnings match CPython's suggestion text" {
+    with warnings.catch_warnings(record=True) as recorded {
+        warnings.simplefilter("always", SyntaxWarning);
+        pycompile("value = '\\z'", "escape_warning.py", "exec");
+        assert len(recorded) == 1 , len(recorded);
+        assert str(recorded[0].message)
+            == r'"\z" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\z"? A raw string is also an option.';
+    }
+}
+
+test "deep expressions parse or report recursion without exhausting the stack" {
+    # CPython builds these 5000-deep chains iteratively and accepts them, so
+    # either outcome is correct here; what the AST output guard must never do is
+    # take the process down with the C stack.
+    for suffix in ["()", ".b", "[0]", "*a"] {
+        assert ast.parse("a" + suffix * 200, mode="eval") is not None;
+        try {
+            assert ast.parse("a" + suffix * 5000, mode="eval") is not None;
+        } except RecursionError {
+            continue;
+        }
     }
 }

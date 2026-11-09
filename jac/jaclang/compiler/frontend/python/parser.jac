@@ -9162,7 +9162,11 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
                                 target=a,
                                 iter=b,
                                 ifs=(c if c is not None else []),
-                                is_async=1
+                                is_async=1,
+                                for_lineno=kw_1.lineno,
+                                for_col_offset=kw_1.col_offset,
+                                for_end_lineno=kw_1.end_lineno,
+                                for_end_col_offset=kw_1.end_col_offset
                             );
                             p.level -= 1;
                             return res;
@@ -9188,7 +9192,11 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
                             target=a,
                             iter=b,
                             ifs=(c if c is not None else []),
-                            is_async=0
+                            is_async=0,
+                            for_lineno=kw.lineno,
+                            for_col_offset=kw.col_offset,
+                            for_end_lineno=kw.end_lineno,
+                            for_end_col_offset=kw.end_col_offset
                         );
                         p.level -= 1;
                         return res;
@@ -10751,7 +10759,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                     p,
                     False,
                     a_2,
-                    pa_get_last_comprehension_item(pa_seq_last(b)),
+                    pa_get_last_comprehension_item(b),
                     "Generator expression must be parenthesized"
                 );
                 p.level -= 1;
@@ -10806,7 +10814,17 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
     if a_5 is not None {
         b = rule_for_if_clauses(p);
         if b is not None {
-            res = pa_nonparen_genexp_in_call(a_5, b);
+            if pa_has_keyword_unpacking(a_5) {
+                res = pa_nonparen_genexp_in_call(a_5, b);
+            } else {
+                res = pa_raise_syntax_known_range(
+                    p,
+                    False,
+                    pa_get_genexp_start_expr(a_5, b),
+                    pa_get_last_comprehension_item(b),
+                    "Generator expression must be parenthesized"
+                );
+            }
             p.level -= 1;
             return res;
         }
@@ -10824,7 +10842,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                         p,
                         False,
                         a_6,
-                        pa_get_last_comprehension_item(pa_seq_last(b)),
+                        pa_get_last_comprehension_item(b),
                         "Generator expression must be parenthesized"
                     );
                     p.level -= 1;
@@ -10840,7 +10858,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
         if lit is not None {
             args = rule_args(p);
             if args is not None {
-                res = pa_arguments_parsing_error(a_7);
+                res = pa_arguments_parsing_error(p, a_7);
                 p.level -= 1;
                 return res;
             }
@@ -11536,9 +11554,11 @@ def:priv _rule_invalid_del_stmt(p: peg_parser) -> object | None {
     if kw is not None {
         a = rule_star_expressions(p);
         if a is not None {
-            res = pa_raise_invalid_target(p, DEL_TARGETS, a);
-            p.level -= 1;
-            return res;
+            if not pa_next_token_is_augassign(p) {
+                res = pa_raise_invalid_target(p, DEL_TARGETS, a);
+                p.level -= 1;
+                return res;
+            }
         }
     }
     peg_reset(p, mark);
@@ -13235,7 +13255,7 @@ def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
                     False,
                     a_3,
                     b,
-                    "expression cannot contain assignment, perhaps you meant \\\"==\\\"?"
+                    "expression cannot contain assignment, perhaps you meant \"==\"?"
                 );
                 p.level -= 1;
                 return res;
@@ -13468,7 +13488,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
                     p,
                     False,
                     a_3,
-                    "parameter without a_3 default follows parameter with a_3 default"
+                    "parameter without a default follows parameter with a default"
                 );
                 p.level -= 1;
                 return res;
@@ -13902,7 +13922,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
                     p,
                     False,
                     a_3,
-                    "parameter without a_3 default follows parameter with a_3 default"
+                    "parameter without a default follows parameter with a default"
                 );
                 p.level -= 1;
                 return res;
@@ -22867,6 +22887,38 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
             rule_statement_newline(p);
         }
     }
+    # Tokenize to EOF before reporting a parser failure. CPython tokenizes the
+    # entire source first, so an unterminated string later in the input takes
+    # precedence over an earlier syntax error such as assignment in eval mode.
+    if p.tok.error is None and not p.tok.done {
+        while not p.tok.done {
+            raw = tokenizer_next(p.tok);
+            if raw is p.tok.error {
+                p.error = p.tok.error;
+                p.error_indicator = True;
+                break;
+            }
+        }
+    }
+    if p.tok.paren_stack
+        and p.tok.error is None
+        and p.tok.eof_reached
+        and not p.tok.string_modes
+        and not p.tok.extra_tokens {
+        opener = p.tok.paren_stack[-1];
+        location = p.tok.paren_locations[-1];
+        raise_source_error(
+            p,
+            syntax_failure(
+                "'" + opener + "' was never closed",
+                filename=p.filename,
+                lineno=location[0],
+                offset=location[1] + 1,
+                end_lineno=location[0],
+                end_offset=location[1] + 2
+            )
+        );
+    }
     kind = "SyntaxError";
     message = "invalid syntax";
     if first_bad is not None and first_bad.tok_type in (INDENT, DEDENT) {
@@ -22877,8 +22929,8 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
     }
     line = first_bad.lineno if first_bad is not None else 1;
     column = first_bad.col_offset if first_bad is not None else 0;
-    end_line = line;
-    end_column = column + 1;
+    end_line = first_bad.end_lineno if first_bad is not None else line;
+    end_column = first_bad.end_col_offset if first_bad is not None else column + 1;
     if p.error is not None {
         kind = p.error.kind;
         message = p.error.message;
@@ -22889,6 +22941,9 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
     }
     lines = decode_source_lines(p.tok.data);
     text = lines[line - 1] if line > 0 and line <= len(lines) else "";
+    if message == "source code cannot contain null bytes" and "\x00" in text {
+        text = text.split("\x00", 1)[0];
+    }
     if message.startswith("unterminated") {
         text = text.rstrip("\r\n");
     }

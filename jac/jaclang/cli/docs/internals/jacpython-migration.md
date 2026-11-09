@@ -143,8 +143,12 @@ The table of built-in modules, `_PyImport_Inittab`, is C data in
 address in it is a real use of the binding, and `prepare_native.py` links the
 table, so every registered module enters `jacpython.o`. `build_jacpython.zig`
 links libpython and the interpreter with each registered module's linker flags
-from the registry and fails when the table lacks a listed `PyInit`. `smoke.py`
-and the CI compatibility step read the same registry.
+from the registry and fails when the table lacks a listed `PyInit`.
+`prepare_native.py` also fails when the compiled plan's public exports lack a
+listed `PyInit_*` or one of the static types the surviving C objects name as
+extern globals (`STATIC_TYPE_EXPORTS`, looked up as globals rather than
+functions), and the interpreter link fails if the object does not define one.
+`smoke.py` and the CI compatibility step read the same registry.
 
 The hash modules (`_md5`, `_sha1`, `_sha2`, `_sha3`, `_blake2`, `_hmac`) keep
 their digest state in the cores of `na_stdlib/_digest.jac`, the same Jac that
