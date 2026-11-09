@@ -25,7 +25,7 @@ nineteen files exist, CI runs them, and what they run is the container.
 
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline { pass_class_of, product_passes }
 import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
     ProductRequest
@@ -39,7 +39,12 @@ def codegen_lane(native: bool) -> list[type] {
         CompilationProduct.PY_IR,
         CompilationProduct.FROZEN
     ) {
-        lane.extend(product_passes(product, ProductRequest(native=native)));
+        lane.extend(
+            [
+                pass_class_of(kind)
+                for kind in product_passes(product, ProductRequest(native=native))
+            ]
+        );
     }
     return lane;
 }

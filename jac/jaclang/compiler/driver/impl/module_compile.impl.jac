@@ -203,11 +203,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
         );
     }
     deliver_alerts(
-        [
-            native_ir_alert(
-                mod, os.path.basename(mod_path), detail, E5092, bool(reason)
-            )
-        ],
+        [native_ir_alert(mod, os.path.basename(mod_path), detail, E5092, bool(reason))],
         [],
         program
     );

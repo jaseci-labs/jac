@@ -288,7 +288,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [
-            p.__name__
+            p.value
             for product in (
                 CompilationProduct.CODEGEN,
                 CompilationProduct.PY_IR,
@@ -352,7 +352,7 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
             covered = seed(owner)
                 or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
+                f"{origin}: pass {p.value} lives in {owner}, which is neither a "
                 "seed module nor in the schedule's dependency list; a compile "
                 "reached from its import would run the schedule that needs it"
             );

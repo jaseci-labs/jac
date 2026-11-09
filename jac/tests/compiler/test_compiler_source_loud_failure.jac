@@ -32,6 +32,7 @@ import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass 
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.driver.pipeline { schedule_for }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+import from jaclang.compiler.passes.context { PassKind }
 
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
@@ -83,7 +84,7 @@ def _absent_backend -> types.ModuleType {
 }
 
 """Resolve the codegen lane with `stub` standing in for the ES backend."""
-def _codegen_with(stub: types.ModuleType) -> list[type] {
+def _codegen_with(stub: types.ModuleType) -> list[PassKind] {
     had = ES_BACKEND in sys.modules;
     saved: types.ModuleType = sys.modules[ES_BACKEND] if had else stub;
     sys.modules[ES_BACKEND] = stub;
@@ -178,10 +179,10 @@ test "a broken compiler source fails loudly instead of dropping backends" {
 
 test "an absent backend still degrades to the bytecode-only fallback" {
     sched = _codegen_with(_absent_backend());
-    assert [p.__name__ for p in sched] == ["NativeImportFactsPass", "JcirGenPass"];
+    assert sched == [PassKind.NATIVE_IMPORT_FACTS, PassKind.JCIR_GEN];
 }
 
 test "a broken module outside the compiler tree still degrades" {
     sched = _codegen_with(_broken_backend(USER_SRC));
-    assert [p.__name__ for p in sched] == ["NativeImportFactsPass", "JcirGenPass"];
+    assert sched == [PassKind.NATIVE_IMPORT_FACTS, PassKind.JCIR_GEN];
 }
