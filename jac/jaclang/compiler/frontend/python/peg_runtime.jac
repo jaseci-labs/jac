@@ -71,13 +71,7 @@ def peg_rule_abort(p: peg_parser) {
 
 def peg_stack_overflow(p: peg_parser) {
     if p.error is None {
-        has_fstring = False;
-        for token in p.tokens {
-            if token.tok_type == FSTRING_START {
-                has_fstring = True;
-                break;
-            }
-        }
+        has_fstring = bool(p.tok.string_modes);
         p.error = mk_diag(
             "SyntaxError" if has_fstring else "RecursionError",
             "f-string: expressions nested too deeply"

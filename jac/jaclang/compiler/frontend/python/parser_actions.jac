@@ -160,9 +160,9 @@ def pa_check_escape(
     body_column: int
 ) {
     following = data[i + 1];
-    line_offset = pa_escape_line_offset(data, i);
-    column = pa_escape_column_offset(data, i, body_column);
     if following not in valid {
+        line_offset = pa_escape_line_offset(data, i);
+        column = pa_escape_column_offset(data, i, body_column);
         pa_warn_escape(chr(following), tok, line_offset, column, column + 2);
     } elif following >= ord("4")
         and following <= ord("7")
@@ -171,6 +171,8 @@ def pa_check_escape(
         and data[i + 2] <= ord("7")
         and data[i + 3] >= ord("0")
         and data[i + 3] <= ord("7") {
+        line_offset = pa_escape_line_offset(data, i);
+        column = pa_escape_column_offset(data, i, body_column);
         pa_warn_escape(
             data[i + 1:i + 4].decode("utf-8"), tok, line_offset, column, column + 4
         );
@@ -1932,6 +1934,22 @@ def pa_get_genexp_start_expr(`node: object, clauses: object) -> expr | None {
     return None;
 }
 
+def pa_invalid_target_expr(`node: expr, is_delete: bool) -> expr {
+    if isinstance(`node, (List, Tuple)) {
+        elts = (`node as List).elts
+            if isinstance(`node, List)
+            else (`node as Tuple).elts;
+        for elt in elts {
+            name = pa_get_expr_name(elt, is_delete);
+            if name not in ["name", "attribute", "subscript", "list", "tuple"]
+                and (is_delete or name != "starred") {
+                return pa_invalid_target_expr(elt, is_delete);
+            }
+        }
+    }
+    return `node as expr;
+}
+
 def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> None {
     if kind == DEL_TARGETS {
         next = peg_peek_type(p);
@@ -1941,10 +1959,11 @@ def pa_raise_invalid_target(p: peg_parser, kind: int, `node: object | None) -> N
     }
     if isinstance(`node, expr) {
         is_delete = kind == DEL_TARGETS;
-        target_name = pa_get_expr_name(`node as expr, is_delete);
+        bad_expr = pa_invalid_target_expr(`node as expr, is_delete);
+        target_name = pa_get_expr_name(bad_expr, is_delete);
         action = "delete" if is_delete else "assign to";
         return pa_raise_syntax_known_expr(
-            p, False, `node, "cannot " + action + " " + target_name
+            p, False, bad_expr, "cannot " + action + " " + target_name
         );
     }
     return pa_raise_syntax(p, False, "invalid assignment target");

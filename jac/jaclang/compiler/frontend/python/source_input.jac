@@ -18,6 +18,11 @@ def invalid_utf8_source_error(
             position = int(detail[start:end]);
         }
     }
+    # UnicodeDecodeError offsets for utf-8-sig are relative to the bytes after
+    # the BOM, while source locations refer to the original buffer.
+    if data.startswith(b"\xef\xbb\xbf") {
+        position += 3;
+    }
     position = min(max(position, 0), len(data) - 1);
     byte = data[position] if data else 0;
     line = 1;

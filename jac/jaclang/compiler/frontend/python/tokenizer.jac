@@ -901,8 +901,8 @@ def _string_syntax_error(
     return bad;
 }
 
-def _escaped_terminal_quote(st: tok_state, quote: int) -> bool {
-    end = len(st.data);
+def _escaped_terminal_quote(st: tok_state, quote: int, end: int) -> bool {
+    end = min(end, len(st.data));
     while end > 0
         and (st.data[end - 1] == ord("\n") or st.data[end - 1] == ord("\r")) {
         end = end - 1;
@@ -911,9 +911,9 @@ def _escaped_terminal_quote(st: tok_state, quote: int) -> bool {
 }
 
 def _unterminated_string_message(
-    st: tok_state, quote: int, start_lineno: int, qlen: int
+    st: tok_state, quote: int, start_lineno: int, qlen: int, end: int
 ) -> str {
-    if qlen == 1 and not st.string_modes and _escaped_terminal_quote(st, quote) {
+    if qlen == 1 and not st.string_modes and _escaped_terminal_quote(st, quote, end) {
         return "unterminated string literal (detected at line "
             + str(start_lineno)
             + "); perhaps you escaped the end quote";
@@ -1261,7 +1261,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
             if ch == ord("\n") or ch == ord("\r") {
                 return _string_syntax_error(
                     st,
-                    _unterminated_string_message(st, quote, start_lineno, qlen),
+                    _unterminated_string_message(st, quote, start_lineno, qlen, st.pos),
                     start_col,
                     start_lineno
                 );
@@ -1321,7 +1321,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
     }
     return _string_syntax_error(
         st,
-        _unterminated_string_message(st, quote, start_lineno, qlen),
+        _unterminated_string_message(st, quote, start_lineno, qlen, st.pos),
         start_col,
         start_lineno
     );

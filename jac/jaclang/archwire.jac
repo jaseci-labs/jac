@@ -13643,7 +13643,6 @@ graph import compiler.frontend.python {
             COMMENT,
             ENDMARKER,
             ERRORTOKEN,
-            FSTRING_START,
             NAME,
             NEWLINE,
             NL,

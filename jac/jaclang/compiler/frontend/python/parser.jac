@@ -22889,6 +22889,7 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
     }
     if p.tok.paren_stack
         and p.tok.error is None
+        and p.tok.eof_reached
         and not p.tok.string_modes
         and not p.tok.extra_tokens {
         opener = p.tok.paren_stack[-1];

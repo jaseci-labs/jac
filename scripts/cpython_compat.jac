@@ -334,13 +334,17 @@ def isolated_compatibility_runtime(python: Path, cache: Path, label: str) -> Pat
         probe(str(python), "import sys; print(sys.executable)")
     ).resolve();
     relative = executable.relative_to(prefix);
-    destination = cache.resolve().parent / f"{label}-compat-runtime";
-    shutil.rmtree(destination, ignore_errors=True);
+    runtime_parent = cache.resolve().parent;
+    runtime_parent.mkdir(parents=True, exist_ok=True);
+    destination = Path(
+        tempfile.mkdtemp(prefix=f"{label}-compat-runtime-", dir=runtime_parent)
+    );
     try {
-        shutil.copytree(prefix, destination, copy_function=os.link);
+        shutil.copytree(prefix, destination, copy_function=os.link, dirs_exist_ok=True);
     } except OSError {
         shutil.rmtree(destination, ignore_errors=True);
-        shutil.copytree(prefix, destination);
+        destination.mkdir(parents=True, exist_ok=True);
+        shutil.copytree(prefix, destination, dirs_exist_ok=True);
     }
     relocated = destination / relative;
     probe(str(relocated), "import sys; print(sys.prefix)");
@@ -539,6 +543,7 @@ def run(args: any) -> int {
     # Keep the pinned test corpus and test C extensions out of either cached
     # interpreter prefix. Hardlinks make the disposable copies cheap.
     python = str(isolated_compatibility_runtime(base_python, cache, args.label));
+    runtime_root = Path(probe(python, "import sys; print(sys.prefix)")).resolve();
     version = install_tests(python, cache, jacpython);
     module_names = args.modules or list_modules(python, out / "work");
     jobs = args.jobs or os.cpu_count() or 1;
@@ -563,6 +568,8 @@ def run(args: any) -> int {
             );
         }
     }
+    # Each run owns its temporary prefix; never remove a sibling run's copy.
+    shutil.rmtree(runtime_root, ignore_errors=True);
     shutil.rmtree(out / "work", ignore_errors=True);
     states: dict[str, int] = {};
     for record in records.values() {
@@ -715,6 +722,11 @@ def render(
         else f"{gaps} incompatibilities";
     lines = [
         f"## CPython {jac['version']} regression suite: JacPython vs stock CPython",
+        (
+            "Full suite comparison."
+                if jac.get("full_suite")
+                else "Selected-module comparison."
+        ),
         "",
         f"**{verdict}** (resources: `{jac['resources'] or 'none'}`, "
             + f"memory cap: `{jac.get('memlimit') or 'disabled'}`)",
@@ -777,8 +789,10 @@ def validate_comparison_runs(stock: dict[str, any], jac: dict[str, any]) {
                 + "version, resources, and memory cap"
         );
     }
-    if stock.get("full_suite") != True or jac.get("full_suite") != True {
-        raise RuntimeError("compare needs full-suite CPython and JacPython results");
+    if bool(stock.get("full_suite")) != bool(jac.get("full_suite")) {
+        raise RuntimeError(
+            "compare needs either two full-suite runs or two selected-module runs"
+        );
     }
     stock_names = stock.get("module_names", []);
     jac_names = jac.get("module_names", []);
