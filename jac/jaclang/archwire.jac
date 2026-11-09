@@ -10226,6 +10226,11 @@ graph import compiler {
             collect_method_names
         },
         passes.ownership_check_pass { CallKind, classify_call },
+        passes.ownership_check_pass.OwnershipCheckPass._intrinsic_writes
+            | passes.type_checker_pass.TypeCheckPass._check_intrinsic_collision
+            | types.type_evaluator.TypeEvaluator._intrinsic_function_type {
+            intrinsic_registry_if_ready
+        },
         passes.placement_pass.PlacementPass._run_decided
             | placement.placement_solver.PlacementApplyPass._run_impl {
             report_serverless_kind_errors
@@ -10240,10 +10245,6 @@ graph import compiler {
         passes.static_analysis_pass.StaticAnalysisPass._check_placement_warnings {
             report_placement_warnings,
             report_serverless_kind_errors
-        },
-        passes.type_checker_pass.TypeCheckPass._check_intrinsic_collision
-            | types.type_evaluator.TypeEvaluator._intrinsic_function_type {
-            intrinsic_registry_if_ready
         },
         types.type_evaluator.TypeEvaluator._resolve_importer_path {
             resolve_importer_path_from_node

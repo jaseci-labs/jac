@@ -61,7 +61,7 @@ impl OwnershipCheckPass._store_fields(tgt: Expr, out: set[str]) -> None {
 impl OwnershipCheckPass._call_writes(call: FuncCall) -> set[str] {
     callee = self._callee_ability(call);
     if callee is None {
-        return {"*"};
+        return self._intrinsic_writes(call);
     }
     if self._is_builtin_mutator(callee) {
         return {"[]"};
@@ -77,6 +77,25 @@ impl OwnershipCheckPass._call_writes(call: FuncCall) -> set[str] {
     }
     writes = callee.writes;
     return {"*"} if writes is None else set(writes);
+}
+
+"""The write set of a call that resolves to no ability. An intrinsic reads
+or stores raw words, bits, addresses and thread-locals, never a counted
+field, so it releases nothing a borrow points at: no writes. The one that
+runs a destructor (`__mem_call_dtor`) may free anything, and so may a callee
+that is not an intrinsic at all (unresolved)."""
+impl OwnershipCheckPass._intrinsic_writes(call: FuncCall) -> set[str] {
+    target = call.target;
+    name = target.sym_name if isinstance(target, Name) else None;
+    registry = intrinsic_registry_if_ready();
+    if name is None or registry is None {
+        return {"*"};
+    }
+    spec = registry.get(name);
+    if spec is None or spec.dispatch.value == "call_dtor" {
+        return {"*"};
+    }
+    return set();
 }
 
 impl OwnershipCheckPass._stamp_managed_borrows -> None {

@@ -131,6 +131,7 @@ walker OwnershipCheckPass(CompilerPass) {
     def _local_writes(ab: Ability) -> set[str];
     def _store_fields(tgt: Expr, out: set[str]) -> None;
     def _call_writes(call: FuncCall) -> set[str];
+    def _intrinsic_writes(call: FuncCall) -> set[str];
     def _stamp_managed_borrows -> None;
     def _stamp_inferred_borrows -> None;
     def _infer_nodes_of(ab: Ability) -> list[UniNode];
