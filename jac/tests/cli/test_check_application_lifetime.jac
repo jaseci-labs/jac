@@ -39,9 +39,11 @@ test "JAC_CHECK_SHARD splits the checked files into disjoint legs that cover the
     with TemporaryDirectory() as tmp {
         units: list[dict[str, str]] = [];
         for (idx, size) in enumerate([50, 400, 10, 900, 200]) {
-            path = Path(tmp) / f"m{idx}.jac";
-            path.write_text("x" * size);
-            units.append({'path': str(path)});
+            unit_path = os.path.join(tmp, f"m{idx}.jac");
+            with open(unit_path, "w") as f {
+                f.write("x" * size);
+            }
+            units.append({'path': unit_path});
         }
         legs: list[list[str]] = [];
         for k in range(1, 4) {
