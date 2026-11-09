@@ -20,6 +20,7 @@ import jaclang;
 import jaclang.compiler.driver.pipeline as pipeline_mod;
 import from jaclang.compiler.driver.pipeline { PassKind }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+import from jaclang.compiler.passes.context { PassKind }
 import jaclang.compiler.frontend.unitree as uni;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
