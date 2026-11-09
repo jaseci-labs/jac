@@ -4,6 +4,7 @@ independently of generated receiver names."""
 import typing;
 
 import from datetime { date, datetime, time, timezone }
+import from enum { IntFlag }
 import from uuid { UUID }
 import from jaclang.server.serving.coerce { coerce_value }
 import from jaclang.server.serving.datatypes { UploadFile }
@@ -16,6 +17,8 @@ glob REFUSED: object = object(),
 enum Color { RED = "red", BLUE = "blue" }
 
 enum Priority { LOW = 1, HIGH = 2 }
+
+enum Perm(IntFlag) { READ = 1, WRITE = 2 }
 
 obj Payload {
     has args: int,
@@ -102,6 +105,8 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("nope", Color, REFUSED),
                 (2, Priority, Priority.HIGH),
                 (True, Priority, REFUSED),
+                (3, Perm, Perm.READ | Perm.WRITE),
+                (0, Perm, Perm(0)),
                 (5, UploadFile | str, REFUSED),
                 ({"inner": {"args": "1"}}, Nested, REFUSED),
                 ({"items": [{"args": True}]}, Nested, REFUSED)
@@ -139,6 +144,7 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("12", str | int, "12"),
                 ("2", Literal[1, 2], 2),
                 ("2", Priority, Priority.HIGH),
+                ("3", Perm, Perm.READ | Perm.WRITE),
                 ("3", "integer", 3),
                 ("x", Payload, REFUSED)
             ]

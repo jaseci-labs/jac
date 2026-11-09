@@ -293,13 +293,14 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
             return value;
         }
         members: list[any] = list(target);
-        try {
-            return target(
-                _coerce_literal(value, tuple(m.value for m in members), text)
-            );
-        } except ValueError {
-            raise ValueError(f"invalid {target.__name__}") from None;
+        for kind in dict.fromkeys(type(m.value) for m in members) {
+            try {
+                return target(coerce_value(value, kind, text));
+            } except (ValueError, TypeError) {
+                continue;
+            }
         }
+        raise ValueError(f"invalid {target.__name__}");
     }
     if isinstance(target, type) and target in _STRING_PARSERS {
         return _coerce_string_type(value, target);
