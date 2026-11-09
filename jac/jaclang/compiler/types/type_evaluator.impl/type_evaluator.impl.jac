@@ -6250,6 +6250,34 @@ impl TypeEvaluator._get_type_from_match_pattern(
     return None;
 }
 
+impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | None {
+    if capture.pattern is not None {
+        return self._get_type_from_match_pattern(capture.pattern);
+    }
+    case_node = capture.parent;
+    if not isinstance(case_node, MatchCase) {
+        return None;
+    }
+    stmt = case_node.parent;
+    if not isinstance(stmt, MatchStmt) {
+        return None;
+    }
+    subject = self.get_type_of_expression(stmt.target);
+    for earlier in stmt.cases {
+        if earlier is case_node {
+            break;
+        }
+        if earlier.guard is not None {
+            continue;
+        }
+        matched = self._get_type_from_match_pattern(earlier.pattern);
+        if matched is not None {
+            subject = self.exclude_type_from_union(subject, matched);
+        }
+    }
+    return subject;
+}
+
 impl TypeEvaluator._union_contains_none(union_type: TypeBase) -> bool {
     if not isinstance(union_type, UnionType) or not union_type.types {
         return False;

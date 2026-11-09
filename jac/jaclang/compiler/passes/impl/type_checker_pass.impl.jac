@@ -457,6 +457,46 @@ impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
     }
 }
 
+impl TypeCheckPass._check_match_capture_rebind(nd: MatchAs) -> None {
+    leaf = nd.name;
+    if not isinstance(leaf, Name) or leaf.sym is None {
+        return;
+    }
+    scope = find_python_scope_node_of(nd);
+    if scope is None {
+        return;
+    }
+    prior = scope.lookup(leaf.value, deep=False);
+    if prior is None or prior.decl is None {
+        return;
+    }
+    if not isinstance(prior.decl.name_of, ParamVar)
+        and (prior.decl.loc.first_line, prior.decl.loc.col_start)
+            >= (leaf.loc.first_line, leaf.loc.col_start) {
+        return;
+    }
+    declared = self.evaluator.get_type_of_symbol(prior);
+    if self._is_unannotated_rebind(prior, leaf) {
+        declared = self.evaluator._widen_literal_for_declaration(declared);
+    }
+    if isinstance(declared, UnknownType)
+        or self.evaluator.is_any_type(declared)
+        or self._is_exempt_rebind(prior, leaf, declared) {
+        return;
+    }
+    bound = self.evaluator.get_type_of_match_capture(nd);
+    if bound is None or isinstance(bound, UnknownType) {
+        return;
+    }
+    if not self.evaluator.assign_type(
+        bound, declared, strict=self.evaluator._is_strict_site(nd)
+    ) {
+        self.ctx.emit(
+            E1001, node_override=leaf, actual=str(bound), expected=str(declared)
+        );
+    }
+}
+
 impl TypeCheckPass._check_immutable_write(
     target: (Expr | None), rebind_scope: (UniNode | None) = None
 ) -> None {
@@ -2166,6 +2206,7 @@ impl TypeCheckPass.exit_except with Except exit {
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {
     self._check_immutable_write(here.name, rebind_scope=here);
+    self._check_match_capture_rebind(here);
 }
 
 impl TypeCheckPass.exit_match_arch with MatchArch exit {
