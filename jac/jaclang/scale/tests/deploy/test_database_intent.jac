@@ -192,43 +192,50 @@ test "the external database url is written to a labelled secret the deploy owns"
 }
 
 
-test "an explicit provision request wins over ambient JAC_DB_URL and serves Postgres on a ClusterIP" {
-    # A headless Service stops resolving while its pod is unready.
+test "an explicit provision request wins over ambient JAC_DB_URL" {
     prior = _set_ambient_db_url(PLATFORM_DB_URL);
     try {
-        # (existing Service clusterIP or None for no Service, deletes, creates)
-        for (existing_ip, deletes, creates) in [
-            (None, 0, 1),
-            ("None", 1, 1),
-            ("10.96.0.42", 0, 0),
+        cfg = KubernetesConfig(
+            app_name="tenant-app", namespace="tenant-a", database_mode="provision"
+        );
+        apis = _run_deploy(cfg, "tenant-app");
 
-        ] {
-            cfg = KubernetesConfig(
-                app_name="tenant-app", namespace="tenant-a", database_mode="provision"
-            );
-            apis = _mock_apis();
-            core_v1 = apis["core_v1"];
-            if existing_ip is not None {
-                core_v1.read_namespaced_service.side_effect = None;
-                core_v1.read_namespaced_service.return_value = SimpleNamespace(
-                    spec=SimpleNamespace(cluster_ip=existing_ip)
-                );
-            }
-            apis = _run_deploy(cfg, "tenant-app", apis);
-
-            assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 1;
-            assert "valueFrom" in apis["env_list"][0];
-            assert core_v1.delete_namespaced_service.call_count
-                == deletes , existing_ip;
-            assert core_v1.create_namespaced_service.call_count
-                == creates , existing_ip;
-            if creates {
-                body = core_v1.create_namespaced_service.call_args.kwargs["body"];
-                assert body["spec"].get("clusterIP") != "None" , body;
-            }
-        }
+        assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 1;
+        assert "valueFrom" in apis["env_list"][0];
     } finally {
         _set_ambient_db_url(prior);
+    }
+}
+
+
+test "a redeploy turns a headless database Service into a ClusterIP one" {
+    # A headless Service stops resolving while its pod is unready.
+    # (existing Service clusterIP or None for no Service, deletes, creates)
+    for (existing_ip, deletes, creates) in [
+        (None, 0, 1),
+        ("None", 1, 1),
+        ("10.96.0.42", 0, 0),
+
+    ] {
+        cfg = KubernetesConfig(
+            app_name="tenant-app", namespace="tenant-a", database_mode="provision"
+        );
+        apis = _mock_apis();
+        core_v1 = apis["core_v1"];
+        if existing_ip is not None {
+            core_v1.read_namespaced_service.side_effect = None;
+            core_v1.read_namespaced_service.return_value = SimpleNamespace(
+                spec=SimpleNamespace(cluster_ip=existing_ip)
+            );
+        }
+        _run_deploy(cfg, "tenant-app", apis);
+
+        assert core_v1.delete_namespaced_service.call_count == deletes , existing_ip;
+        assert core_v1.create_namespaced_service.call_count == creates , existing_ip;
+        if creates {
+            body = core_v1.create_namespaced_service.call_args.kwargs["body"];
+            assert body["spec"].get("clusterIP") != "None" , body;
+        }
     }
 }
 
