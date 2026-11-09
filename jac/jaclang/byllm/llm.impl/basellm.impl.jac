@@ -2382,11 +2382,8 @@ impl _AnswerStream.observe(call: dict[str, str]) -> str {
 impl _drop_answer(retractable: bool) -> Generator[StreamEvent, None, None] {
     if not retractable {
         raise OutputTruncatedError(
-            "The final answer changed after part of it had streamed (the model hit "
-            "max_tokens, its finish_tool call failed, or a custom finish_tool returned "
-            "different text). A plain stream cannot "
-            "take that text back: raise max_tokens, or stream with logging=True or a "
-            "stream_handler."
+            "The answer changed after part of it streamed, and a plain stream cannot "
+            "take text back: raise max_tokens, or use logging=True or a stream_handler."
         );
     }
     yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
@@ -2970,11 +2967,7 @@ impl _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None {
     for tc in skipped {
         mt_run.add_message(
             ToolCallResultMsg(
-                content=(
-                    "Not executed: finish_tool came after other tool calls in the same "
-                    "response, so it was written before their results. Call it again "
-                    "now that you have them."
-                )
+                content="Not executed: call finish_tool again now that you have the results."
                     if tc.is_finish_call()
                     else "Not executed: it came after finish_tool in the same response. "
                     "Call it again in a later response if it is still needed.",
