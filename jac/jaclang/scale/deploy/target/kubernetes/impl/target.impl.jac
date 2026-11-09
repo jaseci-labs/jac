@@ -1722,7 +1722,22 @@ impl KubernetesTarget._apply_or_replace_pvc(
 ) {
     name: str = manifest["metadata"]["name"];
     try {
-        core_v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace);
+        pvc = core_v1.read_namespaced_persistent_volume_claim(
+            name=name, namespace=namespace
+        );
+        if pvc.metadata?.deletion_timestamp is not None {
+            if self.logger {
+                self.logger.info(
+                    f"PVC '{name}' is still being deleted; waiting for it to go "
+                    "before creating it again."
+                );
+            }
+            wait_for_pvc_deletion(core_v1, namespace, name);
+            core_v1.create_namespaced_persistent_volume_claim(
+                namespace=namespace, body=manifest
+            );
+            return;
+        }
         if self.logger {
             self.logger.info(
                 f"PVC '{name}' already exists; skipping patch. To apply "

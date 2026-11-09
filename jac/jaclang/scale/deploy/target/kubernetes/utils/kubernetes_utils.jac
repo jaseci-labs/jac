@@ -89,6 +89,12 @@ def wait_for_pod_deletion(
     core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
 ) -> None;
 
+def wait_for_pvc_deletion(
+    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, timeout: int = 120
+) -> None;
+
+def _wait_until_deleted(read: Callable[[], any], what: str, timeout: int) -> None;
+
 obj KubectlCluster {
     has args: list[str] = [],
         env: dict[str, str] = {};

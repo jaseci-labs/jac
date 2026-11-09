@@ -557,3 +557,39 @@ test "only the target's cluster loader reads a kubeconfig under deploy" {
         f"client at whatever the ambient context names: {offenders}"
     );
 }
+
+
+def _apply_bundle_pvc(existing: list[any]) -> any {
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_persistent_volume_claim.side_effect = existing;
+    target = target_mod.KubernetesTarget(
+        config=KubernetesConfig(app_name=APP, namespace=NS), gateway_config={}
+    );
+    target._apply_or_replace_pvc(
+        core_v1, NS, {"metadata": {"name": bundle_pvc_name(APP)}}
+    );
+    return core_v1;
+}
+
+
+test "a redeploy waits out the bundle volume a destroy left terminating, then recreates it" {
+    terminating = SimpleNamespace(
+        metadata=SimpleNamespace(
+            name=bundle_pvc_name(APP), deletion_timestamp="2026-11-09T07:44:44Z"
+        )
+    );
+    core_v1 = _apply_bundle_pvc([terminating, ApiException(status=404)]);
+    assert core_v1.create_namespaced_persistent_volume_claim.call_count == 1 , (
+        "the redeploy kept a PVC that was being deleted, so its loader pod waits "
+        "on a claim that is gone"
+    );
+}
+
+
+test "a redeploy leaves a live bundle volume in place" {
+    live = SimpleNamespace(
+        metadata=SimpleNamespace(name=bundle_pvc_name(APP), deletion_timestamp=None)
+    );
+    core_v1 = _apply_bundle_pvc([live]);
+    core_v1.create_namespaced_persistent_volume_claim.assert_not_called();
+}
