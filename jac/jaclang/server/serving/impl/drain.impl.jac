@@ -25,7 +25,16 @@ impl _run_drain_hooks {
         if id(hook) not in DRAIN_TAKEN
     ];
     DRAIN_TAKEN.update(id(hook) for hook in hooks);
-    asyncio.run(run_hooks(hooks, "drain hook"));
+    for hook in hooks {
+        try {
+            result = hook();
+            if inspect.iscoroutine(result) {
+                asyncio.run(result);
+            }
+        } except (Exception, SystemExit) {
+            logger.exception("drain hook failed");
+        }
+    }
 }
 
 impl run_hooks(hooks: list[Callable[..., any]], what: str) {

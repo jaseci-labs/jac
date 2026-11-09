@@ -4104,7 +4104,12 @@ graph import {
             drain_middleware
         },
         scale.server.extensions { HEALTH_PATHS },
-        scale.tests.microservices.test_drain { DrainState, drain_middleware },
+        scale.tests.microservices.test_drain {
+            DRAIN_HOOKS,
+            DRAIN_TAKEN,
+            DrainState,
+            drain_middleware
+        },
     ]
     server.serving.endpoint ++> [
         client.targets.desktop.native.broker_extension

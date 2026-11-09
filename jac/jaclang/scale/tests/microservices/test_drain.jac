@@ -31,6 +31,22 @@ def _run(coro: any) -> any {
 }
 
 
+"""Empty the process-wide hook registry for one test; returns what to restore."""
+def _clear_hooks -> tuple[list[any], set[int]] {
+    saved = (list(DRAIN_HOOKS), set(DRAIN_TAKEN));
+    DRAIN_HOOKS.clear();
+    DRAIN_TAKEN.clear();
+    return saved;
+}
+
+
+def _restore_hooks(saved: tuple[list[any], set[int]]) {
+    DRAIN_HOOKS[:] = saved[0];
+    DRAIN_TAKEN.clear();
+    DRAIN_TAKEN.update(saved[1]);
+}
+
+
 test "initial state is not draining and keeps its budget" {
     state = DrainState(timeout=4.0);
     assert not state.draining;
@@ -71,14 +87,19 @@ test "drain hooks run once per process, awaited, past failures, including ones r
     def exits {
         sys.exit(3);
     }
-    for fn in [hook, raises, exits, _Recorder(ran), async_hook, hook] {
-        on_drain(fn);
-    }
-    for reason in ["first", "second"] {
-        state = DrainState();
-        state.start(reason);
-        state.wait_for_hooks();
-        assert ran == ["sync", "obj", "async", "late"] , reason;
+    saved = _clear_hooks();
+    try {
+        for fn in [hook, raises, exits, _Recorder(ran), async_hook, hook] {
+            on_drain(fn);
+        }
+        for reason in ["first", "second"] {
+            state = DrainState();
+            state.start(reason);
+            state.wait_for_hooks();
+            assert ran == ["sync", "obj", "async", "late"] , reason;
+        }
+    } finally {
+        _restore_hooks(saved);
     }
 }
 
@@ -91,10 +112,15 @@ test "on_drain warns once when hooks pile up, as a lambda registered per request
     handler = logging.Handler();
     handler.emit = capture;
     logging.getLogger().addHandler(handler);
-    for _ in range(150) {
-        on_drain(lambda { return None; });
+    saved = _clear_hooks();
+    try {
+        for _ in range(150) {
+            on_drain(lambda { return None; });
+        }
+    } finally {
+        _restore_hooks(saved);
+        logging.getLogger().removeHandler(handler);
     }
-    logging.getLogger().removeHandler(handler);
     assert len(
         [
             w
@@ -177,4 +203,27 @@ test "the transport flips its drain state on a termination signal" {
     assert server.drain.timeout == 3.5;
     assert not server.drain.draining;
     assert server.app.state["drain"] is server.drain;
+}
+
+
+test "a sync drain hook can run its own event loop" {
+    ran: list[str] = [];
+
+    async def close {
+        ran.append("closed");
+    }
+
+    def sync_hook {
+        asyncio.run(close());
+    }
+    saved = _clear_hooks();
+    try {
+        on_drain(sync_hook);
+        state = DrainState();
+        state.start("test");
+        state.wait_for_hooks();
+    } finally {
+        _restore_hooks(saved);
+    }
+    assert ran == ["closed"];
 }
