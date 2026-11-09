@@ -202,9 +202,9 @@ test "a built stub catalog is cached, and the next build reuses it" {
             wf(tmp, argv[-1], b"catalog");
             return True;
         }
-        with patch.object(
-            assembly, "cached_stubcat", return_value=cached
-        ), patch.object(assembly, "run_child", side_effect=child) {
+        with patch.object(assembly, "cached_stubcat", return_value=cached), patch.object(
+            assembly, "run_child", side_effect=child
+        ) {
             first = os.path.join(tmp, "out1.bin");
             assert run_stubcat("python", tmp, site, first);
             assert rf(cached) == b"catalog" and len(built) == 1;
