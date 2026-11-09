@@ -232,8 +232,8 @@ jobs:
         uses: ./.github/actions/setup-jac
         with:
           # This job runs `zig build` steps below, which go through the
-          # source-built interpreter and its native compiler object. A binary
-          # cache hit skips producing both, so ask for them explicitly.
+          # build's Python. A binary cache hit skips putting it in place, so
+          # ask for it explicitly.
           need-build-inputs: "true"
           # Restore this line and drop bytecode-kit to seal the kernel in CI
           # again.
@@ -255,8 +255,8 @@ jobs:
           if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
             exit 0
           fi
-          zig build fetch-llvm -Dreuse-python=true -Dstale-python=true --summary all
-          zig build jacllvm -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-llvm --summary all
+          zig build jacllvm --summary all
 
       # Explicit: a binary-cache hit skips zig build, so these gitignored
       # trees must be materialized either way. The wasm floor is in this list
@@ -264,16 +264,14 @@ jobs:
       # cache hit does not, so leaving it implicit made the kit's contents a
       # function of cache state -- present on a miss, missing on a hit, with
       # if-no-files-found blind to it because the other paths matched.
-      # Every zig build here runs through the kit's own JacPython runtime, and
-      # each passes setup-jac's -Dreuse-python and -Dstale-python: without them
-      # the runtime the build step reused is lowered again from scratch.
+      # Every zig build here runs on the kit's prebuilt CPython.
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
         run: |
-          zig build fetch-typeshed -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-musl -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-musl-linux-aarch64 -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-wasm-libc -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-typeshed --summary all
+          zig build vendor-musl --summary all
+          zig build vendor-musl-linux-aarch64 --summary all
+          zig build vendor-wasm-libc --summary all
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
@@ -285,9 +283,10 @@ jobs:
           WORK="$(mktemp -d)"; cd "$WORK"
           ldd "$BIN" || true
           ! ldd "$BIN" | grep -qi python
-          # The bundled runtime is JacPython: its `compile` is the native Jac
-          # compiler. test-jacpython holds it to the rest of its gates.
-          "$BIN" -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+          # The bundled runtime is the prebuilt CPython. A -Djacpython kit
+          # also asserted JacPython's native compiler:
+          # "$BIN" -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+          "$BIN" -c 'import ast, sys; assert sys.version_info[:2] == (3, 14); assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged>", "eval")) == 42'
           # The kit carries every artifact a release does, less what its
           # manifest declares it leaves out -- only a pull request's kit may
           # (setup-jac asks through JAC_KIT_OMIT, artifacts/kit.jac pr_kit_omits).
@@ -366,10 +365,10 @@ jobs:
         working-directory: jac
         run: |
           set -euo pipefail
-          # cpython-<ver> is the cache tag, part of the ABI identity JacPython keeps.
-          DIR="$(find .precompiled-build/jacpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
-          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/jacpython/cpython-<ver> tree"; exit 1; }
-          [ -f .precompiled-build/jacpython/MANIFEST.json ] || {
+          # cpython-<ver> is the interpreter's cache tag.
+          DIR="$(find .precompiled-build/cpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
+          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/cpython/cpython-<ver> tree"; exit 1; }
+          [ -f .precompiled-build/cpython/MANIFEST.json ] || {
             echo "::error::precompile tree has no MANIFEST.json, so the seal did not finish"; exit 1; }
           UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
           [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
@@ -379,7 +378,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jac-precompiled
-          path: jac/.precompiled-build/jacpython
+          path: jac/.precompiled-build/cpython
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -629,10 +628,11 @@ jobs:
             exit 1
           fi
 
-      # JacPython is the only Python jac builds on or ships. The gate exempts
-      # the ABI identity, the pinned source archive, the manual comparison
-      # workflow and history.
+      # Off: jac builds on and ships the prebuilt CPython, which this gate
+      # forbade while JacPython was the only Python. Its original condition
+      # was none (always on).
       - name: Block stock CPython build and runtime dependencies
+        if: false
         run: bash scripts/check_no_stock_cpython.sh
 
       - name: Block duplicate diagnostic codes
@@ -1862,7 +1862,10 @@ jobs:
   # them on linux-aarch64.
   test-jacpython:
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    # Turned off. Kits ship the prebuilt CPython; JacPython is built only
+    # with setup-jac's `jacpython` input. Restore:
+    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

@@ -5,6 +5,7 @@ import platform;
 glob BUN_VERSION: str = "1.3.11",
      RECORD_SUFFIX: str = ".artifact.json",
      ENGINE_LIBRARY: str = "libjs_engine.so",
+     ENGINE_OPT_IN: str = "JAC_JS_ENGINE",
      ENGINE_SOURCES: tuple[str, ...] = ("engine/src", "napi/src", "native", "jac.toml");
 
 def bun_name -> str;

@@ -7,18 +7,21 @@
 //!     library (`jaclang/dist/fused`), compiled by the in-checkout
 //!     compiler with `jac build --as native` (the Jac-native linkers; no
 //!     external toolchain) -- it links only libc/libdl and dlopens the bundled
-//!     JacPython at runtime;
+//!     Python at runtime;
 //!   * the payload tool is `jaclang.dist.payload`, Python-tier Jac that fetches the
 //!     vendored inputs, stages the runtime tree, packs it, and appends it to the
 //!     stub with the trailer.
 //!
-//! The build first builds JacPython, the only Python, and its native libraries
-//! from the checksum-pinned sources of bootstrap/python/sources.json using
-//! Zig's C toolchain (bootstrap/build_python.zig). A JacPython runs that build:
-//! the previous output for this machine, or the pinned seed. Build hosts need
-//! Zig 0.16.0, make, Perl, a POSIX shell, and a network connection. No
-//! installed Python or Jac is required. The resulting Python tree is
-//! relocatable.
+//! The build first fetches the pinned prebuilt CPython (python-build-standalone,
+//! pins.json's `pbs`) and its C floor archives (bootstrap/fetch_pbs.zig), and
+//! every later step runs on it. Build hosts need Zig 0.16.0 and a network
+//! connection. No installed Python or Jac is required.
+//!
+//! With -Djacpython the build instead builds JacPython and its native
+//! libraries from the checksum-pinned sources of bootstrap/python/sources.json
+//! (bootstrap/build_python.zig), on the previous JacPython output for this
+//! machine or the pinned seed; that path also needs make, Perl and a POSIX
+//! shell, and the jacpython-* steps below belong to it.
 //!
 //!   zig build build-python        # just Python and its native dependencies
 //!   zig build test                # offline bootstrap tests
@@ -115,11 +118,13 @@ const JacTool = struct {
     root: []const u8,
     build_python: *std.Build.Step,
     fetch_typeshed: *std.Build.Step,
+    /// The CA bundle the tools' downloads verify against. A JacPython tree
+    /// carries its own; the prebuilt CPython's OpenSSL reads the system store.
+    ca_bundle: ?[]const u8,
 
     fn run(self: JacTool, mode: []const u8, args: []const []const u8) *std.Build.Step.Run {
         const cmd = self.b.addSystemCommand(&.{ self.python, "-I", "-c", JACBOOT_SRC, self.root, mode });
-        const python_dir = std.fs.path.dirname(std.fs.path.dirname(std.fs.path.dirname(self.python).?).?).?;
-        cmd.setEnvironmentVariable("SSL_CERT_FILE", self.b.fmt("{s}/build/cacert.pem", .{python_dir}));
+        if (self.ca_bundle) |ca| cmd.setEnvironmentVariable("SSL_CERT_FILE", ca);
         cmd.addArgs(args);
         cmd.step.dependOn(self.build_python);
         cmd.step.dependOn(self.fetch_typeshed);
@@ -139,6 +144,11 @@ pub fn build(b: *std.Build) void {
     else
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
+    // The Python every build runs on and every binary ships: the pinned
+    // prebuilt CPython (bootstrap/fetch_pbs.zig) unless -Djacpython selects
+    // JacPython, built from bootstrap/python/sources.json.
+    const use_jacpython = b.option(bool, "jacpython", "Build and ship JacPython instead of the prebuilt CPython (pins.json's pbs)") orelse false;
+    const python_variant = if (use_jacpython) "jacpython" else "cpython";
     const reuse_python = b.option(bool, "reuse-python", "Reuse a JacPython runtime whose lowered sources are unchanged (pull-request builds)") orelse false;
     const stale_python = b.option(bool, "stale-python", "Reuse a finished JacPython runtime, or adopt -Djacpython-object, even when lowered from other sources (bytecode CI kits)") orelse false;
     // The JacPython a build runs on (bootstrap/build_python.zig selectHost).
@@ -174,12 +184,12 @@ pub fn build(b: *std.Build) void {
     });
     const seed = b.addExecutable(.{ .name = "build_python", .root_module = seed_mod });
     const pins_path = b.pathFromRoot(pins.PINS_PATH);
-    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{host_osarch}));
+    const jacpython_host_dir = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{host_osarch}));
     // `stock` reaches the seed, which explains that it is gone.
     const host_choice = if (std.mem.eql(u8, jacpython_host, "auto") or std.mem.eql(u8, jacpython_host, "stock") or std.fs.path.isAbsolute(jacpython_host)) jacpython_host else b.pathFromRoot(jacpython_host);
     const host_arg = b.fmt("--jacpython-host={s}", .{host_choice});
     const fetch_host = b.addRunArtifact(seed);
-    fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe, host_arg });
+    fetch_host.addArgs(&.{ host_osarch, jacpython_host_dir, b.pathFromRoot("."), b.graph.zig_exe, host_arg });
     if (reuse_python) fetch_host.addArg("--reuse-lowered");
     if (stale_python) fetch_host.addArg("--stale-lowered");
     fetch_host.has_side_effects = true;
@@ -209,6 +219,28 @@ pub fn build(b: *std.Build) void {
                 "first (or restore a shim built from these inputs to " ++ SHIM_PLACE_DIR ++ ")",
         ).step);
     }
+    // The prebuilt CPython of any platform, fetched and checksum-verified
+    // into .pbs-build/<osarch>/python. It needs nothing built first, so a
+    // build can fetch another platform's tree to package it.
+    const pbs_seed = b.addExecutable(.{ .name = "fetch_pbs", .root_module = b.createModule(.{
+        .root_source_file = b.path("bootstrap/fetch_pbs.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        .link_libc = true,
+    }) });
+    const fetch_pbs = struct {
+        fn step(bb: *std.Build, exe: *std.Build.Step.Compile, ts: *std.Build.Step, osarch: []const u8, pins_json: []const u8) *std.Build.Step {
+            const run = bb.addRunArtifact(exe);
+            run.addArgs(&.{ osarch, bb.pathFromRoot(bb.fmt(".pbs-build/{s}", .{osarch})), pins_json });
+            run.has_side_effects = true;
+            run.step.dependOn(ts);
+            return &run.step;
+        }
+    }.step;
+    const fetch_host_pbs = fetch_pbs(b, pbs_seed, &fetch_ts.step, host_osarch, pins_path);
+    if (jacllvm) |shim| fetch_host_pbs.dependOn(shim.place);
+    const host_python_dir = if (use_jacpython) jacpython_host_dir else b.pathFromRoot(b.fmt(".pbs-build/{s}", .{host_osarch}));
+    const python_ready: *std.Build.Step = if (use_jacpython) &fetch_host.step else fetch_host_pbs;
     fetch_ts.addArg(b.pathFromRoot("jaclang/vendor/typeshed"));
     // has_side_effects: the output lands in the source tree, not the cache, so
     // the step must run even when its (unchanging) argv would otherwise cache
@@ -231,7 +263,7 @@ pub fn build(b: *std.Build) void {
     // Python only on the JacPython it builds: it needs no host, and so no seed.
     if (b.option([]const u8, "jacpython-object", "Link the prebuilt JacPython native object in this directory (from `zig build jacpython-object`) instead of lowering it")) |dir|
         fetch_host.addArg(b.fmt("--adopt-object={s}", .{if (std.fs.path.isAbsolute(dir)) dir else b.pathFromRoot(dir)}));
-    b.step("build-python", "Build the source-pinned Python runtime and native libraries").dependOn(&fetch_host.step);
+    b.step("build-python", "Put this machine's Python and its C floor archives in place: the prebuilt CPython, or JacPython with -Djacpython").dependOn(python_ready);
     // Lower only JacPython's native object for -Dtarget-platform, with the
     // generated modules lowered into it and the manifest another build checks
     // it against, into .python-build/jacpython/<platform>.object.
@@ -250,7 +282,7 @@ pub fn build(b: *std.Build) void {
     // is published), named by its content, with its sha256 beside it.
     {
         const pack_seed = b.addRunArtifact(seed);
-        pack_seed.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe, b.fmt("--seed-pack={s}", .{b.pathFromRoot(".python-build/jacpython")}) });
+        pack_seed.addArgs(&.{ host_osarch, jacpython_host_dir, b.pathFromRoot("."), b.graph.zig_exe, b.fmt("--seed-pack={s}", .{b.pathFromRoot(".python-build/jacpython")}) });
         pack_seed.has_side_effects = true;
         pack_seed.step.dependOn(&fetch_host.step);
         b.step("jacpython-seed-pack", "Pack this machine's JacPython output as a seed: .python-build/jacpython/jacpython-seed-<platform>-<sha256 prefix>.tar.gz (with .sha256)")
@@ -261,8 +293,9 @@ pub fn build(b: *std.Build) void {
         .b = b,
         .python = b.fmt("{s}/python/install/bin/python{s}", .{ host_python_dir, pins.pyMinor(b) }),
         .root = root,
-        .build_python = &fetch_host.step,
+        .build_python = python_ready,
         .fetch_typeshed = &fetch_ts.step,
+        .ca_bundle = if (use_jacpython) b.fmt("{s}/python/build/cacert.pem", .{jacpython_host_dir}) else null,
     };
 
     // Standalone step: materialize the gitignored typeshed stdlib stubs at the
@@ -347,14 +380,23 @@ pub fn build(b: *std.Build) void {
         return;
     };
 
-    // The source-built Python tree: the payload input, and the C floor archives
-    // (libzstd.a, libcrypto.a, ...) the stub static-links. A JacPython is
-    // built only on its own platform, so the binary is too.
-    const python_dir = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{osarch}));
+    // The target's Python tree: the payload input, and the C floor archives
+    // (libzstd.a, libcrypto.a, ...) the stub static-links. The prebuilt
+    // CPython of any platform is fetched here; a JacPython is built only on
+    // its own platform, so a -Djacpython binary is too.
+    const python_dir = if (use_jacpython)
+        b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{osarch}))
+    else
+        b.pathFromRoot(b.fmt(".pbs-build/{s}", .{osarch}));
     const python_tree = b.fmt("{s}/python", .{python_dir});
-    const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch)) &fetch_host.step else &b.addFail(
-        b.fmt("a {s} jac is built on {s}: its JacPython is built only there (lower its native object here with `zig build jacpython-object -Dtarget-platform={s}`)", .{ osarch, osarch, osarch }),
-    ).step;
+    const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch))
+        python_ready
+    else if (!use_jacpython)
+        fetch_pbs(b, pbs_seed, &fetch_ts.step, osarch, pins_path)
+    else
+        &b.addFail(
+            b.fmt("a {s} jac is built on {s}: its JacPython is built only there (lower its native object here with `zig build jacpython-object -Dtarget-platform={s}`)", .{ osarch, osarch, osarch }),
+        ).step;
 
     // --- launcher stub: the in-checkout compiler compiles launcher/ natively --
     // A native build treats any native-seam demotion in the stub's closure as
@@ -443,12 +485,12 @@ pub fn build(b: *std.Build) void {
         // before the precompile and is refreshed after, so only changed modules
         // recompile. Content-keyed per module, so a stale dir can never change
         // the payload -- only how fast it builds. NOT a tracked input.
-        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build/jacpython")}));
+        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(b.fmt(".precompiled-build/{s}", .{python_variant}))}));
         // Persistent compressed-frame cache for the payload's deps layer: the
         // level-19 zstd frame over the rarely-changing deps tree is reused when
         // its content is unchanged. Verified by decompress + compare on reuse,
         // so it can never change the payload either.
-        mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(".payload-layers/jacpython")}));
+        mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(b.fmt(".payload-layers/{s}", .{python_variant}))}));
 
         // Seal the runtime (issue #7135): a bundled release payload boots from
         // the JIR image + frozen jac0core bootstrap. This is the ONLY bundled
@@ -544,7 +586,10 @@ pub fn build(b: *std.Build) void {
         mk.addFileInput(b.path("bootstrap/python/sources.json"));
         mk.addFileInput(b.path("bootstrap/python/cpython-sources.txt"));
         // Repack when any runtime source or recipe changes, even in dev mode.
-        mk.addFileInput(.{ .cwd_relative = b.fmt("{s}/build-key", .{python_dir}) });
+        mk.addFileInput(.{ .cwd_relative = if (use_jacpython)
+            b.fmt("{s}/build-key", .{python_dir})
+        else
+            b.fmt("{s}/python/PYTHON.json", .{python_dir}) });
         break :payload out;
     };
 
@@ -670,6 +715,13 @@ fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     });
     const seed_tests = b.addTest(.{ .name = "build-python-tests", .root_module = seed_mod });
     test_step.dependOn(&b.addRunArtifact(seed_tests).step);
+    const pbs_mod = b.createModule(.{
+        .root_source_file = b.path("bootstrap/fetch_pbs.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .name = "fetch-pbs-tests", .root_module = pbs_mod })).step);
     const llvm_mod = b.createModule(.{
         .root_source_file = b.path("bootstrap/fetch_llvm.zig"),
         .target = target,

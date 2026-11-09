@@ -256,6 +256,9 @@ impl JsEngineArtifact.provide_floor(log: Callable[[str], None]) {
 }
 
 impl _engine -> (str | None) {
+    if os.environ.get(ENGINE_OPT_IN, "") != "1" {
+        return None;
+    }
     found = resolve("js-engine").found;
     return found.path if found is not None else None;
 }

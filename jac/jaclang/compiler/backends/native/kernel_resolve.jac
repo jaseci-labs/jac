@@ -78,7 +78,7 @@ def _probe(
 obj KernelArtifact(Artifact) {
     has name: str = "kernel",
         kind: ArtifactKind = ArtifactKind.ACCELERATOR,
-        release: ReleasePolicy = ReleasePolicy.REQUIRED,
+        release: ReleasePolicy = ReleasePolicy.FLOOR,
         summary: str = "the native compiler kernel",
         floor: str = "the bytecode compiler",
         requires: list[str] = ["llvm-shim", "stubcat"],

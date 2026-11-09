@@ -143,8 +143,21 @@ test "another target's kernel never resolves to the sealed or kit kernel" {
     assert resolution.found is None , f"{name} resolved to {resolution.found}";
 }
 
-test "only a build that asks through JAC_KIT_OMIT leaves the kernel out" {
+test "a seal leaves the kernel out unless JAC_SEAL_KERNEL asks for it" {
     import from jaclang.artifacts.kit { pr_kit_omits }
+    import from jaclang.dist.precompile_bytecode { kit_omissions }
+    with patch.dict(os.environ, {"JAC_SEAL_KERNEL": "", "JAC_KIT_OMIT": ""}) {
+        assert kit_omissions("jaclang") == ["kernel"] , (
+            "the kit runs the bytecode compiler"
+        );
+        assert kit_omissions("myapp") == [];
+    }
+    with patch.dict(os.environ, {"JAC_SEAL_KERNEL": "1", "JAC_KIT_OMIT": ""}) {
+        assert kit_omissions("jaclang") == [];
+    }
+    with patch.dict(os.environ, {"JAC_SEAL_KERNEL": "1", "JAC_KIT_OMIT": "kernel"}) {
+        assert kit_omissions("jaclang") == ["kernel"];
+    }
     with patch.dict(os.environ, {"JAC_KIT_OMIT": "kernel"}) {
         assert pr_kit_omits("kernel");
         assert not pr_kit_omits("llvm-shim");
@@ -206,7 +219,7 @@ test "the catalog build never loads a kernel" {
     assert found is None and said == "";
 }
 
-test "a stale checkout runs from bytecode, says so once, and never builds" {
+test "a stale checkout runs from bytecode quietly and never builds" {
     import jaclang.compiler.backends.native.kernel_stage0 as stage0;
     drift = Probe.stale(
         [
@@ -226,19 +239,17 @@ test "a stale checkout runs from bytecode, says so once, and never builds" {
         }
     }
     assert found is None;
-    assert said.count("kernel runs on its floor") == 1 , said;
-    assert "unitree.jac changed (and 1 more)" in said , said;
-    assert "jac native build kernel" in said , said;
+    assert said == "" , "the bytecode compiler is the kernel's shipped floor";
 }
 
-test "a checkout without a native toolchain says why it runs from bytecode" {
+test "a checkout without a native toolchain runs from bytecode quietly" {
     with _toolchain(ok=False) {
         with patch.object(KernelArtifact, "probe_checkout", side_effect=_never) {
             (found, said) = _resolve_fresh();
         }
     }
     assert found is None;
-    assert "no LLVM shim here" in said , said;
+    assert said == "" , said;
 }
 
 test "a current checkout kernel loads silently and reports where it came from" {

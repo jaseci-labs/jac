@@ -39,18 +39,16 @@ impl CFloorArtifact.probe_sealed -> (Probe | None) {
 }
 
 impl CFloorArtifact.probe_checkout -> Probe {
-    libdir = os.path.join(
-        _repo_root(),
-        ".python-build",
-        "jacpython",
-        self.target(),
-        "python",
-        "build",
-        "lib"
-    );
-    return Probe.hit(Source.CHECKOUT, libdir, {})
-        if _has_archives(libdir)
-        else Probe.missing();
+    for tree in (
+        os.path.join(_repo_root(), ".pbs-build", self.target()),
+        os.path.join(_repo_root(), ".python-build", "jacpython", self.target())
+    ) {
+        libdir = os.path.join(tree, "python", "build", "lib");
+        if _has_archives(libdir) {
+            return Probe.hit(Source.CHECKOUT, libdir, {});
+        }
+    }
+    return Probe.missing();
 }
 
 impl CFloorArtifact.probe_kit -> Probe {
@@ -58,13 +56,13 @@ impl CFloorArtifact.probe_kit -> Probe {
 }
 
 impl CFloorArtifact.checkout_path -> str {
-    return os.path.join(_repo_root(), ".python-build");
+    return os.path.join(_repo_root(), ".pbs-build");
 }
 
 impl CFloorArtifact.build_blocker -> str {
     if self.target() != osarch() {
         return (
-            f"`zig build build-python` builds the C floor only for this host ({osarch()}); "
+            f"`zig build build-python` puts the C floor in place only for this host ({osarch()}); "
             f"build it on a {self.target()} host or use a kit that carries it"
         );
     }
@@ -72,7 +70,7 @@ impl CFloorArtifact.build_blocker -> str {
 }
 
 impl CFloorArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
-    log("  zig build build-python (JacPython and its C floor)");
+    log("  zig build build-python (the prebuilt CPython and its C floor)");
     _zig_build("build-python");
 }
 

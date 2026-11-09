@@ -39,19 +39,26 @@ test "osarch names a triple the way the build trees do" {
     assert osarch("wasm32-unknown-unknown") == "wasm32";
 }
 
-test "the checkout's C floor resolves per arch, never across arches" {
+test "the checkout's C floor resolves per arch, prebuilt CPython first" {
     repo = tempfile.mkdtemp();
     x86 = _mk(
+        os.path.join(repo, ".pbs-build", "linux-x86_64", "python", "build", "lib")
+    );
+    _touch(os.path.join(x86, "libssl.a"));
+    x86_jacpython = _mk(
         os.path.join(
             repo, ".python-build", "jacpython", "linux-x86_64", "python", "build", "lib"
         )
     );
-    _touch(os.path.join(x86, "libssl.a"));
+    _touch(os.path.join(x86_jacpython, "libssl.a"));
     with patch.object(floors, "_repo_root", return_value=repo), _unsealed() {
         found = floors.CFloorArtifact(variant="linux-x86_64").probe_checkout();
         assert found.found is not None and found.found.path == x86;
         other = floors.CFloorArtifact(variant="linux-aarch64").probe_checkout();
         assert other.found is None , "an aarch64 build must never link the x86_64 floor";
+        os.remove(os.path.join(x86, "libssl.a"));
+        jacpython = floors.CFloorArtifact(variant="linux-x86_64").probe_checkout();
+        assert jacpython.found is not None and jacpython.found.path == x86_jacpython;
     }
 }
 

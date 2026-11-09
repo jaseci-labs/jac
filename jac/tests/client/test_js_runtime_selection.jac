@@ -1,7 +1,8 @@
-"""js_engine is an accelerator over bun. A release ships bun; an engine built
-by `jac native build js-engine` (zig-out/js, with a record of the js_engine/
-sources it came from) is used whenever it is current, for running tools and
-for package management alike. A stale engine is not."""
+"""js_engine is an opt-in accelerator over bun. A release ships bun; an engine
+built by `jac native build js-engine` (zig-out/js, with a record of the
+js_engine/ sources it came from) is used only when JAC_JS_ENGINE=1 asks for it
+and it is current, for running tools and for package management alike. A stale
+engine is not."""
 
 import json;
 import os;
@@ -70,7 +71,7 @@ def _with_engine(engine: (str | None), fn: any) -> any {
     }
 }
 
-test "the package manager runs in a child process, on the engine when one is current" {
+test "the package manager runs in a child process, on the engine only when asked for" {
     ran: list[tuple[list[str], str]] = [];
     def child(argv: list[str], **kwargs: any) -> any {
         ran.append((list(argv), str(kwargs["env"].get("PATH", ""))));
@@ -93,7 +94,14 @@ test "the package manager runs in a child process, on the engine when one is cur
                 );
             }
         }
-        (path, outcome) = _with_engine(tmp, with_engine);
+        with patch.dict(os.environ, {"JAC_JS_ENGINE": ""}) {
+            assert _with_engine(tmp, js_runtime._engine) is None , (
+                "bun is the runtime by default"
+            );
+        }
+        with patch.dict(os.environ, {"JAC_JS_ENGINE": "1"}) {
+            (path, outcome) = _with_engine(tmp, with_engine);
+        }
         assert path == link;
         assert outcome == (0, "out");
         (argv, search) = ran[-1];

@@ -129,6 +129,7 @@ def prebuild_native_closure(roots: list[str]) -> dict[(str, any)];
 def prebuild_native_units(roots: list[str]);
 
 glob SEAL_KERNEL_DIR_ENV: str = "JAC_SEAL_KERNEL_DIR";
+glob SEAL_KERNEL_ENV: str = "JAC_SEAL_KERNEL";
 
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]

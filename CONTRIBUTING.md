@@ -167,22 +167,20 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 **Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
 
-## Building JacPython
+## Building jac
 
-JacPython (CPython with its C progressively replaced by native Jac, the Python
-compiler included) is the only Python jac builds on, ships or runs. With Zig
-0.16 and the LLVM shim in place (`zig build fetch-llvm` once), `zig build` in
-`jac/` (or `jac native build jacpython`) builds it, then `jac/zig-out/bin/jac`
-on it. The build runs on the previous JacPython output, or on the pinned
-linux-x86_64 seed when there is none; on another platform, adopt a native
-object lowered on linux-x86_64 with `-Djacpython-object=DIR`. See
-[the build guide](jac/launcher/README.md#build) and the Building section of
-[the migration notes](jac/jaclang/cli/docs/internals/jacpython-migration.md).
+`zig build` in `jac/` fetches the pinned prebuilt CPython 3.14
+(python-build-standalone, `bootstrap/pins.json`'s `pbs`), builds
+`jac/zig-out/bin/jac` on it, and seals the bytecode compiler into the payload.
+Zig 0.16 and the LLVM shim (`zig build fetch-llvm` once) are all it needs. See
+[the build guide](jac/launcher/README.md#build).
 
-`jac native build jacpython --exact` rebuilds the runtime instead of reusing one
-whose lowered sources are unchanged. Its native compiler object is linked at
-build time, so editing compiler source through the dev loop does not change an
-existing binary: rebuild it.
+Two accelerators stay in the tree but are built only on request:
+`-Djacpython` builds and ships JacPython instead of the prebuilt CPython (see
+[the migration notes](jac/jaclang/cli/docs/internals/jacpython-migration.md)),
+and `JAC_SEAL_KERNEL=1` (or `jac native build kernel`) adds the native
+compiler kernel. JavaScript runs on the bundled bun; `JAC_JS_ENGINE=1` uses a
+js_engine built with `jac native build js-engine`.
 
 ## Code Rules and Guidelines
 
@@ -262,41 +260,13 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
-### Step 0: Run CI with the native kernel first
+### Step 0: Nothing extra to run first
 
-Day-to-day CI runs on GitHub-hosted runners with a bytecode kit: build-kit
-leaves the native compiler kernel out, and the `js-engine` and `macos-native`
-lanes are turned off. Nothing in pull-request CI builds the kernel, so native
-breakage is only caught here. Before cutting a release, on a branch:
-
-1. **Runners**: switch the kernel-building jobs back to the bigger runners.
-   `git log -S blacksmith -- .github` finds the commit that moved them; its
-   diff has every label.
-   - `ci.yml` `build-kit`, `build-kernel.yml`, `build-seeds.yml`,
-     `_js_engine.yml`, and `jacpython-compat.yml` (input default and both
-     `runs-on`): `blacksmith-8vcpu-ubuntu-2404`
-   - `build-binaries.yml` Linux legs: `blacksmith-8vcpu-ubuntu-2404` and
-     `blacksmith-8vcpu-ubuntu-2404-arm`
-   - every other job in `ci.yml`, `release.yml`, and `nightly.yml`:
-     `blacksmith-4vcpu-ubuntu-2404`
-
-   The kernel seal peaks near 15 GB, so `build-kit`, `build-kernel.yml`, and
-   `build-binaries.yml` will not fit a 16 GB `ubuntu-24.04` runner.
-2. **Kernel in build-kit**: in `ci.yml`'s `build-kit`, restore the commented
-   `native-kernel:` line, remove `bytecode-kit: "true"`, and drop
-   `-Dstale-python=true` from its `zig build` lines. A bytecode kit links the
-   last JacPython native object it can find, even one lowered from older
-   compiler sources, so only this run lowers JacPython from the tree.
-3. **js-engine**: in `ci.yml`, replace `if: false` on the `js-engine` job
-   with the commented `if:` above it. `if: false` blocks every trigger,
-   including a manual dispatch and the `native:js-engine` label.
-4. **macos-native**: the same for the `macos-native` job, to cover macOS.
-
-Dispatch **CI** on that branch and fix what it finds, then merge it to `main`
-before Step 1. The Release run that builds the binaries starts when the release
-PR merges and reads its workflows from `main` (`release.yml` calls
-`build-binaries.yml`), so changes left on a side branch never reach it. Once
-the release is published, revert them on `main`.
+CI runs on GitHub-hosted runners with the same kit a release ships: the
+prebuilt CPython and the bytecode compiler. A release builds no compiler
+kernel and no JacPython, so a green `main` is all it needs. The `js-engine`,
+`macos-native`, and `test-jacpython` lanes are turned off in `ci.yml`; to run
+one, replace its `if: false` with the commented `if:` above it.
 
 ### Step 1: Create the Release PR
 
