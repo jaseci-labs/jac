@@ -1312,6 +1312,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
         content_buf = "";
         reasoning_buf = "";
         reasoning_pending = "";
+        finish_reason = "";
         self._arm_attempt(mt_run, params, True);
 
         mt_run._tool_arg_deltas = [];
@@ -1335,6 +1336,9 @@ impl BaseLLM.dispatch_streaming_with_tools(
             for chunk in _stream_resp {
                 deadline.check();
                 chunks.append(chunk);
+                if chunk?.choices and chunk?.choices?[0]?.finish_reason {
+                    finish_reason = str(chunk?.choices?[0]?.finish_reason);
+                }
                 pending_before = len(mt_run._tool_arg_deltas);
                 frags = _tool_call_fragments(chunk);
                 for _frag in frags {

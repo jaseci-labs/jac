@@ -1,6 +1,9 @@
 """A reply cut off at max_tokens never passes as a finished answer."""
 
 import asyncio;
+import contextlib;
+import from unittest { mock }
+import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { Model, OutputTruncatedError }
 import from support { call, chunk_text, finish, say, scripted, stream_events }
 
@@ -21,13 +24,21 @@ def _turn(
         tools=[save_data],
         conversation=conv,
         stream=(mode != "plain"),
-        logging=(mode == "events"),
+        logging=mode.startswith("events"),
         max_react_iterations=iters
     );
 
     async def arun(task: str) -> str by llm(conversation=conv);
 
-    with scripted(llm, replies) {
+    # "events, no builder": litellm cannot rebuild the streamed chunks.
+    builder = mock.patch.object(
+        _byllm_llm_mod.litellm,
+        "stream_chunk_builder",
+        side_effect=RuntimeError("no builder")
+    )
+        if mode == "events, no builder"
+        else contextlib.nullcontext();
+    with scripted(llm, replies), builder {
         try {
             if mode == "async" {
                 return (asyncio.run(arun("save a big payload")), conv);
@@ -35,7 +46,7 @@ def _turn(
             out = run("save a big payload");
             if mode == "streamed" {
                 out = "".join(out);
-            } elif mode == "events" {
+            } elif mode.startswith("events") {
                 evs = stream_events(out);
                 kinds = [ev.event_type for ev in evs];
                 assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
@@ -116,14 +127,16 @@ test "a reply cut off at max_tokens never passes as a finished answer" {
         )
     ];
     for (label, replies, by_mode, iters) in rows {
-        modes = ["plain", "streamed", "events"];
+        modes = ["plain", "streamed", "events", "events, no builder"];
         if not any(r.tool_calls for r in replies) {
             modes.append("async");
         }
         for mode in modes {
             (answer, conv) = _turn(replies, mode, iters);
             where = f"{label} / {mode}";
-            expected = by_mode[mode] if isinstance(by_mode, dict) else by_mode;
+            expected = by_mode[mode.split(",")[0]]
+                if isinstance(by_mode, dict)
+                else by_mode;
             assert conv , f"{where}: conversation was not written back";
             if expected is OutputTruncatedError {
                 assert isinstance(answer, OutputTruncatedError)
