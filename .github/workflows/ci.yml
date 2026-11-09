@@ -198,6 +198,10 @@ jobs:
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
+    # The sealed, release-shaped kit: the 6-hourly schedule and manual runs
+    # only, for the sealed lanes. Pull requests and pushes use dev-kit. Its
+    # original condition was none (always on).
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     # A kit that seals the native compiler kernel lowers the analysis zone in
     # one process and peaks near 15 GB, which starves a 4-vCPU runner.
     # The kit is always a bytecode kit (setup-jac bytecode-kit below), on
@@ -388,8 +392,139 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # The kit every pull request, push and scheduled test lane runs on: a -Ddev
+  # binary (launcher + Python payload, jaclang linked from this checkout), the
+  # checkout's own precompile bundle and stub catalog, and the floors, shim
+  # and bun at their checkout paths. No native prebuild, seal or pack: that
+  # sealed, release-shaped kit is build-kit's, on the 6-hourly schedule and
+  # manual runs, for the lanes that test sealed behavior.
+  dev-kit:
+    runs-on: ubuntu-24.04
+    needs: changes
+    env:
+      XDG_CACHE_HOME: ${{ runner.temp }}/.cache
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the dev jac binary (cached)
+        uses: ./.github/actions/setup-jac
+        with:
+          need-build-inputs: "true"
+          bytecode-kit: "true"
+          dev: "true"
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Ensure the LLVMPY shim is present
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
+            exit 0
+          fi
+          zig build fetch-llvm -Dreuse-python=true -Dstale-python=true --summary all
+          zig build jacllvm -Dreuse-python=true -Dstale-python=true --summary all
+
+      - name: Materialize typeshed, bun + vendored runtimes
+        working-directory: jac
+        run: |
+          zig build fetch-typeshed -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-bun -Dreuse-python=true -Dstale-python=true --summary all
+          zig build vendor-musl -Dreuse-python=true -Dstale-python=true --summary all
+          zig build vendor-musl-linux-aarch64 -Dreuse-python=true -Dstale-python=true --summary all
+          zig build vendor-wasm-libc -Dreuse-python=true -Dstale-python=true --summary all
+
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
+      # The checkout's precompile bundle, built in place
+      # (jaclang/_precompiled). Every unit is checked against its source and
+      # compiler, so a restored tree only lets unchanged modules skip the
+      # recompile; the compiler digest scopes the prefix.
+      - name: Restore the dev precompile bundle
+        id: dev-precompiled-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: jac/jaclang/_precompiled
+          key: jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          restore-keys: |
+            jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-
+
+      - name: Restore the dev stub catalog
+        id: dev-stubcat-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/.cache/jac/jir/stubcat
+          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+
+      - name: Precompile the checkout and build the stub catalog
+        run: |
+          set -euo pipefail
+          export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
+          jac precompile ./jac
+          jac native build stubcat
+          DIR="$(find jac/jaclang/_precompiled -maxdepth 1 -type d -name 'cpython-*' | head -1)"
+          [ -n "$DIR" ] || { echo "::error::no jac/jaclang/_precompiled/cpython-<ver> tree"; exit 1; }
+          UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
+          [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
+          echo "precompile bundle: $UNITS units in $DIR"
+          ls "$XDG_CACHE_HOME/jac/jir/stubcat"/*.bin
+
+      - name: Save the dev precompile bundle
+        if: steps.dev-precompiled-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: jac/jaclang/_precompiled
+          key: jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+
+      - name: Save the dev stub catalog
+        if: steps.dev-stubcat-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/.cache/jac/jir/stubcat
+          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+
+      - name: Upload the dev kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-dev-kit
+          path: |
+            jac/zig-out/bin/jac
+            jac/jaclang/vendor/typeshed/stdlib
+            jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
+            jac/jaclang/client/_bun
+            jac/.python-build/jacpython/linux-x86_64/python/build/lib
+            jac/.pbs-build/linux-x86_64/musl/lib
+            jac/.pbs-build/linux-aarch64/musl/lib
+            jac/.pbs-build/wasm32/libc
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload the dev precompile bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-dev-precompiled
+          path: jac/jaclang/_precompiled
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload the dev stub catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-dev-stubcat
+          path: ${{ runner.temp }}/.cache/jac/jir/stubcat
+          retention-days: 1
+          if-no-files-found: error
+
   jac-check:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     # Three legs, each running the whole project-wide check (jac.toml
@@ -467,6 +602,8 @@ jobs:
             jac-check-cache-v3-s${{ matrix.shard }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
+        with:
+          dev: "true"
 
       - name: Install plugin deps so jac check resolves scale/byllm imports
         # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -676,7 +813,7 @@ jobs:
         run: bash scripts/check-release-notes.sh
 
   test-compiler:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     strategy:
@@ -736,7 +873,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit
         with:
-          sealed: ${{ matrix.sealed == '1' }}
+          dev: "true"
       - name: Set up Node.js (ES backend)
         uses: actions/setup-node@v4
         with:
@@ -766,7 +903,7 @@ jobs:
 
   # Everything except the compiler tests.
   test-runtime:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -780,7 +917,7 @@ jobs:
         run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
       - uses: ./.github/actions/jac-kit
         with:
-          sealed: "true"
+          dev: "true"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -819,7 +956,10 @@ jobs:
   #   off.
   test-in-package-sealed:
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
+    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
+    # requests and pushes test on the dev kit). Was:
+    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -874,7 +1014,7 @@ jobs:
   # (tests/compiler/test_no_llvm_degradation.jac, via JAC_LLVM_SHIM=none).
 
   test-client:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -883,7 +1023,7 @@ jobs:
           submodules: true
       - uses: ./.github/actions/jac-kit
         with:
-          sealed: "true"
+          dev: "true"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -914,7 +1054,7 @@ jobs:
   # has (test_byllm.jac, test_auth_cutover.jac, test_firebase_auth_sso.jac).
   # Those findings are a follow-up on the test files, not on this lane.
   test-packages-and-docs:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -922,6 +1062,8 @@ jobs:
         with:
           submodules: true
       - uses: ./.github/actions/jac-kit
+        with:
+          dev: "true"
       - name: Install byllm deps + test deps
         run: |
           jac install \
@@ -944,7 +1086,7 @@ jobs:
             jac/tests/cli/test_docs_code_blocks.jac
 
   test-scale:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: ubuntu-24.04
     strategy:
@@ -961,6 +1103,8 @@ jobs:
       # __file__-relative lookup and silently self-skip when it is missing.
       # Reroute lane for the same reason as test-packages-and-docs above.
       - uses: ./.github/actions/jac-kit
+        with:
+          dev: "true"
       - name: Install scale deps + test deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
@@ -1000,7 +1144,10 @@ jobs:
   # built from this checkout.
   test-scale-k8s:
     needs: [changes, build-kit]
-    if: >-
+    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
+    # requests and pushes test on the dev kit). Was:
+    # if: >-
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
       (github.event_name != 'pull_request' ||
        needs.changes.outputs.core == 'true' ||
        needs.changes.outputs.scale == 'true') &&
@@ -1105,7 +1252,7 @@ jobs:
   # aarch64 cross lane: in-house ELF linker + arch-parameterized musl from the
   # kit, binaries run under qemu-user.
   test-native-aarch64:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     # Runs on the schedule, manual runs, and pull requests that touch native
     # paths; pushes leave it to the schedule. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
@@ -1121,7 +1268,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
       - uses: ./.github/actions/jac-kit
         with:
-          sealed: "true"
+          dev: "true"
       - name: Run aarch64 cross tests under qemu
         env:
           JAC_TEST_JOBS: "0"
@@ -1134,7 +1281,7 @@ jobs:
   # launcher materializes through, the walk-up import shape the stub is built
   # with, and an end-to-end fused-runtime boot of a freshly compiled na host.
   test-launcher-jac:
-    needs: [changes, build-kit]
+    needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -1142,6 +1289,8 @@ jobs:
         with:
           submodules: true
       - uses: ./.github/actions/jac-kit
+        with:
+          dev: "true"
       - name: Payload tool + trailer codec
         run: jac test jac/tests/payload/
       - name: Bundled zstd + tarfile decode path
@@ -1190,7 +1339,10 @@ jobs:
     # Runs on the schedule, manual runs, and pull requests that touch its
     # own paths. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
+    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
+    # requests and pushes test on the dev kit). Was:
+    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     # actions: read lets the performance report list main's runs and download
     # their pack-smoke-performance artifacts for the wall-time comparison.
@@ -1742,7 +1894,10 @@ jobs:
     # Runs on the schedule, manual runs, and pull requests that touch its
     # own paths. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
+    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
+    # requests and pushes test on the dev kit). Was:
+    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -1897,7 +2052,10 @@ jobs:
   # them on linux-aarch64.
   test-jacpython:
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
+    # requests and pushes test on the dev kit). Was:
+    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -1911,6 +2069,9 @@ jobs:
     needs: [changes, build-kit]
     # Runs on the 6-hourly schedule and manual runs only. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
+    # requests and pushes test on the dev kit). Was:
+    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -1953,6 +2114,7 @@ jobs:
     needs:
       - changes
       - build-kit
+      - dev-kit
       - macos-native
       - js-engine
       - test-jacpython
