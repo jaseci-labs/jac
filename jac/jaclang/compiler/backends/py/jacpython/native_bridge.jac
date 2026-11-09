@@ -242,6 +242,12 @@ import from c {
         level = optimize;
         if level < 0 {
             level = config_word(PyConfig_OPTIMIZATION_LEVEL);
+            # The interpreter config keeps -1 as its pre-initialization
+            # sentinel. Imports such as encodings compile source before the
+            # final config is applied; CPython's effective default then is 0.
+            if level < 0 {
+                level = 0;
+            }
         }
         length = i64(strlen(mode));
         mode_string = jac_str_new(mode, length);
