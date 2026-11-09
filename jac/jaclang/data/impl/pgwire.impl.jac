@@ -252,7 +252,7 @@ impl PgWireConnection._connect_socket -> None {
     } except OSError as e {
         target = self.unix_sock or f"{host}:{self.port}";
         detail = f"cannot connect to the database at {target}: {e.strerror or e}";
-        # Keep the type and errno: reconnect and 503 mapping check them.
+
         if e.errno is None {
             raise type(e)(detail) from e;
         }
