@@ -12,7 +12,8 @@ class JacClientCompiler {
         na_wasm_modules: set[str] = set(),
         link_demand: dict[Path, dict[Path, list[str]]] = {},
         input_files: dict[str, str] = {},
-        client_modules: dict[str, str] = {};
+        client_modules: dict[str, str] = {},
+        scan_routes_with_bundle: bool = False;
 
     with entry {
         ROUTER_EXPORTS = [

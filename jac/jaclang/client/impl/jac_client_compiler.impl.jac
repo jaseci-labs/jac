@@ -732,6 +732,9 @@ impl _bundle_runtime_js(
 impl JacClientCompiler._route_exports_of(
     self: JacClientCompiler, module_path: Path
 ) -> tuple[((str | None), (str | None))] {
+    if not self.scan_routes_with_bundle {
+        return resolve_route_exports(module_path);
+    }
     source_root = self.jac_compiler.source_root or self.project_dir;
     try {
         artifact = self.jac_compiler._compile_to_js(module_path, source_root);
