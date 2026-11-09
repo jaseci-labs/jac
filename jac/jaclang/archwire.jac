@@ -841,10 +841,6 @@ graph import {
             pack_native_variants
         },
         dist.precompile_bytecode.run_precompile { read_debug_source },
-        dist.precompile_bytecode.seal_native {
-            native_section_payload,
-            read_section_bytes as _rsb
-        },
         dist.precompiled.bundle_misses {
             jir_cacheable_source_path,
             precompiled_jir_matches_source
@@ -915,9 +911,6 @@ graph import {
         },
         cli.commands.analysis.check { na_coverage_end },
     ]
-    compiler.driver.native_iface ++> dist.precompile_bytecode.seal_native {
-        NativeIface
-    }
     type compiler.driver.native_iface ++> project.compiler_host { NativeIface }
     compiler.driver.nativecache --> project.compiler_host.ProjectHost.native_units_for {
         NativeUnitRegistry

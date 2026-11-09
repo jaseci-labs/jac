@@ -1323,19 +1323,11 @@ impl seal_native(
             }
             continue;
         }
-        _refresh_native_twin(out_dir / mod_entry["jir"], u.path, str(pkg_path));
-        jir_bytes = (out_dir / mod_entry["jir"]).read_bytes();
-        mod_entry["sha256"] = hashlib.sha256(jir_bytes).hexdigest();
-        sealed_iface = NativeIface.verified_digest(
-            native_section_payload(_rsb(jir_bytes, SEC_NIFACE), stamp)
+        twin = out_dir / mod_entry["jir"];
+        _refresh_native_twin(
+            twin, u.path, str(pkg_path), {SEC_NIFACE: stamp.pack(u.iface.to_bytes())}
         );
-        if sealed_iface != u.digest {
-            raise RuntimeError(
-                f"native unit {rel}: the sealed JIR carries interface "
-                f"{(sealed_iface or 'none')[:12]} but the artifact linked "
-                f"{u.digest[:12]}; re-run the compile pass"
-            );
-        }
+        mod_entry["sha256"] = hashlib.sha256(twin.read_bytes()).hexdigest();
         unit_records[rel] = {"jir": mod_entry["jir"], "iface_digest": u.digest};
     }
     console.print(
@@ -1434,8 +1426,16 @@ impl adopt_kernel(
     };
 }
 
-impl _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
+impl _refresh_native_twin(
+    twin: Path,
+    jac_path: str,
+    pkg_root: str,
+    overrides: (dict[int, bytes] | None) = None
+) -> None {
     fresh = _native_extra(jac_path, pkg_root);
+    if overrides {
+        fresh.update(overrides);
+    }
     if not fresh {
         return;
     }
