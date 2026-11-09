@@ -182,6 +182,7 @@ obj ServeSettings {
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ['*'],
+        cors_credentials: bool = False,
         public_origin: str = '',
         workers: WorkerSettings = WorkerSettings(),
         tls: TlsSettings = TlsSettings(),

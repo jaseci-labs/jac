@@ -5569,7 +5569,7 @@ impl NativeBuiltinEmitter.emit_sorted(
         arg_nodes=ctx.arg_nodes,
         call_node=ctx.call_node
     );
-    if _le.emit_sort(_ctx2, items, []) is None and (ctx?.call_kwargs or {}) {
+    if _le.emit_sort(_ctx2, items, []) is None {
         return None;
     }
     return items;

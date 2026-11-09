@@ -135,6 +135,16 @@ All three block code generation for the module that reports them.
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
 | `E0052` | Parameter '{name}' is missing a type annotation |
 
+### Statement Context Errors
+
+| Code | Message |
+|------|---------|
+| `E0055` | 'yield' is only valid inside a function body |
+| `E0057` | 'return' is only valid inside a function body |
+| `E0058` | '{keyword}' is only valid inside a loop |
+
+A `with entry` block runs as module code, not as a function, so `return` and `yield` there have nothing to leave (`E0055`, `E0057`). For `return`, a `def`, method, `impl` body, ability, block lambda or `test` body is a function body. `yield` is stricter: it needs an enclosing `def`, method, `impl` body or ability, so a `yield` in a `test` body, or in a block lambda outside any of those, is still `E0055`. A `with entry` block inside an archetype is not a function body for either. To stop an entry block early, move its code into a `def` and call that, or invert the condition.
+
 ### Property Declaration Errors
 
 | Code | Message |
@@ -430,6 +440,15 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac b
 
 !!! tip "Fixing `E1132` (a type-only binding used as a value)"
     An `import type` binding is registered with the checker and nothing else -- neither backend emits a runtime import for it -- so calling it, reading an attribute off it, passing it to `isinstance`/`issubclass`, decorating with it, inheriting from it, or assigning it reaches a name nothing binds. This holds on the server too: the `typing.TYPE_CHECKING` guard means a guarded `UserId(raw)` would be a `NameError`, not a brand. Annotations, `has` field types, return types, generic arguments, `as` casts, and `type` alias right-hand sides are type position and stay legal. If the name really is needed at runtime, import it with a plain `import from` instead, which requires that it actually has a runtime binding in the importing module's codespace. The error blocks codegen.
+
+### Type Parameters
+
+| Code | Message |
+|------|---------|
+| `E1163` | '{name}' is a type parameter and cannot be used as a value |
+
+!!! tip "Fixing `E1163` (a type parameter used as a value)"
+    A type parameter such as `T` in `def f[T: Exception](e: T)` names a type for the checker only; no backend binds it at runtime to the class it stands for. The Python backend drops a function's type parameters, so `return T`, `x = T`, `raise T`, `isinstance(e, T)` or `cast(T, v)` is a `NameError` when it runs, and inside a class `T` is a bare `TypeVar`, not the class. Annotations, `has` field types, return types, generic arguments, `as` casts and `type` alias right-hand sides are type position and stay legal, and so is a `comptime` parameter, which is a value. To use the class at runtime, pass it in: `def f[T: Exception](cls: type[T])`, then `raise cls()` or `isinstance(e, cls)`. Write `v as T` instead of `cast(T, v)`.
 
 ### Type Warnings
 

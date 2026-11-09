@@ -3969,6 +3969,15 @@ impl type_only_import_of(nd: NameAtom) -> (ModuleItem | None) {
     return found;
 }
 
+impl type_param_of(nd: NameAtom) -> (TypeParam | None) {
+    sym = nd.sym;
+    if sym is None {
+        return None;
+    }
+    owner = sym.decl.name_of;
+    return owner if isinstance(owner, TypeParam) else None;
+}
+
 impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
     cur: UniNode = nd;
     parent = cur.parent;
