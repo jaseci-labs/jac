@@ -466,6 +466,9 @@ jobs:
           key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
 
       - name: Precompile the checkout and build the stub catalog
+        env:
+          JAC_PRECOMPILE_JOBS: "4"
+          JAC_PRECOMPILE_RSS_LOG: "1"
         run: |
           set -euo pipefail
           export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
