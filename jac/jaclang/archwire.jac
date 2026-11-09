@@ -3092,6 +3092,8 @@ graph import {
         compiler.frontend.python.parser_actions.pa_warn_escape { warn },
         compiler.frontend.python.source_encoding { take_buffer },
     ]
+    runtime.python.object_model.cell ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.enumerate ++> compiler.backends.py.jacpython.native_api;
     runtime.python.object_model.header ++> compiler.backends.py.jacpython.native_bridge {
         current_interp,
         object_decref,
@@ -3101,8 +3103,6 @@ graph import {
         object_xdecref,
         type_has_feature
     }
-    runtime.python.object_model.cell ++> compiler.backends.py.jacpython.native_api;
-    runtime.python.object_model.enumerate ++> compiler.backends.py.jacpython.native_api;
     runtime.python.object_model.interpolation ++> compiler.backends.py.jacpython.native_api;
     runtime.python.object_model.picklebuffer ++> compiler.backends.py.jacpython.native_api;
     runtime.python.object_model.range ++> compiler.backends.py.jacpython.native_api;

@@ -203,33 +203,6 @@ def main -> int {
             source_text = (sources / relative).read_text().replace(
                 "jaclang.", "native_subject."
             );
-            if relative == "runtime/python/constant_output.jac" {
-                # The main workspace provides these imports through archwire.
-                # The isolated native_subject tree has no archwire, so restore
-                # the module's exact dependencies from that graph here.
-                source_text = (
-                    "import from native_subject.runtime.python.capi {"
-                    " checked, required, text_object, write_buffer }\n"
-                    "import from native_subject.runtime.python.constant_keys {"
-                    " constant_key }\n"
-                    "import from native_subject.runtime.python.compiler_integer {"
-                    " PyBigInt }\n"
-                    "import from native_subject.runtime.python.cpython_api {"
-                    " NULL, PyBool_FromLong, PyComplex_FromDoubles,"
-                    " PyFloat_FromDouble, PyLong_FromLongLong,"
-                    " PyNumber_Negative, PyObject, PySlice_New, PyTuple_New,"
-                    " Py_Ellipsis, Py_NewRef, Py_None, jacpy_code_new,"
-                    " jacpy_long_from_bytes, jacpy_release, jacpy_set_new,"
-                    " jacpy_tuple_set_owned }\n"
-                    "import from native_subject.runtime.python.objects {"
-                    " PyBool, PyBytes, PyCode, PyComplex, PyEllipsis, PyFloat,"
-                    " PyInt, PyNoneType, PyObj, PySet, PySlice, PyStr, PyTuple }\n"
-                    "import from native_subject.runtime.python.opcode_meta {"
-                    " CO_FAST_CELL, CO_FAST_FREE, CO_FAST_HIDDEN,"
-                    " CO_FAST_LOCAL, CO_OPTIMIZED }\n\n"
-                )
-                    + source_text;
-            }
             destination.write_text(source_text);
         }
         # Keep the probe isolated, but use the runtime's production import
