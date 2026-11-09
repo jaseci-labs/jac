@@ -124,14 +124,33 @@ test "null-byte errors are rejected before the source reaches the tokenizer" {
 }
 
 test "unparenthesized generator diagnostics span the generator expression" {
+    cases = [
+        ("f(4, x for x in range(1))", 6, 25),
+        ("foo(x,    y for y in range(3) for z in range(2) if z    , p)", 11, 53)
+    ];
+    for (source, offset, end_offset) in cases {
+        caught = False;
+        try {
+            pycompile(source, "generator.py", "exec");
+        } except SyntaxError as error {
+            caught = True;
+            assert error.msg == "Generator expression must be parenthesized" , error.msg;
+            assert error.offset == offset , error.offset;
+            assert error.end_offset == end_offset , error.end_offset;
+        }
+        assert caught;
+    }
+}
+
+test "expression assignment diagnostics use the known expression start" {
     caught = False;
     try {
-        pycompile("f(4, x for x in range(1))", "generator.py", "exec");
+        pycompile("print(end1 + end2 = ' ')", "assignment.py", "exec");
     } except SyntaxError as error {
         caught = True;
-        assert error.msg == "Generator expression must be parenthesized" , error.msg;
-        assert error.offset == 6 , error.offset;
-        assert error.end_offset == 25 , error.end_offset;
+        assert error.msg
+            == "expression cannot contain assignment, perhaps you meant \"==\"?" , error.msg;
+        assert error.offset == 7 , error.offset;
     }
     assert caught;
 }

@@ -1875,6 +1875,57 @@ def pa_raise_syntax_known_range(
         p.error_indicator = True;
         return None;
     }
+    if isinstance(a, expr) and isinstance(b, peg_token) and not peg_has_error(p) {
+        start = a as expr;
+        finish = b as peg_token;
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=start.lineno,
+                end_lineno=finish.end_lineno,
+                col_offset=start.col_offset,
+                end_col_offset=finish.end_col_offset
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
+    if isinstance(a, peg_token) and isinstance(b, expr) and not peg_has_error(p) {
+        token_start = a as peg_token;
+        expr_finish = b as expr;
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=token_start.lineno,
+                end_lineno=expr_finish.end_lineno or expr_finish.lineno,
+                col_offset=token_start.col_offset,
+                end_col_offset=expr_finish.end_col_offset or expr_finish.col_offset + 1
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
+    if isinstance(a, expr) and isinstance(b, expr) and not peg_has_error(p) {
+        expr_start = a as expr;
+        expr_finish = b as expr;
+        p.error = mk_diag(
+            "SyntaxError",
+            message,
+            tok_loc(
+                lineno=expr_start.lineno,
+                end_lineno=expr_finish.end_lineno or expr_finish.lineno,
+                col_offset=expr_start.col_offset,
+                end_col_offset=expr_finish.end_col_offset or expr_finish.col_offset + 1
+            ),
+            p.filename
+        );
+        p.error_indicator = True;
+        return None;
+    }
     if message == "Generator expression must be parenthesized"
         and isinstance(b, comprehension) {
         # CPython raises this over the range from the last argument to the end of
