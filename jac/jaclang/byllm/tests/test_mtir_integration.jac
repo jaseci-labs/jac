@@ -868,39 +868,42 @@ test "compiled MTIR keeps the params, tools and fields a call site needs" {
 test "a tool-using call's finish_tool carries the answer type's sems" {
     need_outside_jaclang(fixture_path("finish_tool_sems.jac"));
     mod = load_fixture("finish_tool_sems");
-    mod.finish_llm = MockLLM(
-        model_name="mockllm", outputs=[finish({"text": "a-b", "tags": ["x"]})]
-    );
-    assert mod.make_slug("A B").text == "a-b";
-    finish_tools = [
-        t["function"]
-        for t in mod.finish_llm.sent("tools")[0]
-        if t["function"]["name"] == "finish_tool"
+    slug_sems = [
+        (["description"], "A URL slug for one video, never a placeholder."),
+        (["properties", "text", "description"], "Lowercase words joined by hyphens."),
+        (["properties", "tags", "description"], "Topic tags taken from the title.")
     ];
-    assert len(finish_tools) == 1 , f"expected one finish_tool, got {finish_tools}";
-    tool = finish_tools[0];
-    assert tool["description"].startswith("This tool is used to finish") , (
-        f"tool description: {tool['description']!r}"
-    );
-    output = tool["parameters"]["properties"]["final_output"];
-    for (got, want, what) in [
-        (
-            output.get("description"),
-            "A URL slug for one video, never a placeholder.",
-            "type sem"
-        ),
-        (
-            output["properties"]["text"].get("description"),
-            "Lowercase words joined by hyphens.",
-            "text sem"
-        ),
-        (
-            output["properties"]["tags"].get("description"),
-            "Topic tags taken from the title.",
-            "tags sem"
-        )
+    mood_sems = [
+        (["description"], "How the speaker feels."),
+        (["description"], "HAPPY: Upbeat, laughing or celebrating."),
+        (["description"], "SAD: Grieving, lonely or let down.")
+    ];
+    for (label, fn_name, arg, answer, sems) in [
+        ("obj", "make_slug", "A B", {"text": "a-b", "tags": ["x"]}, slug_sems),
+        ("enum", "read_mood", "we won", "happy", mood_sems)
     ] {
-        assert got == want , f"{what}: got {got!r}";
+        mod.finish_llm = MockLLM(model_name="mockllm", outputs=[finish(answer)]);
+        getattr(mod, fn_name)(arg);
+        finish_tools = [
+            t["function"]
+            for t in mod.finish_llm.sent("tools")[0]
+            if t["function"]["name"] == "finish_tool"
+        ];
+        assert len(finish_tools) == 1 , f"{label}: expected one finish_tool, got {finish_tools}";
+        tool = finish_tools[0];
+        assert tool["description"].startswith("This tool is used to finish") , (
+            f"{label}: tool description {tool['description']!r}"
+        );
+        output = tool["parameters"]["properties"]["final_output"];
+        for (path, want) in sems {
+            got = output;
+            for key in path {
+                got = got.get(key, {});
+            }
+            assert isinstance(got, str) and want in got , (
+                f"{label}: {want!r} missing at {path}, got {got!r}"
+            );
+        }
     }
 }
 

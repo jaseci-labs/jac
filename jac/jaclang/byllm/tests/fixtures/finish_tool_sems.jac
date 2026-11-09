@@ -20,3 +20,13 @@ def lookup(query: str) -> str {
 glob finish_llm: any = None;
 
 def make_slug(title: str) -> Slug by finish_llm(tools=[lookup]);
+
+enum Mood: str { HAPPY = "happy", SAD = "sad" }
+
+sem Mood = "How the speaker feels.";
+
+sem Mood.HAPPY = "Upbeat, laughing or celebrating.";
+
+sem Mood.SAD = "Grieving, lonely or let down.";
+
+def read_mood(text: str) -> Mood by finish_llm(tools=[lookup]);

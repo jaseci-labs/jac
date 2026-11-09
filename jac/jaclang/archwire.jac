@@ -4580,7 +4580,7 @@ graph import byllm {
     schema ++> [
         llm { inject_schema_hint, type_display_name },
         mtir { json_to_instance, type_display_name, type_to_schema },
-        types { tool_to_schema, type_display_name },
+        types { _type_to_schema, tool_to_schema, type_display_name },
     ]
     systemone ++> [
         lib { Decision },

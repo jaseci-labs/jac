@@ -71,8 +71,14 @@ impl Tool.make_finish_tool(
     finish_tool.__annotations__["return"] = resp_type;
     finish_tool.__annotations__["final_output"] = resp_type;
     description = "This tool is used to finish the tool calls and return the final output.";
+    enum_desc = str(
+        _type_to_schema(resp_type, info=output_info).get("description") or ""
+    )
+        if isinstance(output_info, EnumInfo)
+        else "";
     output_desc = (
-        (output_info.semstr if isinstance(output_info, (ClassInfo, EnumInfo)) else None)
+        enum_desc
+        or (output_info.semstr if isinstance(output_info, ClassInfo) else None)
         or getattr(resp_type, "_jac_semstr", "")
         or "The final output of the tool calls."
     );
