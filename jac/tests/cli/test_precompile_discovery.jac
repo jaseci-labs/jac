@@ -77,7 +77,9 @@ test "a precompiled unit of a client-prepared stage looks up the module the prep
         );
         main_path = str(base / "main.jac");
         try {
-            prepare_application(main_path, JacProgram(), str(base), client=True, dev=False);
+            prepare_application(
+                main_path, JacProgram(), str(base), client=True, dev=False
+            );
         } finally {
             forget(main_path);
         }
