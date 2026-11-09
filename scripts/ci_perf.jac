@@ -264,13 +264,23 @@ def fetch_baseline(
         samples[phase.name] = [];
     }
     used: list[str] = [];
-    listing = json.loads(
-        client.get(
-            f"/repos/{client.repository}/actions/workflows/{policy.workflow}/runs"
-            f"?branch={policy.branch}&per_page={policy.runs * 3}"
-        )
-    );
-    for run in listing["workflow_runs"] {
+    runs: list[dict[str, any]] = [];
+    for event in ("schedule", "push") {
+        runs.extend(
+            json.loads(
+                client.get(
+                    f"/repos/{client.repository}/actions/workflows/{policy.workflow}/runs"
+                    f"?branch={policy.branch}&event={event}&per_page={policy.runs * 3}"
+                )
+            )["workflow_runs"]
+        );
+    }
+
+    def newest_first(run: dict[str, any]) -> int {
+        return -int(run["id"]);
+    }
+
+    for run in sorted(runs, key=newest_first) {
         short = [
             name
             for (name, values) in samples.items()

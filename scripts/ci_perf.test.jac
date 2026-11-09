@@ -345,7 +345,10 @@ obj FakeTransport {
         downloads: list[int] = [];
 
     def respond(path: str) -> tuple[int, str | None, bytes] {
-        if "/workflows/ci.yml/runs?branch=main&per_page=9" in path {
+        if "/workflows/ci.yml/runs?branch=main&event=schedule&per_page=9" in path {
+            return (200, None, json.dumps({"workflow_runs": []}).encode());
+        }
+        if "/workflows/ci.yml/runs?branch=main&event=push&per_page=9" in path {
             return (
                 200,
                 None,
