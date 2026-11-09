@@ -67,7 +67,8 @@ test "every codegen option flip changes the fingerprint" {
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
         _pinned_opts(opt_level=0),
-        _pinned_opts(native_threads=7)
+        _pinned_opts(native_threads=7),
+        _pinned_opts(client_source_root="/apps/web")
     ];
     seen: set = {base_fp};
     for flipped in flips {
@@ -78,6 +79,23 @@ test "every codegen option flip changes the fingerprint" {
         seen.add(fp);
     }
     assert len(seen) == len(flips) + 1 , "fingerprint collision between flips";
+}
+
+test "client layout survives a kernel request and separates dependency caches" {
+    import from jaclang.compiler.frontend.kernel_inputs {
+        request_of,
+        request_to_dict,
+        request_from_dict
+    }
+    first = _pinned_opts(client_source_root="/apps/first");
+    second = _pinned_opts(client_source_root="/apps/second");
+    restored = request_from_dict(request_to_dict(request_of(first))).to_options();
+    assert restored.client_source_root == first.client_source_root;
+    assert restored.codegen_fingerprint() == first.codegen_fingerprint();
+    assert first.dependency_projection("/shared/Card.jac")
+        != second.dependency_projection("/shared/Card.jac");
+    assert first.unit_codegen_identity("/shared/Card.jac")
+        == second.unit_codegen_identity("/shared/Card.jac");
 }
 
 test "diagnostic-only options do not enter the fingerprint" {
@@ -129,7 +147,22 @@ test "clone_for_native_import carries the full codegen identity" {
         memory_exempt=["legacy*"]
     );
     child = parent.clone_for_native_import();
-    assert child.skip_native_engine and child.aot_mode;
+    assert child.skip_native_engine;
+    for (label, options, hard) in [
+        ("default run", {}, False),
+        ("ahead of time", {"aot_mode": True}, True),
+        ("forced native", {"force_codespace": "native"}, True)
+    ] {
+        assert _pinned_opts(**options).clone_for_native_import().aot_mode
+            == hard , label;
+    }
+    import from jaclang.compiler.frontend.kernel_inputs {
+        request_from_dict,
+        request_of,
+        request_to_dict
+    }
+    carried = request_from_dict(request_to_dict(request_of(child))).to_options();
+    assert carried.native_import , "the kernel session lost the native import";
     parent_id = parent.codegen_identity();
     child_id = child.codegen_identity();
     parent_tail = parent_id.split("nogc_mods=")[1];

@@ -783,7 +783,9 @@ impl JacModule.jac_import(
 
             if spec.origin and spec.origin.endswith('.py') {
                 with open(spec.origin, encoding='utf-8') as stream {
-                    codeobj = compile(stream.read(), spec.origin, 'exec');
+                    codeobj = compile(
+                        stream.read(), spec.origin, 'exec', dont_inherit=True
+                    );
                 }
                 exec(codeobj, module.__dict__);
             } elif spec.loader {
@@ -2161,6 +2163,7 @@ impl JacRuntime.after_fork_in_child -> None {
     }
     _shared_root_resolver[1] = None;
     JacRuntime.pool = ThreadPoolExecutor();
+    DRAIN_HOOKS.clear();
 }
 
 impl _scale_provider -> any {

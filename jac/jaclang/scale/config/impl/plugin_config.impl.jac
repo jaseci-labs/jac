@@ -25,6 +25,11 @@ impl _http_activation_nested_schema(cluster_scoped: bool = False) -> dict[str, a
             "default": 300,
             "description": "Seconds of inactivity before scaling back to min_replicas."
         },
+        "initial_cooldown_period": {
+            "type": "int",
+            "default": 0,
+            "description": "Seconds after the ScaledObject is created before the target may scale to min_replicas. A new target has served no request yet, so with 0 KEDA scales it down at once."
+        },
         "target_port": {
             "type": "int",
             "default": None,
@@ -299,6 +304,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "Google OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting Google for API access"
                             }
                         }
                     },
@@ -316,6 +326,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "Apple OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting Apple for API access"
                             }
                         }
                     },
@@ -333,6 +348,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "GitHub OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting GitHub for API access"
                             }
                         }
                     },
@@ -852,17 +872,17 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                             "allow_methods": {
                                 "type": "list",
                                 "default": ["*"],
-                                "description": "HTTP methods allowed on cross-origin requests."
+                                "description": "HTTP methods allowed on cross-origin requests. [\"*\"] allows any, answered with the method the preflight asked for."
                             },
                             "allow_headers": {
                                 "type": "list",
                                 "default": ["*"],
-                                "description": "Request headers allowed on cross-origin requests."
+                                "description": "Request headers allowed on cross-origin requests. [\"*\"] allows any, answered with the headers the preflight asked for, so Authorization is covered."
                             },
                             "allow_credentials": {
                                 "type": "bool",
                                 "default": False,
-                                "description": "Allow cookies / Authorization on cross-origin requests. Incompatible with allow_origins = [\"*\"] per spec."
+                                "description": "Send Access-Control-Allow-Credentials so browsers include cookies on cross-origin requests. Needs a list in allow_origins: with [\"*\"] the config is refused, since browsers reject that pair."
                             },
                             "expose_headers": {
                                 "type": "list",

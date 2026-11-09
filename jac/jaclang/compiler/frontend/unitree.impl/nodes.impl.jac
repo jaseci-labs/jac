@@ -1371,6 +1371,20 @@ impl UniCFGNode.cfg_link(target: UniCFGNode) -> None {
     }
 }
 
+impl UniCFGNode.bb_catch_out.getter -> list[UniCFGNode] {
+    return [self->:CfgCatch:->];
+}
+
+impl UniCFGNode.bb_catch_in.getter -> list[UniCFGNode] {
+    return [self<-:CfgCatch:<-];
+}
+
+impl UniCFGNode.cfg_catch_link(target: UniCFGNode) -> None {
+    if target not in [self->:CfgCatch:->] {
+        self +>:CfgCatch:+> target;
+    }
+}
+
 impl ConditionalNode.sc_true_target.getter -> (UniCFGNode | None) {
     found = [self->:CfgTrue:->];
     return found[0] if found else None;
@@ -1673,12 +1687,6 @@ impl Test.postinit -> None {
 impl ModuleCode.postinit -> None {
     UniNode.postinit(self);
     ContextAwareNode.postinit(self);
-    CodeBlockStmt.postinit(self);
-}
-
-
-impl PyInlineCode.postinit -> None {
-    UniNode.postinit(self);
     CodeBlockStmt.postinit(self);
 }
 
@@ -3959,6 +3967,15 @@ impl type_only_import_of(nd: NameAtom) -> (ModuleItem | None) {
         found = d.parent;
     }
     return found;
+}
+
+impl type_param_of(nd: NameAtom) -> (TypeParam | None) {
+    sym = nd.sym;
+    if sym is None {
+        return None;
+    }
+    owner = sym.decl.name_of;
+    return owner if isinstance(owner, TypeParam) else None;
 }
 
 impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {

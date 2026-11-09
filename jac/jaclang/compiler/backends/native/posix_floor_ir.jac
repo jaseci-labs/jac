@@ -1,4 +1,4 @@
-glob POSIX_FLOOR_SOURCE_SHA256: str = "2b7580943dc38e73b2ab8c14bf21d941daef64e6ac3e1ba6a0b8a9094938c37d",
+glob POSIX_FLOOR_SOURCE_SHA256: str = "7f5fee5e95bbdd067d49b4c15d6cc867f3e5efa7b651ab6a709efa8f06a94fe4",
      POSIX_FLOOR_IR_LINUX_X86_64: str = r"""
 %struct.stat = type { i64, i64, i64, i32, i32, i32, i32, i64, i64, i64, i64, %struct.timespec, %struct.timespec, %struct.timespec, [3 x i64] }
 %struct.timespec = type { i64, i64 }
@@ -97,6 +97,77 @@ define hidden noundef i32 @__jac_at_fdcwd() local_unnamed_addr #3 {
   ret i32 -100
 }
 
+define hidden range(i64 0, 256) i64 @__jac_dirent_type(ptr noundef readonly captures(none) %0) local_unnamed_addr #10 {
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 18
+  %3 = load i8, ptr %2, align 2
+  %4 = zext i8 %3 to i64
+  ret i64 %4
+}
+
+define hidden i64 @__jac_dirent_ino(ptr noundef readonly captures(none) %0) local_unnamed_addr #10 {
+  %2 = load i64, ptr %0, align 8
+  ret i64 %2
+}
+
+define hidden i32 @__jac_dirfd(ptr noundef %0) local_unnamed_addr #4 {
+  %2 = tail call i32 @dirfd(ptr noundef %0) #18
+  ret i32 %2
+}
+
+declare i32 @dirfd(ptr noundef) local_unnamed_addr #6
+
+define hidden noalias ptr @__jac_fdopendir(i32 noundef %0) local_unnamed_addr #4 {
+  %2 = tail call noalias ptr @fdopendir(i32 noundef %0) #18
+  ret ptr %2
+}
+
+declare noalias ptr @fdopendir(i32 noundef) local_unnamed_addr
+
+define hidden void @__jac_rewinddir(ptr noundef %0) local_unnamed_addr #4 {
+  tail call void @rewinddir(ptr noundef %0) #18
+  ret void
+}
+
+declare void @rewinddir(ptr noundef) local_unnamed_addr #6
+
+define hidden i32 @__jac_stat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i64 (i64, ...) @syscall(i64 noundef 262, i32 noundef -100, ptr noundef %0, ptr noundef %1, i32 noundef 0) #18
+  %4 = trunc i64 %3 to i32
+  ret i32 %4
+}
+
+define hidden i32 @__jac_lstat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i64 (i64, ...) @syscall(i64 noundef 262, i32 noundef -100, ptr noundef %0, ptr noundef %1, i32 noundef 256) #18
+  %4 = trunc i64 %3 to i32
+  ret i32 %4
+}
+
+define hidden i32 @__jac_fstat_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i64 (i64, ...) @syscall(i64 noundef 5, i32 noundef %0, ptr noundef %1) #18
+  %4 = trunc i64 %3 to i32
+  ret i32 %4
+}
+
+define hidden i32 @__jac_fstatat_record(i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) local_unnamed_addr #4 {
+  %5 = tail call i64 (i64, ...) @syscall(i64 noundef 262, i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) #18
+  %6 = trunc i64 %5 to i32
+  ret i32 %6
+}
+
+define hidden i32 @__jac_statfs_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i32 @statfs(ptr noundef %0, ptr noundef %1) #18
+  ret i32 %3
+}
+
+declare i32 @statfs(ptr noundef, ptr noundef) local_unnamed_addr #6
+
+define hidden i32 @__jac_fstatfs_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i32 @fstatfs(i32 noundef %0, ptr noundef %1) #18
+  ret i32 %3
+}
+
+declare i32 @fstatfs(i32 noundef, ptr noundef) local_unnamed_addr #6
+
 define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures(none) %1, i64 noundef %2) local_unnamed_addr #4 {
   %4 = alloca %struct.passwd, align 8
   %5 = alloca ptr, align 8
@@ -166,9 +237,9 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures
   ret i64 %41
 }
 
-declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #10
+declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #11
 
-declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #11
+declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #12
 
 declare i32 @getpwnam_r(ptr noundef, ptr noundef, ptr noundef, i64 noundef, ptr noundef) local_unnamed_addr
 
@@ -176,9 +247,9 @@ declare i32 @getpwuid_r(i32 noundef, ptr noundef, ptr noundef, i64 noundef, ptr 
 
 declare i32 @getuid() local_unnamed_addr #6
 
-declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #12
+declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #13
 
-declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i64, i1 immarg) #13
+declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i64, i1 immarg) #14
 
 define hidden range(i64 -1, -9223372036854775808) i64 @__jac_executable_path(ptr noundef captures(none) %0, i64 noundef %1) local_unnamed_addr #7 {
   %3 = add nsw i64 %1, -1
@@ -213,7 +284,7 @@ define hidden range(i64 -1, 49) i64 @__jac_addrinfo_layout(i32 noundef %0) local
   ret i64 %8
 }
 
-define hidden range(i32 0, 65536) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #14 {
+define hidden range(i32 0, 65536) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #10 {
   %2 = load i16, ptr %0, align 2
   %3 = zext i16 %2 to i32
   ret i32 %3
@@ -297,6 +368,26 @@ define hidden noundef double @__jac_fmadd(double noundef %0, double noundef %1, 
   ret double %5
 }
 
+define hidden void @__jac_cpuid(i32 noundef %0, i32 noundef %1, ptr noundef writeonly captures(none) initializes((0, 16)) %2) local_unnamed_addr #4 {
+  %4 = getelementptr inbounds nuw i8, ptr %2, i64 4
+  %5 = getelementptr inbounds nuw i8, ptr %2, i64 8
+  %6 = getelementptr inbounds nuw i8, ptr %2, i64 12
+  %7 = tail call { i32, i32, i32, i32 } asm sideeffect "cpuid", "={ax},={bx},={cx},={dx},{ax},{cx},~{dirflag},~{fpsr},~{flags}"(i32 %0, i32 %1) #18
+  %8 = extractvalue { i32, i32, i32, i32 } %7, 0
+  %9 = extractvalue { i32, i32, i32, i32 } %7, 1
+  %10 = extractvalue { i32, i32, i32, i32 } %7, 2
+  %11 = extractvalue { i32, i32, i32, i32 } %7, 3
+  store i32 %8, ptr %2, align 4
+  store i32 %9, ptr %4, align 4
+  store i32 %10, ptr %5, align 4
+  store i32 %11, ptr %6, align 4
+  ret void
+}
+
+define hidden void @__jac_system_log(i32 noundef %0, ptr noundef readnone captures(none) %1) local_unnamed_addr #3 {
+  ret void
+}
+
 define hidden noundef ptr @__jac_va_list(ptr noundef readnone returned captures(ret: address, provenance) %0) local_unnamed_addr #3 {
   ret ptr %0
 }
@@ -369,11 +460,11 @@ attributes #5 = { mustprogress nocallback nofree nosync nounwind willreturn memo
 attributes #6 = { nounwind }
 attributes #7 = { nofree nounwind uwtable(sync) }
 attributes #8 = { nofree nounwind }
-attributes #10 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #11 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #12 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
-attributes #13 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
-attributes #14 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #10 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #11 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #12 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #13 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
+attributes #14 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
 attributes #15 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) uwtable(sync) }
 attributes #16 = { nofree nounwind willreturn allockind("alloc,uninitialized") allocsize(0) memory(inaccessiblemem: readwrite) "alloc-family"="malloc" }
 attributes #17 = { nounwind willreturn memory(none) }
@@ -394,7 +485,7 @@ attributes #20 = { nounwind willreturn memory(read) }
 @switch.table.__jac_clock_id = private unnamed_addr constant [6 x i64] [i64 0, i64 1, i64 2, i64 3, i64 4, i64 1], align 8
 
 define hidden ptr @__jac_errno() local_unnamed_addr #0 {
-  %1 = tail call ptr @__errno_location() #18
+  %1 = tail call ptr @__errno_location() #20
   ret ptr %1
 }
 
@@ -417,8 +508,8 @@ define hidden noundef i32 @__jac_platform_id() local_unnamed_addr #3 {
 
 define hidden range(i32 -1, 1) i32 @__jac_stat(ptr noundef %0, ptr noundef writeonly captures(none) %1) local_unnamed_addr #4 {
   %3 = alloca %struct.stat, align 8
-  call void @llvm.lifetime.start.p0(i64 128, ptr nonnull %3) #19
-  %4 = call i64 (i64, ...) @syscall(i64 noundef 79, i32 noundef -100, ptr noundef %0, ptr noundef nonnull %3, i32 noundef 0) #19
+  call void @llvm.lifetime.start.p0(i64 128, ptr nonnull %3) #21
+  %4 = call i64 (i64, ...) @syscall(i64 noundef 79, i32 noundef -100, ptr noundef %0, ptr noundef nonnull %3, i32 noundef 0) #21
   %5 = icmp eq i64 %4, 0
   br i1 %5, label %6, label %16
 
@@ -439,7 +530,7 @@ define hidden range(i32 -1, 1) i32 @__jac_stat(ptr noundef %0, ptr noundef write
 
 16:                                               ; preds = %2, %6
   %17 = phi i32 [ 0, %6 ], [ -1, %2 ]
-  call void @llvm.lifetime.end.p0(i64 128, ptr nonnull %3) #19
+  call void @llvm.lifetime.end.p0(i64 128, ptr nonnull %3) #21
   ret i32 %17
 }
 
@@ -457,7 +548,7 @@ define hidden noalias noundef ptr @__jac_opendir(ptr noundef readonly captures(n
 declare noalias noundef ptr @opendir(ptr noundef readonly captures(none)) local_unnamed_addr #8
 
 define hidden ptr @__jac_readdir(ptr noundef %0) local_unnamed_addr #4 {
-  %2 = tail call ptr @readdir(ptr noundef %0) #19
+  %2 = tail call ptr @readdir(ptr noundef %0) #21
   ret ptr %2
 }
 
@@ -479,11 +570,82 @@ define hidden noundef i32 @__jac_at_fdcwd() local_unnamed_addr #3 {
   ret i32 -100
 }
 
+define hidden range(i64 0, 256) i64 @__jac_dirent_type(ptr noundef readonly captures(none) %0) local_unnamed_addr #10 {
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 18
+  %3 = load i8, ptr %2, align 2
+  %4 = zext i8 %3 to i64
+  ret i64 %4
+}
+
+define hidden i64 @__jac_dirent_ino(ptr noundef readonly captures(none) %0) local_unnamed_addr #10 {
+  %2 = load i64, ptr %0, align 8
+  ret i64 %2
+}
+
+define hidden i32 @__jac_dirfd(ptr noundef %0) local_unnamed_addr #4 {
+  %2 = tail call i32 @dirfd(ptr noundef %0) #21
+  ret i32 %2
+}
+
+declare i32 @dirfd(ptr noundef) local_unnamed_addr #6
+
+define hidden noalias ptr @__jac_fdopendir(i32 noundef %0) local_unnamed_addr #4 {
+  %2 = tail call noalias ptr @fdopendir(i32 noundef %0) #21
+  ret ptr %2
+}
+
+declare noalias ptr @fdopendir(i32 noundef) local_unnamed_addr
+
+define hidden void @__jac_rewinddir(ptr noundef %0) local_unnamed_addr #4 {
+  tail call void @rewinddir(ptr noundef %0) #21
+  ret void
+}
+
+declare void @rewinddir(ptr noundef) local_unnamed_addr #6
+
+define hidden i32 @__jac_stat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i64 (i64, ...) @syscall(i64 noundef 79, i32 noundef -100, ptr noundef %0, ptr noundef %1, i32 noundef 0) #21
+  %4 = trunc i64 %3 to i32
+  ret i32 %4
+}
+
+define hidden i32 @__jac_lstat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i64 (i64, ...) @syscall(i64 noundef 79, i32 noundef -100, ptr noundef %0, ptr noundef %1, i32 noundef 256) #21
+  %4 = trunc i64 %3 to i32
+  ret i32 %4
+}
+
+define hidden i32 @__jac_fstat_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i64 (i64, ...) @syscall(i64 noundef 80, i32 noundef %0, ptr noundef %1) #21
+  %4 = trunc i64 %3 to i32
+  ret i32 %4
+}
+
+define hidden i32 @__jac_fstatat_record(i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) local_unnamed_addr #4 {
+  %5 = tail call i64 (i64, ...) @syscall(i64 noundef 79, i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) #21
+  %6 = trunc i64 %5 to i32
+  ret i32 %6
+}
+
+define hidden i32 @__jac_statfs_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i32 @statfs(ptr noundef %0, ptr noundef %1) #21
+  ret i32 %3
+}
+
+declare i32 @statfs(ptr noundef, ptr noundef) local_unnamed_addr #6
+
+define hidden i32 @__jac_fstatfs_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #4 {
+  %3 = tail call i32 @fstatfs(i32 noundef %0, ptr noundef %1) #21
+  ret i32 %3
+}
+
+declare i32 @fstatfs(i32 noundef, ptr noundef) local_unnamed_addr #6
+
 define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures(none) %1, i64 noundef %2) local_unnamed_addr #4 {
   %4 = alloca %struct.passwd, align 8
   %5 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 48, ptr nonnull %4) #19
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #19
+  call void @llvm.lifetime.start.p0(i64 48, ptr nonnull %4) #21
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #21
   store ptr null, ptr %5, align 8
   %6 = tail call dereferenceable_or_null(4096) ptr @malloc(i64 4096)
   %7 = icmp eq ptr %6, null
@@ -491,7 +653,7 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures
 
 8:                                                ; preds = %22
   %9 = shl i64 %14, 1
-  %10 = call ptr @realloc(ptr noundef nonnull %13, i64 noundef %9) #20
+  %10 = call ptr @realloc(ptr noundef nonnull %13, i64 noundef %9) #22
   %11 = icmp eq ptr %10, null
   br i1 %11, label %39, label %12
 
@@ -503,12 +665,12 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures
   br i1 %16, label %19, label %17
 
 17:                                               ; preds = %12
-  %18 = call i32 @getpwnam_r(ptr noundef nonnull %0, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #19
+  %18 = call i32 @getpwnam_r(ptr noundef nonnull %0, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #21
   br label %22
 
 19:                                               ; preds = %12
-  %20 = call i32 @getuid() #19
-  %21 = call i32 @getpwuid_r(i32 noundef %20, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #19
+  %20 = call i32 @getuid() #21
+  %21 = call i32 @getpwuid_r(i32 noundef %20, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #21
   br label %22
 
 22:                                               ; preds = %19, %17
@@ -530,7 +692,7 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures
   br i1 %33, label %39, label %34
 
 34:                                               ; preds = %30
-  %35 = call i64 @strlen(ptr noundef nonnull dereferenceable(1) %32) #21
+  %35 = call i64 @strlen(ptr noundef nonnull dereferenceable(1) %32) #23
   %36 = icmp slt i64 %35, %2
   br i1 %36, label %37, label %39
 
@@ -542,15 +704,15 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef writeonly captures
 39:                                               ; preds = %8, %25, %30, %37, %34, %3
   %40 = phi ptr [ null, %3 ], [ %13, %34 ], [ %13, %37 ], [ %13, %30 ], [ %13, %25 ], [ %13, %8 ]
   %41 = phi i64 [ -1, %3 ], [ %35, %34 ], [ %35, %37 ], [ -2, %30 ], [ -1, %25 ], [ -1, %8 ]
-  call void @free(ptr noundef %40) #19
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #19
-  call void @llvm.lifetime.end.p0(i64 48, ptr nonnull %4) #19
+  call void @free(ptr noundef %40) #21
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #21
+  call void @llvm.lifetime.end.p0(i64 48, ptr nonnull %4) #21
   ret i64 %41
 }
 
-declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #10
+declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #11
 
-declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #11
+declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #12
 
 declare i32 @getpwnam_r(ptr noundef, ptr noundef, ptr noundef, i64 noundef, ptr noundef) local_unnamed_addr
 
@@ -558,13 +720,13 @@ declare i32 @getpwuid_r(i32 noundef, ptr noundef, ptr noundef, i64 noundef, ptr 
 
 declare i32 @getuid() local_unnamed_addr #6
 
-declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #12
+declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #13
 
-declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i64, i1 immarg) #13
+declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i64, i1 immarg) #14
 
 define hidden range(i64 -1, -9223372036854775808) i64 @__jac_executable_path(ptr noundef captures(none) %0, i64 noundef %1) local_unnamed_addr #7 {
   %3 = add nsw i64 %1, -1
-  %4 = tail call i64 @readlink(ptr noundef nonnull @.str, ptr noundef %0, i64 noundef %3) #19
+  %4 = tail call i64 @readlink(ptr noundef nonnull @.str, ptr noundef %0, i64 noundef %3) #21
   %5 = icmp slt i64 %4, 1
   br i1 %5, label %8, label %6
 
@@ -595,7 +757,7 @@ define hidden range(i64 -1, 49) i64 @__jac_addrinfo_layout(i32 noundef %0) local
   ret i64 %8
 }
 
-define hidden range(i32 0, 65536) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #14 {
+define hidden range(i32 0, 65536) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #10 {
   %2 = load i16, ptr %0, align 2
   %3 = zext i16 %2 to i32
   ret i32 %3
@@ -618,13 +780,13 @@ define hidden range(i64 -1, 5) i64 @__jac_clock_id(i32 noundef %0) local_unnamed
 
 define hidden i32 @__jac_sleep_ns(i64 noundef %0) local_unnamed_addr #4 {
   %2 = alloca %struct.timespec, align 8
-  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %2) #19
-  %3 = call i32 @clock_gettime(i32 noundef 1, ptr noundef nonnull %2) #19
+  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %2) #21
+  %3 = call i32 @clock_gettime(i32 noundef 1, ptr noundef nonnull %2) #21
   %4 = icmp eq i32 %3, 0
   br i1 %4, label %8, label %5
 
 5:                                                ; preds = %1
-  %6 = tail call ptr @__errno_location() #18
+  %6 = tail call ptr @__errno_location() #20
   %7 = load i32, ptr %6, align 4
   br label %25
 
@@ -653,13 +815,13 @@ define hidden i32 @__jac_sleep_ns(i64 noundef %0) local_unnamed_addr #4 {
   br label %22
 
 22:                                               ; preds = %21, %22
-  %23 = call i32 @clock_nanosleep(i32 noundef 1, i32 noundef 1, ptr noundef nonnull %2, ptr noundef null) #19
+  %23 = call i32 @clock_nanosleep(i32 noundef 1, i32 noundef 1, ptr noundef nonnull %2, ptr noundef null) #21
   %24 = icmp eq i32 %23, 4
   br i1 %24, label %22, label %25
 
 25:                                               ; preds = %22, %5
   %26 = phi i32 [ %7, %5 ], [ %23, %22 ]
-  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %2) #19
+  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %2) #21
   ret i32 %26
 }
 
@@ -668,7 +830,7 @@ declare i32 @clock_gettime(i32 noundef, ptr noundef) local_unnamed_addr #6
 declare i32 @clock_nanosleep(i32 noundef, i32 noundef, ptr noundef, ptr noundef) local_unnamed_addr
 
 define hidden i64 @__jac_malloc_size(ptr noundef %0) local_unnamed_addr #4 {
-  %2 = tail call i64 @malloc_usable_size(ptr noundef %0) #19
+  %2 = tail call i64 @malloc_usable_size(ptr noundef %0) #21
   ret i64 %2
 }
 
@@ -681,11 +843,20 @@ define hidden noundef double @__jac_fmadd(double noundef %0, double noundef %1, 
 
 declare double @llvm.fma.f64(double, double, double) #15
 
+define hidden void @__jac_cpuid(i32 noundef %0, i32 noundef %1, ptr noundef writeonly captures(none) initializes((0, 16)) %2) local_unnamed_addr #16 {
+  tail call void @llvm.memset.p0.i64(ptr noundef nonnull align 4 dereferenceable(16) %2, i8 0, i64 16, i1 false)
+  ret void
+}
+
+define hidden void @__jac_system_log(i32 noundef %0, ptr noundef readnone captures(none) %1) local_unnamed_addr #3 {
+  ret void
+}
+
 define hidden noundef ptr @__jac_va_list(ptr noundef readnone returned captures(ret: address, provenance) %0) local_unnamed_addr #3 {
   ret ptr %0
 }
 
-define hidden i64 @__jac_va_i64(ptr noundef readonly captures(none) %0) local_unnamed_addr #16 {
+define hidden i64 @__jac_va_i64(ptr noundef readonly captures(none) %0) local_unnamed_addr #17 {
   %2 = load ptr, ptr %0, align 8
   %3 = getelementptr inbounds nuw i8, ptr %2, i64 24
   %4 = load i32, ptr %3, align 8
@@ -717,7 +888,7 @@ define hidden i64 @__jac_va_i64(ptr noundef readonly captures(none) %0) local_un
   ret i64 %19
 }
 
-define hidden double @__jac_va_f64(ptr noundef readonly captures(none) %0) local_unnamed_addr #16 {
+define hidden double @__jac_va_f64(ptr noundef readonly captures(none) %0) local_unnamed_addr #17 {
   %2 = load ptr, ptr %0, align 8
   %3 = getelementptr inbounds nuw i8, ptr %2, i64 28
   %4 = load i32, ptr %3, align 4
@@ -749,7 +920,9 @@ define hidden double @__jac_va_f64(ptr noundef readonly captures(none) %0) local
   ret double %19
 }
 
-declare noalias noundef ptr @malloc(i64 noundef) local_unnamed_addr #17
+declare noalias noundef ptr @malloc(i64 noundef) local_unnamed_addr #18
+
+declare void @llvm.memset.p0.i64(ptr writeonly captures(none), i8, i64, i1 immarg) #19
 
 attributes #0 = { mustprogress nofree nosync nounwind willreturn memory(none) uwtable(sync) }
 attributes #1 = { mustprogress nofree nosync nounwind willreturn memory(none) }
@@ -760,20 +933,23 @@ attributes #5 = { mustprogress nocallback nofree nosync nounwind willreturn memo
 attributes #6 = { nounwind }
 attributes #7 = { nofree nounwind uwtable(sync) }
 attributes #8 = { nofree nounwind }
-attributes #10 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #11 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #12 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
-attributes #13 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
-attributes #14 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #10 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #11 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #12 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #13 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
+attributes #14 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
 attributes #15 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #16 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) uwtable(sync) }
-attributes #17 = { nofree nounwind willreturn allockind("alloc,uninitialized") allocsize(0) memory(inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #18 = { nounwind willreturn memory(none) }
-attributes #19 = { nounwind }
-attributes #20 = { nounwind allocsize(1) }
-attributes #21 = { nounwind willreturn memory(read) }
+attributes #16 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write) uwtable(sync) }
+attributes #17 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) uwtable(sync) }
+attributes #18 = { nofree nounwind willreturn allockind("alloc,uninitialized") allocsize(0) memory(inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #19 = { nocallback nofree nounwind willreturn memory(argmem: write) }
+attributes #20 = { nounwind willreturn memory(none) }
+attributes #21 = { nounwind }
+attributes #22 = { nounwind allocsize(1) }
+attributes #23 = { nounwind willreturn memory(read) }
 """,
      POSIX_FLOOR_IR_MACOS_AARCH64: str = r"""
+%struct.os_log_s = type opaque
 %struct.stat = type { i32, i16, i16, i64, i32, i32, i32, %struct.timespec, %struct.timespec, %struct.timespec, %struct.timespec, i64, i64, i32, i32, i32, i32, [2 x i64] }
 %struct.timespec = type { i64, i64 }
 %struct.passwd = type { ptr, ptr, i32, i32, i64, ptr, ptr, ptr, ptr, i64 }
@@ -781,11 +957,14 @@ attributes #21 = { nounwind willreturn memory(read) }
 @__stdinp = external local_unnamed_addr global ptr, align 8
 @__stdoutp = external local_unnamed_addr global ptr, align 8
 @__stderrp = external local_unnamed_addr global ptr, align 8
+@_os_log_default = external global %struct.os_log_s, align 1
+@__dso_handle = external global ptr, align 8
+@jac_system_log_format = internal constant [11 x i8] c"%{public}s\00", section "__TEXT,__oslogstring,cstring_literals", align 1
 @switch.table.__jac_addrinfo_layout = private unnamed_addr constant [5 x i64] [i64 16, i64 32, i64 40, i64 48, i64 30], align 8
 @switch.table.__jac_clock_id = private unnamed_addr constant [6 x i64] [i64 0, i64 6, i64 12, i64 16, i64 4, i64 8], align 8
 
 define hidden ptr @__jac_errno() local_unnamed_addr #0 {
-  %1 = tail call ptr @__error() #13
+  %1 = tail call ptr @__error() #15
   ret ptr %1
 }
 
@@ -808,8 +987,8 @@ define hidden noundef i32 @__jac_platform_id() local_unnamed_addr #3 {
 
 define hidden range(i32 -1, 1) i32 @__jac_stat(ptr noundef %0, ptr noundef writeonly captures(none) %1) local_unnamed_addr #0 {
   %3 = alloca %struct.stat, align 8
-  call void @llvm.lifetime.start.p0(i64 144, ptr nonnull %3) #13
-  %4 = call i32 @"\01_stat"(ptr noundef %0, ptr noundef nonnull %3) #13
+  call void @llvm.lifetime.start.p0(i64 144, ptr nonnull %3) #15
+  %4 = call i32 @"\01_stat"(ptr noundef %0, ptr noundef nonnull %3) #15
   %5 = icmp eq i32 %4, 0
   br i1 %5, label %6, label %16
 
@@ -830,7 +1009,7 @@ define hidden range(i32 -1, 1) i32 @__jac_stat(ptr noundef %0, ptr noundef write
 
 16:                                               ; preds = %2, %6
   %17 = phi i32 [ 0, %6 ], [ -1, %2 ]
-  call void @llvm.lifetime.end.p0(i64 144, ptr nonnull %3) #13
+  call void @llvm.lifetime.end.p0(i64 144, ptr nonnull %3) #15
   ret i32 %17
 }
 
@@ -841,21 +1020,21 @@ declare i32 @"\01_stat"(ptr noundef, ptr noundef) local_unnamed_addr
 declare void @llvm.lifetime.end.p0(i64 immarg, ptr captures(none)) #4
 
 define hidden ptr @__jac_opendir(ptr noundef %0) local_unnamed_addr #0 {
-  %2 = tail call ptr @"\01_opendir"(ptr noundef %0) #13
+  %2 = tail call ptr @"\01_opendir"(ptr noundef %0) #15
   ret ptr %2
 }
 
 declare ptr @"\01_opendir"(ptr noundef) local_unnamed_addr
 
 define hidden ptr @__jac_readdir(ptr noundef %0) local_unnamed_addr #0 {
-  %2 = tail call ptr @"\01_readdir"(ptr noundef %0) #13
+  %2 = tail call ptr @"\01_readdir"(ptr noundef %0) #15
   ret ptr %2
 }
 
 declare ptr @"\01_readdir"(ptr noundef) local_unnamed_addr
 
 define hidden i32 @__jac_closedir(ptr noundef %0) local_unnamed_addr #0 {
-  %2 = tail call i32 @"\01_closedir"(ptr noundef %0) #13
+  %2 = tail call i32 @"\01_closedir"(ptr noundef %0) #15
   ret i32 %2
 }
 
@@ -870,11 +1049,84 @@ define hidden noundef i32 @__jac_at_fdcwd() local_unnamed_addr #3 {
   ret i32 -2
 }
 
+define hidden range(i64 0, 256) i64 @__jac_dirent_type(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 20
+  %3 = load i8, ptr %2, align 4
+  %4 = zext i8 %3 to i64
+  ret i64 %4
+}
+
+define hidden i64 @__jac_dirent_ino(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
+  %2 = load i64, ptr %0, align 8
+  ret i64 %2
+}
+
+define hidden i32 @__jac_dirfd(ptr noundef %0) local_unnamed_addr #0 {
+  %2 = tail call i32 @dirfd(ptr noundef %0) #15
+  ret i32 %2
+}
+
+declare i32 @dirfd(ptr noundef) local_unnamed_addr
+
+define hidden ptr @__jac_fdopendir(i32 noundef %0) local_unnamed_addr #0 {
+  %2 = tail call ptr @"\01_fdopendir"(i32 noundef %0) #15
+  ret ptr %2
+}
+
+declare ptr @"\01_fdopendir"(i32 noundef) local_unnamed_addr
+
+define hidden void @__jac_rewinddir(ptr noundef %0) local_unnamed_addr #0 {
+  tail call void @"\01_rewinddir"(ptr noundef %0) #15
+  ret void
+}
+
+declare void @"\01_rewinddir"(ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_stat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_stat"(ptr noundef %0, ptr noundef %1) #15
+  ret i32 %3
+}
+
+define hidden i32 @__jac_lstat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_lstat"(ptr noundef %0, ptr noundef %1) #15
+  ret i32 %3
+}
+
+declare i32 @"\01_lstat"(ptr noundef, ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_fstat_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_fstat"(i32 noundef %0, ptr noundef %1) #15
+  ret i32 %3
+}
+
+declare i32 @"\01_fstat"(i32 noundef, ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_fstatat_record(i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) local_unnamed_addr #0 {
+  %5 = tail call i32 @"\01_fstatat"(i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) #15
+  ret i32 %5
+}
+
+declare i32 @"\01_fstatat"(i32 noundef, ptr noundef, ptr noundef, i32 noundef) local_unnamed_addr
+
+define hidden i32 @__jac_statfs_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_statfs"(ptr noundef %0, ptr noundef %1) #15
+  ret i32 %3
+}
+
+declare i32 @"\01_statfs"(ptr noundef, ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_fstatfs_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_fstatfs"(i32 noundef %0, ptr noundef %1) #15
+  ret i32 %3
+}
+
+declare i32 @"\01_fstatfs"(i32 noundef, ptr noundef) local_unnamed_addr
+
 define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2) local_unnamed_addr #0 {
   %4 = alloca %struct.passwd, align 8
   %5 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 72, ptr nonnull %4) #13
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #13
+  call void @llvm.lifetime.start.p0(i64 72, ptr nonnull %4) #15
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #15
   store ptr null, ptr %5, align 8
   %6 = tail call dereferenceable_or_null(4096) ptr @malloc(i64 4096)
   %7 = icmp eq ptr %6, null
@@ -882,7 +1134,7 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2
 
 8:                                                ; preds = %22
   %9 = shl i64 %14, 1
-  %10 = call ptr @realloc(ptr noundef nonnull %13, i64 noundef %9) #14
+  %10 = call ptr @realloc(ptr noundef nonnull %13, i64 noundef %9) #16
   %11 = icmp eq ptr %10, null
   br i1 %11, label %39, label %12
 
@@ -894,12 +1146,12 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2
   br i1 %16, label %19, label %17
 
 17:                                               ; preds = %12
-  %18 = call i32 @getpwnam_r(ptr noundef nonnull %0, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #13
+  %18 = call i32 @getpwnam_r(ptr noundef nonnull %0, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #15
   br label %22
 
 19:                                               ; preds = %12
-  %20 = call i32 @getuid() #13
-  %21 = call i32 @getpwuid_r(i32 noundef %20, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #13
+  %20 = call i32 @getuid() #15
+  %21 = call i32 @getpwuid_r(i32 noundef %20, ptr noundef nonnull %4, ptr noundef nonnull %13, i64 noundef %14, ptr noundef nonnull %5) #15
   br label %22
 
 22:                                               ; preds = %19, %17
@@ -921,27 +1173,27 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2
   br i1 %33, label %39, label %34
 
 34:                                               ; preds = %30
-  %35 = call i64 @strlen(ptr noundef nonnull dereferenceable(1) %32) #13
+  %35 = call i64 @strlen(ptr noundef nonnull dereferenceable(1) %32) #15
   %36 = icmp slt i64 %35, %2
   br i1 %36, label %37, label %39
 
 37:                                               ; preds = %34
   %38 = add nsw i64 %35, 1
-  call void @llvm.memcpy.p0.p0.i64(ptr noundef align 1 %1, ptr noundef nonnull align 1 %32, i64 noundef %38, i1 noundef false) #13
+  call void @llvm.memcpy.p0.p0.i64(ptr noundef align 1 %1, ptr noundef nonnull align 1 %32, i64 noundef %38, i1 noundef false) #15
   br label %39
 
 39:                                               ; preds = %8, %25, %30, %37, %34, %3
   %40 = phi ptr [ null, %3 ], [ %13, %34 ], [ %13, %37 ], [ %13, %30 ], [ %13, %25 ], [ %13, %8 ]
   %41 = phi i64 [ -1, %3 ], [ %35, %34 ], [ %35, %37 ], [ -2, %30 ], [ -1, %25 ], [ -1, %8 ]
   call void @free(ptr noundef %40)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #13
-  call void @llvm.lifetime.end.p0(i64 72, ptr nonnull %4) #13
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #15
+  call void @llvm.lifetime.end.p0(i64 72, ptr nonnull %4) #15
   ret i64 %41
 }
 
-declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #5
+declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #6
 
-declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #6
+declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #7
 
 declare i32 @getpwnam_r(ptr noundef, ptr noundef, ptr noundef, i64 noundef, ptr noundef) local_unnamed_addr
 
@@ -949,24 +1201,24 @@ declare i32 @getpwuid_r(i32 noundef, ptr noundef, ptr noundef, i64 noundef, ptr 
 
 declare i32 @getuid() local_unnamed_addr
 
-declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #7
+declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #8
 
 define hidden i64 @__jac_executable_path(ptr noundef %0, i64 noundef %1) local_unnamed_addr #0 {
   %3 = alloca i32, align 4
-  call void @llvm.lifetime.start.p0(i64 4, ptr nonnull %3) #13
+  call void @llvm.lifetime.start.p0(i64 4, ptr nonnull %3) #15
   %4 = trunc i64 %1 to i32
   store i32 %4, ptr %3, align 4
-  %5 = call i32 @_NSGetExecutablePath(ptr noundef %0, ptr noundef nonnull %3) #13
+  %5 = call i32 @_NSGetExecutablePath(ptr noundef %0, ptr noundef nonnull %3) #15
   %6 = icmp eq i32 %5, 0
   br i1 %6, label %7, label %9
 
 7:                                                ; preds = %2
-  %8 = call i64 @strlen(ptr noundef nonnull dereferenceable(1) %0) #13
+  %8 = call i64 @strlen(ptr noundef nonnull dereferenceable(1) %0) #15
   br label %9
 
 9:                                                ; preds = %2, %7
   %10 = phi i64 [ %8, %7 ], [ -1, %2 ]
-  call void @llvm.lifetime.end.p0(i64 4, ptr nonnull %3) #13
+  call void @llvm.lifetime.end.p0(i64 4, ptr nonnull %3) #15
   ret i64 %10
 }
 
@@ -987,7 +1239,7 @@ define hidden range(i64 -1, 49) i64 @__jac_addrinfo_layout(i32 noundef %0) local
   ret i64 %8
 }
 
-define hidden range(i32 0, 256) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #8 {
+define hidden range(i32 0, 256) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 1
   %3 = load i8, ptr %2, align 1
   %4 = zext i8 %3 to i32
@@ -1012,39 +1264,39 @@ define hidden range(i64 -1, 17) i64 @__jac_clock_id(i32 noundef %0) local_unname
 define hidden i32 @__jac_sleep_ns(i64 noundef %0) local_unnamed_addr #0 {
   %2 = alloca %struct.timespec, align 8
   %3 = alloca %struct.timespec, align 8
-  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %2) #13
+  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %2) #15
   %4 = sdiv i64 %0, 1000000000
   store i64 %4, ptr %2, align 8
   %5 = getelementptr inbounds nuw i8, ptr %2, i64 8
   %6 = mul i64 %4, 1000000000
   %7 = sub i64 %0, %6
   store i64 %7, ptr %5, align 8
-  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %3) #13
-  %8 = call i32 @"\01_nanosleep"(ptr noundef nonnull %2, ptr noundef nonnull %3) #13
+  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %3) #15
+  %8 = call i32 @"\01_nanosleep"(ptr noundef nonnull %2, ptr noundef nonnull %3) #15
   %9 = icmp eq i32 %8, 0
   br i1 %9, label %20, label %10
 
 10:                                               ; preds = %1, %17
-  %11 = call ptr @__error() #13
+  %11 = call ptr @__error() #15
   %12 = load i32, ptr %11, align 4
   %13 = icmp eq i32 %12, 4
   br i1 %13, label %17, label %14
 
 14:                                               ; preds = %10
-  %15 = call ptr @__error() #13
+  %15 = call ptr @__error() #15
   %16 = load i32, ptr %15, align 4
   br label %20
 
 17:                                               ; preds = %10
   call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 8 dereferenceable(16) %2, ptr noundef nonnull align 8 dereferenceable(16) %3, i64 16, i1 false)
-  %18 = call i32 @"\01_nanosleep"(ptr noundef nonnull %2, ptr noundef nonnull %3) #13
+  %18 = call i32 @"\01_nanosleep"(ptr noundef nonnull %2, ptr noundef nonnull %3) #15
   %19 = icmp eq i32 %18, 0
   br i1 %19, label %20, label %10
 
 20:                                               ; preds = %17, %1, %14
   %21 = phi i32 [ %16, %14 ], [ 0, %1 ], [ 0, %17 ]
-  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %3) #13
-  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %2) #13
+  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %3) #15
+  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %2) #15
   ret i32 %21
 }
 
@@ -1053,7 +1305,7 @@ declare i32 @"\01_nanosleep"(ptr noundef, ptr noundef) local_unnamed_addr
 declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i64, i1 immarg) #9
 
 define hidden i64 @__jac_malloc_size(ptr noundef %0) local_unnamed_addr #0 {
-  %2 = tail call i64 @malloc_size(ptr noundef %0) #13
+  %2 = tail call i64 @malloc_size(ptr noundef %0) #15
   ret i64 %2
 }
 
@@ -1066,39 +1318,73 @@ define hidden noundef double @__jac_fmadd(double noundef %0, double noundef %1, 
 
 declare double @llvm.fma.f64(double, double, double) #10
 
-define hidden ptr @__jac_va_list(ptr noundef readonly captures(none) %0) local_unnamed_addr #8 {
+define hidden void @__jac_cpuid(i32 noundef %0, i32 noundef %1, ptr noundef writeonly captures(none) initializes((0, 16)) %2) local_unnamed_addr #11 {
+  tail call void @llvm.memset.p0.i64(ptr noundef nonnull align 4 dereferenceable(16) %2, i8 0, i64 16, i1 false)
+  ret void
+}
+
+define hidden void @__jac_system_log(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = alloca [12 x i8], align 16
+  %4 = trunc i32 %0 to i8
+  %5 = tail call zeroext i1 @os_log_type_enabled(ptr noundef nonnull @_os_log_default, i8 noundef zeroext %4) #15
+  br i1 %5, label %6, label %9
+
+6:                                                ; preds = %2
+  call void @llvm.lifetime.start.p0(i64 12, ptr nonnull %3) #15
+  %7 = ptrtoint ptr %1 to i64
+  store <4 x i8> <i8 2, i8 1, i8 34, i8 8>, ptr %3, align 16
+  %8 = getelementptr inbounds nuw i8, ptr %3, i64 4
+  store i64 %7, ptr %8, align 4
+  call void @_os_log_impl(ptr noundef nonnull @__dso_handle, ptr noundef nonnull @_os_log_default, i8 noundef zeroext %4, ptr noundef nonnull @jac_system_log_format, ptr noundef nonnull %3, i32 noundef 12) #15
+  call void @llvm.lifetime.end.p0(i64 12, ptr nonnull %3) #15
+  br label %9
+
+9:                                                ; preds = %6, %2
+  ret void
+}
+
+declare zeroext i1 @os_log_type_enabled(ptr noundef, i8 noundef zeroext) local_unnamed_addr
+
+declare void @_os_log_impl(ptr noundef, ptr noundef, i8 noundef zeroext, ptr noundef, ptr noundef, i32 noundef) local_unnamed_addr
+
+define hidden ptr @__jac_va_list(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
   %2 = load ptr, ptr %0, align 8
   ret ptr %2
 }
 
-define hidden i64 @__jac_va_i64(ptr noundef captures(none) %0) local_unnamed_addr #11 {
+define hidden i64 @__jac_va_i64(ptr noundef captures(none) %0) local_unnamed_addr #12 {
   %2 = va_arg ptr %0, i64
   ret i64 %2
 }
 
-define hidden double @__jac_va_f64(ptr noundef captures(none) %0) local_unnamed_addr #11 {
+define hidden double @__jac_va_f64(ptr noundef captures(none) %0) local_unnamed_addr #12 {
   %2 = va_arg ptr %0, double
   ret double %2
 }
 
-declare noalias noundef ptr @malloc(i64 noundef) local_unnamed_addr #12
+declare noalias noundef ptr @malloc(i64 noundef) local_unnamed_addr #13
+
+declare void @llvm.memset.p0.i64(ptr writeonly captures(none), i8, i64, i1 immarg) #14
 
 attributes #0 = { nounwind uwtable(sync) }
 attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(read, argmem: none, inaccessiblemem: none) uwtable(sync) }
 attributes #3 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable(sync) }
 attributes #4 = { mustprogress nocallback nofree nosync nounwind willreturn memory(argmem: readwrite) }
-attributes #5 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #6 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #7 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
-attributes #8 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #5 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #6 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #7 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #8 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
 attributes #9 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
 attributes #10 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #11 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite) uwtable(sync) }
-attributes #12 = { nofree nounwind willreturn allockind("alloc,uninitialized") allocsize(0) memory(inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #13 = { nounwind }
-attributes #14 = { allocsize(1) }
+attributes #11 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write) uwtable(sync) }
+attributes #12 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite) uwtable(sync) }
+attributes #13 = { nofree nounwind willreturn allockind("alloc,uninitialized") allocsize(0) memory(inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #14 = { nocallback nofree nounwind willreturn memory(argmem: write) }
+attributes #15 = { nounwind }
+attributes #16 = { allocsize(1) }
 """,
      POSIX_FLOOR_IR_MACOS_X86_64: str = r"""
+%struct.os_log_s = type opaque
 %struct.stat = type { i32, i16, i16, i64, i32, i32, i32, %struct.timespec, %struct.timespec, %struct.timespec, %struct.timespec, i64, i64, i32, i32, i32, i32, [2 x i64] }
 %struct.timespec = type { i64, i64 }
 %struct.passwd = type { ptr, ptr, i32, i32, i64, ptr, ptr, ptr, ptr, i64 }
@@ -1106,6 +1392,9 @@ attributes #14 = { allocsize(1) }
 @__stdinp = external local_unnamed_addr global ptr, align 8
 @__stdoutp = external local_unnamed_addr global ptr, align 8
 @__stderrp = external local_unnamed_addr global ptr, align 8
+@_os_log_default = external global %struct.os_log_s, align 1
+@__dso_handle = external global ptr, align 8
+@jac_system_log_format = internal constant [11 x i8] c"%{public}s\00", section "__TEXT,__oslogstring,cstring_literals", align 1
 @switch.table.__jac_addrinfo_layout = private unnamed_addr constant [5 x i64] [i64 16, i64 32, i64 40, i64 48, i64 30], align 8
 @switch.table.__jac_clock_id = private unnamed_addr constant [6 x i64] [i64 0, i64 6, i64 12, i64 16, i64 4, i64 8], align 8
 
@@ -1195,6 +1484,79 @@ define hidden noundef i32 @__jac_at_fdcwd() local_unnamed_addr #3 {
   ret i32 -2
 }
 
+define hidden range(i64 0, 256) i64 @__jac_dirent_type(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 20
+  %3 = load i8, ptr %2, align 4
+  %4 = zext i8 %3 to i64
+  ret i64 %4
+}
+
+define hidden i64 @__jac_dirent_ino(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
+  %2 = load i64, ptr %0, align 8
+  ret i64 %2
+}
+
+define hidden i32 @__jac_dirfd(ptr noundef %0) local_unnamed_addr #0 {
+  %2 = tail call i32 @dirfd(ptr noundef %0) #12
+  ret i32 %2
+}
+
+declare i32 @dirfd(ptr noundef) local_unnamed_addr
+
+define hidden ptr @__jac_fdopendir(i32 noundef %0) local_unnamed_addr #0 {
+  %2 = tail call ptr @"\01_fdopendir$INODE64"(i32 noundef %0) #12
+  ret ptr %2
+}
+
+declare ptr @"\01_fdopendir$INODE64"(i32 noundef) local_unnamed_addr
+
+define hidden void @__jac_rewinddir(ptr noundef %0) local_unnamed_addr #0 {
+  tail call void @"\01_rewinddir$INODE64"(ptr noundef %0) #12
+  ret void
+}
+
+declare void @"\01_rewinddir$INODE64"(ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_stat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_stat$INODE64"(ptr noundef %0, ptr noundef %1) #12
+  ret i32 %3
+}
+
+define hidden i32 @__jac_lstat_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_lstat$INODE64"(ptr noundef %0, ptr noundef %1) #12
+  ret i32 %3
+}
+
+declare i32 @"\01_lstat$INODE64"(ptr noundef, ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_fstat_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_fstat$INODE64"(i32 noundef %0, ptr noundef %1) #12
+  ret i32 %3
+}
+
+declare i32 @"\01_fstat$INODE64"(i32 noundef, ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_fstatat_record(i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) local_unnamed_addr #0 {
+  %5 = tail call i32 @"\01_fstatat$INODE64"(i32 noundef %0, ptr noundef %1, ptr noundef %2, i32 noundef %3) #12
+  ret i32 %5
+}
+
+declare i32 @"\01_fstatat$INODE64"(i32 noundef, ptr noundef, ptr noundef, i32 noundef) local_unnamed_addr
+
+define hidden i32 @__jac_statfs_record(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_statfs$INODE64"(ptr noundef %0, ptr noundef %1) #12
+  ret i32 %3
+}
+
+declare i32 @"\01_statfs$INODE64"(ptr noundef, ptr noundef) local_unnamed_addr
+
+define hidden i32 @__jac_fstatfs_record(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = tail call i32 @"\01_fstatfs$INODE64"(i32 noundef %0, ptr noundef %1) #12
+  ret i32 %3
+}
+
+declare i32 @"\01_fstatfs$INODE64"(i32 noundef, ptr noundef) local_unnamed_addr
+
 define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2) local_unnamed_addr #0 {
   %4 = alloca %struct.passwd, align 8
   %5 = alloca ptr, align 8
@@ -1264,9 +1626,9 @@ define hidden i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2
   ret i64 %41
 }
 
-declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #5
+declare noalias noundef ptr @realloc(ptr allocptr noundef captures(none), i64 noundef) local_unnamed_addr #6
 
-declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #6
+declare void @free(ptr allocptr noundef captures(none)) local_unnamed_addr #7
 
 declare i32 @getpwnam_r(ptr noundef, ptr noundef, ptr noundef, i64 noundef, ptr noundef) local_unnamed_addr
 
@@ -1274,7 +1636,7 @@ declare i32 @getpwuid_r(i32 noundef, ptr noundef, ptr noundef, i64 noundef, ptr 
 
 declare i32 @getuid() local_unnamed_addr
 
-declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #7
+declare i64 @strlen(ptr noundef captures(none)) local_unnamed_addr #8
 
 define hidden i64 @__jac_executable_path(ptr noundef %0, i64 noundef %1) local_unnamed_addr #0 {
   %3 = alloca i32, align 4
@@ -1312,7 +1674,7 @@ define hidden range(i64 -1, 49) i64 @__jac_addrinfo_layout(i32 noundef %0) local
   ret i64 %8
 }
 
-define hidden range(i32 0, 256) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #8 {
+define hidden range(i32 0, 256) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #5 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 1
   %3 = load i8, ptr %2, align 1
   %4 = zext i8 %3 to i32
@@ -1389,6 +1751,46 @@ define hidden noundef double @__jac_fmadd(double noundef %0, double noundef %1, 
   ret double %5
 }
 
+define hidden void @__jac_cpuid(i32 noundef %0, i32 noundef %1, ptr noundef writeonly captures(none) initializes((0, 16)) %2) local_unnamed_addr #0 {
+  %4 = getelementptr inbounds nuw i8, ptr %2, i64 4
+  %5 = getelementptr inbounds nuw i8, ptr %2, i64 8
+  %6 = getelementptr inbounds nuw i8, ptr %2, i64 12
+  %7 = tail call { i32, i32, i32, i32 } asm sideeffect "cpuid", "={ax},={bx},={cx},={dx},{ax},{cx},~{dirflag},~{fpsr},~{flags}"(i32 %0, i32 %1) #12
+  %8 = extractvalue { i32, i32, i32, i32 } %7, 0
+  %9 = extractvalue { i32, i32, i32, i32 } %7, 1
+  %10 = extractvalue { i32, i32, i32, i32 } %7, 2
+  %11 = extractvalue { i32, i32, i32, i32 } %7, 3
+  store i32 %8, ptr %2, align 4
+  store i32 %9, ptr %4, align 4
+  store i32 %10, ptr %5, align 4
+  store i32 %11, ptr %6, align 4
+  ret void
+}
+
+define hidden void @__jac_system_log(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
+  %3 = alloca [12 x i8], align 16
+  %4 = trunc i32 %0 to i8
+  %5 = tail call zeroext i1 @os_log_type_enabled(ptr noundef nonnull @_os_log_default, i8 noundef zeroext %4) #12
+  br i1 %5, label %6, label %9
+
+6:                                                ; preds = %2
+  call void @llvm.lifetime.start.p0(i64 12, ptr nonnull %3) #12
+  %7 = ptrtoint ptr %1 to i64
+  store <4 x i8> <i8 2, i8 1, i8 34, i8 8>, ptr %3, align 16
+  %8 = getelementptr inbounds nuw i8, ptr %3, i64 4
+  store i64 %7, ptr %8, align 4
+  call void @_os_log_impl(ptr noundef nonnull @__dso_handle, ptr noundef nonnull @_os_log_default, i8 noundef zeroext %4, ptr noundef nonnull @jac_system_log_format, ptr noundef nonnull %3, i32 noundef 12) #12
+  call void @llvm.lifetime.end.p0(i64 12, ptr nonnull %3) #12
+  br label %9
+
+9:                                                ; preds = %6, %2
+  ret void
+}
+
+declare zeroext i1 @os_log_type_enabled(ptr noundef, i8 noundef zeroext) local_unnamed_addr
+
+declare void @_os_log_impl(ptr noundef, ptr noundef, i8 noundef zeroext, ptr noundef, ptr noundef, i32 noundef) local_unnamed_addr
+
 define hidden noundef ptr @__jac_va_list(ptr noundef readnone returned captures(ret: address, provenance) %0) local_unnamed_addr #3 {
   ret ptr %0
 }
@@ -1456,10 +1858,10 @@ attributes #0 = { nounwind uwtable(sync) }
 attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(read, argmem: none, inaccessiblemem: none) uwtable(sync) }
 attributes #3 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable(sync) }
 attributes #4 = { mustprogress nocallback nofree nosync nounwind willreturn memory(argmem: readwrite) }
-attributes #5 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #6 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
-attributes #7 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
-attributes #8 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #5 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable(sync) }
+attributes #6 = { mustprogress nounwind willreturn allockind("realloc") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #7 = { mustprogress nounwind willreturn allockind("free") memory(argmem: readwrite, inaccessiblemem: readwrite) "alloc-family"="malloc" }
+attributes #8 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: read) }
 attributes #9 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
 attributes #10 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) uwtable(sync) }
 attributes #11 = { nofree nounwind willreturn allockind("alloc,uninitialized") allocsize(0) memory(inaccessiblemem: readwrite) "alloc-family"="malloc" }

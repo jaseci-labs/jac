@@ -54,9 +54,6 @@ impl AuthSettings.resolve_secret(base_path: str) -> str {
 }
 
 
-def table_value(current: any, raw: any, label: str) -> any;
-
-
 def env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any;
 
 
@@ -68,35 +65,16 @@ impl overlay_table(
     moved: dict[str, str],
     environ: (dict[str, str] | None) = None
 ) -> None {
-    names = [f.name for f in fields(target)];
-    for key in table {
-        if key in names {
-            continue;
-        }
-        if key in moved {
-            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
-        }
-        raise ServeConfigError(
-            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
-        );
-    }
-    for name in names {
-        current = getattr(target, name);
-        env_name = env + name.upper();
+    apply_table(target, table, section, moved);
+    for f in fields(target) {
+        current = getattr(target, f.name);
+        env_name = env + f.name.upper();
         if is_record(current) {
-            nested = table.get(name, {});
-            if not isinstance(nested, dict) {
-                raise ServeConfigError(f"[{section}.{name}] must be a table");
-            }
             overlay_table(
-                current, nested, env_name + '_', f"{section}.{name}", {}, environ
+                current, {}, env_name + '_', f"{section}.{f.name}", {}, environ
             );
         } elif env_value(env_name, environ) is not None {
-            setattr(target, name, env_typed(current, env_name, environ));
-        } elif name in table {
-            setattr(
-                target, name, table_value(current, table[name], f"[{section}] {name}")
-            );
+            setattr(target, f.name, env_typed(current, env_name, environ));
         }
     }
 }
@@ -375,6 +353,7 @@ impl ServeSettings.load(
         docs_enabled=env_bool('DOCS', cfg.docs_enabled),
         graph_enabled=env_bool('GRAPH', cfg.graph_enabled),
         cors_origins=env_list('CORS_ORIGINS', list(cfg.cors_origins)),
+        cors_credentials=env_bool('CORS_CREDENTIALS', cfg.cors_credentials),
         public_origin=(env_value('PUBLIC_ORIGIN') or cfg.public_origin).rstrip('/'),
         workers=WorkerSettings(
             count=worker_count,
@@ -471,6 +450,15 @@ impl ServeSettings.validate -> list[str] {
             );
         }
     }
+    cors_problem = cors_pair_problem(
+        self.cors_origins,
+        self.cors_credentials,
+        '[serve] cors_origins',
+        '[serve] cors_credentials'
+    );
+    if cors_problem {
+        problems.append(cors_problem);
+    }
     if self.timeouts.drain < 0 or self.timeouts.close < 0 {
         problems.append("[serve.timeouts] drain and close must not be negative");
     }
@@ -533,38 +521,6 @@ impl ServeSettings.require_valid -> None {
     if problems {
         raise ServeConfigError('\n'.join(f"- {p}" for p in problems));
     }
-}
-
-impl table_value(current: any, raw: any, label: str) -> any {
-    if isinstance(current, bool) {
-        if not isinstance(raw, bool) {
-            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
-        }
-        return raw;
-    }
-    if isinstance(current, int) {
-        if isinstance(raw, bool) or not isinstance(raw, int) {
-            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
-        }
-        return raw;
-    }
-    if isinstance(current, float) {
-        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
-            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
-        }
-        return float(raw);
-    }
-    if isinstance(current, list) {
-        if not isinstance(raw, list)
-            or not all(isinstance(item, str) for item in raw) {
-            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
-        }
-        return list(raw);
-    }
-    if not isinstance(raw, str) {
-        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
-    }
-    return raw;
 }
 
 

@@ -80,15 +80,7 @@ impl write_native_entry(rn_dir: Path) {
 }
 
 impl _strip_module_ext(name: str) -> str {
-    for ext in JacClientCompiler.COMPOUND_EXTENSIONS {
-        if name.endswith(ext) {
-            return name[:-len(ext)];
-        }
-    }
-    if name.endswith(".jac") {
-        return name[:-len(".jac")];
-    }
-    return name;
+    return jac_js_path(name)[:-3] if name.endswith('.jac') else name;
 }
 
 impl entry_module_for(entry_file: Path, project_dir: Path) -> str {

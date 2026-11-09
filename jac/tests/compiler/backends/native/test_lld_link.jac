@@ -97,6 +97,7 @@ test "a Windows executable cross-links with import libraries for its DLLs" {
 test "a wasm module imports its host ABI from the host module and the rest from env" {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     module = llvm.parse_assembly(
         'target triple = "wasm32-unknown-unknown"\n'
             + "declare i32 @write(i32, ptr, i32)\n"
@@ -162,6 +163,7 @@ test "a failed link reports LLD's own message and leaves the old output in place
 def _object(ir: str, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     module = llvm.parse_assembly(f'target triple = "{triple}"\n' + ir);
     tm = llvm.Target.from_triple(triple).create_target_machine(
         opt=2, reloc="pic", codemodel="small"

@@ -7,6 +7,8 @@ record must equal what the host's own compile of the same module produces:
 the same JCIR, interop, client artifact, placement summary and MTIR graph.
 The in-process cases run the kernel's code under Python and need no kernel
 lib; the native cases skip where no kernel with `jc_compile` is loaded."""
+import base64;
+import json;
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -21,6 +23,8 @@ import from jaclang.compiler.frontend.kernel_analyze {
     CompileReport,
     run_kernel_compile
 }
+import from jaclang.compiler.frontend.kernel_host { HostAsker }
+import from jaclang.compiler.frontend.kernel_inputs { PythonInterface }
 import from jaclang.project.kernel_snapshot {
     COMPILE_ENTRY,
     call_with_asker,
@@ -163,6 +167,12 @@ test "the native jc_compile emits the host's products" {
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
         assert_same_products(emitted, expected);
+        missing = [
+            unit.path
+            for unit in outcome.units
+            if unit.path.endswith('.jac') and (not unit.iface or not unit.iface_shape)
+        ];
+        assert not missing , f"the native kernel returned units without an interface: {missing}";
     }
 }
 
@@ -358,6 +368,166 @@ test "an import of a third-party package whose module is only a stub compiles in
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         assert outcome.unit(entry_file) is not None;
+    }
+}
+
+"""Answers the kernel's questions and nothing else, as the native kernel's
+host does: only the `ask` callback crosses the boundary."""
+obj AskOnly(HostAsker) {
+    has session: any;
+
+    override def ask(method: str, key: str) -> str {
+        return self.session.ask(method, key);
+    }
+}
+
+"""The next prepare reuses an unchanged module from the interface its unit
+carries, so every Jac unit a kernel compile returns carries one, whatever the
+host can do besides answering questions."""
+test "every module a kernel compile returns carries its interface" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_application(base);
+        entry_file = str(base / 'main.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), entry_file, compile_options()
+        );
+        outcome = run_kernel_compile(
+            session.text(), entry_file, None, AskOnly(session=session)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert outcome.unit(entry_file) is not None;
+        jac_units = [
+            unit
+            for unit in outcome.units
+            if unit.path.endswith('.jac')
+        ];
+        missing = [
+            unit.path
+            for unit in jac_units
+            if not unit.iface or not unit.iface_shape
+        ];
+        assert not missing , missing;
+    }
+}
+
+"""The seal reuses a module the prepare's kernel compile cached only if the entry
+carries an interface the host can read: the host's encoding (the stub catalog's
+package directory, project paths through the JIR sentinel), naming the module
+and the symbols the host's own interface names. The bytes may differ where the
+kernel analysed further (native escape facts)."""
+test "every module a kernel compile returns carries the interface the host writes" {
+    import base64;
+    import from jaclang.compiler.driver.jir { JirPaths }
+    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.modiface {
+        iface_module,
+        open_module_iface
+    }
+    def read_back(section: bytes, path: str) -> tuple[str, list[str]] {
+        paths = JirPaths(base_dir=os.path.dirname(path));
+        catalog = open_module_iface(
+            section, jaclang_pkg_dir(), path_mapper=paths.resolve
+        );
+        module = iface_module(catalog) if catalog is not None else None;
+        if module is None {
+            return ("", []);
+        }
+        return (
+            os.path.realpath(module.loc.mod_path),
+            sorted(module.names_in_scope.keys())
+        );
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        entry_file = str(base / 'main.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), entry_file, compile_options()
+        );
+        outcome = run_kernel_compile(
+            session.text(), entry_file, None, AskOnly(session=session)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        host = JacProgram();
+        checked: list[str] = [];
+        for unit in outcome.units {
+            if not unit.path.endswith('.jac') {
+                continue;
+            }
+            served = host.iface_registry().ensure(unit.path);
+            assert served is not None and served.section is not None , unit.path;
+            assert unit.iface_jir , f'{unit.path} carries no portable interface';
+            (kernel_path, kernel_names) = read_back(
+                base64.b64decode(unit.iface_jir), unit.path
+            );
+            (host_path, host_names) = read_back(served.section, unit.path);
+            assert host_names , f'{unit.path}: the host interface reads back empty';
+            assert kernel_path == os.path.realpath(unit.path) , (
+                f'{unit.path}: the kernel interface names {kernel_path}'
+            );
+            assert kernel_names == host_names , (
+                f'{unit.path}: kernel {kernel_names} host {host_names}'
+            );
+            checked.append(os.path.basename(unit.path));
+        }
+        assert 'main.jac' in checked , checked;
+    }
+}
+
+"""A page outside the application entry's import closure is compiled after the
+application from the interfaces that compile produced, so the modules both
+import are not analysed again."""
+test "a page compiled after the application reuses the modules both import" {
+    import jaclang.project.kernel_compile as kernel_compile;
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'shared.jac').write_text(
+            'def:pub shared_value(x: int) -> int { return x + 1; }\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from shared { shared_value }\n\n'
+                + 'def:pub go(n: int) -> int { return shared_value(n); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from shared { shared_value }\n\n'
+                + 'def:pub view(n: int) -> int { return shared_value(n) * 2; }\n'
+        );
+        program = JacProgram();
+        with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
+            try {
+                application = kernel_compile.kernel_compile_application(
+                    active_host(), program, str(base / 'main.jac'), compile_options()
+                );
+                assert application is not None
+                    and application.analysis.status == ANALYSIS_OK , application;
+                page = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert page is not None and page.analysis.status == ANALYSIS_OK , page;
+                analysed = sorted(
+                    os.path.basename(mod.path) for mod in page.analysis.modules
+                );
+                assert analysed == ['page.jac'] , analysed;
+                assert page.unit(str(base / 'page.jac')) is not None;
+                kernel_compile.host_prepared();
+                after = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert after is not None
+                    and after.analysis.status == ANALYSIS_OK , after;
+                analysed_after = sorted(
+                    os.path.basename(mod.path) for mod in after.analysis.modules
+                );
+                assert 'shared.jac' in analysed_after , (
+                    f"a page compiled after the prepare ended reused its interfaces: {analysed_after}"
+                );
+            } finally {
+                kernel_compile.forget_application_units();
+            }
+        }
     }
 }
 
@@ -582,9 +752,9 @@ test "a kernel unit the assembler rejects reports the host's E5043" {
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         (base / 'jac.toml').write_text(CONFIG);
-        entry_file = str(base / 'early_exit.jac');
+        entry_file = str(base / 'async_gen.jac');
         Path(entry_file).write_text(
-            'with entry {\n    x = 1;\n    if x {\n        return;\n    }\n    print(x);\n}\n'
+            'async def g() -> any {\n    yield 1;\n    return 5;\n}\n'
         );
         program = JacProgram();
         with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
@@ -597,7 +767,7 @@ test "a kernel unit the assembler rejects reports the host's E5043" {
             if e.code is not None and e.code.code == "E5043"
         ];
         assert kernel_msgs , [str(e) for e in program.errors_had];
-        assert "'return' outside function" in kernel_msgs[0] , kernel_msgs;
+        assert "'return' with value in async generator" in kernel_msgs[0] , kernel_msgs;
         host = JacProgram();
         host.compile(entry_file, options=compile_options());
         host_msgs = [
@@ -1167,6 +1337,165 @@ test "an integer literal wider than 64 bits compiles in the kernel" {
             from_kernel = native.unit(entry_file);
             assert from_kernel is not None , native.analysis.modules;
             assert_same_products(from_kernel, expected);
+        }
+    }
+}
+
+"""A module served from a seed brings the endpoint effects its interface
+carries. A public function that calls a served writer is a writer that touches
+the node it writes, on the native kernel as in the host."""
+test "the native kernel reads the endpoint effects of a module served from a seed" {
+    kernel = loaded_kernel();
+    if kernel is None {
+        return;
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'notes.jac').write_text(
+            'node Note { has text: str = ""; }\n\n'
+                + 'def add_note(text: str) -> str {\n'
+                + '    root ++> Note(text=text);\n    return text;\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from notes { add_note }\n\nwith entry { add_note("a"); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from notes { add_note }\n\n'
+                + 'def:pub post(text: str) -> str {\n    return add_note(text);\n}\n'
+        );
+        entry_file = str(base / 'main.jac');
+        app_session = kernel_snapshot(
+            active_host(),
+            JacProgram(),
+            entry_file,
+            compile_options(),
+            emit_closure=True
+        );
+        app = CompileReport.from_json(
+            call_with_asker(kernel, COMPILE_ENTRY, app_session, entry_file, None, False)
+        );
+        assert app.analysis.status == ANALYSIS_OK , app.analysis.message;
+        notes = app.unit(str(base / 'notes.jac'));
+        assert notes is not None and notes.iface and notes.effects , notes;
+        seed = PythonInterface(
+            path=notes.path,
+            pkg_dir=str(base),
+            data=base64.b64decode(notes.iface),
+            placement=notes.placement,
+            effects=notes.effects
+        );
+        page_file = str(base / 'page.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), page_file, compile_options(), seeds=[seed]
+        );
+        outcome = CompileReport.from_json(
+            call_with_asker(kernel, COMPILE_ENTRY, session, page_file, None, False)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        page = outcome.unit(page_file);
+        assert page is not None;
+        facts = json.loads(page.effects).get("post", {});
+        assert facts.get("writer") and "Note" in facts.get("touches", []) , page.effects;
+    }
+}
+
+"""A module served from a seed has no function bodies, so a compile that needs
+one evaluated at compile time asks for the module's tree. The kernel answers
+that request from source instead of handing back the seed's interface."""
+test "a comptime call into a seed-served module evaluates its body" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'helpers.jac').write_text(
+            'comptime def triple(n: int) -> int {\n    return n * 3;\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from helpers { triple }\n\nwith entry { print(triple(2)); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from helpers { triple }\n\n'
+                + 'comptime NINE: int = triple(3);\n'
+                + 'comptime assert NINE == 9;\n\n'
+                + 'with entry { print(NINE); }\n'
+        );
+        entry_file = str(base / 'main.jac');
+        app_session = kernel_snapshot(
+            active_host(),
+            JacProgram(),
+            entry_file,
+            compile_options(),
+            emit_closure=True
+        );
+        app = run_kernel_compile(app_session.text(), entry_file, None, app_session);
+        assert app.analysis.status == ANALYSIS_OK , app.analysis.message;
+        helpers = app.unit(str(base / 'helpers.jac'));
+        assert helpers is not None and helpers.iface , helpers;
+        seed = PythonInterface(
+            path=helpers.path,
+            pkg_dir=str(base),
+            data=base64.b64decode(helpers.iface),
+            placement=helpers.placement,
+            effects=helpers.effects
+        );
+        page_file = str(base / 'page.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), page_file, compile_options(), seeds=[seed]
+        );
+        outcome = run_kernel_compile(session.text(), page_file, None, session);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
+    }
+}
+
+"""A seed carries the placement the application compile gave its module. A page
+whose client code uses a module the application reaches only from the server
+needs that module's client code, so the page compile pulls it from source
+instead of the seed, while the modules it reaches only from the server stay
+seeded."""
+test "a page whose client code uses a seeded module emits that module's client code" {
+    import jaclang.project.kernel_compile as kernel_compile;
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'model.jac').write_text('obj Item {\n    has name: str = "";\n}\n');
+        (base / 'helpers.jac').write_text(
+            'def:pub shared_value(x: int) -> int { return x + 1; }\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from model { Item }\nimport from helpers { shared_value }\n\n'
+                + 'def:pub make(n: str) -> str { return Item(name=n).name; }\n'
+                + 'def:pub bump(n: int) -> int { return shared_value(n); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from model { Item }\nimport from helpers { shared_value }\n\n'
+                + 'def:pub view(n: int) -> int { return shared_value(n) * 2; }\n\n'
+                + 'def:pub page -> JsxElement {\n'
+                + '    has label: str = "";\n'
+                + '    can with entry { label = Item(name="a").name; }\n'
+                + '    return <div>{label}</div>;\n}\n'
+        );
+        program = JacProgram();
+        with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
+            try {
+                application = kernel_compile.kernel_compile_application(
+                    active_host(), program, str(base / 'main.jac'), compile_options()
+                );
+                assert application is not None
+                    and application.analysis.status == ANALYSIS_OK , application;
+                page = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert page is not None and page.analysis.status == ANALYSIS_OK , page;
+                emitted = sorted(os.path.basename(unit.path) for unit in page.units);
+                model = page.unit(str(base / 'model.jac'));
+                assert model is not None and model.client , emitted;
+                assert page.unit(str(base / 'helpers.jac')) is None , emitted;
+            } finally {
+                kernel_compile.forget_application_units();
+                kernel_compile.host_prepared();
+            }
         }
     }
 }

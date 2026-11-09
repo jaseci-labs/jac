@@ -470,7 +470,7 @@ impl NaIRGenPass._stamp_mono_fn(
     for p in sig.get_parameters() {
         param_types.append(self._resolve_jac_type(p));
     }
-    ret_type = self._resolve_return_type(sig.return_type);
+    ret_type = self._byvalue_ret_type(self._resolve_return_type(sig.return_type));
     fnty = ir.FunctionType(ret_type, param_types);
     fn = ir.Function(self.llvm_module, fnty, name=spec_name);
     fn.linkage = "private";
@@ -644,7 +644,9 @@ impl NaIRGenPass._stamp_mono_method(
     for p in sig.get_parameters() {
         param_types.append(self._resolve_sig_type(p));
     }
-    ret_type = self._resolve_return_type(sig.return_type, method=True);
+    ret_type = self._byvalue_ret_type(
+        self._resolve_return_type(sig.return_type, method=True)
+    );
     fnty = ir.FunctionType(ret_type, param_types);
     fn = ir.Function(self.llvm_module, fnty, name=spec_name);
     fn.linkage = "private";

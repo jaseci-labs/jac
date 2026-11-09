@@ -5,6 +5,9 @@
 # `raise-free` after a name says the module's _impl functions report errors
 # as C does and never raise boundary_failure, so its glue calls them without
 # an exception frame when no argument conversion can raise.
+# `checked-converters` says the module's own converters and return
+# converters report failure through the error indicator as C's do, so its
+# glue converts those arguments without an exception frame too.
 _opcode
 pwd
 grp
@@ -38,19 +41,19 @@ _codecs
 _locale
 _bisect
 _heapq
-_random
+_random raise-free
 _statistics
 binascii
 _queue
 _json
 _csv
 _functools
-cmath
-math
+cmath raise-free checked-converters
+math raise-free
 _operator
 array
 _struct
-_collections
+_collections raise-free
 itertools
 _pickle
 _lzma
@@ -67,3 +70,10 @@ _ssl
 _hashlib        hashopenssl
 _asyncio
 posix
+_signal
+_thread
+_warnings
+_imp
+marshal
+_io raise-free
+_ctypes

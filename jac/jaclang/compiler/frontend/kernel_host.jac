@@ -1,3 +1,4 @@
+import hashlib;
 import json;
 import os;
 import sys;
@@ -14,8 +15,15 @@ class HostOnlyError(RuntimeError) {}
 
 obj HostAsker {
     def ask(method: str, key: str) -> str abst;
-    def record_interface(program: JacProgram, module: Module, products: UnitProducts);
 }
+
+def record_interface(
+    program: JacProgram,
+    module: Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+);
 
 enum HostEventKind { NOTE, COVERAGE, COLLECT }
 
@@ -103,6 +111,7 @@ obj KernelHost(HostServices) {
         kernel_asker: bool = False,
         _asked: set[str] = set(),
         grown: set[str] = set(),
+        source_reads: dict[str, str] = {},
         _native_ifaces: dict[str, NativeIface] = {},
         _lowering: set[str] = set(),
         _lowered: dict[str, Module] = {},
@@ -176,6 +185,8 @@ obj KernelHost(HostServices) {
     def is_seed_source(rel_path: str) -> bool;
     def wiring_records(digest: str) -> str;
     def keep_wiring_records(digest: str, text: str);
+    def native_scan_record(path: str, digest: str) -> str;
+    def keep_native_scan_record(path: str, digest: str, text: str);
     def native_parse(
         source_str: str,
         file_path: str,
@@ -261,7 +272,7 @@ obj KernelHost(HostServices) {
     def default_target_triple -> str;
 }
 
-def read_utf8_source(path: str) -> (str | None);
+def read_utf8_source(path: str, reads: (dict[str, str] | None) = None) -> (str | None);
 
 def replay_event_rows(target: HostServices, rows: list[list[str]]);
 
