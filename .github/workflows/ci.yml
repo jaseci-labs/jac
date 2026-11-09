@@ -909,6 +909,21 @@ jobs:
     needs: [changes, dev-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
+    # Two legs split by measured runtime (main run 42587577723: runtimelib +
+    # language + dist ~41 min of worker time, the rest ~45, each slowest
+    # file ~12 min: cli/test_plugin_integration and a test_publish). The
+    # second leg is "everything else", so a new test directory runs there.
+    name: test-runtime (${{ matrix.leg }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: runtimelib
+            paths: tests/runtimelib tests/language tests/dist
+            ignore: ""
+          - leg: rest
+            paths: tests/
+            ignore: tests/compiler tests/client tests/runtimelib tests/language tests/dist
     steps:
       - uses: actions/checkout@v5
       # The deps installed below with --global land in the binary's runtime
@@ -939,8 +954,8 @@ jobs:
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
-          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test tests/ \
-            --ignore tests/compiler tests/client
+          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
+            ${{ matrix.ignore != '' && format('--ignore {0}', matrix.ignore) || '' }}
 
   # In-package tests that do not pass through the reroute, run here against
   # the built kit. Each entry names a real divergence between the reroute and

@@ -118,7 +118,7 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
           jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
+        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -435,7 +435,7 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
           jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
+        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
     # above the restore steps). Main runs seed
