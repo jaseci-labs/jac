@@ -444,6 +444,7 @@ impl Serializer.is_auto_registered_module(module_name: str) -> bool {
     return (
         not module_name.startswith('jaclang.')
         or module_name.startswith('jaclang.scale.')
+        or module_name == 'jaclang.runtime.membership'
     );
 }
 

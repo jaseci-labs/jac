@@ -101,6 +101,7 @@ obj Store {
         node_id: UUID, after: (tuple[int, UUID] | None), limit: int
     ) -> list[tuple[int, UUID]] abst;
 
+    def member_edges(src_ids: list[UUID]) -> list[tuple[UUID, UUID, UUID, int]] abst;
     def upsert(rows_in: list[AnchorRow]) -> None abst;
     def retype_edges(ids: list[UUID]) -> None abst;
     def delete(ids: list[UUID]) -> None abst;
@@ -173,6 +174,7 @@ obj PgStore(Store) {
         node_id: UUID, after: (tuple[int, UUID] | None), limit: int
     ) -> list[tuple[int, UUID]];
 
+    def member_edges(src_ids: list[UUID]) -> list[tuple[UUID, UUID, UUID, int]];
     def upsert(rows_in: list[AnchorRow]) -> None;
     def retype_edges(ids: list[UUID]) -> None;
     def delete(ids: list[UUID]) -> None;

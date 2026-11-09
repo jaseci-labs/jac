@@ -913,6 +913,27 @@ impl PgStore.adjacency(
 }
 
 
+impl PgStore.member_edges(src_ids: list[UUID]) -> list[tuple[UUID, UUID, UUID, int]] {
+    if not src_ids {
+        return [];
+    }
+    rows = self._run(
+        """
+        SELECT e.id, e.src, e.dst, COALESCE((e.props->'archetype'->>'level')::int, 0)
+          FROM anchors e
+         WHERE e.kind = 'EdgeAnchor' AND e.arch_type = 'Member'
+           AND e.arch_module = 'jaclang.runtime.membership'
+           AND e.src = ANY(CAST(:ids AS uuid[]))
+        """,
+        {'ids': [str(i) for i in src_ids]}
+    );
+    return [
+        (UUID(str(r[0])), UUID(str(r[1])), UUID(str(r[2])), int(str(r[3])))
+        for r in rows
+    ];
+}
+
+
 impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     if not rows_in {
         return;

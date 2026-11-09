@@ -681,7 +681,9 @@ impl _trusted_names(
         }
         seen.add(cls);
         pending.extend(cls.__subclasses__());
-        if issubclass(cls, Root) or cls?.__jac_access__ is not base_access {
+        if issubclass(cls, Root)
+            or getattr(cls, '__jac_membership__', False)
+            or cls?.__jac_access__ is not base_access {
             continue;
         }
         tname = storage_type(cls);

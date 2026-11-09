@@ -127,7 +127,11 @@ walker try_acl_grant {
     can enter with Root entry {
         target = &(self.target_id);
         # Cross-user ACL write: a grant on a node the caller does not own.
-        Jac.allow_root(target, UUID(self.requestor_id), self.level);
+        try {
+            Jac.allow_root(target, UUID(self.requestor_id), self.level);
+        } except PermissionError {
+            print("RAISED");
+        }
         _print_diagnostics();
     }
 }
@@ -139,7 +143,11 @@ walker try_perm_grant {
     can enter with Root entry {
         target = &(self.target_id);
         # Cross-user ACL write: opening a foreign node to every user.
-        Jac.perm_grant(target, self.level);
+        try {
+            Jac.perm_grant(target, self.level);
+        } except PermissionError {
+            print("RAISED");
+        }
         _print_diagnostics();
     }
 }

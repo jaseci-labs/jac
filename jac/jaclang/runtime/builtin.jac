@@ -30,6 +30,12 @@ def _get_grant -> Callable[..., any];
 
 def _get_revoke -> Callable[..., any];
 
+def _get_set_access -> Callable[..., any];
+
+def _get_member -> (type | None);
+
+def _get_clear_access -> Callable[..., any];
+
 def _get_allroots -> Callable[..., any];
 
 def _get_save -> Callable[..., any];
@@ -136,6 +142,9 @@ glob __all__ = [
          'jref',
          'grant',
          'revoke',
+         'set_access',
+         'Member',
+         'clear_access',
          'allroots',
          'save',
          'commit',

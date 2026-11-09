@@ -47,6 +47,12 @@ impl __getattr__(name: str) -> object {
         return _get_grant();
     } elif (name == 'revoke') {
         return _get_revoke();
+    } elif (name == 'Member') {
+        return _get_member();
+    } elif (name == 'set_access') {
+        return _get_set_access();
+    } elif (name == 'clear_access') {
+        return _get_clear_access();
     } elif (name == 'allroots') {
         return _get_allroots();
     } elif (name == 'save') {
@@ -141,6 +147,23 @@ impl _get_allroots -> Callable[..., any] {
 
 impl _get_revoke -> Callable[..., any] {
     return _get_jac().perm_revoke;
+}
+
+impl _get_member -> (type | None) {
+    import sys;
+    import importlib;
+
+    mod = sys.modules.get('jaclang.runtime.membership')
+        or importlib.import_module('jaclang.runtime.membership');
+    return mod?.Member;
+}
+
+impl _get_set_access -> Callable[..., any] {
+    return _get_jac().set_access;
+}
+
+impl _get_clear_access -> Callable[..., any] {
+    return _get_jac().clear_access;
 }
 
 impl _get_grant -> Callable[..., any] {

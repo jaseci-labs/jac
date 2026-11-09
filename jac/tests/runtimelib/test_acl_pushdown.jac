@@ -30,6 +30,7 @@ import from uuid { UUID }
 import from jaclang.runtime.archetype { AccessLevel, EdgeAnchor, GenericEdge, Root }
 import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface }
 import from jaclang.runtime.context { ExecutionContext }
+import from jaclang.runtime.membership { Member }
 
 node Doc {
     has label: str = "";
@@ -38,8 +39,6 @@ node Doc {
 node Team {
     has name: str = "";
 }
-
-edge MemberOf: any --> any {}
 
 node CustomDoc {
     has label: str = "";
@@ -203,7 +202,10 @@ test "a grant to a group reaches every member without a per-root entry" {
 
             # membership is an edge, not an entry on every granted object
             m = EdgeAnchor(
-                archetype=MemberOf(), source=reader, target=team, is_undirected=False
+                archetype=_as_any(Member(level=AccessLevel.READ.value)),
+                source=reader,
+                target=team,
+                is_undirected=False
             );
             m.persistent = True;
             reader.edges.append(m);
@@ -326,7 +328,10 @@ def _seed_grants(
         setattr(team, "root", org.id);
         ctx.mem.put(team);
         m = EdgeAnchor(
-            archetype=MemberOf(), source=member, target=team, is_undirected=False
+            archetype=_as_any(Member(level=AccessLevel.WRITE.value)),
+            source=member,
+            target=team,
+            is_undirected=False
         );
         m.persistent = True;
         member.edges.append(m);
@@ -363,9 +368,18 @@ test "a typed hop gives the access check's answer for every grant and override" 
         ("doc blocks the member and grants nothing else", -1, None, -1, -1, None, 0),
         ("team grant", -1, None, -1, None, 0, 1),
         ("team entry at NO_ACCESS", -1, None, -1, None, -1, 0),
-        ("org root grant, team entry at NO_ACCESS", -1, 0, -1, None, -1, 1),
-        ("doc blocks the member, team grant lifts it", -1, None, -1, -1, 0, 1),
-        ("org root blocks the member, doc grants the member", -1, -1, -1, 0, None, 1),
+        ("org root grant, team entry at NO_ACCESS", -1, 0, -1, None, -1, 0),
+        ("doc blocks the member, team grant does not lift it", -1, None, -1, -1, 0, 0),
+        (
+            "org root blocks the member, doc grant does not lift it",
+            -1,
+            -1,
+            -1,
+            0,
+            None,
+            0
+        ),
+        ("doc granted to all, team grant raises", -1, None, 0, None, 1, 1),
 
     ];
     for (label, org_all, org_member, doc_all, doc_member, doc_team, want) in rows {

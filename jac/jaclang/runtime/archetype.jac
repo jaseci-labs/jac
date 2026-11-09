@@ -21,7 +21,7 @@ glob _light_edge_types: dict[type, bool] = {},
      _edge_subtypes: dict[type, tuple[type, ...]] = {},
      _tracked_classes: dict[type, type] = {};
 
-enum AccessLevel { NO_ACCESS = -1, READ = 0, CONNECT = 1, WRITE = 2 }
+enum AccessLevel { NO_ACCESS = -1, READ = 0, CONNECT = 1, WRITE = 2, ADMIN = 3 }
 
 def access_level_cast(val: int | str | AccessLevel) -> AccessLevel;
 

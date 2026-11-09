@@ -7,6 +7,21 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Changing access needs `ADMIN`, and grants only raise a level ([#10414](https://github.com/jaseci-labs/jac/issues/10414), unreleased)
+
+`AccessLevel` gains `ADMIN` above `WRITE`, and groups are now `Member` edges made by `set_access(node, who, level)` (see [Groups and membership](../reference/language/osp.md#8-groups-and-membership)). Four existing behaviours change:
+
+| Before | Now | What to do |
+|---|---|---|
+| `WRITE` on a node was enough to `grant`, `revoke`, `allow_root` or `disallow_root` on it, and a refused call returned quietly | It needs `ADMIN` (the owner, the system root, or an admin of the owning group) and raises `PermissionError`. A call that changes nothing still needs no rights | Give whoever manages sharing `ADMIN`, for example `set_access(org, user_root_id, AccessLevel.ADMIN)` |
+| A per-root entry on a node replaced the level the caller had from elsewhere, so a `READ` entry could narrow a member to read-only, and a later grant could lift a `NO_ACCESS` entry | Every grant only raises the level, and a `NO_ACCESS` entry always blocks, except for an admin of a group above the node | To make one node read-only for some members, move it into its own group where they hold `READ` |
+| Any edge from a caller's root to a node made the caller a member of that node for `allow_group` | Only a `Member` edge does, and only `set_access` makes one | Replace `root +>:MyMemberEdge:+> team` with `set_access(team, user_root_id, level)` |
+| Owners got `WRITE` from `check_access_level`; `allroots()` returned every in-memory `Root` subclass | Owners get `ADMIN`; `allroots()` returns users' roots, consistently with the store | Compare levels with `>= AccessLevel.WRITE` rather than `== AccessLevel.WRITE` |
+
+`Jac.allow_root`, `allow_group` and stored per-root entries keep working, so existing data needs no migration. New code should use `set_access` and `clear_access`.
+
+---
+
 ### Inline Python (`::py::`) is removed from the language (unreleased)
 
 `::py:: ... ::py::` blocks are gone. The lexer no longer recognizes the fence, the grammar has no inline-Python element, and the compiler has no node for it, so a file that still contains one fails to parse. There is no deprecation period and no dedicated diagnostic: the fence now reads as stray `:` tokens, and `E0103` (unterminated inline Python block) is retired.
