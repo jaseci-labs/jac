@@ -1087,7 +1087,7 @@ graph import {
             | project.kernel_compile.kernel_route
             | project.kernel_snapshot
             | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
-        cli.commands.execution._exec_file {
+        cli.commands.execution._exec_file | dist.precompile_bytecode.served_codespace {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
@@ -3831,14 +3831,15 @@ graph import {
             CLIENT_DIST_REL,
             read_serve_manifest
         },
+        dist.precompile_bytecode._served_codespace
+            | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
         dist.precompile_bytecode.app_metadata { CLIENT_DIST_REL, NATIVE_DIR_REL },
         dist.precompile_bytecode.collect_payloads {
             CLIENT_DIST_REL,
             NATIVE_DIR_REL,
             SERVE_MANIFEST_REL
         },
-        dist.precompile_bytecode.seal_runtime_closure
-            | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
+        dist.precompile_bytecode.seal_runtime_closure { SERVE_MANIFEST_REL },
         dist.seal.bake_serve_payloads { CLIENT_DIST_REL, SERVE_MANIFEST_REL },
         dist.seal.build_serve_manifest { serve_manifest_stamp },
     ]
@@ -4096,12 +4097,20 @@ graph import {
         scale.tests.server.test_stream_ws._spawn_upstream.sse { StreamingResponse },
     ]
     server.serving.drain ++> [
+        runtime.builtin.on_drain | runtime.runtime.JacRuntime.after_fork_in_child {
+            DRAIN_HOOKS
+        },
         scale.runtime.gateway.microservice_gateway { DrainState },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
             drain_middleware
         },
         scale.server.extensions { HEALTH_PATHS },
-        scale.tests.microservices.test_drain { DrainState, drain_middleware },
+        scale.tests.microservices.test_drain {
+            DRAIN_HOOKS,
+            DRAIN_TAKEN,
+            DrainState,
+            drain_middleware
+        },
     ]
     server.serving.endpoint ++> [
         client.targets.desktop.native.broker_extension
@@ -46923,7 +46932,11 @@ graph import scale.tests {
             | microservices.test_k8s_health_probe
             | server.test_examples { get_free_port },
         microservices.test_stop_signal_scope { stop_server },
-        microservices.test_typed_boundary { get_free_port, start_server, stop_server },
+        microservices.test_typed_boundary | server.test_drain_hooks {
+            get_free_port,
+            start_server,
+            stop_server
+        },
         server.test_metrics_workers | server.test_serve {
             cleanup_db_files,
             get_free_port,
@@ -47389,7 +47402,8 @@ graph import server.serving {
     datatypes --> server.ServingServer._dispatch { JSONResponse }
     drain ++> [
         accesslog { HEALTH_PATHS },
-        health { DrainState },
+        app { run_hooks },
+        health | supervisor { DrainState },
         server { DrainState, HEALTH_PATHS },
     ]
     endpoint ++> [
