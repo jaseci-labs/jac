@@ -367,6 +367,8 @@ curl -s http://localhost:8000/admin/schedules -H "Authorization: Bearer $ADMIN_T
 
 Behind the fleet gateway, the same request answers for the whole fleet: the gateway asks every service it serves and returns `{"ok": true, "data": {"services": [...], "unanswered": [...], "schedules": [...]}}`, where each entry also carries the `service` that runs it and that service's `namespace`. `unanswered` names every service that did not answer with its listing, with the HTTP `status` it gave (`null` when it could not be reached), so a partial listing reads as partial rather than as services with no tasks. When no service answers, the gateway returns a JSON `502` carrying the same `unanswered` list. A service answers for itself, with its own `namespace` at the top level.
 
+The fleet listing needs `JAC_BRIDGE_TOKEN` set to the same value on the gateway and on every service. The gateway checks the admin's own token, then asks each service with the fleet bridge secret instead of forwarding that token, because a service with its own user store does not know the gateway's admin and would answer `403`, which the gateway relays and names in `unanswered`. This makes `GET /admin/schedules` the one `/admin` route a service answers for the bridge bearer: whoever holds the secret can read a service's static task listing, including each run's `error` text, the same way the secret already lets them call every bridged walker and function on that service.
+
 ## Configuration Reference
 
 All keys live under `[scale.scheduler]` in `jac.toml`:
