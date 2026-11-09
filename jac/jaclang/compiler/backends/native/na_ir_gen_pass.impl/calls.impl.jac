@@ -4093,24 +4093,13 @@ impl NaIRGenPass._bind_kw_spread(
             continue;
         }
         _want = rec["erased_want"];
-        _want_num = (self._opt_payload_of(_want) or _want)
-            if _want is not None
-            else None;
-        _from_jv = rec["erased"]
-            and self?.jacval_type is not None
-            and helpers["val_type"] == self.jacval_type
-            and isinstance(_want_num, (ir.IntType, ir.DoubleType, ir.FloatType));
-        _box = _from_jv
-            or (
-                rec["erased"]
-                and not isinstance(helpers["val_type"], ir.PointerType)
-                and self._erased_boxable(helpers["val_type"])
-            );
-        _fit_type = rec["slot_type"];
-        if rec["erased"] and rec["erased_want"] is not None {
-            _fit_type = self._opt_payload_of(rec["erased_want"]) or rec["erased_want"];
-        }
-        if not (_box and rec["erased_want"] is None)
+        _box = rec["erased"]
+            and not isinstance(helpers["val_type"], ir.PointerType)
+            and self._erased_boxable(helpers["val_type"], _want);
+        _fit_type = (self._opt_payload_of(_want) or _want)
+            if rec["erased"] and _want is not None
+            else rec["slot_type"];
+        if not (_box and _want is None)
             and not self._kw_spread_value_fits(helpers["val_type"], _fit_type) {
             self._emit_runtime_raise(
                 present,
@@ -4138,9 +4127,6 @@ impl NaIRGenPass._bind_kw_spread(
         value: ir.Value = self.builder.call(
             helpers["get_ph"], [spread, key, key_hash], name="kwbind.get"
         );
-        if _from_jv {
-            value = self._coerce_type(value, _want);
-        }
         if _box {
             value = self._erased_box(value, _want);
         }

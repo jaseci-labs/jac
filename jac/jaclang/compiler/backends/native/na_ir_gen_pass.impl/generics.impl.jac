@@ -581,12 +581,12 @@ impl NaIRGenPass._instantiate_generic_method(
         );
         return None;
     }
-    _erased_tvs = set(self.arch_type_params.get(owner_arch) or []);
-    for tp in (ability.type_params or []) {
-        if tp?.name is not None {
-            _erased_tvs.discard(tp.name.value);
-        }
-    }
+    _own_tvs = {
+        tp.name.value
+        for tp in (ability.type_params or [])
+        if tp?.name is not None
+    };
+    _erased_tvs = set(self.arch_type_params.get(owner_arch) or []) - _own_tvs;
     solution = {
         k: v
         for (k, v) in solution.items()
