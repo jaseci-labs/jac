@@ -19,12 +19,13 @@ import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
 import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
 import from jaclang.compiler.passes.static_analysis_pass { StaticAnalysisPass }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.passes.context { PassKind }
 
 
 test "schedule omitting a declared dependency fails fast at construction" {
     err = '';
     try {
-        validate_schedule([OwnershipCheckPass], origin='test schedule');
+        validate_schedule([PassKind.OWNERSHIP_CHECK], origin='test schedule');
     } except RuntimeError as e {
         err = str(e);
     }
@@ -37,7 +38,7 @@ test "validation names the first missing analysis with CfgSucc preprovided" {
     err = '';
     try {
         validate_schedule(
-            [OwnershipCheckPass],
+            [PassKind.OWNERSHIP_CHECK],
             preprovided={AnalysisFact.CFG_SUCC},
             origin='test schedule'
         );
@@ -50,30 +51,31 @@ test "validation names the first missing analysis with CfgSucc preprovided" {
 
 test "validation accepts a schedule whose dependencies are preprovided" {
     sched = validate_schedule(
-        [OwnershipCheckPass],
+        [PassKind.OWNERSHIP_CHECK],
         preprovided={AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF},
         origin='test schedule'
     );
-    assert sched == [OwnershipCheckPass];
+    assert sched == [PassKind.OWNERSHIP_CHECK];
 }
 
 test "validation accepts a schedule whose dependencies run earlier in it" {
     sched = validate_schedule(
-        [CFGBuildPass, TypeCheckPass, OwnershipCheckPass], origin='test schedule'
+        [PassKind.CFG_BUILD, PassKind.TYPE_CHECK, PassKind.OWNERSHIP_CHECK],
+        origin='test schedule'
     );
     assert len(sched) == 3;
 }
 
 test "the analysis stage always carries type checking and the checkers" {
     sched = product_passes(CompilationProduct.ANALYSIS);
-    assert TypeCheckPass in sched;
-    assert StaticAnalysisPass in sched;
-    assert OwnershipCheckPass in sched;
-    assert sched.index(TypeCheckPass) < sched.index(OwnershipCheckPass);
+    assert PassKind.TYPE_CHECK in sched;
+    assert PassKind.STATIC_ANALYSIS in sched;
+    assert PassKind.OWNERSHIP_CHECK in sched;
+    assert sched.index(PassKind.TYPE_CHECK) < sched.index(PassKind.OWNERSHIP_CHECK);
 }
 
-def canonical_pipeline -> list[type] {
-    sched: list[type] = [];
+def canonical_pipeline -> list[PassKind] {
+    sched: list[PassKind] = [];
     for product in (
         CompilationProduct.IR,
         CompilationProduct.ANALYSIS,
@@ -89,10 +91,10 @@ def canonical_pipeline -> list[type] {
 
 test "the canonical compile pipeline validates end to end" {
     sched = canonical_pipeline();
-    assert CFGBuildPass in sched;
-    assert TypeCheckPass in sched;
-    assert OwnershipCheckPass in sched;
-    assert sched.index(CFGBuildPass) < sched.index(TypeCheckPass);
+    assert PassKind.CFG_BUILD in sched;
+    assert PassKind.TYPE_CHECK in sched;
+    assert PassKind.OWNERSHIP_CHECK in sched;
+    assert sched.index(PassKind.CFG_BUILD) < sched.index(PassKind.TYPE_CHECK);
     validate_schedule(sched, origin='compile schedule');
 }
 
@@ -101,7 +103,7 @@ test "every declared requirement is satisfied within the one pipeline" {
     provided: set[AnalysisFact] = set();
     for p in sched {
         for tag in contract_of(p).requires {
-            assert tag in provided , f"{p.__name__} requires '{tag}' with no earlier provider";
+            assert tag in provided , f"{p.value} requires '{tag}' with no earlier provider";
         }
         for tag in contract_of(p).provides {
             provided.add(tag);
@@ -110,8 +112,8 @@ test "every declared requirement is satisfied within the one pipeline" {
 }
 
 test "providers_of reports the tags a schedule segment supplies" {
-    assert AnalysisFact.CFG_SUCC in providers_of([CFGBuildPass]);
-    assert AnalysisFact.TYPE_OF in providers_of([TypeCheckPass]);
+    assert AnalysisFact.CFG_SUCC in providers_of([PassKind.CFG_BUILD]);
+    assert AnalysisFact.TYPE_OF in providers_of([PassKind.TYPE_CHECK]);
     assert providers_of([]) == set();
 }
 
@@ -120,7 +122,7 @@ test "execute_passes rejects an incoherent schedule before running any pass" {
     stub = uni.Module.make_stub(inject_name='sched_stub');
     err = '';
     try {
-        execute_passes(prog, stub, [OwnershipCheckPass]);
+        execute_passes(prog, stub, [PassKind.OWNERSHIP_CHECK]);
     } except RuntimeError as e {
         err = str(e);
     }

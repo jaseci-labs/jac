@@ -202,21 +202,8 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
             "diagnostic; this is a compiler bug -- please report it"
         );
     }
-    from_pass: type = JcirGenPass
-        if reason
-        else product_passes(CompilationProduct.NATIVE_LOWER)[-1];
     deliver_alerts(
-        [
-            Alert(
-                msg=E5092.format_message(
-                    kind='module', name=os.path.basename(mod_path)
-                ),
-                loc=mod.loc.span(),
-                from_pass=from_pass,
-                code=E5092,
-                help_text=detail
-            )
-        ],
+        [native_ir_alert(mod, os.path.basename(mod_path), detail, E5092, bool(reason))],
         [],
         program
     );
