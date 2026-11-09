@@ -181,6 +181,12 @@ impl check(
             units.append(file_unit);
         }
     }
+    sharded = _shard_units(units);
+    if sharded is None {
+        console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
+        return 2;
+    }
+    units = sharded;
     cfg = get_config();
     raw_jobs = jobs_setting("check", jobs, cfg.dev if cfg else None);
 
@@ -1612,6 +1618,8 @@ def _configured_check_excludes -> list[str];
 
 def _is_project_wide_run(paths: list[str]) -> bool;
 
+def _shard_units(units: list[dict[(str, any)]]) -> (list[dict[(str, any)]] | None);
+
 def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool;
 
 impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> int {
@@ -2554,6 +2562,30 @@ impl _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
 impl _configured_check_excludes -> list[str] {
     config = get_config();
     return list(config.check.exclude) if config is not None else [];
+}
+
+impl _shard_units(units: list[dict[(str, any)]]) -> (list[dict[(str, any)]] | None) {
+    import os;
+
+    spec = os.environ.get("JAC_CHECK_SHARD", "").strip();
+    if not spec {
+        return units;
+    }
+    (k, _, n) = spec.partition("/");
+    if not (k.isdigit() and n.isdigit()) or not (1 <= int(k) <= int(n)) {
+        return None;
+    }
+
+    def heaviest_first(unit: dict[(str, any)]) -> tuple[int, str] {
+        return (-_unit_weight(unit), str(unit['path']));
+    }
+
+    ordered = sorted(units, key=heaviest_first);
+    return [
+        unit
+        for (idx, unit) in enumerate(ordered)
+        if idx % int(n) == int(k) - 1
+    ];
 }
 
 impl _is_project_wide_run(paths: list[str]) -> bool {
