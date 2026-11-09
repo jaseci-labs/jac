@@ -4583,9 +4583,10 @@ impl NaIRGenPass._codegen_callable_value(
             kind="call through a value",
             name=self._get_name(nd.target) or "callable",
             help_text="The callee's native type carries no call signature "
-            "(an `any` or an unparameterized `Callable`). Annotate it as "
-            "`Callable[[...], R]` so the native lane can call it, or make "
-            "the call from a Python/@sv context."
+            "(an `any` or an unparameterized `Callable`). If it holds a "
+            "function, bind it to a `Callable[[...], R]` local and call it "
+            "positionally so the native lane can call it. A class held in "
+            "`any` can only be constructed from a Python/@sv context."
         );
         return None;
     }

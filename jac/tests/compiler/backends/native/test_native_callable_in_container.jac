@@ -75,3 +75,15 @@ test "callable-in-list: two rebound slots chain through each other" {
     # h_two(h_one(1)) = 200 + 101.
     assert f(1) == 301;
 }
+
+test "callable-in-any: a function read out of a dict[str, any] dispatches" {
+    (eng, _) = compile_native("callable_in_container.jac");
+    f = get_func(eng, "any_dict_dispatch", ctypes.c_int64, ctypes.c_int64);
+    assert f(3) == 103;
+}
+
+test "callable-in-any: a function read out of a list[any] dispatches" {
+    (eng, _) = compile_native("callable_in_container.jac");
+    f = get_func(eng, "any_list_dispatch", ctypes.c_int64, ctypes.c_int64);
+    assert f(4) == 204;
+}

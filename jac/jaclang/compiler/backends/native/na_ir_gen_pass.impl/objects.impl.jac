@@ -1277,10 +1277,19 @@ impl NaIRGenPass._place_unit_python(
         import from jaclang.compiler.frontend.host { active_host }
         import from jaclang.compiler.frontend.codeinfo { native_display_text }
         _why = "; ".join(_r.located() for _r in refusals);
+        _help = next(
+            (
+                _r.help
+                for _r in refusals
+                if _r.help
+            ),
+            None
+        );
         active_host().note(
             native_display_text(
                 f"native seam -- demoting {full_name} to Python-only "
                 f"(un-lowerable): {_why}"
+                    + (f"\nhelp: {_help}" if _help else "")
             ),
             style="warning"
         );

@@ -1248,7 +1248,7 @@ This produces a human-readable `.ll` file that can be inspected with any text ed
 
 ### Explaining a demotion
 
-A method the backend cannot lower is *demoted*: it falls back to its Python implementation while the rest of its class stays native. The build prints a one-line `⚠ native seam -- demoting ...` warning for each. `jac explain placement <file>` turns that line into the full story:
+A method the backend cannot lower is *demoted*: it falls back to its Python implementation while the rest of its class stays native. The build prints a `⚠ native seam -- demoting ...` warning for each, naming why on one line and, when the refusal carries one, a `help:` line with the fix (for a call through an `any` value, the `Callable[[...], R]` binding). `jac explain placement <file>` turns that line into the full story:
 
 ```bash
 JAC_NA_DEBUG=1 jac build --native program.jac

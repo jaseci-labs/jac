@@ -165,6 +165,9 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         tag = ir.Constant(i8, 1);
         payload = b.bitcast(value, i64, name="jv.f2i");
     } elif isinstance(value.type, ir.PointerType) {
+        if isinstance(value.type.pointee, ir.FunctionType) {
+            value = self._wrap_fn_as_closure_value(value);
+        }
         payload = b.ptrtoint(value, i64, name="jv.p2i");
         tag = b.select(
             b.icmp_unsigned("==", payload, ir.Constant(i64, 0), name="jv.isnone"),
@@ -257,6 +260,54 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         _viewed = self._unbox_any_container(jv, target_type);
         if _viewed is not None {
             return _viewed;
+        }
+        if isinstance(target_type.pointee, ir.FunctionType) {
+            _func = b.basic_block.function;
+            _entry = b.basic_block;
+            _clos_bb = _func.append_basic_block(name="jv.fn.clos");
+            _done_bb = _func.append_basic_block(name="jv.fn.done");
+            _is_clos = b.icmp_unsigned(
+                "==",
+                b.extract_value(jv, 0, name="jv.fn.tag"),
+                ir.Constant(ir.IntType(8), 6),
+                name="jv.fn.isclos"
+            );
+            b.cbranch(_is_clos, _clos_bb, _done_bb);
+            b.position_at_start(_clos_bb);
+            _clos = b.inttoptr(
+                payload,
+                ir.LiteralStructType([i64, ir.IntType(8).as_pointer()]).as_pointer(),
+                name="jv.fn.closp"
+            );
+            _code = b.load(
+                b.gep(
+                    _clos,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+                    name="jv.fn.slot"
+                ),
+                name="jv.fn.code"
+            );
+            _clos_end = b.basic_block;
+            b.branch(_done_bb);
+            b.position_at_start(_done_bb);
+            _addr = b.phi(i64, name="jv.fn.addr");
+            _addr.add_incoming(payload, _entry);
+            _addr.add_incoming(_code, _clos_end);
+            return b.inttoptr(_addr, target_type, name="jv.unbox.fn");
+        }
+        if self._closure_struct_of(target_type) is not None {
+            i8 = ir.IntType(8);
+            _tag = b.extract_value(jv, 0, name="jv.unbox.tag");
+            _not_callable = b.and_(
+                b.icmp_unsigned("!=", _tag, ir.Constant(i8, 6), name="jv.clos.notobj"),
+                b.icmp_unsigned("!=", _tag, ir.Constant(i8, 8), name="jv.clos.notnone"),
+                name="jv.clos.bad"
+            );
+            self._emit_runtime_raise(
+                _not_callable,
+                "TypeError",
+                "only a function stored in `any` can be called natively through a Callable"
+            );
         }
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
