@@ -2316,7 +2316,7 @@ def read_node(handle: ptr[PyObject], depth: int = 0) -> ast_node {
         raise boundary_failure();
     }
     if kind == -1 and jacpy_value_kind(handle) == 0 {
-        raise TypeError("None disallowed");
+        raise ValueError("None disallowed");
     }
     if kind == ast_kind.Module.value {
         return read_node_Module(handle, depth);

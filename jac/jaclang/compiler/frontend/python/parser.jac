@@ -13488,7 +13488,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
                     p,
                     False,
                     a_3,
-                    "parameter without a_3 default follows parameter with a_3 default"
+                    "parameter without a default follows parameter with a default"
                 );
                 p.level -= 1;
                 return res;
@@ -13922,7 +13922,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
                     p,
                     False,
                     a_3,
-                    "parameter without a_3 default follows parameter with a_3 default"
+                    "parameter without a default follows parameter with a default"
                 );
                 p.level -= 1;
                 return res;
@@ -22885,6 +22885,19 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
             rule_func_type(p);
         } else {
             rule_statement_newline(p);
+        }
+    }
+    # Tokenize to EOF before reporting a parser failure. CPython tokenizes the
+    # entire source first, so an unterminated string later in the input takes
+    # precedence over an earlier syntax error such as assignment in eval mode.
+    if p.tok.error is None and not p.tok.done {
+        while not p.tok.done {
+            raw = tokenizer_next(p.tok);
+            if raw is p.tok.error {
+                p.error = p.tok.error;
+                p.error_indicator = True;
+                break;
+            }
         }
     }
     if p.tok.paren_stack

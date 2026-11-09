@@ -79,6 +79,17 @@ test "EOF diagnostics keep the opening token's line and column" {
         }
         assert caught , source;
     }
+    caught = False;
+    try {
+        pycompile("ä = '''thîs is \na \ntest", "eof.py", "eval");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg
+            == "unterminated triple-quoted string literal (detected at line 3)" , error.msg;
+        assert error.offset == 5 , error.offset;
+        assert error.text == "ä = '''thîs is " , error.text;
+    }
+    assert caught;
 }
 
 test "unclosed delimiters take priority over the later syntax error" {
@@ -151,6 +162,31 @@ test "expression assignment diagnostics use the known expression start" {
         assert error.msg
             == "expression cannot contain assignment, perhaps you meant \"==\"?" , error.msg;
         assert error.offset == 7 , error.offset;
+    }
+    assert caught;
+}
+
+test "invalid AST fields use CPython's ValueError" {
+    caught = False;
+    try {
+        tree = ast.Module([ast.Assign([None], ast.Constant(3))], []);
+        ast.fix_missing_locations(tree);
+        pycompile(tree, "ast.py", "exec");
+    } except ValueError as error {
+        caught = True;
+        assert str(error).startswith("None disallowed") , str(error);
+    }
+    assert caught;
+}
+
+test "positional-only argument diagnostics avoid grammar capture names" {
+    caught = False;
+    try {
+        pycompile("def f(a, b = 5, /, c): pass", "arguments.py", "exec");
+    } except SyntaxError as error {
+        caught = True;
+        assert error.msg
+            == "parameter without a default follows parameter with a default" , error.msg;
     }
     assert caught;
 }
