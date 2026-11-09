@@ -720,7 +720,7 @@ impl Session._expired(anchor: Anchor) -> bool {
         return False;
     }
     known = self._rows.current(id);
-    if known is None or frozen_fields(anchor) {
+    if known is None or frozen_fields(anchor) or baseline_holds(anchor) {
         return True;
     }
     try {
@@ -1033,9 +1033,7 @@ impl Session._flush_locked(full: bool) -> None {
             );
             u.anchor.hash = u.hash;
             _settle_written(u.anchor, u.written);
-            u.anchor.__dict__['_field_baseline'] = field_baseline(u.anchor)
-                if self._scan_safe
-                else None;
+            u.anchor.__dict__['_field_baseline'] = u.baseline;
         }
     }
     if self._deleted {
@@ -1086,6 +1084,7 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
         if safe and runs_getters(anchor.archetype) {
             safe = False;
         }
+        baseline = field_baseline(anchor);
         stored: (dict[str, object] | None) = None;
         try {
             stored = Serializer.stored_form(anchor);
@@ -1099,7 +1098,9 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
             continue;
         }
         out.append(
-            UnflushedAnchor(anchor=anchor, stored=stored, hash=h, written=written)
+            UnflushedAnchor(
+                anchor=anchor, stored=stored, hash=h, written=written, baseline=baseline
+            )
         );
     }
     self._scan_safe = safe;
