@@ -161,7 +161,10 @@ test "payload interface sealing uses the fresh staged catalog" {
             }
             return True;
         }
-        with patch.object(assembly, "run_child", side_effect=child) {
+        home_catalog = os.path.join(base, "home", "jir", "stubcat", "key.bin");
+        with patch.object(assembly, "run_child", side_effect=child), patch.object(
+            assembly, "cached_stubcat", return_value=home_catalog
+        ) {
             assembly.run_precompile_stage(
                 "python",
                 base,
@@ -170,6 +173,7 @@ test "payload interface sealing uses the fresh staged catalog" {
             );
         }
         assert calls == ["catalog", "interfaces"];
+        assert rf(home_catalog) == b"fresh catalog";
         assert rf(catalog_copy) == b"fresh catalog";
         assert rf(os.path.join(cache, "stubcat.bin")) == b"fresh catalog";
     }
