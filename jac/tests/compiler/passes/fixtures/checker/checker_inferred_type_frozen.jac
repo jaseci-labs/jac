@@ -90,6 +90,8 @@ def binder_rebinds {
     (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
     (count, *names) = (0, "x");
     names.append("y");  # <-- Ok: a new starred target holds only what it captures
+    (count, *spare) = (0, );
+    spare.append("y");  # <-- Ok: an empty capture is still a list
     if (label := "a") and (label := "b") {  # <-- Ok: a walrus binding widens
         print(middle, fresh, label);
     }

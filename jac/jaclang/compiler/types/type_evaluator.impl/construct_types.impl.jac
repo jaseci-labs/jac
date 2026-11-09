@@ -213,7 +213,7 @@ impl TypeEvaluator._starred_target_type(
             self._collect_unique_types(self._convert_to_instance(arg), captured);
         }
         if not captured {
-            return None;
+            return self.prefetch.list_class.clone_as_instance();
         }
         element = captured[0] if len(captured) == 1 else UnionType(types=captured);
     } else {
