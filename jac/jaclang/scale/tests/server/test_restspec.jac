@@ -546,8 +546,8 @@ test "a JSON value of the wrong type is refused, and a form value is parsed" {
             ("flag", {"flag": None}, "null is not allowed"),
             ("tags", {"tags": None}, "null is not allowed"),
             ("tags", {"tags": ["a", None]}, "null is not allowed"),
-            ("count", {"count": "12"}, "expected integer, got string"),
-            ("title", {"title": {"note": "x"}}, "expected string, got object"),
+            ("count", {"count": "12"}, "expected integer, got str"),
+            ("title", {"title": {"note": "x"}}, "expected string, got dict"),
             ("when", {"when": "not-a-date"}, "invalid datetime")
         ] {
             r = client.post("/typed-fields", json=body);

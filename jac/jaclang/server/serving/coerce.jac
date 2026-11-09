@@ -34,14 +34,6 @@ glob _TRUE_STRINGS: set[str] = {'1', 'true', 'yes', 'on', 'y'},
          'any': None,
          '': None
      },
-     _JSON_KINDS: dict[type, str] = {
-         bool: 'boolean',
-         int: 'integer',
-         float: 'number',
-         str: 'string',
-         list: 'array',
-         dict: 'object'
-     },
      _MAX_EXACT_FLOAT_INT: int = 2 ** 53,
      _INT_TEXT: re.Pattern = re.compile(r'[+-]?[0-9]+'),
      _FLOAT_TEXT: re.Pattern = re.compile(

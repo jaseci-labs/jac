@@ -3,8 +3,7 @@ impl RequestValidationError.__str__ -> str {
 }
 
 impl _mismatch(expected: str, value: any) -> ValueError {
-    kind = _JSON_KINDS.get(type(value), type(value).__name__);
-    return ValueError(f"expected {expected}, got {kind}");
+    return ValueError(f"expected {expected}, got {type(value).__name__}");
 }
 
 impl _coerce_bool(value: any, text: bool) -> bool {
