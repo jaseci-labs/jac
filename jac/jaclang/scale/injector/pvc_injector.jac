@@ -13,8 +13,6 @@ glob RUNTIME_UID: int = 1000,
 
 
 def bundle_pvc_name(app_name: str) -> str;
-
-
 def bundle_loader_pod_name(app_name: str) -> str;
 
 
