@@ -1908,6 +1908,7 @@ impl BaseLLM._stream_steps(
         total_tokens = 0;
         just_compacted = False;
         shown = "";
+        done_sent = False;
         while True {
             if shown {
                 yield from _drop_answer(retractable);
@@ -1976,7 +1977,6 @@ impl BaseLLM._stream_steps(
             try {
                 _stream_out: list[CompletionResult] = [];
                 _emitted_deltas = False;
-                done_sent = False;
                 for _tok in self.dispatch_streaming_with_tools(
                     mt_run, _stream_out, retractable
                 ) {
