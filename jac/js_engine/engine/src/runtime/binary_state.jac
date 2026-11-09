@@ -23,7 +23,13 @@ import from engine.src.runtime.jsvalue {
     f32_bits_to_double,
     double_to_f32_bits
 }
-import from engine.src.runtime.jsobj_type { JSObject }
+import from engine.src.runtime.jsobj_type {
+    jo_bkind,
+    jo_bslot,
+    jo_set_bkind,
+    jo_set_bslot,
+    jo_wb
+}
 import from engine.src.runtime.jsobject {
     js_object_note_array_buffer,
     js_object_table_get,
@@ -105,13 +111,13 @@ def _binary_arg_int(v: JSValue) -> int {
     return 0;
 }
 
-def _binary_raw(v: JSValue) -> JSObject {
-    return js_object_table_get(jsv_to_table_id(v));
+def _binary_raw(v: JSValue) -> int {
+    return jsv_to_table_id(v);
 }
 
 def _buffer_data(buffer: JSValue) -> ArrayBufferData {
-    raw: JSObject = _binary_raw(buffer);
-    return _ARRAY_BUFFERS[raw.bslot()];
+    raw: int = _binary_raw(buffer);
+    return _ARRAY_BUFFERS[jo_bslot(raw)];
 }
 
 def:pub binary_backing_store(buffer: JSValue) -> BackingStore {
@@ -191,19 +197,19 @@ def:pub binary_register_buffer(args: list[JSValue]) -> JSValue {
         return js_false();
     }
     buffer: JSValue = args[0];
-    raw: JSObject = _binary_raw(buffer);
+    raw: int = _binary_raw(buffer);
     ptr: int = _binary_arg_int(args[1]);
     byte_length: int = _binary_arg_int(args[2]);
     max_byte_length: int = _binary_arg_int(args[3]);
     generation: int = _binary_arg_int(args[4]);
     flags: int = _binary_arg_int(args[5]);
     store_id: int = -1;
-    if binary_is_array_buffer(buffer) and raw.bslot() >= 0 {
-        store_id = _ARRAY_BUFFERS[raw.bslot()].store_id;
+    if binary_is_array_buffer(buffer) and jo_bslot(raw) >= 0 {
+        store_id = _ARRAY_BUFFERS[jo_bslot(raw)].store_id;
     } else {
         store_id = len(_BACKING_STORES);
         _BACKING_STORES.append(BackingStore());
-        raw.set_bslot(len(_ARRAY_BUFFERS));
+        jo_set_bslot(raw, len(_ARRAY_BUFFERS));
         _ARRAY_BUFFERS.append(ArrayBufferData(store_id=store_id));
     }
     store: BackingStore = _BACKING_STORES[store_id];
@@ -222,7 +228,7 @@ def:pub binary_register_buffer(args: list[JSValue]) -> JSValue {
     ab_kind: int = (
         BINARY_KIND_SHARED_ARRAY_BUFFER if store.shared else BINARY_KIND_ARRAY_BUFFER
     );
-    raw.set_bkind(ab_kind);
+    jo_set_bkind(raw, ab_kind);
     if ab_kind == BINARY_KIND_ARRAY_BUFFER {
         js_object_note_array_buffer(jsv_to_table_id(buffer));
     }
@@ -239,7 +245,7 @@ def:pub binary_register_typed_array(args: list[JSValue]) -> JSValue {
     if (not jsv_is_object_cell(view) or not binary_is_array_buffer(buffer)) {
         return js_false();
     }
-    raw: JSObject = _binary_raw(view);
+    raw: int = _binary_raw(view);
     data: TypedArrayData = TypedArrayData(
         buffer_id=jsv_to_table_id(buffer),
         byte_offset=_binary_arg_int(args[2]),
@@ -248,13 +254,13 @@ def:pub binary_register_typed_array(args: list[JSValue]) -> JSValue {
         element_kind=_binary_arg_int(args[5]),
         length_tracking=jsv_is_bool(args[6]) and jsv_to_bool(args[6])
     );
-    raw.set_bkind(BINARY_KIND_TYPED_ARRAY);
-    raw.set_bslot(len(_TYPED_ARRAYS));
+    jo_set_bkind(raw, BINARY_KIND_TYPED_ARRAY);
+    jo_set_bslot(raw, len(_TYPED_ARRAYS));
     # view→buffer edge lives in data.buffer_id (set above); no inline field.
     _TYPED_ARRAYS.append(data);
     # Generational barrier: the view may already be old (a collection ran in
     # the JS constructor) and the buffer young — the edge is a store into it.
-    raw.wb(buffer);
+    jo_wb(raw, buffer);
     return js_true();
 }
 
@@ -268,10 +274,10 @@ def:pub binary_register_data_view(args: list[JSValue]) -> JSValue {
     if (not jsv_is_object_cell(view) or not binary_is_array_buffer(buffer)) {
         return js_false();
     }
-    raw: JSObject = _binary_raw(view);
-    raw.set_bkind(BINARY_KIND_DATA_VIEW);
-    raw.set_bslot(len(_DATA_VIEWS));
-    raw.wb(buffer);  # generational barrier (see binary_register_typed_array)
+    raw: int = _binary_raw(view);
+    jo_set_bkind(raw, BINARY_KIND_DATA_VIEW);
+    jo_set_bslot(raw, len(_DATA_VIEWS));
+    jo_wb(raw, buffer);  # generational barrier (see binary_register_typed_array)
     # view→buffer edge lives in DataViewData.buffer_id (set below); no inline field.
     _DATA_VIEWS.append(
         DataViewData(
@@ -289,9 +295,9 @@ def:pub binary_view_witness(view: JSValue) -> BinaryViewWitness {
     if not jsv_is_object_cell(view) or jsv_to_table_id(view) <= 0 {
         return witness;
     }
-    raw: JSObject = _binary_raw(view);
-    if raw.bkind() == BINARY_KIND_TYPED_ARRAY {
-        data: TypedArrayData = _TYPED_ARRAYS[raw.bslot()];
+    raw: int = _binary_raw(view);
+    if jo_bkind(raw) == BINARY_KIND_TYPED_ARRAY {
+        data: TypedArrayData = _TYPED_ARRAYS[jo_bslot(raw)];
         buffer: JSValue = jsv_from_object_id(data.buffer_id);
         if not binary_is_array_buffer(buffer) {
             return witness;
@@ -325,8 +331,8 @@ def:pub binary_view_witness(view: JSValue) -> BinaryViewWitness {
         witness.byte_length = witness.length * data.bytes_per_element;
         return witness;
     }
-    if raw.bkind() == BINARY_KIND_DATA_VIEW {
-        dv: DataViewData = _DATA_VIEWS[raw.bslot()];
+    if jo_bkind(raw) == BINARY_KIND_DATA_VIEW {
+        dv: DataViewData = _DATA_VIEWS[jo_bslot(raw)];
         buffer_dv: JSValue = jsv_from_object_id(dv.buffer_id);
         if not binary_is_array_buffer(buffer_dv) {
             return witness;
@@ -361,14 +367,14 @@ def:pub binary_typed_array_buffer(view: JSValue) -> JSValue {
     if not binary_is_typed_array(view) {
         return js_undefined();
     }
-    return jsv_from_object_id(_TYPED_ARRAYS[_binary_raw(view).bslot()].buffer_id);
+    return jsv_from_object_id(_TYPED_ARRAYS[jo_bslot(_binary_raw(view))].buffer_id);
 }
 
 def:pub binary_data_view_buffer(view: JSValue) -> JSValue {
     if not binary_is_data_view(view) {
         return js_undefined();
     }
-    return jsv_from_object_id(_DATA_VIEWS[_binary_raw(view).bslot()].buffer_id);
+    return jsv_from_object_id(_DATA_VIEWS[jo_bslot(_binary_raw(view))].buffer_id);
 }
 
 """Allocation-free TypedArrayLength for the `.length` / `.byteLength` getter fast
@@ -379,11 +385,11 @@ def:pub binary_typed_array_length(view: JSValue) -> int {
     if not jsv_is_object_cell(view) or jsv_to_table_id(view) <= 0 {
         return 0;
     }
-    raw: JSObject = _binary_raw(view);
-    if raw.bkind() != BINARY_KIND_TYPED_ARRAY {
+    raw: int = _binary_raw(view);
+    if jo_bkind(raw) != BINARY_KIND_TYPED_ARRAY {
         return 0;
     }
-    data: TypedArrayData = _TYPED_ARRAYS[raw.bslot()];
+    data: TypedArrayData = _TYPED_ARRAYS[jo_bslot(raw)];
     tl_buf: JSValue = jsv_from_object_id(data.buffer_id);
     if not binary_is_array_buffer(tl_buf) {
         return 0;
@@ -411,11 +417,11 @@ def:pub binary_typed_array_byte_offset(view: JSValue) -> int {
     if not jsv_is_object_cell(view) or jsv_to_table_id(view) <= 0 {
         return 0;
     }
-    raw: JSObject = _binary_raw(view);
-    if raw.bkind() != BINARY_KIND_TYPED_ARRAY {
+    raw: int = _binary_raw(view);
+    if jo_bkind(raw) != BINARY_KIND_TYPED_ARRAY {
         return 0;
     }
-    data: TypedArrayData = _TYPED_ARRAYS[raw.bslot()];
+    data: TypedArrayData = _TYPED_ARRAYS[jo_bslot(raw)];
     bo_buf: JSValue = jsv_from_object_id(data.buffer_id);
     if not binary_is_array_buffer(bo_buf) {
         return 0;
@@ -439,14 +445,14 @@ def:pub binary_typed_array_is_length_tracking(view: JSValue) -> bool {
     if not binary_is_typed_array(view) {
         return False;
     }
-    return _TYPED_ARRAYS[_binary_raw(view).bslot()].length_tracking;
+    return _TYPED_ARRAYS[jo_bslot(_binary_raw(view))].length_tracking;
 }
 
 def:pub binary_typed_array_bytes_per_element(view: JSValue) -> int {
     if not binary_is_typed_array(view) {
         return 1;
     }
-    return _TYPED_ARRAYS[_binary_raw(view).bslot()].bytes_per_element;
+    return _TYPED_ARRAYS[jo_bslot(_binary_raw(view))].bytes_per_element;
 }
 
 """
@@ -458,7 +464,7 @@ def:pub binary_typed_array_prevent_extensions_allowed(view: JSValue) -> bool {
     if not binary_is_typed_array(view) {
         return True;
     }
-    data: TypedArrayData = _TYPED_ARRAYS[_binary_raw(view).bslot()];
+    data: TypedArrayData = _TYPED_ARRAYS[jo_bslot(_binary_raw(view))];
     if data.length_tracking {
         return False;
     }
@@ -759,9 +765,9 @@ def:pub binary_data_view_get_int(
     if rel_offset < 0 or size <= 0 or rel_offset + size > witness.byte_length {
         return js_undefined();
     }
-    raw: JSObject = _binary_raw(view);
+    raw: int = _binary_raw(view);
     store: BackingStore = binary_backing_store(
-        jsv_from_object_id(_DATA_VIEWS[raw.bslot()].buffer_id)
+        jsv_from_object_id(_DATA_VIEWS[jo_bslot(raw)].buffer_id)
     );
     abs_off: int = witness.byte_offset + rel_offset;
     value: int = 0;
@@ -808,9 +814,9 @@ def:pub binary_data_view_set_int(
     if rel_offset < 0 or size <= 0 or rel_offset + size > witness.byte_length {
         return 1;
     }
-    raw: JSObject = _binary_raw(view);
+    raw: int = _binary_raw(view);
     store: BackingStore = binary_backing_store(
-        jsv_from_object_id(_DATA_VIEWS[raw.bslot()].buffer_id)
+        jsv_from_object_id(_DATA_VIEWS[jo_bslot(raw)].buffer_id)
     );
     if store.immutable {
         return 1;

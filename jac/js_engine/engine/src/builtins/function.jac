@@ -17,7 +17,10 @@ The VM dispatches `is_fn_val` closures in CALL/CALL_METHOD.
 """
 
 import from engine.src.runtime.fn_meta { cl_props }
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.vm.closure_type {
+    _JC_FUNC,
+    jc_count
+}
 import from engine.src.vm.vm {
     VM,
     make_vm,
@@ -116,6 +119,19 @@ def:pub js_function_create(fn: CompiledFunction, closure: list[JSValue]) -> JSVa
     return js_function_create_src(fn, closure, "");
 }
 
+"""Bookkeeping for closure id `idx` make_closure just handed out (what
+vm_register_closure does): its GC mark entry, the young list, and for a
+`fresh` one the allocation count."""
+def _fn_closure_note(idx: int, fresh: bool) {
+    while len(_FN_REALM.closures_mark_epoch) <= idx {
+        _FN_REALM.closures_mark_epoch.append(0);  # A2.2b GC mark bitmap
+    }
+    _FN_REALM.closures_mark_epoch[idx] = 0;
+    if fresh {
+        gc_note_alloc(_FN_REALM, 256);  # G0.4: account closure allocation
+    }
+}
+
 """Like js_function_create but also records the original source text for .toString()."""
 def:pub js_function_create_src(
     fn: CompiledFunction, closure: list[JSValue], src: str
@@ -123,35 +139,22 @@ def:pub js_function_create_src(
     # Create the .prototype object that will be shared by the closure and metadata.
     # new Foo() sets new_obj.[[Prototype]] = Foo.prototype (i.e. this object).
     proto: JSValue = js_object_create_null();
-    cl: JSClosure = make_closure(fn, closure, js_undefined(), proto);
-
-    # A2.4: reuse a tombstoned closure slot from the GC free-list if available.
-    if len(_FN_REALM.free_closure_slots) > 0 {
-        last: int = len(_FN_REALM.free_closure_slots) - 1;
-        idx: int = _FN_REALM.free_closure_slots[last];
-        del _FN_REALM.free_closure_slots[last];
-        _FN_REALM.closures[idx] = cl;
-        _FN_REALM.closures_mark_epoch[idx] = 0;
-        if gc_gen_on() {
-            _FN_REALM.gc_young_closures.append(idx);
-        }
+    # (make_closure hands out a slot the GC freed when there is one: A2.4)
+    idx: int = make_closure(fn, closure, js_undefined(), proto);
+    if idx < len(_FN_REALM.closures_mark_epoch) {
+        _fn_closure_note(idx, False);
         # Reuse the parallel function metadata slot if it exists.
         if idx < len(_FN_REALM.functions) {
             _FN_REALM.functions[idx] = JSFunctionMeta(
                 name=fn.name, arg_count=len(fn.params), prototype_obj=proto, source=src
             );
-            _FN_REALM.functions_mark_epoch[idx] = 0;
+            if idx < len(_FN_REALM.functions_mark_epoch) {
+                _FN_REALM.functions_mark_epoch[idx] = 0;
+            }
         }
         return js_fn_val(idx);
     }
-
-    idx: int = len(_FN_REALM.closures);
-    _FN_REALM.closures.append(cl);
-    _FN_REALM.closures_mark_epoch.append(0);  # A2.2b GC mark bitmap
-    if gc_gen_on() {
-        _FN_REALM.gc_young_closures.append(len(_FN_REALM.closures) - 1);
-    }
-    gc_note_alloc(_FN_REALM, 256);  # G0.4: account closure allocation
+    _fn_closure_note(idx, True);
 
     # Pad _FN_REALM.functions with dummy entries for any closures that were created
     # earlier (by the VM's MAKE_FUNCTION opcode) without going through here.
@@ -202,8 +205,8 @@ def:pub js_fn_get_name(fn_val: JSValue) -> str {
             return m.name;
         }
     }
-    if idx < len(_FN_REALM.closures) {
-        return _FN_REALM.closures[idx].func.name;
+    if idx < jc_count() {
+        return _JC_FUNC[idx].name;
     }
     return "";
 }
@@ -230,8 +233,8 @@ def:pub js_fn_get_length(fn_val: JSValue) -> int {
             return m.arg_count;
         }
     }
-    if idx < len(_FN_REALM.closures) {
-        return len(_FN_REALM.closures[idx].func.params);
+    if idx < jc_count() {
+        return len(_JC_FUNC[idx].params);
     }
     return 0;
 }
@@ -271,7 +274,7 @@ def:pub js_function_call(
         return js_undefined();
     }
     idx: int = get_fn_idx(fn_val);
-    cl: JSClosure = _FN_REALM.closures[idx];
+    cl: int = idx;
     vm: VM = make_vm();
     result: JSValue = vm.run_cl(cl, fn_val, this_val, args);
     return result;
@@ -456,14 +459,9 @@ def:pub js_Function_prototype_bind(
     stub_fn: CompiledFunction = make_compiled_fn("<bound>", "<bind>");
     # Store bound_this as the lexical_this field so  can retrieve it.
     # Bound functions have no .prototype (ECMAScript §20.2.3.2 step 13).
-    cl: JSClosure = make_closure(stub_fn, partial_args, bound_this, js_undefined());
-    _FN_REALM.closures.append(cl);
-    _FN_REALM.closures_mark_epoch.append(0);  # A2.2b GC mark bitmap
-    if gc_gen_on() {
-        _FN_REALM.gc_young_closures.append(len(_FN_REALM.closures) - 1);
-    }
-    gc_note_alloc(_FN_REALM, 256);  # G0.4: account closure allocation
-    idx: int = len(_FN_REALM.closures) - 1;
+    idx: int = make_closure(stub_fn, partial_args, bound_this, js_undefined());
+    bd_reused: bool = idx < len(_FN_REALM.closures_mark_epoch);
+    _fn_closure_note(idx, True);
 
     # Compute result .length = max(0, target.length - len(partial_args))
     orig_len: int = js_fn_get_length(fn_val);
@@ -487,6 +485,14 @@ def:pub js_Function_prototype_bind(
         prototype_obj=js_undefined(),
         source=""
     );
+    if bd_reused and idx < len(_FN_REALM.functions) {
+        # a slot the GC freed: its metadata record is replaced in place
+        _FN_REALM.functions[idx] = bound_meta;
+        if idx < len(_FN_REALM.functions_mark_epoch) {
+            _FN_REALM.functions_mark_epoch[idx] = 0;
+        }
+        return js_fn_val(idx);
+    }
     _FN_REALM.functions.append(bound_meta);
     _FN_REALM.functions_mark_epoch.append(0);  # A2.2b GC mark bitmap
     return js_fn_val(idx);
@@ -517,8 +523,8 @@ def:pub js_Function_prototype_toString(fn_val: JSValue) -> JSValue {
         # which the compiler always populates. Read it FIRST so a user function
         # stringifies to its real source (ES §20.2.3.5), matching the VM path and
         # the String()/dispatch path; JSFunctionMeta.source is not always populated.
-        if idx < len(_FN_REALM.closures) {
-            csrc0: str = _FN_REALM.closures[idx].func.source;
+        if idx < jc_count() {
+            csrc0: str = _JC_FUNC[idx].source;
             if len(csrc0) > 0 {
                 return _fn_js_str(csrc0);
             }
@@ -534,8 +540,8 @@ def:pub js_Function_prototype_toString(fn_val: JSValue) -> JSValue {
             }
             return _fn_js_str("function " + fname + "() { [native code] }");
         }
-        if idx < len(_FN_REALM.closures) {
-            cname: str = _FN_REALM.closures[idx].func.name;
+        if idx < jc_count() {
+            cname: str = _JC_FUNC[idx].name;
             if len(cname) == 0 {
                 cname = "anonymous";
             }
@@ -566,8 +572,8 @@ def:pub js_fn_get_fn_props(v: JSValue) -> JSValue {
         return js_undefined();
     }
     idx: int = get_fn_idx(v);
-    if idx < len(_FN_REALM.closures) {
-        return cl_props(_FN_REALM.closures[idx]);
+    if idx < jc_count() {
+        return cl_props(idx);
     }
     return js_undefined();
 }

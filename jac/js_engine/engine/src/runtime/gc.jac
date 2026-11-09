@@ -21,6 +21,33 @@ Index conventions (mirrors gc_mark.na.jac):
 Phase: A2.4
 """
 
+import from engine.src.vm.closure_type {
+    jc_count_gc,
+    jc_cycle_end,
+    jc_free_at,
+    jc_free_gc,
+    jc_free_put,
+    jc_free_set_n,
+    jc_young_ids,
+    _JC_CW,
+    _JC_FUNC,
+    _JC_FV,
+    jc_cell_flags,
+    jc_class_brand,
+    jc_count,
+    jc_fn_props,
+    jc_free_count,
+    jc_free_push,
+    jc_home_object,
+    jc_jac_module,
+    jc_lexical_new_target,
+    jc_lexical_this,
+    jc_object_proto,
+    jc_prototype_obj,
+    jc_set_cell_flags,
+    jc_super_class,
+    jc_this_binding_cell
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     jsv_is_cell,
@@ -39,6 +66,25 @@ import from engine.src.runtime.jsvalue {
     JS_CELL_KIND_HTMLDDA,
     JS_CELL_KIND_STRING,
     JS_CELL_KIND_SYMBOL
+}
+import from engine.src.runtime.jsobj_type {
+    jo_arguments_obj,
+    jo_bkind,
+    jo_brand,
+    jo_bslot,
+    jo_cell_flags,
+    jo_class_id,
+    jo_count,
+    jo_elems_kind,
+    jo_elen,
+    jo_etrim,
+    jo_ko_ro,
+    jo_mode,
+    jo_prototype_idx,
+    jo_set_cell_flags,
+    jo_shape_id,
+    jo_slen,
+    jo_strim
 }
 import from engine.src.runtime.realm { Realm, gc_mark_byte }
 import from engine.src.runtime.jscell {
@@ -68,6 +114,11 @@ import from engine.src.runtime.gc_barrier {
 }
 import from engine.src.runtime.gc_mark { gc_mark, gc_is_marked, gc_clear_marks }
 import from engine.src.runtime.jsobject {
+    jo_cycle_end,
+    jo_free_n,
+    jo_free_push,
+    jo_sweep_young,
+    jo_young_ids,
     js_object_gc_children,
     js_object_gc_push_children,
     js_object_get
@@ -95,6 +146,19 @@ import from engine.src.runtime.binary_state {
 }
 import from napi.src.napi_binary { napi_binary_on_arraybuffer_swept }
 import from engine.src.runtime.jsstring {
+    hs_count,
+    hs_grow,
+    hs_left,
+    hs_free_push,
+    hs_free_n,
+    hs_len,
+    hs_mark,
+    hs_right,
+    hs_set_ascii,
+    hs_set_left,
+    hs_set_len,
+    hs_set_mark,
+    hs_set_right,
     str_intern,
     str_from_id,
     HEAP_STRING_BASE,
@@ -102,7 +166,6 @@ import from engine.src.runtime.jsstring {
 }
 import from engine.src.runtime.shape { shape_keys, shape_key_count, shape_slot_count, shape_mem_stats, shape_deepest_leaves }
 import from engine.src.runtime.jsobj_type {
-    JSObject,
     MAP_MODE_DICT,
     ELEMS_NONE,
     ArgsState,
@@ -260,7 +323,7 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
 
     if kind == JS_CELL_KIND_OBJECT or kind == JS_CELL_KIND_HTMLDDA {
         idx: int = jsv_to_table_id(v);  # 1-based
-        if idx <= 0 or idx > len(realm.objects) {
+        if idx <= 0 or idx > jo_count() {
             return;
         }
         # gc_is_marked + gc_mark on the epoch row, read once. A row still 0 was
@@ -293,14 +356,14 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
         if table_id < FN_BUILTIN_BASE {
             # Closure — 0-based index
             cl_idx: int = table_id;
-            if cl_idx < 0 or cl_idx >= len(realm.closures) {
+            if cl_idx < 0 or cl_idx >= jc_count() {
                 return;
             }
             if gc_is_marked(realm, CELL_KIND_CLOSURE, cl_idx) {
                 return;
             }
             gc_mark(realm, CELL_KIND_CLOSURE, cl_idx);
-            gc_cl_cf: int = realm.closures[cl_idx].cell_flags;
+            gc_cl_cf: int = jc_cell_flags(cl_idx);
             if gc_cl_cf == CELL_FLAG_DEAD {
                 if _GC_VERIFYING {
                     _GC_VERIFY_BAD.append(v);
@@ -308,36 +371,36 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
                 return;
             }
             if _GC_GEN_CYCLE and (gc_cl_cf & FLAG_OLD) == 0 {
-                realm.closures[cl_idx].cell_flags = gc_cl_cf | FLAG_OLD;
+                jc_set_cell_flags(cl_idx, gc_cl_cf | FLAG_OLD);
             }
 
             # Trace captured free variables
-            for cv in realm.closures[cl_idx].free_vals {
+            for cv in _JC_FV[cl_idx] {
                 work.append(cv);
             }
             # Trace ALL JSValue-holding fields. Invariant: this list must stay
             # in sync with vm/closure_type.jac — a new JSValue field on
             # JSClosure that is not traced here gets its referent swept while
             # live (use-after-free).
-            work.append(realm.closures[cl_idx].lexical_this);
-            work.append(realm.closures[cl_idx].prototype_obj);
-            work.append(realm.closures[cl_idx].super_class);
-            work.append(realm.closures[cl_idx].fn_props);
-            work.append(realm.closures[cl_idx].home_object);
-            work.append(realm.closures[cl_idx].object_proto);
-            work.append(realm.closures[cl_idx].lexical_new_target);
-            work.append(realm.closures[cl_idx].jac_module);
-            for cwo in realm.closures[cl_idx].captured_with_objs {
+            work.append(jc_lexical_this(cl_idx));
+            work.append(jc_prototype_obj(cl_idx));
+            work.append(jc_super_class(cl_idx));
+            work.append(jc_fn_props(cl_idx));
+            work.append(jc_home_object(cl_idx));
+            work.append(jc_object_proto(cl_idx));
+            work.append(jc_lexical_new_target(cl_idx));
+            work.append(jc_jac_module(cl_idx));
+            for cwo in _JC_CW[cl_idx] {
                 work.append(cwo);
             }
             # this_binding_cell / class_brand use raw 0 as the "unset" sentinel
             # (not js_undefined); 0 NaN-boxes as string cell id 0, harmless to
             # push (a marked/no-child no-op) but skipped for clarity.
-            gc_tbc: JSValue = realm.closures[cl_idx].this_binding_cell;
+            gc_tbc: JSValue = jc_this_binding_cell(cl_idx);
             if gc_tbc != 0 {
                 work.append(gc_tbc);
             }
-            gc_cbr: JSValue = realm.closures[cl_idx].class_brand;
+            gc_cbr: JSValue = jc_class_brand(cl_idx);
             if gc_cbr != 0 {
                 work.append(gc_cbr);
             }
@@ -376,17 +439,17 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
         gc_sid: int = jsv_to_table_id(v);
         if gc_sid >= HEAP_STRING_BASE {
             gc_hidx: int = gc_sid - HEAP_STRING_BASE;
-            if gc_hidx >= 0 and gc_hidx < len(realm.heap_strings_mark_epoch) {
-                if _GC_VERIFYING and realm.heap_strings_mark_epoch[gc_hidx] == -1 {
+            if gc_hidx >= 0 and gc_hidx < hs_count() {
+                if _GC_VERIFYING and hs_mark(gc_hidx) == -1 {
                     _GC_VERIFY_BAD.append(v);
                 }
-                if realm.heap_strings_mark_epoch[gc_hidx] != realm.gc_epoch {
-                    realm.heap_strings_mark_epoch[gc_hidx] = realm.gc_epoch;
-                    if gc_hidx < len(realm.rope_left)
-                        and realm.rope_left[gc_hidx] >= 0 {
-                        work.append(jsv_from_string_id(realm.rope_left[gc_hidx]));
-                        if realm.rope_right[gc_hidx] >= 0 {
-                            work.append(jsv_from_string_id(realm.rope_right[gc_hidx]));
+                if hs_mark(gc_hidx) != realm.gc_epoch {
+                    hs_set_mark(gc_hidx, realm.gc_epoch);
+                    if gc_hidx < hs_count()
+                        and hs_left(gc_hidx) >= 0 {
+                        work.append(jsv_from_string_id(hs_left(gc_hidx)));
+                        if hs_right(gc_hidx) >= 0 {
+                            work.append(jsv_from_string_id(hs_right(gc_hidx)));
                         }
                     }
                 }
@@ -405,19 +468,19 @@ def _gc_trace_obj(
     realm: Realm, idx: int, work: list[JSValue], gc_mp: int, gc_eb: int
 ) -> None {
     # Check tombstone via int field read (avoids typed-local JSObject issue)
-    gc_obj_cf: int = realm.objects[idx - 1].cell_flags;
+    gc_obj_cf: int = jo_cell_flags(idx);
     if gc_obj_cf == CELL_FLAG_DEAD {
         return;
     }
     if _GC_GEN_CYCLE and (gc_obj_cf & FLAG_OLD) == 0 {
-        realm.objects[idx - 1].cell_flags = gc_obj_cf | FLAG_OLD;
+        jo_set_cell_flags(idx, gc_obj_cf | FLAG_OLD);
     }
     # The marker keys probed below are own properties mirrored in `brand`:
     # skip each prototype-walking probe unless this object carries it.
-    gc_brand: int = realm.objects[idx - 1].brand;
+    gc_brand: int = jo_brand(idx);
 
     # Follow prototype chain
-    gc_proto_idx: int = realm.objects[idx - 1].prototype_idx;
+    gc_proto_idx: int = jo_prototype_idx(idx);
     if gc_proto_idx > 0
         and (
             gc_proto_idx > realm.objmark_len
@@ -439,11 +502,11 @@ def _gc_trace_obj(
     # view→buffer strong edge (formerly the inline JSObject.binary_buffer
     # field, now a native TypedArrayData/DataViewData.buffer_id — traced here
     # because jsobject cannot import binary_state; Phase 1).
-    gc_bin_kind: int = realm.objects[idx - 1].bkind();
+    gc_bin_kind: int = jo_bkind(idx);
     if gc_bin_kind == BINARY_KIND_TYPED_ARRAY
         or gc_bin_kind == BINARY_KIND_DATA_VIEW {
         gc_buf_id: int = binary_view_buffer_id(
-            gc_bin_kind, realm.objects[idx - 1].bslot()
+            gc_bin_kind, jo_bslot(idx)
         );
         if gc_buf_id > 0 {
             work.append(jsv_from_object_id(gc_buf_id));
@@ -801,7 +864,7 @@ Returns the number of slots freed this cycle."""
 def:pub gc_sweep_objects(realm: Realm) -> int {
     freed: int = 0;
     i: int = 0;
-    n: int = len(realm.objects);
+    n: int = jo_count();
     sw_mp: int = realm.objmark_ptr;
     sw_epoch: int = gc_mark_byte(realm);
     # ArrayBuffers dying this cycle (rows still unmarked): an external one's
@@ -822,7 +885,7 @@ def:pub gc_sweep_objects(realm: Realm) -> int {
         # released by _obj_alloc when it reuses the row — reading every dead
         # object here, millions per cycle, was most of the sweep.
         write_byte(sw_mp, i, 255);  # _obj_alloc stamps 0 again when it reuses the row
-        realm.free_object_slots.append(i + 1);  # push 1-based index
+        jo_free_push(i + 1);  # push 1-based index
         freed += 1;
         i += 1;
     }
@@ -831,8 +894,8 @@ def:pub gc_sweep_objects(realm: Realm) -> int {
     # young, and trimming every live object each cycle read each one.
     for sw_y in realm.gc_young_objs {
         if read_byte(sw_mp, sw_y - 1) == sw_epoch {
-            realm.objects[sw_y - 1].strim();
-            realm.objects[sw_y - 1].etrim();
+            jo_strim(sw_y);
+            jo_etrim(sw_y);
         }
     }
     realm.gc_young_objs = [];
@@ -860,7 +923,7 @@ def _gc_sweep_ab_rows(realm: Realm, mp: int, n: int, epoch: int) {
         if ab_id <= 0 or ab_id > n or read_byte(mp, ab_id - 1) == 255 {
             continue;
         }
-        if realm.objects[ab_id - 1].bkind() != BINARY_KIND_ARRAY_BUFFER {
+        if jo_bkind(ab_id) != BINARY_KIND_ARRAY_BUFFER {
             continue;
         }
         if read_byte(mp, ab_id - 1) == epoch {
@@ -868,7 +931,7 @@ def _gc_sweep_ab_rows(realm: Realm, mp: int, n: int, epoch: int) {
             continue;
         }
         napi_binary_on_arraybuffer_swept(
-            binary_store_ptr_for_slot(realm.objects[ab_id - 1].bslot())
+            binary_store_ptr_for_slot(jo_bslot(ab_id))
         );
     }
     realm.gc_ab_rows = ab_kept;
@@ -962,24 +1025,65 @@ def:pub gc_sweep_sets(realm: Realm) -> int {
     return freed;
 }
 
+"""A young closure `c` the minor collection did not mark: tombstone it (epoch
+-1, DEAD flags) and say so (the caller parks it); False when it is marked,
+already dead, or out of range."""
+def _gc_young_closure_dead(realm: Realm, c: int, ep: int) -> bool {
+    if c < 0 or c >= jc_count() or c >= len(realm.closures_mark_epoch) {
+        return False;
+    }
+    yd_m: int = realm.closures_mark_epoch[c];
+    if yd_m == ep or yd_m == -1 {
+        return False;
+    }
+    realm.closures_mark_epoch[c] = -1;
+    if jc_cell_flags(c) == CELL_FLAG_DEAD {
+        return False;
+    }
+    jc_set_cell_flags(c, CELL_FLAG_DEAD);
+    return True;
+}
+
 """A minor collection's closure / Map / Set sweeps: only the slots created
 since the last collection can be unreached — the same per-slot decision as
 gc_sweep_closures / gc_sweep_maps / gc_sweep_sets, over the young lists."""
 def _gc_sweep_young_tables(realm: Realm) -> int {
     yt_freed: int = 0;
     yt_ep: int = realm.gc_epoch;
-    for yt_c in realm.gc_young_closures {
-        if yt_c >= 0 and yt_c < len(realm.closures) and yt_c < len(realm.closures_mark_epoch) {
-            yt_cm: int = realm.closures_mark_epoch[yt_c];
-            if yt_cm != yt_ep and yt_cm != -1 {
-                realm.closures_mark_epoch[yt_c] = -1;
-                if realm.closures[yt_c].cell_flags != CELL_FLAG_DEAD {
-                    realm.closures[yt_c].cell_flags = CELL_FLAG_DEAD;
-                    realm.free_closure_slots.append(yt_c);
+    # The closure ids handed out since the last collection (closure_type.jac):
+    # the popped free-stack entries, compacted in place as the dead go back,
+    # then the new ids.
+    # (_gc_young_closure_dead's decision in the loops, the mark list read once)
+    yt_mk: list[int] = realm.closures_mark_epoch;
+    yt_mn: int = len(yt_mk);
+    yt_n: int = jc_count();
+    yt_w: int = jc_free_count();
+    yt_p: int = yt_w;
+    yt_top: int = jc_free_gc();
+    while yt_p < yt_top {
+        yt_c: int = jc_free_at(yt_p);
+        if yt_c >= 0 and yt_c < yt_n and yt_c < yt_mn {
+            yt_m: int = yt_mk[yt_c];
+            if yt_m != yt_ep and yt_m != -1 {
+                yt_mk[yt_c] = -1;
+                if jc_cell_flags(yt_c) != CELL_FLAG_DEAD {
+                    jc_set_cell_flags(yt_c, CELL_FLAG_DEAD);
+                    jc_free_put(yt_w, yt_c);
+                    yt_w += 1;
                     yt_freed += 1;
                 }
             }
         }
+        yt_p += 1;
+    }
+    jc_free_set_n(yt_w);
+    yt_c2: int = jc_count_gc();
+    while yt_c2 < yt_n {
+        if _gc_young_closure_dead(realm, yt_c2, yt_ep) {
+            jc_free_push(yt_c2);
+            yt_freed += 1;
+        }
+        yt_c2 += 1;
     }
     for yt_m in realm.gc_young_maps {
         if yt_m >= 0 and yt_m < len(realm.maps) and yt_m < len(realm.maps_mark_epoch) {
@@ -1075,23 +1179,21 @@ def:pub gc_sweep_heap_strings(realm: Realm) -> int {
     n: int = len(realm.heap_strings);
     # Safety net: keep the epoch array as long as the table (alloc sites already
     # maintain it in lockstep; a missing slot reads as unmarked here).
-    while len(realm.heap_strings_mark_epoch) < n {
-        realm.heap_strings_mark_epoch.append(0);
-    }
+    hs_grow(n);
     while i < n {
-        hs_me: int = realm.heap_strings_mark_epoch[i];
+        hs_me: int = hs_mark(i);
         if hs_me != -1 {  # not already dead
             if hs_me != realm.gc_epoch {  # unmarked this cycle → reclaim
                 realm.heap_strings[i] = "";  # release the flattened text
-                realm.rope_left[i] = -1;
-                realm.rope_right[i] = -1;
-                realm.rope_len[i] = 0;
-                realm.heap_ascii[i] = 0;
-                realm.heap_strings_mark_epoch[i] = -1;  # dead sentinel
-                realm.free_heap_string_slots.append(i);
+                hs_set_left(i, -1);
+                hs_set_right(i, -1);
+                hs_set_len(i, 0);
+                hs_set_ascii(i, 0);
+                hs_set_mark(i, -1);  # dead sentinel
+                hs_free_push(i);
                 freed += 1;
-            } elif realm.rope_left[i] < 0 {
-                live_bytes = live_bytes + realm.rope_len[i];  # surviving flat leaf
+            } elif hs_left(i) < 0 {
+                live_bytes = live_bytes + hs_len(i);  # surviving flat leaf
             }
         }
         i += 1;
@@ -1099,7 +1201,7 @@ def:pub gc_sweep_heap_strings(realm: Realm) -> int {
     # Re-arm the byte-based string trigger from the surviving heap (jsstring.jac
     # _hs_note_bytes): the next collection comes after ~one live-heap's worth
     # of fresh string bytes, floored at 64MB.
-    gc_str_bytes_reset(live_bytes, len(realm.objects) - len(realm.free_object_slots));
+    gc_str_bytes_reset(live_bytes, jo_count() - jo_free_n());
     return freed;
 }
 
@@ -1114,7 +1216,7 @@ Returns the number of slots freed this cycle."""
 def:pub gc_sweep_closures(realm: Realm) -> int {
     freed: int = 0;
     i: int = 0;
-    n: int = len(realm.closures);
+    n: int = jc_count();
     cl_marks: list[int] = realm.closures_mark_epoch;
     while len(cl_marks) < n {
         cl_marks.append(0);
@@ -1130,10 +1232,10 @@ def:pub gc_sweep_closures(realm: Realm) -> int {
             continue;
         }
         cl_marks[i] = -1;
-        gc_cl_sw_cf: int = realm.closures[i].cell_flags;
+        gc_cl_sw_cf: int = jc_cell_flags(i);
         if gc_cl_sw_cf != CELL_FLAG_DEAD {
-            realm.closures[i].cell_flags = CELL_FLAG_DEAD;
-            realm.free_closure_slots.append(i);  # 0-based index
+            jc_set_cell_flags(i, CELL_FLAG_DEAD);
+            jc_free_push(i);  # 0-based index
             freed += 1;
         }
         i += 1;
@@ -1188,14 +1290,14 @@ def _gc_value_marked(realm: Realm, v: JSValue) -> bool {
     vk: int = jsv_cell_kind(v);
     if vk == JS_CELL_KIND_OBJECT or vk == JS_CELL_KIND_HTMLDDA {
         oidx: int = jsv_to_table_id(v);
-        if oidx <= 0 or oidx > len(realm.objects) {
+        if oidx <= 0 or oidx > jo_count() {
             return True;
         }
         return gc_is_marked(realm, CELL_KIND_OBJECT, oidx);
     } elif vk == JS_CELL_KIND_NATIVE {
         tid: int = jsv_to_table_id(v);
         if tid < FN_BUILTIN_BASE {
-            if tid < 0 or tid >= len(realm.closures) {
+            if tid < 0 or tid >= jc_count() {
                 return True;
             }
             return gc_is_marked(realm, CELL_KIND_CLOSURE, tid);
@@ -1308,7 +1410,7 @@ def _gc_minor_roots(realm: Realm) -> None {
     mr_work: list[JSValue] = _GC_WORK;
     for mr_oid in gc_rem_objs() {
         if mr_oid > 0
-            and mr_oid <= len(realm.objects)
+            and mr_oid <= jo_count()
             and mr_oid <= realm.objmark_len
             and read_byte(mr_mp, mr_oid - 1) == mr_eb {
             _gc_trace_obj(realm, mr_oid, mr_work, mr_mp, mr_eb);
@@ -1317,7 +1419,7 @@ def _gc_minor_roots(realm: Realm) -> None {
     }
     for mr_aid in realm.args_slots {
         if mr_aid > 0
-            and mr_aid <= len(realm.objects)
+            and mr_aid <= jo_count()
             and mr_aid <= realm.objmark_len
             and read_byte(mr_mp, mr_aid - 1) == mr_eb {
             _gc_trace_obj(realm, mr_aid, mr_work, mr_mp, mr_eb);
@@ -1338,19 +1440,14 @@ def gc_sweep_objects_young(realm: Realm) -> int {
     sw_mp: int = realm.objmark_ptr;
     sw_epoch: int = gc_mark_byte(realm);
     if len(realm.gc_ab_rows) > 0 {
-        _gc_sweep_ab_rows(realm, sw_mp, len(realm.objects), sw_epoch);
+        _gc_sweep_ab_rows(realm, sw_mp, jo_count(), sw_epoch);
     }
-    for sw_i in realm.gc_young_alloc {
-        if sw_i > 0 and sw_i <= realm.objmark_len and read_byte(sw_mp, sw_i - 1) == 0 {
-            write_byte(sw_mp, sw_i - 1, 255);
-            realm.free_object_slots.append(sw_i);
-            freed += 1;
-        }
-    }
+    # (the ids handed out since the last collection: jsobject.jac)
+    freed = freed + jo_sweep_young(sw_mp, realm.objmark_len);
     for sw_y in realm.gc_young_objs {
         if read_byte(sw_mp, sw_y - 1) == sw_epoch {
-            realm.objects[sw_y - 1].strim();
-            realm.objects[sw_y - 1].etrim();
+            jo_strim(sw_y);
+            jo_etrim(sw_y);
         }
     }
     realm.gc_young_objs = [];
@@ -1367,9 +1464,9 @@ def gc_sweep_objects_young(realm: Realm) -> int {
 values, and start a new young-allocation list."""
 def _gc_barrier_end(realm: Realm) -> None {
     for be_oid in gc_rem_objs() {
-        if be_oid > 0 and be_oid <= len(realm.objects) {
-            realm.objects[be_oid - 1].cell_flags = realm.objects[be_oid - 1].cell_flags
-                & ~FLAG_REMEMBERED;
+        if be_oid > 0 and be_oid <= jo_count() {
+            jo_set_cell_flags(be_oid, jo_cell_flags(be_oid)
+                & ~FLAG_REMEMBERED);
         }
     }
     for be_g in gc_rem_gens() {
@@ -1382,6 +1479,8 @@ def _gc_barrier_end(realm: Realm) -> None {
     gc_barrier_reset();
     realm.gc_young_alloc = [];
     realm.gc_young_closures = [];
+    jo_cycle_end();
+    jc_cycle_end();
     realm.gc_young_maps = [];
     realm.gc_young_sets = [];
     realm.gc_young_gens = [];
@@ -1418,18 +1517,18 @@ def _gc_verify_referrers(realm: Realm, bad: JSValue, extras: list[JSValue]) -> s
     vr: str = "";
     vr_n: int = 0;
     vr_i: int = 1;
-    while vr_i <= len(realm.objects) and vr_n < 8 {
+    while vr_i <= jo_count() and vr_n < 8 {
         if read_byte(realm.objmark_ptr, vr_i - 1) == gc_mark_byte(realm) {
             for vr_c in js_object_gc_children(vr_i) {
                 if vr_c == bad {
-                    vr = vr + " object#" + str(vr_i) + "(flags=" + str(realm.objects[vr_i - 1].cell_flags)
-                        + ",brand=" + str(realm.objects[vr_i - 1].brand) + ",class=" + str(realm.objects[vr_i - 1].class_id) + ")";
+                    vr = vr + " object#" + str(vr_i) + "(flags=" + str(jo_cell_flags(vr_i))
+                        + ",brand=" + str(jo_brand(vr_i)) + ",class=" + str(jo_class_id(vr_i)) + ")";
                     vr_n = vr_n + 1;
                     break;
                 }
             }
-            if realm.objects[vr_i - 1].prototype_idx > 0
-                and jsv_from_object_id(realm.objects[vr_i - 1].prototype_idx) == bad {
+            if jo_prototype_idx(vr_i) > 0
+                and jsv_from_object_id(jo_prototype_idx(vr_i)) == bad {
                 vr = vr + " object#" + str(vr_i) + "(as prototype)";
                 vr_n = vr_n + 1;
             }
@@ -1437,27 +1536,27 @@ def _gc_verify_referrers(realm: Realm, bad: JSValue, extras: list[JSValue]) -> s
         vr_i = vr_i + 1;
     }
     vr_ci: int = 0;
-    while vr_ci < len(realm.closures) and vr_n < 8 {
-        if realm.closures[vr_ci].cell_flags != CELL_FLAG_DEAD {
+    while vr_ci < jc_count() and vr_n < 8 {
+        if jc_cell_flags(vr_ci) != CELL_FLAG_DEAD {
             vr_f: str = "";
-            for vr_fv in realm.closures[vr_ci].free_vals {
+            for vr_fv in _JC_FV[vr_ci] {
                 if vr_fv == bad { vr_f = "free_vals"; }
             }
-            for vr_cw in realm.closures[vr_ci].captured_with_objs {
+            for vr_cw in _JC_CW[vr_ci] {
                 if vr_cw == bad { vr_f = "captured_with_objs"; }
             }
-            if realm.closures[vr_ci].lexical_this == bad { vr_f = "lexical_this"; }
-            if realm.closures[vr_ci].prototype_obj == bad { vr_f = "prototype_obj"; }
-            if realm.closures[vr_ci].super_class == bad { vr_f = "super_class"; }
-            if realm.closures[vr_ci].fn_props == bad { vr_f = "fn_props"; }
-            if realm.closures[vr_ci].home_object == bad { vr_f = "home_object"; }
-            if realm.closures[vr_ci].object_proto == bad { vr_f = "object_proto"; }
-            if realm.closures[vr_ci].lexical_new_target == bad { vr_f = "lexical_new_target"; }
-            if realm.closures[vr_ci].jac_module == bad { vr_f = "jac_module"; }
-            if realm.closures[vr_ci].this_binding_cell == bad { vr_f = "this_binding_cell"; }
-            if realm.closures[vr_ci].class_brand == bad { vr_f = "class_brand"; }
+            if jc_lexical_this(vr_ci) == bad { vr_f = "lexical_this"; }
+            if jc_prototype_obj(vr_ci) == bad { vr_f = "prototype_obj"; }
+            if jc_super_class(vr_ci) == bad { vr_f = "super_class"; }
+            if jc_fn_props(vr_ci) == bad { vr_f = "fn_props"; }
+            if jc_home_object(vr_ci) == bad { vr_f = "home_object"; }
+            if jc_object_proto(vr_ci) == bad { vr_f = "object_proto"; }
+            if jc_lexical_new_target(vr_ci) == bad { vr_f = "lexical_new_target"; }
+            if jc_jac_module(vr_ci) == bad { vr_f = "jac_module"; }
+            if jc_this_binding_cell(vr_ci) == bad { vr_f = "this_binding_cell"; }
+            if jc_class_brand(vr_ci) == bad { vr_f = "class_brand"; }
             if vr_f != "" {
-                vr = vr + " closure#" + str(vr_ci) + "." + vr_f + "(flags=" + str(realm.closures[vr_ci].cell_flags) + ")";
+                vr = vr + " closure#" + str(vr_ci) + "." + vr_f + "(flags=" + str(jc_cell_flags(vr_ci)) + ")";
                 vr_n = vr_n + 1;
             }
         }
@@ -1533,12 +1632,12 @@ def _gc_verify_report(realm: Realm, extras: list[JSValue]) -> None {
         }
         vr_k = vr_k + 1;
         vr_what: str = "";
-        if jsv_cell_kind(vr_bad) == JS_CELL_KIND_NATIVE and jsv_to_table_id(vr_bad) < len(realm.closures) {
-            vr_what = " fn=" + realm.closures[jsv_to_table_id(vr_bad)].func.name;
-        } elif jsv_cell_kind(vr_bad) == JS_CELL_KIND_OBJECT and jsv_to_table_id(vr_bad) <= len(realm.objects) {
+        if jsv_cell_kind(vr_bad) == JS_CELL_KIND_NATIVE and jsv_to_table_id(vr_bad) < jc_count() {
+            vr_what = " fn=" + _JC_FUNC[jsv_to_table_id(vr_bad)].name;
+        } elif jsv_cell_kind(vr_bad) == JS_CELL_KIND_OBJECT and jsv_to_table_id(vr_bad) <= jo_count() {
             vr_ob: int = jsv_to_table_id(vr_bad) - 1;
-            vr_what = " brand=" + str(realm.objects[vr_ob].brand) + " class=" + str(realm.objects[vr_ob].class_id)
-                + " slots=" + str(realm.objects[vr_ob].slen()) + " elems=" + str(realm.objects[vr_ob].elen());
+            vr_what = " brand=" + str(jo_brand(vr_ob + 1)) + " class=" + str(jo_class_id(vr_ob + 1))
+                + " slots=" + str(jo_slen(vr_ob + 1)) + " elems=" + str(jo_elen(vr_ob + 1));
         }
         vr_line: str = "  young cell kind=" + str(jsv_cell_kind(vr_bad)) + " id="
             + str(jsv_to_table_id(vr_bad)) + vr_what + "; referenced by:"
@@ -1574,27 +1673,27 @@ def _gc_type_breakdown(realm: Realm) {
     dict_keys_sum: int = 0;
     shape_hist: dict[int, int] = {};
     _bi: int = 0;
-    _bn: int = len(realm.objects);
+    _bn: int = jo_count();
     while _bi < _bn {
-        _bo: JSObject = realm.objects[_bi];
-        if _bo.cell_flags == CELL_FLAG_DEAD
+        _bo: int = _bi + 1;
+        if jo_cell_flags(_bo) == CELL_FLAG_DEAD
             or (_bi < realm.objmark_len and read_byte(realm.objmark_ptr, _bi) == 255) {
             _bi = _bi + 1;
             continue;
         }
         total = total + 1;
-        if _bo.bkind() != 0 {
+        if jo_bkind(_bo) != 0 {
             bin_ct = bin_ct + 1;
-        } elif _bo.arguments_obj() {
+        } elif jo_arguments_obj(_bo) {
             args_ct = args_ct + 1;
-        } elif _bo.elems_kind != ELEMS_NONE {
+        } elif jo_elems_kind(_bo) != ELEMS_NONE {
             arr_ct = arr_ct + 1;
-        } elif _bo.mode == MAP_MODE_DICT {
+        } elif jo_mode(_bo) == MAP_MODE_DICT {
             dict_ct = dict_ct + 1;
-            dict_keys_sum = dict_keys_sum + len(_bo.ko_ro());
+            dict_keys_sum = dict_keys_sum + len(jo_ko_ro(_bo));
         } else {
             shape_ct = shape_ct + 1;
-            _sid: int = _bo.shape_id;
+            _sid: int = jo_shape_id(_bo);
             if _sid in shape_hist {
                 shape_hist[_sid] = shape_hist[_sid] + 1;
             } else {
@@ -1718,14 +1817,14 @@ def _gc_type_breakdown(realm: Realm) {
 # this names WHAT is retained (size/shape), not WHERE it was allocated.
 def _gc_string_breakdown(realm: Realm) {
     _n: int = len(realm.heap_strings);
-    if _n > len(realm.heap_strings_mark_epoch) {
-        _n = len(realm.heap_strings_mark_epoch);
+    if _n > hs_count() {
+        _n = hs_count();
     }
-    if _n > len(realm.rope_len) {
-        _n = len(realm.rope_len);
+    if _n > hs_count() {
+        _n = hs_count();
     }
-    if _n > len(realm.rope_left) {
-        _n = len(realm.rope_left);
+    if _n > hs_count() {
+        _n = hs_count();
     }
     live: int = 0;
     ropes: int = 0;
@@ -1735,14 +1834,14 @@ def _gc_string_breakdown(realm: Realm) {
     b_by: list[int] = [0, 0, 0, 0, 0, 0, 0];
     _i: int = 0;
     while _i < _n {
-        if realm.heap_strings_mark_epoch[_i] == -1 {
+        if hs_mark(_i) == -1 {
             _i = _i + 1;
             continue;
         }
         live = live + 1;
-        _ln: int = realm.rope_len[_i];
+        _ln: int = hs_len(_i);
         total_chars = total_chars + _ln;
-        if realm.rope_left[_i] >= 0 {
+        if hs_left(_i) >= 0 {
             ropes = ropes + 1;
         } else {
             flats = flats + 1;
@@ -1780,7 +1879,7 @@ def _gc_string_breakdown(realm: Realm) {
         + " interned="
         + str(realm.intern_next_id)
         + " freeSlots="
-        + str(len(realm.free_heap_string_slots))
+        + str(hs_free_n())
         + "\n";
     write(2, _hdr, str_nbytes(_hdr));
     _labels: list[str] = ["<=16", "<=64", "<=256", "<=1K", "<=16K", "<=256K", ">256K"];
@@ -1832,13 +1931,13 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
             # collection becomes a major) and check.
             vf_objs: list[int] = [];
             vf_mp: int = realm.objmark_ptr;
-            for vf_o in realm.gc_young_alloc {
+            for vf_o in jo_young_ids() {
                 if vf_o > 0 and vf_o <= realm.objmark_len and read_byte(vf_mp, vf_o - 1) == 0 {
                     vf_objs.append(vf_o);
                 }
             }
             vf_cls: list[int] = [];
-            for vf_c in realm.gc_young_closures {
+            for vf_c in jc_young_ids() {
                 if vf_c >= 0 and vf_c < len(realm.closures_mark_epoch)
                     and realm.closures_mark_epoch[vf_c] != realm.gc_epoch {
                     vf_cls.append(vf_c);
@@ -1914,19 +2013,19 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
             }
         }
         if _GC_TRACE == 1 {
-            _gc_span: int = len(realm.objects);
-            _gc_free: int = len(realm.free_object_slots);
+            _gc_span: int = jo_count();
+            _gc_free: int = jo_free_n();
             _GC_TRACE_SWEPT = _GC_TRACE_SWEPT + _gc_span;
             # Heap-string span + total chars (≈bytes for ASCII; rope_len is the
             # per-slot char length, so this is the heap-string/rope memory the
             # io_alloc meter does NOT see — the last unmetered candidate for the
             # 23GB sink).
             _hs_span: int = len(realm.heap_strings);
-            _hs_free: int = len(realm.free_heap_string_slots);
+            _hs_free: int = hs_free_n();
             _hs_chars: int = 0;
             _hs_i: int = 0;
             while _hs_i < _hs_span {
-                _hs_chars = _hs_chars + realm.rope_len[_hs_i];
+                _hs_chars = _hs_chars + hs_len(_hs_i);
                 _hs_i = _hs_i + 1;
             }
             _gc_msg: str = "[GCTRACE] cyc="
@@ -1955,9 +2054,9 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 + " hstrMB="
                 + str(_hs_chars // 1048576)
                 + " clos="
-                + str(len(realm.closures))
+                + str(jc_count())
                 + "/free="
-                + str(len(realm.free_closure_slots))
+                + str(jc_free_count())
                 + " gens="
                 + str(len(realm.generators))
                 + "/free="

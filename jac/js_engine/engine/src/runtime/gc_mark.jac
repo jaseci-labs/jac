@@ -25,8 +25,9 @@ Phase: A2.2 / A2.2b
 
 import from engine.src.runtime.realm { Realm, gc_mark_byte }
 import from engine.src.runtime.mem { read_byte, write_byte }
-import from engine.src.runtime.jsobj_type { JSObject }
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.vm.closure_type {
+    jc_count
+}
 import from engine.src.builtins.function_type { JSFunctionMeta, BuiltinFn }
 import from engine.src.builtins.native_type { NativeFn }
 import from engine.src.builtins.map_type { JSMapStorage }
@@ -65,7 +66,7 @@ def:pub gc_mark(realm: Realm, kind: int, idx: int) {
             write_byte(realm.objmark_ptr, bi, gc_mark_byte(realm));
         }
     } elif kind == CELL_KIND_CLOSURE {
-        while len(realm.closures_mark_epoch) < len(realm.closures) {
+        while len(realm.closures_mark_epoch) < jc_count() {
             realm.closures_mark_epoch.append(0);
         }
         if idx >= 0 and idx < len(realm.closures_mark_epoch) {

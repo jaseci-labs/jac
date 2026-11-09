@@ -51,7 +51,7 @@ import from engine.src.runtime.mem {
     write_i64,
     str_nbytes
 }
-import from engine.src.ffi.libc { realloc, free, write, abort, getenv, memmove }
+import from engine.src.ffi.libc { realloc, free, write, abort, getenv, memmove, calloc }
 
 # JAC_SLOT_CHECK=1: bounds-check every JSObject slot read/write and abort on a
 # violation (debug gate for the raw slot buffers; -1 = env not read yet).
@@ -403,665 +403,967 @@ obj:pub JSObjectExt {
 """
 Core JavaScript object.
 
-Stored in realm.objects; referenced by index via jsv_to_table_id(JSValue).
+Stored as a raw record (see below); referenced by index via jsv_to_table_id(JSValue).
 prototype_idx is the realm.objects index of the prototype object, or -1 for
 a null prototype (Object.create(null)).
 """
-obj:pub JSObject {
-    has prototype_idx: int,
-        version: int = 0,
-        shape_id: int = 0,
-        sn: int = 0,
-        s0: JSValue = 0,
-        s1: JSValue = 0,
-        s2: JSValue = 0,
-        s3: JSValue = 0,
-        sp: int = 0,
-        mode: int = 0,
-        class_id: int = 0,
-        binary_kind: int = 0,
-        binary_slot: int = -1,
-        cell_flags: int = 0,
-        oid: int = 0,
-        elems_kind: int = 0,
-        ep: int = 0,
-        brand: int = 0,
-        ext: JSObjectExt | None = None;  # -1 = null prototype
+# ═══════════════════════════════════════════════════════════════════════════════
+# JSObject records (raw store, 2026-11-01)
+# ═══════════════════════════════════════════════════════════════════════════════
+# An object is a 160-byte record in raw memory addressed by its 1-based table
+# id: chunk id >> 12 of the chunk table, record id & 4095 in it (4096 records,
+# 640 KB, per chunk; chunks never move, so a record's address is stable). The
+# fields are the former JSObject's, one 8-byte word each; JSValues are tagged
+# ints, so no word needs refcounting. The rare per-object state (dict-mode
+# maps, accessor table) is a JSObjectExt in _JO_EXTS, indexed by word 144
+# (0 = none). Word offsets:
+#    0 prototype_idx (-1 = null)   8 version   16 shape_id   24 sn
+#   32 s0  40 s1  48 s2  56 s3      64 sp       72 mode
+#   80 class_id  88 binary_kind  96 binary_slot  104 cell_flags
+#  112 oid      120 elems_kind  128 ep           136 brand   144 ext
+# Address arithmetic is wrapping (an id and an offset never overflow; the
+# checked forms cost an overflow test per field).
+glob _JO_CHUNKS: int = 0,
+     _JO_CHUNKS_CAP: int = 0,
+     _JO_COUNT: int = 0,
+     _JO_EXTS: list[JSObjectExt] = [],
+     _JO_EXT_FREE: list[int] = [];
 
-    # ── Generational write barrier (docs/GENERATIONAL_GC.md §4.4) ─────────
-    # oid is the row's own table id (set by _obj_alloc). A reference stored
-    # into an old object (FLAG_OLD) puts it in the remembered set, once per
-    # cycle (FLAG_REMEMBERED); a young object pays one flag test.
+"""Word `off` of the record at address `p`."""
+def:pub jld(p: int, off: int) -> int {
+    return __mem_load_i64(wrapping_add(p, off));
+}
 
-    """Barrier for storing `v` into this object."""
-    def:pub wb(v: JSValue) -> None {
-        if (self.cell_flags & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD and jsv_is_cell(v) {
-            self.cell_flags = self.cell_flags | FLAG_REMEMBERED;
-            gc_rem_obj(self.oid);
-        }
+"""Store `v` as word `off` of the record at address `p`."""
+def:pub jst(p: int, off: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(p, off), v);
+}
+
+"""The write barrier on the record at address `p` (jo_wb without the
+address computation)."""
+def:pub jo_wb_p(p: int, v: JSValue) -> None {
+    wf: int = __mem_load_i64(wrapping_add(p, 104));
+    if (wf & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD and jsv_is_cell(v) {
+        __mem_store_i64(wrapping_add(p, 104), wf | FLAG_REMEMBERED);
+        gc_rem_obj(__mem_load_i64(wrapping_add(p, 112)));
     }
+}
 
-    """Barrier for a store whose values are not at hand (several elements,
-    the prototype link): remember an old object unconditionally."""
-    def:pub wb_all -> None {
-        if (self.cell_flags & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD {
-            self.cell_flags = self.cell_flags | FLAG_REMEMBERED;
-            gc_rem_obj(self.oid);
+"""Address of the record of table id `id` (>= 0, < jo_count() + 1)."""
+def:pub jo_p(id: int) -> int {
+    return wrapping_add(
+        __mem_load_i64(wrapping_add(_JO_CHUNKS, wrapping_mul(id >> 12, 8))),
+        wrapping_mul(id & 4095, 160)
+    );
+}
+
+"""Number of ids handed out: ids 1..jo_count() name records (the former
+len(realm.objects))."""
+def:pub jo_count -> int {
+    return _JO_COUNT;
+}
+
+"""The next table id, its record zeroed (a fresh chunk is calloc'd on first
+use). The caller initializes the fields that are not zero by default."""
+def:pub jo_new_id -> int {
+    nj: int = _JO_COUNT + 1;
+    nc: int = nj >> 12;
+    if nc >= _JO_CHUNKS_CAP {
+        ncap: int = 64;
+        if _JO_CHUNKS_CAP > 0 {
+            ncap = _JO_CHUNKS_CAP * 2;
         }
+        nt: int = realloc(_JO_CHUNKS, ncap * 8);
+        if nt == 0 {
+            _slot_oom(ncap * 8);
+        }
+        nk: int = _JO_CHUNKS_CAP;
+        while nk < ncap {
+            write_i64(nt, nk * 8, 0);
+            nk = nk + 1;
+        }
+        _JO_CHUNKS = nt;
+        _JO_CHUNKS_CAP = ncap;
     }
-
-    # ── Property slots ─────────────────────────────────────────────────────
-    # sn slots: 0..3 in the row (s0..s3), 4.. in one raw buffer of 8-byte
-    # words, [unused][cap][v4 .. v(cap+3)]; sp = 0 means no overflow slots.
-    # JSValues are tagged ints, so neither needs refcounting. An object with at
-    # most four properties (every array: marker + length) has no buffer — no
-    # allocation, and reading a property touches the row only. The buffer is
-    # freed by sclear (dict conversion, large rows at sweep); a swept small
-    # row keeps it for the next object (sreset only zeroes sn).
-
-    """Number of slots in use."""
-    def:pub slen -> int {
-        return self.sn;
+    if read_u64(_JO_CHUNKS, nc * 8) == 0 {
+        ncp: int = calloc(4096, 160);
+        if ncp == 0 {
+            _slot_oom(4096 * 160);
+        }
+        write_i64(_JO_CHUNKS, nc * 8, ncp);
     }
+    _JO_COUNT = nj;
+    return nj;
+}
 
-    """Slot i, 0 <= i < slen(). Unchecked unless JAC_SLOT_CHECK=1."""
-    def:pub sget(i: int) -> JSValue {
-        if _SLOT_CHECK != 0 {
-            _slot_check(self.sn, i, "read");
-        }
-        if i < 4 {
-            if i < 2 {
-                if i == 0 {
-                    return self.s0;
-                }
-                return self.s1;
-            }
-            if i == 2 {
-                return self.s2;
-            }
-            return self.s3;
-        }
-        return read_u64(self.sp, i * 8 - 16);
+# ── field accessors ──────────────────────────────────────────────────────
+def:pub jo_prototype_idx(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 0));
+}
+
+def:pub jo_set_prototype_idx(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 0), v);
+}
+
+def:pub jo_version(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 8));
+}
+
+def:pub jo_set_version(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 8), v);
+}
+
+def:pub jo_shape_id(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 16));
+}
+
+def:pub jo_set_shape_id(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 16), v);
+}
+
+def:pub jo_sn(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 24));
+}
+
+def:pub jo_set_sn(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 24), v);
+}
+
+def:pub jo_s0(id: int) -> JSValue {
+    return __mem_load_i64(wrapping_add(jo_p(id), 32));
+}
+
+def:pub jo_set_s0(id: int, v: JSValue) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 32), v);
+}
+
+def:pub jo_s1(id: int) -> JSValue {
+    return __mem_load_i64(wrapping_add(jo_p(id), 40));
+}
+
+def:pub jo_set_s1(id: int, v: JSValue) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 40), v);
+}
+
+def:pub jo_s2(id: int) -> JSValue {
+    return __mem_load_i64(wrapping_add(jo_p(id), 48));
+}
+
+def:pub jo_set_s2(id: int, v: JSValue) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 48), v);
+}
+
+def:pub jo_s3(id: int) -> JSValue {
+    return __mem_load_i64(wrapping_add(jo_p(id), 56));
+}
+
+def:pub jo_set_s3(id: int, v: JSValue) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 56), v);
+}
+
+def:pub jo_sp(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 64));
+}
+
+def:pub jo_set_sp(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 64), v);
+}
+
+def:pub jo_mode(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 72));
+}
+
+def:pub jo_set_mode(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 72), v);
+}
+
+def:pub jo_class_id(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 80));
+}
+
+def:pub jo_set_class_id(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 80), v);
+}
+
+def:pub jo_binary_kind(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 88));
+}
+
+def:pub jo_set_binary_kind(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 88), v);
+}
+
+def:pub jo_binary_slot(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 96));
+}
+
+def:pub jo_set_binary_slot(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 96), v);
+}
+
+def:pub jo_cell_flags(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 104));
+}
+
+def:pub jo_set_cell_flags(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 104), v);
+}
+
+def:pub jo_oid(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 112));
+}
+
+def:pub jo_set_oid(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 112), v);
+}
+
+def:pub jo_elems_kind(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 120));
+}
+
+def:pub jo_set_elems_kind(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 120), v);
+}
+
+def:pub jo_ep(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 128));
+}
+
+def:pub jo_set_ep(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 128), v);
+}
+
+def:pub jo_brand(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 136));
+}
+
+def:pub jo_set_brand(id: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(jo_p(id), 136), v);
+}
+
+# ── extension record (rare per-object state) ───────────────────────────
+# _JO_EXTS[0] is a shared empty record that is never written (ext index 0 =
+# none); a freed index holds it too, until it is handed out again.
+glob _JO_EXT_NONE: JSObjectExt = JSObjectExt();
+
+def _jo_exts_init -> None {
+    if len(_JO_EXTS) == 0 {
+        _JO_EXTS.append(_JO_EXT_NONE);
     }
+}
 
-    """Store v in slot i, 0 <= i < slen()."""
-    def:pub sset(i: int, v: JSValue) -> None {
-        if _SLOT_CHECK != 0 {
-            _slot_check(self.sn, i, "write");
-        }
-        self.wb(v);
-        if i < 4 {
-            if i < 2 {
-                if i == 0 {
-                    self.s0 = v;
-                } else {
-                    self.s1 = v;
-                }
-            } elif i == 2 {
-                self.s2 = v;
-            } else {
-                self.s3 = v;
-            }
-            return;
-        }
-        write_i64(self.sp, i * 8 - 16, v);
+"""The extension record's index of `id`, 0 when it has none."""
+def:pub jo_ext_index(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 144));
+}
+
+"""Give `id` the extension record `x` (an index from the free list or a new one)."""
+def _jo_ext_attach(id: int, x: JSObjectExt) -> None {
+    _jo_exts_init();
+    xa: int = 0;
+    if len(_JO_EXT_FREE) > 0 {
+        xa = _JO_EXT_FREE[len(_JO_EXT_FREE) - 1];
+        del _JO_EXT_FREE[len(_JO_EXT_FREE) - 1];
+        _JO_EXTS[xa] = x;
+    } else {
+        xa = len(_JO_EXTS);
+        _JO_EXTS.append(x);
     }
+    __mem_store_i64(wrapping_add(jo_p(id), 144), xa);
+}
 
-    """Append v as the new last slot; the buffer's capacity grows 4, 8, 16, ..."""
-    def:pub spush(v: JSValue) -> None {
-        self.wb(v);
-        sp_n: int = self.sn;
-        if sp_n < 4 {
-            if sp_n < 2 {
-                if sp_n == 0 {
-                    self.s0 = v;
-                } else {
-                    self.s1 = v;
-                }
-            } elif sp_n == 2 {
-                self.s2 = v;
-            } else {
-                self.s3 = v;
-            }
-            self.sn = sp_n + 1;
-            return;
-        }
-        sp_o: int = sp_n - 4;
-        sp_c: int = 0;
-        if self.sp != 0 {
-            sp_c = read_u64(self.sp, 8);
-        }
-        if sp_o >= sp_c {
-            sp_nc: int = 4;
-            if sp_c > 0 {
-                sp_nc = sp_c * 2;
-            }
-            sp_new: int = realloc(self.sp, 16 + sp_nc * 8);
-            if sp_new == 0 {
-                _slot_oom(16 + sp_nc * 8);
-            }
-            gc_young_note((sp_nc - sp_c) * 8 + (16 if sp_c == 0 else 0));
-            write_i64(sp_new, 8, sp_nc);
-            self.sp = sp_new;
-            if sp_nc > 4 {
-                self.cell_flags = self.cell_flags | FLAG_SLOTS_BIG;
-            }
-        }
-        write_i64(self.sp, 16 + sp_o * 8, v);
-        self.sn = sp_n + 1;
+"""Drop `id`'s extension record (the former `ext = None`)."""
+def:pub jo_drop_ext(id: int) -> None {
+    xd: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    if xd != 0 {
+        _JO_EXTS[xd] = _JO_EXT_NONE;
+        _JO_EXT_FREE.append(xd);
+        __mem_store_i64(wrapping_add(jo_p(id), 144), 0);
     }
+}
 
-    """Drop every slot, keeping the buffer for this row's next object."""
-    def:pub sreset -> None {
-        self.sn = 0;
+"""The extension record, created on first use."""
+def:pub jo_ext_rw(id: int) -> JSObjectExt {
+    xr: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    if xr != 0 {
+        return _JO_EXTS[xr];
     }
+    return _jo_ext_new(id);
+}
 
-    """Slot capacity: the four in the row plus the buffer's."""
-    def:pub scap -> int {
-        if self.sp == 0 {
-            return 4;
-        }
-        return 4 + read_u64(self.sp, 8);
+def _jo_ext_new(id: int) -> JSObjectExt {
+    er_n: JSObjectExt = JSObjectExt();
+    _jo_ext_attach(id, er_n);
+    return er_n;
+}
+
+def _jx_has_acc(x: JSObjectExt) -> bool {
+    return x.accessors is not None;
+}
+
+def _jx_has_ent(x: JSObjectExt) -> bool {
+    return x.entries is not None;
+}
+
+def _jx_ent_ro(x: JSObjectExt) -> dict[int, JSProperty] {
+    if x.entries is not None {
+        return x.entries;
     }
+    return _ENT_EMPTY;
+}
 
-    """Give back unused buffer capacity (GC sweep, live objects). Capacity grows
-    4, 8, 16, ... as properties are added, so a 13-property object carried 7
-    empty slots for as long as it lived; a later add just grows it again."""
-    def:pub strim -> None {
-        if self.sp == 0 {
-            return;
-        }
-        st_n: int = 0;
-        if self.sn > 4 {
-            st_n = self.sn - 4;
-        }
-        if read_u64(self.sp, 8) - st_n < 3 {
-            return;
-        }
-        if st_n == 0 {
-            free(self.sp);
-            self.sp = 0;
-            self.cell_flags = self.cell_flags & ~FLAG_SLOTS_BIG;
-            return;
-        }
-        st_new: int = realloc(self.sp, 16 + st_n * 8);
-        if st_new == 0 {
-            return;
-        }
-        write_i64(st_new, 8, st_n);
-        self.sp = st_new;
-        if st_n <= 4 {
-            self.cell_flags = self.cell_flags & ~FLAG_SLOTS_BIG;
-        }
+def _jx_ko_ro(x: JSObjectExt) -> list[int] {
+    if x.key_order is not None {
+        return x.key_order;
     }
+    return _KO_EMPTY;
+}
 
-    """Drop every slot and free the buffer."""
-    def:pub sclear -> None {
-        self.sn = 0;
-        if self.sp != 0 {
-            free(self.sp);
-            self.sp = 0;
-            self.cell_flags = self.cell_flags & ~FLAG_SLOTS_BIG;
-        }
-    }
+"""True when the object has an accessor table."""
+def:pub jo_has_acc(id: int) -> bool {
+    xh: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    return xh != 0 and _jx_has_acc(_JO_EXTS[xh]);
+}
 
-    # ── Extension record (rare per-object state) ───────────────────────────
-    """The extension record, created on first use."""
-    def:pub ext_rw -> JSObjectExt {
-        if self.ext is None {
-            return self._ext_new();
-        }
-        return self.ext;
-    }
-
-    def _ext_new -> JSObjectExt {
-        er_n: JSObjectExt = JSObjectExt();
-        self.ext = er_n;
-        return er_n;
-    }
-
-    """True when the object has an accessor table. (Written without an owned
-    local: one adds the unwind registration and two refcount operations to
-    a method called ~18M times per build.)"""
-    def:pub has_acc -> bool {
-        return self.ext is not None and self.ext.accessors is not None;
-    }
-
-    """Binary kind (BINARY_KIND_*), 0 for an ordinary object."""
-    def:pub bkind -> int {
-        return self.binary_kind;
-    }
-
-    """Binary backing-store slot, -1 when there is none."""
-    def:pub bslot -> int {
-        return self.binary_slot;
-    }
-
-    def:pub set_bkind(k: int) -> None {
-        self.binary_kind = k;
-    }
-
-    def:pub set_bslot(s: int) -> None {
-        self.binary_slot = s;
-    }
-
-    # ── Lazy dict-mode map accessors (P3b) ─────────────────────────────────
-    """Dict `entries` for READ access: the object's own dict, or the shared empty
-    one when it has none yet. Result must not be mutated (see ent_rw)."""
-    def:pub ent_ro -> dict[int, JSProperty] {
-        if self.ext is not None and self.ext.entries is not None {
-            return self.ext.entries;
-        }
+"""Dict `entries` for READ access: the object's own dict, or the shared empty
+one when it has none yet. Result must not be mutated (see jo_ent_rw)."""
+def:pub jo_ent_ro(id: int) -> dict[int, JSProperty] {
+    xe: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    if xe == 0 {
         return _ENT_EMPTY;
     }
+    return _jx_ent_ro(_JO_EXTS[xe]);
+}
 
-    """True when the object has its own dict-mode `entries`."""
-    def:pub has_ent -> bool {
-        return self.ext is not None and self.ext.entries is not None;
+"""True when the object has its own dict-mode `entries`."""
+def:pub jo_has_ent(id: int) -> bool {
+    xn: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    return xn != 0 and _jx_has_ent(_JO_EXTS[xn]);
+}
+
+"""Dict `entries` for WRITE access, materializing it on first dict-mode store."""
+def:pub jo_ent_rw(id: int) -> dict[int, JSProperty] {
+    ew_x: JSObjectExt = jo_ext_rw(id);
+    ew_e: dict[int, JSProperty] | None = ew_x.entries;
+    if ew_e is not None {
+        return ew_e;
     }
+    e: dict[int, JSProperty] = {};
+    ew_x.entries = e;
+    return e;
+}
 
-    """Dict `entries` for WRITE access, materializing it on first dict-mode store."""
-    def:pub ent_rw -> dict[int, JSProperty] {
-        ew_x: JSObjectExt = self.ext_rw();
-        ew_e: dict[int, JSProperty] | None = ew_x.entries;
-        if ew_e is not None {
-            return ew_e;
-        }
-        e: dict[int, JSProperty] = {};
-        ew_x.entries = e;
-        return e;
-    }
-
-    """`key_order` for READ access; shared empty list when the object has none."""
-    def:pub ko_ro -> list[int] {
-        if self.ext is not None and self.ext.key_order is not None {
-            return self.ext.key_order;
-        }
+"""`key_order` for READ access; shared empty list when the object has none."""
+def:pub jo_ko_ro(id: int) -> list[int] {
+    xk: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    if xk == 0 {
         return _KO_EMPTY;
     }
+    return _jx_ko_ro(_JO_EXTS[xk]);
+}
 
-    """`key_order` for WRITE access, materializing it on first dict-mode store."""
-    def:pub ko_rw -> list[int] {
-        kw_x: JSObjectExt = self.ext_rw();
-        kw_k: list[int] | None = kw_x.key_order;
-        if kw_k is not None {
-            return kw_k;
-        }
-        k: list[int] = [];
-        kw_x.key_order = k;
-        return k;
+"""`key_order` for WRITE access, materializing it on first dict-mode store."""
+def:pub jo_ko_rw(id: int) -> list[int] {
+    kw_x: JSObjectExt = jo_ext_rw(id);
+    kw_k: list[int] | None = kw_x.key_order;
+    if kw_k is not None {
+        return kw_k;
     }
+    k: list[int] = [];
+    kw_x.key_order = k;
+    return k;
+}
 
-    """Element `i` of the dense elements, or the hole when there are none or
-    `i` is past them (a hole element is the hole too)."""
-    def:pub elem_or_hole(i: int) -> JSValue {
-        if self.ep == 0 or i < 0 or i >= read_u64(self.ep, 0) {
-            return jsv_hole();
-        }
-        return read_u64(self.ep, 16 + i * 8);
+"""This object's accessor table, materialized on first use."""
+def _jo_ensure_accessors(id: int) -> AccessorTable {
+    ea_x: JSObjectExt = jo_ext_rw(id);
+    ea_a: AccessorTable | None = ea_x.accessors;
+    if ea_a is not None {
+        return ea_a;
     }
+    t: AccessorTable = AccessorTable(
+        getters={}, setters={}, enumerable={}, configurable={}
+    );
+    ea_x.accessors = t;
+    return t;
+}
 
-    """Own element `dix` when `dix` >= 0 (the array index the key names) and
-    it is present, else the own data property `key`, else the hole: one
-    level of js_object_get."""
-    def:pub own_elem_or_data(key: int, dix: int) -> JSValue {
-        if dix >= 0 and self.elems_kind != ELEMS_NONE {
-            oe_v: JSValue = self.elem_or_hole(dix);
-            if not jsv_is_hole(oe_v) {
-                return oe_v;
-            }
-        }
-        return self.get_own_data_or_hole(key);
+"""The object's accessor table for reading, the shared empty one when it has
+none (never mutate it)."""
+def:pub jo_acc_ro(id: int, empty: AccessorTable) -> AccessorTable {
+    xa: int = __mem_load_i64(wrapping_add(jo_p(id), 144));
+    if xa == 0 {
+        return empty;
     }
+    return _jx_acc_ro(_JO_EXTS[xa], empty);
+}
 
-    """An own present element `dix` (>= 0, see own_elem_or_data) or an own
-    property `key` in the shape / property map; the accessor side tables are
-    the caller's."""
-    def:pub has_own_plain(key: int, dix: int) -> bool {
-        if dix >= 0 and dix < self.elen() and not jsv_is_hole(self.eget(dix)) {
-            return True;
-        }
-        return self.has_key(key);
+def _jx_acc_ro(x: JSObjectExt, empty: AccessorTable) -> AccessorTable {
+    if x.accessors is not None {
+        return x.accessors;
     }
+    return empty;
+}
 
-    """One level of js_object_get_ordinary: the slot of own data property
-    `key` (>= 0), -1 when a shape-mode object without accessor tables does not
-    have it, -2 when the read is not ordinary here (a class / binary / dense
-    / namespace / mapped-arguments object, or `key` is an accessor), -3 for a
-    property map and -4 when there are accessor tables — both read by the
-    caller. A String wrapper's `length` / index keys are the caller's too."""
-    def:pub ord_slot(key: int) -> int {
-        if self.class_id != 0
-            or self.bkind() != 0
-            or self.elems_kind != ELEMS_NONE
-            or (self.cell_flags & (FLAG_MODULE_NS | FLAG_MAPPED_ARGS)) != 0 {
-            return -2;
-        }
-        if self.has_acc() {
-            return -4;
-        }
-        if self.mode != MAP_MODE_SHAPE {
-            return -3;
-        }
-        os_p: int = shape_lookup(self.shape_id, key);
-        if os_p < 0 {
-            return -1;
-        }
-        if (os_p & SHAPE_ATTR_ACCESSOR) != 0 {
-            return -2;
-        }
-        return os_p // 16;
+"""The accessor table for writing (materialized on the first install)."""
+def:pub jo_acc_rw(id: int) -> AccessorTable {
+    return _jo_ensure_accessors(id);
+}
+
+# ── former JSObject methods ─────────────────────────────────────────────────
+
+# ── Generational write barrier (docs/GENERATIONAL_GC.md §4.4) ─────────
+# oid is the row's own table id (set by _obj_alloc). A reference stored
+# into an old object (FLAG_OLD) puts it in the remembered set, once per
+# cycle (FLAG_REMEMBERED); a young object pays one flag test.
+
+"""Barrier for storing `v` into this object."""
+def:pub jo_wb(id: int, v: JSValue) -> None {
+    jo_wb_p(jo_p(id), v);
+}
+
+"""Barrier for a store whose values are not at hand (several elements,
+the prototype link): remember an old object unconditionally."""
+def:pub jo_wb_all(id: int) -> None {
+    wa_p: int = jo_p(id);
+    wa_f: int = __mem_load_i64(wrapping_add(wa_p, 104));
+    if (wa_f & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD {
+        __mem_store_i64(wrapping_add(wa_p, 104), wa_f | FLAG_REMEMBERED);
+        gc_rem_obj(__mem_load_i64(wrapping_add(wa_p, 112)));
     }
+}
 
-    """The property-IC hit test and read in one: slots[si] when this is an
-    ordinary shape-mode object of shape `sid` (the js_object_ic_shape
-    conditions), else the hole."""
-    def:pub ic_slot(sid: int, si: int) -> JSValue {
-        if self.class_id != 0 or self.mode != MAP_MODE_SHAPE or self.shape_id != sid {
-            return jsv_hole();
-        }
-        if (self.cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
-            return jsv_hole();
-        }
-        return self.sget(si);
+# ── Property slots ─────────────────────────────────────────────────────
+# sn slots: 0..3 in the row (s0..s3), 4.. in one raw buffer of 8-byte
+# words, [unused][cap][v4 .. v(cap+3)]; sp = 0 means no overflow slots.
+# JSValues are tagged ints, so neither needs refcounting. An object with at
+# most four properties (every array: marker + length) has no buffer — no
+# allocation, and reading a property touches the row only. The buffer is
+# freed by sclear (dict conversion, large rows at sweep); a swept small
+# row keeps it for the next object (sreset only zeroes sn).
+
+"""Number of slots in use."""
+def:pub jo_slen(id: int) -> int {
+    return __mem_load_i64(wrapping_add(jo_p(id), 24));
+}
+
+"""Slot i, 0 <= i < slen(). Unchecked unless JAC_SLOT_CHECK=1."""
+def:pub jo_sget(id: int, i: int) -> JSValue {
+    sg_p: int = jo_p(id);
+    if _SLOT_CHECK != 0 {
+        _slot_check(__mem_load_i64(wrapping_add(sg_p, 24)), i, "read");
     }
+    if i < 4 {
+        return __mem_load_i64(wrapping_add(sg_p, wrapping_add(32, wrapping_mul(i, 8))));
+    }
+    return __mem_load_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(sg_p, 64)), wrapping_add(wrapping_mul(i, 8), -16))
+    );
+}
 
-    """The SET-IC hit test and write in one (see ic_slot); False when the
-    shape does not match."""
-    def:pub ic_slot_set(sid: int, si: int, val: JSValue) -> bool {
-        if self.class_id != 0 or self.mode != MAP_MODE_SHAPE or self.shape_id != sid {
-            return False;
+"""Store v in slot i, 0 <= i < slen()."""
+def:pub jo_sset(id: int, i: int, v: JSValue) -> None {
+    ss_p: int = jo_p(id);
+    if _SLOT_CHECK != 0 {
+        _slot_check(__mem_load_i64(wrapping_add(ss_p, 24)), i, "write");
+    }
+    jo_wb_p(ss_p, v);
+    if i < 4 {
+        __mem_store_i64(wrapping_add(ss_p, wrapping_add(32, wrapping_mul(i, 8))), v);
+        return;
+    }
+    __mem_store_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(ss_p, 64)), wrapping_add(wrapping_mul(i, 8), -16)),
+        v
+    );
+}
+
+"""Append v as the new last slot; the buffer's capacity grows 4, 8, 16, ..."""
+def:pub jo_spush(id: int, v: JSValue) -> None {
+    sp_p: int = jo_p(id);
+    jo_wb_p(sp_p, v);
+    sp_n: int = __mem_load_i64(wrapping_add(sp_p, 24));
+    if sp_n < 4 {
+        __mem_store_i64(wrapping_add(sp_p, wrapping_add(32, wrapping_mul(sp_n, 8))), v);
+        __mem_store_i64(wrapping_add(sp_p, 24), wrapping_add(sp_n, 1));
+        return;
+    }
+    sp_o: int = sp_n - 4;
+    sp_b: int = __mem_load_i64(wrapping_add(sp_p, 64));
+    sp_c: int = 0;
+    if sp_b != 0 {
+        sp_c = __mem_load_i64(wrapping_add(sp_b, 8));
+    }
+    if sp_o >= sp_c {
+        sp_nc: int = 4;
+        if sp_c > 0 {
+            sp_nc = sp_c * 2;
         }
-        if (self.cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
-            return False;
+        sp_new: int = realloc(sp_b, 16 + sp_nc * 8);
+        if sp_new == 0 {
+            _slot_oom(16 + sp_nc * 8);
         }
-        self.sset(si, val);
+        gc_young_note((sp_nc - sp_c) * 8 + (16 if sp_c == 0 else 0));
+        __mem_store_i64(wrapping_add(sp_new, 8), sp_nc);
+        __mem_store_i64(wrapping_add(sp_p, 64), sp_new);
+        sp_b = sp_new;
+        if sp_nc > 4 {
+            __mem_store_i64(
+                wrapping_add(sp_p, 104), __mem_load_i64(wrapping_add(sp_p, 104)) | FLAG_SLOTS_BIG
+            );
+        }
+    }
+    __mem_store_i64(wrapping_add(sp_b, wrapping_add(16, wrapping_mul(sp_o, 8))), v);
+    __mem_store_i64(wrapping_add(sp_p, 24), wrapping_add(sp_n, 1));
+}
+
+"""Drop every slot, keeping the buffer for this row's next object."""
+def:pub jo_sreset(id: int) -> None {
+    jo_set_sn(id, 0);
+}
+
+"""Slot capacity: the four in the row plus the buffer's."""
+def:pub jo_scap(id: int) -> int {
+    if jo_sp(id) == 0 {
+        return 4;
+    }
+    return 4 + read_u64(jo_sp(id), 8);
+}
+
+"""Give back unused buffer capacity (GC sweep, live objects). Capacity grows
+4, 8, 16, ... as properties are added, so a 13-property object carried 7
+empty slots for as long as it lived; a later add just grows it again."""
+def:pub jo_strim(id: int) -> None {
+    if jo_sp(id) == 0 {
+        return;
+    }
+    st_n: int = 0;
+    if jo_sn(id) > 4 {
+        st_n = jo_sn(id) - 4;
+    }
+    if read_u64(jo_sp(id), 8) - st_n < 3 {
+        return;
+    }
+    if st_n == 0 {
+        free(jo_sp(id));
+        jo_set_sp(id, 0);
+        jo_set_cell_flags(id, jo_cell_flags(id) & ~FLAG_SLOTS_BIG);
+        return;
+    }
+    st_new: int = realloc(jo_sp(id), 16 + st_n * 8);
+    if st_new == 0 {
+        return;
+    }
+    write_i64(st_new, 8, st_n);
+    jo_set_sp(id, st_new);
+    if st_n <= 4 {
+        jo_set_cell_flags(id, jo_cell_flags(id) & ~FLAG_SLOTS_BIG);
+    }
+}
+
+"""Drop every slot and free the buffer."""
+def:pub jo_sclear(id: int) -> None {
+    jo_set_sn(id, 0);
+    if jo_sp(id) != 0 {
+        free(jo_sp(id));
+        jo_set_sp(id, 0);
+        jo_set_cell_flags(id, jo_cell_flags(id) & ~FLAG_SLOTS_BIG);
+    }
+}
+
+"""Binary kind (BINARY_KIND_*), 0 for an ordinary object."""
+def:pub jo_bkind(id: int) -> int {
+    return jo_binary_kind(id);
+}
+
+"""Binary backing-store slot, -1 when there is none."""
+def:pub jo_bslot(id: int) -> int {
+    return jo_binary_slot(id);
+}
+
+def:pub jo_set_bkind(id: int, k: int) -> None {
+    jo_set_binary_kind(id, k);
+}
+
+def:pub jo_set_bslot(id: int, s: int) -> None {
+    jo_set_binary_slot(id, s);
+}
+
+"""Element `i` of the dense elements, or the hole when there are none or
+`i` is past them (a hole element is the hole too)."""
+def:pub jo_elem_or_hole(id: int, i: int) -> JSValue {
+    eh_e: int = __mem_load_i64(wrapping_add(jo_p(id), 128));
+    if eh_e == 0 or i < 0 or i >= __mem_load_i64(eh_e) {
+        return jsv_hole();
+    }
+    return __mem_load_i64(wrapping_add(eh_e, wrapping_add(16, wrapping_mul(i, 8))));
+}
+
+"""Own element `dix` when `dix` >= 0 (the array index the key names) and
+it is present, else the own data property `key`, else the hole: one
+level of js_object_get."""
+def:pub jo_own_elem_or_data(id: int, key: int, dix: int) -> JSValue {
+    if dix >= 0 and __mem_load_i64(wrapping_add(jo_p(id), 120)) != ELEMS_NONE {
+        oe_v: JSValue = jo_elem_or_hole(id, dix);
+        if not jsv_is_hole(oe_v) {
+            return oe_v;
+        }
+    }
+    return jo_get_own_data_or_hole(id, key);
+}
+
+"""An own present element `dix` (>= 0, see own_elem_or_data) or an own
+property `key` in the shape / property map; the accessor side tables are
+the caller's."""
+def:pub jo_has_own_plain(id: int, key: int, dix: int) -> bool {
+    if dix >= 0 and dix < jo_elen(id) and not jsv_is_hole(jo_eget(id, dix)) {
         return True;
     }
+    return jo_has_key(id, key);
+}
 
-    # ── Dense elements (P4) ────────────────────────────────────────────────
-    # One raw buffer of 8-byte words, [len][cap][e0 .. e(cap-1)], laid out like
-    # the slots; ep = 0 means none. (A list[JSValue] cost a 64-byte list object
-    # plus a doubling buffer per array, ~2.4M arrays in a vite build.)
-
-    """Number of dense elements."""
-    def:pub elen -> int {
-        if self.ep == 0 {
-            return 0;
-        }
-        return read_u64(self.ep, 0);
+"""One level of js_object_get_ordinary: the slot of own data property
+`key` (>= 0), -1 when a shape-mode object without accessor tables does not
+have it, -2 when the read is not ordinary here (a class / binary / dense
+/ namespace / mapped-arguments object, or `key` is an accessor), -3 for a
+property map and -4 when there are accessor tables — both read by the
+caller. A String wrapper's `length` / index keys are the caller's too."""
+def:pub jo_ord_slot(id: int, key: int) -> int {
+    if jo_class_id(id) != 0
+        or jo_bkind(id) != 0
+        or jo_elems_kind(id) != ELEMS_NONE
+        or (jo_cell_flags(id) & (FLAG_MODULE_NS | FLAG_MAPPED_ARGS)) != 0 {
+        return -2;
     }
-
-    """Element i, 0 <= i < elen(). Unchecked unless JAC_SLOT_CHECK=1."""
-    def:pub eget(i: int) -> JSValue {
-        if _SLOT_CHECK != 0 {
-            _slot_check(self.elen(), i, "element read");
-        }
-        return read_u64(self.ep, 16 + i * 8);
+    if jo_has_acc(id) {
+        return -4;
     }
-
-    """Store v as element i, 0 <= i < elen()."""
-    def:pub eset(i: int, v: JSValue) -> None {
-        if _SLOT_CHECK != 0 {
-            _slot_check(self.elen(), i, "element write");
-        }
-        self.wb(v);
-        write_i64(self.ep, 16 + i * 8, v);
+    if jo_mode(id) != MAP_MODE_SHAPE {
+        return -3;
     }
-
-    """Append v as the new last element; capacity grows 4, 8, 16, ..."""
-    def:pub epush(v: JSValue) -> None {
-        self.wb(v);
-        ep_n: int = 0;
-        ep_c: int = 0;
-        if self.ep != 0 {
-            ep_n = read_u64(self.ep, 0);
-            ep_c = read_u64(self.ep, 8);
-        }
-        if ep_n >= ep_c {
-            ep_nc: int = 4;
-            if ep_c > 0 {
-                ep_nc = ep_c * 2;
-            }
-            ep_new: int = realloc(self.ep, 16 + ep_nc * 8);
-            if ep_new == 0 {
-                _slot_oom(16 + ep_nc * 8);
-            }
-            gc_young_note((ep_nc - ep_c) * 8 + (16 if ep_c == 0 else 0));
-            write_i64(ep_new, 0, ep_n);
-            write_i64(ep_new, 8, ep_nc);
-            self.ep = ep_new;
-        }
-        write_i64(self.ep, 16 + ep_n * 8, v);
-        write_i64(self.ep, 0, ep_n + 1);
+    os_p: int = shape_lookup(jo_shape_id(id), key);
+    if os_p < 0 {
+        return -1;
     }
-
-    """Make `vals` the elements of an object that has none, in a buffer of
-    exactly their size; ELEMS_HOLEY when one of them is the hole, else
-    ELEMS_DENSE (what an epush per element builds, without the regrowth)."""
-    def:pub einit(vals: list[JSValue]) -> int {
-        self.wb_all();
-        ei_n: int = len(vals);
-        if ei_n == 0 {
-            return ELEMS_DENSE;
-        }
-        ei_p: int = realloc(self.ep, 16 + ei_n * 8);
-        if ei_p == 0 {
-            _slot_oom(16 + ei_n * 8);
-        }
-        gc_young_note(16 + ei_n * 8);
-        write_i64(ei_p, 0, ei_n);
-        write_i64(ei_p, 8, ei_n);
-        ei_kind: int = ELEMS_DENSE;
-        ei_k: int = 0;
-        while ei_k < ei_n {
-            ei_v: JSValue = vals[ei_k];
-            if jsv_is_hole(ei_v) {
-                ei_kind = ELEMS_HOLEY;
-            }
-            write_i64(ei_p, 16 + ei_k * 8, ei_v);
-            ei_k = ei_k + 1;
-        }
-        self.ep = ei_p;
-        return ei_kind;
+    if (os_p & SHAPE_ATTR_ACCESSOR) != 0 {
+        return -2;
     }
+    return os_p // 16;
+}
 
-    """einit of vals[off .. off+n) (NEWARRAY's registers, no slice list)."""
-    def:pub einit_range(vals: list[JSValue], off: int, n: int) -> int {
-        self.wb_all();
-        if n == 0 {
-            return ELEMS_DENSE;
+"""The property-IC hit test and read in one: slots[si] when this is an
+ordinary shape-mode object of shape `sid` (the js_object_ic_shape
+conditions), else the hole."""
+def:pub jo_ic_slot(id: int, sid: int, si: int) -> JSValue {
+    ic_p: int = jo_p(id);
+    if __mem_load_i64(wrapping_add(ic_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(ic_p, 72)) != MAP_MODE_SHAPE
+        or __mem_load_i64(wrapping_add(ic_p, 16)) != sid {
+        return jsv_hole();
+    }
+    if (__mem_load_i64(wrapping_add(ic_p, 104)) & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+        return jsv_hole();
+    }
+    return jo_sget(id, si);
+}
+
+"""The SET-IC hit test and write in one (see ic_slot); False when the
+shape does not match."""
+def:pub jo_ic_slot_set(id: int, sid: int, si: int, val: JSValue) -> bool {
+    if jo_class_id(id) != 0 or jo_mode(id) != MAP_MODE_SHAPE or jo_shape_id(id) != sid {
+        return False;
+    }
+    if (jo_cell_flags(id) & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+        return False;
+    }
+    jo_sset(id, si, val);
+    return True;
+}
+
+# ── Dense elements (P4) ────────────────────────────────────────────────
+# One raw buffer of 8-byte words, [len][cap][e0 .. e(cap-1)], laid out like
+# the slots; ep = 0 means none. (A list[JSValue] cost a 64-byte list object
+# plus a doubling buffer per array, ~2.4M arrays in a vite build.)
+
+"""Number of dense elements."""
+def:pub jo_elen(id: int) -> int {
+    el_e: int = __mem_load_i64(wrapping_add(jo_p(id), 128));
+    if el_e == 0 {
+        return 0;
+    }
+    return __mem_load_i64(el_e);
+}
+
+"""Element i, 0 <= i < elen(). Unchecked unless JAC_SLOT_CHECK=1."""
+def:pub jo_eget(id: int, i: int) -> JSValue {
+    eg_e: int = __mem_load_i64(wrapping_add(jo_p(id), 128));
+    if _SLOT_CHECK != 0 {
+        _slot_check(jo_elen(id), i, "element read");
+    }
+    return __mem_load_i64(wrapping_add(eg_e, wrapping_add(16, wrapping_mul(i, 8))));
+}
+
+"""Store v as element i, 0 <= i < elen()."""
+def:pub jo_eset(id: int, i: int, v: JSValue) -> None {
+    es_p: int = jo_p(id);
+    if _SLOT_CHECK != 0 {
+        _slot_check(jo_elen(id), i, "element write");
+    }
+    jo_wb_p(es_p, v);
+    __mem_store_i64(
+        wrapping_add(__mem_load_i64(wrapping_add(es_p, 128)), wrapping_add(16, wrapping_mul(i, 8))), v
+    );
+}
+
+"""Append v as the new last element; capacity grows 4, 8, 16, ..."""
+def:pub jo_epush(id: int, v: JSValue) -> None {
+    ep_p: int = jo_p(id);
+    jo_wb_p(ep_p, v);
+    ep_b: int = __mem_load_i64(wrapping_add(ep_p, 128));
+    ep_n: int = 0;
+    ep_c: int = 0;
+    if ep_b != 0 {
+        ep_n = __mem_load_i64(ep_b);
+        ep_c = __mem_load_i64(wrapping_add(ep_b, 8));
+    }
+    if ep_n >= ep_c {
+        ep_nc: int = 4;
+        if ep_c > 0 {
+            ep_nc = ep_c * 2;
         }
-        er_p: int = realloc(self.ep, 16 + n * 8);
+        ep_new: int = realloc(ep_b, 16 + ep_nc * 8);
+        if ep_new == 0 {
+            _slot_oom(16 + ep_nc * 8);
+        }
+        gc_young_note((ep_nc - ep_c) * 8 + (16 if ep_c == 0 else 0));
+        __mem_store_i64(ep_new, ep_n);
+        __mem_store_i64(wrapping_add(ep_new, 8), ep_nc);
+        __mem_store_i64(wrapping_add(ep_p, 128), ep_new);
+        ep_b = ep_new;
+    }
+    __mem_store_i64(wrapping_add(ep_b, wrapping_add(16, wrapping_mul(ep_n, 8))), v);
+    __mem_store_i64(ep_b, wrapping_add(ep_n, 1));
+}
+
+"""Make `vals` the elements of an object that has none, in a buffer of
+exactly their size; ELEMS_HOLEY when one of them is the hole, else
+ELEMS_DENSE (what an epush per element builds, without the regrowth)."""
+def:pub jo_einit(id: int, vals: list[JSValue]) -> int {
+    jo_wb_all(id);
+    ei_n: int = len(vals);
+    if ei_n == 0 {
+        return ELEMS_DENSE;
+    }
+    ei_p: int = realloc(jo_ep(id), 16 + ei_n * 8);
+    if ei_p == 0 {
+        _slot_oom(16 + ei_n * 8);
+    }
+    gc_young_note(16 + ei_n * 8);
+    write_i64(ei_p, 0, ei_n);
+    write_i64(ei_p, 8, ei_n);
+    ei_kind: int = ELEMS_DENSE;
+    ei_k: int = 0;
+    while ei_k < ei_n {
+        ei_v: JSValue = vals[ei_k];
+        if jsv_is_hole(ei_v) {
+            ei_kind = ELEMS_HOLEY;
+        }
+        write_i64(ei_p, 16 + ei_k * 8, ei_v);
+        ei_k = ei_k + 1;
+    }
+    jo_set_ep(id, ei_p);
+    return ei_kind;
+}
+
+"""einit of vals[off .. off+n) (NEWARRAY's registers, no slice list)."""
+def:pub jo_einit_range(id: int, vals: list[JSValue], off: int, n: int) -> int {
+    er_r: int = jo_p(id);
+    jo_wb_all(id);
+    if n == 0 {
+        return ELEMS_DENSE;
+    }
+    er_p: int = __mem_load_i64(wrapping_add(er_r, 128));
+    if er_p == 0 or __mem_load_i64(wrapping_add(er_p, 8)) < n {
+        er_p = realloc(er_p, 16 + n * 8);
         if er_p == 0 {
             _slot_oom(16 + n * 8);
         }
         gc_young_note(16 + n * 8);
-        write_i64(er_p, 0, n);
-        write_i64(er_p, 8, n);
-        er_kind: int = ELEMS_DENSE;
-        er_k: int = 0;
-        while er_k < n {
-            er_v: JSValue = vals[off + er_k];
-            if jsv_is_hole(er_v) {
-                er_kind = ELEMS_HOLEY;
-            }
-            write_i64(er_p, 16 + er_k * 8, er_v);
-            er_k = er_k + 1;
-        }
-        self.ep = er_p;
-        return er_kind;
+        __mem_store_i64(wrapping_add(er_p, 8), n);
     }
-
-    """Remove element 0, moving the rest down one; elen() must be > 0."""
-    def:pub eshift -> None {
-        es_n: int = read_u64(self.ep, 0);
-        if es_n > 1 {
-            memmove(self.ep + 16, self.ep + 24, (es_n - 1) * 8);
+    # (a kept buffer that fits is filled in place)
+    __mem_store_i64(er_p, n);
+    # vals[off .. off+n) (the caller's registers) read in place
+    er_src: int = wrapping_add(__list_data_ptr(vals), wrapping_mul(off, 8));
+    er_kind: int = ELEMS_DENSE;
+    er_k: int = 0;
+    while er_k < n {
+        er_v: JSValue = __mem_load_i64(wrapping_add(er_src, wrapping_mul(er_k, 8)));
+        if jsv_is_hole(er_v) {
+            er_kind = ELEMS_HOLEY;
         }
-        write_i64(self.ep, 0, es_n - 1);
+        __mem_store_i64(wrapping_add(er_p, wrapping_add(16, wrapping_mul(er_k, 8))), er_v);
+        er_k = er_k + 1;
     }
+    __mem_store_i64(wrapping_add(er_r, 128), er_p);
+    return er_kind;
+}
 
-    """Drop every element and free the buffer."""
-    def:pub eclear -> None {
-        if self.ep != 0 {
-            free(self.ep);
-            self.ep = 0;
+"""Remove element 0, moving the rest down one; elen() must be > 0."""
+def:pub jo_eshift(id: int) -> None {
+    es_n: int = read_u64(jo_ep(id), 0);
+    if es_n > 1 {
+        memmove(jo_ep(id) + 16, jo_ep(id) + 24, (es_n - 1) * 8);
+    }
+    write_i64(jo_ep(id), 0, es_n - 1);
+}
+
+"""Drop every element and free the buffer."""
+def:pub jo_eclear(id: int) -> None {
+    if jo_ep(id) != 0 {
+        free(jo_ep(id));
+        jo_set_ep(id, 0);
+    }
+}
+
+"""Give back unused element capacity (GC sweep, live arrays); see strim."""
+def:pub jo_etrim(id: int) -> None {
+    if jo_ep(id) == 0 {
+        return;
+    }
+    et_n: int = read_u64(jo_ep(id), 0);
+    if et_n != 0 and read_u64(jo_ep(id), 8) - et_n < 3 {
+        return;
+    }
+    if et_n == 0 {
+        free(jo_ep(id));
+        jo_set_ep(id, 0);
+        return;
+    }
+    et_new: int = realloc(jo_ep(id), 16 + et_n * 8);
+    if et_new == 0 {
+        return;
+    }
+    write_i64(et_new, 8, et_n);
+    jo_set_ep(id, et_new);
+}
+# ── Packed cell_flags bool accessors (P5) ──────────────────────────────
+"""[[Extensible]] — false once FLAG_NON_EXTENSIBLE is set (JS one-way)."""
+def:pub jo_is_ext(id: int) -> bool {
+    return (__mem_load_i64(wrapping_add(jo_p(id), 104)) & FLAG_NON_EXTENSIBLE) == 0;
+}
+
+"""Mark [[PreventExtensions]] (one-way; never cleared on a live object)."""
+def:pub jo_set_non_ext(id: int) {
+    jo_set_cell_flags(id, jo_cell_flags(id) | FLAG_NON_EXTENSIBLE);
+}
+
+"""True for a mapped `arguments` exotic object (parameter-slot aliasing)."""
+def:pub jo_mapped_args(id: int) -> bool {
+    return (jo_cell_flags(id) & FLAG_MAPPED_ARGS) != 0;
+}
+
+"""Mark this object a mapped `arguments` exotic."""
+def:pub jo_set_mapped_args(id: int) {
+    jo_set_cell_flags(id, jo_cell_flags(id) | FLAG_MAPPED_ARGS);
+}
+
+"""True for any (mapped or unmapped) `arguments` object."""
+def:pub jo_arguments_obj(id: int) -> bool {
+    return (jo_cell_flags(id) & FLAG_IS_ARGUMENTS) != 0;
+}
+
+"""Mark this object an `arguments` object."""
+def:pub jo_set_arguments(id: int) {
+    jo_set_cell_flags(id, jo_cell_flags(id) | FLAG_IS_ARGUMENTS);
+}
+
+"""DATA-ONLY shape→dict conversion (no-op in dict mode).
+
+INVARIANT: must never run on a map holding SHAPE_ATTR_ACCESSOR entries —
+accessor getter/setter slots live here but their dict-mode home (the
+JSObject accessor side-dicts) is out of reach, so this would corrupt them
+into data properties. The only correct converter for a map that may hold
+accessors is JSObject.pm_ensure_dict(); every jsobject.na.jac entry point
+that can face an accessor converts at the OBJECT level first, which is
+what makes the internal delete() backstop below safe."""
+def:pub jo_ensure_dict(id: int) -> None {
+    if jo_mode(id) != MAP_MODE_SHAPE {
+        return;
+    }
+    # Slots are about to go away: invalidate inherited-read ICs holding one.
+    if (jo_cell_flags(id) & FLAG_IS_PROTO) != 0 {
+        proto_epoch_bump();
+    }
+    ks: list[int] = shape_keys(jo_shape_id(id));
+    ks_n: int = shape_key_count(jo_shape_id(id));
+    ei: int = 0;
+    while ei < ks_n {
+        ek: int = ks[ei];
+        packed: int = shape_lookup(jo_shape_id(id), ek);
+        if packed >= 0 {
+            jo_ent_rw(id)[ek] = JSProperty(
+                key=ek,
+                value=jo_sget(id, packed // 16),
+                writable=(packed & PROP_WRITABLE) != 0,
+                enumerable=(packed & PROP_ENUMERABLE) != 0,
+                configurable=(packed & PROP_CONFIGURABLE) != 0,
+                deleted=False
+            );
+            jo_ko_rw(id).append(ek);
         }
+        ei = ei + 1;
     }
+    jo_sclear(id);
+    jo_set_shape_id(id, 0);
+    jo_set_mode(id, MAP_MODE_DICT);
+}
 
-    """Give back unused element capacity (GC sweep, live arrays); see strim."""
-    def:pub etrim -> None {
-        if self.ep == 0 {
-            return;
+"""Return the value for key, or JSValue{tag=Undefined} if not found.
+
+Accessor entries read as undefined — parity with dict mode, where
+accessor-only keys have no `entries` row (getter dispatch is the VM's
+job, before it ever reaches this data path)."""
+def:pub jo_get(id: int, key: int) -> JSValue {
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        packed_g: int = shape_lookup(jo_shape_id(id), key);
+        if packed_g < 0 {
+            return js_undefined();
         }
-        et_n: int = read_u64(self.ep, 0);
-        if read_u64(self.ep, 8) - et_n < 3 {
-            return;
+        if (packed_g & SHAPE_ATTR_ACCESSOR) != 0 {
+            return js_undefined();
         }
-        if et_n == 0 {
-            free(self.ep);
-            self.ep = 0;
-            return;
+        return jo_sget(id, packed_g // 16);
+    }
+    ent_g: dict[int, JSProperty] = jo_ent_ro(id);
+    if key in ent_g {
+        return ent_g[key].value;
+    }
+    return js_undefined();
+}
+
+"""Return the full JSProperty for key, or a sentinel (key=0, deleted=True) if not found.
+
+Shape mode materializes a fresh JSProperty per hit (accepted through
+Phase 4; Phase 5 adds non-materializing accessors for the hot paths)."""
+def:pub jo_get_property(id: int, key: int) -> JSProperty {
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        packed_p: int = shape_lookup(jo_shape_id(id), key);
+        # Accessor entries report not-found here (dict parity: no entries
+        # row) — descriptor readers use the accessor-specific APIs.
+        if packed_p >= 0 and (packed_p & SHAPE_ATTR_ACCESSOR) != 0 {
+            packed_p = -1;
         }
-        et_new: int = realloc(self.ep, 16 + et_n * 8);
-        if et_new == 0 {
-            return;
-        }
-        write_i64(et_new, 8, et_n);
-        self.ep = et_new;
-    }
-    # ── Packed cell_flags bool accessors (P5) ──────────────────────────────
-    """[[Extensible]] — false once FLAG_NON_EXTENSIBLE is set (JS one-way)."""
-    def:pub is_ext -> bool {
-        return (self.cell_flags & FLAG_NON_EXTENSIBLE) == 0;
-    }
-
-    """Mark [[PreventExtensions]] (one-way; never cleared on a live object)."""
-    def:pub set_non_ext {
-        self.cell_flags = self.cell_flags | FLAG_NON_EXTENSIBLE;
-    }
-
-    """True for a mapped `arguments` exotic object (parameter-slot aliasing)."""
-    def:pub mapped_args -> bool {
-        return (self.cell_flags & FLAG_MAPPED_ARGS) != 0;
-    }
-
-    """Mark this object a mapped `arguments` exotic."""
-    def:pub set_mapped_args {
-        self.cell_flags = self.cell_flags | FLAG_MAPPED_ARGS;
-    }
-
-    """True for any (mapped or unmapped) `arguments` object."""
-    def:pub arguments_obj -> bool {
-        return (self.cell_flags & FLAG_IS_ARGUMENTS) != 0;
-    }
-
-    """Mark this object an `arguments` object."""
-    def:pub set_arguments {
-        self.cell_flags = self.cell_flags | FLAG_IS_ARGUMENTS;
-    }
-
-    """DATA-ONLY shape→dict conversion (no-op in dict mode).
-
-    INVARIANT: must never run on a map holding SHAPE_ATTR_ACCESSOR entries —
-    accessor getter/setter slots live here but their dict-mode home (the
-    JSObject accessor side-dicts) is out of reach, so this would corrupt them
-    into data properties. The only correct converter for a map that may hold
-    accessors is JSObject.pm_ensure_dict(); every jsobject.na.jac entry point
-    that can face an accessor converts at the OBJECT level first, which is
-    what makes the internal delete() backstop below safe."""
-    def:pub ensure_dict -> None {
-        if self.mode != MAP_MODE_SHAPE {
-            return;
-        }
-        # Slots are about to go away: invalidate inherited-read ICs holding one.
-        if (self.cell_flags & FLAG_IS_PROTO) != 0 {
-            proto_epoch_bump();
-        }
-        ks: list[int] = shape_keys(self.shape_id);
-        ks_n: int = shape_key_count(self.shape_id);
-        ei: int = 0;
-        while ei < ks_n {
-            ek: int = ks[ei];
-            packed: int = shape_lookup(self.shape_id, ek);
-            if packed >= 0 {
-                self.ent_rw()[ek] = JSProperty(
-                    key=ek,
-                    value=self.sget(packed // 16),
-                    writable=(packed & PROP_WRITABLE) != 0,
-                    enumerable=(packed & PROP_ENUMERABLE) != 0,
-                    configurable=(packed & PROP_CONFIGURABLE) != 0,
-                    deleted=False
-                );
-                self.ko_rw().append(ek);
-            }
-            ei = ei + 1;
-        }
-        self.sclear();
-        self.shape_id = 0;
-        self.mode = MAP_MODE_DICT;
-    }
-
-    """Return the value for key, or JSValue{tag=Undefined} if not found.
-
-    Accessor entries read as undefined — parity with dict mode, where
-    accessor-only keys have no `entries` row (getter dispatch is the VM's
-    job, before it ever reaches this data path)."""
-    def:pub get(key: int) -> JSValue {
-        if self.mode == MAP_MODE_SHAPE {
-            packed_g: int = shape_lookup(self.shape_id, key);
-            if packed_g < 0 {
-                return js_undefined();
-            }
-            if (packed_g & SHAPE_ATTR_ACCESSOR) != 0 {
-                return js_undefined();
-            }
-            return self.sget(packed_g // 16);
-        }
-        ent_g: dict[int, JSProperty] = self.ent_ro();
-        if key in ent_g {
-            return ent_g[key].value;
-        }
-        return js_undefined();
-    }
-
-    """Return the full JSProperty for key, or a sentinel (key=0, deleted=True) if not found.
-
-    Shape mode materializes a fresh JSProperty per hit (accepted through
-    Phase 4; Phase 5 adds non-materializing accessors for the hot paths)."""
-    def:pub get_property(key: int) -> JSProperty {
-        if self.mode == MAP_MODE_SHAPE {
-            packed_p: int = shape_lookup(self.shape_id, key);
-            # Accessor entries report not-found here (dict parity: no entries
-            # row) — descriptor readers use the accessor-specific APIs.
-            if packed_p >= 0 and (packed_p & SHAPE_ATTR_ACCESSOR) != 0 {
-                packed_p = -1;
-            }
-            if packed_p >= 0 {
-                return JSProperty(
-                    key=key,
-                    value=self.sget(packed_p // 16),
-                    writable=(packed_p & PROP_WRITABLE) != 0,
-                    enumerable=(packed_p & PROP_ENUMERABLE) != 0,
-                    configurable=(packed_p & PROP_CONFIGURABLE) != 0,
-                    deleted=False
-                );
-            }
+        if packed_p >= 0 {
             return JSProperty(
-                key=0,
-                value=js_undefined(),
-                writable=False,
-                enumerable=False,
-                configurable=False,
-                deleted=True
+                key=key,
+                value=jo_sget(id, packed_p // 16),
+                writable=(packed_p & PROP_WRITABLE) != 0,
+                enumerable=(packed_p & PROP_ENUMERABLE) != 0,
+                configurable=(packed_p & PROP_CONFIGURABLE) != 0,
+                deleted=False
             );
         }
-        ent_gp: dict[int, JSProperty] = self.ent_ro();
-        if key in ent_gp {
-            return ent_gp[key];
-        }
-        # Sentinel: key=0 means "not found"
         return JSProperty(
             key=0,
             value=js_undefined(),
@@ -1071,352 +1373,357 @@ obj:pub JSObject {
             deleted=True
         );
     }
-
-    """Own DATA property value for `key`, or the hole sentinel when there is
-    none (absent, or an accessor) — has_own_data() + get() in one lookup."""
-    def:pub get_own_data_or_hole(key: int) -> JSValue {
-        if self.mode == MAP_MODE_SHAPE {
-            packed_o: int = shape_lookup(self.shape_id, key);
-            if packed_o < 0 or (packed_o & SHAPE_ATTR_ACCESSOR) != 0 {
-                return jsv_hole();
-            }
-            return self.sget(packed_o // 16);
-        }
-        return self._own_data_dict(key);
+    ent_gp: dict[int, JSProperty] = jo_ent_ro(id);
+    if key in ent_gp {
+        return ent_gp[key];
     }
+    # Sentinel: key=0 means "not found"
+    return JSProperty(
+        key=0,
+        value=js_undefined(),
+        writable=False,
+        enumerable=False,
+        configurable=False,
+        deleted=True
+    );
+}
 
-    """get_own_data_or_hole's dict-mode half, kept out of the shape-mode
-    path: its owned map local would register the whole method for unwind."""
-    def _own_data_dict(key: int) -> JSValue {
-        ent_o: dict[int, JSProperty] = self.ent_ro();
-        if key in ent_o {
-            return ent_o[key].value;
+"""Own DATA property value for `key`, or the hole sentinel when there is
+none (absent, or an accessor) — has_own_data() + get() in one lookup."""
+def:pub jo_get_own_data_or_hole(id: int, key: int) -> JSValue {
+    go_p: int = jo_p(id);
+    if __mem_load_i64(wrapping_add(go_p, 72)) == MAP_MODE_SHAPE {
+        packed_o: int = shape_lookup(__mem_load_i64(wrapping_add(go_p, 16)), key);
+        if packed_o < 0 or (packed_o & SHAPE_ATTR_ACCESSOR) != 0 {
+            return jsv_hole();
         }
-        return jsv_hole();
-    }
-
-    """Non-materializing own-data presence test for the property-read IC hot path.
-
-    Returns True iff `key` is a present, non-accessor DATA property — mirroring
-    the found-ness of get_property() (shape accessors and missing keys → False;
-    dict accessors still return True here and are filtered by the caller's
-    accessor-table check, exactly as get_property()'s sentinel path was).
-
-    This returns a scalar and allocates NOTHING. get_property() materializes a
-    fresh JSProperty per hit in shape mode, and on the ~75M-calls/build IC read
-    path that owned obj-typed result local was never released — leaking ~3GB and
-    OOMing vite builds under --gc. The read path only needs (present?, value):
-    pair this with the existing non-allocating get() for the value."""
-    def:pub has_own_data(key: int) -> bool {
-        if self.mode == MAP_MODE_SHAPE {
-            packed_h: int = shape_lookup(self.shape_id, key);
-            if packed_h < 0 {
-                return False;
-            }
-            if (packed_h & SHAPE_ATTR_ACCESSOR) != 0 {
-                return False;
-            }
-            return True;
+        go_i: int = packed_o >> 4;
+        if go_i < 4 {
+            return __mem_load_i64(wrapping_add(go_p, wrapping_add(32, wrapping_mul(go_i, 8))));
         }
-        return key in self.ent_ro();
+        return __mem_load_i64(
+            wrapping_add(__mem_load_i64(wrapping_add(go_p, 64)), wrapping_add(wrapping_mul(go_i, 8), -16))
+        );
     }
+    return _jo_own_data_dict(id, key);
+}
 
-    """Insert or update a property; flags is a PROP_* bitmask.
+"""get_own_data_or_hole's dict-mode half, kept out of the shape-mode
+path: its owned map local would register the whole method for unwind."""
+def _jo_own_data_dict(id: int, key: int) -> JSValue {
+    ent_o: dict[int, JSProperty] = jo_ent_ro(id);
+    if key in ent_o {
+        return ent_o[key].value;
+    }
+    return jsv_hole();
+}
 
-    Returns 0 on success, -1 when the shape path cannot express the write
-    (accessor kind conflict, un-replayable attrs change, transition failure):
-    the caller must run JSObject.pm_ensure_dict() and retry — set() never
-    converts internally because a map holding accessors can only be converted
-    at the object level (see ensure_dict's invariant)."""
-    def:pub set(key: int, value: JSValue, flags: int) -> int {
-        if self.mode == MAP_MODE_SHAPE {
-            packed_s: int = shape_lookup(self.shape_id, key);
-            if packed_s >= 0 {
-                if (packed_s & SHAPE_ATTR_ACCESSOR) != 0 {
-                    return -1;
-                }
-                if (packed_s & 15) == (flags & 7) {
-                    self.sset(packed_s // 16, value);
-                    return 0;
-                }
-                # Attribute change on an existing key: replay the chain with
-                # the new attrs — slot layout is preserved (same key order and
-                # spans), so slots stays valid and only shape_id moves.
-                nsid_s: int = shape_change_attrs(self.shape_id, key, flags & 7);
-                if nsid_s >= 0 {
-                    self.shape_id = nsid_s;
-                    self.sset(packed_s // 16, value);
-                    return 0;
-                }
+"""Non-materializing own-data presence test for the property-read IC hot path.
+
+Returns True iff `key` is a present, non-accessor DATA property — mirroring
+the found-ness of get_property() (shape accessors and missing keys → False;
+dict accessors still return True here and are filtered by the caller's
+accessor-table check, exactly as get_property()'s sentinel path was).
+
+This returns a scalar and allocates NOTHING. get_property() materializes a
+fresh JSProperty per hit in shape mode, and on the ~75M-calls/build IC read
+path that owned obj-typed result local was never released — leaking ~3GB and
+OOMing vite builds under --gc. The read path only needs (present?, value):
+pair this with the existing non-allocating get() for the value."""
+def:pub jo_has_own_data(id: int, key: int) -> bool {
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        packed_h: int = shape_lookup(jo_shape_id(id), key);
+        if packed_h < 0 {
+            return False;
+        }
+        if (packed_h & SHAPE_ATTR_ACCESSOR) != 0 {
+            return False;
+        }
+        return True;
+    }
+    return key in jo_ent_ro(id);
+}
+
+"""Insert or update a property; flags is a PROP_* bitmask.
+
+Returns 0 on success, -1 when the shape path cannot express the write
+(accessor kind conflict, un-replayable attrs change, transition failure):
+the caller must run JSObject.pm_ensure_dict() and retry — set() never
+converts internally because a map holding accessors can only be converted
+at the object level (see ensure_dict's invariant)."""
+def:pub jo_set(id: int, key: int, value: JSValue, flags: int) -> int {
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        packed_s: int = shape_lookup(jo_shape_id(id), key);
+        if packed_s >= 0 {
+            if (packed_s & SHAPE_ATTR_ACCESSOR) != 0 {
                 return -1;
             }
-            child: int = shape_transition_add(self.shape_id, key, flags & 7);
-            if child > 0 {
-                # Slot-index invariant: this map only ever follows span-1
-                # transitions from its own shape, so the new key's slot is
-                # exactly len(slots).
-                self.shape_id = child;
-                self.spush(value);
-                self.version = self.version + 1;  # key add → invalidate ICs
-                if key < 0 or key >= 1000000 {
-                    self.brand = self.brand | brand_bit_for_key(key);
-                }
-                # A new key on a prototype can shadow an inherited one an IC cached.
-                if (self.cell_flags & FLAG_IS_PROTO) != 0 {
-                    proto_epoch_bump();
-                }
+            if (packed_s & 15) == (flags & 7) {
+                jo_sset(id, packed_s // 16, value);
+                return 0;
+            }
+            # Attribute change on an existing key: replay the chain with
+            # the new attrs — slot layout is preserved (same key order and
+            # spans), so slots stays valid and only shape_id moves.
+            nsid_s: int = shape_change_attrs(jo_shape_id(id), key, flags & 7);
+            if nsid_s >= 0 {
+                jo_set_shape_id(id, nsid_s);
+                jo_sset(id, packed_s // 16, value);
                 return 0;
             }
             return -1;
         }
-        return self._set_dict(key, value, flags);
-    }
-
-    """set's dict-mode half (its map and list locals would register the
-    shape-mode path for unwind too)."""
-    def _set_dict(key: int, value: JSValue, flags: int) -> int {
-        w: bool = (flags & PROP_WRITABLE) != 0;
-        e: bool = (flags & PROP_ENUMERABLE) != 0;
-        c: bool = (flags & PROP_CONFIGURABLE) != 0;
-        ent_s: dict[int, JSProperty] = self.ent_rw();  # materialize dict storage
-        if key not in ent_s {
-            # A delete leaves the id parked in key_order (removing it eagerly
-            # would be O(n) per delete). Re-adding the key must not append a
-            # SECOND copy — the key would then enumerate twice. Scan only when
-            # key_order actually holds more ids than there are live entries,
-            # i.e. only when some delete has left slack; in the common
-            # never-deleted case this is a single length compare.
-            ko_s: list[int] = self.ko_rw();
-            if len(ko_s) > len(ent_s) {
-                purged: list[int] = [];
-                pi: int = 0;
-                pn: int = len(ko_s);
-                while pi < pn {
-                    pk: int = ko_s[pi];
-                    if pk != key {
-                        purged.append(pk);
-                    }
-                    pi = pi + 1;
-                }
-                self.ext_rw().key_order = purged;
-                ko_s = purged;  # keep local in sync with the reassigned field
-            }
-            ko_s.append(key);
-            self.version = self.version + 1;  # shape change → invalidate ICs
+        child: int = shape_transition_add(jo_shape_id(id), key, flags & 7);
+        if child > 0 {
+            # Slot-index invariant: this map only ever follows span-1
+            # transitions from its own shape, so the new key's slot is
+            # exactly len(slots).
+            jo_set_shape_id(id, child);
+            jo_spush(id, value);
+            jo_set_version(id, jo_version(id) + 1);  # key add → invalidate ICs
             if key < 0 or key >= 1000000 {
-                self.brand = self.brand | brand_bit_for_key(key);
+                jo_set_brand(id, jo_brand(id) | brand_bit_for_key(key));
             }
-            if (self.cell_flags & FLAG_IS_PROTO) != 0 {
+            # A new key on a prototype can shadow an inherited one an IC cached.
+            if (jo_cell_flags(id) & FLAG_IS_PROTO) != 0 {
                 proto_epoch_bump();
             }
+            return 0;
         }
-        self.wb(value);
-        ent_s[key] = JSProperty(
-            key=key,
-            value=value,
-            writable=w,
-            enumerable=e,
-            configurable=c,
-            deleted=False
-        );
-        return 0;
+        return -1;
     }
+    return _jo_set_dict(id, key, value, flags);
+}
 
-    """
-    Mark a property as deleted and remove it from the map.
-    Returns True if the property existed and was deleted, False otherwise.
-    """
-    def:pub delete(key: int) -> bool {
-        if self.mode == MAP_MODE_SHAPE {
-            if not shape_has(self.shape_id, key) {
-                return False;
-            }
-            # Deletes are the shape worst case: convert, then dict-delete.
-            self.ensure_dict();
-        }
-        ent_d: dict[int, JSProperty] = self.ent_ro();
-        if key in ent_d {
-            prop: JSProperty = ent_d[key];
-            if not prop.deleted {
-                del ent_d[key];
-                self.version = self.version + 1;  # shape change → invalidate ICs
-                if key < 0 or key >= 1000000 {
-                    self.brand = self.brand - (self.brand & brand_bit_for_key(key));
+"""set's dict-mode half (its map and list locals would register the
+shape-mode path for unwind too)."""
+def _jo_set_dict(id: int, key: int, value: JSValue, flags: int) -> int {
+    w: bool = (flags & PROP_WRITABLE) != 0;
+    e: bool = (flags & PROP_ENUMERABLE) != 0;
+    c: bool = (flags & PROP_CONFIGURABLE) != 0;
+    ent_s: dict[int, JSProperty] = jo_ent_rw(id);  # materialize dict storage
+    if key not in ent_s {
+        # A delete leaves the id parked in key_order (removing it eagerly
+        # would be O(n) per delete). Re-adding the key must not append a
+        # SECOND copy — the key would then enumerate twice. Scan only when
+        # key_order actually holds more ids than there are live entries,
+        # i.e. only when some delete has left slack; in the common
+        # never-deleted case this is a single length compare.
+        ko_s: list[int] = jo_ko_rw(id);
+        if len(ko_s) > len(ent_s) {
+            purged: list[int] = [];
+            pi: int = 0;
+            pn: int = len(ko_s);
+            while pi < pn {
+                pk: int = ko_s[pi];
+                if pk != key {
+                    purged.append(pk);
                 }
-                if (self.cell_flags & FLAG_IS_PROTO) != 0 {
-                    proto_epoch_bump();
-                }
-                return True;
+                pi = pi + 1;
             }
+            jo_ext_rw(id).key_order = purged;
+            ko_s = purged;  # keep local in sync with the reassigned field
         }
-        return False;
-    }
-
-    """Return True if the key exists in the map."""
-    def:pub has_key(key: int) -> bool {
-        if self.mode == MAP_MODE_SHAPE {
-            return shape_has(self.shape_id, key);
+        ko_s.append(key);
+        jo_set_version(id, jo_version(id) + 1);  # shape change → invalidate ICs
+        if key < 0 or key >= 1000000 {
+            jo_set_brand(id, jo_brand(id) | brand_bit_for_key(key));
         }
-        return key in self.ent_ro();
-    }
-
-    """Return list of enumerable key IDs in insertion order."""
-    def:pub keys -> list[int] {
-        result: list[int] = [];
-        if self.mode == MAP_MODE_SHAPE {
-            ks_e: list[int] = shape_keys(self.shape_id);
-            ks_e_n: int = shape_key_count(self.shape_id);
-            ei: int = 0;
-            while ei < ks_e_n {
-                packed_k: int = shape_lookup(self.shape_id, ks_e[ei]);
-                # Accessor entries excluded — dict parity (keys() reads
-                # `entries` only; accessor-only keys never appear there).
-                if packed_k >= 0
-                    and (packed_k & SHAPE_ATTR_ACCESSOR) == 0
-                    and (packed_k & PROP_ENUMERABLE) != 0 {
-                    result.append(ks_e[ei]);
-                }
-                ei = ei + 1;
-            }
-            return result;
-        }
-        ko_k: list[int] = self.ko_ro();
-        ent_k: dict[int, JSProperty] = self.ent_ro();
-        ki: int = 0;
-        while ki < len(ko_k) {
-            k: int = ko_k[ki];
-            if k in ent_k {
-                if ent_k[k].enumerable {
-                    result.append(k);
-                }
-            }
-            ki = ki + 1;
-        }
-        return result;
-    }
-
-    """Return list of all key IDs in insertion order (including non-enumerable)."""
-    def:pub all_keys -> list[int] {
-        result: list[int] = [];
-        if self.mode == MAP_MODE_SHAPE {
-            # Fresh copy — shape_keys() returns the shared shape cache, which
-            # callers must never mutate.
-            ks_a: list[int] = shape_keys(self.shape_id);
-            ks_a_n: int = shape_key_count(self.shape_id);
-            ai: int = 0;
-            while ai < ks_a_n {
-                result.append(ks_a[ai]);
-                ai = ai + 1;
-            }
-            return result;
-        }
-        ko_a: list[int] = self.ko_ro();
-        ent_a: dict[int, JSProperty] = self.ent_ro();
-        ki: int = 0;
-        while ki < len(ko_a) {
-            k: int = ko_a[ki];
-            if k in ent_a {
-                result.append(k);
-            }
-            ki = ki + 1;
-        }
-        return result;
-    }
-
-    """Dense-elements → sparse-map converter (no-op when ELEMS_NONE).
-
-    Materializes every non-hole element as an ordinary data property at its
-    interned decimal key with default attrs (exactly what dense elements are
-    by construction), then drops the dense storage. Forces dict mode first:
-    index keys must never enter the shape transition tree (per-index shape
-    chains — the same reason the jsobject write funnels bail index keys)."""
-    def:pub ensure_sparse -> None {
-        if self.elems_kind == ELEMS_NONE {
-            return;
-        }
-        self.pm_ensure_dict();
-        es_i: int = 0;
-        es_n: int = self.elen();
-        while es_i < es_n {
-            es_v: JSValue = self.eget(es_i);
-            if not jsv_is_hole(es_v) {
-                es_k: int = _IDX_INTERN_CB(es_i);
-                if es_k >= 0 {
-                    self.set(es_k, es_v, PROP_DEFAULT);
-                }
-            }
-            es_i = es_i + 1;
-        }
-        self.eclear();
-        self.elems_kind = ELEMS_NONE;
-    }
-
-    """Materialize (on first use) and return this object's accessor table (P2).
-    In-struct counterpart of jsobject.jac's `_acc_rw`, for methods that install
-    accessors while converting shape→dict."""
-    def ensure_accessors -> AccessorTable {
-        ea_x: JSObjectExt = self.ext_rw();
-        ea_a: AccessorTable | None = ea_x.accessors;
-        if ea_a is not None {
-            return ea_a;
-        }
-        t: AccessorTable = AccessorTable(
-            getters={}, setters={}, enumerable={}, configurable={}
-        );
-        ea_x.accessors = t;
-        return t;
-    }
-
-    """THE shape→dict converter — the only one safe for accessor-bearing maps.
-
-    Data entries materialize into `entries`; accessor entries (2-slot
-    getter/setter pairs) move into the accessor side-dicts. Undefined-valued
-    getter/setter slots are RETAINED as undefined-valued dict rows — dict
-    mode stores whatever the installer passed, and [[Delete]]'s accessor arm
-    keys off row MEMBERSHIP (a `{get: undefined}` accessor must still delete
-    through that arm). Insertion order is preserved via key_order, which
-    lists accessor-only keys too — exactly the dict-mode invariant
-    enumeration depends on."""
-    def:pub pm_ensure_dict -> None {
-        if self.mode != MAP_MODE_SHAPE {
-            return;
-        }
-        # Slots are about to go away: invalidate inherited-read ICs holding one.
-        if (self.cell_flags & FLAG_IS_PROTO) != 0 {
+        if (jo_cell_flags(id) & FLAG_IS_PROTO) != 0 {
             proto_epoch_bump();
         }
-        pes: list[int] = shape_keys(self.shape_id);
-        pes_n: int = shape_key_count(self.shape_id);
-        pi: int = 0;
-        while pi < pes_n {
-            pk: int = pes[pi];
-            packed: int = shape_lookup(self.shape_id, pk);
-            if packed >= 0 {
-                if (packed & SHAPE_ATTR_ACCESSOR) != 0 {
-                    at: AccessorTable = self.ensure_accessors();
-                    at.getters[pk] = self.sget(packed // 16);
-                    at.setters[pk] = self.sget(packed // 16 + 1);
-                    at.enumerable[pk] = (packed & PROP_ENUMERABLE) != 0;
-                    at.configurable[pk] = (packed & PROP_CONFIGURABLE) != 0;
-                    self.ko_rw().append(pk);
-                } else {
-                    self.ent_rw()[pk] = JSProperty(
-                        key=pk,
-                        value=self.sget(packed // 16),
-                        writable=(packed & PROP_WRITABLE) != 0,
-                        enumerable=(packed & PROP_ENUMERABLE) != 0,
-                        configurable=(packed & PROP_CONFIGURABLE) != 0,
-                        deleted=False
-                    );
-                    self.ko_rw().append(pk);
-                }
-            }
-            pi = pi + 1;
-        }
-        self.sclear();
-        self.shape_id = 0;
-        self.mode = MAP_MODE_DICT;
     }
+    jo_wb(id, value);
+    ent_s[key] = JSProperty(
+        key=key,
+        value=value,
+        writable=w,
+        enumerable=e,
+        configurable=c,
+        deleted=False
+    );
+    return 0;
+}
+
+"""
+Mark a property as deleted and remove it from the map.
+Returns True if the property existed and was deleted, False otherwise.
+"""
+def:pub jo_delete(id: int, key: int) -> bool {
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        if not shape_has(jo_shape_id(id), key) {
+            return False;
+        }
+        # Deletes are the shape worst case: convert, then dict-delete.
+        jo_ensure_dict(id);
+    }
+    ent_d: dict[int, JSProperty] = jo_ent_ro(id);
+    if key in ent_d {
+        prop: JSProperty = ent_d[key];
+        if not prop.deleted {
+            del ent_d[key];
+            jo_set_version(id, jo_version(id) + 1);  # shape change → invalidate ICs
+            if key < 0 or key >= 1000000 {
+                jo_set_brand(id, jo_brand(id) - (jo_brand(id) & brand_bit_for_key(key)));
+            }
+            if (jo_cell_flags(id) & FLAG_IS_PROTO) != 0 {
+                proto_epoch_bump();
+            }
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Return True if the key exists in the map."""
+def:pub jo_has_key(id: int, key: int) -> bool {
+    hk_p: int = jo_p(id);
+    if __mem_load_i64(wrapping_add(hk_p, 72)) == MAP_MODE_SHAPE {
+        return shape_has(__mem_load_i64(wrapping_add(hk_p, 16)), key);
+    }
+    return key in jo_ent_ro(id);
+}
+
+"""Return list of enumerable key IDs in insertion order."""
+def:pub jo_keys(id: int) -> list[int] {
+    result: list[int] = [];
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        ks_e: list[int] = shape_keys(jo_shape_id(id));
+        ks_e_n: int = shape_key_count(jo_shape_id(id));
+        ei: int = 0;
+        while ei < ks_e_n {
+            packed_k: int = shape_lookup(jo_shape_id(id), ks_e[ei]);
+            # Accessor entries excluded — dict parity (keys() reads
+            # `entries` only; accessor-only keys never appear there).
+            if packed_k >= 0
+                and (packed_k & SHAPE_ATTR_ACCESSOR) == 0
+                and (packed_k & PROP_ENUMERABLE) != 0 {
+                result.append(ks_e[ei]);
+            }
+            ei = ei + 1;
+        }
+        return result;
+    }
+    ko_k: list[int] = jo_ko_ro(id);
+    ent_k: dict[int, JSProperty] = jo_ent_ro(id);
+    ki: int = 0;
+    while ki < len(ko_k) {
+        k: int = ko_k[ki];
+        if k in ent_k {
+            if ent_k[k].enumerable {
+                result.append(k);
+            }
+        }
+        ki = ki + 1;
+    }
+    return result;
+}
+
+"""Return list of all key IDs in insertion order (including non-enumerable)."""
+def:pub jo_all_keys(id: int) -> list[int] {
+    result: list[int] = [];
+    if jo_mode(id) == MAP_MODE_SHAPE {
+        # Fresh copy — shape_keys() returns the shared shape cache, which
+        # callers must never mutate.
+        ks_a: list[int] = shape_keys(jo_shape_id(id));
+        ks_a_n: int = shape_key_count(jo_shape_id(id));
+        ai: int = 0;
+        while ai < ks_a_n {
+            result.append(ks_a[ai]);
+            ai = ai + 1;
+        }
+        return result;
+    }
+    ko_a: list[int] = jo_ko_ro(id);
+    ent_a: dict[int, JSProperty] = jo_ent_ro(id);
+    ki: int = 0;
+    while ki < len(ko_a) {
+        k: int = ko_a[ki];
+        if k in ent_a {
+            result.append(k);
+        }
+        ki = ki + 1;
+    }
+    return result;
+}
+
+"""Dense-elements → sparse-map converter (no-op when ELEMS_NONE).
+
+Materializes every non-hole element as an ordinary data property at its
+interned decimal key with default attrs (exactly what dense elements are
+by construction), then drops the dense storage. Forces dict mode first:
+index keys must never enter the shape transition tree (per-index shape
+chains — the same reason the jsobject write funnels bail index keys)."""
+def:pub jo_ensure_sparse(id: int) -> None {
+    if jo_elems_kind(id) == ELEMS_NONE {
+        return;
+    }
+    jo_pm_ensure_dict(id);
+    es_i: int = 0;
+    es_n: int = jo_elen(id);
+    while es_i < es_n {
+        es_v: JSValue = jo_eget(id, es_i);
+        if not jsv_is_hole(es_v) {
+            es_k: int = _IDX_INTERN_CB(es_i);
+            if es_k >= 0 {
+                jo_set(id, es_k, es_v, PROP_DEFAULT);
+            }
+        }
+        es_i = es_i + 1;
+    }
+    jo_eclear(id);
+    jo_set_elems_kind(id, ELEMS_NONE);
+}
+
+"""THE shape→dict converter — the only one safe for accessor-bearing maps.
+
+Data entries materialize into `entries`; accessor entries (2-slot
+getter/setter pairs) move into the accessor side-dicts. Undefined-valued
+getter/setter slots are RETAINED as undefined-valued dict rows — dict
+mode stores whatever the installer passed, and [[Delete]]'s accessor arm
+keys off row MEMBERSHIP (a `{get: undefined}` accessor must still delete
+through that arm). Insertion order is preserved via key_order, which
+lists accessor-only keys too — exactly the dict-mode invariant
+enumeration depends on."""
+def:pub jo_pm_ensure_dict(id: int) -> None {
+    if jo_mode(id) != MAP_MODE_SHAPE {
+        return;
+    }
+    # Slots are about to go away: invalidate inherited-read ICs holding one.
+    if (jo_cell_flags(id) & FLAG_IS_PROTO) != 0 {
+        proto_epoch_bump();
+    }
+    pes: list[int] = shape_keys(jo_shape_id(id));
+    pes_n: int = shape_key_count(jo_shape_id(id));
+    pi: int = 0;
+    while pi < pes_n {
+        pk: int = pes[pi];
+        packed: int = shape_lookup(jo_shape_id(id), pk);
+        if packed >= 0 {
+            if (packed & SHAPE_ATTR_ACCESSOR) != 0 {
+                at: AccessorTable = _jo_ensure_accessors(id);
+                at.getters[pk] = jo_sget(id, packed // 16);
+                at.setters[pk] = jo_sget(id, packed // 16 + 1);
+                at.enumerable[pk] = (packed & PROP_ENUMERABLE) != 0;
+                at.configurable[pk] = (packed & PROP_CONFIGURABLE) != 0;
+                jo_ko_rw(id).append(pk);
+            } else {
+                jo_ent_rw(id)[pk] = JSProperty(
+                    key=pk,
+                    value=jo_sget(id, packed // 16),
+                    writable=(packed & PROP_WRITABLE) != 0,
+                    enumerable=(packed & PROP_ENUMERABLE) != 0,
+                    configurable=(packed & PROP_CONFIGURABLE) != 0,
+                    deleted=False
+                );
+                jo_ko_rw(id).append(pk);
+            }
+        }
+        pi = pi + 1;
+    }
+    jo_sclear(id);
+    jo_set_shape_id(id, 0);
+    jo_set_mode(id, MAP_MODE_DICT);
 }
 # ── Own-property storage (was the separate JSPropertyMap archetype; inlined
 # in P3a to drop one allocation + RC header per object). SHAPE mode: layout in

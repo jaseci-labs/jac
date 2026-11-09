@@ -13,9 +13,16 @@ character-by-character index access.
 Bun reference: src/string/bun_string.zig, src/bun.js/webcore/Blob.zig
 """
 
-import from engine.src.runtime.realm { Realm, gc_note_alloc, realm_request_gc }
+import from engine.src.runtime.realm {
+    Realm,
+    gc_note_alloc,
+    gc_note_alloc_n,
+    realm_request_gc
+}
 import from engine.src.runtime.mem {
     Ptr,
+    mem_calloc,
+    mem_realloc,
     io_alloc,
     io_free,
     write_byte,
@@ -500,8 +507,8 @@ def _str_text_is_array_index(s: str) -> bool {
 # text compares, ~500 instructions per element read through the generic
 # property path (array iterators over non-dense objects, arguments, for-in
 # keys, sparse writes).
-glob _IDXK_IDS: list[int] = [],
-     _IDXK_LIMIT: int = 1048576;
+glob:pub _IDXK_IDS: list[int] = [];
+glob _IDXK_LIMIT: int = 1048576;
 
 """str_intern(str(i)) for an int `i`, cached for 0 <= i < 2^20."""
 def:pub str_intern_index(i: int) -> int {
@@ -548,6 +555,13 @@ glob:pub HEAP_STRING_BASE: int = 1000000000;  # 1e9
 # Single-entry UTF-16 units memo for non-ASCII charCodeAt/codePointAt/at loops
 # (js_string_unit_at_cell). Keyed by string id; invalidated on any heap-slot
 # (re)alloc so a recycled id can never return a prior string's units.
+# The last two byte-clean string cells whose text address was asked
+# (str_ascii_data) and those addresses. A heap slot's text changes only when
+# the slot is reused; the allocators clear the memo then.
+glob _A8_ID: int = -1,
+     _A8_PTR: int = 0,
+     _A8_ID2: int = -1,
+     _A8_PTR2: int = 0;
 glob _U16MEMO_ID: int = -1,
      _U16MEMO: list[int] = [];
 
@@ -578,6 +592,153 @@ glob U16IX_STEP: int = 64,
 # string id -> its slot in _U16IX: lookups and the per-allocation invalidation
 # in _heap_slot_alloc used to scan all U16IX_SLOTS entries (the scan alone was
 # ~13% of a string-building loop).
+# ── Heap-string metadata records ────────────────────────────────────────────
+# One raw 40-byte record per heap slot (the id-parallel lists the realm had):
+# word 0 rope_left, 8 rope_right, 16 rope_len, 24 heap_ascii, 32 mark epoch.
+# Chunks of 4096 records never move; the chunk table grows by doubling. The
+# slot's text stays in _STR_REALM.heap_strings; hs_count() == its length.
+glob _HS_CHUNKS: int = 0,
+     _HS_CAP: int = 0,
+     _HS_COUNT: int = 0;
+
+# Parked heap slots (swept, or reserved by _hs_reserve), a raw stack of slot
+# indices; _HS_NOTE counts rope / slice slots not yet accounted (by 32).
+glob _HS_FREE: int = 0,
+     _HS_FREE_CAP: int = 0,
+     _HS_FREE_N: int = 0,
+     _HS_NOTE: int = 0;
+
+"""Park heap slot `h` (dead: mark -1) for the allocators to hand out."""
+def:pub hs_free_push(h: int) -> None {
+    if _HS_FREE_N >= _HS_FREE_CAP {
+        fp_cap: int = 1024 if _HS_FREE_CAP == 0 else _HS_FREE_CAP * 2;
+        _HS_FREE = mem_realloc(_HS_FREE, fp_cap * 8);
+        _HS_FREE_CAP = fp_cap;
+    }
+    __mem_store_i64(wrapping_add(_HS_FREE, wrapping_mul(_HS_FREE_N, 8)), h);
+    _HS_FREE_N = _HS_FREE_N + 1;
+}
+
+"""Number of parked heap slots."""
+def:pub hs_free_n -> int {
+    return _HS_FREE_N;
+}
+
+"""Account the batched rope / slice slots (gc_note_alloc, 48 bytes each)."""
+def _hs_note_flush -> None {
+    gc_note_alloc_n(_STR_REALM, _HS_NOTE, _HS_NOTE * 48);
+    _HS_NOTE = 0;
+}
+
+"""64 new heap slots, parked like swept ones (text "", no children, mark -1),
+so a rope or slice always takes a parked slot."""
+def _hs_reserve -> None {
+    rv_a: int = len(_STR_REALM.heap_strings);
+    rv_k: int = 0;
+    while rv_k < 64 {
+        _STR_REALM.heap_strings.append("");
+        rv_k = rv_k + 1;
+    }
+    hs_grow(rv_a + 64);
+    rv_k = 63;
+    while rv_k >= 0 {
+        rv_p: int = hs_p(rv_a + rv_k);
+        __mem_store_i64(rv_p, -1);
+        __mem_store_i64(wrapping_add(rv_p, 8), -1);
+        __mem_store_i64(wrapping_add(rv_p, 16), 0);
+        __mem_store_i64(wrapping_add(rv_p, 24), 0);
+        __mem_store_i64(wrapping_add(rv_p, 32), -1);
+        hs_free_push(rv_a + rv_k);
+        rv_k = rv_k - 1;
+    }
+}
+
+"""Address of heap slot `h`'s record (0 <= h < hs_count())."""
+def:pub hs_p(h: int) -> int {
+    return wrapping_add(
+        __mem_load_i64(wrapping_add(_HS_CHUNKS, wrapping_mul(h >> 12, 8))),
+        wrapping_mul(h & 4095, 40)
+    );
+}
+
+"""Number of heap slots with a record."""
+def:pub hs_count -> int {
+    return _HS_COUNT;
+}
+
+"""Records for heap slots 0 .. n-1 (new ones zeroed)."""
+def:pub hs_grow(n: int) -> None {
+    while _HS_COUNT < n {
+        hg_c: int = _HS_COUNT >> 12;
+        if hg_c >= _HS_CAP {
+            hg_cap: int = 64 if _HS_CAP == 0 else _HS_CAP * 2;
+            hg_t: int = mem_realloc(_HS_CHUNKS, hg_cap * 8);
+            hg_k: int = _HS_CAP;
+            while hg_k < hg_cap {
+                __mem_store_i64(wrapping_add(hg_t, wrapping_mul(hg_k, 8)), 0);
+                hg_k = hg_k + 1;
+            }
+            _HS_CHUNKS = hg_t;
+            _HS_CAP = hg_cap;
+        }
+        if __mem_load_i64(wrapping_add(_HS_CHUNKS, wrapping_mul(hg_c, 8))) == 0 {
+            __mem_store_i64(wrapping_add(_HS_CHUNKS, wrapping_mul(hg_c, 8)), mem_calloc(4096, 40));
+        }
+        _HS_COUNT = _HS_COUNT + 1;
+    }
+}
+
+"""Initialize heap slot `h`'s record: children / slice base `rl`, `rr`, byte
+length `rlen`, ASCII flag `asc`, mark epoch 0 (live, not yet marked)."""
+def _hs_init(h: int, rl: int, rr: int, rlen: int, asc: int) -> None {
+    hi_p: int = hs_p(h);
+    __mem_store_i64(hi_p, rl);
+    __mem_store_i64(wrapping_add(hi_p, 8), rr);
+    __mem_store_i64(wrapping_add(hi_p, 16), rlen);
+    __mem_store_i64(wrapping_add(hi_p, 24), asc);
+    __mem_store_i64(wrapping_add(hi_p, 32), 0);
+}
+
+def:pub hs_left(h: int) -> int {
+    return __mem_load_i64(wrapping_add(hs_p(h), 0));
+}
+
+def:pub hs_set_left(h: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(hs_p(h), 0), v);
+}
+
+def:pub hs_right(h: int) -> int {
+    return __mem_load_i64(wrapping_add(hs_p(h), 8));
+}
+
+def:pub hs_set_right(h: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(hs_p(h), 8), v);
+}
+
+def:pub hs_len(h: int) -> int {
+    return __mem_load_i64(wrapping_add(hs_p(h), 16));
+}
+
+def:pub hs_set_len(h: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(hs_p(h), 16), v);
+}
+
+def:pub hs_ascii(h: int) -> int {
+    return __mem_load_i64(wrapping_add(hs_p(h), 24));
+}
+
+def:pub hs_set_ascii(h: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(hs_p(h), 24), v);
+}
+
+def:pub hs_mark(h: int) -> int {
+    return __mem_load_i64(wrapping_add(hs_p(h), 32));
+}
+
+def:pub hs_set_mark(h: int, v: int) -> None {
+    __mem_store_i64(wrapping_add(hs_p(h), 32), v);
+}
+
 """Store `s` as a non-interned heap string; return its id (HEAP_STRING_BASE+idx).
 
 Unlike str_intern this does NOT hash `s` or check for duplicates — it appends one
@@ -615,36 +776,112 @@ def _heap_slot_alloc(s: str, rl: int, rr: int, rlen: int, asc: int) -> int {
     if rl < 0 {
         _hs_note_bytes(rlen);
     }  # leaf bytes (ropes are metered on flatten)
-    fn: int = len(_STR_REALM.free_heap_string_slots);
+    fn: int = _HS_FREE_N;
     if fn > 0 {
-        idx: int = _STR_REALM.free_heap_string_slots[fn - 1];
-        del _STR_REALM.free_heap_string_slots[fn - 1];
+        idx: int = __mem_load_i64(wrapping_add(_HS_FREE, wrapping_mul(fn - 1, 8)));
+        _HS_FREE_N = fn - 1;
         # Reusing a swept slot: if it is the memoized string's slot, its units are
         # now stale — drop the memo. (Any other slot leaves the memo valid.)
         if (HEAP_STRING_BASE + idx) == _U16MEMO_ID {
             _U16MEMO_ID = -1;
         }
-        u16_slot: int = _U16IX_POS.get(HEAP_STRING_BASE + idx, -1);
-        if u16_slot >= 0 {
-            _U16IX[u16_slot].id = -1;
-            del _U16IX_POS[HEAP_STRING_BASE + idx];
+        if (HEAP_STRING_BASE + idx) == _A8_ID or (HEAP_STRING_BASE + idx) == _A8_ID2 {
+            _A8_ID = -1;
+            _A8_ID2 = -1;
+        }
+        if len(_U16IX_POS) > 0 {
+            _u16ix_drop(HEAP_STRING_BASE + idx);
         }
         _STR_REALM.heap_strings[idx] = s;
-        _STR_REALM.rope_left[idx] = rl;
-        _STR_REALM.rope_right[idx] = rr;
-        _STR_REALM.rope_len[idx] = rlen;
-        _STR_REALM.heap_ascii[idx] = asc;
-        _STR_REALM.heap_strings_mark_epoch[idx] = 0;  # live, not-yet-marked
+        _hs_init(idx, rl, rr, rlen, asc);  # live, not-yet-marked
         return idx;
     }
     aidx: int = len(_STR_REALM.heap_strings);
     _STR_REALM.heap_strings.append(s);
-    _STR_REALM.rope_left.append(rl);
-    _STR_REALM.rope_right.append(rr);
-    _STR_REALM.rope_len.append(rlen);
-    _STR_REALM.heap_ascii.append(asc);
-    _STR_REALM.heap_strings_mark_epoch.append(0);
+    hs_grow(aidx + 1);
+    _hs_init(aidx, rl, rr, rlen, asc);
     return aidx;
+}
+
+"""A heap slot for a rope or lazy-slice node (children / base `rl`, `rr`,
+byte length `rlen`, ASCII flag `asc`): _heap_slot_alloc("", ...), without
+storing the text when a freed slot is reused (gc_sweep_heap_strings, the
+only place slots are freed, leaves "" there)."""
+def _heap_rope_alloc(rl: int, rr: int, rlen: int, asc: int) -> int {
+    ra_n: int = _HS_FREE_N;
+    if ra_n > 0 and _HS_NOTE < 31 {
+        ra_h: int = __mem_load_i64(wrapping_add(_HS_FREE, wrapping_mul(ra_n - 1, 8)));
+        if (HEAP_STRING_BASE + ra_h) != _U16MEMO_ID
+            and (HEAP_STRING_BASE + ra_h) != _A8_ID
+            and (HEAP_STRING_BASE + ra_h) != _A8_ID2
+            and len(_U16IX_POS) == 0 {
+            _HS_FREE_N = ra_n - 1;
+            _HS_NOTE = _HS_NOTE + 1;
+            ra_p: int = hs_p(ra_h);
+            __mem_store_i64(ra_p, rl);
+            __mem_store_i64(wrapping_add(ra_p, 8), rr);
+            __mem_store_i64(wrapping_add(ra_p, 16), rlen);
+            __mem_store_i64(wrapping_add(ra_p, 24), asc);
+            __mem_store_i64(wrapping_add(ra_p, 32), 0);
+            return ra_h;
+        }
+    }
+    return _heap_rope_alloc_slow(rl, rr, rlen, asc);
+}
+
+"""_heap_rope_alloc's other cases: the accounting batch due, no parked slot
+(_hs_reserve), a slot with a UTF-16 index or memo to drop."""
+def _heap_rope_alloc_slow(rl: int, rr: int, rlen: int, asc: int) -> int {
+    _HS_NOTE = _HS_NOTE + 1;
+    if _HS_NOTE >= 32 {
+        _hs_note_flush();
+    }
+    if _HS_FREE_N == 0 {
+        _hs_reserve();
+    }
+    _HS_FREE_N = _HS_FREE_N - 1;
+    ra_idx: int = __mem_load_i64(wrapping_add(_HS_FREE, wrapping_mul(_HS_FREE_N, 8)));
+    if (HEAP_STRING_BASE + ra_idx) == _U16MEMO_ID {
+        _U16MEMO_ID = -1;
+    }
+    if (HEAP_STRING_BASE + ra_idx) == _A8_ID or (HEAP_STRING_BASE + ra_idx) == _A8_ID2 {
+        _A8_ID = -1;
+        _A8_ID2 = -1;
+    }
+    if len(_U16IX_POS) > 0 {
+        _u16ix_drop(HEAP_STRING_BASE + ra_idx);
+    }
+    _hs_init(ra_idx, rl, rr, rlen, asc);
+    return ra_idx;
+}
+
+"""Byte length of string cell `id` for str_rope: a heap cell's record, an
+interned one's cached length, else str_cell_len."""
+def _cell_len_q(id: int) -> int {
+    if id >= HEAP_STRING_BASE {
+        cq_h: int = id - HEAP_STRING_BASE;
+        if cq_h < _HS_COUNT {
+            return __mem_load_i64(wrapping_add(hs_p(cq_h), 16));
+        }
+        return 0;
+    }
+    if id >= 0 and id < len(_IN_NB) {
+        cq_c: int = _IN_NB[id];
+        if cq_c >= 0 {
+            return cq_c;
+        }
+    }
+    return str_cell_len(id);
+}
+
+"""Drop the UTF-16 index held for string `id` (its heap slot is being
+recycled), if any."""
+def _u16ix_drop(id: int) -> None {
+    ud_slot: int = _U16IX_POS.get(id, -1);
+    if ud_slot >= 0 {
+        _U16IX[ud_slot].id = -1;
+        del _U16IX_POS[id];
+    }
 }
 
 def:pub str_heap(s: str) -> int {
@@ -657,6 +894,23 @@ def:pub str_heap(s: str) -> int {
     return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, str_nbytes(s), _ascii_flag(s));
 }
 
+"""str_heap_ascii for text whose byte length `n` the caller knows."""
+def:pub str_heap_ascii_n(s: str, n: int) -> int {
+    if n == 0 {
+        return 6;
+    }
+    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, n, 1);
+}
+
+"""str_heap for text whose byte length `n` and ASCII flag `asc` (1 ASCII, 2
+not) the caller knows: no rescan of either."""
+def:pub str_heap_n(s: str, n: int, asc: int) -> int {
+    if n == 0 {
+        return 6;
+    }
+    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, n, asc);
+}
+
 """str_heap for text the caller knows is byte-clean ASCII (a slice of a
 byte-clean string): no rescan for the cell's ASCII flag."""
 def:pub str_heap_ascii(s: str) -> int {
@@ -666,14 +920,39 @@ def:pub str_heap_ascii(s: str) -> int {
     return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, str_nbytes(s), 1);
 }
 
+# Byte length per intern id, -1 until first asked (str_cell_len); ids below
+# HEAP_STRING_BASE name immutable text that is never reused, as _AIX_BITS.
+glob _IN_NB: list[int] = [];
+
+"""Byte length of interned string `id`, cached."""
+def _intern_nbytes(id: int) -> int {
+    if id < len(_IN_NB) {
+        nb_c: int = _IN_NB[id];
+        if nb_c >= 0 {
+            return nb_c;
+        }
+    }
+    nb_n: int = str_nbytes(str_from_id(id));
+    if id < 4000000 {
+        while len(_IN_NB) <= id {
+            _IN_NB.append(-1);
+        }
+        _IN_NB[id] = nb_n;
+    }
+    return nb_n;
+}
+
 """Character length of a string cell without forcing a rope flatten."""
 def:pub str_cell_len(id: int) -> int {
     if id >= HEAP_STRING_BASE {
         hidx: int = id - HEAP_STRING_BASE;
-        if hidx >= 0 and hidx < len(_STR_REALM.rope_len) {
-            return _STR_REALM.rope_len[hidx];
+        if hidx >= 0 and hidx < hs_count() {
+            return hs_len(hidx);
         }
         return 0;
+    }
+    if id >= 0 and id < len(_STR_REALM.intern_by_id) {
+        return _intern_nbytes(id);
     }
     return str_nbytes(str_from_id(id));
 }
@@ -686,8 +965,8 @@ byte-index fast path (see js_string_utf16_unit_at)."""
 def:pub str_cell_ascii(id: int) -> int {
     if id >= HEAP_STRING_BASE {
         hidx: int = id - HEAP_STRING_BASE;
-        if hidx >= 0 and hidx < len(_STR_REALM.heap_ascii) {
-            return _STR_REALM.heap_ascii[hidx];
+        if hidx >= 0 and hidx < hs_count() {
+            return hs_ascii(hidx);
         }
         return 0;
     }
@@ -704,11 +983,11 @@ record the two child ids and the total length. The text is materialised only
 when str_from_id is called on the result. Rope nodes are immutable, so it is
 always safe to share a child across multiple ropes (no aliasing hazard)."""
 def:pub str_rope(a_id: int, b_id: int) -> int {
-    la: int = str_cell_len(a_id);
+    la: int = _cell_len_q(a_id);
     if la == 0 {
         return b_id;
     }
-    lb: int = str_cell_len(b_id);
+    lb: int = _cell_len_q(b_id);
     if lb == 0 {
         return a_id;
     }
@@ -725,7 +1004,7 @@ def:pub str_rope(a_id: int, b_id: int) -> int {
     }
     # "" text; filled in on flatten. Children a_id/b_id are traced by the GC
     # (gc.jac string branch) so a live rope keeps its children alive (G1.4).
-    return HEAP_STRING_BASE + _heap_slot_alloc("", a_id, b_id, la + lb, rope_a);
+    return HEAP_STRING_BASE + _heap_rope_alloc(a_id, b_id, la + lb, rope_a);
 }
 
 """A slice at least this many bytes long is kept lazily (str_slice_cell); a
@@ -750,12 +1029,141 @@ def:pub str_slice_cell(pid: int, start: int, n: int, asc: int) -> int {
     off: int = start;
     if base_id >= HEAP_STRING_BASE {
         ph: int = base_id - HEAP_STRING_BASE;
-        if _STR_REALM.rope_left[ph] >= 0 and _STR_REALM.rope_right[ph] <= -2 {
-            off = off + (-2 - _STR_REALM.rope_right[ph]);
-            base_id = _STR_REALM.rope_left[ph];
+        if hs_left(ph) >= 0 and hs_right(ph) <= -2 {
+            off = off + (-2 - hs_right(ph));
+            base_id = hs_left(ph);
         }
     }
-    return HEAP_STRING_BASE + _heap_slot_alloc("", base_id, -2 - off, n, asc);
+    return HEAP_STRING_BASE + _heap_rope_alloc(base_id, -2 - off, n, asc);
+}
+
+"""A slice cell for bytes [st, st + n) of ASCII string cell `id` (n >= 1)
+when keeping its parent alive costs little: an interned parent (immortal) or
+a flat one of at most 64 bytes. An unread slice is cut from its own parent,
+as str_slice_cell does. -1 otherwise (an unflattened rope, a longer parent):
+the caller copies. The text is cut when first read (_slice_flatten)."""
+def:pub str_slice_short(id: int, st: int, n: int) -> int {
+    sl_base: int = id;
+    sl_off: int = st;
+    if id >= HEAP_STRING_BASE {
+        sl_h: int = id - HEAP_STRING_BASE;
+        if sl_h >= _HS_COUNT {
+            return -1;
+        }
+        sl_p: int = hs_p(sl_h);
+        if __mem_load_i64(sl_p) >= 0 {
+            if __mem_load_i64(wrapping_add(sl_p, 8)) > -2 {
+                return -1;
+            }
+            sl_off = sl_off + (-2 - __mem_load_i64(wrapping_add(sl_p, 8)));
+            sl_base = __mem_load_i64(sl_p);
+        }
+        if sl_base >= HEAP_STRING_BASE and _cell_len_q(sl_base) > 64 {
+            return -1;
+        }
+    }
+    return HEAP_STRING_BASE + _heap_rope_alloc(sl_base, -2 - sl_off, n, 1);
+}
+
+"""Address of the text bytes of byte-clean (ASCII) string cell `id` (a rope
+or a slice is flattened first), memoized for the last two cells asked."""
+def:pub str_ascii_data(id: int) -> int {
+    if id == _A8_ID {
+        return _A8_PTR;
+    }
+    if id == _A8_ID2 {
+        return _A8_PTR2;
+    }
+    return _str_ascii_data_slow(id);
+}
+
+def _str_ascii_data_slow(id: int) -> int {
+    ad_s: str = str_from_id(id);
+    ad_p: int = __str_data(ad_s);
+    _A8_ID2 = _A8_ID;
+    _A8_PTR2 = _A8_PTR;
+    _A8_ID = id;
+    _A8_PTR = ad_p;
+    return ad_p;
+}
+
+"""String.prototype.indexOf for byte-clean cells: the first index of `nd` in
+`h` at or after `at` (0 <= at; past the end it is the end), or -1."""
+def:pub str_ascii_index_of(h: int, nd: int, at: int) -> int {
+    io_hn: int = _cell_len_q(h);
+    io_nn: int = _cell_len_q(nd);
+    io_i: int = at;
+    if io_i > io_hn {
+        io_i = io_hn;
+    }
+    if io_nn == 0 {
+        return io_i;
+    }
+    io_np: int = str_ascii_data(nd);
+    io_hp: int = str_ascii_data(h);
+    io_c0: int = int(__mem_load_i8(io_np));
+    io_last: int = io_hn - io_nn;
+    while io_i <= io_last {
+        if int(__mem_load_i8(wrapping_add(io_hp, io_i))) == io_c0 {
+            io_k: int = 1;
+            while io_k < io_nn
+                and __mem_load_i8(wrapping_add(io_hp, wrapping_add(io_i, io_k)))
+                == __mem_load_i8(wrapping_add(io_np, io_k)) {
+                io_k = io_k + 1;
+            }
+            if io_k == io_nn {
+                return io_i;
+            }
+        }
+        io_i = io_i + 1;
+    }
+    return -1;
+}
+
+"""String.prototype.startsWith for byte-clean cells: whether `h` has `nd`
+at byte `pos` (0 <= pos <= its length)."""
+def:pub str_ascii_starts_with(h: int, nd: int, pos: int) -> bool {
+    sw_nn: int = _cell_len_q(nd);
+    if pos + sw_nn > _cell_len_q(h) {
+        return False;
+    }
+    if sw_nn == 0 {
+        return True;
+    }
+    sw_np: int = str_ascii_data(nd);
+    sw_hp: int = wrapping_add(str_ascii_data(h), pos);
+    sw_k: int = 0;
+    while sw_k < sw_nn {
+        if __mem_load_i8(wrapping_add(sw_hp, sw_k)) != __mem_load_i8(wrapping_add(sw_np, sw_k)) {
+            return False;
+        }
+        sw_k = sw_k + 1;
+    }
+    return True;
+}
+
+# Interned one-character strings of the ASCII codes 1..127 (str_char_id).
+glob _CHAR_IDS: list[int] = [];
+
+"""The interned string of the one ASCII character `c` (1 <= c < 128)."""
+def:pub str_char_id(c: int) -> int {
+    if len(_CHAR_IDS) == 0 {
+        while len(_CHAR_IDS) < 128 {
+            _CHAR_IDS.append(0);
+        }
+    }
+    ci_id: int = _CHAR_IDS[c];
+    if ci_id == 0 {
+        ci_id = str_intern(byte_chr(c));
+        _CHAR_IDS[c] = ci_id;
+    }
+    return ci_id;
+}
+
+"""Byte length of string cell `id` (_cell_len_q: the record or the cached
+interned length, else str_cell_len)."""
+def:pub str_cell_len_q(id: int) -> int {
+    return _cell_len_q(id);
 }
 
 """Bytes [st, en) of string cell `id` as an owned str. An unread slice cell is
@@ -764,12 +1172,12 @@ materialise the whole slice."""
 def:pub str_substr_cell(id: int, st: int, en: int) -> str {
     if id >= HEAP_STRING_BASE {
         hidx: int = id - HEAP_STRING_BASE;
-        if hidx < len(_STR_REALM.rope_left)
-            and _STR_REALM.rope_left[hidx] >= 0
-            and _STR_REALM.rope_right[hidx] <= -2 {
-            off: int = -2 - _STR_REALM.rope_right[hidx];
+        if hidx < hs_count()
+            and hs_left(hidx) >= 0
+            and hs_right(hidx) <= -2 {
+            off: int = -2 - hs_right(hidx);
             return str_substr(
-                str_from_id(_STR_REALM.rope_left[hidx]), off + st, off + en
+                str_from_id(hs_left(hidx)), off + st, off + en
             );
         }
     }
@@ -779,16 +1187,16 @@ def:pub str_substr_cell(id: int, st: int, en: int) -> str {
 """Materialise slice node `hidx` (see str_slice_cell) and cache it as a flat leaf,
 which also drops its hold on the parent."""
 def _slice_flatten(hidx: int) -> str {
-    off: int = -2 - _STR_REALM.rope_right[hidx];
+    off: int = -2 - hs_right(hidx);
     out: str = str_substr(
-        str_from_id(_STR_REALM.rope_left[hidx]), off, off + _STR_REALM.rope_len[hidx]
+        str_from_id(hs_left(hidx)), off, off + hs_len(hidx)
     );
     _hs_note_bytes(str_nbytes(out));
     _STR_REALM.heap_strings[hidx] = out;
-    _STR_REALM.rope_left[hidx] = -1;
-    _STR_REALM.rope_right[hidx] = -1;
-    if _STR_REALM.heap_ascii[hidx] == 0 {
-        _STR_REALM.heap_ascii[hidx] = _ascii_flag(out);
+    hs_set_left(hidx, -1);
+    hs_set_right(hidx, -1);
+    if hs_ascii(hidx) == 0 {
+        hs_set_ascii(hidx, _ascii_flag(out));
     }
     return out;
 }
@@ -798,10 +1206,10 @@ def _slice_flatten(hidx: int) -> str {
 Iterative (explicit stack) rather than recursive so a deep left-leaning rope —
 exactly what `s += x` in a loop builds — cannot overflow the native call stack."""
 def _rope_flatten(hidx: int) -> str {
-    if _STR_REALM.rope_left[hidx] < 0 {
+    if hs_left(hidx) < 0 {
         return _STR_REALM.heap_strings[hidx];
     }
-    if _STR_REALM.rope_right[hidx] <= -2 {
+    if hs_right(hidx) <= -2 {
         return _slice_flatten(hidx);
     }
     # Collect leaf strings left-to-right via an explicit work stack of cell ids.
@@ -812,12 +1220,12 @@ def _rope_flatten(hidx: int) -> str {
         del stack[len(stack) - 1];
         if cur >= HEAP_STRING_BASE {
             ci: int = cur - HEAP_STRING_BASE;
-            if _STR_REALM.rope_left[ci] >= 0 and _STR_REALM.rope_right[ci] <= -2 {
+            if hs_left(ci) >= 0 and hs_right(ci) <= -2 {
                 parts.append(_slice_flatten(ci));
-            } elif _STR_REALM.rope_left[ci] >= 0 {
+            } elif hs_left(ci) >= 0 {
                 # Push right then left so left is processed first (LIFO).
-                stack.append(_STR_REALM.rope_right[ci]);
-                stack.append(_STR_REALM.rope_left[ci]);
+                stack.append(hs_right(ci));
+                stack.append(hs_left(ci));
             } else {
                 parts.append(_STR_REALM.heap_strings[ci]);
             }
@@ -829,12 +1237,12 @@ def _rope_flatten(hidx: int) -> str {
     _hs_note_bytes(str_nbytes(out));
     # Cache and collapse to a flat leaf so repeated reads are O(1).
     _STR_REALM.heap_strings[hidx] = out;
-    _STR_REALM.rope_left[hidx] = -1;
-    _STR_REALM.rope_right[hidx] = -1;
+    hs_set_left(hidx, -1);
+    hs_set_right(hidx, -1);
     # If ASCII-ness was unknown (a child had an unknown flag), settle it now that
     # the text exists — one scan, amortised over all future indexed reads.
-    if _STR_REALM.heap_ascii[hidx] == 0 {
-        _STR_REALM.heap_ascii[hidx] = _ascii_flag(out);
+    if hs_ascii(hidx) == 0 {
+        hs_set_ascii(hidx, _ascii_flag(out));
     }
     return out;
 }
@@ -847,7 +1255,7 @@ def:pub str_from_id(id: int) -> str {
         hidx: int = id - HEAP_STRING_BASE;
         if hidx >= 0 and hidx < len(_STR_REALM.heap_strings) {
             # Unflattened rope or slice? Materialise (and cache) its text now.
-            if _STR_REALM.rope_left[hidx] >= 0 {
+            if hs_left(hidx) >= 0 {
                 return _rope_flatten(hidx);
             }
             return _STR_REALM.heap_strings[hidx];
@@ -1808,8 +2216,14 @@ def _u16ix_build(id: int, s: str) -> U16Index {
     i: int = 0;
     u: int = 0;
     nxt: int = U16IX_STEP;
+    ub_p: int = __str_data(s);
     while i < n {
         r: int = i;
+        # the ASCII run eight bytes a load (no byte of a word has its top bit)
+        while r + 8 <= n
+            and (__mem_load_i64(wrapping_add(ub_p, r)) & -9187201950435737472) == 0 {
+            r = r + 8;
+        }
         while r < n {
             rb: int = str_byte(s, r);
             if rb >= 128 {
@@ -2117,13 +2531,19 @@ def:pub js_string_unit_at_cell(id: int, n: int) -> int {
         return -1;
     }
     if str_cell_ascii(id) == 1 {
-        # Flag 1 = byte-clean (see _ascii_flag): 1 byte == 1 unit, O(1).
-        s_a: str = str_from_id(id);
-        if n < str_nbytes(s_a) {
-            return str_byte(s_a, n);
+        # Flag 1 = byte-clean (see _ascii_flag): 1 byte == 1 unit, O(1); the
+        # length cached, the text read in place (str_ascii_data).
+        if n < _cell_len_q(id) {
+            return int(__mem_load_i8(wrapping_add(str_ascii_data(id), n))) & 255;
         }
         return -1;
     }
+    return _unit_at_cell_u16(id, n);
+}
+
+"""js_string_unit_at_cell for a cell that is not byte-clean (its units list
+memoized; a function of its own, so the ASCII case sets up no unwind)."""
+def _unit_at_cell_u16(id: int, n: int) -> int {
     # NON-ASCII cell: `charCodeAt(i)` in a loop must NOT re-decode the whole
     # string per call (js_string_utf16_unit_at did — O(n²); a large non-ASCII
     # module string charCodeAt-looped by rollup/esbuild wedged the vite build

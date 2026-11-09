@@ -27,6 +27,7 @@ Bun Zig mapping:
 
 import from engine.src.runtime.fn_meta { cl_props }
 import from engine.src.runtime.jsvalue {
+    js_nan,
     JSValue,
     js_undefined,
     js_null,
@@ -64,10 +65,21 @@ import from engine.src.runtime.jsvalue {
     MATH_NEG_INF,
     jsv_is_hole
 }
-import from engine.src.runtime.jsstring { str_intern, str_from_id }
+import from engine.src.runtime.jsstring {
+    str_intern,
+    str_from_id,
+    str_cell_ascii,
+    str_cell_len_q,
+    str_intern_index,
+    str_char_id,
+    str_ascii_index_of,
+    str_ascii_starts_with,
+    js_string_unit_at_cell
+}
 import from engine.src.runtime.spec_ops { spec_is_callable, spec_same_value }
 import from engine.src.runtime.wk_keys {
     WK_REF,
+    WK_THEN,
     WK_TIMER_ID,
     WK_UNREF,
     WK_NAME,
@@ -372,6 +384,7 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_PROMISE_THEN,
     NATIVE_KIND_PROMISE_THEN_RAW,
     NATIVE_KIND_PROMISE_THEN_SETUP,
+    NATIVE_KIND_PROMISE_RESOLVE_FAST,
     NATIVE_KIND_PROMISE_CATCH,
     NATIVE_KIND_PROMISE_FINALLY,
     NATIVE_KIND_SET_TIMEOUT,
@@ -1356,6 +1369,7 @@ import from engine.src.runtime.iterator { js_make_iterator }
 import from engine.src.runtime.jsobj_type { JSProperty }
 import from engine.src.vm.vm_obs { js_to_string_observable }
 import from engine.src.runtime.jsobject {
+    js_object_get_ordinary,
     js_object_create_null,
     js_object_set,
     js_object_get,
@@ -1679,7 +1693,18 @@ import from engine.src.vm.timers {
     timer_unref,
     timer_ref
 }
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.vm.closure_type {
+    _JC_FUNC,
+    jc_count,
+    jc_prototype_obj,
+    jc_prototype_writable,
+    jc_set_is_non_constructor,
+    jc_set_length_removed,
+    jc_set_name_removed,
+    jc_set_prototype_obj,
+    jc_set_prototype_writable,
+    jc_wb
+}
 import from engine.src.builtins.module_registry {
     is_builtin_module,
     module_enable_compile_cache,
@@ -2180,6 +2205,15 @@ def:pub call_native(
     return h(realm, this_val, args);
 }
 
+"""call_native for a kind that is not a Temporal native (the VM's fast
+native calls): the handler straight from the dispatch list."""
+def:pub call_native_k(realm: Realm, kind: int, this_val: JSValue, args: list[JSValue]) -> JSValue {
+    if kind >= 0 and kind < len(_DISPATCH_LIST) {
+        return _DISPATCH_LIST[kind](realm, this_val, args);
+    }
+    return call_native(realm, kind, this_val, args);
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 3.  Per-kind handler functions  (_dn_<kind_name>)
 #     Uniform signature: (realm: Realm, this_val: JSValue, args: list[JSValue]) -> JSValue
@@ -2462,15 +2496,15 @@ def _dn_native_kind_string(
             str_fn_cid: int = jsv_to_table_id(str_fn_arg);
             if str_fn_cid >= 0 and str_fn_cid < FN_NATIVE_BASE {
                 str_is_fn = True;
-                if str_fn_cid < len(realm.closures) {
+                if str_fn_cid < jc_count() {
                     # Prefer the preserved source text (ES §20.2.3.5) so String(fn)
                     # matches fn.toString() and computed-key ToString — a user
                     # function must stringify to its SOURCE, not "[native code]".
-                    str_fn_src: str = realm.closures[str_fn_cid].func.source;
+                    str_fn_src: str = _JC_FUNC[str_fn_cid].source;
                     if len(str_fn_src) > 0 {
                         return jsv_from_string_id(str_intern(str_fn_src));
                     }
-                    str_fn_name = realm.closures[str_fn_cid].func.name;
+                    str_fn_name = _JC_FUNC[str_fn_cid].name;
                 }
             } elif is_native_val(str_fn_arg) {
                 str_is_fn = True;
@@ -2537,13 +2571,13 @@ def _dn_native_kind_fn_tostring(
     }
     if jsv_is_cell(this_val) {
         cl_id: int = jsv_to_table_id(this_val);
-        if cl_id >= 0 and cl_id < len(realm.closures) {
-            src_ts: str = realm.closures[cl_id].func.source;
+        if cl_id >= 0 and cl_id < jc_count() {
+            src_ts: str = _JC_FUNC[cl_id].source;
             if len(src_ts) > 0 {
                 return jsv_from_string_id(str_intern(src_ts));
             }
-            nm = realm.closures[cl_id].func.name;
-            if realm.closures[cl_id].func.is_bound or nm == "" or str_bfind(nm, " ") >= 0 {
+            nm = _JC_FUNC[cl_id].name;
+            if _JC_FUNC[cl_id].is_bound or nm == "" or str_bfind(nm, " ") >= 0 {
                 return jsv_from_string_id(str_intern("function () { [native code] }"));
             }
             return jsv_from_string_id(
@@ -2936,6 +2970,14 @@ def _dn_native_kind_str_charat(
 def _dn_native_kind_str_charcodeat(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if jsv_is_string_cell(this_val) and len(args) > 0 and jsv_is_int32(args[0]) {
+        # (an int32 position on a string: the unit read directly)
+        cc_u: int = js_string_unit_at_cell(jsv_to_table_id(this_val), jsv_to_int32(args[0]));
+        if cc_u < 0 {
+            return js_nan();
+        }
+        return js_int(cc_u);
+    }
     if _str_this_not_coercible(this_val, "charCodeAt") {
         return js_undefined();
     }
@@ -2972,6 +3014,21 @@ def _dn_native_kind_str_at(
 def _dn_native_kind_str_indexof(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if jsv_is_string_cell(this_val)
+        and len(args) > 0
+        and jsv_is_string_cell(args[0])
+        and (len(args) == 1 or jsv_is_int32(args[1]))
+        and str_cell_ascii(jsv_to_table_id(this_val)) == 1
+        and str_cell_ascii(jsv_to_table_id(args[0])) == 1 {
+        # (byte-clean text: UTF-16 indices are byte offsets, searched in place)
+        ix_from: int = 0;
+        if len(args) > 1 and jsv_to_int32(args[1]) > 0 {
+            ix_from = jsv_to_int32(args[1]);
+        }
+        return js_int(
+            str_ascii_index_of(jsv_to_table_id(this_val), jsv_to_table_id(args[0]), ix_from)
+        );
+    }
     if _str_this_not_coercible(this_val, "indexOf") {
         return js_undefined();
     }
@@ -3161,6 +3218,25 @@ def _dn_native_kind_str_includes(
 def _dn_native_kind_str_startswith(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if jsv_is_string_cell(this_val)
+        and len(args) > 0
+        and jsv_is_string_cell(args[0])
+        and (len(args) == 1 or jsv_is_int32(args[1]) or jsv_is_undefined(args[1]))
+        and str_cell_ascii(jsv_to_table_id(this_val)) == 1
+        and str_cell_ascii(jsv_to_table_id(args[0])) == 1 {
+        # (byte-clean text compared in place; the position clamped to the
+        # string, as ToIntegerOrInfinity and the clamp do)
+        sw_pos: int = 0;
+        if len(args) > 1 and jsv_is_int32(args[1]) and jsv_to_int32(args[1]) > 0 {
+            sw_pos = jsv_to_int32(args[1]);
+            if sw_pos > str_cell_len_q(jsv_to_table_id(this_val)) {
+                sw_pos = str_cell_len_q(jsv_to_table_id(this_val));
+            }
+        }
+        return js_boolean(
+            str_ascii_starts_with(jsv_to_table_id(this_val), jsv_to_table_id(args[0]), sw_pos)
+        );
+    }
     if _str_this_not_coercible(this_val, "startsWith") {
         return js_undefined();
     }
@@ -3735,6 +3811,17 @@ def _dn_native_kind_num_toexponential(
 def _dn_native_kind_num_tostring(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if jsv_is_int32(this_val)
+        and jsv_to_int32(this_val) >= 0
+        and jsv_to_int32(this_val) < 1024
+        and (
+            len(args) == 0
+            or jsv_is_undefined(args[0])
+            or (jsv_is_int32(args[0]) and jsv_to_int32(args[0]) == 10)
+        ) {
+        # (a small non-negative int in decimal: its cached index string)
+        return jsv_from_string_id(str_intern_index(jsv_to_int32(this_val)));
+    }
     return js_num_toString(this_val, args);
 }
 
@@ -3798,6 +3885,13 @@ def _dn_native_kind_bool_valueof(
 def _dn_native_kind_str_fromcharcode(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if len(args) == 1
+        and jsv_is_int32(args[0])
+        and jsv_to_int32(args[0]) > 0
+        and jsv_to_int32(args[0]) < 128 {
+        # (one ASCII code: its interned one-character string)
+        return jsv_from_string_id(str_char_id(jsv_to_int32(args[0])));
+    }
     return js_String_fromCharCode(args);
 }
 
@@ -3882,16 +3976,16 @@ def _dn_native_kind_mark_non_constructor(
         return js_undefined();
     }
     cid_mnc: int = jsv_to_table_id(fn_mnc);
-    if cid_mnc < 0 or cid_mnc >= FN_BUILTIN_BASE or cid_mnc >= len(realm.closures) {
+    if cid_mnc < 0 or cid_mnc >= FN_BUILTIN_BASE or cid_mnc >= jc_count() {
         vm_throw_native(
             make_type_error("__jacMarkNonConstructor requires a JS function")
         );
         return js_undefined();
     }
-    cl_mnc: JSClosure = realm.closures[cid_mnc];
-    cl_mnc.is_non_constructor = True;
+    cl_mnc: int = cid_mnc;
+    jc_set_is_non_constructor(cl_mnc, True);
     # Non-constructible functions have no .prototype own property (ES §10.2.4).
-    cl_mnc.prototype_obj = js_undefined();
+    jc_set_prototype_obj(cl_mnc, js_undefined());
     return fn_mnc;
 }
 
@@ -3941,13 +4035,13 @@ def _dn_native_kind_obj_proto_tostring(
     if js_is_proxy(this_val) and js_proxy_is_callable(this_val) {
         if fn_meta_is_closure(brand_ts) {
             ts_cl_id_p: int = jsv_to_table_id(brand_ts);
-            if ts_cl_id_p >= 0 and ts_cl_id_p < len(realm.closures) {
-                ts_cl_p: JSClosure = realm.closures[ts_cl_id_p];
-                if ts_cl_p.func.is_generator and ts_cl_p.func.is_async {
+            if ts_cl_id_p >= 0 and ts_cl_id_p < jc_count() {
+                ts_cl_p: int = ts_cl_id_p;
+                if _JC_FUNC[ts_cl_p].is_generator and _JC_FUNC[ts_cl_p].is_async {
                     ts_tag = "[object AsyncGeneratorFunction]";
-                } elif ts_cl_p.func.is_generator {
+                } elif _JC_FUNC[ts_cl_p].is_generator {
                     ts_tag = "[object GeneratorFunction]";
-                } elif ts_cl_p.func.is_async {
+                } elif _JC_FUNC[ts_cl_p].is_async {
                     ts_tag = "[object AsyncFunction]";
                 } else {
                     ts_tag = "[object Function]";
@@ -3973,13 +4067,13 @@ def _dn_native_kind_obj_proto_tostring(
         and jsv_to_table_id(this_val) < FN_NATIVE_BASE {
         # User closure — distinguish async / generator per ECMAScript §20.1.3.6
         ts_cl_id: int = jsv_to_table_id(this_val);
-        if ts_cl_id >= 0 and ts_cl_id < len(realm.closures) {
-            ts_cl: JSClosure = realm.closures[ts_cl_id];
-            if ts_cl.func.is_generator and ts_cl.func.is_async {
+        if ts_cl_id >= 0 and ts_cl_id < jc_count() {
+            ts_cl: int = ts_cl_id;
+            if _JC_FUNC[ts_cl].is_generator and _JC_FUNC[ts_cl].is_async {
                 ts_tag = "[object AsyncGeneratorFunction]";
-            } elif ts_cl.func.is_generator {
+            } elif _JC_FUNC[ts_cl].is_generator {
                 ts_tag = "[object GeneratorFunction]";
-            } elif ts_cl.func.is_async {
+            } elif _JC_FUNC[ts_cl].is_async {
                 ts_tag = "[object AsyncFunction]";
             } else {
                 ts_tag = "[object Function]";
@@ -4071,10 +4165,10 @@ def _dn_native_kind_obj_get_prototype_of(
         gp_arg: JSValue = args[0];
         if jsv_is_cell(gp_arg) and jsv_cell_kind(gp_arg) == JS_CELL_KIND_NATIVE {
             gp_cid: int = jsv_to_table_id(gp_arg);
-            if gp_cid >= 0 and gp_cid < len(realm.closures) {
-                gp_cl: JSClosure = realm.closures[gp_cid];
-                if gp_cl.func.is_generator {
-                    if gp_cl.func.is_async {
+            if gp_cid >= 0 and gp_cid < jc_count() {
+                gp_cl: int = gp_cid;
+                if _JC_FUNC[gp_cl].is_generator {
+                    if _JC_FUNC[gp_cl].is_async {
                         return js_async_generator_get_intrinsic();
                     }
                     return js_generator_get_intrinsic();
@@ -4120,10 +4214,10 @@ def _dn_native_kind_reflect_get_prototype_of(
         rgp_arg: JSValue = args[0];
         if jsv_is_cell(rgp_arg) and jsv_cell_kind(rgp_arg) == JS_CELL_KIND_NATIVE {
             rgp_cid: int = jsv_to_table_id(rgp_arg);
-            if rgp_cid >= 0 and rgp_cid < len(realm.closures) {
-                rgp_cl: JSClosure = realm.closures[rgp_cid];
-                if rgp_cl.func.is_generator {
-                    if rgp_cl.func.is_async {
+            if rgp_cid >= 0 and rgp_cid < jc_count() {
+                rgp_cl: int = rgp_cid;
+                if _JC_FUNC[rgp_cl].is_generator {
+                    if _JC_FUNC[rgp_cl].is_async {
                         return js_async_generator_get_intrinsic();
                     }
                     return js_generator_get_intrinsic();
@@ -4263,8 +4357,8 @@ def _dn_native_kind_obj_define_property(
         # A JS closure is JS_CELL_KIND_NATIVE with table-id < FN_BUILTIN_BASE.
         if jsv_is_cell(dp_target) and jsv_cell_kind(dp_target) == JS_CELL_KIND_NATIVE {
             dp_idx: int = jsv_to_table_id(dp_target);
-            if dp_idx >= 0 and dp_idx < FN_BUILTIN_BASE and dp_idx < len(realm.closures) {
-                dp_cl: JSClosure = realm.closures[dp_idx];
+            if dp_idx >= 0 and dp_idx < FN_BUILTIN_BASE and dp_idx < jc_count() {
+                dp_cl: int = dp_idx;
                 dp_key_id: int = 0;
                 if jsv_is_string_cell(args[1]) {
                     dp_key_id = jsv_to_table_id(args[1]);
@@ -4278,7 +4372,7 @@ def _dn_native_kind_obj_define_property(
                 # downgrade true→false. A no-op define (matching attributes) succeeds.
                 if dp_key_id == WK_PROTOTYPE and jsv_is_object_cell(args[2]) {
                     dp_desc: JSValue = args[2];
-                    dp_cur_w: bool = dp_cl.prototype_writable;
+                    dp_cur_w: bool = jc_prototype_writable(dp_cl);
                     dp_has_c: bool = js_object_has_own(
                         dp_desc, str_intern("configurable")
                     );
@@ -4299,7 +4393,7 @@ def _dn_native_kind_obj_define_property(
                         and jsv_coerce_to_bool(
                             js_object_get(dp_desc, str_intern("writable"))
                         );
-                    dp_new_v: JSValue = dp_cl.prototype_obj;
+                    dp_new_v: JSValue = jc_prototype_obj(dp_cl);
                     if dp_has_v {
                         dp_new_v = js_object_get(dp_desc, str_intern("value"));
                     }
@@ -4321,7 +4415,7 @@ def _dn_native_kind_obj_define_property(
                             dp_reject = True;
                         }  # can't re-enable writable
                         if dp_has_v
-                            and not spec_same_value(dp_new_v, dp_cl.prototype_obj) {
+                            and not spec_same_value(dp_new_v, jc_prototype_obj(dp_cl)) {
                             dp_reject = True;
                         }
                     }
@@ -4332,11 +4426,11 @@ def _dn_native_kind_obj_define_property(
                         return dp_orig;
                     }
                     if dp_has_v {
-                        dp_cl.prototype_obj = dp_new_v;
-                        dp_cl.wb(dp_cl.prototype_obj);
+                        jc_set_prototype_obj(dp_cl, dp_new_v);
+                        jc_wb(dp_cl, jc_prototype_obj(dp_cl));
                     }
                     if dp_has_w {
-                        dp_cl.prototype_writable = dp_want_w;
+                        jc_set_prototype_writable(dp_cl, dp_want_w);
                     }
                     return dp_orig;
                 }
@@ -4345,10 +4439,10 @@ def _dn_native_kind_obj_define_property(
                 # suppresses it (ES §10.2.4 makes them configurable; verifyProperty
                 # round-trips delete→defineProperty→re-read).
                 if dp_key_id == str_intern("name") {
-                    dp_cl.name_removed = False;
+                    jc_set_name_removed(dp_cl, False);
                 }
                 if dp_key_id == str_intern("length") {
-                    dp_cl.length_removed = False;
+                    jc_set_length_removed(dp_cl, False);
                 }
                 dp_target = cl_props(dp_cl);
             } elif is_native_val(dp_target) {
@@ -4382,8 +4476,8 @@ def _dn_native_kind_obj_define_properties(
     # definitions to the closure's fn_props bag (common.mustCall depends on this).
     if jsv_is_cell(dps_target) and jsv_cell_kind(dps_target) == JS_CELL_KIND_NATIVE {
         dps_idx: int = jsv_to_table_id(dps_target);
-        if dps_idx >= 0 and dps_idx < FN_BUILTIN_BASE and dps_idx < len(realm.closures) {
-            dps_cl: JSClosure = realm.closures[dps_idx];
+        if dps_idx >= 0 and dps_idx < FN_BUILTIN_BASE and dps_idx < jc_count() {
+            dps_cl: int = dps_idx;
             dps_target = cl_props(dps_cl);
         } elif is_native_val(dps_target) {
             dps_target = native_props_ensure(dps_target);
@@ -6213,6 +6307,44 @@ def _dn_native_kind_promise_then_raw(
     return next_p;
 }
 
+"""__jacPromiseResolveFast(x): Promise.resolve(x) for C = %Promise% when no step
+of it can be observed -- `x` a primitive, or an ordinary object, not a promise,
+whose `then` (read through the chain without a getter, trap or exotic object)
+is not callable: a new promise fulfilled with `x`. Undefined otherwise; the JS
+resolve then takes the identity (`x.constructor`) and capability paths
+(builtins_stubs.js)."""
+def _dn_native_kind_promise_resolve_fast(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    rf_x: JSValue = js_undefined();
+    if len(args) > 0 {
+        rf_x = args[0];
+    }
+    if jsv_is_object_cell(rf_x) {
+        if js_is_promise(rf_x) {
+            return js_undefined();
+        }
+        rf_then: JSValue = js_object_get_ordinary(rf_x, WK_THEN);
+        if jsv_is_hole(rf_then) or spec_is_callable(rf_then) {
+            return js_undefined();
+        }
+    } elif not (
+        jsv_is_undefined(rf_x)
+        or jsv_is_null(rf_x)
+        or jsv_is_bool(rf_x)
+        or jsv_is_int32(rf_x)
+        or jsv_is_double(rf_x)
+        or jsv_is_string_cell(rf_x)
+        or jsv_is_symbol(rf_x)
+        or jsv_is_bigint_cell(rf_x)
+    ) {
+        return js_undefined();
+    }
+    rf_p: JSValue = js_promise_create();
+    js_promise_settle(rf_p, PROMISE_FULFILLED, rf_x);
+    return rf_p;
+}
+
 """__jacPromiseThenSetup(wrapper, Promise) — see _dn_native_kind_promise_then."""
 def _dn_native_kind_promise_then_setup(
     realm: Realm, this_val: JSValue, args: list[JSValue]
@@ -7694,12 +7826,25 @@ def _dn_native_kind_math_log2(
 def _dn_native_kind_math_max(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if len(args) == 2 and jsv_is_int32(args[0]) and jsv_is_int32(args[1]) {
+        # (two int32: no coercion, no -0, no NaN)
+        if jsv_to_int32(args[0]) >= jsv_to_int32(args[1]) {
+            return args[0];
+        }
+        return args[1];
+    }
     return js_math_max(args);
 }
 
 def _dn_native_kind_math_min(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    if len(args) == 2 and jsv_is_int32(args[0]) and jsv_is_int32(args[1]) {
+        if jsv_to_int32(args[0]) <= jsv_to_int32(args[1]) {
+            return args[0];
+        }
+        return args[1];
+    }
     return js_math_min(args);
 }
 
@@ -11122,6 +11267,7 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN] = _dn_native_kind_promise_then;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN_RAW] = _dn_native_kind_promise_then_raw;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN_SETUP] = _dn_native_kind_promise_then_setup;
+    _DISPATCH_TABLE[NATIVE_KIND_PROMISE_RESOLVE_FAST] = _dn_native_kind_promise_resolve_fast;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_CATCH] = _dn_native_kind_promise_catch;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_FINALLY] = _dn_native_kind_promise_noop;
     _DISPATCH_TABLE[NATIVE_KIND_SET_TIMEOUT] = _dn_native_kind_set_timeout;

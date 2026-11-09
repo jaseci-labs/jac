@@ -13,15 +13,17 @@ import from engine.src.runtime.jsvalue {
     jsv_is_null,
     jsv_is_any_object
 }
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.vm.closure_type {
+    _JC_FUNC,
+    jc_count,
+    jc_fn_props,
+    jc_object_proto,
+    jc_set_fn_props,
+    jc_set_object_proto,
+    jc_wb
+}
 import from engine.src.runtime.jsobject { js_object_create_null, js_object_get, js_object_has_own }
 
-glob _FN_META_CLOSURES: list[JSClosure] = [];
-
-"""Bind the active realm closure table (called from VM bootstrap)."""
-def:pub fn_meta_bind_closures(closures: list[JSClosure]) {
-    _FN_META_CLOSURES = closures;
-}
 
 def:pub fn_meta_is_closure(v: JSValue) -> bool {
     if not jsv_is_cell(v) {
@@ -40,10 +42,10 @@ def:pub fn_meta_closure_idx(v: JSValue) -> int {
 """Return closure.object_proto, or undefined if unset (caller applies default)."""
 def:pub fn_meta_get_object_proto(v: JSValue) -> JSValue {
     idx: int = fn_meta_closure_idx(v);
-    if idx < 0 or idx >= len(_FN_META_CLOSURES) {
+    if idx < 0 or idx >= jc_count() {
         return js_undefined();
     }
-    return _FN_META_CLOSURES[idx].object_proto;
+    return jc_object_proto(idx);
 }
 
 """
@@ -59,11 +61,11 @@ def:pub fn_meta_set_object_proto(v: JSValue, proto: JSValue) -> int {
         return 1;
     }
     idx: int = fn_meta_closure_idx(v);
-    if idx < 0 or idx >= len(_FN_META_CLOSURES) {
+    if idx < 0 or idx >= jc_count() {
         return 1;
     }
-    _FN_META_CLOSURES[idx].object_proto = proto;
-    _FN_META_CLOSURES[idx].wb(_FN_META_CLOSURES[idx].object_proto);
+    jc_set_object_proto(idx, proto);
+    jc_wb(idx, jc_object_proto(idx));
     return 0;
 }
 
@@ -71,25 +73,25 @@ def:pub fn_meta_set_object_proto(v: JSValue, proto: JSValue) -> int {
 engine tags), created on first use: make_closure leaves fn_props undefined
 because most closures never get one. Writers and anything that hands the bag
 on use this; plain lookups use cl_props_get / cl_props_has_own."""
-def:pub cl_props(cl: JSClosure) -> JSValue {
-    if not jsv_is_object_cell(cl.fn_props) {
-        cl.fn_props = js_object_create_null();
-        cl.wb(cl.fn_props);
+def:pub cl_props(cl: int) -> JSValue {
+    if not jsv_is_object_cell(jc_fn_props(cl)) {
+        jc_set_fn_props(cl, js_object_create_null());
+        jc_wb(cl, jc_fn_props(cl));
     }
-    return cl.fn_props;
+    return jc_fn_props(cl);
 }
 
 """Own data value of `key` in the closure's bag (undefined when it has none)."""
-def:pub cl_props_get(cl: JSClosure, key: int) -> JSValue {
-    if not jsv_is_object_cell(cl.fn_props) {
+def:pub cl_props_get(cl: int, key: int) -> JSValue {
+    if not jsv_is_object_cell(jc_fn_props(cl)) {
         return js_undefined();
     }
-    return js_object_get(cl.fn_props, key);
+    return js_object_get(jc_fn_props(cl), key);
 }
 
 """Whether the closure's bag has own `key` (False when it has none)."""
-def:pub cl_props_has_own(cl: JSClosure, key: int) -> bool {
-    return jsv_is_object_cell(cl.fn_props) and js_object_has_own(cl.fn_props, key);
+def:pub cl_props_has_own(cl: int, key: int) -> bool {
+    return jsv_is_object_cell(jc_fn_props(cl)) and js_object_has_own(jc_fn_props(cl), key);
 }
 
 """Return the closure's fn_props bag, or undefined if v is not a live closure."""
@@ -98,10 +100,10 @@ def:pub fn_meta_get_fn_props(v: JSValue) -> JSValue {
         return js_undefined();
     }
     idx: int = fn_meta_closure_idx(v);
-    if idx < 0 or idx >= len(_FN_META_CLOSURES) {
+    if idx < 0 or idx >= jc_count() {
         return js_undefined();
     }
-    return cl_props(_FN_META_CLOSURES[idx]);
+    return cl_props(idx);
 }
 
 """Builtin [[Class]] tag for user closures (Object.prototype.toString)."""
@@ -110,17 +112,17 @@ def:pub fn_meta_builtin_to_string_tag(v: JSValue) -> str {
         return "";
     }
     idx: int = fn_meta_closure_idx(v);
-    if idx < 0 or idx >= len(_FN_META_CLOSURES) {
+    if idx < 0 or idx >= jc_count() {
         return "Function";
     }
-    cl: JSClosure = _FN_META_CLOSURES[idx];
-    if cl.func.is_generator and cl.func.is_async {
+    cl: int = idx;
+    if _JC_FUNC[cl].is_generator and _JC_FUNC[cl].is_async {
         return "AsyncGeneratorFunction";
     }
-    if cl.func.is_generator {
+    if _JC_FUNC[cl].is_generator {
         return "GeneratorFunction";
     }
-    if cl.func.is_async {
+    if _JC_FUNC[cl].is_async {
         return "AsyncFunction";
     }
     return "Function";

@@ -261,7 +261,7 @@ def:pub fs_watch_start(args: list[JSValue]) -> JSValue {
         flags = UV_FS_EVENT_RECURSIVE_FLAG;
     }
 
-    st: int = uv_fsevent_start(h, _fs_watch_event_cb, path, flags);
+    st: int = uv_fsevent_start(h, int(ptr(_fs_watch_event_cb)), path, flags);
     if st != 0 {
         uv_fsevent_close(h);
         bad: JSValue = js_object_create_null();

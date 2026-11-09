@@ -62,7 +62,14 @@ import from engine.src.runtime.jsobject {
     js_object_get_ordinary_proto,
     js_object_brand
 }
-import from engine.src.runtime.jsobj_type { JSProperty, BRAND_MAP, BRAND_WEAKMAP }
+import from engine.src.runtime.jsobj_type {
+    JSProperty,
+    BRAND_MAP,
+    BRAND_WEAKMAP,
+    jo_bkind,
+    jo_bslot,
+    jo_set_bslot
+}
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
 import from engine.src.runtime.jssymbol { SYMBOL_ITERATOR, SYMBOL_TO_STRING_TAG }
@@ -185,6 +192,12 @@ def:pub map_set_realm(r: Realm) {
 }
 
 def _map_idx(m: JSValue) -> int {
+    # (the index kept in the record's binary slot, js_map_create; a binary
+    # kind would own the slot)
+    mi_id: int = jsv_to_table_id(m);
+    if mi_id > 0 and jo_bkind(mi_id) == 0 and jo_bslot(mi_id) >= 0 {
+        return jo_bslot(mi_id);
+    }
     idx_v: JSValue = js_object_get(m, _KEY_IS_MAP);
     return jsv_to_int32(idx_v);
 }
@@ -261,6 +274,9 @@ def:pub js_map_create_with_proto(proto: JSValue) -> JSValue {
         m = js_object_create_null();
     }
     js_object_set(m, _KEY_IS_MAP, js_int(map_idx));
+    if jsv_to_table_id(m) > 0 and jo_bkind(jsv_to_table_id(m)) == 0 {
+        jo_set_bslot(jsv_to_table_id(m), map_idx);
+    }
     return m;
 }
 
@@ -325,13 +341,7 @@ def:pub js_svz_key(key: JSValue) -> int {
     if jsv_is_string_cell(key) {
         sk_sid: int = jsv_to_table_id(key);
         if sk_sid >= HEAP_STRING_BASE {
-            # Heap strings may be interior-pointer VIEWS (suffix slices); the
-            # intern table retains its argument, so intern a COMPACT COPY —
-            # interning a view dangles when its backing string is released
-            # (the suffix-slice intern corruption class; caused nondeterministic
-            # segfaults across the rollup suite when Map ops interned views).
-            sk_hs: str = str_from_id(sk_sid);
-            sk_sid = str_intern(str_substr(sk_hs, 0, str_nbytes(sk_hs)));
+            sk_sid = _svz_heap_key(sk_sid);
         }
         return jsv_from_string_id(sk_sid);
     }
@@ -350,6 +360,18 @@ def:pub js_svz_key(key: JSValue) -> int {
         }
     }
     return key;
+}
+
+"""js_svz_key of heap string `sid`: the interned id of its text. Heap
+strings may be interior-pointer VIEWS (suffix slices); the intern table
+retains its argument, so a COMPACT COPY is interned — interning a view
+dangles when its backing string is released (the suffix-slice intern
+corruption class; caused nondeterministic segfaults across the rollup suite
+when Map ops interned views). A function of its own: the str local would
+make every js_svz_key set up an unwind record."""
+def _svz_heap_key(sid: int) -> int {
+    sk_hs: str = str_from_id(sid);
+    return str_intern(str_substr(sk_hs, 0, str_nbytes(sk_hs)));
 }
 
 def _map_find(ms: JSMapStorage, key: JSValue) -> int {
@@ -413,25 +435,33 @@ def _map_compact_prefix(ms: JSMapStorage) -> None {
 # ── Map prototype methods ─────────────────────────────────────────────────────
 """Return the value for key in map, or undefined if not found."""
 def:pub js_map_get(m: JSValue, key: JSValue) -> JSValue {
-    ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find(ms, key);
+    # (the storage read in place: an owned local would register for unwind)
+    mg_i: int = _map_idx(m);
+    fi: int = _map_find(_MAP_REALM.maps[mg_i], key);
     if fi >= 0 {
-        return ms.evals[fi];
+        return _MAP_REALM.maps[mg_i].evals[fi];
     }
     return js_undefined();
 }
 
 """Set key→val in map; return the map (for chaining)."""
 def:pub js_map_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
-    ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find(ms, key);
+    # (an existing key's value replaced in place; a new entry: _map_set_new)
+    ms_i: int = _map_idx(m);
+    fi: int = _map_find(_MAP_REALM.maps[ms_i], key);
     if fi >= 0 {
-        ms.evals[fi] = val;
-        if (ms.cell_flags & FLAG_OLD) != 0 {
+        _MAP_REALM.maps[ms_i].evals[fi] = val;
+        if (_MAP_REALM.maps[ms_i].cell_flags & FLAG_OLD) != 0 {
             gc_log_val(val);
         }
         return m;
     }
+    return _map_set_new(m, ms_i, key, val);
+}
+
+"""js_map_set of a key the Map does not hold (storage `ms_i`)."""
+def _map_set_new(m: JSValue, ms_i: int, key: JSValue, val: JSValue) -> JSValue {
+    ms: JSMapStorage = _MAP_REALM.maps[ms_i];
     _map_own(ms);
     ni: int = len(ms.ekeys);
     ms.ekeys.append(key);
@@ -450,9 +480,7 @@ def:pub js_map_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
 
 """Return true if key exists in map."""
 def:pub js_map_has(m: JSValue, key: JSValue) -> JSValue {
-    ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find(ms, key);
-    if fi >= 0 {
+    if _map_find(_MAP_REALM.maps[_map_idx(m)], key) >= 0 {
         return js_true();
     }
     return js_false();

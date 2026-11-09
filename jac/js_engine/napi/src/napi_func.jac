@@ -90,7 +90,18 @@ import from engine.src.runtime.gc_pin { gc_pin_value, gc_unpin_value }
 
 import from engine.src.runtime.realm { Realm }
 
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.vm.closure_type {
+    jc_alloc,
+    jc_count,
+    jc_fn_props,
+    jc_init,
+    jc_napi_cb_data,
+    jc_napi_cb_ptr,
+    jc_prototype_obj,
+    jc_set_napi_cb_data,
+    jc_set_napi_cb_ptr,
+    jc_set_prototype_obj
+}
 
 import from engine.src.bytecode.op { CompiledFunction, ConstantPool }
 
@@ -208,21 +219,26 @@ def _napi_make_closure(name: str, cb_ptr: int, cb_data: int) -> int {
     );
     empty_cf: list[CompiledFunction] = [];
     empty_jsv: list[JSValue] = [];
-    cl: JSClosure = JSClosure(
-        func=fn,
-        free_vals=empty_jsv,
-        lexical_this=js_undefined(),
-        prototype_obj=js_object_create_null(),
-        super_class=js_undefined(),
-        fn_props=js_object_create_null(),
-        module_fns=empty_cf,
-        is_arrow=False,
-        napi_cb_ptr=cb_ptr,
-        napi_cb_data=cb_data
+    cl: int = jc_alloc(fn);
+    jc_init(
+        cl,
+        fn,
+        empty_jsv,
+        js_undefined(),
+        js_object_create_null(),
+        js_undefined(),
+        js_object_create_null(),
+        empty_cf,
+        False,
+        empty_jsv
     );
-    r.closures.append(cl);
-    r.closures_mark_epoch.append(0);  # G1.1: parallel mark-epoch slot (0 = unmarked)
-    return jsv_from_cell_kind(len(r.closures) - 1, JS_CELL_KIND_NATIVE);
+    jc_set_napi_cb_ptr(cl, cb_ptr);
+    jc_set_napi_cb_data(cl, cb_data);
+    while len(r.closures_mark_epoch) <= cl {
+        r.closures_mark_epoch.append(0);  # G1.1: parallel mark-epoch slot (0 = unmarked)
+    }
+    r.closures_mark_epoch[cl] = 0;
+    return jsv_from_cell_kind(cl, JS_CELL_KIND_NATIVE);
 }
 
 """Settle a promise and enqueue its reactions with the scheduler.
@@ -323,12 +339,12 @@ def _h_call_function(argv: int) -> int {
     }
     r: Realm = _napi_get_realm();
     fn_idx: int = jsv_to_table_id(func_v);
-    if fn_idx >= len(r.closures) {
+    if fn_idx >= jc_count() {
         return NAPI_GENERIC_FAILURE;
     }
-    cl: JSClosure = r.closures[fn_idx];
+    cl: int = fn_idx;
     ret: int = 0;
-    if cl.napi_cb_ptr != 0 {
+    if jc_napi_cb_ptr(cl) != 0 {
         # NAPI C callback: collect args into a Jac list and call directly.
         call_args: list[int] = [];
         ai: int = 0;
@@ -337,7 +353,7 @@ def _h_call_function(argv: int) -> int {
             ai = ai + 1;
         }
         ret = _napi_invoke_callback_from_vm(
-            cl.napi_cb_ptr, cl.napi_cb_data, recv_v, call_args, 0
+            jc_napi_cb_ptr(cl), jc_napi_cb_data(cl), recv_v, call_args, 0
         );
     } else {
         # JS closure: route through the C shim's vm-call bridge.
@@ -375,22 +391,22 @@ def _h_new_instance(argv: int) -> int {
     }
     r: Realm = _napi_get_realm();
     fn_idx: int = jsv_to_table_id(ctor_v);
-    if fn_idx >= len(r.closures) {
+    if fn_idx >= jc_count() {
         return NAPI_GENERIC_FAILURE;
     }
-    cl: JSClosure = r.closures[fn_idx];
-    if cl.napi_cb_ptr == 0 {
+    cl: int = fn_idx;
+    if jc_napi_cb_ptr(cl) == 0 {
         return NAPI_GENERIC_FAILURE;
     }
     # Create a new 'this' object inheriting from constructor.prototype
     new_this: int = js_object_create_null();
-    if not jsv_is_undefined(cl.prototype_obj) and not jsv_is_null(cl.prototype_obj) {
-        new_this = js_object_create(cl.prototype_obj);
+    if not jsv_is_undefined(jc_prototype_obj(cl)) and not jsv_is_null(jc_prototype_obj(cl)) {
+        new_this = js_object_create(jc_prototype_obj(cl));
     }
     # new.target = the constructor function itself (per ECMAScript §10.2.5);
     # this_val = the newly allocated object.
     ret: int = _napi_invoke_callback_from_vm(
-        cl.napi_cb_ptr, cl.napi_cb_data, new_this, call_args, ctor_v
+        jc_napi_cb_ptr(cl), jc_napi_cb_data(cl), new_this, call_args, ctor_v
     );
     # If constructor returned non-null object, use that; otherwise new_this
     result_obj: int = new_this;
@@ -487,8 +503,8 @@ def _h_define_class(argv: int) -> int {
     proto: int = js_object_create_null();
     r: Realm = _napi_get_realm();
     ctor_idx: int = jsv_to_table_id(ctor_val);
-    if ctor_idx >= 0 and ctor_idx < len(r.closures) {
-        r.closures[ctor_idx].prototype_obj = proto;
+    if ctor_idx >= 0 and ctor_idx < jc_count() {
+        jc_set_prototype_obj(ctor_idx, proto);
     }
     ctor_str_key: int = str_intern("constructor");
     js_object_set(proto, ctor_str_key, ctor_val);
@@ -522,15 +538,15 @@ def _h_define_class(argv: int) -> int {
                 method_val: int = _napi_make_closure(method_name, method_cb, pdata_ptr);
                 if is_static {
                     # Static method: goes on the constructor's fn_props JSObject
-                    cl_ctor: JSClosure = r.closures[ctor_idx];
-                    js_object_set(cl_ctor.fn_props, prop_key, method_val);
+                    cl_ctor: int = ctor_idx;
+                    js_object_set(jc_fn_props(cl_ctor), prop_key, method_val);
                 } else {
                     js_object_set(proto, prop_key, method_val);
                 }
             } elif not jsv_is_undefined(value_jsv) {
                 if is_static {
-                    cl_ctor2: JSClosure = r.closures[ctor_idx];
-                    js_object_set(cl_ctor2.fn_props, prop_key, value_jsv);
+                    cl_ctor2: int = ctor_idx;
+                    js_object_set(jc_fn_props(cl_ctor2), prop_key, value_jsv);
                 } else {
                     js_object_set(proto, prop_key, value_jsv);
                 }
@@ -616,8 +632,8 @@ def _h_instanceof(argv: int) -> int {
     if _is_fn_val(ctor_v) {
         r_ii: Realm = _napi_get_realm();
         fn_idx_ii: int = jsv_to_table_id(ctor_v);
-        if fn_idx_ii < len(r_ii.closures) {
-            ctor_proto = r_ii.closures[fn_idx_ii].prototype_obj;
+        if fn_idx_ii < jc_count() {
+            ctor_proto = jc_prototype_obj(fn_idx_ii);
         }
     } elif jsv_is_object_cell(ctor_v) {
         proto_key: int = str_intern("prototype");

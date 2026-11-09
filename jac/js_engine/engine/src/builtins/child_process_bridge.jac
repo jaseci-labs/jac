@@ -1196,8 +1196,8 @@ def:pub cp_spawn_async(args: list[JSValue]) -> JSValue {
         peh: UVHandle = uvpoll_create(lp, err_r);
         _CP_HANDLES_POLL_OUT[hi] = poh;
         _CP_HANDLES_POLL_ERR[hi] = peh;
-        uvpoll_start(poh, 1, _cp_poll_out_cb);
-        uvpoll_start(peh, 1, _cp_poll_err_cb);
+        uvpoll_start(poh, 1, int(ptr(_cp_poll_out_cb)));
+        uvpoll_start(peh, 1, int(ptr(_cp_poll_err_cb)));
     }
 
     _cp_queue_event(hi, "spawn", "", "");

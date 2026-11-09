@@ -214,7 +214,7 @@ def:pub timer_set_timeout(
     _TIMER_REALM.timers_mark_epoch.append(0);  # A2.2b GC mark bitmap
 
     # Start one-shot timer: repeat=0 means fire once
-    uvtimer_start(h, _timer_fire_cb, delay_ms, 0);
+    uvtimer_start(h, int(ptr(_timer_fire_cb)), delay_ms, 0);
 
     return tid;
 }
@@ -272,7 +272,7 @@ def:pub timer_set_interval(
     _TIMER_REALM.timers_mark_epoch.append(0);  # A2.2b GC mark bitmap
 
     # Start repeating timer: repeat=delay_ms means re-arm after each fire
-    uvtimer_start(h, _timer_fire_cb, delay_ms, delay_ms);
+    uvtimer_start(h, int(ptr(_timer_fire_cb)), delay_ms, delay_ms);
 
     return tid;
 }
@@ -316,7 +316,7 @@ def:pub timer_set_immediate(fn: JSValue, extra_args: list[JSValue]) -> int {
     _TIMER_REALM.timers.append(t_entry);
     _TIMER_REALM.timers_mark_epoch.append(0);
 
-    uvtimer_start(h, _timer_fire_cb, 0, 0);
+    uvtimer_start(h, int(ptr(_timer_fire_cb)), 0, 0);
     return tid;
 }
 

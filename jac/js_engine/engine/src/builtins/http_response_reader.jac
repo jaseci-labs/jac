@@ -471,13 +471,13 @@ def:pub read_http_response(args: list[JSValue]) -> JSValue {
     write_i64(state, _ST_BODY_CAP, max_body);
 
     # ── Step 2: Wire llhttp callbacks ─────────────────────────────────────
-    cb_status: int = _cb_on_status;
-    cb_hf: int = _cb_on_header_field;
-    cb_hv: int = _cb_on_header_value;
-    cb_hvc: int = _cb_on_hvc;
-    cb_hc: int = _cb_on_hc;
-    cb_body: int = _cb_on_body;
-    cb_mc: int = _cb_on_mc;
+    cb_status: int = int(ptr(_cb_on_status));
+    cb_hf: int = int(ptr(_cb_on_header_field));
+    cb_hv: int = int(ptr(_cb_on_header_value));
+    cb_hvc: int = int(ptr(_cb_on_hvc));
+    cb_hc: int = int(ptr(_cb_on_hc));
+    cb_body: int = int(ptr(_cb_on_body));
+    cb_mc: int = int(ptr(_cb_on_mc));
     llhttp_set_callback(settings, _CB_ON_STATUS, cb_status);
     llhttp_set_callback(settings, _CB_ON_HEADER_FIELD, cb_hf);
     llhttp_set_callback(settings, _CB_ON_HEADER_VALUE, cb_hv);
