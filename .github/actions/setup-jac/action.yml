@@ -361,6 +361,9 @@ runs:
       # build-binaries.yml, ships it all.
       env:
         PR_BUILD: ${{ github.event_name == 'pull_request' || inputs.bytecode-kit == 'true' }}
+        # A bytecode kit lives one run: pack it at zstd 3 (seconds) instead of
+        # a release's 19 (about 5 minutes on a 4 vCPU runner).
+        JAC_PAYLOAD_ZSTD_LEVEL: ${{ inputs.bytecode-kit == 'true' && '3' || '' }}
         PREBUILT: ${{ inputs.prebuilt != '' && format('{0}/prebuilt', runner.temp) || '' }}
         STALE_PYTHON: ${{ inputs.bytecode-kit }}
         STALE_OBJECT: ${{ steps.stale-object.outputs.dir }}
