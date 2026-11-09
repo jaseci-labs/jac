@@ -8,26 +8,12 @@ impl _schema_for_type(
         return dict(_NAME_SCHEMAS.get(target.lower(), {}));
     }
     origin = get_origin(target);
-    if origin is typing.Literal {
-        return {'enum': list(get_args(target))};
-    }
-    shape = origin if origin is not None else target;
-    args = get_args(target);
-    if shape is list {
+    if origin is list {
+        args = get_args(target);
         items = _schema_for_type(args[0], schemas) if args else {};
         return {'type': 'array', 'items': items};
     }
-    if shape is set {
-        items = _schema_for_type(args[0], schemas) if args else {};
-        return {'type': 'array', 'items': items, 'uniqueItems': True};
-    }
-    if shape is tuple {
-        if target is tuple or target is typing.Tuple {
-            return {'type': 'array'};
-        }
-        return _tuple_schema(args, schemas);
-    }
-    if shape is dict {
+    if origin is dict {
         return {'type': 'object'};
     }
     if origin is Union or origin is UnionType {
@@ -43,10 +29,6 @@ impl _schema_for_type(
     }
     if target is bool {
         return {'type': 'boolean'};
-    }
-    if isinstance(target, EnumMeta) {
-        members: list[any] = list(target);
-        return {'enum': [member.value for member in members]};
     }
     if isinstance(target, type) {
         if target in _CLASS_SCHEMAS {
@@ -64,23 +46,6 @@ impl _schema_for_type(
         return _object_schema(target, schemas);
     }
     return {};
-}
-
-impl _tuple_schema(
-    args: tuple[object, ...], schemas: (dict[str, any] | None)
-) -> dict[str, any] {
-    if not args {
-        return {'type': 'array', 'maxItems': 0};
-    }
-    if len(args) == 2 and args[1] is Ellipsis {
-        return {'type': 'array', 'items': _schema_for_type(args[0], schemas)};
-    }
-    return {
-        'type': 'array',
-        'prefixItems': [_schema_for_type(arg, schemas) for arg in args],
-        'minItems': len(args),
-        'maxItems': len(args)
-    };
 }
 
 impl _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str, any] {
@@ -119,22 +84,6 @@ impl _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str,
     }
     schemas[name] = `entry;
     return ref;
-}
-
-impl _schema_default(value: any) -> any {
-    if isinstance(type(value), EnumMeta) {
-        return value.value;
-    }
-    if isinstance(value, (datetime, date, time)) {
-        return value.isoformat();
-    }
-    if isinstance(value, (list, tuple)) {
-        return [_schema_default(item) for item in value];
-    }
-    if isinstance(value, (set, frozenset)) {
-        return [_schema_default(item) for item in sorted(value, key=str)];
-    }
-    return value;
 }
 
 impl _param_schema(
@@ -205,7 +154,7 @@ impl build_openapi(app: ServingApp) -> dict[str, any] {
                 location = str(kind.value);
                 param_schema = _param_schema(param, component_schemas);
                 if not param.required and param.default_value is not None {
-                    param_schema['default'] = _schema_default(param.default_value);
+                    param_schema['default'] = param.default_value;
                 }
                 params_out.append(
                     {
@@ -225,7 +174,7 @@ impl build_openapi(app: ServingApp) -> dict[str, any] {
             } else {
                 body_schema = _param_schema(param, component_schemas);
                 if not param.required and param.default_value is not None {
-                    body_schema['default'] = _schema_default(param.default_value);
+                    body_schema['default'] = param.default_value;
                 }
                 body_props[param.name] = body_schema;
                 if param.required {

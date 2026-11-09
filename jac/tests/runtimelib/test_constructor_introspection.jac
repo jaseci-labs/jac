@@ -7,11 +7,7 @@ import from datetime { date, datetime, time, timezone }
 import from uuid { UUID }
 import from jaclang.server.serving.coerce { coerce_value }
 import from jaclang.server.serving.datatypes { UploadFile }
-import from jaclang.server.serving.openapi {
-    _object_schema,
-    _schema_default,
-    _schema_for_type
-}
+import from jaclang.server.serving.openapi { _object_schema, _schema_for_type }
 import from jaclang.server.server { ModuleIntrospector }
 
 glob REFUSED: object = object(),
@@ -181,38 +177,11 @@ test "coercion and schemas follow the declared type and the public constructor" 
         (bytes, {"type": "string"}),
         (u8, {"type": "integer"}),
         (f32, {"type": "number"}),
-        (Literal["a", "b"], {"enum": ["a", "b"]}),
-        (Color, {"enum": ["red", "blue"]}),
-        (tuple[()], {"type": "array", "maxItems": 0}),
-        (typing.Tuple, {"type": "array"}),
-        (
-            set[int],
-            {"type": "array", "items": {"type": "integer"}, "uniqueItems": True}
-        ),
-        (tuple[int, ...], {"type": "array", "items": {"type": "integer"}}),
-        (
-            tuple[int, str],
-            {
-                "type": "array",
-                "prefixItems": [{"type": "integer"}, {"type": "string"}],
-                "minItems": 2,
-                "maxItems": 2
-            }
-        )
+
     ] {
         got = _schema_for_type(target);
         assert got == want , f"{target}: {got}";
     }
-    for (declared, want) in [
-        (Color.RED, "red"),
-        (datetime(2026, 1, 2), "2026-01-02T00:00:00"),
-        ({2, 1}, [1, 2]),
-        ([Color.RED], ["red"]),
-        (5, 5)
-    ] {
-        assert _schema_default(declared) == want , f"{declared!r}";
-    }
-
     schemas: dict[str, any] = {};
     _object_schema(Payload, schemas);
     schema = schemas["Payload"];

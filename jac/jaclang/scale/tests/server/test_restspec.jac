@@ -292,28 +292,6 @@ test "openapi specs" {
         assert "/walker/DefaultWalker" in paths;
         assert "post" in paths["/walker/DefaultWalker"];
         assert "get" not in paths["/walker/DefaultWalker"];
-
-        # A declared default fits the schema it's shown in, in a body or a query.
-        body_ref = paths["/typed-fields"]["post"]["requestBody"]["content"][
-            "application/json"
-        ]["schema"]["$ref"];
-        schemas = spec["components"]["schemas"];
-        query = paths["/walker/GetWalkerWithParams"]["get"]["parameters"];
-        for shown in [
-            schemas[body_ref.rsplit("/", 1)[1]]["properties"]["when"],
-            next(
-                p["schema"]
-                for p in query
-                if p["name"] == "since"
-            )
-        ] {
-            assert shown
-                == {
-                    "type": "string",
-                    "format": "date-time",
-                    "default": "2026-01-02T00:00:00"
-                } , f"{shown}";
-        }
     } finally {
         client.close();
     }
