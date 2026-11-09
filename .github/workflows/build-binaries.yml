@@ -357,9 +357,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.payload-layers/jacpython
-          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+          key: payload-layers-jacpython-zstd19-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
-            payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-jacpython-zstd19-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of

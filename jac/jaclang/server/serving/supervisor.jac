@@ -50,6 +50,7 @@ obj WorkerSupervisor {
         worker_main: Callable[[WorkerHandle], int],
         on_ready: (Callable[[int], None] | None) = None,
         on_worker_exit: (Callable[[int], None] | None) = None,
+        drain: DrainState = DrainState(),
         listener: any = None,
         bound_port: int = 0,
         slots: list[WorkerSlot] = [],
