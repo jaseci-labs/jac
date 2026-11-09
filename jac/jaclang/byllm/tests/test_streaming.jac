@@ -8,7 +8,7 @@ import asyncio;
 import contextlib;
 import contextvars;
 import from unittest { mock }
-import from jaclang.byllm.exceptions { ConfigurationError }
+import from jaclang.byllm.exceptions { ConfigurationError, OutputTruncatedError }
 import from jaclang.byllm.types { StreamEvent }
 import from jaclang.byllm.telemetry { _current_invocation_id }
 import from jaclang.byllm.lib { Model }
@@ -134,30 +134,42 @@ test "a logging stream with tools reports the call, the result, then the answer"
 }
 
 
+"""A custom finish_tool that changes the answer it is given."""
+def _shouting_finish -> any {
+    def finish_tool(final_output: str) -> str {
+        return final_output.upper();
+    }
+    return finish_tool;
+}
+
+
 test "a finish_tool answer streams to the caller as committed, with no second call" {
     # The model's finish_tool argument is the answer, streamed as the model writes
     # it. byLLM used to ask the model to restate it, and that reply replaced it.
     # The second answer's escapes (quote, newline, an emoji's surrogate pair) split
-    # across the 12-character fragments. The last provider cannot stream, so the
-    # answer arrives whole.
-    for (committed, streams) in [
-        ("The weather in London is sunny, 25 degrees.", True),
-        ('London: "sunny"\n25°C bright 😀 all day', True),
-        ("The weather in London is sunny, 25 degrees.", False)
+    # across the 12-character fragments. The third provider cannot stream, so the
+    # answer arrives whole. The last finish_tool changes the answer after it
+    # streamed: the streamed text is taken back, and a plain stream raises.
+    for (written, streams, finish_fn) in [
+        ("The weather in London is sunny, 25 degrees.", True, None),
+        ('London: "sunny"\n25°C bright 😀 all day', True, None),
+        ("The weather in London is sunny, 25 degrees.", False, None),
+        ("The weather in London is sunny, 25 degrees.", True, _shouting_finish())
     ] {
+        committed = finish_fn(written) if finish_fn else written;
         for mode in ["plain", "logging", "handler"] {
             history: list[dict[str, any]] = [];
             seen: list[StreamEvent] = [];
             llm = MockLLM(
                 outputs=[
                     call("get_weather", {"city": "London"}),
-                    finish(committed),
+                    finish(written),
                     say("A different restated answer.")
                 ]
             );
 
             def check_weather(question: str) -> str by llm(
-                tools=[get_weather],
+                tools=[get_weather] + ([finish_fn] if finish_fn else []),
                 stream=True,
                 logging=mode == "logging",
                 stream_handler=seen.append if mode == "handler" else None,
@@ -172,18 +184,37 @@ test "a finish_tool answer streams to the caller as committed, with no second ca
             with provider {
                 out: any = check_weather("What is the weather in London?");
                 if mode == "plain" {
-                    pieces = list(out);
+                    pieces = [];
+                    try {
+                        for piece in out {
+                            pieces.append(piece);
+                        }
+                    } except OutputTruncatedError {
+                        assert finish_fn , f"plain: raised after {pieces}";
+                        continue;
+                    }
                     got = "".join(pieces);
                 } else {
                     events = list(out) if mode == "logging" else seen;
-                    pieces = [e.data["content"] for e in events_of(events, "chunk")];
+                    resets = [
+                        i
+                        for (i, e) in enumerate(events)
+                        if e.event_type == "stream_reset"
+                            and e.data.get("scope") == "answer"
+                    ];
+                    assert bool(resets) == bool(finish_fn) , f"{mode}: resets {resets}";
+                    after = events[resets[-1] + 1:] if resets else events;
+                    pieces = [e.data["content"] for e in events_of(after, "chunk")];
                     got = out if mode == "handler" else "".join(pieces);
                 }
             }
+            assert not (finish_fn and mode == "plain") , "plain: the changed answer did not raise";
             assert "".join(pieces) == committed
-                and (len(pieces) > 1 if streams else pieces == [committed]) , (
-                f"{mode}, streams={streams}: the answer arrived as {pieces}"
-            );
+                and (
+                    len(pieces) > 1
+                        if streams and not finish_fn
+                        else pieces == [committed]
+                ) , (f"{mode}, streams={streams}: the answer arrived as {pieces}");
             assert got == committed , f"{mode}: the caller received {got!r}";
             assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(
                 llm.seen

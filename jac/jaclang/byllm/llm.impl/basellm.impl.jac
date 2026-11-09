@@ -2183,6 +2183,10 @@ impl BaseLLM._stream_steps(
                     }
                     mt_run.add_message(finish_msg);
                     answer = _commit_answer(mt_run, final_output, finish_tc.call_id);
+                    if not answer.startswith(shown) {
+                        yield from _drop_answer(retractable);
+                        shown = "";
+                    }
                     if not done_sent {
                         yield StreamEvent(
                             event_type="steps_done", data={"iterations": iter_count}
@@ -2374,8 +2378,9 @@ impl _AnswerStream.observe(call: dict[str, str]) -> str {
 impl _drop_answer(retractable: bool) -> Generator[StreamEvent, None, None] {
     if not retractable {
         raise OutputTruncatedError(
-            "The final answer stopped after part of it had streamed (the model hit "
-            "max_tokens, or its finish_tool call was rejected). A plain stream cannot "
+            "The final answer changed after part of it had streamed (the model hit "
+            "max_tokens, its finish_tool call failed, or a custom finish_tool returned "
+            "different text). A plain stream cannot "
             "take that text back: raise max_tokens, or stream with logging=True or a "
             "stream_handler."
         );
