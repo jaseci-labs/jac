@@ -113,6 +113,9 @@ impl prepare_serve_payloads(
             for (path, manifest) in application.manifests.items()
         };
         result.update(serve_manifest_stamp());
+        if client {
+            result['client_prepared'] = True;
+        }
         return (result, prepared.client_dist if client else "");
     } except Exception as e {
         console.error(f"Seal aborted: application preparation failed: {e}");

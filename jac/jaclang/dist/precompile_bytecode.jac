@@ -27,7 +27,8 @@ def package_native_units(package_dir: str) -> list[str];
 
 glob _sealable_cache: dict[tuple[str, str], list[str]] = {},
      _placement_cache: dict[tuple[str, str], dict[str, set[str]]] = {},
-     _source_apps: dict[tuple[str, str], dict[str, str]] = {};
+     _source_apps: dict[tuple[str, str], dict[str, str]] = {},
+     _client_roots: dict[str, tuple[int, str]] = {};
 
 def _application_sources(package_dir: str, app: str) -> list[str] | None;
 
@@ -48,6 +49,8 @@ glob _unit_native_program: list[any] = [];
 def precompile_native_unit(jac_path: str, collect: bool = True) -> str;
 
 def _served_codespace(pkg_root: str) -> str;
+
+def _served_client_root(pkg_root: str) -> str;
 
 @contextmanager
 def served_codespace(pkg_root: str) -> Iterator[None];

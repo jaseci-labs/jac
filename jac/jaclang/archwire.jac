@@ -3842,7 +3842,8 @@ graph import {
             CLIENT_DIST_REL,
             read_serve_manifest
         },
-        dist.precompile_bytecode._served_codespace
+        dist.precompile_bytecode._served_client_root
+            | dist.precompile_bytecode._served_codespace
             | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
         dist.precompile_bytecode.app_metadata { CLIENT_DIST_REL, NATIVE_DIR_REL },
         dist.precompile_bytecode.collect_payloads {
