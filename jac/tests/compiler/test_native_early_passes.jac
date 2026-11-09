@@ -347,13 +347,13 @@ test "kernel early passes match the store parser's flow, impl, and semantic fact
         assert not failed;
         assert kernel.skipped() == 0;
         for early in early_passes() {
-            run_pass(early, nat_mod, native);
+            run_pass(pass_class_of(early), nat_mod, native);
         }
         store = JacProgram();
         (store_mod, store_failed) = parse(FLOW_SOURCE, "early_flow.jac", store);
         assert not store_failed;
         for early in early_passes() {
-            run_pass(early, store_mod, store);
+            run_pass(pass_class_of(early), store_mod, store);
         }
         nat_profile = flow_profile(nat_mod);
         store_profile = flow_profile(store_mod);
