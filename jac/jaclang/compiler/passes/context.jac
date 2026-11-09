@@ -1,3 +1,5 @@
+import from enum { StrEnum }
+
 obj Alert {
     has msg: str,
         loc: Span,
@@ -88,7 +90,56 @@ walker CompilerPass {
     def release;
 }
 
-type PassSchedule = list[type[CompilerPass]];
+enum PassKind(StrEnum) {
+    APP_CONTEXT = 'AppContextPass',
+    GRAPH_LOWERING = 'GraphLoweringPass',
+    AST_VALIDATION = 'ASTValidationPass',
+    ABSORB_IMPORTS = 'AbsorbImportsPass',
+    SYM_TAB_BUILD = 'SymTabBuildPass',
+    DECL_IMPL_MATCH = 'DeclImplMatchPass',
+    PLACEMENT_APPLY = 'PlacementApplyPass',
+    SEMANTIC_ANALYSIS = 'SemanticAnalysisPass',
+    IMPORT_WIRING = 'ImportWiringPass',
+    PACKAGE_BOUNDARY = 'PackageBoundaryPass',
+    SEM_DEF_MATCH = 'SemDefMatchPass',
+    CFG_BUILD = 'CFGBuildPass',
+    MTIR_GEN = 'MTIRGenPass',
+    JSX_INTRINSIC_GUARD = 'JsxIntrinsicGuardPass',
+    COMPTIME_RESOLVE = 'ComptimeResolvePass',
+    REGION_INFER = 'RegionInferPass',
+    VARIANT_AGREEMENT = 'VariantAgreementPass',
+    TYPE_CHECK = 'TypeCheckPass',
+    STATIC_ANALYSIS = 'StaticAnalysisPass',
+    ACCESS_CHECK = 'AccessCheckPass',
+    OWNERSHIP_CHECK = 'OwnershipCheckPass',
+    PLACEMENT = 'PlacementPass',
+    PORTABILITY_WARN = 'PortabilityWarnPass',
+    JAC_LINT_CHECK = 'JacLintCheckPass',
+    DECLARATION_TYPE = 'DeclarationTypePass',
+    BOUNDARY_FACTS = 'BoundaryFactsPass',
+    BOUNDARY_ANALYSIS = 'BoundaryAnalysisPass',
+    ENDPOINT_EFFECT = 'EndpointEffectPass',
+    ESAST_GEN = 'EsastGenPass',
+    LAYOUT = 'LayoutPass',
+    RC_FACTS = 'RcFactsPass',
+    NA_IR_GEN = 'NaIRGenPass',
+    NATIVE_IMPORT_FACTS = 'NativeImportFactsPass',
+    JCIR_GEN = 'JcirGenPass',
+    FREEZE_STRUCTURE = 'FreezeStructurePass',
+    JCIR_BYTECODE_GEN = 'JcirBytecodeGenPass',
+    NATIVE_COMPILE = 'NativeCompilePass',
+    COMMENT_ATTACH = 'CommentAttachPass',
+    DOC_IR_GEN = 'DocIRGenPass',
+    JAC_FORMAT = 'JacFormatPass',
+    JAC_AUTO_LINT = 'JacAutoLintPass',
+    PYAST_BUILD = 'PyastBuildPass',
+    GRAMMAR_EXTRACT = 'GrammarExtractPass',
+    COALESCE_BB = 'CoalesceBBPass',
+    NORMALIZE = 'NormalizePass',
+    UNPARSE = 'UnparsePass'
+}
+
+type PassSchedule = list[PassKind];
 
 walker TreePass(CompilerPass, TreeWalker) {
     has _decl_bodies: list[ImplDef] = [];

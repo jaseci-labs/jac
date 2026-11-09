@@ -38,6 +38,8 @@ import from jaclang.compiler.driver.pipeline {
     ANALYSIS_LOADS,
     CODEGEN_LOADS,
     IR_LOADS,
+    PassKind,
+    pass_class_of,
     providers_of,
     schedule_for,
     tier_reason
@@ -288,7 +290,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [
-            p.__name__
+            p.value
             for product in (
                 CompilationProduct.CODEGEN,
                 CompilationProduct.PY_IR,
@@ -347,14 +349,16 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
                 f"{origin}: {dep} came back half-initialized"
             );
         }
-        for p in passes {
-            owner = p.__module__;
+        for pass_kind in passes {
+            pass_cls = pass_class_of(pass_kind);
+            owner = pass_cls.__module__;
             covered = seed(owner)
                 or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
-                "seed module nor in the schedule's dependency list; a compile "
-                "reached from its import would run the schedule that needs it"
+                f"{origin}: pass {pass_kind.value} lives in {owner}, which is "
+                "neither a seed module nor in the schedule's dependency list; "
+                "a compile reached from its import would run the schedule "
+                "that needs it"
             );
         }
     }

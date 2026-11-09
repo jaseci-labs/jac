@@ -10,12 +10,9 @@ import os;
 import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compiler { JacCompiler }
-import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline { PassKind, product_passes }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
-import from jaclang.compiler.tools.jac_auto_lint_pass {
-    JacAutoLintPass,
-    JacLintCheckPass
-}
+import from jaclang.compiler.tools.jac_auto_lint_pass { JacAutoLintPass }
 import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
@@ -51,7 +48,7 @@ def _write_tmp(src: str) -> str {
 test "lint report scheduler uses JacLintCheckPass" {
     sched = product_passes(CompilationProduct.LINT);
     assert len(sched) == 1;
-    assert sched[0] is JacLintCheckPass;
+    assert sched[0] == PassKind.JAC_LINT_CHECK;
 }
 
 test "lint report path preserves every diagnostic the mutation pass emits" {

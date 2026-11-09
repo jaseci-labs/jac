@@ -18,7 +18,9 @@ reported it. Both lanes now report it.
 import os;
 import jaclang;
 import jaclang.compiler.driver.pipeline as pipeline_mod;
+import from jaclang.compiler.driver.pipeline { PassKind }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+import from jaclang.compiler.passes.context { PassKind }
 import jaclang.compiler.frontend.unitree as uni;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -75,7 +77,7 @@ def inferred_brand_errors -> list[str] {
 }
 
 """Stand in for an inference schedule that cannot be built at this instant."""
-def unbuilt_sched(request: any) -> list[type] {
+def unbuilt_sched(request: any) -> list[PassKind] {
     return [];
 }
 
