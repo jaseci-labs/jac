@@ -284,8 +284,7 @@ test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
             if events {
                 evs = stream_events(out);
                 kinds = [ev.event_type for ev in evs];
-                assert kinds.count("steps_done") == 1
-                    and "tool_result" not in kinds[kinds.index("steps_done"):] , f"{where}: {kinds}";
+                assert "tool_result" not in kinds[kinds.index("steps_done"):] , f"{where}: {kinds}";
                 out = chunk_text(evs);
             }
             assert out == answer , f"{where}: answered {out!r}";

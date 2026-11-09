@@ -36,7 +36,7 @@ def _turn(
             if mode == "streamed" {
                 out = "".join(out);
             } elif mode == "events" {
-                evs = list(stream_events(out));
+                evs = stream_events(out);
                 kinds = [ev.event_type for ev in evs];
                 assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
                 text = "";

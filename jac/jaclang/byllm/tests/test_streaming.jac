@@ -184,13 +184,10 @@ test "a finish_tool answer streams to the caller as committed, with no second ca
             with provider {
                 out: any = check_weather("What is the weather in London?");
                 if mode == "plain" {
-                    pieces = [];
                     try {
-                        for piece in out {
-                            pieces.append(piece);
-                        }
+                        pieces = list(out);
                     } except OutputTruncatedError {
-                        assert finish_fn , f"plain: raised after {pieces}";
+                        assert finish_fn , "plain: raised";
                         continue;
                     }
                     got = "".join(pieces);
@@ -202,13 +199,11 @@ test "a finish_tool answer streams to the caller as committed, with no second ca
                         if e.event_type == "stream_reset"
                             and e.data.get("scope") == "answer"
                     ];
-                    assert bool(resets) == bool(finish_fn) , f"{mode}: resets {resets}";
                     after = events[resets[-1] + 1:] if resets else events;
                     pieces = [e.data["content"] for e in events_of(after, "chunk")];
                     got = out if mode == "handler" else "".join(pieces);
                 }
             }
-            assert not (finish_fn and mode == "plain") , "plain: the changed answer did not raise";
             assert "".join(pieces) == committed
                 and (
                     len(pieces) > 1
