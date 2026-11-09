@@ -1160,14 +1160,19 @@ test "commits after a sealed scan skip in-place scans until user code runs again
 }
 
 
-test "a write the session was not told about survives a retried flush" {
+test "a write the session was not told about survives a retried flush, and one made during the upsert reaches the next commit" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
         JacRuntime.exec_ctx = seed;
         id = UUID(int=0);
+        bag_id = UUID(int=0);
         try {
             id = _loose(seed, 7).ensure_id();
+            bag: NodeAnchor = _as_any(RBag(items=[1])).__jac__;
+            bag.persistent = True;
+            seed.mem.put(bag);
+            bag_id = bag.ensure_id();
             seed.mem.commit();
         } finally {
             JacRuntime.exec_ctx = old;
@@ -1205,6 +1210,36 @@ test "a write the session was not told about survives a retried flush" {
             other.close();
             JacRuntime.exec_ctx = old;
             ctx.close();
+        }
+        during = _ctx(td);
+        JacRuntime.exec_ctx = during;
+        try {
+            _ = during.user_root;
+            bag_arch = _as_any(during.mem.batch_get([bag_id])[bag_id].archetype);
+            bag_arch.items.append(2);
+            store: any = during.mem.store;
+            real_upsert = store.upsert;
+            def racing_upsert(rows: any) {
+                bag_arch.items.append(3);
+                real_upsert(rows);
+            }
+            store.upsert = racing_upsert;
+            try {
+                during.mem.commit();
+            } finally {
+                store.upsert = real_upsert;
+            }
+            assert _stored(during, bag_id, "items") == "[1, 2]" , (
+                "the row holds what was serialized; the append during the upsert came later"
+            );
+            during.mem.commit();
+            assert _stored(during, bag_id, "items") == "[1, 2, 3]" , (
+                "an append made while the row was being written must reach the next "
+                "commit; a baseline taken from the live fields after the upsert hides it"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            during.close();
         }
     }
 }

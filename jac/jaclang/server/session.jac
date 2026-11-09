@@ -122,7 +122,8 @@ obj UnflushedAnchor {
     has anchor: Anchor,
         stored: (dict[str, object] | None),
         hash: int,
-        written: int = 0;
+        written: int = 0,
+        baseline: (dict[str, tuple[int, object]] | None) = None;
 }
 
 
