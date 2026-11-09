@@ -45603,8 +45603,12 @@ graph import scale {
             BUNDLE_MOUNT_PATH,
             BUNDLE_VOLUME_NAME
         },
-        deploy.target.kubernetes.target { bundle_keys_from_pod_spec, bundle_pvc_name },
-        tests.deploy.test_destroy_reclaim { bundle_pvc_name },
+        deploy.target.kubernetes.target {
+            bundle_keys_from_pod_spec,
+            bundle_loader_pod_name,
+            bundle_pvc_name
+        },
+        tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,

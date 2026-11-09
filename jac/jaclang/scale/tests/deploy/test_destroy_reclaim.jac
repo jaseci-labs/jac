@@ -593,3 +593,35 @@ test "a redeploy leaves a live bundle volume in place" {
     core_v1 = _apply_bundle_pvc([live]);
     core_v1.create_namespaced_persistent_volume_claim.assert_not_called();
 }
+
+
+test "a redeploy removes a leftover bundle loader before waiting for its volume" {
+    terminating = SimpleNamespace(
+        metadata=SimpleNamespace(
+            name=bundle_pvc_name(APP), deletion_timestamp="2026-11-09T07:44:44Z"
+        )
+    );
+    core_v1 = _apply_bundle_pvc([terminating, ApiException(status=404)]);
+    calls = [call[0] for call in core_v1.mock_calls];
+    assert "delete_namespaced_pod" in calls , (
+        "a loader left by an interrupted deploy keeps the volume terminating, "
+        "so every redeploy times out waiting for it"
+    );
+    assert core_v1.delete_namespaced_pod.call_args.args[0]
+        == bundle_loader_pod_name(APP);
+    assert calls.index("delete_namespaced_pod")
+        < calls.index("create_namespaced_persistent_volume_claim");
+}
+
+
+test "destroying an app in a shared namespace removes its bundle loader" {
+    (apps_v1, core_v1) = _co_tenant_apis();
+    _run_destroy(apps_v1, core_v1, unittest.mock.MagicMock());
+    deleted_pods: list[str] = [
+        call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list
+    ];
+    assert bundle_loader_pod_name(APP) in deleted_pods , (
+        "destroy left the app's bundle loader, which holds the volume it deleted "
+        "in Terminating"
+    );
+}

@@ -1726,6 +1726,15 @@ impl KubernetesTarget._apply_or_replace_pvc(
             name=name, namespace=namespace
         );
         if pvc.metadata?.deletion_timestamp is not None {
+            app = k8s_safe_name(self.k8s_config.app_name);
+            if name == bundle_pvc_name(app) {
+                delete_if_exists(
+                    core_v1.delete_namespaced_pod,
+                    bundle_loader_pod_name(app),
+                    namespace,
+                    'Pod'
+                );
+            }
             if self.logger {
                 self.logger.info(
                     f"PVC '{name}' is still being deleted; waiting for it to go "
@@ -1918,6 +1927,12 @@ impl KubernetesTarget._destroy_pvcs(
 }
 
 impl KubernetesTarget._destroy_app_pvcs(app_name: str, namespace: str, core_v1: any) {
+    delete_if_exists(
+        core_v1.delete_namespaced_pod,
+        bundle_loader_pod_name(k8s_safe_name(app_name)),
+        namespace,
+        'Pod'
+    );
     self._destroy_pvcs(self._app_pvc_names(app_name), namespace, core_v1);
 }
 
