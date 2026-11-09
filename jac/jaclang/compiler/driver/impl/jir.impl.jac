@@ -132,15 +132,7 @@ impl native_section_payload(data: (bytes | None), want: NativeStamp) -> (bytes |
 }
 
 impl JirPaths.encode(path: str, package_dir: str) -> str {
-    if not self.base_dir or not package_dir or not os.path.isabs(path) {
-        return path;
-    }
-    if path == package_dir or path.startswith(package_dir + os.sep) {
-        return PRECOMPILE_SENTINEL
-            + "/"
-            + os.path.relpath(path, self.base_dir).replace(os.sep, "/");
-    }
-    return path;
+    return encode_package_path(path, self.base_dir, package_dir, PRECOMPILE_SENTINEL);
 }
 
 impl JirPaths.resolve(path: str) -> str {
@@ -261,6 +253,13 @@ impl get_jir_cache_dir -> Path {
 }
 
 impl compute_content_sha256(file_path: str) -> str {
+    held = _COMPILED_CONTENT.get();
+    if held {
+        found = held.get(os.path.realpath(file_path));
+        if found is not None {
+            return found;
+        }
+    }
     return file_sha256(file_path);
 }
 
@@ -721,11 +720,34 @@ impl _module_projection(source_path: str) -> str {
 }
 
 impl begin_prepare_memo -> any {
-    return _PREPARE_MEMO.set({});
+    return (_PREPARE_MEMO.set({}), _COMPILED_CONTENT.set({}));
 }
 
 impl end_prepare_memo(token: any) {
-    _PREPARE_MEMO.reset(token);
+    _COMPILED_CONTENT.reset(token[1]);
+    _PREPARE_MEMO.reset(token[0]);
+}
+
+impl hold_compiled_content(digests: dict[str, str]) {
+    held = _COMPILED_CONTENT.get();
+    if held is None {
+        return;
+    }
+    held.update(digests);
+    memo = _PREPARE_MEMO.get();
+    if memo is not None {
+        memo.clear();
+    }
+}
+
+@contextmanager
+impl content_on_disk -> Iterator[None] {
+    token = _COMPILED_CONTENT.set(None);
+    try {
+        yield None;
+    } finally {
+        _COMPILED_CONTENT.reset(token);
+    }
 }
 
 impl _memoized(kind: str, source_path: str, compute: any) -> str {

@@ -826,6 +826,11 @@ impl KEDAAutoscaler.apply_http_activation {
     scaled_obj_manifest = self._build_http_scaled_object(spec);
     scaled_obj_name = scaled_obj_manifest["name"];
     scaled_obj_body = scaled_obj_manifest["body"];
+
+    scaled_obj_patch = {
+        ** scaled_obj_body,
+        "spec": {"initialCooldownPeriod": None, ** scaled_obj_body["spec"]}
+    };
     try {
         api.get_namespaced_custom_object(
             group="keda.sh",
@@ -840,7 +845,7 @@ impl KEDAAutoscaler.apply_http_activation {
             namespace=spec.namespace,
             plural="scaledobjects",
             name=scaled_obj_name,
-            body=scaled_obj_body
+            body=scaled_obj_patch
         );
     } except ApiException as e {
         if e.status == 404 {
@@ -1052,6 +1057,19 @@ impl KEDAAutoscaler._build_http_scaled_object {
         "cooldownPeriod": spec.cooldown_period,
         "triggers": [{"type": "external-push", "metadata": trigger_metadata}]
     };
+    if spec.initial_cooldown_period > 0 {
+        scaled_obj_spec["initialCooldownPeriod"] = spec.initial_cooldown_period;
+    }
+
+    hpa_name = f"keda-hpa-{scaled_obj_name}";
+    if len(hpa_name) > 63 {
+        digest = hashlib.sha256(scaled_obj_name.encode()).hexdigest()[:10];
+        scaled_obj_spec["advanced"] = {
+            "horizontalPodAutoscalerConfig": {
+                "name": f"{hpa_name[:52].rstrip('-.')}-{digest}"
+            }
+        };
+    }
 
     return {
         "name": scaled_obj_name,

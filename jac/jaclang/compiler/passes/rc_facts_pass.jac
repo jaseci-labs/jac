@@ -19,7 +19,8 @@ walker RcFactsPass(CompilerPass) {
     );
 
     has _node_use: dict[int, set[SymId]] = {},
-        _node_def: dict[int, set[SymId]] = {};
+        _node_def: dict[int, set[SymId]] = {},
+        _last_use_pinned: set[int] = set();
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
@@ -37,7 +38,11 @@ walker RcFactsPass(CompilerPass) {
 
     def _is_param_sym(sym: Symbol) -> bool;
     def _last_use_tracked(sym: Symbol) -> bool;
+    def _lent_to_c(sym: Symbol) -> bool;
+    def _c_import_of(decl: UniNode) -> (Import | None);
     def _stamp_last_use(ir_in: Module) -> None;
+    def _borrow_roots(ir_in: Module) -> set[int];
+    def _add_borrow_root(e: Expr, roots: set[int]) -> None;
     def _stamp_scope_cleanup(ir_in: Module) -> None;
     def _stamp_move_in(ir_in: Module) -> None;
     def _repeats_in_comprehension(use: NameAtom) -> bool;
@@ -50,6 +55,7 @@ walker RcFactsPass(CompilerPass) {
     def _cfg_owner(sub: UniNode) -> (UniCFGNode | None);
     def _is_def_name(nm: NameAtom) -> bool;
     def _is_alias_value(nm: Name) -> bool;
+    def _move_flow_safe(uses: list[Name], sites: list[Assignment]) -> bool;
     def _move_candidate_source(nd: Assignment) -> (Name | None);
     def _solve_liveness(
         cfg_nodes: list[UniCFGNode], tracked: set[SymId]

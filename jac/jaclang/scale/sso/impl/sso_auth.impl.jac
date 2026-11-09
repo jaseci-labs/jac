@@ -22,7 +22,8 @@ impl configured_platforms -> dict[str, dict[str, str]] {
             }
             platforms[platform.value] = {
                 "client_id": client_id,
-                "client_secret": client_secret
+                "client_secret": client_secret,
+                "scopes": str(platform_config.get('scopes', '') or '')
             };
         }
     }
@@ -72,6 +73,20 @@ impl SSOAuth.get_sso(platform: str) -> SSOProvider | None {
         );
     }
     return None;
+}
+
+impl SSOAuth.connect_scopes(platform: str, requested: list[str]) -> (list[str] | None) {
+    allowed = str((self.platforms.get(platform) or {}).get('scopes') or '').split();
+    if not allowed {
+        return None;
+    }
+    if not requested {
+        return allowed;
+    }
+    if any(scope not in allowed for scope in requested) {
+        return None;
+    }
+    return list(requested);
 }
 
 impl SSOAuth.sso_initiate(

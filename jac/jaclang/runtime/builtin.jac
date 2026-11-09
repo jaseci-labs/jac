@@ -75,11 +75,11 @@ def printgraph(
     format: str = 'dot'
 ) -> str;
 
-def _jac_graph_json(file: (str | None) = None) -> str;
-
 def restspec(**specs: any) -> Callable;
 
 def schedule(**kwargs: any) -> Callable;
+
+def on_drain(hook: Callable[[], any]) -> Callable[[], any];
 
 def new(cls: any, *args: any) -> any;
 
@@ -140,6 +140,7 @@ glob __all__ = [
          'save',
          'commit',
          'on_commit',
+         'on_drain',
          'store',
          'llm',
          'new',

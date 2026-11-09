@@ -127,7 +127,9 @@ import from engine.src.runtime.mem {
     write_i32,
     write_i64,
     write_byte,
-    io_alloc
+    io_alloc,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.jsvalue {
     JSValue,
@@ -947,12 +949,12 @@ def:pub h2_submit_goaway(args: list[JSValue]) -> JSValue {
         and (not jsv_is_undefined(args[3]))
         and (not jsv_is_null(args[3])) {
         opaque_s: str = js_to_string_prim(args[3]);
-        opaque_len = len(opaque_s);
+        opaque_len = str_nbytes(opaque_s);
         if opaque_len > 0 {
             opaque_ptr = calloc(1, opaque_len + 1);
             oi: int = 0;
             while oi < opaque_len {
-                write_byte(opaque_ptr, oi, ord(opaque_s[oi]) & 255);
+                write_byte(opaque_ptr, oi, str_byte(opaque_s, oi) & 255);
                 oi = oi + 1;
             }
         }
@@ -1224,20 +1226,20 @@ def _build_nva(hdr_arr: JSValue) -> list[int] {
         val_jsv: JSValue = js_array_get(hdr_arr, i + 1);
         name_s: str = js_to_string_prim(name_jsv);
         val_s: str = js_to_string_prim(val_jsv);
-        name_len: int = len(name_s);
-        val_len: int = len(val_s);
+        name_len: int = str_nbytes(name_s);
+        val_len: int = str_nbytes(val_s);
         name_ptr: int = calloc(1, name_len + 1);
         val_ptr: int = calloc(1, val_len + 1);
         # Copy name bytes
         ni: int = 0;
         while ni < name_len {
-            write_byte(name_ptr, ni, ord(name_s[ni]));
+            write_byte(name_ptr, ni, str_byte(name_s, ni));
             ni = ni + 1;
         }
         # Copy value bytes
         vi: int = 0;
         while vi < val_len {
-            write_byte(val_ptr, vi, ord(val_s[vi]));
+            write_byte(val_ptr, vi, str_byte(val_s, vi));
             vi = vi + 1;
         }
         nghttp2_nv_set(
@@ -1440,13 +1442,13 @@ def:pub h2_submit_data(args: list[JSValue]) -> JSValue {
     slot: int = _h2_to_slot(handle);
     idx: int = _h2_dq_ensure(slot, stream_id);
 
-    n: int = len(payload);
+    n: int = str_nbytes(payload);
     if n > 0 {
         _h2_dq_reserve(idx, n);
         base: int = _H2_DQ_BUF[idx] + _H2_DQ_LEN[idx];
         i: int = 0;
         while i < n {
-            write_byte(base, i, ord(payload[i]) & 255);
+            write_byte(base, i, str_byte(payload, i) & 255);
             i = i + 1;
         }
         _H2_DQ_LEN[idx] = _H2_DQ_LEN[idx] + n;

@@ -358,8 +358,7 @@ impl KubernetesTarget._scan_for_crash_loop(
 
                 crashing = (
                     owned
-                    and restarts >= 3
-                    and not cs.ready
+                    and container_crashlooping(cs, 3)
                     and reason not in imagepull_reasons
                 );
                 if crashing and not pod_crash {
@@ -503,6 +502,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
     core_v1 = client.CoreV1Api();
     ns = self.k8s_config.namespace;
     total = len(names);
+    started = time.monotonic();
     elapsed = 0;
     ready = 0;
     interactive = bool(sys.stdout.isatty());
@@ -511,8 +511,8 @@ impl KubernetesTarget._wait_for_fleet_rollout(
     app_name = str(self.k8s_config.app_name or "");
     companion_apps: set = {f"{app_name}-postgres"} if app_name else set();
     pod_selector = "app in ({})".format(", ".join(app_labels)) if app_labels else None;
-    imagepull_streak: dict[str, int] = {};
-    creating_streak: dict[str, int] = {};
+    imagepull_since: dict[str, int] = {};
+    creating_since: dict[str, int] = {};
     healed_apps: dict[str, int] = {};
     last_sig = "";
     last_heartbeat = -90;
@@ -571,11 +571,12 @@ impl KubernetesTarget._wait_for_fleet_rollout(
             }
 
             pulls: dict[str, tuple[str, str, any]] = scan["pulls"];
-            imagepull_streak = {k: imagepull_streak.get(k, 0) + 1 for k in pulls};
+            imagepull_since = {k: imagepull_since.get(k, elapsed) for k in pulls};
             pull_failure = "";
             pull_pod = None;
             for (pod_name, info) in pulls.items() {
-                if imagepull_streak.get(pod_name, 0) >= 2 {
+                pulling_for = elapsed - imagepull_since.get(pod_name, elapsed);
+                if pulling_for >= IMAGE_PULL_PERSIST_SECONDS {
                     if self._try_self_heal(
                         core_v1,
                         ns,
@@ -583,7 +584,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                         f"container '{info[0]}' cannot pull image ({info[1]})",
                         healed_apps
                     ) {
-                        imagepull_streak.pop(pod_name, None);
+                        imagepull_since.pop(pod_name, None);
                         continue;
                     }
                     pull_failure = (
@@ -595,9 +596,10 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                 }
             }
             creating_now: dict[str, any] = scan.get("creating", {});
-            creating_streak = {k: creating_streak.get(k, 0) + 1 for k in creating_now};
+            creating_since = {k: creating_since.get(k, elapsed) for k in creating_now};
             for (pod_name, pod) in creating_now.items() {
-                if creating_streak.get(pod_name, 0) >= 30
+                creating_for = elapsed - creating_since.get(pod_name, elapsed);
+                if creating_for >= MOUNT_WEDGE_SECONDS
                     and self._pod_mount_wedged(core_v1, ns, pod_name) {
                     if self._try_self_heal(
                         core_v1,
@@ -606,7 +608,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                         "stuck >5min with FailedMount events",
                         healed_apps
                     ) {
-                        creating_streak.pop(pod_name, None);
+                        creating_since.pop(pod_name, None);
                     }
                 }
             }
@@ -653,8 +655,8 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                 last_sig = sig;
                 last_heartbeat = elapsed;
             }
-            time.sleep(10);
-            elapsed += 10;
+            time.sleep(ROLLOUT_POLL_SECONDS);
+            elapsed = int(time.monotonic() - started);
         }
     }
     timeout_detail = "";
@@ -1052,7 +1054,12 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 
     injector = bundle.get("injector");
     if injector is not None {
-        injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
+        injector.seed(
+            k8s_safe_name(self.k8s_config.app_name),
+            namespace,
+            self._kubectl,
+            self._bundle_keep_set
+        );
         if self.logger {
             self.logger.info(
                 "Seeded source bundle onto the bundle PVC",
@@ -1353,7 +1360,7 @@ impl KubernetesTarget.reap_superseded_deployments(
 }
 
 impl KubernetesTarget._fleet_deployment_names(
-    apps_v1: any, namespace: str
+    apps_v1: any, namespace: str, strict: bool = False
 ) -> list[str] {
     names: list[str] = [];
     try {
@@ -1369,15 +1376,40 @@ impl KubernetesTarget._fleet_deployment_names(
             }
         }
     } except Exception {
+        if strict {
+            raise;
+        }
         return [];
     }
     return fleet_revert_order(names);
 }
 
+impl KubernetesTarget._fleet_app_labels(apps_v1: any, namespace: str) -> list[str] {
+    apps: list[str] = [];
+    try {
+        listed = apps_v1.list_namespaced_deployment(
+            namespace=namespace, label_selector=FLEET_SELECTOR
+        );
+    } except ApiException as e {
+        if e.status == 404 {
+            return apps;
+        }
+        raise;
+    }
+    dep_items: list[any] = list(listed.items or []);
+    for dep in dep_items {
+        app_label: str = str((dep.metadata.labels or {}).get("app", ""));
+        if app_label and app_label not in apps {
+            apps.append(app_label);
+        }
+    }
+    return apps;
+}
+
 impl KubernetesTarget._owned_replica_sets(
     apps_v1: any, namespace: str, strict: bool = False
 ) -> list[any] {
-    owned: list[str] = self._fleet_deployment_names(apps_v1, namespace);
+    owned: list[str] = self._fleet_deployment_names(apps_v1, namespace, strict);
     try {
         listed = list(
             apps_v1.list_namespaced_replica_set(
@@ -1442,6 +1474,9 @@ impl KubernetesTarget._revision_entries(strict: bool = False) -> list[dict[str, 
                 }
             );
         } except Exception {
+            if strict {
+                raise;
+            }
             continue;
         }
     }
@@ -1472,7 +1507,25 @@ impl KubernetesTarget.referenced_bundle_keys(app_name: str) -> set[str] {
             keys.add(str(key));
         }
     }
+    serializer = client.ApiClient();
+    for dep in client.AppsV1Api().list_namespaced_deployment(
+        namespace=self.k8s_config.namespace, label_selector=FLEET_SELECTOR
+    ).items {
+        pod_spec = serializer.sanitize_for_serialization(dep.spec.template.spec);
+        keys.update(bundle_keys_from_pod_spec(dict(pod_spec)));
+    }
     return keys;
+}
+
+impl KubernetesTarget._bundle_keep_set -> set[str] {
+    try {
+        return self.referenced_bundle_keys(self.k8s_config.app_name);
+    } except Exception as e {
+        self._emit(
+            "apply", "warn", f"skipping bundle prune, revisions unreadable: {e}"
+        );
+        return set();
+    }
 }
 
 impl KubernetesTarget._restore_templates(
@@ -1693,6 +1746,16 @@ impl KubernetesTarget._destroy_fleet_workloads(
 ) {
     ms_selector: str = "managed=jac-scale";
 
+    fleet_apps: list[str] = self._fleet_app_labels(apps_v1, namespace);
+    if fleet_apps {
+        self._sweep_budgets_and_services(
+            namespace,
+            core_v1,
+            policy_v1,
+            f"managed=jac-scale,!jac-scale.role,app in ({','.join(fleet_apps)})"
+        );
+    }
+
     try {
         apps_v1.delete_collection_namespaced_deployment(
             namespace=namespace, label_selector=FLEET_SELECTOR
@@ -1733,8 +1796,8 @@ impl KubernetesTarget._destroy_fleet_workloads(
     }
 
     try {
-        policy_v1.delete_collection_namespaced_pod_disruption_budget(
-            namespace=namespace, label_selector=ms_selector
+        networking_v1.delete_collection_namespaced_ingress(
+            namespace=namespace, label_selector=FLEET_SELECTOR
         );
     } except ApiException as e {
         if e.status != 404 {
@@ -1742,9 +1805,26 @@ impl KubernetesTarget._destroy_fleet_workloads(
         }
     }
 
+    self._sweep_budgets_and_services(namespace, core_v1, policy_v1, FLEET_SELECTOR);
+
     try {
-        networking_v1.delete_collection_namespaced_ingress(
-            namespace=namespace, label_selector=ms_selector
+        core_v1.delete_collection_namespaced_config_map(
+            namespace=namespace,
+            label_selector="managed=jac-scale,jac-scale.role=source"
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+}
+
+impl KubernetesTarget._sweep_budgets_and_services(
+    namespace: str, core_v1: any, policy_v1: any, selector: str
+) {
+    try {
+        policy_v1.delete_collection_namespaced_pod_disruption_budget(
+            namespace=namespace, label_selector=selector
         );
     } except ApiException as e {
         if e.status != 404 {
@@ -1754,7 +1834,7 @@ impl KubernetesTarget._destroy_fleet_workloads(
 
     try {
         services = core_v1.list_namespaced_service(
-            namespace=namespace, label_selector=ms_selector
+            namespace=namespace, label_selector=selector
         );
         service_items: list[any] = services.items;
         for svc in service_items {
@@ -1768,17 +1848,6 @@ impl KubernetesTarget._destroy_fleet_workloads(
                 }
             }
         }
-    } except ApiException as e {
-        if e.status != 404 {
-            raise;
-        }
-    }
-
-    try {
-        core_v1.delete_collection_namespaced_config_map(
-            namespace=namespace,
-            label_selector="managed=jac-scale,jac-scale.role=source"
-        );
     } except ApiException as e {
         if e.status != 404 {
             raise;

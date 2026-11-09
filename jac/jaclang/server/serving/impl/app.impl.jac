@@ -140,17 +140,7 @@ impl ServingApp.openapi -> dict[str, any] {
 }
 
 impl ServingApp.shutdown {
-    for hook in list(self.on_shutdown) {
-        try {
-            hook_fn: any = hook;
-            result = hook_fn();
-            if inspect.isawaitable(result) {
-                await result;
-            }
-        } except Exception {
-            _logger.exception("shutdown hook failed");
-        }
-    }
+    await run_hooks(list(self.on_shutdown), "shutdown hook");
 }
 
 impl ServingApp.dispatch(request: Request) -> Response {
@@ -170,7 +160,7 @@ impl ServingApp.dispatch(request: Request) -> Response {
                 + traceback.format_exc()
         );
         return JSONResponse(
-            content={'error': f"{type(exc).__name__}: {exc}"}, status_code=500
+            content={'error': 'Internal Server Error'}, status_code=500
         );
     }
 }

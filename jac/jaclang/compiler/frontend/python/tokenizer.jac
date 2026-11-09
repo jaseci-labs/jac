@@ -381,6 +381,22 @@ def _is_id_start(c: int) -> bool {
     return c >= 128 and unicode_start(c);
 }
 
+def _scan_identifier(spell: str) -> int {
+    n = len(spell);
+    first = ord(spell[0]);
+    if not (first == 95 or _is_id_start(first)) {
+        return 0;
+    }
+    i = 1;
+    while i < n {
+        if not _is_id_continue(ord(spell[i])) {
+            return i;
+        }
+        i += 1;
+    }
+    return n;
+}
+
 def _is_id_continue(c: int) -> bool {
     if _is_id_start(c) or _is_digit(c) {
         return True;
@@ -497,170 +513,247 @@ def _operator_token(st: tok_state, key: int, width: int) -> tok_token {
     );
 }
 
-def _read_number(st: tok_state) -> tok_token | tok_diag {
-    start = st.pos;
-    start_col = st.col_offset;
-    based = False;
-    ch = _peek(st);
-    if ch == ord("0") {
-        _advance(st);
-        nxt = _peek(st);
-        if nxt == ord("x")
-            or nxt == ord("X")
-            or nxt == ord("b")
-            or nxt == ord("B")
-            or nxt == ord("o")
-            or nxt == ord("O") {
-            based = True;
-            _advance(st);
-            while _has_source(st) {
-                c = _peek(st);
-                if c == ord("_") {
-                    _advance(st);
-                    continue;
-                }
-                if _is_digit(c)
-                    or c >= ord("a")
-                    and c <= ord("f")
-                    or c >= ord("A")
-                    and c <= ord("F") {
-                    _advance(st);
-                    continue;
-                }
-                break;
-            }
-        } else {
-            while _has_source(st) {
-                c = _peek(st);
-                if c == ord("_") {
-                    _advance(st);
-                    continue;
-                }
-                if _is_digit(c) {
-                    _advance(st);
-                    continue;
-                }
+def _number_error(st: tok_state, message: str) -> tok_diag {
+    return _number_error_range(st, message, st.col_offset - 1, st.col_offset - 1);
+}
+
+def _number_error_range(
+    st: tok_state, message: str, col_offset: int, end_col_offset: int
+) -> tok_diag {
+    bad = mk_diag(
+        "SyntaxError",
+        message,
+        tok_loc_span(st.lineno, st.lineno, col_offset, end_col_offset),
+        st.filename
+    );
+    st.error = bad;
+    st.done = True;
+    return bad;
+}
+
+def _number_lookahead(st: tok_state, text: str) -> bool {
+    for (index, ch) in enumerate(text) {
+        at = st.pos + 1 + index;
+        while at >= len(st.data) {
+            source = st.input;
+            if source is None or not source.refill() {
                 break;
             }
         }
-    } else {
-        while _has_source(st) {
-            c = _peek(st);
-            if c == ord("_") {
+        if at >= len(st.data) or st.data[at] != ord(ch) {
+            return False;
+        }
+    }
+    return True;
+}
+
+def _verify_end_of_number(st: tok_state, kind: str) -> tok_diag | None {
+    if st.extra_tokens {
+        return None;
+    }
+    c = _peek(st);
+    r = False;
+    if c == ord("a") {
+        r = _number_lookahead(st, "nd");
+    } elif c == ord("e") {
+        r = _number_lookahead(st, "lse");
+    } elif c == ord("f") {
+        r = _number_lookahead(st, "or");
+    } elif c == ord("i") {
+        r = _number_lookahead(st, "f")
+            or _number_lookahead(st, "n")
+            or _number_lookahead(st, "s");
+    } elif c == ord("o") {
+        r = _number_lookahead(st, "r");
+    } elif c == ord("n") {
+        r = _number_lookahead(st, "ot");
+    }
+    if r {
+        st.warnings.append(
+            mk_diag(
+                "SyntaxWarning",
+                f"invalid {kind} literal",
+                tok_loc_span(
+                    st.lineno, st.lineno, st.col_offset - 1, st.col_offset - 1
+                ),
+                st.filename
+            )
+        );
+    } elif c >= 0 and c < 128 and (_is_id_start(c) or _is_digit(c)) {
+        return _number_error(st, f"invalid {kind} literal");
+    }
+    return None;
+}
+
+def _decimal_tail(st: tok_state) -> tok_diag | None {
+    while True {
+        while _is_digit(_peek(st)) {
+            _advance(st);
+        }
+        if _peek(st) != ord("_") {
+            return None;
+        }
+        _advance(st);
+        if not _is_digit(_peek(st)) {
+            return _number_error(st, "invalid decimal literal");
+        }
+    }
+    return None;
+}
+
+def _number_digits(st: tok_state, base: int, kind: str) -> tok_diag | None {
+    while True {
+        if _peek(st) == ord("_") {
+            _advance(st);
+        }
+        c = _peek(st);
+        if not _is_base_digit(c, base) {
+            if base != 16 and _is_digit(c) {
                 _advance(st);
-                continue;
+                return _number_error(
+                    st, "invalid digit '" + chr(c) + "' in " + kind + " literal"
+                );
             }
-            if _is_digit(c) {
-                _advance(st);
-                continue;
-            }
+            return _number_error(st, "invalid " + kind + " literal");
+        }
+        while _is_base_digit(_peek(st), base) {
+            _advance(st);
+        }
+        if _peek(st) != ord("_") {
             break;
         }
     }
-    if not based {
-        # Fractional/exponent/imaginary apply to ANY decimal literal, including
-        # zero-leading floats (0.0, 0.5, 0e10) — the '0' integer branch above only
-        # reads the integer part.
-        if _peek(st) == ord(".") {
-            _advance(st);
-            while _has_source(st) {
-                c = _peek(st);
-                if c == ord("_") {
-                    _advance(st);
-                    continue;
-                }
-                if _is_digit(c) {
-                    _advance(st);
-                    continue;
-                }
-                break;
+    c = _peek(st);
+    if base != 16 and _is_digit(c) {
+        _advance(st);
+        return _number_error(
+            st, "invalid digit '" + chr(c) + "' in " + kind + " literal"
+        );
+    }
+    return _verify_end_of_number(st, kind);
+}
+
+def _is_base_digit(c: int, base: int) -> bool {
+    if base == 2 {
+        return c == ord("0") or c == ord("1");
+    }
+    if base == 8 {
+        return c >= ord("0") and c <= ord("7");
+    }
+    return _is_digit(c)
+        or (c >= ord("a") and c <= ord("f"))
+        or (c >= ord("A") and c <= ord("F"));
+}
+
+def _decimal_after_integer(st: tok_state) -> tok_diag | None {
+    if _peek(st) == ord(".") {
+        _advance(st);
+        if _is_digit(_peek(st)) {
+            bad = _decimal_tail(st);
+            if bad is not None {
+                return bad;
             }
         }
-        c = _peek(st);
-        if c == ord("e") or c == ord("E") {
+    }
+    c = _peek(st);
+    if c == ord("e") or c == ord("E") {
+        sign = st.data[st.pos + 1] if st.pos + 1 < len(st.data) else EOF_POINT;
+        if sign == ord("+") or sign == ord("-") {
             _advance(st);
-            c2 = _peek(st);
-            if c2 == ord("+") or c2 == ord("-") {
+            _advance(st);
+            if not _is_digit(_peek(st)) {
+                return _number_error(st, "invalid decimal literal");
+            }
+        } elif not _is_digit(sign) {
+            return _verify_end_of_number(st, "decimal");
+        } else {
+            _advance(st);
+        }
+        bad = _decimal_tail(st);
+        if bad is not None {
+            return bad;
+        }
+    }
+    c = _peek(st);
+    if c == ord("j") or c == ord("J") {
+        _advance(st);
+        return _verify_end_of_number(st, "imaginary");
+    }
+    return _verify_end_of_number(st, "decimal");
+}
+
+def _read_number(st: tok_state) -> tok_token | tok_diag {
+    start = st.pos;
+    start_col = st.col_offset;
+    bad: tok_diag | None = None;
+    if _peek(st) == ord("0") {
+        _advance(st);
+        c = _peek(st);
+        if c == ord("x") or c == ord("X") {
+            _advance(st);
+            bad = _number_digits(st, 16, "hexadecimal");
+        } elif c == ord("o") or c == ord("O") {
+            _advance(st);
+            bad = _number_digits(st, 8, "octal");
+        } elif c == ord("b") or c == ord("B") {
+            _advance(st);
+            bad = _number_digits(st, 2, "binary");
+        } else {
+            nonzero = False;
+            while True {
+                if _peek(st) == ord("_") {
+                    _advance(st);
+                    if not _is_digit(_peek(st)) {
+                        return _number_error(st, "invalid decimal literal");
+                    }
+                }
+                if _peek(st) != ord("0") {
+                    break;
+                }
                 _advance(st);
             }
-            while _has_source(st) {
-                c3 = _peek(st);
-                if c3 == ord("_") {
-                    _advance(st);
-                    continue;
+            zeros_end = st.col_offset + 1;
+            if _is_digit(_peek(st)) {
+                nonzero = True;
+                _advance(st);
+                bad = _decimal_tail(st);
+                if bad is not None {
+                    return bad;
                 }
-                if _is_digit(c3) {
-                    _advance(st);
-                    continue;
-                }
-                break;
             }
-        }
-        # Imaginary suffix on a decimal int/float (3j, 3.5j, 1e10j, 0.5j).
-        jc = _peek(st);
-        if jc == ord("j") or jc == ord("J") {
-            _advance(st);
-        }
-    }
-    spell = st.data[start:st.pos].decode("utf-8");
-    # lexer.c: a decimal integer with a leading zero and a nonzero digit is
-    # an old-style octal, refused outside the tokenize module (gh-105549).
-    if not based
-        and not st.extra_tokens
-        and spell[0] == "0"
-        and spell.replace("_", "").isdigit()
-        and spell.replace("_", "").strip("0") {
-        nonzero = 1;
-        while nonzero < len(spell) and spell[nonzero] in "0_" {
-            nonzero += 1;
-        }
-        bad = mk_diag(
-            "SyntaxError",
-            "leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers",
-            tok_loc_span(st.lineno, st.lineno, start_col, start_col + nonzero + 1),
-            st.filename
-        );
-        st.error = bad;
-        st.done = True;
-        return bad;
-    }
-    if _is_id_start(_peek(st)) and not st.extra_tokens {
-        kind = "decimal";
-        if spell.lower().startswith("0x") {
-            kind = "hexadecimal";
-        } elif spell.lower().startswith("0o") {
-            kind = "octal";
-        } elif spell.lower().startswith("0b") {
-            kind = "binary";
-        } elif spell.endswith(("j", "J")) {
-            kind = "imaginary";
-        }
-        keyword_boundary = False;
-        for keyword in ("and", "else", "for", "if", "in", "is", "or", "not") {
-            end = st.pos + len(keyword);
-            if st.data[st.pos:end].decode("utf-8") == keyword
-                and (
-                    end == len(st.data) or not _is_id_continue(point_at(st.data, end))
-                ) {
-                keyword_boundary = True;
-                st.warnings.append(
-                    mk_diag(
-                        "SyntaxWarning",
-                        f"invalid {kind} literal",
-                        tok_loc_span(st.lineno, st.lineno, start_col, st.col_offset),
-                        st.filename
-                    )
+            c = _peek(st);
+            if c == ord(".")
+                or c == ord("e")
+                or c == ord("E")
+                or c == ord("j")
+                or c == ord("J") {
+                bad = _decimal_after_integer(st);
+            } elif nonzero and not st.extra_tokens {
+                return _number_error_range(
+                    st,
+                    "leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers",
+                    start_col,
+                    zeros_end - 1
                 );
-                break;
+            } else {
+                bad = _verify_end_of_number(st, "decimal");
             }
         }
-        if not keyword_boundary {
-            return _string_syntax_error(st, f"invalid {kind} literal", start_col);
+    } else {
+        if _is_digit(_peek(st)) {
+            _advance(st);
+            bad = _decimal_tail(st);
         }
+        if bad is None {
+            bad = _decimal_after_integer(st);
+        }
+    }
+    if bad is not None {
+        return bad;
     }
     return tok_token(
         tok_type=NUMBER,
-        spelling=spell,
+        spelling=st.data[start:st.pos].decode("utf-8"),
         lineno=st.lineno,
         col_offset=start_col,
         end_lineno=st.lineno,
@@ -668,19 +761,59 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
     );
 }
 
-def _read_name(st: tok_state) -> tok_token {
+def _read_name(st: tok_state) -> tok_token | tok_diag {
     start = st.pos;
     start_col = st.col_offset;
     _advance(st);
+    data = st.data;
+    end = st.pos;
+    size = len(data);
+    while end < size {
+        b = data[end];
+        if (b >= 97 and b <= 122)
+            or (b >= 65 and b <= 90)
+            or (b >= 48 and b <= 57)
+            or b == 95 {
+            end += 1;
+        } else {
+            break;
+        }
+    }
+    st.col_offset += end - st.pos;
+    st.pos = end;
     while _has_source(st) {
         c = _peek(st);
-        if not _is_id_continue(c) and not (st.extra_tokens and c >= 128) {
+        if not _is_id_continue(c) and c < 128 {
             break;
         }
         _advance(st);
     }
     spell = st.data[start:st.pos].decode("utf-8");
     _peek(st);
+    if not st.extra_tokens and not spell.isascii() {
+        invalid = _scan_identifier(spell);
+        if invalid < len(spell) {
+            ch = ord(spell[invalid]);
+            col = start_col + len(spell[:invalid].encode("utf-8"));
+            message = "invalid non-printable character U+" + format(ch, "04X");
+            if unicode_printable(ch) {
+                message = "invalid character '"
+                    + chr(ch)
+                    + "' (U+"
+                    + format(ch, "04X")
+                    + ")";
+            }
+            bad = mk_diag(
+                "SyntaxError",
+                message,
+                tok_loc_span(st.lineno, st.lineno, col, col + 1),
+                st.filename
+            );
+            st.error = bad;
+            st.done = True;
+            return bad;
+        }
+    }
     return tok_token(
         tok_type=NAME,
         spelling=spell,
@@ -762,7 +895,12 @@ def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
 }
 
 def _fstring_emit_middle(
-    st: tok_state, text: str, lineno: int, col_offset: int, end_col_offset: int
+    st: tok_state,
+    text: str,
+    lineno: int,
+    col_offset: int,
+    end_col_offset: int,
+    doubled_brace: bool = False
 ) -> tok_token {
     mode = st.string_modes[-1];
     metadata = "raw" if mode.raw else "";
@@ -779,7 +917,8 @@ def _fstring_emit_middle(
         lineno=lineno,
         col_offset=col_offset,
         end_lineno=st.lineno,
-        end_col_offset=end_col_offset
+        end_col_offset=end_col_offset,
+        doubled_brace=doubled_brace
     );
 }
 
@@ -930,10 +1069,12 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
             # first, and the second is consumed with it.
             _advance(st);
             text = _source_text(st, seg);
-            end_col = st.col_offset;
             _advance(st);
+            end_col = st.col_offset;
             mode.resume = True;
-            return _fstring_emit_middle(st, text, start_lineno, start_col, end_col);
+            return _fstring_emit_middle(
+                st, text, start_lineno, start_col, end_col, True
+            );
         }
         if ch == ord("}") {
             return _string_syntax_error(
@@ -1126,7 +1267,10 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
 def tokenizer_from_string(source: str, filename: str, exec_input: bool) -> tok_state {
     # File input gets a terminal newline before scanning; eval/single input
     # must retain physical EOF so incomplete-input flags can distinguish it.
-    buf = source.replace("\r\n", "\n").replace("\r", "\n");
+    buf = source;
+    if "\r" in source {
+        buf = source.replace("\r\n", "\n").replace("\r", "\n");
+    }
     if exec_input and buf and not buf.endswith("\n") {
         buf += "\n";
     }
@@ -1343,10 +1487,12 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             }
             return str_tok as tok_token;
         }
-        if _is_id_start(ch) or (st.extra_tokens and ch >= 128) {
-            tok = _read_name(st);
-            st.paren_level = st.paren_level + _track_paren_delta(tok.tok_type);
-            return tok;
+        if _is_id_start(ch) or ch >= 128 {
+            name_tok = _read_name(st);
+            if isinstance(name_tok, tok_diag) {
+                return name_tok;
+            }
+            return name_tok as tok_token;
         }
         op = _match_operator(st);
         if op is not None {
@@ -1461,8 +1607,9 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
 
 def tokenizer_next(st: tok_state) -> tok_token | tok_diag {
     token = _tokenizer_next(st);
-    if isinstance(token, tok_token) {
-        token.level = st.paren_level;
+    if token is not st.error {
+        tok = token as tok_token;
+        tok.level = st.paren_level;
     }
     return token;
 }

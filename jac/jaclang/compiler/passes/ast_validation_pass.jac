@@ -1,4 +1,5 @@
 import keyword;
+import os;
 
 
 walker ASTValidationPass(TreePass) {
@@ -7,6 +8,10 @@ walker ASTValidationPass(TreePass) {
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;
     can enter_module with Module entry;
+    def _import_bindings(mod: Module) -> dict[str, tuple[Import, Name]];
+    def _declared_names(item: ContextAwareNode) -> list[Name];
+    def _imports_itself(mod: Module, stmt: Import) -> bool;
+    def _binding_origin(mod: Module, name: Name) -> str;
     can enter_module_code with ModuleCode entry;
     can enter_binary_expr with BinaryExpr entry;
     can enter_name with Name entry;
@@ -28,6 +33,7 @@ walker ASTValidationPass(TreePass) {
     def _reject_undeletable(target: UniNode) -> None;
     can enter_param_var with ParamVar entry;
     can enter_yield_expr with YieldExpr entry;
+    can enter_return_stmt with ReturnStmt entry;
     can enter_ctrl_stmt with CtrlStmt entry;
     can enter_global_vars with GlobalVars entry;
     can enter_func_call with FuncCall entry;

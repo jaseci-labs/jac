@@ -19,6 +19,14 @@ the engine: multi-byte UTF-8 in strings is copied through untouched.
 
 import from engine.src.runtime.jsstring { utf8_encode_scalar }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 obj:pub TomlValue {
     has kind: str = "",
         s: str = "",
@@ -55,12 +63,12 @@ def _tp_at(p: TomlParser, off: int) -> str {
     if p.pos + off >= p.n {
         return "";
     }
-    return p.src[p.pos + off];
+    return byte_chr(str_byte(p.src, p.pos + off));
 }
 
 def _tp_adv(p: TomlParser) {
     if p.pos < p.n {
-        if p.src[p.pos] == "\n" {
+        if byte_chr(str_byte(p.src, p.pos)) == "\n" {
             p.line = p.line + 1;
         }
         p.pos = p.pos + 1;
@@ -88,7 +96,7 @@ def _tp_skip_blanks(p: TomlParser) {
 """At '#': skip to the end of the line (the newline itself is left in place)."""
 def _tp_skip_comment(p: TomlParser) {
     if _tp_at(p, 0) == "#" {
-        while p.pos < p.n and p.src[p.pos] != "\n" {
+        while p.pos < p.n and byte_chr(str_byte(p.src, p.pos)) != "\n" {
             p.pos = p.pos + 1;
         }
     }
@@ -97,7 +105,7 @@ def _tp_skip_comment(p: TomlParser) {
 """Skip blanks, newlines and comments (between top-level items / array elements)."""
 def _tp_skip_ws_all(p: TomlParser) {
     while p.pos < p.n {
-        c: str = p.src[p.pos];
+        c: str = byte_chr(str_byte(p.src, p.pos));
         if c == " " or c == "\t" or c == "\r" {
             p.pos = p.pos + 1;
         } elif c == "\n" {
@@ -114,7 +122,7 @@ def _tp_is_bare(c: str) -> bool {
     if c == "" {
         return False;
     }
-    o: int = ord(c);
+    o: int = str_byte(c, 0);
     if o >= 48 and o <= 57 {
         return True;
     }
@@ -131,7 +139,7 @@ def _tp_hex_val(c: str) -> int {
     if c == "" {
         return -1;
     }
-    o: int = ord(c);
+    o: int = str_byte(c, 0);
     if o >= 48 and o <= 57 {
         return o - 48;
     }
@@ -371,7 +379,7 @@ def _tp_scalar(p: TomlParser) -> TomlValue {
     word: str = "";
     while True {
         w: str = _tp_at(p, 0);
-        if _tp_is_num_char(w) or (w != "" and ord(w) >= 97 and ord(w) <= 122) {
+        if _tp_is_num_char(w) or (w != "" and str_byte(w, 0) >= 97 and str_byte(w, 0) <= 122) {
             word = word + w;
             _tp_adv(p);
         } else {
@@ -407,23 +415,23 @@ def _tp_scalar(p: TomlParser) -> TomlValue {
     sign: int = 1;
     if digits.startswith("-") {
         sign = -1;
-        digits = digits[1:];
+        digits = str_bslice_from(digits, 1);
     } elif digits.startswith("+") {
-        digits = digits[1:];
+        digits = str_bslice_from(digits, 1);
     }
     base: int = 10;
     if digits.startswith("0x") or digits.startswith("0X") {
         base = 16;
-        digits = digits[2:];
+        digits = str_bslice_from(digits, 2);
     } elif digits.startswith("0o") or digits.startswith("0O") {
         base = 8;
-        digits = digits[2:];
+        digits = str_bslice_from(digits, 2);
     } elif digits.startswith("0b") or digits.startswith("0B") {
         base = 2;
-        digits = digits[2:];
+        digits = str_bslice_from(digits, 2);
     }
     if base == 10
-        and (digits.find(".") >= 0 or digits.find("e") >= 0 or digits.find("E") >= 0) {
+        and (str_bfind(digits, ".") >= 0 or str_bfind(digits, "e") >= 0 or str_bfind(digits, "E") >= 0) {
         v.kind = "float";
         v.s = word;
         return v;
@@ -434,8 +442,9 @@ def _tp_scalar(p: TomlParser) -> TomlValue {
     }
     acc: int = 0;
     k: int = 0;
-    while k < len(digits) {
-        dv: int = _tp_hex_val(digits[k]);
+    _nb445_digits: int = str_nbytes(digits);
+    while k < _nb445_digits {
+        dv: int = _tp_hex_val(byte_chr(str_byte(digits, k)));
         if dv < 0 or dv >= base {
             _tp_fail(p, "invalid number '" + word + "'");
             return v;
@@ -566,14 +575,14 @@ def _tp_value(p: TomlParser, key: str) -> None {
 
 def:pub toml_parse(text: str) -> TomlDoc {
     p: TomlParser = TomlParser(
-        src=text, pos=0, n=len(text), line=1, table="", doc=TomlDoc()
+        src=text, pos=0, n=str_nbytes(text), line=1, table="", doc=TomlDoc()
     );
     while True {
         _tp_skip_ws_all(p);
         if p.pos >= p.n {
             break;
         }
-        c: str = p.src[p.pos];
+        c: str = byte_chr(str_byte(p.src, p.pos));
         if c == "[" {
             if _tp_at(p, 1) == "[" {
                 _tp_fail(p, "arrays of tables ([[x]]) are not supported");

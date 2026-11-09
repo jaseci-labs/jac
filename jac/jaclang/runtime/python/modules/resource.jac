@@ -155,7 +155,7 @@ def:priv audit(event: str, values: list[ptr[PyObject]]) -> bool {
     for value in values {
         jacpy_release(value);
     }
-    status = PySys_AuditTuple(event, arguments);
+    status = jacpy_audit_tuple_text(event, arguments);
     jacpy_release(arguments);
     return status >= 0;
 }

@@ -78,11 +78,15 @@ import from engine.src.pm.platform {
     pm_current_cpu
 }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 def _out(s: str) {
-    write(1, s, len(s));
+    write(1, s, str_nbytes(s));
 }
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 """Dependency groups of a package.json as LockDeps; peers flagged optional via
@@ -206,7 +210,7 @@ def:pub pm_lockfile_matches(lf: Lockfile, root_dir: str, pj: JVal) -> bool {
 def _fmt2(x: float) -> str {
     v: int = int(x * 100.0 + 0.5);
     frac: str = str(v % 100);
-    if len(frac) < 2 {
+    if str_nbytes(frac) < 2 {
         frac = "0" + frac;
     }
     return str(v // 100) + "." + frac;

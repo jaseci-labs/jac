@@ -3,6 +3,59 @@ impl _output_tail(result: any, lines: int = 15) -> str {
     return "\n".join(combined.splitlines()[-lines:]);
 }
 
+impl _run_until_quiet(
+    cmd: list[str], cwd: str, env: (dict[str, str] | None), quiet_s: float
+) -> any {
+    import subprocess;
+    import threading;
+    import time;
+    proc = subprocess.Popen(
+        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    );
+    out: list[str] = [];
+    err: list[str] = [];
+    heard = [time.monotonic()];
+    def drain(stream: any, into: list[str]) {
+        for line in stream {
+            into.append(line);
+            heard[0] = time.monotonic();
+        }
+    }
+    readers = [
+        threading.Thread(target=drain, args=(proc.stdout, out), daemon=True),
+        threading.Thread(target=drain, args=(proc.stderr, err), daemon=True)
+    ];
+    for reader in readers {
+        reader.start();
+    }
+    try {
+        while proc.poll() is None {
+            if time.monotonic() - heard[0] > quiet_s {
+                raise subprocess.TimeoutExpired(cmd, quiet_s);
+            }
+            time.sleep(min(1.0, quiet_s / 4));
+        }
+    } except BaseException as e {
+        proc.kill();
+        proc.wait();
+        for reader in readers {
+            reader.join(timeout=5);
+        }
+        if isinstance(e, subprocess.TimeoutExpired) {
+            raise subprocess.TimeoutExpired(
+                cmd, quiet_s, output="".join(out), stderr="".join(err)
+            ) from None;
+        }
+        raise;
+    }
+    for reader in readers {
+        reader.join();
+    }
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode, "".join(out), "".join(err)
+    );
+}
+
 impl _is_transient_client_build_failure(output: str) -> bool {
     lowered = output.lower();
     for marker in _TRANSIENT_CLIENT_BUILD_MARKERS {
@@ -436,7 +489,23 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
             f"running this deploy ({pinned})."
         );
     }
-    stage_root = _stage_app(base, sanitized_jac_toml(base), client_build_sources(base));
+    sources = client_build_sources(base);
+    sanitized = sanitized_jac_toml(base);
+    tomls = nested_sanitized_tomls(base);
+    jac_binary = Path(shutil.which(jac_bin) or jac_bin).read_bytes();
+    key = client_input_digest(
+        base, sources, jac_binary, entry_rel.as_posix(), sanitized, tomls
+    );
+    cached = cached_client_dist(base, key);
+    if cached is not None {
+        _install_client_dist(str(cached), project_dir);
+        console.print(
+            f"Reusing the client bundle built from unchanged inputs ({key[:12]}); "
+            "skipping the client build."
+        );
+        return;
+    }
+    stage_root = _stage_app(base, sanitized, sources, tomls);
     stage = str(stage_root / "app");
     dist_candidates = self._client_dist_candidates(stage, entry_rel);
     try {
@@ -459,25 +528,25 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
         while True {
             attempt += 1;
             try {
-                result = subprocess.run(
+                result = _run_until_quiet(
                     [jac_bin, "build", "--as", "client", entry_rel.as_posix()],
-                    cwd=stage,
-                    capture_output=True,
-                    text=True,
-                    timeout=900,
-                    env=jac_env
+                    stage,
+                    jac_env,
+                    _CLIENT_BUILD_QUIET_S
                 );
             } except subprocess.TimeoutExpired {
                 if attempt >= _CLIENT_BUILD_ATTEMPTS {
                     raise RuntimeError(
-                        f"client build timed out ({client_entry}) on all "
+                        f"client build timed out ({client_entry}): it printed "
+                        f"nothing for {_CLIENT_BUILD_QUIET_S}s on all "
                         f"{_CLIENT_BUILD_ATTEMPTS} attempts. The pod serves "
                         f"the bundle built here and never rebuilds it - fix "
                         f"the client build and redeploy."
                     );
                 }
                 console.print(
-                    f"Client build timed out (attempt {attempt} of "
+                    f"Client build timed out: it printed nothing for "
+                    f"{_CLIENT_BUILD_QUIET_S}s (attempt {attempt} of "
                     f"{_CLIENT_BUILD_ATTEMPTS}); retrying."
                 );
                 time.sleep(_CLIENT_BUILD_RETRY_PAUSE_S);
@@ -528,22 +597,41 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
                 f"({client_entry}); the gateway would have nothing to serve."
             );
         }
-        target = os.path.join(project_dir, ".jac", "client", "dist");
-        incoming = target + ".incoming";
-        outgoing = target + ".outgoing";
-        os.makedirs(os.path.dirname(target), exist_ok=True);
-        shutil.rmtree(incoming, ignore_errors=True);
-        shutil.rmtree(outgoing, ignore_errors=True);
-        shutil.copytree(dist, incoming);
-        if os.path.isdir(target) {
-            os.replace(target, outgoing);
+        _install_client_dist(dist, project_dir);
+        staged = [Path(stage) / path.relative_to(base) for path in sources];
+        if all(path.is_file() for path in staged)
+            and client_input_digest(
+                Path(stage), staged, jac_binary, entry_rel.as_posix(), sanitized, tomls
+            )
+                == key {
+            remember_client_dist(base, key, dist);
+        } else {
+            console.print(
+                "The project changed while the client was built; not keeping this "
+                "build for reuse."
+            );
         }
-        os.replace(incoming, target);
-        shutil.rmtree(outgoing, ignore_errors=True);
     } finally {
         remove_stage_root(stage_root);
     }
     console.print("Client bundle built; shipping it to the gateway pod.");
+}
+
+impl _install_client_dist(dist: str, project_dir: str) {
+    import os;
+    import shutil;
+    target = os.path.join(project_dir, ".jac", "client", "dist");
+    incoming = target + ".incoming";
+    outgoing = target + ".outgoing";
+    os.makedirs(os.path.dirname(target), exist_ok=True);
+    shutil.rmtree(incoming, ignore_errors=True);
+    shutil.rmtree(outgoing, ignore_errors=True);
+    shutil.copytree(dist, incoming);
+    if os.path.isdir(target) {
+        os.replace(target, outgoing);
+    }
+    os.replace(incoming, target);
+    shutil.rmtree(outgoing, ignore_errors=True);
 }
 
 impl ManifestBuilder._client_dist_candidates(stage: str, entry_rel: any) -> list[str] {
@@ -1229,15 +1317,18 @@ impl ManifestBuilder._build_env(
         if peer_name == svc_name or peer_name == GATEWAY_NAME {
             continue;
         }
-        if self._get_http_activation_config(peer_name) is not None {
-            continue;
-        }
         key = sv_client.peer_url_env_key(peer_name);
         if key in seen_peer_keys {
             continue;
         }
         seen_peer_keys.add(key);
-        env.append({"name": key, "value": self._peer_dns_url(peer_name)});
+
+        url = (
+            ""
+                if self._get_http_activation_config(peer_name) is not None
+                else self._peer_dns_url(peer_name)
+        );
+        env.append({"name": key, "value": url});
     }
 
     for `entry in self.deploy_context.env_list {
@@ -1366,11 +1457,15 @@ impl ManifestBuilder._build_prestop_hook -> dict[str, any] {
     return {"exec": {"command": ["sh", "-c", f"sleep {cushion}"]}};
 }
 
+impl ManifestBuilder._fleet_role(svc_name: str) -> str {
+    return "gateway" if svc_name == GATEWAY_NAME else "microservice";
+}
+
 impl ManifestBuilder._build_deployment_manifest(
     svc_name: str, pod_spec: dict[str, any]
 ) -> dict[str, any] {
     k8s_name = k8s_safe_name(svc_name);
-    role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
+    role: str = self._fleet_role(svc_name);
     labels: dict[str, str] = {
         ** self._owner_labels(),
         "app": k8s_name,
@@ -1434,7 +1529,12 @@ impl ManifestBuilder._build_service_manifest(svc_name: str) -> dict[str, any] {
         "metadata": {
             "name": f"{k8s_name}-service",
             "namespace": self.k8s_config.namespace,
-            "labels": {** self._owner_labels(), "app": k8s_name, "managed": "jac-scale"}
+            "labels": {
+                ** self._owner_labels(),
+                "app": k8s_name,
+                "managed": "jac-scale",
+                "jac-scale.role": self._fleet_role(svc_name)
+            }
         },
         "spec": spec
     };
@@ -1470,6 +1570,7 @@ impl ManifestBuilder._resolve_scaling(
             "service_name": service_name,
             "autoscaler": {},
             "http_activation": http,
+            "engine": self.k8s_config.autoscaler_engine,
             "replica_floor": int(http.get("min_replicas", 0))
         };
     }
@@ -1491,6 +1592,7 @@ impl ManifestBuilder._resolve_scaling(
         keda = self.k8s_config.autoscaler_engine == "keda";
         return {
             "mode": ScalingMode.METRIC,
+            "engine": "keda" if keda else "hpa",
             "scale_target_name": scale_target,
             "service_name": service_name,
             "autoscaler": metric,
@@ -1503,6 +1605,7 @@ impl ManifestBuilder._resolve_scaling(
     }
     return {
         "mode": ScalingMode.NONE,
+        "engine": self.k8s_config.autoscaler_engine,
         "scale_target_name": scale_target,
         "service_name": service_name,
         "autoscaler": {},
@@ -1744,7 +1847,11 @@ impl ManifestBuilder._build_pdb_manifest(
         "metadata": {
             "name": f"{k8s_name}-pdb",
             "namespace": self.k8s_config.namespace,
-            "labels": {"app": k8s_name, "managed": "jac-scale"}
+            "labels": {
+                "app": k8s_name,
+                "managed": "jac-scale",
+                "jac-scale.role": self._fleet_role(svc_name)
+            }
         },
         "spec": spec
     };

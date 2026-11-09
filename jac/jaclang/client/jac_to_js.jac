@@ -5,11 +5,12 @@ glob _RUNTIME_IMPORTS_MEMO: dict[tuple[str, str], str] = {},
      RUNTIME_IMPORTS_MEMO_CAP: int = 4096;
 
 obj JacToJSCompiler {
-    has _compile_to_js: Callable[[Path], ClientArtifact],
+    has _compile_to_js: Callable[[Path, Path | None], ClientArtifact],
         _extract_client_exports: Callable[[ClientManifest | None], list[str]],
         _extract_client_globals:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
-        boundary_contracts: dict[str, dict[str, any]] = {};
+        boundary_contracts: dict[str, dict[str, any]] = {},
+        source_root: Path | None = None;
 
     def compile_module(module_path: Path) -> ClientArtifact;
     def extract_exports(manifest: (ClientManifest | None)) -> list[str];

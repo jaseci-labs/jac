@@ -6,7 +6,8 @@ obj KubernetesTargetBase(DeploymentTarget) {
         secrets: dict[str, str] = {},
         env: dict[str, str] = {},
         events: EventSink = NoopSink(),
-        dry_run: bool = False;
+        dry_run: bool = False,
+        _kubectl: KubectlCluster = KubectlCluster();
 
     def postinit;
     def _emit(

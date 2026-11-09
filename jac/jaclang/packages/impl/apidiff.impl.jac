@@ -221,6 +221,82 @@ impl _diff_members(
     return out;
 }
 
+impl _diff_positional_fields(
+    path: str, old: dict[str, any], new: dict[str, any]
+) -> list[ApiChange] {
+    old_pos: list[str] | None = old.get("positional_fields");
+    new_pos: list[str] | None = new.get("positional_fields");
+    if old_pos is None or new_pos is None {
+        return [];
+    }
+    old_members: dict[str, any] = old.get("members", {});
+    new_members: dict[str, any] = new.get("members", {});
+    out: list[ApiChange] = [];
+    for (index, name) in enumerate(new_pos) {
+        if name in old_pos or index >= len(old_pos) {
+            continue;
+        }
+        added = new_members.get(name);
+        if added is not None and name not in old_members and not added.get("default") {
+            continue;
+        }
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"field '{name}' takes constructor position {index
+                    + 1}, shifting the positional arguments of existing constructions"
+            )
+        );
+    }
+    for name in old_pos {
+        if name in new_pos or (name in old_members and name not in new_members) {
+            continue;
+        }
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"field '{name}' is no longer a positional constructor argument, shifting the positional arguments of existing constructions"
+            )
+        );
+    }
+    old_required: list[str] = old.get("required_fields", []);
+    for name in new.get("required_fields", []) {
+        if name not in old_required and name not in new_members {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"the constructor now requires inherited field '{name}' (existing constructions break)"
+                )
+            );
+        }
+    }
+    kept_old = [
+        n
+        for n in old_pos
+        if n in new_pos
+    ];
+    kept_new = [
+        n
+        for n in new_pos
+        if n in old_pos
+    ];
+    if kept_old != kept_new {
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"constructor fields reordered ({', '.join(kept_old)} -> {', '.join(
+                    kept_new
+                )})"
+            )
+        );
+    }
+    return out;
+}
+
 impl _diff_symbol(
     path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange] {
@@ -264,6 +340,7 @@ impl _diff_symbol(
     out.extend(
         _diff_members(path, kind, old.get("members", {}), new.get("members", {}))
     );
+    out.extend(_diff_positional_fields(path, old, new));
     return out;
 }
 

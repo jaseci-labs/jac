@@ -42,9 +42,9 @@ impl BoundaryAnalysisPass._signature_of_decl(
                 param_types.append('int');
             }
         }
-        if sig.return_type {
-            ret_type = self._extract_type_name(sig.return_type);
-        }
+        ret_type = self._extract_type_name(sig.return_type)
+            if sig.return_type
+            else 'None';
     }
     return (ret_type, param_types, param_names);
 }

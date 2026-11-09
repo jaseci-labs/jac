@@ -298,3 +298,43 @@ test "openapi carries response content blocks and WS routes (#8000 f3)" {
     );
     assert "101" in doc["paths"]["/ws/echo"]["get"]["responses"];
 }
+
+
+def _ref_mask(payload: bytes, mask_key: bytes) -> bytes {
+    # Per-byte RFC 6455 s5.3 masking, the shape the framing code used to run.
+    return bytes([b ^ mask_key[i % 4] for (i, b) in enumerate(payload)]);
+}
+
+
+test "frame masking is byte-identical to the per-byte reference both ways" {
+    sizes = [0, 1, 2, 3, 4, 5, 7, 125, 126, 127, 1021, 65535, 65536, 70001];
+    fixed_key = b"\x9a\x01\xfe\x37";
+    async def scenario {
+        for n in sizes {
+            payload = bytes([(i * 7 + 3) % 256 for i in range(n)]);
+            hdr = 2 if n < 126 else (4 if n < 65536 else 10);
+            encoded = encode_frame(OP_TEXT, payload, mask=True);
+            key_used = encoded[hdr:hdr + 4];
+            assert encoded[hdr + 4:] == _ref_mask(payload, key_used) , (
+                f"encode mismatch at length {n}"
+            );
+            plain = encode_frame(OP_TEXT, payload);
+            ref_frame = (
+                bytes([plain[0], plain[1] | 0x80])
+                + plain[2:hdr]
+                + fixed_key
+                + _ref_mask(payload, fixed_key)
+            );
+            for raw in [encoded, ref_frame] {
+                reader = asyncio.StreamReader();
+                reader.feed_data(raw);
+                reader.feed_eof();
+                frame = await read_frame(reader);
+                assert frame.opcode == OP_TEXT and frame.payload == payload , (
+                    f"read mismatch at length {n}"
+                );
+            }
+        }
+    }
+    _run(scenario());
+}

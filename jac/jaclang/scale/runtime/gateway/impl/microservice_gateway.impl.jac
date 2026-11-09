@@ -25,7 +25,21 @@ impl MicroserviceGateway.resolve_target_url(
     return target;
 }
 
-impl MicroserviceGateway.serve_static(file_path: str) -> Response | None {
+impl MicroserviceGateway.static_file(
+    request: Request, target: Path, cache_control: str = "no-cache"
+) -> Response {
+    (content_type, _) = mimetypes.guess_type(str(target));
+    return file_response(
+        request,
+        str(target),
+        cache_control=cache_control,
+        media_type=content_type or "application/octet-stream"
+    );
+}
+
+impl MicroserviceGateway.serve_static(
+    request: Request, file_path: str
+) -> Response | None {
     dist = Path(self.client_dist_dir);
     target = dist / file_path;
 
@@ -43,22 +57,15 @@ impl MicroserviceGateway.serve_static(file_path: str) -> Response | None {
     if not target.is_file() {
         return None;
     }
-
-    (content_type, _) = mimetypes.guess_type(str(target));
-    if content_type is None {
-        content_type = "application/octet-stream";
+    if _HASHED_ASSET.search(target.name) {
+        return self.static_file(request, target, IMMUTABLE_CACHE);
     }
-
-    if content_type.startswith("text/")
-        or content_type in ("application/javascript", "application/json") {
-        return Response(
-            content=target.read_text(encoding="utf-8"), media_type=content_type
-        );
-    }
-    return Response(content=target.read_bytes(), media_type=content_type);
+    return self.static_file(request, target);
 }
 
-impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
+impl MicroserviceGateway.serve_project_static(
+    request: Request, rest: str
+) -> Response | None {
     if not rest {
         return None;
     }
@@ -76,7 +83,7 @@ impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
         local_dir: str = str(project_root / d);
 
         for candidate in (rest, file_name) {
-            resp = self.serve_extra_static(local_dir, candidate);
+            resp = self.serve_extra_static(request, local_dir, candidate);
             if resp {
                 return resp;
             }
@@ -86,7 +93,7 @@ impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
 }
 
 impl MicroserviceGateway.serve_extra_static(
-    local_dir: str, file_path: str
+    request: Request, local_dir: str, file_path: str
 ) -> Response | None {
     if not local_dir {
         return None;
@@ -107,19 +114,7 @@ impl MicroserviceGateway.serve_extra_static(
     if not target.is_file() {
         return None;
     }
-
-    (content_type, _) = mimetypes.guess_type(str(target));
-    if content_type is None {
-        content_type = "application/octet-stream";
-    }
-
-    if content_type.startswith("text/")
-        or content_type in ("application/javascript", "application/json") {
-        return Response(
-            content=target.read_text(encoding="utf-8"), media_type=content_type
-        );
-    }
-    return Response(content=target.read_bytes(), media_type=content_type);
+    return self.static_file(request, target);
 }
 
 
@@ -131,10 +126,15 @@ impl MicroserviceGateway.has_client_bundle -> bool {
     return root_svc is not None and root_svc.owns_root();
 }
 
-impl MicroserviceGateway.serve_spa_fallback -> Response | None {
+impl MicroserviceGateway.serve_spa_fallback(request: Request) -> Response | None {
     index = Path(self.client_dist_dir) / "index.html";
     if index.is_file() {
-        return HTMLResponse(content=index.read_text(encoding="utf-8"));
+        return file_response(
+            request,
+            str(index),
+            cache_control="no-cache",
+            media_type="text/html; charset=utf-8"
+        );
     }
     return None;
 }
@@ -213,76 +213,156 @@ impl MicroserviceGateway.handle_health_ready -> Response {
     return JSONResponse(status_code=200, content={"status": "ready"});
 }
 
-impl MicroserviceGateway.aggregate_graph_data(request: Request) -> Response | None {
+impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
+    import asyncio;
     import json;
 
-    fwd_headers = self.build_forward_headers(request);
+    fwd_headers = {
+        k: v
+        for (k, v) in self.build_forward_headers(request).items()
+        if k.lower() != "accept-encoding"
+    };
+    fwd_headers["Accept-Encoding"] = "identity";
     query: str = str(request.url.query);
+    try {
+        limit = max(1, min(int(request.query_params.get("limit") or 50), 200));
+    } except ValueError {
+        limit = 50;
+    }
 
-    merged_nodes: dict[str, dict[str, any]] = {};
-    edge_keys: set = set();
-    merged_edges: list[dict[str, any]] = [];
-    fragments: int = 0;
-
-    for (svc_name, svc_entry) in self.eligible_services() {
-        target_url = f"{self.service_base_url(svc_entry)}/graph/data";
-        if query {
-            target_url = f"{target_url}?{query}";
-        }
-        per_svc_headers = dict(fwd_headers);
+    async def ask(svc_name: str, svc_entry: ServiceEntry) -> any {
+        headers = dict(fwd_headers);
         if svc_entry.host_override {
-            per_svc_headers["Host"] = svc_entry.host_override;
+            headers["Host"] = svc_entry.host_override;
         }
-        result = await raw_forward(
-            "GET",
-            target_url,
-            per_svc_headers,
-            b"",
-            timeout=int(http_forward_timeout(svc_name))
+        target = f"{self.service_base_url(svc_entry)}/graph/neighbors";
+        if query {
+            target = f"{target}?{query}";
+        }
+        return await raw_forward(
+            "GET", target, headers, b"", timeout=int(http_forward_timeout(svc_name))
         );
+    }
+    answers: any = await asyncio.gather(
+        *[ask(name, svc) for (name, svc) in self.eligible_services()]
+    );
+    pages: list[dict[str, any]] = [];
+    refused: list[tuple[int, bytes]] = [];
+    unknown: list[tuple[int, bytes]] = [];
+
+    def _unknown_type(body: bytes) -> bool {
+        try {
+            answer = json.loads(body);
+        } except ValueError {
+            return False;
+        }
+        return isinstance(answer, dict) and answer.get("code") == "unknown_type";
+    }
+    for result in answers {
         if result is None {
+            refused.append(
+                (503, b'{"error": "a service did not answer; retry this page"}')
+            );
             continue;
         }
         (status, _headers, body) = result;
-        if status != 200 {
-            continue;
-        }
-        try {
-            frag = json.loads(body);
-        } except ValueError {
-            continue;
-        }
-        if not isinstance(frag, dict) {
-            continue;
-        }
-        fragments += 1;
-        for n in (frag.get("nodes") or []) {
-            nid = str(n.get("id"));
-            if nid not in merged_nodes {
-                merged_nodes[nid] = n;
+        if status == 200 {
+            try {
+                page = json.loads(body);
+            } except ValueError {
+                refused.append(
+                    (502, b'{"error": "a service sent an unreadable page; retry it"}')
+                );
+                continue;
             }
-        }
-        for e in (frag.get("edges") or []) {
-            key = (str(e.get("from")), str(e.get("to")), str(e.get("label", "")));
-            if key not in edge_keys {
-                edge_keys.add(key);
-                merged_edges.append(e);
+            if isinstance(page, dict) {
+                pages.append(page);
             }
+        } elif status == 400 and _unknown_type(body) {
+            unknown.append((status, body));
+        } elif status not in (404, 405) {
+            refused.append((status, body));
         }
     }
+    if refused {
+        return Response(
+            content=refused[0][1],
+            status_code=refused[0][0],
+            media_type="application/json"
+        );
+    }
+    if not pages and unknown {
+        return Response(
+            content=unknown[0][1],
+            status_code=unknown[0][0],
+            media_type="application/json"
+        );
+    }
+    if not pages {
+        return not_found("/graph/neighbors", message="Not found on any service");
+    }
 
-    if fragments == 0 {
-        return None;
+    def order(row: dict[str, any]) -> tuple[int, str] {
+        (seq, _, eid) = str(row.get("cursor") or "").partition(".");
+        return (int(seq) if seq.isdigit() else 2 ** 62, eid);
+    }
+    rows: dict[str, dict[str, any]] = {};
+    nodes: dict[str, dict[str, any]] = {};
+    for page in pages {
+        for n in page.get("nodes") or [] {
+            nodes.setdefault(str(n.get("id")), n);
+        }
+        for e in page.get("edges") or [] {
+            key = str(
+                e.get("id") or f"{e.get('from')}>{e.get('to')}>{e.get('cursor')}"
+            );
+            rows.setdefault(key, e);
+        }
+    }
+    resumes = sorted(
+        [
+            {"cursor": page.get("next_cursor")}
+            for page in pages
+            if page.get("next_cursor")
+        ],
+        key=order
+    );
+    boundary = resumes[0] if resumes else None;
+    ranked = [
+        row
+        for row in sorted(rows.values(), key=order)
+        if boundary is None or order(row) <= order(boundary)
+    ];
+    taken = ranked[:limit];
+    next_cursor: (str | None) = None;
+    if len(ranked) > limit {
+        next_cursor = taken[-1].get("cursor");
+    } elif boundary is not None {
+        next_cursor = boundary.get("cursor");
+    }
+    shown: list[dict[str, any]] = [];
+    listed: set = set();
+    for e in taken {
+        for end in (e.get("to"), e.get("from")) {
+            nid = str(end);
+            if nid in nodes and nid not in listed {
+                listed.add(nid);
+                shown.append(nodes[nid]);
+            }
+        }
     }
     return JSONResponse(
         status_code=200,
         content={
-            "version": "1.0",
-            "nodes": list(merged_nodes.values()),
-            "edges": merged_edges
+            "id": pages[0].get("id"),
+            "dir": pages[0].get("dir"),
+            "nodes": shown,
+            "edges": taken,
+            "next_cursor": next_cursor
         }
     );
 }
+
 
 impl MicroserviceGateway.handle_builtin_passthrough(
     request: Request, path: str
@@ -292,11 +372,8 @@ impl MicroserviceGateway.handle_builtin_passthrough(
         return None;
     }
 
-    if request.method == "GET" and path == "/graph/data" {
-        agg = await self.aggregate_graph_data(request);
-        if agg is not None {
-            return agg;
-        }
+    if request.method == "GET" and path == "/graph/neighbors" {
+        return await self.merge_graph_pages(request);
     }
 
     stripped: str = path.strip("/");
@@ -463,6 +540,7 @@ impl MicroserviceGateway.probe_services(
             0 if pair[1].status == ServiceStatus.HEALTHY else 1
         ); }
     );
+    unreached: str = "";
     for (svc_name, svc_entry) in ordered {
         base: str = svc_entry.page_url
             if (svc_entry.owns_root() and svc_entry.page_url)
@@ -485,6 +563,10 @@ impl MicroserviceGateway.probe_services(
                 body,
                 timeout=int(http_forward_timeout(svc_name))
             );
+        } except ClientRequestNotSent as not_sent {
+            logger.info(f"Probe: {svc_name} unreachable, trying the next: {not_sent}");
+            unreached = unreached or svc_name;
+            continue;
         } except ClientReadTimeout as timed_out {
             import from jaclang.scale.runtime.context.errors { gateway_timeout }
             logger.info(f"Probe: {svc_name} timed out: {timed_out}");
@@ -501,6 +583,10 @@ impl MicroserviceGateway.probe_services(
         return fr.to_response();
     }
 
+    if unreached {
+        import from jaclang.scale.runtime.context.errors { service_unavailable }
+        return service_unavailable(unreached, "transport_error");
+    }
     return not_found(path, message="Not found on any service");
 }
 
@@ -535,6 +621,8 @@ impl MicroserviceGateway.forward_to(
         );
     } except ClientReadTimeout {
         return gateway_timeout(service_entry.name);
+    } except ClientRequestNotSent {
+        return bad_gateway(service_entry.name);
     }
     if fr is None {
         return bad_gateway(service_entry.name);
@@ -636,7 +724,7 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
             mount_matched = True;
             sub_path = file_path[len(prefix) + 1:];
             local_dir = str(mount.get("local_path", ""));
-            mounted_resp = self.serve_extra_static(local_dir, sub_path);
+            mounted_resp = self.serve_extra_static(request, local_dir, sub_path);
             if mounted_resp {
                 return mounted_resp;
             }
@@ -645,14 +733,14 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     }
 
     if not mount_matched {
-        static_resp = self.serve_static(file_path);
+        static_resp = self.serve_static(request, file_path);
         if static_resp {
             return static_resp;
         }
     }
 
     if file_path.startswith("static/") {
-        return self.serve_project_static(file_path[len("static/"):]);
+        return self.serve_project_static(request, file_path[len("static/"):]);
     }
     return None;
 }
@@ -664,10 +752,10 @@ impl MicroserviceGateway.handle_spa_fallback(
         return None;
     }
     if not path.lstrip("/") {
-        return self.serve_spa_fallback();
+        return self.serve_spa_fallback(request);
     }
     if "text/html" in request.headers.get("accept", "") {
-        return self.serve_spa_fallback();
+        return self.serve_spa_fallback(request);
     }
     return None;
 }
@@ -767,7 +855,7 @@ impl MicroserviceGateway.setup -> ServingApp {
                 root_svc = gw.root_member();
                 if request.method == "GET"
                     and (root_svc is None or not root_svc.owns_root()) {
-                    page_resp = gw.serve_spa_fallback();
+                    page_resp = gw.serve_spa_fallback(request);
                     if page_resp is None {
                         import from jaclang.scale.runtime.context.errors { not_found }
                         page_resp = not_found(path);

@@ -517,6 +517,11 @@ impl __jacReportError(
     componentStack: str = ""
 ) -> None {
     try {
+        stack_text = str(stack or "");
+        if __jacIsExtensionError(stack_text, str(url or ""))
+            or not __jacClaimErrorReport(str(message), stack_text) {
+            return;
+        }
         baseUrl = globalThis.__jacGetApiBaseUrl__();
         url_fn = globalThis.__jacDefaultErrorReportUrl__;
         report_url = url or (url_fn() if url_fn else "");
@@ -538,6 +543,65 @@ impl __jacReportError(
             }
         );
     } except Exception {}
+}
+
+impl __jacIsExtensionUrl(url: str) -> bool {
+    for prefix in __JAC_EXTENSION_URL_PREFIXES {
+        if url.startswith(prefix) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl __jacIsExtensionError(stack: str, filename: str = "") -> bool {
+    frame_urls: list[str] = [];
+    for line in stack.split("\n") {
+        text: any = line;
+        frame: any = text.match(__JAC_STACK_FRAME_RE);
+        if frame {
+            location = frame[1] or frame[2] or "";
+            if not __JAC_ENGINE_FRAME_RE.test(location) {
+                frame_urls.append(location);
+            }
+        }
+    }
+    if len(frame_urls) == 0 {
+        return __jacIsExtensionUrl(filename);
+    }
+    for frame_url in frame_urls {
+        if not __jacIsExtensionUrl(frame_url) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl __jacClaimErrorReport(message: str, stack: str) -> bool {
+    now = Date.now();
+    budget: any = globalThis.__jacErrorReportBudget;
+    if not budget {
+        budget = {"seen": {}, "seenCount": 0, "sentAt": []};
+        setattr(globalThis, "__jacErrorReportBudget", budget);
+    }
+    key = f"{message}\n{stack}";
+    if budget.seen[key] or budget.seenCount >= __JAC_ERROR_REPORTS_PER_PAGE {
+        return False;
+    }
+    recent: list[float] = [];
+    for sent_at in budget.sentAt {
+        if now - sent_at < 60000 {
+            recent.append(sent_at);
+        }
+    }
+    budget.sentAt = recent;
+    if len(recent) >= __JAC_ERROR_REPORTS_PER_MINUTE {
+        return False;
+    }
+    recent.append(now);
+    budget.seenCount += 1;
+    budget.seen[key] = True;
+    return True;
 }
 
 impl __jacReactErrorHandler(error: any, info: any) -> None {

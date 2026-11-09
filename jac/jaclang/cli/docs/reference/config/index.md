@@ -115,7 +115,7 @@ You can widen or move it by editing the value -- `>=0.34.3`, `<=0.34.3`, `>=0.34
 At deploy time (`jac scale deploy`), the pin selects the **pod runtime**: the deployer downloads the released `jac` binary, admin console, and base image from the release that satisfies `jac-version` and ships them to the pods, so the app runs on the toolchain it was built against -- not on whatever `latest` happens to be. Resolution rules:
 
 - **Unset** -> the latest published release.
-- **Exact pin** (`==X` / `X`) -> the `vX` release.
+- **Exact pin** (`==X` / `X`) -> the `vX` release, downloaded directly without a GitHub API request.
 - **Range** -> the newest published release that satisfies it.
 - **No published release satisfies the pin** (or the matching release lacks the pod's CPU arch or a `jac-*` asset) -> the deploy **aborts** with an error naming the pin; a pinned deploy never silently ships a different version. Fix or remove `jac-version` to proceed.
 
@@ -311,7 +311,22 @@ both. A variable that is empty or only whitespace counts as unset, so the
 `0/false/no/off` (any case), and any other value stops the server with a
 message naming the variable. An empty `JAC_SERVE_CORS_ORIGINS` therefore keeps
 the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
-`cors_origins = []` in `jac.toml`.
+`cors_origins = []` in `jac.toml`. `cors_credentials = true` lets the origins in
+`cors_origins` send cookies; the server refuses to start if the list also holds
+`"*"`, because browsers reject a response that allows every origin together
+with credentials.
+
+The `[serve]` tables are checked when the configuration loads, in every layer
+(`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
+`jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
+`"false"` or `true` for a number, stops the load with a message naming the key.
+A layer's sub-table merges into the one below it instead of replacing it.
+`[serve.auth]` is the exception: its layers are merged first and the result is
+checked when the server starts (or a deploy builds its manifests).
+`${VAR}` interpolation always gives text, so it can't set a `[serve]` number
+or switch; set those from the environment with their `JAC_SERVE_*` variable.
+`main`, `conflict_max_attempts` and `conflict_backoff_ms` have no such variable,
+so write them as plain values.
 
 ```toml
 [serve]
@@ -320,8 +335,9 @@ port = 8000              # Server port
 session = ""             # Session name
 main = true              # Run as main module
 docs_enabled = true      # /docs and /openapi.json
-graph_enabled = true     # /graph and /graph/data (turn off in production)
+graph_enabled = true     # /graph, /graph/node and /graph/neighbors (turn off in production)
 cors_origins = ["*"]     # Origins allowed by the CORS middleware
+cors_credentials = false # Access-Control-Allow-Credentials for listed origins; refused with "*"
 
 # Optimistic-concurrency policy for concurrent check-then-create races
 # (see Persistence -> Concurrent writes).

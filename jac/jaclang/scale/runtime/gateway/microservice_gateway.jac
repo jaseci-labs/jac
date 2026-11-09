@@ -1,5 +1,6 @@
 import logging;
 import mimetypes;
+import re;
 import from pathlib { Path }
 
 glob logger = logging.getLogger(__name__),
@@ -9,7 +10,11 @@ glob logger = logging.getLogger(__name__),
          "connection",
          "keep-alive",
          "expect"
-     };
+     },
+     IMMUTABLE_CACHE: str = "public, max-age=31536000, immutable",
+     _HASHED_ASSET = re.compile(
+         r"[.-](?=[\w-]{0,7}[0-9])(?=[\w-]{0,7}[A-Z])[\w-]{8}\.\w+$"
+     );
 
 obj MicroserviceGateway(EndpointHost, JacAPIServerAdminSurface) {
     has registry: ServiceRegistry,
@@ -39,11 +44,11 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdminSurface) {
     def handle_health -> Response;
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
-    async def aggregate_graph_data(request: Request) -> Response | None;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;
 
+    async def merge_graph_pages(request: Request) -> Response;
     def eligible_services -> list[tuple[str, ServiceEntry]];
     def root_member -> ServiceEntry | None;
     def shell_answers(request: Request, path: str) -> bool;
@@ -75,10 +80,17 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdminSurface) {
     def handle_docs -> Response;
     def has_client_bundle -> bool;
     def build_forward_headers(request: Request) -> dict[str, str];
-    def serve_static(file_path: str) -> Response | None;
-    def serve_extra_static(local_dir: str, file_path: str) -> Response | None;
-    def serve_project_static(rest: str) -> Response | None;
-    def serve_spa_fallback -> Response | None;
+    def static_file(
+        request: Request, target: Path, cache_control: str = "no-cache"
+    ) -> Response;
+
+    def serve_static(request: Request, file_path: str) -> Response | None;
+    def serve_extra_static(
+        request: Request, local_dir: str, file_path: str
+    ) -> Response | None;
+
+    def serve_project_static(request: Request, rest: str) -> Response | None;
+    def serve_spa_fallback(request: Request) -> Response | None;
     def bootstrap_admin_ui -> None;
     def _install_admin_api -> None;
     def get_admin_dist_dir -> Path;

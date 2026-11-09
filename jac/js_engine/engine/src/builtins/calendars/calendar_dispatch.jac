@@ -99,6 +99,11 @@ import from engine.src.builtins.calendars.calendar_chinese {
     dangi_days_in_month
 }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 glob _KNOWN_CALENDARS: list[str] = [
          "iso8601",
          "gregory",
@@ -123,8 +128,8 @@ def _lower_ascii(c: str) -> str {
     lower: str = "abcdefghijklmnopqrstuvwxyz";
     i: int = 0;
     while i < 26 {
-        if c == upper[i:i + 1] {
-            return lower[i:i + 1];
+        if c == str_bslice(upper, i, i + 1) {
+            return str_bslice(lower, i, i + 1);
         }
         i = i + 1;
     }
@@ -134,8 +139,9 @@ def _lower_ascii(c: str) -> str {
 def _str_lower(s: str) -> str {
     out: str = "";
     i: int = 0;
-    while i < len(s) {
-        out = out + _lower_ascii(s[i:i + 1]);
+    _nb142_s: int = str_nbytes(s);
+    while i < _nb142_s {
+        out = out + _lower_ascii(str_bslice(s, i, i + 1));
         i = i + 1;
     }
     return out;

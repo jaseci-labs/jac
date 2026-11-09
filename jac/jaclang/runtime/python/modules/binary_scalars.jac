@@ -4,18 +4,36 @@ Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
 def read_bits(address: ptr, size: int, little: bool) -> u64 {
+    data = ptr[u8](address);
     bits: u64 = 0;
+    if little {
+        i = size - 1;
+        while i >= 0 {
+            bits = wrapping_shl(bits, 8) | u64((data + i).view(1)[0]);
+            i -= 1;
+        }
+        return bits;
+    }
     for i in range(size) {
-        shift = (i if little else size - 1 - i) * 8;
-        bits |= u64(memory_byte(address, i64(i))) << i64(shift);
+        bits = wrapping_shl(bits, 8) | u64((data + i).view(1)[0]);
     }
     return bits;
 }
 
 def write_bits(address: ptr, size: int, little: bool, bits: u64) {
-    for i in range(size) {
-        shift = (i if little else size - 1 - i) * 8;
-        memory_set(address, i64(i), i64((bits >> i64(shift)) & u64(255)));
+    data = ptr[u8](address);
+    if little {
+        for i in range(size) {
+            (data + i).view(1)[0] = u8(bits & u64(255));
+            bits = bits >> u64(8);
+        }
+        return;
+    }
+    i = size - 1;
+    while i >= 0 {
+        (data + i).view(1)[0] = u8(bits & u64(255));
+        bits = bits >> u64(8);
+        i -= 1;
     }
 }
 

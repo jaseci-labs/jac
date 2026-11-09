@@ -52,6 +52,31 @@ def _pred_cond(
 def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str;
 
 
+def _last_mode(last: bool, count_only: bool, residual_only: bool) -> str;
+
+
+def _gated_cond(
+    alias: str,
+    root_id: str,
+    trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str;
+
+
+def _gated_pair(
+    node_alias: str,
+    edge_alias: str,
+    root_id: str,
+    node_trusted: (list[str] | None),
+    edge_trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str;
+
+
 def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]];
 
 
@@ -69,8 +94,23 @@ impl compile_query(
     store: Store,
     promotions: (dict[str, any] | None) = None,
     count_only: bool = False,
-    acl_root: (str | None) = None
+    acl_root: (str | None) = None,
+    acl_residual: (dict[int, list[str]] | None) = None,
+    residual_only: bool = False,
+    group_by: (str | None) = None,
+    edge_residual: (list[str] | None) = None,
+    edge_acl: bool = False
 ) -> CompiledQuery {
+    if q.after is not None {
+        if upto != 1 or len(q.hops) != 1 or len(q.origin) != 1 or q.order {
+            raise ValueError(
+                'a keyset cursor applies to one hop from one node in edge order'
+            );
+        }
+        if not isinstance(q.after[1], UUID) {
+            raise ValueError('a keyset cursor names the edge it resumes after');
+        }
+    }
     out = CompiledQuery();
     params: dict[str, any] = {};
     types: dict[str, list[str]] = {};
@@ -98,7 +138,7 @@ impl compile_query(
         for (j, p) in enumerate(hop.epreds) {
             cond = _pred_cond('e', p, params, f"{pfx_e}p{j}", edge_names, promotions);
             if cond is None {
-                out.residual.setdefault(i, []).append(p);
+                out.eresidual.setdefault(i, []).append(p);
             } else {
                 econds.append(cond);
             }
@@ -127,8 +167,39 @@ impl compile_query(
                 nconds.append(cond);
             }
         }
-        if acl_root is not None {
-            nconds.append(_acl_cond(nd_alias, acl_root, params, f"h{n}a"));
+        if acl_root is not None and i == upto - 1 and edge_acl {
+            nconds.append(
+                _gated_pair(
+                    nd_alias,
+                    e,
+                    acl_root,
+                    (acl_residual or {}).get(i),
+                    edge_residual,
+                    params,
+                    f"h{n}",
+                    'residual'
+                        if residual_only
+                        else ('pushed' if count_only else 'either')
+                )
+            );
+        } elif acl_root is not None {
+            nconds.append(
+                _gated_cond(
+                    nd_alias,
+                    acl_root,
+                    (acl_residual or {}).get(i),
+                    params,
+                    f"h{n}a",
+                    _last_mode(i == upto - 1, count_only, residual_only)
+                )
+            );
+        }
+        if i == upto - 1 and q.after is not None {
+            params['ks'] = int(q.after[0]);
+            params['ki'] = str(q.after[1]);
+            nconds.append(
+                f"({e}.seq, {e}.id) > (CAST(:ks AS bigint), CAST(:ki AS uuid))"
+            );
         }
         want = hop.only_ids();
         if want is not None {
@@ -153,6 +224,28 @@ impl compile_query(
         out.params = params;
         return out;
     }
+    if group_by == 'node_ids' {
+        out.sql = (
+            f"SELECT DISTINCT n{n}.id "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+        );
+        out.params = params;
+        return out;
+    }
+    if group_by is not None {
+        keyed = f"e{n}" if group_by == 'edge' else f"n{n}";
+        out.sql = (
+            f"SELECT {keyed}.arch_type, count(DISTINCT {keyed}.id) "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+            + f" GROUP BY {keyed}.arch_type"
+        );
+        out.params = params;
+        return out;
+    }
     if count_only {
         counted = f"e{n}.id" if q.edges_only else f"n{n}.id";
         out.sql = (
@@ -164,7 +257,9 @@ impl compile_query(
         out.params = params;
         return out;
     }
+    seq_col = f"e{n}.seq";
     if q.order {
+        seq_col = 'NULL';
         order = [];
         for spec in q.order {
             alias = f"e{n}" if spec.on_edge else f"n{n}";
@@ -181,7 +276,7 @@ impl compile_query(
         tail += f" OFFSET {int(q.offset)}";
     }
     out.sql = (
-        f"SELECT n{n}.id, e{n}.id, f0.id "
+        f"SELECT n{n}.id, e{n}.id, f0.id, n{n}.arch_type, {seq_col}, e{n}.arch_type "
         f"FROM unnest(CAST(:origin AS uuid[])) WITH ORDINALITY AS f0(id, ord) "
         f"LEFT JOIN anchors s1 ON s1.id = f0.id "
         + ' '.join(joins)
@@ -385,30 +480,93 @@ impl _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> st
     mt = f"{pfx}mt";
     params[mu] = root_id;
     params[mt] = root_id;
+    own_all = f"COALESCE(({alias}.props->'access'->>'all')::int, -1)";
     return (
         f"({alias}.root_id = CAST(:{mu} AS uuid)"
-        f" OR ({alias}.props->'access'->>'all')::int > -1"
-        f" OR ({alias}.props->'access'->'roots'->'anchors')"
-        f" ? CAST(:{mt} AS text)"
+        f" OR COALESCE("
+        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" (SELECT COALESCE("
+        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" GREATEST({own_all}, COALESCE((ro.props->'access'->>'all')::int, -1))"
+        f") FROM anchors ro WHERE ro.id = {alias}.root_id),"
+        f" {own_all}"
+        f") > -1"
         f" OR EXISTS ("
         f"SELECT 1 FROM anchors ge"
         f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
-        f" AND ({alias}.props->'access'->'groups'->'anchors')"
-        f" ? CAST(ge.dst AS text)"
+        f" AND ({alias}.props->'access'->'groups'->'anchors'->>CAST(ge.dst AS text))::int"
+        f" > -1"
         f")"
-        f" OR (EXISTS ("
-        f"SELECT 1 FROM anchors ro"
-        f" WHERE ro.id = {alias}.root_id"
-        f" AND COALESCE("
-        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" (ro.props->'access'->>'all')::int"
-        f") > -1"
-        f") AND COALESCE("
-        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" 0"
-        f") > -1)"
         f")"
     );
+}
+
+
+impl _last_mode(last: bool, count_only: bool, residual_only: bool) -> str {
+    if not last {
+        return 'either';
+    }
+    if residual_only {
+        return 'residual';
+    }
+    return 'pushed' if count_only else 'either';
+}
+
+
+impl _gated_cond(
+    alias: str,
+    root_id: str,
+    trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str {
+    if trusted is None {
+        return 'FALSE'
+            if mode == 'residual'
+            else _acl_cond(alias, root_id, params, pfx);
+    }
+    known = _type_cond(alias, trusted, params, f"{pfx}r");
+    if mode == 'residual' {
+        return f"NOT {known}";
+    }
+    acl = _acl_cond(alias, root_id, params, pfx);
+    if mode == 'pushed' {
+        return f"({acl} AND {known})";
+    }
+    return f"({acl} OR NOT {known})";
+}
+
+
+impl _gated_pair(
+    node_alias: str,
+    edge_alias: str,
+    root_id: str,
+    node_trusted: (list[str] | None),
+    edge_trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str {
+    side = 'either' if mode == 'residual' else mode;
+    node_cond = _gated_cond(node_alias, root_id, node_trusted, params, pfx + 'a', side);
+    edge_cond = _gated_cond(edge_alias, root_id, edge_trusted, params, pfx + 'b', side);
+    if mode != 'residual' {
+        return f"({node_cond} AND {edge_cond})";
+    }
+    unknown: list[str] = [];
+    if node_trusted is not None {
+        unknown.append(
+            f"NOT {_type_cond(node_alias, node_trusted, params, pfx + 'x')}"
+        );
+    }
+    if edge_trusted is not None {
+        unknown.append(
+            f"NOT {_type_cond(edge_alias, edge_trusted, params, pfx + 'y')}"
+        );
+    }
+    either = ' OR '.join(unknown) or 'FALSE';
+    return f"({node_cond} AND {edge_cond} AND ({either}))";
 }
 
 

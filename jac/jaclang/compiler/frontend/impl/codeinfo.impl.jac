@@ -207,6 +207,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "
         "__jac_errno __jac_stdio __jac_platform_id __jac_stat __jac_opendir "
+        "__jac_uncaught_exception "
         "__jac_readdir __jac_closedir __jac_dirent_name __jac_at_fdcwd "
         "__jac_home_dir __jac_executable_path __jac_addrinfo_layout "
         "__jac_sockaddr_family __jac_clock_id __jac_sleep_ns __jac_malloc_size "
@@ -833,14 +834,18 @@ impl is_selected_native_variant(path: str) -> bool {
 }
 
 impl is_native_variant_path(path: str) -> bool {
+    return native_variant_base(path) is not None;
+}
+
+impl native_variant_base(path: str) -> (str | None) {
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
-        return False;
+        return None;
     }
     parts = name[:-len(".jac")].split(".");
     if len(parts) < 2 {
-        return False;
+        return None;
     }
     tail = parts[-2:] if len(parts) >= 3 else parts[-1:];
     if len(tail) == 2
@@ -849,11 +854,12 @@ impl is_native_variant_path(path: str) -> bool {
     }
     for part in tail {
         if part not in NATIVE_VARIANT_OSES and part not in NATIVE_VARIANT_ARCHES {
-            return False;
+            return None;
         }
     }
     stem = ".".join(parts[:len(parts) - len(tail)]);
-    return os.path.isfile(os.path.join(os.path.dirname(path), stem + ".jac"));
+    base = os.path.join(os.path.dirname(path), stem + ".jac");
+    return base if os.path.isfile(base) else None;
 }
 
 impl native_variant_of(module_path: str) -> str {

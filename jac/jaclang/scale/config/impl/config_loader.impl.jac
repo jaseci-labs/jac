@@ -110,6 +110,17 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
+impl _scope_text(value: any) -> str {
+    if isinstance(value, (list, tuple)) {
+        return ' '.join(
+            str(v).strip()
+            for v in value
+            if str(v).strip()
+        );
+    }
+    return ' '.join(str(value or '').replace(',', ' ').split());
+}
+
 impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     sso_config = config.get('sso', {});
@@ -122,15 +133,18 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
         'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
         'google': {
             'client_id': google_config.get('client_id', ''),
-            'client_secret': google_config.get('client_secret', '')
+            'client_secret': google_config.get('client_secret', ''),
+            'scopes': _scope_text(google_config.get('scopes', ''))
         },
         'apple': {
             'client_id': apple_config.get('client_id', ''),
-            'client_secret': apple_config.get('client_secret', '')
+            'client_secret': apple_config.get('client_secret', ''),
+            'scopes': _scope_text(apple_config.get('scopes', ''))
         },
         'github': {
             'client_id': github_config.get('client_id', ''),
-            'client_secret': github_config.get('client_secret', '')
+            'client_secret': github_config.get('client_secret', ''),
+            'scopes': _scope_text(github_config.get('scopes', ''))
         },
         'firebase': {
             'project_id': resolve_firebase_project_id(
@@ -514,6 +528,14 @@ impl app_scale_overrides(config: any, app_name: str) -> dict[str, any] {
 impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str, any] {
     raw = dict(gateway_config or {});
     cors_config = dict(raw.get('cors', {}) or {});
+    cors: dict[str, any] = {
+        'allow_origins': list(cors_config.get('allow_origins', ["*"])),
+        'allow_methods': list(cors_config.get('allow_methods', ["*"])),
+        'allow_headers': list(cors_config.get('allow_headers', ["*"])),
+        'allow_credentials': bool(cors_config.get('allow_credentials', False)),
+        'expose_headers': list(cors_config.get('expose_headers', [])),
+        'max_age': int(cors_config.get('max_age', 600))
+    };
     rl_config = dict(raw.get('rate_limit', {}) or {});
     normalized = {
         'colocate': bool(raw.get('colocate', True)),
@@ -531,14 +553,7 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
             ),
             'shared': bool(rl_config.get('shared', True))
         },
-        'cors': {
-            'allow_origins': list(cors_config.get('allow_origins', ["*"])),
-            'allow_methods': list(cors_config.get('allow_methods', ["*"])),
-            'allow_headers': list(cors_config.get('allow_headers', ["*"])),
-            'allow_credentials': bool(cors_config.get('allow_credentials', False)),
-            'expose_headers': list(cors_config.get('expose_headers', [])),
-            'max_age': int(cors_config.get('max_age', 600))
-        },
+        'cors': cors,
         'identity': {
             'gateway_owned': bool(
                 dict(raw.get('identity', {}) or {}).get('gateway_owned', True)
@@ -549,6 +564,15 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
         'logs': dict(raw.get('logs', {}) or {}),
         'tracing': dict(raw.get('tracing', {}) or {})
     };
+    cors_problem = cors_pair_problem(
+        cors['allow_origins'],
+        cors['allow_credentials'],
+        '[scale.gateway.cors] allow_origins',
+        '[scale.gateway.cors] allow_credentials'
+    );
+    if cors_problem {
+        raise ValueError(cors_problem);
+    }
     for boot_key in GATEWAY_BOOT_KEYS {
         if boot_key in raw and raw[boot_key] is not None {
             normalized[boot_key] = raw[boot_key];

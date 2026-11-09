@@ -1,3 +1,25 @@
+impl _is_real_trigger_type(trigger_type: any) -> bool {
+    normalized = str(trigger_type or "").strip().lower();
+    return bool(normalized) and normalized not in RESOURCE_ONLY_TRIGGER_TYPES;
+}
+
+impl triggers_can_reach_zero(
+    autoscaler_cfg: (dict[str, any] | None), engine: str
+) -> bool {
+    if not isinstance(autoscaler_cfg, dict) or str(engine or "hpa") != "keda" {
+        return False;
+    }
+    triggers = autoscaler_cfg.get("triggers", []);
+    if not isinstance(triggers, list) {
+        return False;
+    }
+    return any(
+        _is_real_trigger_type(t.get("type", ""))
+        for t in triggers
+        if isinstance(t, dict)
+    );
+}
+
 impl transition_from(
     status: AutoscalerRuntimeStatus,
     scale_target_name: str,

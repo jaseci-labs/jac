@@ -53,36 +53,61 @@ test "a child in the caller's own group is signalled alone" {
     }
 }
 
+# The child inherits the leader's stdout pipe, as a server's forked workers do.
+# A test's stop_server escalates to SIGKILL when the leader ignores SIGTERM; if
+# that kill missed the child, the pipe would stay open and the test's
+# `communicate()` would block until the CI job limit.
 test "a child that leads its own session takes its children down with it" {
-    leader = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)"
-        ],
-        start_new_session=True
-    );
-    try {
-        time.sleep(0.5);
-        assert _owns_group(leader.pid);
-        _signal_group(leader.pid, int(signal.SIGTERM));
-        assert _wait_gone(leader, 5.0) , "the session leader must be signalled";
-        time.sleep(0.5);
+    # (label, stopped by, the leader and its child ignore SIGTERM)
+    cases: list[tuple[str, str, bool]] = [
+        ("a group SIGTERM", "signal_group", False),
+        ("stop_server on a leader stuck past SIGTERM", "stop_server", True)
+    ];
+    for (label, stopper, ignore_term) in cases {
+        setup = "import signal; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            if ignore_term
+            else "";
+        leader = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                setup
+                    + "import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)"
+            ],
+            stdout=subprocess.PIPE,
+            start_new_session=True
+        );
         try {
-            os.killpg(leader.pid, 0);
-            survivors = True;
-        } except ProcessLookupError {
-            survivors = False;
+            time.sleep(0.5);
+            assert _owns_group(leader.pid) , label;
+            if stopper == "stop_server" {
+                stop_server(leader);
+            } else {
+                _signal_group(leader.pid, int(signal.SIGTERM));
+            }
+            assert _wait_gone(leader, 5.0) , f"{label}: the session leader must be signalled";
+            time.sleep(0.5);
+            try {
+                os.killpg(leader.pid, 0);
+                survivors = True;
+            } except ProcessLookupError {
+                survivors = False;
+            }
+            assert not survivors , f"{label}: the leader's own children were not reaped";
+            try {
+                leader.communicate(timeout=5);
+            } except subprocess.TimeoutExpired {
+                assert False , f"{label}: a surviving child still holds the leader's pipe";
+            }
+        } finally {
+            try {
+                os.killpg(leader.pid, int(signal.SIGKILL));
+            } except (ProcessLookupError, OSError) {}
+            if leader.poll() is None {
+                leader.kill();
+            }
+            leader.`wait();
         }
-        assert not survivors , "the leader's own children were not reaped";
-    } finally {
-        try {
-            os.killpg(leader.pid, int(signal.SIGKILL));
-        } except (ProcessLookupError, OSError) {}
-        if leader.poll() is None {
-            leader.kill();
-        }
-        leader.`wait();
     }
 }
 

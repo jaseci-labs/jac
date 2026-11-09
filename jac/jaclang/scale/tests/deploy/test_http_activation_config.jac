@@ -1,3 +1,4 @@
+import re;
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
 
@@ -203,6 +204,150 @@ test "apply_http_activation_for_target calls apply_http_activation with a correc
     scaled_obj_body = create_calls[1][1]["body"];
     assert scaled_obj_body["metadata"]["name"]
         == keda.http_scaled_object_name_for("preview-deployment");
+}
+
+# A new ScaledObject has no request on record, so KEDA takes its target
+# straight down to min_replicas unless initialCooldownPeriod holds it up.
+test "initial_cooldown_period reaches the ScaledObject, and leaving it unset keeps KEDA's default" {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(
+        _cfg(initial_cooldown_period=120),
+        "preview-deployment",
+        "staging",
+        "preview-svc",
+        keda
+    );
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1][
+        "body"
+    ]["spec"];
+    assert scaled_obj_spec.get("initialCooldownPeriod") == 120 , scaled_obj_spec;
+
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(
+        _cfg(), "preview-deployment", "staging", "preview-svc", keda
+    );
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1][
+        "body"
+    ]["spec"];
+    assert "initialCooldownPeriod" not in scaled_obj_spec , scaled_obj_spec;
+}
+
+def _applied_scaled_object_spec(target: str) -> dict[str, any] {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(_cfg(), target, "staging", "preview-svc", keda);
+    return custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"][
+        "spec"
+    ];
+}
+
+# KEDA names a ScaledObject's HPA keda-hpa-<ScaledObject>, and its admission webhook
+# refuses a name over 63 characters, so a longer target could not be activated at all.
+test "a target too long for KEDA's derived HPA name gets a valid, stable and distinct one" {
+    target = "jac-sbx-4e43bcdeeaff4cd1af54c486c21826f3";
+    assert len("keda-hpa-" + target + "-http-scaledobject") == 67;
+    name = _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"];
+    assert len(name) <= 63 , name;
+    assert re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name) , name;
+    assert _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"]
+        == name , "a re-apply must not rename the HPA";
+    assert _applied_scaled_object_spec("jac-sbx-4e43bcdeeaff4cd1af54c486c21826f4")[
+        "advanced"
+    ]["horizontalPodAutoscalerConfig"]["name"]
+        != name , "two targets must not share an HPA";
+}
+
+test "a long target cut right after a dot still gets a valid HPA name" {
+    target = "a" * 42 + ".b";
+    assert ("keda-hpa-" + target)[:52].endswith(".");
+    name = _applied_scaled_object_spec(target)["advanced"][
+        "horizontalPodAutoscalerConfig"
+    ]["name"];
+    label = r"[a-z0-9]([-a-z0-9]*[a-z0-9])?";
+    assert len(name) <= 63 , name;
+    assert re.fullmatch(label + r"(\." + label + r")*", name) , name;
+}
+
+test "a target whose derived HPA name fits keeps KEDA's own name" {
+    assert len("keda-hpa-" + "a" * 36 + "-http-scaledobject") == 63;
+    assert "advanced" not in _applied_scaled_object_spec("a" * 36);
+    assert "advanced" in _applied_scaled_object_spec("a" * 37);
+    assert "advanced" not in _applied_scaled_object_spec("preview-deployment");
+}
+
+# RFC 7386 JSON merge patch, which is how the client sends a PATCH to a
+# custom object: a key the patch leaves out is kept, and null removes it.
+def _merge_patch(current: any, patch: any) -> any {
+    if not isinstance(patch, dict) {
+        return patch;
+    }
+    merged = dict(current) if isinstance(current, dict) else {};
+    for (key, value) in patch.items() {
+        if value is None {
+            merged.pop(key, None);
+        } else {
+            merged[key] = _merge_patch(merged.get(key), value);
+        }
+    }
+    return merged;
+}
+
+# Custom objects kept in memory, patched the way the API server patches them.
+obj _MergePatchStore {
+    has objects: dict[str, any] = {};
+
+    def get(**kw: any) -> any {
+        key = str(kw["plural"]) + "/" + str(kw["name"]);
+        if key not in self.objects {
+            raise ApiException(status=404);
+        }
+        return self.objects[key];
+    }
+
+    def create(**kw: any) -> any {
+        body = kw["body"];
+        self.objects[str(kw["plural"]) + "/" + str(body["metadata"]["name"])] = _merge_patch(
+            {}, body
+        );
+        return body;
+    }
+
+    def patch(**kw: any) -> any {
+        key = str(kw["plural"]) + "/" + str(kw["name"]);
+        self.objects[key] = _merge_patch(self.objects[key], kw["body"]);
+        return self.objects[key];
+    }
+}
+
+test "lowering initial_cooldown_period to 0, or removing it, clears it from a ScaledObject that has one" {
+    store = _MergePatchStore();
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = store.get;
+    custom_api.create_namespaced_custom_object.side_effect = store.create;
+    custom_api.patch_namespaced_custom_object.side_effect = store.patch;
+    scaled_obj_key = "scaledobjects/"
+        + keda.http_scaled_object_name_for("preview-deployment");
+    for (cfg, expected) in [
+        (_cfg(initial_cooldown_period=120), 120),
+        (_cfg(initial_cooldown_period=0), None),
+        (_cfg(initial_cooldown_period=120), 120),
+        (_cfg(), None)
+    ] {
+        apply_http_activation_for_target(
+            cfg, "preview-deployment", "staging", "preview-svc", keda
+        );
+        scaled_obj_spec = store.objects[scaled_obj_key]["spec"];
+        assert scaled_obj_spec.get("initialCooldownPeriod") == expected , (
+            cfg,
+            scaled_obj_spec
+        );
+    }
 }
 
 test "apply_http_activation_for_target is a no-op when disabled or unset" {

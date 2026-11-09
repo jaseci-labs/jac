@@ -296,12 +296,12 @@ impl register_graph_endpoints(server: JacAPIServer) {
             parameters=[],
             tags=['Graph Visualization'],
             summary='Graph visualizer',
-            description='Interactive visualization of the graph reachable from the caller\'s root.',
+            description='Interactive explorer of the graph reachable from the caller\'s root, one page of neighbors at a time.',
             include_in_schema=False
         )
     );
 
-    def graph_data(request: Request) -> Response {
+    def graph_scope(request: Request) -> (Response | None) {
         username = request.state?.username or Con.GUEST.value;
         root_id = server.user_manager.get_root_id(str(username));
         if not root_id {
@@ -309,45 +309,99 @@ impl register_graph_endpoints(server: JacAPIServer) {
                 status_code=404, content={'error': 'User root not found'}
             );
         }
-        ctx = Jac.get_context();
-        ctx.set_user_root(root_id);
-        user_root = ctx.get_root();
-        visited_nodes: set = set();
-        connections: set = set();
-        edge_ids: set = set();
-        nodes: list[dict[str, any]] = [];
-        edges: list[dict[str, any]] = [];
-        collect_node_connections(user_root, visited_nodes, connections, edge_ids);
-        nodes.append({'id': Jac.object_ref(user_root), 'label': 'root'});
-        for node_arch in visited_nodes {
-            if node_arch != user_root {
-                nodes.append(
-                    {'id': Jac.object_ref(node_arch), 'label': repr(node_arch)}
-                );
-            }
+        Jac.get_context().set_user_root(root_id);
+        return None;
+    }
+
+    def graph_target(request: Request) -> (NodeArchetype | Response) {
+        denied = graph_scope(request);
+        if denied is not None {
+            return denied;
         }
-        for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict[str, any] = {
-                'from': Jac.object_ref(source_node),
-                'to': Jac.object_ref(target_node)
-            };
-            if repr(edge_arch) != 'GenericEdge()' {
-                edge_data['label'] = repr(edge_arch);
-            }
-            edges.append(edge_data);
+        ref = request.query_params.get('id') or 'root';
+        try {
+            found = Jac.get_object(ref);
+        } except ValueError {
+            found = None;
         }
-        return JSONResponse(content={'version': '1.0', 'nodes': nodes, 'edges': edges});
+        if not isinstance(found, NodeArchetype) {
+            return JSONResponse(status_code=404, content={'error': 'Node not found'});
+        }
+        return found;
+    }
+
+    def graph_node(request: Request) -> Response {
+        target = graph_target(request);
+        if isinstance(target, Response) {
+            return target;
+        }
+        return JSONResponse(content=graph_node_view(target));
     }
     server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/graph/data',
-            callback=graph_data,
+            path='/graph/node',
+            callback=graph_node,
             parameters=[],
             tags=['Graph Visualization'],
-            summary='Graph data',
-            description='Nodes and edges reachable from the caller\'s root as JSON (the guest root without a token).',
-            include_in_schema=False
+            summary='Graph node',
+            description='One node the caller can read (`id`, or the caller\'s root): its type, a short field summary, and neighbor counts per node and edge type.',
+            include_in_schema=False,
+            forward_undeclared_query_params=False
+        )
+    );
+
+    def graph_neighbors(request: Request) -> Response {
+        target = graph_target(request);
+        if isinstance(target, Response) {
+            return target;
+        }
+        params = request.query_params;
+        node_type: (type | None) = None;
+        edge_type: (type | None) = None;
+        if params.get('type') {
+            node_type = graph_type_named(NodeArchetype, str(params.get('type')));
+            if node_type is None {
+                return JSONResponse(
+                    status_code=400,
+                    content={'error': 'Unknown node type', 'code': 'unknown_type'}
+                );
+            }
+        }
+        if params.get('edge') {
+            edge_type = graph_type_named(EdgeArchetype, str(params.get('edge')));
+            if edge_type is None {
+                return JSONResponse(
+                    status_code=400,
+                    content={'error': 'Unknown edge type', 'code': 'unknown_type'}
+                );
+            }
+        }
+        try {
+            page = graph_neighbors_view(
+                target,
+                direction=params.get('dir') or 'out',
+                node_type=node_type,
+                edge_type=edge_type,
+                limit=int(params.get('limit') or 50),
+                cursor=params.get('cursor')
+            );
+        } except ValueError as exc {
+            return JSONResponse(status_code=400, content={'error': str(exc)});
+        }
+        return JSONResponse(content=page);
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/graph/neighbors',
+            callback=graph_neighbors,
+            parameters=[],
+            tags=['Graph Visualization'],
+            summary='Graph neighbors',
+            description='One page of a readable node\'s neighbors with the edges that reach them (`id`, `dir`, `type`, `edge`, `limit`, `cursor`), and the cursor of the next page.',
+            include_in_schema=False,
+            forward_undeclared_query_params=False
         )
     );
 }

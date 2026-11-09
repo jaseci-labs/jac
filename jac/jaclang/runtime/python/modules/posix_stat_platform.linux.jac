@@ -4,18 +4,6 @@ struct statvfs, as the C library lays it out on x86_64 and aarch64.
 Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyLong_FromLong,
-    PyLong_FromLongLong,
-    PyLong_FromUnsignedLong,
-    PyObject,
-    jacpy_release
-}
-import from jaclang.runtime.python.object_model.structseq {
-    PyStructSequence_New,
-    PyStructSequence_SetItem
-}
-import from jaclang.runtime.python.modules.stat_records { _Py_stat_struct }
 import from c {
     obj statvfs_record {
         has f_bsize: u64 = 0,

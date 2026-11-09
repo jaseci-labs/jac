@@ -26,6 +26,10 @@ def _diff_members(
     path: str, kind: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange];
 
+def _diff_positional_fields(
+    path: str, old: dict[str, any], new: dict[str, any]
+) -> list[ApiChange];
+
 def _diff_symbol(
     path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange];

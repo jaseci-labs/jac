@@ -186,6 +186,17 @@ impl pvc_unpack_script(
     return "set -eu; " + " && ".join(steps);
 }
 
+impl prune_unreferenced_script(app_name: str, keep: set[str]) -> str {
+    import shlex;
+    kept = shlex.quote(" " + " ".join(sorted(keep)) + " ");
+    return (
+        f"cd {BUNDLE_MOUNT_PATH} && keep={kept} && "
+        f"for f in bundles/{app_name}/* toolchain/{app_name}/*; do "
+        'case "$keep" in *" $f "*) ;; '
+        '*) [ ! -f "$f" ] || { rm -f "$f" && echo "pruned $f"; };; esac; done'
+    );
+}
+
 impl build_pvc_init_container(
     base_image: str,
     bundle_paths: list[str],
@@ -244,7 +255,12 @@ impl PvcInjector.prepare(app_name: str, namespace: str, project_dir: str) {
     self._bundle_bytes = raw;
 }
 
-impl PvcInjector.seed(app_name: str, namespace: str) {
+impl PvcInjector.seed(
+    app_name: str,
+    namespace: str,
+    kubectl: KubectlCluster,
+    keep_set: (Callable[[], set[str]] | None) = None
+) {
     if not self._bundle_bytes {
         raise ValueError(
             "PvcInjector.seed() called before prepare(); there are no bundle "
@@ -275,6 +291,31 @@ impl PvcInjector.seed(app_name: str, namespace: str) {
     wait_for_pod_phase(core_v1, namespace, loader_pod, {"Running"});
 
     try {
+        retained = keep_set() if keep_set else set();
+        if not retained {
+            logger.info("pvc-injector: no retained bundle keys; skipping the prune.");
+        } else {
+            keep = retained | {key for (key, _) in self._seed_artifacts()};
+            try {
+                run_kubectl_command(
+                    [
+                        "exec",
+                        "-n",
+                        namespace,
+                        loader_pod,
+                        "--",
+                        "sh",
+                        "-c",
+                        prune_unreferenced_script(app_name, keep)
+                    ],
+                    kubectl=kubectl
+                );
+            } except RuntimeError as prune_err {
+                logger.warning(
+                    f"pvc-injector: could not prune unreferenced bundles: {prune_err}"
+                );
+            }
+        }
         for (object_key, raw) in self._seed_artifacts() {
             bundle_path = bundle_pvc_path(object_key);
             parent_dir = str(Path(bundle_path).parent);
@@ -290,7 +331,8 @@ impl PvcInjector.seed(app_name: str, namespace: str) {
                         "sh",
                         "-c",
                         f"test -f '{bundle_path}'"
-                    ]
+                    ],
+                    kubectl=kubectl
                 );
                 logger.info(
                     f"pvc-injector: {object_key} already seeded "
@@ -318,7 +360,8 @@ impl PvcInjector.seed(app_name: str, namespace: str) {
                         "sh",
                         "-c",
                         f"mkdir -p '{parent_dir}'"
-                    ]
+                    ],
+                    kubectl=kubectl
                 );
                 run_kubectl_command(
                     [
@@ -328,7 +371,8 @@ impl PvcInjector.seed(app_name: str, namespace: str) {
                         tmp_path.name,
                         f"{loader_pod}:{staging_path}"
                     ],
-                    cwd=tmp_path.parent
+                    cwd=tmp_path.parent,
+                    kubectl=kubectl
                 );
 
                 run_kubectl_command(
@@ -341,7 +385,8 @@ impl PvcInjector.seed(app_name: str, namespace: str) {
                         "sh",
                         "-c",
                         "mv -f '" + staging_path + "' '" + bundle_path + "'"
-                    ]
+                    ],
+                    kubectl=kubectl
                 );
                 logger.info(
                     f"pvc-injector: seeded {len(raw)} bytes to "

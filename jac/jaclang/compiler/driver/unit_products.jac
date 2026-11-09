@@ -26,6 +26,7 @@ obj UnitProducts {
         native_deps: list[str] = [],
         iface: str = "",
         iface_shape: str = "",
+        iface_jir: str = "",
         effects: str = "",
         jac_deps: list[str] = [];
 }
