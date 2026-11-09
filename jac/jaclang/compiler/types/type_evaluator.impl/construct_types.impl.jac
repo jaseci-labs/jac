@@ -144,19 +144,9 @@ impl TypeEvaluator._get_type_of_unpack_target(expr: Name) -> TypeBase | None {
         if container is None {
             return None;
         }
-        return self._starred_target_type(container, star_targets, binder);
+        return self._starred_target_type(container, star_targets, path[-1], binder);
     }
-    if not path {
-        return source_type;
-    }
-    element = self._extract_tuple_element_type_path(source_type, path);
-    if element is not None {
-        return element;
-    }
-    container = self._extract_tuple_element_type_path(source_type, path[:-1]);
-    return self._get_iterable_element_type(container, binder)
-        if container is not None
-        else None;
+    return self._extract_tuple_element_type_path(source_type, path);
 }
 
 impl TypeEvaluator._get_source_of_unpack_target(expr: Name) -> Expr | None {
@@ -189,19 +179,15 @@ impl TypeEvaluator._get_source_of_unpack_target(expr: Name) -> Expr | None {
 }
 
 impl TypeEvaluator._starred_target_type(
-    container: TypeBase, star_targets: (TupleVal | ListVal), node_for_error: UniNode
+    container: TypeBase,
+    star_targets: (TupleVal | ListVal),
+    star_at: int,
+    node_for_error: UniNode
 ) -> TypeBase | None {
     if self.prefetch.list_class is None {
         return None;
     }
     values = star_targets.values or [];
-    star_at = 0;
-    for (i, v) in enumerate(values) {
-        if self._is_star_target(v) {
-            star_at = i;
-            break;
-        }
-    }
     element: TypeBase | None = None;
     if isinstance(container, ClassType)
         and container.is_builtin("tuple")

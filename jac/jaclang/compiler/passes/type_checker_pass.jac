@@ -99,10 +99,6 @@ walker TypeCheckPass(TreePass) {
     def _check_rebind_types(target: (Expr | None), site: UniNode) -> None;
     def _flush_rebind_types -> None;
     def _judge_rebind_types(target: Expr, site: UniNode) -> None;
-    def _rebound_value_type(
-        leaf: Name, source: (Expr | None), declared: TypeBase
-    ) -> (TypeBase | None);
-
     def _check_immutable_write(
         target: (Expr | None), rebind_scope: (UniNode | None) = None
     ) -> None;

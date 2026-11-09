@@ -487,7 +487,10 @@ walker TypeEvaluator {
     def _get_type_of_unpack_target(expr: Name) -> TypeBase | None;
     def _get_source_of_unpack_target(expr: Name) -> Expr | None;
     def _starred_target_type(
-        container: TypeBase, star_targets: (TupleVal | ListVal), node_for_error: UniNode
+        container: TypeBase,
+        star_targets: (TupleVal | ListVal),
+        star_at: int,
+        node_for_error: UniNode
     ) -> TypeBase | None;
 
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;

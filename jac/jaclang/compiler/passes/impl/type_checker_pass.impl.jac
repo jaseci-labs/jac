@@ -461,7 +461,10 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
         source = site.right
             if isinstance(site, BinaryExpr)
             else self.evaluator._get_source_of_unpack_target(leaf);
-        bound = self._rebound_value_type(leaf, source, declared);
+        bound = self.evaluator.get_type_of_expression(source, expected_type=declared)
+            if source is not None
+            else self.evaluator._get_type_of_unpack_target(leaf)
+                or self.evaluator.get_type_of_expression(leaf);
         if bound is None or isinstance(bound, UnknownType) {
             continue;
         }
@@ -474,20 +477,6 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
             );
         }
     }
-}
-
-impl TypeCheckPass._rebound_value_type(
-    leaf: Name, source: (Expr | None), declared: TypeBase
-) -> (TypeBase | None) {
-    if source is not None {
-        return self.evaluator.get_type_of_expression(source, expected_type=declared);
-    }
-    if leaf.sym is not None
-        and leaf.sym.decl is not None
-        and leaf.sym.decl.name_of is leaf {
-        return self.evaluator.get_type_of_expression(leaf);
-    }
-    return self.evaluator._get_type_of_lhs_assignment(leaf);
 }
 
 impl TypeCheckPass._check_immutable_write(
