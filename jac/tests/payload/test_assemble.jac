@@ -27,6 +27,7 @@ import from jaclang.dist.payload.assemble {
     collect_stage_entries,
     is_volatile_path,
     precompile_env,
+    run_stubcat,
     shim_file_name,
     stage_floor,
     tar_stage,
@@ -186,6 +187,33 @@ test "a linked-source payload publishes an empty catalog region" {
             child.assert_not_called();
         }
         assert rf(out) == b"";
+    }
+}
+
+test "a built stub catalog is cached, and the next build reuses it" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as tmp {
+        site = os.path.join(tmp, "site");
+        os.makedirs(os.path.join(site, "jaclang"));
+        cached = os.path.join(tmp, "cache", "jir", "stubcat", "key.bin");
+        built: list[int] = [];
+        def child(argv: list[str], env: any, check: bool) -> bool {
+            built.append(1);
+            wf(tmp, argv[-1], b"catalog");
+            return True;
+        }
+        with patch.object(
+            assembly, "cached_stubcat", return_value=cached
+        ), patch.object(assembly, "run_child", side_effect=child) {
+            first = os.path.join(tmp, "out1.bin");
+            assert run_stubcat("python", tmp, site, first);
+            assert rf(cached) == b"catalog" and len(built) == 1;
+            second = os.path.join(tmp, "out2.bin");
+            assert run_stubcat("python", tmp, site, second);
+            assert rf(second) == b"catalog" and len(built) == 1 , (
+                "the second build reuses it"
+            );
+        }
     }
 }
 

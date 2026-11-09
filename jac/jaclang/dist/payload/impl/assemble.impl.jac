@@ -302,6 +302,14 @@ impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
         return False;
     }
     log(f"   stub catalog: {os.path.getsize(out)} bytes");
+    if cached {
+        try {
+            make_dirs(os.path.dirname(cached));
+            copy_file(out, cached);
+        } except OSError as e {
+            log(f"   stub catalog not cached ({type(e).__name__}); continuing");
+        }
+    }
     return True;
 }
 
