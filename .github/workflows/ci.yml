@@ -392,9 +392,18 @@ jobs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
+    # Three legs, each running the whole project-wide check (jac.toml
+    # [check] exclude applies) over every third file of the heaviest-first
+    # list (JAC_CHECK_SHARD); together they check what `jac check .` does.
+    # The fmt steps run in the first leg only.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       # Leave memory for the driver and self-hosted compiler on the 16 GB runner.
       JAC_CHECK_JOBS: "2"
+      JAC_CHECK_SHARD: ${{ matrix.shard }}/3
     permissions:
       contents: write
     steps:
@@ -453,9 +462,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
+          key: jac-check-cache-v3-s${{ matrix.shard }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
+            jac-check-cache-v3-s${{ matrix.shard }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -479,6 +488,7 @@ jobs:
 
       - name: Run jac fmt (check formatting)
         id: fmt
+        if: matrix.shard == 1
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -576,13 +586,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
+          key: jac-check-cache-v3-s${{ matrix.shard }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
-        if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
+        if: matrix.shard == 1 && contains(github.event.pull_request.labels.*.name, 'type-error-report')
         run: |
           set +e
-          jac check . --nowarn > jac-check-full.log 2>&1
+          JAC_CHECK_SHARD= jac check . --nowarn > jac-check-full.log 2>&1
           {
             echo "## jac check error-code breakdown (whole codebase, no ignores)"
             echo ""
