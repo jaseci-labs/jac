@@ -456,6 +456,18 @@ test "layer cache: verified reuse, corruption falls back, deps edit rolls the ke
         extract_payload(out5, os.path.join(base, "x5"));
         assert rf(os.path.join(base, "x5", "site/watchdog/helper.py"))
             == b"helper = 2\n";
+
+        # (5) Another level (a CI kit's JAC_PAYLOAD_ZSTD_LEVEL) keys its own
+        # entry, so a release never reuses a fast frame.
+        with patch.dict(os.environ, {"JAC_PAYLOAD_ZSTD_LEVEL": "3"}) {
+            out6 = os.path.join(base, "p6.tar.zst");
+            tar_zst_dir(stage, out6, cache);
+        }
+        entry3 = sole_cache_entry(cache);
+        assert entry3 != entry2 and entry3.endswith("-l3.tar.zst");
+        extract_payload(out6, os.path.join(base, "x6"));
+        assert rf(os.path.join(base, "x6", "site/watchdog/helper.py"))
+            == b"helper = 2\n";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

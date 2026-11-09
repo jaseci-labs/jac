@@ -72,7 +72,8 @@ unless the PR really is slower.
 
 ## Baseline
 
-The report lists the last main pushes of the CI workflow through the GitHub API
+The report lists the last main runs of the CI workflow (pushes and the 6-hourly
+schedule) through the GitHub API
 (the job holds `actions: read`), downloads each run's `pack-smoke-performance`
 artifact, and takes a phase's wall time only when that phase completed (exit
 status 0). Each phase keeps reading older runs until it has the configured

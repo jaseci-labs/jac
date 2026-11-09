@@ -237,9 +237,9 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.payload-layers/jacpython
-        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+        key: payload-layers-jacpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
         restore-keys: |
-          payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
+          payload-layers-jacpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-
 
     # The Zig package store (.zig-cache/p): every git/tarball dependency
     # `zig build` fetches, as pinned by build.zig.zon. Content-addressed and
@@ -374,6 +374,9 @@ runs:
       # build-binaries.yml, ships it all.
       env:
         PR_BUILD: ${{ github.event_name == 'pull_request' || inputs.bytecode-kit == 'true' }}
+        # A bytecode kit lives one run: pack it at zstd 3 (seconds) instead of
+        # a release's 19 (about 5 minutes on a 4 vCPU runner).
+        JAC_PAYLOAD_ZSTD_LEVEL: ${{ inputs.bytecode-kit == 'true' && '3' || '' }}
         PREBUILT: ${{ inputs.prebuilt != '' && format('{0}/prebuilt', runner.temp) || '' }}
         STALE_PYTHON: ${{ inputs.bytecode-kit }}
         STALE_OBJECT: ${{ steps.stale-object.outputs.dir }}
@@ -505,7 +508,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.payload-layers/jacpython
-        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+        key: payload-layers-jacpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
 
     # Seed the Zig package store from trusted refs only (see the restore note).
     # Like the precompile cache, a restore-keys prefix hit still leaves cache-hit
