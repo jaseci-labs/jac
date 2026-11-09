@@ -345,7 +345,7 @@ obj FakeTransport {
         downloads: list[int] = [];
 
     def respond(path: str) -> tuple[int, str | None, bytes] {
-        if "/workflows/ci.yml/runs?branch=main&event=push&per_page=9" in path {
+        if "/workflows/ci.yml/runs?branch=main&per_page=9" in path {
             return (
                 200,
                 None,
@@ -426,7 +426,7 @@ test "each phase fills from completed main runs until it has enough samples" {
     assert baseline.samples == {"probe": [60.0, 62.0, 64.0], "ready": [10.0, 12.0]};
     assert baseline.median("probe") == 62.0;
     assert baseline.median("ready") is None;
-    assert "4 main pushes of ci.yml (runs 7 to 2; samples: probe 3, ready 2)"
+    assert "4 main runs of ci.yml (runs 7 to 2; samples: probe 3, ready 2)"
         in baseline.note;
     fake.downloads = [];
     full = fetch_baseline(client, BaselinePolicy(runs=3), phases, skip_run="1");

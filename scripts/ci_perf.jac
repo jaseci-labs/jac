@@ -267,7 +267,7 @@ def fetch_baseline(
     listing = json.loads(
         client.get(
             f"/repos/{client.repository}/actions/workflows/{policy.workflow}/runs"
-            f"?branch={policy.branch}&event=push&per_page={policy.runs * 3}"
+            f"?branch={policy.branch}&per_page={policy.runs * 3}"
         )
     );
     for run in listing["workflow_runs"] {
@@ -334,7 +334,7 @@ def fetch_baseline(
     counts = ", ".join(f"{name} {len(values)}" for (name, values) in samples.items());
     return Baseline(
         samples=samples,
-        note=f"median per phase over the last {len(used)} {policy.branch} pushes of "
+        note=f"median per phase over the last {len(used)} {policy.branch} runs of "
         f"{policy.workflow} (runs {used[-1]} to {used[0]}; samples: {counts})"
     );
 }
