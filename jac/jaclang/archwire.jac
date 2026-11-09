@@ -45862,7 +45862,8 @@ graph import scale {
             k8s_service_dns_url
         },
         deploy.target.kubernetes.runtime_resolver { DEFAULT_GATEWAY_PORT },
-        tests.deploy.test_destroy_reclaim
+        tests.deploy.test_deployment_overlay
+            | tests.deploy.test_destroy_reclaim
             | tests.deploy.test_http_activation_microservices
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_ops_rbac
