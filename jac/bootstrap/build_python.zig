@@ -100,6 +100,10 @@ const object_only_flag = "--object-only=";
 // Pack the finished output as a seed into this directory (`zig build
 // jacpython-seed-pack`) instead of building.
 const seed_pack_flag = "--seed-pack=";
+// A bytecode kit's build: reuse a finished runtime, or adopt an object, even
+// when lowered from other sources, so it never lowers the compiler itself.
+// Such a tree is never stamped as built from this checkout.
+const stale_flag = "--stale-lowered";
 const HostChoice = union(enum) { auto, installed: []const u8 };
 const Host = union(enum) { seed, installed: []const u8 };
 
@@ -361,6 +365,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const a = init.arena.allocator();
     var reuse = false;
+    var stale = false;
     var choice_text: []const u8 = "auto";
     var adopt: ?[]const u8 = null;
     var object_out: ?[]const u8 = null;
@@ -369,6 +374,9 @@ pub fn main(init: std.process.Init) !void {
     for (try init.minimal.args.toSlice(a)) |arg| {
         if (std.mem.eql(u8, arg, "--reuse-lowered")) {
             reuse = true;
+        } else if (std.mem.eql(u8, arg, stale_flag)) {
+            reuse = true;
+            stale = true;
         } else if (std.mem.startsWith(u8, arg, host_flag)) {
             choice_text = arg[host_flag.len..];
         } else if (std.mem.startsWith(u8, arg, adopt_flag)) {
@@ -380,7 +388,7 @@ pub fn main(init: std.process.Init) !void {
         } else try kept.append(a, arg);
     }
     const args = kept.items;
-    if (args.len != 5) seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--reuse-lowered] [" ++ host_flag ++ "auto|<JacPython>] [" ++ adopt_flag ++ "<dir>] [" ++ object_only_flag ++ "<dir>] [" ++ seed_pack_flag ++ "<dir>]", .{});
+    if (args.len != 5) seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--reuse-lowered] [" ++ stale_flag ++ "] [" ++ host_flag ++ "auto|<JacPython>] [" ++ adopt_flag ++ "<dir>] [" ++ object_only_flag ++ "<dir>] [" ++ seed_pack_flag ++ "<dir>]", .{});
     const choice = parseHostChoice(choice_text) catch
         seed.die("build-python: " ++ host_flag ++ "stock is gone: JacPython is the only Python and builds on JacPython. Use auto (the previous output, else the pinned seed) or a JacPython's path.", .{});
     if (adopt != null and object_out != null)
@@ -423,6 +431,7 @@ pub fn main(init: std.process.Init) !void {
         .environ = init.environ_map,
         .object_tools = objectTools,
         .adopt_object = adopt,
+        .stale_object = stale,
         .object_out = object_out,
     };
     // Only the native object: it is lowered on this machine's JacPython, for
@@ -449,7 +458,7 @@ pub fn main(init: std.process.Init) !void {
         const dir = if (std.mem.endsWith(u8, given, ".o")) std.fs.path.dirname(given) orelse "." else given;
         options.adopt_object = dir;
         const tools = try objectTools(io, a, root, try build_jacpython.loweredSources(io, a, dir));
-        switch (try build_jacpython.checkObject(io, a, dir, .{ .platform = platform, .tools = &tools, .root = root })) {
+        switch (try build_jacpython.checkObject(io, a, dir, .{ .platform = platform, .tools = &tools, .root = root, .any_sources = stale })) {
             .refused => |why| seed.die("build-python: refusing the prebuilt native object: {s}", .{why}),
             .adopted => |m| adopted = m,
         }
@@ -474,6 +483,11 @@ pub fn main(init: std.process.Init) !void {
                 seed.log("build-python: reusing {s}; the sources it was lowered from are unchanged ({s})", .{ platform, lowered[0..16] });
                 return;
             }
+        }
+        if (stale) {
+            try runSmoke(io, python, smoke);
+            seed.log("build-python: reusing {s} as lowered from other sources (" ++ stale_flag ++ ")", .{platform});
+            return;
         }
     }
     // Something is built: first the interpreter the build runs on, which
@@ -501,6 +515,7 @@ pub fn main(init: std.process.Init) !void {
     try Io.Dir.cwd().rename(work, Io.Dir.cwd(), dest, io);
     // Verify relocation before allowing a cache hit on the next invocation.
     try runSmoke(io, python, smoke);
+    if (stale and adopted != null) return;
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
     if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
         try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
@@ -1628,11 +1643,16 @@ test "a prebuilt native object is adopted only for its target, its inputs and it
     // Both at once: each named once.
     try tmp.dir.writeFile(io, .{ .sub_path = "root/jaclang/runtime/python/eval.jac", .data = "edited eval" });
     try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "differ here: jaclang/runtime/python/eval.jac; and what lowers it differs");
+    // A bytecode kit's build adopts it anyway.
+    other.any_sources = true;
+    try std.testing.expect(try build_jacpython.checkObject(io, a, dir, other) == .adopted);
     try tmp.dir.writeFile(io, .{ .sub_path = "root/jaclang/runtime/python/eval.jac", .data = "eval" });
 
-    // The headers the C around it is compiled against.
+    // The headers the C around it is compiled against, even for a bytecode kit.
     other = expect;
     other.headers = "g" ** 64;
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "was lowered against another pyconfig.h or Include/");
+    other.any_sources = true;
     try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "was lowered against another pyconfig.h or Include/");
 
     // A sources record that disagrees with the manifest.

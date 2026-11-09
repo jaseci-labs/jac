@@ -1149,7 +1149,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
                 prepare_application(str(path), JacProgram(), tmp);
             }
         } except RuntimeError as error {
-            failed = 'Sources changed during preparation' in str(error);
+            failed = type(error).__name__ == 'SourcesChanged';
         } finally {
             forget(str(path));
         }
@@ -1575,6 +1575,35 @@ test "a dev reload waits for the preparation lock before it takes the import loc
     assert waiting == [False] , (
         "the reload waited for the preparation lock while holding the import lock"
     );
+}
+
+test "a dev refresh cut short by a save stays pending and keeps its routes" {
+    import from jaclang.runtime.preparation_lock { SourcesChanged }
+    import from jaclang.server.server { JacAPIServer }
+    refresh: any = JacAPIServer._refresh_dev_endpoints;
+    def failing(error: Exception) -> any {
+        def fail {
+            raise error;
+        }
+        return fail;
+    }
+    cases = [
+        ('sources changed', SourcesChanged('changed'), None, True),
+        ('any other error', RuntimeError('boom'), RuntimeError, False)
+    ];
+    for (label, error, expected, pending) in cases {
+        server = _DevServer(
+            introspector=_ReloadingIntrospector(reload=failing(error)), app=object()
+        );
+        raised: type | None = None;
+        try {
+            refresh(server);
+        } except RuntimeError as err {
+            raised = type(err);
+        }
+        assert raised is expected , label;
+        assert server._hmr_pending is pending , label;
+    }
 }
 
 test "a compile that leaves first keeps the closure of one still running" {

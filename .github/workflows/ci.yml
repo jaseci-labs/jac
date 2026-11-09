@@ -32,19 +32,22 @@ on:
   push:
     branches: [main]
 
-# Adding a label CI never reads (one outside the list below, which the
-# `changes` job repeats) must neither rerun the suites nor cancel the run in
-# flight, so that run gets a group of its own and only Everything Passed runs.
+# Adding a label that does not add a lane (one outside the list below, which
+# the `changes` job repeats) must neither rerun the suites nor cancel the run in
+# flight, so that run gets a group of its own and only Contribution Checks and
+# Everything Passed run. The skip-* labels are such labels: they only waive a
+# check, so Everything Passed drops the waived job from the verdict it carries.
 concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
+  actions: read
 
 # A lane is sealed or rerouted once, by its jac-kit step's `sealed` input:
 # sealing edits the checkout, so a per-step choice could not undo it.
@@ -54,7 +57,7 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -84,6 +87,8 @@ jobs:
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
               - 'scripts/test_ci_cache_keys.sh'
+              - 'scripts/ci_carry_verdict.sh'
+              - 'scripts/test_ci_carry_verdict.sh'
             scale:
               - 'jac/jaclang/scale/**'
             byllm:
@@ -191,7 +196,10 @@ jobs:
   build-kit:
     # A kit that seals the native compiler kernel lowers the analysis zone in
     # one process and peaks near 15 GB, which starves a 4-vCPU runner.
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # The kit is always a bytecode kit (setup-jac bytecode-kit below), on
+    # every event, so it fits the 16 GB runner; the kernel is built at
+    # release time.
+    runs-on: ubuntu-24.04
     # A pull request's kit carries no native compiler kernel: the compiler
     # runs from the bytecode the same build precompiles, which is the path a
     # kernel build itself compiles through. The kernel is most of a kit's build
@@ -227,7 +235,10 @@ jobs:
           # source-built interpreter and its native compiler object. A binary
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
-          native-kernel: ${{ needs.changes.outputs.kernel }}
+          # Restore this line and drop bytecode-kit to seal the kernel in CI
+          # again.
+          # native-kernel: ${{ needs.changes.outputs.kernel }}
+          bytecode-kit: "true"
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -244,8 +255,8 @@ jobs:
           if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
             exit 0
           fi
-          zig build fetch-llvm --summary all
-          zig build jacllvm --summary all
+          zig build fetch-llvm -Dreuse-python=true -Dstale-python=true --summary all
+          zig build jacllvm -Dreuse-python=true -Dstale-python=true --summary all
 
       # Explicit: a binary-cache hit skips zig build, so these gitignored
       # trees must be materialized either way. The wasm floor is in this list
@@ -253,14 +264,16 @@ jobs:
       # cache hit does not, so leaving it implicit made the kit's contents a
       # function of cache state -- present on a miss, missing on a hit, with
       # if-no-files-found blind to it because the other paths matched.
-      # Every zig build here runs through the kit's own JacPython runtime.
+      # Every zig build here runs through the kit's own JacPython runtime, and
+      # each passes setup-jac's -Dreuse-python and -Dstale-python: without them
+      # the runtime the build step reused is lowered again from scratch.
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
         run: |
-          zig build fetch-typeshed --summary all
-          zig build vendor-musl --summary all
-          zig build vendor-musl-linux-aarch64 --summary all
-          zig build vendor-wasm-libc --summary all
+          zig build fetch-typeshed -Dreuse-python=true -Dstale-python=true --summary all
+          zig build vendor-musl -Dreuse-python=true -Dstale-python=true --summary all
+          zig build vendor-musl-linux-aarch64 -Dreuse-python=true -Dstale-python=true --summary all
+          zig build vendor-wasm-libc -Dreuse-python=true -Dstale-python=true --summary all
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
@@ -374,7 +387,7 @@ jobs:
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       # Leave memory for the driver and self-hosted compiler on the 16 GB runner.
       JAC_CHECK_JOBS: "2"
@@ -584,8 +597,11 @@ jobs:
   contribution-checks:
     name: Contribution Checks
     needs: changes
-    if: ${{ github.event_name != 'push' || needs.changes.outputs.docs == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: >-
+      !cancelled()
+      && (needs.changes.result == 'success' || github.event.action == 'labeled')
+      && (github.event_name != 'push' || needs.changes.outputs.docs == 'true')
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -648,7 +664,7 @@ jobs:
   test-compiler:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -663,10 +679,20 @@ jobs:
             paths: tests/compiler/test_*.jac
             sealed: "1"
             jobs: "2"
-          - chunk: passes-native
-            paths: tests/compiler/backends/native tests/compiler/tools
+          # Split in three by measured runtime; together the globs cover every
+          # top-level test_*.jac in backends/native exactly once.
+          - chunk: passes-native-1
+            paths: "tests/compiler/backends/native/test_[!n]*.jac tests/compiler/backends/native/test_n[!a]*.jac tests/compiler/backends/native/test_na_*.jac tests/compiler/tools"
             sealed: "1"
             # Native workers retain LLVM state; keep headroom on the 16 GB runner.
+            jobs: "2"
+          - chunk: passes-native-2
+            paths: "tests/compiler/backends/native/test_native_[a-h]*.jac"
+            sealed: "1"
+            jobs: "2"
+          - chunk: passes-native-3
+            paths: "tests/compiler/backends/native/test_native_[i-z]*.jac"
+            sealed: "1"
             jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
@@ -690,7 +716,7 @@ jobs:
         with:
           node-version: "20"
       - name: Set up Zig for compiler runtime and ELF fixtures
-        if: matrix.chunk == 'passes-native'
+        if: startsWith(matrix.chunk, 'passes-native')
         uses: mlugg/setup-zig@v2
         with:
           version: "0.16.0"
@@ -705,10 +731,10 @@ jobs:
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
       - name: Preserve failed native executables
-        if: failure() && matrix.chunk == 'passes-native'
+        if: failure() && startsWith(matrix.chunk, 'passes-native')
         uses: actions/upload-artifact@v4
         with:
-          name: native-test-failures
+          name: native-test-failures-${{ matrix.chunk }}
           path: ${{ runner.temp }}/native-test-artifacts
           if-no-files-found: ignore
 
@@ -716,7 +742,7 @@ jobs:
   test-runtime:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       # The deps installed below with --global land in the binary's runtime
@@ -768,7 +794,7 @@ jobs:
   test-in-package-sealed:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -824,7 +850,7 @@ jobs:
   test-client:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -864,7 +890,7 @@ jobs:
   test-packages-and-docs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -894,7 +920,7 @@ jobs:
   test-scale:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -953,11 +979,14 @@ jobs:
        needs.changes.outputs.core == 'true' ||
        needs.changes.outputs.scale == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       # The opt-in flag test_deploy_k8s gates on: this is the lane with a
       # cluster.
       JAC_TEST_K8S: "1"
+      # Deploys look release assets up through the GitHub API, and a hosted
+      # runner's shared IP exhausts the anonymous quota.
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1078,7 +1107,7 @@ jobs:
   test-launcher-jac:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1121,6 +1150,8 @@ jobs:
         run: zig build test --summary all
       - name: Cache key mutation tests
         run: bash scripts/test_ci_cache_keys.sh
+      - name: Carry-over verdict tests
+        run: bash scripts/test_ci_carry_verdict.sh
 
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
@@ -1128,7 +1159,7 @@ jobs:
   test-jac-pack-smoke:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # actions: read lets the performance report list main's runs and download
     # their pack-smoke-performance artifacts for the wall-time comparison.
     permissions:
@@ -1240,8 +1271,7 @@ jobs:
           # The runner's mirror list uses HTTP, which can be unreachable while
           # HTTPS works. Keep Ubuntu's signed repositories and refresh over IPv4.
           for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list \
-                            /etc/apt/sources.list.d/*.sources \
-                            /etc/apt/blacksmith-ubuntu-mirrors.txt; do
+                            /etc/apt/sources.list.d/*.sources; do
             if [ -f "$apt_source" ]; then
               sudo sed -i 's|http://|https://|g' "$apt_source"
             fi
@@ -1678,7 +1708,7 @@ jobs:
   test-jac-pack-eject:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1805,7 +1835,11 @@ jobs:
   # critical path of every native PR to begin with.
   macos-native:
     needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
+    # Turned off. The macOS kit seals a kernel through
+    # build-kernel.yml on an 8 vCPU runner; macOS is built at release time.
+    # Restore:
+    # if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
+    if: false
     uses: ./.github/workflows/_macos-native.yml
 
   # The js_engine accelerator's lane: build it, install it, and hold the
@@ -1816,7 +1850,10 @@ jobs:
   # pull request it runs on cannot merge with the engine broken.
   js-engine:
     needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
+    # Turned off. js_engine is an accelerator over bun that no release ships,
+    # and its lane builds natively on an 8 vCPU runner. Restore:
+    # if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
+    if: false
     uses: ./.github/workflows/_js_engine.yml
   # JacPython's conformance gates on this run's kit: the native compiler is
   # the interpreter's `compile`, the code-object boundary holds, and every
@@ -1826,7 +1863,7 @@ jobs:
   test-jacpython:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
@@ -1902,22 +1939,22 @@ jobs:
     permissions:
       actions: read
     steps:
-      # A label-only run skips every job, and the newest Everything Passed on a
-      # commit is the one that gates it, so that run repeats the verdict of the
-      # run before it (waiting for it if it is still going) instead of passing.
+      # A label-only run skips every suite, and the newest Everything Passed on
+      # a commit is the one that gates it, so that run repeats the verdict of
+      # an earlier run (scripts/ci_carry_verdict.sh says which).
+      - name: Check out the carry-over script
+        if: needs.changes.result == 'skipped'
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci_carry_verdict.sh
+          sparse-checkout-cone-mode: false
       - name: Carry the previous run's verdict over a label-only run
         if: needs.changes.result == 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --limit 50 \
-            --json databaseId --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID)] | first | .databaseId // empty")
-          if [ -z "$prev" ]; then
-            echo "::error::No earlier CI run on $SHA to carry over; push or rerun CI."
-            exit 1
-          fi
-          gh run watch "$prev" --repo "$GITHUB_REPOSITORY" --exit-status --interval 60
+          SKIP_K8S: ${{ contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
+        run: bash scripts/ci_carry_verdict.sh
       - name: Fail if any dependency failed or was cancelled
         if: >-
           contains(needs.*.result, 'failure') ||

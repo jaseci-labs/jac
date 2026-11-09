@@ -84,10 +84,24 @@ to keep probe traffic out of the access log.
 
 ### CORS Configuration
 
-In single-process `jac run` mode the server installs a permissive
-CORS middleware (`allow_origins=['*']`, methods `GET`/`POST`/`PUT`/`OPTIONS`,
-headers `Content-Type`/`Authorization`); there is
-no `[scale.cors]` knob to tune it.
+The server's CORS policy comes from `[serve]`:
+
+```toml
+[serve]
+cors_origins = ["https://app.example.com"]   # default ["*"]: any origin
+cors_credentials = true                      # default false
+```
+
+The default `["*"]` lets any origin read responses, without credentials. A
+listed origin is echoed back to that origin only, and `cors_origins = []` turns
+cross-origin access off. `cors_credentials = true` adds
+`Access-Control-Allow-Credentials: true`, which a front end on another origin
+needs before the browser sends it cookies, such as the session cookie from a
+sibling subdomain. It requires a list of origins: browsers
+reject a response that allows every origin together with credentials, so the
+server refuses to start with `cors_credentials = true` and `"*"` in
+`cors_origins`. The environment mirrors are `JAC_SERVE_CORS_ORIGINS` and
+`JAC_SERVE_CORS_CREDENTIALS`.
 
 When a workspace's service apps run as a **fleet** (`jac run <app> --fleet`,
 `[scale.gateway] colocate = false`, or any deploy), the gateway that fronts
@@ -102,7 +116,15 @@ allow_headers = ["*"]
 
 Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
 disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
-`max_age`) are recognised under the same section.
+`max_age`) are recognised under the same section. `allow_credentials` defaults
+to `false`, and the same rule holds: with `"*"` in `allow_origins` the config
+is refused. `allow_methods` and `allow_headers` default to `["*"]`, meaning any
+method and any header. The gateway never sends that `*` to the browser, which
+never reads it as covering `Authorization` and, with credentials, reads it as no
+wildcard at all: a preflight is answered with the method and the headers it
+asked for, plus any methods listed beside the `*`. A response for a listed
+origin carries `Vary: Origin`, so a shared cache never hands one origin's
+answer to another.
 
 ---
 
@@ -1254,7 +1276,42 @@ def send_tickets(emailer: Emailer, qr_png: bytes, receipt_pdf: bytes) -> bool {
 
 A header value with a line break (the recipient, subject, `reply_to` or an attachment's filename) is refused: the SMTP emailer's `send_email` returns `False`, as for any failed send.
 
-A custom emailer's `send_email` must accept both parameters.
+### Custom Headers
+
+`send_email` also takes `headers`, a dict of extra mail headers. Use it for headers such as `List-Unsubscribe`, which mail providers read to show their one-click unsubscribe button (RFC 8058):
+
+```jac
+import from jaclang.scale.emailer.emailer { Emailer }
+
+def send_digest(emailer: Emailer, text: str, html: str, token: str) -> bool {
+    return emailer.send_email(
+        to_addr="reader@example.com",
+        subject="Your weekly digest",
+        body_text=text,
+        body_html=html,
+        headers={
+            "List-Unsubscribe": f"<https://app.example/unsubscribe?t={token}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
+    );
+}
+```
+
+The SMTP emailer keeps a long URL intact on the wire: it folds a header at its spaces, keeping them as given, and never encodes an ASCII value to make it fit.
+
+`send_email` returns `False`, as for any failed send, when a header:
+
+- sets something `send_email` owns: `From`, `To`, `Cc`, `Bcc`, `Subject`, `Reply-To`, `Sender`, `MIME-Version`, or any `Content-*` or `Resent-*` header
+- sets something the mail system adds: `Return-Path`, `Received`, `DKIM-Signature`, `Authentication-Results`, or any `ARC-*` header
+- has an invalid name, or isn't text
+- repeats a name, ignoring case
+- has a line break or control character in its value
+- has a value invalid for that header, such as an unparseable `Date`
+- has a single word too long for one mail line (998 characters, counting the name)
+
+The button also needs two things outside `send_email`. Your mail relay must sign the message with DKIM and include both headers in the signature. Your app must answer the POST that the provider sends to the URL, with `List-Unsubscribe=One-Click` as the body and no login or cookies.
+
+A custom emailer's `send_email` must accept `reply_to`, `attachments` and `headers`. `checked_headers(headers)` applies the rules above and raises `ValueError` for a header they refuse.
 
 ### Custom Emailer (Python or Jac)
 
@@ -1270,7 +1327,7 @@ class SendGridEmailer(Emailer):
         self._client = sendgrid.SendGridAPIClient(api_key=os.environ["SENDGRID_API_KEY"])
 
     def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
-                   reply_to=None, attachments=None):
+                   reply_to=None, attachments=None, headers=None):
         # ... use self._client to send ...
         return True
 
@@ -1349,7 +1406,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 # myapp/email.py
 from jaclang.scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Header, Mail
 import os, logging
 
 logger = logging.getLogger(__name__)
@@ -1360,9 +1417,14 @@ class SendGridEmailer(Emailer):
         self._client = SendGridAPIClient(api_key=api_key) if api_key else None
 
     def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
-                   reply_to=None, attachments=None):
+                   reply_to=None, attachments=None, headers=None):
         if self._client is None:
             logger.warning("SendGrid client not configured; dropping email to %s", to_addr)
+            return False
+        try:
+            extra_headers = self.checked_headers(headers)
+        except ValueError as e:
+            logger.error("SendGrid send refused: %s", e)
             return False
         msg = Mail(
             from_email=from_addr or self.from_address,
@@ -1371,6 +1433,8 @@ class SendGridEmailer(Emailer):
             plain_text_content=body_text,
             html_content=body_html,
         )
+        for name, value in extra_headers.items():
+            msg.add_header(Header(name, value))
         try:
             resp = self._client.send(msg)
             return 200 <= resp.status_code < 300

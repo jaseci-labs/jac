@@ -101,12 +101,15 @@ impl WebTarget.build(
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     try {
-        before = len(program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(
-            str(entry_file.resolve()), program
+        entry_program = client_context_program(
+            program, client_source_root(project_dir, entry_file)
         );
-        if len(program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in program.errors_had[before:]);
+        before = len(entry_program.errors_had);
+        artifact = program._get_compiler().get_client_artifact(
+            str(entry_file.resolve()), entry_program
+        );
+        if len(entry_program.errors_had) > before {
+            errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
             raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
         }
         inputs = builder.prepare(loaded_mod);

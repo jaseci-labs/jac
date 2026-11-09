@@ -140,6 +140,7 @@ pub fn build(b: *std.Build) void {
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
     const reuse_python = b.option(bool, "reuse-python", "Reuse a JacPython runtime whose lowered sources are unchanged (pull-request builds)") orelse false;
+    const stale_python = b.option(bool, "stale-python", "Reuse a finished JacPython runtime, or adopt -Djacpython-object, even when lowered from other sources (bytecode CI kits)") orelse false;
     // The JacPython a build runs on (bootstrap/build_python.zig selectHost).
     // The default builds on the previous output for this machine, and fetches
     // the pinned seed (sources.json's "jacpython-seed") when there is none.
@@ -180,6 +181,7 @@ pub fn build(b: *std.Build) void {
     const fetch_host = b.addRunArtifact(seed);
     fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe, host_arg });
     if (reuse_python) fetch_host.addArg("--reuse-lowered");
+    if (stale_python) fetch_host.addArg("--stale-lowered");
     fetch_host.has_side_effects = true;
     const root = b.pathFromRoot(".");
 
