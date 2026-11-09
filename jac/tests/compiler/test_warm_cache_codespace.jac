@@ -38,6 +38,7 @@ import from jaclang.compiler.driver.pipeline {
     ANALYSIS_LOADS,
     CODEGEN_LOADS,
     IR_LOADS,
+    pass_class_of,
     providers_of,
     schedule_for,
     tier_reason
@@ -348,7 +349,7 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
             );
         }
         for p in passes {
-            owner = p.__module__;
+            owner = pass_class_of(p).__module__;
             covered = seed(owner)
                 or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (

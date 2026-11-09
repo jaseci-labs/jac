@@ -306,8 +306,7 @@ def resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
     internal: bool = False,
-    peer_fell_back: bool = False,
-    source_path: str = ""
+    peer_fell_back: bool = False
 ) -> tuple[(PassSchedule | None), bool, bool];
 
 def schedule_for(

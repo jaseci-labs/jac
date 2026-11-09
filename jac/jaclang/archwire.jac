@@ -5570,7 +5570,6 @@ graph import compiler {
         FACT_PACKAGE_STORE,
         FACT_SEP
     }
-    backends.native.na_ir_gen_pass ++> driver.pipeline.native_ir_alert { NaIRGenPass }
     backends.native.na_ir_gen_pass --> driver.pipeline.pass_class_of { NaIRGenPass }
     backends.native.wasm_build ++> [
         driver.pipeline_runner.wasm_artifact_inputs { emit_wasm_from_ir },
