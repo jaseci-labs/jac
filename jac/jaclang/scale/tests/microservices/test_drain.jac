@@ -236,7 +236,7 @@ test "waiting for drain hooks does not queue behind busy request threads" {
         loop = asyncio.get_running_loop();
         loop.set_default_executor(ThreadPoolExecutor(max_workers=1));
         release = threading.Event();
-        busy = loop.run_in_executor(None, release.wait);
+        busy = loop.run_in_executor(None, lambda { return release.wait(); });
         saved = _clear_hooks();
         try {
             state = DrainState(timeout=2.0);

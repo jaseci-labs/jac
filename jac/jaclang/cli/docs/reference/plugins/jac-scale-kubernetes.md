@@ -898,10 +898,11 @@ jac scale destroy app.jac --component monitoring
 
 ## Shutdown Hooks
 
-jac owns `SIGTERM` while it serves, so a handler an app installs with `signal.signal` never runs. Register shutdown code with the `on_drain` builtin instead. It takes a function with no arguments and returns it, so it also works as a decorator:
+jac owns `SIGTERM` while it serves, so a handler an app installs with `signal.signal` never runs. Register shutdown code with `on_drain` from `jaclang.server.serving.drain` instead. It takes a function with no arguments and returns it, so it also works as a decorator:
 
 ```jac
 import threading;
+import from jaclang.server.serving.drain { on_drain }
 
 glob stop_dispatcher: threading.Event = threading.Event();
 
