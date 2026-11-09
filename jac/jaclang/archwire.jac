@@ -2049,7 +2049,6 @@ graph import {
             | client.targets.desktop._dev_launch
             | client.targets.pwa_build
             | client.targets.registry.target_for_app
-            | client.targets.web_target._get_app_meta_data
             | client.vite_bundler._dev_head
             | data.pg_dist._configured_dist
             | runtime.graph_utils.get_name
@@ -2171,6 +2170,10 @@ graph import {
             | scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer._resolve_fleet
             | server.endpoints.colocated.served_app_route
             | studio.app { get_config_for_dir },
+        client.targets.web_target._get_app_meta_data {
+            get_config,
+            get_config_for_path
+        },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
         packages.migrate | scale.injector.bundle.staged_jac_toml {
             serialize_toml,
@@ -3843,8 +3846,8 @@ graph import {
             read_serve_manifest
         },
         dist.precompile_bytecode._served_client_root
-            | dist.precompile_bytecode._served_codespace
             | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
+        dist.precompile_bytecode._served_codespace { SERVE_MANIFEST_REL },
         dist.precompile_bytecode.app_metadata { CLIENT_DIST_REL, NATIVE_DIR_REL },
         dist.precompile_bytecode.collect_payloads {
             CLIENT_DIST_REL,

@@ -488,7 +488,9 @@ impl _served_client_root(pkg_root: str) -> str {
     } except (OSError, ValueError) {
         data = {};
     }
-    found = key if isinstance(data, dict) and data.get('client_prepared') is True else '';
+    found = key
+        if isinstance(data, dict) and data.get('client_prepared') is True
+        else '';
     _client_roots[key] = (stamp, found);
     return found;
 }
