@@ -50,13 +50,7 @@ def _turn(
                 evs = stream_events(out);
                 kinds = [ev.event_type for ev in evs];
                 assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
-                text = "";
-                for ev in evs {
-                    text = ""
-                        if ev.event_type == "stream_reset"
-                        else text + chunk_text([ev]);
-                }
-                out = text;
+                out = chunk_text(evs);
             }
             return (out, conv);
         } except OutputTruncatedError as e {

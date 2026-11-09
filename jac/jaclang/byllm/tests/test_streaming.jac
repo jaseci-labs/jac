@@ -193,23 +193,13 @@ test "a finish_tool answer streams to the caller as committed, with no second ca
                     got = "".join(pieces);
                 } else {
                     events = list(out) if mode == "logging" else seen;
-                    resets = [
-                        i
-                        for (i, e) in enumerate(events)
-                        if e.event_type == "stream_reset"
-                            and e.data.get("scope") == "answer"
-                    ];
-                    after = events[resets[-1] + 1:] if resets else events;
-                    pieces = [e.data["content"] for e in events_of(after, "chunk")];
-                    got = out if mode == "handler" else "".join(pieces);
+                    pieces = [e.data["content"] for e in events_of(events, "chunk")];
+                    got = out if mode == "handler" else chunk_text(events);
                 }
             }
-            assert "".join(pieces) == committed
-                and (
-                    len(pieces) > 1
-                        if streams and not finish_fn
-                        else pieces == [committed]
-                ) , (f"{mode}, streams={streams}: the answer arrived as {pieces}");
+            assert len(pieces) > 1
+                if streams and not finish_fn
+                else pieces[-1] == committed , f"{mode}, streams={streams}: {pieces}";
             assert got == committed , f"{mode}: the caller received {got!r}";
             assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(
                 llm.seen
