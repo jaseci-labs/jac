@@ -11,6 +11,7 @@ Note: MTIR extraction from compiled code is tested in:
   jac/tests/compiler/passes/test_mtir_gen_pass.py
 """
 
+import json;
 import sys;
 import tempfile;
 import from jaclang.runtime.object_interop { fields }
@@ -32,7 +33,14 @@ import from jaclang.runtime.semantic {
 }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.byllm.lib { MockLLM }
-import from support { finish, fixture_path, load_fixture, need_outside_jaclang }
+import from support {
+    call,
+    finish,
+    fixture_path,
+    load_fixture,
+    need_outside_jaclang,
+    sent_messages
+}
 
 # =============================================================================
 # Schema Generation Data Structure Tests
@@ -865,45 +873,97 @@ test "compiled MTIR keeps the params, tools and fields a call site needs" {
     assert mod.describe("an engineer", 3) == "Ada";
 }
 
-test "a tool-using call's finish_tool carries the answer type's sems" {
-    need_outside_jaclang(fixture_path("finish_tool_sems.jac"));
-    mod = load_fixture("finish_tool_sems");
-    slug_sems = [
-        (["description"], "A URL slug for one video, never a placeholder."),
-        (["properties", "text", "description"], "Lowercase words joined by hyphens."),
-        (["properties", "tags", "description"], "Topic tags taken from the title.")
-    ];
-    mood_sems = [
-        (["description"], "How the speaker feels."),
-        (["description"], "HAPPY: Upbeat, laughing or celebrating."),
-        (["description"], "SAD: Grieving, lonely or let down.")
-    ];
-    for (label, fn_name, arg, answer, sems) in [
-        ("obj", "make_slug", "A B", {"text": "a-b", "tags": ["x"]}, slug_sems),
-        ("enum", "read_mood", "we won", "happy", mood_sems)
-    ] {
-        mod.finish_llm = MockLLM(model_name="mockllm", outputs=[finish(answer)]);
-        getattr(mod, fn_name)(arg);
+"""The schema a request described a call's answer with: finish_tool's final_output
+when the call has tools, the unwrapped typed-output schema when it has none."""
+def _answer_schema(params: dict[str, any]) -> dict[str, any] {
+    if params.get("tools") {
         finish_tools = [
             t["function"]
-            for t in mod.finish_llm.sent("tools")[0]
+            for t in params["tools"]
             if t["function"]["name"] == "finish_tool"
         ];
-        assert len(finish_tools) == 1 , f"{label}: expected one finish_tool, got {finish_tools}";
-        tool = finish_tools[0];
-        assert tool["description"].startswith("This tool is used to finish") , (
-            f"{label}: tool description {tool['description']!r}"
+        assert len(finish_tools) == 1 , f"expected one finish_tool, got {finish_tools}";
+        return dict(finish_tools[0]["parameters"]["properties"]["final_output"]);
+    }
+    schema = params["response_format"]["json_schema"]["schema"];
+    return dict(schema["properties"].get("schema_object_wrapper", schema));
+}
+
+test "a tool-using call answers through a finish_tool that carries the type's sems" {
+    need_outside_jaclang(fixture_path("finish_tool_sems.jac"));
+    mod = load_fixture("finish_tool_sems");
+    slug = {"text": "a-b", "tags": ["x"], "channel": {"name": "c"}};
+    rows = [
+        (
+            "obj",
+            mod.make_slug,
+            mod.make_slug_direct,
+            slug,
+            mod.Slug(text="a-b", tags=["x"], channel=mod.Channel(name="c")),
+            [
+                "A URL slug for one video, never a placeholder.",
+                "Lowercase words joined by hyphens.",
+                "Topic tags taken from the title.",
+                "The channel's display name."
+            ]
+        ),
+        (
+            "list",
+            mod.make_slugs,
+            mod.make_slugs_direct,
+            [slug],
+            [mod.Slug(text="a-b", tags=["x"], channel=mod.Channel(name="c"))],
+            ["Lowercase words joined by hyphens.", "The channel's display name."]
+        ),
+        (
+            "enum",
+            mod.read_mood,
+            mod.read_mood_direct,
+            "happy",
+            mod.Mood.HAPPY,
+            [
+                "How the speaker feels.",
+                "HAPPY: Upbeat, laughing or celebrating.",
+                "SAD: Grieving, lonely or let down."
+            ]
+        )
+    ];
+    for (label, with_tools, without_tools, answer, expected, sems) in rows {
+        llm = MockLLM(
+            model_name="mockllm",
+            outputs=[call("lookup", {"query": "q"}), finish(answer), answer]
         );
-        output = tool["parameters"]["properties"]["final_output"];
-        for (path, want) in sems {
-            got = output;
-            for key in path {
-                got = got.get(key, {});
-            }
-            assert isinstance(got, str) and want in got , (
-                f"{label}: {want!r} missing at {path}, got {got!r}"
-            );
+        mod.finish_llm = llm;
+        got = with_tools("x");
+        assert repr(got) == repr(expected) , f"{label}: answer through finish_tool: {got!r}";
+        direct = without_tools("x");
+        assert repr(direct) == repr(expected) , f"{label}: typed answer: {direct!r}";
+        assert llm.exhausted() , f"{label}: unused replies";
+        last = sent_messages(llm, 1)[-1];
+        assert last["role"] == "tool" and last["content"] == "found q" , (
+            f"{label}: lookup did not run before the answer, got {last}"
+        );
+
+        offered = _answer_schema(llm.seen[0]);
+        answered = _answer_schema(llm.seen[1]);
+        typed = _answer_schema(llm.seen[2]);
+        assert offered == answered , f"{label}: finish_tool changed between turns";
+        text = json.dumps(answered);
+        for want in sems {
+            assert want in text , f"{label}: {want!r} never reached the model: {text}";
         }
+        assert answered.get("description")
+            == (typed.get("description") or "The final output of the tool calls.") , f"{label}: final_output description {answered.get(
+            'description'
+        )!r}";
+        for schema in (answered, typed) {
+            schema.pop("title", None);
+            schema.pop("description", None);
+        }
+        assert answered == typed , (
+            f"{label}: final_output differs from the typed-output schema\n"
+            f"{answered}\n{typed}"
+        );
     }
 }
 
