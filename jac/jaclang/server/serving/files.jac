@@ -16,6 +16,9 @@ def _etag(path: str, stat: os.stat_result) -> str;
 def _not_modified(request: Request, etag: str, mtime: float) -> bool;
 
 
+def _if_range_matches(request: Request, etag: str, mtime: float) -> bool;
+
+
 def _parse_range(header: str, size: int) -> (tuple[int, int] | None);
 
 

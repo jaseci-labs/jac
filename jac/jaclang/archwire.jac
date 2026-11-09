@@ -490,7 +490,12 @@ graph import {
         rn_tag_suggestions
     }
     client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
-    client.vite_bundler ++> dist.source.client.write_client { ViteBundler }
+    client.vite_bundler ++> [
+        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
+            client_build_env
+        },
+        dist.source.client.write_client { ViteBundler },
+    ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },
@@ -1082,7 +1087,7 @@ graph import {
             | project.kernel_compile.kernel_route
             | project.kernel_snapshot
             | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
-        cli.commands.execution._exec_file {
+        cli.commands.execution._exec_file | dist.precompile_bytecode.served_codespace {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
@@ -1654,7 +1659,10 @@ graph import {
         client.js_runtime.BunArtifact.build { fetch_bun },
         compiler.types.stubcat.locate.TypeshedArtifact.build { fetch_typeshed },
     ]
-    dist.precompile_bytecode ++> cli.commands.precompile.precompile { run_precompile }
+    dist.precompile_bytecode ++> [
+        cli.commands.precompile.precompile { run_precompile },
+        scale.injector.bundle.pack_jab { RESULT_NAME },
+    ]
     dist.precompile_bytecode --> scale.tests.microservices.test_app_precompile {
         main as seal_main,
         placement_facts_map,
@@ -3823,14 +3831,15 @@ graph import {
             CLIENT_DIST_REL,
             read_serve_manifest
         },
+        dist.precompile_bytecode._served_codespace
+            | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
         dist.precompile_bytecode.app_metadata { CLIENT_DIST_REL, NATIVE_DIR_REL },
         dist.precompile_bytecode.collect_payloads {
             CLIENT_DIST_REL,
             NATIVE_DIR_REL,
             SERVE_MANIFEST_REL
         },
-        dist.precompile_bytecode.seal_runtime_closure
-            | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
+        dist.precompile_bytecode.seal_runtime_closure { SERVE_MANIFEST_REL },
         dist.seal.bake_serve_payloads { CLIENT_DIST_REL, SERVE_MANIFEST_REL },
         dist.seal.build_serve_manifest { serve_manifest_stamp },
     ]
@@ -3990,6 +3999,8 @@ graph import {
     server.serving.client --> scale.tests.server.test_serve { aws_connect }
     server.serving.client as sv_http ++> scale.tests.server.test_sv_auth_forward;
     server.serving.compression ++> scale.tests.microservices.test_sse_framing {
+        CompressionPolicy,
+        GzipCache,
         _gzip_stream
     }
     server.serving.datatypes ++> [
@@ -4054,6 +4065,7 @@ graph import {
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
             | scale.tests.server.test_serve { Headers, Request, URL },
+        scale.tests.microservices.test_sse_framing { Headers, Request, Response },
         scale.tests.server.test_bodiless_status { Response, StreamingResponse },
         scale.tests.server.test_oauth_providers._callback_request { QueryParams, URL },
         scale.tests.server.test_sso {
@@ -4085,12 +4097,20 @@ graph import {
         scale.tests.server.test_stream_ws._spawn_upstream.sse { StreamingResponse },
     ]
     server.serving.drain ++> [
+        runtime.builtin.on_drain | runtime.runtime.JacRuntime.after_fork_in_child {
+            DRAIN_HOOKS
+        },
         scale.runtime.gateway.microservice_gateway { DrainState },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
             drain_middleware
         },
         scale.server.extensions { HEALTH_PATHS },
-        scale.tests.microservices.test_drain { DrainState, drain_middleware },
+        scale.tests.microservices.test_drain {
+            DRAIN_HOOKS,
+            DRAIN_TAKEN,
+            DrainState,
+            drain_middleware
+        },
     ]
     server.serving.endpoint ++> [
         client.targets.desktop.native.broker_extension
@@ -4134,6 +4154,14 @@ graph import {
     server.serving.endpoint --> [
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
+    ]
+    server.serving.files ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_spa_fallback {
+            file_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.static_file {
+            file_response
+        },
     ]
     server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
         cors_pair_problem
@@ -4187,6 +4215,7 @@ graph import {
     server.serving.ws ++> [
         scale.runtime.gateway.microservice_gateway
             | scale.server.websocket_ext
+            | scale.tests.server.test_ws_hardening
             | scale.websocket.protocol
             | scale.websocket.websocket { WebSocket },
         scale.tests.server.test_serving_tail {
@@ -4197,6 +4226,9 @@ graph import {
             OP_TEXT,
             encode_frame,
             read_frame
+        },
+        scale.websocket.websocket.WebSocketConnectionManager._local_fanout {
+            _ws_json_default
         },
     ]
     server.session ++> [
@@ -45499,8 +45531,12 @@ graph import scale {
     injector.bundle ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle {
             _stage_app,
+            cached_client_dist,
             client_build_sources,
+            client_input_digest,
+            nested_sanitized_tomls,
             release_binary_env,
+            remember_client_dist,
             remove_stage_root,
             source_filter_for
         },
@@ -46892,7 +46928,11 @@ graph import scale.tests {
             | microservices.test_k8s_health_probe
             | server.test_examples { get_free_port },
         microservices.test_stop_signal_scope { stop_server },
-        microservices.test_typed_boundary { get_free_port, start_server, stop_server },
+        microservices.test_typed_boundary | server.test_drain_hooks {
+            get_free_port,
+            start_server,
+            stop_server
+        },
         server.test_metrics_workers | server.test_serve {
             cleanup_db_files,
             get_free_port,
@@ -47358,7 +47398,8 @@ graph import server.serving {
     datatypes --> server.ServingServer._dispatch { JSONResponse }
     drain ++> [
         accesslog { HEALTH_PATHS },
-        health { DrainState },
+        app { run_hooks },
+        health | supervisor { DrainState },
         server { DrainState, HEALTH_PATHS },
     ]
     endpoint ++> [

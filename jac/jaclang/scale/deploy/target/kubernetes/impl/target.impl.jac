@@ -502,6 +502,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
     core_v1 = client.CoreV1Api();
     ns = self.k8s_config.namespace;
     total = len(names);
+    started = time.monotonic();
     elapsed = 0;
     ready = 0;
     interactive = bool(sys.stdout.isatty());
@@ -510,8 +511,8 @@ impl KubernetesTarget._wait_for_fleet_rollout(
     app_name = str(self.k8s_config.app_name or "");
     companion_apps: set = {f"{app_name}-postgres"} if app_name else set();
     pod_selector = "app in ({})".format(", ".join(app_labels)) if app_labels else None;
-    imagepull_streak: dict[str, int] = {};
-    creating_streak: dict[str, int] = {};
+    imagepull_since: dict[str, int] = {};
+    creating_since: dict[str, int] = {};
     healed_apps: dict[str, int] = {};
     last_sig = "";
     last_heartbeat = -90;
@@ -570,11 +571,12 @@ impl KubernetesTarget._wait_for_fleet_rollout(
             }
 
             pulls: dict[str, tuple[str, str, any]] = scan["pulls"];
-            imagepull_streak = {k: imagepull_streak.get(k, 0) + 1 for k in pulls};
+            imagepull_since = {k: imagepull_since.get(k, elapsed) for k in pulls};
             pull_failure = "";
             pull_pod = None;
             for (pod_name, info) in pulls.items() {
-                if imagepull_streak.get(pod_name, 0) >= 2 {
+                pulling_for = elapsed - imagepull_since.get(pod_name, elapsed);
+                if pulling_for >= IMAGE_PULL_PERSIST_SECONDS {
                     if self._try_self_heal(
                         core_v1,
                         ns,
@@ -582,7 +584,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                         f"container '{info[0]}' cannot pull image ({info[1]})",
                         healed_apps
                     ) {
-                        imagepull_streak.pop(pod_name, None);
+                        imagepull_since.pop(pod_name, None);
                         continue;
                     }
                     pull_failure = (
@@ -594,9 +596,10 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                 }
             }
             creating_now: dict[str, any] = scan.get("creating", {});
-            creating_streak = {k: creating_streak.get(k, 0) + 1 for k in creating_now};
+            creating_since = {k: creating_since.get(k, elapsed) for k in creating_now};
             for (pod_name, pod) in creating_now.items() {
-                if creating_streak.get(pod_name, 0) >= 30
+                creating_for = elapsed - creating_since.get(pod_name, elapsed);
+                if creating_for >= MOUNT_WEDGE_SECONDS
                     and self._pod_mount_wedged(core_v1, ns, pod_name) {
                     if self._try_self_heal(
                         core_v1,
@@ -605,7 +608,7 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                         "stuck >5min with FailedMount events",
                         healed_apps
                     ) {
-                        creating_streak.pop(pod_name, None);
+                        creating_since.pop(pod_name, None);
                     }
                 }
             }
@@ -652,8 +655,8 @@ impl KubernetesTarget._wait_for_fleet_rollout(
                 last_sig = sig;
                 last_heartbeat = elapsed;
             }
-            time.sleep(10);
-            elapsed += 10;
+            time.sleep(ROLLOUT_POLL_SECONDS);
+            elapsed = int(time.monotonic() - started);
         }
     }
     timeout_detail = "";
