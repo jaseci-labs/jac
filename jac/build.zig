@@ -219,9 +219,8 @@ pub fn build(b: *std.Build) void {
                 "first (or restore a shim built from these inputs to " ++ SHIM_PLACE_DIR ++ ")",
         ).step);
     }
-    // The prebuilt CPython of any platform, fetched and checksum-verified
-    // into .pbs-build/<osarch>/python. It needs nothing built first, so a
-    // build can fetch another platform's tree to package it.
+    // The prebuilt CPython, fetched and checksum-verified into
+    // .pbs-build/<osarch>/python. It needs nothing built first.
     const pbs_seed = b.addExecutable(.{ .name = "fetch_pbs", .root_module = b.createModule(.{
         .root_source_file = b.path("bootstrap/fetch_pbs.zig"),
         .target = b.graph.host,
@@ -381,9 +380,9 @@ pub fn build(b: *std.Build) void {
     };
 
     // The target's Python tree: the payload input, and the C floor archives
-    // (libzstd.a, libcrypto.a, ...) the stub static-links. The prebuilt
-    // CPython of any platform is fetched here; a JacPython is built only on
-    // its own platform, so a -Djacpython binary is too.
+    // (libzstd.a, libcrypto.a, ...) the stub static-links. Assembling the
+    // payload runs that tree's interpreter (ensurepip, pip, the precompile),
+    // so a binary is built on its own platform.
     const python_dir = if (use_jacpython)
         b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{osarch}))
     else
@@ -392,7 +391,9 @@ pub fn build(b: *std.Build) void {
     const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch))
         python_ready
     else if (!use_jacpython)
-        fetch_pbs(b, pbs_seed, &fetch_ts.step, osarch, pins_path)
+        &b.addFail(
+            b.fmt("a {s} jac is built on {s}: assembling its payload runs its own Python", .{ osarch, osarch }),
+        ).step
     else
         &b.addFail(
             b.fmt("a {s} jac is built on {s}: its JacPython is built only there (lower its native object here with `zig build jacpython-object -Dtarget-platform={s}`)", .{ osarch, osarch, osarch }),

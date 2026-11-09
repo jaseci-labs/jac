@@ -143,20 +143,21 @@ test "another target's kernel never resolves to the sealed or kit kernel" {
     assert resolution.found is None , f"{name} resolved to {resolution.found}";
 }
 
-test "a seal leaves the kernel out unless JAC_SEAL_KERNEL asks for it" {
+test "a seal builds the kernel only when JAC_SEAL_KERNEL asks for it" {
     import from jaclang.artifacts.kit { pr_kit_omits }
-    import from jaclang.dist.precompile_bytecode { kit_omissions }
+    import from jaclang.dist.precompile_bytecode { kit_omissions, seals_kernel }
     with patch.dict(os.environ, {"JAC_SEAL_KERNEL": "", "JAC_KIT_OMIT": ""}) {
-        assert kit_omissions("jaclang") == ["kernel"] , (
-            "the kit runs the bytecode compiler"
+        assert not seals_kernel("jaclang") , "the kit runs the bytecode compiler";
+        assert kit_omissions("jaclang") == [] , (
+            "an image without a kernel still uses one the user builds"
         );
-        assert kit_omissions("myapp") == [];
+        assert not seals_kernel("myapp");
     }
     with patch.dict(os.environ, {"JAC_SEAL_KERNEL": "1", "JAC_KIT_OMIT": ""}) {
-        assert kit_omissions("jaclang") == [];
+        assert seals_kernel("jaclang");
     }
     with patch.dict(os.environ, {"JAC_SEAL_KERNEL": "1", "JAC_KIT_OMIT": "kernel"}) {
-        assert kit_omissions("jaclang") == ["kernel"];
+        assert not seals_kernel("jaclang") and kit_omissions("jaclang") == ["kernel"];
     }
     with patch.dict(os.environ, {"JAC_KIT_OMIT": "kernel"}) {
         assert pr_kit_omits("kernel");

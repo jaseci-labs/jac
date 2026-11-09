@@ -1183,11 +1183,13 @@ impl native_roots(pkg_name: str, units: list[str]) -> list[str] {
 }
 
 impl kit_omissions(pkg_name: str) -> list[str] {
-    if pkg_name != "jaclang" {
-        return [];
-    }
-    wanted = os.environ.get(SEAL_KERNEL_ENV, "") == "1" and not pr_kit_omits("kernel");
-    return [] if wanted else ["kernel"];
+    return ["kernel"] if pkg_name == "jaclang" and pr_kit_omits("kernel") else [];
+}
+
+impl seals_kernel(pkg_name: str) -> bool {
+    return pkg_name == "jaclang"
+        and os.environ.get(SEAL_KERNEL_ENV, "") == "1"
+        and "kernel" not in kit_omissions(pkg_name);
 }
 
 impl _compiler_kernel_units -> set[str] {
@@ -1246,7 +1248,7 @@ impl seal_native(
     if pkg_name == "jaclang" and kernel_dir {
         return adopt_kernel(pkg_path, out_dir, manifest_modules, kernel_dir);
     }
-    if "kernel" in kit_omissions(pkg_name) {
+    if pkg_name == "jaclang" and not seals_kernel(pkg_name) {
         console.print(
             f"  Native artifact: none (the kernel ships only with {SEAL_KERNEL_ENV}=1)"
         );
@@ -1737,7 +1739,7 @@ impl run_precompile(
                     f"  Compiler kernel: {len(dropped)} unit(s) "
                         + (
                             "left unlowered; the kit runs the bytecode compiler"
-                                if "kernel" in kit_omissions(pkg_name)
+                                if not seals_kernel(pkg_name)
                                 else "left to the native seal; lowering the units programs link"
                         )
                 );

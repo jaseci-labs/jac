@@ -122,6 +122,8 @@ def native_roots(pkg_name: str, units: list[str]) -> list[str];
 
 def kit_omissions(pkg_name: str) -> list[str];
 
+def seals_kernel(pkg_name: str) -> bool;
+
 def _compiler_kernel_units -> set[str];
 
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)];

@@ -48,6 +48,7 @@ jobs:
         uses: ./.github/actions/setup-jac
         with:
           prebuilt: macos-aarch64
+          jacpython: "true"
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2

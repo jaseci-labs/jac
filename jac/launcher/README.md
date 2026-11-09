@@ -89,8 +89,9 @@ zig build -Ddev                      # editable dev binary: link the compiler fr
 the release's SHA256SUMS (`bootstrap/fetch_pbs.zig`), then fetches the pinned
 typeshed stubs. The tree holds the interpreter, shared library, stdlib,
 licenses, and the static archives Jac's native backend links
-(`python/build/lib`). Any platform's tree can be fetched on any host, so a
-build can package another platform's binary. `zig build build-python` puts
+(`python/build/lib`). Assembling the payload runs that interpreter, so each
+platform's binary is built on that platform. A tree is reused only when its
+`PBS_ASSET` stamp names the pinned archive. `zig build build-python` puts
 only the Python in place. Build hosts need Zig 0.16.0 and network access; no
 installed Python or Jac is needed. macOS also needs the SDK provided by Xcode
 command line tools, for the link.

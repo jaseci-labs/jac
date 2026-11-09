@@ -7,8 +7,11 @@
 //!     fetch_pbs <os-arch> <dest-dir> <pins.json>
 //!
 //! Downloads + SHA256SUMS-verifies + extracts the pbs tree into <dest>/python.
-//! Idempotent: a no-op when <dest>/python/PYTHON.json exists. The pins (release
-//! tag, CPython patch version, flavor, base URL) are read from `pins.json`.
+//! Idempotent: a no-op when <dest>/python/PBS_ASSET names the pinned archive.
+//! The archive is extracted beside the tree and swapped in only once complete,
+//! so an interrupted fetch or a pin change never leaves a tree that passes for
+//! current. The pins (release tag, CPython patch version, flavor, base URL)
+//! are read from `pins.json`.
 //! The tree has the layout every consumer of a Python build reads:
 //! python/install (the interpreter and libpython), python/build/lib (the C
 //! floor archives `jac build --native` links) and python/licenses.
@@ -27,6 +30,9 @@ const zstd = std.compress.zstd;
 // The window pbs compresses its archives with (verified: `zstd -lv` reports
 // 128 MiB); it is all the decode buffer we allocate.
 const PBS_WINDOW = 1 << 27;
+
+// Written into the tree only after a complete extract: the archive it came from.
+const STAMP = "PBS_ASSET";
 
 const Pins = struct { tag: []const u8, python: []const u8, flavor: []const u8, base: []const u8 };
 
@@ -48,14 +54,17 @@ pub fn main(init: std.process.Init) !void {
     const dest = args[2];
     const pins = try readPins(io, a, args[3]);
 
-    const marker = try std.fmt.allocPrint(a, "{s}/python/PYTHON.json", .{dest});
-    if (fileExists(io, marker)) {
-        log("fetch-pbs: already present at {s}/python", .{dest});
-        return;
-    }
-
     const plat = pbsPlatform(osarch) orelse die("fetch-pbs: unsupported platform '{s}'", .{osarch});
     const asset = try std.fmt.allocPrint(a, "cpython-{s}+{s}-{s}-{s}.tar.zst", .{ pins.python, pins.tag, plat, pins.flavor });
+
+    const tree = try std.fmt.allocPrint(a, "{s}/python", .{dest});
+    const stamp = try std.fmt.allocPrint(a, "{s}/{s}", .{ tree, STAMP });
+    if (Io.Dir.cwd().readFileAlloc(io, stamp, a, .limited(1024))) |recorded| {
+        if (std.mem.eql(u8, std.mem.trimEnd(u8, recorded, "\n"), asset)) {
+            log("fetch-pbs: {s} already present at {s}", .{ asset, tree });
+            return;
+        }
+    } else |_| {}
     const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ pins.base, pins.tag, asset });
 
     log("fetch-pbs: downloading {s}", .{asset});
@@ -74,9 +83,12 @@ pub fn main(init: std.process.Init) !void {
         die("fetch-pbs: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, expected, &actual });
     }
 
-    // zstd-decompress + untar straight into <dest> (entries start with python/).
-    try Io.Dir.cwd().createDirPath(io, dest);
-    var ddir = try Io.Dir.cwd().openDir(io, dest, .{});
+    // zstd-decompress + untar into a staging dir beside the tree (entries
+    // start with python/), then swap the finished tree in.
+    const staging = try std.fmt.allocPrint(a, "{s}/.pbs-staging", .{dest});
+    try Io.Dir.cwd().deleteTree(io, staging);
+    try Io.Dir.cwd().createDirPath(io, staging);
+    var ddir = try Io.Dir.cwd().openDir(io, staging, .{});
     defer ddir.close(io);
 
     const window = try gpa.alloc(u8, PBS_WINDOW + zstd.block_size_max);
@@ -88,8 +100,14 @@ pub fn main(init: std.process.Init) !void {
     std.tar.extract(io, ddir, &dz.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 }) catch |err|
         die("fetch-pbs: extract failed: {s}", .{@errorName(err)});
 
-    if (!fileExists(io, marker)) die("fetch-pbs: extract produced no PYTHON.json", .{});
-    log("fetch-pbs: ready at {s}/python", .{dest});
+    const staged = try std.fmt.allocPrint(a, "{s}/python", .{staging});
+    const staged_json = try std.fmt.allocPrint(a, "{s}/PYTHON.json", .{staged});
+    if (!fileExists(io, staged_json)) die("fetch-pbs: extract produced no PYTHON.json", .{});
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ staged, STAMP }), .data = asset });
+    try Io.Dir.cwd().deleteTree(io, tree);
+    try Io.Dir.cwd().rename(staged, Io.Dir.cwd(), tree, io);
+    try Io.Dir.cwd().deleteTree(io, staging);
+    log("fetch-pbs: ready at {s}", .{tree});
 }
 
 /// `pins.json` -> the `pbs` table. Only the four keys the seed needs are read.

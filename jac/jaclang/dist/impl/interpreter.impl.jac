@@ -7,7 +7,7 @@ impl _repo_root -> str {
 }
 
 impl jacpython_binary -> str {
-    return os.path.join(_repo_root(), "zig-out", "bin", "jac");
+    return os.path.join(_repo_root(), "zig-out", "jacpython", "bin", "jac");
 }
 
 impl _this_process(source: Source) -> Probe {
@@ -61,7 +61,7 @@ impl JacPythonArtifact.build_blocker -> str {
 impl JacPythonArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
     import subprocess;
     prefix = os.path.dirname(os.path.dirname(jacpython_binary()));
-    argv = ["zig", "build", "--prefix", prefix];
+    argv = ["zig", "build", "-Djacpython=true", "--prefix", prefix];
     if not exact {
         argv.append("-Dreuse-python=true");
     }

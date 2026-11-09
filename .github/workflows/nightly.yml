@@ -35,6 +35,7 @@ jobs:
         uses: ./.github/actions/setup-jac
         with:
           prebuilt: linux-aarch64
+          jacpython: "true"
 
       # The gates run the binary's own compiler, not the checkout's.
       - uses: ./.github/actions/seal-checkout

@@ -1,6 +1,7 @@
-"""JacPython is the only Python: `jac native build jacpython` is `zig build`,
-which makes zig-out/bin/jac on it. A jac that predates it says where the build
-is, quietly, and the build still counts as current."""
+"""JacPython is an opt-in Python: `jac native build jacpython` is
+`zig build -Djacpython`, which makes zig-out/jacpython/bin/jac on it. A jac
+that runs on another Python says where the build is, quietly, and the build
+still counts as current."""
 
 import io;
 import os;
@@ -66,18 +67,26 @@ test "the build is current once its binary exists, whatever this process runs" {
     }
 }
 
-test "a build is a plain zig build of zig-out/bin/jac" {
+test "a build is a -Djacpython zig build into its own prefix" {
     calls: list[list[str]] = [];
     def run(argv: list[str], **kwargs: any) -> any {
         calls.append(list(argv));
         return None;
     }
     with patch("subprocess.run", side_effect=run), patch.object(
-        interpreter, "jacpython_binary", return_value="/repo/jac/zig-out/bin/jac"
+        interpreter,
+        "jacpython_binary",
+        return_value="/repo/jac/zig-out/jacpython/bin/jac"
     ) {
         JacPythonArtifact().build(lambda (line: str) {}, False, False);
         JacPythonArtifact().build(lambda (line: str) {}, False, True);
     }
-    assert calls[0][:4] == ["zig", "build", "--prefix", "/repo/jac/zig-out"] , calls;
+    assert calls[0][:5] == [
+        "zig",
+        "build",
+        "-Djacpython=true",
+        "--prefix",
+        "/repo/jac/zig-out/jacpython"
+    ] , calls;
     assert "-Dreuse-python=true" in calls[0] and "-Dreuse-python=true" not in calls[1];
 }
