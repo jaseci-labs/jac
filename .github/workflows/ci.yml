@@ -401,10 +401,13 @@ jobs:
   dev-kit:
     runs-on: ubuntu-24.04
     needs: changes
-    env:
-      XDG_CACHE_HOME: ${{ runner.temp }}/.cache
     steps:
       - uses: actions/checkout@v5
+
+      # The cache home the test lanes pin (jac-kit), so the stub catalog
+      # lands in the slot they look it up in.
+      - name: Pin the cache home
+        run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
 
       - name: Build the dev jac binary (cached)
         uses: ./.github/actions/setup-jac
