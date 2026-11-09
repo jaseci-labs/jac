@@ -6251,10 +6251,10 @@ impl TypeEvaluator._get_type_from_match_pattern(
 }
 
 impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | None {
-    if capture.pattern is not None {
-        return self._get_type_from_match_pattern(capture.pattern);
+    case_node: (UniNode | None) = capture.parent;
+    while isinstance(case_node, (MatchOr, MatchAs)) {
+        case_node = case_node.parent;
     }
-    case_node = capture.parent;
     if not isinstance(case_node, MatchCase) {
         return None;
     }
@@ -6267,7 +6267,8 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         if earlier is case_node {
             break;
         }
-        if earlier.guard is not None {
+        if earlier.guard is not None
+            or not self._pattern_covers_class(earlier.pattern) {
             continue;
         }
         matched = self._get_type_from_match_pattern(earlier.pattern);
@@ -6275,7 +6276,34 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
             subject = self.exclude_type_from_union(subject, matched);
         }
     }
-    return subject;
+    if capture.pattern is None {
+        return subject;
+    }
+    pattern_type = self._get_type_from_match_pattern(capture.pattern);
+    if pattern_type is None {
+        return None;
+    }
+    return self._narrow_type_to(subject, pattern_type);
+}
+
+impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {
+    if isinstance(pattern, MatchAs) {
+        return pattern.pattern is not None
+            and self._pattern_covers_class(pattern.pattern);
+    }
+    if isinstance(pattern, MatchOr) {
+        return bool(pattern.patterns)
+            and all(self._pattern_covers_class(p) for p in pattern.patterns);
+    }
+    if isinstance(pattern, MatchArch) {
+        subs: list[MatchPattern] = list(pattern.arg_patterns or [])
+            + [kv.value for kv in (pattern.kw_patterns or [])];
+        return all(
+            isinstance(p, MatchWild) or (isinstance(p, MatchAs) and p.pattern is None)
+            for p in subs
+        );
+    }
+    return False;
 }
 
 impl TypeEvaluator._union_contains_none(union_type: TypeBase) -> bool {

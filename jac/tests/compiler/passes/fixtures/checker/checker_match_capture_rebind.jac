@@ -10,6 +10,10 @@ obj Label {
     has text: str = "";
 }
 
+obj Other {
+    has code: int = 0;
+}
+
 def as_pattern(v: object) {
     title = Label(text="a");
     match v {
@@ -67,6 +71,27 @@ def narrowed_by_earlier_case(v: str | Label) {
 
         case title:  # <-- Ok: the case above took every str
             print(title.text);
+
+    }
+}
+
+def constrained_case_does_not_narrow(v: Other | Label) {
+    title = Label(text="a");
+    match v {
+        case Other(code = 0):
+            print("zero");
+
+        case title:  # <-- Error
+            print(title.text);
+
+    }
+}
+
+def subject_narrower_than_pattern(v: str) {
+    s = "";
+    match v {
+        case object() as s:  # <-- Ok: a str subject binds a str
+            print(s);
 
     }
 }
