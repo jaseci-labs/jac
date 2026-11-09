@@ -3569,7 +3569,7 @@ graph import {
             VarInfo
         },
         byllm.systemone { ClassInfo, EnumInfo, FunctionInfo, TypeForm, VarInfo },
-        byllm.types { Info },
+        byllm.types { ClassInfo, EnumInfo, FunctionInfo, Info, ParamInfo, TypeForm },
         byllm.visit_routing { ClassInfo },
         compiler.driver.compiler { info_graph_from_json },
         compiler.driver.unit_products { Info, info_graph_to_json },

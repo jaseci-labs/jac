@@ -31,7 +31,8 @@ import from jaclang.runtime.semantic {
     type_to_str,
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from support { fixture_path, load_fixture, need_outside_jaclang }
+import from jaclang.byllm.lib { MockLLM }
+import from support { finish, fixture_path, load_fixture, need_outside_jaclang }
 
 # =============================================================================
 # Schema Generation Data Structure Tests
@@ -862,6 +863,45 @@ test "compiled MTIR keeps the params, tools and fields a call site needs" {
     assert isinstance(person, ClassInfo);
     assert [f.name for f in person.fields] == ["name", "age"];
     assert mod.describe("an engineer", 3) == "Ada";
+}
+
+test "a tool-using call's finish_tool carries the answer type's sems" {
+    need_outside_jaclang(fixture_path("finish_tool_sems.jac"));
+    mod = load_fixture("finish_tool_sems");
+    mod.finish_llm = MockLLM(
+        model_name="mockllm", outputs=[finish({"text": "a-b", "tags": ["x"]})]
+    );
+    assert mod.make_slug("A B").text == "a-b";
+    finish_tools = [
+        t["function"]
+        for t in mod.finish_llm.sent("tools")[0]
+        if t["function"]["name"] == "finish_tool"
+    ];
+    assert len(finish_tools) == 1 , f"expected one finish_tool, got {finish_tools}";
+    tool = finish_tools[0];
+    assert tool["description"].startswith("This tool is used to finish") , (
+        f"tool description: {tool['description']!r}"
+    );
+    output = tool["parameters"]["properties"]["final_output"];
+    for (got, want, what) in [
+        (
+            output.get("description"),
+            "A URL slug for one video, never a placeholder.",
+            "type sem"
+        ),
+        (
+            output["properties"]["text"].get("description"),
+            "Lowercase words joined by hyphens.",
+            "text sem"
+        ),
+        (
+            output["properties"]["tags"].get("description"),
+            "Topic tags taken from the title.",
+            "tags sem"
+        )
+    ] {
+        assert got == want , f"{what}: got {got!r}";
+    }
 }
 
 test "runtime scope resolution matches compile time" {
