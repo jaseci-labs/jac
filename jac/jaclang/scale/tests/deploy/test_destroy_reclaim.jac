@@ -220,6 +220,8 @@ test "a namespace this app created but no longer holds alone is kept" {
         "the shared-namespace path did not run, so this app's own database "
         "was left behind instead"
     );
+    assert bundle_loader_pod_name(APP)
+        in [call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
 }
 
 
@@ -559,69 +561,43 @@ test "only the target's cluster loader reads a kubeconfig under deploy" {
 }
 
 
-def _apply_bundle_pvc(existing: list[any]) -> any {
-    core_v1 = unittest.mock.MagicMock();
-    core_v1.read_namespaced_persistent_volume_claim.side_effect = existing;
-    target = target_mod.KubernetesTarget(
-        config=KubernetesConfig(app_name=APP, namespace=NS), gateway_config={}
-    );
-    target._apply_or_replace_pvc(
-        core_v1, NS, {"metadata": {"name": bundle_pvc_name(APP)}}
-    );
-    return core_v1;
-}
+test "a redeploy reuses a live bundle volume and replaces one a destroy left terminating" {
+    def pvc(deleting: str | None) -> any {
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name=bundle_pvc_name(APP), deletion_timestamp=deleting
+            )
+        );
+    }
+    terminating = pvc("2026-11-09T07:44:44Z");
+    # (label, what reading the PVC returns in turn, expect it recreated)
+    for (label, reads, recreated) in [
+        ("live", [pvc(None)], False),
+        ("terminating", [terminating, ApiException(status=404)], True),
+        (
+            "terminating behind a slow loader",
+            [terminating, terminating, ApiException(status=404)],
+            True
+        ),
 
-
-test "a redeploy waits out the bundle volume a destroy left terminating, then recreates it" {
-    terminating = SimpleNamespace(
-        metadata=SimpleNamespace(
-            name=bundle_pvc_name(APP), deletion_timestamp="2026-11-09T07:44:44Z"
-        )
-    );
-    core_v1 = _apply_bundle_pvc([terminating, ApiException(status=404)]);
-    assert core_v1.create_namespaced_persistent_volume_claim.call_count == 1 , (
-        "the redeploy kept a PVC that was being deleted, so its loader pod waits "
-        "on a claim that is gone"
-    );
-}
-
-
-test "a redeploy leaves a live bundle volume in place" {
-    live = SimpleNamespace(
-        metadata=SimpleNamespace(name=bundle_pvc_name(APP), deletion_timestamp=None)
-    );
-    core_v1 = _apply_bundle_pvc([live]);
-    core_v1.create_namespaced_persistent_volume_claim.assert_not_called();
-}
-
-
-test "a redeploy removes a leftover bundle loader before waiting for its volume" {
-    terminating = SimpleNamespace(
-        metadata=SimpleNamespace(
-            name=bundle_pvc_name(APP), deletion_timestamp="2026-11-09T07:44:44Z"
-        )
-    );
-    core_v1 = _apply_bundle_pvc([terminating, ApiException(status=404)]);
-    calls = [call[0] for call in core_v1.mock_calls];
-    assert "delete_namespaced_pod" in calls , (
-        "a loader left by an interrupted deploy keeps the volume terminating, "
-        "so every redeploy times out waiting for it"
-    );
-    assert core_v1.delete_namespaced_pod.call_args.args[0]
-        == bundle_loader_pod_name(APP);
-    assert calls.index("delete_namespaced_pod")
-        < calls.index("create_namespaced_persistent_volume_claim");
-}
-
-
-test "destroying an app in a shared namespace removes its bundle loader" {
-    (apps_v1, core_v1) = _co_tenant_apis();
-    _run_destroy(apps_v1, core_v1, unittest.mock.MagicMock());
-    deleted_pods: list[str] = [
-        call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list
-    ];
-    assert bundle_loader_pod_name(APP) in deleted_pods , (
-        "destroy left the app's bundle loader, which holds the volume it deleted "
-        "in Terminating"
-    );
+    ] {
+        core_v1 = unittest.mock.MagicMock();
+        core_v1.read_namespaced_persistent_volume_claim.side_effect = reads;
+        with unittest.mock.patch("time.sleep") {
+            target_mod.KubernetesTarget(
+                config=KubernetesConfig(app_name=APP, namespace=NS), gateway_config={}
+            )._apply_or_replace_pvc(
+                core_v1, NS, {"metadata": {"name": bundle_pvc_name(APP)}}
+            );
+        }
+        calls = [call[0] for call in core_v1.mock_calls];
+        assert ("create_namespaced_persistent_volume_claim" in calls)
+            == recreated , label;
+        if recreated {
+            assert calls.index("delete_namespaced_pod")
+                < calls.index("create_namespaced_persistent_volume_claim") , f"{label}: a leftover loader keeps the PVC terminating, so it must go first";
+            assert core_v1.delete_namespaced_pod.call_args.args[0]
+                == bundle_loader_pod_name(APP) , label;
+        }
+    }
 }

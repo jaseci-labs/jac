@@ -1726,22 +1726,18 @@ impl KubernetesTarget._apply_or_replace_pvc(
             name=name, namespace=namespace
         );
         if pvc.metadata?.deletion_timestamp is not None {
-            app = k8s_safe_name(self.k8s_config.app_name);
-            if name == bundle_pvc_name(app) {
-                delete_if_exists(
-                    core_v1.delete_namespaced_pod,
-                    bundle_loader_pod_name(app),
-                    namespace,
-                    'Pod'
-                );
-            }
-            if self.logger {
-                self.logger.info(
-                    f"PVC '{name}' is still being deleted; waiting for it to go "
-                    "before creating it again."
-                );
-            }
-            wait_for_pvc_deletion(core_v1, namespace, name);
+            delete_if_exists(
+                core_v1.delete_namespaced_pod,
+                bundle_loader_pod_name(k8s_safe_name(self.k8s_config.app_name)),
+                namespace,
+                'Pod'
+            );
+            wait_until_deleted(
+                lambda { core_v1.read_namespaced_persistent_volume_claim(
+                    name, namespace
+                ); },
+                f"PVC '{name}'"
+            );
             core_v1.create_namespaced_persistent_volume_claim(
                 namespace=namespace, body=manifest
             );

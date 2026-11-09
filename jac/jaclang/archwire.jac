@@ -46480,7 +46480,7 @@ graph import scale.deploy.target.kubernetes {
             privileged_pss_labels,
             resolve_minted_secret
         },
-        target.KubernetesTarget._apply_or_replace_pvc { wait_for_pvc_deletion },
+        target.KubernetesTarget._apply_or_replace_pvc { wait_until_deleted },
         target.KubernetesTarget._pod_failure_detail { describe_pod_status },
     ]
 }

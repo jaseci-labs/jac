@@ -53,26 +53,16 @@ impl run_kubectl_command(
 impl wait_for_pod_deletion(
     core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
 ) -> None {
-    _wait_until_deleted(
+    wait_until_deleted(
         lambda { core_v1.read_namespaced_pod(pod_name, namespace); },
         f"pod '{pod_name}'",
         timeout
     );
 }
 
-impl wait_for_pvc_deletion(
-    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, timeout: int = 120
+impl wait_until_deleted(
+    read: Callable[[], any], what: str, timeout: int = 120
 ) -> None {
-    _wait_until_deleted(
-        lambda { core_v1.read_namespaced_persistent_volume_claim(
-            pvc_name, namespace
-        ); },
-        f"PVC '{pvc_name}'",
-        timeout
-    );
-}
-
-impl _wait_until_deleted(read: Callable[[], any], what: str, timeout: int) -> None {
     start_time = time.time();
     while ((time.time() - start_time) < timeout) {
         try {
