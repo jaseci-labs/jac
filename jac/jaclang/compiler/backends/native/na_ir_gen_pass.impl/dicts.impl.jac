@@ -149,6 +149,7 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     i64 = ir.IntType(64);
     tag: ir.Value = ir.Constant(i8, 8);
     payload: ir.Value = ir.Constant(i64, 0);
+    fresh_box = False;
     if isinstance(value.type, ir.IntType) and value.type.width == 1 {
         tag = ir.Constant(i8, 7);
         payload = b.zext(value, i64, name="jv.bext");
@@ -166,7 +167,11 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         payload = b.bitcast(value, i64, name="jv.f2i");
     } elif isinstance(value.type, ir.PointerType) {
         if isinstance(value.type.pointee, ir.FunctionType) {
+            raw_fn = value;
             value = self._wrap_fn_as_closure_value(value);
+            fresh_box = value is not raw_fn
+                and self._is_owned(value)
+                and not self._is_owned(raw_fn);
         }
         payload = b.ptrtoint(value, i64, name="jv.p2i");
         tag = b.select(
@@ -202,7 +207,11 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     boxed = b.insert_value(
         ir.Constant(self.jacval_type, None), tag, 0, name="jacval.tag"
     );
-    return b.insert_value(boxed, payload, 1, name="jacval");
+    result = b.insert_value(boxed, payload, 1, name="jacval");
+    if fresh_box {
+        self._mark_owned(result);
+    }
+    return result;
 }
 
 impl NaIRGenPass._ellipsis_jacval -> (ir.Value | None) {
@@ -308,8 +317,80 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
                 "TypeError",
                 "only a function stored in `any` can be called natively through a Callable"
             );
+            if not self._nogc_headerless() {
+                b = self.builder;
+                _i8p = ir.IntType(8).as_pointer();
+                _func = b.basic_block.function;
+                _entry = b.basic_block;
+                _obj_bb = _func.append_basic_block(name="jv.clos.objchk");
+                _hdr_bb = _func.append_basic_block(name="jv.clos.hdr");
+                _done_bb = _func.append_basic_block(name="jv.clos.objdone");
+                b.cbranch(
+                    b.icmp_unsigned("==", _tag, ir.Constant(i8, 6), name="jv.clos.is6"),
+                    _obj_bb,
+                    _done_bb
+                );
+                b.position_at_start(_obj_bb);
+                _raw = b.inttoptr(payload, _i8p, name="jv.clos.raw");
+                _magic_ok = self._emit_magic_check(b, _raw, name_prefix="jv.clos.mc");
+                _obj_end = b.basic_block;
+                b.cbranch(_magic_ok, _hdr_bb, _done_bb);
+                b.position_at_start(_hdr_bb);
+                _type_tag = b.load(
+                    b.bitcast(
+                        b.gep(
+                            _raw,
+                            [ir.Constant(i64, HDR_TAG_OFF)],
+                            name="jv.clos.tag.slot"
+                        ),
+                        _i8p.as_pointer()
+                    ),
+                    name="jv.clos.typetag"
+                );
+                _has_tag = b.icmp_unsigned(
+                    "!=", _type_tag, ir.Constant(_i8p, None), name="jv.clos.hastag"
+                );
+                _closure_name = b.gep(
+                    self._get_snprintf_fmt("JacClosure"),
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+                    name="jv.clos.name"
+                );
+                _differs = b.icmp_signed(
+                    "!=",
+                    b.call(
+                        self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [_i8p, _i8p]
+                        ),
+                        [
+                            b.select(
+                                _has_tag,
+                                _type_tag,
+                                _closure_name,
+                                name="jv.clos.cmptag"
+                            ),
+                            _closure_name
+                        ],
+                        name="jv.clos.cmp"
+                    ),
+                    ir.Constant(ir.IntType(32), 0),
+                    name="jv.clos.notclos"
+                );
+                _typed = b.and_(_has_tag, _differs, name="jv.clos.typed");
+                _hdr_end = b.basic_block;
+                b.branch(_done_bb);
+                b.position_at_start(_done_bb);
+                _is_object = b.phi(ir.IntType(1), name="jv.clos.isobj");
+                _is_object.add_incoming(ir.Constant(ir.IntType(1), 0), _entry);
+                _is_object.add_incoming(ir.Constant(ir.IntType(1), 0), _obj_end);
+                _is_object.add_incoming(_typed, _hdr_end);
+                self._emit_runtime_raise(
+                    _is_object,
+                    "TypeError",
+                    "only a function stored in `any` can be called natively through a Callable"
+                );
+            }
         }
-        return b.inttoptr(payload, target_type, name="jv.unbox.p");
+        return self.builder.inttoptr(payload, target_type, name="jv.unbox.p");
     }
 
     self.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");

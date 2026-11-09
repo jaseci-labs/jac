@@ -24,10 +24,27 @@ test "a call through a value with no native signature is refused with a hint" {
     assert out.count("so these arguments would be lost") == 2 , out[-1500:];
 }
 
-test "a class read out of any as a Callable raises TypeError natively" {
+test "a class or an instance read out of any as a Callable raises TypeError natively" {
     out_bin = os.path.join(tempfile.mkdtemp(), "any_class");
     native_build(str(FIXTURES / "any_class_as_callable.jac"), out_bin);
     out = native_run(out_bin);
     assert out
-        == "label:a\nTypeError: only a function stored in `any` can be called natively through a Callable\n" , out;
+        == "label:a\n"
+            + "TypeError: only a function stored in `any` can be called natively through a Callable\n"
+                * 2 , out;
+}
+
+test "a function boxed into any releases the closure it allocates" {
+    out_bin = os.path.join(tempfile.mkdtemp(), "any_fn_box");
+    native_build(str(FIXTURES / "any_fn_box_leaks.jac"), out_bin, extra=["--debug"]);
+    out = native_run(out_bin);
+    lines = out.split("\n");
+    assert lines[0] == "1275" , out[:200];
+    assert "RC LIVE OBJECTS at exit" in out , out[-400:];
+    leaks = [
+        line
+        for line in lines
+        if "<- LEAK" in line
+    ];
+    assert not leaks , f"closure boxes leaked: {len(leaks)} e.g. {leaks[:3]}";
 }
