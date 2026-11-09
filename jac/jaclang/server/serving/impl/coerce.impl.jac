@@ -308,7 +308,11 @@ impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
     if isinstance(target, type) {
         for base in (int, float, str) {
             if issubclass(target, base) {
-                return target(coerce_value(value, base, text));
+                bound = target(coerce_value(value, base, text));
+                if isinstance(bound, float) and not isfinite(bound) {
+                    raise ValueError('expected a finite number');
+                }
+                return bound;
             }
         }
     }

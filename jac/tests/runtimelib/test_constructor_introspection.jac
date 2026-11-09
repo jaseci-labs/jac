@@ -60,6 +60,7 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ({"a": 1}, bytes, REFUSED),
                 (7, u8, 7),
                 (300, u8, REFUSED),
+                (1e39, f32, REFUSED),
                 (["a"], list[str], ["a"]),
                 ("urgent", list[str], REFUSED),
                 ([1.5], list[int], REFUSED),
