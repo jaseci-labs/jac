@@ -155,6 +155,10 @@ impl Memory.acommit(anchor: (Anchor | None) = None) {
     self.commit(anchor);
 }
 
+impl Memory.aabort {
+    self.abort();
+}
+
 impl Memory.on_commit(callback: Callable) {
     self._on_commit.append(callback);
 }

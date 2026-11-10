@@ -596,6 +596,74 @@ test "a request scope cancelled while closing still closes its session and runs 
 }
 
 
+test "an async stream cancelled during its final save lets the save settle off the loop" {
+    written: list[UUID] = [];
+    async def achunks -> AsyncGenerator[str, None] {
+        written.append(_write_note("settled after a cancel"));
+        yield 'only';
+    }
+    entered = threading.Event();
+    release = threading.Event();
+    original_commit_txn = Session._commit_txn;
+    def slow_commit_txn(self: Session) {
+        entered.set();
+        release.wait(5);
+        original_commit_txn(self);
+    }
+    outcome: list[str] = [];
+    elapsed: list[float] = [];
+
+    async def consume(stream: any) {
+        try {
+            async for _ in stream {}
+        } except asyncio.CancelledError {
+            outcome.append("cancelled");
+            raise;
+        }
+    }
+
+    async def cancel_mid_save(project: str) {
+        import time;
+        scope = _open_scope(project);
+        with scope as context {
+            stream = await ExecutionContext(_parent=context).bind_stream(achunks());
+            task = asyncio.ensure_future(consume(stream));
+            while not entered.is_set() {
+                await asyncio.sleep(0.01);
+            }
+            task.cancel();
+            started = time.monotonic();
+            for _ in range(5) {
+                await asyncio.sleep(0.02);
+            }
+            elapsed.append(time.monotonic() - started);
+            release.set();
+            try {
+                await task;
+            } except asyncio.CancelledError {}
+        }
+    }
+
+    with TemporaryDirectory() as project {
+        Session._commit_txn = slow_commit_txn;
+        try {
+            asyncio.run(cancel_mid_save(project));
+        } finally {
+            Session._commit_txn = original_commit_txn;
+        }
+        assert outcome == ["cancelled"] , f"the consumer did not see the cancel: {outcome}";
+        assert elapsed[0] < 2.0 , (
+            f"the loop stalled {elapsed[
+                0
+            ]:.1f}s behind the save while the stream was cancelled"
+        );
+        assert len(written) == 1 and _committed(project, written[0]) , (
+            "a save already running when the stream was cancelled was abandoned"
+        );
+    }
+}
+
+
 test "a stream delivered to its end has its write committed when its scope closes" {
     written: list[UUID] = [];
     def chunks -> Generator[str, None, None] {
