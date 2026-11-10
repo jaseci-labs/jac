@@ -233,7 +233,12 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
         }
         import from jaclang.compiler.driver.program { JacProgram }
         discovery = JacProgram();
-        facts = discover_spaces(candidates, discovery);
+        discovery.options = precompile_context(
+            os.path.join(package_dir, '__init__.jac'), package_dir, discovery, app
+        ).options;
+        with served_codespace(package_dir) {
+            facts = discover_spaces(candidates, discovery);
+        }
         _placement_cache[key] = facts;
         if discovery.errors_had {
             console.print(
