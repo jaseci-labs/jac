@@ -49,12 +49,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
 
-  # The js_engine accelerator: releases ship bun, so this is where the engine
-  # is built and gated without a pull request asking.
-  js-engine:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
-    uses: ./.github/workflows/_js_engine.yml
-
   notes-app-cef-smoke:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     runs-on: ubuntu-24.04
