@@ -471,6 +471,11 @@ impl access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
         "WRITE": AccessLevel.WRITE,
         "ADMIN": AccessLevel.ADMIN
     };
+    if val not in _map {
+        raise ValueError(
+            f"unknown access level {val!r}; use NO_ACCESS, READ, CONNECT, WRITE or ADMIN"
+        );
+    }
     return _map[val];
 }
 

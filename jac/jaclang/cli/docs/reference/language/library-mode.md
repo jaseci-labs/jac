@@ -434,8 +434,8 @@ visit(
 |----------|-------------|------------|
 | `perm_grant(archetype, level)` | Grant public access to archetype | `archetype`: Target archetype<br>`level`: AccessLevel (READ/CONNECT/WRITE) |
 | `perm_revoke(archetype)` | Revoke public access | `archetype`: Target archetype |
-| `allow_root(archetype, root_id, level)` | Allow specific root access | `archetype`: Target<br>`root_id`: Root UUID<br>`level`: Access level |
-| `disallow_root(archetype, root_id, level)` | Disallow specific root access | Same as allow_root |
+| `set_access(node, who, level)` | Give a user or group a level on the node and what is under it (needs ADMIN) | `node`: Target<br>`who`: Root id, root or group<br>`level`: Access level |
+| `clear_access(node, who)` | Remove that user's or group's access | `node`: Target<br>`who`: Root id, root or group |
 | `check_read_access(anchor)` | Check read permission | `anchor`: Target anchor |
 | `check_write_access(anchor)` | Check write permission | `anchor`: Target anchor |
 | `check_connect_access(anchor)` | Check connect permission | `anchor`: Target anchor |

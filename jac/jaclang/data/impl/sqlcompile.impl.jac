@@ -477,59 +477,56 @@ impl _pred_cond(
 
 impl _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
     held = principals();
-    acting = [
-        pid
-        for (pid, lvl) in held.items()
-        if lvl.value > -1
-    ]
-        or [root_id];
-    blocked = [
-        pid
-        for (pid, lvl) in held.items()
-        if lvl.value == -1
-    ];
-    admin = [
-        pid
-        for (pid, lvl) in held.items()
-        if lvl.value == 3
-    ]
-        or [root_id];
+
+    def as_set(lo: int, hi: int, fallback: list[str]) -> str {
+        keys = [
+            pid
+            for (pid, lvl) in held.items()
+            if lo <= lvl.value <= hi
+        ]
+            or fallback;
+        return "{" + ",".join([f'"{k}":0' for k in keys]) + "}";
+    }
     (me, ids, blk, adm) = (f"{pfx}me", f"{pfx}ids", f"{pfx}blk", f"{pfx}adm");
     params[me] = root_id;
-    params[ids] = acting;
-    params[blk] = blocked;
-    params[adm] = admin;
+    params[ids] = as_set(0, 3, [root_id]);
+    params[blk] = as_set(-1, -1, []);
+    params[adm] = as_set(3, 3, [root_id]);
     owner = f"CAST({alias}.root_id AS text)";
     own_all = f"COALESCE(({alias}.props->'access'->>'all')::int, -1)";
 
-    def named(m: str, op: str) -> str {
+    def in_set(key_set: str, key: str) -> str {
+        return f"COALESCE(CAST(:{key_set} AS jsonb) ? {key}, FALSE)";
+    }
+    def named(m: str, key_set: str, op: str) -> str {
         return (
-            f"(COALESCE(jsonb_exists_any({m}, CAST(:{ids} AS text[])), FALSE)"
-            f" AND EXISTS (SELECT 1 FROM unnest(CAST(:{ids} AS text[])) AS p(id)"
-            f" WHERE ({m}->>p.id)::int {op}))"
+            f"EXISTS (SELECT 1 FROM jsonb_each_text(CASE WHEN jsonb_typeof({m}) = "
+            f"'object' THEN {m} END) AS e(k, v) WHERE {in_set(key_set, 'e.k')}"
+            f" AND e.v::int {op})"
         );
     }
     def on_doc(op: str) -> str {
         doc = f"{alias}.props->'access'";
         return (
-            named(f"{doc}->'roots'->'anchors'", op)
+            named(f"{doc}->'roots'->'anchors'", ids, op)
             + " OR "
-            + named(f"{doc}->'groups'->'anchors'", op)
+            + named(f"{doc}->'groups'->'anchors'", ids, op)
             + " OR EXISTS (SELECT 1 FROM anchors ro WHERE ro.id = "
             + f"{alias}.root_id AND "
-            + named("ro.props->'access'->'roots'->'anchors'", op)
+            + named("ro.props->'access'->'roots'->'anchors'", ids, op)
             + ")"
         );
     }
+    labels = f"{alias}.props->'access'->'groups'->'anchors'";
     return (
         f"({alias}.root_id = CAST(:{me} AS uuid)"
-        f" OR (NOT COALESCE({owner} = ANY(CAST(:{blk} AS text[])), FALSE)"
-        f" AND NOT (NOT COALESCE({owner} = ANY(CAST(:{adm} AS text[])), FALSE)"
-        f" AND ({on_doc('= -1')}))"
+        f" OR (NOT {in_set(blk, owner)}"
+        f" AND NOT (NOT {in_set(adm, owner)} AND ({on_doc('= -1')}))"
+        f" AND NOT (NOT {in_set(adm, owner)} AND {named(labels, blk, '> -2')})"
         f" AND ({own_all} > -1"
         f" OR EXISTS (SELECT 1 FROM anchors ro WHERE ro.id = {alias}.root_id"
         f" AND COALESCE((ro.props->'access'->>'all')::int, -1) > -1)"
-        f" OR COALESCE({owner} = ANY(CAST(:{ids} AS text[])), FALSE)"
+        f" OR {in_set(ids, owner)}"
         f" OR {on_doc('> -1')})))"
     );
 }

@@ -24,6 +24,8 @@ def _say(key: str, fn: any) {
         print(key + ":DENIED " + str(e));
     } except (ValueError, TypeError) as e {
         print(key + ":INVALID " + str(e));
+    } except RuntimeError as e {
+        print(key + ":REFUSED " + str(e));
     }
 }
 
@@ -177,5 +179,88 @@ walker delete_own_edge {
             return "deleted";
         }
         _say("DELETE", drop);
+    }
+}
+
+walker edit_doc {
+    has doc_id: str,
+        title: str;
+
+    can enter with Root entry {
+        doc: any = _node(self.doc_id);
+        doc.title = self.title;
+        print("EDIT:done");
+    }
+}
+
+"""What the store holds, read as the system, so a dropped write shows."""
+walker true_title {
+    has doc_id: str;
+
+    can enter with Root entry {
+        found: any = Jac.get_context().mem.get(UUID(self.doc_id));
+        print("TRUE:" + ("GONE" if found is None else str(found.archetype.title)));
+    }
+}
+
+walker delete_node {
+    has node_id: str;
+
+    can enter with Root entry {
+        target: any = _node(self.node_id);
+        def run -> str {
+            Jac.destroy(target);
+            return "ok";
+        }
+        _say("DEL", run);
+    }
+}
+
+walker collect {
+    has titles: list[str] = [];
+
+    can on_doc with Doc entry {
+        self.titles.append(here.title);
+        visit [-->];
+    }
+}
+
+"""Spawn a walker below the hub and list the titles it reaches."""
+walker walk_titles {
+    has hub_id: str;
+
+    can enter with Root entry {
+        hub = _node(self.hub_id);
+        w = collect();
+        for n in [hub-->] {
+            n spawn w;
+        }
+        print("WALK:" + ",".join(sorted(w.titles)));
+        print("FOUND:" + str(len([hub-->[?:Doc, title=="Budget"]])));
+    }
+}
+
+"""The member list as the caller sees it: who:level, sorted."""
+walker members_of {
+    has group_id: str;
+
+    can enter with Root entry {
+        group = _node(self.group_id);
+        rows = sorted([m.who() + ":" + str(m.level) for m in [edge group<-:Member:<-]]);
+        print("MEMBERS:" + ",".join(rows));
+    }
+}
+
+walker share_in_one_request {
+    has target_id: str,
+        who_id: str;
+
+    can enter with Root entry {
+        target = _node(self.target_id);
+        set_access(target, self.who_id, "WRITE");
+        set_access(target, self.who_id, "READ");
+        clear_access(target, self.who_id);
+        set_access(target, self.who_id, "CONNECT");
+        print("EDGES:" + str(len([edge target<-:Member:<-])));
     }
 }

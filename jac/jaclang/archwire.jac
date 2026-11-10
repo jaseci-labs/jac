@@ -2537,7 +2537,7 @@ graph import {
             access_level_cast
         },
         lib.jaclib { GenericEdge, ObjectSpatialFunction as DSFunc, Root },
-        server.session { Anchor, EdgeAnchor, NodeAnchor, Root },
+        server.session { Anchor, EdgeAnchor, NodeAnchor, Root, untracked_class },
     ]
     runtime.archetype --> compiler.native_compiler.NativeCompiler._register {
         NodeAnchor
@@ -15113,7 +15113,7 @@ graph import runtime {
             Root,
             access_level_cast
         },
-        memory { Anchor, Root },
+        memory { Anchor, Root, untracked_class },
         osp_graph_sv { Anchor, EdgeAnchor, NodeAnchor, anchor_key, same_anchor },
         osp_kernel_sv {
             EdgeAnchor,
@@ -15139,7 +15139,8 @@ graph import runtime {
             light_hop,
             light_hop_answers,
             new_connect_edge,
-            same_anchor
+            same_anchor,
+            untracked_class
         },
         runtime.JacLLM.by_operator { EdgeArchetype, NodeArchetype },
     ]
@@ -15210,15 +15211,12 @@ graph import runtime {
         runtime.JacAccessValidation.set_access { set_access },
     ]
     membership --> [
-        runtime.JacAccessValidation.allow_group { forget_principals },
-        runtime.JacAccessValidation.allow_root { forget_principals },
         runtime.JacAccessValidation.check_access_level {
             member_edge_level,
             principals
         },
-        runtime.JacAccessValidation.disallow_group { forget_principals },
-        runtime.JacAccessValidation.disallow_root { forget_principals },
-        runtime.JacGraph.heavy_edge { attach_owner },
+        runtime.JacGraph.heavy_edge { inherit_access },
+        runtime.JacPersistence.destroy { owned_by },
         runtime.JacPersistence.save { set_access },
     ]
     memory ++> context { Memory }

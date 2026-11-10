@@ -71,6 +71,11 @@ def _acme -> dict[str, str] {
     return w;
 }
 
+"""Run a walker as `who`; any arg that names a key of `w` is replaced by its id."""
+def _as(w: dict[str, str], who: str, walker_name: str, *args: str) -> str {
+    return _run(walker_name, args=[w.get(a, a) for a in args], root_id=w[who]);
+}
+
 def _level(w: dict[str, str], who: str, target: str) -> str {
     return _line(_run("level_of", args=[w[target]], root_id=w[who]), "LEVEL:");
 }
@@ -151,7 +156,7 @@ test "sharing a node shares what is under it and nothing above it" {
         w["page1"] = page1;
 
         assert _line(_run("owner_of", args=[page1], root_id=w["alice"]), "OWNER:")
-            == doc1 , "the shared node did not take over its subtree";
+            == w["acme"] , "sharing a node changed who owns what is under it";
         for (who, target, level) in [
             ("shane", "doc1", "WRITE"),
             ("shane", "page1", "WRITE"),
@@ -165,9 +170,9 @@ test "sharing a node shares what is under it and nothing above it" {
         out = _run("visible", args=[doc1], root_id=w["shane"]);
         assert _line(out, "TYPED:") == "1" and _line(out, "UNTYPED:") == "1" , out;
 
-        # What shane adds under Doc1 belongs to Doc1, so alice sees it too.
+        # What shane adds under Doc1 belongs to Doc1's owner, so alice sees it too.
         out = _run("add_doc", args=[doc1, "Page2"], root_id=w["shane"]);
-        assert _line(out, "OWNER:") == doc1 , out;
+        assert _line(out, "OWNER:") == w["acme"] , out;
         page2 = _line(out, "DOC:");
         assert _line(_run("level_of", args=[page2], root_id=w["alice"]), "LEVEL:")
             == "ADMIN";
@@ -274,6 +279,203 @@ test "a group can be a member, and its members are capped by both levels" {
         }
         out = _run("visible", args=[w["acme"]], root_id=w["carol"]);
         assert _line(out, "TYPED:") == "2" and _line(out, "UNTYPED:") == "2" , out;
+    } finally {
+        _done(state);
+    }
+}
+
+test "each level allows what it says, and refused writes change nothing" {
+    state = _fresh();
+    try {
+        w = _acme();
+        for (who, lvl) in [("bob", "READ"), ("carol", "CONNECT"), ("dave", "WRITE")] {
+            _as(w, "alice", "share", "acme", who, lvl);
+        }
+        # (who, attaches under Acme, edits Plan, deletes Budget)
+        for (who, attach, edit, delete) in [
+            ("shane", False, False, False),
+            ("bob", False, False, False),
+            ("carol", True, False, False),
+            ("dave", True, True, True)
+        ] {
+            got = _line(_as(w, who, "add_doc", "acme", "by-" + who), "DOC:");
+            assert (got not in ("", "None")) == attach , f"{who} attach: {got!r}";
+            _as(w, who, "edit_doc", "plan", "by-" + who);
+            stored = _line(_as(w, "alice", "true_title", "plan"), "TRUE:");
+            assert (stored == "by-" + who) == edit , f"{who} edit: {stored!r}";
+            _as(w, who, "delete_node", "budget");
+            gone = _line(_as(w, "alice", "true_title", "budget"), "TRUE:") == "GONE";
+            assert gone == delete , f"{who} delete";
+        }
+    } finally {
+        _done(state);
+    }
+}
+
+test "walkers and filtered queries see what the caller may see" {
+    state = _fresh();
+    try {
+        w = _acme();
+        w["Sub"] = _line(_as(w, "alice", "add_doc", "plan", "Sub"), "DOC:");
+        _as(w, "alice", "share", "acme", "bob", "READ");
+        _as(w, "alice", "share", "budget", "bob", "NO_ACCESS");
+        _as(w, "alice", "share", "plan", "carol", "READ");
+        for (who, hub, walked, budget) in [
+            ("alice", "acme", "Budget,Plan,Sub", "1"),
+            ("bob", "acme", "Plan,Sub", "0"),
+            ("carol", "plan", "Sub", "0"),
+            ("dave", "acme", "", "0")
+        ] {
+            out = _as(w, who, "walk_titles", hub);
+            assert _line(out, "WALK:") == walked , f"{who} walk: {out!r}";
+            assert _line(out, "FOUND:") == budget , f"{who} filter: {out!r}";
+        }
+    } finally {
+        _done(state);
+    }
+}
+
+test "nested groups cap along a chain, take the best path, and a cycle ends" {
+    state = _fresh();
+    try {
+        w = _acme();
+        for name in ("Eng", "Backend") {
+            w[name] = _as(w, "alice", "new_org", name);
+        }
+        for (target, who, lvl) in [
+            ("acme", "Eng", "WRITE"),
+            ("Eng", "Backend", "ADMIN"),
+            ("Backend", "bob", "READ"),
+            ("Backend", "carol", "ADMIN")
+        ] {
+            _as(w, "alice", "share", target, who, lvl);
+        }
+        assert _level(w, "bob", "plan") == "READ";
+        assert _level(w, "carol", "plan") == "WRITE" , "ADMIN of a WRITE member went past WRITE";
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        assert _level(w, "bob", "plan") == "WRITE" , "the better path did not win";
+        _as(w, "alice", "share", "Backend", "acme", "READ");
+        assert _level(w, "bob", "plan") == "WRITE";
+        assert _level(w, "dave", "plan") == "NO_ACCESS";
+    } finally {
+        _done(state);
+    }
+}
+
+test "level changes keep one edge, also within one request" {
+    state = _fresh();
+    try {
+        w = _acme();
+        out = _as(w, "alice", "share_in_one_request", "acme", "bob");
+        assert _line(out, "EDGES:") == "2" , out;
+        assert _level(w, "bob", "plan") == "CONNECT";
+        for lvl in ("WRITE", "READ") {
+            _as(w, "alice", "share", "acme", "bob", lvl);
+            assert _level(w, "bob", "plan") == lvl;
+        }
+        assert _line(_as(w, "alice", "members_of", "acme"), "MEMBERS:").count(":") == 2;
+        _as(w, "alice", "share", "acme", "carol", "ADMIN");
+        _as(w, "carol", "share", "acme", "alice", "WRITE");
+        assert _level(w, "alice", "plan") == "WRITE";
+        assert ":DENIED" in _as(w, "alice", "share", "acme", "dave", "READ");
+    } finally {
+        _done(state);
+    }
+}
+
+test "admins see the member list, members see only themselves" {
+    state = _fresh();
+    try {
+        w = _acme();
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        _as(w, "alice", "share", "acme", "carol", "READ");
+        rows = {
+            "alice": ",".join(
+                sorted([w["alice"] + ":3", w["bob"] + ":2", w["carol"] + ":0"])
+            ),
+            "bob": w["bob"] + ":2",
+            "carol": w["carol"] + ":0",
+            "dave": ""
+        };
+        for (who, want) in rows.items() {
+            got = _line(_as(w, who, "members_of", "acme"), "MEMBERS:");
+            assert got == want , f"{who}: {got!r}";
+        }
+    } finally {
+        _done(state);
+    }
+}
+
+test "bad input is refused and changes nothing" {
+    state = _fresh();
+    try {
+        w = _acme();
+        for (who, lvl) in [
+            ("bob", "SUPER"),
+            ("bob", "7"),
+            ("plan", "READ"),
+            ("ab" * 16, "READ"),
+            ("not-a-uuid", "READ")
+        ] {
+            out = _as(w, "alice", "share", "acme", who, lvl);
+            assert ":INVALID" in out , f"{who}/{lvl}: {out!r}";
+        }
+        assert _line(_as(w, "alice", "members_of", "acme"), "MEMBERS:")
+            == w["alice"] + ":3";
+    } finally {
+        _done(state);
+    }
+}
+
+test "sharing never moves ownership, so unsharing or deleting loses nothing" {
+    state = _fresh();
+    try {
+        w = _acme();
+        # alice's own graph: root -> Doc1 -> Page1, and Note -> Page1 (a second parent)
+        for (parent, title) in [
+            ("alice", "Doc1"),
+            ("Doc1", "Page1"),
+            ("alice", "Note")
+        ] {
+            w[title] = _line(_as(w, "alice", "add_doc", parent, title), "DOC:");
+        }
+        _as(w, "alice", "share", "Doc1", "shane", "WRITE");
+        assert _level(w, "shane", "Page1") == "WRITE";
+        assert _line(_as(w, "alice", "owner_of", "Page1"), "OWNER:") == w["alice"];
+
+        _as(w, "alice", "unshare", "Doc1", "shane");
+        _as(w, "alice", "make_public", "alice", "READ");
+        for (who, target, level) in [
+            ("shane", "Page1", "READ"),
+            ("dave", "Page1", "READ"),
+            ("alice", "Page1", "ADMIN")
+        ] {
+            assert _level(w, who, target) == level , f"{who} on {target} after unshare";
+        }
+
+        _as(w, "alice", "share", "Doc1", "shane", "WRITE");
+        assert _line(_as(w, "shane", "delete_node", "Doc1"), "DEL:") == "ok";
+        assert _line(_as(w, "alice", "owner_of", "Page1"), "OWNER:") == w["alice"];
+        assert _level(w, "alice", "Page1") == "ADMIN" , "deleting a shared node lost its subtree";
+    } finally {
+        _done(state);
+    }
+}
+
+test "an org is deleted only by its admin, and only when empty" {
+    state = _fresh();
+    try {
+        w = _acme();
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        assert "needs ADMIN" in _as(w, "bob", "delete_node", "acme");
+        out = _as(w, "alice", "delete_node", "acme");
+        assert "still owns" in out , out;
+        for doc in ("plan", "budget") {
+            _as(w, "alice", "delete_node", doc);
+        }
+        assert _line(_as(w, "alice", "delete_node", "acme"), "DEL:") == "ok";
+        assert _line(_run("my_groups", root_id=w["bob"]), "GROUPS:") == "";
+        assert "cannot destroy root" in _as(w, "alice", "delete_node", "alice");
     } finally {
         _done(state);
     }

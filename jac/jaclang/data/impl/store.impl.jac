@@ -934,6 +934,20 @@ impl PgStore.member_edges(src_ids: list[UUID]) -> list[tuple[UUID, UUID, UUID, i
 }
 
 
+impl PgStore.owned_ids(owner: UUID, limit: int) -> list[UUID] {
+    rows = self._run(
+        """
+        SELECT id FROM anchors
+         WHERE root_id = CAST(:owner AS uuid) AND id <> CAST(:owner AS uuid)
+           AND NOT (kind = 'EdgeAnchor' AND arch_type = 'Member'
+                    AND arch_module = 'jaclang.runtime.membership')
+         LIMIT :lim
+        """,
+        {'owner': str(owner), 'lim': limit}
+    );
+    return [UUID(str(r[0])) for r in rows];
+}
+
 impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     if not rows_in {
         return;
