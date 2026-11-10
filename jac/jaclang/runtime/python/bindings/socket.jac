@@ -1,3 +1,5 @@
+glob __all__ = ["netdb_lock"];
+
 import from c {
     glob:priv sock_members: list[PyMemberDef] = [
              PyMemberDef(

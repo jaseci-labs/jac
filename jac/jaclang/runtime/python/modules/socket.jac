@@ -1,3 +1,5 @@
+glob __all__ = ["sock_cloexec_works"];
+
 import from c {
     obj servent {
         has s_name: ptr[u8] = ptr[u8](),
