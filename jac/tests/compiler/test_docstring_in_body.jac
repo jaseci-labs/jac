@@ -76,6 +76,7 @@ test "E0111 is reported in every kind of body" {
         "impl": 'obj A {\n    def m -> int;\n}\n\nimpl A.m -> int {\n    """Doc."""\n    if True {\n        return 1;\n    }\n    return 0;\n}\n',
         "lambda": 'with entry {\n    g = lambda (x: int) -> int {\n        """Doc."""\n        if x > 0 {\n            return x;\n        }\n        return 0;\n    };\n    print(g(1));\n}\n',
         "nested def": 'def outer(x: int) -> int {\n    def inner(y: int) -> int {\n        """Doc."""\n        if y > 0 {\n            return y;\n        }\n        return 0;\n    }\n    return inner(x);\n}\n',
+        "client component": 'def:pub App() -> JsxElement {\n    """Doc."""\n    if True {\n        print(1);\n    }\n    return <div>hi</div>;\n}\n',
         "single-quoted": in_function('"Doc."' + if_x),
         "raw prefix": in_function('r"""Doc."""' + if_x),
         "two strings": in_function('"""Doc."""\n    """More."""' + if_x),

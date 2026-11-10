@@ -3483,16 +3483,10 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
     flagged_at: list[int] = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
-        if self._view_body_depth == 0 and self._docstring_runs_on() {
-            doc = self.parse_multistring();
-            if doc is not None {
-                self.emit_diag(
-                    "A docstring goes before the declaration, not inside the body",
-                    "E0111",
-                    loc=self.tokens[before].loc.span_to(self.previous().loc),
-                    help="This string has no ';', so it would be read together with the next line. Move it above the declaration, or write the note as a # comment."
-                );
-                stmts.append(ExprStmt(expr=doc, in_fstring=False, kid=[doc]));
+        if self._view_body_depth == 0 {
+            stray = self._take_stray_docstring();
+            if stray is not None {
+                stmts.append(stray);
                 continue;
             }
         }
@@ -3572,6 +3566,24 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
         );
     }
     return stmts;
+}
+
+impl Parser._take_stray_docstring -> (ExprStmt | None) {
+    if not self._docstring_runs_on() {
+        return None;
+    }
+    start = self.current().loc;
+    doc = self.parse_multistring();
+    if doc is None {
+        return None;
+    }
+    self.emit_diag(
+        "A docstring goes before the declaration, not inside the body",
+        "E0111",
+        loc=start.span_to(self.previous().loc),
+        help="This string has no ';', so it would be read together with the next line. Move it above the declaration, or write the note as a # comment."
+    );
+    return ExprStmt(expr=doc, in_fstring=False, kid=[doc]);
 }
 
 impl Parser._docstring_runs_on -> bool {
