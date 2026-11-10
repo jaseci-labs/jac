@@ -234,6 +234,7 @@ graph import {
             | client.targets.react_native.build
             | client.targets.react_native.dev
             | client.targets.react_native.scaffold
+            | client.targets.seo_build
             | client.targets.static_target
             | client.targets.web_target.WebTarget.dev
             | client.vite_bundler
@@ -1997,9 +1998,10 @@ graph import {
             | client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
             | dist.seal.ensure_client_dist
             | server.server.JacAPIServer._ensure_client_bundle { client_app_dir_for },
+        client.config_loader.JacClientConfig.get_app_root { client_app_root },
         client.config_loader.JacClientConfig.get_assets_config { client_assets_config },
         client.config_loader.JacClientConfig.get_assets_dir { client_assets_dir },
-        client.config_loader.JacClientConfig.get_public_dirs { client_app_root },
+        client.config_loader.JacClientConfig.get_seo_config { client_seo_config },
         client.targets.react_native.scaffold._project_native_deps {
             client_workspace_app
         },
@@ -2007,7 +2009,8 @@ graph import {
             client_app_dir_for,
             client_app_root,
             client_assets_config,
-            client_assets_dir
+            client_assets_dir,
+            client_seo_config
         },
     ]
     project.client_paths --> [
@@ -2217,6 +2220,7 @@ graph import {
             set_config
         },
         scale.tests.misc.test_config_validation { JacConfig },
+        server.static_files.robots_response { ServeConfigError },
     ]
     type project.config ++> [
         cli.commands.build { AppConfig },
@@ -4333,9 +4337,22 @@ graph import {
     ]
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
-    server.static_files ++> client.targets.web_target._copy_public_dirs {
-        ROOT_ASSET_EXTENSIONS
-    }
+    server.static_files ++> [
+        client.targets.seo_build.apply_seo { ROBOTS_PATH, SITEMAP_PATH },
+        client.targets.seo_build.clear_seo_files { ROBOTS_PATH, SITEMAP_PATH },
+        client.targets.seo_build.render_robots { SITEMAP_PATH },
+        client.targets.web_target._copy_public_dirs { ROOT_ASSET_EXTENSIONS },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
+            SEO_ROOT_FILES
+        },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.dispatch {
+            robots_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
+            SEO_ROOT_FILES,
+            robots_response
+        },
+    ]
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
@@ -5209,6 +5226,7 @@ graph import client {
         jac_client_compiler.JacClientCompiler._warn_unrouted_pages {
             describe_unrouted_pages
         },
+        targets.seo_build { RouteEntry, RouteScanner, resolve_route_exports },
     ]
     runtime_source ++> [
         compiler.ViteCompiler.compile_runtime_utils { resolve_client_runtime_cl_path },
@@ -5364,6 +5382,7 @@ graph import client.targets {
         mobile_target | web_target { ClientTarget },
         register { get_target_registry },
     ]
+    seo_build --> web_target.WebTarget.build { apply_seo, clear_seo_files, scan_routes }
     static_target ++> register { StaticTarget }
     web_target ++> desktop.desktop_target | register | static_target { WebTarget }
     web_target --> mobile_target.MobileTarget.build { WebTarget }
@@ -14949,6 +14968,7 @@ graph import project {
         tool_paths { JacConfig, get_config },
     ]
     config --> [
+        client_paths.client_seo_config { ServeConfigError, apply_table },
         compiler_host.ProjectHost.check_settings | modresolver._get_path_aliases {
             get_config
         },
@@ -47019,11 +47039,14 @@ graph import server {
     endpoints.introspection ++> server.JacAPIServer.register_endpoints {
         register_introspection_endpoints
     }
-    endpoints.pages ++> server.JacAPIServer.register_endpoints {
-        register_diagnostics_endpoints,
-        register_graph_endpoints,
-        register_page_endpoints
-    }
+    endpoints.pages ++> [
+        server.JacAPIServer.build_app { robots_middleware },
+        server.JacAPIServer.register_endpoints {
+            register_diagnostics_endpoints,
+            register_graph_endpoints,
+            register_page_endpoints
+        },
+    ]
     endpoints.walkers ++> server.JacAPIServer.register_endpoints {
         register_function_endpoints,
         register_walker_endpoints
@@ -47197,7 +47220,10 @@ graph import server {
             | endpoints.introspection
             | endpoints.second_factor
             | identity.audit { Request },
-        endpoints.colocated | identity.session_cookie { Request, Response },
+        endpoints.colocated | identity.session_cookie | static_files {
+            Request,
+            Response
+        },
         endpoints.pages { HTMLResponse, JSONResponse, Request, Response },
         endpoints.walkers { FileResponse, Request, Response, StreamingResponse },
         exchange { JSONResponse, Request },
@@ -47269,9 +47295,11 @@ graph import server {
     shared_store --> identity.auth_tokens.AuthTokenStore.__post_init__ { shared_store }
     static_files ++> [
         endpoints.pages {
+            SEO_ROOT_FILES,
             client_dist_index,
             find_root_asset,
             find_static_candidate,
+            robots_response,
             sibling_app_dist,
             sibling_app_file
         },
