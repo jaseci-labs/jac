@@ -10,10 +10,17 @@ cpython_api.jac it shares); it reads no header:
 
     jac run scripts/jacpython/gen_layouts.jac            # rewrite the checks
     jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
+    jac run scripts/jacpython/gen_layouts.jac --platform darwin.aarch64 \\
+        --config <macos-aarch64>/python/install/include/python3.14
 
 The platform constants need `zig` (or `--zig`) to cross-compile their probe
 for each target, against that target's own pyconfig.h, which
-bootstrap/pyconfig_tool.zig writes from the build's probes.
+bootstrap/pyconfig_tool.zig writes from the build's probes. With --platform,
+only that target's table is regenerated: --config names an already-configured
+pyconfig.h for it (probed when omitted), --sysroot its SDK (found with xcrun
+for darwin), and the other tables keep their generated values. Under --check
+that narrows the comparison to the one table and layouts_check.c, so the run
+without --platform is what gates drift.
 
 - jaclang/runtime/python/layouts.jac: one foreign struct per layout in LAYOUTS
   (and the structs they embed by value), function-pointer slots as
@@ -44,6 +51,7 @@ import argparse;
 import os;
 import re;
 import shlex;
+import shutil;
 import subprocess;
 import sys;
 import tempfile;
@@ -51,6 +59,7 @@ import from pathlib { Path }
 import from common {
     BOOTSTRAP,
     JAC,
+    REPO,
     RUNTIME,
     format_jac,
     generated_copy,
@@ -7514,36 +7523,65 @@ def render_platform(suffix: str, values: dict[str, int]) -> str {
 }
 
 # --------------------------------------------------------------- C toolchain
-# Each platform's pyconfig.h, from the build's own probes run for that target
-# (bootstrap/pyconfig_tool.zig): {platform suffix: directory holding it}.
+# One platform's pyconfig.h, from the build's own probes run for that target
+# (bootstrap/pyconfig_tool.zig).
+def platform_config(zig: str, suffix: str, target: str, scratch: Path) -> Path {
+    (system, arch) = suffix.split(".");
+    os_name = "macos" if system == "darwin" else system;
+    out = scratch / f"config-{suffix}";
+    out.mkdir();
+    result = subprocess.run(
+        [
+            zig,
+            "run",
+            str(JAC / "bootstrap/pyconfig_tool.zig"),
+            "--",
+            zig,
+            str(out),
+            os_name,
+            arch,
+            target,
+            f"{os_name}-{arch}"
+        ],
+        capture_output=True,
+        text=True
+    );
+    if result.returncode != 0 {
+        sys.exit(f"Probing {suffix}'s pyconfig.h failed:\n{result.stderr}");
+    }
+    return out;
+}
+
+# Each platform's pyconfig.h: {platform suffix: directory holding it}.
 def platform_configs(zig: str, scratch: Path) -> dict[str, Path] {
     configs: dict[str, Path] = {};
     for (suffix, target, _) in PLATFORMS {
-        (system, arch) = suffix.split(".");
-        out = scratch / f"config-{suffix}";
-        out.mkdir();
-        result = subprocess.run(
-            [
-                zig,
-                "run",
-                str(JAC / "bootstrap/pyconfig_tool.zig"),
-                "--",
-                zig,
-                str(out),
-                "macos" if system == "darwin" else system,
-                arch,
-                target,
-                ("macos" if system == "darwin" else system) + "-" + arch
-            ],
-            capture_output=True,
-            text=True
-        );
-        if result.returncode != 0 {
-            sys.exit(f"Probing {suffix}'s pyconfig.h failed:\n{result.stderr}");
-        }
-        configs[suffix] = out;
+        configs[suffix] = platform_config(zig, suffix, target, scratch);
     }
     return configs;
+}
+
+# A generated table's current PLATFORM_CONSTANTS, for the platforms a
+# --platform run does not probe. Every constant must be there: a table the
+# probe did not write keeps the value it was generated with, never a default.
+def existing_platform(suffix: str) -> dict[str, int] {
+    table = RUNTIME / f"{PLATFORM_OUTPUT}.{suffix}.jac";
+    if not table.is_file() {
+        sys.exit(f"{table.relative_to(REPO)} is missing; rerun {COMMAND}");
+    }
+    declared = jac_constants(table);
+    missing = [
+        name
+        for (name, _, _) in PLATFORM_CONSTANTS
+        if name not in declared
+    ];
+    if missing {
+        sys.exit(
+            f"{table.relative_to(REPO)} has no value for {', '.join(missing)}; "
+            f"rerun {COMMAND} without --platform"
+        );
+    }
+    return {name: declared[name][1] for (name, _, _) in PLATFORM_CONSTANTS};
 }
 
 # The platform suffix of this machine, whose configuration the asserts are
@@ -7659,9 +7697,21 @@ with entry:__main__ {
     parser = argparse.ArgumentParser(
         description="Check the Jac object layouts against the generated headers"
     );
-    parser.add_argument("--cc", help="C compiler command");
+    parser.add_argument(
+        "--cc",
+        help="C compiler command for verification (defaults to the target zig cc with --platform)"
+    );
+    parser.add_argument(
+        "--config", help="directory holding a configured pyconfig.h for --platform"
+    );
     parser.add_argument("--zig", help="zig, for the platform constants");
-    parser.set_defaults(cc="cc", zig="zig");
+    parser.add_argument("--sysroot", help="target SDK/sysroot for a --platform probe");
+    parser.add_argument(
+        "--platform",
+        choices=[suffix for (suffix, _, _) in PLATFORMS],
+        help="regenerate only this target's table (defaults to all targets)"
+    );
+    parser.set_defaults(zig="zig");
     parser.add_argument("--check", action="store_true");
     args = parser.parse_args();
     compute_layouts(LAYOUTS_JAC);
@@ -7678,21 +7728,64 @@ with entry:__main__ {
     current = True;
     with tempfile.TemporaryDirectory() as scratch {
         headers = stage_headers(Path(scratch));
-        configs = platform_configs(args.zig, Path(scratch));
         platform_values: dict[str, dict[str, int]] = {};
-        for (suffix, target, _) in PLATFORMS {
-            platform_values[suffix] = extract(
-                probe_flags(headers, configs[suffix]),
-                [args.zig, "cc", "-target", target]
+        if args.platform {
+            targets = {suffix: zig_target for (suffix, zig_target, _) in PLATFORMS};
+            target = targets[args.platform];
+            config = Path(args.config)
+                if args.config
+                else platform_config(args.zig, args.platform, target, Path(scratch));
+            sysroot = args.sysroot or "";
+            if (
+                args.platform.startswith("darwin.")
+                and not sysroot
+                and shutil.which("xcrun")
+            ) {
+                result = subprocess.run(
+                    ["xcrun", "--sdk", "macosx", "--show-sdk-path"],
+                    capture_output=True,
+                    text=True
+                );
+                if result.returncode == 0 {
+                    sysroot = result.stdout.strip();
+                }
+            }
+            target_compiler = [args.zig, "cc", "-target", target];
+            if sysroot {
+                target_compiler += [
+                    "-isysroot",
+                    sysroot,
+                    "-isystem",
+                    f"{sysroot}/usr/include"
+                ];
+            }
+            platform_values = {
+                suffix: existing_platform(suffix) for (suffix, _, _) in PLATFORMS
+            };
+            platform_values[args.platform] = extract(
+                probe_flags(headers, config), target_compiler
             );
+            verify_flags = probe_flags(headers, config);
+            verify_compiler = shlex.split(args.cc) if args.cc else target_compiler;
+        } else {
+            configs = platform_configs(args.zig, Path(scratch));
+            for (suffix, target, _) in PLATFORMS {
+                platform_values[suffix] = extract(
+                    probe_flags(headers, configs[suffix]),
+                    [args.zig, "cc", "-target", target]
+                );
+            }
+            verify_flags = probe_flags(headers, configs[host_suffix()]);
+            verify_compiler = shlex.split(args.cc or "cc");
         }
         check = render_check(values, platform_values);
-        verify(
-            check, probe_flags(headers, configs[host_suffix()]), shlex.split(args.cc)
-        );
+        verify(check, verify_flags, verify_compiler);
     }
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
-    for (suffix, _, _) in PLATFORMS + [("", "", "")] {
+    suffixes = (
+        [args.platform] if args.platform else [suffix for (suffix, _, _) in PLATFORMS]
+    );
+    for suffix in suffixes + [""] {
         table = RUNTIME
             / (
                 f"{PLATFORM_OUTPUT}.{suffix}.jac"
