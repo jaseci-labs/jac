@@ -448,7 +448,8 @@ jobs:
       # The checkout's precompile bundle, built in place
       # (jaclang/_precompiled). Every unit is checked against its source and
       # compiler, so a restored tree only lets unchanged modules skip the
-      # recompile; the compiler digest scopes the prefix.
+      # recompile. The last prefix takes any earlier bundle, so a compiler
+      # edit recompiles only the modules it reaches.
       - name: Restore the dev precompile bundle
         id: dev-precompiled-cache
         uses: actions/cache/restore@v4
@@ -457,6 +458,7 @@ jobs:
           key: jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
             jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-
+            jac-dev-precompiled-
 
       - name: Restore the dev stub catalog
         id: dev-stubcat-cache
