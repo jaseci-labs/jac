@@ -660,7 +660,9 @@ test "a stream inside another open unit leaves that unit's work to the unit, how
         scope = _open_scope(project);
         with scope as context {
             context.mem.unit_enter();
-            unit_write = _write_note(f"the unit's work before a {kind} stream that {outcome}");
+            unit_write = _write_note(
+                f"the unit's work before a {kind} stream that {outcome}"
+            );
             source = achunks(outcome) if kind == "async" else chunks(outcome);
             stream = await ExecutionContext(_parent=context).bind_stream(source);
             await consume(stream, kind, outcome);
