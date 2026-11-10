@@ -565,8 +565,31 @@ impl precompile_unit(
     app: str = "",
     skip_analysis: bool = False
 ) -> bytes | None {
-    with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
-        return _precompile_unit(jac_path, pkg_root, program, embed_src, skip_analysis);
+    prof_dir = os.environ.get("JAC_PRECOMPILE_PROFILE", "");
+    if not prof_dir {
+        with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
+            return _precompile_unit(
+                jac_path, pkg_root, program, embed_src, skip_analysis
+            );
+        }
+    }
+    import cProfile;
+    if not _unit_profiler or _unit_profiler[0][0] != os.getpid() {
+        _unit_profiler.clear();
+        _unit_profiler.append((os.getpid(), cProfile.Profile()));
+    }
+    prof = _unit_profiler[0][1];
+    prof.enable();
+    try {
+        with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
+            return _precompile_unit(
+                jac_path, pkg_root, program, embed_src, skip_analysis
+            );
+        }
+    } finally {
+        prof.disable();
+        os.makedirs(prof_dir, exist_ok=True);
+        prof.dump_stats(os.path.join(prof_dir, f"{os.getpid()}.prof"));
     }
 }
 
