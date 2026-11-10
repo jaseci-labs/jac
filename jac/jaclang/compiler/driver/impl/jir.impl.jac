@@ -1517,7 +1517,9 @@ impl _touch_generation(cache_dir: Path) {
     _TOUCHED_GENERATIONS.add(key);
     import from jaclang.cache.registry { bucket }
     if cache_dir.is_dir() {
-        bucket("jir-modules").note_hit(cache_dir);
+        try {
+            bucket("jir-modules").note_hit(cache_dir);
+        } except ImportError {}
     }
 }
 
