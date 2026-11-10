@@ -6,7 +6,7 @@
 //!
 //!     fetch_pbs <os-arch> <dest-dir> <pins.json>
 //!
-//! Downloads + SHA256SUMS-verifies + extracts the pbs tree into <dest>/python.
+//! Downloads, checks against the sha256 pinned in pins.json, and extracts the pbs tree into <dest>/python.
 //! Idempotent: a no-op when <dest>/python/PBS_ASSET names the pinned archive.
 //! The archive is extracted beside the tree and swapped in only once complete,
 //! so an interrupted fetch or a pin change never leaves a tree that passes for
@@ -34,7 +34,7 @@ const PBS_WINDOW = 1 << 27;
 // Written into the tree only after a complete extract: the archive it came from.
 const STAMP = "PBS_ASSET";
 
-const Pins = struct { tag: []const u8, python: []const u8, flavor: []const u8, base: []const u8 };
+const Pins = struct { tag: []const u8, python: []const u8, flavor: []const u8, base: []const u8, sha256: []const u8 };
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -52,7 +52,7 @@ pub fn main(init: std.process.Init) !void {
     if (n < 4) die("usage: fetch_pbs <os-arch> <dest-dir> <pins.json>", .{});
     const osarch = args[1];
     const dest = args[2];
-    const pins = try readPins(io, a, args[3]);
+    const pins = try readPins(io, a, args[3], osarch);
 
     const plat = pbsPlatform(osarch) orelse die("fetch-pbs: unsupported platform '{s}'", .{osarch});
     const asset = try std.fmt.allocPrint(a, "cpython-{s}+{s}-{s}-{s}.tar.zst", .{ pins.python, pins.tag, plat, pins.flavor });
@@ -71,16 +71,12 @@ pub fn main(init: std.process.Init) !void {
     const tarzst = try httpGetAlloc(io, gpa, url);
     defer gpa.free(tarzst);
 
-    // Verify against the release's SHA256SUMS -- this archive becomes the
-    // libpython embedded in every distributed binary, so a swapped/MITM'd asset
-    // must not slip through.
-    const sums_url = try std.fmt.allocPrint(a, "{s}/{s}/SHA256SUMS", .{ pins.base, pins.tag });
-    const sums = try httpGetAlloc(io, gpa, sums_url);
-    defer gpa.free(sums);
-    const expected = findSumLine(sums, asset) orelse die("fetch-pbs: no checksum for {s} in SHA256SUMS", .{asset});
+    // Verify against the hash pinned in pins.json, not one fetched beside the
+    // archive: this archive becomes the interpreter in every distributed
+    // binary, so only a reviewed pin change may change its bytes.
     const actual = sha256Hex(tarzst);
-    if (!std.mem.eql(u8, &actual, expected)) {
-        die("fetch-pbs: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, expected, &actual });
+    if (!std.mem.eql(u8, &actual, pins.sha256)) {
+        die("fetch-pbs: checksum mismatch for {s}\n  pinned {s}\n  actual {s}", .{ asset, pins.sha256, &actual });
     }
 
     // zstd-decompress + untar into a staging dir beside the tree (entries
@@ -111,7 +107,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 /// `pins.json` -> the `pbs` table. Only the four keys the seed needs are read.
-fn readPins(io: Io, a: Allocator, path: []const u8) !Pins {
+fn readPins(io: Io, a: Allocator, path: []const u8, osarch: []const u8) !Pins {
     const raw = Io.Dir.cwd().readFileAlloc(io, path, a, .unlimited) catch |err|
         die("fetch-pbs: cannot read {s}: {s}", .{ path, @errorName(err) });
     const parsed = std.json.parseFromSliceLeaky(std.json.Value, a, raw, .{}) catch |err|
@@ -125,6 +121,7 @@ fn readPins(io: Io, a: Allocator, path: []const u8) !Pins {
         .python = jsonString(pbs, "python", path),
         .flavor = jsonString(pbs, "flavor", path),
         .base = jsonString(pbs, "base", path),
+        .sha256 = jsonString(jsonObject(pbs, "sha256", path), osarch, path),
     };
 }
 
@@ -139,6 +136,17 @@ fn jsonString(table: std.json.Value, key: []const u8, path: []const u8) []const 
     };
 }
 
+fn jsonObject(table: std.json.Value, key: []const u8, path: []const u8) std.json.Value {
+    const v = switch (table) {
+        .object => |o| o.get(key) orelse die("fetch-pbs: {s}: pbs.{s} missing", .{ path, key }),
+        else => die("fetch-pbs: {s}: \"pbs\" must be an object", .{path}),
+    };
+    return switch (v) {
+        .object => v,
+        else => die("fetch-pbs: {s}: pbs.{s} must be an object", .{ path, key }),
+    };
+}
+
 /// Map an os-arch token to the pbs platform triple.
 fn pbsPlatform(osarch: []const u8) ?[]const u8 {
     const m = std.StaticStringMap([]const u8).initComptime(.{
@@ -148,24 +156,6 @@ fn pbsPlatform(osarch: []const u8) ?[]const u8 {
         .{ "linux-aarch64", "aarch64-unknown-linux-gnu" },
     });
     return m.get(osarch);
-}
-
-/// SHA256SUMS lines are `<hex>  <filename>`; return the hex for `asset`.
-fn findSumLine(sums: []const u8, asset: []const u8) ?[]const u8 {
-    var lines = std.mem.splitScalar(u8, sums, '\n');
-    while (lines.next()) |line| {
-        var toks = std.mem.tokenizeAny(u8, line, " \t\r");
-        const hex = toks.next() orelse continue;
-        const name = toks.next() orelse continue;
-        if (std.mem.eql(u8, name, asset)) return hex;
-    }
-    return null;
-}
-
-test "findSumLine picks the matching asset" {
-    const sums = "aaaa  x.tar.zst\nbbbb  cpython-3.14.6+1-x-y.tar.zst\n";
-    try std.testing.expectEqualStrings("bbbb", findSumLine(sums, "cpython-3.14.6+1-x-y.tar.zst").?);
-    try std.testing.expect(findSumLine(sums, "nope") == null);
 }
 
 test "pbsPlatform maps the four shipped legs" {
