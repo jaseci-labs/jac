@@ -55,11 +55,11 @@ glob THINK: str = "REASONING " + ("step by step " * 20),
          ),
          ("nothing", {}, True)
      ],
-     # (label, stream, logging, tools, restream after finish_tool)
+     # (label, stream, logging, tools, answer through finish_tool)
      PATHS: list[tuple[str, bool, bool, bool, bool]] = [
          ("whole replies", False, False, True, False),
          ("stream", True, False, True, False),
-         ("stream, finish_tool restream", True, False, True, True),
+         ("stream, finish_tool answer", True, False, True, True),
          ("stream with events", True, True, True, False),
          ("stream with events, no tools", True, True, False, False)
      ],
@@ -76,14 +76,16 @@ def turn(
     llm: MockLLM,
     history: list[any],
     path: tuple[str, bool, bool, bool, bool],
-    message: str
+    message: str,
+    max_react_iterations: int = 0
 ) -> list[any] {
     (_, stream, logging, tools, _) = path;
     def ask(msg: str) -> str by llm(
         tools=[get_weather] if tools else [],
         conversation=history,
         stream=stream,
-        logging=logging
+        logging=logging,
+        max_react_iterations=max_react_iterations
     );
     out: any = ask(message);
     return list(out) if stream else [];
@@ -101,7 +103,7 @@ test "a reply's own fields are kept, sent back, streamed, counted and reported o
         raise RuntimeError("a hook that raises must not break the call");
     }
     for path in PATHS {
-        (path_name, stream, logging, tools, restream) = path;
+        (path_name, stream, logging, tools, finishes) = path;
         for (kind, fields, streams) in KINDS {
             if stream and not streams {
                 continue;
@@ -119,10 +121,11 @@ test "a reply's own fields are kept, sent back, streamed, counted and reported o
                         )
                     );
                 }
-                if restream {
+                if finishes {
                     replies.append(finish(answer, fields=fields, usage=USAGE));
+                } else {
+                    replies.append(say(answer, fields=fields, usage=USAGE));
                 }
-                replies.append(say(answer, fields=fields, usage=USAGE));
             }
             calls = len(replies);
             llm = MockLLM(outputs=replies, chunk_size=40);
@@ -273,28 +276,30 @@ test "compaction counts reasoning, and the hook then reports the rebuilt request
 test "a stream litellm cannot rebuild still keeps the reasoning it carried" {
     think = {"reasoning_content": THINK};
     no_builder = RuntimeError("no builder");
-    for (path, replies) in [
-        (PATHS[3], [say("Paris is sunny.", fields=think)]),
+    # A plain stream cut off by max_react_iterations asks for its answer and streams it.
+    for (path, cap, replies) in [
+        (PATHS[3], 0, [say("Paris is sunny.", fields=think)]),
         (
-            PATHS[2],
+            PATHS[1],
+            1,
             [
-                finish("Paris is sunny.", fields=think),
+                call("get_weather", {"city": "Paris"}),
                 say("Paris is sunny.", fields=think)
             ]
         )
     ] {
+        label = f"{path[0]}, max_react_iterations={cap}";
         history: list[any] = [];
         with mock.patch.object(
             _byllm_llm_mod.litellm, "stream_chunk_builder", side_effect=no_builder
         ) {
-            turn(MockLLM(outputs=replies), history, path, "How is Paris?");
+            turn(MockLLM(outputs=replies), history, path, "How is Paris?", cap);
         }
         reply = history[-1];
         assert (reply.get("content"), reply.get("reasoning_content"))
-            == ("Paris is sunny.", THINK) , f"{path[0]}: {reply}";
+            == ("Paris is sunny.", THINK) , f"{label}: {reply}";
     }
 }
-
 
 test "reasoning streams while the model is still thinking" {
     llm = MockLLM(
