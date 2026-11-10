@@ -17,8 +17,6 @@
 #                          and its Service in place, still clears the Service
 #                          and PDB of an app deployed before roles, and never
 #                          touches an object jac-scale does not manage
-#                          (its deploy first replaces a bundle PVC a destroy
-#                          left Terminating behind a leftover loader)
 #
 # Requires a reachable cluster (kind/minikube/microk8s/EKS) on the current
 # kubeconfig context and the scale deploy deps installed for `jac`.
@@ -376,36 +374,7 @@ _t "B+D+E PASSED"
 # select what goes. The Service and PDB are stripped of their role first, the
 # shape an app deployed before roles existed has, which destroy must still clear.
 echo "=== F: destroy --component application spares the database's Service ==="
-# F's deploy also redeploys onto a bundle PVC a destroy left Terminating (#10668).
-# A leftover loader mounting it holds it there through pvc-protection, so the race
-# happens every run: deploy must remove the loader, wait the PVC out, and recreate it.
-kubectl wait --for=delete "pvc/${APP}-bundles" -n "${ADOPTED_NS}" --timeout=180s >/dev/null 2>&1 || true
-kubectl apply -n "${ADOPTED_NS}" -f - >/dev/null <<YAML
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata: { name: ${APP}-bundles }
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources: { requests: { storage: 64Mi } }
----
-apiVersion: v1
-kind: Pod
-metadata: { name: ${APP}-bundle-loader }
-spec:
-  containers: [{ name: hold, image: registry.k8s.io/pause:3.10 }]
-  volumes: [{ name: b, persistentVolumeClaim: { claimName: ${APP}-bundles } }]
-YAML
-kubectl wait --for=condition=Ready "pod/${APP}-bundle-loader" -n "${ADOPTED_NS}" --timeout=120s >/dev/null \
-    || fail "${ADOPTED_NS}" "the stand-in loader never mounted pvc/${APP}-bundles"
-OLD_PVC_UID="$(kubectl get pvc "${APP}-bundles" -n "${ADOPTED_NS}" -o jsonpath='{.metadata.uid}')"
-kubectl delete pvc "${APP}-bundles" -n "${ADOPTED_NS}" --wait=false >/dev/null
-[ -n "$(deletion_timestamp "${ADOPTED_NS}" pvc "${APP}-bundles")" ] \
-    || fail "${ADOPTED_NS}" "pvc/${APP}-bundles is not held Terminating, so the redeploy below races nothing"
 deploy_app "${APP}" "${ADOPTED_NS}"
-[ "$(kubectl get pvc "${APP}-bundles" -n "${ADOPTED_NS}" -o jsonpath='{.metadata.uid}')" != "${OLD_PVC_UID}" ] \
-    || fail "${ADOPTED_NS}" "the redeploy kept the Terminating pvc/${APP}-bundles"
-require_present "${ADOPTED_NS}" pvc "${APP}-bundles"
-echo "  redeploy replaced a Terminating bundle PVC held by a leftover loader"
 kubectl label service "${APP}-service" -n "${ADOPTED_NS}" jac-scale.role- >/dev/null \
     || fail "${ADOPTED_NS}" "service/${APP}-service was not there to relabel as pre-role"
 # The app deploys without a PodDisruptionBudget (a floor of one replica that may

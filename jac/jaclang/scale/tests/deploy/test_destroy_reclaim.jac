@@ -573,13 +573,7 @@ test "a redeploy reuses a live bundle volume and replaces one a destroy left ter
     # (label, what reading the PVC returns in turn, expect it recreated)
     for (label, reads, recreated) in [
         ("live", [pvc(None)], False),
-        ("terminating", [terminating, ApiException(status=404)], True),
-        (
-            "terminating behind a slow loader",
-            [terminating, terminating, ApiException(status=404)],
-            True
-        ),
-
+        ("terminating", [terminating, terminating, ApiException(status=404)], True)
     ] {
         core_v1 = unittest.mock.MagicMock();
         core_v1.read_namespaced_persistent_volume_claim.side_effect = reads;
@@ -591,6 +585,8 @@ test "a redeploy reuses a live bundle volume and replaces one a destroy left ter
             );
         }
         calls = [call[0] for call in core_v1.mock_calls];
+        assert core_v1.read_namespaced_persistent_volume_claim.call_count
+            == len(reads) , f"{label}: the redeploy stopped reading before the PVC was gone";
         assert ("create_namespaced_persistent_volume_claim" in calls)
             == recreated , label;
         if recreated {
