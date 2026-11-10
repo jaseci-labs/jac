@@ -1016,6 +1016,31 @@ test "merge simple sections" {
             assert "jac.local.toml: [serve] graph_enabled must be true or false"
                 in str(refused) , str(refused);
         }
+        before = (cfg.serve.port, cfg.serve.timeouts.drain, cfg.serve.limits.backlog);
+        local.write_text(
+            "[serve]\nport = 9100\n\n[serve.timeouts]\ndrain = 3\n\n"
+            "[serve.limits]\nbacklog = true\n"
+        );
+        try {
+            cfg.merge_from_toml_file(local);
+            assert False , "a bad [serve.limits] value was accepted";
+        } except ServeConfigError as refused {
+            assert str(refused)
+                == "jac.local.toml: [serve.limits] backlog must be an integer, got True";
+        }
+        local.write_text("[serve]\nport = \"x\"\n\n[serve.limits]\nbacklog = true\n");
+        try {
+            cfg.merge_from_toml_file(local);
+            assert False , "two bad values were accepted";
+        } except ServeConfigError as refused {
+            assert str(refused).splitlines()
+                == [
+                    "jac.local.toml: [serve] port must be an integer, got 'x'",
+                    "jac.local.toml: [serve.limits] backlog must be an integer, got True"
+                ];
+        }
+        assert (cfg.serve.port, cfg.serve.timeouts.drain, cfg.serve.limits.backlog)
+            == before;
     }
 }
 
@@ -2013,7 +2038,14 @@ test "serve config carries no routing keys and refuses keys or values it does no
         (
             "[serve.proxy]\ntrusted = \"10.0.0.1\"",
             "[serve.proxy] trusted must be a list of strings"
-        )
+        ),
+        ("zzzz = 1", "[serve] has no key 'zzzz'; its keys are "),
+        (
+            "grpah_enabled = false\n[serve.limits]\nmax_connections = true",
+            "[serve] has no key 'grpah_enabled'; did you mean 'graph_enabled'?\n"
+            "[serve.limits] max_connections must be an integer"
+        ),
+        ("timeouts = 5", "[serve.timeouts] must be a table")
     ] {
         try {
             JacConfig.from_toml_str("[serve]\n" + body + "\n");
