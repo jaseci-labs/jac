@@ -197,12 +197,22 @@ glob _BUILTIN_PREFIXES: tuple[str, ...] = GATEWAY_BUILTIN_PREFIXES,
      _DISCOVERY_SEGMENTS: set[str] = set(GATEWAY_DISCOVERY_SEGMENTS),
      _REPLICATED_SEGMENTS: set[str] = set(GATEWAY_REPLICATED_SEGMENTS);
 
-impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {
+impl MicroserviceGateway.build_forward_headers(
+    request: Request, identity: bool = False
+) -> dict[str, str] {
     fwd: dict[str, str] = {};
     for (key, value) in request.headers.items() {
-        if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "x-forwarded-for" {
-            fwd[key] = value;
+        lowered = key.lower();
+        if lowered in HOP_BY_HOP_HEADERS or lowered == "x-forwarded-for" {
+            continue;
         }
+        if identity and lowered == "accept-encoding" {
+            continue;
+        }
+        fwd[key] = value;
+    }
+    if identity {
+        fwd["Accept-Encoding"] = "identity";
     }
 
     peer: str = request.client_host or "unknown";
@@ -257,12 +267,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     import asyncio;
     import json;
 
-    fwd_headers = {
-        k: v
-        for (k, v) in self.build_forward_headers(request).items()
-        if k.lower() != "accept-encoding"
-    };
-    fwd_headers["Accept-Encoding"] = "identity";
+    fwd_headers = self.build_forward_headers(request, identity=True);
     query: str = str(request.url.query);
     try {
         limit = max(1, min(int(request.query_params.get("limit") or 50), 200));
@@ -406,12 +411,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
 impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | None {
     import json;
 
-    fwd_headers = {
-        k: v
-        for (k, v) in self.build_forward_headers(request).items()
-        if k.lower() != "accept-encoding"
-    };
-    fwd_headers["Accept-Encoding"] = "identity";
+    fwd_headers = self.build_forward_headers(request, identity=True);
     service_auth = auth_headers();
     if service_auth {
         fwd_headers = {

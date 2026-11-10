@@ -2516,17 +2516,30 @@ test "forward headers append the peer to the forwarded chain" {
     h.append("X-Forwarded-For", "198.51.100.9");
     h.append("Expect", "100-continue");
     h.append("X-Ordinary", "kept");
+    h.append("accept-encoding", "gzip");
     req = Request(url=URL(path="/api/x"), headers=h, client_host="10.0.0.1");
     fwd = gw.build_forward_headers(req);
     assert fwd["X-Forwarded-For"] == "203.0.113.7, 198.51.100.9, 10.0.0.1";
     assert all(k.lower() != "expect" for k in fwd.keys());
     assert fwd["X-Ordinary"] == "kept";
+    assert fwd["accept-encoding"] == "gzip" , "the caller's encoding is forwarded as is";
     xff_keys = [
         k
         for k in fwd.keys()
         if k.lower() == "x-forwarded-for"
     ];
     assert len(xff_keys) == 1;
+
+    uncompressed = gw.build_forward_headers(req, identity=True);
+    encodings = {
+        k: v
+        for (k, v) in uncompressed.items()
+        if k.lower() == "accept-encoding"
+    };
+    assert encodings == {"Accept-Encoding": "identity"} , (
+        f"a fan-out that merges bodies must ask for them uncompressed, once: {encodings}"
+    );
+    assert uncompressed["X-Forwarded-For"] == fwd["X-Forwarded-For"];
 }
 
 

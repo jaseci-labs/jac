@@ -80,7 +80,10 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     async def handle_openapi -> Response;
     def handle_docs -> Response;
     def has_client_bundle -> bool;
-    def build_forward_headers(request: Request) -> dict[str, str];
+    def build_forward_headers(
+        request: Request, identity: bool = False
+    ) -> dict[str, str];
+
     def static_file(
         request: Request, target: Path, cache_control: str = "no-cache"
     ) -> Response;
