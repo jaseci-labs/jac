@@ -14,7 +14,7 @@ def _without_refused_credentials(
 
 
 async def _forwarded_headers(
-    gw: MicroserviceGateway, request: Request
+    gw: MicroserviceGateway, request: Request, identity: bool = False
 ) -> dict[str, str];
 
 
@@ -205,12 +205,22 @@ glob _BUILTIN_PREFIXES: tuple[str, ...] = GATEWAY_BUILTIN_PREFIXES,
      _DISCOVERY_SEGMENTS: set[str] = set(GATEWAY_DISCOVERY_SEGMENTS),
      _REPLICATED_SEGMENTS: set[str] = set(GATEWAY_REPLICATED_SEGMENTS);
 
-impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {
+impl MicroserviceGateway.build_forward_headers(
+    request: Request, identity: bool = False
+) -> dict[str, str] {
     fwd: dict[str, str] = {};
     for (key, value) in request.headers.items() {
-        if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "x-forwarded-for" {
-            fwd[key] = value;
+        lowered = key.lower();
+        if lowered in HOP_BY_HOP_HEADERS or lowered == "x-forwarded-for" {
+            continue;
         }
+        if identity and lowered == "accept-encoding" {
+            continue;
+        }
+        fwd[key] = value;
+    }
+    if identity {
+        fwd["Accept-Encoding"] = "identity";
     }
 
     peer: str = request.client_host or "unknown";
@@ -265,12 +275,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     import asyncio;
     import json;
 
-    fwd_headers = {
-        k: v
-        for (k, v) in (await _forwarded_headers(self, request)).items()
-        if k.lower() != "accept-encoding"
-    };
-    fwd_headers["Accept-Encoding"] = "identity";
+    fwd_headers = await _forwarded_headers(self, request, identity=True);
     query: str = str(request.url.query);
     try {
         limit = max(1, min(int(request.query_params.get("limit") or 50), 200));
@@ -414,12 +419,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
 impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | None {
     import json;
 
-    fwd_headers = {
-        k: v
-        for (k, v) in self.build_forward_headers(request).items()
-        if k.lower() != "accept-encoding"
-    };
-    fwd_headers["Accept-Encoding"] = "identity";
+    fwd_headers = await _forwarded_headers(self, request, identity=True);
     service_auth = auth_headers();
     if service_auth {
         fwd_headers = {
@@ -1470,13 +1470,15 @@ impl GatewaySessionGuard.allow(
 }
 
 
-impl _forwarded_headers(gw: MicroserviceGateway, request: Request) -> dict[str, str] {
+impl _forwarded_headers(
+    gw: MicroserviceGateway, request: Request, identity: bool = False
+) -> dict[str, str] {
     if gw.user_manager is None
         or not (
             request.headers.get('Authorization')
             or SESSION_COOKIE in (request.headers.get('Cookie') or '')
         ) {
-        return gw.build_forward_headers(request);
+        return gw.build_forward_headers(request, identity=identity);
     }
-    return await asyncio.to_thread(gw.build_forward_headers, request);
+    return await asyncio.to_thread(gw.build_forward_headers, request, identity);
 }
