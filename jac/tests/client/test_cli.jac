@@ -1337,6 +1337,10 @@ test "the vite manifest is written only when every chunk name carries its hash" 
         '\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name]-[hash].js"\n'
     );
     assert "manifest: true" in hashed;
+    sized = build_block(
+        '\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name]-[hash:12].js"\n'
+    );
+    assert "manifest: true" in sized , "a length-qualified [hash:N] is still a content hash";
     plain = build_block(
         '\n[client.vite.build]\nmanifest = true\n\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name].js"\n'
     );
