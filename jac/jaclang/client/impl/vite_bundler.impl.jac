@@ -924,6 +924,7 @@ export default defineConfig({{
   envDir: projectRoot, // Load .env files from project root
     build: {{
     sourcemap: true, // Enable source maps for better error messages
+    manifest: true,
 {build_overrides_str}
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
