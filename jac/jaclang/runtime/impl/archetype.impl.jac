@@ -20,9 +20,9 @@ impl PermissionDenied.message -> str {
         f"Permission denied: {self.operation} on "
         f"{self.target_type}[{self.target_id}] owned by root[{owner}]; "
         f"required {self.required.name}, have {self.actual.name}. "
-        f"Hint: at the owner-side call "
-        f"`Jac.allow_root(node, root_id, AccessLevel.{self.required.name})` to "
-        f"share with one user's root, `grant(node, "
+        f"Hint: an ADMIN of the node calls "
+        f"`set_access(node, root_id, AccessLevel.{self.required.name})` to "
+        f"share it with one root or group, `grant(node, "
         f"level=AccessLevel.{self.required.name})` to open the node to every "
         f"user, or expose an ability on the target node and route writes "
         f"through it."
@@ -464,11 +464,18 @@ impl access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
         0: AccessLevel.READ,
         1: AccessLevel.CONNECT,
         2: AccessLevel.WRITE,
+        3: AccessLevel.ADMIN,
         "NO_ACCESS": AccessLevel.NO_ACCESS,
         "READ": AccessLevel.READ,
         "CONNECT": AccessLevel.CONNECT,
-        "WRITE": AccessLevel.WRITE
+        "WRITE": AccessLevel.WRITE,
+        "ADMIN": AccessLevel.ADMIN
     };
+    if val not in _map {
+        raise ValueError(
+            f"unknown access level {val!r}; use NO_ACCESS, READ, CONNECT, WRITE or ADMIN"
+        );
+    }
     return _map[val];
 }
 
@@ -1046,6 +1053,11 @@ impl _dirty_delattr(self: any, name: str) -> None {
 
 impl untracked_class(cls: type[Archetype]) -> type[Archetype] {
     return cls.__dict__.get('__jac_untracked__', cls);
+}
+
+impl is_membership(arch: any) -> bool {
+    cls = arch if isinstance(arch, `type) else `type(arch);
+    return bool(getattr(cls, '__jac_membership__', False));
 }
 
 impl _untracked_new(cls: type[Archetype]) -> Archetype {

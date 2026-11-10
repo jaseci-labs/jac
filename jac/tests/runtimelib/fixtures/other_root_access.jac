@@ -1,6 +1,5 @@
 import from jaclang { JacRuntime as Jac }
 import from jaclang.runtime.archetype { Anchor }
-import from uuid { UUID }
 
 node A {
     has val: int;
@@ -29,7 +28,7 @@ walker update_target_node {
         node_id: str;
 
     can enter with Root entry {
-        target_node = & (self.node_id);
+        target_node = &(self.node_id);
         target_node.val = self.val;
     }
 }
@@ -48,7 +47,7 @@ walker read_target_node {
     has node_id: str;
 
     can enter with Root entry {
-        print(& (self.node_id));
+        print(&(self.node_id));
     }
 }
 
@@ -69,7 +68,7 @@ walker allow_other_root_access {
         if self.via_all {
             Jac.perm_grant(here, self.level);
         } else {
-            Jac.allow_root(here, UUID(self.root_id), self.level);
+            set_access(here, self.root_id, self.level);
         }
     }
 
@@ -77,7 +76,7 @@ walker allow_other_root_access {
         if self.via_all {
             Jac.perm_grant(here, self.level);
         } else {
-            Jac.allow_root(here, UUID(self.root_id), self.level);
+            set_access(here, self.root_id, self.level);
         }
     }
 }
@@ -90,7 +89,7 @@ walker disallow_other_root_access {
         if self.via_all {
             Jac.perm_revoke(here);
         } else {
-            Jac.disallow_root(here, UUID(self.root_id));
+            clear_access(here, self.root_id);
         }
     }
 
@@ -98,7 +97,7 @@ walker disallow_other_root_access {
         if self.via_all {
             Jac.perm_revoke(here);
         } else {
-            Jac.disallow_root(here, UUID(self.root_id));
+            clear_access(here, self.root_id);
         }
     }
 }

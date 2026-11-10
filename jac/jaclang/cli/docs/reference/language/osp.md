@@ -981,9 +981,11 @@ walker:priv DeleteWithChildren {
 |----------|-------------|
 | `jid(node)` | Get unique Jac ID of object |
 | `jobj(node)` | Get Jac object wrapper |
-| `grant(node, level=AccessLevel.READ)` | Open a node to every other user at a level of the ambient `AccessLevel` enum - `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` (no import). Changing a node's grants is a write on the node: only a caller holding `WRITE` on it (its owner, the system root, or a root granted `WRITE`) may do so; anyone else gets a permission-denied diagnostic (a `PermissionError` under `JAC_STRICT_PERMISSIONS`) and nothing changes |
-| `revoke(node)` | Remove a `grant` (same `WRITE` requirement) |
-| `allroots()` | Get all root references |
+| `grant(node, level=AccessLevel.READ)` | Open a node to every other user at a level of the ambient `AccessLevel` enum - `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` (no import; never `ADMIN`). Only a caller holding `ADMIN` on the node (its owner, the system root, or an admin of the group that owns it) may change its access; anyone else gets a `PermissionError`. A call that changes nothing needs no rights |
+| `revoke(node)` | Remove a `grant` (same `ADMIN` requirement) |
+| `set_access(node, who, level)` | Give `who` (a user's root id, a root, or a group) `level` on the node **and everything under it**; `AccessLevel.NO_ACCESS` blocks. Needs `ADMIN`. See [Groups and membership](#8-groups-and-membership) |
+| `clear_access(node, who)` | Undo `set_access`. Needs `ADMIN`, except that anyone may clear their own membership |
+| `allroots()` | Get every user's root (group roots are reached through `Member` edges) |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
 | `on_commit(callback)` | Register a callback to run **after** the next successful commit (discarded on abort/replay) -- for deferred external side effects that must fire exactly once |
@@ -1074,9 +1076,46 @@ node Report {
 
 Always return `AccessLevel` members. String (`"WRITE"`) and int (`2`) spellings are accepted for compatibility, but a typo'd string raises `KeyError` at access-check time - in production, on the first cross-user request - while a misspelled member fails at check time, and the int mapping may change.
 
-**Grant or hook?** `grant`/`allow_root` are per-instance policy the *owner* decides at runtime - right for user-owned contributions (posts, profiles). `__jac_access__` is a per-archetype invariant the *author* decides - right for app-owned public structure (docs caches, catalogs, commons state), where a forgotten grant on one creation path only surfaces when a *second* user hits it. The owner and the system root always have `WRITE` regardless of the hook.
+**Grant or hook?** `grant`/`set_access` are per-instance policy the *owner* decides at runtime - right for user-owned contributions (posts, profiles). `__jac_access__` is a per-archetype invariant the *author* decides - right for app-owned public structure (docs caches, catalogs, commons state), where a forgotten grant on one creation path only surfaces when a *second* user hits it. The owner and the system root always have `ADMIN` regardless of the hook.
 
 Traversal authorizes the *node* being reached, and deleting an authorized node detaches its incident edges with it - but a non-owner reading, mutating, or deleting an edge object directly is checked against the *edge's* own level, so a fully open structure pairs a `PublicNode` base with a `PublicEdge` base as above.
+
+### 8 Groups and membership
+
+A **group** is something other roots belong to: a team, an organization, a shared folder. Membership is a built-in `Member` edge from the member (a user's root or another group) to the group, carrying the member's level. Only `set_access` and `clear_access` make and remove it.
+
+```jac
+node Workspace(Root) { has name: str; }   # an org: a root nobody logs in as
+node Doc { has title: str; }
+
+def set_up(bob_id: str, writer_id: str) -> list[Workspace] {
+    acme = Workspace(name="Acme");
+    save(acme);                                   # the caller becomes Acme's ADMIN
+    plan = acme ++> Doc(title="Plan");            # owned by Acme
+    specs = acme ++> Doc(title="Specs");
+    set_access(acme, bob_id, AccessLevel.WRITE);  # bob edits everything Acme owns
+    set_access(specs, writer_id, AccessLevel.WRITE);   # Specs and what is under it, nothing else
+    set_access(plan, bob_id, AccessLevel.NO_ACCESS);   # block bob on Plan
+    return [root ->:Member:->][?:Workspace];           # what I belong to
+}
+```
+
+An org (a `Root` subtype) owns itself and what is created in it. Sharing any other node never changes who owns anything: the node and what its owner holds under it get a label naming the share, and the owner becomes the share's `ADMIN`. Unsharing or deleting the node gives nothing away and loses nothing; the data is still its owner's. New data attached under a shared node carries the same labels, and belongs to the node's owner when the caller writes there as a member (otherwise to the caller, so a stranger's reply stays theirs).
+
+How a request is decided:
+
+1. The caller acts as their own root plus every group reachable over `Member` edges. A chain is capped by its lowest level (WRITE in a team that is READ on a folder gives READ), and the highest chain wins.
+2. The owner of a node and the system root have `ADMIN`. A member of the node's owner, or of a share labelled on it, gets their level there.
+3. A block (`NO_ACCESS`) on the node, on its owner, or on a share labelled on it wins over every grant and membership, except for an `ADMIN` of the owner.
+4. Otherwise the highest of the node's public `grant`, its owner's public `grant`, and the caller's memberships wins. A grant never lowers a level.
+
+The typed hops that compile to SQL apply the same rule, so `[node -->][?:Doc]` and `[node -->]` return the same set.
+
+Admins list a group's members with `[edge acme <-:Member:<-]`; each edge has `who()` (the member's root or group id) and `level`. The members' roots stay hidden: the edge is judged by its own level, not by the node at the other end. A member sees only their own edge.
+
+`Member` edges are ordinary out-edges of the member's root, so `[root -->]` and `visit [-->]` from a root also reach the groups the user belongs to. Filter by type (`[root -->][?:Todo]`) when a walker should stay in the user's own data.
+
+Deleting a shared node needs `WRITE`, like any node. An org can be deleted only by its `ADMIN` and only once it owns nothing: delete its content first. A user's own root can never be deleted.
 
 ---
 

@@ -57,67 +57,14 @@ impl JacAccessValidation._is_shared_root(to: Anchor) -> bool {
     return isinstance(shared_id, UUID) and to.id == shared_id;
 }
 
-impl JacAccessValidation.allow_root(
-    archetype: Archetype, root_id: UUID, level: (AccessLevel | int | str | None) = None
-) -> None {
-    if (level is None) {
-        level = AccessLevel.READ;
+impl JacAccessValidation._require_admin(anchor: Anchor) -> None {
+    if not JacAccessValidation._check_access(anchor, AccessLevel.WRITE, "acl_write") {
+        held = JacRuntimeInterface.check_access_level(anchor);
+        raise PermissionError(
+            f"changing access on {anchor.archetype.__class__.__name__}"
+            f"[{anchor.id}] needs ADMIN; you have {held.name}"
+        );
     }
-    level = access_level_cast(level);
-    (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
-        return;
-    }
-    access = anchor.own_access().roots;
-    _root_id = str(root_id);
-    if (level != access.anchors.get(_root_id, AccessLevel.NO_ACCESS)) {
-        access.anchors[_root_id] = level;
-        jctx.mem.put(anchor);
-    }
-}
-
-impl JacAccessValidation.allow_group(
-    archetype: Archetype, group_id: UUID, level: (AccessLevel | int | str | None) = None
-) -> None {
-    if (level is None) {
-        level = AccessLevel.READ;
-    }
-    level = access_level_cast(level);
-    (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
-        return;
-    }
-    access = anchor.own_access().groups;
-    _group_id = str(group_id);
-    if (level != access.anchors.get(_group_id, AccessLevel.NO_ACCESS)) {
-        access.anchors[_group_id] = level;
-        jctx.mem.put(anchor);
-    }
-}
-
-impl JacAccessValidation.disallow_group(archetype: Archetype, group_id: UUID) -> None {
-    (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
-        return;
-    }
-    anchor.own_access().groups.anchors.pop(str(group_id), None);
-    jctx.mem.put(anchor);
-}
-
-impl JacAccessValidation.disallow_root(
-    archetype: Archetype, root_id: UUID, level: (AccessLevel | int | str | None) = None
-) -> None {
-    if (level is None) {
-        level = AccessLevel.READ;
-    }
-    level = access_level_cast(level);
-    (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
-        return;
-    }
-    access = anchor.own_access().roots;
-    access.anchors.pop(str(root_id), None);
-    jctx.mem.put(anchor);
 }
 
 impl JacAccessValidation.perm_grant(
@@ -127,25 +74,38 @@ impl JacAccessValidation.perm_grant(
         level = AccessLevel.READ;
     }
     level = access_level_cast(level);
+    if level == AccessLevel.ADMIN {
+        raise ValueError(
+            "public access cannot be ADMIN; give admins a level with set_access"
+        );
+    }
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if (level == _all_grant(anchor)) {
         return;
     }
-    if (level != _all_grant(anchor)) {
-        anchor.own_access().all = level;
-        jctx.mem.put(anchor);
-    }
+    JacAccessValidation._require_admin(anchor);
+    anchor.own_access().all = level;
+    jctx.mem.put(anchor);
 }
 
 impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if (_all_grant(anchor).value <= AccessLevel.NO_ACCESS.value) {
         return;
     }
-    if (_all_grant(anchor).value > AccessLevel.NO_ACCESS.value) {
-        anchor.own_access().all = AccessLevel.NO_ACCESS;
-        jctx.mem.put(anchor);
-    }
+    JacAccessValidation._require_admin(anchor);
+    anchor.own_access().all = AccessLevel.NO_ACCESS;
+    jctx.mem.put(anchor);
+}
+
+impl JacAccessValidation.set_access(
+    target: (Archetype | Anchor), who: any, level: (AccessLevel | int | str)
+) -> None {
+    set_access(target, who, level);
+}
+
+impl JacAccessValidation.clear_access(target: (Archetype | Anchor), who: any) -> None {
+    clear_access(target, who);
 }
 
 impl JacAccessValidation.check_read_access(to: Anchor) -> bool {
@@ -168,7 +128,7 @@ impl JacAccessValidation.check_access_level(
     to: Anchor, no_custom: bool = False
 ) -> AccessLevel {
     if (not to.persistent or (to.hash == 0)) {
-        return AccessLevel.WRITE;
+        return AccessLevel.ADMIN;
     }
     jctx = JacRuntimeInterface.get_context();
     _jroot = jctx.user_root;
@@ -177,60 +137,59 @@ impl JacAccessValidation.check_access_level(
     }
     jroot: NodeAnchor = _jroot;
     if ((jroot == jctx.system_root) or (jroot.id == to.root) or (jroot == to)) {
-        return AccessLevel.WRITE;
+        return AccessLevel.ADMIN;
+    }
+    import from jaclang.runtime.membership { member_edge_level, principals }
+    held = principals();
+    if isinstance(to, EdgeAnchor) and is_membership(to.archetype) {
+        return member_edge_level(to, held);
     }
     if (
         not no_custom and ((custom_level := to.archetype.__jac_access__()) is not None)
     ) {
         return access_level_cast(custom_level);
     }
-    access_level: AccessLevel = AccessLevel.NO_ACCESS;
-
     to_access = to.access;
+    owner = jctx.mem.get(to.root) if to.root else None;
+    owner_access = owner.access if isinstance(owner, Anchor) else None;
+    via_owner = held.get(str(to.root)) if to.root else None;
+    labels = to_access.groups.anchors if to_access is not None else {};
+    stored = [to_access.roots.anchors, labels] if to_access is not None else [];
+    if owner_access is not None {
+        stored.append(owner_access.roots.anchors);
+    }
+
+    blocked = via_owner == AccessLevel.NO_ACCESS
+        or any(held.get(pid) == AccessLevel.NO_ACCESS for pid in labels);
+    levels = [owner_access.all if owner_access else None, via_owner];
+    for named in stored {
+        for (pid, found) in named.items() {
+            reach = held.get(pid);
+            if reach is None or reach == AccessLevel.NO_ACCESS {
+                continue;
+            }
+            if found == AccessLevel.NO_ACCESS {
+                blocked = True;
+            } else {
+                levels.append(found if found.value < reach.value else reach);
+            }
+        }
+    }
+    if blocked and via_owner != AccessLevel.ADMIN {
+        return AccessLevel.NO_ACCESS;
+    }
+    level: AccessLevel = AccessLevel.NO_ACCESS;
     if to_access is not None and to_access.all.value > AccessLevel.NO_ACCESS.value {
-        access_level = to_access.all;
+        level = to_access.all;
     } elif JacAccessValidation._is_shared_root(to) {
-        access_level = AccessLevel.CONNECT;
+        level = AccessLevel.CONNECT;
     }
-    if (to.root and isinstance((to_root := jctx.mem.get(to.root)), Anchor)) {
-        root_access = to_root.access;
-        if root_access is not None {
-            if (root_access.all.value > access_level.value) {
-                access_level = root_access.all;
-            }
-            if ((level := root_access.roots.check(str(jroot.id))) is not None) {
-                access_level = level;
-            }
+    for found in levels {
+        if found is not None and found.value > level.value {
+            level = found;
         }
     }
-    if to_access is None {
-        return access_level;
-    }
-    if ((level := to_access.roots.check(str(jroot.id))) is not None) {
-        access_level = level;
-    }
-    if to_access.groups.anchors {
-        for gid in JacAccessValidation._groups_of(jroot) {
-            if ((glevel := to_access.groups.check(gid)) is not None)
-                and glevel.value > access_level.value {
-                access_level = glevel;
-            }
-        }
-    }
-    return access_level;
-}
-
-
-impl JacAccessValidation._groups_of(jroot: NodeAnchor) -> list[str] {
-    sv_register_hydrated(jroot, fetch_stubs=True);
-    out: list[str] = [];
-    for grp in sv_live_edges(jroot, EdgeDir.OUT.value, None, False) {
-        gid = grp.id;
-        if gid is not None {
-            out.append(str(gid));
-        }
-    }
-    return out;
+    return level;
 }
 
 impl JacWalker.`visit(
@@ -993,6 +952,9 @@ impl JacGraph.connect(
     conn_assign: (tuple[(tuple[any, ...], tuple[any, ...])] | None) = None,
     edges_only: bool = False
 ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]) {
+    if `edge is not None and is_membership(`edge) {
+        raise TypeError("Member edges are made by set_access(group, who, level)");
+    }
     if (
         not undir
         and conn_assign is None
@@ -1299,6 +1261,10 @@ impl JacGraph.heavy_edge(
     }
     if (source.persistent or target.persistent) {
         JacRuntimeInterface.save(eanch);
+        if not is_membership(`edge) {
+            import from jaclang.runtime.membership { inherit_access }
+            inherit_access(source, eanch, target);
+        }
     }
     return `edge;
 }
@@ -1322,8 +1288,8 @@ impl JacPersistence.save(
             if not isinstance(target, NodeAnchor) or not target.is_populated() {
                 raise ValueError(f"owner root {owner} does not exist");
             }
-            if not isinstance(target.archetype, Root) {
-                raise ValueError(f"owner {owner} is not a root");
+            if not (isinstance(target.archetype, Root) or target.root == target.id) {
+                raise ValueError(f"owner {owner} is not a root or a group");
             }
             if JacRuntimeInterface.check_access_level(target).value
                 < AccessLevel.WRITE.value {
@@ -1335,6 +1301,10 @@ impl JacPersistence.save(
         }
         anchor.persistent = True;
         anchor.`root = owner if owner is not None else jctx.user_root.id;
+    }
+    new_group = isinstance(anchor.archetype, Root) and anchor.`root is None;
+    if new_group {
+        anchor.`root = anchor.id;
     }
     jctx.mem.put(anchor);
     match anchor {
@@ -1356,6 +1326,14 @@ impl JacPersistence.save(
         case _:
             ;
 
+    }
+    caller = jctx.user_root;
+    is_org = new_group and untracked_class(`type(anchor.archetype)) is not Root;
+    if is_org
+        and caller not in (None, jctx.system_root)
+        and caller.id != JacRuntime.shared_root_id() {
+        import from jaclang.runtime.membership { set_access }
+        set_access(anchor, caller.ensure_id(), AccessLevel.ADMIN);
     }
 }
 
@@ -1395,51 +1373,74 @@ impl JacPersistence._destroy_anchors(objs: any, strict: bool) -> list[Anchor] {
 
 impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
     anchors = JacPersistence._destroy_anchors(objs, strict);
-    if not anchors {
-        return;
-    }
-    import from jaclang.runtime.osp_kernel { osp_forget }
-    import from jaclang.runtime.region { run_drop }
     for anchor in anchors {
         if isinstance(anchor.archetype, Root) {
-            raise RuntimeError("cannot destroy root");
+            if untracked_class(`type(anchor.archetype)) is Root {
+                raise RuntimeError("cannot destroy root");
+            }
+            JacAccessValidation._require_admin(anchor);
+            import from jaclang.runtime.membership { owned_by }
+            left = owned_by(anchor.ensure_id());
+            if left {
+                raise RuntimeError(
+                    f"{type(anchor.archetype).__name__}[{anchor.id}] still owns "
+                    f"{len(left)}{'+' if len(left) >= 20 else ''} objects; "
+                    'delete them first'
+                );
+            }
+            JacPersistence.drop_anchor(anchor);
+            continue;
+        }
+        if is_membership(anchor.archetype) {
+            raise TypeError(
+                "Member edges change only through clear_access(group, who)"
+            );
         }
         if anchor.destroyed {
             continue;
         }
         if JacRuntimeInterface.check_write_access(anchor, op_hint="delete") {
-            match anchor {
-                case NodeAnchor():
-                    anchor.detach_light();
-                    for `edge in anchor.edges[:] {
-                        eid = `edge.id;
-                        `edge.detach();
-                        `edge.destroyed = True;
-                        _edge_handle: any = `edge.archetype;
-                        run_drop(_edge_handle);
-                        osp_forget(_edge_handle);
-                        if eid is not None {
-                            JacRuntimeInterface.get_context().mem.delete(eid);
-                        }
-                    }
-
-                case EdgeAnchor():
-                    anchor.detach();
-
-                case _:
-                    ;
-
-            }
-            aid = anchor.id;
-            if aid is not None {
-                JacRuntimeInterface.get_context().mem.delete(aid);
-            }
-            anchor.destroyed = True;
-            _handle: any = anchor.archetype;
-            run_drop(_handle);
-            osp_forget(_handle);
+            JacPersistence.drop_anchor(anchor);
         }
     }
+}
+
+impl JacPersistence.drop_anchor(anchor: Anchor) -> None {
+    if anchor.destroyed {
+        return;
+    }
+    import from jaclang.runtime.osp_kernel { osp_forget }
+    import from jaclang.runtime.region { run_drop }
+    match anchor {
+        case NodeAnchor():
+            anchor.detach_light();
+            for `edge in anchor.edges[:] {
+                eid = `edge.id;
+                `edge.detach();
+                `edge.destroyed = True;
+                _edge_handle: any = `edge.archetype;
+                run_drop(_edge_handle);
+                osp_forget(_edge_handle);
+                if eid is not None {
+                    JacRuntimeInterface.get_context().mem.delete(eid);
+                }
+            }
+
+        case EdgeAnchor():
+            anchor.detach();
+
+        case _:
+            ;
+
+    }
+    aid = anchor.id;
+    if aid is not None {
+        JacRuntimeInterface.get_context().mem.delete(aid);
+    }
+    anchor.destroyed = True;
+    _handle: any = anchor.archetype;
+    run_drop(_handle);
+    osp_forget(_handle);
 }
 
 impl JacPersistence.peek_attr(`obj: any, name: str) -> any {

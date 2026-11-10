@@ -38,11 +38,13 @@ walker create_other_root {
     }
 }
 
+node Org(Root) {}
+
+"""Saving a Root subtype makes the caller its ADMIN."""
 walker mint_org_root {
     can enter with Root entry {
-        org = Root();
+        org = Org();
         Jac.save(org);
-        Jac.allow_root(org, here.__jac__.id, "WRITE");
         Jac.commit();
         print(org.__jac__.id);
     }
@@ -97,7 +99,7 @@ walker revoke_on_org {
 
     can enter with Root entry {
         org = &(self.org_id);
-        Jac.disallow_root(org, UUID(self.member_id));
+        clear_access(org, self.member_id);
         print("revoked");
     }
 }
@@ -139,7 +141,7 @@ walker grant_on_org {
 
     can enter with Root entry {
         org = &(self.org_id);
-        Jac.allow_root(org, UUID(self.member_id), self.level);
+        set_access(org, self.member_id, self.level);
         print("granted");
     }
 }

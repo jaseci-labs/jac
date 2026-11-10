@@ -160,7 +160,7 @@ test "omitting owner keeps the caller as owner" {
 }
 
 # The RFC #8332 recipe keeps a record owned by its creator and decides access
-# with a per-node __jac_access__ hook. check_access_level answers WRITE for the
+# with a per-node __jac_access__ hook. check_access_level answers ADMIN for the
 # owning root before it consults the hook, so a member removed from the org
 # keeps WRITE on what they created. A record owned by the org root follows the
 # grant on that root, so one revoke ends the member's access to all of it.
@@ -192,8 +192,8 @@ test "revoking a member ends access to org-owned records but not creator-owned o
 
         doc_level = _line(_run("level_of", args=[doc], root_id=bob), "LEVEL:");
         item_level = _line(_run("level_of", args=[item], root_id=bob), "LEVEL:");
-        assert doc_level == "WRITE" , (
-            f"expected the owner fast-path to keep WRITE, got {doc_level!r}"
+        assert doc_level == "ADMIN" , (
+            f"expected the owner fast-path to keep ADMIN, got {doc_level!r}"
         );
         assert item_level == "NO_ACCESS" , (
             f"revoked member still reaches org-owned content: {item_level!r}"

@@ -1556,17 +1556,17 @@ with entry {
 }
 ```
 
-#### To a Specific Root
+#### To a Specific User
 
-Use `allow_root` to grant access to a specific user's root graph:
+Use `set_access` to give one user a level on a node and everything under it (it needs `ADMIN` on the node; see [Groups and membership](../language/osp.md#8-groups-and-membership)):
 
 ```jac
 with entry {
-    # Allow a specific user to read this node
-    allow_root(node, target_root_id, AccessLevel.READ);
+    # Let a specific user read this node
+    set_access(node, target_root_id, AccessLevel.READ);
 
-    # Allow write access
-    allow_root(node, target_root_id, AccessLevel.WRITE);
+    # Raise them to write; a second call changes the level
+    set_access(node, target_root_id, AccessLevel.WRITE);
 }
 ```
 
@@ -1581,12 +1581,12 @@ with entry {
 }
 ```
 
-#### From a Specific Root
+#### From a Specific User
 
 ```jac
 with entry {
-    # Revoke a specific user's access
-    disallow_root(node, target_root_id, AccessLevel.READ);
+    # Remove a specific user's access
+    clear_access(node, target_root_id);
 }
 ```
 
@@ -1627,8 +1627,8 @@ Walkers have three access levels, decided on the declaration (`:priv` is the exp
 |----------|-----------|-------------|
 | `perm_grant` | `perm_grant(archetype, level)` | Allow everyone to access at given level |
 | `perm_revoke` | `perm_revoke(archetype)` | Remove all public access |
-| `allow_root` | `allow_root(archetype, root_id, level)` | Grant access to a specific root |
-| `disallow_root` | `disallow_root(archetype, root_id, level)` | Revoke access from a specific root |
+| `set_access` | `set_access(node, root_id, level)` | Give one user (or group) a level on a node and what is under it |
+| `clear_access` | `clear_access(node, root_id)` | Remove that user's (or group's) access |
 
 ---
 

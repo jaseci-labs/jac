@@ -493,9 +493,10 @@ impl Session.`has(id: UUID) -> bool {
 impl Session.get_roots -> Generator[Root, None, None] {
     seen: set[UUID] = set();
     for anchor in list(self.__mem__.values()) {
-        if isinstance(anchor.archetype, Root) {
+        arch = anchor.archetype;
+        if isinstance(arch, Root) and untracked_class(`type(arch)) is Root {
             seen.add(anchor.ensure_id());
-            yield anchor.archetype;
+            yield arch;
         }
     }
     if self.store is not None {
