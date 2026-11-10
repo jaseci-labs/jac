@@ -106,12 +106,11 @@ jobs:
   # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
   # on the release channel; the dev channel builds host-native so it can
   # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
-  # encode a target triple). macOS-ARM builds host-native on both
-  # channels. The Intel-Mac leg pins the macOS floor (12.0) the same way
-  # the Linux legs pin glibc -- unpinned it would inherit the runner's
-  # macOS 15 and exclude older Intel Macs; its LLVM slice is llvm-slice's
-  # from-source build (upstream ships no macOS-x64 for the pinned
-  # release). macos-15-intel is GitHub's last Intel image (retires Fall
+  # encode a target triple). The macOS legs pin their floor the same way
+  # the Linux legs pin glibc (Apple Silicon 14.0, Intel 12.0) -- unpinned a
+  # leg inherits its runner's macOS 15 and excludes older Macs. The Intel
+  # leg's LLVM slice is llvm-slice's from-source build (upstream ships no
+  # macOS-x64 for the pinned release). macos-15-intel is GitHub's last Intel image (retires Fall
   # 2027).
   #
   # The Intel-Mac leg is `manual`: in no channel's default matrix, built only
@@ -162,7 +161,7 @@ jobs:
           LEGS='[
             {"os": "ubuntu-24.04", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
             {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
-            {"os": "macos-15",         "platform": "macos-aarch64"},
+            {"os": "macos-15",         "platform": "macos-aarch64", "zig_target": "aarch64-macos.14.0"},
             {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "manual": true}
           ]'
           if [ -n "${ONLY:-}" ]; then
