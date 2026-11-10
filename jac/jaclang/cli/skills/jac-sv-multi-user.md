@@ -49,7 +49,7 @@ def global_feed() -> list[dict[str, any]] {
 
 **Pick the level by what the interaction does to the target.** Edge-attach interactions (follow a Profile, join a Channel) need only `AccessLevel.CONNECT`. Interactions that MUTATE FIELDS on the target need `AccessLevel.WRITE`: littleX stores likes/comments as fields ON the tweet (`here.likes`, `here.comments`), so Tweets get `AccessLevel.WRITE` while Profiles and Channels get `AccessLevel.CONNECT`.
 
-The Scale reference's `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` take the same `AccessLevel` members. (The former ambient constants `NoPerm`/`ReadPerm`/`ConnectPerm`/`WritePerm` were removed - if you see them in older snippets, they map 1:1 onto the enum members.)
+The Scale reference's `perm_grant` / `perm_revoke` take the same `AccessLevel` members. (The former ambient constants `NoPerm`/`ReadPerm`/`ConnectPerm`/`WritePerm` were removed - if you see them in older snippets, they map 1:1 onto the enum members.)
 
 ## Sharing with a user or a group: set_access
 
@@ -79,11 +79,14 @@ def my_workspaces -> list[Workspace] {
 ```
 
 - `who` is a user's root id (`str`, the `root_id` of their `/user/login`), a root, or a group. `set_access(node, who, AccessLevel.NO_ACCESS)` blocks `who` on that node even if a grant or a membership would let them in; it does not block an ADMIN of a group above the node.
-- It covers the node **and everything under it**, including what is added later. The first time a node is shared it becomes a group: it owns itself and the nodes under it, and whoever reached it before still does (`Member(ADMIN)` from the old owner).
+- It covers the node **and everything under it**, including what is added later. Sharing never changes who owns anything: the node and what its owner holds under it get a label naming the share, and the owner becomes the share's ADMIN. Unsharing or deleting the node loses nothing.
+- Admins list members with `[edge node <-:Member:<-]` (`m.who()` is the member's id, `m.level` their level); members' roots stay hidden, and a member sees only their own edge.
+- `Member` edges go out of the member's root, so `visit [-->]` from root also walks into the user's groups. Filter by type when a walker should stay in the user's own data.
+- Deleting a node needs WRITE. An org (`Root` subtype) can be deleted only by its ADMIN and only once it owns nothing.
 - Each share is a `Member` edge from `who` to the node, owned by the node. Only `set_access`/`clear_access` change them: connecting `+>:Member:+>` raises, and members cannot edit or delete their own edge.
 - New data attached under a node owned by a group belongs to that group when the caller can WRITE as it; otherwise it stays the caller's (a stranger's reply under your post stays theirs).
 - Levels combine by **highest wins**; a block wins over everything except an ADMIN above it. The last ADMIN of a group cannot be cleared. Anyone can `clear_access(node, own_root_id)` to leave.
-- The old `Jac.allow_root` / `allow_group` still work on existing data but need ADMIN now; prefer `set_access`.
+- `Jac.allow_root` / `disallow_root` / `allow_group` / `disallow_group` are removed: `Jac.allow_root(n, UUID(rid), lvl)` is now `set_access(n, rid, lvl)`, and `disallow_root` is `clear_access(n, rid)`. Entries they stored earlier are still honored.
 
 ## root.shared - the public commons
 

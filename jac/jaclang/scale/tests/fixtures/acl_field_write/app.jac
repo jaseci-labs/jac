@@ -1,7 +1,6 @@
 """Fixture for cross-user field-write ACL tests: one Doc shared READ-only."""
 
 import from jaclang { JacRuntime as Jac }
-import from uuid { UUID }
 
 node Doc {
     has body: str = "original";
@@ -19,7 +18,7 @@ def:protect make_doc -> dict[str, any] {
 
 def:protect share_read(id: str, to_root: str) -> dict[str, any] {
     o = jobj(id);
-    Jac.allow_root(o as Doc, UUID(to_root), 'READ');
+    set_access(o as Doc, to_root, 'READ');
     return {"ok": True};
 }
 

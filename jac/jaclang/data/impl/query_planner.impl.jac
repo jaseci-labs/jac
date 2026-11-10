@@ -307,7 +307,9 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
                 continue;
             }
             nid = node_of.get(anchor_key(ea));
-            if nid is not None {
+            by_edge = not q.from_visit
+                and getattr(`type(ea.archetype), '__jac_membership__', False);
+            if nid is not None and not by_edge {
                 ends = _materialize_ids(mem, [nid], local);
                 if not ends or not acl_read_ok(ends[0]) {
                     continue;

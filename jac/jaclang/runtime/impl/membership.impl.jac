@@ -28,7 +28,33 @@ impl _who_id(who: (str | UUID | Archetype | Anchor)) -> UUID {
 }
 
 impl _is_group(anchor: NodeAnchor) -> bool {
-    return anchor.id is not None and anchor.`root == anchor.id;
+    if anchor.id is None {
+        return False;
+    }
+    return anchor.`root == anchor.id or str(anchor.id) in _labels_of(anchor);
+}
+
+impl _labels_of(anchor: Anchor) -> dict[str, AccessLevel] {
+    perm = anchor.access;
+    if perm is None {
+        return {};
+    }
+    return {
+        k: v
+        for (k, v) in perm.groups.anchors.items()
+        if v == AccessLevel.ADMIN
+    };
+}
+
+impl _add_labels(anchor: Anchor, labels: dict[str, AccessLevel]) {
+    if not labels {
+        return;
+    }
+    named = anchor.own_access().groups.anchors;
+    for (k, v) in labels.items() {
+        named[k] = v;
+    }
+    JacRuntimeInterface.get_context().mem.put(anchor);
 }
 
 impl _level_of(edge_anchor: EdgeAnchor) -> AccessLevel {
@@ -47,10 +73,13 @@ impl _add_member_edge(member: NodeAnchor, group: NodeAnchor, level: AccessLevel)
     forget_principals();
 }
 
-impl _take_subtree(group: NodeAnchor, old_owner: UUID) {
+impl _label_subtree(share: NodeAnchor) {
     jctx = JacRuntimeInterface.get_context();
-    seen: set[UUID] = {group.ensure_id()};
-    stack: list[NodeAnchor] = [group];
+    label = {str(share.ensure_id()): AccessLevel.ADMIN};
+    owner = share.`root;
+    _add_labels(share, label);
+    seen: set[UUID] = {share.ensure_id()};
+    stack: list[NodeAnchor] = [share];
     while stack {
         cur = stack.pop();
         sv_register_hydrated(cur, fetch_stubs=True);
@@ -58,20 +87,20 @@ impl _take_subtree(group: NodeAnchor, old_owner: UUID) {
             if not isinstance(e, EdgeAnchor) or isinstance(e.archetype, Member) {
                 continue;
             }
-            if e.`root == old_owner {
-                e.`root = group.id;
-                jctx.mem.put(e);
+            if e.`root == owner {
+                _add_labels(e, label);
             }
             tgt = jctx.mem.get(e.target.id) if e.target.id is not None else None;
             if not isinstance(tgt, NodeAnchor) or tgt.id in seen {
                 continue;
             }
-            if tgt.`root != old_owner or isinstance(tgt.archetype, Root) {
+            if tgt.`root != owner
+                or tgt.`root == tgt.id
+                or isinstance(tgt.archetype, Root) {
                 continue;
             }
             seen.add(tgt.ensure_id());
-            tgt.`root = group.id;
-            jctx.mem.put(tgt);
+            _add_labels(tgt, label);
             stack.append(tgt);
         }
     }
@@ -82,20 +111,16 @@ impl _ensure_group(anchor: NodeAnchor) {
         return;
     }
     jctx = JacRuntimeInterface.get_context();
-    old_owner = anchor.`root;
-    if old_owner is None or isinstance(anchor.archetype, Root) {
+    if anchor.`root is None or isinstance(anchor.archetype, Root) {
         anchor.`root = anchor.id;
         jctx.mem.put(anchor);
         return;
     }
-
-    parent = jctx.mem.get(old_owner);
-    if isinstance(parent, NodeAnchor) {
-        _add_member_edge(parent, anchor, AccessLevel.ADMIN);
+    owner = jctx.mem.get(anchor.`root);
+    if isinstance(owner, NodeAnchor) {
+        _add_member_edge(owner, anchor, AccessLevel.ADMIN);
     }
-    anchor.`root = anchor.id;
-    jctx.mem.put(anchor);
-    _take_subtree(anchor, old_owner);
+    _label_subtree(anchor);
 }
 
 impl _keep_an_admin(group: NodeAnchor, link: EdgeAnchor) {
@@ -193,30 +218,71 @@ impl forget_principals -> None {
     }
 }
 
-impl attach_owner(source: NodeAnchor) -> (UUID | None) {
-    if not source.persistent or source.`root is None {
-        return None;
+impl inherit_access(source: NodeAnchor, link: EdgeAnchor, target: NodeAnchor) -> None {
+    if not source.persistent {
+        return;
     }
-    jroot = JacRuntimeInterface.get_context().user_root;
-    if jroot is None or source.`root == jroot.id {
-        return None;
+    jctx = JacRuntimeInterface.get_context();
+    jroot = jctx.user_root;
+    if jroot is None {
+        return;
     }
-    level = principals().get(str(source.`root));
-    if level is None or level.value < AccessLevel.WRITE.value {
-        return None;
+    fresh = target.hash == 0 and target.`root == jroot.id;
+    labels = _labels_of(source);
+    _add_labels(link, labels);
+    if fresh {
+        _add_labels(target, labels);
     }
-    return source.`root;
+    if source.`root is None or source.`root == jroot.id {
+        return;
+    }
+    held = principals();
+    best = max(
+        [
+            held.get(k, AccessLevel.NO_ACCESS).value
+            for k in [str(source.`root), *labels.keys()]
+        ]
+    );
+    if best < AccessLevel.WRITE.value {
+        return;
+    }
+    link.`root = source.`root;
+    jctx.mem.put(link);
+    if fresh {
+        target.`root = source.`root;
+        jctx.mem.put(target);
+    }
+}
+
+impl owned_by(owner: UUID, limit: int = 20) -> list[UUID] {
+    mem = JacRuntimeInterface.get_context().mem;
+    found: set[UUID] = set();
+    if mem.store is not None {
+        mem.read_barrier();
+        found.update(mem.store.owned_ids(owner, limit + len(mem._deleted)));
+        found = {
+            i
+            for i in found
+            if i not in mem._deleted
+        };
+    }
+    for (aid, a) in list(mem.__mem__.items()) {
+        if isinstance(a, Anchor)
+            and a.`root == owner
+            and aid != owner
+            and not a.destroyed
+            and not (isinstance(a, EdgeAnchor) and isinstance(a.archetype, Member)) {
+            found.add(aid);
+        }
+    }
+    return sorted(found, key=str)[:limit];
 }
 
 impl member_edge_level(
     edge_anchor: EdgeAnchor, held: dict[str, AccessLevel]
 ) -> AccessLevel {
-    level = held.get(str(edge_anchor.target.id));
-    if level == AccessLevel.ADMIN {
+    if held.get(str(edge_anchor.target.id)) == AccessLevel.ADMIN {
         return AccessLevel.ADMIN;
-    }
-    if level is not None and level.value > AccessLevel.NO_ACCESS.value {
-        return AccessLevel.READ;
     }
     if str(edge_anchor.source.id) in held {
         return AccessLevel.READ;
@@ -239,13 +305,7 @@ impl set_access(
     if not anchor.persistent {
         JacRuntimeInterface.save(anchor);
     }
-    held = JacRuntimeInterface.check_access_level(anchor);
-    if held != AccessLevel.ADMIN {
-        raise PermissionError(
-            f"setting access on {type(anchor.archetype).__name__}[{anchor.id}] "
-            f"needs ADMIN; you have {held.name}"
-        );
-    }
+    JacAccessValidation._require_admin(anchor);
     who_id = _who_id(who);
     if who_id == anchor.id {
         raise ValueError("a node cannot be a member of itself");
@@ -287,13 +347,7 @@ impl clear_access(
     jroot = jctx.user_root;
     leaving = jroot is not None and jroot.id == who_id;
     if not leaving {
-        held = JacRuntimeInterface.check_access_level(anchor);
-        if held != AccessLevel.ADMIN {
-            raise PermissionError(
-                f"clearing access on {type(anchor.archetype).__name__}[{anchor.id}] "
-                f"needs ADMIN; you have {held.name}"
-            );
-        }
+        JacAccessValidation._require_admin(anchor);
     }
     key = str(who_id);
     perm = anchor.access;
@@ -313,4 +367,8 @@ impl clear_access(
         }
     }
     forget_principals();
+}
+
+impl Member.who -> str {
+    return str(self.__jac__.source.id);
 }

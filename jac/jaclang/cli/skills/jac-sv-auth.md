@@ -170,7 +170,7 @@ A token stays valid until it expires unless the account's sessions end: a passwo
 
 ## Sharing data with specific users
 
-`grant(node, level)` opens a node to **every** logged-in user - it is NOT a per-user grant. Per-user sharing uses `allow_root` / `disallow_root`, and truly-public data belongs on `root.shared`. **Load `jac-sv-multi-user`** for all of it.
+`grant(node, level)` opens a node to **every** logged-in user - it is NOT a per-user grant. Per-user sharing uses `set_access` / `clear_access`, and truly-public data belongs on `root.shared`. **Load `jac-sv-multi-user`** for all of it.
 
 ## Pitfalls
 

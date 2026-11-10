@@ -120,26 +120,7 @@ class JacAccessValidation {
     ) -> bool;
 
     static def _is_shared_root(to: Anchor) -> bool;
-    static def allow_root(
-        archetype: Archetype,
-        root_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    static def allow_group(
-        archetype: Archetype,
-        group_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    static def disallow_group(archetype: Archetype, group_id: UUID) -> None;
     static def _require_admin(anchor: Anchor) -> None;
-    static def disallow_root(
-        archetype: Archetype,
-        root_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
     static def perm_grant(
         archetype: Archetype, level: (AccessLevel | int | str | None) = None
     ) -> None;

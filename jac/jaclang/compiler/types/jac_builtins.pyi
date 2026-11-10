@@ -154,6 +154,7 @@ class GenericEdge(Edge): ...
 # A member's level on a group (an AccessLevel value). Made only by set_access.
 class Member(Edge):
     level: int
+    def who(self) -> str: ...
 
 # Route marker types for the client file-based router. A `pages/` module whose
 # public export returns `JsxPage` is a route; one returning `JsxLayout` is a

@@ -86,9 +86,8 @@ test "a group join and leave rewrite no content rows, and visibility flips" {
                 setattr(it, "root", owner.id);
                 ctx.mem.put(it);
                 _link(ctx, owner, it, GenericEdge());
-                JacRuntimeInterface.allow_group(
-                    it.archetype, team.id, AccessLevel.READ
-                );
+                it.own_access().groups.anchors[str(team.id)] = AccessLevel.READ;
+                ctx.mem.put(it);
                 ids.append(it.id);
             }
             ctx.mem.commit();

@@ -224,7 +224,9 @@ test "a grant to a group reaches every member without a per-root entry" {
             d.edges.append(e);
             ctx.mem.put(e);
 
-            JacRuntimeInterface.allow_group(d.archetype, team.id, AccessLevel.READ);
+            # A group entry as allow_group stored it before it was removed.
+            d.own_access().groups.anchors[str(team.id)] = AccessLevel.READ;
+            ctx.mem.put(d);
             ctx.mem.commit();
 
             ctx.set_user_root(str(reader.id));
@@ -258,7 +260,9 @@ test "a grant on the owning root reaches its records through a typed hop" {
             member = _mk_root(ctx.mem);
             stranger = _mk_root(ctx.mem);
             _seed(ctx, org, org, 5, 0);
-            JacRuntimeInterface.allow_root(org.archetype, member.id, AccessLevel.READ);
+            # A root entry as allow_root stored it before it was removed.
+            org.own_access().roots.anchors[str(member.id)] = AccessLevel.READ;
+            ctx.mem.put(org);
             ctx.mem.commit();
             org_id = str(org.id);
             member_id = str(member.id);

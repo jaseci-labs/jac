@@ -6,13 +6,17 @@ edge Member: any --> any {
     with entry {
         __jac_membership__: ClassVar[bool] = True;
     }
+
+    def who -> str;
 }
 
 def principals -> dict[str, AccessLevel];
 
 def forget_principals -> None;
 
-def attach_owner(source: NodeAnchor) -> (UUID | None);
+def inherit_access(source: NodeAnchor, link: EdgeAnchor, target: NodeAnchor) -> None;
+
+def owned_by(owner: UUID, limit: int = 20) -> list[UUID];
 
 def set_access(
     target: (Archetype | Anchor),
@@ -40,7 +44,11 @@ def _level_of(edge_anchor: EdgeAnchor) -> AccessLevel;
 
 def _add_member_edge(member: NodeAnchor, group: NodeAnchor, level: AccessLevel);
 
-def _take_subtree(group: NodeAnchor, old_owner: UUID);
+def _labels_of(anchor: Anchor) -> dict[str, AccessLevel];
+
+def _add_labels(anchor: Anchor, labels: dict[str, AccessLevel]);
+
+def _label_subtree(share: NodeAnchor);
 
 def _ensure_group(anchor: NodeAnchor);
 

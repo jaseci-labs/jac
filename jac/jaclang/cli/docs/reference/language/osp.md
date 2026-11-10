@@ -1082,10 +1082,10 @@ Traversal authorizes the *node* being reached, and deleting an authorized node d
 
 ### 8 Groups and membership
 
-A **group** is a node that owns itself and that other roots belong to: a team, an organization, a shared folder. A user's root is a group of one. Membership is a built-in `Member` edge from the member to the group carrying the member's level, made and removed only by `set_access` and `clear_access`.
+A **group** is something other roots belong to: a team, an organization, a shared folder. Membership is a built-in `Member` edge from the member (a user's root or another group) to the group, carrying the member's level. Only `set_access` and `clear_access` make and remove it.
 
 ```jac
-node Workspace(Root) { has name: str; }   # a group nobody logs in as
+node Workspace(Root) { has name: str; }   # an org: a root nobody logs in as
 node Doc { has title: str; }
 
 def set_up(bob_id: str, writer_id: str) -> list[Workspace] {
@@ -1100,16 +1100,22 @@ def set_up(bob_id: str, writer_id: str) -> list[Workspace] {
 }
 ```
 
+An org (a `Root` subtype) owns itself and what is created in it. Sharing any other node never changes who owns anything: the node and what its owner holds under it get a label naming the share, and the owner becomes the share's `ADMIN`. Unsharing or deleting the node gives nothing away and loses nothing; the data is still its owner's. New data attached under a shared node carries the same labels, and belongs to the node's owner when the caller writes there as a member (otherwise to the caller, so a stranger's reply stays theirs).
+
 How a request is decided:
 
 1. The caller acts as their own root plus every group reachable over `Member` edges. A chain is capped by its lowest level (WRITE in a team that is READ on a folder gives READ), and the highest chain wins.
-2. The owner of a node and the system root have `ADMIN`. A node owned by a group gives each member their level on that group.
-3. A block (`NO_ACCESS`) on the node, or on the group that owns it, wins over every grant and membership, except an `ADMIN` reached through a group above the block.
+2. The owner of a node and the system root have `ADMIN`. A member of the node's owner, or of a share labelled on it, gets their level there.
+3. A block (`NO_ACCESS`) on the node, on its owner, or on a share labelled on it wins over every grant and membership, except for an `ADMIN` of the owner.
 4. Otherwise the highest of the node's public `grant`, its owner's public `grant`, and the caller's memberships wins. A grant never lowers a level.
 
-Sharing a node that is not a group yet makes it one: it owns itself and the nodes under it its old owner held, and the old owner keeps reaching it through a `Member(ADMIN)` edge, so everyone who could reach it before still can. New data attached under a group's node belongs to the group when the caller can write as it, and to the caller otherwise.
-
 The typed hops that compile to SQL apply the same rule, so `[node -->][?:Doc]` and `[node -->]` return the same set.
+
+Admins list a group's members with `[edge acme <-:Member:<-]`; each edge has `who()` (the member's root or group id) and `level`. The members' roots stay hidden: the edge is judged by its own level, not by the node at the other end. A member sees only their own edge.
+
+`Member` edges are ordinary out-edges of the member's root, so `[root -->]` and `visit [-->]` from a root also reach the groups the user belongs to. Filter by type (`[root -->][?:Todo]`) when a walker should stay in the user's own data.
+
+Deleting a shared node needs `WRITE`, like any node. An org can be deleted only by its `ADMIN` and only once it owns nothing: delete its content first. A user's own root can never be deleted.
 
 ---
 
