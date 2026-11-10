@@ -297,7 +297,13 @@ impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> PvcInjector {
     proj = self.project_dir or app_config.code_folder;
     self.project_dir = proj;
     fleet = self._fleet(app_config);
-    (client_wait, client_ready) = self._start_client_build(proj);
+    bake = self._seal_bakes_client(proj);
+    (client_wait, client_ready) = (None, None)
+        if bake
+        else self._start_client_build(proj);
+    if bake {
+        console.print("Building the client bundle in the seal, from the same compile.");
+    }
     try {
         selection = select_injector(
             self.k8s_config.bundle_storage_class,
@@ -307,7 +313,8 @@ impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> PvcInjector {
             dry_run=self.dry_run,
             access_mode=self.k8s_config.bundle_access_mode,
             fleet=fleet,
-            client_ready=client_wait
+            client_ready=client_wait,
+            bake_client=bake
         );
     } except Exception {
         if client_wait is not None {
@@ -388,12 +395,14 @@ impl ManifestBuilder._start_client_build(project_dir: str) -> tuple[any, any] {
     return (join_build, ready);
 }
 
-impl ManifestBuilder._build_client_bundle(project_dir: str) {
-    import os;
-    import shutil;
-    import subprocess;
+impl ManifestBuilder._client_entry_rel(
+    project_dir: str
+) -> (tuple[str, any, any] | None) {
     import from pathlib { Path }
-
+    if self._client_checked {
+        return self._client_check;
+    }
+    self._client_checked = True;
     client_entry = self._client_entry();
     if client_entry
         and not self._declared_client_entry()
@@ -413,7 +422,7 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
                 "[client] table in jac.toml); skipping the client build."
             );
         }
-        return;
+        return None;
     }
     base = Path(project_dir);
     entry_rel = Path(client_entry);
@@ -451,7 +460,7 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
             f"web-static, desktop, or mobile under [project] or "
             f"[apps.<name>]) to build one."
         );
-        return;
+        return None;
     }
     excluded = source_filter_for(base);
     if excluded.excludes(entry_rel) {
@@ -473,6 +482,35 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
             f"and never reach the client."
         );
     }
+    self._client_check = (client_entry, entry_rel, excluded);
+    return self._client_check;
+}
+
+impl ManifestBuilder._seal_bakes_client(project_dir: str) -> bool {
+    import from pathlib { Path }
+    if self.dry_run or host_toolchain_path(project_dir) {
+        return False;
+    }
+    checked = self._client_entry_rel(project_dir);
+    if checked is None {
+        return False;
+    }
+    sealed = entry_module_rel(project_dir);
+    return sealed is not None and Path(checked[1]) == Path(sealed);
+}
+
+impl ManifestBuilder._build_client_bundle(project_dir: str) {
+    import os;
+    import shutil;
+    import subprocess;
+    import from pathlib { Path }
+
+    checked = self._client_entry_rel(project_dir);
+    if checked is None {
+        return;
+    }
+    (client_entry, entry_rel, excluded) = checked;
+    base = Path(project_dir);
     if self.dry_run {
         console.print(
             f"dry-run: skipped the host client bundle build ({client_entry})."
