@@ -1,3 +1,4 @@
+import json;
 import os;
 import tempfile;
 import from pathlib { Path }
@@ -1185,6 +1186,53 @@ test "gateway serves spa fallback for html navigation" {
     import shutil;
     shutil.rmtree(tmp);
 }
+
+test "a client build's manifest decides which static files are immutable" {
+    tmp = tempfile.mkdtemp();
+    dist = Path(tmp);
+    (dist / "assets").mkdir();
+    (dist / ".vite").mkdir();
+    for name in ["client.CAdHr-OU.js", "assets/page-k3lmnopq.js", "styles.css"] {
+        (dist / name).write_text("x");
+    }
+    (dist / "assets" / "logo-Ab12cdEf.png").write_bytes(b"png");
+    (dist / ".vite" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "main.js": {
+                    "file": "client.CAdHr-OU.js",
+                    "isEntry": True,
+                    "css": ["styles.css"],
+                    "assets": ["assets/logo-Ab12cdEf.png"]
+                },
+                "_page.js": {"file": "assets/page-k3lmnopq.js"}
+            }
+        )
+    );
+
+    gw = MicroserviceGateway(registry=ServiceRegistry(), client_dist_dir=tmp);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+
+    def cache_of(path: str) -> str {
+        resp = client.get(path);
+        assert resp.status_code == 200 , (path, resp.status_code);
+        return resp.headers.get("cache-control");
+    }
+
+    # Chunks the build emitted are immutable whatever their hash contains.
+    assert cache_of("/client.CAdHr-OU.js") == "public, max-age=31536000, immutable";
+    assert cache_of("/assets/page-k3lmnopq.js") == "public, max-age=31536000, immutable";
+    # Files the build did not hash revalidate, even when their name looks hashed.
+    assert cache_of("/styles.css") == "no-cache";
+    assert cache_of("/assets/logo-Ab12cdEf.png") == "no-cache";
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
 
 test "gateway static files revalidate by etag and hashed names are immutable" {
     tmp = tempfile.mkdtemp();
