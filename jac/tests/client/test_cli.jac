@@ -1322,7 +1322,9 @@ test "the vite manifest is written only when every chunk name carries its hash" 
                 entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
                 entry_file.parent.mkdir(parents=True, exist_ok=True);
                 entry_file.write_text("// Mock entry file");
-                content = ViteBundler(Path(temp_dir)).create_vite_config(entry_file).read_text();
+                content = ViteBundler(Path(temp_dir)).create_vite_config(
+                    entry_file
+                ).read_text();
                 return content[content.index("build: {"):content.index("publicDir:")];
             } finally {
                 os.chdir(original_cwd);
