@@ -1142,12 +1142,14 @@ impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool {
         and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX));
 }
 
-impl _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP) {
+impl _remember_seal(
+    cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP, mode: int = 0o600
+) {
     partial = "";
     try {
         cache.mkdir(parents=True, exist_ok=True);
         name = cache / f"{key}.{os.getpid()}.{os.urandom(4).hex()}.partial";
-        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666);
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode);
         partial = str(name);
         with os.fdopen(fd, "wb") as out {
             out.write(raw);
@@ -1236,7 +1238,7 @@ impl pack_jab(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
         if shared is not None and not os.path.isfile(shared / f"{key}.jab") {
-            _remember_seal(shared, key, cached, keep=0);
+            _remember_seal(shared, key, cached, keep=0, mode=0o666);
         }
     } elif shared is not None {
         cached = _cached_seal(shared, key);
@@ -1403,7 +1405,7 @@ impl pack_jab(
         if unchanged {
             _remember_seal(_seal_cache_dir(base), key, raw);
             if shared is not None {
-                _remember_seal(shared, key, raw, keep=0);
+                _remember_seal(shared, key, raw, keep=0, mode=0o666);
             }
         } else {
             logger.info(

@@ -300,7 +300,9 @@ def _bundle_ships(raw: bytes, member: str) -> bool;
 def _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool;
 
 
-def _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP);
+def _remember_seal(
+    cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP, mode: int = 0o600
+);
 
 
 def pack_jab(
