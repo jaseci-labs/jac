@@ -307,8 +307,7 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
                 continue;
             }
             nid = node_of.get(anchor_key(ea));
-            by_edge = not q.from_visit
-                and getattr(`type(ea.archetype), '__jac_membership__', False);
+            by_edge = not q.from_visit and is_membership(ea.archetype);
             if nid is not None and not by_edge {
                 ends = _materialize_ids(mem, [nid], local);
                 if not ends or not acl_read_ok(ends[0]) {
@@ -684,7 +683,7 @@ impl _trusted_names(
         seen.add(cls);
         pending.extend(cls.__subclasses__());
         if issubclass(cls, Root)
-            or getattr(cls, '__jac_membership__', False)
+            or is_membership(cls)
             or cls?.__jac_access__ is not base_access {
             continue;
         }

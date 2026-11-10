@@ -201,9 +201,7 @@ impl walk(
                 other = edge_pair_for(e, cur, hop);
                 if other is not None {
                     judged = e
-                        if q.edges_only
-                            and i == nhops
-                            and getattr(type(e.archetype), '__jac_membership__', False)
+                        if q.edges_only and i == nhops and is_membership(e.archetype)
                         else other;
                     if gated and not acl_read_ok(judged) {
                         continue;

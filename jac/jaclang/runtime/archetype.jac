@@ -304,6 +304,8 @@ def _dirty_delattr(self: any, name: str) -> None;
 
 def untracked_class(cls: type[Archetype]) -> type[Archetype];
 
+def is_membership(arch: any) -> bool;
+
 def _untracked_new(cls: type[Archetype]) -> Archetype;
 
 def _tracked_reduce_ex(

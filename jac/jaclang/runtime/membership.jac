@@ -36,6 +36,25 @@ def _members_in(of: NodeAnchor) -> list[EdgeAnchor];
 
 def _member_links(src_ids: list[UUID]) -> list[tuple[UUID, UUID, int]];
 
+def _saved_and_pending(
+    sql: str, params: dict[str, any], keep: Callable[[Anchor], bool]
+) -> tuple[list[tuple[any, ...]], list[Anchor]];
+
+glob MEMBER_EDGES_SQL = """
+    SELECT e.id, e.src, e.dst, COALESCE((e.props->'archetype'->>'level')::int, 0)
+      FROM anchors e
+     WHERE e.kind = 'EdgeAnchor' AND e.arch_type = 'Member'
+       AND e.arch_module = 'jaclang.runtime.membership'
+       AND e.src = ANY(CAST(:ids AS uuid[]))
+""",
+     OWNED_SQL = """
+    SELECT id FROM anchors
+     WHERE root_id = CAST(:owner AS uuid) AND id <> CAST(:owner AS uuid)
+       AND NOT (kind = 'EdgeAnchor' AND arch_type = 'Member'
+                AND arch_module = 'jaclang.runtime.membership')
+     LIMIT :lim
+""";
+
 def _who_id(who: (str | UUID | Archetype | Anchor)) -> UUID;
 
 def _is_group(anchor: NodeAnchor) -> bool;

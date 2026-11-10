@@ -43,7 +43,6 @@ def scale_provider_error -> Exception | None;
 
 def _all_grant(anchor: Anchor) -> AccessLevel;
 
-def _is_member(arch: any) -> bool;
 
 def _light_disconnect_between(
     a: NodeAnchor, b: NodeAnchor, dirv: int, filter: (Callable | None)
