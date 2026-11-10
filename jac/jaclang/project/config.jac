@@ -416,6 +416,15 @@ def apply_table(
     target: object, table: dict[str, any], section: str, moved: dict[str, str]
 ) -> None;
 
+def _walk_table(
+    target: object,
+    table: dict[str, any],
+    section: str,
+    moved: dict[str, str],
+    problems: list[str],
+    writes: list[tuple[object, str, any]]
+) -> None;
+
 def _apply_serve_table(serve: ServeConfig, raw: any, section: str) -> None;
 
 def _parse_persons(raw: list[object]) -> list[PersonConfig];
