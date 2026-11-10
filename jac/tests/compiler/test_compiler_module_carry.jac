@@ -82,9 +82,7 @@ obj Checkout {
         }
     }
 
-    def build(
-        tag: str, emitter: str = "e0", native: str = "n0"
-    ) {
+    def build(tag: str, emitter: str = "e0", native: str = "n0") {
         digest = "3:" + tag * 64;
         self.minted.append(digest);
         jir._COMPILER_DIGEST_CACHE.clear();

@@ -800,9 +800,7 @@ test "native-only policy is retained in dependency and cache identities" {
             assert inherited.native_require == options.native_require;
         }
     }
-    assert scoped.native_required_for(
-        "/checkout/jaclang/data/store.jac"
-    );
+    assert scoped.native_required_for("/checkout/jaclang/data/store.jac");
     assert not scoped.native_required_for("/checkout/jaclang/runtime/runtime.jac");
 }
 
@@ -812,8 +810,7 @@ test "native-only dependencies stay in the target rather than the compiler host"
     program = JacProgram();
     program.options = _pinned_opts(native_require=["jaclang.data.*"]);
     host = SelfHostCache(_jaclang_root="/checkout/jaclang");
-    assert host.resolve("/checkout/jaclang/data/store.jac", program)
-        is program;
+    assert host.resolve("/checkout/jaclang/data/store.jac", program) is program;
     assert host.peek_program() is None;
 }
 
