@@ -1224,7 +1224,8 @@ test "a client build's manifest decides which static files are immutable" {
 
     # Chunks the build emitted are immutable whatever their hash contains.
     assert cache_of("/client.CAdHr-OU.js") == "public, max-age=31536000, immutable";
-    assert cache_of("/assets/page-k3lmnopq.js") == "public, max-age=31536000, immutable";
+    assert cache_of("/assets/page-k3lmnopq.js")
+        == "public, max-age=31536000, immutable";
     # Files the build did not hash revalidate, even when their name looks hashed.
     assert cache_of("/styles.css") == "no-cache";
     assert cache_of("/assets/logo-Ab12cdEf.png") == "no-cache";
