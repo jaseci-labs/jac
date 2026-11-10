@@ -11701,10 +11701,8 @@ graph import compiler.frontend {
             | parser.frontend.annex_sources
             | unitree.Import.__jac_detected.getter { active_host },
         codeinfo.jaclang_pkg_root { package_root },
-        parser.frontend.parse_woven | unitree.ModulePath.resolve_relative_path {
-            active_host
-        },
         source_layout { PathFacts },
+        unitree.ModulePath.resolve_relative_path { active_host },
     ]
     host --> [
         codeinfo.effective_default_codespace
