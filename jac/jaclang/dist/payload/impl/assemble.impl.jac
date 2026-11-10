@@ -116,10 +116,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(repo_root, "bootstrap", "pins.json"),
             os.path.join(site, "jaclang", "dist", "payload", "pins.json")
         );
-        copy_file(
-            os.path.join(repo_root, "bootstrap", "python", "sources.json"),
-            os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
-        );
 
         for (name, example) in [
             ("awesome", "jaclang_org"),

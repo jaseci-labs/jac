@@ -25,8 +25,7 @@ graph import {
     artifacts.kit ++> [
         client.js_runtime.BunArtifact.build
             | compiler.backends.native.native_link.floor_lib_dir { osarch },
-        client.js_runtime.BunArtifact.probe_kit
-            | dist.interpreter.JacPythonArtifact.probe_kit { kit_image },
+        client.js_runtime.BunArtifact.probe_kit { kit_image },
         compiler.backends.native.floors { osarch, runtime_floor_root },
         compiler.backends.native.llvm.shim_path.ShimArtifact.probe_kit
             | compiler.types.stubcat.locate.StubcatArtifact.probe_kit {
@@ -48,7 +47,6 @@ graph import {
             | compiler.backends.native.floors
             | compiler.backends.native.llvm.shim_path
             | compiler.types.stubcat.locate
-            | dist.interpreter
             | dist.precompiled { Artifact, ArtifactKind, Probe, ReleasePolicy, Source },
         compiler.tests.test_stubcat_roundtrip { Probe, Source },
         data.pg_dist | toolchains.tools {
@@ -1016,7 +1014,6 @@ graph import {
         client.compiler.ViteCompiler._compile_wasm_module
             | dist.source.client.write_client { native_wasm_stem },
         client.js_runtime._pkg_dir
-            | dist.interpreter._repo_root
             | dist.precompile_bytecode.is_toolchain_package
             | dist.precompiled._pkg_dir { jaclang_pkg_root },
         client.vite_client_bundle { ClientArtifact },
@@ -1526,7 +1523,6 @@ graph import {
             | compiler.backends.native.floors.CFloorArtifact.probe_sealed
             | compiler.backends.native.llvm.shim_path.ShimArtifact.probe_sealed
             | compiler.types.stubcat.locate.StubcatArtifact.probe_sealed
-            | dist.interpreter.JacPythonArtifact.probe_sealed
             | dist.precompiled.PrecompiledArtifact.probe_sealed { sealed },
         compiler.backends.native.floors.MuslArtifact.probe_sealed
             | compiler.types.stubcat.locate.TypeshedArtifact.probe_sealed { sealed },
