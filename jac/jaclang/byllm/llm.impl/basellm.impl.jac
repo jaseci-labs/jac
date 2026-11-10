@@ -17,7 +17,7 @@ obj _ToolDeltaCoalescer {
 obj _AnswerStream {
     has text: str = "";
 
-    def observe(call: dict[str, str]) -> str;
+    def observe(arguments: str) -> str;
 }
 
 
@@ -1302,7 +1302,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
     chunks: list[any] = [];
     content_buf = "";
     reasoning_buf = "";
-    streamed_calls: dict[int, dict[str, str]] = {};
+    coalescer: (_ToolDeltaCoalescer | None) = None;
     no_stream = False;
     finish_reason = "";
     attempt = 0;
@@ -1319,7 +1319,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
         settings = _tool_stream_settings(mt_run);
         stream_args = bool(settings.get("enabled", False));
         coalescer = _ToolDeltaCoalescer(
-            out=mt_run._tool_arg_deltas,
+            out=mt_run._tool_arg_deltas if stream_args else [],
             min_chars=int(settings.get("min_chars", _TOOL_DELTA_MIN_CHARS)),
             min_interval=float(
                 settings.get("min_interval", _TOOL_DELTA_MIN_INTERVAL_S)
@@ -1329,7 +1329,6 @@ impl BaseLLM.dispatch_streaming_with_tools(
         answer_stream = _AnswerStream()
             if mt_run.resp_type is None or mt_run.resp_type is str
             else None;
-        streamed_calls = {};
         _stream_resp: any = None;
         try {
             _stream_resp = self.model_call_with_stream(params);
@@ -1342,24 +1341,16 @@ impl BaseLLM.dispatch_streaming_with_tools(
                 pending_before = len(mt_run._tool_arg_deltas);
                 frags = _tool_call_fragments(chunk);
                 for _frag in frags {
-                    _call = streamed_calls.setdefault(
-                        _frag["index"], {"id": "", "name": "", "arguments": ""}
-                    );
-                    _call["id"] = _call["id"] or _frag["id"];
-                    _call["name"] = _call["name"] or _frag["name"];
-                    _call["arguments"] += _frag["fragment"];
+                    coalescer.observe(_frag);
                 }
-                if stream_args {
-                    for _frag in frags {
-                        coalescer.observe(_frag);
-                    }
-                }
-                first = streamed_calls[min(streamed_calls)] if streamed_calls else None;
-                answer_piece = answer_stream.observe(first)
+                first = coalescer.state[min(coalescer.state)]
+                    if coalescer.state
+                    else None;
+                answer_piece = answer_stream.observe(first["args"])
                     if answer_stream
                         and frags
                         and first
-                        and first["name"] == "finish_tool"
+                        and first["tool"] == "finish_tool"
                     else "";
                 delta_content = "";
                 if chunk?.choices and chunk?.choices?[0]?.delta {
@@ -1453,13 +1444,13 @@ impl BaseLLM.dispatch_streaming_with_tools(
         if reasoning_buf {
             message["reasoning_content"] = reasoning_buf;
         }
-        if streamed_calls {
+        if coalescer and coalescer.state {
             message["tool_calls"] = [
                 {
-                    "id": c["id"],
+                    "id": c["call_id"],
                     "type": "function",
-                    "function": {"name": c["name"], "arguments": c["arguments"]}
-                } for (_, c) in sorted(streamed_calls.items())
+                    "function": {"name": c["tool"], "arguments": c["args"]}
+                } for (_, c) in sorted(coalescer.state.items())
             ];
         }
     }
@@ -2293,6 +2284,7 @@ impl _ToolDeltaCoalescer.observe(frag: dict[str, any]) -> None {
             "call_id": "",
             "tool": "",
             "buf": "",
+            "args": "",
             "last": time.time(),
             "sent": 0,
             "announced": False,
@@ -2307,6 +2299,7 @@ impl _ToolDeltaCoalescer.observe(frag: dict[str, any]) -> None {
         st["tool"] = str(frag["name"]);
     }
     st["buf"] += str(frag.get("fragment") or "");
+    st["args"] += str(frag.get("fragment") or "");
 
     if st["tool"] and not st["announced"] {
         st["announced"] = True;
@@ -2363,9 +2356,9 @@ impl _ToolDeltaCoalescer.flush {
 }
 
 
-impl _AnswerStream.observe(call: dict[str, str]) -> str {
+impl _AnswerStream.observe(arguments: str) -> str {
     try {
-        parsed = from_json(call["arguments"], allow_partial="trailing-strings");
+        parsed = from_json(arguments, allow_partial="trailing-strings");
     } except ValueError {
         return "";
     }
