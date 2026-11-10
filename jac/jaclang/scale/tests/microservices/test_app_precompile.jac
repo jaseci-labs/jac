@@ -329,7 +329,8 @@ test "a fresh checkout reuses a bundle sealed elsewhere through the shared cache
     );
     mode = (shared / os.listdir(shared)[0]).stat().st_mode & 0o777;
     assert mode == 0o644 , (
-        f"a shared bundle must take the deploy umask so other users can read it: {oct(mode)}"
+        "a shared bundle must take the deploy umask so other users can read it: "
+        + oct(mode)
     );
     checkout = _checkout_of(first_project);
     (again, again_log) = _pack_shared(checkout, binary, str(shared));
