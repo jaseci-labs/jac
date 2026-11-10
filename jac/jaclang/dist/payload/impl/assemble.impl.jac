@@ -396,7 +396,7 @@ impl stage_python_bin(python_dir: str, stage: str) {
     dst = os.path.join(bin_dst, bare);
     copy_file(py, dst);
     os.chmod(dst, 0o755);
-    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else None);
+    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else ["--strip-debug"]);
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
 }
 
@@ -415,7 +415,7 @@ impl stage_tree(
     found = find_libpython(python_lib);
     staged_lib = os.path.join(lib_dst, found.bare);
     copy_file(os.path.join(python_lib, found.src), staged_lib);
-    strip_best_effort(staged_lib);
+    strip_best_effort(staged_lib, ["--strip-debug"]);
 
     stage_stdlib(python_lib, lib_dst);
     dynload = os.path.join(lib_dst, f"python{py_ver()}", "lib-dynload");
