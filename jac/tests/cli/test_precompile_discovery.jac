@@ -4,6 +4,10 @@ import from unittest.mock { patch }
 import from jaclang.compiler.driver.pipeline { PRODUCTS }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import jaclang.server.assembly;
+import from jaclang.compiler.driver.application { prepare_application }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.runtime.prepared { forget }
+import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
 import from jaclang.dist.precompile_bytecode {
     placement_facts_map,
     precompile_unit,
@@ -55,5 +59,39 @@ test "an app's client-only entry is sealed while its client modules are not" {
         sources = {Path(p).name for p in sealable_sources(str(base))};
         assert 'main.jac' in sources , sources;
         assert 'page.jac' not in sources , sources;
+    }
+}
+
+test "discovery on a prepared stage reads the prepare's records instead of compiling" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "records"\nentry-point = "main"\n'
+        );
+        (base / '__init__.jac').write_text('');
+        (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'main.jac').write_text(
+            'import from helper { value }\ndef:pub read -> int { return value(); }\n'
+        );
+        main_path = str(base / "main.jac");
+        try {
+            prepare_application(main_path, JacProgram(), str(base));
+        } finally {
+            forget(main_path);
+        }
+        manifest = base / SERVE_MANIFEST_REL;
+        manifest.parent.mkdir(parents=True, exist_ok=True);
+        manifest.write_text('{}\n');
+        compiled: list[str] = [];
+        real_compile = JacProgram.compile;
+        def recording(self: JacProgram, *args: any, **kwargs: any) -> any {
+            compiled.append(str(kwargs.get('file_path', args[0] if args else '')));
+            return real_compile(self, *args, **kwargs);
+        }
+        with patch.object(JacProgram, 'compile', recording) {
+            sources = {Path(p).name for p in sealable_sources(str(base))};
+        }
+        assert {'main.jac', 'helper.jac'} <= sources , sources;
+        assert not compiled , f"discovery compiled modules the prepare already analysed: {compiled}";
     }
 }
