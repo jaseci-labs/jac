@@ -1041,6 +1041,22 @@ impl MicroserviceGateway.setup -> ServingApp {
     if rl_mw is not None {
         registry.register(Middleware(name="rate_limit", priority=10, fn=rl_mw));
     }
+    skipped = client_error_limit_skipped(
+        gw_cfg.get("rate_limit", {}),
+        list(ServeSettings.load(self.base_path).proxy.trusted),
+        in_cluster()
+    );
+    error_mw = None
+        if skipped
+        else build_client_error_limit_middleware(gw_cfg.get("rate_limit", {}));
+    if skipped {
+        logger.info(skipped);
+    }
+    if error_mw is not None {
+        registry.register(
+            Middleware(name="client_error_limit", priority=10, fn=error_mw)
+        );
+    }
 
     registry.install(self.app);
 
