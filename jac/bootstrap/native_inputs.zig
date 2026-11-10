@@ -1,6 +1,5 @@
 //! The inputs of the LLVMPY_* shim: the native C++ sources, the build
-//! recipe, and the LLVM pin. The JacPython build key and the shim's artifact
-//! record both hash exactly this; the artifact router recomputes it on the
+//! recipe, and the LLVM pin. The shim's artifact record hashes exactly this; the artifact router recomputes it on the
 //! Jac side (`shim_inputs_digest` in llvm/shim_path.jac) to decide whether a
 //! placed shim is current.
 const std = @import("std");

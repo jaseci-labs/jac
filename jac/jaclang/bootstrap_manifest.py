@@ -57,19 +57,15 @@ def is_roster_input(rel_path: str, roster: tuple[str, ...] | None = None) -> boo
     )
 
 
-# Inputs the build LOWERS into JacPython's native object (prepare_native.py)
-# instead of shipping as source. They are compiler identity exactly like every
+# Inputs a build lowers into a native object instead of shipping as source
+# (none since JacPython was removed). They are compiler identity exactly like every
 # other declared input; a staging that omits their sources carries their hashes
 # in COMPILER_IDENTITY_NAME so its digest still covers them. This tuple is the
 # only place the set is named: the payload stager prunes by it and the digest
 # resolver completes by it, so the two can no longer disagree (they did, and a
 # pruned payload silently reported a different, smaller compiler identity than
 # the checkout it was built from).
-NATIVE_LOWERED_PATHS: tuple[str, ...] = (
-    "compiler/frontend/python",
-    "compiler/backends/py/jacpython",
-    "runtime/python",
-)
+NATIVE_LOWERED_PATHS: tuple[str, ...] = ()
 
 # Written into a staged jaclang tree at pack time, from the COMPLETE source
 # tree, before any pruning. Its `inputs` map covers every declared input so a

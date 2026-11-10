@@ -10,7 +10,6 @@ glob ARTIFACTS: dict[str, str] = {
          "precompiled": "jaclang.dist.precompiled:PrecompiledArtifact",
          "llvm-cbe": "jaclang.toolchains.c_backend:CBackendArtifact",
          "bun": "jaclang.client.js_runtime:BunArtifact",
-         "jacpython": "jaclang.dist.interpreter:JacPythonArtifact",
          "postgres": "jaclang.data.pg_dist:PostgresArtifact",
          "node": "jaclang.toolchains.tools:NodeArtifact",
          "jdk": "jaclang.toolchains.tools:JdkArtifact",

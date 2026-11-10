@@ -167,23 +167,6 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 **Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
 
-## Building JacPython
-
-JacPython (CPython with its C progressively replaced by native Jac, the Python
-compiler included) is the only Python jac builds on, ships or runs. With Zig
-0.16 and the LLVM shim in place (`zig build fetch-llvm` once), `zig build` in
-`jac/` (or `jac native build jacpython`) builds it, then `jac/zig-out/bin/jac`
-on it. The build runs on the previous JacPython output, or on the pinned
-linux-x86_64 seed when there is none; on another platform, adopt a native
-object lowered on linux-x86_64 with `-Djacpython-object=DIR`. See
-[the build guide](jac/launcher/README.md#build) and the Building section of
-[the migration notes](jac/jaclang/cli/docs/internals/jacpython-migration.md).
-
-`jac native build jacpython --exact` rebuilds the runtime instead of reusing one
-whose lowered sources are unchanged. Its native compiler object is linked at
-build time, so editing compiler source through the dev loop does not change an
-existing binary: rebuild it.
-
 ## Code Rules and Guidelines
 
 **Jac Style**

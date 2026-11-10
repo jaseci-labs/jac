@@ -1,7 +1,7 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release: one configuration (JacPython + bun) per target.
+# GitHub Release: one configuration (prebuilt CPython + bun) per target.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -154,10 +154,6 @@ jobs:
           # exists to build it goes red when it fails. Delete the flag when
           # #8805 is fixed and the leg should carry a release again; that
           # restores it as a blocking leg and a required asset in one edit.
-          # No leg lowers its own jacpython.o: the `jacpython-object` job
-          # builds it for every leg on x86 Linux and each leg adopts it
-          # (#10472), so an ARM leg no longer needs the 16-vCPU runner's
-          # memory.
           LEGS='[
             {"os": "ubuntu-24.04", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
             {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
@@ -211,19 +207,9 @@ jobs:
           echo "Building: $(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
           echo "Required to publish: ${REQUIRED:-(none)}"
 
-  # JacPython's native object for every leg, built on x86 Linux (#10472): the
-  # single-threaded lowering stays off the ARM and macOS runners, which are
-  # 2.5-3x slower per thread. See build-kernel.yml.
-  jacpython-object:
-    needs: plan
-    uses: ./.github/workflows/build-kernel.yml
-    with:
-      platforms: ${{ needs.plan.outputs.platforms }}
-      ref: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
-
   build:
     name: ${{ matrix.platform }}
-    needs: [plan, jacpython-object]
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
@@ -313,30 +299,17 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build/jacpython
-          key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          path: jac/.precompiled-build/cpython
+          key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
+            jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
 
-      # Cache the JacPython runtime. Release builds remain cold: they link the
-      # object the `jacpython-object` job lowered and do the native rest
-      # themselves.
-      - name: Resolve Python SDK cache input
-        id: python-sdk
-        shell: bash
-        run: |
-          sdk=zig-libc
-          if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
-          echo "version=$sdk" >> "$GITHUB_OUTPUT"
-
-      - name: Restore cached JacPython runtime (dev channel)
+      - name: Restore cached prebuilt CPython (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/jacpython
-          key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python }}
-          restore-keys: |
-            python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+          path: jac/.pbs-build/*/python
+          key: pbs-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.python }}
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -353,10 +326,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/jacpython
-          key: payload-layers-jacpython-zstd19-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+          path: jac/.payload-layers/cpython
+          key: payload-layers-cpython-zstd19-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
-            payload-layers-jacpython-zstd19-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-cpython-zstd19-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -459,23 +432,12 @@ jobs:
           launchctl list | grep -i reportcrash
           exit 0
 
-      # The jacpython-object job lowered this leg's jacpython.o; the build
-      # links it.
-      - name: Download the JacPython object
-        uses: actions/download-artifact@v4
-        with:
-          name: jacpython-object-${{ matrix.platform }}
-          path: .jacpython-object
-
       - name: Build the jac binary (one command)
         working-directory: jac
         # A dev-channel shim-cache hit restored the shim, record included, to
         # its in-tree place, and the build reuses it there. The release
         # channel's prebuilt asset is named by the hash of the same inputs, so
         # placing it and adopting it is equally sound.
-        # -Djacpython-object links the prebuilt jacpython.o, so the leg runs
-        # only JacPython's native rest: the vendored libraries, the C, the
-        # link, sysconfig and compileall.
         # build.zig streams mkpayload live under CI (-Dpayload-progress). The
         # seal children are plain Python, so these make their output
         # line-buffered and a native fault print its stack.
@@ -488,8 +450,7 @@ jobs:
             cp "${{ steps.shim-fetch.outputs.file }}" "$PLACED"
             zig build adopt-shim $DTARGET --summary all
           fi
-          zig build $DTARGET \
-            -Djacpython-object="$GITHUB_WORKSPACE/.jacpython-object" --summary all
+          zig build $DTARGET --summary all
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
@@ -504,28 +465,23 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Verify the shipped Python is JacPython
+      - name: Verify the shipped Python is the pinned CPython 3.14
         working-directory: jac
         run: |
           set -euo pipefail
           WORK="$(mktemp -d)"
-          cat > "$WORK/native_compiler.jac" <<'EOF'
+          cat > "$WORK/shipped_python.jac" <<'EOF'
           import sys;
-          import ctypes;
-          import os;
           with entry {
-              assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
-              assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4;
-              assert not hasattr(sys, "_jacpython_compile");
-              assert not hasattr(sys, "_jacpython_image");
-              assert eval("6 * 7") == 42;
-              print("Python compiler verified");
+              assert sys.implementation.name == "cpython" , sys.implementation;
+              assert sys.version_info[:2] == (3, 14) , sys.version;
+              print("shipped Python verified");
           }
           EOF
           # From $WORK: the checkout's jac.toml would reroute the binary to
           # this tree's compiler source.
           BIN="$PWD/zig-out/bin/jac"
-          (cd "$WORK" && "$BIN" run "$WORK/native_compiler.jac")
+          (cd "$WORK" && "$BIN" run "$WORK/shipped_python.jac")
           # A release never runs a required artifact on its floor, and ships
           # every floor its policy names (bun).
           (cd "$WORK" && "$BIN" native status && "$BIN" native status --require release)
@@ -732,23 +688,6 @@ jobs:
             2>/dev/null || true
           gh release upload deps --repo "$GITHUB_REPOSITORY" \
             "dist-shim/$ASSET" "dist-shim/$ASSET.sha256" --clobber
-
-      # CI's bytecode kit (setup-jac bytecode-kit) never builds JacPython: with
-      # no runtime cached it unpacks this one, the newest a release built.
-      # Best-effort, like the shim above.
-      - name: Publish the JacPython runtime to the deps release (release channel)
-        if: inputs.channel != 'dev' && runner.os == 'Linux'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          ASSET="jacpython-runtime-${{ matrix.platform }}.tar.zst"
-          mkdir -p dist-runtime
-          tar -C jac/.python-build/jacpython -cf - "${{ matrix.platform }}" | zstd -T0 -10 -q -o "dist-runtime/$ASSET"
-          ( cd dist-runtime && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
-          gh release upload deps --repo "$GITHUB_REPOSITORY" \
-            "dist-runtime/$ASSET" "dist-runtime/$ASSET.sha256" --clobber
 
       - name: Package asset (+ checksum)
         id: pkg

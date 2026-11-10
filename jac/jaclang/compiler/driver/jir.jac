@@ -165,7 +165,7 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _PY_EMITTER_DIGESTS: dict[str, str] = {};
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
-     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", );
+     PY_EMITTER_EXCLUDED: tuple[str, ...] = ();
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
 

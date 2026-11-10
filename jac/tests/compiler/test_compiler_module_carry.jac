@@ -38,8 +38,7 @@ import from tests.support { cache_env }
 glob PKG: Path = Path(str(jir.__file__)).resolve().parent.parent.parent,
      MODULE: str = str(PKG / "cache" / "policy.jac"),
      EMITTER_ROW: str = "compiler/backends/py/jcir_gen_pass.jac",
-     NATIVE_ROW: str = "compiler/backends/native/link_plan.jac",
-     INTERPRETER_ROW: str = "compiler/backends/py/jacpython/runtime.jac";
+     NATIVE_ROW: str = "compiler/backends/native/link_plan.jac";
 
 """A source checkout with its own cache, entered as one compiler build after
 another. Each build is a generation directory, a compiler digest and the
@@ -83,9 +82,7 @@ obj Checkout {
         }
     }
 
-    def build(
-        tag: str, emitter: str = "e0", native: str = "n0", interpreter: str = "i0"
-    ) {
+    def build(tag: str, emitter: str = "e0", native: str = "n0") {
         digest = "3:" + tag * 64;
         self.minted.append(digest);
         jir._COMPILER_DIGEST_CACHE.clear();
@@ -94,8 +91,7 @@ obj Checkout {
         jir._COMPILER_GENERATION_CACHE.append(tag * 16);
         jir._COMPILER_INPUT_ROWS[digest] = [
             (EMITTER_ROW, emitter),
-            (NATIVE_ROW, native),
-            (INTERPRETER_ROW, interpreter)
+            (NATIVE_ROW, native)
         ];
         jir._PY_EMITTER_DIGESTS.pop(digest, None);
     }
@@ -152,17 +148,6 @@ test "an unchanged compiler module is carried to the next compiler build" {
         assert carried_module_bytecode(MODULE) is None , "a build carried from itself";
         tree.build("b", native="n1");
         assert not get_module_cache_path(MODULE).exists();
-        assert carried_module_bytecode(MODULE) == (b"emitted-by-a", b"");
-    }
-}
-
-test "the interpreter beside the Python backend is not the emitter" {
-    with checkout() as tree {
-        tree.build("a");
-        before = py_emitter_digest();
-        write_module_cache(MODULE, b"emitted-by-a");
-        tree.build("b", interpreter="i1");
-        assert py_emitter_digest() == before;
         assert carried_module_bytecode(MODULE) == (b"emitted-by-a", b"");
     }
 }

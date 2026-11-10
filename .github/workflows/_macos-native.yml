@@ -1,8 +1,7 @@
 name: macOS native
 
 # The darwin native lane: the sealed macOS kit and the Mach-O / wasm-floor /
-# libSystem-equivalence tests and JacPython's conformance gates that consume
-# it. Two callers share this one copy:
+# libSystem-equivalence tests that consume it. Two callers share this one copy:
 #   - nightly.yml (macos-native): daily, the default home for this lane.
 #   - ci.yml      (macos-native): PR lane, OPT-IN via the `macos` label, plus
 #     workflow_dispatch.
@@ -30,23 +29,13 @@ permissions:
   contents: read
 
 jobs:
-  # The macOS kit's jacpython.o, built on x86 Linux (#10472): the kit adopts
-  # it instead of lowering it on the slower runner.
-  jacpython-object:
-    uses: ./.github/workflows/build-kernel.yml
-    with:
-      platforms: '["macos-aarch64"]'
-
   build-kit-macos:
-    needs: jacpython-object
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
 
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
-        with:
-          prebuilt: macos-aarch64
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -112,19 +101,6 @@ jobs:
           cd "$RUNNER_TEMP/managed-ios"
           printf '[project]\nname = "managed-ios"\n\n[toolchains]\nsystem = false\n' > jac.toml
           jac setup --toolchain ios
-
-  # JacPython's conformance gates on darwin, on the sealed macOS kit.
-  jacpython-macos:
-    needs: build-kit-macos
-    runs-on: macos-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/jac-kit
-        with:
-          name: jac-kit-macos
-          sealed: "true"
-      - uses: ./.github/actions/jacpython-conformance
 
   # The desktop target on its second host. ci.yml smokes the same quickstart
   # scaffold under Xvfb with WebKitGTK; this is the WKWebView twin: the host
