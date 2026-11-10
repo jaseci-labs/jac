@@ -409,6 +409,20 @@ jobs:
       - name: Pin the cache home
         run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
 
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
+      # The compiler modules compiled from the checkout, keyed by the compiler
+      # digest. Restored before anything calls jac, so a run that leaves the
+      # compiler alone skips compiling it from source.
+      - name: Restore the compiled compiler modules
+        id: dev-modules-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/.cache/jac/jir/modules
+          key: jac-dev-modules-c${{ steps.inputs.outputs.compiler }}
+
       - name: Build the dev jac binary (cached)
         uses: ./.github/actions/setup-jac
         with:
@@ -440,10 +454,6 @@ jobs:
           zig build vendor-musl -Dreuse-python=true -Dstale-python=true --summary all
           zig build vendor-musl-linux-aarch64 -Dreuse-python=true -Dstale-python=true --summary all
           zig build vendor-wasm-libc -Dreuse-python=true -Dstale-python=true --summary all
-
-      - name: Fingerprint immutable build inputs
-        id: inputs
-        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
 
       - name: Restore the dev stub catalog
         id: dev-stubcat-cache
@@ -498,6 +508,13 @@ jobs:
       # catalog. A cached module is checked against its source and compiler,
       # not file times, so the precompile legs start from them instead of
       # each compiling the compiler again.
+      - name: Save the compiled compiler modules
+        if: steps.dev-modules-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/.cache/jac/jir/modules
+          key: jac-dev-modules-c${{ steps.inputs.outputs.compiler }}
+
       - name: Upload the compiled compiler modules
         uses: actions/upload-artifact@v4
         with:
