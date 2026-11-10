@@ -626,8 +626,8 @@ test "failed preparation does not replace the last working revision" {
         failed = False;
         try {
             prepare_application(str(path), JacProgram(), tmp);
-        } except RuntimeError {
-            failed = True;
+        } except RuntimeError as error {
+            failed = type(error).__name__ == 'BuildFailed';
         }
         assert failed;
         assert prepared_manifest(str(path)) == previous.manifests[str(path)];
@@ -1199,8 +1199,9 @@ test "a dev reload waits for the preparation lock before it takes the import loc
     );
 }
 
-test "a dev refresh cut short by a save stays pending and keeps its routes" {
-    import from jaclang.runtime.preparation_lock { SourcesChanged }
+test "a dev refresh cut short by a save or a failed build keeps its routes" {
+    import from jaclang.client.artifact { ClientBundleError }
+    import from jaclang.runtime.preparation_lock { BuildFailed, SourcesChanged }
     import from jaclang.server.server { JacAPIServer }
     refresh: any = JacAPIServer._refresh_dev_endpoints;
     def failing(error: Exception) -> any {
@@ -1211,6 +1212,8 @@ test "a dev refresh cut short by a save stays pending and keeps its routes" {
     }
     cases = [
         ('sources changed', SourcesChanged('changed'), None, True),
+        ('server code that fails to compile', BuildFailed('error[E1032]'), None, False),
+        ('client code that fails to compile', ClientBundleError('E7005'), None, False),
         ('any other error', RuntimeError('boom'), RuntimeError, False)
     ];
     for (label, error, expected, pending) in cases {
