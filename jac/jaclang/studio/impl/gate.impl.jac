@@ -476,7 +476,6 @@ impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
     module_files = set(self._module_files(target));
     arch = arch_file_for(target) if not is_arch_file(target) else target;
     previous = active_host();
-    previous_mode = set_kernel_host_mode("");
     arch_staged = self._arch_staged();
     if arch_staged {
         wiring_mod._spec_cache.clear();
@@ -504,7 +503,6 @@ impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
         self._last_deps = sorted(read);
     } finally {
         install_host(previous);
-        set_kernel_host_mode(previous_mode);
         if arch_staged {
             wiring_mod._spec_cache.clear();
         }
@@ -885,7 +883,7 @@ impl symbol_table(text: str, path: str) -> dict[str, tuple[str, int, int, str, s
     if not text.strip() {
         return table;
     }
-    (module, had_error) = parse_woven(text, path, None, [], load_kernel=False);
+    (module, had_error) = parse_woven(text, path, None, []);
     if module is None {
         return table;
     }
@@ -1037,7 +1035,7 @@ impl import_lines(text: str, path: str) -> list[str] {
         return out;
     }
     try {
-        (module, had_error) = parse_woven(text, path, None, [], load_kernel=False);
+        (module, had_error) = parse_woven(text, path, None, []);
     } except Exception {
         return out;
     }

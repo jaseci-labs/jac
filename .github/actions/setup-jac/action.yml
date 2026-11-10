@@ -27,25 +27,15 @@ inputs:
     default: "false"
   prebuilt:
     description: >
-      A release platform whose compiler kernel and jacpython.o this run built
-      on x86 Linux (build-kernel.yml's `kernel-<platform>` and
-      `jacpython-object-<platform>` artifacts). The build adopts both
-      (-Dkernel, -Djacpython-object) instead of building them, and refuses
-      either unless it was built from this tree (#10219, #10472). Empty
-      builds both as usual.
+      A release platform whose jacpython.o this run built on x86 Linux
+      (build-kernel.yml's `jacpython-object-<platform>` artifact). The build
+      adopts it (-Djacpython-object) instead of lowering it, and refuses it
+      unless it was built from this tree (#10472). Empty builds it as usual.
     required: false
     default: ""
-  native-kernel:
-    description: >
-      Keep the native compiler kernel in a pull request's kit, as the
-      `native:kernel` label does. ci.yml's build-kit sets it when the PR
-      touches a path the kernel is lowered from.
-    required: false
-    default: "false"
   bytecode-kit:
     description: >
-      Leave the native compiler kernel out of the kit on every event, not only
-      on pull requests, and never build JacPython: reuse the last runtime even
+      Never build JacPython: reuse the last runtime even
       when its lowered sources changed (-Dstale-python). With none cached it
       unpacks the runtime the last release published to the `deps` release,
       else adopts the newest `jacpython-object-<platform>` artifact and builds
@@ -301,12 +291,6 @@ runs:
     - if: steps.cache.outputs.cache-hit != 'true' && inputs.prebuilt != ''
       uses: actions/download-artifact@v4
       with:
-        name: kernel-${{ inputs.prebuilt }}
-        path: ${{ runner.temp }}/prebuilt/kernel
-
-    - if: steps.cache.outputs.cache-hit != 'true' && inputs.prebuilt != ''
-      uses: actions/download-artifact@v4
-      with:
         name: jacpython-object-${{ inputs.prebuilt }}
         path: ${{ runner.temp }}/prebuilt/jacpython-object
 
@@ -372,16 +356,10 @@ runs:
       # A PR reuses the JacPython runtime main last built when the sources it
       # was lowered from are unchanged (build_python.zig sourcesKey); main
       # keeps the full key, so the runtime is at most one main build behind.
-      # With `prebuilt`, the build adopts the kernel and jacpython.o lowered
-      # on x86 instead of lowering them, which runs 2.5-3x slower on an ARM or
-      # macOS runner.
-      # A pull request's kit leaves the native compiler kernel out unless the
-      # PR carries the `native:kernel` label or the caller sets native-kernel.
-      # A bytecode-kit caller leaves it out on every event, and reuses the
-      # JacPython runtime even when lowered from other sources.
-      # The seal omits only what JAC_KIT_OMIT names (artifacts/kit.jac
-      # pr_kit_omits), so a build that does not come through here, such as
-      # build-binaries.yml, ships it all.
+      # With `prebuilt`, the build adopts the jacpython.o lowered on x86
+      # instead of lowering it, which runs 2.5-3x slower on an ARM or macOS
+      # runner. A bytecode-kit caller reuses the JacPython runtime even when
+      # lowered from other sources.
       env:
         PR_BUILD: ${{ github.event_name == 'pull_request' || inputs.bytecode-kit == 'true' }}
         # A bytecode kit lives one run: pack it at zstd 3 (seconds) instead of
@@ -391,11 +369,10 @@ runs:
         STALE_PYTHON: ${{ inputs.bytecode-kit }}
         DEV: ${{ inputs.dev }}
         STALE_OBJECT: ${{ steps.stale-object.outputs.dir }}
-        JAC_KIT_OMIT: ${{ (inputs.bytecode-kit == 'true' || (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'native:kernel') && inputs.native-kernel != 'true')) && 'kernel' || '' }}
       run: |
         PY=(-Dreuse-python="$PR_BUILD")
         if [ "$DEV" = true ]; then PY+=(-Ddev); fi
-        if [ -n "$PREBUILT" ]; then PY+=(-Dkernel="$PREBUILT/kernel" -Djacpython-object="$PREBUILT/jacpython-object"); fi
+        if [ -n "$PREBUILT" ]; then PY+=(-Djacpython-object="$PREBUILT/jacpython-object"); fi
         if [ "$STALE_PYTHON" = true ]; then PY+=(-Dstale-python=true); fi
         if [ -n "$STALE_OBJECT" ]; then PY+=(-Djacpython-object="$STALE_OBJECT"); fi
         TARGET_ARG=()

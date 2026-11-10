@@ -49,7 +49,7 @@ concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && !contains(fromJSON('["macos", "native:kernel", "type-error-report", "ci:sealed"]'), github.event.label.name)
+    && !contains(fromJSON('["macos", "type-error-report", "ci:sealed"]'), github.event.label.name)
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -65,7 +65,7 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || contains(fromJSON('["macos", "native:kernel", "type-error-report", "ci:sealed"]'), github.event.label.name)
+      || contains(fromJSON('["macos", "type-error-report", "ci:sealed"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -74,7 +74,6 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
-      kernel: ${{ steps.filter.outputs.kernel }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -143,49 +142,6 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
-            # Sources the native compiler kernel is lowered from, plus the
-            # compiler that lowers them. A pull request touching any of them
-            # seals the kernel in build-kit, as the `native:kernel` label does:
-            # its kit otherwise skips the seal and the break lands on main.
-            kernel:
-              - 'jac/jaclang/compiler/**'
-              - 'jac/jaclang/runtime/na_stdlib/**'
-              - 'jac/jaclang/runtime/constants.jac'
-              - 'jac/jaclang/runtime/osp_graph.jac'
-              - 'jac/jaclang/runtime/osp_kernel.jac'
-              - 'jac/jaclang/runtime/osp_tag.jac'
-              - 'jac/jaclang/runtime/portability.jac'
-              - 'jac/jaclang/runtime/region_native.jac'
-              - 'jac/jaclang/runtime/scalars.jac'
-              - 'jac/jaclang/runtime/semantic.jac'
-              - 'jac/jaclang/runtime/surface.jac'
-              - 'jac/jaclang/runtime/impl/constants.impl.jac'
-              - 'jac/jaclang/runtime/impl/osp_graph.impl.jac'
-              - 'jac/jaclang/runtime/impl/osp_kernel.impl.jac'
-              - 'jac/jaclang/runtime/impl/osp_tag.impl.jac'
-              - 'jac/jaclang/runtime/impl/portability.impl.jac'
-              - 'jac/jaclang/runtime/impl/region_native.impl.jac'
-              - 'jac/jaclang/runtime/impl/scalars.impl.jac'
-              - 'jac/jaclang/runtime/impl/semantic.impl.jac'
-              - 'jac/jaclang/runtime/impl/surface.impl.jac'
-              - 'jac/jaclang/project/app_kinds.jac'
-              - 'jac/jaclang/project/mobui_scope.jac'
-              - 'jac/jaclang/project/source.jac'
-              - 'jac/jaclang/project/workspace_model.jac'
-              - 'jac/jaclang/project/impl/app_kinds.impl.jac'
-              - 'jac/jaclang/project/impl/mobui_scope.impl.jac'
-              - 'jac/jaclang/project/impl/source.impl.jac'
-              - 'jac/jaclang/project/impl/workspace_model.impl.jac'
-              - 'jac/jaclang/client/client_surface.jac'
-              - 'jac/jaclang/client/targets/react_native/html_tag_map.jac'
-              - 'jac/jaclang/archwire.jac'
-              - 'jac/jaclang/artifacts/kit.jac'
-              - 'jac/jaclang/artifacts/impl/kit.impl.jac'
-              - 'jac/jaclang/dist/precompile_bytecode.jac'
-              - 'jac/jaclang/dist/impl/precompile_bytecode.impl.jac'
-              - 'jac/native/**'
-              - 'jac.toml'
-              - '.github/actions/setup-jac/action.yml'
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -193,21 +149,8 @@ jobs:
     # only, for the sealed lanes. Pull requests and pushes use dev-kit. Its
     # original condition was none (always on).
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    # A kit that seals the native compiler kernel lowers the analysis zone in
-    # one process and peaks near 15 GB, which starves a 4-vCPU runner.
-    # The kit is always a bytecode kit (setup-jac bytecode-kit below), on
-    # every event, so it fits the 16 GB runner; the kernel is built at
-    # release time.
+    # The compiler runs from the bytecode the same build precompiles.
     runs-on: ubuntu-24.04
-    # A pull request's kit carries no native compiler kernel: the compiler
-    # runs from the bytecode the same build precompiles, which is the path a
-    # kernel build itself compiles through. The kernel is most of a kit's build
-    # time and a pull request rarely changes what it does. Main, nightly and
-    # release kits build it, and so does a pull request carrying the
-    # `native:kernel` label (adding the label starts a new run) or touching a
-    # path in the `kernel` filter. setup-jac turns that into JAC_KIT_OMIT, the
-    # only thing the seal reads (artifacts/kit.jac pr_kit_omits), and the kit's
-    # manifest records the omission for the runtime to read.
     needs: changes
     steps:
       - uses: actions/checkout@v5
@@ -234,9 +177,6 @@ jobs:
           # source-built interpreter and its native compiler object. A binary
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
-          # Restore this line and drop bytecode-kit to seal the kernel in CI
-          # again.
-          # native-kernel: ${{ needs.changes.outputs.kernel }}
           bytecode-kit: "true"
 
       - name: Set up Zig 0.16.0
@@ -287,9 +227,7 @@ jobs:
           # The bundled runtime is JacPython: its `compile` is the native Jac
           # compiler. test-jacpython holds it to the rest of its gates.
           "$BIN" -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
-          # The kit carries every artifact a release does, less what its
-          # manifest declares it leaves out -- only a pull request's kit may
-          # (setup-jac asks through JAC_KIT_OMIT, artifacts/kit.jac pr_kit_omits).
+          # The kit carries every artifact a release does.
           "$BIN" native status
           "$BIN" native status --require kit
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
@@ -2113,8 +2051,7 @@ jobs:
   # critical path of every native PR to begin with.
   macos-native:
     needs: changes
-    # Turned off. The macOS kit seals a kernel through
-    # build-kernel.yml on an 8 vCPU runner; macOS is built at release time.
+    # Turned off; macOS is built at release time.
     # Restore:
     # if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
     if: false
