@@ -2561,115 +2561,41 @@ test "inferred_local_type_frozen" {
     # `for` target that reuses the name, unannotated or annotated (#9972),
     # or any other binder that writes it (#10405).
     # The `None`-sentinel pattern is the one exception (the type evolves).
+    # Every `# <-- Error` line in the fixture carries one E1001, in line order.
+    path = os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac");
     program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
-        options=NO_TC
+    program.compile(path, options=NO_TC);
+    marked = [
+        i + 1
+        for (i, line) in enumerate(Path(path).read_text().splitlines())
+        if "# <-- Error" in line
+    ];
+    errs = program.errors_had;
+    assert [e.loc.first_line for e in errs] == marked , "\n".join(
+        [e.pretty_print() for e in errs]
     );
-    assert len(program.errors_had) == 14 , f"Expected 14 type errors, but got {len(
-        program.errors_had
-    )}: "
-        + "\n".join([err.pretty_print() for err in program.errors_had]);
-    for err in program.errors_had {
-        assert err.code is not None and err.code.code == "E1001";
-    }
-    for (idx, needle) in [
-        (0, """
-        a = "some str";  # <-- Error
-    """),
-        (
-            1,
-            """
-        for a in ["x", "y"] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            2,
-            """
-        for (kind, a) in [("k", "x")] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            3,
-            """
-        for c in [1, 2] {  # <-- Error
-        Cannot assign int to str
-    """
-        ),
-        (
-            4,
-            """
-        for x in ["bad"] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            5,
-            """
-        [kind, title] = ["k", "x"];  # <-- Error
-        Cannot assign Literal["x"] to Label
-    """
-        ),
-        (
-            6,
-            """
-        other = title="x";  # <-- Error
-        Cannot assign Literal["x"] to Label
-    """
-        ),
-        (
-            7,
-            """
-        if (title := "x") {  # <-- Error
-        Cannot assign Literal["x"] to Label
-    """
-        ),
-        (
-            8,
-            """
-        with open("x.txt") as title {  # <-- Error
-        Cannot assign TextIOWrapper to Label
-    """
-        ),
-        (
-            9,
-            """
-        } except ValueError as title {  # <-- Error
-        Cannot assign ValueError to Label
-    """
-        ),
-        (
-            10,
-            """
-        (kind, *title) = ("k", "x", "y");  # <-- Error
-        Cannot assign list[
-    """
-        ),
-        (
-            11,
-            """
-        (kind, *middle, title) = ("k", Label(), Label(), "x");  # <-- Error: the last element
-        Cannot assign Literal["x"] to Label
-    """
-        ),
-        (
-            12,
-            """
-        (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
-        Cannot assign Literal["x"] to Label
-    """
-        ),
-        (
-            13,
-            """
-        for (key, count) in {"ab": 1} {  # <-- Error
-        Cannot assign LiteralString to int
-    """
-        )
-    ] {
-        assert_error_pretty_found(needle, program.errors_had[idx].pretty_print());
+    for (err, msg) in zip(
+        errs,
+        [
+            'Literal["some str"] to int',
+            "str to int",
+            "str to int",
+            "int to str",
+            "str to int",
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            "TextIOWrapper to Label",
+            "ValueError to Label",
+            "list[",
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            "LiteralString to int"
+        ]
+    ) {
+        assert err.code is not None
+            and err.code.code == "E1001"
+            and f"Cannot assign {msg}" in err.pretty_print() , err.pretty_print();
     }
 }
 
