@@ -2379,6 +2379,12 @@ test "jac check native coverage ranks module outcomes" {
                     + "    return 1;\n}\n"
             );
         }
+        import from jaclang.compiler.frontend.codeinfo {
+            get_effective_default_codespace_override
+        }
+        import from jaclang.compiler.backends.native.llvm.shim_path { placed_shim_path }
+        override_before = get_effective_default_codespace_override();
+        shim_before = (placed_shim_path(), os.path.exists(placed_shim_path()));
         (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
         _reset_config();
         try {
@@ -2393,6 +2399,8 @@ test "jac check native coverage ranks module outcomes" {
         assert "native seams" in combined , (
             "a module whose callable demoted granularly must be reported "
             "under the native-seams section",
+            override_before,
+            shim_before,
             combined
         );
         assert "E5092" in combined , (
