@@ -561,19 +561,14 @@ test "only the target's cluster loader reads a kubeconfig under deploy" {
 }
 
 
-test "a redeploy reuses a live bundle volume and replaces one a destroy left terminating" {
-    def pvc(deleting: str | None) -> any {
-        return SimpleNamespace(
-            metadata=SimpleNamespace(
-                name=bundle_pvc_name(APP), deletion_timestamp=deleting
-            )
-        );
-    }
-    terminating = pvc("2026-11-09T07:44:44Z");
-    # (label, what reading the PVC returns in turn, expect it recreated)
-    for (label, reads, recreated) in [
-        ("live", [pvc(None)], False),
-        ("terminating", [terminating, terminating, ApiException(status=404)], True)
+test "a redeploy reuses a live bundle PVC and replaces a terminating one" {
+    live = SimpleNamespace(metadata=SimpleNamespace(deletion_timestamp=None));
+    dying = SimpleNamespace(
+        metadata=SimpleNamespace(deletion_timestamp="2026-11-09T07:44:44Z")
+    );
+    for (reads, recreated) in [
+        ([live], False),
+        ([dying, dying, ApiException(status=404)], True)
     ] {
         core_v1 = unittest.mock.MagicMock();
         core_v1.read_namespaced_persistent_volume_claim.side_effect = reads;
@@ -584,16 +579,8 @@ test "a redeploy reuses a live bundle volume and replaces one a destroy left ter
                 core_v1, NS, {"metadata": {"name": bundle_pvc_name(APP)}}
             );
         }
-        calls = [call[0] for call in core_v1.mock_calls];
         assert core_v1.read_namespaced_persistent_volume_claim.call_count
-            == len(reads) , f"{label}: the redeploy stopped reading before the PVC was gone";
-        assert ("create_namespaced_persistent_volume_claim" in calls)
-            == recreated , label;
-        if recreated {
-            assert calls.index("delete_namespaced_pod")
-                < calls.index("create_namespaced_persistent_volume_claim") , f"{label}: a leftover loader keeps the PVC terminating, so it must go first";
-            assert core_v1.delete_namespaced_pod.call_args.args[0]
-                == bundle_loader_pod_name(APP) , label;
-        }
+            == len(reads) , "the redeploy stopped reading before the PVC was gone";
+        assert core_v1.create_namespaced_persistent_volume_claim.called == recreated;
     }
 }

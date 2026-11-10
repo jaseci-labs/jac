@@ -45618,10 +45618,7 @@ graph import scale {
             bundle_loader_pod_name,
             bundle_pvc_name
         },
-        tests.deploy.test_deploy_k8s | tests.deploy.test_destroy_reclaim {
-            bundle_loader_pod_name,
-            bundle_pvc_name
-        },
+        tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,
