@@ -45405,6 +45405,7 @@ graph import scale {
             wait_for_pod_phase
         },
         tests.deploy.test_cluster_provider { get_cluster_provider },
+        tests.deploy.test_deploy_k8s { wait_for_pod_phase },
         tests.deploy.test_k8s_utils { parse_storage_quantity, resize_pvc_if_needed },
         tests.deploy.test_pod_env { create_k8s_secret, resolve_minted_secret },
         tests.deploy.test_pss_labels {
@@ -45617,7 +45618,10 @@ graph import scale {
             bundle_loader_pod_name,
             bundle_pvc_name
         },
-        tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
+        tests.deploy.test_deploy_k8s | tests.deploy.test_destroy_reclaim {
+            bundle_loader_pod_name,
+            bundle_pvc_name
+        },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,

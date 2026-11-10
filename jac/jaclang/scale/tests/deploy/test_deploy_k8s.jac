@@ -101,6 +101,51 @@ test "deployment target methods" {
     );
 }
 
+"""A destroy left the bundle PVC Terminating behind a leftover loader that mounts it
+(#10668). Only the redeploy's own loader delete can release it."""
+test "a redeploy replaces a bundle PVC held terminating by a leftover loader" {
+    config.load_kube_config();
+    core_v1: any = client.CoreV1Api();
+    (ns, app) = ("pvc-terminating", "pvc-terminating-app");
+    (pvc, loader) = (bundle_pvc_name(app), bundle_loader_pod_name(app));
+    manifest = {
+        "metadata": {"name": pvc},
+        "spec": {
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "64Mi"}}
+        }
+    };
+    core_v1.create_namespace({"metadata": {"name": ns}});
+    try {
+        core_v1.create_namespaced_persistent_volume_claim(ns, manifest);
+        mount = {"name": "b", "persistentVolumeClaim": {"claimName": pvc}};
+        hold = {"name": "hold", "image": "registry.k8s.io/pause:3.10"};
+        core_v1.create_namespaced_pod(
+            ns,
+            {
+                "metadata": {"name": loader},
+                "spec": {"containers": [hold], "volumes": [mount]}
+            }
+        );
+        wait_for_pod_phase(core_v1, ns, loader, {"Running"});
+        old_uid = core_v1.read_namespaced_persistent_volume_claim(pvc, ns).metadata.uid;
+        core_v1.delete_namespaced_persistent_volume_claim(pvc, ns);
+        target_config = get_scale_config().get_kubernetes_config();
+        target_config.update({"app_name": app, "namespace": ns});
+        target: any = DeploymentTargetFactory.create(
+            "kubernetes", target_config, UtilityFactory.create_logger("standard")
+        );
+        target._apply_or_replace_pvc(core_v1, ns, manifest);
+        assert core_v1.read_namespaced_persistent_volume_claim(pvc, ns).metadata.uid
+            != old_uid , "the redeploy kept the Terminating PVC";
+        assert loader
+            not in [p.metadata.name for p in core_v1.list_namespaced_pod(ns).items];
+    } finally {
+        core_v1.delete_namespace(ns);
+    }
+}
+
+
 def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> any {
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
