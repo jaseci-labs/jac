@@ -39,8 +39,6 @@ def _emit_unit_diagnostics(jac_path: str, programs: list[JacProgram]);
 
 glob _unit_program: list[JacProgram] = [];
 
-glob _unit_profiler: list[any] = [];
-
 def _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes];
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes];

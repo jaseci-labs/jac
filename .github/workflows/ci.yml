@@ -471,7 +471,6 @@ jobs:
         env:
           JAC_PRECOMPILE_JOBS: "4"
           JAC_PRECOMPILE_RSS_LOG: "1"
-          JAC_PRECOMPILE_PROFILE: ${{ runner.temp }}/precompile-prof
         run: |
           set -euo pipefail
           export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
@@ -483,56 +482,6 @@ jobs:
           [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
           echo "precompile bundle: $UNITS units in $DIR"
           ls "$XDG_CACHE_HOME/jac/jir/stubcat"/*.bin
-
-      # TEMPORARY: where the cold dev precompile spends its time.
-      - name: Report the precompile profile
-        if: always()
-        env:
-          PROF_DIR: ${{ runner.temp }}/precompile-prof
-        run: |
-          [ -d "$PROF_DIR" ] || { echo "no profile"; exit 0; }
-          export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
-          cat > "$RUNNER_TEMP/prof_report.py" <<'PY'
-          import collections, glob, os, pstats
-          files = sorted(glob.glob(os.path.join(os.environ["PROF_DIR"], "*.prof")))
-          st = pstats.Stats(files[0])
-          for f in files[1:]:
-              st.add(f)
-          total = sum(v[2] for v in st.stats.values())
-          print(f"{len(files)} worker profiles, {total:.0f}s self time total")
-          def short(path):
-              i = path.find("jaclang/")
-              return path[i:] if i >= 0 else path
-          by_file = collections.Counter()
-          by_dir = collections.Counter()
-          for (fn, _ln, _name), v in st.stats.items():
-              by_file[short(fn)] += v[2]
-              by_dir[os.path.dirname(short(fn)) or fn] += v[2]
-          print("\n== self time by directory ==")
-          for d, t in by_dir.most_common(30):
-              print(f"{t:9.1f}s {100*t/total:5.1f}%  {d}")
-          print("\n== self time by file ==")
-          for f, t in by_file.most_common(40):
-              print(f"{t:9.1f}s {100*t/total:5.1f}%  {f}")
-          print("\n== cumulative, compiler pass and phase entry points ==")
-          rows = []
-          for (fn, ln, name), v in st.stats.items():
-              s = short(fn)
-              if ("/passes/" in s or "/types/" in s or "/parser" in s or "/driver/" in s) and v[3] > 0.02 * total:
-                  rows.append((v[3], s, ln, name))
-          for ct, s, ln, name in sorted(rows, reverse=True)[:40]:
-              print(f"{ct:9.1f}s {100*ct/total:5.1f}%  {name}  {s}:{ln}")
-          st.sort_stats("tottime").print_stats(40)
-          PY
-          jac -c "exec(open('$RUNNER_TEMP/prof_report.py').read())"
-
-      - name: Upload the precompile profile
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: precompile-profile
-          path: ${{ runner.temp }}/precompile-prof
-          if-no-files-found: ignore
 
       - name: Save the dev precompile bundle
         if: steps.dev-precompiled-cache.outputs.cache-hit != 'true'
