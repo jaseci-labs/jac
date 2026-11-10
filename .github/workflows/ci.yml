@@ -474,8 +474,10 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
-          jac precompile ./jac
+          # The catalog first: without it every unit's type evaluator parses
+          # the typeshed stubs from source, about two thirds of a cold pool.
           jac native build stubcat
+          jac precompile ./jac
           DIR="$(find jac/jaclang/_precompiled -maxdepth 1 -type d -name 'cpython-*' | head -1)"
           [ -n "$DIR" ] || { echo "::error::no jac/jaclang/_precompiled/cpython-<ver> tree"; exit 1; }
           UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
