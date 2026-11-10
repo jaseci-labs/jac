@@ -141,7 +141,7 @@ impl JacAccessValidation.check_access_level(
     }
     import from jaclang.runtime.membership { member_edge_level, principals }
     held = principals();
-    if isinstance(to, EdgeAnchor) and _is_member(to.archetype) {
+    if isinstance(to, EdgeAnchor) and is_membership(to.archetype) {
         return member_edge_level(to, held);
     }
     if (
@@ -153,35 +153,30 @@ impl JacAccessValidation.check_access_level(
     owner = jctx.mem.get(to.root) if to.root else None;
     owner_access = owner.access if isinstance(owner, Anchor) else None;
     via_owner = held.get(str(to.root)) if to.root else None;
-    if via_owner == AccessLevel.NO_ACCESS {
-        return AccessLevel.NO_ACCESS;
-    }
-    if to_access is not None and via_owner != AccessLevel.ADMIN {
-        for pid in to_access.groups.anchors {
-            if held.get(pid) == AccessLevel.NO_ACCESS {
-                return AccessLevel.NO_ACCESS;
-            }
-        }
-    }
-    grants: list[AccessLevel] = [];
-    entries: list[dict[str, AccessLevel]] = [];
-    if to_access is not None {
-        entries.extend([to_access.roots.anchors, to_access.groups.anchors]);
-    }
+    labels = to_access.groups.anchors if to_access is not None else {};
+    stored = [to_access.roots.anchors, labels] if to_access is not None else [];
     if owner_access is not None {
-        entries.append(owner_access.roots.anchors);
+        stored.append(owner_access.roots.anchors);
     }
-    for named in entries {
+
+    blocked = via_owner == AccessLevel.NO_ACCESS
+        or any(held.get(pid) == AccessLevel.NO_ACCESS for pid in labels);
+    levels = [owner_access.all if owner_access else None, via_owner];
+    for named in stored {
         for (pid, found) in named.items() {
             reach = held.get(pid);
-            if reach is None or reach.value <= AccessLevel.NO_ACCESS.value {
+            if reach is None or reach == AccessLevel.NO_ACCESS {
                 continue;
             }
-            if found == AccessLevel.NO_ACCESS and via_owner != AccessLevel.ADMIN {
-                return AccessLevel.NO_ACCESS;
+            if found == AccessLevel.NO_ACCESS {
+                blocked = True;
+            } else {
+                levels.append(found if found.value < reach.value else reach);
             }
-            grants.append(found if found.value < reach.value else reach);
         }
+    }
+    if blocked and via_owner != AccessLevel.ADMIN {
+        return AccessLevel.NO_ACCESS;
     }
     level: AccessLevel = AccessLevel.NO_ACCESS;
     if to_access is not None and to_access.all.value > AccessLevel.NO_ACCESS.value {
@@ -189,7 +184,7 @@ impl JacAccessValidation.check_access_level(
     } elif JacAccessValidation._is_shared_root(to) {
         level = AccessLevel.CONNECT;
     }
-    for found in [owner_access.all if owner_access else None, via_owner, *grants] {
+    for found in levels {
         if found is not None and found.value > level.value {
             level = found;
         }
@@ -957,7 +952,7 @@ impl JacGraph.connect(
     conn_assign: (tuple[(tuple[any, ...], tuple[any, ...])] | None) = None,
     edges_only: bool = False
 ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]) {
-    if `edge is not None and _is_member(`edge) {
+    if `edge is not None and is_membership(`edge) {
         raise TypeError("Member edges are made by set_access(group, who, level)");
     }
     if (
@@ -1266,7 +1261,7 @@ impl JacGraph.heavy_edge(
     }
     if (source.persistent or target.persistent) {
         JacRuntimeInterface.save(eanch);
-        if not _is_member(`edge) {
+        if not is_membership(`edge) {
             import from jaclang.runtime.membership { inherit_access }
             inherit_access(source, eanch, target);
         }
@@ -1333,12 +1328,10 @@ impl JacPersistence.save(
 
     }
     caller = jctx.user_root;
-    if new_group
-        and untracked_class(`type(anchor.archetype)) is not Root
-        and caller is not None
-        and caller != jctx.system_root
-        and caller.id != JacRuntime.shared_root_id()
-        and caller.id != anchor.id {
+    is_org = new_group and untracked_class(`type(anchor.archetype)) is not Root;
+    if is_org
+        and caller not in (None, jctx.system_root)
+        and caller.id != JacRuntime.shared_root_id() {
         import from jaclang.runtime.membership { set_access }
         set_access(anchor, caller.ensure_id(), AccessLevel.ADMIN);
     }
@@ -1398,7 +1391,7 @@ impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
             JacPersistence.drop_anchor(anchor);
             continue;
         }
-        if _is_member(anchor.archetype) {
+        if is_membership(anchor.archetype) {
             raise TypeError(
                 "Member edges change only through clear_access(group, who)"
             );
@@ -2191,11 +2184,6 @@ impl _scale_provider -> any {
 
 impl scale_provider_error -> Exception | None {
     return _scale_provider_error[0];
-}
-
-impl _is_member(arch: any) -> bool {
-    cls = arch if isinstance(arch, `type) else `type(arch);
-    return bool(getattr(cls, '__jac_membership__', False));
 }
 
 impl _all_grant(anchor: Anchor) -> AccessLevel {

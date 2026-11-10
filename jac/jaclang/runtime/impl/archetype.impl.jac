@@ -1055,6 +1055,11 @@ impl untracked_class(cls: type[Archetype]) -> type[Archetype] {
     return cls.__dict__.get('__jac_untracked__', cls);
 }
 
+impl is_membership(arch: any) -> bool {
+    cls = arch if isinstance(arch, `type) else `type(arch);
+    return bool(getattr(cls, '__jac_membership__', False));
+}
+
 impl _untracked_new(cls: type[Archetype]) -> Archetype {
     return object.__new__(cls);
 }

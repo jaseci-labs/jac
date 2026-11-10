@@ -10,21 +10,8 @@ impl _members_in(of: NodeAnchor) -> list[EdgeAnchor] {
 }
 
 impl _who_id(who: (str | UUID | Archetype | Anchor)) -> UUID {
-    if isinstance(who, UUID) {
-        return who;
-    }
-    if isinstance(who, str) {
-        return UUID(who);
-    }
-    if isinstance(who, Archetype) {
-        return who.__jac__.ensure_id();
-    }
-    if isinstance(who, Anchor) {
-        return who.ensure_id();
-    }
-    raise TypeError(
-        f"who must be a root id, a root or a group, not {type(who).__name__}"
-    );
+    found: any = who.__jac__ if isinstance(who, Archetype) else who;
+    return found.ensure_id() if isinstance(found, Anchor) else UUID(str(found));
 }
 
 impl _is_group(anchor: NodeAnchor) -> bool {
@@ -179,34 +166,45 @@ impl principals -> dict[str, AccessLevel] {
     return held;
 }
 
-impl _member_links(src_ids: list[UUID]) -> list[tuple[UUID, UUID, int]] {
+impl _saved_and_pending(
+    sql: str, params: dict[str, any], keep: Callable[[Anchor], bool]
+) -> tuple[list[tuple[any, ...]], list[Anchor]] {
     mem = JacRuntimeInterface.get_context().mem;
-    wanted = set(src_ids);
-    links: dict[UUID, tuple[UUID, UUID, int]] = {};
-    store = mem.store;
-    if store is not None {
+    saved: list[tuple[any, ...]] = [];
+    if mem.store is not None {
         mem.read_barrier();
-        for (eid, src, dst, level) in store.member_edges(src_ids) {
-            if eid not in mem._deleted {
-                links[eid] = (src, dst, level);
-            }
-        }
+        saved = [
+            r
+            for r in mem.store.rows(sql, params)
+            if UUID(str(r[0])) not in mem._deleted
+        ];
     }
+    ids = mem._dirty.keys() if mem.store is not None else mem.__mem__.keys();
+    pending = [
+        a
+        for a in [mem.__mem__.get(i) for i in list(ids)]
+        if isinstance(a, Anchor) and not a.destroyed and keep(a)
+    ];
+    return (saved, pending);
+}
 
-    pending = list(mem._dirty.keys())
-        if store is not None
-        else list(mem.__mem__.keys());
-    for aid in pending {
-        e = mem.__mem__.get(aid);
-        if not isinstance(e, EdgeAnchor)
-            or not isinstance(e.archetype, Member)
-            or e.destroyed {
-            continue;
-        }
-        if e.source.id in wanted and e.target.id is not None {
-            arch: any = e.archetype;
-            links[aid] = (e.source.id, e.target.id, int(arch.level));
-        }
+impl _member_links(src_ids: list[UUID]) -> list[tuple[UUID, UUID, int]] {
+    wanted = set(src_ids);
+    def outgoing(a: Anchor) -> bool {
+        return isinstance(a, EdgeAnchor)
+            and isinstance(a.archetype, Member)
+            and a.source.id in wanted;
+    }
+    (saved, pending) = _saved_and_pending(
+        MEMBER_EDGES_SQL, {'ids': [str(i) for i in src_ids]}, outgoing
+    );
+    links = {
+        UUID(str(r[0])): (UUID(str(r[1])), UUID(str(r[2])), int(str(r[3])))
+        for r in saved
+    };
+    for a in pending {
+        e: any = a;
+        links[e.ensure_id()] = (e.source.id, e.target.id, int(e.archetype.level));
     }
     return list(links.values());
 }
@@ -255,26 +253,16 @@ impl inherit_access(source: NodeAnchor, link: EdgeAnchor, target: NodeAnchor) ->
 }
 
 impl owned_by(owner: UUID, limit: int = 20) -> list[UUID] {
+    def owned(a: Anchor) -> bool {
+        return a.`root == owner
+            and a.id != owner
+            and not isinstance(a.archetype, Member);
+    }
     mem = JacRuntimeInterface.get_context().mem;
-    found: set[UUID] = set();
-    if mem.store is not None {
-        mem.read_barrier();
-        found.update(mem.store.owned_ids(owner, limit + len(mem._deleted)));
-        found = {
-            i
-            for i in found
-            if i not in mem._deleted
-        };
-    }
-    for (aid, a) in list(mem.__mem__.items()) {
-        if isinstance(a, Anchor)
-            and a.`root == owner
-            and aid != owner
-            and not a.destroyed
-            and not (isinstance(a, EdgeAnchor) and isinstance(a.archetype, Member)) {
-            found.add(aid);
-        }
-    }
+    (saved, pending) = _saved_and_pending(
+        OWNED_SQL, {'owner': str(owner), 'lim': limit + len(mem._deleted)}, owned
+    );
+    found = {UUID(str(r[0])) for r in saved} | {a.ensure_id() for a in pending};
     return sorted(found, key=str)[:limit];
 }
 
@@ -349,14 +337,14 @@ impl clear_access(
     if not leaving {
         JacAccessValidation._require_admin(anchor);
     }
-    key = str(who_id);
     perm = anchor.access;
-    if not leaving
-        and perm is not None
-        and (key in perm.roots.anchors or key in perm.groups.anchors) {
-        perm.roots.anchors.pop(key, None);
-        perm.groups.anchors.pop(key, None);
-        jctx.mem.put(anchor);
+    if not leaving and perm is not None {
+        old = [
+            m.pop(str(who_id), None) for m in (perm.roots.anchors, perm.groups.anchors)
+        ];
+        if any(o is not None for o in old) {
+            jctx.mem.put(anchor);
+        }
     }
     if isinstance(anchor, NodeAnchor) and _is_group(anchor) {
         for e in _members_in(anchor) {

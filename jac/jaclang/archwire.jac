@@ -2522,7 +2522,7 @@ graph import {
         },
         compiler.native_compiler.NativeCompiler._register
             | data.query_planner._acl_residual { NodeArchetype },
-        data.query_planner { Anchor, anchor_key },
+        data.query_planner { Anchor, anchor_key, is_membership },
         data.query_planner._edge_residual { EdgeArchetype },
         data.query_planner._trusted_names { Archetype, Root },
         data.serializer {
@@ -15100,6 +15100,7 @@ graph import runtime {
             NodeAnchor,
             _as_refs,
             anchor_key,
+            is_membership,
             light_edge_view,
             same_anchor
         },
@@ -15132,6 +15133,7 @@ graph import runtime {
             anchor_key,
             edge_subtypes,
             is_light_edge_type,
+            is_membership,
             light_clear_hop,
             light_connect,
             light_disconnect,
