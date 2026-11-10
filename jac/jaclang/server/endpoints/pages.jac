@@ -30,6 +30,9 @@ def _sibling_response(request: Request, dist: Path, rel: str) -> Response;
 def register_page_endpoints(server: JacAPIServer);
 
 
+def robots_middleware(server: JacAPIServer) -> Callable[..., any];
+
+
 def register_graph_endpoints(server: JacAPIServer);
 
 

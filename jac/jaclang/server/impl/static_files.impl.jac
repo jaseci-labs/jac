@@ -196,3 +196,66 @@ impl sibling_app_names(config: any, base_path: str) -> list[str] {
         if sibling_app_dist(config, name, base_path) is not None
     ];
 }
+
+impl served_host(host: str) -> str {
+    import from urllib.parse { urlparse }
+    try {
+        name = urlparse(f'//{host.strip()}').hostname or '';
+    } except ValueError {
+        return '';
+    }
+    return name.rstrip('.').lower();
+}
+
+impl robots_override(site_url: str, host: str, site_hosts: list[str]) -> (str | None) {
+    import from urllib.parse { urlparse }
+    canonical = served_host(urlparse(site_url.strip()).netloc);
+    if not canonical {
+        return None;
+    }
+    name = served_host(host);
+    if name and name in {canonical} | {served_host(h) for h in site_hosts} {
+        return None;
+    }
+    if name not in _seo_logged and len(_seo_logged) < SEO_LOG_LIMIT {
+        _seo_logged.add(name);
+        logger.warning(
+            f"/robots.txt on host {host!r} answers 'Disallow: /': it is not the "
+            f"host of [client.seo] site_url {site_url!r}. If this host serves "
+            "production, add it to [client.seo] site_hosts."
+        );
+    }
+    return DISALLOW_ALL_ROBOTS;
+}
+
+impl robots_response(
+    request: Request, base_path: str, entry_path: str = ''
+) -> (Response | None) {
+    if request.method != 'GET' or request.url.path.lstrip('/') != ROBOTS_PATH {
+        return None;
+    }
+    base = resolve_static_base(base_path);
+    if entry_path and not Path(entry_path).is_absolute() {
+        entry_path = str(base / entry_path);
+    }
+    import from jaclang.project.config { ServeConfigError }
+    try {
+        seo = client_seo_config(get_config_for_dir(str(base)), entry_path);
+    } except ServeConfigError as err {
+        if str(err) not in _seo_logged and len(_seo_logged) < SEO_LOG_LIMIT {
+            _seo_logged.add(str(err));
+            logger.error(f"/robots.txt is served as built: {err}");
+        }
+        return None;
+    }
+    host = request.url.netloc or str(request.headers.get('host') or '');
+    blocked = robots_override(
+        str(seo.get('site_url') or ''), host, list(seo.get('site_hosts', []))
+    );
+    if blocked is None {
+        return None;
+    }
+    resp = Response(content=blocked, media_type='text/plain; charset=utf-8');
+    resp.headers.set('Cache-Control', 'no-cache');
+    return resp;
+}
