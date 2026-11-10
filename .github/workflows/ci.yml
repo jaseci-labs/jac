@@ -36,6 +36,10 @@ on:
   push:
     branches: [main]
 
+# The `ci:sealed` label runs the schedule-only sealed lanes (build-kit and the
+# lanes that need its sealed kit) on a pull request too, for changes that can
+# move the sealed binary.
+#
 # Adding a label that does not add a lane (one outside the list below, which
 # the `changes` job repeats) must neither rerun the suites nor cancel the run in
 # flight, so that run gets a group of its own and only Contribution Checks and
@@ -45,7 +49,7 @@ concurrency:
   group: >-
     ci-${{ github.event.pull_request.number || github.ref }}${{
     github.event.action == 'labeled'
-    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
+    && !contains(fromJSON('["macos", "native:kernel", "type-error-report", "ci:sealed"]'), github.event.label.name)
     && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -61,7 +65,7 @@ jobs:
   changes:
     if: >-
       github.event.action != 'labeled'
-      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "type-error-report"]'), github.event.label.name)
+      || contains(fromJSON('["macos", "native:kernel", "type-error-report", "ci:sealed"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -71,7 +75,6 @@ jobs:
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
       kernel: ${{ steps.filter.outputs.kernel }}
-      js_engine: ${{ steps.filter.outputs.js_engine }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -113,18 +116,6 @@ jobs:
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
               - '.github/workflows/_installer.yml'
-            # Whatever the engine is or is lowered by: its sources, the whole
-            # compiler (frontend and passes decide layout and dispatch, not
-            # only the native backend), the native stdlib and toolchain, and
-            # the lane's own definition.
-            js_engine:
-              - 'jac/js_engine/**'
-              - 'jac/jaclang/compiler/**'
-              - 'jac/jaclang/runtime/na_stdlib/**'
-              - 'jac/native/**'
-              - 'jac/build.zig'
-              - 'jac/build.zig.zon'
-              - '.github/workflows/_js_engine.yml'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
             # path that can move them changes (or on push/dispatch). The darwin
             # lane no longer reads this filter -- it is nightly + `macos`-label
@@ -201,7 +192,7 @@ jobs:
     # The sealed, release-shaped kit: the 6-hourly schedule and manual runs
     # only, for the sealed lanes. Pull requests and pushes use dev-kit. Its
     # original condition was none (always on).
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     # A kit that seals the native compiler kernel lowers the analysis zone in
     # one process and peaks near 15 GB, which starves a 4-vCPU runner.
     # The kit is always a bytecode kit (setup-jac bytecode-kit below), on
@@ -713,7 +704,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|^jac/js_engine/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -721,7 +712,7 @@ jobs:
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           else
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|^jac/js_engine/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       # Autofix push mirrors pre-commit.ci. Without a JAC_AUTOFIX_TOKEN secret
@@ -742,7 +733,7 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|^jac/js_engine/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -z "$FILES" ]; then
             echo "No formattable .jac files to fix."
             exit 0
@@ -769,7 +760,7 @@ jobs:
         if: steps.fmt.outcome == 'failure'
         run: |
           set -euo pipefail
-          FILES="$(grep -vE '(/fixtures/|^scripts/|^jac/js_engine/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -n "$FILES" ]; then
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --lintfix || true
@@ -1056,7 +1047,7 @@ jobs:
     # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
     # requests and pushes test on the dev kit). Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -1248,7 +1239,7 @@ jobs:
     #    needs.changes.outputs.core == 'true' ||
     #    needs.changes.outputs.scale == 'true') &&
     #   !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
     env:
       # The opt-in flag test_deploy_k8s gates on: this is the lane with a
@@ -1439,7 +1430,7 @@ jobs:
     # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
     # requests and pushes test on the dev kit). Was:
     # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
     # actions: read lets the performance report list main's runs and download
     # their pack-smoke-performance artifacts for the wall-time comparison.
@@ -1994,7 +1985,7 @@ jobs:
     # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
     # requests and pushes test on the dev kit). Was:
     # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -2129,19 +2120,6 @@ jobs:
     if: false
     uses: ./.github/workflows/_macos-native.yml
 
-  # The js_engine accelerator's lane: build it, install it, and hold the
-  # official binary to using it (node suite, a client build, test262). On a
-  # pull request that changes the engine or anything that compiles it (the
-  # `js_engine` filter), one carrying the `native:js-engine` label, or a
-  # manual run; nightly.yml runs it too. Everything Passed needs it, so a
-  # pull request it runs on cannot merge with the engine broken.
-  js-engine:
-    needs: changes
-    # Turned off. js_engine is an accelerator over bun that no release ships,
-    # and its lane builds natively on an 8 vCPU runner. Restore:
-    # if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
-    if: false
-    uses: ./.github/workflows/_js_engine.yml
   # JacPython's conformance gates on this run's kit: the native compiler is
   # the interpreter's `compile`, the code-object boundary holds, and every
   # ported module and frontend suite passes its pinned upstream tests. The
@@ -2152,7 +2130,7 @@ jobs:
     # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
     # requests and pushes test on the dev kit). Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -2169,7 +2147,7 @@ jobs:
     # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
     # requests and pushes test on the dev kit). Was:
     # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -2214,7 +2192,6 @@ jobs:
       - dev-kit
       - dev-precompile
       - macos-native
-      - js-engine
       - test-jacpython
       - jac-check
       - contribution-checks

@@ -11,7 +11,6 @@ glob ARTIFACTS: dict[str, str] = {
          "kernel": "jaclang.compiler.backends.native.kernel_resolve:KernelArtifact",
          "llvm-cbe": "jaclang.toolchains.c_backend:CBackendArtifact",
          "bun": "jaclang.client.js_runtime:BunArtifact",
-         "js-engine": "jaclang.client.js_runtime:JsEngineArtifact",
          "jacpython": "jaclang.dist.interpreter:JacPythonArtifact",
          "postgres": "jaclang.data.pg_dist:PostgresArtifact",
          "node": "jaclang.toolchains.tools:NodeArtifact",

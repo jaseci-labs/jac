@@ -1,9 +1,7 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release: one configuration (JacPython + bun) per target. js_engine
-# is an accelerator built only on request (`jac native build`); a release
-# ships its floor.
+# GitHub Release: one configuration (JacPython + bun) per target.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
