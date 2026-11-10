@@ -16,8 +16,7 @@ permissions:
 jobs:
   # JacPython's conformance gates on linux-aarch64. ci.yml runs them on the
   # linux-x86_64 kit and _macos-native.yml (macos-native below) on the macOS
-  # kit; this leg builds its kit on ARM, from a kernel and jacpython.o lowered
-  # on x86.
+  # kit; this leg builds its kit on ARM, from a jacpython.o lowered on x86.
   jacpython-aarch64-prebuild:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     uses: ./.github/workflows/build-kernel.yml

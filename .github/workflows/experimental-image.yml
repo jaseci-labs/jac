@@ -83,8 +83,8 @@ jobs:
           echo "include=[${rows%,}]" >> "$GITHUB_OUTPUT"
           echo "platforms=[${osarch%,}]" >> "$GITHUB_OUTPUT"
 
-  # Each arch's compiler kernel and jacpython.o, lowered on x86 Linux from the
-  # PR's HEAD (build-kernel.yml); the arch build adopts both.
+  # Each arch's jacpython.o, lowered on x86 Linux from the PR's HEAD
+  # (build-kernel.yml); the arch build adopts it.
   prebuild:
     needs: resolve
     uses: ./.github/workflows/build-kernel.yml

@@ -60,7 +60,6 @@ obj HostServices {
     @contextmanager
     def session -> Iterator[None];
 
-    def in_kernel -> bool;
     def project_defaults -> (ProjectDefaults | None);
     def check_settings(target_app: str) -> CheckSettings;
     def project_facts(path: str) -> (ProjectFacts | None);
@@ -108,15 +107,6 @@ obj HostServices {
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;
     def keep_native_scan_record(path: str, digest: str, text: str);
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = "",
-        load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None);
-
     def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
     def place_wired_imports(module: Module);
     def drop_python_lane_products(path: str, program: JacProgram);
@@ -137,10 +127,6 @@ obj HostServices {
     def save_native_debug_ir(path: str, text: str);
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def kernel_compile(
-        program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None);
-
     def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
@@ -153,10 +139,6 @@ obj HostServices {
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     );
-
-    def native_analyze(
-        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-    ) -> (ModuleAnalysis | None);
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
@@ -208,7 +190,6 @@ glob HOST_FACT_SEP: str = "\x1e",
      HOST_FACT_GIT_IGNORED: str = "git_ignored";
 
 glob _HOSTS: list[HostServices] = [],
-     _KERNEL_HOST_MODE: list[str] = [],
      _NEUTRAL_HOST: HostServices = NeutralHost(),
      _PACKAGE_ROOT: list[str] = [];
 
@@ -219,9 +200,3 @@ def package_root -> str;
 def set_package_root(path: str);
 
 def install_host(host: HostServices);
-
-def set_kernel_host_mode(mode: str) -> str;
-
-def kernel_host_mode -> str;
-
-def kernel_host_enabled -> bool;

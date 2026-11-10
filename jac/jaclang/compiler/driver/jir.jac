@@ -162,12 +162,10 @@ def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str;
 
 glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
-     _PY_EMITTER_DIGESTS: dict[str, str] = {},
-     _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
+     _PY_EMITTER_DIGESTS: dict[str, str] = {};
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
-     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
-     DEV_NATIVE_PRODUCER: str = "abi:";
+     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", );
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
 
@@ -185,11 +183,7 @@ def dev_source -> str;
 
 def dev_carry_enabled -> bool;
 
-def abi_contract_digest(pkg_root: str) -> str;
-
-def native_producer_digest(kernel_build: bool = False) -> str;
-
-def _producer_kind(digest: str) -> str;
+def native_producer_digest -> str;
 
 glob _COMPILER_GENERATION_CACHE: list[str] = [];
 
@@ -440,7 +434,6 @@ def _module_lock_path(cache_path: Path) -> Path;
 
 def carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None);
 
-def carried_native_sections(source_path: str, producer: str) -> dict[int, bytes];
 
 def write_module_cache(
     source_path: str,

@@ -8,7 +8,6 @@ glob ARTIFACTS: dict[str, str] = {
          "typeshed": "jaclang.compiler.types.stubcat.locate:TypeshedArtifact",
          "stubcat": "jaclang.compiler.types.stubcat.locate:StubcatArtifact",
          "precompiled": "jaclang.dist.precompiled:PrecompiledArtifact",
-         "kernel": "jaclang.compiler.backends.native.kernel_resolve:KernelArtifact",
          "llvm-cbe": "jaclang.toolchains.c_backend:CBackendArtifact",
          "bun": "jaclang.client.js_runtime:BunArtifact",
          "jacpython": "jaclang.dist.interpreter:JacPythonArtifact",

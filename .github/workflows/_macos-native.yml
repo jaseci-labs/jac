@@ -30,16 +30,15 @@ permissions:
   contents: read
 
 jobs:
-  # The macOS kit's compiler kernel and jacpython.o, built on x86 Linux
-  # (#10219, #10472): the kit adopts both instead of spending most of its
-  # time lowering them on the slower runner.
-  kernel:
+  # The macOS kit's jacpython.o, built on x86 Linux (#10472): the kit adopts
+  # it instead of lowering it on the slower runner.
+  jacpython-object:
     uses: ./.github/workflows/build-kernel.yml
     with:
       platforms: '["macos-aarch64"]'
 
   build-kit-macos:
-    needs: kernel
+    needs: jacpython-object
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5

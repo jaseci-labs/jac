@@ -2,10 +2,6 @@ impl HostServices.session -> Iterator[None] {
     yield ;
 }
 
-impl HostServices.in_kernel -> bool {
-    return False;
-}
-
 impl HostServices.project_defaults -> (ProjectDefaults | None) {
     return None;
 }
@@ -162,17 +158,6 @@ impl HostServices.native_scan_record(path: str, digest: str) -> str {
 
 impl HostServices.keep_native_scan_record(path: str, digest: str, text: str) {}
 
-impl HostServices.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
-) -> (tuple[Module, bool] | None) {
-    return None;
-}
-
 impl HostServices.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {
@@ -231,12 +216,6 @@ impl HostServices.client_boundary_facts(
     return None;
 }
 
-impl HostServices.kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    return None;
-}
-
 impl HostServices.in_compiler_tree(path: str) -> bool {
     return False;
 }
@@ -264,12 +243,6 @@ impl HostServices.native_session_active(program: JacProgram) -> bool {
 impl HostServices.record_native_coverage(
     path: str, outcome: str, code: str = "", detail: str = ""
 ) {}
-
-impl HostServices.native_analyze(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-) -> (ModuleAnalysis | None) {
-    return None;
-}
 
 impl HostServices.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
     raise RuntimeError("no compiler host is installed");
@@ -384,21 +357,4 @@ impl set_package_root(path: str) {
 impl install_host(host: HostServices) {
     _HOSTS.clear();
     _HOSTS.append(host);
-}
-
-impl set_kernel_host_mode(mode: str) -> str {
-    previous = kernel_host_mode();
-    _KERNEL_HOST_MODE.clear();
-    if mode {
-        _KERNEL_HOST_MODE.append(mode);
-    }
-    return previous;
-}
-
-impl kernel_host_mode -> str {
-    return _KERNEL_HOST_MODE[0] if _KERNEL_HOST_MODE else "";
-}
-
-impl kernel_host_enabled -> bool {
-    return kernel_host_mode() != "";
 }
