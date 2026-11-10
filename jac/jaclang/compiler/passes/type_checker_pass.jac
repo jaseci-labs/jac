@@ -28,6 +28,7 @@ walker TypeCheckPass(TreePass) {
 
     def postinit -> None;
     def _is_generator(scope: Ability) -> bool;
+    def _docstring_return_help(ret: ReturnStmt) -> (str | None);
     can initialize with entry;
     override def release -> None;
     can prepare with entry;

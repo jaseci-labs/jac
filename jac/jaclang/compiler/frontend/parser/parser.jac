@@ -327,6 +327,7 @@ obj Parser {
     def parse_docstring_target -> ElementStmt | None;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list[CodeBlockStmt];
+    def _docstring_runs_on -> bool;
     def _apply_implicit_return(body: list[CodeBlockStmt]) -> list[CodeBlockStmt];
     def parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None;
     def parse_statement -> CodeBlockStmt | None;

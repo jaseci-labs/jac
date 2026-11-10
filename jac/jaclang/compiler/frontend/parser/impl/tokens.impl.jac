@@ -41,6 +41,10 @@ impl is_special_var_kind(kind: TokenKind) -> bool {
     return kind in SPECIAL_VAR_KINDS;
 }
 
+impl is_string_continuation_kind(kind: TokenKind) -> bool {
+    return kind in STRING_CONTINUATION_KINDS;
+}
+
 impl is_name_usable_kind(kind: TokenKind) -> bool {
     if kind == TokenKind.KW_ROOT or kind == TokenKind.KW_SUPER {
         return False;

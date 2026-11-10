@@ -3483,6 +3483,19 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
     flagged_at: list[int] = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
+        if self._view_body_depth == 0 and self._docstring_runs_on() {
+            doc = self.parse_multistring();
+            if doc is not None {
+                self.emit_diag(
+                    "A docstring goes before the declaration, not inside the body",
+                    "E0111",
+                    loc=self.tokens[before].loc.span_to(self.previous().loc),
+                    help="This string has no ';', so it would be read together with the next line. Move it above the declaration, or write the note as a # comment."
+                );
+                stmts.append(ExprStmt(expr=doc, in_fstring=False, kid=[doc]));
+                continue;
+            }
+        }
         stmt = self.parse_statement();
         if stmt is not None {
             is_docstring = False;
@@ -3559,6 +3572,62 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
         );
     }
     return stmts;
+}
+
+impl Parser._docstring_runs_on -> bool {
+    i = self.pos;
+    while i < self._tokens_len - 1 {
+        tok = self.tokens[i];
+        if tok.kind == TokenKind.STRING {
+            i += 1;
+        } elif tok.kind == TokenKind.NAME
+            and tok.value
+                in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+            and self.tokens[i + 1].kind == TokenKind.STRING {
+            i += 2;
+        } else {
+            break;
+        }
+    }
+    if i == self.pos or i >= self._tokens_len {
+        return False;
+    }
+    nxt = self.tokens[i];
+    if nxt.loc.line <= self.tokens[i - 1].loc.end_line {
+        return False;
+    }
+    if nxt.kind == TokenKind.KW_IF {
+        save_pos = self.pos;
+        saved_error_count = self.error_count;
+        saved_diags_len = len(self.diags);
+        self.parse_expression();
+        is_ternary = self.error_count == saved_error_count;
+        self.pos = save_pos;
+        self.error_count = saved_error_count;
+        while len(self.diags) > saved_diags_len {
+            self.diags.pop();
+        }
+        return not is_ternary;
+    }
+    return not (
+        is_string_continuation_kind(nxt.kind)
+        or nxt.kind
+            in [
+                TokenKind.SEMI,
+                TokenKind.RBRACE,
+                TokenKind.EOF,
+                TokenKind.KW_DEF,
+                TokenKind.KW_CAN,
+                TokenKind.KW_OVERRIDE,
+                TokenKind.KW_STATIC,
+                TokenKind.KW_ASYNC,
+                TokenKind.KW_OBJECT,
+                TokenKind.KW_NODE,
+                TokenKind.KW_EDGE,
+                TokenKind.KW_WALKER,
+                TokenKind.KW_CLASS
+            ]
+    );
 }
 
 impl Parser._apply_implicit_return(body: list[CodeBlockStmt]) -> list[CodeBlockStmt] {
