@@ -864,7 +864,9 @@ export default defineConfig({{
             else '';
         chunk_names = output_overrides.get('chunkFileNames');
         manifest_str = '    manifest: true,\n'
-            if chunk_names is None or '[hash]' in str(chunk_names)
+            if chunk_names is None
+            or '[hash]' in str(chunk_names)
+            or '[hash:' in str(chunk_names)
             else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
