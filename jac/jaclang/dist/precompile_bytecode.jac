@@ -163,6 +163,12 @@ def main;
 
 def is_toolchain_package(package_dir: str) -> bool;
 
+"""This job's share of the sources under JAC_PRECOMPILE_SHARD=K/N: every
+Nth of the largest-first list, so parallel jobs together cover the package
+with even work and each starts on its heaviest files. Unset returns every
+source; a malformed value returns None."""
+def _shard_sources(jac_files: list[str]) -> (list[str] | None);
+
 def run_precompile(
     source_dir: str,
     seal: bool = False,

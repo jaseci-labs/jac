@@ -445,21 +445,6 @@ jobs:
         id: inputs
         run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
 
-      # The checkout's precompile bundle, built in place
-      # (jaclang/_precompiled). Every unit is checked against its source and
-      # compiler, so a restored tree only lets unchanged modules skip the
-      # recompile. The last prefix takes any earlier bundle, so a compiler
-      # edit recompiles only the modules it reaches.
-      - name: Restore the dev precompile bundle
-        id: dev-precompiled-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: jac/jaclang/_precompiled
-          key: jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
-          restore-keys: |
-            jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-
-            jac-dev-precompiled-
-
       - name: Restore the dev stub catalog
         id: dev-stubcat-cache
         uses: actions/cache/restore@v4
@@ -467,30 +452,15 @@ jobs:
           path: ${{ runner.temp }}/.cache/jac/jir/stubcat
           key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
 
-      - name: Precompile the checkout and build the stub catalog
-        env:
-          JAC_PRECOMPILE_JOBS: "4"
-          JAC_PRECOMPILE_RSS_LOG: "1"
+      # Built here, before any precompile shard: without it every unit's type
+      # evaluator parses the typeshed stubs from source, about two thirds of
+      # a cold precompile.
+      - name: Build the stub catalog
         run: |
           set -euo pipefail
           export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
-          # The catalog first: without it every unit's type evaluator parses
-          # the typeshed stubs from source, about two thirds of a cold pool.
           jac native build stubcat
-          jac precompile ./jac
-          DIR="$(find jac/jaclang/_precompiled -maxdepth 1 -type d -name 'cpython-*' | head -1)"
-          [ -n "$DIR" ] || { echo "::error::no jac/jaclang/_precompiled/cpython-<ver> tree"; exit 1; }
-          UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
-          [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
-          echo "precompile bundle: $UNITS units in $DIR"
           ls "$XDG_CACHE_HOME/jac/jir/stubcat"/*.bin
-
-      - name: Save the dev precompile bundle
-        if: steps.dev-precompiled-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: jac/jaclang/_precompiled
-          key: jac-dev-precompiled-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
       - name: Save the dev stub catalog
         if: steps.dev-stubcat-cache.outputs.cache-hit != 'true'
@@ -516,15 +486,6 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      - name: Upload the dev precompile bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: jac-dev-precompiled
-          path: jac/jaclang/_precompiled
-          include-hidden-files: true
-          retention-days: 1
-          if-no-files-found: error
-
       - name: Upload the dev stub catalog
         uses: actions/upload-artifact@v4
         with:
@@ -533,8 +494,82 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # The checkout's precompile bundle (jaclang/_precompiled), in three
+  # parallel legs of every third source (JAC_PRECOMPILE_SHARD). Each leg keeps
+  # its own cache, and every unit is checked against its source and compiler,
+  # so a restored tree only lets unchanged modules skip the recompile. The
+  # lanes merge the three artifacts back into one tree (jac-kit).
+  dev-precompile:
+    runs-on: ubuntu-24.04
+    needs: dev-kit
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pin the cache home
+        run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jac-dev-kit
+          path: jac
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jac-dev-stubcat
+          path: ${{ runner.temp }}/.cache/jac/jir/stubcat
+
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
+      - name: Restore this leg's precompile bundle
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: jac/jaclang/_precompiled
+          key: jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          restore-keys: |
+            jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-
+
+      - name: Precompile this leg's share of the checkout
+        env:
+          JAC_PRECOMPILE_JOBS: "4"
+          JAC_PRECOMPILE_RSS_LOG: "1"
+          JAC_PRECOMPILE_SHARD: ${{ matrix.shard }}/3
+        run: |
+          set -euo pipefail
+          chmod +x jac/zig-out/bin/jac
+          export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
+          jac precompile ./jac
+          DIR="$(find jac/jaclang/_precompiled -maxdepth 1 -type d -name 'cpython-*' | head -1)"
+          [ -n "$DIR" ] || { echo "::error::no jac/jaclang/_precompiled/cpython-<ver> tree"; exit 1; }
+          UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
+          [ "$UNITS" -ge 130 ] || { echo "::error::precompile leg has only $UNITS units"; exit 1; }
+          rm -f jac/jaclang/_precompiled/PRECOMPILE_RESULT.json
+          echo "precompile leg ${{ matrix.shard }}/3: $UNITS units in $DIR"
+
+      - name: Save this leg's precompile bundle
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: jac/jaclang/_precompiled
+          key: jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+
+      - name: Upload this leg's precompile bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-dev-precompiled-${{ matrix.shard }}
+          path: jac/jaclang/_precompiled
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
   jac-check:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     # Three legs, each running the whole project-wide check (jac.toml
@@ -823,7 +858,7 @@ jobs:
         run: bash scripts/check-release-notes.sh
 
   test-compiler:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     strategy:
@@ -913,7 +948,7 @@ jobs:
 
   # Everything except the compiler tests.
   test-runtime:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     # Two legs split by measured runtime (main run 42587577723: runtimelib +
@@ -1039,7 +1074,7 @@ jobs:
   # (tests/compiler/test_no_llvm_degradation.jac, via JAC_LLVM_SHIM=none).
 
   test-client:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -1079,7 +1114,7 @@ jobs:
   # has (test_byllm.jac, test_auth_cutover.jac, test_firebase_auth_sso.jac).
   # Those findings are a follow-up on the test files, not on this lane.
   test-packages-and-docs:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -1111,7 +1146,7 @@ jobs:
             jac/tests/cli/test_docs_code_blocks.jac
 
   test-scale:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: ubuntu-24.04
     strategy:
@@ -1277,7 +1312,7 @@ jobs:
   # aarch64 cross lane: in-house ELF linker + arch-parameterized musl from the
   # kit, binaries run under qemu-user.
   test-native-aarch64:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     # Runs on the schedule, manual runs, and pull requests that touch native
     # paths; pushes leave it to the schedule. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
@@ -1306,7 +1341,7 @@ jobs:
   # launcher materializes through, the walk-up import shape the stub is built
   # with, and an end-to-end fused-runtime boot of a freshly compiled na host.
   test-launcher-jac:
-    needs: [changes, dev-kit]
+    needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -2140,6 +2175,7 @@ jobs:
       - changes
       - build-kit
       - dev-kit
+      - dev-precompile
       - macos-native
       - js-engine
       - test-jacpython

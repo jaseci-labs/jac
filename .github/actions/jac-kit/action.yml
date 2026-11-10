@@ -26,8 +26,8 @@ inputs:
     default: jac-precompiled
   dev:
     description: >
-      "true" takes ci.yml's dev kit (jac-dev-kit, jac-dev-precompiled,
-      jac-dev-stubcat): a -Ddev binary whose jaclang is this checkout, so the
+      "true" takes ci.yml's dev kit (jac-dev-kit, the jac-dev-precompiled-*
+      legs, jac-dev-stubcat): a -Ddev binary whose jaclang is this checkout, so the
       lane is always a reroute. Its artifacts sit in their checkout tiers (the
       shim, bun and C floor in the tree, the stub catalog in the cache home),
       and the lane requires those by name instead of `kit`, which a dev binary
@@ -88,10 +88,20 @@ runs:
     # precompiled_jir_matches_source -- module key plus ct-deps freshness -- so a
     # tree from another compiler generation can only miss, never mis-serve.
     - name: Fetch the shared precompile bundle
-      if: steps.mode.outputs.reroute == 'true'
+      if: steps.mode.outputs.reroute == 'true' && inputs.dev != 'true'
       uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.dev == 'true' && 'jac-dev-precompiled' || inputs.precompiled-name }}
+        name: ${{ inputs.precompiled-name }}
+        path: jac/jaclang/_precompiled
+
+    # The dev bundle comes from ci.yml's three dev-precompile legs, each a
+    # disjoint share of the same tree.
+    - name: Fetch the dev precompile bundle
+      if: inputs.dev == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: jac-dev-precompiled-*
+        merge-multiple: true
         path: jac/jaclang/_precompiled
 
     # The dev kit's stub catalog, into the cache-home slot the compiler looks
