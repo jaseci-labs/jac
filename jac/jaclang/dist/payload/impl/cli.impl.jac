@@ -72,8 +72,7 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
         "--wasm-libc=": "wasm_libc_dir",
         "--precompiled-cache=": "precompiled_cache",
         "--layer-cache=": "layer_cache",
-        "--stubcat-out=": "stubcat_out",
-        "--kernel=": "kernel_dir"
+        "--stubcat-out=": "stubcat_out"
     };
     for arg in flags {
         if arg == "--seal" {

@@ -62,7 +62,6 @@ obj NativeUnitRegistry {
         options: (CompileOptions | None) = None, path: str = ""
     ) -> NativeStamp;
 
-    def _carry(resolved: str, stamp: NativeStamp) -> bool;
     def _module_jir(
         resolved: str, stamp: (NativeStamp | None) = None
     ) -> (tuple[bytes, str] | None);
@@ -130,16 +129,6 @@ obj NativeUnitRegistry {
         options: (CompileOptions | None) = None,
         use_str: (str | None) = None,
         products: bool = True
-    ) -> (NativeUnitEntry | None);
-
-    def adopt_lowered(
-        path: str,
-        ir_text: str,
-        iface_text: str,
-        layout_json: str,
-        deps: list[str],
-        compile_deps: bytes,
-        options: (CompileOptions | None) = None
     ) -> (NativeUnitEntry | None);
 
     def _stash_products(resolved: str, gen: CodeGenTarget);

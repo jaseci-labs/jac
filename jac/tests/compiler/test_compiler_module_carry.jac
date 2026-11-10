@@ -10,13 +10,6 @@ What makes that safe is what these tests hold: the module's own source and
 annexes, its compile-time dependencies and the Python emitter must all be what
 they were. Anything that builds a distributable, and any checkout that asks,
 stays exact and never accepts carried bytecode.
-
-The compiler's native kernel follows the same rule one level down. A kernel
-unit built in a source checkout is stamped with the kernel's ABI, not with the
-compiler that happened to lower it, so an edit elsewhere in the compiler
-leaves its interface, bitcode and object valid; the unit's own source, its
-compile-time rows and its dependencies' interfaces still decide. A user
-program's native products keep the exact compiler stamp, in a checkout too.
 """
 
 import marshal;
@@ -25,27 +18,17 @@ import tempfile;
 import from pathlib { Path }
 import jaclang.compiler.driver.jir as jir;
 import from jaclang.compiler.driver.jir {
-    DEV_NATIVE_PRODUCER,
     FLAG_CARRIED,
     SEC_CTDEPS,
     SEC_MODKEY,
-    SEC_NIFACE,
-    SEC_NOBJ,
     carried_module_bytecode,
-    carried_native_sections,
-    current_native_stamp,
     ct_deps_section,
     get_module_cache_path,
     is_module_cache_valid,
-    merge_native_sections,
     module_cache_invalid_reason,
-    native_producer_digest,
-    native_section_payload,
-    native_section_variants,
     parse_header,
     py_emitter_digest,
     read_sections,
-    running_compiler_digest,
     write_module_cache,
     write_precompiled_jir
 }
@@ -97,7 +80,6 @@ obj Checkout {
         for digest in self.minted {
             jir._COMPILER_INPUT_ROWS.pop(digest, None);
             jir._PY_EMITTER_DIGESTS.pop(digest, None);
-            jir._NATIVE_PRODUCER_DIGESTS.pop(digest, None);
         }
     }
 
@@ -294,169 +276,5 @@ test "the compiler loads a carried module without compiling it" {
         assert scope["CARRIED"] == 42 , "the module was compiled instead of carried";
         assert entry_flags() & FLAG_CARRIED , "the carried entry is not marked";
         assert is_module_cache_valid(MODULE, get_module_cache_path(MODULE));
-    }
-}
-
-glob KERNEL_LEAVES: tuple[str, ...] = (
-         "compiler/types/ct_int.jac",
-         "project/app_kinds.jac",
-         "runtime/osp_tag.jac"
-     );
-
-"""The native products one build wrote for the module, as a kernel unit or as
-part of a user program."""
-def write_native(kernel: bool, payload: bytes) -> jir.NativeStamp {
-    stamp = current_native_stamp("gc=cycles", "host", native_producer_digest(kernel));
-    write_module_cache(
-        MODULE,
-        None,
-        extra_sections={SEC_NIFACE: stamp.pack(payload), SEC_NOBJ: stamp.pack(payload)}
-    );
-    return stamp;
-}
-
-"""Plan a kernel made of leaf units of the real compiler and name the units
-that were lowered to do it. `cached` off lowers every unit whatever the cache
-holds, which loads the native backend before a test moves the cache."""
-def lowered_kernel_units(cached: bool = True) -> list[str] {
-    import from jaclang.compiler.backends.native.kernel_resolve { kernel_options }
-    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
-    import from jaclang.compiler.driver.program { JacProgram }
-    program = JacProgram();
-    roots = [str(PKG / rel) for rel in KERNEL_LEAVES];
-    options = kernel_options();
-    options.no_ir_cache = not cached;
-    build_link_plan(program, roots, options, native_unit=True);
-    return sorted({Path(p).name for p in program.native_units().compiled_paths});
-}
-
-test "a kernel unit is stamped with the kernel's ABI in a source checkout" {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
-    with checkout() as tree {
-        tree.build("a");
-        first = native_producer_digest(True);
-        assert first.startswith(f"{DEV_NATIVE_PRODUCER}{NATIVE_ABI_VERSION}:");
-        tree.build("b", native="n1", emitter="e1");
-        assert native_producer_digest(True) == first , "a compiler edit changed the kernel's stamp";
-        assert native_producer_digest(False) == running_compiler_digest() , (
-            "a user program's products lost the compiler that built them"
-        );
-        update_handoff(exact=True);
-        assert native_producer_digest(True) == running_compiler_digest() , (
-            "an exact build stamped a kernel unit by its ABI"
-        );
-    }
-}
-
-test "a kernel unit's native products are carried to the next compiler build" {
-    with checkout() as tree {
-        tree.build("a");
-        stamp = write_native(True, b"lowered-by-a");
-        tree.build("b", native="n1");
-        carried = carried_native_sections(MODULE, native_producer_digest(True));
-        assert sorted(carried) == [SEC_NIFACE, SEC_NOBJ];
-        assert native_section_payload(carried[SEC_NIFACE], stamp) == b"lowered-by-a";
-        assert native_section_payload(carried[SEC_NOBJ], stamp) == b"lowered-by-a";
-    }
-}
-
-test "native products stamped with a compiler are never carried" {
-    with checkout() as tree {
-        tree.build("a");
-        write_native(False, b"lowered-by-a");
-        tree.build("b", native="n1");
-        assert carried_native_sections(MODULE, native_producer_digest(True)) == {};
-        assert carried_native_sections(MODULE, native_producer_digest(False)) == {} , (
-            "a user program took an earlier compiler's native products"
-        );
-    }
-}
-
-test "an edited kernel unit's native products are not carried" {
-    with checkout() as tree {
-        tree.build("a");
-        write_native(True, b"lowered-by-a");
-        rewrite_entry({SEC_MODKEY: b"the key of an earlier revision of this module"});
-        tree.build("b", native="n1");
-        assert carried_native_sections(MODULE, native_producer_digest(True)) == {};
-    }
-}
-
-test "an exact build carries no native products" {
-    with checkout() as tree {
-        tree.build("a");
-        write_native(True, b"lowered-by-a");
-        tree.build("b", native="n1");
-        kernel = native_producer_digest(True);
-        update_handoff(exact=True);
-        assert carried_native_sections(MODULE, kernel) == {};
-    }
-}
-
-test "a unit's kernel products and a user build's products coexist" {
-    with checkout() as tree {
-        tree.build("a");
-        kernel = write_native(True, b"kernel");
-        user_a = write_native(False, b"user-a");
-        written = entry_sections(get_module_cache_path(MODULE));
-        assert {kernel.key(), user_a.key()}
-            <= set(native_section_variants(written[SEC_NIFACE]));
-        tree.build("b", native="n1");
-        user_b = current_native_stamp(
-            "gc=cycles", "host", native_producer_digest(False)
-        );
-        merged = merge_native_sections(written, {SEC_NIFACE: user_b.pack(b"user-b")});
-        keys = set(native_section_variants(merged[SEC_NIFACE]));
-        assert kernel.key() in keys , "a user build pruned the kernel's products";
-        assert user_b.key() in keys;
-        assert user_a.key() not in keys , "an earlier compiler's user products survived";
-    }
-}
-
-test "an unrelated compiler edit lowers no kernel unit again" {
-    lowered_kernel_units(cached=False);
-    with checkout() as tree {
-        tree.build("a");
-        cold = lowered_kernel_units();
-        assert set(cold) >= {Path(rel).name for rel in KERNEL_LEAVES} , cold;
-        assert lowered_kernel_units() == [];
-        tree.build("b", native="n1");
-        assert lowered_kernel_units() == [] , "a compiler edit lowered unchanged kernel units";
-        update_handoff(exact=True);
-        assert lowered_kernel_units() == cold , "an exact build reused a kernel unit";
-    }
-}
-
-test "a kernel linked before a compiler edit is still accepted after it" {
-    import sys;
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        kernel_options,
-        unit_drift
-    }
-    import from jaclang.compiler.driver.jir { unit_source_digest }
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
-    with checkout() as tree {
-        tree.build("a");
-        options = kernel_options();
-        ident = native_unit_identity(MODULE);
-        sidecar: dict[str, any] = {
-            "compiler_digest": native_producer_digest(True),
-            "codegen_identity": options.base_codegen_identity(),
-            "triple": options.effective_triple(),
-            "python": f"{sys.version_info.major}.{sys.version_info.minor}",
-            "unit_ids": [ident],
-            "unit_policy": {ident: int(options.native_required_for(MODULE))}
-        };
-        recorded = {ident: unit_source_digest(MODULE)};
-        assert unit_drift(sidecar, recorded, [MODULE]) == [];
-        tree.build("b", native="n1");
-        assert unit_drift(sidecar, recorded, [MODULE]) == [] , (
-            "a compiler edit outside the kernel's units retired the kernel"
-        );
-        assert unit_drift(sidecar, {ident: "an earlier revision"}, [MODULE]);
-        update_handoff(exact=True);
-        assert unit_drift(sidecar, recorded, [MODULE]) , (
-            "an exact build accepted a kernel stamped by its ABI"
-        );
     }
 }

@@ -242,7 +242,6 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         native_import=True,
         default_codespace='native',
         native_unit=self.native_unit,
-        kernel_build=self.kernel_build,
         native_link_mode=self.native_link_mode,
         na_gc_mode=self.na_gc_mode,
         nogc_enforce_all=self.nogc_enforce_all,

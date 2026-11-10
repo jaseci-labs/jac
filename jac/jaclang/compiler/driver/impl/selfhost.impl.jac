@@ -44,16 +44,9 @@ impl SelfHostCache.resolve(
         }
         import from jaclang.compiler.frontend.codeinfo {
             is_native_by_location,
-            native_unit_compile_active,
             is_shared_runtime_module
         }
         if is_native_by_location(file_path) or is_shared_runtime_module(file_path) {
-            return target_program;
-        }
-        import from jaclang.compiler.native_scope { in_native_scope_path }
-        if not execution
-            and (native_unit or native_unit_compile_active())
-            and in_native_scope_path(file_path) {
             return target_program;
         }
         return self.program;

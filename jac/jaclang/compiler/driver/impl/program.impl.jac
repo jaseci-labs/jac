@@ -561,13 +561,7 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
         return False;
     }
     if opts is not None and opts.native_unit {
-        import from jaclang.compiler.native_scope {
-            in_native_scope_path,
-            package_host_edge
-        }
-        if in_native_scope_path(file_path) {
-            return True;
-        }
+        import from jaclang.compiler.pkg_paths { package_host_edge }
         if package_host_edge(file_path) {
             return False;
         }
@@ -617,11 +611,7 @@ impl JacProgram.parse_source(
         }
         infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
-            source_str,
-            file_path,
-            self,
-            annex_sources(file_path),
-            early_context=codespace or ('' if infer_native else 'server')
+            source_str, file_path, self, annex_sources(file_path)
         );
         active_host().place_wired_imports(parsed);
         if codespace == 'client' {
