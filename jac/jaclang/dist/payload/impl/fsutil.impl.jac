@@ -154,7 +154,7 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    if p != "runtime/python/LICENSE.cpython" and is_native_lowered(p) {
+    if is_native_lowered(p) {
         return True;
     }
     return (
