@@ -148,3 +148,65 @@ with entry {
     }
     assert out.split() == ["524288", "7", "524288"] , out;
 }
+
+test "an imported glob is declared with the storage its module defines" {
+    import tempfile;
+    import from jaclang.compiler.backends.native.llvm.ir.values { GlobalVariable }
+    rows = [
+        ("ESC", 'glob ESC = "\\x1b";', "seq.startswith(ESC)"),
+        ("ESC", "", "seq[0] == ESC"),
+        ("ESC", "", 'seq.startswith(ESC + "[")'),
+        ("NONE_GLOB", "glob NONE_GLOB = None;", "NONE_GLOB is None"),
+        ("NONE_DECL", "glob NONE_DECL: None = None;", "NONE_DECL is None"),
+        ("Box.EMPTY", "obj Box { static has EMPTY: None = None; }", "Box.EMPTY is None")
+    ];
+    names = sorted({name.split(".")[0] for (name, _, _) in rows});
+    reader = f"import from defs {{ {', '.join(names)} }}\n"
+        + "".join(
+            [
+                f"def row_{i}(seq: str) -> bool {{\n    return {use};\n}}\n"
+                for (i, (_, _, use)) in enumerate(rows)
+            ]
+        );
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "defs.jac").write_text(
+            "\n".join(
+                [
+                    decl
+                    for (_, decl, _) in rows
+                    if decl
+                ]
+            )
+                + "\n"
+        );
+        (Path(directory) / "reader.jac").write_text(reader);
+        storage: dict[str, dict[str, str]] = {};
+        for side in ["defs", "reader"] {
+            prog = JacProgram();
+            mod = prog.compile(
+                file_path=str(Path(directory) / f"{side}.jac"),
+                options=CompileOptions(
+                    force_codespace='native', skip_native_engine=True
+                )
+            );
+            assert not prog.errors_had , f"{side}: {[str(e) for e in prog.errors_had]}";
+            storage[side] = {
+                symbol: str(gv.value_type)
+                for (symbol, gv) in mod.gen.llvm_ir.globals.items()
+                if symbol.startswith("defs_") and isinstance(gv, GlobalVariable)
+            };
+        }
+    }
+    for (name, _, _) in rows {
+        defined = [
+            s
+            for s in storage["defs"]
+            if s.endswith(f".{name}")
+        ];
+        assert len(defined) == 1 , f"{name}: {storage['defs']}";
+        assert storage["reader"].get(defined[0]) == storage["defs"][defined[0]] , (
+            f"{name}: reader declares {storage['reader'].get(defined[0])}, "
+            f"defs stores {storage['defs'][defined[0]]}"
+        );
+    }
+}
