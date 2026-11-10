@@ -5181,7 +5181,11 @@ graph import client.targets {
         mobile_target | web_target { ClientTarget },
         register { get_target_registry },
     ]
-    seo_build --> web_target.WebTarget.build { apply_seo, clear_seo_files, scan_routes }
+    seo_build --> web_target.WebTarget.finish_dist {
+        apply_seo,
+        clear_seo_files,
+        scan_routes
+    }
     static_target ++> register { StaticTarget }
     web_target ++> desktop.desktop_target | register | static_target { WebTarget }
     web_target --> mobile_target.MobileTarget.build { WebTarget }

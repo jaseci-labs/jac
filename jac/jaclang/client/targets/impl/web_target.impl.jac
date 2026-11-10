@@ -93,8 +93,6 @@ impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     bundler = ViteBundler(project_dir=project_dir);
-    entry_path = str(entry_file.resolve());
-    seo_config = bundler.config_loader.get_seo_config(entry_path);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
@@ -131,6 +129,8 @@ impl WebTarget.finish_dist(
 ) -> Path {
     function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
     dist_dir = bundler.output_dir;
     bundle_path = bundler.find_bundle();
     if not bundle_path {
