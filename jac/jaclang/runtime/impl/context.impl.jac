@@ -204,9 +204,11 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     yield item;
                 }
             } except BaseException {
-                context.mem.abort();
                 if entered {
                     entered = False;
+                    if context.mem.unit_depth() == 1 {
+                        context.mem.abort();
+                    }
                     context.mem.unit_exit();
                 }
                 raise;
@@ -251,9 +253,11 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     yield item;
                 }
             } except BaseException {
-                context.mem.abort();
                 if entered {
                     entered = False;
+                    if context.mem.unit_depth() == 1 {
+                        context.mem.abort();
+                    }
                     await context.mem.aunit_exit();
                 }
                 raise;

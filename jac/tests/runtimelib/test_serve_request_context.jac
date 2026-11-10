@@ -13,11 +13,12 @@ Pinned here: a websocket walker and a websocket function each run on a session
 that is not the process-global one, on the database the HTTP path uses, and see
 data committed after the process-global session began reading; an HTTP SSE
 body owns its request scope, so its writes commit when it is delivered and roll
-back when the client goes away or the producer raises; a stream whose
-delivery is cut off is closed before its scope ends, and one that cannot be
-closed has its request's work aborted, so in neither case does the scope
-commit unfinished work; and the executor refuses to run a call that no
-transport has given a request scope.
+back when the client goes away or the producer raises; a stream that runs
+inside another open unit leaves commit and rollback to that unit however it
+ends; a stream whose delivery is cut off is closed before its scope ends, and
+one that cannot be closed has its request's work aborted, so in neither case
+does the scope commit unfinished work; and the executor refuses to run a call
+that no transport has given a request scope.
 """
 
 import asyncio;
@@ -612,30 +613,86 @@ test "a stream delivered to its end has its write committed when its scope close
 }
 
 
-test "a stream that ends inside another open unit leaves its writes to that unit" {
-    written: list[UUID] = [];
-    def chunks -> Generator[str, None, None] {
-        written.append(_write_note("nested"));
-        yield 'only';
+test "a stream inside another open unit leaves that unit's work to the unit, however the stream ends" {
+    nested: list[UUID] = [];
+
+    def chunks(outcome: str) -> Generator[str, None, None] {
+        nested.append(_write_note(f"nested stream that {outcome}"));
+        yield 'first';
+        if outcome == "raises" {
+            raise RuntimeError("the producer failed");
+        }
+        yield 'second';
     }
 
-    async def run_nested(project: str) {
-        scope = _open_scope(project);
-        with scope as context {
-            context.mem.unit_enter();
-            stream = await ExecutionContext(_parent=context).bind_stream(chunks());
-            for _ in stream {}
-            scope.abort();
-            context.mem.unit_exit();
+    async def achunks(outcome: str) -> AsyncGenerator[str, None] {
+        nested.append(_write_note(f"nested async stream that {outcome}"));
+        yield 'first';
+        if outcome == "raises" {
+            raise RuntimeError("the producer failed");
+        }
+        yield 'second';
+    }
+
+    async def consume(stream: any, kind: str, outcome: str) {
+        if outcome == "is closed early" {
+            if kind == "async" {
+                await stream.__anext__();
+                await stream.aclose();
+            } else {
+                next(stream);
+                stream.close();
+            }
+            return;
+        }
+        try {
+            if kind == "async" {
+                async for _ in stream {}
+            } else {
+                for _ in stream {}
+            }
+        } except RuntimeError {
+            assert outcome == "raises";
         }
     }
 
-    with TemporaryDirectory() as project {
-        asyncio.run(run_nested(project));
-        assert len(written) == 1;
-        assert not _committed(project, written[0]) , (
-            "a stream inside an open unit saved that unit's work when it ended"
-        );
+    async def run_nested(project: str, kind: str, outcome: str, settle: str) -> UUID {
+        scope = _open_scope(project);
+        with scope as context {
+            context.mem.unit_enter();
+            unit_write = _write_note(f"the unit's work before a {kind} stream that {outcome}");
+            source = achunks(outcome) if kind == "async" else chunks(outcome);
+            stream = await ExecutionContext(_parent=context).bind_stream(source);
+            await consume(stream, kind, outcome);
+            if settle == "abort" {
+                scope.abort();
+            }
+            context.mem.unit_exit();
+        }
+        return unit_write;
+    }
+
+    rows: list[tuple[str, str, str, bool]] = [
+        ("sync", "ends", "abort", False),
+        ("sync", "ends", "commit", True),
+        ("sync", "is closed early", "commit", True),
+        ("sync", "raises", "commit", True),
+        ("async", "is closed early", "commit", True),
+        ("async", "raises", "commit", True)
+    ];
+    for (kind, outcome, settle, expected) in rows {
+        nested.clear();
+        label = f"a {kind} stream that {outcome} inside a unit that then {settle}s";
+        with TemporaryDirectory() as project {
+            unit_write = asyncio.run(run_nested(project, kind, outcome, settle));
+            assert len(nested) == 1;
+            assert _committed(project, unit_write) == expected , (
+                f"{label}: the write the unit made before the stream did not follow the unit's decision"
+            );
+            assert _committed(project, nested[0]) == expected , (
+                f"{label}: the stream's write did not follow the unit's decision"
+            );
+        }
     }
 }
 
