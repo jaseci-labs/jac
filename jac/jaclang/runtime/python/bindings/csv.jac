@@ -1,7 +1,10 @@
 """CSV declarations, owned callbacks, and interpreter-local native configuration."""
 
 obj CsvReaderState(ReferenceState) {
-    has native: csv_reader;
+    has native: csv_reader,
+        module: ptr[PyObject] = NULL,
+        options: ptr[PyObject] = NULL,
+        config: (CsvConfig | None) = None;
 
     def clear {
         super.clear();
@@ -227,6 +230,13 @@ def:priv reader_create_bound(args: BoundArguments) -> ptr[PyObject] {
     record_set_object(
         jacpy_binding_record(instance, reader_type.handle), 0, state.references[0]
     );
+    state.module = args.context;
+    state.options = dialect_options(state.references[0]);
+    state.config = config_for(args.context);
+    if state.config is None {
+        jacpy_release(instance);
+        return NULL;
+    }
     return instance;
 }
 
@@ -241,20 +251,17 @@ def:priv reader_next(instance: ptr[PyObject]) -> ptr[PyObject] {
     if state is None {
         return NULL;
     }
-    module = module_for(instance);
-    if module == 0 {
-        return NULL;
-    }
-    config = config_for(module);
+    config = state.config;
     if config is None {
+        object_error(PyExc_SystemError, "native CSV configuration is unavailable");
         return NULL;
     }
     row = jacpy_csv_read(
         state.native,
         state.references[1],
-        dialect_options(state.references[0]),
+        state.options,
         config,
-        jacpy_binding_state_get(module, 0)
+        jacpy_binding_state_get(state.module, 0)
     );
     # line_num is the record's unsigned long after the dialect pointer.
     ptr[u64](int(jacpy_binding_record(instance, reader_type.handle)) + 8).view(1)[0] = u64(

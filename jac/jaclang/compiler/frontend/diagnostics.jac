@@ -202,6 +202,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0055 = _err(
          "E0055", Category.SYNTAX, "'yield' is only valid inside a function body"
      ),
+     E0057 = _err(
+         "E0057",
+         Category.SYNTAX,
+         "'return' is only valid inside a function body",
+         help="A `with entry` block runs as module code, not as a function, so it has nothing to return from. Move the code into a `def` and call it from the entry block, or invert the condition so the rest of the block runs only when it should."
+     ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0063 = _err(
          "E0063",
@@ -384,7 +390,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
      E0102 = _err("E0102", Category.SYNTAX, "Unterminated f-string"),
-     E0103 = _err("E0103", Category.SYNTAX, "Unterminated inline Python block"),
      E0104 = _err("E0104", Category.SYNTAX, "Unexpected end of JSX content"),
      E0105 = _err("E0105", Category.SYNTAX, "Unexpected character: '{ch}'"),
      E0106 = _err("E0106", Category.SYNTAX, "Unexpected character in JSX tag: '{ch}'"),
@@ -953,6 +958,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " requires that it actually has a runtime export.",
          blocks_codegen=True
      ),
+     E1163 = _err(
+         "E1163",
+         Category.TYPE,
+         "'{name}' is a type parameter and cannot be used as a value",
+         help="A type parameter names a type for the checker only: no backend"
+         " binds it at runtime to the class it stands for. The Python backend"
+         " drops a function's type parameters, so returning, assigning,"
+         " raising or passing '{name}' to `isinstance`/`issubclass` reaches a"
+         " name nothing binds; inside a class it is a bare `TypeVar`."
+         " Annotations, `as` casts, `has` field types, generic arguments and"
+         " `type` alias right-hand sides are type position and stay legal. To"
+         " use the class at runtime, pass it in as a value: `cls: type[{name}]`."
+     ),
      E1133 = _err(
          "E1133",
          Category.TYPE,
@@ -966,10 +984,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1134",
          Category.IMPORT,
          "Relative import '{module}' names no module",
-         help="A dotted relative import addresses a file inside this project, so"
-         " its target has to sit beside the importing module: '{module}'"
-         " resolves to no .jac, .py, .pyi or .js file and to no package"
-         " directory. Create the module, correct the spelling, or drop the"
+         help="A dotted relative import addresses a file inside this project,"
+         " counted from the importing module's folder: one dot is that folder"
+         " and each further dot climbs one level. '{module}' resolves there to"
+         " no .jac, .py, .pyi or .js file and to no package directory, and is"
+         " not looked for anywhere else, such as the project root. Create the"
+         " module, correct the spelling or the number of dots, or drop the"
          " import. Leaving it unresolved erases the binding from the emitted"
          " client bundle, where it fails as an undefined name at runtime. Two"
          " shapes are exempt: a bare specifier, which can name an npm package"
@@ -985,8 +1005,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot assign to '{name}': it is declared {kind}",
          help="A binding annotated with 'Final' (or a 'readonly' member of an"
          " imported TypeScript interface) can only be set at its declaration,"
-         " or in the 'init'/'postinit' of the object that declares it when the"
-         " declaration has no initializer."
+         " or once, in the 'init'/'postinit' of the object that declares it, when"
+         " the declaration has no initializer."
      ),
      E1138 = _err(
          "E1138",
@@ -1048,6 +1068,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " import if the module keeps one. A name that is part of the module's"
          " public surface belongs in its `__all__`; names are not re-exported"
          " otherwise, so other modules import them from where they are defined."
+     ),
+     E1148 = _err(
+         "E1148",
+         Category.IMPORT,
+         "'{module}' is a variant of '{base}', so it cannot be a wire's provider",
+         help="A platform or `.native.jac` variant is chosen for its target in place"
+         " of '{base}'; no import names it. Wire '{base}' as the provider. A variant"
+         " is a consumer in its own right: its imports are wired to '{module}'."
      ),
      E1145 = _err(
          "E1145",
@@ -1175,6 +1203,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " or take a `ptr[T]` to storage the caller owns. `&mut local` lends a"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
+     ),
+     E1162 = _err(
+         "E1162",
+         Category.TYPE,
+         "'Final' without a type needs a value to take its type from",
+         help="Name the type in brackets, as in `has x: Final[int];`, or give a"
+         " value and the type comes from it, as in `has x: Final = 5;`."
      ),
      E1301 = _err(
          "E1301",
@@ -1777,8 +1812,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2036 = _err(
          "E2036",
          Category.SEMANTIC,
-         "Duplicate definition of '{name}': it replaces the definition on line {line}.",
-         help="A module-level name can be defined once. The later definition is the one that runs, while calls are checked against the earlier one, so rename or remove one of them. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
+         "Duplicate definition of '{name}': the {prior} binds it too.",
+         help="A module-level name is bound once, by one definition or by one import or wire. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
      ),
      E2037 = _err(
          "E2037",

@@ -106,6 +106,8 @@ obj HostServices {
     def is_seed_source(rel_path: str) -> bool;
     def wiring_records(digest: str) -> str;
     def keep_wiring_records(digest: str, text: str);
+    def native_scan_record(path: str, digest: str) -> str;
+    def keep_native_scan_record(path: str, digest: str, text: str);
     def native_parse(
         source_str: str,
         file_path: str,

@@ -571,8 +571,12 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
             while True {
                 try {
                     self.flush(full=True);
+                    wrote = self._rows.in_flight();
                     self._commit_txn();
                     self._leave_queue();
+                    if wrote and self._active_units > 0 and self._ro_units > 0 {
+                        self._register_ro_writers();
+                    }
                     break;
                 } except Exception as e {
                     if not _is_serialization_conflict(e) {
@@ -832,6 +836,19 @@ impl Session.unit_exit -> None {
                 }
             }
         }
+    }
+}
+
+
+impl Session.note_effect_failure(e: Exception) -> None {
+    cause: any = e;
+    while cause is not None
+        and not (self._store is not None and cause is self._store.last_error) {
+        cause = cause.__cause__ or cause.__context__;
+    }
+    if cause is not None
+        or (isinstance(e, WriteConflict) and not isinstance(e, ReadOnlyRetry)) {
+        self._lost = True;
     }
 }
 

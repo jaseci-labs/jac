@@ -266,7 +266,7 @@ Here is the actual anatomy. The `jac` you download is a small native **launcher 
 | Component | How it's in the binary | What you can uninstall |
 |---|---|---|
 | **Launcher stub** | The `jac` file itself: native machine code linked against libc only. Everything below rides in the appended payload | -- |
-| **CPython 3.14** | A private [python-build-standalone](https://github.com/astral-sh/python-build-standalone) build (PGO+LTO, stripped), `dlopen`ed by the launcher at startup: your system Python is never consulted | Python, pyenv, conda |
+| **JacPython 3.14** | A private Python 3.14 whose compiler and much of whose C are native Jac, built from pinned sources and `dlopen`ed by the launcher at startup: your system Python is never consulted | Python, pyenv, conda |
 | **Jac compiler + runtime** | Precompiled to JIR in the payload's private site: the REST server (`jac run`), client framework, K8s deployer (`jac scale deploy`), and byLLM (`by llm()`). Their optional third-party deps (litellm, pymongo, ...) resolve per-project via `jac install` | Flask, FastAPI, Express · Docker, kubectl, Helm · LangChain |
 | **Bun** | The real Bun executable, carried inside the payload and invoked by absolute path, never on your `PATH` | Node.js, npm, npx, yarn |
 | **LLVM 22** | Statically linked into a single `jacllvm` shared library behind the llvmlite ABI | gcc, clang |
@@ -412,7 +412,7 @@ def:pub get_todos -> list[Todo] {
     return [root-->][?:Todo];
 }
 
-cl def:pub app -> JsxElement {
+def:pub app -> JsxElement {
     has todos: list[Todo] = [], text: str = "";
     async can with entry { todos = await get_todos(); }
     async def add {
@@ -423,7 +423,7 @@ cl def:pub app -> JsxElement {
     }
     return <div>
         <input value={text}
-            onChange={lambda e: ChangeEvent { text = e.target.value; }}
+            onChange={lambda(e: ChangeEvent) { text = e.target.value; }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
         {[<p key={jid(t)}>{t.title}</p> for t in todos]}
@@ -431,7 +431,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-Code in `cl` (the client **codespace**) compiles to a React/JSX bundle for the browser. Everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac run` serves it, and `jac run --dev` adds hot reload. [Full-stack tutorial →](https://www.jaclang.org/docs/latest/build/fullstack-web)
+Code that returns `JsxElement` (like `app` here) is client-side -- it compiles to a React/JSX bundle for the browser. Everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac run` serves it, and `jac run --dev` adds hot reload. [Full-stack tutorial →](https://www.jaclang.org/docs/latest/build/fullstack-web)
 
 For all three ideas in one file (an AI categorizer, a native-compiled scoring function, a persistent graph, and a React UI), see [`jac/examples/mini_todo`](jac/examples/mini_todo).
 

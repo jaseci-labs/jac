@@ -527,6 +527,7 @@ The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of th
 | `max_replicas` | `1` | Replica ceiling once activated. |
 | `polling_interval` | `30` | Seconds between HTTP metric evaluations. |
 | `cooldown_period` | `300` | Seconds of inactivity before scaling back to `min_replicas`. |
+| `initial_cooldown_period` | `0` | Seconds after the ScaledObject is created before the target may scale to `min_replicas`. A new target has served no request yet, so with `0` KEDA scales it down at once. |
 | `target_port` / `target_port_name` | `null` | Container port on the app's Service. Set exactly one. |
 | `concurrency_target` | `null` | In-flight-request concurrency target. Set this or `request_rate_target`. |
 | `request_rate_target` | `null` | Requests-per-window target, as an alternative to `concurrency_target`. |
@@ -892,6 +893,31 @@ For partial teardown, pass `--component` with one of `application`, `database`, 
 ```bash
 jac scale destroy app.jac --component monitoring
 ```
+
+---
+
+## Shutdown Hooks
+
+jac owns `SIGTERM` while it serves, so a handler an app installs with `signal.signal` never runs. Register shutdown code with the `on_drain` builtin instead. It takes a function with no arguments and returns it, so it also works as a decorator:
+
+```jac
+import threading;
+
+glob stop_dispatcher: threading.Event = threading.Event();
+
+@on_drain
+def stop_background_work {
+    stop_dispatcher.set();
+}
+
+with entry {
+    on_drain(lambda { print("draining"); });
+}
+```
+
+Drain hooks start when the server starts draining. They run once per process, on their own thread, in the order they were registered, alongside the requests still in flight, and a coroutine function is awaited. The server waits for them up to what is left of `[serve.timeouts] drain`, so a hook slower than that is cut off at exit. A hook that raises is logged and the others still run. A hook registered after the drain started runs once the requests in flight have finished, within the same budget.
+
+With `[serve.workers] count` above one, hooks registered while the app loads run in the supervisor, where threads started at load time live, and forked workers do not inherit them. Requests run in the workers, so a load-time hook cannot see what they changed: one that flushes a buffer finds it empty in the supervisor, and the workers' copies are never flushed. To run a hook in a worker, call `on_drain` from code that runs there, such as a walker. Registering a function that is already registered does nothing, so pass a named function there, not a lambda. jac logs a warning once more than 100 hooks are registered.
 
 ---
 

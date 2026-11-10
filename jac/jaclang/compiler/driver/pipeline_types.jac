@@ -1,6 +1,7 @@
 import from enum { StrEnum }
 
 enum AnalysisFact(StrEnum) {
+    CFG_CATCH = 'CfgCatch',
     CFG_FALSE = 'CfgFalse',
     CFG_SUCC = 'CfgSucc',
     CFG_TRUE = 'CfgTrue',
@@ -17,6 +18,7 @@ enum AnalysisFact(StrEnum) {
     CLIENT_CAPABILITY = 'client_capability',
     CODESPACE_PULL = 'codespace-pull',
     COMPTIME = 'comptime',
+    DECL_TYPES = 'decl-types',
     FROZEN = 'frozen',
     OWNERSHIP = 'ownership',
     PORTABILITY = 'portability',
@@ -38,6 +40,7 @@ enum CompilationProduct {
     FLOW = "flow",
     PLACEMENT = "placement",
     ANALYSIS = "analysis",
+    DECLARATIONS = "declarations",
     BOUNDARIES = "boundaries",
     INTERFACE = "interface",
     CLIENT = "client",

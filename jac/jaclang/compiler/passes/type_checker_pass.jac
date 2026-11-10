@@ -2,7 +2,19 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
          "PLUS": "+",
          "MINUS": "-",
          "STAR_MUL": "*"
-     };
+     },
+     CTOR_METHODS: tuple[str, ...] = ("init", "__init__"),
+     POSTINIT_METHODS: tuple[str, ...] = ("postinit", "__post_init__");
+
+obj InitFlow {
+    has method: Ability,
+        gen: dict[int, set[SymId]],
+        flow_in: dict[int, set[SymId]],
+        nodes: list[UniCFGNode];
+
+    def set_before(anchor: (UniCFGNode | None)) -> set[SymId];
+    def set_at_exit -> set[SymId];
+}
 
 walker TypeCheckPass(TreePass) {
     static has contract: PassContract = PassContract(provides=(AnalysisFact.TYPE_OF, ));
@@ -82,6 +94,7 @@ walker TypeCheckPass(TreePass) {
     def _in_comptime_context(nd: UniNode) -> bool;
     def _check_comptime_only_use(nd: Name) -> None;
     def _check_type_only_value_use(nd: Name) -> None;
+    def _check_type_param_value_use(nd: Name) -> None;
     can exit_if_stmt with IfStmt exit;
     can exit_else_if with ElseIf exit;
     can exit_while_stmt with WhileStmt exit;
@@ -104,12 +117,19 @@ walker TypeCheckPass(TreePass) {
     ) -> None;
 
     def _flush_immutable_writes -> None;
-    def _judge_immutable_write(
+    def _immutable_write_leaves(
         target: (Expr | None), rebind_scope: (UniNode | None) = None
-    ) -> None;
+    ) -> list[tuple[Expr, Name, Symbol]];
 
     def _rebound_enclosing_symbol(scope: UniNode, leaf: Name) -> (Symbol | None);
-    def _is_initializer_write(target: Expr, decl_sym: Symbol) -> bool;
+    def _initializer_of(target: Expr, decl_sym: Symbol) -> (Ability | None);
+    def _first_init_writes(writes: list[tuple[Expr, Name, Symbol]]) -> set[int];
+    def _init_flow(method: Ability, inits: list[tuple[Expr, Symbol]]) -> InitFlow;
+    def _set_before_initializer(
+        method: Ability, ctor_writes: dict[int, set[SymId]]
+    ) -> set[SymId];
+
+    def _check_bare_final(ann_node: Expr, value: (Expr | None)) -> None;
     def _is_self_ref(base: Name, method: Ability) -> bool;
     def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
     def _check_bare_generic(

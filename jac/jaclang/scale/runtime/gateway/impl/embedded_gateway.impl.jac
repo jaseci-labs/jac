@@ -67,7 +67,11 @@ impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
             if resolved.is_relative_to(dist.resolve()) and resolved.is_file() {
                 ctype: str = mimetypes.guess_type(str(resolved))[0]
                     or "application/octet-stream";
-                return Response(content=resolved.read_bytes(), media_type=ctype);
+                file_resp = Response(content=resolved.read_bytes(), media_type=ctype);
+                if rel in SEO_ROOT_FILES {
+                    file_resp.headers.set("Cache-Control", "no-cache");
+                }
+                return file_resp;
             }
         } except OSError {}
     }
@@ -112,6 +116,13 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
         }
     }
     accept: str = str(request.headers.get("accept") or "");
+    root_entry = self.registry.root_entry();
+    blocked = robots_response(
+        request, self.base_path, root_entry.file if root_entry else ""
+    );
+    if blocked is not None {
+        return blocked;
+    }
     return self._serve_static(path, accept);
 }
 

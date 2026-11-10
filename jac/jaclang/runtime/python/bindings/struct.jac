@@ -53,7 +53,39 @@ def:priv memory_size(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyOb
     );
 }
 
-def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+def:priv count_error(module: ptr[PyObject], into: bool, expected: i64, count: i64) {
+    if into {
+        module_error(
+            module, f"pack_into expected {expected} items for packing (got {count})"
+        );
+    } else {
+        module_error(
+            module, f"pack expected {expected} items for packing (got {count})"
+        );
+    }
+}
+
+def:priv pack(
+    instance: ptr[PyObject], items: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    record = struct_record_of(instance);
+    if record and record.view(1)[0].table {
+        expected = record.view(1)[0].items;
+        if count != expected {
+            count_error(record.view(1)[0].module, False, expected, count);
+            return NULL;
+        }
+        result = jacpy_buffer_new(record.view(1)[0].size);
+        if result != 0
+            and jacpy_struct_pack_record(
+                instance, record, items, ptr[u8](jacpy_bytes_address(result))
+            )
+                < 0 {
+            jacpy_release(result);
+            return NULL;
+        }
+        return result;
+    }
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -63,22 +95,15 @@ def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if module == 0 {
         return NULL;
     }
-    count = PyTuple_Size(args);
     expected = jacpy_struct_items(plan);
     if count != expected {
-        module_error(
-            module, f"pack expected {expected} items for packing (got {count})"
-        );
+        count_error(module, False, expected, count);
         return NULL;
     }
     result = jacpy_buffer_new(jacpy_struct_size(plan));
     if result != 0
         and jacpy_struct_pack(
-            plan,
-            args,
-            0,
-            jacpy_bytes_address(result),
-            jacpy_binding_state_get(module, 0)
+            plan, items, jacpy_bytes_address(result), jacpy_binding_state_get(module, 0)
         )
             < 0 {
         jacpy_release(result);
@@ -87,7 +112,9 @@ def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+def:priv pack_into(
+    instance: ptr[PyObject], items: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -97,7 +124,6 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if module == 0 {
         return NULL;
     }
-    count = PyTuple_Size(args);
     expected = jacpy_struct_items(plan);
     if count < 2 {
         module_error(
@@ -109,21 +135,14 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     if count - 2 != expected {
-        module_error(
-            module, f"pack_into expected {expected} items for packing (got {count - 2})"
-        );
+        count_error(module, True, expected, count - 2);
         return NULL;
     }
     buffer = BufferArgument();
-    source = jacpy_tuple_item(args, 0);
-    acquired = buffer.acquire_writable(source);
-    jacpy_release(source);
-    if not acquired {
+    if not buffer.acquire_writable(items.view(1)[0]) {
         return NULL;
     }
-    offset_object = jacpy_tuple_item(args, 1);
-    offset = PyNumber_AsSsize_t(offset_object, PyExc_IndexError);
-    jacpy_release(offset_object);
+    offset = PyNumber_AsSsize_t((items + 1).view(1)[0], PyExc_IndexError);
     if jacpy_error_pending() != 0 {
         return NULL;
     }
@@ -132,10 +151,51 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if offset < 0 {
         return NULL;
     }
-    if jacpy_struct_pack(plan, args, 2, buffer.address() + offset, error) < 0 {
+    if jacpy_struct_pack(plan, items + 2, buffer.address() + offset, error) < 0 {
         return NULL;
     }
     return Py_NewRef(Py_None);
+}
+
+def:priv unpack_slow(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    buffer = BufferArgument();
+    if not buffer.acquire(value) {
+        return NULL;
+    }
+    result = Struct_unpack_impl(instance, buffer);
+    buffer.close();
+    return result;
+}
+
+def:priv unpack_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    record = struct_record_of(instance);
+    if record
+        and record.view(1)[0].table
+        and ptr[ptr[PyObject]](ptr[u8](value) + 8).view(1)[0]
+            == ptr[PyObject](addressof(PyBytes_Type))
+        and jacpy_bytes_length(value) == record.view(1)[0].size {
+        return jacpy_struct_unpack_record(record, ptr[u8](jacpy_bytes_address(value)));
+    }
+    return unpack_slow(instance, value);
+}
+
+def:priv struct_methods -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in Struct_methods {
+        if method.name == "unpack" {
+            methods.append(
+                MethodDefinition(
+                    "unpack",
+                    MethodCallbacks(positional=unpack_call),
+                    method.doc,
+                    flags=8
+                )
+            );
+        } else {
+            methods.append(method);
+        }
+    }
+    return methods;
 }
 
 def:priv iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {
@@ -176,25 +236,13 @@ def:priv iterator_hint(
 def:priv pack_call(
     instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    values = vector_tuple(args, nargs);
-    if values == 0 {
-        return NULL;
-    }
-    result = pack(instance, values);
-    jacpy_release(values);
-    return result;
+    return pack(instance, args, nargs);
 }
 
 def:priv pack_into_call(
     instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    values = vector_tuple(args, nargs);
-    if values == 0 {
-        return NULL;
-    }
-    result = pack_into(instance, values);
-    jacpy_release(values);
-    return result;
+    return pack_into(instance, args, nargs);
 }
 
 def:priv deallocate(instance: ptr[PyObject]) {
@@ -202,6 +250,10 @@ def:priv deallocate(instance: ptr[PyObject]) {
 }
 
 def:priv clear(instance: ptr[PyObject]) -> i32 {
+    record = struct_record_of(instance);
+    if record {
+        record.view(1)[0].table = ptr[i64]();
+    }
     return clear_payload(instance, Struct_token.handle);
 }
 
@@ -228,7 +280,7 @@ def:priv iterator_traverse(
 glob:priv struct_type = TypeDefinition(
          "_struct.Struct",
          s__doc__,
-         Struct_methods
+         struct_methods()
              + [
                  MethodDefinition(
                      "pack", MethodCallbacks(fast=pack_call), s_pack__doc__, flags=128
@@ -267,6 +319,7 @@ glob:priv struct_type = TypeDefinition(
                  doc=s_getsetlist_size_doc
              )
          ],
+         record_size=STRUCT_RECORD_SIZE,
          weaklist=True,
          generic_getattr=True,
          generic_setattr=True
@@ -317,14 +370,42 @@ def:priv module_pack_values(
     if instance == 0 {
         return NULL;
     }
-    values = vector_tuple(args + 1, nargs - 1);
-    result: ptr[PyObject] = NULL;
-    if values != 0 {
-        result = pack_into(instance, values) if into else pack(instance, values);
-        jacpy_release(values);
-    }
+    result = pack_into(instance, args + 1, nargs - 1)
+        if into
+        else pack(instance, args + 1, nargs - 1);
     jacpy_release(instance);
     return result;
+}
+
+def:priv module_unpack(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    if not check_positional("unpack", int(nargs), 2, 2) {
+        return NULL;
+    }
+    instance = cached_struct(module, args.view(1)[0]);
+    if instance == 0 {
+        return NULL;
+    }
+    result = unpack_call(instance, (args + 1).view(1)[0]);
+    jacpy_release(instance);
+    return result;
+}
+
+def:priv module_function_list -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in module_methods {
+        if method.name == "unpack" {
+            methods.append(
+                MethodDefinition(
+                    "unpack", MethodCallbacks(fast=module_unpack), method.doc, flags=128
+                )
+            );
+        } else {
+            methods.append(method);
+        }
+    }
+    return methods;
 }
 
 def:priv module_pack(
@@ -371,7 +452,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 glob:priv definition = ModuleDefinition(
          "_struct",
          module_doc,
-         module_methods
+         module_function_list()
              + [
                  MethodDefinition(
                      "pack", MethodCallbacks(fast=module_pack), pack_doc, flags=128

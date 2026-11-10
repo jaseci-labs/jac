@@ -72,11 +72,8 @@ impl JacClientCompiler.compile(
     native: bool = False
 ) -> tuple[list[str], list[str]] {
     self.input_files = {};
-    project_root = self.project_dir.resolve();
-    entry_root = module_path.resolve().parent;
-    source_root = (
-        project_root if entry_root.is_relative_to(project_root) else entry_root
-    );
+    self.client_modules = {};
+    source_root = client_source_root(self.project_dir, module_path);
     self.jac_compiler.source_root = source_root;
     self.emit_prelude();
     artifact = self.jac_compiler.compile_module(module_path);
@@ -223,6 +220,11 @@ impl JacClientCompiler.emit_dependencies(
     for unit in closure.modules + closure.refreshed {
         module_path = unit.path;
         artifact = unit.artifact;
+        if module_path.suffix == '.jac' and module_path.is_file() {
+            self.client_modules[str(module_path.resolve())] = ct_dep_digest(
+                str(module_path), with_annexes=True
+            );
+        }
         self._collect_na_modules(artifact);
         manifest = artifact.manifest;
         exports_list = self.jac_compiler.extract_exports(manifest);
@@ -435,7 +437,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     collected_globals: (dict[(str, any)] | None) = None,
     native: bool = False
 ) -> bool {
-    scanner = RouteScanner(self._app_root(), route_exports_of=resolve_route_exports);
+    scanner = RouteScanner(self._app_root(), route_exports_of=self._route_exports_of);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -494,7 +496,7 @@ impl JacClientCompiler._warn_unrouted_pages(
 }
 
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self._app_root(), route_exports_of=resolve_route_exports);
+    scanner = RouteScanner(self._app_root(), route_exports_of=self._route_exports_of);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -725,4 +727,19 @@ impl _bundle_runtime_js(
     parts.append(export_line);
     parts.append('__jacWirePlatformAdapters();');
     return '\n'.join(parts) + '\n';
+}
+
+impl JacClientCompiler._route_exports_of(
+    self: JacClientCompiler, module_path: Path
+) -> tuple[((str | None), (str | None))] {
+    if not self.scan_routes_with_bundle {
+        return resolve_route_exports(module_path);
+    }
+    source_root = self.jac_compiler.source_root or self.project_dir;
+    try {
+        artifact = self.jac_compiler._compile_to_js(module_path, source_root);
+    } except ClientBundleError {
+        return resolve_route_exports(module_path);
+    }
+    return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }

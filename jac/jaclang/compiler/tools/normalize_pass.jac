@@ -8,7 +8,6 @@ walker NormalizePass(TreePass) {
     can enter_global_vars with uni.GlobalVars entry;
     can enter_test with uni.Test entry;
     can enter_module_code with uni.ModuleCode entry;
-    can enter_py_inline_code with uni.PyInlineCode entry;
     can enter_import with uni.Import entry;
     can enter_module_path with uni.ModulePath entry;
     can enter_module_item with uni.ModuleItem entry;

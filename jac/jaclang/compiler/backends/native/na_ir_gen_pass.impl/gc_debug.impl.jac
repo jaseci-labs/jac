@@ -321,7 +321,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
         if self._target_is_wasm() {
             _msz: ir.Value = ir.Constant(i64, 0);
         } else {
-            _msz = self._floor_call("__jac_malloc_size", i64, [_raw_msz], "msz", b);
+            _msz = self._heap_usable_size(b, _raw_msz, "msz");
         }
         _aid_slot = b.gep(
             ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="fr.aid.slot"
@@ -392,7 +392,7 @@ impl NaIRGenPass._emit_struct_free_log(
     if self._target_is_wasm() {
         _msz2: ir.Value = ir.Constant(i64, 0);
     } else {
-        _msz2 = self._floor_call("__jac_malloc_size", i64, [obj_raw], "msz2", b);
+        _msz2 = self._heap_usable_size(b, obj_raw, "msz2");
     }
     (_op, _loc) = self._emit_ctx_load(b);
     _fmt_sf = self._get_fmt_string(

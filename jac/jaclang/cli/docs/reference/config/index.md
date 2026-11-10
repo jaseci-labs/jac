@@ -311,7 +311,24 @@ both. A variable that is empty or only whitespace counts as unset, so the
 `0/false/no/off` (any case), and any other value stops the server with a
 message naming the variable. An empty `JAC_SERVE_CORS_ORIGINS` therefore keeps
 the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
-`cors_origins = []` in `jac.toml`.
+`cors_origins = []` in `jac.toml`. `cors_credentials = true` lets the origins in
+`cors_origins` send cookies; the server refuses to start if the list also holds
+`"*"`, because browsers reject a response that allows every origin together
+with credentials.
+
+The `[serve]` tables are checked when the configuration loads, in every layer
+(`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
+`jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
+`"false"` or `true` for a number, stops the load. The message lists every such
+key at once and suggests the right name for a misspelled one, and nothing from a
+table with a mistake is applied.
+A layer's sub-table merges into the one below it instead of replacing it.
+`[serve.auth]` is the exception: its layers are merged first and the result is
+checked when the server starts (or a deploy builds its manifests).
+`${VAR}` interpolation always gives text, so it can't set a `[serve]` number
+or switch; set those from the environment with their `JAC_SERVE_*` variable.
+`main`, `conflict_max_attempts` and `conflict_backoff_ms` have no such variable,
+so write them as plain values.
 
 ```toml
 [serve]
@@ -322,6 +339,7 @@ main = true              # Run as main module
 docs_enabled = true      # /docs and /openapi.json
 graph_enabled = true     # /graph, /graph/node and /graph/neighbors (turn off in production)
 cors_origins = ["*"]     # Origins allowed by the CORS middleware
+cors_credentials = false # Access-Control-Allow-Credentials for listed origins; refused with "*"
 
 # Optimistic-concurrency policy for concurrent check-then-create races
 # (see Persistence -> Concurrent writes).

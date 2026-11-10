@@ -482,15 +482,16 @@ impl prepare_application(
     `root: (str | None) = None,
     services: any = (),
     client: bool = False,
-    dev: bool = True,
+    dev: (bool | None) = None,
     force_codespace: str = ''
 ) -> PreparedApplication {
+    dev_mode = True if dev is None else dev;
     `entry = os.path.realpath(`entry);
     `root = os.path.realpath((`root or os.path.dirname(`entry)));
     entries = `list(`dict.fromkeys([`entry, *(os.path.realpath(p) for p in services)]));
     import from jaclang.server.sealed_serve { sealed_root_for, unlisted_image_root }
     image_root = sealed_root_for(`entry);
-    if image_root is not None {
+    if image_root is not None and dev is not True {
         console.print('  Loading sealed application artifacts', file=sys.stderr);
         return _prepare_sealed(`entry, program, image_root, entries);
     }
@@ -579,7 +580,7 @@ impl prepare_application(
                                 `root,
                                 [path],
                                 client and path == `entry,
-                                dev,
+                                dev_mode,
                                 console
                             )
                         );
@@ -988,7 +989,9 @@ impl _prepare_revision(
             )
                 and all(
                     (ct_dep_digest(path, with_annexes=True) == digest)
-                    for (path, digest) in candidate['dependencies'].items()
+                    for (path, digest) in (
+                        candidate['dependencies'] | candidate['client_modules']
+                    ).items()
                 ) {
                 record = candidate;
                 if inventory != record['inventory'] or outputs != record['outputs'] {
@@ -1235,28 +1238,37 @@ impl _prepare_revision(
             ct_dep_digest(path, with_annexes=True) != digest
             for (path, digest) in inputs.items()
         ) {
-            raise RuntimeError(
+            raise SourcesChanged(
                 'Sources changed during preparation; retry with the new revision.'
             );
         }
         read: dict[str, str] = {};
+        client_modules: dict[str, str] = {};
         if revision.client_compiler is not None {
             read = dict(revision.client_compiler.jac_client_compiler.input_files);
+            client_modules = dict(
+                revision.client_compiler.jac_client_compiler.client_modules
+            );
             client_files = sorted(read);
         }
         settled = _client_inventory(`root, client_dirs, client_files, inventory)
             if client
             else _inventory(inventory_root, inputs=True, previous=inventory);
         current = _digests(settled);
+        changed_read = any(
+            current.get(path, '') != digest for (path, digest) in read.items()
+        );
         if (not client and current != _digests(inventory))
             or any(
                 current.get(path) != digest
                 for (path, digest) in _digests(inventory).items()
             )
+            or changed_read
             or any(
-                current.get(path, '') != digest for (path, digest) in read.items()
+                ct_dep_digest(path, with_annexes=True) != digest
+                for (path, digest) in client_modules.items()
             ) {
-            raise RuntimeError(
+            raise SourcesChanged(
                 'Sources changed during preparation; retry with the new revision.'
             );
         }
@@ -1287,6 +1299,7 @@ impl _prepare_revision(
             inventory=inventory,
             client_dirs=client_dirs,
             client_files=client_files,
+            client_modules=client_modules,
             dependencies=inputs
         )
     );

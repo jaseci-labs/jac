@@ -27,9 +27,6 @@ glob ENV_PREFIX: str = 'JAC_SERVE_',
      logger: logging.Logger = logging.getLogger(__name__);
 
 
-obj ServeConfigError(Exception) {}
-
-
 obj WorkerSettings {
     has count: int = 1,
         threads: int = 8,
@@ -185,6 +182,7 @@ obj ServeSettings {
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ['*'],
+        cors_credentials: bool = False,
         public_origin: str = '',
         workers: WorkerSettings = WorkerSettings(),
         tls: TlsSettings = TlsSettings(),

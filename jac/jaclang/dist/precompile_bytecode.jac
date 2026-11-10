@@ -47,6 +47,11 @@ glob _unit_native_program: list[any] = [];
 
 def precompile_native_unit(jac_path: str, collect: bool = True) -> str;
 
+def _served_codespace(pkg_root: str) -> str;
+
+@contextmanager
+def served_codespace(pkg_root: str) -> Iterator[None];
+
 def precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram;
@@ -157,6 +162,8 @@ def precompile_exit(code: int);
 def main;
 
 def is_toolchain_package(package_dir: str) -> bool;
+
+def _shard_sources(jac_files: list[str]) -> (list[str] | None);
 
 def run_precompile(
     source_dir: str,

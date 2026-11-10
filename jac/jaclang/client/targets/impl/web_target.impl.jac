@@ -8,11 +8,26 @@ import from typing { Optional, cast }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
-     JAC_LANG_ID = "jac";
+     JAC_LANG_ID = "jac",
+     PUBLIC_LEDGER = ".jac-public-files";
 
 def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
 def _pwa_enabled(project_dir: Path) -> bool;
+
+def _walk_public(
+    dir_path: Path,
+    rel_prefix: str,
+    public_root: Path,
+    ancestors: set[Path],
+    found: list[tuple[str, Path]]
+) -> None;
+
+def _public_files(public_dir: Path) -> list[tuple[str, Path]];
+
+def _clear_public_outputs(dist_dir: Path) -> None;
+
+def _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str];
 
 impl WebTarget.setup(project_dir: Path) -> None {
     if _pwa_enabled(project_dir) {
@@ -78,6 +93,8 @@ impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
@@ -89,12 +106,15 @@ impl WebTarget.build(
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     try {
-        before = len(program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(
-            str(entry_file.resolve()), program
+        entry_program = client_context_program(
+            program, client_source_root(project_dir, entry_file)
         );
-        if len(program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in program.errors_had[before:]);
+        before = len(entry_program.errors_had);
+        artifact = program._get_compiler().get_client_artifact(
+            str(entry_file.resolve()), entry_program
+        );
+        if len(entry_program.errors_had) > before {
+            errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
             raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
         }
         inputs = builder.prepare(loaded_mod);
@@ -115,9 +135,41 @@ impl WebTarget.build(
         function_name=function_name,
         project_dir=project_dir
     );
-    if _pwa_enabled(project_dir) {
+    pwa = _pwa_enabled(project_dir);
+    if pwa {
         import from jaclang.client.targets.pwa_build { apply_pwa }
         apply_pwa(dist_dir, project_dir);
+    }
+    if dist_dir {
+        public_dirs = bundler.config_loader.get_public_dirs(entry_path);
+        import from jaclang.client.targets.seo_build {
+            apply_seo,
+            clear_seo_files,
+            scan_routes
+        }
+        _clear_public_outputs(dist_dir);
+        clear_seo_files(dist_dir);
+        if seo_config.get('site_url') {
+            base_path = bundler.config_loader.get_base_path();
+            asset_paths = [f"{base_path}{bundle_path.name}"];
+            css_file = bundler.find_css();
+            if css_file and css_file.exists() {
+                asset_paths.append(f"{base_path}styles.css");
+            }
+            apply_seo(
+                dist_dir,
+                seo_config,
+                scan_routes(bundler.config_loader.get_app_root(entry_path)),
+                public_dirs,
+                asset_paths
+            );
+        }
+        copied = _copy_public_dirs(public_dirs, dist_dir);
+
+        if pwa and copied {
+            import from jaclang.client.targets.pwa_build { refresh_pwa_precache }
+            refresh_pwa_precache(dist_dir);
+        }
     }
     return bundle_path;
 }
@@ -141,6 +193,122 @@ impl _parse_entry_file(entry_file: Path) -> tuple[str, str] {
         mod = mod[:-len(JAC_FILE_EXTENSION)];
     }
     return (base, mod);
+}
+
+impl _walk_public(
+    dir_path: Path,
+    rel_prefix: str,
+    public_root: Path,
+    ancestors: set[Path],
+    found: list[tuple[str, Path]]
+) -> None {
+    real = dir_path.resolve();
+    if real in ancestors {
+        return;
+    }
+    inner = ancestors | {real};
+    for child in sorted(dir_path.iterdir()) {
+        resolved = child.resolve();
+        if public_root not in resolved.parents {
+            continue;
+        }
+        rel = f"{rel_prefix}{child.name}";
+        if child.is_dir() {
+            _walk_public(child, f"{rel}/", public_root, inner, found);
+        } elif child.is_file() {
+            found.append((rel, child));
+        }
+    }
+}
+
+impl _public_files(public_dir: Path) -> list[tuple[str, Path]] {
+    found: list[tuple[str, Path]] = [];
+    _walk_public(public_dir, '', public_dir.resolve(), set(), found);
+    return found;
+}
+
+impl _clear_public_outputs(dist_dir: Path) -> None {
+    ledger = dist_dir / PUBLIC_LEDGER;
+    try {
+        previous = ledger.read_text().splitlines();
+    } except OSError {
+        previous = [];
+    }
+    dist_root = dist_dir.resolve();
+    for rel in previous {
+        stale = dist_dir / rel;
+        if dist_root not in stale.resolve().parents or not stale.is_file() {
+            continue;
+        }
+        stale.unlink();
+        parent = stale.parent;
+        while parent.resolve() != dist_root and not any(parent.iterdir()) {
+            parent.rmdir();
+            parent = parent.parent;
+        }
+    }
+    ledger.unlink(missing_ok=True);
+}
+
+impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
+    import shutil;
+    ledger = dist_dir / PUBLIC_LEDGER;
+    planned: dict[str, Path] = {};
+    skipped: list[str] = [];
+    for public_dir in public_dirs {
+        for (rel, source) in _public_files(public_dir) {
+            if rel in planned {
+                continue;
+            }
+            if Path(rel).suffix.lower() not in ROOT_ASSET_EXTENSIONS {
+                if not Path(rel).name.startswith('.') and rel not in skipped {
+                    skipped.append(rel);
+                }
+                continue;
+            }
+            if (dist_dir / rel).exists() {
+                raise RuntimeError(
+                    f"Web build failed: {source} would overwrite {rel}, which the "
+                    "build itself creates. Rename or move it out of public/."
+                );
+            }
+            planned[rel] = source;
+        }
+    }
+    for (rel, source) in planned.items() {
+        parts = rel.split('/');
+        for depth in range(1, len(parts)) {
+            folder = '/'.join(parts[:depth]);
+            if folder in planned {
+                raise RuntimeError(
+                    f"Web build failed: {planned[folder]} is a file and {source} "
+                    f"needs {folder} to be a folder. Rename one of them."
+                );
+            }
+            if (dist_dir / folder).is_file() {
+                raise RuntimeError(
+                    f"Web build failed: {source} needs {folder} to be a folder, but "
+                    "the build itself creates a file there. Rename or move it out "
+                    "of public/."
+                );
+            }
+        }
+    }
+    for (rel, source) in planned.items() {
+        target = dist_dir / rel;
+        target.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(source, target);
+    }
+    if planned {
+        ledger.write_text('\n'.join(sorted(planned)));
+    }
+    if skipped {
+        console.warning(
+            f"  Not copied from public/: {', '.join(skipped)}. The site root serves "
+            f"only {' '.join(sorted(ROOT_ASSET_EXTENSIONS))} files."
+        );
+    }
+    return sorted(planned);
 }
 
 impl _pwa_enabled(project_dir: Path) -> bool {

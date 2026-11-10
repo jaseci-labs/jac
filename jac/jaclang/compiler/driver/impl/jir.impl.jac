@@ -132,15 +132,7 @@ impl native_section_payload(data: (bytes | None), want: NativeStamp) -> (bytes |
 }
 
 impl JirPaths.encode(path: str, package_dir: str) -> str {
-    if not self.base_dir or not package_dir or not os.path.isabs(path) {
-        return path;
-    }
-    if path == package_dir or path.startswith(package_dir + os.sep) {
-        return PRECOMPILE_SENTINEL
-            + "/"
-            + os.path.relpath(path, self.base_dir).replace(os.sep, "/");
-    }
-    return path;
+    return encode_package_path(path, self.base_dir, package_dir, PRECOMPILE_SENTINEL);
 }
 
 impl JirPaths.resolve(path: str) -> str {
@@ -1525,7 +1517,9 @@ impl _touch_generation(cache_dir: Path) {
     _TOUCHED_GENERATIONS.add(key);
     import from jaclang.cache.registry { bucket }
     if cache_dir.is_dir() {
-        bucket("jir-modules").note_hit(cache_dir);
+        try {
+            bucket("jir-modules").note_hit(cache_dir);
+        } except ImportError {}
     }
 }
 

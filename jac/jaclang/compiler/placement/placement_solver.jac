@@ -1,3 +1,4 @@
+import hashlib;
 import os;
 
 
@@ -12,7 +13,8 @@ glob _SPACE_BY_NAME: dict[str, CodeContext] = {
          'client': CodeContext.CLIENT,
          'native': CodeContext.NATIVE
      },
-     _na_scan_memo: dict[str, NativeDepScan] = {};
+     _na_scan_memo: dict[str, NativeDepScan] = {},
+     NATIVE_SCAN_RECORD: str = "nativescan1";
 
 def native_scan_memo_clear;
 
@@ -23,6 +25,14 @@ def refresh_placement_module(module: uni.Module, prog: JacProgram);
 def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None);
+
+def _native_scan_digest(files: list[str], hold_exempt: bool) -> str;
+
+def _read_native_scan(path: str, digest: str) -> (NativeDepScan | None);
+
+def _keep_native_scan(
+    path: str, digest: str, reason: str, deps: list[str], probes: list[str]
+);
 
 def _native_deps_ok(
     root_path: str, root_deps: list[str], hold_exempt: bool = False
@@ -57,7 +67,9 @@ def _is_sv_import(elem: uni.UniNode) -> bool;
 
 def _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None);
 
-def _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None);
+def _materialize_module(
+    path: str, prog: JacProgram, need_bodies: bool = False
+) -> (uni.Module | None);
 
 def _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | None);
 
