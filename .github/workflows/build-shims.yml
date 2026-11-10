@@ -52,7 +52,7 @@ jobs:
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             zig_target: aarch64-linux-gnu.2.17
-          - os: macos-14
+          - os: macos-15
             platform: macos-aarch64
           - os: macos-15-intel
             platform: macos-x86_64

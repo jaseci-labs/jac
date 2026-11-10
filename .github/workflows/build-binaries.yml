@@ -162,7 +162,7 @@ jobs:
           LEGS='[
             {"os": "ubuntu-24.04", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
             {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
-            {"os": "macos-14",         "platform": "macos-aarch64"},
+            {"os": "macos-15",         "platform": "macos-aarch64"},
             {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "manual": true}
           ]'
           if [ -n "${ONLY:-}" ]; then
