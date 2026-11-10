@@ -316,11 +316,20 @@ test "a fresh checkout reuses a bundle sealed elsewhere through the shared cache
     binary = require_pod_binary().read_bytes();
     shared = Path(tempfile.mkdtemp(prefix="jac-shared-seal-"));
     first_project = Path(_mini_app());
-    (first, first_log) = _pack_shared(first_project, binary, str(shared));
+    previous_umask = os.umask(0o022);
+    try {
+        (first, first_log) = _pack_shared(first_project, binary, str(shared));
+    } finally {
+        os.umask(previous_umask);
+    }
     assert not any("Reusing the sealed bundle" in m for m in first_log);
     assert [n.endswith(".jab") for n in os.listdir(shared)] == [True] , (
         f"the fresh seal was not written through to the shared cache: "
         f"{os.listdir(shared)}"
+    );
+    mode = (shared / os.listdir(shared)[0]).stat().st_mode & 0o777;
+    assert mode == 0o644 , (
+        f"a shared bundle must take the deploy umask so other users can read it: {oct(mode)}"
     );
     checkout = _checkout_of(first_project);
     (again, again_log) = _pack_shared(checkout, binary, str(shared));
