@@ -256,7 +256,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                 if entered {
                     entered = False;
                     if context.mem.unit_depth() == 1 {
-                        context.mem.abort();
+                        await context.mem.aabort();
                     }
                     await context.mem.aunit_exit();
                 }
@@ -267,7 +267,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     try {
                         await value.aclose();
                     } finally {
-                        context.close();
+                        await context.aclose();
                     }
                 } finally {
                     JacRuntime.reset_request_context(token);

@@ -56,6 +56,7 @@ obj Memory {
     async def adelete(id: UUID);
     async def ahas(id: UUID) -> bool;
     async def acommit(anchor: (Anchor | None) = None);
+    async def aabort;
     def on_commit(callback: Callable);
     def _fire_on_commit;
     def note_effect_failure(e: Exception) -> None;
