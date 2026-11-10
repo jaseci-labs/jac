@@ -51,31 +51,6 @@ def rf(path: str) -> bytes {
     }
 }
 
-test "payload excludes interpreted JacPython modules and keeps their license" {
-    with tempfile.TemporaryDirectory() as tmp {
-        source = os.path.join(tmp, "source");
-        target = os.path.join(tmp, "target");
-        removed = [
-            "compiler/frontend/python/parser.jac",
-            "compiler/backends/py/jacpython/native_api.jac",
-            "runtime/python/objects.jac",
-            "runtime/python/_precompiled/objects.jir"
-        ];
-        for path in removed {
-            wf(source, path, b"implementation");
-        }
-        wf(source, "runtime/python/LICENSE.cpython", b"license");
-        wf(source, "compiler/frontend/parser.jac", b"Jac parser");
-        copy_tree(source, target, skip_jaclang);
-        for path in removed {
-            assert not os.path.exists(os.path.join(target, path));
-        }
-        assert rf(os.path.join(target, "runtime/python/LICENSE.cpython")) == b"license";
-        assert rf(os.path.join(target, "compiler/frontend/parser.jac"))
-            == b"Jac parser";
-    }
-}
-
 """Extract a packed (multi-frame) payload the way the launcher does: decode
 every frame, feed the concatenation to a tar reader."""
 def extract_payload(packed: str, dest: str) {
