@@ -494,6 +494,18 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # The compiler modules this job compiled from the checkout to build the
+      # catalog. A cached module is checked against its source and compiler,
+      # not file times, so the precompile legs start from them instead of
+      # each compiling the compiler again.
+      - name: Upload the compiled compiler modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-dev-modules
+          path: ${{ runner.temp }}/.cache/jac/jir/modules
+          retention-days: 1
+          if-no-files-found: error
+
   # The checkout's precompile bundle (jaclang/_precompiled), in three
   # parallel legs of every third source (JAC_PRECOMPILE_SHARD). Each leg keeps
   # its own cache, and every unit is checked against its source and compiler,
@@ -521,6 +533,11 @@ jobs:
         with:
           name: jac-dev-stubcat
           path: ${{ runner.temp }}/.cache/jac/jir/stubcat
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jac-dev-modules
+          path: ${{ runner.temp }}/.cache/jac/jir/modules
 
       - name: Fingerprint immutable build inputs
         id: inputs
@@ -892,16 +909,17 @@ jobs:
           - chunk: passes-native-1
             paths: "tests/compiler/backends/native/test_[!n]*.jac tests/compiler/backends/native/test_n[!a]*.jac tests/compiler/backends/native/test_na_*.jac tests/compiler/tools"
             sealed: "1"
-            # Native workers retain LLVM state; keep headroom on the 16 GB runner.
-            jobs: "2"
+            # On the dev kit a native worker peaks under 2 GB (run
+            # 42685685266), so four fit the 16 GB runner.
+            jobs: "4"
           - chunk: passes-native-2
             paths: "tests/compiler/backends/native/test_native_[a-h]*.jac"
             sealed: "1"
-            jobs: "2"
+            jobs: "4"
           - chunk: passes-native-3
             paths: "tests/compiler/backends/native/test_native_[i-z]*.jac"
             sealed: "1"
-            jobs: "2"
+            jobs: "4"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
           # over the kit's shim and floors (an unsealed leg).
@@ -912,8 +930,9 @@ jobs:
             paths: jaclang/compiler/tests
             sealed: ""
             iface_verify: "1"
-            # Leave room for native analysis and ES child processes.
-            jobs: "2"
+            # Peaks near 3.5 GB a worker with native analysis and ES child
+            # processes; three leave headroom on the 16 GB runner.
+            jobs: "3"
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit
@@ -1093,12 +1112,12 @@ jobs:
       - name: Install the scale dep the in-process dispatch tests import
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
       - name: Run all client tests
-        # Serial: parallel workers intermittently disagreed on collection of
-        # test_mobile_target.jac (then test_react_native_target.jac) under the
-        # old pytest-xdist runner.
+        # Was serial for a collection race in the old pytest-xdist runner,
+        # which jac test's own worker pool does not have.
         # test_cef_dispatch_build.jac (the old test-cef-build job) runs here.
         env:
-          JAC_TEST_JOBS: "0"
+          JAC_TEST_JOBS: "2"
+          JAC_TEST_RSS_LOG: "1"
           JAC_TEST_STRICT: "1"
         run: jac test jac/tests/client
 
