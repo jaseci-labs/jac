@@ -131,3 +131,55 @@ test "a pool adds workers only while the memory they use fits" {
         )} ran"
     );
 }
+
+test "test files run heaviest first, and a slow one splits across workers" {
+    import json;
+    import from jaclang.testing.test_runner {
+        _FILE_SECONDS,
+        _schedule,
+        _store_timings,
+        _timing_key,
+        run_file
+    }
+    with TemporaryDirectory() as td {
+        light = os.path.join(td, "test_light.jac");
+        heavy = os.path.join(td, "test_heavy.jac");
+        fresh = os.path.join(td, "test_fresh.jac");
+        with open(light, "w") as f {
+            f.write('test "one" { assert True; }\n');
+        }
+        with open(heavy, "w") as f {
+            for name in ("a", "b", "c", "d") {
+                f.write(f'test "{name}" {{ assert True; }}\n');
+            }
+        }
+        with open(fresh, "w") as f {
+            f.write('test "new" { assert True; }\n');
+        }
+        timings = os.path.join(td, "timings.json");
+        with open(timings, "w") as f {
+            json.dump({_timing_key(light): 5.0, _timing_key(heavy): 100.0}, f);
+        }
+        env = {"JAC_TEST_TIMINGS": timings, "JAC_TEST_SPLIT_SECONDS": "40"};
+        with patch.dict(os.environ, env) {
+            units = _schedule([light, heavy, fresh], 2);
+            assert units
+                == [(fresh, 0, 1), (heavy, 0, 2), (heavy, 1, 2), (light, 0, 1)] , units;
+            assert _schedule([light, heavy], 1) == [(heavy, 0, 1), (light, 0, 1)];
+            names = [
+                [o.name for o in run_file(heavy, part=k, parts=2)] for k in (0, 1)
+            ];
+            assert names == [["a", "c"], ["b", "d"]] , names;
+            _FILE_SECONDS[_timing_key(fresh)] = 2.25;
+            _store_timings();
+            with open(timings) as f {
+                stored = json.load(f);
+            }
+            assert stored[_timing_key(fresh)] == 2.2 , stored;
+            assert stored[_timing_key(heavy)] == 100.0 , stored;
+        }
+        with patch.dict(os.environ, {"JAC_TEST_TIMINGS": ""}) {
+            assert _schedule([light, heavy], 2) == [(light, 0, 1), (heavy, 0, 1)];
+        }
+    }
+}

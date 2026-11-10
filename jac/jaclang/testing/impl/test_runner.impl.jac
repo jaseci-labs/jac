@@ -599,7 +599,9 @@ impl run_file(
     explicit: bool = False,
     xit: bool = False,
     maxfail: (int | None) = None,
-    seen_failures: int = 0
+    seen_failures: int = 0,
+    part: int = 0,
+    parts: int = 1
 ) -> list[TestOutcome] {
     import importlib;
     import sys;
@@ -729,7 +731,10 @@ impl run_file(
                 pending.append(info);
             }
         }
-        for info in pending {
+        for (index, info) in enumerate(pending) {
+            if index % parts != part {
+                continue;
+            }
             label = info.display_name;
             if (selector is not None) and not selector.matches(label) {
                 continue;
@@ -1095,6 +1100,7 @@ impl run_tests(
     }
     failures = reporter.summarize(time.perf_counter() - started);
     _store_run_state(plan, reporter);
+    _store_timings();
     if reporter.total_count() == 0 {
         return EXIT_NO_TESTS;
     }
@@ -1126,20 +1132,33 @@ impl _run_plan(
     isolate: (set[str] | None),
     inline: bool
 ) -> None {
-    def job(request: dict[(str, any)]) -> list[dict[(str, any)]] {
+    import time;
+    units = _schedule(list(plan.files), jobs);
+    def job(request: dict[(str, any)]) -> dict[(str, any)] {
         _CRASH_LOG[0] = str(request.get("crashlog", ""));
+        started = time.perf_counter();
         outcomes = run_file(
             request["path"],
             selector,
             bool(request.get("explicit")),
             xit=xit,
             maxfail=maxfail,
-            seen_failures=int(request.get("seen", 0))
+            seen_failures=int(request.get("seen", 0)),
+            part=int(request.get("part", 0)),
+            parts=int(request.get("parts", 1))
         );
-        return [o.to_wire() for o in outcomes];
+        return {
+            "outcomes": [o.to_wire() for o in outcomes],
+            "seconds": time.perf_counter() - started
+        };
     }
     def request_extra(idx: int, path: str) -> dict[(str, any)] {
-        return {"explicit": path in plan.explicit, "seen": reporter.failure_count()};
+        return {
+            "explicit": path in plan.explicit,
+            "seen": reporter.failure_count(),
+            "part": units[idx][1],
+            "parts": units[idx][2]
+        };
     }
     def should_stop -> bool {
         fails = reporter.failure_count();
@@ -1149,13 +1168,15 @@ impl _run_plan(
         return bool(maxfail) and (fails >= int(maxfail or 0));
     }
     def on_record(idx: int, record: dict[(str, any)]) -> None {
-        path = plan.files[idx];
+        (path, part, _parts) = units[idx];
         crash = record.get("crash");
         if crash is not None {
             reporter.file_crashed(path, str(crash));
             return;
         }
-        reporter.file_done();
+        if part == 0 {
+            reporter.file_done();
+        }
         error = record.get("error");
         if error is not None {
             reporter.record(
@@ -1168,12 +1189,16 @@ impl _run_plan(
             );
             return;
         }
-        for item in (record.get("result") or []) {
+        result = record.get("result") or {};
+        key = _timing_key(path);
+        _FILE_SECONDS[key] = _FILE_SECONDS.get(key, 0.0)
+            + float(result.get("seconds") or 0.0);
+        for item in (result.get("outcomes") or []) {
             reporter.record(TestOutcome.from_wire(item));
         }
     }
     pool = WorkPool(
-        items=list(plan.files),
+        items=[unit[0] for unit in units],
         job=job,
         on_record=on_record,
         jobs=jobs,
@@ -1195,4 +1220,75 @@ impl _run_plan(
 
 impl _test_rss_cap_mb -> int {
     return env_int("JAC_TEST_RECYCLE_MB", 8192);
+}
+
+impl _timing_key(path: str) -> str {
+    return os.path.relpath(os.path.abspath(path));
+}
+
+impl _load_timings -> dict[(str, float)] {
+    import json;
+    target = os.environ.get(TIMINGS_ENV, "");
+    if not target {
+        return {};
+    }
+    try {
+        with open(target, "r", encoding="utf-8") as f {
+            payload = json.load(f);
+        }
+    } except (OSError, ValueError) {
+        return {};
+    }
+    if not isinstance(payload, dict) {
+        return {};
+    }
+    return {
+        str(k): float(v)
+        for (k, v) in payload.items()
+        if isinstance(v, (int, float))
+    };
+}
+
+impl _store_timings -> None {
+    import json;
+    target = os.environ.get(TIMINGS_ENV, "");
+    if not target or not _FILE_SECONDS {
+        return;
+    }
+    merged = _load_timings();
+    merged.update({k: round(v, 1) for (k, v) in _FILE_SECONDS.items()});
+    _FILE_SECONDS.clear();
+    tmp = f"{target}.{os.getpid()}.tmp";
+    try {
+        os.makedirs(os.path.dirname(os.path.abspath(target)), exist_ok=True);
+        with open(tmp, "w", encoding="utf-8") as f {
+            json.dump(merged, f, indent=0, sort_keys=True);
+        }
+        os.replace(tmp, target);
+    } except OSError {}
+}
+
+impl _schedule(files: list[str], workers: int) -> list[tuple[(str, int, int)]] {
+    timings = _load_timings();
+    raw_split = os.environ.get(SPLIT_ENV, "").strip();
+    split = int(raw_split) if raw_split.isdigit() else 0;
+    def recorded(path: str) -> (float | None) {
+        return timings.get(_timing_key(path));
+    }
+    def heaviest_first(path: str) -> float {
+        seconds = recorded(path);
+        return float("-inf") if seconds is None else -seconds;
+    }
+    units: list[tuple[(str, int, int)]] = [];
+    for path in sorted(files, key=heaviest_first) {
+        seconds = recorded(path);
+        parts = 1;
+        if split > 0 and workers > 1 and seconds is not None and seconds > split {
+            parts = min(workers, int(-(-seconds // split)));
+        }
+        for part in range(parts) {
+            units.append((path, part, parts));
+        }
+    }
+    return units;
 }
