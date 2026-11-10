@@ -1920,11 +1920,16 @@ impl ModulePath.native_bundled_path -> (str | None) {
         return None;
     }
     base = self.dot_path_str;
-    if base in NATIVE_STDLIB_EXTENSIONS or not is_bundled_native_module(base) {
-        return None;
+    _prev = set_native_variant_os(importer_variant_os(mod_path) if mod_path else None);
+    try {
+        if base in NATIVE_STDLIB_EXTENSIONS or not is_bundled_native_module(base) {
+            return None;
+        }
+        base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
+        (_src, full_path) = resolve_native_module(base, base_dir);
+    } finally {
+        set_native_variant_os(_prev);
     }
-    base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
-    (_src, full_path) = resolve_native_module(base, base_dir);
     return full_path;
 }
 
@@ -1949,8 +1954,17 @@ impl ModulePath.native_variant_path -> (str | None) {
     if os.path.isfile(candidate + ".jac") or os.path.isdir(candidate) {
         return None;
     }
-    import from jaclang.compiler.frontend.codeinfo { _native_variant_path }
-    return _native_variant_path(candidate);
+    import from jaclang.compiler.frontend.codeinfo {
+        _native_variant_path,
+        importer_variant_os,
+        set_native_variant_os
+    }
+    _prev = set_native_variant_os(importer_variant_os(mod_path));
+    try {
+        return _native_variant_path(candidate);
+    } finally {
+        set_native_variant_os(_prev);
+    }
 }
 
 impl ModulePath.resolve_relative_path_list -> list[str] {
