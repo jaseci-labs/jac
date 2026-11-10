@@ -58,6 +58,13 @@ tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/native jac/_jac_finder.py jac/sitecustomize.py jac/examples/jaclang_org \
   jac/examples/tiny_jacyac \
   jac.toml jac/jac.toml | emit binary
+# A -Ddev binary bundles no jaclang: only the launcher (compiled by the native
+# backend, linking the fused runtime and native floors), the payload tool's
+# Python payload, and the pins. A jaclang edit elsewhere reuses it.
+tree jac/launcher jac/jaclang/dist/fused jac/jaclang/dist/payload \
+  jac/jaclang/compiler/backends/native jac/jaclang/runtime/na_stdlib \
+  jac/build.zig jac/build.zig.zon jac/bootstrap jac/native jac/_jac_finder.py \
+  jac/sitecustomize.py jac.toml jac/jac.toml | emit devbinary
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
   jac/jaclang/client/js_runtime.jac jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers

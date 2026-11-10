@@ -12,7 +12,8 @@ class JacClientCompiler {
         na_wasm_modules: set[str] = set(),
         link_demand: dict[Path, dict[Path, list[str]]] = {},
         input_files: dict[str, str] = {},
-        client_modules: dict[str, str] = {};
+        client_modules: dict[str, str] = {},
+        scan_routes_with_bundle: bool = False;
 
     with entry {
         ROUTER_EXPORTS = [
@@ -96,6 +97,10 @@ class JacClientCompiler {
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
+    def _route_exports_of(
+        self: JacClientCompiler, module_path: Path
+    ) -> tuple[((str | None), (str | None))];
+
     def _check_entry_renders_routes(
         self: JacClientCompiler, entry_manifest: any
     ) -> None;

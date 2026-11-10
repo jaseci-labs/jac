@@ -234,6 +234,7 @@ graph import {
             | client.targets.react_native.build
             | client.targets.react_native.dev
             | client.targets.react_native.scaffold
+            | client.targets.seo_build
             | client.targets.static_target
             | client.targets.web_target.WebTarget.dev
             | client.vite_bundler
@@ -479,8 +480,11 @@ graph import {
             _locator_cache,
             _mapper_cache
         },
-        server.endpoints.pages.register_diagnostics_endpoints.client_error
-            | server.hmr.HotReloader.record_client_event { _error_rate_limiter },
+        server.endpoints.pages.register_diagnostics_endpoints {
+            ClientErrorLimiter,
+            is_extension_report
+        },
+        server.hmr.HotReloader.record_client_event { _error_rate_limiter },
     ]
     client.targets.desktop.desktop_build --> toolchains.manager.setup_toolchain {
         _find_cef_dir,
@@ -1997,9 +2001,10 @@ graph import {
             | client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
             | dist.seal.ensure_client_dist
             | server.server.JacAPIServer._ensure_client_bundle { client_app_dir_for },
+        client.config_loader.JacClientConfig.get_app_root { client_app_root },
         client.config_loader.JacClientConfig.get_assets_config { client_assets_config },
         client.config_loader.JacClientConfig.get_assets_dir { client_assets_dir },
-        client.config_loader.JacClientConfig.get_public_dirs { client_app_root },
+        client.config_loader.JacClientConfig.get_seo_config { client_seo_config },
         client.targets.react_native.scaffold._project_native_deps {
             client_workspace_app
         },
@@ -2007,7 +2012,8 @@ graph import {
             client_app_dir_for,
             client_app_root,
             client_assets_config,
-            client_assets_dir
+            client_assets_dir,
+            client_seo_config
         },
     ]
     project.client_paths --> [
@@ -2217,6 +2223,7 @@ graph import {
             set_config
         },
         scale.tests.misc.test_config_validation { JacConfig },
+        server.static_files.robots_response { ServeConfigError },
     ]
     type project.config ++> [
         cli.commands.build { AppConfig },
@@ -2691,7 +2698,7 @@ graph import {
             | data.contracts
             | data.schema_rules
             | data.serializer
-            | project.config.apply_table
+            | project.config._walk_table
             | server.serving.model
             | server.settings { fields, is_record },
         byllm.schema | server.serving.coerce { is_record },
@@ -3569,7 +3576,7 @@ graph import {
             VarInfo
         },
         byllm.systemone { ClassInfo, EnumInfo, FunctionInfo, TypeForm, VarInfo },
-        byllm.types { Info },
+        byllm.types { ClassInfo, EnumInfo, FunctionInfo, Info, ParamInfo, TypeForm },
         byllm.visit_routing { ClassInfo },
         compiler.driver.compiler { info_graph_from_json },
         compiler.driver.unit_products { Info, info_graph_to_json },
@@ -3649,10 +3656,16 @@ graph import {
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
             | scale.tests.server.test_registration_challenge
             | scale.tests.server.test_registration_limits { register_auth_endpoints },
+        scale.runtime.middleware.rate_limit.build_client_error_limit_middleware {
+            throttled
+        },
         scale.server.extensions { register_mail_endpoints },
     ]
     server.endpoints.colocated ++> scale.tests.server.test_sv_outbox_endpoints {
         register_colocated_endpoints
+    }
+    server.endpoints.pages ++> scale.runtime.middleware.rate_limit.build_client_error_limit_middleware {
+        CLIENT_ERROR_PATH
     }
     server.endpoints.pages --> scale.tests.server.test_build_status_endpoint {
         register_diagnostics_endpoints
@@ -3740,8 +3753,9 @@ graph import {
         scale.tests.server.test_auth_policy_startup { check_password, minted_password },
     ]
     server.identity.rate_limit ++> [
+        client.source_mapping.ClientErrorLimiter.admit
+            | scale.tests.server.test_registration_limits { consume_limit },
         scale.admin.admin_portal { AttemptsExhausted },
-        scale.tests.server.test_registration_limits { consume_limit },
     ]
     server.identity.registration_challenge ++> scale.tests.server.test_registration_challenge {
         consume_challenge,
@@ -3916,7 +3930,8 @@ graph import {
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
-        scale.tests.server.test_auth_policy_startup
+        scale.runtime.middleware.rate_limit.build_client_error_limit_middleware
+            | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_registration_limits { transport_to_response },
         scale.tests.server.test_stream_ws._spawn_ws_upstream { ServingApp },
         scale.tests.server.test_stream_ws._spawn_ws_upstream_with_protocol {
@@ -4276,6 +4291,10 @@ graph import {
             ServeSettings
         },
         scale.deploy.target.kubernetes.manifest_builder { AuthSettings, resolve_count },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
+            ServeSettings,
+            in_cluster
+        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start
             | scale.server.inprocess
             | scale.tests.server.test_host_serving
@@ -4333,9 +4352,22 @@ graph import {
     ]
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
-    server.static_files ++> client.targets.web_target._copy_public_dirs {
-        ROOT_ASSET_EXTENSIONS
-    }
+    server.static_files ++> [
+        client.targets.seo_build.apply_seo { ROBOTS_PATH, SITEMAP_PATH },
+        client.targets.seo_build.clear_seo_files { ROBOTS_PATH, SITEMAP_PATH },
+        client.targets.seo_build.render_robots { SITEMAP_PATH },
+        client.targets.web_target._copy_public_dirs { ROOT_ASSET_EXTENSIONS },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
+            SEO_ROOT_FILES
+        },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.dispatch {
+            robots_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
+            SEO_ROOT_FILES,
+            robots_response
+        },
+    ]
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
@@ -4580,7 +4612,7 @@ graph import byllm {
     schema ++> [
         llm { inject_schema_hint, type_display_name },
         mtir { json_to_instance, type_display_name, type_to_schema },
-        types { tool_to_schema, type_display_name },
+        types { _type_to_schema, tool_to_schema, type_display_name },
     ]
     systemone ++> [
         lib { Decision },
@@ -5209,6 +5241,7 @@ graph import client {
         jac_client_compiler.JacClientCompiler._warn_unrouted_pages {
             describe_unrouted_pages
         },
+        targets.seo_build { RouteEntry, RouteScanner, resolve_route_exports },
     ]
     runtime_source ++> [
         compiler.ViteCompiler.compile_runtime_utils { resolve_client_runtime_cl_path },
@@ -5364,6 +5397,7 @@ graph import client.targets {
         mobile_target | web_target { ClientTarget },
         register { get_target_registry },
     ]
+    seo_build --> web_target.WebTarget.build { apply_seo, clear_seo_files, scan_routes }
     static_target ++> register { StaticTarget }
     web_target ++> desktop.desktop_target | register | static_target { WebTarget }
     web_target --> mobile_target.MobileTarget.build { WebTarget }
@@ -14949,6 +14983,7 @@ graph import project {
         tool_paths { JacConfig, get_config },
     ]
     config --> [
+        client_paths.client_seo_config { ServeConfigError, apply_table },
         compiler_host.ProjectHost.check_settings | modresolver._get_path_aliases {
             get_config
         },
@@ -14958,10 +14993,13 @@ graph import project {
         modresolver._resolve_path_alias { get_config },
     ]
     type config ++> client_paths { JacConfig }
-    config_schema ++> plugin_config.PluginConfigBase._validate_layer {
-        report_schema_findings,
-        validate_against_schema
-    }
+    config_schema ++> [
+        config._walk_table { closest_key },
+        plugin_config.PluginConfigBase._validate_layer {
+            report_schema_findings,
+            validate_against_schema
+        },
+    ]
     dependencies ++> [
         config { PackageDep },
         config.JacConfig.merge_dependency_tables { split_dependency_table },
@@ -45405,6 +45443,7 @@ graph import scale {
             wait_for_pod_phase
         },
         tests.deploy.test_cluster_provider { get_cluster_provider },
+        tests.deploy.test_deploy_k8s { wait_for_pod_phase },
         tests.deploy.test_k8s_utils { parse_storage_quantity, resize_pvc_if_needed },
         tests.deploy.test_pod_env { create_k8s_secret, resolve_minted_secret },
         tests.deploy.test_pss_labels {
@@ -45612,8 +45651,12 @@ graph import scale {
             BUNDLE_MOUNT_PATH,
             BUNDLE_VOLUME_NAME
         },
-        deploy.target.kubernetes.target { bundle_keys_from_pod_spec, bundle_pvc_name },
-        tests.deploy.test_destroy_reclaim { bundle_pvc_name },
+        deploy.target.kubernetes.target {
+            bundle_keys_from_pod_spec,
+            bundle_loader_pod_name,
+            bundle_pvc_name
+        },
+        tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,
@@ -46008,6 +46051,7 @@ graph import scale {
     ]
     runtime.middleware.rate_limit ++> tests.microservices.test_rate_limit {
         InProcessRateLimiter,
+        StateBackendRateLimiter,
         build_rate_limit_middleware
     }
     runtime.middleware.ws_forward ++> tests.server.test_stream_ws {
@@ -46207,8 +46251,10 @@ graph import scale {
     ]
     state.factory as factory_mod ++> tests.misc.test_state_backend_selection;
     state.state_backend ++> [
-        runtime.middleware.rate_limit { StateBackend },
-        tests.misc.test_state_backend_selection { InProcessStateBackend },
+        runtime.middleware.rate_limit { InProcessStateBackend, StateBackend },
+        tests.microservices.test_rate_limit | tests.misc.test_state_backend_selection {
+            InProcessStateBackend
+        },
     ]
     storage.factory ++> runtime.provider.JacScaleRuntime.store
         | tests.data.test_firebase_env { StorageFactory }
@@ -46485,6 +46531,7 @@ graph import scale.deploy.target.kubernetes {
             privileged_pss_labels,
             resolve_minted_secret
         },
+        target.KubernetesTarget._apply_or_replace_pvc { wait_until_deleted },
         target.KubernetesTarget._pod_failure_detail { describe_pod_status },
     ]
 }
@@ -46688,7 +46735,9 @@ graph import scale.runtime {
         },
     ]
     middleware.rate_limit ++> gateway.microservice_gateway.MicroserviceGateway.setup {
-        build_rate_limit_middleware
+        build_client_error_limit_middleware,
+        build_rate_limit_middleware,
+        client_error_limit_skipped
     }
     middleware.ws_forward ++> gateway.microservice_gateway._install_ws_catchall {
         websocket_forward
@@ -47013,11 +47062,14 @@ graph import server {
     endpoints.introspection ++> server.JacAPIServer.register_endpoints {
         register_introspection_endpoints
     }
-    endpoints.pages ++> server.JacAPIServer.register_endpoints {
-        register_diagnostics_endpoints,
-        register_graph_endpoints,
-        register_page_endpoints
-    }
+    endpoints.pages ++> [
+        server.JacAPIServer.build_app { robots_middleware },
+        server.JacAPIServer.register_endpoints {
+            register_diagnostics_endpoints,
+            register_graph_endpoints,
+            register_page_endpoints
+        },
+    ]
     endpoints.walkers ++> server.JacAPIServer.register_endpoints {
         register_function_endpoints,
         register_walker_endpoints
@@ -47191,7 +47243,10 @@ graph import server {
             | endpoints.introspection
             | endpoints.second_factor
             | identity.audit { Request },
-        endpoints.colocated | identity.session_cookie { Request, Response },
+        endpoints.colocated | identity.session_cookie | static_files {
+            Request,
+            Response
+        },
         endpoints.pages { HTMLResponse, JSONResponse, Request, Response },
         endpoints.walkers { FileResponse, Request, Response, StreamingResponse },
         exchange { JSONResponse, Request },
@@ -47263,9 +47318,11 @@ graph import server {
     shared_store --> identity.auth_tokens.AuthTokenStore.__post_init__ { shared_store }
     static_files ++> [
         endpoints.pages {
+            SEO_ROOT_FILES,
             client_dist_index,
             find_root_asset,
             find_static_candidate,
+            robots_response,
             sibling_app_dist,
             sibling_app_file
         },
@@ -47295,6 +47352,7 @@ graph import server {
     task_scheduler --> server.JacAPIServer._start_problems { schedule_problems }
     transport ++> [
         bridge.serialize_response
+            | endpoints.pages.register_diagnostics_endpoints.client_error
             | endpoints.second_factor
             | exchange
             | outbox.remember_response
@@ -47309,7 +47367,10 @@ graph import server {
 }
 
 graph import server.endpoints {
-    auth ++> second_factor { fail, ok, throttled }
+    auth ++> [
+        pages.register_diagnostics_endpoints.client_error { throttled },
+        second_factor { fail, ok, throttled },
+    ]
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
     walkers ++> colocated { _failure, idempotency_key, request_caller }
 }
