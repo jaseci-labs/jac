@@ -64,7 +64,7 @@ jaclang_source = "jac"   # dir containing jaclang/, relative to this jac.toml
 
 With this enabled, `import jaclang` resolves to `jac/jaclang` (it's prepended to `sys.path` at startup), so edits to jaclang's `.py` and `.jac` source -- the compiler, passes, CLI, runtime -- run live. The per-module compile cache is content-keyed, so edits self-invalidate; the dev loop also skips the binary's shipped precompiled bundle automatically (no manual cache clearing needed). Comment the stanza out to fall back to the binary's bundled jaclang.
 
-An edit recompiles what it touched, not the whole compiler. Every edit under jaclang's compiler sources changes the compiler's identity, and the compiler's own modules (about 150 of them) used to be recompiled one by one before the next command could run. In the dev loop an unchanged module now keeps the bytecode it already had, so only the modules you edited recompile. Three things stay exact: your own programs and test fixtures are always compiled by the compiler as you edited it; a change to the Python emitter (`jaclang/compiler/backends/py`) recompiles every module; and kit builds and CI never reuse bytecode from an earlier compiler. The compiler's native kernel is never built behind your back. A checkout runs the kernel built from its current sources (its own, or the one in the kit it runs on); otherwise every command runs the compiler from bytecode and says so on stderr. Run `jac native build kernel` to build it and `jac native status kernel` to see which sources moved since the last build. A kernel unit is stamped with the kernel's ABI (`NATIVE_ABI_VERSION` and the ABI contract files) instead of the compiler that lowered it, so `jac native build kernel` after an edit rebuilds the units whose source or dependencies' interfaces changed and relinks. A change to how native code is generated does not reach units you did not touch; bump `NATIVE_ABI_VERSION` when such a change alters what units assume about each other. Set `exact = true` under `[dev]` in `jac.toml` to have every command rebuild the compiler's modules with the compiler as edited, and run `jac native build kernel --force --exact` to do the same for its kernel units.
+An edit recompiles what it touched, not the whole compiler. Every edit under jaclang's compiler sources changes the compiler's identity, and the compiler's own modules (about 150 of them) used to be recompiled one by one before the next command could run. In the dev loop an unchanged module now keeps the bytecode it already had, so only the modules you edited recompile. Three things stay exact: your own programs and test fixtures are always compiled by the compiler as you edited it; a change to the Python emitter (`jaclang/compiler/backends/py`) recompiles every module; and kit builds and CI never reuse bytecode from an earlier compiler. Set `exact = true` under `[dev]` in `jac.toml` to have every command rebuild the compiler's modules with the compiler as edited.
 
 **Faster builds: `zig build -Ddev`.** `fresh_env.sh` builds with `zig build -Ddev`, which *bakes* this link into the binary: the compiler is not bundled at all (no ~100 MB tree copy, no JIR precompile -- a much smaller, faster build), and the binary reroutes `import jaclang` to the build-root source from any directory, so the loop holds with no `[dev]` stanza in scope. It's the fastest build and the right default for compiler work; the tradeoff is the binary hard-depends on that source dir, so it's dev-only and not distributable. Use `-Djaclang-dir=PATH` to bake an explicit compiler dir, or a plain `zig build` for the fully self-contained release binary. Because the compiler imports the native passes at startup, a `-Ddev` binary still needs the LLVMPY_* shim **placed in the linked tree** (the same `zig build fetch-llvm` prerequisite as a release build -- `-Ddev` then compiles and places it automatically; without it the build stops with a clear message). `fresh_env.sh` runs `fetch-llvm` for you.
 
@@ -213,7 +213,7 @@ Before submitting, use an AI assistant to audit your diff for unnecessary code. 
 
 Every top-level package under `jac/jaclang/` has one charter; a module that does not fit its package's charter is in the wrong place:
 
-- `compiler/` builds programs: `frontend/` (parser, unitree, constants, code info, diagnostics), `driver/` (JacProgram + progstate organs, JacCompiler, the self-host cache, schedules, module resolution, JIR and caches), `passes/` (pass bases + analysis passes), `types/` (the type system), `backends/` (`py/`, `es/`, `native/`, kernel units), `placement/` (codespace planning), `tools/` (formatter, linter, unparse, doc IR, treeprinter, grammar extract, lang tools).
+- `compiler/` builds programs: `frontend/` (parser, unitree, constants, code info, diagnostics), `driver/` (JacProgram + progstate organs, JacCompiler, the self-host cache, schedules, module resolution, JIR and caches), `passes/` (pass bases + analysis passes), `types/` (the type system), `backends/` (`py/`, `es/`, `native/`), `placement/` (codespace planning), `tools/` (formatter, linter, unparse, doc IR, treeprinter, grammar extract, lang tools).
 - `runtime/` runs programs: JacRuntime, archetypes, OSP kernels, execution context, builtin surface, na_stdlib.
 - `lib/` is the public jaclib surface. `client/` is the browser runtime plus the build toolchain. `server/` serves (serving/, session, transport, scheduler, hmr). `data/` persists (store, pg wire/embed, serializer, storage). `testing/` is the test runner and test clients. `dist/` distributes (payload, publish, sealer, fused, jab). `cli/`, `lsp/` (`protocol/` + `server/`), `project/`, `byllm/`, and `scale/` keep their own concerns.
 - `jac0core/` is only the frozen launcher boot seam (pure-Python `sealed`/`cache_paths`/`ext_registry`/`cli_boot`): built binaries bake these import paths, so they never move. Which `.jac` files compile under the jac0 seed transpiler is declared in `jaclang/bootstrap_manifest.py`, never by directory, and `scripts/check_seed_manifest.py` gates it in CI (a seed module may import the full compiler only inside function bodies).
@@ -262,41 +262,12 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
-### Step 0: Run CI with the native kernel first
+### Step 0: Run CI with the macOS lane first
 
-Day-to-day CI runs on GitHub-hosted runners with a bytecode kit: build-kit
-leaves the native compiler kernel out, and the `js-engine` and `macos-native`
-lanes are turned off. Nothing in pull-request CI builds the kernel, so native
-breakage is only caught here. Before cutting a release, on a branch:
-
-1. **Runners**: switch the kernel-building jobs back to the bigger runners.
-   `git log -S blacksmith -- .github` finds the commit that moved them; its
-   diff has every label.
-   - `ci.yml` `build-kit`, `build-kernel.yml`, `build-seeds.yml`,
-     `_js_engine.yml`, and `jacpython-compat.yml` (input default and both
-     `runs-on`): `blacksmith-8vcpu-ubuntu-2404`
-   - `build-binaries.yml` Linux legs: `blacksmith-8vcpu-ubuntu-2404` and
-     `blacksmith-8vcpu-ubuntu-2404-arm`
-   - every other job in `ci.yml`, `release.yml`, and `nightly.yml`:
-     `blacksmith-4vcpu-ubuntu-2404`
-
-   The kernel seal peaks near 15 GB, so `build-kit`, `build-kernel.yml`, and
-   `build-binaries.yml` will not fit a 16 GB `ubuntu-24.04` runner.
-2. **Kernel in build-kit**: in `ci.yml`'s `build-kit`, restore the commented
-   `native-kernel:` line, remove `bytecode-kit: "true"`, and drop
-   `-Dstale-python=true` from its `zig build` lines. A bytecode kit links the
-   last JacPython native object it can find, even one lowered from older
-   compiler sources, so only this run lowers JacPython from the tree.
-3. **js-engine**: in `ci.yml`, replace `if: false` on the `js-engine` job
-   with the commented `if:` above it. `if: false` blocks every trigger,
-   including a manual dispatch and the `native:js-engine` label.
-4. **macos-native**: the same for the `macos-native` job, to cover macOS.
-
-Dispatch **CI** on that branch and fix what it finds, then merge it to `main`
-before Step 1. The Release run that builds the binaries starts when the release
-PR merges and reads its workflows from `main` (`release.yml` calls
-`build-binaries.yml`), so changes left on a side branch never reach it. Once
-the release is published, revert them on `main`.
+Day-to-day CI turns the `macos-native` lane off. Before cutting a release, on
+a branch, replace `if: false` on `ci.yml`'s `macos-native` job with the
+commented `if:` above it (`if: false` blocks every trigger, including a manual
+dispatch), dispatch **CI**, and fix what it finds.
 
 ### Step 1: Create the Release PR
 

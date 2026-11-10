@@ -2,6 +2,10 @@ impl bundle_pvc_name(app_name: str) -> str {
     return f"{app_name}-bundles";
 }
 
+impl bundle_loader_pod_name(app_name: str) -> str {
+    return f"{app_name}-bundle-loader";
+}
+
 impl bundle_pvc_path(object_key: str) -> str {
     return f"{BUNDLE_MOUNT_PATH}/{object_key}";
 }
@@ -274,7 +278,7 @@ impl PvcInjector.seed(
 
     core_v1 = client.CoreV1Api();
     pvc_name = bundle_pvc_name(app_name);
-    loader_pod = f"{app_name}-bundle-loader";
+    loader_pod = bundle_loader_pod_name(app_name);
 
     pod_body = build_loader_pod(loader_pod, pvc_name, self.loader_image);
     try {

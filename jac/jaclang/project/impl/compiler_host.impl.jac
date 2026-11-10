@@ -243,12 +243,6 @@ impl ProjectHost.client_boundary_facts(
     }
 }
 
-impl ProjectHost.kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    return host_kernel_compile(self, program, path, options);
-}
-
 impl ProjectHost.in_compiler_tree(path: str) -> bool {
     return is_compiler_tree_path(path);
 }
@@ -353,43 +347,6 @@ impl ProjectHost.record_native_coverage(
     na_coverage_record(path, outcome, code, detail);
 }
 
-impl ProjectHost.native_analyze(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-) -> (ModuleAnalysis | None) {
-    if program.internal or not kernel_host_enabled() {
-        return None;
-    }
-    import from jaclang.compiler.frontend.kernel_host { KernelHost }
-    import from jaclang.project.kernel_snapshot { record_kernel_session }
-    import from jaclang.compiler.driver.module_analysis { analyze_module }
-    import from jaclang.compiler.frontend.host { active_host, install_host }
-    import time;
-    started = time.perf_counter();
-    inputs = self.kernel_inputs(program, path, options, source);
-    kernel = KernelHost(
-        inputs=inputs,
-        fallback=self,
-        closure=self.compiler_for(program).closure_options()
-    );
-    kernel.census.snapshot_seconds = time.perf_counter() - started;
-    kernel.census.scanned_modules = inputs.scanned_modules;
-    previous = active_host();
-    install_host(kernel);
-    try {
-        return analyze_module(program, path, options, source);
-    } finally {
-        install_host(previous);
-        kernel.replay(previous);
-        record_kernel_session(kernel.census, path);
-    }
-}
-
-impl ProjectHost.kernel_inputs(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None) = None
-) -> KernelInputs {
-    return session_inputs(self, program, path, options);
-}
-
 impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
     return JacCompiler.jac_file_formatter(file_path, auto_lint);
 }
@@ -486,53 +443,6 @@ impl ProjectHost.is_seed_source(rel_path: str) -> bool {
     return is_seed_source(rel_path);
 }
 
-impl ProjectHost.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
-) -> (tuple[Module, bool] | None) {
-    natives = program._natives if program is not None else None;
-    if natives is not None {
-        natives.begin_parse(file_path);
-    }
-    kernel = _jc.ensure_loaded()
-        if load_kernel
-        else (_jc._KERNEL_CELL[0] if _jc._KERNEL_CELL else None);
-    if kernel is None {
-        return None;
-    }
-    wired = any([bool(annex.consumer) for annex in annexes]);
-    kernel.prepare_early(early_context if program is not None and not wired else "");
-    for annex in annexes {
-        kernel.annex(annex);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, program
-    );
-    if program is not None {
-        results = kernel.take_pass_results();
-        if results {
-            program.analysis.record_early(module, results);
-        }
-    }
-    return (module, had_error);
-}
-
 impl ProjectHost.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {
@@ -541,9 +451,7 @@ impl ProjectHost.woven_module(
     } except Exception {
         return None;
     }
-    (module, had_error) = parse_woven(
-        source, path, program, annex_sources(path), load_kernel=False
-    );
+    (module, had_error) = parse_woven(source, path, program, annex_sources(path));
     if had_error {
         return None;
     }

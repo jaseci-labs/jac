@@ -754,6 +754,13 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     if not file_path {
         return None;
     }
+    root_entry = self.root_member();
+    blocked = robots_response(
+        request, self.base_path, root_entry.file if root_entry else ""
+    );
+    if blocked is not None {
+        return blocked;
+    }
 
     mount_matched = False;
     for mount in self.static_mounts {
@@ -776,6 +783,9 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     if not mount_matched {
         static_resp = self.serve_static(request, file_path);
         if static_resp {
+            if file_path in SEO_ROOT_FILES {
+                static_resp.headers.set("Cache-Control", "no-cache");
+            }
             return static_resp;
         }
     }
@@ -1030,6 +1040,22 @@ impl MicroserviceGateway.setup -> ServingApp {
     rl_mw = build_rate_limit_middleware(gw_cfg.get("rate_limit", {}));
     if rl_mw is not None {
         registry.register(Middleware(name="rate_limit", priority=10, fn=rl_mw));
+    }
+    skipped = client_error_limit_skipped(
+        gw_cfg.get("rate_limit", {}),
+        list(ServeSettings.load(self.base_path).proxy.trusted),
+        in_cluster()
+    );
+    error_mw = None
+        if skipped
+        else build_client_error_limit_middleware(gw_cfg.get("rate_limit", {}));
+    if skipped {
+        logger.info(skipped);
+    }
+    if error_mw is not None {
+        registry.register(
+            Middleware(name="client_error_limit", priority=10, fn=error_mw)
+        );
     }
 
     registry.install(self.app);

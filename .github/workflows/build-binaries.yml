@@ -1,9 +1,7 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release: one configuration (JacPython + bun) per target. js_engine
-# is an accelerator built only on request (`jac native build`); a release
-# ships its floor.
+# GitHub Release: one configuration (JacPython + bun) per target.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -108,12 +106,11 @@ jobs:
   # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
   # on the release channel; the dev channel builds host-native so it can
   # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
-  # encode a target triple). macOS-ARM builds host-native on both
-  # channels. The Intel-Mac leg pins the macOS floor (12.0) the same way
-  # the Linux legs pin glibc -- unpinned it would inherit the runner's
-  # macOS 15 and exclude older Intel Macs; its LLVM slice is llvm-slice's
-  # from-source build (upstream ships no macOS-x64 for the pinned
-  # release). macos-15-intel is GitHub's last Intel image (retires Fall
+  # encode a target triple). The macOS legs pin their floor the same way
+  # the Linux legs pin glibc (Apple Silicon 14.0, Intel 12.0) -- unpinned a
+  # leg inherits its runner's macOS 15 and excludes older Macs. The Intel
+  # leg's LLVM slice is llvm-slice's from-source build (upstream ships no
+  # macOS-x64 for the pinned release). macos-15-intel is GitHub's last Intel image (retires Fall
   # 2027).
   #
   # The Intel-Mac leg is `manual`: in no channel's default matrix, built only
@@ -157,14 +154,14 @@ jobs:
           # exists to build it goes red when it fails. Delete the flag when
           # #8805 is fixed and the leg should carry a release again; that
           # restores it as a blocking leg and a required asset in one edit.
-          # No leg builds its own compiler kernel or lowers its own
-          # jacpython.o: the `kernel` job builds both for every leg on x86
-          # Linux and each leg adopts them (#10219, #10472), so an ARM leg
-          # no longer needs the 16-vCPU runner's memory.
+          # No leg lowers its own jacpython.o: the `jacpython-object` job
+          # builds it for every leg on x86 Linux and each leg adopts it
+          # (#10472), so an ARM leg no longer needs the 16-vCPU runner's
+          # memory.
           LEGS='[
             {"os": "ubuntu-24.04", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
             {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
-            {"os": "macos-14",         "platform": "macos-aarch64"},
+            {"os": "macos-15",         "platform": "macos-aarch64", "zig_target": "aarch64-macos.14.0"},
             {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "manual": true}
           ]'
           if [ -n "${ONLY:-}" ]; then
@@ -214,11 +211,10 @@ jobs:
           echo "Building: $(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
           echo "Required to publish: ${REQUIRED:-(none)}"
 
-  # The compiler kernel and JacPython's native object for every leg, built on
-  # x86 Linux (#10219, #10472): the hours of single-threaded lowering and code
-  # generation stay off the ARM and macOS runners, which are 2.5-3x slower
-  # per thread. See build-kernel.yml.
-  kernel:
+  # JacPython's native object for every leg, built on x86 Linux (#10472): the
+  # single-threaded lowering stays off the ARM and macOS runners, which are
+  # 2.5-3x slower per thread. See build-kernel.yml.
+  jacpython-object:
     needs: plan
     uses: ./.github/workflows/build-kernel.yml
     with:
@@ -227,7 +223,7 @@ jobs:
 
   build:
     name: ${{ matrix.platform }}
-    needs: [plan, kernel]
+    needs: [plan, jacpython-object]
     strategy:
       fail-fast: false
       matrix:
@@ -323,7 +319,8 @@ jobs:
             jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
 
       # Cache the JacPython runtime. Release builds remain cold: they link the
-      # object the `kernel` job lowered and do the native rest themselves.
+      # object the `jacpython-object` job lowered and do the native rest
+      # themselves.
       - name: Resolve Python SDK cache input
         id: python-sdk
         shell: bash
@@ -357,9 +354,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.payload-layers/jacpython
-          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+          key: payload-layers-jacpython-zstd19-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
-            payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-jacpython-zstd19-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -462,15 +459,8 @@ jobs:
           launchctl list | grep -i reportcrash
           exit 0
 
-      # The kernel job built this leg's compiler kernel and lowered its
-      # jacpython.o; the build links the object and the seal adopts the
-      # kernel.
-      - name: Download the compiler kernel
-        uses: actions/download-artifact@v4
-        with:
-          name: kernel-${{ matrix.platform }}
-          path: .kernel
-
+      # The jacpython-object job lowered this leg's jacpython.o; the build
+      # links it.
       - name: Download the JacPython object
         uses: actions/download-artifact@v4
         with:
@@ -498,7 +488,7 @@ jobs:
             cp "${{ steps.shim-fetch.outputs.file }}" "$PLACED"
             zig build adopt-shim $DTARGET --summary all
           fi
-          zig build $DTARGET -Dkernel="$GITHUB_WORKSPACE/.kernel" \
+          zig build $DTARGET \
             -Djacpython-object="$GITHUB_WORKSPACE/.jacpython-object" --summary all
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`

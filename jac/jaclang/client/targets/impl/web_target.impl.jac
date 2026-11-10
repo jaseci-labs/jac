@@ -8,7 +8,8 @@ import from typing { Optional, cast }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
-     JAC_LANG_ID = "jac";
+     JAC_LANG_ID = "jac",
+     PUBLIC_LEDGER = ".jac-public-files";
 
 def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
@@ -23,6 +24,8 @@ def _walk_public(
 ) -> None;
 
 def _public_files(public_dir: Path) -> list[tuple[str, Path]];
+
+def _clear_public_outputs(dist_dir: Path) -> None;
 
 def _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str];
 
@@ -90,6 +93,8 @@ impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
@@ -146,9 +151,30 @@ impl WebTarget.finish_dist(
         apply_pwa(dist_dir, project_dir);
     }
     if dist_dir {
-        copied = _copy_public_dirs(
-            bundler.config_loader.get_public_dirs(str(entry_file.resolve())), dist_dir
-        );
+        public_dirs = bundler.config_loader.get_public_dirs(entry_path);
+        import from jaclang.client.targets.seo_build {
+            apply_seo,
+            clear_seo_files,
+            scan_routes
+        }
+        _clear_public_outputs(dist_dir);
+        clear_seo_files(dist_dir);
+        if seo_config.get('site_url') {
+            base_path = bundler.config_loader.get_base_path();
+            asset_paths = [f"{base_path}{bundle_path.name}"];
+            css_file = bundler.find_css();
+            if css_file and css_file.exists() {
+                asset_paths.append(f"{base_path}styles.css");
+            }
+            apply_seo(
+                dist_dir,
+                seo_config,
+                scan_routes(bundler.config_loader.get_app_root(entry_path)),
+                public_dirs,
+                asset_paths
+            );
+        }
+        copied = _copy_public_dirs(public_dirs, dist_dir);
 
         if pwa and copied {
             import from jaclang.client.targets.pwa_build { refresh_pwa_precache }
@@ -211,9 +237,8 @@ impl _public_files(public_dir: Path) -> list[tuple[str, Path]] {
     return found;
 }
 
-impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
-    import shutil;
-    ledger = dist_dir / ".jac-public-files";
+impl _clear_public_outputs(dist_dir: Path) -> None {
+    ledger = dist_dir / PUBLIC_LEDGER;
     try {
         previous = ledger.read_text().splitlines();
     } except OSError {
@@ -233,6 +258,11 @@ impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
         }
     }
     ledger.unlink(missing_ok=True);
+}
+
+impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
+    import shutil;
+    ledger = dist_dir / PUBLIC_LEDGER;
     planned: dict[str, Path] = {};
     skipped: list[str] = [];
     for public_dir in public_dirs {

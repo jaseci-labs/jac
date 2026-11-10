@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.39.1"
+version = "0.39.2"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"
@@ -81,10 +81,6 @@ exclude = [
     "tests",
     "checker_*.jac",
     "*_err.jac",
-
-    # js_engine is a separate native project with its own jac.toml; its
-    # regression suite and test262 gate it, not this check.
-    "jac/js_engine/*",
 
     # JacPython: the CPython runtime port, its compiler backend and its
     # generators. About 80% of this check's time on a 4 vCPU runner (122 of

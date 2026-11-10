@@ -27,6 +27,7 @@ import from jaclang.dist.payload.assemble {
     collect_stage_entries,
     is_volatile_path,
     precompile_env,
+    run_stubcat,
     shim_file_name,
     stage_floor,
     tar_stage,
@@ -160,7 +161,10 @@ test "payload interface sealing uses the fresh staged catalog" {
             }
             return True;
         }
-        with patch.object(assembly, "run_child", side_effect=child) {
+        home_catalog = os.path.join(base, "home", "jir", "stubcat", "key.bin");
+        with patch.object(assembly, "run_child", side_effect=child), patch.object(
+            assembly, "cached_stubcat", return_value=home_catalog
+        ) {
             assembly.run_precompile_stage(
                 "python",
                 base,
@@ -169,6 +173,7 @@ test "payload interface sealing uses the fresh staged catalog" {
             );
         }
         assert calls == ["catalog", "interfaces"];
+        assert rf(home_catalog) == b"fresh catalog";
         assert rf(catalog_copy) == b"fresh catalog";
         assert rf(os.path.join(cache, "stubcat.bin")) == b"fresh catalog";
     }
@@ -189,21 +194,42 @@ test "a linked-source payload publishes an empty catalog region" {
     }
 }
 
-test "the precompile child keeps the cache home and the kit omissions while HOME moves" {
+test "a built stub catalog is cached, and the next build reuses it" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as tmp {
+        site = os.path.join(tmp, "site");
+        os.makedirs(os.path.join(site, "jaclang"));
+        cached = os.path.join(tmp, "cache", "jir", "stubcat", "key.bin");
+        built: list[int] = [];
+        def child(argv: list[str], env: any, check: bool) -> bool {
+            built.append(1);
+            wf(tmp, argv[-1], b"catalog");
+            return True;
+        }
+        with patch.object(assembly, "cached_stubcat", return_value=cached), patch.object(
+            assembly, "run_child", side_effect=child
+        ) {
+            first = os.path.join(tmp, "out1.bin");
+            assert run_stubcat("python", tmp, site, first);
+            assert rf(cached) == b"catalog" and len(built) == 1;
+            second = os.path.join(tmp, "out2.bin");
+            assert run_stubcat("python", tmp, site, second);
+            assert rf(second) == b"catalog" and len(built) == 1 , (
+                "the second build reuses it"
+            );
+        }
+    }
+}
+
+test "the precompile child keeps the cache home while HOME moves" {
     with tempfile.TemporaryDirectory() as tmp {
         site = os.path.join(tmp, "site");
         os.makedirs(site);
-        outer = {
-            "JAC_CACHE_HOME": os.path.join(tmp, "cache"),
-            "JAC_KIT_OMIT": "kernel"
-        };
+        outer = {"JAC_CACHE_HOME": os.path.join(tmp, "cache")};
         with patch.dict(os.environ, outer) {
             env = precompile_env(os.path.join(tmp, "python"), site);
         }
         assert env["JAC_CACHE_HOME"] == outer["JAC_CACHE_HOME"];
-        assert env["JAC_KIT_OMIT"] == "kernel" , (
-            "the seal reads what the kit build asked it to leave out"
-        );
         assert env["HOME"] == site + ".home";
     }
 }
@@ -424,6 +450,18 @@ test "layer cache: verified reuse, corruption falls back, deps edit rolls the ke
         extract_payload(out5, os.path.join(base, "x5"));
         assert rf(os.path.join(base, "x5", "site/watchdog/helper.py"))
             == b"helper = 2\n";
+
+        # (5) Another level (a CI kit's JAC_PAYLOAD_ZSTD_LEVEL) keys its own
+        # entry, so a release never reuses a fast frame.
+        with patch.dict(os.environ, {"JAC_PAYLOAD_ZSTD_LEVEL": "3"}) {
+            out6 = os.path.join(base, "p6.tar.zst");
+            tar_zst_dir(stage, out6, cache);
+        }
+        entry3 = sole_cache_entry(cache);
+        assert entry3 != entry2 and entry3.endswith("-l3.tar.zst");
+        extract_payload(out6, os.path.join(base, "x6"));
+        assert rf(os.path.join(base, "x6", "site/watchdog/helper.py"))
+            == b"helper = 2\n";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }
@@ -562,47 +600,6 @@ test "a fetched bun leaves the payload executable by users who do not own it" {
         assert mode & 0o111 == 0o111 , f"bun leaves the payload as {oct(mode)}";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
-    }
-}
-
-test "stripping the kernel keeps its sidecar hash truthful" {
-    import hashlib;
-    import json;
-    import os;
-    import tempfile;
-    import from pathlib { Path }
-    import from jaclang.dist.payload.assemble { strip_kernel_best_effort }
-    with tempfile.TemporaryDirectory() as tmp {
-        site = os.path.join(tmp, "site");
-        pre = Path(site) / "jaclang" / "_precompiled";
-        pre.mkdir(parents=True);
-        lib = Path(site) / "jaclang" / "compiler" / "libjac_compiler.so";
-        lib.parent.mkdir(parents=True);
-        lib.write_bytes(b"not an ELF image, so strip leaves it alone");
-        (pre / "MANIFEST.json").write_text(
-            json.dumps(
-                {
-                    "native": {
-                        "artifact": {
-                            "path": "compiler/libjac_compiler.so",
-                            "sha256": "stale"
-                        }
-                    }
-                }
-            )
-        );
-        Path(str(lib) + ".layout.json").write_text(
-            json.dumps({"classes": {}, "artifact_sha256": "stale", "plan_digest": "p"})
-        );
-        strip_kernel_best_effort(site);
-        actual = hashlib.sha256(lib.read_bytes()).hexdigest();
-        manifest = json.loads((pre / "MANIFEST.json").read_text());
-        assert manifest["native"]["artifact"]["sha256"] == actual;
-        sidecar = json.loads(Path(str(lib) + ".layout.json").read_text());
-        assert sidecar["artifact_sha256"] == actual , (
-            "the sidecar must describe the library the kit ships, or a checkout never adopts it"
-        );
-        assert sidecar["plan_digest"] == "p" and sidecar["classes"] == {};
     }
 }
 

@@ -121,29 +121,15 @@ def seal_finalize(
     app: str = ""
 ) -> int;
 
-def native_roots(pkg_name: str, units: list[str]) -> list[str];
-
-def kit_omissions(pkg_name: str) -> list[str];
-
-def _compiler_kernel_units -> set[str];
-
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)];
 
 def prebuild_native_units(roots: list[str]);
-
-glob SEAL_KERNEL_DIR_ENV: str = "JAC_SEAL_KERNEL_DIR";
 
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None);
 
-def adopt_kernel(
-    pkg_path: Path, out_dir: Path, manifest_modules: dict[str, any], kernel_dir: str
-) -> dict[str, any];
-
 def _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None;
-
-def _drop_native_twin(twin: Path) -> bool;
 
 def _shared_suffix -> str;
 
@@ -165,6 +151,8 @@ def precompile_exit(code: int);
 def main;
 
 def is_toolchain_package(package_dir: str) -> bool;
+
+def _shard_sources(jac_files: list[str]) -> (list[str] | None);
 
 def run_precompile(
     source_dir: str,
