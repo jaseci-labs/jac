@@ -1189,7 +1189,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [server, data, microservices, deploy, misc]
+        # data and misc are ~2 min each, so they share a runner.
+        group: [server, microservices, deploy, "data misc"]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1215,7 +1216,7 @@ jobs:
             requests "moto[s3]>=5.0.0" \
             --global
       - name: Install scale firebase deps
-        if: matrix.group == 'data' || matrix.group == 'server'
+        if: contains(matrix.group, 'data') || matrix.group == 'server'
         run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
       # One process per file comes from the [test] isolate marks in the root
       # jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
@@ -1229,11 +1230,13 @@ jobs:
           JAC_TEST_STRICT: "1"
         run: |
           set -euo pipefail
-          if [ "${{ matrix.group }}" = "server" ]; then
-            jac test jac/jaclang/scale/tests/server -f "not hmr"
-          else
-            jac test jac/jaclang/scale/tests/${{ matrix.group }}
-          fi
+          for group in ${{ matrix.group }}; do
+            if [ "$group" = "server" ]; then
+              jac test jac/jaclang/scale/tests/server -f "not hmr"
+            else
+              jac test "jac/jaclang/scale/tests/$group"
+            fi
+          done
 
   # One job: both phases share one MicroK8s cluster (hostpath-storage binds
   # the RWX bundle PVC, which kind cannot). Stays on the sealed kit: the
@@ -1350,10 +1353,11 @@ jobs:
   # kit, binaries run under qemu-user.
   test-native-aarch64:
     needs: [changes, dev-kit, dev-precompile]
-    # Runs on the schedule, manual runs, and pull requests that touch native
-    # paths; pushes leave it to the schedule. Was:
+    # Folded into test-launcher-jac (its aarch64 steps): a ~2 min job is not
+    # worth a runner of its own. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.native == 'true') }}
+    # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.native == 'true') }}
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -1400,6 +1404,20 @@ jobs:
           jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac -f "environ"
       - name: Fused-runtime boot of a fresh na host
         run: jac test jac/tests/client/test_fused_runtime_boot.jac
+      # The aarch64 cross tests, folded in from test-native-aarch64 with its
+      # trigger: pushes leave them to the schedule.
+      - name: Install qemu-user and aarch64 cross libc
+        if: github.event_name != 'push'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
+      - name: Run aarch64 cross tests under qemu
+        if: github.event_name != 'push'
+        env:
+          JAC_TEST_JOBS: "0"
+        run: >-
+          jac test jac/tests/compiler/backends/native/test_native_gen_pass.jac
+          -f aarch64
 
   # Bootstrap unit tests: the Zig seed that builds the JacPython runtime before
   # any Python exists (bootstrap/build_python.zig). Cross-platform on purpose. The
