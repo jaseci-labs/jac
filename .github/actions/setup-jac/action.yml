@@ -424,10 +424,12 @@ runs:
 
     # Seed the shared binary cache from trusted refs only (see the note by the
     # restore step). Saved after the build so both the binary and the materialized
-    # typeshed stdlib stubs (part of this cache's path) exist.
+    # typeshed stdlib stubs (part of this cache's path) exist. A dev binary is
+    # saved from pull requests too: its key covers only the launcher and
+    # payload sources, so a branch's later pushes reuse it.
     - name: Save jac binary cache (trusted refs only)
       if: >-
-        github.ref == 'refs/heads/main' &&
+        (github.ref == 'refs/heads/main' || inputs.dev == 'true') &&
         steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
