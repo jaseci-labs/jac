@@ -72,27 +72,22 @@ graph import {
         },
     ]
     artifacts.router ++> [
-        client.js_engine.engine_dir
-            | client.js_runtime.js_runtime_path
+        client.js_runtime.js_runtime_path
             | compiler.backends.native.llvm.shim_path.shim_path
             | compiler.backends.native.wasm_build._link_wasm_libc
             | data.pg_dist.postgres_bin_dir
             | project.compiler_host.ProjectHost.typeshed_unavailable_reason
             | toolchains.c_backend.ensure_c_backend
             | toolchains.tools.tool_path { require },
-        client.js_runtime.JsEngineArtifact.floor_present
-            | compiler.backends.native.kernel_resolve.resolve_kernel
-            | compiler.backends.native.native_link.floor_lib_dir
-            | compiler.backends.native.wasm_build._wasm_libc_dir
-            | compiler.types.stubcat.locate.open_catalog { resolve },
-        client.js_runtime.JsEngineArtifact.provide_floor { build },
-        client.js_runtime._engine | compiler.backends.native.native_link.musl_lib_dir {
-            resolve
-        },
         client.targets.desktop.native.host_boot._enter_embedded_env
             | project.kernel_snapshot.require_stub_catalog { forget },
         client.targets.desktop.native.host_boot._leave_embedded_env { forget },
         compiler.backends.native.kernel_resolve.build_kernel { publish },
+        compiler.backends.native.kernel_resolve.resolve_kernel
+            | compiler.backends.native.native_link.floor_lib_dir
+            | compiler.backends.native.wasm_build._wasm_libc_dir
+            | compiler.types.stubcat.locate.open_catalog { resolve },
+        compiler.backends.native.native_link.musl_lib_dir { resolve },
         compiler.types.stubcat.build.build_catalog { building },
         project.kernel_snapshot.build_stub_catalog { artifact_named, build, forget },
     ]
@@ -176,7 +171,6 @@ graph import {
     cache.policy --> compiler.driver.jir._sweep_once { maybe_sweep_dir }
     cache.registry ++> [
         byllm.model_cache.get_cache_dir
-            | client.js_runtime.installed_engine_dir
             | compiler.driver.jir.sweep_stale_generations
             | compiler.types.stubcat.locate.dev_catalog_path
             | data.pg_dist.dist_cache_dir
@@ -1711,8 +1705,7 @@ graph import {
             | dist.interpreter.JacPythonArtifact.probe_sealed
             | dist.precompiled.PrecompiledArtifact.probe_sealed
             | project.kernel_snapshot.catalog_build_blocker { sealed },
-        client.js_runtime.JsEngineArtifact.probe_sealed
-            | compiler.backends.native.floors.MuslArtifact.probe_sealed
+        compiler.backends.native.floors.MuslArtifact.probe_sealed
             | compiler.types.stubcat.locate.TypeshedArtifact.probe_sealed { sealed },
         compiler.backends.native.floors.WasmLibcArtifact.probe_sealed { sealed },
         compiler.driver.compiler.JacCompiler._get_precompiled_jir_bytecode {
@@ -1753,7 +1746,7 @@ graph import {
             | compiler.driver.jir.compute_content_sha256
             | dist.jab.materialize_jab
             | dist.seal.sealed_image_key { file_sha256 },
-        client.js_runtime.JsEngineArtifact.build
+        client.js_runtime.write_bun_record
             | compiler.backends.native.kernel_resolve._inspect
             | compiler.backends.native.link_plan
             | compiler.backends.native.llvm.shim_path.write_shim_record
@@ -1761,7 +1754,6 @@ graph import {
             | compiler.types.stubcat.build
             | project.kernel_check._record_outcome
             | scale.injector.binary { atomic_write },
-        client.js_runtime.write_bun_record { atomic_write },
         client.targets.desktop.desktop_build._native_build_cef
             | client.targets.node_tooling_common.run_manifest_install
             | client.targets.react_native.build.run_gradle_assemble
@@ -1855,8 +1847,7 @@ graph import {
         cli.cli.start_cli
             | cli.manifest_route.resolve_cli_version
             | compiler.driver.jir._handoff { handoff },
-        client.js_runtime.ensure_node_link
-            | client.targets.desktop.native.host_boot.host_executable
+        client.targets.desktop.native.host_boot.host_executable
             | dist.fused_binary.running_executable { process_executable },
         compiler.driver.jir.require_exact_compiler_products { update_handoff },
         compiler.driver.jir.set_cache_mode { update_handoff },
@@ -5172,13 +5163,11 @@ graph import client {
     ]
     jac_client_compiler ++> compiler { JacClientCompiler }
     jac_to_js ++> jac_client_compiler { JacToJSCompiler }
-    js_engine --> js_runtime.js_runtime_path { node_executable }
     js_runtime ++> [
         cli.run_npm_add_global | targets.node_tooling_common | vite_bundler {
             js_runtime_path,
             run_pm
         },
-        js_engine.node_executable { ensure_node_link },
         npm_provider.regenerate_and_install { js_runtime_path },
     ]
     npm_provider ++> [
