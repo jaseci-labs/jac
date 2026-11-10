@@ -56,6 +56,16 @@ inputs:
       `actions: read`.
     required: false
     default: "false"
+  dev:
+    description: >
+      Build an editable dev binary (zig build -Ddev): the launcher and Python
+      payload, with jaclang linked from this checkout instead of bundled. No
+      JIR precompile, native prebuild, stub catalog or seal; ci.yml's dev-kit
+      job builds the precompile bundle and the stub catalog beside it, and
+      test lanes run the checkout through the [dev] reroute. Its binary cache
+      is keyed apart from a sealed kit's.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -108,7 +118,7 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
           jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}
+        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -339,6 +349,19 @@ runs:
         echo "Adopting $name from run $run_id"
         echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
+    # The stub catalog the payload build makes (~3.5 min). mkpayload reuses
+    # one from the cache home when its file name, the digest of the
+    # type-system sources (stubcat/locate.jac catalog_key), matches, so this
+    # key mirrors TYPE_SYSTEM_ROOTS and a compiler change outside them
+    # still hits. Linux only: that is where ~/.cache/jac is the cache home.
+    - name: Restore the build's stub catalog
+      id: build-stubcat-cache
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/jac/jir/stubcat
+        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
@@ -366,10 +389,12 @@ runs:
         JAC_PAYLOAD_ZSTD_LEVEL: ${{ inputs.bytecode-kit == 'true' && '3' || '' }}
         PREBUILT: ${{ inputs.prebuilt != '' && format('{0}/prebuilt', runner.temp) || '' }}
         STALE_PYTHON: ${{ inputs.bytecode-kit }}
+        DEV: ${{ inputs.dev }}
         STALE_OBJECT: ${{ steps.stale-object.outputs.dir }}
         JAC_KIT_OMIT: ${{ (inputs.bytecode-kit == 'true' || (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'native:kernel') && inputs.native-kernel != 'true')) && 'kernel' || '' }}
       run: |
         PY=(-Dreuse-python="$PR_BUILD")
+        if [ "$DEV" = true ]; then PY+=(-Ddev); fi
         if [ -n "$PREBUILT" ]; then PY+=(-Dkernel="$PREBUILT/kernel" -Djacpython-object="$PREBUILT/jacpython-object"); fi
         if [ "$STALE_PYTHON" = true ]; then PY+=(-Dstale-python=true); fi
         if [ -n "$STALE_OBJECT" ]; then PY+=(-Djacpython-object="$STALE_OBJECT"); fi
@@ -399,10 +424,12 @@ runs:
 
     # Seed the shared binary cache from trusted refs only (see the note by the
     # restore step). Saved after the build so both the binary and the materialized
-    # typeshed stdlib stubs (part of this cache's path) exist.
+    # typeshed stdlib stubs (part of this cache's path) exist. A dev binary is
+    # saved from pull requests too: its key covers only the launcher and
+    # payload sources, so a branch's later pushes reuse it.
     - name: Save jac binary cache (trusted refs only)
       if: >-
-        github.ref == 'refs/heads/main' &&
+        (github.ref == 'refs/heads/main' || inputs.dev == 'true') &&
         steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
@@ -410,7 +437,7 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
           jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}
+        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
     # above the restore steps). Main runs seed
@@ -424,6 +451,17 @@ runs:
       with:
         path: jac/.python-build/jacpython
         key: python-build-v4-jacpython-${{ inputs.bytecode-kit == 'true' && 'bytecode-' || '' }}${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python }}
+
+    - name: Save the build's stub catalog (trusted refs only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        runner.os == 'Linux' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.build-stubcat-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/jac/jir/stubcat
+        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
 
     - name: Save LLVMPY shim cache (trusted refs only)
       if: >-

@@ -1643,6 +1643,23 @@ impl is_toolchain_package(package_dir: str) -> bool {
     return os.path.realpath(package_dir) == os.path.realpath(jaclang_pkg_root());
 }
 
+impl _shard_sources(jac_files: list[str]) -> (list[str] | None) {
+    spec = os.environ.get("JAC_PRECOMPILE_SHARD", "").strip();
+    if not spec {
+        return jac_files;
+    }
+    (k, _, n) = spec.partition("/");
+    if not (k.isdigit() and n.isdigit()) or not (1 <= int(k) <= int(n)) {
+        return None;
+    }
+    ordered = sorted(jac_files, key=lambda (p: str) { (-os.path.getsize(p), p); });
+    return [
+        p
+        for (idx, p) in enumerate(ordered)
+        if idx % int(n) == int(k) - 1
+    ];
+}
+
 impl run_precompile(
     source_dir: str,
     seal: bool = False,
@@ -1740,6 +1757,22 @@ impl run_precompile(
             }
         }
     }
+
+    sharded = _shard_sources(jac_files);
+    if sharded is None {
+        console.error(
+            "JAC_PRECOMPILE_SHARD must be K/N with 1 <= K <= N, got "
+                + repr(os.environ.get("JAC_PRECOMPILE_SHARD"))
+        );
+        sys.`exit(2);
+    }
+    if len(sharded) != len(jac_files) {
+        console.print(
+            f"  Shard {os.environ['JAC_PRECOMPILE_SHARD']}: {len(sharded)} of "
+            f"{len(jac_files)} .jac files"
+        );
+    }
+    jac_files = sharded;
 
     if not jac_files and not exclude_seed {
         console.print("  No .jac files to precompile.");

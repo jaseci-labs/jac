@@ -3569,7 +3569,7 @@ graph import {
             VarInfo
         },
         byllm.systemone { ClassInfo, EnumInfo, FunctionInfo, TypeForm, VarInfo },
-        byllm.types { Info },
+        byllm.types { ClassInfo, EnumInfo, FunctionInfo, Info, ParamInfo, TypeForm },
         byllm.visit_routing { ClassInfo },
         compiler.driver.compiler { info_graph_from_json },
         compiler.driver.unit_products { Info, info_graph_to_json },
@@ -4583,7 +4583,7 @@ graph import byllm {
     schema ++> [
         llm { inject_schema_hint, type_display_name },
         mtir { json_to_instance, type_display_name, type_to_schema },
-        types { tool_to_schema, type_display_name },
+        types { _type_to_schema, tool_to_schema, type_display_name },
     ]
     systemone ++> [
         lib { Decision },

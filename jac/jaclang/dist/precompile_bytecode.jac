@@ -163,6 +163,8 @@ def main;
 
 def is_toolchain_package(package_dir: str) -> bool;
 
+def _shard_sources(jac_files: list[str]) -> (list[str] | None);
+
 def run_precompile(
     source_dir: str,
     seal: bool = False,

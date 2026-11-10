@@ -12,8 +12,8 @@ opening line, so the reference has to be 3.14). A bytes literal takes
 the str escapes minus the three that name a code point.
 
 The frontend package is compiled into the native library and is not
-importable from a sealed kit, so this skips there and runs from a
-source checkout.
+importable from a sealed kit, nor loadable on a binary that does not
+export the CPython symbols it binds, so this skips there.
 """
 
 def _escape_api -> (tuple[set[int], set[int], any] | None) {
@@ -24,7 +24,7 @@ def _escape_api -> (tuple[set[int], set[int], any] | None) {
             pa_escape_line_offset
         }
         return (VALID_ESCAPE_POINTS, VALID_BYTES_ESCAPE_POINTS, pa_escape_line_offset);
-    } except ImportError {
+    } except (ImportError, ValueError) {
         return None;
     }
 }
