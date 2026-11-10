@@ -5,11 +5,13 @@ import from jaclang.compiler.driver.pipeline { PRODUCTS }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import jaclang.server.assembly;
 import from jaclang.compiler.driver.application { prepare_application }
+import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.prepared { forget }
 import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
 import from jaclang.dist.precompile_bytecode {
     placement_facts_map,
+    precompile_unit_context,
     precompile_unit,
     sealable_sources
 }
@@ -93,5 +95,38 @@ test "discovery on a prepared stage reads the prepare's records instead of compi
         }
         assert {'main.jac', 'helper.jac'} <= sources , sources;
         assert not compiled , f"discovery compiled modules the prepare already analysed: {compiled}";
+    }
+}
+
+test "a precompiled unit of a client-prepared stage looks up the module the prepare compiled" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "reuse"\nentry-point = "main"\n'
+        );
+        (base / '__init__.jac').write_text('');
+        (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'main.jac').write_text(
+            'import from helper { value }\ndef:pub read -> int { return value(); }\n'
+        );
+        main_path = str(base / "main.jac");
+        try {
+            prepare_application(
+                main_path, JacProgram(), str(base), client=True, dev=False
+            );
+        } finally {
+            forget(main_path);
+        }
+        manifest = base / SERVE_MANIFEST_REL;
+        manifest.parent.mkdir(parents=True, exist_ok=True);
+        manifest.write_text('{"client_prepared": true}\n');
+        prepared = {p.resolve() for p in (base / '.jac').rglob('*.jir')};
+        for name in ['main.jac', 'helper.jac'] {
+            source = str(base / name);
+            with precompile_unit_context(source, str(base), collect=False) {
+                looked_up = get_module_cache_path(source);
+            }
+            assert looked_up.resolve() in prepared , (name, str(looked_up));
+        }
     }
 }

@@ -44,6 +44,8 @@ glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
 glob _CLIENT_DIST: tuple[str, ...] = (".jac", "client", "dist");
 
+glob BAKED_CLIENT_INDEX: str = ".jac/client/dist/index.html";
+
 glob _BUNDLE_REQUIRED: tuple[tuple[str, ...], ...] = (
          _CLIENT_DIST,
          (".jac", "admin")
@@ -201,7 +203,8 @@ def _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None
+    seed: (Path | None) = None,
+    bake_client: bool = False
 ) -> Path;
 
 
@@ -249,7 +252,8 @@ def seal_input_digest(
     app_name: str,
     sanitized: (str | None),
     fat: bool,
-    tomls: dict[str, str]
+    tomls: dict[str, str],
+    bake_client: bool = False
 ) -> str;
 
 
@@ -298,7 +302,8 @@ def pack_jab(
     seal_binary: bytes,
     pod_arch: str = "",
     fleet: any = None,
-    client_ready: any = None
+    client_ready: any = None,
+    bake_client: bool = False
 ) -> bytes;
 
 

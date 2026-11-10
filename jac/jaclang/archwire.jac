@@ -251,13 +251,19 @@ graph import {
             | client.targets.web_target._copy_public_dirs
             | compiler.driver.application.prepare_dynamic_module
             | project.config._apply_memory_native_placement
-            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
             | server.server.JacAPIServer.start { console },
         client.cli.run_client_setup
-            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._start_client_build
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
             | server.server.print_endpoint_docs { console },
-        client.cli.run_client_start { console },
-        client.cli.run_npm_add { console },
+        client.cli.run_client_start
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
+            console
+        },
+        client.cli.run_npm_add
+            | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._start_client_build {
+            console
+        },
         client.cli.run_npm_add_global { console },
         client.cli.run_npm_remove { console },
         client.cli.setup { console },
@@ -379,9 +385,10 @@ graph import {
     client.client_surface --> server.hmr.HotReloader._recompile_client_code
         | testing.cl_test_runner._run_harness { prepend_active_runtime_globals }
     type client.compiler ++> runtime.prepared { ViteCompiler }
-    client.config_loader --> compiler.driver.application._prepare_revision {
-        JacClientConfig
-    }
+    client.config_loader --> [
+        compiler.driver.application._prepare { JacClientConfig },
+        compiler.driver.application._prepare_revision { JacClientConfig },
+    ]
     client.desktop_plugin_config --> project.template_registry._register_builtin_client_templates {
         JacDesktopPluginConfig
     }
@@ -465,12 +472,16 @@ graph import {
     client.targets.react_native.html_tag_map --> compiler.passes.jsx_intrinsic_guard_pass._suggestion_for {
         rn_tag_suggestions
     }
-    client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
+    client.targets.web_target ++> [
+        dist.seal.ensure_client_dist { WebTarget },
+        dist.seal.finish_prepared_client { WebTarget },
+    ]
     client.vite_bundler ++> [
-        dist.seal.sealed_image_key | scale.injector.bundle.client_input_digest {
-            client_build_env
-        },
+        compiler.driver.application._prepare_revision
+            | dist.seal.sealed_image_key
+            | scale.injector.bundle.client_input_digest { client_build_env },
         dist.source.client.write_client { ViteBundler },
+        scale.injector.bundle.seal_input_digest { client_build_env },
     ]
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
@@ -617,7 +628,7 @@ graph import {
         boundary_audit
     }
     compiler.driver.application ++> cli.commands.execution._load_executable
-        | dist.seal.build_serve_manifest
+        | dist.seal.prepare_serve_payloads
         | dist.source.project.export_project
         | scale.tests.data.test_eager_spawn
         | scale.tests.microservices.test_microservice
@@ -1846,7 +1857,6 @@ graph import {
             | client.targets.desktop._dev_launch
             | client.targets.pwa_build
             | client.targets.registry.target_for_app
-            | client.targets.web_target._get_app_meta_data
             | client.vite_bundler._dev_head
             | data.pg_dist._configured_dist
             | runtime.graph_utils.get_name
@@ -1942,7 +1952,7 @@ graph import {
             | client.artifact.client_output_dir
             | client.serving
             | dist.precompile_bytecode.app_metadata
-            | dist.seal.build_serve_manifest
+            | dist.seal.prepare_serve_payloads
             | scale.config.dev_config.local_pod_binary
             | scale.injector.bundle._project_config { get_config_for_path },
         cli.commands.execution._pin_run_scope {
@@ -1968,6 +1978,10 @@ graph import {
             | scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer._resolve_fleet
             | server.endpoints.colocated.served_app_route
             | studio.app { get_config_for_dir },
+        client.targets.web_target._get_app_meta_data {
+            get_config,
+            get_config_for_path
+        },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
         packages.migrate | scale.injector.bundle.staged_jac_toml {
             serialize_toml,
@@ -3406,7 +3420,7 @@ graph import {
             gateway_colocates as _gateway_colocates,
             service_apps as _service_apps
         },
-        dist.seal.build_serve_manifest { service_apps },
+        dist.seal.prepare_serve_payloads { service_apps },
         dist.source.project.export_project { gateway_colocates, service_apps },
     ]
     server.assembly --> [
@@ -3613,8 +3627,9 @@ graph import {
             CLIENT_DIST_REL,
             read_serve_manifest
         },
-        dist.precompile_bytecode._served_codespace
+        dist.precompile_bytecode._served_client_root
             | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
+        dist.precompile_bytecode._served_codespace { SERVE_MANIFEST_REL },
         dist.precompile_bytecode.app_metadata { CLIENT_DIST_REL, NATIVE_DIR_REL },
         dist.precompile_bytecode.collect_payloads {
             CLIENT_DIST_REL,
@@ -3623,7 +3638,7 @@ graph import {
         },
         dist.precompile_bytecode.seal_runtime_closure { SERVE_MANIFEST_REL },
         dist.seal.bake_serve_payloads { CLIENT_DIST_REL, SERVE_MANIFEST_REL },
-        dist.seal.build_serve_manifest { serve_manifest_stamp },
+        dist.seal.prepare_serve_payloads { serve_manifest_stamp },
     ]
     server.sealed_serve --> [
         compiler.driver.application.prepare_application {
@@ -5107,7 +5122,7 @@ graph import client.targets {
         run_manifest_install as _node_run_manifest_install
     }
     pwa_build --> [
-        web_target.WebTarget.build { apply_pwa, refresh_pwa_precache },
+        web_target.WebTarget.finish_dist { apply_pwa, refresh_pwa_precache },
         web_target.WebTarget.setup { ensure_pwa_icons },
     ]
     react_native.build ++> mobile_target {
@@ -5166,7 +5181,11 @@ graph import client.targets {
         mobile_target | web_target { ClientTarget },
         register { get_target_registry },
     ]
-    seo_build --> web_target.WebTarget.build { apply_seo, clear_seo_files, scan_routes }
+    seo_build --> web_target.WebTarget.finish_dist {
+        apply_seo,
+        clear_seo_files,
+        scan_routes
+    }
     static_target ++> register { StaticTarget }
     web_target ++> desktop.desktop_target | register | static_target { WebTarget }
     web_target --> mobile_target.MobileTarget.build { WebTarget }
@@ -44961,6 +44980,9 @@ graph import scale {
             | runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac {
             host_toolchain_path
         },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
+            host_toolchain_path
+        },
         deploy.target.kubernetes.runtime_bootstrap.build_bootstrap_init_container {
             OFFICIAL_IMAGE
         },
@@ -45027,8 +45049,7 @@ graph import scale {
             nested_sanitized_tomls,
             release_binary_env,
             remember_client_dist,
-            remove_stage_root,
-            source_filter_for
+            remove_stage_root
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_pod_spec
             | tests.deploy.test_pod_env._entrypoint_run { APP_MOUNT_PATH },
@@ -45037,11 +45058,17 @@ graph import scale {
             source_filter_for,
             unresolved_toml_references
         },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
+            source_filter_for
+        },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._pod_entrypoint {
             APP_MOUNT_PATH
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._project_config {
             _project_config
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
+            entry_module_rel
         },
         deploy.target.kubernetes.runtime_bootstrap {
             APP_MOUNT_PATH,
@@ -45054,6 +45081,7 @@ graph import scale {
         tests.deploy.test_client_build_stage { bundle_source_files, source_filter_for },
         tests.microservices.test_app_precompile {
             DEFAULT_SEAL_TIMEOUT_S,
+            _precompile_app,
             _stage_app,
             nested_sanitized_tomls,
             pack_jab,

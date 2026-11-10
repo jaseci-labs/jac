@@ -618,6 +618,10 @@ impl _prepare(
     console: any
 ) -> PreparedApplication {
     program.forget_failed_modules();
+    if client {
+        import from jaclang.client.config_loader { JacClientConfig }
+        JacClientConfig(Path(`root), entry_path=`entry).load();
+    }
     inputs: dict[str, str] = {};
     selfhost = program._get_compiler().selfhost;
     def capture(path: str) {
@@ -691,7 +695,8 @@ impl _prepare_revision(
         entries,
         client,
         dev
-    );
+    )
+        + ((tuple(client_build_env()), ) if client else ());
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev

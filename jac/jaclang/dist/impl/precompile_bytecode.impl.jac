@@ -476,6 +476,30 @@ impl _served_codespace(pkg_root: str) -> str {
     return 'server' if (Path(pkg_root) / SERVE_MANIFEST_REL).is_file() else '';
 }
 
+impl _served_client_root(pkg_root: str) -> str {
+    manifest = Path(pkg_root) / SERVE_MANIFEST_REL;
+    try {
+        stamp = manifest.stat().st_mtime_ns;
+    } except OSError {
+        return '';
+    }
+    key = os.path.realpath(pkg_root);
+    held = _client_roots.get(key);
+    if held is not None and held[0] == stamp {
+        return held[1];
+    }
+    try {
+        data = json.loads(manifest.read_text(encoding="utf-8"));
+    } except (OSError, ValueError) {
+        data = {};
+    }
+    found = key
+        if isinstance(data, dict) and data.get('client_prepared') is True
+        else '';
+    _client_roots[key] = (stamp, found);
+    return found;
+}
+
 impl precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram {
@@ -499,7 +523,8 @@ impl precompile_context(
             entry_point=entry_path,
             project_root=pkg_root,
             skip_native_engine=True,
-            default_codespace=_served_codespace(pkg_root)
+            default_codespace=_served_codespace(pkg_root),
+            client_source_root=_served_client_root(pkg_root)
         )
     );
     options = bind_options(jac_path, program, options);
