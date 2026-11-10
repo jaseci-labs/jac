@@ -862,6 +862,10 @@ export default defineConfig({{
             + self._format_config_object(output_overrides, indent=6)
             if output_overrides
             else '';
+        chunk_names = output_overrides.get('chunkFileNames');
+        manifest_str = '    manifest: true,\n'
+            if chunk_names is None or '[hash]' in str(chunk_names)
+            else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
             if (isinstance(server_config, dict) and server_config)
@@ -924,8 +928,7 @@ export default defineConfig({{
   envDir: projectRoot, // Load .env files from project root
     build: {{
     sourcemap: true, // Enable source maps for better error messages
-    manifest: true,
-{build_overrides_str}
+{manifest_str}{build_overrides_str}
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
       output: {{
@@ -1717,7 +1720,7 @@ impl _split_build_overrides(
     }
     output = dict(output);
     ignored: list[str] = [];
-    for key in ('outDir', 'emptyOutDir') {
+    for key in ('outDir', 'emptyOutDir', 'manifest') {
         if build.pop(key, None) is not None {
             ignored.append(key);
         }
