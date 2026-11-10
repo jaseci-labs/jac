@@ -1226,11 +1226,11 @@ jobs:
     # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
     # requests and pushes test on the dev kit). Was:
     # if: >-
+    #   (github.event_name != 'pull_request' ||
+    #    needs.changes.outputs.core == 'true' ||
+    #    needs.changes.outputs.scale == 'true') &&
+    #   !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-      (github.event_name != 'pull_request' ||
-       needs.changes.outputs.core == 'true' ||
-       needs.changes.outputs.scale == 'true') &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: ubuntu-24.04
     env:
       # The opt-in flag test_deploy_k8s gates on: this is the lane with a
