@@ -45405,6 +45405,7 @@ graph import scale {
             wait_for_pod_phase
         },
         tests.deploy.test_cluster_provider { get_cluster_provider },
+        tests.deploy.test_deploy_k8s { wait_for_pod_phase },
         tests.deploy.test_k8s_utils { parse_storage_quantity, resize_pvc_if_needed },
         tests.deploy.test_pod_env { create_k8s_secret, resolve_minted_secret },
         tests.deploy.test_pss_labels {
@@ -45612,8 +45613,12 @@ graph import scale {
             BUNDLE_MOUNT_PATH,
             BUNDLE_VOLUME_NAME
         },
-        deploy.target.kubernetes.target { bundle_keys_from_pod_spec, bundle_pvc_name },
-        tests.deploy.test_destroy_reclaim { bundle_pvc_name },
+        deploy.target.kubernetes.target {
+            bundle_keys_from_pod_spec,
+            bundle_loader_pod_name,
+            bundle_pvc_name
+        },
+        tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,
@@ -46485,6 +46490,7 @@ graph import scale.deploy.target.kubernetes {
             privileged_pss_labels,
             resolve_minted_secret
         },
+        target.KubernetesTarget._apply_or_replace_pvc { wait_until_deleted },
         target.KubernetesTarget._pod_failure_detail { describe_pod_status },
     ]
 }
