@@ -85,9 +85,6 @@ jobs:
             core:
               - 'jac/**'
               - 'jac.toml'
-              - 'scripts/run_cpython_compiler_tests.jac'
-              - 'scripts/test_jacpython_native.jac'
-              - 'scripts/jacpython/**'
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
@@ -194,8 +191,8 @@ jobs:
           if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
             exit 0
           fi
-          zig build fetch-llvm -Dreuse-python=true -Dstale-python=true --summary all
-          zig build jacllvm -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-llvm --summary all
+          zig build jacllvm --summary all
 
       # Explicit: a binary-cache hit skips zig build, so these gitignored
       # trees must be materialized either way. The wasm floor is in this list
@@ -203,16 +200,13 @@ jobs:
       # cache hit does not, so leaving it implicit made the kit's contents a
       # function of cache state -- present on a miss, missing on a hit, with
       # if-no-files-found blind to it because the other paths matched.
-      # Every zig build here runs through the kit's own JacPython runtime, and
-      # each passes setup-jac's -Dreuse-python and -Dstale-python: without them
-      # the runtime the build step reused is lowered again from scratch.
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
         run: |
-          zig build fetch-typeshed -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-musl -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-musl-linux-aarch64 -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-wasm-libc -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-typeshed --summary all
+          zig build vendor-musl --summary all
+          zig build vendor-musl-linux-aarch64 --summary all
+          zig build vendor-wasm-libc --summary all
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
@@ -224,9 +218,8 @@ jobs:
           WORK="$(mktemp -d)"; cd "$WORK"
           ldd "$BIN" || true
           ! ldd "$BIN" | grep -qi python
-          # The bundled runtime is JacPython: its `compile` is the native Jac
-          # compiler. test-jacpython holds it to the rest of its gates.
-          "$BIN" -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+          # The bundled runtime is the pinned prebuilt CPython 3.14.
+          "$BIN" -c 'import sys; assert sys.implementation.name == "cpython", sys.implementation; assert sys.version_info[:2] == (3, 14), sys.version'
           # The kit carries every artifact a release does.
           "$BIN" native status
           "$BIN" native status --require kit
@@ -303,10 +296,9 @@ jobs:
         working-directory: jac
         run: |
           set -euo pipefail
-          # cpython-<ver> is the cache tag, part of the ABI identity JacPython keeps.
-          DIR="$(find .precompiled-build/jacpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
-          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/jacpython/cpython-<ver> tree"; exit 1; }
-          [ -f .precompiled-build/jacpython/MANIFEST.json ] || {
+          DIR="$(find .precompiled-build/cpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
+          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/cpython/cpython-<ver> tree"; exit 1; }
+          [ -f .precompiled-build/cpython/MANIFEST.json ] || {
             echo "::error::precompile tree has no MANIFEST.json, so the seal did not finish"; exit 1; }
           UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
           [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
@@ -316,7 +308,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jac-precompiled
-          path: jac/.precompiled-build/jacpython
+          path: jac/.precompiled-build/cpython
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -372,17 +364,17 @@ jobs:
           if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
             exit 0
           fi
-          zig build fetch-llvm -Dreuse-python=true -Dstale-python=true --summary all
-          zig build jacllvm -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-llvm --summary all
+          zig build jacllvm --summary all
 
       - name: Materialize typeshed, bun + vendored runtimes
         working-directory: jac
         run: |
-          zig build fetch-typeshed -Dreuse-python=true -Dstale-python=true --summary all
-          zig build fetch-bun -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-musl -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-musl-linux-aarch64 -Dreuse-python=true -Dstale-python=true --summary all
-          zig build vendor-wasm-libc -Dreuse-python=true -Dstale-python=true --summary all
+          zig build fetch-typeshed --summary all
+          zig build fetch-bun --summary all
+          zig build vendor-musl --summary all
+          zig build vendor-musl-linux-aarch64 --summary all
+          zig build vendor-wasm-libc --summary all
 
       - name: Restore the dev stub catalog
         id: dev-stubcat-cache
@@ -417,7 +409,7 @@ jobs:
             jac/jaclang/vendor/typeshed/stdlib
             jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
             jac/jaclang/client/_bun
-            jac/.python-build/jacpython/linux-x86_64/python/build/lib
+            jac/.pbs-build/linux-x86_64/python/build/lib
             jac/.pbs-build/linux-x86_64/musl/lib
             jac/.pbs-build/linux-aarch64/musl/lib
             jac/.pbs-build/wasm32/libc
@@ -787,12 +779,6 @@ jobs:
             echo "To skip this check, add the 'skip-no-python-check' label to your PR."
             exit 1
           fi
-
-      # JacPython is the only Python jac builds on or ships. The gate exempts
-      # the ABI identity, the pinned source archive, the manual comparison
-      # workflow and history.
-      - name: Block stock CPython build and runtime dependencies
-        run: bash scripts/check_no_stock_cpython.sh
 
       - name: Block duplicate diagnostic codes
         # Two branches each take the next free code and the merge keeps both;
@@ -1330,8 +1316,9 @@ jobs:
       - name: Fused-runtime boot of a fresh na host
         run: jac test jac/tests/client/test_fused_runtime_boot.jac
 
-  # Bootstrap unit tests: the Zig seed that builds the JacPython runtime before
-  # any Python exists (bootstrap/build_python.zig). Cross-platform on purpose. The
+  # Bootstrap unit tests: the Zig seeds that fetch the prebuilt CPython and the
+  # other pinned inputs before any Python exists (bootstrap/). Cross-platform on
+  # purpose. The
   # launcher itself is Jac; its trailer codec, payload tool and boot path are
   # covered by `jac test` in the kit lanes below.
   test-bootstrap:
@@ -2057,26 +2044,6 @@ jobs:
     if: false
     uses: ./.github/workflows/_macos-native.yml
 
-  # JacPython's conformance gates on this run's kit: the native compiler is
-  # the interpreter's `compile`, the code-object boundary holds, and every
-  # ported module and frontend suite passes its pinned upstream tests. The
-  # macOS kit runs the same gates (_macos-native.yml) and nightly.yml runs
-  # them on linux-aarch64.
-  test-jacpython:
-    needs: [changes, build-kit]
-    # Sealed-binary lane: the 6-hourly schedule and manual runs only (pull
-    # requests and pushes test on the dev kit). Was:
-    # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/jac-kit
-        with:
-          sealed: "true"
-      - uses: ./.github/actions/jacpython-conformance
-
   test-managed-android:
     needs: [changes, build-kit]
     # Runs on the 6-hourly schedule and manual runs only. Was:
@@ -2129,7 +2096,6 @@ jobs:
       - dev-kit
       - dev-precompile
       - macos-native
-      - test-jacpython
       - jac-check
       - contribution-checks
       - test-compiler

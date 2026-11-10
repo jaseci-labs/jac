@@ -787,7 +787,7 @@ test "symbol requests preserve their app and native target context" {
 test "native-only policy is retained in dependency and cache identities" {
     ordinary = _pinned_opts(native_require=[]);
     strict = _pinned_opts(native_required=True, native_require=[]);
-    scoped = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    scoped = _pinned_opts(native_require=["jaclang.data.*"]);
     import from jaclang.compiler.driver.program { JacProgram }
     registry = JacProgram().iface_registry();
     for options in (strict, scoped) {
@@ -800,9 +800,7 @@ test "native-only policy is retained in dependency and cache identities" {
             assert inherited.native_require == options.native_require;
         }
     }
-    assert scoped.native_required_for(
-        "/checkout/jaclang/runtime/python/bindings/module.jac"
-    );
+    assert scoped.native_required_for("/checkout/jaclang/data/store.jac");
     assert not scoped.native_required_for("/checkout/jaclang/runtime/runtime.jac");
 }
 
@@ -810,10 +808,9 @@ test "native-only dependencies stay in the target rather than the compiler host"
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
     program = JacProgram();
-    program.options = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    program.options = _pinned_opts(native_require=["jaclang.data.*"]);
     host = SelfHostCache(_jaclang_root="/checkout/jaclang");
-    assert host.resolve("/checkout/jaclang/runtime/python/capi.jac", program)
-        is program;
+    assert host.resolve("/checkout/jaclang/data/store.jac", program) is program;
     assert host.peek_program() is None;
 }
 

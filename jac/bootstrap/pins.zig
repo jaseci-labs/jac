@@ -76,11 +76,9 @@ pub fn isLibcxx(rel: LlvmRelease) bool {
     return std.mem.indexOf(u8, rel.triple, "-libcxx") != null;
 }
 
-/// The bundled CPython minor, derived from its source pin.
+/// The bundled CPython minor, from pins.json's `pbs` pin.
 pub fn pyMinor(b: *std.Build) []const u8 {
-    const raw = b.build_root.handle.readFileAlloc(b.graph.io, "bootstrap/python/sources.json", b.allocator, .unlimited) catch @panic("missing Python source pins");
-    const sources = std.json.parseFromSliceLeaky(std.json.Value, b.allocator, raw, .{}) catch @panic("invalid Python source pins");
-    const patch = string(field(sources, "cpython"), "version");
+    const patch = string(field(root(b), "pbs"), "python");
     const first = std.mem.indexOfScalar(u8, patch, '.') orelse return patch;
     const second = std.mem.indexOfScalarPos(u8, patch, first + 1, '.') orelse return patch;
     return patch[0..second];
