@@ -332,6 +332,12 @@ test "a fresh checkout reuses a bundle sealed elsewhere through the shared cache
         "a shared bundle must take the deploy umask so other users can read it: "
         + oct(mode)
     );
+    local = list((first_project / ".jac" / "seal-cache").glob("*.jab"))[0];
+    local_mode = local.stat().st_mode & 0o777;
+    assert local_mode == 0o600 , (
+        "a project-cache bundle holds private sources and must stay owner-only: "
+        + oct(local_mode)
+    );
     checkout = _checkout_of(first_project);
     (again, again_log) = _pack_shared(checkout, binary, str(shared));
     assert any(
