@@ -24,24 +24,37 @@ inputs:
       downloads it (it boots from the payload's own sealed image instead).
     required: false
     default: jac-precompiled
+  dev:
+    description: >
+      "true" takes ci.yml's dev kit (jac-dev-kit, the jac-dev-precompiled-*
+      legs, jac-dev-stubcat): a -Ddev binary whose jaclang is this checkout, so the
+      lane is always a reroute. Its artifacts sit in their checkout tiers (the
+      shim, bun and C floor in the tree, the stub catalog in the cache home),
+      and the lane requires those by name instead of `kit`, which a dev binary
+      has no image to answer.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
     - uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.name }}
+        name: ${{ inputs.dev == 'true' && 'jac-dev-kit' || inputs.name }}
         path: jac
 
     - shell: bash
       run: |
         chmod +x "$GITHUB_WORKSPACE/jac/zig-out/bin/jac"
+        if [ -f "$GITHUB_WORKSPACE/jac/jaclang/client/_bun/bun" ]; then
+          chmod +x "$GITHUB_WORKSPACE/jac/jaclang/client/_bun/bun"
+        fi
         echo "$GITHUB_WORKSPACE/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Resolve lane mode
       id: mode
       shell: bash
       env:
-        SEALED: ${{ inputs.sealed }}
+        SEALED: ${{ inputs.dev != 'true' && inputs.sealed || 'false' }}
       run: |
         if [ "$SEALED" = "true" ]; then
           echo "reroute=false" >> "$GITHUB_OUTPUT"
@@ -75,11 +88,31 @@ runs:
     # precompiled_jir_matches_source -- module key plus ct-deps freshness -- so a
     # tree from another compiler generation can only miss, never mis-serve.
     - name: Fetch the shared precompile bundle
-      if: steps.mode.outputs.reroute == 'true'
+      if: steps.mode.outputs.reroute == 'true' && inputs.dev != 'true'
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.precompiled-name }}
         path: jac/jaclang/_precompiled
+
+    # The dev bundle comes from ci.yml's three dev-precompile legs, each a
+    # disjoint share of the same tree.
+    - name: Fetch the dev precompile bundle
+      if: inputs.dev == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: jac-dev-precompiled-*
+        merge-multiple: true
+        path: jac/jaclang/_precompiled
+
+    # The dev kit's stub catalog, into the cache-home slot the compiler looks
+    # it up in (stubcat/locate.jac dev_catalog_path, under the pinned
+    # XDG_CACHE_HOME above).
+    - name: Fetch the dev kit's stub catalog
+      if: inputs.dev == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-dev-stubcat
+        path: ${{ runner.temp }}/.cache/jac/jir/stubcat
 
     - name: Seed the reroute from the shared bundle
       if: steps.mode.outputs.reroute == 'true'
@@ -112,6 +145,7 @@ runs:
       shell: bash
       env:
         REROUTE: ${{ steps.mode.outputs.reroute }}
+        REQUIRE: ${{ inputs.dev == 'true' && 'precompiled,llvm-shim,typeshed,stubcat,musl,wasm-libc,c-floor,bun' || 'kit' }}
       run: |
         set -euo pipefail
         WORK="$(mktemp -d)"
@@ -129,7 +163,7 @@ runs:
         # except what the kit's manifest declares it leaves out (a pull
         # request's kit omits the kernel and runs the bytecode compiler).
         jac native status
-        jac native status --require kit
+        jac native status --require "$REQUIRE"
         if compgen -G "$GITHUB_WORKSPACE/jac/jaclang/compiler/libjac_compiler.*" >/dev/null; then
           echo "::error::resolving the kernel wrote one beside the loader"
           exit 1
