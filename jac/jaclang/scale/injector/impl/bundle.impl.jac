@@ -1146,9 +1146,9 @@ impl _remember_seal(cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KE
     partial = "";
     try {
         cache.mkdir(parents=True, exist_ok=True);
-        (fd, partial) = tempfile.mkstemp(
-            dir=str(cache), prefix=f"{key}.", suffix=".partial"
-        );
+        name = cache / f"{key}.{os.getpid()}.{os.urandom(4).hex()}.partial";
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666);
+        partial = str(name);
         with os.fdopen(fd, "wb") as out {
             out.write(raw);
         }
