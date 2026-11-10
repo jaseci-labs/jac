@@ -2392,7 +2392,8 @@ test "jac check native coverage ranks module outcomes" {
         assert "native coverage" in combined.lower() , "coverage header missing";
         assert "native seams" in combined , (
             "a module whose callable demoted granularly must be reported "
-            "under the native-seams section"
+            "under the native-seams section",
+            combined
         );
         assert "E5092" in combined , (
             "the seam reason must carry the first error code"
