@@ -45,6 +45,13 @@ fn shimFileName(target: std.Build.ResolvedTarget) []const u8 {
         else => "libjacllvm.so",
     };
 }
+// Whether a shim sits at its in-tree place path, put there by an earlier build
+// or restored from cache.
+fn shimPlacedInTree(b: *std.Build, target: std.Build.ResolvedTarget) bool {
+    const rel = b.fmt("{s}/{s}", .{ SHIM_PLACE_DIR, shimFileName(target) });
+    b.build_root.handle.access(b.graph.io, rel, .{}) catch return false;
+    return true;
+}
 fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
     const rel = pins.llvmRelease(b, osArchString(target.result)) orelse return null;
     return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, rel.dirname });
