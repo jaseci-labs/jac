@@ -71,6 +71,16 @@ impl JacClientPluginConfig.get_config_schema -> dict[str, any] {
                         "type": "dict",
                         "default": {},
                         "description": "Registry authentication tokens (e.g., '//npm.pkg.github.com/' = { _authToken = '${NODE_AUTH_TOKEN}' })"
+                    },
+                    "min_release_age_days": {
+                        "type": "float",
+                        "default": 1,
+                        "description": "Skip package versions published fewer than this many days ago; 0 turns it off"
+                    },
+                    "min_release_age_excludes": {
+                        "type": "list",
+                        "default": [],
+                        "description": "Packages the minimum release age does not apply to (a name, or 'name@1.2.3' for one version)"
                     }
                 }
             }

@@ -1373,6 +1373,8 @@ The `[client.npm]` section configures custom npm registries and authentication f
 | `settings` | `dict` | Global `.npmrc` key-value settings (registry, always-auth, strict-ssl, proxy, etc.) |
 | `scoped_registries` | `dict` | Maps npm scopes to registry URLs |
 | `auth` | `dict` | Registry authentication tokens |
+| `min_release_age_days` | `float` | Skip package versions published fewer than this many days ago (default `1`) |
+| `min_release_age_excludes` | `list` | Packages the age limit does not apply to |
 
 **Global settings** emit arbitrary `.npmrc` key-value pairs:
 
@@ -1402,6 +1404,16 @@ _authToken = "${NODE_AUTH_TOKEN}"
 The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
 
 The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac run`, or `jac build`).
+
+**Minimum release age.** When Jac installs npm dependencies (client builds, global tools, desktop and mobile setup), it skips any package version published less than a day ago and picks the newest older version that still matches. Brand-new versions can fail to download for several minutes after they are published, and waiting a day also gives the npm community time to catch a bad release. Versions already in your lockfile are not affected.
+
+```toml
+[client.npm]
+min_release_age_days = 3                          # 0 turns it off
+min_release_age_excludes = ["react", "vite@7.1.2"] # a package name, or name@version for one version
+```
+
+If the only version that matches a dependency is too new, for example when you pin a version released today, the install fails with a `minimum-release-age` error. Add that package to `min_release_age_excludes` to install it anyway. Both settings apply to every install in the project, including desktop and mobile setup, and `jac install --npm --global` uses the project it is run from. A client build also honours an app's own `[apps.<name>.client.npm]` values. If the install folder already has its own `bunfig.toml`, Jac leaves it alone and does not add the excludes to it.
 
 ### Import Path Aliases
 

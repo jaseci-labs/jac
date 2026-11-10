@@ -97,18 +97,23 @@ test "the package manager runs in a child process, on the engine when one is cur
         assert path == link;
         assert outcome == (0, "out");
         (argv, search) = ran[-1];
-        assert argv == [link, "install"];
+        assert argv == [link, "install", "--minimum-release-age=86400"];
         assert search.split(os.pathsep)[0] == f"{tmp}/bin" , "install scripts must find the engine's node first";
     }
     def with_bun -> any {
         with patch.object(js_runtime, "js_runtime_path", return_value="/opt/bun"), patch(
             "subprocess.run", side_effect=child
         ) {
+            js_runtime.run_pm(["x", "vite"], "/proj", capture=True);
             return js_runtime.run_pm(["add", "vite"], "/proj", capture=True);
         }
     }
     assert _with_engine(None, with_bun) == (0, "out");
-    assert ran[-1][0] == ["/opt/bun", "add", "vite"];
+    assert [argv for (argv, _) in ran[-2:]]
+        == [
+            ["/opt/bun", "x", "vite"],
+            ["/opt/bun", "add", "--minimum-release-age=86400", "vite"]
+        ];
 }
 
 test "a restored build is installed without being rebuilt" {
