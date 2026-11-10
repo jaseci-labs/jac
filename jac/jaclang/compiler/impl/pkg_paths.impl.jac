@@ -1,5 +1,4 @@
 impl target_pkg_root -> str {
-    import from jaclang.compiler.frontend.host { package_root }
     return package_root();
 }
 

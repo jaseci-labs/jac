@@ -7252,6 +7252,7 @@ graph import compiler {
             active_host
         },
         passes.package_boundary_pass { ProjectFacts, active_host },
+        pkg_paths.target_pkg_root { package_root },
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
     frontend.host --> [
@@ -7287,7 +7288,6 @@ graph import compiler {
         driver.program.JacProgram.native_units { active_host },
         driver.program.JacProgram.release_compile_closure { active_host },
         driver.program.JacProgram.stub_catalog { active_host },
-        pkg_paths.target_pkg_root { package_root },
     ]
     type frontend.host ++> driver.compiler { HostServices }
     frontend.loop_links ++> [
