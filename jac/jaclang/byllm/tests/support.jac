@@ -18,8 +18,12 @@ reports about it: `say(..., model=...)` for the model that answered,
 The file is not collected as a suite: it has no `test_` prefix by design.
 """
 
+import atexit;
+import functools;
 import logging;
 import os;
+import shutil;
+import tempfile;
 import from unittest { mock }
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.llm { BaseLLM }
@@ -229,6 +233,31 @@ def mk_run(
 """The path of the fixture file or directory `name`."""
 def fixture_path(name: str) -> str {
     return os.path.join(FIXTURE_DIR, name);
+}
+
+
+"""A tiny media file of `kind` ("jpg", "webp" or "avi"), generated once per run into a
+temp dir. A video needs OpenCV, an image needs Pillow."""
+@functools.cache
+def media_file(kind: str) -> str {
+    directory = tempfile.mkdtemp(prefix="byllm-media-");
+    atexit.register(shutil.rmtree, directory, True);
+    path = os.path.join(directory, f"sample.{kind}");
+    if kind == "avi" {
+        import cv2;
+        import numpy;
+        writer = cv2.VideoWriter(
+            path, cv2.VideoWriter_fourcc("M", "J", "P", "G"), 4, (32, 32)
+        );
+        for i in range(8) {
+            writer.write(numpy.full((32, 32, 3), i * 30, dtype=numpy.uint8));
+        }
+        writer.release();
+        return path;
+    }
+    import from PIL { Image as PILImage }
+    PILImage.new("RGB", (16, 16), (200, 30, 30)).save(path);
+    return path;
 }
 
 

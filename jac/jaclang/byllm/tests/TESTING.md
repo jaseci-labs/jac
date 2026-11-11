@@ -148,7 +148,9 @@ so it compiles and runs on its own. It has no `with entry`, no `print` and no `a
 | graph | `routing_graph.jac`, `agent_graph.jac` | a static `import from fixtures.routing_graph { ... }` |
 | config | `compaction_config/`, `jac_toml_gemini/` | `get_byllm_config(Path(fixture_path(dir)))` |
 | project, a module beside its own `jac.toml` | `system_prompt_override/` | `Jac.jac_import(name, base_path=fixture_path(dir))` |
-| media | `image.jpg`, `SampleVideo_1280x720_2mb.mp4` | `Image(fixture_path(file))` |
+
+Media is not checked in: `media_file(kind)` writes a tiny `jpg`, `webp` or `avi` at run
+time, and a test passes its path to `Image(...)` or `Video(path=...)`.
 
 ## Rules
 
