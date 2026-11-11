@@ -132,6 +132,8 @@ test "a heavy jac0 connect gives each endpoint its own edge list" {
 
 node LastInProbe {}
 
+edge LastInSolo: LastInProbe --> LastInProbe {}
+
 edge LastInLink: LastInProbe --> LastInProbe {}
 
 edge LastInSubLink(LastInLink): LastInProbe --> LastInProbe {}
@@ -142,29 +144,36 @@ edge LastInWeighted: LastInProbe --> LastInProbe {
 
 test "last_in0 answers what the in-hop's last element is, on every path" {
     import from jaclang.jac0core.osp0 { connect0, disconnect0, hop0, last_in0 }
+    import from jaclang.runtime.archetype { edge_subtypes }
     def hop_last(n: LastInProbe, e: type) -> (LastInProbe | None) {
         found = hop0(n, 1, e);
         return found[-1] if found else None;
     }
+    assert len(edge_subtypes(LastInSolo)) == 1;
     child = LastInProbe();
     first = LastInProbe();
     second = LastInProbe();
-    assert last_in0(child, LastInLink) is None;
-    connect0(first, child, LastInLink);
-    assert last_in0(child, LastInLink) is first;
-    connect0(second, child, LastInLink);
-    assert last_in0(child, LastInLink) is second;
-    assert last_in0(child, LastInLink) is hop_last(child, LastInLink);
+    assert last_in0(child, LastInSolo) is None;
+    connect0(first, child, LastInSolo);
+    assert last_in0(child, LastInSolo) is first;
+    connect0(second, child, LastInSolo);
+    assert not child.__jac__.edges;
+    assert last_in0(child, LastInSolo) is second;
+    assert last_in0(child, LastInSolo) is hop_last(child, LastInSolo);
     disconnect0(second, child);
-    assert last_in0(child, LastInLink) is first;
+    assert last_in0(child, LastInSolo) is first;
+    assert last_in0(child, LastInSolo) is hop_last(child, LastInSolo);
     weighted = LastInProbe();
     holder = LastInProbe();
     connect0(holder, weighted, LastInWeighted);
     assert last_in0(weighted, LastInWeighted) is holder;
     assert last_in0(weighted, LastInWeighted) is hop_last(weighted, LastInWeighted);
     sub_child = LastInProbe();
+    plain_parent = LastInProbe();
     sub_parent = LastInProbe();
+    connect0(plain_parent, sub_child, LastInLink);
     connect0(sub_parent, sub_child, LastInSubLink);
+    assert len(edge_subtypes(LastInLink)) == 2;
     assert last_in0(sub_child, LastInLink) is hop_last(sub_child, LastInLink);
     assert last_in0(sub_child, LastInLink) is sub_parent;
 }
