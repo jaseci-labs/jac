@@ -1115,6 +1115,8 @@ impl JacAPIServer._refresh_dev_endpoints -> None {
         } except SourcesChanged {
             self._hmr_pending = True;
             return;
+        } except (BuildFailed, ClientBundleError) {
+            return;
         }
     }
     if self.app is None {
