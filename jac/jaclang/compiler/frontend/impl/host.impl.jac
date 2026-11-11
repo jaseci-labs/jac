@@ -66,8 +66,6 @@ impl HostServices.client_pulls(path: str) -> str {
     return "";
 }
 
-impl HostServices.client_pull_grew(path: str) {}
-
 impl HostServices.has_npm_package(spec: str, base_path: str) -> bool {
     return False;
 }
@@ -96,12 +94,6 @@ impl HostServices.parse_python(
     source_str: str, file_path: str, program: JacProgram
 ) -> tuple[Module, bool] {
     raise RuntimeError("no compiler host is installed");
-}
-
-impl HostServices.stub_interface(
-    program: JacProgram, file_path: str
-) -> (Module | None) {
-    return None;
 }
 
 impl HostServices.ct_environment -> CtEnvironment {
@@ -190,12 +182,6 @@ impl HostServices.native_deps_deferred(program: JacProgram) -> bool {
     return False;
 }
 
-impl HostServices.held_native_iface(
-    program: JacProgram, path: str, options: CompileOptions
-) -> str {
-    return "";
-}
-
 impl HostServices.native_lowering_failed(
     program: JacProgram, path: str, detail: str
 ) {}
@@ -274,12 +260,6 @@ impl HostServices.build_module(
     raise RuntimeError("no compiler host is installed");
 }
 
-impl HostServices.run_module_pipeline(
-    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
-) -> Module {
-    raise RuntimeError("no compiler host is installed");
-}
-
 impl HostServices.internal_program(program: JacProgram) -> (JacProgram | None) {
     return None;
 }
@@ -335,10 +315,6 @@ impl HostServices.is_native_lowered_source(rel: str) -> bool {
 
 impl HostServices.default_target_triple -> str {
     return "";
-}
-
-impl HostServices.host_side -> HostServices {
-    return self;
 }
 
 impl active_host -> HostServices {

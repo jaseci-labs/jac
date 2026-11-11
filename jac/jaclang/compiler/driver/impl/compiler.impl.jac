@@ -52,9 +52,9 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
 }
 
 impl JacCompiler.product_program(
-    full_target: str, target_program: JacProgram, execution: bool = False
+    full_target: str, target_program: JacProgram
 ) -> JacProgram {
-    actual = self.selfhost.resolve(full_target, target_program, execution=execution);
+    actual = self.selfhost.resolve(full_target, target_program);
     if actual.internal {
         return actual;
     }
@@ -64,7 +64,7 @@ impl JacCompiler.product_program(
 impl JacCompiler.get_native_interop_setup(
     full_target: str, target_program: JacProgram
 ) -> tuple[((object | None), (dict[(str, object)] | None))] {
-    actual_program = self.product_program(full_target, target_program, execution=True);
+    actual_program = self.product_program(full_target, target_program);
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
         return (gen.native_engine, gen.interop_py_funcs);
@@ -86,7 +86,7 @@ impl JacCompiler.get_native_interop_setup(
 impl JacCompiler.get_native_layout(
     full_target: str, target_program: JacProgram
 ) -> (NativeModuleLayout | None) {
-    actual_program = self.product_program(full_target, target_program, execution=True);
+    actual_program = self.product_program(full_target, target_program);
     _layout: NativeModuleLayout | None = None;
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
@@ -124,7 +124,7 @@ impl JacCompiler.get_bytecode(
             read_file_with_encoding(full_target), full_target, 'exec'
         );
     }
-    actual = self.product_program(full_target, target_program, execution=True);
+    actual = self.product_program(full_target, target_program);
     with compilation_scope(owner_scope_options(actual)) {
         return self._get_bytecode(full_target, actual, skip_analysis);
     }
@@ -133,7 +133,7 @@ impl JacCompiler.get_bytecode(
 impl JacCompiler._get_bytecode(
     full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
-    actual_program = self.selfhost.resolve(full_target, target_program, execution=True);
+    actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
     symtab_only_recovery = False;
 
@@ -324,7 +324,7 @@ impl JacCompiler.native_entry_engine(
     if self.get_bytecode(full_target=path, target_program=target_program) is None {
         return None;
     }
-    actual = self.product_program(path, target_program, execution=True);
+    actual = self.product_program(path, target_program);
     placed = summary_store(actual).get(os.path.abspath(path));
     if placed is None or placed.decided != 'native' {
         return None;
@@ -669,13 +669,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     frame.retain_selfhost = target_program.internal;
     if frame.retain_selfhost {
         self.selfhost.enter_execution();
-        import from jaclang.compiler.frontend.host { active_host, install_host }
-        session_host = active_host();
-        host_side = session_host.host_side();
-        if host_side is not session_host {
-            frame.session_host = session_host;
-            install_host(host_side);
-        }
     }
     return frame;
 }
@@ -726,10 +719,6 @@ impl JacCompiler.finish_compile(frame: CompileFrame) {
     }
     if frame.retain_selfhost {
         self.selfhost.exit_execution();
-    }
-    if frame.session_host is not None {
-        import from jaclang.compiler.frontend.host { install_host }
-        install_host(frame.session_host);
     }
 }
 
@@ -1189,38 +1178,6 @@ impl cached_client_pulls(full_target: str) -> str {
         return "";
     }
     return ",".join([str(index) for index in held.pulled]);
-}
-
-impl assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]] {
-    if not jcir {
-        return (None, []);
-    }
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    result = compile_ir(jcir);
-    if result.modules and not result.diags {
-        return (result.modules[0].bytecode, []);
-    }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.frontend.diagnostics { E5043 }
-    import from jaclang.compiler.frontend.srcloc { Span }
-    import from jaclang.compiler.passes.context { Alert }
-    return (
-        None,
-        [
-            Alert(
-                msg=E5043.format_message(error=d.message),
-                loc=Span(
-                    mod_path=d.mod_path or path,
-                    first_line=d.first_line,
-                    last_line=d.last_line,
-                    col_start=d.col_start,
-                    col_end=d.col_end
-                ),
-                from_pass=JcirBytecodeGenPass,
-                code=E5043
-            ) for d in result.diags
-        ]
-    );
 }
 
 impl unit_sections(

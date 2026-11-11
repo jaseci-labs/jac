@@ -78,7 +78,6 @@ obj HostServices {
     def in_typeshed_tree(path: str) -> bool;
     def sibling_declaration(js_path: str) -> (str | None);
     def client_pulls(path: str) -> str;
-    def client_pull_grew(path: str);
     def has_npm_package(spec: str, base_path: str) -> bool;
     def resolve_npm_package(spec: str, base_path: str) -> (str | None);
     def npm_declarations(spec: str, base_path: str) -> (str | None);
@@ -92,7 +91,6 @@ obj HostServices {
         source_str: str, file_path: str, program: JacProgram
     ) -> tuple[Module, bool];
 
-    def stub_interface(program: JacProgram, file_path: str) -> (Module | None);
     def ct_environment -> CtEnvironment;
     def path_facts(path: str) -> PathFacts;
     def host_platform -> HostPlatform;
@@ -118,10 +116,6 @@ obj HostServices {
 
     def native_dep_discovery_open(program: JacProgram) -> bool;
     def native_deps_deferred(program: JacProgram) -> bool;
-    def held_native_iface(
-        program: JacProgram, path: str, options: CompileOptions
-    ) -> str;
-
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
     def native_fact(kind: str, key: str) -> str;
     def save_native_debug_ir(path: str, text: str);
@@ -158,13 +152,6 @@ obj HostServices {
         program: JacProgram, file_path: str, use_str: (str | None)
     ) -> Module;
 
-    def run_module_pipeline(
-        program: JacProgram,
-        file_path: str,
-        use_str: (str | None),
-        options: CompileOptions
-    ) -> Module;
-
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);
@@ -180,7 +167,6 @@ obj HostServices {
     def is_native_only_source(rel: str) -> bool;
     def is_native_lowered_source(rel: str) -> bool;
     def default_target_triple -> str;
-    def host_side -> HostServices;
 }
 
 obj NeutralHost(HostServices) {}

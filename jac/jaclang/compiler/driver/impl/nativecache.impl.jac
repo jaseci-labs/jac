@@ -2,13 +2,6 @@ impl NativeUnitRegistry.postinit {
     self.building = set();
 }
 
-impl NativeUnitRegistry.begin_parse(path: str) {
-    if self.session is not None {
-        self.session.settle_heap();
-    }
-    self.note_step("parse", path);
-}
-
 impl NativeUnitRegistry.note_step(
     verb: str, path: str = "", detail: str = ""
 ) -> float {
@@ -127,12 +120,6 @@ impl NativeUnitRegistry._add_time(name: str, seconds: float) {
 
 impl NativeUnitRegistry._timed(name: str, started: float) {
     self._add_time(name, time.perf_counter() - started);
-}
-
-impl NativeUnitRegistry._timed_unit(name: str, path: str, started: float) {
-    elapsed = time.perf_counter() - started;
-    self._add_time(name, elapsed);
-    self.unit_lower_seconds[path] = self.unit_lower_seconds.get(path, 0.0) + elapsed;
 }
 
 impl NativeUnitRegistry.phase_summary -> str {
@@ -884,7 +871,7 @@ impl NativeBuildSession.lower(
                 pending = self.deferred.pop();
                 self.discovery_open.pop();
             }
-            self.registry._timed_unit("NATIVE_LOWER", resolved, started);
+            self.registry._timed("NATIVE_LOWER", started);
             if not pending {
                 break;
             }
@@ -921,12 +908,8 @@ impl NativeBuildSession.lower(
             }
             return None;
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            settle_unit_ir,
-            unit_function_counts
-        }
+        import from jaclang.compiler.backends.native.na_compile_pass { settle_unit_ir }
         settle_unit_ir(mod);
-        self.registry.unit_functions[resolved] = unit_function_counts(mod.gen.llvm_ir);
         self.lowered[resolved] = mod;
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
@@ -934,10 +917,6 @@ impl NativeBuildSession.lower(
             self.compact_ir([resolved]);
         }
         self.settle_heap();
-        self.registry.lowered_units += 1;
-        if 0 < self.registry.stop_after <= self.registry.lowered_units {
-            raise NativeBuildStopped();
-        }
         return ent;
     } except Exception {
         import traceback;
