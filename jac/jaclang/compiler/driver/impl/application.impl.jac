@@ -334,7 +334,7 @@ impl _warn_private_declarations(application: PreparedApplication, console: any) 
 impl _check(program: any, before: any) {
     errors = program.errors_had[before:];
     if errors {
-        raise RuntimeError('\n'.join(e.pretty_print() for e in errors));
+        raise BuildFailed('\n'.join(e.pretty_print() for e in errors));
     }
 }
 
