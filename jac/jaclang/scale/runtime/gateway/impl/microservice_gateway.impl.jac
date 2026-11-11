@@ -57,10 +57,43 @@ impl MicroserviceGateway.serve_static(
     if not target.is_file() {
         return None;
     }
-    if _HASHED_ASSET.search(target.name) {
+    built = _built_hashed_files(dist_resolved);
+    hashed = resolved.relative_to(dist_resolved).as_posix() in built
+        if built is not None
+        else _HASHED_ASSET.search(target.name) is not None;
+    if hashed {
         return self.static_file(request, target, IMMUTABLE_CACHE);
     }
     return self.static_file(request, target);
+}
+
+impl _built_hashed_files(dist: Path) -> (frozenset[str] | None) {
+    manifest = dist / ".vite" / "manifest.json";
+    try {
+        stamp = manifest.stat().st_mtime_ns;
+    } except OSError {
+        return None;
+    }
+    key = str(manifest);
+    held = _BUILT_HASHED.get(key);
+    if held is not None and held[0] == stamp {
+        return held[1];
+    }
+    try {
+        data = json.loads(manifest.read_text(encoding="utf-8"));
+    } except (OSError, ValueError) {
+        return None;
+    }
+    files: set[str] = set();
+    for chunk in (data.values() if isinstance(data, dict) else []) {
+        name = chunk.get("file") if isinstance(chunk, dict) else None;
+        if isinstance(name, str) and name.endswith((".js", ".mjs")) {
+            files.add(name);
+        }
+    }
+    found = frozenset(files);
+    _BUILT_HASHED[key] = (stamp, found);
+    return found;
 }
 
 impl MicroserviceGateway.serve_project_static(
