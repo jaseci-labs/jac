@@ -55,7 +55,8 @@ async def promise_array(sources: list[Promise[object]]) -> object {
     pending = Promise.withResolvers();
     pending.resolve(await Promise.any(sources));
     copied: list[object] = await Array.fromAsync(sources);
-    return [copied, await pending.promise];
+    settled: Promise[object] = pending.promise;
+    return [copied, await settled];
 }
 
 def date_regexp(stamp: str) -> str {
