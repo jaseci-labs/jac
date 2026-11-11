@@ -111,7 +111,9 @@ test "a string that is a statement, a docstring target or an expression is not E
         "a wrapped concatenation": 'def f(x: int) -> str {\n    "total: "\n    + str(x)\n}\n',
         "a method call": 'def f(x: int) -> str {\n    ", "\n    .join([str(x), "a"])\n}\n',
         "an implicit return": 'def name -> str {\n    "Bob"\n}\n',
-        "a # comment": in_function("# Doc.\n    print(x);")
+        "a # comment": in_function("# Doc.\n    print(x);"),
+        "a wrapped 'not in'": 'def f(s: str) -> bool {\n    "a"\n    not in s\n}\n',
+        "a wrapped 'is not'": 'def f -> bool {\n    "a"\n    is not None\n}\n'
     };
     for (kind, source) in sources.items() {
         prog = compile_source(source);
@@ -119,6 +121,14 @@ test "a string that is a statement, a docstring target or an expression is not E
         if kind == "with ';'" {
             assert "W0060" in warning_codes_of(prog);
         }
+    }
+    broken = {
+        "a typo in a wrapped ternary": 'def label(x: int) -> str {\n    "positive"\n    if x > 0\n    else "other" +\n}\n',
+        "before has": 'def f -> int {\n    """Doc."""\n    has x: int = 1;\n    return 1;\n}\n'
+    };
+    for (kind, source) in broken.items() {
+        got = errors_of(compile_source(source));
+        assert got and "E0111" not in [code for (code, _) in got] , f"{kind}: {got}";
     }
 }
 

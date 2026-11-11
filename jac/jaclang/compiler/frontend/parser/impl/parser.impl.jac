@@ -1654,8 +1654,7 @@ impl Parser.parse_multistring -> Expr | None {
     strings: list[String | FString] = [];
 
     if self.check(TokenKind.NAME)
-        and self.current().value
-            in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+        and is_string_prefix(self.current().value)
         and self.check_peek(TokenKind.STRING) {
         prefix_tok = self.expect(TokenKind.NAME);
         str_tok = self.expect(TokenKind.STRING);
@@ -1693,8 +1692,7 @@ impl Parser.parse_multistring -> Expr | None {
         )
         or (
             self.check(TokenKind.NAME)
-            and self.current().value
-                in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+            and is_string_prefix(self.current().value)
             and self.check_peek(TokenKind.STRING)
         ) {
         if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
@@ -1848,8 +1846,7 @@ impl Parser.parse_atom -> Expr {
         )
         or (
             self.check(TokenKind.NAME)
-            and self.current().value
-                in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+            and is_string_prefix(self.current().value)
             and self.check_peek(TokenKind.STRING)
         ) {
         ms_val = self.parse_multistring();
@@ -3593,8 +3590,7 @@ impl Parser._docstring_runs_on -> bool {
         if tok.kind == TokenKind.STRING {
             i += 1;
         } elif tok.kind == TokenKind.NAME
-            and tok.value
-                in ["r", "b", "rb", "br", "R", "B", "rB", "Rb", "bR", "Br", "BR", "RB"]
+            and is_string_prefix(tok.value)
             and self.tokens[i + 1].kind == TokenKind.STRING {
             i += 2;
         } else {
@@ -3605,49 +3601,31 @@ impl Parser._docstring_runs_on -> bool {
         return False;
     }
     nxt = self.tokens[i];
-    if nxt.loc.line <= self.tokens[i - 1].loc.end_line {
+    if nxt.loc.line <= self.tokens[i - 1].loc.end_line
+        or not starts_new_statement(nxt.kind) {
         return False;
     }
     if nxt.kind == TokenKind.KW_IF {
-        if self.pos not in self._ternary_at {
+        if i not in self._ternary_at {
             save_pos = self.pos;
             saved_error_count = self.error_count;
             saved_diags_len = len(self.diags);
+            self.pos = i + 1;
             self.parse_expression();
-            is_ternary = True;
-            for k in range(saved_diags_len, len(self.diags)) {
-                if self.diags[k].is_error and self.diags[k].code_str != "E0111" {
-                    is_ternary = False;
-                }
-            }
-            self._ternary_at[save_pos] = is_ternary;
-            self.pos = save_pos;
-            self.error_count = saved_error_count;
-            while len(self.diags) > saved_diags_len {
-                self.diags.pop();
-            }
+            self._ternary_at[i] = self.check(TokenKind.KW_ELSE);
+            self._rewind(save_pos, saved_error_count, saved_diags_len);
         }
-        return not self._ternary_at[self.pos];
+        return not self._ternary_at[i];
     }
-    return not (
-        is_string_continuation_kind(nxt.kind)
-        or nxt.kind
-            in [
-                TokenKind.SEMI,
-                TokenKind.RBRACE,
-                TokenKind.EOF,
-                TokenKind.KW_DEF,
-                TokenKind.KW_CAN,
-                TokenKind.KW_OVERRIDE,
-                TokenKind.KW_STATIC,
-                TokenKind.KW_ASYNC,
-                TokenKind.KW_OBJECT,
-                TokenKind.KW_NODE,
-                TokenKind.KW_EDGE,
-                TokenKind.KW_WALKER,
-                TokenKind.KW_CLASS
-            ]
-    );
+    return True;
+}
+
+impl Parser._rewind(pos: int, error_count: int, diags_len: int) {
+    self.pos = pos;
+    self.error_count = error_count;
+    while len(self.diags) > diags_len {
+        self.diags.pop();
+    }
 }
 
 impl Parser._apply_implicit_return(body: list[CodeBlockStmt]) -> list[CodeBlockStmt] {
@@ -3760,11 +3738,7 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
             return ExprStmt(expr=inner_expr, in_fstring=False, kid=expr_kid);
         }
 
-        self.pos = save_pos;
-        self.error_count = saved_error_count;
-        while len(self.diags) > saved_diags_len {
-            self.diags.pop();
-        }
+        self._rewind(save_pos, saved_error_count, saved_diags_len);
     }
 
     if self.is_keyword_token()

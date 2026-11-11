@@ -41,8 +41,14 @@ impl is_special_var_kind(kind: TokenKind) -> bool {
     return kind in SPECIAL_VAR_KINDS;
 }
 
-impl is_string_continuation_kind(kind: TokenKind) -> bool {
-    return kind in STRING_CONTINUATION_KINDS;
+impl starts_new_statement(kind: TokenKind) -> bool {
+    return kind in NEW_STATEMENT_KINDS
+        or is_builtin_type_kind(kind)
+        or is_special_var_kind(kind);
+}
+
+impl is_string_prefix(text: str) -> bool {
+    return text in STRING_PREFIXES;
 }
 
 impl is_name_usable_kind(kind: TokenKind) -> bool {

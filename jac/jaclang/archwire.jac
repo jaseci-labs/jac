@@ -12705,7 +12705,8 @@ graph import compiler.frontend.parser {
             is_name_usable_kind,
             is_reserved_kind,
             is_special_var_kind,
-            is_string_continuation_kind
+            is_string_prefix,
+            starts_new_statement
         },
     ]
 }

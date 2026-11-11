@@ -330,6 +330,7 @@ obj Parser {
     def parse_code_block_stmts -> list[CodeBlockStmt];
     def _take_stray_docstring -> (ExprStmt | None);
     def _docstring_runs_on -> bool;
+    def _rewind(pos: int, error_count: int, diags_len: int);
     def _apply_implicit_return(body: list[CodeBlockStmt]) -> list[CodeBlockStmt];
     def parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None;
     def parse_statement -> CodeBlockStmt | None;
