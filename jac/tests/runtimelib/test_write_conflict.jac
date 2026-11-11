@@ -80,7 +80,9 @@ test "a stored anchor carries a version that advances on write" {
 """A reads the counter and ends its transaction, B commits n=99, and A goes on
 by `mode`: "commit" or "rollback" name how A's transaction ended; "assign" and
 "in place" also have A write over its stale copy, which must report a conflict.
-Either way A then holds B's value, and an in-place edit on top of it is stored."""
+Either way A then holds B's value, and an in-place edit on top of it is stored.
+In "deleted" B removes the counter instead, A's write over it must report a
+conflict, and the row stays gone after A's commit, retry and close (jac#10419)."""
 def _after_other_commit(td: str, mode: str) {
     old = JacRuntime.exec_ctx;
     ctx1 = _ctx(td);
@@ -117,17 +119,21 @@ def _after_other_commit(td: str, mode: str) {
         try {
             b = ctxb.mem.get(cid);
             assert b is not None;
-            _as_any(b).archetype.n = 99;
-            _as_any(b).archetype.tags = ["b"];
-            ctxb.mem.mark_dirty(b);
+            if mode == "deleted" {
+                ctxb.mem.delete(cid);
+            } else {
+                _as_any(b).archetype.n = 99;
+                _as_any(b).archetype.tags = ["b"];
+                ctxb.mem.mark_dirty(b);
+            }
             ctxb.mem.commit();
         } finally {
             ctxb.close();
         }
 
         JacRuntime.exec_ctx = ctxa;
-        if mode in ["assign", "in place"] {
-            if mode == "assign" {
+        if mode in ["assign", "in place", "deleted"] {
+            if mode in ["assign", "deleted"] {
                 _as_any(a).archetype.n = seen + 1;
                 ctxa.mem.mark_dirty(a);
             } else {
@@ -147,10 +153,22 @@ def _after_other_commit(td: str, mode: str) {
             # Reported once, then gone: the next read must not flush it again.
             ctxa.mem.read_barrier();
         }
-        assert ctxa.mem.get(cid) is a , f"{mode}: a held node was replaced";
-        assert _as_any(a).archetype.n == 99 , f"{mode}: A still sees its stale copy";
-        _as_any(a).archetype.tags.append("a");
-        ctxa.mem.commit();
+        if mode == "deleted" {
+            assert ctxa.mem.store is not None;
+            gone = ctxa.mem.store.rows(
+                "SELECT count(*) FROM anchors WHERE id = CAST(:i AS uuid)",
+                {"i": str(cid)}
+            )[0][0];
+            assert int(gone) == 0 , (
+                f"{mode}: a stale write recreated the node another session deleted"
+            );
+            ctxa.mem.commit();
+        } else {
+            assert ctxa.mem.get(cid) is a , f"{mode}: a held node was replaced";
+            assert _as_any(a).archetype.n == 99 , f"{mode}: A still sees its stale copy";
+            _as_any(a).archetype.tags.append("a");
+            ctxa.mem.commit();
+        }
     } finally {
         JacRuntime.exec_ctx = old;
         ctxa.close();
@@ -159,9 +177,13 @@ def _after_other_commit(td: str, mode: str) {
     JacRuntime.exec_ctx = ctxr;
     try {
         r = ctxr.mem.get(cid);
-        assert r is not None and _as_any(r).archetype.tags == ["b", "a"] , (
-            f"{mode}: A's in-place write over B's value was not stored"
-        );
+        if mode == "deleted" {
+            assert r is None , f"{mode}: the deleted node is back after A closed";
+        } else {
+            assert r is not None and _as_any(r).archetype.tags == ["b", "a"] , (
+                f"{mode}: A's in-place write over B's value was not stored"
+            );
+        }
     } finally {
         JacRuntime.exec_ctx = old;
         ctxr.close();
@@ -170,7 +192,7 @@ def _after_other_commit(td: str, mode: str) {
 
 
 test "a write over a stale read reports instead of vanishing" {
-    for mode in ["commit", "rollback", "assign", "in place"] {
+    for mode in ["commit", "rollback", "assign", "in place", "deleted"] {
         with TemporaryDirectory() as td {
             _after_other_commit(td, mode);
         }
