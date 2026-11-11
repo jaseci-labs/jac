@@ -337,3 +337,29 @@ test "an open websocket is closed once its session ends" {
     assert ctx.closed;
     assert socket.closed_with == ["revoked"];
 }
+
+
+test "a websocket whose session cannot be checked is closed, not left unchecked" {
+    import from jaclang.scale.websocket.protocol { ws_heartbeat_loop }
+    import from jaclang.scale.websocket.websocket { ConnectionContext }
+    obj FakeSocket {
+        has closed_with: list[str] = [];
+        async def close(code: int, reason: str) {
+            self.closed_with.append(reason);
+        }
+    }
+    def unreachable(user_id: str, session_epoch: (int | None)) -> bool {
+        raise ConnectionError("database unavailable");
+    }
+    socket = FakeSocket();
+    ctx = ConnectionContext(
+        websocket=socket,
+        target_kind="function",
+        target_name="f",
+        user_id="u1",
+        session_epoch=0
+    );
+    asyncio.run(ws_heartbeat_loop(ctx, 0.01, 1000, unreachable));
+    assert ctx.closed;
+    assert socket.closed_with == ["revoked"];
+}

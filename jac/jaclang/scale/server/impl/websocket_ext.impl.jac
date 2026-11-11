@@ -106,8 +106,8 @@ impl serve_ws_connection(
             }
             if requires_auth
                 and ctx.user_id
-                and not await asyncio.to_thread(
-                    user_manager.session_current, ctx.user_id, ctx.session_epoch
+                and not await ws_session_still_current(
+                    user_manager.session_current, ctx
                 ) {
                 await ws_reject_auth(
                     websocket, {'status': 'revoked', 'reason': 'Session has ended'}

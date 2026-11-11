@@ -93,9 +93,7 @@ impl ws_heartbeat_loop(
             }
             if session_current is not None
                 and ctx.user_id
-                and not await asyncio.to_thread(
-                    session_current, ctx.user_id, ctx.session_epoch
-                ) {
+                and not await ws_session_still_current(session_current, ctx) {
                 logger.info(f"WS session close conn_id={ctx.conn_id}; session ended");
                 try {
                     await ctx.websocket.close(
@@ -313,5 +311,18 @@ impl ws_execute_target(
         logger.error(f"WS {label.lower()} execution error '{name}': {e}");
         await websocket.send_json(ws_error_frame('INTERNAL_ERROR', str(e)));
         return (False, None);
+    }
+}
+
+impl ws_session_still_current(session_current: any, ctx: ConnectionContext) -> bool {
+    try {
+        return bool(
+            await asyncio.to_thread(session_current, ctx.user_id, ctx.session_epoch)
+        );
+    } except Exception as e {
+        logger.warning(
+            f"WS session check failed conn_id={ctx.conn_id}; closing connection: {e}"
+        );
+        return False;
     }
 }

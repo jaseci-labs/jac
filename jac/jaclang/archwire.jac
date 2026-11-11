@@ -14611,7 +14611,8 @@ graph import scale {
             ws_receive_frame,
             ws_reject_auth,
             ws_reject_pre_accept,
-            ws_reject_registration
+            ws_reject_registration,
+            ws_session_still_current
         },
         tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
     ]
