@@ -83,6 +83,8 @@ obj ChannelMessage {
 
 
 obj Store {
+    has last_error: (Exception | None) = None;
+
     def new_session -> Store abst;
     def is_available -> bool abst;
     def server_version -> int abst;

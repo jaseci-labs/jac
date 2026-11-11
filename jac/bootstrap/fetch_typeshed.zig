@@ -8,7 +8,7 @@
 //! be on disk before the first `.jac` file is compiled. Compiling the Jac
 //! payload tool IS a compilation, so the fetch cannot live there -- the tool
 //! that fetches typeshed would need typeshed to exist before it could run.
-//! That is why this is Zig, next to `build_python.zig`, on the one rung of the
+//! That is why this is Zig, next to `fetch_pbs.zig`, on the one rung of the
 //! bootstrap that runs before any Python does.
 //!
 //! `<vendor-dir>` is `jaclang/vendor/typeshed`, which carries the pin (`PIN`, a

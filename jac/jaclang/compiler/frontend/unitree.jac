@@ -306,8 +306,11 @@ node UniCFGNode(UniNode) {
     has affected_symbols: set[str] postinit;
     has bb_in: list[UniCFGNode] { getter; }
     has bb_out: list[UniCFGNode] { getter; }
+    has bb_catch_in: list[UniCFGNode] { getter; }
+    has bb_catch_out: list[UniCFGNode] { getter; }
 
     def cfg_link(target: UniCFGNode) -> None;
+    def cfg_catch_link(target: UniCFGNode) -> None;
     def init(*, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
     def get_head -> UniCFGNode;
@@ -2586,5 +2589,7 @@ def is_client_destined(nd: UniNode) -> bool;
 def is_comptime_stmt(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
+
+def type_param_of(nd: NameAtom) -> (TypeParam | None);
 
 def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

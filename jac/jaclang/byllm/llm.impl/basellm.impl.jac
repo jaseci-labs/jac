@@ -15,11 +15,9 @@ obj _ToolDeltaCoalescer {
 
 
 obj _AnswerStream {
-    has index: int = -1,
-        args: str = "",
-        text: str = "";
+    has text: str = "";
 
-    def observe(frag: dict[str, any]) -> str;
+    def observe(arguments: str) -> str;
 }
 
 
@@ -1295,7 +1293,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
     chunks: list[any] = [];
     content_buf = "";
     reasoning_buf = "";
-    streamed_calls: dict[int, dict[str, str]] = {};
+    coalescer: (_ToolDeltaCoalescer | None) = None;
     no_stream = False;
     finish_reason = "";
     attempt = 0;
@@ -1305,13 +1303,14 @@ impl BaseLLM.dispatch_streaming_with_tools(
         content_buf = "";
         reasoning_buf = "";
         reasoning_pending = "";
+        finish_reason = "";
         self._arm_attempt(mt_run, params, True);
 
         mt_run._tool_arg_deltas = [];
         settings = _tool_stream_settings(mt_run);
         stream_args = bool(settings.get("enabled", False));
         coalescer = _ToolDeltaCoalescer(
-            out=mt_run._tool_arg_deltas,
+            out=mt_run._tool_arg_deltas if stream_args else [],
             min_chars=int(settings.get("min_chars", _TOOL_DELTA_MIN_CHARS)),
             min_interval=float(
                 settings.get("min_interval", _TOOL_DELTA_MIN_INTERVAL_S)
@@ -1321,30 +1320,28 @@ impl BaseLLM.dispatch_streaming_with_tools(
         answer_stream = _AnswerStream()
             if mt_run.resp_type is None or mt_run.resp_type is str
             else None;
-        streamed_calls = {};
         _stream_resp: any = None;
         try {
             _stream_resp = self.model_call_with_stream(params);
             for chunk in _stream_resp {
                 deadline.check();
                 chunks.append(chunk);
+                if chunk?.choices and chunk?.choices?[0]?.finish_reason {
+                    finish_reason = str(chunk?.choices?[0]?.finish_reason);
+                }
                 pending_before = len(mt_run._tool_arg_deltas);
                 frags = _tool_call_fragments(chunk);
                 for _frag in frags {
-                    _call = streamed_calls.setdefault(
-                        _frag["index"], {"id": "", "name": "", "arguments": ""}
-                    );
-                    _call["id"] = _call["id"] or _frag["id"];
-                    _call["name"] = _call["name"] or _frag["name"];
-                    _call["arguments"] += _frag["fragment"];
+                    coalescer.observe(_frag);
                 }
-                if stream_args {
-                    for _frag in frags {
-                        coalescer.observe(_frag);
-                    }
-                }
-                answer_piece = "".join(answer_stream.observe(f) for f in frags)
+                first = coalescer.state[min(coalescer.state)]
+                    if coalescer.state
+                    else None;
+                answer_piece = answer_stream.observe(first["args"])
                     if answer_stream
+                        and frags
+                        and first
+                        and first["tool"] == "finish_tool"
                     else "";
                 delta_content = "";
                 if chunk?.choices and chunk?.choices?[0]?.delta {
@@ -1438,13 +1435,13 @@ impl BaseLLM.dispatch_streaming_with_tools(
         if reasoning_buf {
             message["reasoning_content"] = reasoning_buf;
         }
-        if streamed_calls {
+        if coalescer and coalescer.state {
             message["tool_calls"] = [
                 {
-                    "id": c["id"],
+                    "id": c["call_id"],
                     "type": "function",
-                    "function": {"name": c["name"], "arguments": c["arguments"]}
-                } for (_, c) in sorted(streamed_calls.items())
+                    "function": {"name": c["tool"], "arguments": c["args"]}
+                } for (_, c) in sorted(coalescer.state.items())
             ];
         }
     }
@@ -1887,6 +1884,7 @@ impl BaseLLM._stream_steps(
         total_tokens = 0;
         just_compacted = False;
         shown = "";
+        done_sent = False;
         while True {
             if shown {
                 yield from _drop_answer(retractable);
@@ -1955,7 +1953,6 @@ impl BaseLLM._stream_steps(
             try {
                 _stream_out: list[CompletionResult] = [];
                 _emitted_deltas = False;
-                done_sent = False;
                 for _tok in self.dispatch_streaming_with_tools(
                     mt_run, _stream_out, retractable
                 ) {
@@ -2162,6 +2159,10 @@ impl BaseLLM._stream_steps(
                     }
                     mt_run.add_message(finish_msg);
                     answer = _commit_answer(mt_run, final_output, finish_tc.call_id);
+                    if not answer.startswith(shown) {
+                        yield from _drop_answer(retractable);
+                        shown = "";
+                    }
                     if not done_sent {
                         yield StreamEvent(
                             event_type="steps_done", data={"iterations": iter_count}
@@ -2264,6 +2265,7 @@ impl _ToolDeltaCoalescer.observe(frag: dict[str, any]) -> None {
             "call_id": "",
             "tool": "",
             "buf": "",
+            "args": "",
             "last": time.time(),
             "sent": 0,
             "announced": False,
@@ -2278,6 +2280,7 @@ impl _ToolDeltaCoalescer.observe(frag: dict[str, any]) -> None {
         st["tool"] = str(frag["name"]);
     }
     st["buf"] += str(frag.get("fragment") or "");
+    st["args"] += str(frag.get("fragment") or "");
 
     if st["tool"] and not st["announced"] {
         st["announced"] = True;
@@ -2334,16 +2337,9 @@ impl _ToolDeltaCoalescer.flush {
 }
 
 
-impl _AnswerStream.observe(frag: dict[str, any]) -> str {
-    if self.index < 0 and frag.get("name") == "finish_tool" {
-        self.index = int(frag.get("index", 0));
-    }
-    if frag.get("index", 0) != self.index {
-        return "";
-    }
-    self.args += str(frag.get("fragment") or "");
+impl _AnswerStream.observe(arguments: str) -> str {
     try {
-        parsed = from_json(self.args, allow_partial="trailing-strings");
+        parsed = from_json(arguments, allow_partial="trailing-strings");
     } except ValueError {
         return "";
     }
@@ -2360,10 +2356,8 @@ impl _AnswerStream.observe(frag: dict[str, any]) -> str {
 impl _drop_answer(retractable: bool) -> Generator[StreamEvent, None, None] {
     if not retractable {
         raise OutputTruncatedError(
-            "The final answer stopped after part of it had streamed (the model hit "
-            "max_tokens, or its finish_tool call was rejected). A plain stream cannot "
-            "take that text back: raise max_tokens, or stream with logging=True or a "
-            "stream_handler."
+            "The answer changed after part of it streamed, and a plain stream cannot "
+            "take text back: raise max_tokens, or use logging=True or a stream_handler."
         );
     }
     yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
@@ -2958,22 +2952,25 @@ impl _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
 impl _split_at_finish(
     tool_calls: list[ToolCall]
 ) -> tuple[list[ToolCall], ToolCall | None, list[ToolCall]] {
-    before: list[ToolCall] = [];
     for (i, tc) in enumerate(tool_calls) {
         if tc.is_finish_call() {
-            return (before, tc, tool_calls[i + 1:]);
+            if i == 0 {
+                return ([], tc, tool_calls[1:]);
+            }
+            return (tool_calls[:i], None, tool_calls[i:]);
         }
-        before.append(tc);
     }
-    return (before, None, []);
+    return (list(tool_calls), None, []);
 }
 
 impl _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None {
     for tc in skipped {
         mt_run.add_message(
             ToolCallResultMsg(
-                content="Not executed: it came after finish_tool in the same response. "
-                "Call it again in a later response if it is still needed.",
+                content="Not executed: call finish_tool again now that you have the results."
+                    if tc.is_finish_call()
+                    else "Not executed: it came after finish_tool in the same response. "
+                    "Call it again in a later response if it is still needed.",
                 tool_call_id=tc.call_id,
                 name=tc.tool.get_name()
             )

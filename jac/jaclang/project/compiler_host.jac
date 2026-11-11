@@ -80,15 +80,6 @@ obj ProjectHost(HostServices) {
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;
     def keep_native_scan_record(path: str, digest: str, text: str);
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = "",
-        load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None);
-
     def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
     def place_wired_imports(module: Module);
     def drop_python_lane_products(path: str, program: JacProgram);
@@ -96,10 +87,6 @@ obj ProjectHost(HostServices) {
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def kernel_compile(
-        program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None);
-
     def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
@@ -111,17 +98,6 @@ obj ProjectHost(HostServices) {
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     );
-
-    def native_analyze(
-        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-    ) -> (ModuleAnalysis | None);
-
-    def kernel_inputs(
-        program: JacProgram,
-        path: str,
-        options: CompileOptions,
-        source: (str | None) = None
-    ) -> KernelInputs;
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(

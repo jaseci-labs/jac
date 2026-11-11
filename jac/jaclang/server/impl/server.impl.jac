@@ -37,6 +37,12 @@ async def _abegin_user_request_context(
     user_manager: UserManager, username: str, target: object | None = None
 ) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue];
 
+def _unknown_user_failure -> dict[str, JsonValue];
+
+async def _spawn_target(
+    target_node_id: any, ctx: ExecutionContext
+) -> NodeArchetype | dict[str, JsonValue];
+
 def _deserialize_wire_args(args: dict[(str, any)]);
 
 impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
@@ -73,7 +79,10 @@ impl ExecutionManager._finalize_call_response(
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
-    await Jac.acommit();
+    ctx = Jac.get_context();
+    await ctx.mem.acommit();
+    call_state.committed = True;
+    ctx.run_pending_effects();
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
         return result;
     }
@@ -88,9 +97,8 @@ impl ExecutionManager._finalize_call_response(
         'reports': Serializer.serialize(reports, api_mode=True)
     };
     if _plain_value(reports) and _plain_value(result) {
-        Jac.get_context().mem.seal_scan();
+        ctx.mem.seal_scan();
     }
-    ctx = Jac.get_context();
     if ctx.diagnostics {
         envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
         ctx.diagnostics.clear();
@@ -183,13 +191,9 @@ impl ExecutionManager.spawn_walker_sync(
         call_state: CallState, ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
-            }
-        } else {
-            target_node = ctx.get_root();
+        target_node = await _spawn_target(target_node_id, ctx);
+        if isinstance(target_node, dict) {
+            return target_node;
         }
         result = await asyncio.to_thread(Jac.`spawn, `walker, target_node);
 
@@ -219,13 +223,9 @@ impl ExecutionManager.spawn_walker_async(
         call_state: CallState, ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
-            }
-        } else {
-            target_node = ctx.get_root();
+        target_node = await _spawn_target(target_node_id, ctx);
+        if isinstance(target_node, dict) {
+            return target_node;
         }
         spawn_result = Jac.`spawn(`walker, target_node);
         if iscoroutine(spawn_result) {
@@ -1022,11 +1022,14 @@ impl JacAPIServer.build_app -> ServingApp {
     for ext in (self.extensions or []) {
         ext.register(self);
     }
+    if os.environ.get('JAC_SV_SIBLING') != '1' {
+        self.add_middleware(robots_middleware(self));
+    }
     self.add_middleware(drain_middleware(self.drain, self.module_name));
     self.add_middleware(
         cors_middleware(
             allow_origins=list(settings.cors_origins),
-            allow_credentials=True,
+            allow_credentials=settings.cors_credentials,
             allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
             allow_headers=['Content-Type', 'Authorization', 'X-Request-Id']
         )
@@ -1107,7 +1110,12 @@ impl JacAPIServer.enable_hmr(hot_reloader: any) -> None {
 impl JacAPIServer._refresh_dev_endpoints -> None {
     with PREPARATION_LOCK {
         self._hmr_pending = False;
-        self.introspector.load(force_reload=True);
+        try {
+            self.introspector.load(force_reload=True);
+        } except SourcesChanged {
+            self._hmr_pending = True;
+            return;
+        }
     }
     if self.app is None {
         return;
@@ -1521,7 +1529,8 @@ impl JacAPIServer.start(
             settings=settings,
             worker_main=self._worker_main,
             on_ready=_announce,
-            on_worker_exit=self._on_worker_exit
+            on_worker_exit=self._on_worker_exit,
+            drain=self.drain
         );
         return supervisor.run(port_retries=port_retries);
     }
@@ -1740,7 +1749,7 @@ impl _abegin_user_request_context(
             root_id = await asyncio.to_thread(ensure_root, username);
         }
         if not root_id {
-            return {'error': 'User not found'};
+            return _unknown_user_failure();
         }
     }
     try {
@@ -1762,11 +1771,48 @@ impl _abegin_user_request_context(
         );
         healed_id = await asyncio.to_thread(user_manager.reset_root, username);
         if not healed_id {
-            return {'error': 'User not found'};
+            return _unknown_user_failure();
         }
         (ctx, token) = await _begin_request_context(healed_id, target);
         return (ctx, token, healed_id);
     }
+}
+
+impl _unknown_user_failure -> dict[str, JsonValue] {
+    return {
+        'error': 'Unauthorized: unknown user',
+        'error_code': 'unauthorized',
+        'http_status': 401
+    };
+}
+
+impl _spawn_target(
+    target_node_id: any, ctx: ExecutionContext
+) -> NodeArchetype | dict[str, JsonValue] {
+    if not target_node_id {
+        return ctx.get_root();
+    }
+    node_id = str(target_node_id);
+    if node_id != 'root' {
+        try {
+            UUID(node_id);
+        } except ValueError {
+            return {
+                'error': 'Invalid node id',
+                'error_code': 'invalid_node_id',
+                'http_status': 400
+            };
+        }
+    }
+    target_node = await Jac.aget_object(node_id);
+    if not isinstance(target_node, NodeArchetype) {
+        return {
+            'error': 'Target node not found',
+            'error_code': 'not_found',
+            'http_status': 404
+        };
+    }
+    return target_node;
 }
 
 impl _deserialize_wire_args(args: dict[(str, any)]) {
@@ -1879,7 +1925,35 @@ impl _run_function_with_occ(
                     reload_root = False;
                     await ctx.aset_user_root(root_id);
                 }
-                outcome = await run_attempt(call_state, ctx);
+                try {
+                    outcome = await run_attempt(call_state, ctx);
+                    await ctx.mem.acommit();
+                } except ReadOnlyRetry {
+                    raise;
+                } except Exception as e {
+                    if not call_state.committed {
+                        raise;
+                    }
+                    ctx.mem.abort();
+                    ctx.pending_effects.clear();
+                    logger.exception(
+                        f"{unit_key or 'request'} failed after its commit: "
+                        f"{type(e).__name__}: {e}"
+                    );
+                    return {
+                        'error': (
+                            'The request committed, but a step after that commit '
+                            'failed and its writes were lost. Repeating the request '
+                            'may repeat the work it already saved.'
+                        ),
+                        'error_code': 'failed_after_commit',
+                        'http_status': 500,
+                        'final': True
+                    };
+                }
+                if _plain_value(outcome) {
+                    ctx.mem.seal_scan();
+                }
                 ctx.mem.unit_exit();
                 settled = True;
                 streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
@@ -1966,6 +2040,7 @@ impl _run_function_with_occ(
                     continue;
                 }
                 ctx.mem.abort();
+                ctx.pending_effects.clear();
                 import logging;
                 logging.getLogger('jaclang.serve').exception(
                     f"{unit_key or 'request'} raised {type(e).__name__}: {e}"

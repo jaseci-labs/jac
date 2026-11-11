@@ -391,6 +391,20 @@ impl ASTValidationPass.enter_yield_expr with YieldExpr entry {
     }
 }
 
+impl ASTValidationPass.enter_return_stmt with ReturnStmt entry {
+    parent = here.parent;
+    while parent is not None {
+        if isinstance(parent, (Ability, ImplDef, LambdaExpr, Test)) {
+            return;
+        }
+        if isinstance(parent, (ModuleCode, Archetype, Enum, Module)) {
+            break;
+        }
+        parent = parent.parent;
+    }
+    self.ctx.emit(E0057, node_override=here);
+}
+
 impl ASTValidationPass.enter_ctrl_stmt with CtrlStmt entry {
     if here.ctrl is None or not isinstance(here.ctrl, Token) {
         return;

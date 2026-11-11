@@ -13,6 +13,7 @@ glob RUNTIME_UID: int = 1000,
 
 
 def bundle_pvc_name(app_name: str) -> str;
+def bundle_loader_pod_name(app_name: str) -> str;
 
 
 def bundle_pvc_path(object_key: str) -> str;
@@ -57,6 +58,9 @@ def pvc_unpack_script(
 ) -> str;
 
 
+def prune_unreferenced_script(app_name: str, keep: set[str]) -> str;
+
+
 def build_pvc_init_container(
     base_image: str,
     bundle_paths: list[str],
@@ -75,13 +79,20 @@ obj PvcInjector(Injector) {
         _object_key: str = "",
         _bundle_bytes: bytes = b"",
         _fleet: any = None,
-        _client_ready: any = None;
+        _client_ready: any = None,
+        _bake_client: bool = False;
 
     def _seed_artifacts -> list[tuple[str, bytes]];
     def _unpack_bundle_paths -> list[str];
     def _skip_when_image_binary -> dict[str, str];
     def prepare(app_name: str, namespace: str, project_dir: str);
-    def seed(app_name: str, namespace: str, kubectl: KubectlCluster);
+    def seed(
+        app_name: str,
+        namespace: str,
+        kubectl: KubectlCluster,
+        keep_set: (Callable[[], set[str]] | None) = None
+    );
+
     def unpack_script -> str;
     def mutate_pod_spec(
         pod_spec: dict[str, any], base_image: str, unpack_container: bool = True

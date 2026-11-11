@@ -167,7 +167,7 @@ class _SealLog(logging.Handler) {
 
 
 def _pack_logged(
-    base: Path, binary: bytes, client_ready: any = None
+    base: Path, binary: bytes, client_ready: any = None, bake_client: bool = False
 ) -> tuple[bytes, list[str]] {
     log = logging.getLogger("jaclang.scale.injector.bundle");
     seen = _SealLog();
@@ -175,7 +175,9 @@ def _pack_logged(
     log.setLevel(logging.INFO);
     log.addHandler(seen);
     try {
-        raw = pack_jab(str(base), binary, client_ready=client_ready);
+        raw = pack_jab(
+            str(base), binary, client_ready=client_ready, bake_client=bake_client
+        );
     } finally {
         log.removeHandler(seen);
         log.setLevel(previous);
@@ -227,6 +229,113 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
     (_, mode_log) = _pack_logged(base, binary);
     assert not any("Reusing the sealed bundle" in m for m in mode_log) , (
         "a file mode change reused the previous seal"
+    );
+}
+
+
+test "a precompile report left in the project does not block reusing the seal" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    report_file = base / "_precompiled" / "PRECOMPILE_RESULT.json";
+    report_file.parent.mkdir();
+    report_file.write_text('{"total": 1, "compiled": 1, "reused": 0, "failed": 0}\n');
+    (first, first_log) = _pack_logged(base, binary);
+    assert not any("changed while it was sealed" in m for m in first_log) , (
+        f"the seal's own report counted as a project edit: {first_log}"
+    );
+    (again, again_log) = _pack_logged(base, binary);
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        f"a project holding a precompile report sealed the app again: {again_log}"
+    );
+    assert again == first;
+}
+
+
+"""An app whose server entry imports a module pinned to the client, so the seal
+compiles that module as a runtime dependency rather than as a unit."""
+def _runtime_dep_app -> Path {
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[placement.pins]\n\"shared*\" = \"client\"\n"
+    );
+    (base / "shared.jac").write_text("def word -> str { return \"pong\"; }\n");
+    (base / "svc.jac").write_text(
+        "import from shared { word }\n" + "def:pub ping -> str { return word(); }\n"
+    );
+    return base;
+}
+
+
+test "a seeded seal reuses a runtime dependency instead of compiling it again" {
+    binary = require_pod_binary().read_bytes();
+    base = _runtime_dep_app();
+    (first, first_log) = _pack_logged(base, binary);
+    assert any("Sealing runtime dependency: shared.jac" in m for m in first_log) , (
+        f"the fixture's import is not a runtime dependency: {first_log}"
+    );
+    (base / "svc.jac").write_text(
+        "import from shared { word }\n"
+            + "def:pub ping -> str { return word() + \"!\"; }\n"
+    );
+    (edited, edited_log) = _pack_logged(base, binary);
+    assert any("Seeded" in m for m in edited_log) , edited_log;
+    assert not any("Sealing runtime dependency" in m for m in edited_log) , (
+        f"the seeded runtime dependency was compiled again: {edited_log}"
+    );
+    assert _bundle_jir(edited, "shared") == _bundle_jir(first, "shared") , (
+        "the reused runtime dependency did not ship"
+    );
+    (base / "shared.jac").write_text("def word -> str { return \"pang\"; }\n");
+    (dep_edited, dep_log) = _pack_logged(base, binary);
+    assert any("Sealing runtime dependency: shared.jac" in m for m in dep_log) , (
+        f"an edited runtime dependency shipped its seeded code: {dep_log}"
+    );
+    assert _bundle_jir(dep_edited, "shared") != _bundle_jir(edited, "shared");
+    (base / "svc.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
+    (dropped, _) = _pack_logged(base, binary);
+    assert not _bundle_jir(dropped, "shared") , (
+        "a runtime dependency nothing imports any more still shipped"
+    );
+}
+
+
+test "a seal that builds the client ships its dist and reuses it with the seal" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[dependencies.npm]\nreact = \"^19.2.0\"\nreact-dom = \"^19.2.0\"\n"
+    );
+    (base / "svc.jac").write_text(
+        "def:pub ping -> str { return \"pong\"; }\n\n"
+            + "def:pub app() -> JsxElement {\n    return <div>mini</div>;\n}\n"
+    );
+    (first, first_log) = _pack_logged(base, binary, bake_client=True);
+    names = _names(first);
+    assert ".jac/client/dist/index.html" in names , (
+        f"the sealed bundle shipped no client page: {first_log}"
+    );
+    assert any(
+        name.startswith(".jac/client/dist/") and name.endswith(".js") for name in names
+    ) , names;
+    (again, again_log) = _pack_logged(base, binary, bake_client=True);
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        f"an unchanged project with a client sealed the app again: {again_log}"
+    );
+    assert again == first , "the reused bundle differs from the one the seal built";
+    os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+    try {
+        (moved, moved_log) = _pack_logged(base, binary, bake_client=True);
+    } finally {
+        os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+    }
+    assert not any("Reusing the sealed bundle" in m for m in moved_log) , (
+        "a new API base URL reused a client built for the old one"
+    );
+    stamp = ".jac/client/dist/.jac-build-inputs";
+    assert _bundle_member(moved, stamp) != _bundle_member(first, stamp) , (
+        "the client was not rebuilt for the new API base URL"
     );
 }
 
@@ -371,26 +480,53 @@ test "pack_jab without a pod binary is a hard error (a .jab requires a seal)" {
 
 test "a seal that cannot yield a bootable .jab fails the pack instead of the pod" {
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
+    import from jaclang.scale.runtime.fleet { solo_fleet }
     cases = [
-        ("an unrunnable pod binary", "", b"not-an-elf", []),
+        ("an unrunnable pod binary", "", b"not-an-elf", [], "", []),
         (
             "a bake that writes no manifest over a stale local copy",
             'entry-point="missing"\n',
             b"",
-            ["RuntimeError", SERVE_MANIFEST_REL, "sealing without serve payloads"]
+            ["RuntimeError", SERVE_MANIFEST_REL, "sealing without serve payloads"],
+            "",
+            []
+        ),
+        (
+            "a deployed file that is not a module name",
+            "",
+            b"not-an-elf",
+            ["ValueError", "my-app.jac", "not an importable module name"],
+            "my-app.jac",
+            []
+        ),
+        (
+            "a deployed file shadowed by a package of the same name",
+            "",
+            b"not-an-elf",
+            ["ValueError", "app.jac", "app/__init__.jac"],
+            "app.jac",
+            ["app/__init__.jac"]
         )
     ];
-    for (label, entry_line, binary, expected) in cases {
+    for (label, entry_line, binary, expected, deployed, others) in cases {
         base = Path(_mini_app());
         (base / "jac.toml").write_text(
             f'[project]\nname="mini"\n{entry_line}\n[scale]\nfat_bundle = false\n'
         );
         (base / ".jac").mkdir();
         (base / ".jac" / "serve_manifest.json").write_text('{"stale": true}\n');
+        fleet = None;
+        if deployed {
+            for name in [deployed, *others] {
+                (base / name).parent.mkdir(parents=True, exist_ok=True);
+                (base / name).write_text('def:pub ping -> str { return "pong"; }\n');
+            }
+            fleet = solo_fleet("mini", deployed);
+        }
         seal_binary = binary or require_pod_binary().read_bytes();
         caught = "";
         try {
-            pack_jab(str(base), seal_binary);
+            pack_jab(str(base), seal_binary, fleet=fleet);
         } except Exception as e {
             caught = f"{type(e).__name__}: {e}";
         }
@@ -398,6 +534,40 @@ test "a seal that cannot yield a bootable .jab fails the pack instead of the pod
         for text in expected {
             assert text in caught , (label, text, caught);
         }
+    }
+}
+
+
+test "a pinned seal binary that predates prepared clients still prepares serving metadata" {
+    python = shutil.which("python3");
+    assert python , "python3 is required to stand in for an older seal binary";
+    stub = Path(tempfile.mkdtemp(prefix="jac-old-seal-"));
+    for pkg in ["jaclang", "jaclang/dist", "jaclang/project"] {
+        (stub / pkg).mkdir(parents=True, exist_ok=True);
+        (stub / pkg / "__init__.py").write_text("");
+    }
+    (stub / "jaclang" / "project" / "config.py").write_text(
+        "def get_config_for_path(path):\n    return None\n"
+    );
+    (stub / "jaclang" / "dist" / "seal.py").write_text(
+        "from pathlib import Path\n"
+            + "def bake_serve_payloads(config, pkg_copy, app='', bake_client=True):\n"
+            + "    out = Path(pkg_copy) / '.jac'\n"
+            + "    out.mkdir(exist_ok=True)\n"
+            + "    (out / 'serve_manifest.json').write_text('{}')\n"
+            + "    return True\n"
+    );
+    binary = f'#!/bin/sh\nPYTHONPATH="{stub}" exec "{python}" -S "$@"\n';
+    for bake_client in [False, True] {
+        caught = "";
+        try {
+            _precompile_app(
+                Path(_mini_app()), binary.encode(), None, 120, bake_client=bake_client
+            );
+        } except Exception as e {
+            caught = f"{type(e).__name__}: {e}";
+        }
+        assert "metadata preparation failed" not in caught , (bake_client, caught);
     }
 }
 
@@ -477,16 +647,36 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
     jac_bin = require_pod_binary();
     import json;
     import from jaclang.project.config { get_config_for_path }
-    import from jaclang.scale.runtime.fleet { fleet_from_config }
+    import from jaclang.scale.runtime.fleet { fleet_from_config, solo_fleet }
+    app_jac = {
+        "app.jac": 'import from svc { ping }\n'
+            + 'walker:pub echo { can run with Root entry { report "hello"; } }\n'
+    };
     cases = [
         (
             "an entry named app",
             '[project]\nname="mini"\nkind="service"\nentry-point="app"\n',
-            {
-                "app.jac": 'import from svc { ping }\n'
-                    + 'walker:pub echo { can run with Root entry { report "hello"; } }\n'
-            },
+            app_jac,
             "",
+            "",
+            "ping",
+            {"app.jac": "/walker/echo"}
+        ),
+        (
+            "a deploy of app.jac with no entry-point in jac.toml",
+            '[project]\nname="mini"\nkind="service"\n',
+            app_jac,
+            "",
+            "app.jac",
+            "ping",
+            {"app.jac": "/walker/echo"}
+        ),
+        (
+            "a deploy of app.jac over a different jac.toml entry-point",
+            '[project]\nname="mini"\nkind="service"\nentry-point="svc"\n',
+            app_jac,
+            "",
+            "app.jac",
             "ping",
             {"app.jac": "/walker/echo"}
         ),
@@ -497,24 +687,28 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
                 + '[apps.svc]\nkind="service"\nentry-point="svc"\nroute="/api/svc"\n',
             {"web.jac": 'def:pub hello -> str { return "web"; }\n'},
             "web",
+            "",
             "hello",
             {"web.jac": "/function/hello", "svc.jac": "/function/ping"}
         )
     ];
-    for (label, toml, files, served, func, boots) in cases {
+    for (label, toml, files, served, deployed, func, boots) in cases {
         base = Path(_mini_app());
         (base / "jac.toml").write_text(toml);
         for (name, text) in files.items() {
             (base / name).write_text(text);
         }
-        fleet = fleet_from_config(
-            get_config_for_path(base),
-            served,
-            project_root=str(base),
-            relative_to=str(base)
-        )
-            if served
-            else None;
+        fleet = None;
+        if served {
+            fleet = fleet_from_config(
+                get_config_for_path(base),
+                served,
+                project_root=str(base),
+                relative_to=str(base)
+            );
+        } elif deployed {
+            fleet = solo_fleet("mini", deployed);
+        }
         raw = pack_jab(str(base), jac_bin.read_bytes(), fleet=fleet);
         names = _names(raw);
         assert "svc.jac" in names , label;
@@ -533,8 +727,14 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
             }
             manifest = archive.extractfile("_precompiled/MANIFEST.json");
             assert manifest is not None;
-            assert ".jac/serve_manifest.json"
-                in json.loads(manifest.read())["payloads"];
+            sealed = json.loads(manifest.read());
+            assert ".jac/serve_manifest.json" in sealed["payloads"];
+            served_file = list(boots)[0];
+            assert (sealed.get("entry") or {}).get("path") == served_file , (
+                label,
+                sealed.get("entry")
+            );
+            assert "attachable" not in sealed.get("capabilities", []) , label;
         }
         # The sealed manifest sits at the tar root, which is what makes this a .jab.
         assert "_precompiled/MANIFEST.json" in names , label;

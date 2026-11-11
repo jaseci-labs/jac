@@ -1,5 +1,18 @@
 {
-  "_comment": "Pinned LLVM inputs shared by Zig and the Jac payload tool. CPython and its dependency sources are pinned separately in bootstrap/python/sources.json.",
+  "_comment": "Pinned toolchain inputs shared by Zig and the Jac payload tool: the prebuilt CPython (pbs) and the LLVM slices.",
+  "pbs": {
+    "_comment": "The CPython every jac binary ships and every build runs on: python-build-standalone at <base>/<tag>/cpython-<python>+<tag>-<platform>-<flavor>.tar.zst, checked against the per-platform sha256 pinned here (bootstrap/fetch_pbs.zig). Updating the pin means updating these hashes from the release's SHA256SUMS.",
+    "tag": "20260610",
+    "python": "3.14.6",
+    "flavor": "pgo+lto-full",
+    "base": "https://github.com/astral-sh/python-build-standalone/releases/download",
+    "sha256": {
+      "linux-x86_64": "160d3875b56d0d45ae0b3f40c9b821d0bb23d829af0a245193f2127251c9dab4",
+      "linux-aarch64": "451113b0af15ded8986def51f05dc3a3f4516974dd78c3b27d768a1cb221a231",
+      "macos-aarch64": "104d0ebde43207192b84b3907f5d63e665325282703dec8c0d416918ff66cf3f",
+      "macos-x86_64": "e91a79b9155fc9554213e91329e01f1f6f863048d193b0a9bbc5663a44cc1872"
+    }
+  },
   "llvm": {
     "_comment": "jaseci-labs/llvm-slice repackages the official LLVM release into a per-member, HTTP-range-fetchable zip at <slice_base>/v<version>/llvm-<version>-<triple>-{dev.zip,manifest.json}. `dirname` is the release's top-level dir (the -Dllvm-dir basename under .llvm-build); `triple`/`manifest_sha256`/`zip_size` drive the range fetch. `upstream` true = repackaged official upstream binaries; false = built from source by llvm-slice (externals like zlib/zstd/libxml2 OFF). On macOS that decides the whole shim link shape: upstream archives are ThinLTO bitcode that ld64 must lower via the slice's own libLTO.dylib and they reference zlib/zstd/libxml2, while a from-source slice is plain native Mach-O with no external deps. A `*-libcxx` triple is a libc++ build whose archives the shim must link with `zig c++ -target <floor>` rather than the host g++/libstdc++.",
     "version": "22.1.8",
@@ -9,16 +22,16 @@
         "_comment": "libc++ slice (built -DLLVM_ENABLE_LIBCXX=ON with zig c++ @ glibc 2.17): the LLVMPY_* shim links it with `zig c++` for a clean glibc 2.17 floor (#7082). The stock x86_64-linux slice is libstdc++ and forces a host-g++ link at the runner's glibc (~2.38).",
         "dirname": "LLVM-22.1.8-Linux-X64-libcxx-lld",
         "triple": "x86_64-linux-libcxx-lld",
-        "manifest_sha256": "2870eb77034eb74ce2fc17e24d37ea035db9d61c06071f42b6ad6ecbb32a14c8",
-        "zip_size": 1423609156,
+        "manifest_sha256": "b51f86dc5f145727916933d8b76c6df617f5bffa1fca140e9de2af04989708c4",
+        "zip_size": 122878759,
         "upstream": false
       },
       "linux-aarch64": {
         "_comment": "libc++ slice, same zig c++ @ 2.17 build as x86_64 (built natively on ubuntu-24.04-arm, llvm-slice#4); the libcxx triple routes the shim to the zig c++/2.17 link path. Closes the #7082 aarch64 follow-up.",
         "dirname": "LLVM-22.1.8-Linux-ARM64-libcxx-lld",
         "triple": "aarch64-linux-libcxx-lld",
-        "manifest_sha256": "f7d6dc875024b0d0fd915d5809706b395d03f3305a10f150202657987731895b",
-        "zip_size": 1424249476,
+        "manifest_sha256": "b60d038a5494e723aec29617da18f955d6723b43c531e5ff9ab605f78b66acdb",
+        "zip_size": 117923127,
         "upstream": false
       },
       "macos-aarch64": {

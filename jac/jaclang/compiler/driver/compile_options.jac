@@ -23,7 +23,6 @@ obj CompileOptions {
         aot_mode: bool = False,
         native_import: bool = False,
         native_unit: bool = False,
-        kernel_build: bool = False,
         native_link_mode: (str | None) = None,
         force_codespace: str = "",
         memory_profile: (str | None) = None,

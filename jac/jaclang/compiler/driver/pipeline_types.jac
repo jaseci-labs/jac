@@ -1,6 +1,7 @@
 import from enum { StrEnum }
 
 enum AnalysisFact(StrEnum) {
+    CFG_CATCH = 'CfgCatch',
     CFG_FALSE = 'CfgFalse',
     CFG_SUCC = 'CfgSucc',
     CFG_TRUE = 'CfgTrue',
@@ -29,8 +30,7 @@ enum AnalysisFact(StrEnum) {
 
 obj PassContract {
     has requires: tuple[AnalysisFact, ...] = (),
-        provides: tuple[AnalysisFact, ...] = (),
-        kernel_safe: bool = False;
+        provides: tuple[AnalysisFact, ...] = ();
 }
 
 enum CompilationProduct {

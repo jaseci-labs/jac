@@ -856,6 +856,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "default": ["/health", "/healthz", "/metrics"],
                                 "description": "Paths that bypass rate limiting entirely (monitoring + probes)."
                             },
+                            "client_error_rpm": {
+                                "type": "int",
+                                "default": 20,
+                                "description": "Client error reports (POST /cl/__error__) per minute per client IP, answered with 429 and Retry-After past the limit before they reach a service. Applies even when `enabled` is false. 0 disables it. In a cluster the gateway applies it only with the ingress in [serve.proxy] trusted; otherwise it skips the limit and the services limit each client."
+                            },
 
                         }
                     },
@@ -872,17 +877,17 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                             "allow_methods": {
                                 "type": "list",
                                 "default": ["*"],
-                                "description": "HTTP methods allowed on cross-origin requests."
+                                "description": "HTTP methods allowed on cross-origin requests. [\"*\"] allows any, answered with the method the preflight asked for."
                             },
                             "allow_headers": {
                                 "type": "list",
                                 "default": ["*"],
-                                "description": "Request headers allowed on cross-origin requests."
+                                "description": "Request headers allowed on cross-origin requests. [\"*\"] allows any, answered with the headers the preflight asked for, so Authorization is covered."
                             },
                             "allow_credentials": {
                                 "type": "bool",
                                 "default": False,
-                                "description": "Allow cookies / Authorization on cross-origin requests. Incompatible with allow_origins = [\"*\"] per spec."
+                                "description": "Send Access-Control-Allow-Credentials so browsers include cookies on cross-origin requests. Needs a list in allow_origins: with [\"*\"] the config is refused, since browsers reject that pair."
                             },
                             "expose_headers": {
                                 "type": "list",

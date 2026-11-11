@@ -154,7 +154,7 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    if p != "runtime/python/LICENSE.cpython" and is_native_lowered(p) {
+    if is_native_lowered(p) {
         return True;
     }
     return (
@@ -281,24 +281,51 @@ impl strip_best_effort(path: str, args: list[str] | None = None) {
         return;
     }
 
+    tool = "strip";
     if sys.platform == "darwin" {
         mapped: list[str] = [];
         for a in (args or []) {
             mapped.append("-S" if a == "--strip-debug" else a);
         }
         args = mapped;
+    } else {
+        for name in ["llvm-strip"] + [f"llvm-strip-{v}" for v in range(22, 13, -1)] {
+            found = shutil.which(name);
+            if found {
+                tool = found;
+                break;
+            }
+        }
     }
+
+    stripped = path + ".strip-tmp";
     try {
-        subprocess.run(
-            ["strip"] + (args or []) + [path],
+        done = subprocess.run(
+            [tool] + (args or []) + ["-o", stripped, path],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.PIPE,
+            text=True
         );
     } except OSError {
         log(f"   strip unavailable; shipping {path} unstripped");
         return;
     }
+    if done.returncode != 0
+        or "not in segment" in (done.stderr or "")
+        or not os.path.isfile(stripped) {
+        if os.path.exists(stripped) {
+            os.remove(stripped);
+        }
+        if "not in segment" in (done.stderr or "") {
+            log(
+                f"   {os.path.basename(tool)} would damage {path}; shipping it unstripped"
+            );
+        }
+        return;
+    }
+    shutil.copymode(path, stripped);
+    os.replace(stripped, path);
     after = file_size_or_zero(path);
     if after != 0 and after < before {
         log(f"   stripped {path}: {before >> 20} -> {after >> 20} MiB");

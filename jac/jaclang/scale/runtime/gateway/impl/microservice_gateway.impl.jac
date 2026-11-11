@@ -25,7 +25,21 @@ impl MicroserviceGateway.resolve_target_url(
     return target;
 }
 
-impl MicroserviceGateway.serve_static(file_path: str) -> Response | None {
+impl MicroserviceGateway.static_file(
+    request: Request, target: Path, cache_control: str = "no-cache"
+) -> Response {
+    (content_type, _) = mimetypes.guess_type(str(target));
+    return file_response(
+        request,
+        str(target),
+        cache_control=cache_control,
+        media_type=content_type or "application/octet-stream"
+    );
+}
+
+impl MicroserviceGateway.serve_static(
+    request: Request, file_path: str
+) -> Response | None {
     dist = Path(self.client_dist_dir);
     target = dist / file_path;
 
@@ -43,22 +57,15 @@ impl MicroserviceGateway.serve_static(file_path: str) -> Response | None {
     if not target.is_file() {
         return None;
     }
-
-    (content_type, _) = mimetypes.guess_type(str(target));
-    if content_type is None {
-        content_type = "application/octet-stream";
+    if _HASHED_ASSET.search(target.name) {
+        return self.static_file(request, target, IMMUTABLE_CACHE);
     }
-
-    if content_type.startswith("text/")
-        or content_type in ("application/javascript", "application/json") {
-        return Response(
-            content=target.read_text(encoding="utf-8"), media_type=content_type
-        );
-    }
-    return Response(content=target.read_bytes(), media_type=content_type);
+    return self.static_file(request, target);
 }
 
-impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
+impl MicroserviceGateway.serve_project_static(
+    request: Request, rest: str
+) -> Response | None {
     if not rest {
         return None;
     }
@@ -76,7 +83,7 @@ impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
         local_dir: str = str(project_root / d);
 
         for candidate in (rest, file_name) {
-            resp = self.serve_extra_static(local_dir, candidate);
+            resp = self.serve_extra_static(request, local_dir, candidate);
             if resp {
                 return resp;
             }
@@ -86,7 +93,7 @@ impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
 }
 
 impl MicroserviceGateway.serve_extra_static(
-    local_dir: str, file_path: str
+    request: Request, local_dir: str, file_path: str
 ) -> Response | None {
     if not local_dir {
         return None;
@@ -107,19 +114,7 @@ impl MicroserviceGateway.serve_extra_static(
     if not target.is_file() {
         return None;
     }
-
-    (content_type, _) = mimetypes.guess_type(str(target));
-    if content_type is None {
-        content_type = "application/octet-stream";
-    }
-
-    if content_type.startswith("text/")
-        or content_type in ("application/javascript", "application/json") {
-        return Response(
-            content=target.read_text(encoding="utf-8"), media_type=content_type
-        );
-    }
-    return Response(content=target.read_bytes(), media_type=content_type);
+    return self.static_file(request, target);
 }
 
 
@@ -131,10 +126,15 @@ impl MicroserviceGateway.has_client_bundle -> bool {
     return root_svc is not None and root_svc.owns_root();
 }
 
-impl MicroserviceGateway.serve_spa_fallback -> Response | None {
+impl MicroserviceGateway.serve_spa_fallback(request: Request) -> Response | None {
     index = Path(self.client_dist_dir) / "index.html";
     if index.is_file() {
-        return HTMLResponse(content=index.read_text(encoding="utf-8"));
+        return file_response(
+            request,
+            str(index),
+            cache_control="no-cache",
+            media_type="text/html; charset=utf-8"
+        );
     }
     return None;
 }
@@ -754,6 +754,13 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     if not file_path {
         return None;
     }
+    root_entry = self.root_member();
+    blocked = robots_response(
+        request, self.base_path, root_entry.file if root_entry else ""
+    );
+    if blocked is not None {
+        return blocked;
+    }
 
     mount_matched = False;
     for mount in self.static_mounts {
@@ -765,7 +772,7 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
             mount_matched = True;
             sub_path = file_path[len(prefix) + 1:];
             local_dir = str(mount.get("local_path", ""));
-            mounted_resp = self.serve_extra_static(local_dir, sub_path);
+            mounted_resp = self.serve_extra_static(request, local_dir, sub_path);
             if mounted_resp {
                 return mounted_resp;
             }
@@ -774,14 +781,17 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     }
 
     if not mount_matched {
-        static_resp = self.serve_static(file_path);
+        static_resp = self.serve_static(request, file_path);
         if static_resp {
+            if file_path in SEO_ROOT_FILES {
+                static_resp.headers.set("Cache-Control", "no-cache");
+            }
             return static_resp;
         }
     }
 
     if file_path.startswith("static/") {
-        return self.serve_project_static(file_path[len("static/"):]);
+        return self.serve_project_static(request, file_path[len("static/"):]);
     }
     return None;
 }
@@ -793,10 +803,10 @@ impl MicroserviceGateway.handle_spa_fallback(
         return None;
     }
     if not path.lstrip("/") {
-        return self.serve_spa_fallback();
+        return self.serve_spa_fallback(request);
     }
     if "text/html" in request.headers.get("accept", "") {
-        return self.serve_spa_fallback();
+        return self.serve_spa_fallback(request);
     }
     return None;
 }
@@ -896,7 +906,7 @@ impl MicroserviceGateway.setup -> ServingApp {
                 root_svc = gw.root_member();
                 if request.method == "GET"
                     and (root_svc is None or not root_svc.owns_root()) {
-                    page_resp = gw.serve_spa_fallback();
+                    page_resp = gw.serve_spa_fallback(request);
                     if page_resp is None {
                         import from jaclang.scale.runtime.context.errors { not_found }
                         page_resp = not_found(path);
@@ -1030,6 +1040,22 @@ impl MicroserviceGateway.setup -> ServingApp {
     rl_mw = build_rate_limit_middleware(gw_cfg.get("rate_limit", {}));
     if rl_mw is not None {
         registry.register(Middleware(name="rate_limit", priority=10, fn=rl_mw));
+    }
+    skipped = client_error_limit_skipped(
+        gw_cfg.get("rate_limit", {}),
+        list(ServeSettings.load(self.base_path).proxy.trusted),
+        in_cluster()
+    );
+    error_mw = None
+        if skipped
+        else build_client_error_limit_middleware(gw_cfg.get("rate_limit", {}));
+    if skipped {
+        logger.info(skipped);
+    }
+    if error_mw is not None {
+        registry.register(
+            Middleware(name="client_error_limit", priority=10, fn=error_mw)
+        );
     }
 
     registry.install(self.app);

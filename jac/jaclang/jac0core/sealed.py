@@ -63,11 +63,11 @@ kind/capabilities/entry/payloads)::
       },
       "native": {                       # optional (format 9): the package's
         "units": {                      # native units, by pkg-relative source
-          "compiler/jc_unit.jac": {"jir": "compiler/jc_unit.jir",
-                                   "iface_digest": "..."}
+          "mypkg/core.jac": {"jir": "mypkg/core.jir",
+                             "iface_digest": "..."}
         },
         "artifact": {                   # the one linked artifact
-          "path": "compiler/libjac_compiler.so",  # pkg-relative
+          "path": "native/libmypkg.so",  # pkg-relative
           "sha256": "...", "layout_digest": "...", "plan_digest": "...",
           "triple": "x86_64-unknown-linux-gnu", "mode": "objects"
         }
@@ -202,8 +202,8 @@ class SealedImage:
         # Optional native record (format 9): the package's native units and
         # the one linked artifact the link plan produced from them.
         self.native: dict = manifest.get("native") or {}
-        # Optional: the artifacts this image leaves out by design (a pull
-        # request's CI kit omits the kernel); each runs on its floor quietly.
+        # Optional: the artifacts this image leaves out by design; each runs on
+        # its floor quietly.
         self.omits: frozenset = frozenset(manifest.get("omits") or ())
         # fullname -> (entry, src_relpath). One tree: full-compiler modules and
         # jac0-compiled bootstrap modules share the JIR container + manifest;
