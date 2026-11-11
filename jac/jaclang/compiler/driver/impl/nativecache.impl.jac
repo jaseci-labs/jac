@@ -170,7 +170,7 @@ impl NativeUnitRegistry.stamp_for(
     return current_native_stamp(
         opts.unit_codegen_identity(path),
         opts.effective_triple(),
-        native_producer_digest()
+        running_compiler_digest()
     );
 }
 
