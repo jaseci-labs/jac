@@ -197,14 +197,7 @@ class Promise(Generic[_T]):
     @staticmethod
     def any(values: object) -> Promise[object]: ...
     @staticmethod
-    def withResolvers() -> _PromiseWithResolvers[object]: ...
-
-class _PromiseWithResolvers(Generic[_T]):
-    """`Promise.withResolvers()`: a promise and the two calls that settle it."""
-
-    promise: Promise[_T]
-    resolve: Callable[..., None]
-    reject: Callable[..., None]
+    def withResolvers() -> _HostObject: ...
 
 class RegExp:
     """A compiled regular expression (`new RegExp(...)`)."""

@@ -17,78 +17,56 @@ def math_json(seed: float) -> str {
     return JSON.stringify({"value": bounded});
 }
 
-# Every built-in lists its whole standard surface: a scientific-calculator
-# app reaching for inverse trig failed the build on `Math.asin` while the
-# browser had it. One use per member keeps a dropped name from going unseen.
+# One use per member added for #10693, so a dropped name fails this check.
 def math_surface(x: float) -> float {
     trig = Math.asin(x) + Math.acos(x) + Math.atan(x) + Math.atan2(x, 1.0);
     hyper = Math.sinh(x) + Math.cosh(x) + Math.tanh(x);
     inverse = Math.asinh(x) + Math.acosh(1.5) + Math.atanh(x);
-    logs = Math.expm1(x) + Math.log1p(x) + Math.fround(x);
-    bits = Math.imul(3.0, 4.0) + Math.clz32(1.0);
-    return trig + hyper + inverse + logs + bits;
+    rest = Math.expm1(x) + Math.log1p(x) + Math.fround(x) + Math.imul(3.0, 4.0);
+    return trig + hyper + inverse + rest + Math.clz32(1.0);
 }
 
-def builtin_statics(target: object, items: list[str]) -> bool {
-    names: list[str] = Object.getOwnPropertyNames(target);
-    symbols = Object.getOwnPropertySymbols(target);
-    sealed = Object.seal(Object.preventExtensions(target));
-    Object.defineProperty(sealed, "k", {"value": 1});
-    Object.defineProperties(Object.setPrototypeOf(target, None), {});
+def object_reflect(target: object, items: list[str]) -> bool {
+    locked = Object.seal(Object.preventExtensions(Object.setPrototypeOf(target, None)));
+    Object.defineProperties(Object.defineProperty(locked, "k", {}), {});
+    Reflect.apply(console.log, None, Object.getOwnPropertyNames(target));
     console.log(
-        Object.getOwnPropertyDescriptor(target, "k"),
+        Object.getOwnPropertySymbols(target),
         Object.getOwnPropertyDescriptors(target),
-        Object.groupBy(items, lambda (s: str) -> str { s[0]; }),
-        Map.groupBy(items, lambda (s: str) -> int { len(s); }).size,
-        symbols
-    );
-    Reflect.apply(console.log, None, names);
-    Reflect.defineProperty(target, "k", {"value": 2});
-    console.log(
+        Object.getOwnPropertyDescriptor(target, "k"),
         Reflect.getOwnPropertyDescriptor(target, "k"),
         Reflect.getPrototypeOf(target),
-        Reflect.setPrototypeOf(target, None),
-        Reflect.isExtensible(target),
-        Reflect.preventExtensions(target)
+        Object.groupBy(items, lambda (s: str) -> str { s[0]; }),
+        Map.groupBy(items, lambda (s: str) -> int { len(s); }).size
     );
-    raw: str = String.raw({"raw": ["a", "b"]}, 1);
-    pattern = new(RegExp, raw, "gimsuy");
-    flags = [
-        pattern.multiline,
-        pattern.dotAll,
-        pattern.unicode,
-        pattern.unicodeSets,
-        pattern.sticky,
-        pattern.hasIndices
-    ];
-    return Object.hasOwn(target, "k")
-        and Object.isFrozen(target)
+    states = Object.isFrozen(target)
         and Object.isSealed(target)
-        and Object.isExtensible(target)
-        and all(flags);
+        and Object.hasOwn(target, "k");
+    reflected = Reflect.defineProperty(target, "k", {})
+        and Reflect.setPrototypeOf(target, None);
+    return states
+        and reflected
+        and Reflect.preventExtensions(target)
+        and Reflect.isExtensible(target)
+        and Object.isExtensible(target);
 }
 
-async def builtin_async(sources: list[Promise[object]]) -> object {
-    first = await Promise.any(sources);
+async def promise_array(sources: list[Promise[object]]) -> object {
     pending = Promise.withResolvers();
-    pending.resolve(first);
+    pending.resolve(await Promise.any(sources));
     copied: list[object] = await Array.fromAsync(sources);
-    console.log(copied);
-    return await pending.promise;
+    return [copied, await pending.promise];
 }
 
-def utc_parts(stamp: str) -> str {
+def date_regexp(stamp: str) -> str {
     d = new(Date, stamp);
-    d.setMilliseconds(0.0);
-    d.setUTCFullYear(2026.0);
-    d.setUTCMonth(0.0);
-    d.setUTCDate(1.0);
-    d.setUTCHours(12.0);
-    d.setUTCMinutes(30.0);
-    d.setUTCSeconds(15.0);
-    d.setUTCMilliseconds(250.0);
-    day: float = d.getUTCDay() + d.getUTCMilliseconds();
-    return f"{d.toUTCString()} {day}";
+    ms = d.setMilliseconds(0.0) + d.setUTCMilliseconds(0.0) + d.getUTCMilliseconds();
+    day = d.setUTCFullYear(0.0) + d.setUTCMonth(0.0) + d.setUTCDate(1.0);
+    clock = d.setUTCHours(0.0) + d.setUTCMinutes(0.0) + d.setUTCSeconds(0.0);
+    pattern = new(RegExp, String.raw({"raw": ["a", "b"]}, 1), "gimsuy");
+    flags = [pattern.multiline, pattern.dotAll, pattern.unicode, pattern.unicodeSets];
+    ok = all(flags) and pattern.sticky and pattern.hasIndices;
+    return f"{d.toUTCString()} {ms + day + clock + d.getUTCDay()} {ok}";
 }
 
 def parse_and_format(raw: str) -> int {
