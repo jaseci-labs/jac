@@ -149,9 +149,6 @@ def _answer_events(
 def _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str;
 
 
-def _answer_text(mt_run: MTRuntime, output: object) -> str;
-
-
 def _recovered_answer(mt_run: MTRuntime, recovery_resp: CompletionResult) -> object;
 
 
@@ -1724,18 +1721,8 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     }
     mt_run._call_kind = "final_answer_restream";
     try {
-        final_resp = self.dispatch_no_streaming(mt_run);
-        if final_resp.tool_calls {
-            for tool_call in final_resp.tool_calls {
-                if tool_call.is_finish_call() {
-                    mt_run.add_scaffolding_message(tool_call());
-                    output = tool_call.get_output();
-                    _commit_answer(mt_run, output, tool_call.call_id);
-                    return output;
-                }
-            }
-        }
-        return str(final_resp.output) if final_resp.output else "";
+        output = _recovered_answer(mt_run, self.dispatch_no_streaming(mt_run));
+        return output if mt_run._has_final_output else str(output or "");
     } finally {
         mt_run._call_kind = original_call_kind;
         mt_run.call_params.pop("tool_choice", None);
@@ -2784,7 +2771,18 @@ impl _answer_events(
 impl _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str {
     mt_run._final_output = output;
     mt_run._has_final_output = True;
-    text = _answer_text(mt_run, output);
+    is_text = mt_run.resp_type is None or mt_run.resp_type is str;
+    text = str(output or "");
+    if not is_text {
+        try {
+            text = TypeAdapter(mt_run.resp_type).dump_json(output).decode();
+        } except Exception as e {
+            logger.debug(
+                f"typed answer is not JSON-serialisable, keeping its text: {e}"
+            );
+            text = str(output);
+        }
+    }
     if text {
         final: dict[str, any] = {"role": "assistant"};
         for msg in reversed(mt_run.messages) {
@@ -2801,23 +2799,7 @@ impl _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str {
         final["content"] = text;
         mt_run.add_message(final);
     }
-    if mt_run.resp_type is not None and mt_run.resp_type is not str {
-        return "";
-    }
-    return text;
-}
-
-
-impl _answer_text(mt_run: MTRuntime, output: object) -> str {
-    if mt_run.resp_type is None or mt_run.resp_type is str {
-        return str(output or "");
-    }
-    try {
-        return TypeAdapter(mt_run.resp_type).dump_json(output).decode();
-    } except Exception as e {
-        logger.debug(f"typed answer is not JSON-serialisable, keeping its text: {e}");
-        return str(output);
-    }
+    return text if is_text else "";
 }
 
 
