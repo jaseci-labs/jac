@@ -8,6 +8,9 @@ obj IdentityTakenError(Exception) {}
 
 def primary_username(user: dict[str, any]) -> str;
 
+
+def session_epoch_value(raw: any) -> int | None;
+
 obj IdentityStorage {
     static def hash_password(password: str) -> str;
     static def verify_password(password: str, password_hash: str) -> bool;
@@ -17,6 +20,11 @@ obj IdentityStorage {
     def _update_credentials(
         user_id: str, credentials: list[dict[str, any]]
     ) -> None abst;
+
+    def _end_sessions(
+        user_id: str, patch: dict[str, any], expected: (int | None) = None
+    ) -> int | None;
+
 
     def _get_oauth_grants(user_id: str) -> list[dict[str, any]] abst;
     def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int abst;
@@ -57,8 +65,15 @@ obj IdentityStorage {
     def holds_password(user_id: str, password: str) -> bool;
     def password_reused(credentials: list[dict[str, any]], new_password: str) -> bool;
     def write_password(
-        user_id: str, credentials: list[dict[str, any]], new_password: str
-    ) -> None;
+        user_id: str,
+        credentials: list[dict[str, any]],
+        new_password: str,
+        expected_epoch: (int | None) = None
+    ) -> int | None;
+
+    def credential_state(user_id: str) -> tuple[list[dict[str, any]], any];
+    def session_state(user_id: str) -> dict[str, any] | None;
+    def end_sessions(user_id: str) -> int | None;
 
     def password_expired(user: dict[str, any], credential: dict[str, any]) -> bool;
     def update_password(
@@ -86,6 +101,12 @@ obj PgIdentityStorage(IdentityStorage) {
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
     def _update_credentials(user_id: str, credentials: list[dict[str, any]]) -> None;
+    def _end_sessions(
+        user_id: str, patch: dict[str, any], expected: (int | None) = None
+    ) -> int | None;
+
+    def credential_state(user_id: str) -> tuple[list[dict[str, any]], any];
+    def session_state(user_id: str) -> dict[str, any] | None;
     def _get_oauth_grants(user_id: str) -> list[dict[str, any]];
     def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int;
     def _swap_oauth_grant(user_id: str, grant: dict[str, any], version: int) -> int;

@@ -189,8 +189,9 @@ impl register_auth_endpoints(server: EndpointHost) {
             return fail('UNAUTHORIZED', 'Invalid credentials', 401);
         }
         result.pop('second_factor_required', None);
+        epoch = result.pop('session_epoch', None);
         try {
-            grant = users.open_session(user_id);
+            grant = users.open_session(user_id, session_epoch=epoch);
         } except Exception as e {
             logger.error(f"second factor challenge failed: {e}");
             return fail(
@@ -277,7 +278,35 @@ impl register_auth_endpoints(server: EndpointHost) {
             callback=logout_handler,
             tags=['User APIs'],
             summary='User logout',
-            description='Clears the session cookie. A bearer token held by the client stays valid until it expires; the client discards it.'
+            description='Clears the session cookie. A bearer token held by the client stays valid until it expires; the client discards it. To end every session of the account, use /user/logout-all.'
+        )
+    );
+
+    def logout_all_handler(request: Request) -> TransportResponse {
+        (user_id, error) = require_user(request);
+        if error is not None {
+            return error;
+        }
+        if users.provision_unknown_users {
+            return fail(
+                'NOT_SUPPORTED', 'Sessions are ended at the gateway that issued them', 409
+            );
+        }
+        if users.end_sessions(str(user_id)) is None {
+            return fail('NOT_FOUND', 'User not found', 404);
+        }
+        end_session(request);
+        return ok({'status': 'logged_out_everywhere'});
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/user/logout-all',
+            callback=logout_all_handler,
+            tags=['User APIs'],
+            summary='Sign out everywhere',
+            description="End every session of the authenticated user, this one included: every token issued before this call is refused from then on. Requires a Bearer token.",
+            requires_auth=True
         )
     );
 
@@ -300,8 +329,17 @@ impl register_auth_endpoints(server: EndpointHost) {
         if 'error' in result {
             return refused(result, 'UPDATE_FAILED');
         }
-        end_session(request);
         payload: dict[str, any] = dict(result);
+        epoch = payload.pop('session_epoch', None);
+        replacement = users.replacement_token(
+            str(user_id), getattr(request.state, 'session_claims', None), epoch
+        );
+        if replacement {
+            payload['token'] = replacement;
+            start_session(request, replacement);
+        } else {
+            end_session(request);
+        }
         payload['user_id'] = str(user_id);
         username = primary_username(users.get_user(str(user_id)) or {});
         if username {
@@ -317,7 +355,7 @@ impl register_auth_endpoints(server: EndpointHost) {
             request_model=UpdatePasswordRequest,
             tags=['User APIs'],
             summary='Update password',
-            description="Change the authenticated user's password. Requires a Bearer token.",
+            description="Change the authenticated user's password. Requires a Bearer token. Every other session of the account ends; the answer carries a replacement token for this one, which the client must use from then on.",
             requires_auth=True
         )
     );

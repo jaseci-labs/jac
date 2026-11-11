@@ -592,6 +592,7 @@ impl JacAPIServerAdmin.admin_login(
         );
     }
     user_id = result.get('user_id', '');
+    login_epoch = result.get('session_epoch');
 
     if not self._require_user_manager().is_admin(user_id) {
         return TransportResponse.fail(
@@ -644,7 +645,9 @@ impl JacAPIServerAdmin.admin_login(
         assurance = second_factor_claims([METHOD_PASSWORD, str(proof['method'])]);
     }
     requires_reset = self._require_user_manager().requires_password_reset(user_id);
-    token = self._require_user_manager().create_jwt_token(user_id, assurance=assurance);
+    token = self._require_user_manager().create_jwt_token(
+        user_id, assurance=assurance, session_epoch=login_epoch
+    );
     return TransportResponse.success(
         data={
             'message': 'Login successful',
@@ -669,7 +672,8 @@ impl JacAPIServerAdmin.reset_password(
         );
     }
     token = Authorization[7:];
-    user_id = self._require_user_manager().validate_jwt_token(token);
+    session = self._require_user_manager().validate_jwt_token_detail(token);
+    user_id = session['user_id'] if session['status'] == 'ok' else None;
     if not user_id {
         return TransportResponse.fail(
             code='UNAUTHORIZED',
@@ -693,7 +697,9 @@ impl JacAPIServerAdmin.reset_password(
     return TransportResponse.success(
         data={
             'message': 'Password updated successfully',
-            'token': self._require_user_manager().refresh_jwt_token(token) or token
+            'token': self._require_user_manager().replacement_token(
+                str(user_id), session.get('claims'), result.get('session_epoch')
+            )
         },
         meta=Meta(extra={'http_status': 200})
     );

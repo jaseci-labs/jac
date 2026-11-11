@@ -728,10 +728,24 @@ Returns on success:
   "ok": true,
   "data": {
     "user_id": "550e8400-...",
-    "message": "Password updated successfully"
+    "message": "Password updated successfully",
+    "token": "eyJhbGciOiJIUzI1NiIs..."
   }
 }
 ```
+
+A password change ends every session of the account, on every device, including the token that made the call. The answer carries a replacement token for the caller, which keeps its second-factor assurance; a client must store it and use it from then on. A password reset ends every session in the same way, without a replacement.
+
+### Ending Sessions
+
+Every token carries the session epoch of its account, and a token is accepted only while that epoch is current. A password change, a password reset, `POST /user/logout-all` and disabling the account (`status = "disabled"`) advance it, so every token issued before is refused from the next check on, refresh included, on every worker. Enabling the account again does not bring those tokens back. Tokens issued before this check existed carry no epoch and count as epoch 0, so they keep working until the account's first change.
+
+```bash
+curl -X POST http://localhost:8000/user/logout-all \
+  -H "Authorization: Bearer <token>"
+```
+
+An open WebSocket rechecks its session before each message it runs and at each heartbeat, and closes with reason `revoked` once the session has ended. A request that was already authorized when the session ended still finishes. On a fleet service that provisions the users of a gateway's tokens (`provision_unknown_users`), the epoch is the gateway's to enforce. The service does not hold the account's epoch, so it accepts a gateway's token until the token expires and never extends it: its `/user/refresh-token` refuses, and its `/user/logout-all` answers `409 NOT_SUPPORTED`. Clients refresh and end sessions at the gateway.
 
 Returns HTTP 400 if the current password is incorrect or the new password is empty.
 
@@ -1170,7 +1184,8 @@ Errors: `400 INVALID_TOKEN`, `400 POLICY_VIOLATION`. A password the policy rejec
 | POST | `/user/login` | No | Authenticate and get JWT |
 | POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
 | GET | `/user/me` | Yes (Bearer) | Get the authenticated user's profile |
-| PUT | `/user/password` | Yes (Bearer) | Update password |
+| PUT | `/user/password` | Yes (Bearer) | Update password; ends every other session and answers a replacement token |
+| POST | `/user/logout-all` | Yes (Bearer) | End every session of the account, this one included |
 | POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user |
 | POST | `/user/send-verification` | Yes (Bearer) | Dispatch a verification email for an unverified email identity |
 | POST | `/user/verify-identity` | No (token in body) | Confirm an email identity via the token sent by email |

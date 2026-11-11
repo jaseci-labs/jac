@@ -144,7 +144,9 @@ impl register_second_factor_endpoints(server: EndpointHost) {
             'status': FACTOR_VERIFIED,
             'assurance_level': AAL2,
             'token': users.create_jwt_token(
-                str(user_id), assurance=second_factor_claims(prior + [METHOD_TOTP])
+                str(user_id),
+                assurance=second_factor_claims(prior + [METHOD_TOTP]),
+                session_epoch=getattr(request.state, 'session_epoch', None)
             )
         };
         if result.get('recovery_codes') {
@@ -288,7 +290,8 @@ impl register_second_factor_endpoints(server: EndpointHost) {
             user_id,
             assurance=second_factor_claims(
                 [str(result['first_method']), str(result['method'])]
-            )
+            ),
+            session_epoch=result.get('session_epoch')
         );
         start_session(request, str(payload['token']));
         return ok(dict[(str, JsonValue)](payload));

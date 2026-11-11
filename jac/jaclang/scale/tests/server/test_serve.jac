@@ -962,6 +962,28 @@ test "user management operations" {
         );
         update_result = extract_data(response.json());
         assert "message" in update_result;
+        assert "session_epoch" not in update_result;
+        replacement = update_result["token"];
+
+        response = client.get(
+            "/user/me", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code == 401 , "the pre-change token must be refused";
+        response = client.post("/user/refresh-token", json={"token": token});
+        assert response.status_code == 401 , "the pre-change token must not refresh";
+        response = client.get(
+            "/user/me", headers={"Authorization": f"Bearer {replacement}"}
+        );
+        assert response.status_code == 200 , "the replacement token keeps the caller in";
+
+        response = client.post(
+            "/user/logout-all", headers={"Authorization": f"Bearer {replacement}"}
+        );
+        assert response.status_code == 200;
+        response = client.get(
+            "/user/me", headers={"Authorization": f"Bearer {replacement}"}
+        );
+        assert response.status_code == 401 , "logout-all ends the calling session too";
 
         login_result = do_login(client, username, "newpass456");
         assert "user_id" in login_result;

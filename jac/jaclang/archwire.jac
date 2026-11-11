@@ -15717,7 +15717,12 @@ graph import server.identity {
     ]
     identity_storage ++> [
         second_factor { IdentityStorage },
-        user_manager { IdentityStorage, IdentityTakenError, PgIdentityStorage },
+        user_manager {
+            IdentityStorage,
+            IdentityTakenError,
+            PgIdentityStorage,
+            session_epoch_value
+        },
     ]
     mail ++> user_manager { RESET_PURPOSE }
     policy ++> [

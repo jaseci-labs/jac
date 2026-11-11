@@ -163,6 +163,10 @@ impl PgIdentityStorage._update_fields(user_id: str, fields: dict[str, any]) -> b
     if not safe_fields {
         return False;
     }
+    if safe_fields.get('status') == 'disabled'
+        and self._end_sessions(user_id, safe_fields) is not None {
+        return True;
+    }
     rows = self.store.rows(
         """
         UPDATE identity_users SET doc = doc || CAST(:p AS jsonb)
@@ -194,6 +198,69 @@ impl PgIdentityStorage._update_credentials(
         """,
         {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
     );
+}
+
+impl PgIdentityStorage._end_sessions(
+    user_id: str, patch: dict[str, any], expected: (int | None) = None
+) -> int | None {
+    current = """
+        CASE WHEN doc->'session_epoch' IS NULL THEN 0
+             WHEN jsonb_typeof(doc->'session_epoch') = 'number'
+                  AND (doc->>'session_epoch') ~ '^[0-9]+$'
+             THEN (doc->>'session_epoch')::bigint
+             ELSE -1
+        END
+    """;
+    rows = self.store.rows(
+        f"""
+        UPDATE identity_users
+        SET doc = jsonb_set(
+            doc || CAST(:p AS jsonb), '{{session_epoch}}', to_jsonb({current} + 1)
+        )
+        WHERE user_id = :u
+          AND {current} >= 0
+          AND (CAST(:e AS bigint) IS NULL OR {current} = CAST(:e AS bigint))
+        RETURNING (doc->>'session_epoch')::bigint
+        """,
+        {
+            'u': user_id,
+            'p': json.dumps(patch, `default=_pg_json_default),
+            'e': expected
+        }
+    );
+    return int(rows[0][0]) if rows else None;
+}
+
+impl PgIdentityStorage.credential_state(
+    user_id: str
+) -> tuple[list[dict[str, any]], any] {
+    rows = self.store.rows(
+        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
+    );
+    if not rows {
+        return ([], None);
+    }
+    doc = _pg_load_doc(rows[0][0]);
+    return (
+        doc.get('credentials') or [],
+        doc['session_epoch'] if 'session_epoch' in doc else 0
+    );
+}
+
+impl PgIdentityStorage.session_state(user_id: str) -> dict[str, any] | None {
+    rows = self.store.rows(
+        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
+    );
+    if not rows {
+        return None;
+    }
+    doc = _pg_load_doc(rows[0][0]);
+    return {
+        'user_id': doc.get('user_id') or user_id,
+        'root_id': doc.get('root_id') or None,
+        'status': doc.get('status') or 'active',
+        'session_epoch': doc['session_epoch'] if 'session_epoch' in doc else 0
+    };
 }
 
 impl PgIdentityStorage._get_oauth_grants(user_id: str) -> list[dict[str, any]] {

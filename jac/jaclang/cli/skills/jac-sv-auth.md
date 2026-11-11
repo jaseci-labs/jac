@@ -64,7 +64,7 @@ curl -X POST http://localhost:8000/function/my_todos \
 curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile, identities, role
 ```
 
-Identity types: `username`, `email` (max one of each; login works with either unless `login_with` narrows it). Which ones an account needs, and how strong the password must be, is the project's **auth policy** (below); a value that breaks it gets `400 POLICY_VIOLATION` with every broken rule in `error.details.violations`. Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
+Identity types: `username`, `email` (max one of each; login works with either unless `login_with` narrows it). Which ones an account needs, and how strong the password must be, is the project's **auth policy** (below); a value that breaks it gets `400 POLICY_VIOLATION` with every broken rule in `error.details.violations`. Also available: `POST /user/refresh-token`, `PUT /user/password`, `POST /user/logout-all`, password-reset/verify endpoints via a configured emailer. A password change, a password reset, `logout-all` and disabling the account end every session of the account (each token carries the account's session epoch); a password change answers a replacement `token` the client must switch to.
 
 ## Media and downloads: the session cookie
 

@@ -31,7 +31,10 @@ async def ws_authenticate(
 ) -> (dict[str, any], dict[str, any] | None);
 
 async def ws_heartbeat_loop(
-    ctx: ConnectionContext, heartbeat_seconds: float, missed_allowed: int
+    ctx: ConnectionContext,
+    heartbeat_seconds: float,
+    missed_allowed: int,
+    session_current: any = None
 ) -> None;
 
 async def ws_reject_auth(websocket: WebSocket, auth_detail: dict[str, any]);
