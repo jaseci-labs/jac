@@ -1147,50 +1147,6 @@ test "the injected default equals the derived URL under matching config" {
 }
 
 
-# K8sRuntimeServiceResolver.url_for is the other k8s resolution site. It is
-# dormant today, but it must not become the one path that bypasses an override
-# once the admin ops that construct it are wired up.
-def _peer_resolver -> K8sRuntimeServiceResolver {
-    return K8sRuntimeServiceResolver(
-        registry=ServiceRegistry(), namespace=_PEER_NS, port=_PEER_PORT
-    );
-}
-
-
-test "url_for uses the override when one is set" {
-    saved = _peer_env_snapshot();
-    try {
-        _peer_env_isolate();
-        standby = "http://orders-app-standby-service.shop.svc.cluster.local:8000";
-        os.environ[peer_url_env_key("orders_app")] = standby;
-
-        `entry = ServiceEntry(
-            name="orders_app", file="orders_app.jac", prefix="/orders"
-        );
-
-        assert _peer_resolver().url_for(`entry) == standby;
-    } finally {
-        _peer_env_restore(saved);
-    }
-}
-
-
-test "url_for derives when no override is set" {
-    saved = _peer_env_snapshot();
-    try {
-        _peer_env_isolate();
-
-        `entry = ServiceEntry(
-            name="orders_app", file="orders_app.jac", prefix="/orders"
-        );
-
-        assert _peer_resolver().url_for(`entry) == _ORDERS_DERIVED;
-    } finally {
-        _peer_env_restore(saved);
-    }
-}
-
-
 # The revision comes from the apply response rather than a follow up read. A
 # second read would need get on secrets, which a least privilege deployer may
 # not have, and a read that failed would silently produce no marker, no

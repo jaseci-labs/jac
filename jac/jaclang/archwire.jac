@@ -3013,8 +3013,7 @@ graph import {
         configure_access_logging
     }
     server.serving.app ++> [
-        scale.runtime.gateway.embedded_gateway
-            | scale.runtime.gateway.microservice_gateway
+        scale.runtime.gateway.microservice_gateway
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
@@ -3144,13 +3143,6 @@ graph import {
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
             | scale.tests.microservices.test_rate_limit.next_handler { JSONResponse },
-        scale.runtime.gateway.embedded_gateway
-            | scale.server.extensions
-            | scale.tests.microservices.test_gateway_webapp {
-            JSONResponse,
-            Request,
-            Response
-        },
         scale.runtime.gateway.microservice_gateway {
             HTMLResponse,
             JSONResponse,
@@ -3158,6 +3150,11 @@ graph import {
             Response
         },
         scale.runtime.transport.http_forward { StreamingResponse },
+        scale.server.extensions | scale.tests.microservices.test_gateway_webapp {
+            JSONResponse,
+            Request,
+            Response
+        },
         scale.server.sso_ext | scale.sso.provider | scale.sso.sso_auth {
             RedirectResponse,
             Request,
@@ -3289,10 +3286,6 @@ graph import {
         logger as _proxy_logger
     }
     server.serving.server ++> [
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.serve {
-            PORT_RETRY_LIMIT,
-            ServingServer
-        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start
             | scale.tests.microservices.test_app_routes._expose_backend
             | scale.tests.microservices.test_gateway_webapp
@@ -3449,12 +3442,6 @@ graph import {
         client.targets.seo_build.clear_seo_files { ROBOTS_PATH, SITEMAP_PATH },
         client.targets.seo_build.render_robots { SITEMAP_PATH },
         client.targets.web_target._copy_public_dirs { ROOT_ASSET_EXTENSIONS },
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
-            SEO_ROOT_FILES
-        },
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.dispatch {
-            robots_response
-        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
             SEO_ROOT_FILES,
             robots_response
@@ -3528,7 +3515,6 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.server.test_error_envelope { ServingTestClient },
         scale.tests.data.test_eager_spawn
-            | scale.tests.microservices.test_embedded_gateway
             | scale.tests.microservices.test_microservice
             | scale.tests.server.test_served_app_route
             | scale.tests.server.test_sv_outbox_endpoints {
@@ -13702,11 +13688,7 @@ graph import scale {
         tests.microservices.test_pvc_injector { build_bootstrap_init_container },
     ]
     deploy.target.kubernetes.runtime_resolver ++> [
-        tests.deploy.test_pod_env {
-            K8sRuntimeServiceResolver,
-            build_k8s_registry,
-            resolve_peer_route
-        },
+        tests.deploy.test_pod_env { build_k8s_registry, resolve_peer_route },
         tests.deploy.test_service_routing { build_k8s_registry_routes },
     ]
     deploy.target.kubernetes.runtime_resolver --> runtime.provider.JacScaleRuntime.get_sv_service_routes {
@@ -13767,8 +13749,6 @@ graph import scale {
     deploy.target.registry --> tests.misc.test_config_validation {
         BUILTIN_TARGET_TYPES
     }
-    deploy.target.service_deployer ++> runtime.orchestrator.local_deployer
-        | runtime.orchestrator.process_manager { ServiceDeployer }
     emailer.emailer ++> [
         server.extensions { Emailer },
         tests.server.test_emailer_factory { EmailAttachment, Emailer },
@@ -14303,9 +14283,6 @@ graph import scale {
             classify_route
         },
     ]
-    runtime.gateway.embedded_gateway ++> tests.microservices.test_embedded_gateway {
-        EmbeddedGateway
-    }
     runtime.gateway.microservice_gateway ++> tests.apps.test_fleet_from_apps
         | tests.microservices.test_app_routes
         | tests.microservices.test_gateway
@@ -14327,14 +14304,6 @@ graph import scale {
             | tests.microservices.test_route_learning { ServiceRouteTable },
     ]
     runtime.gateway.service_registry ++> [
-        deploy.target.kubernetes.runtime_resolver
-            | tests.deploy.test_deployer
-            | tests.deploy.test_pod_env
-            | tests.microservices.test_embedded_gateway
-            | tests.microservices.test_stop_signal_scope {
-            ServiceEntry,
-            ServiceRegistry
-        },
         tests.apps.test_fleet_from_apps
             | tests.microservices.test_app_routes
             | tests.microservices.test_boot_grace
@@ -14347,6 +14316,10 @@ graph import scale {
             ServiceEntry,
             ServiceRegistry,
             ServiceStatus
+        },
+        tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
+            ServiceEntry,
+            ServiceRegistry
         },
         tests.microservices.test_gateway_docs_precedence
             | tests.server.test_static_fallback { ServiceRegistry },
@@ -14361,10 +14334,10 @@ graph import scale {
         build_gateway_metrics,
         classify_outcome
     }
-    runtime.middleware.middleware ++> [
-        tests.microservices.test_embedded_gateway { Middleware },
-        tests.microservices.test_middleware { Middleware, MiddlewareRegistry },
-    ]
+    runtime.middleware.middleware ++> tests.microservices.test_middleware {
+        Middleware,
+        MiddlewareRegistry
+    }
     runtime.middleware.rate_limit ++> tests.microservices.test_rate_limit {
         InProcessRateLimiter,
         StateBackendRateLimiter,
@@ -14375,15 +14348,16 @@ graph import scale {
         _to_ws_scheme,
         websocket_forward
     }
-    runtime.orchestrator.local_deployer ++> plugin._fleet_cmd
-        | tests.deploy.test_deployer { LocalDeployer }
     runtime.orchestrator.orchestrator ++> [
         plugin._fleet_cmd { ServiceRegistry, build_registry },
+        plugin.scale_local_serve { start_fleet_mode },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
     runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
-        tests.microservices.test_boot_grace
+        plugin._fleet_cmd
+            | tests.deploy.test_deployer
+            | tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
             | tests.microservices.test_k8s_health_probe { ServiceProcessManager },
         tests.microservices.test_stop_signal_scope {
@@ -14393,7 +14367,6 @@ graph import scale {
         },
         tests.support.stop_server { _signal_group },
     ]
-    runtime.planner.planner ++> tests.microservices.test_planner { plan_realization }
     runtime.provider ++> [
         plugin | server.inprocess.prepare_inprocess_runtime { mark_scale_runtime },
         tests.server.test_sv_auth_forward | tests.server.test_sv_streaming {
@@ -14414,7 +14387,6 @@ graph import scale {
     runtime.realizer.kubernetes_realizer --> plugin.scale_deploy { KubernetesRealizer }
     runtime.realizer.kubernetes_realizer as realizer_mod ++> tests.deploy.test_deploy_banner
         | tests.deploy.test_dry_run_purity;
-    runtime.realizer.local_realizer ++> plugin.scale_local_serve { LocalRealizer }
     runtime.routing ++> [
         admin.admin_portal._classify_path { GATEWAY_WELLKNOWN_SEGMENTS },
         tests.microservices.test_routing_guard {
@@ -14448,9 +14420,6 @@ graph import scale {
     runtime.transport.http_forward ++> tests.server.test_stream_ws {
         raw_forward,
         stream_forward
-    }
-    runtime.transport.transport ++> tests.microservices.test_embedded_gateway {
-        InProcessTransport
     }
     scheduler.scheduler ++> [
         server.jobs_ext { JacScaleScheduler, TriggerSpec },
@@ -14781,7 +14750,6 @@ graph import scale.deploy.target {
     }
     kubernetes.target --> factory.DeploymentTargetFactory.create { KubernetesTarget }
     registry ++> factory { DeploymentTargetRegistry }
-    service_deployer ++> kubernetes.runtime_resolver { ServiceDeployer }
 }
 
 graph import scale.deploy.target.kubernetes {
@@ -14985,9 +14953,7 @@ graph import scale.runtime {
     ]
     context.util ++> [
         cli.diagnostics | cli.plan { GATEWAY_NAME },
-        gateway.embedded_gateway
-            | gateway.microservice_gateway
-            | gateway.process_gateway {
+        gateway.microservice_gateway {
             DEFAULT_CLIENT_DIST_DIR,
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
@@ -15019,7 +14985,7 @@ graph import scale.runtime {
         },
     ]
     fleet ++> [
-        cli.plan | realizer.local_realizer { FleetSpec },
+        cli.plan { FleetSpec },
         orchestrator.orchestrator { FleetSpec, ROOT_PREFIX },
         realizer.kubernetes_realizer {
             FleetSpec,
@@ -15028,9 +14994,8 @@ graph import scale.runtime {
         },
     ]
     fleet --> provider.JacScaleRuntime.get_sv_service_routes { fleet_from_env }
-    gateway.process_gateway ++> orchestrator.orchestrator { ProcessGateway }
-    gateway.service_registry ++> orchestrator.local_deployer
-        | orchestrator.orchestrator
+    gateway.microservice_gateway ++> orchestrator.orchestrator { MicroserviceGateway }
+    gateway.service_registry ++> orchestrator.orchestrator
         | orchestrator.process_manager { ServiceEntry, ServiceRegistry, ServiceStatus }
     middleware.metrics ++> [
         gateway.microservice_gateway.MicroserviceGateway.handle_metrics {
@@ -15043,13 +15008,10 @@ graph import scale.runtime {
     middleware.metrics --> gateway.microservice_gateway.MicroserviceGateway.setup.dispatcher {
         classify_outcome
     }
-    middleware.middleware ++> [
-        gateway.gateway { MiddlewareRegistry },
-        gateway.microservice_gateway.MicroserviceGateway.setup {
-            Middleware,
-            MiddlewareRegistry
-        },
-    ]
+    middleware.middleware ++> gateway.microservice_gateway.MicroserviceGateway.setup {
+        Middleware,
+        MiddlewareRegistry
+    }
     middleware.rate_limit ++> gateway.microservice_gateway.MicroserviceGateway.setup {
         build_client_error_limit_middleware,
         build_rate_limit_middleware,
@@ -15057,11 +15019,6 @@ graph import scale.runtime {
     }
     middleware.ws_forward ++> gateway.microservice_gateway._install_ws_catchall {
         websocket_forward
-    }
-    orchestrator.orchestrator ++> realizer.local_realizer { start_fleet_mode }
-    planner.planner ++> realizer.local_realizer {
-        TOPOLOGY_MICROSERVICE,
-        plan_realization
     }
     provider ++> rpc.rpc._resolve_call_target { JacScaleRuntime }
     provider --> orchestrator.orchestrator._populate_k8s_urls { JacScaleRuntime }
@@ -15094,7 +15051,6 @@ graph import scale.runtime {
         },
     ]
     transport.transport ++> [
-        gateway.embedded_gateway { ServiceTransport },
         provider.JacScaleRuntime.sv_service_call { http_transport },
         provider.JacScaleRuntime.sv_walker_call { http_transport },
     ]
@@ -15119,7 +15075,6 @@ graph import scale.runtime.context {
 }
 
 graph import scale.runtime.gateway {
-    dispatch ++> embedded_gateway { ROUTE_PROXY, classify_route }
     dispatch --> microservice_gateway.MicroserviceGateway.setup.dispatcher {
         ROUTE_ADMIN,
         ROUTE_BUILTIN,
@@ -15128,8 +15083,6 @@ graph import scale.runtime.gateway {
         ROUTE_PROXY,
         classify_route
     }
-    gateway ++> embedded_gateway | process_gateway { Gateway }
-    microservice_gateway ++> process_gateway { MicroserviceGateway }
     openapi_agg ++> [
         microservice_gateway.MicroserviceGateway.handle_openapi { aggregate_openapi },
         route_table.learn_service_routes { SpecFetch, fetch_service_spec },
@@ -15141,7 +15094,6 @@ graph import scale.runtime.gateway {
         },
     ]
     service_registry ++> [
-        embedded_gateway | process_gateway { ServiceRegistry },
         microservice_gateway | route_table {
             ServiceEntry,
             ServiceRegistry,
@@ -15153,15 +15105,7 @@ graph import scale.runtime.gateway {
 }
 
 graph import scale.runtime.orchestrator {
-    local_deployer ++> orchestrator { LocalDeployer }
-    process_manager ++> [
-        local_deployer | orchestrator { ServiceProcessManager },
-        local_deployer.LocalDeployer.status {
-            _pid_alive,
-            _read_pidfile,
-            _read_portfile
-        },
-    ]
+    process_manager ++> orchestrator { ServiceProcessManager }
 }
 
 graph import scale.runtime.rpc {

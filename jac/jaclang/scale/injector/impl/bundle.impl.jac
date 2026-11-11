@@ -541,18 +541,6 @@ impl _child_tree_script(
     return fallback;
 }
 
-impl _legacy_sealer_script_for(
-    jac_path: Path, stage_root: Path, timeout_s: int
-) -> Path {
-    return _child_tree_script(
-        jac_path,
-        stage_root,
-        timeout_s,
-        ("dist/precompile_bytecode.jac", "utils/precompile_bytecode.jac"),
-        Path(str(__file__)).parent.parent.parent / "dist" / "precompile_bytecode.jac"
-    );
-}
-
 impl sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
     if fleet is None or not fleet.root_app {
         return "";
@@ -682,24 +670,6 @@ impl _precompile_app(
             env=seal_step_env(),
             cwd=str(stage_root)
         );
-        if (
-            result.returncode != 0
-            and "invalid choice: 'precompile'" in (result.stderr or "")
-        ) {
-            logger.warning(
-                "Seal binary predates 'jac precompile'; falling back to its "
-                "legacy sealer script."
-            );
-            script = _legacy_sealer_script_for(jac_path, stage_root, timeout_s);
-            result = subprocess.run(
-                [str(jac_path), "run", str(script), str(stage_root)] + seal_flags,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-                env=seal_step_env(),
-                cwd=str(stage_root)
-            );
-        }
         jac_path.unlink();
         if (
             result.returncode != 0

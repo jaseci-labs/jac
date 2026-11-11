@@ -416,7 +416,6 @@ test "without site_url the build writes neither file" {
 }
 
 test "the gateways and jac run --serve answer robots.txt per host" {
-    import from jaclang.scale.runtime.gateway.embedded_gateway { EmbeddedGateway }
     import from jaclang.scale.runtime.gateway.microservice_gateway {
         MicroserviceGateway
     }
@@ -424,7 +423,6 @@ test "the gateways and jac run --serve answer robots.txt per host" {
         ServiceEntry,
         ServiceRegistry
     }
-    import from jaclang.scale.runtime.transport.transport { InProcessTransport }
     import from jaclang.testing.testing { JacTestClient }
     import from jaclang.testing.testkit { ServingTestClient }
     with tempfile.TemporaryDirectory() as tmp {
@@ -445,19 +443,11 @@ test "the gateways and jac run --serve answer robots.txt per host" {
             base_path=str(project_dir)
         );
         microservice.setup();
-        embedded = EmbeddedGateway(
-            registry=ServiceRegistry(),
-            transport=InProcessTransport(),
-            client_dist_dir=str(public),
-            base_path=str(project_dir)
-        );
-        embedded.setup();
         server = JacTestClient.from_file(
             str(project_dir / "main.jac"), base_path=str(project_dir)
         );
         servers: list[tuple[str, any]] = [
             ("microservice gateway", ServingTestClient(microservice.app)),
-            ("embedded gateway", ServingTestClient(embedded.app)),
             ("jac run --serve", server)
         ];
         try {
@@ -514,15 +504,6 @@ test "the gateways and jac run --serve answer robots.txt per host" {
                 "microservice gateway",
                 MicroserviceGateway(
                     registry=registry,
-                    client_dist_dir=str(workspace),
-                    base_path=str(workspace)
-                )
-            ),
-            (
-                "embedded gateway",
-                EmbeddedGateway(
-                    registry=registry,
-                    transport=InProcessTransport(),
                     client_dist_dir=str(workspace),
                     base_path=str(workspace)
                 )

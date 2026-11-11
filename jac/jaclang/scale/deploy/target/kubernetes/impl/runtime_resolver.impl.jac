@@ -31,67 +31,6 @@ impl resolve_peer_route(svc_name: str, namespace: str, port: int) -> ServiceRout
     );
 }
 
-impl resolve_peer_url(svc_name: str, namespace: str, port: int) -> str {
-    return resolve_peer_route(svc_name, namespace, port).url;
-}
-
-impl K8sRuntimeServiceResolver.url_for(service_entry: ServiceEntry) -> str {
-    return resolve_peer_url(service_entry.name, self.namespace, self.port);
-}
-
-impl K8sRuntimeServiceResolver.deploy_service(name: str) -> bool {
-    logger.warning(
-        f"K8sRuntimeServiceResolver.deploy_service({name}): admin op "
-        "not yet wired. Use `jac scale deploy <file.jac>` for deployment."
-    );
-    return False;
-}
-
-impl K8sRuntimeServiceResolver.stop_service(name: str) -> bool {
-    logger.warning(
-        f"K8sRuntimeServiceResolver.stop_service({name}): admin op not yet wired."
-    );
-    return False;
-}
-
-impl K8sRuntimeServiceResolver.restart_service(name: str) -> bool {
-    logger.warning(
-        f"K8sRuntimeServiceResolver.restart_service({name}): admin op not yet wired."
-    );
-    return False;
-}
-
-impl K8sRuntimeServiceResolver.scale_service(name: str, replicas: int) -> bool {
-    logger.warning(
-        f"K8sRuntimeServiceResolver.scale_service({name}, {replicas}): "
-        "admin op not yet wired."
-    );
-    return False;
-}
-
-impl K8sRuntimeServiceResolver.status -> dict[str, dict[str, any]] {
-    return {};
-}
-
-impl K8sRuntimeServiceResolver.get_logs(name: str, lines: int = 50) -> str {
-    return "";
-}
-
-impl K8sRuntimeServiceResolver.destroy_all -> bool {
-    logger.warning(
-        "K8sRuntimeServiceResolver.destroy_all: use "
-        "`KubernetesTarget.destroy(app_name)` instead."
-    );
-    return False;
-}
-
-impl K8sRuntimeServiceResolver.deploy_all -> bool {
-    logger.warning(
-        "K8sRuntimeServiceResolver.deploy_all: use `jac scale deploy <file.jac>` instead."
-    );
-    return False;
-}
-
 impl build_k8s_registry_routes(
     routes: list[str] | dict[str, str], port: int = DEFAULT_GATEWAY_PORT
 ) -> dict[str, ServiceRoute] {

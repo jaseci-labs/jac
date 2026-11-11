@@ -32,13 +32,6 @@ def _signal_group(pid: int, sig: int) -> None;
 def _pid_alive(pid: int) -> bool;
 
 impl ServiceProcessManager._url_for(service_entry: ServiceEntry) -> str {
-    if self.deployer is not None {
-        url_fn = self.deployer?.url_for;
-        if url_fn is not None {
-            result: str = url_fn(service_entry);
-            return result;
-        }
-    }
     return f"http://127.0.0.1:{service_entry.port}";
 }
 
@@ -394,6 +387,63 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
 
 def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None;
 
+
+impl ServiceProcessManager.status -> dict[str, dict[str, any]] {
+    for (name, svc_entry) in self.registry.entries.items() {
+        if name not in self.processes {
+            pidfile_pid = _read_pidfile(name);
+            if pidfile_pid is not None and _pid_alive(pidfile_pid) {
+                svc_entry.pid = pidfile_pid;
+                port_from_file = _read_portfile(name);
+                if port_from_file is not None and svc_entry.port == 0 {
+                    svc_entry.port = port_from_file;
+                    svc_entry.url = self._url_for(svc_entry);
+                }
+            }
+        }
+    }
+
+    self.check_all_health();
+    result: dict[str, dict[str, any]] = {};
+    for (name, svc_entry) in self.registry.entries.items() {
+        is_running = name in self.processes;
+        if not is_running {
+            pidfile_pid = _read_pidfile(name);
+            is_running = (
+                pidfile_pid is not None
+                and _pid_alive(pidfile_pid)
+                and svc_entry.status == ServiceStatus.HEALTHY
+            );
+        }
+        result[name] = {
+            "name": svc_entry.name,
+            "file": svc_entry.file,
+            "prefix": svc_entry.prefix,
+            "port": svc_entry.port,
+            "pid": svc_entry.pid,
+            "status": svc_entry.status.value,
+            "running": is_running,
+            "url": svc_entry.url,
+            "target": "local"
+        };
+    }
+    return result;
+}
+
+impl ServiceProcessManager.get_logs(name: str, lines: int = 50) -> str {
+    if name not in self.registry.entries {
+        return f"Service '{name}' not found";
+    }
+
+    log_file = _Path(".jac/logs") / f"{name}.log";
+    if not log_file.exists() {
+        return f"No log file for '{name}' (service may not have started yet)";
+    }
+
+    all_lines = log_file.read_text().splitlines();
+    tail = all_lines[-lines:] if len(all_lines) > lines else all_lines;
+    return "\n".join(tail);
+}
 
 impl ServiceProcessManager.start_health_monitor(interval: float | None = None) -> None {
     if (
