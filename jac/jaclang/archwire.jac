@@ -3262,6 +3262,7 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.executor ++> scale.websocket.websocket { close_stream }
     server.serving.files ++> [
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_spa_fallback {
             file_response
