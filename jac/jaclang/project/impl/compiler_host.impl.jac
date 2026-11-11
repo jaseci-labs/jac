@@ -289,19 +289,6 @@ impl ProjectHost.native_deps_deferred(program: JacProgram) -> bool {
     return program.native_units().close_dep_deferral();
 }
 
-impl ProjectHost.held_native_iface(
-    program: JacProgram, path: str, options: CompileOptions
-) -> str {
-    ent = program.native_units().ensure(
-        path,
-        compile_on_miss=is_compiler_source_path(path),
-        options=options,
-        check_deps=False,
-        products=not options.no_cgen
-    );
-    return ent.iface.to_bytes().decode("utf-8") if ent is not None else "";
-}
-
 impl ProjectHost.native_lowering_failed(program: JacProgram, path: str, detail: str) {
     import os;
     program.native_units().failures[os.path.realpath(path)] = detail;
@@ -631,12 +618,6 @@ impl ProjectHost.build_module(
     program: JacProgram, file_path: str, use_str: (str | None)
 ) -> Module {
     return self.compiler_for(program).build(file_path, program, use_str);
-}
-
-impl ProjectHost.run_module_pipeline(
-    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
-) -> Module {
-    return self.compiler_for(program).run_module(file_path, program, use_str, options);
 }
 
 impl ProjectHost.native_session_active(program: JacProgram) -> bool {

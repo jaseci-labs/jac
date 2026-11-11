@@ -201,26 +201,6 @@ impl read_jir_paths(data: bytes, base_dir: str = "") -> JirPaths {
     return JirPaths.from_bytes(read_section_bytes(data, SEC_PATH_ROOT), base_dir);
 }
 
-impl create_header(
-    source_hash: int,
-    node_count: int,
-    symbol_count: int,
-    string_pool_size: int,
-    flags: int = 0
-) -> JirHeader {
-    return JirHeader(
-        magic=MAGIC,
-        format_version=FORMAT_VERSION,
-        python_version=(sys.version_info.major << 8) | sys.version_info.minor,
-        jaclang_version_hash=zlib.crc32(jaclang_version().encode()) & 0xFFFFFFFF,
-        source_content_hash=source_hash & 0xFFFFFFFF,
-        node_count=node_count,
-        symbol_count=symbol_count,
-        string_pool_size=string_pool_size,
-        flags=flags
-    );
-}
-
 impl parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
     if len(data) < HEADER_SIZE {
         return None;
@@ -253,13 +233,6 @@ impl get_jir_cache_dir -> Path {
 }
 
 impl compute_content_sha256(file_path: str) -> str {
-    held = _COMPILED_CONTENT.get();
-    if held {
-        found = held.get(os.path.realpath(file_path));
-        if found is not None {
-            return found;
-        }
-    }
     return file_sha256(file_path);
 }
 
@@ -688,34 +661,11 @@ impl _module_projection(source_path: str) -> str {
 }
 
 impl begin_prepare_memo -> any {
-    return (_PREPARE_MEMO.set({}), _COMPILED_CONTENT.set({}));
+    return _PREPARE_MEMO.set({});
 }
 
 impl end_prepare_memo(token: any) {
-    _COMPILED_CONTENT.reset(token[1]);
-    _PREPARE_MEMO.reset(token[0]);
-}
-
-impl hold_compiled_content(digests: dict[str, str]) {
-    held = _COMPILED_CONTENT.get();
-    if held is None {
-        return;
-    }
-    held.update(digests);
-    memo = _PREPARE_MEMO.get();
-    if memo is not None {
-        memo.clear();
-    }
-}
-
-@contextmanager
-impl content_on_disk -> Iterator[None] {
-    token = _COMPILED_CONTENT.set(None);
-    try {
-        yield None;
-    } finally {
-        _COMPILED_CONTENT.reset(token);
-    }
+    _PREPARE_MEMO.reset(token);
 }
 
 impl _memoized(kind: str, source_path: str, compute: any) -> str {
@@ -839,27 +789,6 @@ impl unit_source_digest(path: str) -> str {
     h.update(ct_dep_digest(real, with_annexes=True).encode("utf-8"));
     h.update(wiring_digest_for(real).encode("utf-8"));
     return h.hexdigest();
-}
-
-impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
-    units = sidecar.get("units");
-    ids = sidecar.get("unit_ids");
-    recorded = [str(u) for u in units] if isinstance(units, list) else [];
-    if not isinstance(ids, list) or len(ids) != len(recorded) {
-        return recorded;
-    }
-    pkg_parent = os.path.dirname(target_pkg_root());
-    out: list[str] = [];
-    for (path, ident) in zip(recorded, ids) {
-        ident_s = str(ident);
-        local = (
-            os.path.join(pkg_parent, ident_s)
-                if ident_s.startswith("jaclang/")
-                else path
-        );
-        out.append(local if os.path.isfile(local) else path);
-    }
-    return out;
 }
 
 impl _compute_module_key_uncached(source_path: str) -> str {
@@ -1224,11 +1153,6 @@ impl stale_ct_dep_rows(text: str, base: str = "") -> list[str] {
     return _stale_ct_rows(_ct_dep_rows(text), base);
 }
 
-impl module_ct_deps_text(mod: any) -> str {
-    section = module_ct_deps_section(mod);
-    return section.decode("utf-8") if section is not None else "";
-}
-
 impl absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, flag) in _ct_dep_rows(raw.decode("utf-8")) {
@@ -1542,14 +1466,6 @@ impl write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     buf.append(SEC_TERMINATOR);
     buf.extend(bytes(4));
     return bytes(buf);
-}
-
-impl read_sections_blob(data: bytes) -> dict[int, bytes] {
-    magic: any = SECTIONS_MAGIC;
-    if not data.startswith(magic) {
-        return {};
-    }
-    return read_sections(data, len(magic));
 }
 
 impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
