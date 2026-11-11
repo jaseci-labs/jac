@@ -18,9 +18,9 @@ impl write_native_product(
     if not shared and any(unit.iface.python_imports for unit in plan.units) {
         raise ValueError('Standalone native products cannot import Python');
     }
-    if not shared and plan.demoted_symbols() {
+    if not shared and (failures := plan.lowering_failures()) {
         raise ValueError(
-            'Native declarations could not lower: ' + ', '.join(plan.demoted_symbols())
+            'Native declarations could not lower:\n  ' + '\n  '.join(failures)
         );
     }
     output = relative.with_suffix('.so' if shared else '');

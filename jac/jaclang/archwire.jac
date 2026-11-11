@@ -9833,6 +9833,7 @@ graph import compiler.backends.native {
         entry_points.validate_native_application | na_compile_pass.unit_fallbacks {
             native_fallbacks_in_ir
         },
+        link_plan.LinkPlan.lowering_failures { native_lowering_issues },
         na_ir_gen_pass {
             DEMOTED_SUFFIX,
             NativeLoweringIssue,
