@@ -128,3 +128,43 @@ test "a heavy jac0 connect gives each endpoint its own edge list" {
     assert len(b.__jac__.edges) == 1;
     assert not bystander.__jac__.edges;
 }
+
+
+node LastInProbe {}
+
+edge LastInLink: LastInProbe --> LastInProbe {}
+
+edge LastInSubLink(LastInLink): LastInProbe --> LastInProbe {}
+
+edge LastInWeighted: LastInProbe --> LastInProbe {
+    has w: int = 0;
+}
+
+test "last_in0 answers what the in-hop's last element is, on every path" {
+    import from jaclang.jac0core.osp0 { connect0, disconnect0, hop0, last_in0 }
+    def hop_last(n: LastInProbe, e: type) -> (LastInProbe | None) {
+        found = hop0(n, 1, e);
+        return found[-1] if found else None;
+    }
+    child = LastInProbe();
+    first = LastInProbe();
+    second = LastInProbe();
+    assert last_in0(child, LastInLink) is None;
+    connect0(first, child, LastInLink);
+    assert last_in0(child, LastInLink) is first;
+    connect0(second, child, LastInLink);
+    assert last_in0(child, LastInLink) is second;
+    assert last_in0(child, LastInLink) is hop_last(child, LastInLink);
+    disconnect0(second, child);
+    assert last_in0(child, LastInLink) is first;
+    weighted = LastInProbe();
+    holder = LastInProbe();
+    connect0(holder, weighted, LastInWeighted);
+    assert last_in0(weighted, LastInWeighted) is holder;
+    assert last_in0(weighted, LastInWeighted) is hop_last(weighted, LastInWeighted);
+    sub_child = LastInProbe();
+    sub_parent = LastInProbe();
+    connect0(sub_parent, sub_child, LastInSubLink);
+    assert last_in0(sub_child, LastInLink) is hop_last(sub_child, LastInLink);
+    assert last_in0(sub_child, LastInLink) is sub_parent;
+}
