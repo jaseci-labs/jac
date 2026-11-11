@@ -907,45 +907,43 @@ impl _prepare_revision(
     for path in project_facts {
         _capture_input(path, inputs);
     }
-    with content_on_disk() {
-        if any(
-            ct_dep_digest(path, with_annexes=True) != digest
-            for (path, digest) in inputs.items()
-        ) {
-            raise SourcesChanged(
-                'Sources changed during preparation; retry with the new revision.'
-            );
-        }
-        read: dict[str, str] = {};
-        client_modules: dict[str, str] = {};
-        if revision.client_compiler is not None {
-            read = dict(revision.client_compiler.jac_client_compiler.input_files);
-            client_modules = dict(
-                revision.client_compiler.jac_client_compiler.client_modules
-            );
-            client_files = sorted(read);
-        }
-        settled = _client_inventory(`root, client_dirs, client_files, inventory)
-            if client
-            else _inventory(inventory_root, inputs=True, previous=inventory);
-        current = _digests(settled);
-        changed_read = any(
-            current.get(path, '') != digest for (path, digest) in read.items()
+    if any(
+        ct_dep_digest(path, with_annexes=True) != digest
+        for (path, digest) in inputs.items()
+    ) {
+        raise SourcesChanged(
+            'Sources changed during preparation; retry with the new revision.'
         );
-        if (not client and current != _digests(inventory))
-            or any(
-                current.get(path) != digest
-                for (path, digest) in _digests(inventory).items()
-            )
-            or changed_read
-            or any(
-                ct_dep_digest(path, with_annexes=True) != digest
-                for (path, digest) in client_modules.items()
-            ) {
-            raise SourcesChanged(
-                'Sources changed during preparation; retry with the new revision.'
-            );
-        }
+    }
+    read: dict[str, str] = {};
+    client_modules: dict[str, str] = {};
+    if revision.client_compiler is not None {
+        read = dict(revision.client_compiler.jac_client_compiler.input_files);
+        client_modules = dict(
+            revision.client_compiler.jac_client_compiler.client_modules
+        );
+        client_files = sorted(read);
+    }
+    settled = _client_inventory(`root, client_dirs, client_files, inventory)
+        if client
+        else _inventory(inventory_root, inputs=True, previous=inventory);
+    current = _digests(settled);
+    changed_read = any(
+        current.get(path, '') != digest for (path, digest) in read.items()
+    );
+    if (not client and current != _digests(inventory))
+        or any(
+            current.get(path) != digest
+            for (path, digest) in _digests(inventory).items()
+        )
+        or changed_read
+        or any(
+            ct_dep_digest(path, with_annexes=True) != digest
+            for (path, digest) in client_modules.items()
+        ) {
+        raise SourcesChanged(
+            'Sources changed during preparation; retry with the new revision.'
+        );
     }
     if client {
         inventory = settled;

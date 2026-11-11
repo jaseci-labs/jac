@@ -21,11 +21,7 @@ impl SelfHostCache.owns(file_path: str) -> bool {
 }
 
 impl SelfHostCache.resolve(
-    file_path: str,
-    target_program: JacProgram,
-    force: bool = False,
-    native_unit: bool = False,
-    execution: bool = False
+    file_path: str, target_program: JacProgram, force: bool = False
 ) -> JacProgram {
     if not force and self.owns(file_path) {
         if self.is_selfhost(target_program) {
