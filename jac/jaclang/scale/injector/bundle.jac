@@ -217,6 +217,9 @@ def fat_bundle_enabled(project_dir: str) -> bool;
 def seal_timeout_setting(project_dir: str) -> int;
 
 
+def seal_cache_setting(project_dir: str) -> (Path | None);
+
+
 def _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "");
 
 
@@ -288,13 +291,18 @@ def _latest_seal(base: Path) -> (Path | None);
 def _seed_precompiled(stage: Path, seed: (Path | None)) -> int;
 
 
-def _cached_seal(base: Path, key: str) -> (bytes | None);
+def _cached_seal(cache: Path, key: str) -> (bytes | None);
 
 
 def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
-def _remember_seal(base: Path, key: str, raw: bytes);
+def _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool;
+
+
+def _remember_seal(
+    cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP, mode: int = 0o600
+);
 
 
 def pack_jab(
