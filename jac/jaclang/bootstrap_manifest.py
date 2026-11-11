@@ -57,42 +57,6 @@ def is_roster_input(rel_path: str, roster: tuple[str, ...] | None = None) -> boo
     )
 
 
-# Inputs a build lowers into a native object instead of shipping as source
-# (none since JacPython was removed). They are compiler identity exactly like every
-# other declared input; a staging that omits their sources carries their hashes
-# in COMPILER_IDENTITY_NAME so its digest still covers them. This tuple is the
-# only place the set is named: the payload stager prunes by it and the digest
-# resolver completes by it, so the two can no longer disagree (they did, and a
-# pruned payload silently reported a different, smaller compiler identity than
-# the checkout it was built from).
-NATIVE_LOWERED_PATHS: tuple[str, ...] = ()
-
-# Written into a staged jaclang tree at pack time, from the COMPLETE source
-# tree, before any pruning. Its `inputs` map covers every declared input so a
-# consumer can resolve the ones this staging does not carry as source.
-COMPILER_IDENTITY_NAME: str = "compiler_identity.json"
-
-
-def is_native_lowered(rel: str) -> bool:
-    """Is ``rel`` (POSIX-style, package-relative) a natively lowered input?"""
-    rel = rel.replace(os.sep, "/")
-    return any(rel == p or rel.startswith(p + "/") for p in NATIVE_LOWERED_PATHS)
-
-
-# Inputs the payload stager ships REWRITTEN instead of copied, named by file
-# name. A wiring file is shipped with its edges to natively lowered providers
-# blanked (dist/payload ship_wiring), so the staged copy is a function of the
-# source copy and NATIVE_LOWERED_PATHS, yet hashes differently from it. Like a
-# lowered input, a staging resolves these from the hashes COMPILER_IDENTITY_NAME
-# recorded from the complete tree, so a payload reports the identity of the
-# checkout it was built from and that checkout reuses the payload's units.
-STAGING_REWRITTEN_NAMES: tuple[str, ...] = ("archwire.jac",)
-
-
-def is_staging_rewritten(rel: str) -> bool:
-    """Does a staging ship ``rel`` rewritten, so its recorded hash names it?"""
-    return rel.replace(os.sep, "/").rsplit("/", 1)[-1] in STAGING_REWRITTEN_NAMES
-
 # Everything the jac0 tier compiles. Directory entries cover subtrees.
 # compiler/passes/ and compiler/backends/ are deliberately listed file by
 # file (or implementation/parser subtree): their siblings (backends/es/,

@@ -32,7 +32,6 @@ test "no subcommand and unknown subcommand are usage errors" {
 
 test "every subcommand reports its usage when positional args are missing" {
     cases = [
-        (["fetch-llvm"], "usage: payload fetch-llvm <dest-dir>"),
         (
             ["fetch-bun", "linux-x86_64"],
             "usage: payload fetch-bun <os-arch> <dest-dir>"

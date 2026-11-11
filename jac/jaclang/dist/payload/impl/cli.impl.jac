@@ -22,10 +22,7 @@ impl dispatch(argv: list[str]) {
     if cmd not in SUBCOMMANDS {
         die(f"unknown subcommand '{cmd}'");
     }
-    if cmd == "fetch-llvm" {
-        _need(argv, 2, "usage: payload fetch-llvm <dest-dir>");
-        fetch_llvm(argv[1]);
-    } elif cmd == "fetch-bun" {
+    if cmd == "fetch-bun" {
         _need(argv, 3, "usage: payload fetch-bun <os-arch> <dest-dir>");
         fetch_bun(argv[1], argv[2]);
     } elif cmd == "build-musl" {
