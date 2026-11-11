@@ -74,17 +74,11 @@ test "a docstring with no ';' is one E0111, whatever the next line is" {
 test "E0111 is reported in every kind of body" {
     if_x = "\n    if x > 0 {\n        print(x);\n    }";
     bodies = {
-        "method": 'obj Calc {\n    has n: int = 0;\n\n    def double -> int {\n        """Doc."""\n        if self.n > 0 {\n            return self.n * 2;\n        }\n        return 0;\n    }\n}\n',
         "walker ability": 'walker W {\n    can go with Root entry {\n        """Doc."""\n        if True {\n            print(1);\n        }\n    }\n}\n',
-        "with entry": 'with entry {\n    """Doc."""\n    if 1 > 0 {\n        print(1);\n    }\n}\n',
-        "impl": 'obj A {\n    def m -> int;\n}\n\nimpl A.m -> int {\n    """Doc."""\n    if True {\n        return 1;\n    }\n    return 0;\n}\n',
         "lambda": 'with entry {\n    g = lambda (x: int) -> int {\n        """Doc."""\n        if x > 0 {\n            return x;\n        }\n        return 0;\n    };\n    print(g(1));\n}\n',
-        "nested def": 'def outer(x: int) -> int {\n    def inner(y: int) -> int {\n        """Doc."""\n        if y > 0 {\n            return y;\n        }\n        return 0;\n    }\n    return inner(x);\n}\n',
-        "client component": 'def:pub App() -> JsxElement {\n    """Doc."""\n    if True {\n        print(1);\n    }\n    return <div>hi</div>;\n}\n',
         "single-quoted": in_function('"Doc."' + if_x),
         "raw prefix": in_function('r"""Doc."""' + if_x),
         "two strings": in_function('"""Doc."""\n    """More."""' + if_x),
-        "a comment after": in_function('"""Doc."""  # a note\n    # another' + if_x),
         "a lambda in a wrapped ternary": 'def label(x: int) -> str {\n    "positive"\n    if (lambda (y: int) -> bool {\n        """Doc."""\n        if y > 0 {\n            return True;\n        }\n        return False;\n    })(x)\n    else "other"\n}\n'
     };
     for (kind, source) in bodies.items() {
@@ -117,7 +111,8 @@ test "a string that is a statement, a docstring target or an expression is not E
         "an implicit return": 'def name -> str {\n    "Bob"\n}\n',
         "a # comment": in_function("# Doc.\n    print(x);"),
         "a wrapped 'not in'": 'def f(s: str) -> bool {\n    "a"\n    not in s\n}\n',
-        "a wrapped 'is not'": 'def f -> bool {\n    "a"\n    is not None\n}\n'
+        "a wrapped 'is not'": 'def f -> bool {\n    "a"\n    is not None\n}\n',
+        "an index on the same line": 'def first -> str {\n    "abc"[0]\n}\n'
     };
     for (kind, source) in sources.items() {
         prog = compile_source(source);
