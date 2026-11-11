@@ -787,6 +787,8 @@ test "a cycle unit lowered before its dependency demoted a name it calls lowers 
         assert events.get("native_dep_adopt_refused", 0) >= 1 , events;
         odd_unit = plan.unit(str(odd.resolve()));
         assert odd_unit is not None and "odd_probe" in odd_unit.iface.demoted;
+        failures = plan.lowering_failures();
+        assert any(f.startswith("even.jac:probe: ") for f in failures) , failures;
         for unit in plan.units {
             consumed = prog.native_units().entries[unit.path].dep_digests;
             for dep in unit.iface.deps {
