@@ -3,23 +3,27 @@ impl import_binds_name(nd: UniNode, name: str) -> bool {
     if mod is None {
         return False;
     }
-    for imp in mod.get_all_sub_nodes(Import) {
-        if imp.from_loc is None
-            or imp.is_absorb
-            or imp.find_parent_of_type(UniScopeNode) is not mod {
-            continue;
-        }
-        for item in imp.items {
-            if not isinstance(item, ModuleItem) {
+    if mod.import_bound_names is None {
+        bound_names: set[str] = set();
+        for imp in mod.get_all_sub_nodes(Import) {
+            if imp.from_loc is None
+                or imp.is_absorb
+                or imp.find_parent_of_type(UniScopeNode) is not mod {
                 continue;
             }
-            bound = item.alias if item.alias is not None else item.name;
-            if isinstance(bound, Name) and bound.value == name {
-                return True;
+            for item in imp.items {
+                if not isinstance(item, ModuleItem) {
+                    continue;
+                }
+                bound = item.alias if item.alias is not None else item.name;
+                if isinstance(bound, Name) {
+                    bound_names.add(bound.value);
+                }
             }
         }
+        mod.import_bound_names = bound_names;
     }
-    return False;
+    return name in mod.import_bound_names;
 }
 
 impl resolve_expr_symbol(
