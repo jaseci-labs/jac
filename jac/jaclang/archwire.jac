@@ -1007,7 +1007,6 @@ graph import {
     compiler.frontend.codeinfo ++> [
         cli.check_report.print_native_coverage { effective_default_codespace },
         cli.commands.execution._count_jac_files
-            | project.compiler_host.ProjectHost.held_native_iface
             | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
         cli.commands.execution._exec_file | dist.precompile_bytecode.served_codespace {
             get_effective_default_codespace_override,
@@ -4689,10 +4688,7 @@ graph import compiler {
             unit_bitcode,
             unit_fallbacks
         },
-        driver.nativecache.NativeBuildSession.lower {
-            settle_unit_ir,
-            unit_function_counts
-        },
+        driver.nativecache.NativeBuildSession.lower { settle_unit_ir },
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
@@ -4723,16 +4719,9 @@ graph import compiler {
         package_sources,
         resolve_imports
     }
-    backends.py.codegen_shim --> [
-        driver.compiler.assemble_jcir { compile_ir },
-        driver.source_products.python_source | tools.lang_tools.AstTool.ir {
-            generated_python
-        },
-    ]
+    backends.py.codegen_shim --> driver.source_products.python_source
+        | tools.lang_tools.AstTool.ir { generated_python }
     backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
-        JcirBytecodeGenPass
-    }
-    backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir {
         JcirBytecodeGenPass
     }
     backends.py.jcir_gen_pass ++> driver.module_compile | driver.pipeline.py_ir_passes {
@@ -6488,7 +6477,6 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._edge_tag_literal { E5097 },
         backends.es.esast_gen_pass.EsastGenPass._ensure_backend { E5081 },
         backends.es.esast_gen_pass.EsastGenPass._get_ast_or_default { E5097 },
-        driver.compiler.assemble_jcir { E5043 },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
             E5083,
             E5100
@@ -6603,7 +6591,6 @@ graph import compiler {
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
             | pkg_paths.binds_bare_arch_names
-            | placement.placement_solver._pull_into_target
             | types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             active_host
         },
@@ -6616,15 +6603,12 @@ graph import compiler {
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
             | driver.program.JacProgram.iface_registry { active_host },
-        driver.compiler.JacCompiler.enter_compile { active_host, install_host },
-        driver.compiler.JacCompiler.finish_compile { install_host },
         driver.program.JacProgram.invalidate_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
         driver.program.JacProgram.release_compile_closure { active_host },
         driver.program.JacProgram.stub_catalog { active_host },
     ]
-    type frontend.host ++> driver.compiler { HostServices }
     frontend.loop_links ++> [
         backends.es.esast_gen_pass {
             LoopLinks,
@@ -6799,7 +6783,6 @@ graph import compiler {
         driver.ifacecache._span_from_record { Span },
         passes.context { CodeLocInfo, Span },
     ]
-    frontend.srcloc --> driver.compiler.assemble_jcir { Span }
     frontend.unitree ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable {
             ability_of_symbol
@@ -8436,11 +8419,7 @@ graph import compiler {
         driver.progstate { Alert, CompileContext },
         types.type_evaluator { CompileContext },
     ]
-    passes.context --> driver.compiler.assemble_jcir { Alert }
-    type passes.context ++> [
-        driver.compiler { Alert },
-        symbol_utils { CompilerPass },
-    ]
+    type passes.context ++> symbol_utils { CompilerPass }
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
     passes.declaration_type_pass ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
@@ -8769,9 +8748,7 @@ graph import compiler {
         driver.jir._ct_pkg_ref | placement.placement_facts._toolchain_rel {
             target_package_rel
         },
-        driver.jir.sidecar_unit_paths | driver.native_iface | frontend.codeinfo {
-            target_pkg_root
-        },
+        driver.native_iface | frontend.codeinfo { target_pkg_root },
         driver.program.JacProgram.declared_codespace { package_host_edge },
     ]
     pkg_paths --> [
@@ -10242,7 +10219,7 @@ graph import compiler.driver {
             read_sections
         },
         application._identity { compiler_generation },
-        application._prepare_revision { content_on_disk, ct_dep_digest },
+        application._prepare_revision { ct_dep_digest },
         application._prepare_sealed {
             HEADER_SIZE,
             PRECOMPILE_SENTINEL,

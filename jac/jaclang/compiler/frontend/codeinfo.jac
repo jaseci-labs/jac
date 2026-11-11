@@ -179,8 +179,6 @@ def is_package_keyed_path(source_path: str) -> bool;
 
 def kernel_unit_path(rel: str) -> str;
 
-def kernel_unit_paths -> list[str];
-
 glob _REAL_PATHS: dict[str, str] = {};
 
 def real_path(path: str) -> str;
