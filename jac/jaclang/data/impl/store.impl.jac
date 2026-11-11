@@ -913,6 +913,110 @@ impl PgStore.adjacency(
 }
 
 
+impl PgStore._anchor_values(batch: list[AnchorRow]) -> tuple[str, dict[str, any]] {
+    values: list[str] = [];
+    params: dict[str, any] = {};
+    for (i, row) in enumerate(batch) {
+        values.append(
+            f"(CAST(:id{i} AS uuid), CAST(:kind{i} AS text), "
+            f"CAST(:arch_type{i} AS text), CAST(:arch_module{i} AS text), "
+            f"CAST(:fp{i} AS text), CAST(:root_id{i} AS uuid), "
+            f"CAST(:src{i} AS uuid), CAST(:dst{i} AS uuid), "
+            f"CAST(:undirected{i} AS boolean), "
+            f"COALESCE((SELECT n.arch_type FROM anchors n "
+            f"WHERE n.id = CAST(:src{i} AS uuid)), CAST(:src_type{i} AS text)), "
+            f"COALESCE((SELECT n.arch_type FROM anchors n "
+            f"WHERE n.id = CAST(:dst{i} AS uuid)), CAST(:dst_type{i} AS text)), "
+            f"CAST(:props{i} AS jsonb), CAST(:fv{i} AS integer), "
+            f"CAST(:ver{i} AS bigint))"
+        );
+        params[f"id{i}"] = str(row.id);
+        params[f"kind{i}"] = row.kind;
+        params[f"arch_type{i}"] = row.arch_type;
+        params[f"arch_module{i}"] = row.arch_module;
+        params[f"fp{i}"] = row.fingerprint;
+        params[f"root_id{i}"] = str(row.root_id) if row.root_id else None;
+        params[f"src{i}"] = str(row.src) if row.src else None;
+        params[f"dst{i}"] = str(row.dst) if row.dst else None;
+        params[f"undirected{i}"] = row.undirected;
+        params[f"src_type{i}"] = row.src_type;
+        params[f"dst_type{i}"] = row.dst_type;
+        params[f"props{i}"] = json.dumps(row.props, `default=_jsonable);
+        params[f"fv{i}"] = SCHEMA_VERSION;
+        params[f"ver{i}"] = int(row.version);
+    }
+    return (',\n'.join(values), params);
+}
+
+
+impl PgStore._insert_anchors(batch: list[AnchorRow]) -> list[any] {
+    (values, params) = self._anchor_values(batch);
+    return self._run(
+        """
+        INSERT INTO anchors
+            (id, kind, arch_type, arch_module, fingerprint, root_id,
+             src, dst, undirected, src_type, dst_type, props, format_version,
+             version)
+        VALUES
+        """
+            + values
+            + """
+        ON CONFLICT (id) DO UPDATE SET
+            kind = EXCLUDED.kind,
+            arch_type = EXCLUDED.arch_type,
+            arch_module = EXCLUDED.arch_module,
+            fingerprint = EXCLUDED.fingerprint,
+            root_id = EXCLUDED.root_id,
+            src = EXCLUDED.src,
+            dst = EXCLUDED.dst,
+            undirected = EXCLUDED.undirected,
+            src_type = EXCLUDED.src_type,
+            dst_type = EXCLUDED.dst_type,
+            props = EXCLUDED.props,
+            format_version = EXCLUDED.format_version,
+            version = EXCLUDED.version + 1,
+            updated_at = now()
+        WHERE anchors.version = EXCLUDED.version
+        RETURNING id, version
+        """,
+        params
+    );
+}
+
+
+impl PgStore._update_anchors(batch: list[AnchorRow]) -> list[any] {
+    (values, params) = self._anchor_values(batch);
+    return self._run(
+        """
+        UPDATE anchors AS a SET
+            kind = v.kind,
+            arch_type = v.arch_type,
+            arch_module = v.arch_module,
+            fingerprint = v.fingerprint,
+            root_id = v.root_id,
+            src = v.src,
+            dst = v.dst,
+            undirected = v.undirected,
+            src_type = v.src_type,
+            dst_type = v.dst_type,
+            props = v.props,
+            format_version = v.format_version,
+            version = v.version + 1,
+            updated_at = now()
+        FROM (VALUES
+        """
+            + values
+            + """
+        ) AS v(id, kind, arch_type, arch_module, fingerprint, root_id, src, dst,
+               undirected, src_type, dst_type, props, format_version, version)
+        WHERE a.id = v.id AND a.version = v.version
+        RETURNING a.id, a.version
+        """,
+        params
+    );
+}
+
+
 impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     if not rows_in {
         return;
@@ -921,74 +1025,25 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     rows = list(by_id.values());
     stale: list[AnchorRow] = [];
     chunk = 200;
-    for start in range(0, len(rows), chunk) {
-        batch = rows[start:start + chunk];
-        values: list[str] = [];
-        params: dict[str, any] = {};
-        for (i, row) in enumerate(batch) {
-            values.append(
-                f"(CAST(:id{i} AS uuid), :kind{i}, :arch_type{i}, "
-                f":arch_module{i}, :fp{i}, CAST(:root_id{i} AS uuid), "
-                f"CAST(:src{i} AS uuid), CAST(:dst{i} AS uuid), "
-                f":undirected{i}, "
-                f"COALESCE((SELECT n.arch_type FROM anchors n "
-                f"WHERE n.id = CAST(:src{i} AS uuid)), :src_type{i}), "
-                f"COALESCE((SELECT n.arch_type FROM anchors n "
-                f"WHERE n.id = CAST(:dst{i} AS uuid)), :dst_type{i}), "
-                f"CAST(:props{i} AS jsonb), :fv{i}, :ver{i}, now())"
-            );
-            params[f"id{i}"] = str(row.id);
-            params[f"kind{i}"] = row.kind;
-            params[f"arch_type{i}"] = row.arch_type;
-            params[f"arch_module{i}"] = row.arch_module;
-            params[f"fp{i}"] = row.fingerprint;
-            params[f"root_id{i}"] = str(row.root_id) if row.root_id else None;
-            params[f"src{i}"] = str(row.src) if row.src else None;
-            params[f"dst{i}"] = str(row.dst) if row.dst else None;
-            params[f"undirected{i}"] = row.undirected;
-            params[f"src_type{i}"] = row.src_type;
-            params[f"dst_type{i}"] = row.dst_type;
-            params[f"props{i}"] = json.dumps(row.props, `default=_jsonable);
-            params[f"fv{i}"] = SCHEMA_VERSION;
-            params[f"ver{i}"] = int(row.version);
-        }
-        written = self._run(
-            """
-            INSERT INTO anchors
-                (id, kind, arch_type, arch_module, fingerprint, root_id,
-                 src, dst, undirected, src_type, dst_type, props, format_version,
-                 version, updated_at)
-            VALUES
-            """
-                + ',\n'.join(values)
-                + """
-            ON CONFLICT (id) DO UPDATE SET
-                kind = EXCLUDED.kind,
-                arch_type = EXCLUDED.arch_type,
-                arch_module = EXCLUDED.arch_module,
-                fingerprint = EXCLUDED.fingerprint,
-                root_id = EXCLUDED.root_id,
-                src = EXCLUDED.src,
-                dst = EXCLUDED.dst,
-                undirected = EXCLUDED.undirected,
-                src_type = EXCLUDED.src_type,
-                dst_type = EXCLUDED.dst_type,
-                props = EXCLUDED.props,
-                format_version = EXCLUDED.format_version,
-                version = EXCLUDED.version + 1,
-                updated_at = now()
-            WHERE anchors.version = EXCLUDED.version
-            RETURNING id, version
-            """,
-            params
-        );
-        landed: dict[str, int] = {str(r[0]): int(r[1]) for r in written};
-        for row in batch {
-            got = landed.get(str(row.id));
-            if got is None {
-                stale.append(row);
-            } else {
-                row.version = got;
+    for known in (True, False) {
+        subset = [
+            row
+            for row in rows
+            if row.expect_existing == known
+        ];
+        for start in range(0, len(subset), chunk) {
+            batch = subset[start:start + chunk];
+            written = self._update_anchors(batch)
+                if known
+                else self._insert_anchors(batch);
+            landed: dict[str, int] = {str(r[0]): int(r[1]) for r in written};
+            for row in batch {
+                got = landed.get(str(row.id));
+                if got is None {
+                    stale.append(row);
+                } else {
+                    row.version = got;
+                }
             }
         }
     }

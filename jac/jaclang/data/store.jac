@@ -65,7 +65,8 @@ obj AnchorRow {
         src_type: str = '',
         dst_type: str = '',
         ancestry: list[str] = [],
-        version: int = 0;
+        version: int = 0,
+        expect_existing: bool = False;
 }
 
 
@@ -174,6 +175,9 @@ obj PgStore(Store) {
     ) -> list[tuple[int, UUID]];
 
     def upsert(rows_in: list[AnchorRow]) -> None;
+    def _anchor_values(batch: list[AnchorRow]) -> tuple[str, dict[str, any]];
+    def _insert_anchors(batch: list[AnchorRow]) -> list[any];
+    def _update_anchors(batch: list[AnchorRow]) -> list[any];
     def retype_edges(ids: list[UUID]) -> None;
     def delete(ids: list[UUID]) -> None;
     def existing(ids: list[UUID]) -> set[UUID];

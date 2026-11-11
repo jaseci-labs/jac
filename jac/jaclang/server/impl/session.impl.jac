@@ -584,8 +584,13 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
                         if isinstance(e, WriteConflict) and self._active_units == 0 {
                             self._dirty.pop(e.anchor_id, None);
                             self._ensure_txn();
-                            for row in self._store.load_full([e.anchor_id]).values() {
+                            refreshed = self._store.load_full([e.anchor_id]);
+                            for row in refreshed.values() {
                                 self._materialize(row);
+                            }
+                            if e.anchor_id not in refreshed {
+                                self.__mem__.pop(e.anchor_id, None);
+                                self._rows.forget(e.anchor_id);
                             }
                         }
                         raise;
@@ -1151,6 +1156,7 @@ impl Session._serialize(
         fingerprint=fingerprint,
         root_id=anchor.root,
         version=self._rows.write_version(row_id),
+        expect_existing=self._rows.current(row_id) is not None,
         props=stored,
         src=src,
         dst=dst,
