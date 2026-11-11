@@ -449,7 +449,11 @@ glob NEW_STATEMENT_KINDS: set[TokenKind] = {
          TokenKind.KW_AWAIT,
          TokenKind.KW_LAMBDA,
          TokenKind.KW_FLOW,
-         TokenKind.KW_WAIT
+         TokenKind.KW_WAIT,
+         TokenKind.KW_FOREVER,
+         TokenKind.KW_COMPTIME,
+         TokenKind.KW_IMPORT,
+         TokenKind.KW_INCLUDE
      },
      STRING_PREFIXES: set[str] = {
          "r",

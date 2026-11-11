@@ -58,7 +58,11 @@ test "a docstring with no ';' is one E0111, whatever the next line is" {
         "[0];",
         "print(x);",
         "for i in range(x) {\n        print(i);\n    }",
-        "return;"
+        "return;",
+        "forever {\n        break;\n    }",
+        "comptime n: int = 3;",
+        "import os;",
+        "include os;"
     ] {
         prog = compile_source(in_function('"""Doc."""\n    ' + next_line));
         got = errors_of(prog);
