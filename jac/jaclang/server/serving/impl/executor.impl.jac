@@ -31,7 +31,7 @@ impl iterate_sync(source: any) -> AsyncIterator[any] {
     }
 }
 
-impl close_stream(source: any) {
+impl close_stream(source: any) -> bool {
     try {
         if hasattr(source, 'aclose') {
             await source.aclose();
@@ -41,9 +41,11 @@ impl close_stream(source: any) {
             }
             await run_sync(source.close);
         }
+        return True;
     } except Exception as e {
         logger.warning(
             f"stream could not be closed: {type(e).__name__}: {e}", exc_info=True
         );
+        return False;
     }
 }
