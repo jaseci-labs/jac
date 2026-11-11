@@ -222,11 +222,7 @@ impl PgIdentityStorage._end_sessions(
           AND (CAST(:e AS bigint) IS NULL OR {current} = CAST(:e AS bigint))
         RETURNING (doc->>'session_epoch')::bigint
         """,
-        {
-            'u': user_id,
-            'p': json.dumps(patch, `default=_pg_json_default),
-            'e': expected
-        }
+        {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default), 'e': expected}
     );
     return int(rows[0][0]) if rows else None;
 }

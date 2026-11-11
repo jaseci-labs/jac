@@ -30,7 +30,9 @@ async def ws_authenticate(
     websocket: WebSocket, user_manager: any, handshake_timeout: float, max_bytes: int
 ) -> (dict[str, any], dict[str, any] | None);
 
-async def ws_session_still_current(session_current: any, ctx: ConnectionContext) -> bool;
+async def ws_session_still_current(
+    session_current: any, ctx: ConnectionContext
+) -> bool;
 
 async def ws_heartbeat_loop(
     ctx: ConnectionContext,

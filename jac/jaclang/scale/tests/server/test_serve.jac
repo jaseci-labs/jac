@@ -965,9 +965,7 @@ test "user management operations" {
         assert "session_epoch" not in update_result;
         replacement = update_result["token"];
 
-        response = client.get(
-            "/user/me", headers={"Authorization": f"Bearer {token}"}
-        );
+        response = client.get("/user/me", headers={"Authorization": f"Bearer {token}"});
         assert response.status_code == 401 , "the pre-change token must be refused";
         response = client.post("/user/refresh-token", json={"token": token});
         assert response.status_code == 401 , "the pre-change token must not refresh";
@@ -2393,7 +2391,7 @@ test "session cookie: login sets it and it authorizes safe requests only" {
         (value, attrs) = cookie_parts(str(refreshed.headers.get("Set-Cookie")));
         assert value == extract_data(refreshed.json())["token"];
 
-        # Logout and a password change both drop it.
+        # Logout drops it; a password change replaces it with the new session's.
         logout = client.post("/user/logout", json={});
         assert logout.status_code == 200;
         (value, attrs) = cookie_parts(str(logout.headers.get("Set-Cookie")));
@@ -2406,7 +2404,8 @@ test "session cookie: login sets it and it authorizes safe requests only" {
         );
         assert changed.status_code == 200 , changed.text;
         (value, attrs) = cookie_parts(str(changed.headers.get("Set-Cookie")));
-        assert value == "" and attrs["max-age"] == "0";
+        assert value == extract_data(changed.json())["token"];
+        assert "httponly" in attrs and attrs["path"] == "/";
     } finally {
         client.close();
     }

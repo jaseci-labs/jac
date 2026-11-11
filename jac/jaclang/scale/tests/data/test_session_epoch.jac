@@ -12,7 +12,6 @@ import from datetime { UTC, datetime, timedelta }
 
 """A user manager on the real embedded Postgres; a failure to build one fails the test."""
 def _manager(provision_unknown_users: bool = False) -> any {
-    import from jaclang.server.identity.user_manager { UserManager }
     return UserManager(base_path=".", provision_unknown_users=provision_unknown_users);
 }
 
@@ -35,9 +34,7 @@ def _sign_in(manager: any, user_id: str, password: str) -> str {
     name = manager.get_username(user_id);
     result = manager.authenticate(name, password);
     assert result is not None;
-    return manager.open_session(
-        user_id, session_epoch=result["session_epoch"]
-    ).token;
+    return manager.open_session(user_id, session_epoch=result["session_epoch"]).token;
 }
 
 
@@ -48,8 +45,6 @@ def _status(manager: any, token: str) -> str {
 
 """A token signed like Jac's own, with the given claims."""
 def _signed(claims: dict[str, any]) -> str {
-    import from jaclang.server.identity.config { signing_algorithm, signing_secret }
-    import from jaclang.server.serving.authcrypt { jwt_encode }
     payload = dict(claims);
     payload["exp"] = datetime.now(UTC) + timedelta(days=1);
     return jwt_encode(payload, signing_secret(), algorithm=signing_algorithm());
@@ -72,9 +67,7 @@ test "a password change ends every earlier session and keeps the caller in" {
     assert manager.validate_jwt_token(device_b) is None;
     assert manager.refresh_jwt_token(device_b) is None;
 
-    replacement = manager.replacement_token(
-        user_id, claims_a, result["session_epoch"]
-    );
+    replacement = manager.replacement_token(user_id, claims_a, result["session_epoch"]);
     assert replacement;
     assert _status(manager, replacement) == "ok";
 }
@@ -141,9 +134,7 @@ test "a sign-in that read the old password cannot outlive a concurrent change" {
     (user_id, password) = _account(manager);
     checked = manager.authenticate(manager.get_username(user_id), password);
     manager.end_sessions(user_id);
-    token = manager.open_session(
-        user_id, session_epoch=checked["session_epoch"]
-    ).token;
+    token = manager.open_session(user_id, session_epoch=checked["session_epoch"]).token;
     assert _status(manager, token) == "revoked";
 }
 
@@ -168,7 +159,6 @@ def _with_second_factor(manager: any) -> any {
 
 
 test "a second-factor challenge cannot finish into a session that has ended" {
-    import from jaclang.server.identity.assurance { second_factor_claims }
     manager = _manager();
     (user_id, _) = _account(manager);
     factors = _with_second_factor(manager);
@@ -188,8 +178,6 @@ test "a second-factor challenge cannot finish into a session that has ended" {
 
 
 test "a challenge recorded without an epoch is refused" {
-    import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-    import from jaclang.server.identity.second_factor { LOGIN_CHALLENGE_PURPOSE }
     manager = _manager();
     (user_id, _) = _account(manager);
     factors = _with_second_factor(manager);
@@ -279,8 +267,6 @@ test "a malformed epoch claim is refused, not read as zero" {
 
 
 test "the request middleware signs out a revoked token completely" {
-    import from jaclang.server.middleware { jwt_middleware }
-    import from jaclang.server.serving.datatypes { Request, Response }
     manager = _manager();
     (user_id, password) = _account(manager);
     token = _sign_in(manager, user_id, password);
@@ -311,14 +297,13 @@ test "the request middleware signs out a revoked token completely" {
 
 
 test "an open websocket is closed once its session ends" {
-    import from jaclang.scale.websocket.protocol { ws_heartbeat_loop }
-    import from jaclang.scale.websocket.websocket { ConnectionContext }
     manager = _manager();
     (user_id, password) = _account(manager);
     detail = manager.validate_jwt_token_detail(_sign_in(manager, user_id, password));
 
     obj FakeSocket {
         has closed_with: list[str] = [];
+
         async def close(code: int, reason: str) {
             self.closed_with.append(reason);
         }
@@ -340,10 +325,9 @@ test "an open websocket is closed once its session ends" {
 
 
 test "a websocket whose session cannot be checked is closed, not left unchecked" {
-    import from jaclang.scale.websocket.protocol { ws_heartbeat_loop }
-    import from jaclang.scale.websocket.websocket { ConnectionContext }
     obj FakeSocket {
         has closed_with: list[str] = [];
+
         async def close(code: int, reason: str) {
             self.closed_with.append(reason);
         }

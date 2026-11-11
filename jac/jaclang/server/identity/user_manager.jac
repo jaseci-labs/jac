@@ -64,6 +64,7 @@ obj UserManager {
     def replacement_token(
         user_id: str, claims: (dict[str, any] | None), session_epoch: (int | None)
     ) -> str | None;
+
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def user_exists(user_id: str) -> bool;
     def get_user(user_id: str) -> dict[str, any] | None;

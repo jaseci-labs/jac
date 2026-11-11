@@ -2772,6 +2772,7 @@ graph import {
         scale.admin.admin_portal { METHOD_PASSWORD, second_factor_claims },
         scale.sso.grants { caller_user_id },
         scale.sso.oauth_session { METHOD_FEDERATED },
+        scale.tests.data.test_session_epoch { second_factor_claims },
         scale.tests.server.test_sso_grants { bind_caller_user, release_caller_user },
     ]
     server.identity.assurance --> scale.tests.data.test_gateway_owned_identity {
@@ -2788,6 +2789,7 @@ graph import {
     server.identity.auth_tokens ++> [
         scale.sso.oauth_session
             | scale.sso.sso_auth
+            | scale.tests.data.test_session_epoch
             | scale.tests.server.test_oauth_session
             | scale.tests.server.test_registration_challenge
             | scale.tests.server.test_sso
@@ -2808,11 +2810,12 @@ graph import {
             signing_algorithm as jwt_algorithm,
             signing_secret as jwt_secret
         },
-        scale.tests.server.test_serve { signing_secret as jwt_secret },
-        scale.webhook.webhook.WebhookUtils.create_api_key_token {
+        scale.tests.data.test_session_epoch
+            | scale.webhook.webhook.WebhookUtils.create_api_key_token {
             signing_algorithm,
             signing_secret
         },
+        scale.tests.server.test_serve { signing_secret as jwt_secret },
         scale.webhook.webhook.WebhookUtils.validate_api_key {
             signing_algorithm,
             signing_secret
@@ -2852,9 +2855,10 @@ graph import {
         consume_challenge,
         issue_challenge
     }
-    server.identity.second_factor ++> scale.admin.admin_portal {
-        SecondFactorUnavailable
-    }
+    server.identity.second_factor ++> [
+        scale.admin.admin_portal { SecondFactorUnavailable },
+        scale.tests.data.test_session_epoch { LOGIN_CHALLENGE_PURPOSE },
+    ]
     server.identity.user_manager ++> [
         runtime.runtime.JacPersistence.get_user_manager
             | scale.admin.admin_portal
@@ -2863,6 +2867,7 @@ graph import {
             | scale.sso.sso_auth
             | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_identity_fail_loud
+            | scale.tests.data.test_session_epoch
             | scale.tests.misc.test_shared_store_failure
             | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_firebase_auth_sso
@@ -2881,9 +2886,8 @@ graph import {
     ]
     type server.identity.user_manager ++> runtime.runtime { UserManager }
     server.middleware ++> [
-        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api {
-            jwt_middleware
-        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.data.test_session_epoch { jwt_middleware },
         scale.server.jobs_ext | scale.server.sso_ext { require_user },
     ]
     server.middleware --> scale.tests.data.test_gateway_owned_identity {
@@ -3050,7 +3054,8 @@ graph import {
             project_data_dir,
             project_signing_secret
         },
-        scale.tests.data.test_gateway_owned_identity { jwt_encode },
+        scale.tests.data.test_gateway_owned_identity
+            | scale.tests.data.test_session_epoch { jwt_encode },
         scale.tests.server.test_admin { jwt_decode },
         scale.tests.server.test_serve {
             jwt_decode as _jwt_decode,
@@ -3164,10 +3169,9 @@ graph import {
             Response
         },
         scale.server.websocket_ext | scale.websocket.websocket { WebSocketDisconnect },
-        scale.sso.firebase | scale.tests.server.test_stream_ws._spawn_upstream {
-            Request,
-            Response
-        },
+        scale.sso.firebase
+            | scale.tests.data.test_session_epoch
+            | scale.tests.server.test_stream_ws._spawn_upstream { Request, Response },
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
@@ -14614,6 +14618,7 @@ graph import scale {
             ws_reject_registration,
             ws_session_still_current
         },
+        tests.data.test_session_epoch { ws_heartbeat_loop },
         tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
     ]
     websocket.websocket ++> [
@@ -14622,6 +14627,7 @@ graph import scale {
             WebSocketConnectionManager,
             _ws_stream_result
         },
+        tests.data.test_session_epoch { ConnectionContext },
         tests.server.test_ws_hardening {
             ConnectionContext,
             WebSocketConnectionManager
@@ -15717,7 +15723,7 @@ graph import server.identity {
         },
     ]
     identity_storage ++> [
-        second_factor { IdentityStorage },
+        second_factor { IdentityStorage, session_epoch_value },
         user_manager {
             IdentityStorage,
             IdentityTakenError,

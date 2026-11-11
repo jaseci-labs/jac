@@ -289,7 +289,9 @@ impl register_auth_endpoints(server: EndpointHost) {
         }
         if users.provision_unknown_users {
             return fail(
-                'NOT_SUPPORTED', 'Sessions are ended at the gateway that issued them', 409
+                'NOT_SUPPORTED',
+                'Sessions are ended at the gateway that issued them',
+                409
             );
         }
         if users.end_sessions(str(user_id)) is None {
@@ -332,7 +334,7 @@ impl register_auth_endpoints(server: EndpointHost) {
         payload: dict[str, any] = dict(result);
         epoch = payload.pop('session_epoch', None);
         replacement = users.replacement_token(
-            str(user_id), getattr(request.state, 'session_claims', None), epoch
+            str(user_id), request.state?.session_claims, epoch
         );
         if replacement {
             payload['token'] = replacement;

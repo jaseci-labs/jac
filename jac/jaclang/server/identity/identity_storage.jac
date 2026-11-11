@@ -25,7 +25,6 @@ obj IdentityStorage {
         user_id: str, patch: dict[str, any], expected: (int | None) = None
     ) -> int | None;
 
-
     def _get_oauth_grants(user_id: str) -> list[dict[str, any]] abst;
     def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int abst;
     def _swap_oauth_grant(
@@ -74,7 +73,6 @@ obj IdentityStorage {
     def credential_state(user_id: str) -> tuple[list[dict[str, any]], any];
     def session_state(user_id: str) -> dict[str, any] | None;
     def end_sessions(user_id: str) -> int | None;
-
     def password_expired(user: dict[str, any], credential: dict[str, any]) -> bool;
     def update_password(
         user_id: str, current_password: str, new_password: str

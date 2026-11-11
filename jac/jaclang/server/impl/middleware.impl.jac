@@ -23,15 +23,18 @@ impl jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
         session_claims: (dict[str, any] | None) = None;
         (token, from_cookie) = presented_token(request);
         if token {
-            detail = user_manager.validate_jwt_token_detail(token, check_existence=False);
+            detail = user_manager.validate_jwt_token_detail(
+                token, check_existence=False
+            );
             if detail['status'] == 'ok' and detail['user_id'] {
                 username = str(detail['user_id']);
-                user_root_id = detail.get('root_id') or user_manager.get_root_id(
-                    username
-                );
+                user_root_id = detail.get('root_id')
+                    or user_manager.get_root_id(username);
                 assurance = token_assurance(token);
                 session_epoch = detail.get('session_epoch');
                 session_claims = detail.get('claims');
+            } elif detail['status'] == 'unknown_user' and detail.get('subject') {
+                username = str(detail['subject']);
             }
         }
         setattr(request.state, 'user_root_id', user_root_id);

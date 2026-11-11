@@ -491,6 +491,7 @@ impl UserManager.session_detail(
         return {
             'status': 'unknown_user',
             'user_id': None,
+            'subject': user_id,
             'exp': claims.get('exp'),
             'reason': 'User associated with token no longer exists'
         };

@@ -146,7 +146,7 @@ impl register_second_factor_endpoints(server: EndpointHost) {
             'token': users.create_jwt_token(
                 str(user_id),
                 assurance=second_factor_claims(prior + [METHOD_TOTP]),
-                session_epoch=getattr(request.state, 'session_epoch', None)
+                session_epoch=request.state?.session_epoch
             )
         };
         if result.get('recovery_codes') {
