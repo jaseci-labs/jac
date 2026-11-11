@@ -13,6 +13,8 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.testing.testing { JacTestClient }
+import from jaclang.testing.test_runner { _fresh_jac_state }
+import from jaclang.runtime.constructs { Root }
 
 def _as_any(v: any) -> any {
     return v;
@@ -29,9 +31,18 @@ def make_shared_client(base_path: str) -> JacTestClient {
 
 
 test "root.shared falls back to the current root outside a server" {
-    # Earlier tests in this process may have registered a server resolver;
-    # this test pins the bare-context fallback.
-    Jac.set_shared_root_resolver(None);
+    # A server registered in an earlier test points root.shared at a guest
+    # root in that test's graph; the reset between tests must drop it.
+    guest = Root();
+    Jac.save(guest);
+    Jac.commit(guest);
+    guest_id = guest.__jac__.ensure_id().hex;
+    def resolve_guest -> str {
+        return guest_id;
+    }
+    Jac.set_shared_root_resolver(resolve_guest);
+    assert jid(root.shared) == jid(guest);
+    _fresh_jac_state(clear_modules=False);
     assert jid(root.shared) == jid(root);
 }
 
@@ -49,7 +60,7 @@ test "anonymous requests all run on the one shared root" {
         assert here_id == shared_id , "anonymous request root is not root.shared";
         assert second.data["reports"][0] == here_id , "shared root not stable across requests";
         client.close();
-        Jac.set_shared_root_resolver(None);
+        assert jid(root.shared) == jid(root) , "a closed client left its server's shared root behind";
     }
 }
 
@@ -84,7 +95,6 @@ test "a logged-in user can write the commons before any anonymous request" {
         assert carol_read.ok;
         assert carol_read.data["reports"][0] == ["first-write", "second-write"] , "floored CONNECT grant not honored after reload";
         client2.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
 
@@ -111,7 +121,6 @@ test "guest and logged-in users share the shared-root graph" {
         assert anon_read.ok;
         assert anon_read.data["reports"][0] == ["from-alice", "from-guest"];
         client.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
 
@@ -143,7 +152,6 @@ test "deleting a commons node takes cross-owner edges with it" {
         assert after.ok;
         assert after.data["reports"][0] == [] , "deleted bin still reachable";
         client2.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
 
@@ -169,7 +177,6 @@ test "a cross-owner delete without a write grant no-ops with a warning" {
         assert readback.ok;
         assert readback.data["reports"][0] == ["keep"] , "read-only note was deleted cross-owner";
         client2.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
 
@@ -198,7 +205,6 @@ test "an explicitly lowered shared-root level is respected" {
         bob_recheck = client2.post("/walker/read_notes", json={});
         assert bob_recheck.data["reports"][0] == ["seeded"] , "read-only commons accepted a write";
         client2.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
 
@@ -243,7 +249,6 @@ test "a reader's first touch of the commons writes nothing and warns nothing" {
             f"the floor was persisted as a grant: {stored.data}"
         );
         client3.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
 
@@ -267,6 +272,5 @@ test "a typed hop back onto the commons sees it under the floor" {
             f"typed hop onto the commons was filtered: {home.data}"
         );
         client2.close();
-        Jac.set_shared_root_resolver(None);
     }
 }
