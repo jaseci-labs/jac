@@ -494,10 +494,6 @@ impl kernel_unit_path(rel: str) -> str {
     return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
 }
 
-impl kernel_unit_paths -> list[str] {
-    return [kernel_unit_path(rel) for rel in kernel_unit_rels()];
-}
-
 impl real_path(path: str) -> str {
     found = _REAL_PATHS.get(path);
     if found is None {

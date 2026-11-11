@@ -21,8 +21,6 @@ def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
 def cached_client_pulls(full_target: str) -> str;
 
-def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]];
-
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes];
@@ -30,8 +28,7 @@ def unit_sections(
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,
         gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False,
-        session_host: (HostServices | None) = None;
+        retain_selfhost: bool = False;
 }
 
 obj JacCompiler(SessionHooks) {
@@ -48,10 +45,7 @@ obj JacCompiler(SessionHooks) {
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
-    def product_program(
-        full_target: str, target_program: JacProgram, execution: bool = False
-    ) -> JacProgram;
-
+    def product_program(full_target: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];

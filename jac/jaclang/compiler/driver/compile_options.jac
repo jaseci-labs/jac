@@ -15,7 +15,6 @@ obj CompileOptions {
         iface_ok: bool = False,
         need_full_ast: bool = False,
         native_tree_demand: bool = False,
-        body_demand: bool = False,
         skip_analysis: bool = False,
         skip_native_engine: bool = False,
         no_ir_cache: bool = False,
@@ -73,10 +72,7 @@ obj CompileOptions {
     def dependency_projection(path: str) -> str;
     def module_projection -> str;
     def keeps_interfaces -> bool;
-    def for_symbols(
-        need_tree: bool = False, need_bodies: bool = False
-    ) -> CompileOptions;
-
+    def for_symbols(need_tree: bool = False) -> CompileOptions;
     def clone_for_native_import -> CompileOptions;
     def native_required_for(mod_path: str) -> bool;
     def nogc_enforced_for(mod_name: str) -> bool;
@@ -87,9 +83,6 @@ glob NATIVE_LINK_MODE_OBJECTS: str = "objects",
      NATIVE_LINK_MODES: tuple[str, str] = ("objects", "bitcode");
 
 def effective_codegen_fingerprint -> str;
-
-
-def effective_analysis_fingerprint -> str;
 
 def link_fingerprint_mismatches(
     participants: list[tuple[str, str]], current_fp: str
