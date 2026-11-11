@@ -19,6 +19,10 @@ impl request_caller(server: JacAPIServer, request: Request) -> (str | None) {
     if username {
         return username;
     }
+    unknown = request.state?.unknown_subject;
+    if unknown {
+        return str(unknown);
+    }
     ident = bridge_identity(request.headers.get('Authorization'));
     if not ident {
         return None;

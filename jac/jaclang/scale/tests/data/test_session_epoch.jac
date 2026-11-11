@@ -293,6 +293,11 @@ test "the request middleware signs out a revoked token completely" {
     manager.end_sessions(user_id);
     gone = seen_by_request(token);
     assert gone == {"username": None, "root": None, "epoch": None};
+
+    (deleted_id, deleted_password) = _account(manager);
+    orphan = _sign_in(manager, deleted_id, deleted_password);
+    assert "error" not in manager.delete_user(deleted_id);
+    assert seen_by_request(orphan) == {"username": None, "root": None, "epoch": None};
 }
 
 
