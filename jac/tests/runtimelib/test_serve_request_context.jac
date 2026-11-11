@@ -23,7 +23,10 @@ that no transport has given a request scope.
 
 import asyncio;
 import os;
+import socket;
+import struct;
 import threading;
+import time;
 import from json { dumps }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -44,6 +47,7 @@ import from jaclang.server.serving.datatypes {
     URL,
     WebSocketDisconnect
 }
+import from jaclang.server.serving.server { ServingServer }
 import from jaclang.server.session { Session }
 import from jaclang.testing.testkit { ServingTestClient }
 
@@ -123,6 +127,19 @@ glob _APP: str = (
          '        yield "started";\n'
          '        time.sleep(0.5);\n'
          '        root ++> Note(text=text);\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note_slow(text: str = "") -> any {\n'
+         '    import time;\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        time.sleep(0.3);\n'
+         '        yield "more";\n'
+         '        time.sleep(0.3);\n'
+         '        yield "tail";\n'
          '    }\n'
          '    return chunks();\n'
          '}\n'
@@ -547,6 +564,90 @@ async def _deliver(project: str, source: any, send: any) {
         try {
             await _ws_stream_result(send, stream, scope.abort);
         } except WebSocketDisconnect {}
+    }
+}
+
+
+"""Read from `sock` until `marker` has arrived or the peer closes."""
+def _read_until(sock: socket.socket, marker: bytes) -> bytes {
+    data = b"";
+    while marker not in data {
+        part = sock.recv(4096);
+        if not part {
+            break;
+        }
+        data += part;
+    }
+    return data;
+}
+
+
+test "a stream over a real socket commits its write only if the client stays to the end" {
+    # (label, drop the connection after the first event, committed)
+    rows: list[tuple[str, bool, bool]] = [
+        ("client reads every event", False, True),
+        ("client resets the connection after the first event", True, False),
+
+    ];
+    closed = threading.Event();
+    original_aclose = RequestScope.aclose;
+
+    async def tracking_aclose(self: RequestScope) {
+        await original_aclose(self);
+        closed.set();
+    }
+
+    prior = os.environ.get("JAC_SCALE_RUNTIME");
+    with TemporaryDirectory() as project {
+        runtime = _serve(project);
+        stop: any = None;
+        try {
+            token = _register_and_login(runtime, "socket_user");
+            server = ServingServer(app=_client(runtime).app, host="127.0.0.1", port=0);
+            stop = server.serve_background();
+            RequestScope.aclose = tracking_aclose;
+            for (label, drop, committed) in rows {
+                closed.clear();
+                body = dumps({"text": label}).encode("utf-8");
+                sock = socket.create_connection(
+                    ("127.0.0.1", server.bound_port), timeout=10
+                );
+                sock.sendall(
+                    (
+                        "POST /function/sse_note_slow HTTP/1.1\r\nHost: x\r\n"
+                        f"Authorization: Bearer {token}\r\n"
+                        "Content-Type: application/json\r\n"
+                        f"Content-Length: {len(body)}\r\n\r\n"
+                    ).encode(
+                        "utf-8"
+                    )
+                        + body
+                );
+                if drop {
+                    head = _read_until(sock, b'data: "written"');
+                    assert b'data: "written"' in head , f"{label}: no first event";
+                    sock.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                    );
+                } else {
+                    seen = _read_until(sock, b"event: end");
+                    assert b"event: end" in seen , f"{label}: stream did not end";
+                }
+                sock.close();
+                assert closed.wait(15) , f"{label}: the request scope never closed";
+                assert (label in _http_notes(runtime, token)) == committed , (
+                    f"{label}: the stream's write was "
+                    f"{'lost' if committed else 'committed'}"
+                );
+            }
+        } finally {
+            RequestScope.aclose = original_aclose;
+            if stop is not None {
+                stop();
+            }
+            runtime.close();
+            _restore_env("JAC_SCALE_RUNTIME", prior);
+        }
     }
 }
 
