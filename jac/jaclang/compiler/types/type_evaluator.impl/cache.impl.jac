@@ -7,6 +7,7 @@ impl TypeEvaluator.release_check_caches -> None {
     self._sv_async_syms_cache.clear();
     self._loop_written_keys_cache.clear();
     self._type_guard_probes.clear();
+    self.ct_eval.release_memos();
 }
 
 impl TypeEvaluator.release_compile_caches -> None {

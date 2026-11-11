@@ -510,7 +510,8 @@ node Module(AstDocNode, UniScopeNode) {
         rc_scope_cleanup: dict[int, list[str]] postinit,
         rc_move_in: set[int] postinit,
         own_move_sites: set[int] postinit,
-        managed_borrow_binds: set[int] postinit;
+        managed_borrow_binds: set[int] postinit,
+        import_bound_names: (set[str] | None) = None;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
     has elements: list[UniNode] { getter; }
