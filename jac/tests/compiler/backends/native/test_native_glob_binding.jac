@@ -4,43 +4,72 @@ Two modules both define a global TABLE; the importer takes TABLE from the
 second, and FIRST from the first through a module that only re-exports it.
 Native lowering must bind TABLE to the module named in its import under every
 module walk order, declare no global for the other module's TABLE, and still
-find a re-exported global at the module that defines it.
+find a re-exported global at the module that defines it. Every imported global
+is declared with the storage type its own module defines it with.
 """
 
 import os;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.backends.native.llvm.ir.values { GlobalVariable }
 
 glob FIXTURE: str = str(
          Path(__file__).resolve().parent / "fixtures" / "glob_binding" / "main.jac"
      );
 
-def module_globals(walk_order: str | None, name: str) -> list[str] {
+def module_ir(path: str, walk_order: str | None = None) -> any {
     prog = JacProgram();
     opts = CompileOptions(
         force_codespace='native',
         skip_native_engine=True,
         native_module_walk_order=walk_order
     );
-    mod = prog.compile(file_path=FIXTURE, options=opts);
+    mod = prog.compile(file_path=path, options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
     assert mod.gen.llvm_ir is not None , "No IR emitted";
+    return mod.gen.llvm_ir;
+}
+
+def module_globals(llvm_ir: any, name: str) -> list[str] {
     return [
         line
-        for line in str(mod.gen.llvm_ir).splitlines()
+        for line in str(llvm_ir).splitlines()
         if line.startswith("@") and f".{name}\"" in line.split("=")[0]
     ];
 }
 
+def glob_storage(llvm_ir: any) -> dict[str, str] {
+    return {
+        symbol: str(gv.value_type)
+        for (symbol, gv) in llvm_ir.globals.items()
+        if isinstance(gv, GlobalVariable)
+    };
+}
+
 test "an imported global binds to the module its import names" {
+    defined = glob_storage(module_ir(str(Path(FIXTURE).parent / "second_table.jac")));
     for order in [None, "reverse", "shuffle:7"] {
-        found = module_globals(order, "TABLE");
+        llvm_ir = module_ir(FIXTURE, order);
+        found = module_globals(llvm_ir, "TABLE");
         assert len(found) == 1 , f"{order}: {found}";
         assert "second_table" in found[0] , f"{order}: {found}";
-        first = module_globals(order, "FIRST");
+        first = module_globals(llvm_ir, "FIRST");
         assert len(first) == 1 and "first_table" in first[0] , f"{order}: {first}";
+        declared = glob_storage(llvm_ir);
+        for name in ["ESC", "NONE_GLOB", "NONE_DECL", "Box.EMPTY"] {
+            symbols = [
+                s
+                for s in defined
+                if s.endswith(f".{name}")
+            ];
+            assert len(symbols) == 1 , f"{name}: {defined}";
+            assert declared.get(symbols[0]) == defined[symbols[0]] , (
+                f"{order} {name}: main declares {declared.get(symbols[0])}, "
+                f"second_table stores {defined[symbols[0]]}"
+            );
+        }
     }
 }
 
@@ -147,66 +176,4 @@ with entry {
         out = assert_native_identity(str(main));
     }
     assert out.split() == ["524288", "7", "524288"] , out;
-}
-
-test "an imported glob is declared with the storage its module defines" {
-    import tempfile;
-    import from jaclang.compiler.backends.native.llvm.ir.values { GlobalVariable }
-    rows = [
-        ("ESC", 'glob ESC = "\\x1b";', "seq.startswith(ESC)"),
-        ("ESC", "", "seq[0] == ESC"),
-        ("ESC", "", 'seq.startswith(ESC + "[")'),
-        ("NONE_GLOB", "glob NONE_GLOB = None;", "NONE_GLOB is None"),
-        ("NONE_DECL", "glob NONE_DECL: None = None;", "NONE_DECL is None"),
-        ("Box.EMPTY", "obj Box { static has EMPTY: None = None; }", "Box.EMPTY is None")
-    ];
-    names = sorted({name.split(".")[0] for (name, _, _) in rows});
-    reader = f"import from defs {{ {', '.join(names)} }}\n"
-        + "".join(
-            [
-                f"def row_{i}(seq: str) -> bool {{\n    return {use};\n}}\n"
-                for (i, (_, _, use)) in enumerate(rows)
-            ]
-        );
-    with tempfile.TemporaryDirectory() as directory {
-        (Path(directory) / "defs.jac").write_text(
-            "\n".join(
-                [
-                    decl
-                    for (_, decl, _) in rows
-                    if decl
-                ]
-            )
-                + "\n"
-        );
-        (Path(directory) / "reader.jac").write_text(reader);
-        storage: dict[str, dict[str, str]] = {};
-        for side in ["defs", "reader"] {
-            prog = JacProgram();
-            mod = prog.compile(
-                file_path=str(Path(directory) / f"{side}.jac"),
-                options=CompileOptions(
-                    force_codespace='native', skip_native_engine=True
-                )
-            );
-            assert not prog.errors_had , f"{side}: {[str(e) for e in prog.errors_had]}";
-            storage[side] = {
-                symbol: str(gv.value_type)
-                for (symbol, gv) in mod.gen.llvm_ir.globals.items()
-                if symbol.startswith("defs_") and isinstance(gv, GlobalVariable)
-            };
-        }
-    }
-    for (name, _, _) in rows {
-        defined = [
-            s
-            for s in storage["defs"]
-            if s.endswith(f".{name}")
-        ];
-        assert len(defined) == 1 , f"{name}: {storage['defs']}";
-        assert storage["reader"].get(defined[0]) == storage["defs"][defined[0]] , (
-            f"{name}: reader declares {storage['reader'].get(defined[0])}, "
-            f"defs stores {storage['defs'][defined[0]]}"
-        );
-    }
 }
