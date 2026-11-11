@@ -80,12 +80,26 @@ test "E0111 is reported in every kind of body" {
         "single-quoted": in_function('"Doc."' + if_x),
         "raw prefix": in_function('r"""Doc."""' + if_x),
         "two strings": in_function('"""Doc."""\n    """More."""' + if_x),
-        "a comment after": in_function('"""Doc."""  # a note\n    # another' + if_x)
+        "a comment after": in_function('"""Doc."""  # a note\n    # another' + if_x),
+        "a lambda in a wrapped ternary": 'def label(x: int) -> str {\n    "positive"\n    if (lambda (y: int) -> bool {\n        """Doc."""\n        if y > 0 {\n            return True;\n        }\n        return False;\n    })(x)\n    else "other"\n}\n'
     };
     for (kind, source) in bodies.items() {
         got = errors_of(compile_source(source));
         assert [code for (code, _) in got] == ["E0111"] , f"{kind}: {got}";
     }
+}
+
+test "nested wrapped ternaries are checked once per level" {
+    ternaries = "0";
+    statements = "0";
+    for _ in range(40) {
+        ternaries = f'(lambda {{ "yes"\n if True\n else {ternaries} }})';
+        statements = f'(lambda {{ "Doc."\n if (lambda {{ {statements} }})() {{ print(1); }} return 0; }})';
+    }
+    assert errors_of(compile_source(f"with entry {{\n    f = {ternaries};\n}}\n"))
+        == [];
+    got = errors_of(compile_source(f"with entry {{\n    f = {statements};\n}}\n"));
+    assert [code for (code, _) in got] == ["E0111"] * 40 , got;
 }
 
 test "a string that is a statement, a docstring target or an expression is not E0111" {

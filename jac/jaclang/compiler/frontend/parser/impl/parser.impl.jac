@@ -3609,17 +3609,25 @@ impl Parser._docstring_runs_on -> bool {
         return False;
     }
     if nxt.kind == TokenKind.KW_IF {
-        save_pos = self.pos;
-        saved_error_count = self.error_count;
-        saved_diags_len = len(self.diags);
-        self.parse_expression();
-        is_ternary = self.error_count == saved_error_count;
-        self.pos = save_pos;
-        self.error_count = saved_error_count;
-        while len(self.diags) > saved_diags_len {
-            self.diags.pop();
+        if self.pos not in self._ternary_at {
+            save_pos = self.pos;
+            saved_error_count = self.error_count;
+            saved_diags_len = len(self.diags);
+            self.parse_expression();
+            is_ternary = True;
+            for k in range(saved_diags_len, len(self.diags)) {
+                if self.diags[k].is_error and self.diags[k].code_str != "E0111" {
+                    is_ternary = False;
+                }
+            }
+            self._ternary_at[save_pos] = is_ternary;
+            self.pos = save_pos;
+            self.error_count = saved_error_count;
+            while len(self.diags) > saved_diags_len {
+                self.diags.pop();
+            }
         }
-        return not is_ternary;
+        return not self._ternary_at[self.pos];
     }
     return not (
         is_string_continuation_kind(nxt.kind)
