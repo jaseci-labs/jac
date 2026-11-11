@@ -4665,12 +4665,20 @@ graph import compiler {
     ]
     backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache
         | driver.nativecache.NativeBuildSession.unbound_symbols;
+    backends.native.llvm.binding as llvm_snapshot --> driver.nativecache.NativeBuildSession.enqueue_snapshot;
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
     backends.native.lowering ++> tests.test_prim_equivalence { native_lowering_issues }
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.na_compile_pass ++> [
+        driver.native_snapshot_pipeline.NativeSnapshotPipeline.take_snapshot {
+            UnitIRSnapshot
+        },
+        driver.native_snapshot_pipeline._optimize_snapshot_batch {
+            optimize_unit_bitcodes_with_config
+        },
+        driver.native_snapshot_pipeline._snapshot_ir_text { unit_snapshot_text_values },
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
             unit_bitcode,
@@ -4680,16 +4688,22 @@ graph import compiler {
     ]
     backends.native.na_compile_pass --> [
         driver.nativecache.NativeBuildSession.compact_ir {
-            unit_bitcode,
-            unit_fallbacks
+            unit_fallbacks,
+            unit_snapshot
         },
+        driver.nativecache.NativeBuildSession.enqueue_snapshot { unit_fallbacks },
         driver.nativecache.NativeBuildSession.lower {
             settle_unit_ir,
             unit_function_counts
         },
+        driver.nativecache.NativeBuildSession.schedule_snapshot_optimization {
+            unit_fallbacks
+        },
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
+    type backends.native.na_compile_pass ++> driver.native_snapshot_pipeline
+        | driver.nativecache { UnitIRSnapshot }
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
         FACT_IMPORT_PATHS,
         FACT_PACKAGE_STORE,
@@ -10213,7 +10227,10 @@ graph import compiler.driver {
         nativecache.NativeUnitRegistry.known_digest { env_na_debug },
         nativecache.NativeUnitRegistry.record_module { env_na_debug },
     ]
-    type compile_options ++> pipeline | program { CancelToken }
+    type compile_options ++> [
+        native_snapshot_pipeline { CompileOptions },
+        pipeline | program { CancelToken },
+    ]
     compiler ++> build_services.CompilerBuildServices.compiler
         | program.JacProgram._get_compiler { JacCompiler }
     compiler --> nativecache.SessionHeap.take { COMPILE_GC_THRESHOLDS }
@@ -10393,6 +10410,11 @@ graph import compiler.driver {
         nativecache { NativeIface },
         unit_products.native_products { native_layout_to_dict },
     ]
+    native_snapshot_pipeline ++> nativecache { NativeSnapshotPipeline }
+    type native_snapshot_pipeline ++> nativecache {
+        NativeOptimizationBatch,
+        NativeSnapshotPipeline
+    }
     nativecache ++> program.JacProgram.native_units { NativeUnitRegistry }
     type nativecache ++> program { NativeUnitRegistry }
     pass_driver ++> [
