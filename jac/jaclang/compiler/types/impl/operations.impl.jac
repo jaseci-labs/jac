@@ -341,7 +341,12 @@ impl get_type_of_binary_operation(
         }
 
         if result is None {
-            if expr.op.name == Tok.BW_OR {
+            if expr.op.name == Tok.BW_OR
+                and not (
+                    left_type.is_class_instance()
+                    and right_type.is_class_instance()
+                    and not in_type_position(expr)
+                ) {
                 return UnionType(types=[left_type, right_type]);
             }
             if _has_gradual_type_args(left_type)
