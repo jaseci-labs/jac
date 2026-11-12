@@ -1041,7 +1041,10 @@ impl ManifestBuilder._serve_env(
         env.append({"name": "JAC_SERVE_THREADS", "value": str(threads)});
     }
     trusted = list(serve.proxy.trusted);
-    if svc_name != GATEWAY_NAME {
+    behind_proxy = svc_name != GATEWAY_NAME
+        or self._build_ingress_manifest(self._gateway_cfg().get("ingress", {}))
+            is not None;
+    if behind_proxy {
         trusted = trusted or ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
     }
     if trusted {

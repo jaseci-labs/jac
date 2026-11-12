@@ -776,16 +776,7 @@ impl NaIRGenPass._register_static_fields(
         if full_name in self.static_fields {
             continue;
         }
-        ftype: ir.Type = ir.IntType(64);
-        if var.type_tag is not None {
-            ftype = self._resolve_decl_type(var.type_tag, var.value);
-        } elif var.value is not None {
-            inferred = self._infer_global_init_type(var.value);
-            if inferred is not None {
-                ftype = inferred;
-            }
-        }
-
+        ftype = self._decl_storage_type(var.type_tag, var.value);
         symbol = self._symbol_for(full_name, owner if imported else None);
         if symbol in self.llvm_module.globals {
             continue;
