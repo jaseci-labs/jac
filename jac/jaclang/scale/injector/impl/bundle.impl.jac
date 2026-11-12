@@ -965,9 +965,29 @@ impl _input_digest(
         digest.update(b"\0");
         digest.update(f"{path.stat().st_mode & 0o777:o}".encode("utf-8"));
         digest.update(b"\0");
-        digest.update(hashlib.sha256(path.read_bytes()).digest());
+        content = _lock_key_bytes(path)
+            if path.name == "jac.lock"
+            else path.read_bytes();
+        digest.update(hashlib.sha256(content).digest());
     }
     return digest.hexdigest();
+}
+
+impl _lock_key_bytes(path: Path) -> bytes {
+    raw = path.read_bytes();
+    try {
+        data = tomllib.loads(raw.decode("utf-8"));
+    } except (UnicodeDecodeError, tomllib.TOMLDecodeError) {
+        return raw;
+    }
+    npm = data.get("npm");
+    if isinstance(npm, dict) {
+        npm.pop("bun_lock", None);
+        if not npm {
+            data.pop("npm");
+        }
+    }
+    return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8");
 }
 
 impl seal_input_digest(
