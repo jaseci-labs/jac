@@ -169,10 +169,7 @@ test "get walker with params" {
         # Query values are text, so they are parsed into the declared type.
         base = "/walker/GetWalkerWithParams?name=Alice&age=30";
         for (query, want) in [
-            (
-                "&tags=a&tags=b&flag=",
-                {"tags": ["a", "b"], "flag": False}
-            ),
+            ("&tags=a&tags=b&flag=", {"tags": ["a", "b"], "flag": False}),
             ("&tags=a", {"tags": ["a"]})
         ] {
             response = client.get(base + query);
