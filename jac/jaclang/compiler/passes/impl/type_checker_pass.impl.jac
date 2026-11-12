@@ -2192,7 +2192,11 @@ impl TypeCheckPass._is_exception_class_operand(
     ty: TypeBase, allow_tuple: bool = True
 ) -> bool {
     if isinstance(ty, UnionType) {
-        members = [m for m in ty.types if not self.evaluator.is_none_type(m)];
+        members = [
+            m
+            for m in ty.types
+            if not self.evaluator.is_none_type(m)
+        ];
         return bool(members)
             and all(self._is_exception_class_operand(m, allow_tuple) for m in members);
     }
