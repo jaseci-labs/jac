@@ -194,7 +194,9 @@ def _seal_handoff_missing(warm: bool) -> list[str] {
         steps = ([PLAIN_PREPARE] if warm else []) + [SEAL_PREPARE];
         for script in steps {
             ran = subprocess.run(
-                [sys.executable, "-c", script, str(base)], capture_output=True, text=True
+                [sys.executable, "-c", script, str(base)],
+                capture_output=True,
+                text=True
             );
             assert ran.returncode == 0 , ran.stderr[-2000:];
         }
