@@ -47,3 +47,41 @@ test "valid tuple and callable annotation arguments retain their types" {
         error.pretty_print() for error in program.errors_had
     );
 }
+
+test "a parenthesized tuple annotation unions with None on either side" {
+    program = JacProgram();
+    program.compile(
+        file_path="paren_tuple_union.jac",
+        use_str="""
+def first(text: str) -> (str, int) | None {
+    if not text { return None; }
+    return (text[0], 0);
+}
+def last(text: str) -> None | (str, int) {
+    if not text { return None; }
+    return (text[-1], len(text) - 1);
+}
+def head(text: str) -> str {
+    pair = first(text);
+    if pair is None { return ""; }
+    (ch, _) = pair;
+    return ch;
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "a parenthesized tuple in a union annotation still checks its elements" {
+    program = JacProgram();
+    program.compile(
+        file_path="paren_tuple_union_mismatch.jac",
+        use_str="def probe() -> (str, int) | None { return (1, 2); }",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    messages = "\n".join(error.pretty_print() for error in program.errors_had);
+    assert "E1002" in messages , messages;
+}
