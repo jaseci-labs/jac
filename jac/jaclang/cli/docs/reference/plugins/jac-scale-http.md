@@ -745,7 +745,7 @@ curl -X POST http://localhost:8000/user/logout-all \
   -H "Authorization: Bearer <token>"
 ```
 
-An open WebSocket rechecks its session before each message it runs and at each heartbeat, and closes with reason `revoked` once the session has ended. A request that was already authorized when the session ended still finishes. On a fleet service that provisions the users of a gateway's tokens (`provision_unknown_users`), the epoch is the gateway's to enforce. The service does not hold the account's epoch, so it accepts a gateway's token until the token expires and never extends it: its `/user/refresh-token` refuses, and its `/user/logout-all` answers `409 NOT_SUPPORTED`. Clients refresh and end sessions at the gateway.
+An open WebSocket rechecks its session at each heartbeat and before the messages it runs, reusing a successful check for up to 5 seconds, and closes with reason `revoked` once the session has ended or the check fails. A request that was already authorized when the session ended still finishes. On a fleet service that provisions the users of a gateway's tokens (`provision_unknown_users`), the epoch is the gateway's to enforce. The service does not hold the account's epoch, so it accepts a gateway's token until the token expires and never extends it: its `/user/refresh-token` refuses, and its `/user/logout-all` answers `409 NOT_SUPPORTED`. Clients refresh and end sessions at the gateway.
 
 Returns HTTP 400 if the current password is incorrect or the new password is empty.
 
