@@ -1278,7 +1278,7 @@ impl NaIRGenPass._place_unit_python(
         import from jaclang.compiler.frontend.codeinfo { native_display_text }
         _why = "; ".join(_r.located() for _r in refusals);
         _help = next(
-            (
+            iter(
                 _r.help
                 for _r in refusals
                 if _r.help

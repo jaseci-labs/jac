@@ -509,11 +509,8 @@ impl NaIRGenPass._codegen_closure_call(
             node_override=nd,
             kind="call through a value",
             name=self._get_name(nd.target) or "callable",
-            help_text=f"The callee's native signature takes {len(declared)} positional "
-            "argument(s) and no keywords, so these arguments would be lost. A "
-            "`Callable` value is called natively with positional arguments that "
-            "match `Callable[[...], R]`; annotate it with its parameter types and "
-            "pass them positionally, or make the call from a Python/@sv context."
+            help_text="A `Callable` value is called natively with its declared "
+            "positional arguments only; keywords or extra arguments would be lost."
         );
         return None;
     }

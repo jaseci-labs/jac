@@ -2903,6 +2903,14 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
+    def _emit_hdr_tag_is(
+        b: ir.IRBuilder,
+        raw: ir.Value,
+        names: list[str],
+        exact: bool = True,
+        untagged: bool = False
+    ) -> ir.Value;
+
     def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
     def _emit_rc_release_fast(
         fn: ir.Function, release_fn: ir.Function, may_cycle: bool
