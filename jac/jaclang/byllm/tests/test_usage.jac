@@ -449,8 +449,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
     assert plain_result == "ok";
     assert "react_iteration" in plain_rec["tokens"]["by_kind"];
 
-    # A str-returning finish_tool call always triggers a final_answer_restream,
-    # consuming a second mock output - hence requests=2 here vs 1 above.
+    # The finish_tool answer is delivered as committed, with no second call.
     llm_stream = Model(
         model_name="mockllm",
         config={
@@ -458,8 +457,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
                 (
                     MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
                     {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
-                ),
-                "ok"
+                )
             ]
         }
     );
@@ -467,7 +465,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
         tools=[finish_tool], stream=True, logging=True
     );
     _assert_tokens_via_callback(
-        "streaming, tool-calling", lambda { return list(stream_task("test")); }, 2, 110
+        "streaming, tool-calling", lambda { return list(stream_task("test")); }, 1, 110
     );
 
     # Async, no tools - the branch BaseLLM.ainvoke dispatches directly rather
@@ -686,10 +684,10 @@ test "usage_step fires once per underlying call, scoped to that call's own usage
                 {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
             ),
             (
-                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                MockToolCall(tool=step_a, args={}),
                 {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
             ),
-            # A str-returning finish_tool call always triggers a
+            # The loop is cut off with no answer, so byLLM asks for one in a
             # final_answer_restream - the 3rd underlying call.
             (
                 "done",
@@ -698,7 +696,9 @@ test "usage_step fires once per underlying call, scoped to that call's own usage
         ]
     );
 
-    def task(q: str) -> str by llm(tools=[step_a], stream=True, logging=True);
+    def task(q: str) -> str by llm(
+        tools=[step_a], stream=True, logging=True, max_react_iterations=2
+    );
 
     events = list(task("go"));
     usage_steps = [e.data for e in events_of(events, "usage_step")];
@@ -766,8 +766,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
             finish(
                 "done",
                 usage={"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55}
-            ),
-            say("done")
+            )
         ]
     );
 
@@ -817,8 +816,7 @@ test "usage_step fires for the recovery call" {
                 "finish_tool",
                 {"output": {"name": "Gus", "age": 29}},
                 usage={"prompt_tokens": 40, "completion_tokens": 8, "total_tokens": 48}
-            ),
-            say("Gus")
+            )
         ]
     );
     mt_run = mk_run(resp_type=_Person, tools=[step_a], stream=True);
@@ -829,7 +827,7 @@ test "usage_step fires for the recovery call" {
     assert llm.exhausted() , f"recovery never ran: {llm.outputs}";
     assert len(steps) == 1 , f"the recovery episode must report one usage_step: {steps}";
     kinds = [c["call_kind"] for c in steps[0]["per_call"]];
-    assert kinds == ["recovery", "final_answer_restream"] , (
+    assert kinds == ["recovery"] , (
         f"the usage_step must cover the recovery call, got call_kinds={kinds}"
     );
     assert steps[0]["total"]["total_tokens"] == 48;
