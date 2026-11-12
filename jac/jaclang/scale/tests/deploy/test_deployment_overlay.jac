@@ -430,3 +430,67 @@ test "embedder gateway overrides survive normalization" {
     assert b._client_entry() == "";
     assert b._service_config("__gateway__") == {"replicas": 3};
 }
+
+
+test "the gateway trusts the cluster ranges only when an ingress fronts it" {
+    private = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+    bare = _project_with("");
+    listed = _project_with('[serve.proxy]\ntrusted = ["10.1.0.0/16"]\n');
+    def trusted_of(builder: ManifestBuilder, svc: str) -> str | None {
+        env = {e["name"]: e["value"] for e in builder._serve_env(svc, {})};
+        return env.get("JAC_SERVE_PROXY_TRUSTED");
+    }
+    for (label, k8s, gateway, project, expected) in [
+        (
+            "no ingress",
+            KubernetesConfig(app_name="t", namespace="t-ns"),
+            None,
+            bare,
+            None
+        ),
+        (
+            "[scale.gateway.ingress] enabled",
+            KubernetesConfig(app_name="t", namespace="t-ns"),
+            {"ingress": {"enabled": True, "host": "app.example.com"}},
+            bare,
+            private
+        ),
+        (
+            "shared ingress with a domain",
+            KubernetesConfig(
+                app_name="t",
+                namespace="t-ns",
+                shared_ingress=True,
+                domain="app.example.com"
+            ),
+            None,
+            bare,
+            private
+        ),
+        (
+            "shared ingress without a domain",
+            KubernetesConfig(app_name="t", namespace="t-ns", shared_ingress=True),
+            None,
+            bare,
+            None
+        ),
+        (
+            "an ingress, with [serve.proxy] trusted listed",
+            KubernetesConfig(app_name="t", namespace="t-ns"),
+            {"ingress": {"enabled": True}},
+            listed,
+            "10.1.0.0/16"
+        )
+    ] {
+        builder = ManifestBuilder(
+            k8s_config=k8s,
+            project_dir=project,
+            fleet=fleet_of({}, overrides={"svc_a": {}}),
+            gateway_config=gateway or {},
+            dry_run=True
+        );
+        assert trusted_of(builder, GATEWAY_NAME) == expected , label;
+        assert trusted_of(builder, "svc_a")
+            == ("10.1.0.0/16" if project == listed else private) , label;
+    }
+}

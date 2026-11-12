@@ -1722,7 +1722,27 @@ impl KubernetesTarget._apply_or_replace_pvc(
 ) {
     name: str = manifest["metadata"]["name"];
     try {
-        core_v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace);
+        pvc = core_v1.read_namespaced_persistent_volume_claim(
+            name=name, namespace=namespace
+        );
+        if pvc.metadata?.deletion_timestamp is not None {
+            delete_if_exists(
+                core_v1.delete_namespaced_pod,
+                bundle_loader_pod_name(k8s_safe_name(self.k8s_config.app_name)),
+                namespace,
+                'Pod'
+            );
+            wait_until_deleted(
+                lambda { core_v1.read_namespaced_persistent_volume_claim(
+                    name, namespace
+                ); },
+                f"PVC '{name}'"
+            );
+            core_v1.create_namespaced_persistent_volume_claim(
+                namespace=namespace, body=manifest
+            );
+            return;
+        }
         if self.logger {
             self.logger.info(
                 f"PVC '{name}' already exists; skipping patch. To apply "
@@ -1903,6 +1923,12 @@ impl KubernetesTarget._destroy_pvcs(
 }
 
 impl KubernetesTarget._destroy_app_pvcs(app_name: str, namespace: str, core_v1: any) {
+    delete_if_exists(
+        core_v1.delete_namespaced_pod,
+        bundle_loader_pod_name(k8s_safe_name(app_name)),
+        namespace,
+        'Pod'
+    );
     self._destroy_pvcs(self._app_pvc_names(app_name), namespace, core_v1);
 }
 

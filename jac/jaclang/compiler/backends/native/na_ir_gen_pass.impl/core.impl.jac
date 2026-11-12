@@ -1869,20 +1869,9 @@ impl NaIRGenPass._register_imported_globals(
             if not names {
                 continue;
             }
-            var_type: ir.Type = ir.IntType(64);
-            if assign.type_tag and assign.type_tag.tag {
-                if (
-                    self._quiet_glob_type(assign.type_tag.tag) is None
-                    and not self._glob_native_use_exists(target)
-                ) {
-                    continue;
-                }
-                var_type = self._resolve_jac_type(assign.type_tag.tag);
-            } elif assign.value is not None {
-                inferred = self._infer_global_init_type(assign.value);
-                if inferred is not None {
-                    var_type = inferred;
-                }
+            var_type = self._glob_storage_type(assign, target);
+            if var_type is None {
+                continue;
             }
             symbol = self._symbol_for(var_name, _owner, _is_pub);
             declared = self.llvm_module.globals.get(symbol);
