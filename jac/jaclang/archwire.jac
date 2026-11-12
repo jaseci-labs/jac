@@ -13899,9 +13899,11 @@ graph import scale {
             DEFAULT_SEAL_TIMEOUT_S,
             _precompile_app,
             _stage_app,
+            client_input_digest,
             nested_sanitized_tomls,
             pack_jab,
             seal_cache_setting,
+            seal_input_digest,
             seal_timeout_setting
         },
         tests.microservices.test_binary_injector { TOOLCHAIN_SUBDIR },
