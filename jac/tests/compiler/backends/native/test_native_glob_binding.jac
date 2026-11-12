@@ -4,43 +4,72 @@ Two modules both define a global TABLE; the importer takes TABLE from the
 second, and FIRST from the first through a module that only re-exports it.
 Native lowering must bind TABLE to the module named in its import under every
 module walk order, declare no global for the other module's TABLE, and still
-find a re-exported global at the module that defines it.
+find a re-exported global at the module that defines it. Every imported global
+is declared with the storage type its own module defines it with.
 """
 
 import os;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.backends.native.llvm.ir.values { GlobalVariable }
 
 glob FIXTURE: str = str(
          Path(__file__).resolve().parent / "fixtures" / "glob_binding" / "main.jac"
      );
 
-def module_globals(walk_order: str | None, name: str) -> list[str] {
+def module_ir(path: str, walk_order: str | None = None) -> any {
     prog = JacProgram();
     opts = CompileOptions(
         force_codespace='native',
         skip_native_engine=True,
         native_module_walk_order=walk_order
     );
-    mod = prog.compile(file_path=FIXTURE, options=opts);
+    mod = prog.compile(file_path=path, options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
     assert mod.gen.llvm_ir is not None , "No IR emitted";
+    return mod.gen.llvm_ir;
+}
+
+def module_globals(llvm_ir: any, name: str) -> list[str] {
     return [
         line
-        for line in str(mod.gen.llvm_ir).splitlines()
+        for line in str(llvm_ir).splitlines()
         if line.startswith("@") and f".{name}\"" in line.split("=")[0]
     ];
 }
 
+def glob_storage(llvm_ir: any) -> dict[str, str] {
+    return {
+        symbol: str(gv.value_type)
+        for (symbol, gv) in llvm_ir.globals.items()
+        if isinstance(gv, GlobalVariable)
+    };
+}
+
 test "an imported global binds to the module its import names" {
+    defined = glob_storage(module_ir(str(Path(FIXTURE).parent / "second_table.jac")));
     for order in [None, "reverse", "shuffle:7"] {
-        found = module_globals(order, "TABLE");
+        llvm_ir = module_ir(FIXTURE, order);
+        found = module_globals(llvm_ir, "TABLE");
         assert len(found) == 1 , f"{order}: {found}";
         assert "second_table" in found[0] , f"{order}: {found}";
-        first = module_globals(order, "FIRST");
+        first = module_globals(llvm_ir, "FIRST");
         assert len(first) == 1 and "first_table" in first[0] , f"{order}: {first}";
+        declared = glob_storage(llvm_ir);
+        for name in ["ESC", "NONE_GLOB", "NONE_DECL", "Box.EMPTY"] {
+            symbols = [
+                s
+                for s in defined
+                if s.endswith(f".{name}")
+            ];
+            assert len(symbols) == 1 , f"{name}: {defined}";
+            assert declared.get(symbols[0]) == defined[symbols[0]] , (
+                f"{order} {name}: main declares {declared.get(symbols[0])}, "
+                f"second_table stores {defined[symbols[0]]}"
+            );
+        }
     }
 }
 
