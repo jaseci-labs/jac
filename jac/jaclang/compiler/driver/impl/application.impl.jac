@@ -553,6 +553,7 @@ impl prepare_application(
                                 default_codespace='server',
                                 force_codespace=force_codespace,
                                 skip_native_engine=program.options.skip_native_engine,
+                                retain_interfaces=program.options.retain_interfaces,
                                 entry_point=path,
                                 project_root=`root,
                                 client_source_root=source_root if client else ''
