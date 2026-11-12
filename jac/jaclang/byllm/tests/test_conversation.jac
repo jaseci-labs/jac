@@ -118,6 +118,13 @@ test "a second turn grows the same list and keeps every earlier message" {
         f"the pre-seeded message was dropped on turn 2: {contents}"
     );
     assert any("Paris" in c for c in contents) , f"turn 1's message was dropped: {contents}";
+
+    answers = [
+        m.get("content")
+        for m in by_role(history, "assistant")
+        if m.get("content")
+    ];
+    assert answers == [first, second] , f"each turn's answer must be saved: {answers}";
 }
 
 
