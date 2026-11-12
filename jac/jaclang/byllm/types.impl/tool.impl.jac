@@ -55,7 +55,9 @@ impl Tool.get_func_description(func: Callable) -> str {
     return func.__doc__ or func.__name__;
 }
 
-impl Tool.make_finish_tool(resp_type: type) -> Tool {
+impl Tool.make_finish_tool(
+    resp_type: type, output_info: (ClassInfo | EnumInfo | TypeForm | str | None) = None
+) -> Tool {
     def finish_tool(final_output: object) -> object {
         try {
             return TypeAdapter(resp_type).validate_python(final_output);
@@ -68,10 +70,33 @@ impl Tool.make_finish_tool(resp_type: type) -> Tool {
     }
     finish_tool.__annotations__["return"] = resp_type;
     finish_tool.__annotations__["final_output"] = resp_type;
+    description = "This tool is used to finish the tool calls and return the final output.";
+    enum_desc = str(
+        _type_to_schema(resp_type, info=output_info).get("description") or ""
+    )
+        if isinstance(output_info, EnumInfo)
+        else "";
+    output_desc = (
+        enum_desc
+        or (output_info.semstr if isinstance(output_info, ClassInfo) else None)
+        or getattr(resp_type, "_jac_semstr", "")
+        or "The final output of the tool calls."
+    );
+
+    finish_tool.__doc__ = description;
+    setattr(finish_tool, "_jac_semstr_inner", {"final_output": output_desc});
     return Tool(
         func=finish_tool,
-        description="This tool is used to finish the tool calls and return the final output.",
-        params_desc={"final_output": "The final output of the tool calls.",},
+        info=FunctionInfo(
+            name="finish_tool",
+            semstr=description,
+            params=[
+                ParamInfo(
+                    name="final_output", semstr=output_desc, type_info=output_info
+                )
+            ],
+            return_type=output_info
+        ),
     );
 }
 

@@ -4,7 +4,7 @@ import from collections.abc { Sequence }
 def inform_from_walker(nd: UniNode) -> None;
 
 walker SemanticAnalysisPass(TreePass) {
-    static has contract: PassContract = PassContract(kernel_safe=True);
+    static has contract: PassContract = PassContract();
 
     can enter_archetype with Archetype entry;
     def _check_archetype(nd: Archetype) -> None;

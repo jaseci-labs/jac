@@ -1,6 +1,6 @@
 """Tool use and the ReAct loop: finish_tool, and recovering when a model skips it."""
 
-import from jaclang.byllm.types { IterationAction, IterationContext }
+import from jaclang.byllm.types { IterationAction, IterationContext, StreamEvent }
 import from jaclang.byllm.lib { MockLLM, MockRawResponse }
 import from support { call, finish, prompt_text, say, tool_names }
 
@@ -21,23 +21,36 @@ def get_mood(character: str) -> str {
 test "plain text instead of finish_tool is re-prompted, not accepted" {
     # The gpt-4o failure mode: the model answers conversationally rather than
     # calling finish_tool. invoke should notice, re-prompt with finish_tool
-    # forced, and extract the typed result from the second turn.
+    # forced, and extract the typed result from the second turn. Streamed to a
+    # stream_handler, the recovered value is returned as is, not restated as text.
     line = "Greetings traveller, I have wares to trade!";
-    llm = MockLLM(outputs=[say(line), finish({"person": "Merchant", "message": line})]);
+    for streamed in [False, True] {
+        where = "streamed to a handler" if streamed else "not streamed";
+        seen: list[StreamEvent] = [];
+        llm = MockLLM(
+            outputs=[say(line), finish({"person": "Merchant", "message": line})]
+        );
 
-    """Generate the NPC's opening line given a player name."""
-    def generate_npc_line(player_name: str, npc_name: str) -> Chat by llm(
-        tools=[get_mood]
-    );
+        """Generate the NPC's opening line given a player name."""
+        def generate_npc_line(player_name: str, npc_name: str) -> Chat by llm(
+            tools=[get_mood],
+            stream=streamed,
+            stream_handler=seen.append if streamed else None
+        );
 
-    result = generate_npc_line("Elara", "Merchant");
-    assert result.person == "Merchant" , f"got {result!r}";
-    assert result.message == line , f"got {result!r}";
+        result = generate_npc_line("Elara", "Merchant");
+        assert isinstance(result, Chat) and result.person == "Merchant" , (
+            f"{where}: got {result!r}"
+        );
+        assert result.message == line , f"{where}: got {result!r}";
 
-    assert len(llm.seen) == 2 , (
-        f"expected the plain answer then a recovery turn, got {len(llm.seen)}"
-    );
-    assert llm.exhausted() , "both scripted turns should have been consumed";
+        assert len(llm.seen) == 2 , (
+            f"{where}: expected the plain answer then a recovery turn, got {len(
+                llm.seen
+            )}"
+        );
+        assert llm.exhausted() , f"{where}: both scripted turns should have been consumed";
+    }
 }
 
 

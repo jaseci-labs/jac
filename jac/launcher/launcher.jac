@@ -13,9 +13,6 @@ Dispatch, before any Python bring-up:
   * a trailing `.jab` overlay (a `jac build --as binary` app) exports its
     [offset, len] so the CPython boot can mount the app image out of this
     binary, and the app then owns ALL of argv;
-  * node mode: invoked as `node` (an engine's `bin/node` link, or a `node`
-    on PATH that resolves here), run the JavaScript engine in-process -- no
-    CPython at all;
   * worker mode: re-invoked as a Python interpreter (multiprocessing re-spawns
     `sys.executable` with `-u -c ...`), behave exactly like `python`;
   * otherwise boot the jaclang CLI.
@@ -24,8 +21,7 @@ Dispatch, before any Python bring-up:
 import os;
 import sys;
 import from jaclang.dist.fused.bringup { open_runtime }
-import from jaclang.dist.fused.js_engine { is_node_name, run_node }
-import from jaclang.dist.fused.materialize { materialize, overlay_for_path }
+import from jaclang.dist.fused.materialize { overlay_for_path }
 import from jaclang.dist.fused.report { die }
 import from _exec_native { executable_path }
 
@@ -64,9 +60,6 @@ with entry {
     exe_path = executable_path();
     if exe_path == "" {
         die("cannot resolve executable path");
-    }
-    if is_node_name(sys.argv[0]) {
-        sys.`exit(run_node(materialize(exe_path), sys.argv, exe_path));
     }
 
     # An overlay means this is an app binary: export its coordinates for
