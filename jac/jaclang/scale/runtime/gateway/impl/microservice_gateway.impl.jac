@@ -1295,7 +1295,7 @@ impl _session_refused(gw: MicroserviceGateway, token: str) -> bool {
         return False;
     }
     detail = gw.user_manager.validate_jwt_token_detail(token, check_existence=False);
-    return detail['status'] in ('revoked', 'unknown_user');
+    return detail['status'] == 'revoked';
 }
 
 impl _without_refused_credentials(
@@ -1400,13 +1400,22 @@ impl GatewaySessionGuard.allow(
             self.refused = True;
             return False;
         }
-        if detail['status'] != 'ok'
-            or (self.user_id and detail['user_id'] != self.user_id) {
+        status = detail['status'];
+        # An account the gateway does not hold belongs to the service, which
+        # checks its tokens itself; only an ended session is refused here.
+        owner = str(
+            (detail.get('subject') if status == 'unknown_user' else detail['user_id'])
+                or ''
+        );
+        if status == 'revoked' or (self.user_id and owner and owner != self.user_id) {
             self.refused = True;
             return False;
         }
+        if status not in ('ok', 'unknown_user') {
+            return True;
+        }
         self.token = candidate;
-        self.user_id = str(detail['user_id']);
+        self.user_id = owner;
         self.expires_at = float(detail.get('exp') or 0);
         self.checked_at = now;
         return True;

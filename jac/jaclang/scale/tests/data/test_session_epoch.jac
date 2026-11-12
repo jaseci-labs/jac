@@ -512,3 +512,24 @@ test "gateway websocket refresh cannot switch to another account" {
     }
     asyncio.run(verify());
 }
+
+
+test "the gateway leaves a service's own accounts to the service" {
+    manager = _manager();
+    # Signed like a real token, for an account only a service holds.
+    token = _signed({"sub": uuid.uuid4().hex});
+    assert _status(manager, token) == "unknown_user";
+    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
+    request = Request();
+    request.headers.set("Authorization", f"Bearer {token}");
+    request.headers.set("Cookie", f"jac_session={token}; theme=dark");
+    forwarded = {k.lower(): v for (k, v) in gw.build_forward_headers(request).items()};
+    assert forwarded["authorization"] == f"Bearer {token}";
+    assert forwarded["cookie"] == f"jac_session={token}; theme=dark";
+    async def verify {
+        assert await GatewaySessionGuard(manager=manager, token=token).allow();
+        first = GatewaySessionGuard(manager=manager);
+        assert await first.allow({"text": json.dumps({"token": token})});
+    }
+    asyncio.run(verify());
+}
