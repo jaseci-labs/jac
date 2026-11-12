@@ -84,10 +84,24 @@ to keep probe traffic out of the access log.
 
 ### CORS Configuration
 
-In single-process `jac run` mode the server installs a permissive
-CORS middleware (`allow_origins=['*']`, methods `GET`/`POST`/`PUT`/`OPTIONS`,
-headers `Content-Type`/`Authorization`); there is
-no `[scale.cors]` knob to tune it.
+The server's CORS policy comes from `[serve]`:
+
+```toml
+[serve]
+cors_origins = ["https://app.example.com"]   # default ["*"]: any origin
+cors_credentials = true                      # default false
+```
+
+The default `["*"]` lets any origin read responses, without credentials. A
+listed origin is echoed back to that origin only, and `cors_origins = []` turns
+cross-origin access off. `cors_credentials = true` adds
+`Access-Control-Allow-Credentials: true`, which a front end on another origin
+needs before the browser sends it cookies, such as the session cookie from a
+sibling subdomain. It requires a list of origins: browsers
+reject a response that allows every origin together with credentials, so the
+server refuses to start with `cors_credentials = true` and `"*"` in
+`cors_origins`. The environment mirrors are `JAC_SERVE_CORS_ORIGINS` and
+`JAC_SERVE_CORS_CREDENTIALS`.
 
 When a workspace's service apps run as a **fleet** (`jac run <app> --fleet`,
 `[scale.gateway] colocate = false`, or any deploy), the gateway that fronts
@@ -102,7 +116,15 @@ allow_headers = ["*"]
 
 Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
 disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
-`max_age`) are recognised under the same section.
+`max_age`) are recognised under the same section. `allow_credentials` defaults
+to `false`, and the same rule holds: with `"*"` in `allow_origins` the config
+is refused. `allow_methods` and `allow_headers` default to `["*"]`, meaning any
+method and any header. The gateway never sends that `*` to the browser, which
+never reads it as covering `Authorization` and, with credentials, reads it as no
+wildcard at all: a preflight is answered with the method and the headers it
+asked for, plus any methods listed beside the `*`. A response for a listed
+origin carries `Vary: Origin`, so a shared cache never hands one origin's
+answer to another.
 
 ---
 
@@ -512,7 +534,7 @@ Length and the common and breached lists do most of the work; `require`, `histor
 
 **Registration and login limits.** `[serve.auth.registration] enabled = false` closes self-registration (`403 REGISTRATION_CLOSED`); accounts are then created by an admin. `[serve.auth.lockout]` limits failed logins to `max_attempts` (default `10`) per `window_seconds` (default `900`) for each source address and identity, answering `429 RATE_LIMITED`.
 
-The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services but sets none on the gateway, which is the pod an ingress talks to; list your ingress controller's address in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
+The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services, and on the gateway, which is the pod an ingress talks to, when the deploy puts an ingress in front of it (`[scale.gateway.ingress] enabled`, or a shared ingress with a domain). With no ingress it sets none on the gateway. If your ingress controller's address is outside the private ranges, list it in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
 
 **Refusals.** A value that breaks the policy is answered with `400 POLICY_VIOLATION`, and the error `details` list every rule it broke so a form can show them together:
 

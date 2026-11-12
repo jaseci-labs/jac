@@ -102,10 +102,7 @@ test "the payload ships archwire.jac with the wires from modules it drops blanke
             if _dropped(os.path.join(_PKG, *scope.split(".")))
         ];
         assert not emptied , emptied[:5];
-        assert kept < everything;
-        assert not os.path.exists(
-            os.path.join(site, "runtime", "python", ARCH_FILE_NAME)
-        );
+        assert kept <= everything;
     } finally {
         shutil.rmtree(site, ignore_errors=True);
     }

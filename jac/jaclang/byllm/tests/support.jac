@@ -461,9 +461,15 @@ def event_types(events: list[StreamEvent]) -> list[str] {
 }
 
 
-"""The text delivered on the chunk channel, reassembled."""
+"""The text the chunk channel leaves the caller with: a stream_reset drops what came before."""
 def chunk_text(events: list[StreamEvent]) -> str {
-    return "".join([e.data.get("content", "") for e in events_of(events, "chunk")]);
+    text = "";
+    for e in events {
+        text = ""
+            if e.event_type == "stream_reset"
+            else text + (e.data.get("content", "") if e.event_type == "chunk" else "");
+    }
+    return text;
 }
 
 """The candidate handles offered in a routing prompt, with the line each sits on.

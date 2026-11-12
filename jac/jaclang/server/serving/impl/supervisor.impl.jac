@@ -384,7 +384,9 @@ impl WorkerSupervisor.run(port_retries: int = PORT_RETRY_LIMIT) -> int {
             time.sleep(POLL_SECONDS);
         }
     } finally {
+        self.drain.start('shutdown');
         self._shutdown_fleet();
+        self.drain.wait_for_hooks();
         for slot in self.slots {
             self._close_ready_fd(slot);
         }
