@@ -147,6 +147,14 @@ out = base / SERVE_MANIFEST_REL
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps(manifest))
 """,
+     PLAIN_PREPARE: str = """
+import sys
+from pathlib import Path
+from jaclang.compiler.driver.application import prepare_application
+from jaclang.compiler.driver.program import JacProgram
+base = Path(sys.argv[1])
+prepare_application(str(base / "main.jac"), JacProgram(), str(base))
+""",
      PRECOMPILE_LOOKUP: str = """
 import json, sys
 from pathlib import Path
@@ -169,7 +177,10 @@ print(json.dumps({"units": len(units), "missing": missing}))
 """;
 
 
-test "a stage the seal prepared hands precompile every unit's bytecode, interface and diagnostics" {
+"""What a precompile would still compile after the seal prepares a small app, each
+step in its own process as in a deploy. `warm` runs a plain prepare of the same
+app first, as `jac start` would."""
+def _seal_handoff_missing(warm: bool) -> list[str] {
     with TemporaryDirectory() as td {
         base = Path(td).resolve();
         (base / 'jac.toml').write_text(
@@ -180,12 +191,13 @@ test "a stage the seal prepared hands precompile every unit's bytecode, interfac
         (base / 'main.jac').write_text(
             'import from helper { value }\ndef:pub read -> int { return value(); }\n'
         );
-        prepared = subprocess.run(
-            [sys.executable, "-c", SEAL_PREPARE, str(base)],
-            capture_output=True,
-            text=True
-        );
-        assert prepared.returncode == 0 , prepared.stderr[-2000:];
+        steps = ([PLAIN_PREPARE] if warm else []) + [SEAL_PREPARE];
+        for script in steps {
+            ran = subprocess.run(
+                [sys.executable, "-c", script, str(base)], capture_output=True, text=True
+            );
+            assert ran.returncode == 0 , ran.stderr[-2000:];
+        }
         looked_up = subprocess.run(
             [sys.executable, "-c", PRECOMPILE_LOOKUP, str(base)],
             capture_output=True,
@@ -194,8 +206,18 @@ test "a stage the seal prepared hands precompile every unit's bytecode, interfac
         assert looked_up.returncode == 0 , looked_up.stderr[-2000:];
         found = json.loads(looked_up.stdout.strip().splitlines()[-1]);
         assert found["units"] , found;
-        assert not found["missing"] , (
-            f"precompile would compile these units again: {found['missing']}"
-        );
+        return list(found["missing"]);
     }
+}
+
+
+test "a stage the seal prepared hands precompile every unit's bytecode, interface and diagnostics" {
+    missing = _seal_handoff_missing(False);
+    assert not missing , f"precompile would compile these units again: {missing}";
+}
+
+
+test "a seal prepare after a plain prepare of the same app still hands precompile every section" {
+    missing = _seal_handoff_missing(True);
+    assert not missing , f"the seal reused a prepare that kept no interfaces: {missing}";
 }
