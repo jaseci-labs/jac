@@ -255,6 +255,25 @@ test "the client build's stage leaves out what the deploy writes under .jac" {
 }
 
 
+test "the seal builds the client when the client entry is the sealed app's entry" {
+    project_dir = _app(_PARKED);
+    try {
+        assert _builder(project_dir)._seal_bakes_client(project_dir);
+        dry = _builder(project_dir);
+        dry.dry_run = True;
+        assert not dry._seal_bakes_client(project_dir) , "a dry run sealed nothing";
+        assert not _builder(project_dir, client_entry="svc.jac")._seal_bakes_client(
+            project_dir
+        ) , "a client entry other than the sealed app's entry was baked by the seal";
+        assert not _builder(project_dir, client_entry="")._seal_bakes_client(
+            project_dir
+        ) , "a deploy without a client asked the seal to build one";
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+    }
+}
+
+
 test "an unchanged project reuses its client build instead of building again" {
     project_dir = _app(_PARKED);
     rec = tempfile.mkdtemp(prefix="client-stage-rec-");

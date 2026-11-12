@@ -610,10 +610,6 @@ impl NativeIface.symbol_of(name: str) -> (str | None) {
     return ex.symbol if ex is not None else None;
 }
 
-impl NativeIface.is_demoted(name: str) -> bool {
-    return name in self.demoted;
-}
-
 impl NativeIface.classes_json -> dict[str, any] {
     out: dict[str, any] = {};
     for name in sorted(self.classes.keys()) {

@@ -7,8 +7,6 @@ glob SLOW_STEP_SECONDS: float = 2.0,
      DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted",
      _HEAP_HELD: list[bool] = [False];
 
-class NativeBuildStopped(BaseException) {}
-
 obj NativeUnitEntry {
     has path: str,
         digest: str,
@@ -34,14 +32,9 @@ obj NativeUnitRegistry {
         compiled_paths: list[str] = [],
         progress: (Callable[[str], None] | None) = None,
         progress_steps: int = 0,
-        cold: bool = False,
-        stop_after: int = 0,
-        lowered_units: int = 0,
-        unit_lower_seconds: dict[str, float] = {},
-        unit_functions: dict[str, tuple[int, int]] = {};
+        cold: bool = False;
 
     def postinit;
-    def begin_parse(path: str);
     def note_step(verb: str, path: str = "", detail: str = "") -> float;
     def note_slow_step(verb: str, path: str, started: float);
     def clear;
@@ -53,7 +46,6 @@ obj NativeUnitRegistry {
     def _event(name: str);
     def _add_time(name: str, seconds: float);
     def _timed(name: str, started: float);
-    def _timed_unit(name: str, path: str, started: float);
     def phase_summary -> str;
     def note_codegen(path: str, object_emitted: bool = True);
     def note_link(reused: bool);
@@ -62,7 +54,6 @@ obj NativeUnitRegistry {
         options: (CompileOptions | None) = None, path: str = ""
     ) -> NativeStamp;
 
-    def _carry(resolved: str, stamp: NativeStamp) -> bool;
     def _module_jir(
         resolved: str, stamp: (NativeStamp | None) = None
     ) -> (tuple[bytes, str] | None);
@@ -130,16 +121,6 @@ obj NativeUnitRegistry {
         options: (CompileOptions | None) = None,
         use_str: (str | None) = None,
         products: bool = True
-    ) -> (NativeUnitEntry | None);
-
-    def adopt_lowered(
-        path: str,
-        ir_text: str,
-        iface_text: str,
-        layout_json: str,
-        deps: list[str],
-        compile_deps: bytes,
-        options: (CompileOptions | None) = None
     ) -> (NativeUnitEntry | None);
 
     def _stash_products(resolved: str, gen: CodeGenTarget);

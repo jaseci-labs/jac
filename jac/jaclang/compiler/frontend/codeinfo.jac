@@ -113,7 +113,6 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 
 glob NATIVE_ARCH_SCOPE_SEP: str = "$",
      _native_arch_scope_memo: dict[str, str] = {},
-     _native_arch_scope_gen: list[int] = [-1],
      _native_unit_identity_memo: dict[str, str] = {},
      _native_unit_root_name_memo: dict[str, str] = {};
 
@@ -184,8 +183,6 @@ def kernel_unit_rels -> list[str];
 def is_package_keyed_path(source_path: str) -> bool;
 
 def kernel_unit_path(rel: str) -> str;
-
-def kernel_unit_paths -> list[str];
 
 glob _REAL_PATHS: dict[str, str] = {};
 

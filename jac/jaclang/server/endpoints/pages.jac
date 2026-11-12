@@ -10,7 +10,9 @@ glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
          'static/',
          'healthz'
      ),
-     ASSET_CACHE_CONTROL: str = 'public, max-age=31536000, immutable';
+     ASSET_CACHE_CONTROL: str = 'public, max-age=31536000, immutable',
+     CLIENT_ERROR_PATH: str = '/cl/__error__',
+     CLIENT_ERROR_MAX_BYTES: int = 64 * 1024;
 
 
 def _dev_client_elsewhere -> JSONResponse;
@@ -28,6 +30,9 @@ def _sibling_response(request: Request, dist: Path, rel: str) -> Response;
 
 
 def register_page_endpoints(server: JacAPIServer);
+
+
+def robots_middleware(server: JacAPIServer) -> Callable[..., any];
 
 
 def register_graph_endpoints(server: JacAPIServer);

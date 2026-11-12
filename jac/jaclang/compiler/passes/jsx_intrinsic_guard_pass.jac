@@ -4,7 +4,7 @@ glob _GENERIC_SUGGESTION: str = "an @jac/mobui component",
 def _suggestion_for(tag: str) -> str;
 
 walker JsxIntrinsicGuardPass(TreePass) {
-    static has contract: PassContract = PassContract(kernel_safe=True);
+    static has contract: PassContract = PassContract();
     has _enforced_root: (str | None) = None,
         _exempt_paths: dict[str, bool] = {};
 
