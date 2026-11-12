@@ -8086,7 +8086,8 @@ graph import compiler {
             Name,
             Token,
             TupleVal,
-            UniNode
+            UniNode,
+            in_type_position
         },
         types.ownership { Archetype, HasVar },
         types.stubcat.reader {
