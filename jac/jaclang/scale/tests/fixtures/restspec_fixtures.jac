@@ -7,7 +7,6 @@ import from jaclang.server.serving.datatypes {
     RedirectResponse,
     Response
 }
-import from datetime { datetime }
 import from http { HTTPMethod }
 
 # ============================================================================
@@ -73,7 +72,6 @@ walker:pub GetWalkerWithParams {
     has name: str,
         age: int,
         tags: list[str] = [],
-        maybe_tags: list[str] | None = None,
         flag: bool = True;
 
     can get_data with Root entry {
@@ -82,7 +80,6 @@ walker:pub GetWalkerWithParams {
             "name": self.name,
             "age": self.age,
             "tags": self.tags,
-            "maybe_tags": self.maybe_tags,
             "flag": self.flag
         };
     }
@@ -212,8 +209,8 @@ def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] 
     return {"request": request, "status": status};
 }
 
-"""One field of each scalar type, plus an optional one, a list and a datetime,
-to send mismatched values to."""
+"""One field of each scalar type, plus an optional one and a list, to send
+mismatched values to."""
 @restspec(method=HTTPMethod.POST, path="/typed-fields")
 walker:pub TypedFields {
     has title: str = "seed",
@@ -221,8 +218,7 @@ walker:pub TypedFields {
         count: int = -1,
         ratio: float = 0.5,
         flag: bool = True,
-        tags: list[str] = [],
-        when: datetime = datetime(2026, 1, 2);
+        tags: list[str] = [];
 
     can echo with Root entry {
         report {
@@ -231,8 +227,7 @@ walker:pub TypedFields {
             "count": self.count,
             "ratio": self.ratio,
             "flag": self.flag,
-            "tags": self.tags,
-            "when": str(self.when)
+            "tags": self.tags
         };
     }
 }

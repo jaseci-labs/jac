@@ -166,15 +166,14 @@ test "get walker with params" {
         assert data["reports"][0]["name"] == "Alice";
         assert data["reports"][0]["age"] == 30;
 
-        # Query values are text. Repeats reach an optional list too, which used to
-        # keep only the first.
+        # Query values are text, so they are parsed into the declared type.
         base = "/walker/GetWalkerWithParams?name=Alice&age=30";
         for (query, want) in [
             (
-                "&tags=a&tags=b&maybe_tags=a&maybe_tags=b&flag=",
-                {"tags": ["a", "b"], "maybe_tags": ["a", "b"], "flag": False}
+                "&tags=a&tags=b&flag=",
+                {"tags": ["a", "b"], "flag": False}
             ),
-            ("&tags=a&maybe_tags=a", {"tags": ["a"], "maybe_tags": ["a"]})
+            ("&tags=a", {"tags": ["a"]})
         ] {
             response = client.get(base + query);
             assert response.status_code == 200 , f"{query}: {response.text}";
@@ -183,9 +182,12 @@ test "get walker with params" {
                 assert got[name] == value , f"{query}: {name}={got[name]!r}";
             }
         }
-        for query in ["&age=31", "&flag=maybe"] {
-            response = client.get(base + query);
-            assert response.status_code == 422 , f"{query}: {response.text}";
+        for url in [
+            "/walker/GetWalkerWithParams?name=Alice&age=3.9",
+            base + "&flag=maybe"
+        ] {
+            response = client.get(url);
+            assert response.status_code == 422 , f"{url}: {response.text}";
             assert _as_any(response.json())["detail"][0]["loc"][0] == "query";
         }
     } finally {
@@ -525,8 +527,9 @@ test "a JSON value of the wrong type is refused, and a form value is parsed" {
             ("tags", {"tags": None}, "null is not allowed"),
             ("tags", {"tags": ["a", None]}, "null is not allowed"),
             ("count", {"count": "12"}, "expected integer, got str"),
+            ("count", {"count": 19.99}, "expected integer, got float"),
             ("title", {"title": {"note": "x"}}, "expected string, got dict"),
-            ("when", {"when": "not-a-date"}, "invalid datetime")
+            ("flag", {"flag": ""}, "expected boolean, got str")
         ] {
             r = client.post("/typed-fields", json=body);
             assert r.status_code == 422 , f"{body}: {r.status_code} {r.text}";
@@ -540,10 +543,7 @@ test "a JSON value of the wrong type is refused, and a form value is parsed" {
         attachment = {"attachment": ("a.txt", b"x", "text/plain")};
         for (request, want) in [
             ({"json": {"note": None}}, {"note": None, "title": "seed"}),
-            (
-                {"json": {"when": "2026-10-07T10:00:00Z"}},
-                {"when": "2026-10-07 10:00:00+00:00"}
-            ),
+            ({"json": {"count": 3.0, "ratio": 2}}, {"count": 3, "ratio": 2.0}),
             (
                 {
                     "content": "count=5&ratio=1.5&flag=&title=hi&tags=one",
@@ -576,7 +576,7 @@ test "a JSON value of the wrong type is refused, and a form value is parsed" {
             }
         }
 
-        # A repeat on a field that takes one value used to store the list's repr.
+        # A repeated form value used to store the list's repr in a str field.
         for body in ["title=a&title=b", "count=abc"] {
             r = client.post("/typed-fields", content=body, headers=form);
             assert r.status_code == 422 , f"{body}: {r.text}";

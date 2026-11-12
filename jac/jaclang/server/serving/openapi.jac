@@ -1,9 +1,6 @@
 import inspect;
-
-import from datetime { date, datetime, time }
 import from types { UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
-import from uuid { UUID }
 
 
 glob _NAME_SCHEMAS: dict[str, dict[str, str]] = {
@@ -19,12 +16,6 @@ glob _NAME_SCHEMAS: dict[str, dict[str, str]] = {
          'array': {'type': 'array'},
          'dict': {'type': 'object'},
          'object': {'type': 'object'}
-     },
-     _CLASS_SCHEMAS: dict[type, dict[str, any]] = {
-         datetime: {'type': 'string', 'format': 'date-time'},
-         date: {'type': 'string', 'format': 'date'},
-         time: {'type': 'string', 'format': 'time'},
-         UUID: {'type': 'string', 'format': 'uuid'}
      };
 
 

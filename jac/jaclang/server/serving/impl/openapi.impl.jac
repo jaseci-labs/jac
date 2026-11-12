@@ -27,22 +27,19 @@ impl _schema_for_type(
         }
         return {'anyOf': [_schema_for_type(a, schemas) for a in options]};
     }
+    if target is str {
+        return {'type': 'string'};
+    }
+    if target is int {
+        return {'type': 'integer'};
+    }
+    if target is float {
+        return {'type': 'number'};
+    }
     if target is bool {
         return {'type': 'boolean'};
     }
     if isinstance(target, type) {
-        if target in _CLASS_SCHEMAS {
-            return dict(_CLASS_SCHEMAS[target]);
-        }
-        if issubclass(target, int) {
-            return {'type': 'integer'};
-        }
-        if issubclass(target, float) {
-            return {'type': 'number'};
-        }
-        if issubclass(target, (str, bytes)) {
-            return {'type': 'string'};
-        }
         return _object_schema(target, schemas);
     }
     return {};
