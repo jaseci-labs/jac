@@ -1533,9 +1533,15 @@ impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
     return fname in (self.struct_field_erased_tv.get(type_name) or {});
 }
 
-impl NaIRGenPass._erased_boxable(t: (ir.Type | None)) -> bool {
+impl NaIRGenPass._erased_boxable(
+    t: (ir.Type | None), want: (ir.Type | None) = None
+) -> bool {
     if t is None {
         return False;
+    }
+    if want is not None and self._is_jacval_ty(t) {
+        _want_num = self._opt_payload_of(want) or want;
+        return isinstance(_want_num, (ir.IntType, ir.DoubleType, ir.FloatType));
     }
     if isinstance(t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         return True;
@@ -1595,6 +1601,29 @@ impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | Non
     return None;
 }
 
+impl NaIRGenPass._erased_slot(sp: uni.ParamVar, slot_type: ir.Type) -> bool {
+    return isinstance(slot_type, ir.PointerType) and self._erased_decl(sp.type);
+}
+
+impl NaIRGenPass._erased_arg_want(
+    nd: uni.FuncCall, sp: uni.ParamVar
+) -> (ir.Type | None) {
+    _owner_t = nd.type;
+    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        _owner_t = nd.target.target.type;
+    }
+    return self._erased_want(self._erased_decl_names(sp.type), _owner_t);
+}
+
+impl NaIRGenPass._box_erased_arg(
+    nd: uni.FuncCall, sp: uni.ParamVar, val: ir.Value, slot_type: ir.Type
+) -> ir.Value {
+    if isinstance(val.type, ir.PointerType) or not self._erased_slot(sp, slot_type) {
+        return val;
+    }
+    return self._erased_box(val, self._erased_arg_want(nd, sp));
+}
+
 impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value {
     b = self.builder;
     i8 = ir.IntType(8);
@@ -1604,9 +1633,11 @@ impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir
     if _want_num is None {
         _want_num = want;
     }
-    if isinstance(_want_num, _num) {
+    if want is not None and isinstance(_want_num, _num) {
         _val_num = self._opt_payload_of(val.type);
-        if isinstance(val.type, _num) and val.type != _want_num {
+        if self._is_jacval_ty(val.type) {
+            val = self._coerce_type(val, want);
+        } elif isinstance(val.type, _num) and val.type != _want_num {
             val = self._coerce_type(val, _want_num);
         } elif isinstance(_val_num, _num) and _val_num != _want_num {
             val = self._coerce_type(val, self._jac_optional_type(_want_num));

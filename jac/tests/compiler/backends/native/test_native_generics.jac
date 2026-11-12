@@ -174,6 +174,45 @@ test "mono: generic method on an archetype stamps per call site" {
     g = get_func(eng, "pick_str_len", ctypes.c_int64, ctypes.c_int64);
     assert g(1) == 2 , "picks 'xx'";
     assert g(0) == 3 , "picks 'yyy'";
+    # On a generic archetype the method keeps the archetype's `V` boxed:
+    # solving it from an argument returned `self.val`'s box address.
+    for (name, restype, x, want) in [
+        ("holder_first_int", ctypes.c_int64, 5, 5),
+        ("holder_echo_int", ctypes.c_int64, 9, 9),
+        ("holder_get_int", ctypes.c_int64, 11, 11),
+        ("holder_first_float", ctypes.c_double, 2, 2.5),
+        ("holder_echo_beside_spread", ctypes.c_int64, 7, 7),
+        ("holder_echo_from_spread", ctypes.c_int64, 9, 9),
+        ("holder_float_echo_from_int_spread", ctypes.c_double, 3, 3.0),
+        ("holder_optional_echo_from_spread", ctypes.c_int64, 7, 7),
+        ("holder_optional_echo_from_spread", ctypes.c_int64, 0, -1),
+        ("holder_float_echo_from_optional_int_spread", ctypes.c_double, 3, 3.0),
+        ("holder_str_echo_rejects_int_spread", ctypes.c_int64, 65, -1),
+        ("holder_int_echo_rejects_str_spread", ctypes.c_int64, 2, -1)
+    ] {
+        got = get_func(eng, name, restype, ctypes.c_int64)(x);
+        assert got == want , f"{name}({x}) = {got}, want {want}";
+    }
+    # A returned `list[V]` holds boxed elements the caller cannot convert,
+    # so a scalar `V` is refused and the caller falls back to Python.
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=os.path.join(FIXTURES, "_generics_list_return.jac"),
+        use_str="obj Bag[V] {\n"
+        "    has val: V;\n"
+        "    def wrap[K](key: K, alt: V) -> list[V] {\n"
+        "        return [alt];\n"
+        "    }\n"
+        "}\n"
+        "def bag_wrap(v: int) -> list[int] {\n"
+        "    return Bag[int](val=5).wrap(\"k\", v);\n"
+        "}\n",
+        options=native_force_opts()
+    );
+    layout = ir.gen.native_layout;
+    assert layout is None or "bag_wrap" not in layout.functions , (
+        "a list[V] return at Bag[int] must fall back, not return box addresses"
+    );
 }
 
 test "iter flow: generator through a monomorphized Iterator[T] param" {

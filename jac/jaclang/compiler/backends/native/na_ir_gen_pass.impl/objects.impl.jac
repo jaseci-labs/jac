@@ -687,6 +687,14 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]]
                 _targs[0] if _targs else None
             );
         }
+        _rt = stmt.signature.return_type;
+        _rtt = _rt.type if isinstance(_rt, uni.Expr) else None;
+        if isinstance(_rtt, ClassType) and self._erased_seq_type(_rtt) is not None {
+            _rargs = _rtt.private.type_args;
+            out[f"{_mname}(return)"] = self._erased_typevar_names(
+                _rargs[0] if _rargs else None
+            );
+        }
     }
     return out;
 }
