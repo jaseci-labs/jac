@@ -2014,9 +2014,6 @@ impl NaIRGenPass._apply_scalar_aug_op(
     return result;
 }
 
-# Returns (value, in_place, slot_handled): in_place when the value is `current`
-# mutated in place, slot_handled when `inplace_slot` already holds the value and
-# its old content was released. A None value means an error was reported.
 impl NaIRGenPass._compute_aug_value(
     nd: uni.Assignment,
     target_expr: uni.Expr,
