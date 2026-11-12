@@ -653,17 +653,6 @@ impl resolve_module(
         for _ in range(level - 1) {
             climbed = os.path.dirname(climbed);
         }
-        # The runtime cannot import above the root of the entry's project.
-        # That entry is unknown here and its root may be any jac.toml folder
-        # enclosing this file, so only the outermost one is safe to enforce.
-        # Outside any project the root is the entry's own folder: not bounded.
-        roots = project_root_chain(base_path);
-        if roots {
-            top = os.path.realpath(roots[-1]);
-            if os.path.commonpath([os.path.realpath(climbed), top]) != top {
-                return ('', 'py');
-            }
-        }
         if os.path.isabs(base_dir) {
             base_dir = climbed;
         } else {

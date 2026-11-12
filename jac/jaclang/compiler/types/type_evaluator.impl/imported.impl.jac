@@ -14,8 +14,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
     from_mod_name = import_node.from_loc.dot_path_str;
-    if from_path is not None
-        and (isinstance(from_mod_type, ModuleType) or from_path.exists()) {
+    if isinstance(from_mod_type, ModuleType) or from_path.exists() {
         is_dir = from_path.is_dir() or (from_path.stem == "__init__");
         if is_dir {
             mod_dir = from_path.parent if not from_path.is_dir() else from_path;
@@ -328,7 +327,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 self.program.invalidate_module(resolved_for_cache);
             }
 
-            if not mod_path or not Path(mod_path).exists() {
+            if not Path(mod_path).exists() or self._climbs_above_project(node_) {
                 if isinstance(npath, Name) {
                     npath._sym_category = SymbolType.MODULE;
                 }
@@ -640,6 +639,21 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
     return not self._import_error_is_handled(imp);
 }
 
+
+impl TypeEvaluator._climbs_above_project(node_: ModulePath) -> bool {
+    if node_.level <= 1 or not node_.loc or is_client_destined(node_) {
+        return False;
+    }
+    roots = project_root_chain(node_.loc.mod_path);
+    if not roots {
+        return False;
+    }
+    parents = Path(node_.loc.mod_path).resolve().parents;
+    if node_.level - 1 >= len(parents) {
+        return True;
+    }
+    return not parents[node_.level - 1].is_relative_to(Path(roots[-1]).resolve());
+}
 
 impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | None) {
     if node_.level > 0 or node_.string_path_value is not None or not node_.path {

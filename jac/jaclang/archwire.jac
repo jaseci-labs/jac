@@ -2298,6 +2298,9 @@ graph import {
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module
         },
+        compiler.types.type_evaluator.TypeEvaluator._climbs_above_project {
+            project_root_chain
+        },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
             resolve_client_npm_declarations,

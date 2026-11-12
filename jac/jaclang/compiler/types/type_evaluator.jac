@@ -212,9 +212,10 @@ walker TypeEvaluator {
     def _module_in_flight(path: str) -> bool;
     def _resolve_importer_path(ast_node: UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
-    def _resolve_from_path(from_mod: ModulePath) -> (Path | None);
+    def _resolve_from_path(from_mod: ModulePath) -> Path;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
+    def _climbs_above_project(node_: ModulePath) -> bool;
     def _declared_missing_dependency(node_: ModulePath) -> (str | None);
     def _imports_own_module(node_: ModulePath, mod_path: str) -> bool;
     def _import_error_is_handled(imp: Import) -> bool;
