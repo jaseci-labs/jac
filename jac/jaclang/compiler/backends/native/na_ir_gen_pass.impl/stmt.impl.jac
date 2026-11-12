@@ -2021,7 +2021,11 @@ impl NaIRGenPass._compute_aug_value(
     rhs: ir.Value,
     inplace_slot: (ir.Value | None)
 ) -> tuple[(ir.Value | None), bool, bool] {
-    op = nd.aug_op.value;
+    aug_tok = nd.aug_op;
+    if aug_tok is None {
+        return (None, False, False);
+    }
+    op = aug_tok.value;
     errs_before = len(self.ctx.errors_had);
     if not (
         op == "+="
