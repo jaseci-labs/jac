@@ -107,7 +107,7 @@ impl serve_ws_connection(
             if requires_auth
                 and ctx.user_id
                 and not await ws_session_still_current(
-                    user_manager.session_current, ctx
+                    user_manager.session_current, ctx, reuse_recent=True
                 ) {
                 await ws_reject_auth(
                     websocket, {'status': 'revoked', 'reason': 'Session has ended'}

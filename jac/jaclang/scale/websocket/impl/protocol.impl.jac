@@ -314,11 +314,23 @@ impl ws_execute_target(
     }
 }
 
-impl ws_session_still_current(session_current: any, ctx: ConnectionContext) -> bool {
+impl ws_session_still_current(
+    session_current: any, ctx: ConnectionContext, reuse_recent: bool = False
+) -> bool {
+    now = time.monotonic();
+    if reuse_recent
+        and ctx.session_checked_at
+        and now - ctx.session_checked_at < SESSION_RECHECK_SECONDS {
+        return True;
+    }
     try {
-        return bool(
+        current = bool(
             await asyncio.to_thread(session_current, ctx.user_id, ctx.session_epoch)
         );
+        if current {
+            ctx.session_checked_at = now;
+        }
+        return current;
     } except Exception as e {
         logger.warning(
             f"WS session check failed conn_id={ctx.conn_id}; closing connection: {e}"

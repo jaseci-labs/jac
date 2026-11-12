@@ -510,12 +510,19 @@ impl UserManager.session_detail(
             'reason': 'Session has ended'
         };
     }
+    root_id = state.get('root_id');
+    if root_id {
+        cache = _root_id_request_cache.get();
+        seeded = dict(cache) if cache is not None else {};
+        seeded[user_id] = root_id;
+        _root_id_request_cache.set(seeded);
+    }
     return {
         'status': 'ok',
         'user_id': user_id,
         'exp': claims.get('exp'),
         'reason': None,
-        'root_id': state.get('root_id'),
+        'root_id': root_id,
         'session_epoch': stored,
         'claims': claims
     };

@@ -18,6 +18,7 @@ obj ConnectionContext {
         user_id: (str | None) = None,
         exp: (float | None) = None,
         session_epoch: (int | None) = None,
+        session_checked_at: float = 0.0,
         rate_tokens: float = 0.0,
         rate_last_refill: float = time.monotonic(),
         last_seen: float = time.monotonic(),

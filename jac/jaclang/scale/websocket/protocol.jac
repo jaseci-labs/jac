@@ -10,6 +10,7 @@ glob logger = logging.getLogger(__name__),
      WS_CLOSE_TOO_LARGE: int = 4413,
      WS_CLOSE_UNAVAILABLE: int = 4503,
      HEARTBEAT_SECONDS: float = 30.0,
+     SESSION_RECHECK_SECONDS: float = 5.0,
      HEARTBEAT_MISSED_ALLOWED: int = 2,
      SEND_TIMEOUT_SECONDS: float = 5.0,
      AUTH_HANDSHAKE_TIMEOUT_SECONDS: float = 10.0;
@@ -31,7 +32,7 @@ async def ws_authenticate(
 ) -> (dict[str, any], dict[str, any] | None);
 
 async def ws_session_still_current(
-    session_current: any, ctx: ConnectionContext
+    session_current: any, ctx: ConnectionContext, reuse_recent: bool = False
 ) -> bool;
 
 async def ws_heartbeat_loop(

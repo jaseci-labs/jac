@@ -19,10 +19,6 @@ impl request_caller(server: JacAPIServer, request: Request) -> (str | None) {
     if username {
         return username;
     }
-    unknown = request.state?.unknown_subject;
-    if unknown {
-        return str(unknown);
-    }
     ident = bridge_identity(request.headers.get('Authorization'));
     if not ident {
         return None;
@@ -31,6 +27,17 @@ impl request_caller(server: JacAPIServer, request: Request) -> (str | None) {
         server.user_manager.create_internal_user(ident, '__no_password__');
     }
     return ident;
+}
+
+impl unknown_caller(request: Request) -> (TransportResponse | None) {
+    if not request.state?.unknown_subject {
+        return None;
+    }
+    return TransportResponse.fail(
+        code='UNAUTHORIZED',
+        message='Unauthorized: unknown user',
+        meta=Meta(extra={'http_status': 401})
+    );
 }
 
 impl idempotency_key(request: Request, username: str, app: str, target: str) -> str {
@@ -209,6 +216,10 @@ impl walker_callback(
     async def callback(
         request: Request, /, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
+        refused = unknown_caller(request);
+        if refused is not None {
+            return refused;
+        }
         username = request_caller(server, request);
         if requires_auth and not username {
             return _unauthorized();
@@ -381,6 +392,10 @@ impl function_callback(
     async def callback(
         request: Request, /, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
+        refused = unknown_caller(request);
+        if refused is not None {
+            return refused;
+        }
         username = request_caller(server, request);
         if requires_auth and not username {
             return _unauthorized();

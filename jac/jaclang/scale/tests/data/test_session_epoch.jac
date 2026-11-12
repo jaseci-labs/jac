@@ -77,9 +77,11 @@ test "a password reset ends every earlier session" {
     manager = _manager();
     (user_id, password) = _account(manager);
     token = _sign_in(manager, user_id, password);
-    result = manager.reset_password_by_user_id(user_id, f"reset-{uuid.uuid4().hex}");
+    reset = AuthTokenStore.instance().create_token(user_id, RESET_PURPOSE, 600);
+    result = manager.redeem_reset(reset, f"reset-{uuid.uuid4().hex}");
     assert "error" not in result;
     assert _status(manager, token) == "revoked";
+    assert manager.refresh_jwt_token(token) is None;
 }
 
 
@@ -139,35 +141,35 @@ test "a sign-in that read the old password cannot outlive a concurrent change" {
 }
 
 
-"""The manager's second-factor manager, made to require and accept a code."""
-def _with_second_factor(manager: any) -> any {
+"""Enrolls and confirms a real TOTP factor; returns (factors, secret, used steps)."""
+def _with_second_factor(
+    manager: any, user_id: str, password: str
+) -> tuple[any, str, set[int]] {
+    used: set[int] = set();
     factors = manager.second_factors();
-    def required(user_id: str) -> bool {
-        return True;
-    }
-    def prove(user_id: str, code: str, recovery_code: str) -> dict[str, any] {
-        return {"ok": True, "method": "otp"};
-    }
-    def same_factors -> any {
-        return factors;
-    }
-    factors.required_for = required;
-    factors.prove = prove;
-    manager.second_factors = same_factors;
-    return factors;
+    enrolled = factors.enroll(user_id, password, "", "", "epoch");
+    assert enrolled["ok"] , enrolled;
+    secret = str(enrolled["secret"]);
+    confirmed = factors.confirm(
+        user_id, str(enrolled["factor_id"]), fresh_totp_code(secret, used)
+    );
+    assert confirmed["ok"] , confirmed;
+    return (factors, secret, used);
 }
 
 
 test "a second-factor challenge cannot finish into a session that has ended" {
     manager = _manager();
-    (user_id, _) = _account(manager);
-    factors = _with_second_factor(manager);
+    (user_id, password) = _account(manager);
+    (factors, secret, used) = _with_second_factor(manager, user_id, password);
     # Opened the way SSO opens it: no epoch from a credential check.
     grant = manager.open_session(user_id, "fed");
     assert grant.challenge;
     manager.end_sessions(user_id);
-    done = factors.complete_login(grant.challenge["challenge_token"], "123456", "");
-    assert done["ok"];
+    done = factors.complete_login(
+        grant.challenge["challenge_token"], fresh_totp_code(secret, used), ""
+    );
+    assert done["ok"] , done;
     token = manager.create_jwt_token(
         user_id,
         assurance=second_factor_claims(["fed", "otp"]),
@@ -179,12 +181,12 @@ test "a second-factor challenge cannot finish into a session that has ended" {
 
 test "a challenge recorded without an epoch is refused" {
     manager = _manager();
-    (user_id, _) = _account(manager);
-    factors = _with_second_factor(manager);
+    (user_id, password) = _account(manager);
+    (factors, secret, used) = _with_second_factor(manager, user_id, password);
     legacy = AuthTokenStore.instance().create_token(
         user_id, LOGIN_CHALLENGE_PURPOSE, 60, "pwd"
     );
-    done = factors.complete_login(legacy, "123456", "");
+    done = factors.complete_login(legacy, fresh_totp_code(secret, used), "");
     assert not done.get("ok");
     assert done.get("code") == "INVALID_CHALLENGE";
 }
@@ -351,4 +353,29 @@ test "a websocket whose session cannot be checked is closed, not left unchecked"
     asyncio.run(ws_heartbeat_loop(ctx, 0.01, 1000, unreachable));
     assert ctx.closed;
     assert socket.closed_with == ["revoked"];
+}
+
+
+test "a message on a websocket reuses a recent session check for a few seconds" {
+    manager = _manager();
+    (user_id, password) = _account(manager);
+    detail = manager.validate_jwt_token_detail(_sign_in(manager, user_id, password));
+    obj IdleSocket {
+        async def close(code: int, reason: str) {}
+    }
+    ctx = ConnectionContext(
+        websocket=IdleSocket(),
+        target_kind="function",
+        target_name="f",
+        user_id=user_id,
+        session_epoch=detail["session_epoch"]
+    );
+    current = manager.session_current;
+    assert asyncio.run(ws_session_still_current(current, ctx, reuse_recent=True));
+    manager.end_sessions(user_id);
+    # Within the window the last good answer stands; a full check sees the end.
+    assert asyncio.run(ws_session_still_current(current, ctx, reuse_recent=True));
+    assert not asyncio.run(ws_session_still_current(current, ctx));
+    ctx.session_checked_at = 0.0;
+    assert not asyncio.run(ws_session_still_current(current, ctx, reuse_recent=True));
 }

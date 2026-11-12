@@ -568,6 +568,8 @@ test "ws an open connection refuses its next message once the session has ended"
                 "/user/logout-all", headers={"Authorization": f"Bearer {token}"}
             );
             assert ended.status_code == 200 , f"got {ended.status_code}";
+            # A message reuses a session check for a few seconds; wait past it.
+            time.sleep(SESSION_RECHECK_SECONDS + 0.5);
             ws.send_json({"message": "after"});
             resp = ws.receive_json();
             assert resp["ok"] == False , f"got {resp}";

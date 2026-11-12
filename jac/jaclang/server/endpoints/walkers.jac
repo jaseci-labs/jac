@@ -15,6 +15,9 @@ def _unavailable(kind: str, name: str) -> TransportResponse;
 def request_caller(server: JacAPIServer, request: Request) -> (str | None);
 
 
+def unknown_caller(request: Request) -> (TransportResponse | None);
+
+
 def idempotency_key(request: Request, username: str, app: str, target: str) -> str;
 
 

@@ -2837,8 +2837,11 @@ graph import {
         PgIdentityStorage
     }
     server.identity.identity_storage as storage_mod --> scale.tests.data.test_identity_fail_loud;
-    server.identity.mail ++> scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
-        | scale.tests.server.test_auth_policy_startup { verification_problems }
+    server.identity.mail ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.server.test_auth_policy_startup { verification_problems },
+        scale.tests.data.test_session_epoch { RESET_PURPOSE },
+    ]
     server.identity.policy ++> [
         scale.deploy.target.kubernetes.target { minted_password },
         scale.server.extensions { check_password },
@@ -14595,8 +14598,12 @@ graph import scale {
             ws_reject_registration,
             ws_session_still_current
         },
-        tests.data.test_session_epoch { ws_heartbeat_loop },
-        tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
+        tests.data.test_session_epoch { ws_heartbeat_loop, ws_session_still_current },
+        tests.server.test_ws_hardening {
+            SESSION_RECHECK_SECONDS,
+            ws_handle_control,
+            ws_heartbeat_loop
+        },
     ]
     websocket.websocket ++> [
         server.websocket_ext {
@@ -15215,6 +15222,7 @@ graph import scale.tests {
         support { apply_fixture_policy },
     ]
     scale_test_client ++> [
+        data.test_session_epoch { fresh_totp_code },
         microservices.test_app_routes { ScaleTestClient, make_client },
         server.test_admin {
             ADMIN_BOOTSTRAP_PASSWORD,
@@ -15672,7 +15680,7 @@ graph import server.endpoints {
         second_factor { fail, ok, throttled },
     ]
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { _failure, idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller, unknown_caller }
 }
 
 graph import server.identity {
