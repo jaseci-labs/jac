@@ -1,21 +1,17 @@
 import shutil;
+import time;
 
 
 def _install_ws_catchall(gw: MicroserviceGateway);
 
 
-"""True when the gateway's own session check refuses this token outright."""
 def _session_refused(gw: MicroserviceGateway, token: str) -> bool;
 
 
-"""Headers with any refused bearer token or session cookie taken out."""
 def _without_refused_credentials(
     gw: MicroserviceGateway, headers: dict[str, str]
 ) -> dict[str, str];
 
-
-"""A query string with a refused `token` parameter taken out."""
-def _without_refused_query_token(gw: MicroserviceGateway, query: str) -> str;
 
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
     import jaclang;
@@ -1236,10 +1232,39 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
             remaining = full_path[len(matched.prefix):];
         }
         remaining = remaining or "/";
-        query: str = _without_refused_query_token(gw, str(websocket.url.query));
+        query: str = str(websocket.url.query);
+        guard = GatewaySessionGuard(
+            manager=gw.user_manager,
+            token=str(websocket.query_params.get('token') or '')
+        );
+
+        header_guard: any = None;
+        authorization = websocket.headers.get('Authorization') or '';
+        if authorization.startswith('Bearer ') and gw.user_manager is not None {
+            header_guard = GatewaySessionGuard(
+                manager=gw.user_manager, token=authorization[7:]
+            );
+            if not await header_guard.allow() {
+                await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason='revoked');
+                return;
+            }
+        }
+        if not await guard.allow() {
+            await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason='revoked');
+            return;
+        }
         target_http: str = f"{page_base or matched.url}{remaining}";
         if query {
             target_http = f"{target_http}?{query}";
+        }
+
+        async def _session_current(
+            frame: (dict[str, any] | None) = None, force: bool = False
+        ) -> bool {
+            if header_guard is not None and not await header_guard.allow(force=force) {
+                return False;
+            }
+            return await guard.allow(frame, force=force);
         }
 
         async def _accept_as_upstream_did(selected: str) {
@@ -1250,7 +1275,11 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
         );
         logger.debug(f"ws proxy: {full_path} -> {target_http}");
         await websocket_forward(
-            websocket, target_http, req_headers, on_upstream=_accept_as_upstream_did
+            websocket,
+            target_http,
+            req_headers,
+            on_upstream=_accept_as_upstream_did,
+            session_guard=_session_current if gw.user_manager is not None else None
         );
     }
     gw.app.add_ws_endpoint(WSEndPoint(path="/{ws_path:path}", handler=ws_proxy));
@@ -1274,10 +1303,15 @@ impl _without_refused_credentials(
 ) -> dict[str, str] {
     import from http.cookies { SimpleCookie }
     kept: dict[str, str] = {};
+    refused_bearer = any(
+        key.lower() == 'authorization'
+            and value.startswith('Bearer ')
+            and _session_refused(gw, value[7:]) for (key, value) in headers.items()
+    );
     for (key, value) in headers.items() {
         lowered = key.lower();
         if lowered == 'authorization' and value.startswith('Bearer ') {
-            if _session_refused(gw, value[7:]) {
+            if refused_bearer {
                 continue;
             }
         } elif lowered == 'cookie' and SESSION_COOKIE in value {
@@ -1285,13 +1319,16 @@ impl _without_refused_credentials(
             try {
                 jar.load(value);
             } except Exception {
-                kept[key] = value;
+                if not refused_bearer {
+                    kept[key] = value;
+                }
                 continue;
             }
             session = jar.get(SESSION_COOKIE);
-            if session is not None and _session_refused(gw, session.value) {
+            if refused_bearer
+                or (session is not None and _session_refused(gw, session.value)) {
                 rest = [
-                    f"{name}={morsel.value}"
+                    f"{name}={morsel.coded_value}"
                     for (name, morsel) in jar.items()
                     if name != SESSION_COOKIE
                 ];
@@ -1306,16 +1343,72 @@ impl _without_refused_credentials(
     return kept;
 }
 
-impl _without_refused_query_token(gw: MicroserviceGateway, query: str) -> str {
-    import from urllib.parse { parse_qsl, urlencode }
-    if 'token=' not in query {
-        return query;
+impl GatewaySessionGuard.allow(
+    frame: (dict[str, any] | None) = None, force: bool = False
+) -> bool {
+    if self.manager is None {
+        return True;
     }
-    pairs = parse_qsl(query, keep_blank_values=True);
-    kept = [
-        (name, value)
-        for (name, value) in pairs
-        if not (name == 'token' and _session_refused(gw, value))
-    ];
-    return query if len(kept) == len(pairs) else urlencode(kept);
+    async with self.lock {
+        if self.refused {
+            return False;
+        }
+        candidate = self.token;
+        if frame is not None {
+            text = frame.get('text');
+
+            if text is None and isinstance(frame.get('bytes'), bytes) {
+                text = frame['bytes'].decode('utf-8', errors='replace');
+            }
+            data: any = None;
+            if isinstance(text, str) {
+                try {
+                    data = json.loads(text);
+                } except (ValueError, TypeError) {}
+            }
+            if isinstance(data, dict)
+                and (
+                    (self.first_frame and not self.token)
+                    or data.get('type') == 'refresh'
+                )
+                and 'token' in data {
+                if not isinstance(data['token'], str) or not data['token'] {
+                    self.refused = True;
+                    return False;
+                }
+                candidate = data['token'];
+            }
+            self.first_frame = False;
+        }
+        if not candidate {
+            return True;
+        }
+        now = time.monotonic();
+        if candidate == self.token
+            and self.checked_at > 0
+            and not force
+            and now - self.checked_at < SESSION_RECHECK_SECONDS
+            and time.time() < self.expires_at {
+            return True;
+        }
+        try {
+            detail = await asyncio.to_thread(
+                self.manager.validate_jwt_token_detail, candidate
+            );
+        } except Exception as e {
+            logger.warning(f"gateway websocket session check failed: {e}");
+            self.refused = True;
+            return False;
+        }
+        if detail['status'] != 'ok'
+            or (self.user_id and detail['user_id'] != self.user_id) {
+            self.refused = True;
+            return False;
+        }
+        self.token = candidate;
+        self.user_id = str(detail['user_id']);
+        self.expires_at = float(detail.get('exp') or 0);
+        self.checked_at = now;
+        return True;
+    }
 }

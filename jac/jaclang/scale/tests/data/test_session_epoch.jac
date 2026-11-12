@@ -7,6 +7,8 @@ drive the real user manager against a real embedded Postgres.
 
 import asyncio;
 import uuid;
+import json;
+import from http.cookies { SimpleCookie }
 import from datetime { UTC, datetime, timedelta }
 
 
@@ -404,4 +406,109 @@ test "the gateway does not forward a session that has ended" {
     ended = forwarded();
     assert "authorization" not in ended , "a revoked bearer token must not reach a service";
     assert ended["cookie"] == "theme=dark" , ended;
+}
+
+
+test "a refused bearer never falls back to another account's session cookie" {
+    manager = _manager();
+    (a, password_a) = _account(manager);
+    (b, password_b) = _account(manager);
+    token_a = _sign_in(manager, a, password_a);
+    token_b = _sign_in(manager, b, password_b);
+    manager.end_sessions(a);
+    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
+    for cookie_first in [True, False] {
+        request = Request();
+        if cookie_first {
+            request.headers.set("Cookie", f"jac_session={token_b}; theme=dark");
+        }
+        request.headers.set("aUtHoRiZaTiOn", f"Bearer {token_a}");
+        if not cookie_first {
+            request.headers.set("Cookie", f"jac_session={token_b}; theme=dark");
+        }
+        forwarded = {
+            k.lower(): v for (k, v) in gw.build_forward_headers(request).items()
+        };
+        assert "authorization" not in forwarded;
+        assert forwarded["cookie"] == "theme=dark";
+        assert _status(manager, token_b) == "ok";
+    }
+}
+
+
+test "removing a refused session preserves encoded application cookies" {
+    manager = _manager();
+    (uid, password) = _account(manager);
+    token = _sign_in(manager, uid, password);
+    manager.end_sessions(uid);
+    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
+    jar = SimpleCookie();
+    jar["jac_session"] = token;
+    jar["preferences"] = 'semi; quote" slash\\ value';
+    jar["theme"] = "dark";
+    request = Request();
+    request.headers.set(
+        "Cookie",
+        '; '.join(f"{name}={morsel.coded_value}" for (name, morsel) in jar.items())
+    );
+    forwarded = {k.lower(): v for (k, v) in gw.build_forward_headers(request).items()};
+    parsed = SimpleCookie();
+    parsed.load(forwarded["cookie"]);
+    assert set(parsed.keys()) == {"preferences", "theme"};
+    assert parsed["preferences"].value == jar["preferences"].value;
+    assert parsed["preferences"].coded_value == jar["preferences"].coded_value;
+}
+
+
+test "gateway websocket frames cannot authenticate or refresh a revoked session" {
+    manager = _manager();
+    (uid, password) = _account(manager);
+    token = _sign_in(manager, uid, password);
+    guard = GatewaySessionGuard(manager=manager);
+    async def verify {
+        assert await guard.allow({"text": json.dumps({"token": token})});
+        manager.end_sessions(uid);
+        # A new connection must refuse the old token in its first frame.
+        for frame in [
+            {"text": json.dumps({"token": token})},
+            {"bytes": json.dumps({"token": token}).encode()}
+        ] {
+            other = GatewaySessionGuard(manager=manager);
+            assert not await other.allow(frame);
+        }
+        guard.checked_at = 0.0;
+        assert not await guard.allow();
+        fresh = _sign_in(manager, uid, password);
+        # A refused relay stays refused, even if a valid token arrives later.
+        assert not await guard.allow(
+            {"bytes": json.dumps({"type": "refresh", "token": fresh}).encode()}
+        );
+        fresh_guard = GatewaySessionGuard(manager=manager, token=fresh);
+        assert await fresh_guard.allow(
+            {"bytes": json.dumps({"type": "refresh", "token": fresh}).encode()}
+        );
+        manager.end_sessions(uid);
+        fresh_guard.checked_at = 0.0;
+        assert not await fresh_guard.allow(
+            {"bytes": json.dumps({"type": "refresh", "token": fresh}).encode()}
+        );
+    }
+    asyncio.run(verify());
+}
+
+
+test "gateway websocket refresh cannot switch to another account" {
+    manager = _manager();
+    (a, password_a) = _account(manager);
+    (b, password_b) = _account(manager);
+    token_a = _sign_in(manager, a, password_a);
+    token_b = _sign_in(manager, b, password_b);
+    guard = GatewaySessionGuard(manager=manager, token=token_a);
+    async def verify {
+        assert await guard.allow();
+        assert not await guard.allow(
+            {"text": json.dumps({"type": "refresh", "token": token_b})}
+        );
+    }
+    asyncio.run(verify());
 }

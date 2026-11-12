@@ -2879,6 +2879,7 @@ graph import {
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_sso
             | scale.tests.server.test_sso_grants
+            | scale.tests.server.test_stream_ws
             | scale.tests.server.test_ws_hardening { UserManager },
         scale.server.jobs_ext { SYSTEM_USER, UserRole },
         scale.server.webhook_ext { SYSTEM_USER },
@@ -14295,14 +14296,17 @@ graph import scale {
     runtime.gateway.embedded_gateway ++> tests.microservices.test_embedded_gateway {
         EmbeddedGateway
     }
-    runtime.gateway.microservice_gateway ++> tests.apps.test_fleet_from_apps
-        | tests.data.test_session_epoch
-        | tests.microservices.test_app_routes
-        | tests.microservices.test_gateway
-        | tests.microservices.test_gateway_docs_precedence
-        | tests.microservices.test_gateway_webapp
-        | tests.microservices.test_k8s_health_probe
-        | tests.server.test_static_fallback { MicroserviceGateway }
+    runtime.gateway.microservice_gateway ++> [
+        tests.apps.test_fleet_from_apps
+            | tests.microservices.test_app_routes
+            | tests.microservices.test_gateway
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.microservices.test_gateway_webapp
+            | tests.microservices.test_k8s_health_probe
+            | tests.server.test_static_fallback { MicroserviceGateway },
+        tests.data.test_session_epoch { GatewaySessionGuard, MicroserviceGateway },
+        tests.server.test_stream_ws { GatewaySessionGuard },
+    ]
     runtime.gateway.microservice_gateway --> tests.server.test_stream_ws {
         MicroserviceGateway
     }
@@ -14588,6 +14592,10 @@ graph import scale {
     ]
     websocket.backplane --> tests.server.test_ws_hardening { PgBackplane }
     websocket.protocol ++> [
+        runtime.gateway.microservice_gateway | runtime.middleware.ws_forward {
+            SESSION_RECHECK_SECONDS,
+            WS_CLOSE_UNAUTHORIZED
+        },
         server.websocket_ext {
             AUTH_HANDSHAKE_TIMEOUT_SECONDS,
             HEARTBEAT_MISSED_ALLOWED,
