@@ -1,5 +1,21 @@
 import from pathlib { Path }
 
+obj SeoSitemapConfig {
+    has exclude: list[str] = [],
+        extra: list[str] = [];
+}
+
+obj SeoRobotsConfig {
+    has disallow: list[str] = [];
+}
+
+obj SeoConfig {
+    has site_url: str = "",
+        site_hosts: list[str] = [],
+        sitemap: SeoSitemapConfig = SeoSitemapConfig(),
+        robots: SeoRobotsConfig = SeoRobotsConfig();
+}
+
 def client_workspace_app(
     config: JacConfig | None, entry_path: str = ""
 ) -> AppConfig | None;
@@ -12,6 +28,11 @@ def client_app_root(
 
 
 def client_assets_config(
+    config: JacConfig | None, entry_path: str = ""
+) -> dict[str, any];
+
+
+def client_seo_config(
     config: JacConfig | None, entry_path: str = ""
 ) -> dict[str, any];
 

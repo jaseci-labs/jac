@@ -38,8 +38,6 @@ def enclosing_mounts(project_root: str) -> (str | None);
 
 def project_mounts(project_root: str) -> (str | None);
 
-def module_name_in(root_dir: str, path: str) -> (str | None);
-
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str];
 
 glob _CASE_BLIND_FS: list[bool] = [];

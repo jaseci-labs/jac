@@ -397,6 +397,42 @@ test "every write path is held to the policy and existing accounts are grandfath
                 {'type': 'password', 'password': 'pw'}
             );
             old_id = str(grandfathered['user_id']);
+            storage = manager._identity_storage;
+            fresh = unique('fresh');
+
+            def owners(value: str) -> list[str] {
+                return [
+                    u['user_id']
+                    for u in storage.list_all_users(limit=1000)
+                    if value in [i.get('value_normalized') for i in u['identities']]
+                ];
+            }
+            with patch.object(type(storage), 'identity_taken', return_value=False) {
+                for identities in [
+                    [{'type': 'username', 'value': old_name}],
+                    [
+                        {'type': 'username', 'value': fresh},
+                        {'type': 'email', 'value': old_name}
+                    ]
+                ] {
+                    raced = storage.create_user(
+                        identities, {'type': 'password', 'password': 'other'}
+                    );
+                    assert raced.get('code') == 'IDENTITY_TAKEN' , raced;
+                }
+            }
+            assert owners(old_name) == [old_id];
+            assert owners(fresh) == [] and not storage.identity_taken(fresh);
+            storage.update_user_fields(old_id, {'status': 'disabled'});
+            assert storage.create_user(
+                [{'type': 'username', 'value': old_name}],
+                {'type': 'password', 'password': 'other'}
+            )
+                == {
+                    'error': 'Username is already registered',
+                    'code': 'IDENTITY_TAKEN'
+                };
+            storage.update_user_fields(old_id, {'status': 'active'});
 
             configure_identity(
                 AuthSettings(
