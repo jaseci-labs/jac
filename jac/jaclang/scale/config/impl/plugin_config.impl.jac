@@ -1375,6 +1375,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                 "type": "int",
                 "default": None,
                 "description": "Seconds to wait for the code bundle to seal before deploy fails"
+            },
+            "seal_cache": {
+                "type": "string",
+                "default": None,
+                "description": "Shared directory of sealed bundles a deploy reuses and fills (path relative to the project or absolute); JAC_SEAL_CACHE overrides it"
             }
         }
     };

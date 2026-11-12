@@ -251,6 +251,137 @@ test "a precompile report left in the project does not block reusing the seal" {
 }
 
 
+def _set_seal_cache_env(value: (str | None)) -> (str | None) {
+    prior = os.environ.pop("JAC_SEAL_CACHE", None);
+    if value is not None {
+        os.environ["JAC_SEAL_CACHE"] = value;
+    }
+    return prior;
+}
+
+
+def _restore_seal_cache_env(prior: (str | None)) {
+    os.environ.pop("JAC_SEAL_CACHE", None);
+    if prior is not None {
+        os.environ["JAC_SEAL_CACHE"] = prior;
+    }
+}
+
+
+def _cache_setting_under(cache: (str | None), project: Path) -> (Path | None) {
+    prior = _set_seal_cache_env(cache);
+    try {
+        return seal_cache_setting(str(project));
+    } finally {
+        _restore_seal_cache_env(prior);
+    }
+}
+
+
+def _pack_shared(
+    project: Path, binary: bytes, cache: (str | None)
+) -> tuple[bytes, list[str]] {
+    prior = _set_seal_cache_env(cache);
+    try {
+        return _pack_logged(project, binary);
+    } finally {
+        _restore_seal_cache_env(prior);
+    }
+}
+
+
+def _checkout_of(project: Path) -> Path {
+    # A fresh checkout: same sources at another path, no project .jac/ cache.
+    target = Path(tempfile.mkdtemp(prefix="jac-checkout-")) / "app";
+    shutil.copytree(project, target, ignore=shutil.ignore_patterns(".jac"));
+    assert not (target / ".jac").exists();
+    return target;
+}
+
+
+test "the shared seal cache comes from [scale] seal_cache, JAC_SEAL_CACHE wins" {
+    plain = Path(_mini_app()).resolve();
+    assert _cache_setting_under(None, plain) is None;
+    base = Path(_mini_app()).resolve();
+    with open(base / "jac.toml", "a") as toml {
+        toml.write("\n[scale]\nseal_cache = \"../shared-seals\"\n");
+    }
+    assert _cache_setting_under(None, base) == base / "../shared-seals";
+    elsewhere = tempfile.mkdtemp(prefix="jac-shared-seal-");
+    assert _cache_setting_under(elsewhere, base) == Path(elsewhere);
+}
+
+
+test "a fresh checkout reuses a bundle sealed elsewhere through the shared cache" {
+    binary = require_pod_binary().read_bytes();
+    shared = Path(tempfile.mkdtemp(prefix="jac-shared-seal-"));
+    first_project = Path(_mini_app());
+    previous_umask = os.umask(0o022);
+    try {
+        (first, first_log) = _pack_shared(first_project, binary, str(shared));
+    } finally {
+        os.umask(previous_umask);
+    }
+    assert not any("Reusing the sealed bundle" in m for m in first_log);
+    assert [n.endswith(".jab") for n in os.listdir(shared)] == [True] , (
+        f"the fresh seal was not written through to the shared cache: "
+        f"{os.listdir(shared)}"
+    );
+    mode = (shared / os.listdir(shared)[0]).stat().st_mode & 0o777;
+    assert mode == 0o644 , (
+        "a shared bundle must take the deploy umask so other users can read it: "
+        + oct(mode)
+    );
+    local = list((first_project / ".jac" / "seal-cache").glob("*.jab"))[0];
+    local_mode = local.stat().st_mode & 0o777;
+    assert local_mode == 0o600 , (
+        "a project-cache bundle holds private sources and must stay owner-only: "
+        + oct(local_mode)
+    );
+    checkout = _checkout_of(first_project);
+    (again, again_log) = _pack_shared(checkout, binary, str(shared));
+    assert any(
+        "Reusing the sealed bundle" in m and "shared seal cache" in m for m in again_log
+    ) , f"a fresh checkout sealed again despite the shared cache: {again_log}";
+    assert again == first , "the shared bundle differs from the one sealed";
+    assert len(list((checkout / ".jac" / "seal-cache").glob("*.jab"))) == 1 , (
+        "a shared hit was not copied into the project cache"
+    );
+    (checkout / "svc.jac").write_text("def:pub ping -> str { return \"pong!\"; }\n");
+    (edited, edited_log) = _pack_shared(checkout, binary, str(shared));
+    assert not any("Reusing the sealed bundle" in m for m in edited_log) , (
+        "a source edit reused the shared seal"
+    );
+    assert edited != first;
+    assert sorted(n.endswith(".jab") for n in os.listdir(shared)) == [True, True] , (
+        f"the shared cache holds partial or pruned bundles: {os.listdir(shared)}"
+    );
+    unshared = _checkout_of(first_project);
+    (_, unshared_log) = _pack_shared(unshared, binary, None);
+    assert not any("Reusing the sealed bundle" in m for m in unshared_log) , (
+        "a checkout without a shared cache reused a bundle"
+    );
+}
+
+
+test "an unwritable shared seal cache only warns and the deploy still seals" {
+    binary = require_pod_binary().read_bytes();
+    blocker = Path(tempfile.mkdtemp(prefix="jac-shared-seal-")) / "not-a-dir";
+    blocker.write_text("a file where the shared cache directory should be\n");
+    base = Path(_mini_app());
+    (raw, log) = _pack_shared(base, binary, str(blocker));
+    assert ".jac/serve_manifest.json" in _names(raw);
+    assert any("Could not keep the sealed bundle for reuse" in m for m in log) , (
+        f"an unwritable shared cache did not warn: {log}"
+    );
+    (again, again_log) = _pack_shared(base, binary, str(blocker));
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        "the project cache was not kept when the shared cache failed"
+    );
+    assert again == raw;
+}
+
+
 """An app whose server entry imports a module pinned to the client, so the seal
 compiles that module as a runtime dependency rather than as a unit."""
 def _runtime_dep_app -> Path {

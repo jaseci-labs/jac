@@ -1,3 +1,4 @@
+import json;
 import logging;
 import mimetypes;
 import re;
@@ -14,7 +15,10 @@ glob logger = logging.getLogger(__name__),
      IMMUTABLE_CACHE: str = "public, max-age=31536000, immutable",
      _HASHED_ASSET = re.compile(
          r"[.-](?=[\w-]{0,7}[0-9])(?=[\w-]{0,7}[A-Z])[\w-]{8}\.\w+$"
-     );
+     ),
+     _BUILT_HASHED: dict[str, tuple[int, frozenset[str]]] = {};
+
+def _built_hashed_files(dist: Path) -> (frozenset[str] | None);
 
 obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
