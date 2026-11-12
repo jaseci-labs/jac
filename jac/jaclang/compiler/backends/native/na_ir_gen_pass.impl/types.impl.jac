@@ -1633,7 +1633,7 @@ impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir
     if _want_num is None {
         _want_num = want;
     }
-    if isinstance(_want_num, _num) {
+    if want is not None and isinstance(_want_num, _num) {
         _val_num = self._opt_payload_of(val.type);
         if self._is_jacval_ty(val.type) {
             val = self._coerce_type(val, want);
