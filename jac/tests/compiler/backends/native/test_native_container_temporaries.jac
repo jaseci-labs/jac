@@ -24,6 +24,7 @@ def check_containers(profile: str) {
         ("empty_input", 9, 1),
         ("dict_merge_temporary", 5, 3),
         ("list_repeat_alias", 21, 1),
+        ("list_extend_alias", 22, 2),
         ("copied_receiver", 10, 1),
         ("popped_receiver", 12, 2),
         ("existing_default", 4, 3),

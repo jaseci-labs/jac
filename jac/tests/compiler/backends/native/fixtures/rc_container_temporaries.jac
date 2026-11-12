@@ -53,6 +53,13 @@ def list_repeat_alias -> int {
     return len(alias) * 10 + alias[1].value;
 }
 
+def list_extend_alias -> int {
+    values = [Item(1)];
+    alias = values;
+    values += [Item(2)];
+    return len(alias) * 10 + alias[1].value;
+}
+
 def copied_receiver -> int {
     values = [Item(10)].copy();
     return values[0].value;
