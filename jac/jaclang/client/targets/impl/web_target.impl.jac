@@ -93,8 +93,6 @@ impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     bundler = ViteBundler(project_dir=project_dir);
-    entry_path = str(entry_file.resolve());
-    seo_config = bundler.config_loader.get_seo_config(entry_path);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
@@ -119,15 +117,27 @@ impl WebTarget.build(
         }
         inputs = builder.prepare(loaded_mod);
         exports = list(artifact.manifest.exports or []) if artifact is not None else [];
-        function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     } finally {
         program._get_compiler().release_compile_state(program);
     }
     builder.bundle(inputs);
+    return self.finish_dist(entry_file, project_dir, exports);
+}
+
+impl WebTarget.finish_dist(
+    entry_file: Path, project_dir: Path, exports: list[str]
+) -> Path {
+    function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
+    bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
+    dist_dir = bundler.output_dir;
     bundle_path = bundler.find_bundle();
     if not bundle_path {
         raise RuntimeError("Web build failed: bundle not found");
     }
+    loaded_mod = types.ModuleType(entry_file.stem);
+    loaded_mod.__file__ = str(entry_file.resolve());
     _generate_index_html(
         bundle_path=bundle_path,
         bundler=bundler,
@@ -176,7 +186,7 @@ impl WebTarget.build(
 
 def _build_css_link(bundler: ViteBundler) -> str;
 
-def _get_app_meta_data -> dict[str, any];
+def _get_app_meta_data(project_dir: (Path | None) = None) -> dict[str, any];
 
 def _generate_index_html(
     bundle_path: Path,
@@ -330,8 +340,11 @@ impl _build_css_link(bundler: ViteBundler) -> str {
     return '';
 }
 
-impl _get_app_meta_data -> dict[str, any] {
-    config = get_config();
+impl _get_app_meta_data(project_dir: (Path | None) = None) -> dict[str, any] {
+    config = get_config_for_path(project_dir) if project_dir is not None else None;
+    if config is None {
+        config = get_config();
+    }
     if not config {
         return {};
     }
@@ -355,7 +368,7 @@ impl _generate_index_html(
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
     css_link = _build_css_link(bundler);
-    meta_data = _get_app_meta_data();
+    meta_data = _get_app_meta_data(project_dir);
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
     if css_link {

@@ -246,7 +246,7 @@ impl AnalysisCaches.build(self: AnalysisCaches, module: uni.Module) -> ModuleBui
     if found is not None and found.module is module {
         return found;
     }
-    fresh = ModuleBuild(module=module, done=set(), tasks={}, facts=set(), early={});
+    fresh = ModuleBuild(module=module, done=set(), tasks={}, facts=set());
     self.builds[key] = fresh;
     return fresh;
 }
@@ -288,20 +288,4 @@ impl AnalysisCaches.reset_module_state(self: AnalysisCaches) {
     self.placement_refusals.clear();
     self.native_bindings = None;
     self.builds.clear();
-}
-
-impl AnalysisCaches.record_early(
-    self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
-) {
-    self.build(module).early = results;
-}
-
-impl AnalysisCaches.take_early(
-    self: AnalysisCaches, module: uni.Module, name: str
-) -> (PassResult | None) {
-    found = self.peek(module);
-    if found is None {
-        return None;
-    }
-    return found.early.pop(name, None);
 }

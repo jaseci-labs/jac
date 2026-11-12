@@ -27,7 +27,8 @@ def package_native_units(package_dir: str) -> list[str];
 
 glob _sealable_cache: dict[tuple[str, str], list[str]] = {},
      _placement_cache: dict[tuple[str, str], dict[str, set[str]]] = {},
-     _source_apps: dict[tuple[str, str], dict[str, str]] = {};
+     _source_apps: dict[tuple[str, str], dict[str, str]] = {},
+     _client_roots: dict[str, tuple[int, str]] = {};
 
 def _application_sources(package_dir: str, app: str) -> list[str] | None;
 
@@ -48,6 +49,8 @@ glob _unit_native_program: list[any] = [];
 def precompile_native_unit(jac_path: str, collect: bool = True) -> str;
 
 def _served_codespace(pkg_root: str) -> str;
+
+def _served_client_root(pkg_root: str) -> str;
 
 @contextmanager
 def served_codespace(pkg_root: str) -> Iterator[None];
@@ -118,29 +121,15 @@ def seal_finalize(
     app: str = ""
 ) -> int;
 
-def native_roots(pkg_name: str, units: list[str]) -> list[str];
-
-def kit_omissions(pkg_name: str) -> list[str];
-
-def _compiler_kernel_units -> set[str];
-
 def prebuild_native_closure(roots: list[str]) -> dict[(str, any)];
 
 def prebuild_native_units(roots: list[str]);
-
-glob SEAL_KERNEL_DIR_ENV: str = "JAC_SEAL_KERNEL_DIR";
 
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None);
 
-def adopt_kernel(
-    pkg_path: Path, out_dir: Path, manifest_modules: dict[str, any], kernel_dir: str
-) -> dict[str, any];
-
 def _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None;
-
-def _drop_native_twin(twin: Path) -> bool;
 
 def _shared_suffix -> str;
 
