@@ -2379,12 +2379,19 @@ test "jac check native coverage ranks module outcomes" {
                     + "    return 1;\n}\n"
             );
         }
+        import from jaclang.compiler.frontend.codeinfo {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        }
+        prior_codespace = get_effective_default_codespace_override();
+        set_effective_default_codespace("");
         (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
         _reset_config();
         try {
             result = analysis.check([td], native_coverage=True);
             combined = captured_stdout.getvalue() + captured_stderr.getvalue();
         } finally {
+            set_effective_default_codespace(prior_codespace);
             _restore_output(old_stdout, old_stderr);
             set_config(None);
             _reset_config();
@@ -2392,7 +2399,8 @@ test "jac check native coverage ranks module outcomes" {
         assert "native coverage" in combined.lower() , "coverage header missing";
         assert "native seams" in combined , (
             "a module whose callable demoted granularly must be reported "
-            "under the native-seams section"
+            "under the native-seams section",
+            combined
         );
         assert "E5092" in combined , (
             "the seam reason must carry the first error code"

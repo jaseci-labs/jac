@@ -104,6 +104,8 @@ def is_annotation_type(evaluator: TypeEvaluator, ty: TypeBase) -> bool;
 
 def _is_literal_form(operand: Expr) -> bool;
 
+def _is_tuple_form(operand: Expr) -> bool;
+
 def get_type_of_binary_operation(
     evaluator: TypeEvaluator, expr: BinaryExpr
 ) -> TypeBase;
