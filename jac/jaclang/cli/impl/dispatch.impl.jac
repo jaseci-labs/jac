@@ -164,7 +164,8 @@ impl _discover_project_config(
 }
 
 impl _exit_on_invalid_jac_toml(exc: any) {
-    console.error(f"jac.toml is invalid: {exc}");
+    detail = "\n  ".join(str(exc).splitlines());
+    console.error(f"jac.toml is invalid: {detail}");
     sys.`exit(2);
 }
 
