@@ -6247,6 +6247,13 @@ impl TypeEvaluator._get_type_from_match_pattern(
         return None;
     }
 
+    if isinstance(pattern, MatchSingleton)
+        and isinstance(pattern.value, Null)
+        and self.prefetch
+        and self.prefetch.none_type_class {
+        return self._convert_to_instance(self.prefetch.none_type_class);
+    }
+
     return None;
 }
 
@@ -6323,6 +6330,9 @@ impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {
     if isinstance(pattern, MatchOr) {
         return bool(pattern.patterns)
             and all(self._pattern_covers_class(p) for p in pattern.patterns);
+    }
+    if isinstance(pattern, MatchSingleton) {
+        return isinstance(pattern.value, Null);
     }
     if isinstance(pattern, MatchArch) {
         subs: list[MatchPattern] = list(pattern.arg_patterns or [])

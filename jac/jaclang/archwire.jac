@@ -8190,6 +8190,7 @@ graph import compiler {
             MatchKVPair,
             MatchOr,
             MatchPattern,
+            MatchSingleton,
             MatchStmt,
             MatchWild,
             Module,

@@ -79,6 +79,18 @@ def narrowed_by_earlier_case(v: str | Label) {
     }
 }
 
+def none_case_removes_none(v: int | None) {
+    n = 0;
+    match v {
+        case None:
+            print("none");
+
+        case n:  # <-- Ok: the case above took the None
+            print(n);
+
+    }
+}
+
 def constrained_case_does_not_narrow(v: Other | Label) {
     title = Label(text="a");
     match v {
