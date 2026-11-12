@@ -522,7 +522,7 @@ impl JacLangServer.get_definition(
                 path_list = parent.resolve_relative_path_list();
                 if idx >= 0 and idx < len(path_list) {
                     resolved = path_list[idx];
-                    if Path(resolved).exists() {
+                    if resolved and Path(resolved).exists() {
                         return make_module_location(resolved);
                     }
                 }

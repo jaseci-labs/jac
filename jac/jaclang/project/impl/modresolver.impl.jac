@@ -120,6 +120,20 @@ impl find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
+impl project_root_chain(start: str) -> list[str] {
+    chain: list[str] = [];
+    cur = find_jac_project_root(start);
+    while cur and cur not in chain {
+        chain.append(cur);
+        parent = os.path.dirname(cur);
+        if parent == cur {
+            break;
+        }
+        cur = find_jac_project_root(parent);
+    }
+    return chain;
+}
+
 impl is_scoped_package_name(name: str) -> bool {
     parts = (name or '').split('/');
     if len(parts) != 2 {
@@ -634,18 +648,20 @@ impl resolve_module(
     actual_parts = parts[level:];
 
     base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
-    escape_marker = '';
     if level > 1 {
         climbed = os.path.abspath(base_dir or '.');
         for _ in range(level - 1) {
             climbed = os.path.dirname(climbed);
         }
-        top = find_jac_project_root(base_path);
-        if top {
-            real_top = os.path.realpath(top);
-            real_climbed = os.path.realpath(climbed);
-            if os.path.commonpath([real_climbed, real_top]) != real_top {
-                escape_marker = os.path.join(top, 'jac.toml');
+        # The runtime cannot import above the root of the entry's project.
+        # That entry is unknown here and its root may be any jac.toml folder
+        # enclosing this file, so only the outermost one is safe to enforce.
+        # Outside any project the root is the entry's own folder: not bounded.
+        roots = project_root_chain(base_path);
+        if roots {
+            top = os.path.realpath(roots[-1]);
+            if os.path.commonpath([os.path.realpath(climbed), top]) != top {
+                return ('', 'py');
             }
         }
         if os.path.isabs(base_dir) {
@@ -654,9 +670,6 @@ impl resolve_module(
             rel = os.path.relpath(climbed);
             base_dir = '' if rel == '.' else rel;
         }
-    }
-    if escape_marker {
-        return (os.path.join(escape_marker, *actual_parts), 'py');
     }
     if level > 0 {
         res = resolve_local_module(base_dir, actual_parts);

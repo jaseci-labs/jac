@@ -1962,6 +1962,9 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
     full_path = self.resolve_relative_path();
 
     paths: list[str] = [''] * len(parts);
+    if not full_path {
+        return paths;
+    }
     paths[-1] = full_path;
 
     full_basename = os.path.basename(full_path);

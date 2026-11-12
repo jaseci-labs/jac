@@ -2028,7 +2028,7 @@ impl TypeEvaluator._get_special_form_type(
     return None;
 }
 
-impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> Path {
+impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> (Path | None) {
     if from_mod.level > 0 and not from_mod.path {
         base = Path(from_mod.loc.mod_path).parent;
         for _ in range(max(from_mod.level - 1, 0)) {
@@ -2037,7 +2037,8 @@ impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> Path {
         return base;
     }
 
-    return Path(from_mod.resolve_relative_path());
+    resolved = from_mod.resolve_relative_path();
+    return Path(resolved) if resolved else None;
 }
 
 impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None) {

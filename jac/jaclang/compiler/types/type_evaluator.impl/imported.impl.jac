@@ -14,7 +14,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
     from_mod_name = import_node.from_loc.dot_path_str;
-    if isinstance(from_mod_type, ModuleType) or from_path.exists() {
+    if from_path is not None
+        and (isinstance(from_mod_type, ModuleType) or from_path.exists()) {
         is_dir = from_path.is_dir() or (from_path.stem == "__init__");
         if is_dir {
             mod_dir = from_path.parent if not from_path.is_dir() else from_path;
@@ -327,7 +328,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 self.program.invalidate_module(resolved_for_cache);
             }
 
-            if not Path(mod_path).exists() {
+            if not mod_path or not Path(mod_path).exists() {
                 if isinstance(npath, Name) {
                     npath._sym_category = SymbolType.MODULE;
                 }

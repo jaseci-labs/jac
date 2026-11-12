@@ -14985,6 +14985,7 @@ graph import project {
         kernel_snapshot.other_compiler_dir { COMPILER_PACKAGE },
         kernel_snapshot.session_inputs { get_jac_search_paths, get_typeshed_paths },
         package_scope { MOUNTS_DIR_NAME, is_scoped_package_name },
+        workspace._chain_stamp { project_root_chain },
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [
