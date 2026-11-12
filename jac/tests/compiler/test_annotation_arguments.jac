@@ -67,6 +67,18 @@ def head(text: str) -> str {
     (ch, _) = pair;
     return ch;
 }
+def count(pair: (str, int) | None, pairs: list[(str, int) | None]) -> int {
+    total = 0;
+    for item in pairs {
+        if item is not None {
+            (_, m) = item;
+            total += m;
+        }
+    }
+    if pair is None { return total; }
+    (_, n) = pair;
+    return n + total;
+}
 """,
         options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
     );
