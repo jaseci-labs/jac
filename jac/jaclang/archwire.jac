@@ -1573,8 +1573,7 @@ graph import {
             | project.placement
             | runtime.prepared
             | scale.server.inprocess
-            | server.hmr.HotReloader._get_js_filename
-            | testing.test_runner.run_file { base_stem },
+            | server.hmr.HotReloader._get_js_filename { base_stem },
         cli.commands.native_build.native_build {
             base_stem,
             is_jac,
@@ -1610,6 +1609,7 @@ graph import {
         testing.test_runner._iter_candidate_files { is_impl, is_jac },
         testing.test_runner._suite_source { is_test },
         testing.test_runner.discover { is_jac },
+        testing.test_runner.run_file { base_stem, is_annex_path_of },
     ]
     jac0core.ext_registry --> [
         compiler.driver.bccache.host_layout_tables {
