@@ -1,5 +1,6 @@
 """Tool use and the ReAct loop: finish_tool, and recovering when a model skips it."""
 
+import json;
 import from jaclang.byllm.types { IterationAction, IterationContext, StreamEvent }
 import from jaclang.byllm.lib { MockLLM, MockRawResponse }
 import from support { call, finish, prompt_text, say, tool_names }
@@ -27,6 +28,7 @@ test "plain text instead of finish_tool is re-prompted, not accepted" {
     for streamed in [False, True] {
         where = "streamed to a handler" if streamed else "not streamed";
         seen: list[StreamEvent] = [];
+        history: list[dict[str, any]] = [];
         llm = MockLLM(
             outputs=[say(line), finish({"person": "Merchant", "message": line})]
         );
@@ -35,7 +37,8 @@ test "plain text instead of finish_tool is re-prompted, not accepted" {
         def generate_npc_line(player_name: str, npc_name: str) -> Chat by llm(
             tools=[get_mood],
             stream=streamed,
-            stream_handler=seen.append if streamed else None
+            stream_handler=seen.append if streamed else None,
+            conversation=history
         );
 
         result = generate_npc_line("Elara", "Merchant");
@@ -50,6 +53,10 @@ test "plain text instead of finish_tool is re-prompted, not accepted" {
             )}"
         );
         assert llm.exhausted() , f"{where}: both scripted turns should have been consumed";
+        assert json.loads(history[-1]["content"])
+            == {"person": "Merchant", "message": line} , (
+            f"{where}: the typed answer must be saved as JSON, got {history[-1]}"
+        );
     }
 }
 
@@ -70,6 +77,7 @@ test "the answer is extracted however the model delivers it past max iterations"
             return "km/h";
         }
 
+        history: list[dict[str, any]] = [];
         llm = MockLLM(
             outputs=[
                 call("get_live_wind_speed", {"city": "Puttalam"}),
@@ -79,7 +87,9 @@ test "the answer is extracted however the model delivers it past max iterations"
         );
 
         def wind_report(city: str) -> str by llm(
-            tools=[get_live_wind_speed, get_speed_unit], max_react_iterations=2
+            tools=[get_live_wind_speed, get_speed_unit],
+            max_react_iterations=2,
+            conversation=history
         );
 
         assert wind_report("Puttalam") == "FINAL_REPORT" , f"{label}: wrong answer";
@@ -88,6 +98,9 @@ test "the answer is extracted however the model delivers it past max iterations"
         );
         assert "final answer" in prompt_text(llm, len(llm.seen) - 1).lower() , (
             f"{label}: the last turn must be the forced-answer prompt"
+        );
+        assert history[-1].get("content") == "FINAL_REPORT" , (
+            f"{label}: the answer must be saved, got {history[-1]}"
         );
     }
     for (label, final) in [
