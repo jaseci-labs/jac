@@ -53,8 +53,7 @@ impl check(
     native_coverage: bool = False,
     placements: bool = False,
     jobs: str = "",
-    app: str = "",
-    kernel_parity: bool = False
+    app: str = ""
 ) -> int {
     import from time { time }
     if lint_only {
@@ -199,7 +198,6 @@ impl check(
         'parse_only': parse_only,
         'native_coverage': native_coverage,
         'placements': placements,
-        'kernel_parity': kernel_parity,
         'suppress_codes': list(suppressed_codes),
         'ignore': list(ignore_list)
     };
@@ -1847,7 +1845,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     }
     try {
         (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-        parity_view: any = None;
         if opts.get("parse_only") {
             import from jaclang.compiler.frontend.parser.frontend {
                 parse_diags,
@@ -1886,23 +1883,7 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 }
                 compile_application(prog, file_path, compile_options);
             } else {
-                kernel_view: any = None;
-                if not opts.get("placements") and not opts.get("native_coverage") {
-                    import from jaclang.project.kernel_check { kernel_check }
-                    kernel_view = kernel_check(
-                        prog,
-                        file_path,
-                        compile_options,
-                        parity=bool(opts.get("kernel_parity"))
-                    );
-                }
-                adopted = kernel_view is not None and kernel_view.adopted;
-                if not adopted {
-                    prog.compile(file_path, options=compile_options);
-                    if kernel_view is not None and kernel_view.parity {
-                        parity_view = kernel_view;
-                    }
-                }
+                prog.compile(file_path, options=compile_options);
                 if opts.get("named") {
                     project_dir = os.path.realpath(
                         str(opts["project_root"])
@@ -1911,10 +1892,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                     );
                     checked = os.path.realpath(file_path);
                     reached_keys: list[str] = [str(key) for key in prog.mod.hub];
-                    if adopted {
-                        import from jaclang.project.kernel_check { reached_modules }
-                        reached_keys = reached_modules(kernel_view.outcome);
-                    }
                     result['reached'] = sorted(
                         {
                             real
@@ -1955,24 +1932,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                         annex_filter_path is None
                         or issue.loc.mod_path == annex_filter_path
                     )
-            );
-        }
-        if parity_view is not None {
-            import from jaclang.project.kernel_check { report_parity }
-            report_parity(
-                parity_view,
-                file_path,
-                [
-                    e
-                    for e in new_errors
-                    if keep(e)
-                ],
-                [
-                    w
-                    for w in new_warnings
-                    if keep(w)
-                ],
-                keep
             );
         }
         result['errors'] = [

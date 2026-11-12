@@ -83,17 +83,8 @@ jobs:
           echo "include=[${rows%,}]" >> "$GITHUB_OUTPUT"
           echo "platforms=[${osarch%,}]" >> "$GITHUB_OUTPUT"
 
-  # Each arch's compiler kernel and jacpython.o, lowered on x86 Linux from the
-  # PR's HEAD (build-kernel.yml); the arch build adopts both.
-  prebuild:
-    needs: resolve
-    uses: ./.github/workflows/build-kernel.yml
-    with:
-      platforms: ${{ needs.resolve.outputs.platforms }}
-      ref: refs/pull/${{ needs.resolve.outputs.pr }}/head
-
   build:
-    needs: [resolve, prebuild]
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -109,8 +100,6 @@ jobs:
 
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
-        with:
-          prebuilt: ${{ matrix.osarch }}
 
       - name: Stage the binary
         run: |

@@ -12,16 +12,15 @@ An entry is one of two kinds:
 
 | Kind | Rule | Examples |
 |---|---|---|
-| **Accelerator** | It has a floor that gives the same results, only slower. Use the artifact when it is built and current; otherwise run on the floor and say so. | the compiler kernel (floor: the bytecode compiler), the stub catalog (parsing typeshed), the precompiled bundle (compiling from source), JacPython (CPython) |
+| **Accelerator** | It has a floor that gives the same results, only slower. Use the artifact when it is built and current; otherwise run on the floor and say so. | the stub catalog (parsing typeshed), the precompiled bundle (compiling from source) |
 | **Capability** | It has no floor. Without it the feature does not exist, and asking for it fails with the command that builds it. | the LLVM shim, the C floor archives, musl, wasm libc, llvm-cbe, bun, Postgres, Node, the JDK |
 
 Separately, every entry declares a **release policy**:
 
 - `required`: a release carries the built artifact, and `jac native status
   --require release` fails without it.
-- `floor`: the release ships the floor on purpose. Today that is JacPython
-  (releases ship CPython). Promoting one
-  flips it to `required`.
+- `floor`: the release ships the floor on purpose; promoting one flips it to
+  `required`.
 - `on-demand`: not part of a release (llvm-cbe, and your app's Postgres and
   toolchains).
 
@@ -38,8 +37,7 @@ the process:
 3. **Sealed image.** A sealed process takes its own copy or its floor. It
    never looks at a checkout.
 4. **Checkout.** The artifact in the source tree, accepted only when its
-   recorded inputs match the sources now. The kernel's sidecar lists every
-   unit; the shim's record holds the hash of `native/`, `build.zig` and the
+   recorded inputs match the sources now. The shim's record holds the hash of `native/`, `build.zig` and the
    LLVM pin, plus its target.
 5. **Kit.** A checkout rerouted onto a kit's interpreter loads the kit's copy
    where the kit keeps it, when that copy was built from these sources.
@@ -90,14 +88,6 @@ documented boot-time mirror.
   `jac-kit` action's `sealed: "true"` drops `[dev] jaclang_source` from the
   checkout (`seal-checkout`). A reroute lane keeps it and runs the checkout on
   the kit.
-- **Pull-request kits.** A pull request's kit leaves the kernel out unless the
-  pull request carries the `native:kernel` label. The `setup-jac` action sets
-  `JAC_KIT_OMIT=kernel` for such a build; the seal reads it (`pr_kit_omits` in
-  `artifacts/kit.jac`) and records it in `omits`.
-- **Release kernels.** `build-binaries.yml`'s `kernel` job builds every leg's
-  `kernel@<osarch>` on x86 Linux, and each leg's seal adopts its own
-  (`zig build -Dkernel=DIR`); see "One builder, every target" in
-  native-units.
 - **The shim.** `zig build` reuses an in-tree shim whose record matches the
   current inputs and target. CI restores its cached shim there, and `zig build
   adopt-shim` records a content-addressed prebuilt one.

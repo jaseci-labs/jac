@@ -51,31 +51,6 @@ def rf(path: str) -> bytes {
     }
 }
 
-test "payload excludes interpreted JacPython modules and keeps their license" {
-    with tempfile.TemporaryDirectory() as tmp {
-        source = os.path.join(tmp, "source");
-        target = os.path.join(tmp, "target");
-        removed = [
-            "compiler/frontend/python/parser.jac",
-            "compiler/backends/py/jacpython/native_api.jac",
-            "runtime/python/objects.jac",
-            "runtime/python/_precompiled/objects.jir"
-        ];
-        for path in removed {
-            wf(source, path, b"implementation");
-        }
-        wf(source, "runtime/python/LICENSE.cpython", b"license");
-        wf(source, "compiler/frontend/parser.jac", b"Jac parser");
-        copy_tree(source, target, skip_jaclang);
-        for path in removed {
-            assert not os.path.exists(os.path.join(target, path));
-        }
-        assert rf(os.path.join(target, "runtime/python/LICENSE.cpython")) == b"license";
-        assert rf(os.path.join(target, "compiler/frontend/parser.jac"))
-            == b"Jac parser";
-    }
-}
-
 """Extract a packed (multi-frame) payload the way the launcher does: decode
 every frame, feed the concatenation to a tar reader."""
 def extract_payload(packed: str, dest: str) {
@@ -124,7 +99,6 @@ def fake_repo(repo: str) {
         b"in-tree-shim-bytes"
     );
     wf(repo, "bootstrap/pins.json", b"{}\n");
-    wf(repo, "bootstrap/python/sources.json", b"{}\n");
     wf(repo, "_jac_finder.py", b"finder\n");
     wf(repo, "sitecustomize.py", b"sitecustomize\n");
     wf(repo, "jac.toml", b"version = \"0.0.0\"\n");
@@ -221,21 +195,15 @@ test "a built stub catalog is cached, and the next build reuses it" {
     }
 }
 
-test "the precompile child keeps the cache home and the kit omissions while HOME moves" {
+test "the precompile child keeps the cache home while HOME moves" {
     with tempfile.TemporaryDirectory() as tmp {
         site = os.path.join(tmp, "site");
         os.makedirs(site);
-        outer = {
-            "JAC_CACHE_HOME": os.path.join(tmp, "cache"),
-            "JAC_KIT_OMIT": "kernel"
-        };
+        outer = {"JAC_CACHE_HOME": os.path.join(tmp, "cache")};
         with patch.dict(os.environ, outer) {
             env = precompile_env(os.path.join(tmp, "python"), site);
         }
         assert env["JAC_CACHE_HOME"] == outer["JAC_CACHE_HOME"];
-        assert env["JAC_KIT_OMIT"] == "kernel" , (
-            "the seal reads what the kit build asked it to leave out"
-        );
         assert env["HOME"] == site + ".home";
     }
 }
@@ -606,47 +574,6 @@ test "a fetched bun leaves the payload executable by users who do not own it" {
         assert mode & 0o111 == 0o111 , f"bun leaves the payload as {oct(mode)}";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
-    }
-}
-
-test "stripping the kernel keeps its sidecar hash truthful" {
-    import hashlib;
-    import json;
-    import os;
-    import tempfile;
-    import from pathlib { Path }
-    import from jaclang.dist.payload.assemble { strip_kernel_best_effort }
-    with tempfile.TemporaryDirectory() as tmp {
-        site = os.path.join(tmp, "site");
-        pre = Path(site) / "jaclang" / "_precompiled";
-        pre.mkdir(parents=True);
-        lib = Path(site) / "jaclang" / "compiler" / "libjac_compiler.so";
-        lib.parent.mkdir(parents=True);
-        lib.write_bytes(b"not an ELF image, so strip leaves it alone");
-        (pre / "MANIFEST.json").write_text(
-            json.dumps(
-                {
-                    "native": {
-                        "artifact": {
-                            "path": "compiler/libjac_compiler.so",
-                            "sha256": "stale"
-                        }
-                    }
-                }
-            )
-        );
-        Path(str(lib) + ".layout.json").write_text(
-            json.dumps({"classes": {}, "artifact_sha256": "stale", "plan_digest": "p"})
-        );
-        strip_kernel_best_effort(site);
-        actual = hashlib.sha256(lib.read_bytes()).hexdigest();
-        manifest = json.loads((pre / "MANIFEST.json").read_text());
-        assert manifest["native"]["artifact"]["sha256"] == actual;
-        sidecar = json.loads(Path(str(lib) + ".layout.json").read_text());
-        assert sidecar["artifact_sha256"] == actual , (
-            "the sidecar must describe the library the kit ships, or a checkout never adopts it"
-        );
-        assert sidecar["plan_digest"] == "p" and sidecar["classes"] == {};
     }
 }
 

@@ -39,10 +39,9 @@ searches **nearest-wins**:
    location** -- its modules are plain `.jac` files. At either step a
    per-architecture variant `<name>.<arch>.jac` is probed first, then a
    per-OS variant `<name>.<os>.jac` (e.g. `errno.darwin.jac`), then the plain
-   `<name>.jac`. A module the compiler kernel imports has no variants: what
-   it needs from a C library per target comes from the runtime floor's
-   `__jac_*` functions (`compiler/backends/native/posix_floor.c`), so the
-   kernel is the same program on every target.
+   `<name>.jac`. Prefer the runtime floor's `__jac_*` functions
+   (`compiler/backends/native/posix_floor.c`) to a variant, so a program is
+   the same on every target.
 
 So `import from os.path { normpath }` binds CPython's `posixpath` on the sv
 (Python) pathway and `na_stdlib/os/path.jac` on the na (native) pathway (the
@@ -59,9 +58,10 @@ native layout records the emitted name separately from its source-level key.
 ## Shipped modules
 
 - **`unicodedata.jac`** (#10325) -- the native floor exposes `category` and
-  `east_asian_width` from the generated Unicode 16.0.0 database. Compact
-  property ranges are generated from the same pinned CPython source by
-  `scripts/jacpython/gen_unicodedata.jac`. This is a deliberately limited
+  `east_asian_width` from the Unicode 16.0.0 database in
+  `_unicodedata_tables.jac`. The tables were generated from CPython's
+  `Modules/unicodedata_db.h` and are checked in as they are; a Unicode bump
+  regenerates them from that header. This is a deliberately limited
   surface; other `unicodedata` APIs are not implemented natively.
 - **`os/path.jac`** (#6940 Phase 0, extended #8201) -- pure-string POSIX path
   helpers (`normpath`, `dirname`, `basename`, `split`, `splitext`, `isabs`,
@@ -1094,7 +1094,7 @@ native layout records the emitted name separately from its source-level key.
   repeated `digest()` is O(block) rather than re-hashing every retained chunk.
   MD5, SHA-1, SHA-224/256, SHA-384/512, SHA3-224/256/384/512, BLAKE2b and
   BLAKE2s are implemented in Jac with fixed-width wrapping arithmetic, so a
-  native program, and the compiler kernel, links no `libcrypto` for hashing.
+  native program links no `libcrypto` for hashing.
   Surface: the named constructors (`md5`/`sha1`/`sha224`/`sha256`/`sha384`/
   `sha512`/`sha3_224`/`sha3_256`/`sha3_384`/`sha3_512`/`blake2b`/`blake2s`),
   `new(name, data)`, `update`/`digest`/`hexdigest`/`copy`, and the
@@ -1204,8 +1204,8 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
    exporting its API with `def:pub`. If a module needs platform-specific
    code, prefer a `__jac_*` function in the runtime floor
    (`compiler/backends/native/posix_floor.c` and `win_floor.c`, regenerated
-   with `scripts/gen_posix_floor.jac` and `scripts/gen_win_floor.jac`): a
-   module the compiler kernel imports must not have variants. Otherwise add a
+   with `scripts/gen_posix_floor.jac` and `scripts/gen_win_floor.jac`).
+   Otherwise add a
    `<name>.<os>.jac` variant (e.g. `errno.darwin.jac`); it wins over the plain
    file on that OS.
 2. Use only the native-supported subset; prefer typed containers

@@ -252,7 +252,8 @@ impl PvcInjector.prepare(app_name: str, namespace: str, project_dir: str) {
         getattr(self, "_seal_binary_bytes", b""),
         getattr(self, "_pod_arch", ""),
         self._fleet,
-        self._client_ready
+        self._client_ready,
+        self._bake_client
     );
     digest = content_address(raw);
     self._object_key = bundle_object_key(app_name, digest);

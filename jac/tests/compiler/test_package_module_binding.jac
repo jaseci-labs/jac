@@ -144,7 +144,7 @@ test "a unit's native stamp ignores policy entries that name other modules" {
     path = _pkg("runtime/region_native.jac");
     plain = registry.stamp_for(CompileOptions(), path);
     assert registry.stamp_for(
-        CompileOptions(native_require=["jaclang.compiler.frontend.python.*"]), path
+        CompileOptions(native_require=["jaclang.data.*"]), path
     ).matches(
         plain
     );

@@ -34,8 +34,7 @@ test "a stale entry under a reused id starts from nothing" {
         module=Module.make_stub(inject_name="ghost"),
         done={"SymTabBuildPass"},
         tasks={},
-        facts={AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF},
-        early={}
+        facts={AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF}
     );
     assert not caches.provides(a, AnalysisFact.CFG_SUCC);
     assert caches.peek(a) is None;
