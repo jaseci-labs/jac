@@ -3,6 +3,20 @@ import shutil;
 
 def _install_ws_catchall(gw: MicroserviceGateway);
 
+
+"""True when the gateway's own session check refuses this token outright."""
+def _session_refused(gw: MicroserviceGateway, token: str) -> bool;
+
+
+"""Headers with any refused bearer token or session cookie taken out."""
+def _without_refused_credentials(
+    gw: MicroserviceGateway, headers: dict[str, str]
+) -> dict[str, str];
+
+
+"""A query string with a refused `token` parameter taken out."""
+def _without_refused_query_token(gw: MicroserviceGateway, query: str) -> str;
+
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
     import jaclang;
     registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
@@ -250,7 +264,7 @@ impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, st
     if tp {
         fwd["traceparent"] = tp;
     }
-    return fwd;
+    return _without_refused_credentials(self, fwd);
 }
 
 impl MicroserviceGateway.handle_health -> Response {
@@ -1222,7 +1236,7 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
             remaining = full_path[len(matched.prefix):];
         }
         remaining = remaining or "/";
-        query: str = str(websocket.url.query);
+        query: str = _without_refused_query_token(gw, str(websocket.url.query));
         target_http: str = f"{page_base or matched.url}{remaining}";
         if query {
             target_http = f"{target_http}?{query}";
@@ -1231,7 +1245,9 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
         async def _accept_as_upstream_did(selected: str) {
             await websocket.accept(subprotocol=selected);
         }
-        req_headers: dict[str, str] = dict(websocket.headers.items());
+        req_headers: dict[str, str] = _without_refused_credentials(
+            gw, dict(websocket.headers.items())
+        );
         logger.debug(f"ws proxy: {full_path} -> {target_http}");
         await websocket_forward(
             websocket, target_http, req_headers, on_upstream=_accept_as_upstream_did
@@ -1243,4 +1259,63 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
 
 impl _log_gateway_ready(host: str, bound: int) {
     logger.info(f"Gateway starting on {host}:{bound}");
+}
+
+impl _session_refused(gw: MicroserviceGateway, token: str) -> bool {
+    if gw.user_manager is None or not token {
+        return False;
+    }
+    detail = gw.user_manager.validate_jwt_token_detail(token, check_existence=False);
+    return detail['status'] in ('revoked', 'unknown_user');
+}
+
+impl _without_refused_credentials(
+    gw: MicroserviceGateway, headers: dict[str, str]
+) -> dict[str, str] {
+    import from http.cookies { SimpleCookie }
+    kept: dict[str, str] = {};
+    for (key, value) in headers.items() {
+        lowered = key.lower();
+        if lowered == 'authorization' and value.startswith('Bearer ') {
+            if _session_refused(gw, value[7:]) {
+                continue;
+            }
+        } elif lowered == 'cookie' and SESSION_COOKIE in value {
+            jar = SimpleCookie();
+            try {
+                jar.load(value);
+            } except Exception {
+                kept[key] = value;
+                continue;
+            }
+            session = jar.get(SESSION_COOKIE);
+            if session is not None and _session_refused(gw, session.value) {
+                rest = [
+                    f"{name}={morsel.value}"
+                    for (name, morsel) in jar.items()
+                    if name != SESSION_COOKIE
+                ];
+                if rest {
+                    kept[key] = '; '.join(rest);
+                }
+                continue;
+            }
+        }
+        kept[key] = value;
+    }
+    return kept;
+}
+
+impl _without_refused_query_token(gw: MicroserviceGateway, query: str) -> str {
+    import from urllib.parse { parse_qsl, urlencode }
+    if 'token=' not in query {
+        return query;
+    }
+    pairs = parse_qsl(query, keep_blank_values=True);
+    kept = [
+        (name, value)
+        for (name, value) in pairs
+        if not (name == 'token' and _session_refused(gw, value))
+    ];
+    return query if len(kept) == len(pairs) else urlencode(kept);
 }

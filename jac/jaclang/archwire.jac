@@ -2862,6 +2862,9 @@ graph import {
         scale.admin.admin_portal { SecondFactorUnavailable },
         scale.tests.data.test_session_epoch { LOGIN_CHALLENGE_PURPOSE },
     ]
+    server.identity.session_cookie ++> scale.runtime.gateway.microservice_gateway {
+        SESSION_COOKIE
+    }
     server.identity.user_manager ++> [
         runtime.runtime.JacPersistence.get_user_manager
             | scale.admin.admin_portal
@@ -14293,6 +14296,7 @@ graph import scale {
         EmbeddedGateway
     }
     runtime.gateway.microservice_gateway ++> tests.apps.test_fleet_from_apps
+        | tests.data.test_session_epoch
         | tests.microservices.test_app_routes
         | tests.microservices.test_gateway
         | tests.microservices.test_gateway_docs_precedence
@@ -14334,7 +14338,8 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
-        tests.microservices.test_gateway_docs_precedence
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
             | tests.server.test_static_fallback { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]

@@ -379,3 +379,29 @@ test "a message on a websocket reuses a recent session check for a few seconds" 
     ctx.session_checked_at = 0.0;
     assert not asyncio.run(ws_session_still_current(current, ctx, reuse_recent=True));
 }
+
+
+test "the gateway does not forward a session that has ended" {
+    manager = _manager();
+    (user_id, password) = _account(manager);
+    token = _sign_in(manager, user_id, password);
+    gw = MicroserviceGateway(registry=ServiceRegistry(), user_manager=manager);
+    sent = {
+        "Authorization": f"Bearer {token}",
+        "Cookie": f"jac_session={token}; theme=dark"
+    };
+    def forwarded -> dict[str, str] {
+        request = Request();
+        for (name, value) in sent.items() {
+            request.headers.set(name, value);
+        }
+        return {k.lower(): v for (k, v) in gw.build_forward_headers(request).items()};
+    }
+    live = forwarded();
+    assert live["authorization"] == f"Bearer {token}";
+    assert f"jac_session={token}" in live["cookie"];
+    manager.end_sessions(user_id);
+    ended = forwarded();
+    assert "authorization" not in ended , "a revoked bearer token must not reach a service";
+    assert ended["cookie"] == "theme=dark" , ended;
+}
