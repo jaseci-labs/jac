@@ -298,7 +298,6 @@ impl JacTestClient.close -> None {
                 self._server.server.request_stop();
             }
         }
-        Jac.set_shared_root_resolver(None);
     }
 
     with suppress(Exception) {

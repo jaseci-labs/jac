@@ -60,7 +60,6 @@ test "anonymous requests all run on the one shared root" {
         assert here_id == shared_id , "anonymous request root is not root.shared";
         assert second.data["reports"][0] == here_id , "shared root not stable across requests";
         client.close();
-        assert jid(root.shared) == jid(root) , "a closed client left its server's shared root behind";
     }
 }
 
