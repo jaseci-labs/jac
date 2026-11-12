@@ -127,7 +127,6 @@ obj NativeIface {
     static def read_digest(raw: (bytes | None)) -> (str | None);
     def pub_symbols -> list[str];
     def symbol_of(name: str) -> (str | None);
-    def is_demoted(name: str) -> bool;
     def classes_json -> dict[str, any];
 }
 

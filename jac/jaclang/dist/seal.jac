@@ -17,13 +17,25 @@ def _portable_manifest(manifest: dict[str, any]) -> dict[str, any];
 
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None);
 
+def prepare_serve_payloads(
+    entry_file: Path, proj_root: Path, client: bool = False
+) -> (tuple[dict[str, any], str] | None);
+
+def finish_prepared_client(
+    entry_file: Path, proj_root: Path, client_dist: str, exports: list[str]
+) -> (Path | None);
+
 
 def ensure_client_dist(config: any, entry_file: Path) -> (Path | None);
 
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool;
 
 def bake_serve_payloads(
-    config: any, pkg_copy: Path, app: str = "", bake_client: bool = True
+    config: any,
+    pkg_copy: Path,
+    app: str = "",
+    bake_client: bool = True,
+    prepared_client: bool = False
 ) -> bool;
 
 def vendor_packages(config: any, pkg_copy: Path);

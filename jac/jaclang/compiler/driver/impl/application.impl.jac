@@ -189,20 +189,6 @@ impl _tree_source(
     );
 }
 
-impl _unit_source(unit: any) -> ManifestSource {
-    import json;
-    return ManifestSource(
-        path=unit.path,
-        app=unit.app,
-        persistence=list(unit.persistence),
-        edges=_import_edges_of(unit.import_edges),
-        interop=interop_manifest_of(json.loads(unit.interop)) if unit.interop else None,
-        client=manifest_from_record(json.loads(unit.client_manifest))
-            if unit.client_manifest
-            else None
-    );
-}
-
 impl _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str, any] {
     mod = mod if (mod is not None) else program.find_module(path);
     if (mod is None) {
@@ -348,7 +334,7 @@ impl _warn_private_declarations(application: PreparedApplication, console: any) 
 impl _check(program: any, before: any) {
     errors = program.errors_had[before:];
     if errors {
-        raise RuntimeError('\n'.join(e.pretty_print() for e in errors));
+        raise BuildFailed('\n'.join(e.pretty_print() for e in errors));
     }
 }
 
@@ -618,8 +604,6 @@ impl prepare_application(
 
 impl _release_compile_state(program: any) {
     program._get_compiler().release_compile_state(program);
-    forget_application_units();
-    forget_interface_memo();
 }
 
 impl _capture_input(path: str, inputs: dict[str, str]) {
@@ -639,6 +623,10 @@ impl _prepare(
     console: any
 ) -> PreparedApplication {
     program.forget_failed_modules();
+    if client {
+        import from jaclang.client.config_loader { JacClientConfig }
+        JacClientConfig(Path(`root), entry_path=`entry).load();
+    }
     inputs: dict[str, str] = {};
     selfhost = program._get_compiler().selfhost;
     def capture(path: str) {
@@ -653,7 +641,6 @@ impl _prepare(
     for path in entries {
         capture(path);
     }
-    import from jaclang.project.kernel_compile { host_prepared }
     import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
     with compile_progress.listen(capture) {
         memo = begin_prepare_memo();
@@ -663,268 +650,8 @@ impl _prepare(
             );
         } finally {
             end_prepare_memo(memo);
-            host_prepared();
         }
     }
-}
-
-impl _unit_lookup(
-    units: dict[str, ManifestSource]
-) -> Callable[[str], ManifestSource | None] {
-    def lookup(source: str) -> (ManifestSource | None) {
-        return units.get(os.path.realpath(source));
-    }
-    return lookup;
-}
-
-impl _unit_row(unit: any) -> dict[str, any] {
-    return {
-        'key': compute_module_key(unit.path),
-        'iface': unit.iface,
-        'shape': unit.iface_shape,
-        'effects': unit.effects,
-        'placement': unit.placement,
-        'app': unit.app,
-        'persistence': list(unit.persistence),
-        'import_edges': list(unit.import_edges),
-        'jac_deps': list(unit.jac_deps),
-        'interop': unit.interop,
-        'client_manifest': unit.client_manifest
-    };
-}
-
-impl _row_unit(path: str, row: dict[str, any]) -> any {
-    return UnitProducts(
-        path=path,
-        app=row['app'],
-        persistence=list(row['persistence']),
-        import_edges=list(row['import_edges']),
-        interop=row['interop'],
-        client_manifest=row['client_manifest']
-    );
-}
-
-impl _file_digest(path: str) -> str {
-    try {
-        return hashlib.sha256(Path(path).read_bytes()).hexdigest();
-    } except OSError {
-        return '';
-    }
-}
-
-impl _reusable_interfaces(
-    previous: dict[str, dict[str, any]],
-    entries: list[str],
-    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
-    `root: str
-) -> dict[str, any] {
-    import base64;
-    held = {os.path.realpath(path) for path in entries};
-    by_real = {os.path.realpath(source): found for (source, found) in specs.items()};
-    seeds: dict[str, any] = {};
-    for (path, row) in previous.items() {
-        if path in held or not row.get('iface') or not os.path.isfile(path) {
-            continue;
-        }
-        if compute_module_key(path) != row.get('key') {
-            continue;
-        }
-        known = by_real.get(path);
-        if known is None or 'imports' not in row {
-            continue;
-        }
-        if sorted(resolve_imports(known, path, `root)) != row['imports'] {
-            continue;
-        }
-        digests = row.get('py_digests');
-        if digests is None {
-            continue;
-        }
-        if any(_file_digest(dep) != digest for (dep, digest) in digests.items()) {
-            continue;
-        }
-        seeds[path] = PythonInterface(
-            path=path,
-            pkg_dir=os.path.dirname(path),
-            data=base64.b64decode(row['iface']),
-            placement=row.get('placement') or '',
-            effects=row.get('effects') or ''
-        );
-    }
-    return seeds;
-}
-
-impl _importers_of(
-    changed: set[str], rows: dict[str, dict[str, any]], among: set[str]
-) -> set[str] {
-    found: set[str] = set();
-    for path in among {
-        row = rows.get(path) or {};
-        for dep in row.get('jac_deps') or [] {
-            if dep in changed {
-                found.add(path);
-                break;
-            }
-        }
-    }
-    return found;
-}
-
-impl _unreached_changes(
-    units: dict[str, ManifestSource],
-    rows: dict[str, dict[str, any]],
-    previous: dict[str, dict[str, any]],
-    seeds: dict[str, any]
-) -> list[str] {
-    seen = `set(units);
-    frontier = list(units);
-    missing: list[str] = [];
-    while frontier {
-        path = frontier.pop();
-        row = rows.get(path) or previous.get(path) or {};
-        for dep in row.get('jac_deps') or [] {
-            if dep in seen or dep not in previous {
-                continue;
-            }
-            seen.add(dep);
-            frontier.append(dep);
-            if dep not in seeds and dep not in units and os.path.isfile(dep) {
-                missing.append(dep);
-            }
-        }
-    }
-    return missing;
-}
-
-impl _kernel_units(
-    program: any,
-    entries: list[str],
-    `root: str,
-    before: int,
-    inputs: dict[str, str],
-    previous: dict[str, dict[str, any]],
-    rows: dict[str, dict[str, any]],
-    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
-    recorded: dict[str, str]
-) -> (dict[str, ManifestSource] | None) {
-    import copy;
-    selfhost = program._get_compiler().selfhost;
-    seeds = _reusable_interfaces(previous, entries, specs, `root);
-    warned = len(program.warnings_had);
-    units: dict[str, ManifestSource] = {};
-    reached: set[str] = set();
-    read: dict[str, str] = {};
-    def capture(path: str) {
-        if path in seeds and path not in units and path in recorded {
-            inputs.setdefault(path, recorded[path]);
-        } else {
-            _capture_input(path, inputs);
-        }
-    }
-    def compile_target(path: str) -> (bool | None) {
-        options = copy.copy(program.options);
-        options.project_root = `root;
-        options.no_cgen = False;
-        options.skip_native_engine = True;
-        compiled = kernel_compile_application(
-            active_host(), program, path, options, seeds=list(seeds.values())
-        );
-        if compiled is None {
-            return None;
-        }
-        for module in compiled.analysis.modules {
-            if not selfhost.is_selfhost(selfhost.resolve(module.path, program)) {
-                reached.add(os.path.realpath(module.path));
-            }
-        }
-        for row in compiled.analysis.reads {
-            read[row[0]] = row[1] if read.get(row[0], row[1]) == row[1] else '';
-        }
-        for unit in compiled.units {
-            real = os.path.realpath(unit.path);
-            if real not in units {
-                units[real] = _unit_source(unit);
-                rows[real] = _unit_row(unit);
-            }
-        }
-        return os.path.realpath(path) in units;
-    }
-    while True {
-        forget_application_units();
-        rows.clear();
-        units.clear();
-        reached.clear();
-        read.clear();
-        del program.errors_had[before:];
-        del program.warnings_had[warned:];
-        targets = list(entries);
-        failed = False;
-        while targets and not failed {
-            for path in targets {
-                landed = compile_target(path);
-                if landed is None {
-                    forget_application_units();
-                    return None;
-                }
-                if not landed {
-                    failed = True;
-                    break;
-                }
-            }
-            if not failed {
-                targets = _unreached_changes(units, rows, previous, seeds);
-            }
-        }
-        if failed or (seeds and len(program.errors_had) > before) {
-            if not seeds {
-                forget_application_units();
-                if failed {
-                    _check(program, before);
-                    raise RuntimeError(
-                        "the native compiler kernel compiled the application "
-                        "but returned no unit for an entry and reported no error"
-                    );
-                }
-                break;
-            }
-            seeds.clear();
-            continue;
-        }
-        changed = {
-            path
-            for (path, row) in rows.items()
-            if path in previous
-                and (
-                    previous[path].get('shape') != row['shape']
-                    or previous[path].get('effects') != row['effects']
-                )
-        };
-        stale = _importers_of(changed, previous, `set(seeds) - `set(units));
-        if not stale {
-            break;
-        }
-        for path in stale {
-            seeds.pop(path, None);
-        }
-    }
-    _check(program, before);
-    hold_compiled_content(read);
-    for path in reached {
-        capture(path);
-    }
-    frontier = list(units);
-    while frontier {
-        row = rows.get(frontier.pop()) or {};
-        for dep in row.get('jac_deps') or [] {
-            if dep in seeds and dep not in units {
-                capture(dep);
-                units[dep] = _unit_source(_row_unit(dep, previous[dep]));
-                rows[dep] = previous[dep];
-                frontier.append(dep);
-            }
-        }
-    }
-    return units;
 }
 
 impl _prepare_revision(
@@ -973,7 +700,8 @@ impl _prepare_revision(
         entries,
         client,
         dev
-    );
+    )
+        + ((tuple(client_build_env()), ) if client else ());
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev
@@ -1053,42 +781,15 @@ impl _prepare_revision(
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
-    previous_rows: dict[str, dict[str, any]] = candidate.get('unit_rows') or {}
-        if isinstance(candidate, dict)
-        else {};
-    unit_rows: dict[str, dict[str, any]] = {};
-    recorded_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = candidate.get(
-        'import_specs'
-    )
-        or {}
-        if isinstance(candidate, dict)
-        else {};
-    units: (dict[str, ManifestSource] | None) = _kernel_units(
-        program,
-        entries,
-        `root,
-        before,
-        inputs,
-        previous_rows,
-        unit_rows,
-        recorded_specs,
-        candidate.get('dependencies') or {} if isinstance(candidate, dict) else {}
-    );
-    if units is None {
-        import from jaclang.compiler.driver.pipeline_runner { compile_application }
-        import from jaclang.project.kernel_compile { host_preparing }
-        host_preparing(`entry);
-        for path in entries {
-            options = copy.copy(program.options);
-            options.project_root = `root;
-            options.no_cgen = False;
-            modules[path] = compile_application(program, path, options);
-            _check(program, before);
-        }
+    import from jaclang.compiler.driver.pipeline_runner { compile_application }
+    for path in entries {
+        options = copy.copy(program.options);
+        options.project_root = `root;
+        options.no_cgen = False;
+        modules[path] = compile_application(program, path, options);
+        _check(program, before);
     }
-    entry_client = modules[`entry].gen.client_manifest
-        if units is None
-        else units[os.path.realpath(`entry)].client;
+    entry_client = modules[`entry].gen.client_manifest;
     has_client = client
         and bool(
             (entry_client is not None and entry_client.has_client)
@@ -1112,16 +813,7 @@ impl _prepare_revision(
     }
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
-        if units is not None {
-            revision.manifests[path] = build_manifest(
-                `root,
-                units[os.path.realpath(path)],
-                _unit_lookup(units),
-                list(units.values())
-            );
-        } else {
-            revision.manifests[path] = _manifest(program, path, `root, modules[path]);
-        }
+        revision.manifests[path] = _manifest(program, path, `root, modules[path]);
         _check(program, before);
     }
     revision.manifests[`entry]['spa_routes'] = routes;
@@ -1188,17 +880,6 @@ impl _prepare_revision(
             else import_specs(code, path);
         specs_of[path] = specs;
         resolved = resolve_imports(specs, path, `root);
-        real = os.path.realpath(path);
-        if real in unit_rows {
-            row = dict(unit_rows[real]);
-            row['imports'] = sorted(resolved);
-            row['py_digests'] = {
-                dep: _file_digest(dep)
-                for dep in resolved
-                if dep.endswith('.py')
-            };
-            unit_rows[real] = row;
-        }
         pending.update(resolved - revision.code.keys());
     }
 
@@ -1206,13 +887,6 @@ impl _prepare_revision(
         path: (mod.app or '', mod.persistence)
         for (path, mod) in _project_modules(program, `root).items()
     };
-    if units is not None {
-        project_facts = {
-            path: (source.app, source.persistence)
-            for (path, source) in units.items()
-            if path.startswith(`root + os.sep)
-        };
-    }
     for (path, facts) in project_facts.items() {
         if path in revision.code {
             revision.manifests.setdefault(
@@ -1238,45 +912,43 @@ impl _prepare_revision(
     for path in project_facts {
         _capture_input(path, inputs);
     }
-    with content_on_disk() {
-        if any(
-            ct_dep_digest(path, with_annexes=True) != digest
-            for (path, digest) in inputs.items()
-        ) {
-            raise SourcesChanged(
-                'Sources changed during preparation; retry with the new revision.'
-            );
-        }
-        read: dict[str, str] = {};
-        client_modules: dict[str, str] = {};
-        if revision.client_compiler is not None {
-            read = dict(revision.client_compiler.jac_client_compiler.input_files);
-            client_modules = dict(
-                revision.client_compiler.jac_client_compiler.client_modules
-            );
-            client_files = sorted(read);
-        }
-        settled = _client_inventory(`root, client_dirs, client_files, inventory)
-            if client
-            else _inventory(inventory_root, inputs=True, previous=inventory);
-        current = _digests(settled);
-        changed_read = any(
-            current.get(path, '') != digest for (path, digest) in read.items()
+    if any(
+        ct_dep_digest(path, with_annexes=True) != digest
+        for (path, digest) in inputs.items()
+    ) {
+        raise SourcesChanged(
+            'Sources changed during preparation; retry with the new revision.'
         );
-        if (not client and current != _digests(inventory))
-            or any(
-                current.get(path) != digest
-                for (path, digest) in _digests(inventory).items()
-            )
-            or changed_read
-            or any(
-                ct_dep_digest(path, with_annexes=True) != digest
-                for (path, digest) in client_modules.items()
-            ) {
-            raise SourcesChanged(
-                'Sources changed during preparation; retry with the new revision.'
-            );
-        }
+    }
+    read: dict[str, str] = {};
+    client_modules: dict[str, str] = {};
+    if revision.client_compiler is not None {
+        read = dict(revision.client_compiler.jac_client_compiler.input_files);
+        client_modules = dict(
+            revision.client_compiler.jac_client_compiler.client_modules
+        );
+        client_files = sorted(read);
+    }
+    settled = _client_inventory(`root, client_dirs, client_files, inventory)
+        if client
+        else _inventory(inventory_root, inputs=True, previous=inventory);
+    current = _digests(settled);
+    changed_read = any(
+        current.get(path, '') != digest for (path, digest) in read.items()
+    );
+    if (not client and current != _digests(inventory))
+        or any(
+            current.get(path) != digest
+            for (path, digest) in _digests(inventory).items()
+        )
+        or changed_read
+        or any(
+            ct_dep_digest(path, with_annexes=True) != digest
+            for (path, digest) in client_modules.items()
+        ) {
+        raise SourcesChanged(
+            'Sources changed during preparation; retry with the new revision.'
+        );
     }
     if client {
         inventory = settled;
@@ -1297,7 +969,6 @@ impl _prepare_revision(
                 else False,
             code=revision.code,
             import_specs=specs_of,
-            unit_rows=unit_rows,
             manifests=revision.manifests,
             sections=sections,
             outputs=outputs,

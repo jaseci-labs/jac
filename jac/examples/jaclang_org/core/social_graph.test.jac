@@ -1,4 +1,3 @@
-import from jaclang.runtime.runtime { JacRuntime }
 import os;
 import from unittest.mock { patch }
 import from tempfile { mkdtemp }
@@ -16,8 +15,6 @@ test "ninjaclaw mentions are found and stripped" {
 }
 
 def make_client -> JacTestClient;
-
-def close_client(client: JacTestClient);
 
 def login_as(client: JacTestClient, username: str, password: str);
 
@@ -41,7 +38,7 @@ test "register and login issues a token" {
     bad = client.login("alice", "wrongpass");
     assert not bad.ok;
 
-    close_client(client);
+    client.close();
 }
 
 test "profile setup and retrieval" {
@@ -64,7 +61,7 @@ test "profile setup and retrieval" {
     assert updated["profile"]["username"] == "alice";
     assert updated["profile"]["bio"] == "updated";
 
-    close_client(client);
+    client.close();
 }
 
 test "create tweet shows up in the feed" {
@@ -83,7 +80,7 @@ test "create tweet shows up in the feed" {
     assert len(list(feed)) == 1;
     assert feed[0]["content"] == "hello world";
 
-    close_client(client);
+    client.close();
 }
 
 test "like and comment on a tweet" {
@@ -113,7 +110,7 @@ test "like and comment on a tweet" {
         assert commented["success"] == True;
         profile = first_report(client.post("/walker/get_profile", json={}));
         assert len(list(profile["tweets"][0]["comments"])) == 1;
-        close_client(client);
+        client.close();
     }
 }
 
@@ -133,7 +130,7 @@ test "delete a tweet removes it from the feed" {
     feed = first_report(client.post("/walker/load_feed", json={}));
     assert len(list(feed)) == 0;
 
-    close_client(client);
+    client.close();
 }
 
 test "search filters the feed by content" {
@@ -148,7 +145,7 @@ test "search filters the feed by content" {
         );
         assert len(list(hits)) == 1;
         assert hits[0]["content"] == "jac is great";
-        close_client(client);
+        client.close();
     }
 }
 
@@ -164,7 +161,7 @@ test "trending surfaces hashtags" {
         tags = {row["tag"]: row["count"] for row in trending};
         assert tags["#jac"] == 2;
         assert tags["#osp"] == 1;
-        close_client(client);
+        client.close();
     }
 }
 
@@ -193,7 +190,7 @@ test "follow and unfollow another user" {
     after_unfollow = first_report(client.post("/walker/get_profile", json={}));
     assert len(list(after_unfollow["following"])) == 0;
 
-    close_client(client);
+    client.close();
 }
 
 test "feed includes tweets from followed users" {
@@ -219,7 +216,7 @@ test "feed includes tweets from followed users" {
     assert "alice's update" in contents;
     assert "bob's update" in contents;
 
-    close_client(client);
+    client.close();
 }
 
 test "directory lists every registered profile" {
@@ -237,7 +234,7 @@ test "directory lists every registered profile" {
     assert "alice" in names;
     assert "bob" in names;
 
-    close_client(client);
+    client.close();
 }
 
 test "channel create, join, post and detail" {
@@ -279,7 +276,7 @@ test "channel create, join, post and detail" {
     assert len(list(detail["posts"])) == 1;
     assert detail["posts"][0]["content"] == "welcome to the channel";
 
-    close_client(client);
+    client.close();
 }
 
 test "users only see their own profile via get_profile" {
@@ -298,7 +295,7 @@ test "users only see their own profile via get_profile" {
     assert jid_of(alice["profile"]) != jid_of(bob["profile"]);
     assert bob["profile"]["username"] == "bob";
 
-    close_client(client);
+    client.close();
 }
 
 glob PNG_1PX: str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -345,7 +342,7 @@ test "update_profile validates and stores standard fields" {
     assert cleared["bundle"]["profile"]["location"] == "";
     assert cleared["bundle"]["profile"]["github"] == "";
 
-    close_client(client);
+    client.close();
 }
 
 test "avatar upload round-trips and is visible to other users" {
@@ -395,7 +392,7 @@ test "avatar upload round-trips and is visible to other users" {
     me_again = first_report(client.post("/walker/get_profile", json={}));
     assert me_again["profile"]["avatar_v"] == "";
 
-    close_client(client);
+    client.close();
 }
 
 test "profile editor can clear a bio without losing other fields" {
@@ -415,7 +412,7 @@ test "profile editor can clear a bio without losing other fields" {
     assert profile["bio"] == "";
     assert profile["display_name"] == "Bio Editor";
     assert profile["location"] == "New York";
-    close_client(client);
+    client.close();
 }
 
 test "post validation is enforced for non-UI callers" {
@@ -427,7 +424,7 @@ test "post validation is enforced for non-UI callers" {
     assert first_report(client.post("/walker/load_feed", json={})) == [];
     client.post("/walker/create_tweet", json={"content": "x" * 280});
     assert len(first_report(client.post("/walker/load_feed", json={}))) == 1;
-    close_client(client);
+    client.close();
 }
 
 test "posts comments and channel posts use the same account quota before mutation" {
@@ -474,11 +471,6 @@ test "daily quota denies after burst check and database failures deny posting" {
 
 impl make_client -> JacTestClient {
     return JacTestClient.from_file(SERVER, base_path=mkdtemp());
-}
-
-impl close_client(client: JacTestClient) {
-    client.close();
-    JacRuntime.set_shared_root_resolver(None);
 }
 
 impl login_as(client: JacTestClient, username: str, password: str) {

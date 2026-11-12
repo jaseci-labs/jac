@@ -11,6 +11,7 @@ import from types { SimpleNamespace }
 
 import from tempfile { mkdtemp }
 import shutil;
+import yaml;
 
 with entry {
     require_flag(
@@ -100,6 +101,49 @@ test "deployment target methods" {
         f"Expected UNKNOWN status for undeployed app '{app_name}', got {status.status}"
     );
 }
+
+# A bundle PVC a destroy left Terminating, held there by a leftover loader (#10668).
+glob _HELD_BUNDLE: str = """
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata: {name: held-bundles}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 64Mi}}}
+---
+kind: Pod
+apiVersion: v1
+metadata: {name: held-bundle-loader}
+spec:
+  containers: [{name: hold, image: "registry.k8s.io/pause:3.10"}]
+  volumes: [{name: b, persistentVolumeClaim: {claimName: held-bundles}}]
+""";
+
+
+test "a redeploy replaces a bundle PVC held terminating by a leftover loader" {
+    config.load_kube_config();
+    core_v1: any = client.CoreV1Api();
+    (ns, (pvc, loader)) = ("pvc-terminating", list(yaml.safe_load_all(_HELD_BUNDLE)));
+    core_v1.create_namespace({"metadata": {"name": ns}});
+    try {
+        core_v1.create_namespaced_persistent_volume_claim(ns, pvc);
+        core_v1.create_namespaced_pod(ns, loader);
+        wait_for_pod_phase(core_v1, ns, "held-bundle-loader", {"Running"});
+        uid = lambda -> str { return core_v1.read_namespaced_persistent_volume_claim(
+            "held-bundles", ns
+        ).metadata.uid; };
+        old_uid = uid();
+        core_v1.delete_namespaced_persistent_volume_claim("held-bundles", ns);
+        cfg = get_scale_config().get_kubernetes_config()
+            | {"app_name": "held", "namespace": ns};
+        target: any = DeploymentTargetFactory.create(
+            "kubernetes", cfg, UtilityFactory.create_logger("standard")
+        );
+        target._apply_or_replace_pvc(core_v1, ns, pvc);
+        assert uid() != old_uid , "the redeploy kept the Terminating PVC";
+    } finally {
+        core_v1.delete_namespace(ns);
+    }
+}
+
 
 def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> any {
     scale_config = get_scale_config();
