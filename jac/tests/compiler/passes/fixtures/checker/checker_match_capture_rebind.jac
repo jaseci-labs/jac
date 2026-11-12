@@ -57,4 +57,9 @@ def unchecked(v: str | int | None, xs: list[int] | int) {
             print(fresh);
 
     }
+    match v {
+        case "s" | int() as n:
+            print(n);
+
+    }
 }

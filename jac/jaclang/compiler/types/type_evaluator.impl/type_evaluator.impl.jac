@@ -6228,13 +6228,12 @@ impl TypeEvaluator._get_type_from_match_pattern(
         pattern_types: list[TypeBase] = [];
         for sub_pattern in pattern.patterns {
             sub_type = self._get_type_from_match_pattern(sub_pattern);
-            if sub_type is not None {
-                pattern_types.append(sub_type);
+            if sub_type is None {
+                return None;
             }
+            pattern_types.append(sub_type);
         }
-        if len(pattern_types) == 0 {
-            return None;
-        } elif len(pattern_types) == 1 {
+        if len(pattern_types) == 1 {
             return pattern_types[0];
         } else {
             return UnionType(types=pattern_types);
