@@ -5226,9 +5226,6 @@ impl NativeBuiltinEmitter.emit_round(
     p = ctx.pass_ref;
     b = get_builder(p);
     arg_val = args[0];
-    if arg_val.type == ir.IntType(1) {
-        arg_val = p._widen_list_int(arg_val, True);
-    }
     i64 = ir.IntType(64);
     f64 = ir.DoubleType();
 
@@ -5239,7 +5236,7 @@ impl NativeBuiltinEmitter.emit_round(
             return b.fptosi(rounded, i64, name="round.result");
         }
         if isinstance(arg_val.type, ir.IntType) {
-            return arg_val;
+            return p._coerce_type(arg_val, i64);
         }
         return None;
     }
@@ -5249,7 +5246,7 @@ impl NativeBuiltinEmitter.emit_round(
     }
     if isinstance(arg_val.type, ir.IntType) {
         if isinstance(digits, ir.Constant) and int(digits.constant) >= 0 {
-            return arg_val;
+            return p._coerce_type(arg_val, i64);
         }
         return None;
     }
@@ -5761,7 +5758,8 @@ impl NativeBuiltinEmitter.emit_divmod(
     a = args[0];
     v = args[1];
     if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
-        (a, v) = p._unify_int_widths(a, v);
+        a = p._coerce_type(a, i64);
+        v = p._coerce_type(v, i64);
         izero = ir.Constant(i64, 0);
         is_zero = b.icmp_signed("==", v, izero, name="divmod.zero.chk");
         p._emit_runtime_raise(
