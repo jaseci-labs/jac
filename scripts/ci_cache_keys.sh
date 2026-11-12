@@ -39,21 +39,10 @@ emit() {
 }
 
 compiler_tree | emit compiler
-{
-  tree jac/bootstrap/build_python.zig jac/bootstrap/seed.zig jac/bootstrap/python
-  compiler_tree
-  tree jac/jaclang/vendor/typeshed/PIN jac/jaclang/vendor/typeshed/TARBALL_SHA256 \
-    jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
-} | emit python
+# The prebuilt CPython tree: its pin and the seed that fetches it.
+tree jac/bootstrap/fetch_pbs.zig jac/bootstrap/seed.zig jac/bootstrap/pins.json |
+  emit python
 tree jac/jaclang | emit payload
-# A lowered jacpython.o: its Jac sources, the compiler that lowers them, the
-# bootstrap and generators that drive the lowering, and the shim. The adopting
-# build refuses an object from other inputs, so this key may over-invalidate
-# but must never under-invalidate.
-tree jac/jaclang jac/bootstrap jac/native jac/build.zig jac/build.zig.zon \
-  scripts/jacpython | emit jacpython_object
-tree jac/jaclang jac/native jac/build.zig jac/build.zig.zon \
-  jac/bootstrap/pins.json jac/_jac_finder.py jac.toml | emit kernel
 tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/native jac/_jac_finder.py jac/sitecustomize.py jac/examples/jaclang_org \
   jac/examples/tiny_jacyac \

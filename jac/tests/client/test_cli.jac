@@ -1310,6 +1310,47 @@ test "vite config generation" {
 }
 
 """rollupOptions overrides land inside the built-in block instead of replacing it."""
+test "the vite manifest is written only when every chunk name carries its hash" {
+    import from jaclang.client.vite_bundler { ViteBundler }
+
+    def build_block(toml_content: str) -> str {
+        with tempfile.TemporaryDirectory() as temp_dir {
+            original_cwd = os.getcwd();
+            try {
+                os.chdir(temp_dir);
+                Path(temp_dir, "jac.toml").write_text(toml_content);
+                entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+                entry_file.parent.mkdir(parents=True, exist_ok=True);
+                entry_file.write_text("// Mock entry file");
+                content = ViteBundler(Path(temp_dir)).create_vite_config(
+                    entry_file
+                ).read_text();
+                return content[content.index("build: {"):content.index("publicDir:")];
+            } finally {
+                os.chdir(original_cwd);
+            }
+        }
+    }
+
+    assert "manifest: true" in build_block('[project]\nname = "app"\n');
+    hashed = build_block(
+        '\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name]-[hash].js"\n'
+    );
+    assert "manifest: true" in hashed;
+    sized = build_block(
+        '\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name]-[hash:12].js"\n'
+    );
+    assert "manifest: true" in sized , "a length-qualified [hash:N] is still a content hash";
+    plain = build_block(
+        '\n[client.vite.build]\nmanifest = true\n\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name].js"\n'
+    );
+    assert "manifest" not in plain , (
+        "a chunk name without [hash] must not get a manifest the gateway would trust: "
+        + plain
+    );
+}
+
+
 test "vite build rollupOptions overrides are merged" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();

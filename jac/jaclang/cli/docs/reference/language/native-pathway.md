@@ -1163,9 +1163,9 @@ initializer, demoted symbols, C library needs, direct native dependencies;
 digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
 relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
 are keyed by the module's content key plus a stamp of the compiler digest,
-codegen identity and target triple in their own header, so a module the
-compiler runs as bytecode and the kernel links as a native unit keeps both
-products in one entry. Dependents record each native dependency's interface
+codegen identity and target triple in their own header, so a module that
+runs as bytecode and links as a native unit keeps both products in one
+entry. Dependents record each native dependency's interface
 digest in `SEC_NDEPS`; a body edit rebuilds one object, an interface edit
 rebuilds the dependents.
 
@@ -1184,8 +1184,7 @@ Every native artifact is produced by one link plan
 (`compiler/backends/native/link_plan.jac`; the design and its reasons are
 recorded in the [Native Units](../../internals/native-units.md) internals
 page). It resolves roots (an entry
-module, the kernel root `jc_unit`, or every native unit of a sealed
-package), walks the native edges recorded in `SEC_NDEPS` dependencies
+module, or every native unit of a sealed package), walks the native edges recorded in `SEC_NDEPS` dependencies
 first, analyzes stale units in an owned compiler session and reuses those
 analyzed trees while settling cycles, checks that every unit's recorded
 dependency digests agree with the plan and recompiles affected strongly connected
@@ -1194,39 +1193,13 @@ glue object holding `jac_entry` / `__jac_shared_init`, the platform entry
 point and the `jac_retain` / `jac_release` / `jac_str_new` wrappers (each
 wrapper only when a unit defines its target), and links. Two modes read different
 sections of the same entries: `objects`, the incremental default, links the
-units' relocatable objects (sealed images link the compiler kernel this
-way); `bitcode` links every unit's bitcode into one LLVM module, optimizes
+units' relocatable objects (sealed packages link this way); `bitcode` links every unit's bitcode into one LLVM module, optimizes
 it whole-program and splits it into one partition per emit job for code
 generation (what the in-process JIT, PE and wasm targets use).
 Select it per build with `jac build --native --link-mode bitcode` or
 `[native] link_mode = "bitcode"` in `jac.toml`. The plan writes a digest over every unit's
 keys and stamps beside the artifact and into the `<lib>.layout.json`
 sidecar, which is the merge of the units' class layouts.
-
-### The native scope and the kernel
-
-The compiler modules the kernel links are listed in
-`jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`); they are native units
-and bytecode units at once, and the kernel root (`jc_unit`) is native only.
-Whether a compile treats the scope as native is `CompileOptions.native_unit`,
-set by the link plan for the compiles it requests; there is no process-global
-mode flag. The kernel comes from one lookup, `resolve_kernel()`
-(`compiler/backends/native/kernel_resolve.jac`), with a fixed precedence:
-a sealed image's `native` record (artifact, sha256, layout
-and plan digests; missing or mismatched is a startup error), which no setting
-displaces, then, in a checkout, `JAC_COMPILER_LIB` as a path (must carry its
-sidecar) or `off` (the store parser, set by a kernel build for its own
-processes and for a kernel-free development loop), then the
-kernel beside `native_compiler.jac` when the source key its sidecar records
-(the compiler digest plus the module key of every unit it was linked from)
-equals the one the sources have now, otherwise a rebuild through the plan in
-a child `jac` process under a lock with the store parser serving meanwhile,
-and finally the store parser when there is no native toolchain. `zig build
--Ddev` needs no kernel step: the first parse derives it, and accepting an
-existing kernel costs one content hash per unit and no plan. A demotion inside a scoped module is routing,
-recorded in the module's own JIR, never a refusal. The historical
-`JAC_NO_SEAL` override is gone; setting it against a sealed image is itself a
-startup error.
 
 Toolchain location variables are read through the same boundary module, never inside passes: `JAC_LLVM_SHIM`, `JAC_LLVM_TYPED_POINTERS` (with `LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS` honored as a fallback), `JAC_NATIVE_WASM_LIBC_DIR`, `JAC_NATIVE_MUSL_DIR`, `JAC_NATIVE_FLOOR_DIR`, `JAC_NATIVE_CA_BUNDLE`.
 

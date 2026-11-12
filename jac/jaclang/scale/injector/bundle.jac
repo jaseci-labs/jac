@@ -44,6 +44,8 @@ glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
 glob _CLIENT_DIST: tuple[str, ...] = (".jac", "client", "dist");
 
+glob BAKED_CLIENT_INDEX: str = ".jac/client/dist/index.html";
+
 glob _BUNDLE_REQUIRED: tuple[tuple[str, ...], ...] = (
          _CLIENT_DIST,
          (".jac", "admin")
@@ -201,7 +203,8 @@ def _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None
+    seed: (Path | None) = None,
+    bake_client: bool = False
 ) -> Path;
 
 
@@ -212,6 +215,9 @@ def fat_bundle_enabled(project_dir: str) -> bool;
 
 
 def seal_timeout_setting(project_dir: str) -> int;
+
+
+def seal_cache_setting(project_dir: str) -> (Path | None);
 
 
 def _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "");
@@ -249,7 +255,8 @@ def seal_input_digest(
     app_name: str,
     sanitized: (str | None),
     fat: bool,
-    tomls: dict[str, str]
+    tomls: dict[str, str],
+    bake_client: bool = False
 ) -> str;
 
 
@@ -284,13 +291,18 @@ def _latest_seal(base: Path) -> (Path | None);
 def _seed_precompiled(stage: Path, seed: (Path | None)) -> int;
 
 
-def _cached_seal(base: Path, key: str) -> (bytes | None);
+def _cached_seal(cache: Path, key: str) -> (bytes | None);
 
 
 def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
-def _remember_seal(base: Path, key: str, raw: bytes);
+def _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool;
+
+
+def _remember_seal(
+    cache: Path, key: str, raw: bytes, keep: int = SEAL_CACHE_KEEP, mode: int = 0o600
+);
 
 
 def pack_jab(
@@ -298,7 +310,8 @@ def pack_jab(
     seal_binary: bytes,
     pod_arch: str = "",
     fleet: any = None,
-    client_ready: any = None
+    client_ready: any = None,
+    bake_client: bool = False
 ) -> bytes;
 
 
