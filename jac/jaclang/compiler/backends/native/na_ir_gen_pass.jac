@@ -3244,6 +3244,14 @@ walker NaIRGenPass(CompilerPass) {
         sized: bool = True
     ) -> (ir.Value | None);
 
+    def _compute_aug_value(
+        nd: uni.Assignment,
+        target_expr: uni.Expr,
+        current: ir.Value,
+        rhs: ir.Value,
+        inplace_slot: (ir.Value | None)
+    ) -> tuple[(ir.Value | None), bool, bool];
+
     def _try_flow_for_parallel(nd: uni.InForStmt) -> bool;
     def _na_chunks_shape(expr: object) -> (tuple[uni.Expr, uni.Expr] | None);
     def _try_chunked_for(nd: uni.InForStmt) -> bool;
@@ -3625,7 +3633,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _widen_list_int(value: ir.Value, unsigned: bool) -> ir.Value;
-    def _seq_imul(seq: ir.Value, count: ir.Value) -> (ir.Value | None);
     def _emit_dict_eq(
         left: ir.Value, right: ir.Value, dict_key: str, val_ty: (TypeBase | None)
     ) -> (ir.Value | None);
