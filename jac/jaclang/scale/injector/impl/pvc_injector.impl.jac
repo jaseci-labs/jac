@@ -2,6 +2,10 @@ impl bundle_pvc_name(app_name: str) -> str {
     return f"{app_name}-bundles";
 }
 
+impl bundle_loader_pod_name(app_name: str) -> str {
+    return f"{app_name}-bundle-loader";
+}
+
 impl bundle_pvc_path(object_key: str) -> str {
     return f"{BUNDLE_MOUNT_PATH}/{object_key}";
 }
@@ -248,7 +252,8 @@ impl PvcInjector.prepare(app_name: str, namespace: str, project_dir: str) {
         getattr(self, "_seal_binary_bytes", b""),
         getattr(self, "_pod_arch", ""),
         self._fleet,
-        self._client_ready
+        self._client_ready,
+        self._bake_client
     );
     digest = content_address(raw);
     self._object_key = bundle_object_key(app_name, digest);
@@ -273,7 +278,7 @@ impl PvcInjector.seed(
 
     core_v1 = client.CoreV1Api();
     pvc_name = bundle_pvc_name(app_name);
-    loader_pod = f"{app_name}-bundle-loader";
+    loader_pod = bundle_loader_pod_name(app_name);
 
     pod_body = build_loader_pod(loader_pod, pvc_name, self.loader_image);
     try {

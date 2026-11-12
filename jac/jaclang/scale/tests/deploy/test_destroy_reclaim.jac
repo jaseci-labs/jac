@@ -220,6 +220,8 @@ test "a namespace this app created but no longer holds alone is kept" {
         "the shared-namespace path did not run, so this app's own database "
         "was left behind instead"
     );
+    assert bundle_loader_pod_name(APP)
+        in [call.args[0] for call in core_v1.delete_namespaced_pod.call_args_list] , "a leftover bundle loader holds the PVC destroy deleted in Terminating";
 }
 
 
@@ -556,4 +558,29 @@ test "only the target's cluster loader reads a kubeconfig under deploy" {
         "a kubeconfig load outside _load_cluster_config repoints the process-wide "
         f"client at whatever the ambient context names: {offenders}"
     );
+}
+
+
+test "a redeploy reuses a live bundle PVC and replaces a terminating one" {
+    live = SimpleNamespace(metadata=SimpleNamespace(deletion_timestamp=None));
+    dying = SimpleNamespace(
+        metadata=SimpleNamespace(deletion_timestamp="2026-11-09T07:44:44Z")
+    );
+    for (reads, recreated) in [
+        ([live], False),
+        ([dying, dying, ApiException(status=404)], True)
+    ] {
+        core_v1 = unittest.mock.MagicMock();
+        core_v1.read_namespaced_persistent_volume_claim.side_effect = reads;
+        with unittest.mock.patch("time.sleep") {
+            target_mod.KubernetesTarget(
+                config=KubernetesConfig(app_name=APP, namespace=NS), gateway_config={}
+            )._apply_or_replace_pvc(
+                core_v1, NS, {"metadata": {"name": bundle_pvc_name(APP)}}
+            );
+        }
+        assert core_v1.read_namespaced_persistent_volume_claim.call_count
+            == len(reads) , "the redeploy stopped reading before the PVC was gone";
+        assert core_v1.create_namespaced_persistent_volume_claim.called == recreated;
+    }
 }

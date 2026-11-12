@@ -851,6 +851,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "default": ["/health", "/healthz", "/metrics"],
                                 "description": "Paths that bypass rate limiting entirely (monitoring + probes)."
                             },
+                            "client_error_rpm": {
+                                "type": "int",
+                                "default": 20,
+                                "description": "Client error reports (POST /cl/__error__) per minute per client IP, answered with 429 and Retry-After past the limit before they reach a service. Applies even when `enabled` is false. 0 disables it. In a cluster the gateway applies it only with the ingress in [serve.proxy] trusted; otherwise it skips the limit and the services limit each client."
+                            },
 
                         }
                     },
@@ -1365,6 +1370,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                 "type": "int",
                 "default": None,
                 "description": "Seconds to wait for the code bundle to seal before deploy fails"
+            },
+            "seal_cache": {
+                "type": "string",
+                "default": None,
+                "description": "Shared directory of sealed bundles a deploy reuses and fills (path relative to the project or absolute); JAC_SEAL_CACHE overrides it"
             }
         }
     };

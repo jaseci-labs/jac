@@ -21,5 +21,3 @@ def mounts_dir(build_dir: Path) -> Path;
 
 
 def package_exports(project_root: str) -> list[str];
-
-def is_exported(module: str, exports: list[str]) -> bool;
