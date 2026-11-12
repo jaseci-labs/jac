@@ -42,9 +42,7 @@ test "osarch names a triple the way the build trees do" {
 test "the checkout's C floor resolves per arch, never across arches" {
     repo = tempfile.mkdtemp();
     x86 = _mk(
-        os.path.join(
-            repo, ".python-build", "jacpython", "linux-x86_64", "python", "build", "lib"
-        )
+        os.path.join(repo, ".pbs-build", "linux-x86_64", "python", "build", "lib")
     );
     _touch(os.path.join(x86, "libssl.a"));
     with patch.object(floors, "_repo_root", return_value=repo), _unsealed() {
@@ -124,15 +122,7 @@ test "static linking asks the router for the target's floors" {
     }
     repo = tempfile.mkdtemp();
     lib = _mk(
-        os.path.join(
-            repo,
-            ".python-build",
-            "jacpython",
-            "linux-aarch64",
-            "python",
-            "build",
-            "lib"
-        )
+        os.path.join(repo, ".pbs-build", "linux-aarch64", "python", "build", "lib")
     );
     _touch(os.path.join(lib, "libssl.a"));
     musl = _mk(os.path.join(repo, ".pbs-build", "linux-aarch64", "musl", "lib"));

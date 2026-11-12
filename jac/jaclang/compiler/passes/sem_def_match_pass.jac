@@ -1,5 +1,5 @@
 walker SemDefMatchPass(CompilerPass) {
-    static has contract: PassContract = PassContract(kernel_safe=True);
+    static has contract: PassContract = PassContract();
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

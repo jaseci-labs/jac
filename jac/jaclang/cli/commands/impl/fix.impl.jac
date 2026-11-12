@@ -1383,7 +1383,8 @@ impl _report_invalid_manifest(paths: list[str]) -> bool {
         try {
             JacConfig.load(manifest);
         } except ValueError as exc {
-            console.error(f"jac.toml is invalid: {exc}", hint=f"File: {manifest}");
+            detail = "\n  ".join(str(exc).splitlines());
+            console.error(f"jac.toml is invalid: {detail}", hint=f"File: {manifest}");
             return True;
         }
     }

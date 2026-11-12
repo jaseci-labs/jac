@@ -40,7 +40,7 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
-          - os: macos-14
+          - os: macos-15
             platform: macos-aarch64
           # Mirrors `optional` in build-binaries.yml's LEGS: while the Intel
           # binary aborts on `jac --version` (#8805) that leg is non-blocking
