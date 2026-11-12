@@ -663,7 +663,10 @@ impl _prepare_revision(
     inventory_root = `root
         if client
         else os.path.join(os.path.dirname(`entry), 'pages');
-    slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
+    retain = bool(program.options.retain_interfaces);
+    slot = hashlib.sha256(
+        repr((`entry, entries, client, dev) + (("retain", ) if retain else ())).encode()
+    ).hexdigest()[:20];
     cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
     candidate: any = None;
     try {
@@ -697,7 +700,8 @@ impl _prepare_revision(
         client,
         dev
     )
-        + ((tuple(client_build_env()), ) if client else ());
+        + ((tuple(client_build_env()), ) if client else ())
+        + (("retain", ) if retain else ());
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev
