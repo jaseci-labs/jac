@@ -103,12 +103,12 @@ test "callable-in-any: a call with no native signature is refused with a hint" {
     assert out.count("keywords or extra arguments would be lost") == 2 , out[-1500:];
 }
 
-test "callable-in-any: a class or instance raises TypeError and a boxed closure is released" {
+test "callable-in-any: a class or instance raises TypeError, a boxed function keeps its identity, and a boxed closure is released" {
     out_bin = os.path.join(tempfile.mkdtemp(), "any_callable");
     native_build(str(FIXTURES / "any_callable.jac"), out_bin, extra=["--debug"]);
     out = native_run(out_bin);
     err = "TypeError: only a function stored in `any` can be called natively through a Callable\n";
-    assert out.startswith(err * 2 + "1275\n") , out[:400];
+    assert out.startswith(err * 2 + "1275\nTrue False False\n") , out[:400];
     assert "RC LIVE OBJECTS at exit" in out , out[-400:];
     assert "<- LEAK" not in out , out[-1500:];
 }

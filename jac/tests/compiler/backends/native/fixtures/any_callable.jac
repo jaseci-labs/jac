@@ -21,6 +21,19 @@ def call_each {
     }
 }
 
+def boxed_identity {
+    def inc(x: int) -> int {
+        return x + 1;
+    }
+    def dec(x: int) -> int {
+        return x - 1;
+    }
+    a: any = inc;
+    b: any = inc;
+    c: any = dec;
+    print(a is b, a is c, a is not b);
+}
+
 def run -> int {
     total = 0;
     for i in range(50) {
@@ -33,6 +46,7 @@ def run -> int {
 with entry {
     call_each();
     print(run());
+    boxed_identity();
     __rc_collect_cycles();
     __rc_debug_enable();
 }

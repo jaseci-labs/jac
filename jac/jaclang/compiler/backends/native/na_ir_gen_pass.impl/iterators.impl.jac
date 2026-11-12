@@ -73,11 +73,12 @@ impl NaIRGenPass._alloc_iter_struct(name: str) -> ir.Value {
         dtor_i64 = self.builder.ptrtoint(dtor, i64, name="it.dtor.i64");
         self.builder.store(dtor_i64, dtor_slot_p);
     }
-    if name in self.closure_sig_registry and not self._nogc_headerless() {
+    if (name in self.closure_sig_registry or name == "JacFnIdentity")
+        and not self._nogc_headerless() {
         self._emit_set_type_tag(
             self.builder,
             self.builder.bitcast(it_obj, i8p, name="it.clos.i8"),
-            "JacClosure"
+            "JacClosure" if name in self.closure_sig_registry else name
         );
     }
     return it_obj;
