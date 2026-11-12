@@ -367,3 +367,78 @@ test "`[test] directories` collects every named root and nothing else" {
         f"both declared roots must run and gamma/ must not; got exit {rc}"
     );
 }
+
+
+"""Create a project where `b` imports `a`, and `a`'s own test annex fails.
+`c`'s test annex sits in the shared `test/` folder. Returns the project root."""
+def make_isolation_project -> str {
+    proj = tempfile.mkdtemp(prefix="jac10493-");
+    base = Path(proj);
+    (base / "jac.toml").write_text('[project]\nname = "isorepro"\n');
+    (base / "a.jac").write_text('def f() -> int {\n    return 1;\n}\n');
+    (base / "a.test.jac").write_text(
+        'test "a_own_test_deliberately_fails" {\n    assert f() == 2;\n}\n'
+    );
+    (base / "b.jac").write_text(
+        'import from a { f }\n\ndef g() -> int {\n    return f();\n}\n\n'
+        'test "b_inline_test" {\n    assert g() == 1;\n}\n'
+    );
+    (base / "b.test.jac").write_text(
+        'test "b_own_test_passes" {\n    assert g() == 1;\n}\n'
+    );
+    (base / "c.jac").write_text(
+        'import from a { f }\n\ndef h() -> int {\n    return f() + 1;\n}\n'
+    );
+    (base / "test").mkdir();
+    (base / "test" / "c.test.jac").write_text(
+        'test "c_folder_annex_test" {\n    assert h() == 2;\n}\n'
+    );
+    return proj;
+}
+
+
+test "a suite runs its own tests, not the tests of the modules it imports" {
+    import from jaclang.testing.test_runner { run_file, PASSED, FAILED }
+    proj = make_isolation_project();
+    old = os.getcwd();
+    try {
+        os.chdir(proj);
+        reset_config();
+        outcomes = {
+            rel: sorted(
+                [(o.name, o.status) for o in run_file(os.path.join(proj, rel))]
+            )
+            for rel in ["b.test.jac", "a.test.jac", os.path.join("test", "c.test.jac")]
+        };
+    } finally {
+        os.chdir(old);
+        reset_config();
+    }
+    try {
+        assert outcomes["b.test.jac"]
+            == [("b_inline_test", PASSED), ("b_own_test_passes", PASSED)] , outcomes;
+        assert outcomes["a.test.jac"]
+            == [("a_own_test_deliberately_fails", FAILED)] , outcomes;
+        assert outcomes[os.path.join("test", "c.test.jac")]
+            == [("c_folder_annex_test", PASSED)] , outcomes;
+        jac_test = getattr(analysis_cmds, "test");
+        had_jobs = os.environ.get("JAC_TEST_JOBS");
+        os.environ["JAC_TEST_JOBS"] = "0";
+        os.chdir(proj);
+        reset_config();
+        try {
+            rc = int(jac_test(target="b.test.jac"));
+        } finally {
+            os.chdir(old);
+            reset_config();
+            if had_jobs is None {
+                os.environ.pop("JAC_TEST_JOBS", None);
+            } else {
+                os.environ["JAC_TEST_JOBS"] = had_jobs;
+            }
+        }
+        assert rc == 0 , f"jac test b.test.jac ran a.test.jac's failing test: exit {rc}";
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+}

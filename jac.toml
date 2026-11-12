@@ -55,14 +55,6 @@ serial = [
     "jac/jaclang/scale/tests/data/test_firebase_env.jac",
 ]
 
-# JacPython is a native-only library in checks, builds and cached imports.
-[native]
-require = [
-    "jaclang.compiler.frontend.python.*",
-    "jaclang.compiler.backends.py.jacpython.*",
-    "jaclang.runtime.python.*",
-]
-
 [check]
 # Modules excluded from the `jac check` gate. `jac check` reads this list, so
 # CI, the precommit hook and a local run all apply the same policy; --ignore
@@ -82,21 +74,9 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
-    # js_engine is a separate native project with its own jac.toml; its
-    # regression suite and test262 gate it, not this check.
-    "jac/js_engine/*",
-
-    # JacPython: the CPython runtime port, its compiler backend and its
-    # generators. About 80% of this check's time on a 4 vCPU runner (122 of
-    # 188 worker-minutes in the runtime port alone); its own test suites gate it.
-    "jac/jaclang/runtime/python/*",
-    "jac/jaclang/compiler/backends/py/jacpython/*",
-    "scripts/jacpython/*",
-
     # Examples and benchmarks are not shipped compiler or runtime code.
     "jac/examples/*",
     "scripts/bench*",
-    "scripts/native_compile_bench.jac",
 ]
 
 [check.lint]
@@ -112,9 +92,6 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
-    "jac/jaclang/compiler/frontend/python/*",
-    "jac/jaclang/compiler/backends/py/jacpython/*",
-    "jac/jaclang/runtime/python/*",
     # Ops scripts keep their usage docstrings; CI's fmt sweep skips ^scripts/
     # for the same reason -- this entry keeps the precommit hook consistent
     # with that (without it, any commit touching a script is blocked on deslop).

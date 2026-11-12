@@ -2,13 +2,6 @@ impl NativeUnitRegistry.postinit {
     self.building = set();
 }
 
-impl NativeUnitRegistry.begin_parse(path: str) {
-    if self.session is not None {
-        self.session.settle_heap();
-    }
-    self.note_step("parse", path);
-}
-
 impl NativeUnitRegistry.note_step(
     verb: str, path: str = "", detail: str = ""
 ) -> float {
@@ -129,12 +122,6 @@ impl NativeUnitRegistry._timed(name: str, started: float) {
     self._add_time(name, time.perf_counter() - started);
 }
 
-impl NativeUnitRegistry._timed_unit(name: str, path: str, started: float) {
-    elapsed = time.perf_counter() - started;
-    self._add_time(name, elapsed);
-    self.unit_lower_seconds[path] = self.unit_lower_seconds.get(path, 0.0) + elapsed;
-}
-
 impl NativeUnitRegistry.phase_summary -> str {
     times = self.prog.analysis.phase_time;
     events = self.prog.analysis.cache_events;
@@ -143,7 +130,7 @@ impl NativeUnitRegistry.phase_summary -> str {
         for phase in ("PARSE", "IR", "PLACEMENT", "ANALYSIS", "BOUNDARIES")
     );
     return (
-        f"  Kernel phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
+        f"  Native phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
         f"({frontend}), lowering {times.get('NATIVE_LOWER', 0.0):.1f}s, "
         f"optimize {times.get('NATIVE_OPTIMIZE', 0.0):.1f}s, "
         f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s, "
@@ -183,18 +170,8 @@ impl NativeUnitRegistry.stamp_for(
     return current_native_stamp(
         opts.unit_codegen_identity(path),
         opts.effective_triple(),
-        native_producer_digest(opts.kernel_build)
+        native_producer_digest()
     );
-}
-
-impl NativeUnitRegistry._carry(resolved: str, stamp: NativeStamp) -> bool {
-    carried = carried_native_sections(resolved, stamp.compiler_digest);
-    if not carried {
-        return False;
-    }
-    write_module_cache(resolved, None, extra_sections=carried);
-    self._event("native_carry");
-    return True;
 }
 
 impl NativeUnitRegistry._module_jir(
@@ -204,13 +181,6 @@ impl NativeUnitRegistry._module_jir(
         cache_path = get_module_cache_path(resolved);
         why = module_cache_invalid_reason(resolved, cache_path);
         data = b"" if why else read_jir(cache_path);
-        if stamp is not None
-            and native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
-                is None
-            and self._carry(resolved, stamp) {
-            why = module_cache_invalid_reason(resolved, cache_path);
-            data = b"" if why else read_jir(cache_path);
-        }
         if not why {
             return (data, "", );
         }
@@ -613,63 +583,6 @@ impl NativeUnitRegistry.compile_unit(
     }
 }
 
-impl NativeUnitRegistry.adopt_lowered(
-    path: str,
-    ir_text: str,
-    iface_text: str,
-    layout_json: str,
-    deps: list[str],
-    compile_deps: bytes,
-    options: (CompileOptions | None) = None
-) -> (NativeUnitEntry | None) {
-    import json;
-    opts = options if options is not None else self._options();
-    resolved = os.path.realpath(path);
-    iface = NativeIface.from_bytes(iface_text.encode("utf-8"));
-    if iface is None {
-        self.failures[resolved] = (
-            "the kernel returned a native interface that does not decode"
-        );
-        return None;
-    }
-    iface.resolve_deps(resolved);
-    fallbacks = native_fallbacks_in_ir(ir_text);
-    if opts.native_required_for(resolved) {
-        fallbacks.require();
-    }
-    if opts.debug_ir {
-        import from jaclang.compiler.frontend.host { active_host }
-        active_host().save_native_debug_ir(resolved, ir_text);
-    }
-    debug = bool(opts.native_debug);
-    bitcode = optimize_unit_ir(ir_text, opts, 0 if debug else int(opts.opt_level or 0));
-    carrier = self.prog.hub.artifacts.get(resolved);
-    if carrier is None {
-        carrier = CodeGenTarget();
-        self.prog.hub.artifacts[resolved] = carrier;
-    }
-    carrier.llvm_ir = ir_text;
-    carrier.native_fallbacks = fallbacks;
-    carrier.native_iface = iface;
-    carrier.native_bitcode = bitcode;
-    carrier.native_object = emit_unit_object(bitcode, opts) if debug else None;
-    carrier.native_layout = native_layout_from_dict(json.loads(layout_json))
-        if layout_json
-        else None;
-    carrier.native_deps = list(deps);
-    ent = self.record(
-        resolved,
-        iface,
-        opts,
-        dep_digests=self.dep_digests(list(deps)),
-        compile_deps=compile_deps
-    );
-    ent.bitcode = bitcode;
-    ent.object_bytes = carrier.native_object;
-    self.note_codegen(resolved, debug);
-    return ent;
-}
-
 impl NativeUnitRegistry._stash_products(resolved: str, gen: CodeGenTarget) {
     ent = self.entries.get(resolved);
     if ent is not None {
@@ -958,7 +871,7 @@ impl NativeBuildSession.lower(
                 pending = self.deferred.pop();
                 self.discovery_open.pop();
             }
-            self.registry._timed_unit("NATIVE_LOWER", resolved, started);
+            self.registry._timed("NATIVE_LOWER", started);
             if not pending {
                 break;
             }
@@ -995,12 +908,8 @@ impl NativeBuildSession.lower(
             }
             return None;
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            settle_unit_ir,
-            unit_function_counts
-        }
+        import from jaclang.compiler.backends.native.na_compile_pass { settle_unit_ir }
         settle_unit_ir(mod);
-        self.registry.unit_functions[resolved] = unit_function_counts(mod.gen.llvm_ir);
         self.lowered[resolved] = mod;
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
@@ -1008,10 +917,6 @@ impl NativeBuildSession.lower(
             self.compact_ir([resolved]);
         }
         self.settle_heap();
-        self.registry.lowered_units += 1;
-        if 0 < self.registry.stop_after <= self.registry.lowered_units {
-            raise NativeBuildStopped();
-        }
         return ent;
     } except Exception {
         import traceback;
