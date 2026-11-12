@@ -181,6 +181,11 @@ impl _is_literal_form(operand: Expr) -> bool {
     return isinstance(head, Name) and head.value == "Literal";
 }
 
+impl _is_tuple_form(operand: Expr) -> bool {
+    return isinstance(operand, TupleVal)
+        and in_type_position(operand, include_subscripts=False);
+}
+
 impl get_type_of_binary_operation(
     evaluator: TypeEvaluator, expr: BinaryExpr
 ) -> TypeBase {
@@ -291,10 +296,15 @@ impl get_type_of_binary_operation(
 
     if (isinstance(expr.op, Token) and (expr.op.name in BINARY_OPERATOR_MAP)) {
         if expr.op.name == Tok.BW_OR {
-            if (is_annotation_type(evaluator, left_type) or _is_literal_form(expr.left))
+            if (
+                is_annotation_type(evaluator, left_type)
+                or _is_literal_form(expr.left)
+                or _is_tuple_form(expr.left)
+            )
                 and (
                     is_annotation_type(evaluator, right_type)
                     or _is_literal_form(expr.right)
+                    or _is_tuple_form(expr.right)
                 ) {
                 return UnionType(
                     types=[

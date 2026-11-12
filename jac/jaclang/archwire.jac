@@ -3634,7 +3634,7 @@ graph import byllm {
     _optdeps.openai ++> llm { AsyncOpenAI, OpenAI, openai }
     _optdeps.pillow ++> types { PILImageCls, open_image }
     _optdeps.pydantic ++> [
-        llm { from_json },
+        llm { TypeAdapter, from_json },
         schema | types { TypeAdapter },
     ]
     config_loader ++> llm | mtir { get_byllm_config }
