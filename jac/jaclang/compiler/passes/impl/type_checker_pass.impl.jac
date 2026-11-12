@@ -2202,7 +2202,7 @@ impl TypeCheckPass._is_exception_class_operand(
             self._is_exception_class_operand(c, allow_tuple) for c in ty.constraints
         );
     }
-    if isinstance(ty, (FunctionType, OverloadedType, ModuleType)) {
+    if isinstance(ty, (FunctionType, OverloadedType, ModuleType, EnumMemberType)) {
         return False;
     }
     if self.evaluator.is_any_type(ty) or not isinstance(ty, ClassType) {

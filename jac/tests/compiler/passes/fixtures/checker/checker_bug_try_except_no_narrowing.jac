@@ -203,3 +203,11 @@ def catch_type_param_in_tuple[T: Exception](e: T) {
         raise ValueError("q");
     } except (KeyError, T) {}  # <-- E1163
 }
+
+enum Signal { STOP }
+
+def catch_enum_member {
+    try {
+        raise ValueError("m");
+    } except Signal.STOP {}  # <-- E1164
+}

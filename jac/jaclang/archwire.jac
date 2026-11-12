@@ -10711,6 +10711,7 @@ graph import compiler {
         passes.type_checker_pass {
             AnyType,
             ClassType,
+            EnumMemberType,
             FunctionType,
             ModuleType,
             NeverType,
