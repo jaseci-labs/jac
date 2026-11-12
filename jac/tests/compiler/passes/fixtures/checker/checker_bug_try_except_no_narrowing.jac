@@ -211,3 +211,15 @@ def catch_enum_member {
         raise ValueError("m");
     } except Signal.STOP {}  # <-- E1164
 }
+
+def catch_optional_exception_class(err_cls: type[ValueError] | None) {
+    try {
+        raise ValueError("v");
+    } except err_cls {}
+}
+
+def catch_none_only(err_cls: None) {
+    try {
+        raise ValueError("w");
+    } except err_cls {}  # <-- E1164
+}
