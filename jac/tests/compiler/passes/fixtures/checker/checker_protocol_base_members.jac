@@ -28,6 +28,8 @@ def leaked(text: str, pair: tuple[int, int]) {
     pair.__or__(None);
     a = text | None;
     b = pair | None;
+    c = as_int | None;
+    d = None | same;
 }
 
 with entry {

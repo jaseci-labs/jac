@@ -163,6 +163,13 @@ impl is_annotation_type(evaluator: TypeEvaluator, ty: TypeBase) -> bool {
     return False;
 }
 
+impl _is_plain_value(t: TypeBase) -> bool {
+    if isinstance(t, FunctionType) {
+        return not t.is_from_callable_annotation();
+    }
+    return t.is_class_instance() or isinstance(t, (OverloadedType, ModuleType));
+}
+
 impl _is_literal_form(operand: Expr) -> bool {
     if not isinstance(operand, AtomTrailer) or operand.is_attr {
         return False;
@@ -343,8 +350,8 @@ impl get_type_of_binary_operation(
         if result is None {
             if expr.op.name == Tok.BW_OR
                 and not (
-                    left_type.is_class_instance()
-                    and right_type.is_class_instance()
+                    _is_plain_value(left_type)
+                    and _is_plain_value(right_type)
                     and not in_type_position(expr)
                 ) {
                 return UnionType(types=[left_type, right_type]);

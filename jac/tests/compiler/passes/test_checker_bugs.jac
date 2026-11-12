@@ -2347,14 +2347,14 @@ test "bug_specialform_1_protocol_base_adds_no_members" {
         for e in program.errors_had
         if e.loc
     };
-    assert sorted(by_line) == [27, 28, 29, 30, 36] , (
+    assert sorted(by_line) == [27, 28, 29, 30, 31, 32, 38] , (
         "Bug #SPECIALFORM-1: only the deliberate misuses may fire. Got: "
         f"{[str(e) for e in program.errors_had]}"
     );
     assert "no attribute \"__ror__\"" in by_line[27] , by_line[27];
     assert "no attribute \"__or__\"" in by_line[28] , by_line[28];
-    assert "__or__" in by_line[29] and "__or__" in by_line[30] , by_line;
-    assert "SupportsInt" in by_line[36] , by_line[36];
+    assert all("__or__" in by_line[line] for line in [29, 30, 31, 32]) , by_line;
+    assert "SupportsInt" in by_line[38] , by_line[38];
 }
 
 # Bug #UNBOUND-1: `Cls.method` read as a value is a function taking the
