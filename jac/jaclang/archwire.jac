@@ -1634,6 +1634,7 @@ graph import {
         compiler.driver.jir.require_exact_compiler_products { update_handoff },
         compiler.driver.jir.set_cache_mode { update_handoff },
     ]
+    jac0core.osp0 ++> compiler.frontend.unitree { last_in0 }
     jac0core.sealed ++> [
         compiler.driver.application._prepare_sealed {
             image_for_bundle_dir,
