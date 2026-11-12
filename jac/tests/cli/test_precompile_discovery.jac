@@ -6,6 +6,9 @@ import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import jaclang.server.assembly;
 import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.compiler.driver.jir { get_module_cache_path }
+import json;
+import subprocess;
+import sys;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.prepared { forget }
 import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
@@ -128,5 +131,71 @@ test "a precompiled unit of a client-prepared stage looks up the module the prep
             }
             assert looked_up.resolve() in prepared , (name, str(looked_up));
         }
+    }
+}
+
+
+glob SEAL_PREPARE: str = """
+import json, sys
+from pathlib import Path
+from jaclang.dist.seal import build_serve_manifest
+from jaclang.server.sealed_serve import SERVE_MANIFEST_REL
+base = Path(sys.argv[1])
+manifest = build_serve_manifest(base / "main.jac", base)
+assert manifest is not None
+out = base / SERVE_MANIFEST_REL
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps(manifest))
+""",
+     PRECOMPILE_LOOKUP: str = """
+import json, sys
+from pathlib import Path
+from jaclang.compiler.driver.jir import get_module_cache_path, is_module_cache_valid, read_section_bytes, SEC_BYTECODE, SEC_DIAG, SEC_IFACE
+from jaclang.dist.precompile_bytecode import precompile_unit_context, sealable_sources
+base = sys.argv[1]
+missing = []
+units = sealable_sources(base)
+for source in units:
+    with precompile_unit_context(source, base, collect=False):
+        cached = get_module_cache_path(source)
+        if not (cached.is_file() and is_module_cache_valid(source, cached)):
+            missing.append(Path(source).name + ": no valid entry")
+            continue
+        data = cached.read_bytes()
+        for label, section in (("bytecode", SEC_BYTECODE), ("interface", SEC_IFACE), ("diagnostics", SEC_DIAG)):
+            if read_section_bytes(data, section) is None:
+                missing.append(Path(source).name + ": no " + label)
+print(json.dumps({"units": len(units), "missing": missing}))
+""";
+
+
+test "a stage the seal prepared hands precompile every unit's bytecode, interface and diagnostics" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "handoff"\nentry-point = "main"\n'
+        );
+        (base / '__init__.jac').write_text('');
+        (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'main.jac').write_text(
+            'import from helper { value }\ndef:pub read -> int { return value(); }\n'
+        );
+        prepared = subprocess.run(
+            [sys.executable, "-c", SEAL_PREPARE, str(base)],
+            capture_output=True,
+            text=True
+        );
+        assert prepared.returncode == 0 , prepared.stderr[-2000:];
+        looked_up = subprocess.run(
+            [sys.executable, "-c", PRECOMPILE_LOOKUP, str(base)],
+            capture_output=True,
+            text=True
+        );
+        assert looked_up.returncode == 0 , looked_up.stderr[-2000:];
+        found = json.loads(looked_up.stdout.strip().splitlines()[-1]);
+        assert found["units"] , found;
+        assert not found["missing"] , (
+            f"precompile would compile these units again: {found['missing']}"
+        );
     }
 }
