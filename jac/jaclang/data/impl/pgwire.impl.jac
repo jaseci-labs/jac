@@ -467,14 +467,22 @@ impl PgWireConnection.run(sql: str, **params: any) -> list[any] {
         }
     }
     stmt = name.encode('ascii') + b'\x00';
-    bind = b'\x00' + stmt + struct.pack(_INT16, 0) + struct.pack(_INT16, len(args));
+    bind: any = bytearray(
+        b'\x00' + stmt + struct.pack(_INT16, 0) + struct.pack(_INT16, len(args))
+    );
+    buffered = True;
     for a in args {
         enc = _encode_param(a);
         if enc is None {
-            bind += struct.pack(_INT32, -1);
+            chunk = struct.pack(_INT32, -1);
         } else {
-            bind += struct.pack(_INT32, len(enc)) + enc;
+            chunk = struct.pack(_INT32, len(enc)) + enc;
         }
+        if buffered and type(chunk) is not bytes {
+            bind = bytes(bind);
+            buffered = False;
+        }
+        bind += chunk;
     }
     bind += struct.pack(_INT16, 0);
     out = b''.join(
@@ -489,7 +497,7 @@ impl PgWireConnection.run(sql: str, **params: any) -> list[any] {
     sock: any = self._sock;
     sock.sendall(
         out
-            + _frame('B', bind)
+            + _frame('B', bytes(bind) if buffered else bind)
             + _frame('D', b'P\x00')
             + _frame('E', b'\x00' + struct.pack(_INT32, 0))
             + _frame('S', b'')
