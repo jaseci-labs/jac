@@ -613,7 +613,8 @@ test "serve call function with defaults" {
             "note": None,
             "hits": 1,
             "limit": "inf",
-            "grid": {"(1, 2)": "x"}
+            "grid": {"(1, 2)": "x"},
+            "unset": True
         };
         # The empty body runs twice: no call may see what another did to a default.
         for (body, changed) in [

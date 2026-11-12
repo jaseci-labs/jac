@@ -310,6 +310,14 @@ impl _extract_raw(
 }
 
 impl _fresh_default(value: any) -> any {
+    # Copy only values a handler can mutate and a later request would then
+    # see: containers and archetype instances. Anything else keeps its
+    # identity, so a sentinel default (`x = _UNSET`, compared with `is`)
+    # still matches the object the callee compares it against.
+    import from jaclang.runtime.archetype { Archetype }
+    if not isinstance(value, (dict, list, set, bytearray, Archetype)) {
+        return value;
+    }
     import copy;
     try {
         return copy.deepcopy(value);

@@ -97,6 +97,8 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
+glob _UNSET: object = object();
+
 obj EchoBox {
     has hits: int = 0;
 }
@@ -104,7 +106,8 @@ obj EchoBox {
 """Optional parameters of each kind, echoed so a caller sees what each received.
 
 `tags` and `box` are changed so a shared default would show up on the next call.
-`limit` and `grid` have no plain JSON form.
+`limit` and `grid` have no plain JSON form. `marker` is a sentinel, so it must
+reach the function as the same object, not a copy.
 """
 def:pub echo_defaults(
     count: int = 5,
@@ -115,7 +118,8 @@ def:pub echo_defaults(
     note: str | None = None,
     box: EchoBox = EchoBox(),
     limit: float = float("inf"),
-    grid: dict[tuple[int, int], str] = {(1, 2): "x"}
+    grid: dict[tuple[int, int], str] = {(1, 2): "x"},
+    marker: object = _UNSET
 ) -> dict[str, any] {
     tags.append("seen");
     box.hits += 1;
@@ -128,7 +132,8 @@ def:pub echo_defaults(
         "note": note,
         "hits": box.hits,
         "limit": limit,
-        "grid": grid
+        "grid": grid,
+        "unset": marker is _UNSET
     };
 }
 
