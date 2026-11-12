@@ -1775,6 +1775,51 @@ def _aug_assign__aug_assign_count_primes(eng: any, _ir: any) {
     assert f() == 29;  # 10th prime
 }
 
+def _aug_assign__list_iadd_alias(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_iadd_alias", ctypes.c_int64);
+    assert f() == 303 , "list += must mutate the list seen by existing aliases";
+}
+
+def _aug_assign__list_imul_alias(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_alias", ctypes.c_int64);
+    assert f() == 404 , "list *= must mutate the list seen by existing aliases";
+}
+
+def _aug_assign__list_imul_zero_reuse(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_zero_reuse", ctypes.c_int64);
+    assert f() == 102 , "list *= 0 must clear in place and stay reusable";
+}
+
+def _aug_assign__list_imul_empty_huge(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_empty_huge", ctypes.c_int64);
+    assert f() == 0 , "[] *= huge must short-circuit to an empty list";
+}
+
+def _aug_assign__list_imul_str_nine(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_str_nine", ctypes.c_int64);
+    assert f() == 1809 , "list[str] *= 9 must preserve elements past cap 8";
+}
+
+def _aug_assign__list_field_iadd_alias(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_field_iadd_alias", ctypes.c_int64);
+    assert f() == 303 , "field list += must mutate the list seen by aliases";
+}
+
+def _aug_assign__list_field_imul_alias(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_field_imul_alias", ctypes.c_int64);
+    assert f() == 606 , "field list *= must mutate the list seen by aliases";
+}
+
+def _aug_assign__list_field_imul_zero_reuse(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_field_imul_zero_reuse", ctypes.c_int64);
+    assert f() == 109 , "field list *= 0 must clear in place and stay reusable";
+}
+
+def _aug_assign__list_self_iadd(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_self_iadd", ctypes.c_int64);
+    assert f() == 1030 , "list += itself must double past the initial capacity";
+}
+
 test "aug_assign" {
     (_eng, _ir) = compile_native("aug_assign.jac");
     _aug_assign__aug_assign_add_assign(_eng, _ir);
@@ -1792,6 +1837,21 @@ test "aug_assign" {
     _aug_assign__aug_assign_aug_float_add(_eng, _ir);
     _aug_assign__aug_assign_aug_float_mul(_eng, _ir);
     _aug_assign__aug_assign_count_primes(_eng, _ir);
+    _aug_assign__list_iadd_alias(_eng, _ir);
+    _aug_assign__list_imul_alias(_eng, _ir);
+    _aug_assign__list_imul_zero_reuse(_eng, _ir);
+    _aug_assign__list_imul_empty_huge(_eng, _ir);
+    _aug_assign__list_imul_str_nine(_eng, _ir);
+    _aug_assign__list_field_iadd_alias(_eng, _ir);
+    _aug_assign__list_field_imul_alias(_eng, _ir);
+    _aug_assign__list_field_imul_zero_reuse(_eng, _ir);
+    _aug_assign__list_self_iadd(_eng, _ir);
+    _entry = get_func(_eng, "jac_entry", None);
+    _entry();
+    _iadd = get_func(_eng, "glob_iadd_alias", ctypes.c_int64);
+    assert _iadd() == 303 , "global list += must mutate the list seen by aliases";
+    _imul = get_func(_eng, "glob_imul_alias", ctypes.c_int64);
+    assert _imul() == 404 , "global list *= must mutate the list seen by aliases";
 }
 
 test "chess compiles" {

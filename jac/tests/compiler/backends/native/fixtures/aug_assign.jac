@@ -1,36 +1,39 @@
 """Test augmented assignment operators: +=, -=, *=, //=, %=."""
 
-def test_add_assign() -> int {
+glob ITEMS: list[int] = [1, 2],
+     NAMES: list[str] = ["a", "b"];
+
+def test_add_assign -> int {
     x: int = 10;
     x += 5;
     return x;
 }
 
-def test_sub_assign() -> int {
+def test_sub_assign -> int {
     x: int = 100;
     x -= 37;
     return x;
 }
 
-def test_mul_assign() -> int {
+def test_mul_assign -> int {
     x: int = 7;
     x *= 6;
     return x;
 }
 
-def test_div_assign() -> int {
+def test_div_assign -> int {
     x: int = 99;
     x //= 10;
     return x;
 }
 
-def test_mod_assign() -> int {
+def test_mod_assign -> int {
     x: int = 17;
     x %= 5;
     return x;
 }
 
-def test_chained_aug() -> int {
+def test_chained_aug -> int {
     x: int = 1;
     x += 2;
     x *= 3;
@@ -38,7 +41,7 @@ def test_chained_aug() -> int {
     return x;
 }
 
-def test_aug_in_while() -> int {
+def test_aug_in_while -> int {
     total: int = 0;
     i: int = 0;
     while i < 10 {
@@ -48,7 +51,7 @@ def test_aug_in_while() -> int {
     return total;
 }
 
-def test_aug_in_for() -> int {
+def test_aug_in_for -> int {
     total: int = 0;
     for i in range(10) {
         total += i;
@@ -56,7 +59,7 @@ def test_aug_in_for() -> int {
     return total;
 }
 
-def test_aug_conditional() -> int {
+def test_aug_conditional -> int {
     even_sum: int = 0;
     odd_sum: int = 0;
     for i in range(10) {
@@ -69,7 +72,7 @@ def test_aug_conditional() -> int {
     return even_sum * 100 + odd_sum;
 }
 
-def test_aug_nested_loops() -> int {
+def test_aug_nested_loops -> int {
     total: int = 0;
     i: int = 0;
     while i < 5 {
@@ -83,19 +86,19 @@ def test_aug_nested_loops() -> int {
     return total;
 }
 
-def test_aug_float_add() -> float {
+def test_aug_float_add -> float {
     x: float = 1.5;
     x += 2.5;
     return x;
 }
 
-def test_aug_float_mul() -> float {
+def test_aug_float_mul -> float {
     x: float = 3.0;
     x *= 2.5;
     return x;
 }
 
-def test_count_primes() -> int {
+def test_count_primes -> int {
     count: int = 0;
     num: int = 2;
     while count < 10 {
@@ -116,7 +119,7 @@ def test_count_primes() -> int {
     return num - 1;
 }
 
-def test_forever_break() -> int {
+def test_forever_break -> int {
     total: int = 0;
     i: int = 0;
     forever {
@@ -129,7 +132,7 @@ def test_forever_break() -> int {
     return total;
 }
 
-def test_forever_continue() -> int {
+def test_forever_continue -> int {
     total: int = 0;
     i: int = 0;
     forever {
@@ -143,4 +146,102 @@ def test_forever_continue() -> int {
         total += i;
     }
     return total;
+}
+
+
+def test_list_iadd_alias -> int {
+    xs: list[int] = [1, 2];
+    alias = xs;
+    xs += [3];
+    return len(xs) * 100 + len(alias);
+}
+
+def test_list_imul_alias -> int {
+    xs: list[int] = [1, 2];
+    alias = xs;
+    xs *= 2;
+    return len(xs) * 100 + len(alias);
+}
+
+
+def test_list_imul_zero_reuse -> int {
+    ys: list[str] = ["aa", "bb", "cc"];
+    ys *= 0;
+    if len(ys) != 0 {
+        return -1;
+    }
+    ys.append("dd");
+    return len(ys) * 100 + len(ys[0]);
+}
+
+def test_list_imul_empty_huge -> int {
+    zs: list[int] = [];
+    zs *= 1000000000;
+    return len(zs);
+}
+
+def test_list_imul_str_nine -> int {
+    ws: list[str] = ["xy"];
+    ws *= 9;
+    total: int = 0;
+    for w in ws {
+        total += len(w);
+    }
+    return total * 100 + len(ws);
+}
+
+
+obj Cell {
+    has a: int = 0,
+        b: int = 0;
+}
+
+obj Bag {
+    has cells: list[int] = [];
+}
+
+def test_list_field_iadd_alias -> int {
+    bag = Bag();
+    bag.cells = [1, 2];
+    alias = bag.cells;
+    bag.cells += [3];
+    return len(bag.cells) * 100 + len(alias);
+}
+
+def test_list_field_imul_alias -> int {
+    bag = Bag();
+    bag.cells = [1, 2];
+    alias = bag.cells;
+    bag.cells *= 3;
+    return len(bag.cells) * 100 + len(alias);
+}
+
+def test_list_field_imul_zero_reuse -> int {
+    bag = Bag();
+    bag.cells = [7, 8];
+    bag.cells *= 0;
+    bag.cells.append(9);
+    return len(bag.cells) * 100 + bag.cells[0];
+}
+
+def test_list_self_iadd -> int {
+    cells: list[Cell] = [Cell(a=1), Cell(a=2), Cell(a=3), Cell(a=4), Cell(a=5)];
+    cells += cells;
+    total: int = 0;
+    for c in cells {
+        total += c.a;
+    }
+    return len(cells) * 100 + total;
+}
+
+def glob_iadd_alias -> int {
+    alias = ITEMS;
+    ITEMS += [3];
+    return len(ITEMS) * 100 + len(alias);
+}
+
+def glob_imul_alias -> int {
+    alias = NAMES;
+    NAMES *= 2;
+    return len(NAMES) * 100 + len(alias);
 }

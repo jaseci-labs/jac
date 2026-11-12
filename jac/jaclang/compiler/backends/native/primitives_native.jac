@@ -880,6 +880,10 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def emit_repeat_inplace(
+        self: NativeListEmitter, ctx: NativeEmitCtx, target: ir.Value, count: ir.Value
+    ) -> (ir.Value | None);
+
     def emit_insert(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,
@@ -939,6 +943,18 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         target: ir.Value,
         args: list[ir.Value]
     ) -> (ir.Value | None);
+
+    def _emit_clear_elements(
+        self: NativeListEmitter, ctx: NativeEmitCtx, target: ir.Value
+    ) -> None;
+
+    def _reserve_list_cap(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        need: ir.Value,
+        tag: str
+    ) -> None;
 
     def emit_index(
         self: NativeListEmitter,
