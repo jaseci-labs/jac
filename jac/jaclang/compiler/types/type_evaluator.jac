@@ -797,6 +797,7 @@ walker TypeEvaluator {
     def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
     def get_type_of_match_capture(capture: MatchAs) -> TypeBase | None;
     def _pattern_covers_class(pattern: MatchPattern) -> bool;
+    def _pattern_is_structural(pattern: MatchPattern) -> bool;
     def _nested_capture_type(
         capture: MatchAs, slot: (UniNode | None)
     ) -> TypeBase | None;

@@ -91,6 +91,30 @@ def none_case_removes_none(v: int | None) {
     }
 }
 
+def sequence_case_is_not_checked(v: list[int] | int) {
+    n = 0;
+    match v {
+        case [*_]:
+            print("seq");
+
+        case n:  # <-- Ok: what the sequence case took is not known
+            print(n);
+
+    }
+}
+
+def mapping_case_is_not_checked(v: dict[str, int] | int) {
+    n = 0;
+    match v {
+        case {}:
+            print("map");
+
+        case n:  # <-- Ok: what the mapping case took is not known
+            print(n);
+
+    }
+}
+
 def constrained_case_does_not_narrow(v: Other | Label) {
     title = Label(text="a");
     match v {

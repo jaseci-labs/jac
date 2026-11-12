@@ -6274,6 +6274,9 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         if earlier is case_node {
             break;
         }
+        if earlier.guard is None and self._pattern_is_structural(earlier.pattern) {
+            return None;
+        }
         if earlier.guard is not None
             or not self._pattern_covers_class(earlier.pattern) {
             continue;
@@ -6320,6 +6323,16 @@ impl TypeEvaluator._nested_capture_type(
         return field_type;
     }
     return self._narrow_type_to(field_type, pattern_type);
+}
+
+impl TypeEvaluator._pattern_is_structural(pattern: MatchPattern) -> bool {
+    if isinstance(pattern, MatchAs) and pattern.pattern is not None {
+        return self._pattern_is_structural(pattern.pattern);
+    }
+    if isinstance(pattern, MatchOr) {
+        return any(self._pattern_is_structural(p) for p in pattern.patterns);
+    }
+    return isinstance(pattern, (MatchSequence, MatchMapping));
 }
 
 impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {
