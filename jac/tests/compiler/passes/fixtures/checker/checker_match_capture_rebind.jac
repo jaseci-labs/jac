@@ -1,4 +1,4 @@
-def checked(v: str | int, w: float | int, flag: bool) {
+def checked(v: str | int, w: float | int, flag: bool, xs: list[int] | str | int) {
     n = 0;
     match v {
         case str() as n:
@@ -18,6 +18,14 @@ def checked(v: str | int, w: float | int, flag: bool) {
             print(v);
 
         case n:
+            print(n);
+
+    }
+    match xs {
+        case [ * items ]:
+            print(items);
+
+        case str() as n:
             print(n);
 
     }

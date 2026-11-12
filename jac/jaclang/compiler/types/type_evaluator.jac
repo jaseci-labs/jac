@@ -12,6 +12,8 @@ obj PrefetchedTypes {
         base_exception_class: ClassType | None = None,
         coroutine_class: ClassType | None = None,
         generator_class: ClassType | None = None,
+        sequence_class: ClassType | None = None,
+        mapping_class: ClassType | None = None,
         function_class: ClassType | None = None,
         tuple_class: ClassType | None = None,
         bool_class: ClassType | None = None,
@@ -798,6 +800,7 @@ walker TypeEvaluator {
     def get_type_of_match_capture(capture: MatchAs) -> TypeBase | None;
     def _pattern_covers_class(pattern: MatchPattern) -> bool;
     def _pattern_is_structural(pattern: MatchPattern) -> bool;
+    def _may_match_structural(member: TypeBase) -> bool;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _isinstance_classinfo_is_exact(expr: Expr) -> bool;
