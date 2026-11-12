@@ -310,7 +310,7 @@ impl _extract_raw(
 }
 
 impl _fresh_default(value: any) -> any {
-    if not isinstance(value, (dict, list, set, bytearray, Archetype)) {
+    if not isinstance(value, (dict, list, set, tuple, bytearray, Archetype)) {
         return value;
     }
     import copy;

@@ -614,6 +614,7 @@ test "serve call function with defaults" {
             "hits": 1,
             "limit": "inf",
             "grid": {"(1, 2)": "x"},
+            "pairs": [["seen"]],
             "unset": True
         };
         # The empty body runs twice: no call may see what another did to a default.

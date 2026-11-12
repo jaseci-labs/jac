@@ -119,10 +119,12 @@ def:pub echo_defaults(
     box: EchoBox = EchoBox(),
     limit: float = float("inf"),
     grid: dict[tuple[int, int], str] = {(1, 2): "x"},
+    pairs: tuple[list[str]] = ([], ),
     marker: object = _UNSET
 ) -> dict[str, any] {
     tags.append("seen");
     box.hits += 1;
+    pairs[0].append("seen");
     return {
         "count": count,
         "ratio": ratio,
@@ -133,6 +135,7 @@ def:pub echo_defaults(
         "hits": box.hits,
         "limit": limit,
         "grid": grid,
+        "pairs": pairs,
         "unset": marker is _UNSET
     };
 }
