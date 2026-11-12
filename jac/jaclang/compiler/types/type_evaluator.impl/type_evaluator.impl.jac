@@ -6247,11 +6247,8 @@ impl TypeEvaluator._get_type_from_match_pattern(
         return None;
     }
 
-    if isinstance(pattern, MatchSingleton)
-        and isinstance(pattern.value, Null)
-        and self.prefetch
-        and self.prefetch.none_type_class {
-        return self._convert_to_instance(self.prefetch.none_type_class);
+    if isinstance(pattern, MatchSingleton) and isinstance(pattern.value, Null) {
+        return self._literal_type_from_expr(pattern.value);
     }
 
     return None;
@@ -6262,10 +6259,7 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
     while isinstance(case_node, (MatchOr, MatchAs)) {
         case_node = case_node.parent;
     }
-    if not isinstance(case_node, MatchCase) {
-        return self._nested_capture_type(capture, case_node);
-    }
-    stmt = case_node.parent;
+    stmt = case_node.parent if isinstance(case_node, MatchCase) else None;
     if not isinstance(stmt, MatchStmt) {
         return None;
     }
@@ -6274,11 +6268,13 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         if earlier is case_node {
             break;
         }
-        if earlier.guard is None and self._pattern_is_structural(earlier.pattern) {
+        if earlier.guard is not None {
+            continue;
+        }
+        if self._pattern_is_structural(earlier.pattern) {
             return None;
         }
-        if earlier.guard is not None
-            or not self._pattern_covers_class(earlier.pattern) {
+        if not self._pattern_covers_class(earlier.pattern) {
             continue;
         }
         matched = self._get_type_from_match_pattern(earlier.pattern);
@@ -6294,35 +6290,6 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         return None;
     }
     return self._narrow_type_to(subject, pattern_type);
-}
-
-impl TypeEvaluator._nested_capture_type(
-    capture: MatchAs, slot: (UniNode | None)
-) -> TypeBase | None {
-    pattern_type = self._get_type_from_match_pattern(capture.pattern)
-        if capture.pattern is not None
-        else None;
-    field_type: (TypeBase | None) = None;
-    if isinstance(slot, MatchKVPair)
-        and isinstance(slot.parent, MatchArch)
-        and isinstance(slot.key, NameAtom) {
-        owner = self._convert_to_instance(
-            self.get_type_of_expression(slot.parent.name)
-        );
-        if isinstance(owner, ClassType) {
-            member = self._lookup_class_member(owner, slot.key.sym_name);
-            if member is not None {
-                field_type = self.get_type_of_member(member, owner);
-            }
-        }
-    }
-    if field_type is None {
-        return pattern_type;
-    }
-    if pattern_type is None {
-        return field_type;
-    }
-    return self._narrow_type_to(field_type, pattern_type);
 }
 
 impl TypeEvaluator._pattern_is_structural(pattern: MatchPattern) -> bool {

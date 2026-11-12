@@ -1517,6 +1517,18 @@ Cannot return int, expected bool
              0,
              True,
              []
+         ),
+         (
+             "match_capture_rebind_checked",
+             "checker",
+             "checker_match_capture_rebind.jac",
+             3,
+             True,
+             [
+                 (0, "Cannot assign str to int\ncase str() as n:"),
+                 (1, "Cannot assign float | int to int\ncase n:"),
+                 (2, "Cannot assign str | int to int\ncase n:")
+             ]
          )
      ];
 
@@ -5881,37 +5893,5 @@ test "arguments of a call whose callee is Any are still type-evaluated" {
     for compr in comprs {
         assert str(compr.type) == "list[bool]" , f"line {compr.loc.first_line}: {compr.type}";
         assert str(compr.out_expr.type) == "bool" , f"line {compr.loc.first_line}: {compr.out_expr.type}";
-    }
-}
-
-
-test "a match capture that rebinds a local is checked against its type" {
-    fixture = os.path.join(CHECKER_FIXTURES, "checker_match_capture_rebind.jac");
-    with open(fixture) as f {
-        marked = [
-            i + 1
-            for (i, line) in enumerate(f.read().splitlines())
-            if "# <-- Error" in line
-        ];
-    }
-    program = JacProgram();
-    program.compile(fixture, options=NO_TC);
-    errors = [
-        (err.loc.first_line, err.code.code if err.code else "", str(err))
-        for err in program.errors_had
-    ];
-    assert len(marked) == 7 , marked;
-    assert [line for (line, _, _) in errors] == marked , errors;
-    assert all([code == "E1001" for (_, code, _) in errors]) , errors;
-    for (needle, idx) in [
-        ("Cannot assign str to Label", 0),
-        ("Cannot assign object to Label", 1),
-        ("Cannot assign int | str to int", 2),
-        ("Cannot assign str | Label to Label", 3),
-        ("Cannot assign Other | Label to Label", 4),
-        ("Cannot assign str to Label", 5),
-        ("Cannot assign str to Label", 6)
-    ] {
-        assert needle in errors[idx][2] , errors[idx][2];
     }
 }

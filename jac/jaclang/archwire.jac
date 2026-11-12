@@ -8187,7 +8187,6 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
-            MatchKVPair,
             MatchMapping,
             MatchOr,
             MatchPattern,
