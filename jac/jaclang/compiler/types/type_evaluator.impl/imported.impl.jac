@@ -115,9 +115,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
             }
 
             sub_dir = mod_dir / item_name;
-            if sub_dir.is_dir()
-                and item_name in {e.name for e in mod_dir.iterdir()}
-                and is_jac_namespace_package(str(sub_dir)) {
+            if sub_dir.is_dir() and named_exactly_any(str(sub_dir)) {
                 binding.type = ModuleType(
                     mod_name=binding.sym_name,
                     file_uri=sub_dir.resolve(),

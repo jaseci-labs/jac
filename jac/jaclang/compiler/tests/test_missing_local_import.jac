@@ -569,6 +569,9 @@ test "import from . still accepts sibling modules, namespace packages and names 
             "feat/up.jac": "import from .. { top }\n",
             "feat/subpkg/leaf.jac": "def:pub v -> int {\n    return 5;\n}\n",
             "feat/ns.jac": "import from . { subpkg }\n",
+            "feat/pyns/m.py": "X = 1\n",
+            "feat/pyns_user.jac": "import from . { pyns }\n",
+            "feat/empty_user.jac": "import from . { emptyns }\n",
             "pkg/__init__.jac": "def:pub helper -> int {\n    return 3;\n}\n",
             "pkg/user.jac": "import from . { helper }\n",
             "feat/guarded.jac": (
@@ -583,11 +586,14 @@ test "import from . still accepts sibling modules, namespace packages and names 
             )
         }
     );
+    os.makedirs(os.path.join(base, "feat/emptyns"));
     try {
         for rel in [
             "feat/ok.jac",
             "feat/up.jac",
             "feat/ns.jac",
+            "feat/pyns_user.jac",
+            "feat/empty_user.jac",
             "pkg/user.jac",
             "feat/guarded.jac"
         ] {
