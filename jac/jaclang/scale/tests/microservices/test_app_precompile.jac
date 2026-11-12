@@ -255,7 +255,8 @@ test "the seal and client keys ignore the npm resolution digest that jac install
     restaged = keys(head + "\n[npm]\nbun_lock = \"sha256:8b4973d8\"\n");
     dropped = keys(head);
     assert restaged == project , (
-        "a stage install that re-resolves npm changed the keys: " + str((project, restaged))
+        "a stage install that re-resolves npm changed the keys: "
+        + str((project, restaged))
     );
     assert dropped == project , "a stage install that writes no bun.lock digest changed the keys";
     repinned = keys(

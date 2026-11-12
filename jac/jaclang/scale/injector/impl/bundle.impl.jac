@@ -941,6 +941,26 @@ impl _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int) {
     write_venv_deps_marker(venv, specs);
 }
 
+impl _keyed_bytes(path: Path) -> bytes {
+    raw = path.read_bytes();
+    if path.name != "jac.lock" {
+        return raw;
+    }
+    try {
+        data = tomllib.loads(raw.decode("utf-8"));
+    } except (UnicodeDecodeError, tomllib.TOMLDecodeError) {
+        return raw;
+    }
+    npm = data.get("npm");
+    if isinstance(npm, dict) {
+        npm.pop("bun_lock", None);
+        if not npm {
+            data.pop("npm");
+        }
+    }
+    return json.dumps(data, sort_keys=True, `default=str).encode("utf-8");
+}
+
 impl _input_digest(
     base: Path,
     sources: list[Path],
@@ -965,7 +985,7 @@ impl _input_digest(
         digest.update(b"\0");
         digest.update(f"{path.stat().st_mode & 0o777:o}".encode("utf-8"));
         digest.update(b"\0");
-        digest.update(hashlib.sha256(path.read_bytes()).digest());
+        digest.update(hashlib.sha256(_keyed_bytes(path)).digest());
     }
     return digest.hexdigest();
 }

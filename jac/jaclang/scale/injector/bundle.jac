@@ -1,6 +1,7 @@
 import io;
 import os;
 import hashlib;
+import json;
 import logging;
 import shutil;
 import subprocess;
@@ -236,6 +237,9 @@ def _prune_seed_pip(site: Path, specs: list[str]);
 
 
 def _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int);
+
+
+def _keyed_bytes(path: Path) -> bytes;
 
 
 def _input_digest(
