@@ -17,6 +17,59 @@ def math_json(seed: float) -> str {
     return JSON.stringify({"value": bounded});
 }
 
+# One use per member added for #10693, so a dropped name fails this check.
+def math_surface(x: float) -> float {
+    trig = Math.asin(x) + Math.acos(x) + Math.atan(x) + Math.atan2(x, 1.0);
+    hyper = Math.sinh(x) + Math.cosh(x) + Math.tanh(x);
+    inverse = Math.asinh(x) + Math.acosh(1.5) + Math.atanh(x);
+    rest = Math.expm1(x) + Math.log1p(x) + Math.fround(x) + Math.imul(3.0, 4.0);
+    return trig + hyper + inverse + rest + Math.clz32(1.0);
+}
+
+def object_reflect(target: object, items: list[str]) -> bool {
+    locked = Object.seal(Object.preventExtensions(Object.setPrototypeOf(target, None)));
+    Object.defineProperties(Object.defineProperty(locked, "k", {}), {});
+    Reflect.apply(console.log, None, Object.getOwnPropertyNames(target));
+    console.log(
+        Object.getOwnPropertySymbols(target),
+        Object.getOwnPropertyDescriptors(target),
+        Object.getOwnPropertyDescriptor(target, "k"),
+        Reflect.getOwnPropertyDescriptor(target, "k"),
+        Reflect.getPrototypeOf(target),
+        Object.groupBy(items, lambda (s: str) -> str { s[0]; }),
+        Map.groupBy(items, lambda (s: str) -> int { len(s); }).size
+    );
+    states = Object.isFrozen(target)
+        and Object.isSealed(target)
+        and Object.hasOwn(target, "k");
+    reflected = Reflect.defineProperty(target, "k", {})
+        and Reflect.setPrototypeOf(target, None);
+    return states
+        and reflected
+        and Reflect.preventExtensions(target)
+        and Reflect.isExtensible(target)
+        and Object.isExtensible(target);
+}
+
+async def promise_array(sources: list[Promise[object]]) -> object {
+    pending = Promise.withResolvers();
+    pending.resolve(await Promise.any(sources));
+    copied: list[object] = await Array.fromAsync(sources);
+    settled: Promise[object] = pending.promise;
+    return [copied, await settled];
+}
+
+def date_regexp(stamp: str) -> str {
+    d = new(Date, stamp);
+    ms = d.setMilliseconds(0.0) + d.setUTCMilliseconds(0.0) + d.getUTCMilliseconds();
+    day = d.setUTCFullYear(0.0) + d.setUTCMonth(0.0) + d.setUTCDate(1.0);
+    clock = d.setUTCHours(0.0) + d.setUTCMinutes(0.0) + d.setUTCSeconds(0.0);
+    pattern = new(RegExp, String.raw({"raw": ["a", "b"]}, 1), "gimsuy");
+    flags = [pattern.multiline, pattern.dotAll, pattern.unicode, pattern.unicodeSets];
+    ok = all(flags) and pattern.sticky and pattern.hasIndices;
+    return f"{d.toUTCString()} {ms + day + clock + d.getUTCDay()} {ok}";
+}
+
 def parse_and_format(raw: str) -> int {
     n = parseInt(raw, 10);
     return int(n);

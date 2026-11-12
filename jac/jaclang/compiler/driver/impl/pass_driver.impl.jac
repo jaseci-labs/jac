@@ -129,34 +129,6 @@ impl run_pass[W: CompilerPass](
     errors: list[Alert] = [];
     warnings: list[Alert] = [];
     inst: (W | None) = None;
-    completed = prog.analysis.take_early(ir_in, pass_cls.__name__);
-    if completed is not None {
-        for alert in completed.errors_had + completed.warnings_had {
-            alert.from_pass = pass_cls;
-        }
-        if completed.errors_had or completed.warnings_had {
-            sources: dict[str, Source] = {ir_in.source.file_path: ir_in.source};
-            for nd in ir_in._in_mod_nodes or [] {
-                sources[nd.loc.mod_path] = nd.loc.orig_src;
-            }
-            completed.errors_had = [
-                alert
-                for alert in completed.errors_had
-                if alert.code is None
-                    or not pol.is_suppressed(
-                        alert.code, alert.loc, source=sources.get(alert.loc.mod_path)
-                    )
-            ];
-            completed.warnings_had = [
-                alert
-                for alert in completed.warnings_had
-                if alert.code is None
-                    or not pol.is_suppressed(
-                        alert.code, alert.loc, source=sources.get(alert.loc.mod_path)
-                    )
-            ];
-        }
-    }
     try {
         inst = run_walker(
             pass_cls,
@@ -166,8 +138,7 @@ impl run_pass[W: CompilerPass](
             cancel_requested=bool(cancel_token is not None and cancel_token.is_set()),
             policy=pol,
             errors_had=errors,
-            warnings_had=warnings,
-            completed=completed
+            warnings_had=warnings
         );
         return inst;
     } finally {

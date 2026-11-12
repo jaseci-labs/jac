@@ -52,9 +52,9 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
 }
 
 impl JacCompiler.product_program(
-    full_target: str, target_program: JacProgram, execution: bool = False
+    full_target: str, target_program: JacProgram
 ) -> JacProgram {
-    actual = self.selfhost.resolve(full_target, target_program, execution=execution);
+    actual = self.selfhost.resolve(full_target, target_program);
     if actual.internal {
         return actual;
     }
@@ -64,7 +64,7 @@ impl JacCompiler.product_program(
 impl JacCompiler.get_native_interop_setup(
     full_target: str, target_program: JacProgram
 ) -> tuple[((object | None), (dict[(str, object)] | None))] {
-    actual_program = self.product_program(full_target, target_program, execution=True);
+    actual_program = self.product_program(full_target, target_program);
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
         return (gen.native_engine, gen.interop_py_funcs);
@@ -86,7 +86,7 @@ impl JacCompiler.get_native_interop_setup(
 impl JacCompiler.get_native_layout(
     full_target: str, target_program: JacProgram
 ) -> (NativeModuleLayout | None) {
-    actual_program = self.product_program(full_target, target_program, execution=True);
+    actual_program = self.product_program(full_target, target_program);
     _layout: NativeModuleLayout | None = None;
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
@@ -124,7 +124,7 @@ impl JacCompiler.get_bytecode(
             read_file_with_encoding(full_target), full_target, 'exec'
         );
     }
-    actual = self.product_program(full_target, target_program, execution=True);
+    actual = self.product_program(full_target, target_program);
     with compilation_scope(owner_scope_options(actual)) {
         return self._get_bytecode(full_target, actual, skip_analysis);
     }
@@ -133,7 +133,7 @@ impl JacCompiler.get_bytecode(
 impl JacCompiler._get_bytecode(
     full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
-    actual_program = self.selfhost.resolve(full_target, target_program, execution=True);
+    actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
     symtab_only_recovery = False;
 
@@ -281,14 +281,6 @@ impl JacCompiler._get_bytecode(
         skip_native_engine=not self._wants_native_engine(full_target, actual_program),
         skip_analysis=skip_analysis
     );
-    if not is_internal {
-        (handled, adopted) = self._adopt_kernel_compile(
-            full_target, actual_program, options
-        );
-        if handled {
-            return marshal.loads(adopted) if adopted is not None else None;
-        }
-    }
     result: (uni.Module | None) = None;
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
@@ -325,77 +317,6 @@ impl JacCompiler._get_bytecode(
     }
 }
 
-impl JacCompiler._adopt_kernel_compile(
-    full_target: str, program: JacProgram, options: CompileOptions
-) -> tuple[bool, (bytes | None)] {
-    compiled = active_host().kernel_compile(program, full_target, options);
-    if compiled is None {
-        return (False, None);
-    }
-    target = compiled.unit(full_target);
-    if target is None {
-        if compiled.analysis.errors {
-            return (True, None);
-        }
-        raise RuntimeError(
-            f"the native compiler kernel compiled {full_target} but returned no "
-            "unit for it and reported no error"
-        );
-    }
-    import from jaclang.compiler.driver.pass_driver { compile_progress }
-    adopted: (bytes | None) = None;
-    for unit in native_first(compiled.units) {
-        with compile_progress.track(unit.path) {
-            (bytecode, rejected) = assemble_jcir(unit.jcir, unit.path);
-            if bytecode is None {
-                if not unit.jcir and unit is not target {
-                    continue;
-                }
-                if rejected {
-                    program.errors_had.extend(rejected);
-                    return (True, None);
-                }
-                raise RuntimeError(
-                    "the native compiler kernel emitted no assemblable JCIR for "
-                    f"{unit.path}"
-                );
-            }
-            sections = unit_sections(unit, bytecode);
-            if unit.native_ir {
-                sections.update(
-                    self._adopt_native_unit(
-                        unit, program, options, sections.get(SEC_CTDEPS, b"")
-                    )
-                );
-            }
-            try {
-                write_module_cache(unit.path, bytecode, extra_sections=sections);
-            } except OSError {}
-            if unit is target {
-                if unit.native_ir and self._wants_native_engine(full_target, program) {
-                    import json;
-                    self._load_native_from_cache(
-                        full_target,
-                        program,
-                        json.loads(unit.interop) if unit.interop else None,
-                        options
-                    );
-                    sections = {
-                        sec: raw
-                        for (sec, raw) in sections.items()
-                        if sec not in (SEC_NBITCODE, SEC_NOBJ)
-                    };
-                }
-                self._restore_sections(full_target, program, sections);
-                adopted = bytecode;
-            } else {
-                program.hub.client_artifacts.pop(JacProgram.hub_key(unit.path), None);
-            }
-        }
-    }
-    return (True, adopted);
-}
-
 impl JacCompiler.native_entry_engine(
     full_target: str, target_program: JacProgram
 ) -> any {
@@ -403,69 +324,13 @@ impl JacCompiler.native_entry_engine(
     if self.get_bytecode(full_target=path, target_program=target_program) is None {
         return None;
     }
-    actual = self.product_program(path, target_program, execution=True);
+    actual = self.product_program(path, target_program);
     placed = summary_store(actual).get(os.path.abspath(path));
     if placed is None or placed.decided != 'native' {
         return None;
     }
     (engine, _callbacks) = self.get_native_interop_setup(path, target_program);
     return engine;
-}
-
-impl JacCompiler.kernel_native_entry(
-    full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-) -> tuple[bool, any] {
-    path = JacProgram.hub_key(full_target);
-    if options is None and module_record(path, target_program) is not None {
-        return (False, None);
-    }
-    actual = self.selfhost.resolve(path, target_program, execution=True);
-    import from jaclang.project.kernel_compile { kernel_generates_native }
-    if actual.internal or not kernel_generates_native(actual, path) {
-        return (False, None);
-    }
-    compiled = actual;
-    if options is None {
-        self.get_bytecode(full_target=path, target_program=target_program);
-        compiled = self.product_program(path, target_program, execution=True);
-    } else {
-        self._adopt_kernel_compile(path, actual, options);
-    }
-    import from jaclang.compiler.placement.placement { summary_store }
-    placed = summary_store(compiled).get(os.path.abspath(path));
-    if placed is None or placed.decided != 'native' {
-        return (True, None);
-    }
-    carrier = compiled.hub.artifacts.get(path);
-    return (True, carrier.native_engine if carrier is not None else None);
-}
-
-impl JacCompiler._adopt_native_unit(
-    unit: UnitProducts,
-    program: JacProgram,
-    options: CompileOptions,
-    compile_deps: bytes
-) -> dict[int, bytes] {
-    registry = program.native_units();
-    ent = registry.adopt_lowered(
-        unit.path,
-        unit.native_ir,
-        unit.native_iface,
-        unit.native_layout,
-        unit.native_deps,
-        compile_deps,
-        options
-    );
-    if ent is None {
-        raise RuntimeError(
-            "the native compiler kernel lowered "
-            f"{unit.path} but its products could not be adopted: "
-            f"{registry.failures.get(
-                os.path.realpath(unit.path), 'no reason recorded'
-            )}"
-        );
-    }
-    return registry.product_sections(unit.path);
 }
 
 impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> bool {
@@ -804,13 +669,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     frame.retain_selfhost = target_program.internal;
     if frame.retain_selfhost {
         self.selfhost.enter_execution();
-        import from jaclang.compiler.frontend.host { active_host, install_host }
-        session_host = active_host();
-        host_side = session_host.host_side();
-        if host_side is not session_host {
-            frame.session_host = session_host;
-            install_host(host_side);
-        }
     }
     return frame;
 }
@@ -861,10 +719,6 @@ impl JacCompiler.finish_compile(frame: CompileFrame) {
     }
     if frame.retain_selfhost {
         self.selfhost.exit_execution();
-    }
-    if frame.session_host is not None {
-        import from jaclang.compiler.frontend.host { install_host }
-        install_host(frame.session_host);
     }
 }
 
@@ -1212,22 +1066,6 @@ impl JacCompiler._get_client_artifact(
         actual_program.hub.client_artifacts.pop(full_target, None);
     }
     mark = len(actual_program.errors_had);
-    if not has_live_tree and not actual_program.internal {
-        (handled, _) = self._adopt_kernel_compile(
-            full_target,
-            actual_program,
-            CompileOptions(
-                skip_native_engine=True,
-                client_source_root=actual_program.options.client_source_root
-            )
-        );
-        if len(actual_program.errors_had) > mark {
-            return None;
-        }
-        if handled {
-            return actual_program.hub.client_artifacts.get(full_target);
-        }
-    }
     compiled = self.compile(
         file_path=full_target,
         target_program=actual_program,
@@ -1340,62 +1178,6 @@ impl cached_client_pulls(full_target: str) -> str {
         return "";
     }
     return ",".join([str(index) for index in held.pulled]);
-}
-
-impl native_first(units: list[UnitProducts]) -> list[UnitProducts] {
-    by_path: dict[str, UnitProducts] = {os.path.realpath(u.path): u for u in units};
-    ordered: list[UnitProducts] = [];
-    placed: set[str] = set();
-    def place(unit: UnitProducts) {
-        real = os.path.realpath(unit.path);
-        if real in placed {
-            return;
-        }
-        placed.add(real);
-        for dep in unit.native_deps {
-            needed = by_path.get(os.path.realpath(dep));
-            if needed is not None {
-                place(needed);
-            }
-        }
-        ordered.append(unit);
-    }
-    for unit in units {
-        place(unit);
-    }
-    return ordered;
-}
-
-impl assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]] {
-    if not jcir {
-        return (None, []);
-    }
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    result = compile_ir(jcir);
-    if result.modules and not result.diags {
-        return (result.modules[0].bytecode, []);
-    }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.frontend.diagnostics { E5043 }
-    import from jaclang.compiler.frontend.srcloc { Span }
-    import from jaclang.compiler.passes.context { Alert }
-    return (
-        None,
-        [
-            Alert(
-                msg=E5043.format_message(error=d.message),
-                loc=Span(
-                    mod_path=d.mod_path or path,
-                    first_line=d.first_line,
-                    last_line=d.last_line,
-                    col_start=d.col_start,
-                    col_end=d.col_end
-                ),
-                from_pass=JcirBytecodeGenPass,
-                code=E5043
-            ) for d in result.diags
-        ]
-    );
 }
 
 impl unit_sections(
