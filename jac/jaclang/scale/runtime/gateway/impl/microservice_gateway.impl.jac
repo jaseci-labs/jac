@@ -1401,8 +1401,6 @@ impl GatewaySessionGuard.allow(
             return False;
         }
         status = detail['status'];
-        # An account the gateway does not hold belongs to the service, which
-        # checks its tokens itself; only an ended session is refused here.
         owner = str(
             (detail.get('subject') if status == 'unknown_user' else detail['user_id'])
                 or ''
