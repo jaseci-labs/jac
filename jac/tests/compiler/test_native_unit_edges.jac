@@ -168,6 +168,38 @@ test "a unit reference to an installed package resolves through the import path"
     );
 }
 
+test "a unit reference prefers the owner's selected package mount" {
+    site = tempfile.mkdtemp(prefix="jac_native_mounts_");
+    owner = os.path.join(site, "owner");
+    old_version = os.path.join(site, "edgepkg-old");
+    selected_version = os.path.join(site, "edgepkg-selected");
+    os.makedirs(owner);
+    os.makedirs(old_version);
+    os.makedirs(selected_version);
+    for root in [old_version, selected_version] {
+        with open(os.path.join(root, "jac.toml"), "w") as handle {
+            handle.write('[project]\nname = "edgepkg"\n');
+        }
+        with open(os.path.join(root, "unit.jac"), "w") as handle {
+            handle.write("glob version = 1;\n");
+        }
+    }
+    with open(os.path.join(owner, "jac.toml"), "w") as handle {
+        handle.write('[project]\nname = "edgeowner"\n');
+    }
+    anchor = os.path.join(owner, "main.jac");
+    with open(anchor, "w") as handle {
+        handle.write("glob x = 1;\n");
+    }
+    mounts = os.path.join(owner, ".jac", "packages");
+    os.makedirs(mounts);
+    os.symlink(
+        selected_version, os.path.join(mounts, "edgepkg"), target_is_directory=True
+    );
+    assert resolve_native_unit_ref("edgepkg/unit.jac", anchor)
+        == os.path.join(selected_version, "unit.jac");
+}
+
 test "two units sharing a symbol prefix are refused by name" {
     first = LinkUnit(
         path="/a/app/main.jac", prefix="main_1", iface=NativeIface(), digest="1"

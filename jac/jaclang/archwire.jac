@@ -2059,6 +2059,7 @@ graph import {
             resolve_jac_virtual_module_path
         },
         compiler.backends.py.artifact_imports.resolve_imports
+            | compiler.driver.native_iface
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module

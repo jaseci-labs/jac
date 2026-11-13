@@ -19,7 +19,7 @@ impl _named_project_file(search_dir: str, ref: str) -> (str | None) {
         return None;
     }
     current_root = native_unit_root(search_dir);
-    if current_root == search_dir {
+    if current_root is not None and current_root == search_dir {
         candidate = _project_file(current_root, ref);
         if candidate is not None {
             return candidate;
@@ -55,6 +55,13 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             anchor_candidate = _project_file(anchor_root, ref);
             if anchor_candidate is not None {
                 return anchor_candidate;
+            }
+            mounts = project_mounts(anchor_root);
+            if mounts is not None {
+                mounted_candidate = _named_project_file(mounts, ref);
+                if mounted_candidate is not None {
+                    return mounted_candidate;
+                }
             }
             sibling = _named_project_file(os.path.dirname(anchor_root), ref);
             if sibling is not None {
