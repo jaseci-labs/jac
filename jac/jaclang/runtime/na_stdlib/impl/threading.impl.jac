@@ -30,7 +30,7 @@ impl Lock.acquire(blocking: bool = True, timeout: float = -1.0) -> bool {
     if not blocking and timeout != -1.0 {
         raise ValueError("can't specify timeout for non-blocking acquire");
     }
-    if timeout < -1.0 {
+    if timeout < 0.0 and timeout != -1.0 {
         raise ValueError("Invalid value for timeout");
     }
     if not blocking {
@@ -185,14 +185,19 @@ impl _thread_entry(task_id: int) -> int {
 }
 
 impl _join_unfinished -> None {
-    _TASKS_LOCK.acquire();
-    handles: list[int] = [];
-    for task_id in _JOINABLE.keys() {
-        handles.append(_JOINABLE[task_id]);
-    }
-    _JOINABLE.clear();
-    _TASKS_LOCK.release();
-    for handle in handles {
-        th_join(handle);
+    while True {
+        _TASKS_LOCK.acquire();
+        handles: list[int] = [];
+        for task_id in _JOINABLE.keys() {
+            handles.append(_JOINABLE[task_id]);
+        }
+        _JOINABLE.clear();
+        _TASKS_LOCK.release();
+        if not handles {
+            return;
+        }
+        for handle in handles {
+            th_join(handle);
+        }
     }
 }

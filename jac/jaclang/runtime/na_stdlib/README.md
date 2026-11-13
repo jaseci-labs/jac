@@ -1186,14 +1186,11 @@ native layout records the emitted name separately from its source-level key.
   (`acquire`/`release`, `with` blocks, blocking/non-blocking/timeout
   acquire), `Event` (`set`/`clear`/`is_set`/`wait`), and `Thread`
   (`start`/`is_alive`/`join`, `daemon`/`name` fields). `release()` on an
-  un-acquired lock raises `RuntimeError` as CPython does (tracked by an
-  owner field rather than the `PTHREAD_MUTEX_NORMAL` unlock return code,
-  which is UB); `acquire(False, timeout=x)` raises `ValueError`. `Lock`
-  destroys its `pthread_mutex_t` on `drop`.
-  SCOPE: `Event.wait`/`Lock.acquire` timeouts are sleep-poll loops, and
-  `join` polls `_alive` rather than `pthread_join` (non-daemon handles are
-  kept joinable so an `atexit` handler blocks process exit on them, as
-  CPython does; daemon threads are detached). A target exception is dropped
+  un-acquired lock raises `RuntimeError`; the lock uses an allocated atomic
+  flag, freed by `drop`. `acquire(False, timeout=x)` raises `ValueError`.
+  SCOPE: `Event.wait`/`Lock.acquire` timeouts are sleep-poll loops. `join`
+  polls `_alive` and then calls `pthread_join`; an `atexit` handler joins
+  non-daemon handles, while daemon threads are detached. A target exception is dropped
   quietly (no `threading.excepthook`); `join()` on the calling thread is not
   detected (CPython raises `RuntimeError`); `daemon`/`name` are plain fields
   with no post-start guard; the default name is `"native-thread"` rather
