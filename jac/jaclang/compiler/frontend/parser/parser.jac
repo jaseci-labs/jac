@@ -199,6 +199,7 @@ obj Parser {
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
         _lambda_block: bool = False,
+        _ternary_at: dict[int, bool] = {},
         _no_connect_op_depth: int = 0,
         _gen_test_idx: int = 0;
 
@@ -327,6 +328,9 @@ obj Parser {
     def parse_docstring_target -> ElementStmt | None;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list[CodeBlockStmt];
+    def _take_stray_docstring -> (ExprStmt | None);
+    def _docstring_runs_on -> bool;
+    def _rewind(pos: int, error_count: int, diags_len: int);
     def _apply_implicit_return(body: list[CodeBlockStmt]) -> list[CodeBlockStmt];
     def parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None;
     def parse_statement -> CodeBlockStmt | None;

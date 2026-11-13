@@ -26,6 +26,7 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E0033": "jac-comptime",
          "E0108": "jac-comptime",
          "E0109": "jac-comptime",
+         "E0111": "jac-core-cheatsheet",
          "W0060": "jac-core-cheatsheet",
          "E1042": "jac-sv-microservices",
          "E1050": "jac-walker-patterns",

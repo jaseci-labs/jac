@@ -66,6 +66,36 @@ impl TypeCheckPass._is_generator(scope: Ability) -> bool {
     return known;
 }
 
+impl TypeCheckPass._docstring_return_help(ret: ReturnStmt) -> (str | None) {
+    owner = ret.parent;
+    if not ret.is_implicit or not isinstance(owner, (Ability, ImplDef, LambdaExpr)) {
+        return None;
+    }
+    body = owner.body;
+    if body is None or isinstance(body, UniNode) {
+        return None;
+    }
+    stmts = [
+        s
+        for s in body
+        if not isinstance(s, Semi)
+    ];
+    if len(stmts) != 1 or stmts[0] is not ret {
+        return None;
+    }
+    expr = ret.expr;
+    if not (
+        isinstance(expr, String)
+        or (
+            isinstance(expr, MultiString)
+            and all(isinstance(sn, String) for sn in expr.strings)
+        )
+    ) {
+        return None;
+    }
+    return "This string is the body's only statement and has no ';', so it is the body's return value. A docstring goes before the declaration, not inside the body; write a note inside a body as a # comment.";
+}
+
 impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
     scope = self.evaluator._get_enclosing_return_scope(here);
     if scope is None {
@@ -83,7 +113,11 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
                 and scope.signature.event.name == Tok.KW_ENTRY
                 and not scope.is_async
             ) {
-                self.ctx.emit(W2014, node_override=here);
+                self.ctx.emit(
+                    W2014,
+                    node_override=here,
+                    help_text=self._docstring_return_help(here)
+                );
             }
             return;
         }
@@ -98,7 +132,11 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
                 and scope.signature.return_type is not None
             );
             if not has_annotation {
-                self.ctx.emit(E1003, node_override=here);
+                self.ctx.emit(
+                    E1003,
+                    node_override=here,
+                    help_text=self._docstring_return_help(here)
+                );
                 return;
             }
         }
@@ -147,6 +185,7 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
         self.ctx.emit(
             E1002,
             node_override=here,
+            help_text=self._docstring_return_help(here),
             actual=str(returning_type),
             expected=str(return_type)
         );
