@@ -339,8 +339,7 @@ impl TypeCheckPass.exit_binary_expr with BinaryExpr exit {
     }
     self.evaluator.get_type_of_expression(here);
     if isinstance(here.op, Token) and here.op.name == Tok.WALRUS_EQ {
-        self._check_immutable_write(here.left);
-        self._judge_rebind_types(here.left, None, here);
+        self._check_binder_write(here.left, binder=here);
     }
 }
 
@@ -423,7 +422,7 @@ impl TypeCheckPass._is_exempt_rebind(
 }
 
 impl TypeCheckPass._judge_rebind_types(
-    target: (Expr | None), rebind_scope: (UniNode | None), site: UniNode
+    target: Expr, rebind_scope: (UniNode | None), site: UniNode
 ) -> None {
     for leaf in self._write_leaves(target) {
         if not isinstance(leaf, Name) or leaf.sym is None {
@@ -476,11 +475,16 @@ impl TypeCheckPass._judge_rebind_types(
     }
 }
 
-impl TypeCheckPass._check_immutable_write(
-    target: (Expr | None), rebind_scope: (UniNode | None) = None
+impl TypeCheckPass._check_binder_write(
+    target: (Expr | None),
+    rebind_scope: (UniNode | None) = None,
+    binder: (UniNode | None) = None
 ) -> None {
     if target is not None {
         self._deferred_writes.append((target, rebind_scope));
+        if binder is not None {
+            self._judge_rebind_types(target, rebind_scope, binder);
+        }
     }
 }
 
@@ -721,10 +725,10 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
         );
     }
     for write_target in here.target {
-        self._check_immutable_write(write_target);
-        if here.value is not None and here.aug_op is None {
-            self._judge_rebind_types(write_target, None, here);
-        }
+        self._check_binder_write(
+            write_target,
+            binder=here if here.value is not None and here.aug_op is None else None
+        );
     }
     if here.type_tag and here.type_tag.tag {
         self._check_bare_final(here.type_tag.tag, here.value);
@@ -1861,8 +1865,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self._eval_unpacking_names(here.target);
         self.evaluator.get_type_of_expression(here.target);
     }
-    self._check_immutable_write(here.target, rebind_scope=here);
-    self._judge_rebind_types(here.target, here, here);
+    self._check_binder_write(here.target, rebind_scope=here, binder=here);
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);
 
@@ -2151,8 +2154,7 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
     exit_method = "__aexit__" if here.is_async else "__exit__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
-        self._check_immutable_write(ctx_item.alias, rebind_scope=here);
-        self._judge_rebind_types(ctx_item.alias, here, here);
+        self._check_binder_write(ctx_item.alias, rebind_scope=here, binder=here);
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
         if not isinstance(expr_type, UnknownType) and not expr_type.is_any_instance() {
             enter_result = self.evaluator.get_type_of_magic_method_call(
@@ -2181,12 +2183,11 @@ impl TypeCheckPass.exit_except with Except exit {
     if here.ex_type is not None {
         self.evaluator.get_type_of_expression(here.ex_type);
     }
-    self._check_immutable_write(here.name, rebind_scope=here);
-    self._judge_rebind_types(here.name, here, here);
+    self._check_binder_write(here.name, rebind_scope=here, binder=here);
 }
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {
-    self._check_immutable_write(here.name, rebind_scope=here);
+    self._check_binder_write(here.name, rebind_scope=here);
 }
 
 impl TypeCheckPass.exit_match_arch with MatchArch exit {
@@ -2278,7 +2279,7 @@ impl TypeCheckPass.exit_yield_expr with YieldExpr exit {
 impl TypeCheckPass.exit_delete_stmt with DeleteStmt exit {
     for target in here.targets {
         self.evaluator.get_type_of_expression(target);
-        self._check_immutable_write(target);
+        self._check_binder_write(target);
     }
     for leaf in here.leaf_targets() {
         if DeleteStmt.is_location(leaf)
