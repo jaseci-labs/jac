@@ -188,13 +188,7 @@ impl JacProgram.load_dependency_module(
         and not (need_tree and isinstance(target_hub[resolved_path], CatModule)) {
         mod = target_hub[resolved_path];
     } else {
-        served: (uni.Module | None) = None;
-        if resolved_path.endswith('.pyi') and not need_tree {
-            served = active_host().stub_interface(self, resolved_path);
-        }
-        if served is not None {
-            mod = served;
-        } elif resolved_path.endswith('.pyi') {
+        if resolved_path.endswith('.pyi') {
             import from jaclang.compiler.driver.pass_driver { run_pass }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             src = use_str or active_host().read_source(source_path);
@@ -213,7 +207,7 @@ impl JacProgram.load_dependency_module(
                 mod = self.compile(
                     source_path,
                     use_str=use_str,
-                    options=self.options.for_symbols(need_tree, need_bodies)
+                    options=self.options.for_symbols(need_tree)
                 );
             } finally {
                 self.options = saved_options;
@@ -561,13 +555,7 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
         return False;
     }
     if opts is not None and opts.native_unit {
-        import from jaclang.compiler.native_scope {
-            in_native_scope_path,
-            package_host_edge
-        }
-        if in_native_scope_path(file_path) {
-            return True;
-        }
+        import from jaclang.compiler.pkg_paths { package_host_edge }
         if package_host_edge(file_path) {
             return False;
         }
@@ -617,11 +605,7 @@ impl JacProgram.parse_source(
         }
         infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
-            source_str,
-            file_path,
-            self,
-            annex_sources(file_path),
-            early_context=codespace or ('' if infer_native else 'server')
+            source_str, file_path, self, annex_sources(file_path)
         );
         active_host().place_wired_imports(parsed);
         if codespace == 'client' {

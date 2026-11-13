@@ -811,6 +811,11 @@ impl cmd_ask(
             st.record(ev);
             if ev.kind == "message_chunk" {
                 view.chunk(str(d.get("text", "")));
+            } elif ev.kind == "message_reset" {
+                view.line("");
+                view.line(
+                    "  (the answer above was discarded; the model is answering again)"
+                );
             } elif ev.kind in ["tool_call", "tool_call_update"] {
                 view.tool(d);
             } elif ev.kind == "plan" {

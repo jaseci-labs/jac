@@ -1022,6 +1022,9 @@ impl JacAPIServer.build_app -> ServingApp {
     for ext in (self.extensions or []) {
         ext.register(self);
     }
+    if os.environ.get('JAC_SV_SIBLING') != '1' {
+        self.add_middleware(robots_middleware(self));
+    }
     self.add_middleware(drain_middleware(self.drain, self.module_name));
     self.add_middleware(
         cors_middleware(
@@ -1111,6 +1114,8 @@ impl JacAPIServer._refresh_dev_endpoints -> None {
             self.introspector.load(force_reload=True);
         } except SourcesChanged {
             self._hmr_pending = True;
+            return;
+        } except (BuildFailed, ClientBundleError) {
             return;
         }
     }
@@ -1526,7 +1531,8 @@ impl JacAPIServer.start(
             settings=settings,
             worker_main=self._worker_main,
             on_ready=_announce,
-            on_worker_exit=self._on_worker_exit
+            on_worker_exit=self._on_worker_exit,
+            drain=self.drain
         );
         return supervisor.run(port_retries=port_retries);
     }

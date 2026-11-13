@@ -28,6 +28,16 @@ test "identical content packs to identical bytes (content-address stable)" {
 }
 
 
+test "deploy archives compress at gzip level 6, not the slow level 9" {
+    # Byte 8 of a gzip header is XFL: 2 means level 9, 4 means level 1, and 0
+    # means anything in between. Level 9 costs about 2.7x the CPU of level 6
+    # for a 0.3% smaller bundle, and a deploy compresses the bundle twice.
+    raw = pack_binary_bytes(b"ELF" * 4096);
+    assert raw[:2] == b"\x1f\x8b" , raw[:10];
+    assert raw[8] == 0 , f"gzip XFL byte is {raw[8]}, expected 0 (level 6)";
+}
+
+
 def _stage_compiler_tree(where: str, codegen_body: str) -> str {
     pkg = Path(where, "jaclang");
     for rel in [

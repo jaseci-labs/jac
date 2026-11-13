@@ -551,7 +551,8 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
             'exempt_paths': list(
                 rl_config.get('exempt_paths', ["/health", "/healthz", "/metrics"])
             ),
-            'shared': bool(rl_config.get('shared', True))
+            'shared': bool(rl_config.get('shared', True)),
+            'client_error_rpm': int(rl_config.get('client_error_rpm', 20))
         },
         'cors': cors,
         'identity': {

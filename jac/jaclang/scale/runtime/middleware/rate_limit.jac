@@ -1,3 +1,4 @@
+import asyncio;
 import logging;
 import time;
 import hashlib;
@@ -40,3 +41,11 @@ def _resolve_user_key(request: any) -> str | None;
 
 
 def build_rate_limit_middleware(cfg: dict[str, any]) -> any;
+
+
+def build_client_error_limit_middleware(cfg: dict[str, any]) -> any;
+
+
+def client_error_limit_skipped(
+    cfg: dict[str, any], trusted: list[str], clustered: bool
+) -> str;

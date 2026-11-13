@@ -1933,6 +1933,14 @@ walker NaIRGenPass(CompilerPass) {
     def _quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _glob_native_use_exists(target: uni.UniNode) -> bool;
     def _register_entry_globals(module: uni.Module) -> None;
+    def _glob_storage_type(
+        assign: uni.Assignment, target: uni.UniNode
+    ) -> (ir.Type | None);
+
+    def _decl_storage_type(
+        type_tag: (uni.UniNode | None), value: (uni.UniNode | None)
+    ) -> ir.Type;
+
     def _codegen_global_vars(nd: uni.GlobalVars) -> None;
     def _infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None);
     def _codegen_const_expr(
@@ -2903,6 +2911,14 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
+    def _emit_hdr_tag_is(
+        b: ir.IRBuilder,
+        raw: ir.Value,
+        names: list[str],
+        exact: bool = True,
+        untagged: bool = False
+    ) -> ir.Value;
+
     def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
     def _emit_rc_release_fast(
         fn: ir.Function, release_fn: ir.Function, may_cycle: bool
@@ -3243,6 +3259,14 @@ walker NaIRGenPass(CompilerPass) {
         target_type: any = None,
         sized: bool = True
     ) -> (ir.Value | None);
+
+    def _compute_aug_value(
+        nd: uni.Assignment,
+        target_expr: uni.Expr,
+        current: ir.Value,
+        rhs: ir.Value,
+        inplace_slot: (ir.Value | None)
+    ) -> tuple[(ir.Value | None), bool, bool];
 
     def _try_flow_for_parallel(nd: uni.InForStmt) -> bool;
     def _na_chunks_shape(expr: object) -> (tuple[uni.Expr, uni.Expr] | None);

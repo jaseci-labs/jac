@@ -122,9 +122,9 @@ impl UniNode._children -> list[UniNode] {
 }
 
 impl UniNode.parent.getter -> (UniNode | None) {
-    found = [self<-:Kid:<-];
-    if found {
-        return found[-1];
+    found = last_in0(self, Kid);
+    if found is not None {
+        return found;
     }
     holders = [self<-:Role:<-];
     return holders[-1] if holders else self._ctx_parent;
@@ -238,17 +238,18 @@ impl UniNode.link_impl(impl_node: UniNode) -> None {
 }
 
 impl UniNode.decl_parent.getter -> (UniNode | None) {
-    up = self.parent;
     if isinstance(self, ImplDef) {
-        up = self;
+        decl = self.decl_link;
+        return decl if decl is not None else self.parent;
     }
+    up = self.parent;
     if isinstance(up, ImplDef) {
         decl = up.decl_link;
         if decl is not None {
             return decl;
         }
     }
-    return self.parent;
+    return up;
 }
 
 impl UniNode.top_element.getter -> (UniNode | None) {
@@ -3976,6 +3977,20 @@ impl type_param_of(nd: NameAtom) -> (TypeParam | None) {
     }
     owner = sym.decl.name_of;
     return owner if isinstance(owner, TypeParam) else None;
+}
+
+impl names_except_type(nd: Name) -> bool {
+    site: UniNode = nd;
+    while isinstance(site.parent, AtomUnit) {
+        site = site.parent;
+    }
+    if isinstance(site.parent, TupleVal) {
+        site = site.parent;
+        while isinstance(site.parent, AtomUnit) {
+            site = site.parent;
+        }
+    }
+    return isinstance(site.parent, Except) and site.parent.ex_type is site;
 }
 
 impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {

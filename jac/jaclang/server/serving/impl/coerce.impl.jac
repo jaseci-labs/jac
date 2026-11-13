@@ -2,15 +2,22 @@ impl RequestValidationError.__str__ -> str {
     return f"{len(self.errors)} validation error(s)";
 }
 
-impl _coerce_bool(value: any) -> bool {
+impl _mismatch(expected: str, value: any) -> ValueError {
+    return ValueError(f"expected {expected}, got {type(value).__name__}");
+}
+
+impl _coerce_bool(value: any, text: bool) -> bool {
     if isinstance(value, bool) {
         return value;
     }
-    text = str(value).strip().lower();
-    if text in _TRUE_STRINGS {
+    if not (text and isinstance(value, str)) {
+        raise _mismatch('boolean', value);
+    }
+    word = value.strip().lower();
+    if word in _TRUE_STRINGS {
         return True;
     }
-    if text in _FALSE_STRINGS {
+    if word in _FALSE_STRINGS {
         return False;
     }
     raise ValueError(f"invalid boolean: {value!r}");
@@ -50,11 +57,14 @@ impl _construct_object(value: any, target: any) -> any {
     return target(**kwargs);
 }
 
-impl _as_item_list(value: any) -> list[any] {
+impl _as_item_list(value: any, text: bool) -> list[any] {
     if isinstance(value, (list, tuple, set)) {
         return list(value);
     }
-    return [value];
+    if text {
+        return [value];
+    }
+    raise _mismatch('array', value);
 }
 
 impl is_upload_type(target: any) -> bool {
@@ -119,7 +129,7 @@ impl _without_none(target: any) -> any {
     return target;
 }
 
-impl coerce_value(value: any, target: any = None) -> any {
+impl coerce_value(value: any, target: any = None, text: bool = False) -> any {
     if isinstance(value, UploadFile) {
         return value;
     }
@@ -131,11 +141,11 @@ impl coerce_value(value: any, target: any = None) -> any {
         if named is None {
             return value;
         }
-        return coerce_value(value, named);
+        return coerce_value(value, named, text);
     }
     origin = get_origin(target);
     if origin is Union or origin is UnionType {
-        return _coerce_union(value, get_args(target));
+        return _coerce_union(value, get_args(target), text);
     }
     if value is None {
         raise ValueError(
@@ -146,41 +156,65 @@ impl coerce_value(value: any, target: any = None) -> any {
         args = get_args(target);
         if origin is list {
             item_t = args[0] if args else None;
-            return [coerce_value(v, item_t) for v in _as_item_list(value)];
+            return [coerce_value(v, item_t, text) for v in _as_item_list(value, text)];
         }
         if origin is dict {
             if not isinstance(value, dict) {
                 raise ValueError(f"expected object, got {type(value).__name__}");
             }
             val_t = args[1] if len(args) > 1 else None;
-            return {k: coerce_value(v, val_t) for (k, v) in value.items()};
+            return {k: coerce_value(v, val_t, text) for (k, v) in value.items()};
         }
         if origin is tuple {
             return tuple(
-                coerce_value(v, args[i] if i < len(args) else None)
-                for (i, v) in enumerate(_as_item_list(value))
+                coerce_value(v, args[i] if i < len(args) else None, text)
+                for (i, v) in enumerate(_as_item_list(value, text))
             );
         }
         if origin is set {
             item_t = args[0] if args else None;
-            return {coerce_value(v, item_t) for v in _as_item_list(value)};
+            return {coerce_value(v, item_t, text) for v in _as_item_list(value, text)};
         }
         return value;
     }
     if target is bool {
-        return _coerce_bool(value);
+        return _coerce_bool(value, text);
     }
     if target is int {
-        return int(value);
+        if isinstance(value, int) and not isinstance(value, bool) {
+            return value;
+        }
+        if isinstance(value, float) and value.is_integer() {
+            return int(value);
+        }
+        if text and isinstance(value, str) {
+            return int(value);
+        }
+        raise _mismatch('integer', value);
     }
     if target is float {
-        return float(value);
+        if isinstance(value, (int, float)) and not isinstance(value, bool) {
+            return float(value);
+        }
+        if text and isinstance(value, str) {
+            return float(value);
+        }
+        raise _mismatch('number', value);
     }
     if target is str {
-        return value if isinstance(value, str) else str(value);
+        if isinstance(value, str) {
+            return value;
+        }
+        raise _mismatch('string', value);
     }
     if target is bytes {
-        return value if isinstance(value, bytes) else str(value).encode();
+        if isinstance(value, bytes) {
+            return value;
+        }
+        if isinstance(value, str) {
+            return value.encode();
+        }
+        raise _mismatch('string', value);
     }
     if target is UploadFile
         or (isinstance(target, type) and issubclass(target, UploadFile)) {
@@ -202,7 +236,7 @@ impl coerce_value(value: any, target: any = None) -> any {
     return value;
 }
 
-impl _coerce_union(value: any, options: tuple[object, ...]) -> any {
+impl _coerce_union(value: any, options: tuple[object, ...], text: bool) -> any {
     none_type = type(None);
     if value is None {
         for opt in options {
@@ -217,7 +251,7 @@ impl _coerce_union(value: any, options: tuple[object, ...]) -> any {
             continue;
         }
         try {
-            return coerce_value(value, opt);
+            return coerce_value(value, opt, text);
         } except Exception as e {
             last_error = e;
         }
@@ -245,68 +279,68 @@ impl _header_lookup(request: Request, name: str) -> (str | None) {
 
 impl _extract_raw(
     param: APIParameter, request: Request, body_json: any
-) -> tuple[bool, any] {
+) -> tuple[bool, any, bool] {
     if param.kind == ParameterType.PATH {
         if param.name in request.path_params {
-            return (True, request.path_params[param.name]);
+            return (True, request.path_params[param.name], True);
         }
-        return (False, None);
+        return (False, None, False);
     }
     if param.kind == ParameterType.QUERY {
         target = _param_target(param);
         if get_origin(target) is list {
             values = request.query_params.getlist(param.name);
             if values {
-                return (True, values);
+                return (True, values, True);
             }
-            return (False, None);
+            return (False, None, False);
         }
         if param.name in request.query_params {
-            return (True, request.query_params.get(param.name));
+            return (True, request.query_params.get(param.name), True);
         }
-        return (False, None);
+        return (False, None, False);
     }
     if param.kind == ParameterType.HEADER {
         header_val = _header_lookup(request, param.name);
         if header_val is not None {
-            return (True, header_val);
+            return (True, header_val, True);
         }
-        return (False, None);
+        return (False, None, False);
     }
     if param.kind == ParameterType.FILE {
         files = request.upload_files.get(param.name, []);
         if files {
             target = _without_none(_param_target(param));
             if get_origin(target) is list {
-                return (True, files);
+                return (True, files, False);
             }
-            return (True, files[0]);
+            return (True, files[0], False);
         }
-        return (False, None);
+        return (False, None, False);
     }
     if param.kind == ParameterType.BODY {
         if request.form_fields and param.name in request.form_fields {
             form_values = request.form_fields[param.name];
             if len(form_values) == 1 {
-                return (True, form_values[0]);
+                return (True, form_values[0], True);
             }
-            return (True, form_values);
+            return (True, form_values, True);
         }
         if isinstance(body_json, dict) and param.name in body_json {
-            return (True, body_json[param.name]);
+            return (True, body_json[param.name], False);
         }
         files = request.upload_files.get(param.name, []);
         target = _param_target(param);
         if files and _accepts_upload(target) {
             if _accepts_upload_list(target)
                 and (len(files) > 1 or not _accepts_single_upload(target)) {
-                return (True, files);
+                return (True, files, False);
             }
-            return (True, files[0]);
+            return (True, files[0], False);
         }
-        return (False, None);
+        return (False, None, False);
     }
-    return (False, None);
+    return (False, None, False);
 }
 
 impl _fresh_default(value: any) -> any {
@@ -332,7 +366,7 @@ impl bind_parameters(
         loc = str(param.kind.value)
             if isinstance(param.kind, ParameterType)
             else str(param.kind);
-        (found, raw) = _extract_raw(param, request, body_json);
+        (found, raw, text) = _extract_raw(param, request, body_json);
         if not found {
             if param.required {
                 errors.append(
@@ -348,7 +382,7 @@ impl bind_parameters(
             continue;
         }
         try {
-            kwargs[param.name] = coerce_value(raw, _param_target(param));
+            kwargs[param.name] = coerce_value(raw, _param_target(param), text);
         } except Exception as e {
             errors.append({'type': 'invalid', 'loc': [loc, param.name], 'msg': str(e)});
         }

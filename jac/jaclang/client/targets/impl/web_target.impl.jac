@@ -8,7 +8,8 @@ import from typing { Optional, cast }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
-     JAC_LANG_ID = "jac";
+     JAC_LANG_ID = "jac",
+     PUBLIC_LEDGER = ".jac-public-files";
 
 def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
@@ -23,6 +24,8 @@ def _walk_public(
 ) -> None;
 
 def _public_files(public_dir: Path) -> list[tuple[str, Path]];
+
+def _clear_public_outputs(dist_dir: Path) -> None;
 
 def _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str];
 
@@ -114,15 +117,27 @@ impl WebTarget.build(
         }
         inputs = builder.prepare(loaded_mod);
         exports = list(artifact.manifest.exports or []) if artifact is not None else [];
-        function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     } finally {
         program._get_compiler().release_compile_state(program);
     }
     builder.bundle(inputs);
+    return self.finish_dist(entry_file, project_dir, exports);
+}
+
+impl WebTarget.finish_dist(
+    entry_file: Path, project_dir: Path, exports: list[str]
+) -> Path {
+    function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
+    bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
+    dist_dir = bundler.output_dir;
     bundle_path = bundler.find_bundle();
     if not bundle_path {
         raise RuntimeError("Web build failed: bundle not found");
     }
+    loaded_mod = types.ModuleType(entry_file.stem);
+    loaded_mod.__file__ = str(entry_file.resolve());
     _generate_index_html(
         bundle_path=bundle_path,
         bundler=bundler,
@@ -136,9 +151,30 @@ impl WebTarget.build(
         apply_pwa(dist_dir, project_dir);
     }
     if dist_dir {
-        copied = _copy_public_dirs(
-            bundler.config_loader.get_public_dirs(str(entry_file.resolve())), dist_dir
-        );
+        public_dirs = bundler.config_loader.get_public_dirs(entry_path);
+        import from jaclang.client.targets.seo_build {
+            apply_seo,
+            clear_seo_files,
+            scan_routes
+        }
+        _clear_public_outputs(dist_dir);
+        clear_seo_files(dist_dir);
+        if seo_config.get('site_url') {
+            base_path = bundler.config_loader.get_base_path();
+            asset_paths = [f"{base_path}{bundle_path.name}"];
+            css_file = bundler.find_css();
+            if css_file and css_file.exists() {
+                asset_paths.append(f"{base_path}styles.css");
+            }
+            apply_seo(
+                dist_dir,
+                seo_config,
+                scan_routes(bundler.config_loader.get_app_root(entry_path)),
+                public_dirs,
+                asset_paths
+            );
+        }
+        copied = _copy_public_dirs(public_dirs, dist_dir);
 
         if pwa and copied {
             import from jaclang.client.targets.pwa_build { refresh_pwa_precache }
@@ -150,7 +186,7 @@ impl WebTarget.build(
 
 def _build_css_link(bundler: ViteBundler) -> str;
 
-def _get_app_meta_data -> dict[str, any];
+def _get_app_meta_data(project_dir: (Path | None) = None) -> dict[str, any];
 
 def _generate_index_html(
     bundle_path: Path,
@@ -201,9 +237,8 @@ impl _public_files(public_dir: Path) -> list[tuple[str, Path]] {
     return found;
 }
 
-impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
-    import shutil;
-    ledger = dist_dir / ".jac-public-files";
+impl _clear_public_outputs(dist_dir: Path) -> None {
+    ledger = dist_dir / PUBLIC_LEDGER;
     try {
         previous = ledger.read_text().splitlines();
     } except OSError {
@@ -223,6 +258,11 @@ impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
         }
     }
     ledger.unlink(missing_ok=True);
+}
+
+impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
+    import shutil;
+    ledger = dist_dir / PUBLIC_LEDGER;
     planned: dict[str, Path] = {};
     skipped: list[str] = [];
     for public_dir in public_dirs {
@@ -300,8 +340,11 @@ impl _build_css_link(bundler: ViteBundler) -> str {
     return '';
 }
 
-impl _get_app_meta_data -> dict[str, any] {
-    config = get_config();
+impl _get_app_meta_data(project_dir: (Path | None) = None) -> dict[str, any] {
+    config = get_config_for_path(project_dir) if project_dir is not None else None;
+    if config is None {
+        config = get_config();
+    }
     if not config {
         return {};
     }
@@ -325,7 +368,7 @@ impl _generate_index_html(
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
     css_link = _build_css_link(bundler);
-    meta_data = _get_app_meta_data();
+    meta_data = _get_app_meta_data(project_dir);
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
     if css_link {

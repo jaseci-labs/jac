@@ -6480,13 +6480,9 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
             bc2 = comp.get_bytecode(fx, prog2);
         }
         assert bc2 is not None;
-        # Without a kernel the host recompiles and builds the engine in the
-        # pass itself, so the loader sees only the failed restore.
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        rebuilds = 2 if ensure_loaded() is not None else 1;
-        assert len(loads) == rebuilds , (
-            f"expected {rebuilds} loader call(s), saw {len(loads)}"
-        );
+        # The recompile builds the engine in the pass itself, so the loader
+        # sees only the failed restore.
+        assert len(loads) == 1 , f"expected 1 loader call, saw {len(loads)}";
         (eng, _) = comp.get_native_interop_setup(fx, prog2);
         assert eng is not None , (
             "restore failure must trigger recompile for inferred modules"

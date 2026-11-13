@@ -502,14 +502,24 @@ test "a validated disk interface seeds the encoding memo for tree consumers" {
 }
 
 """A native build compiles every module it imports with options under which
-no interface is persisted (`aot_mode`, a default codespace), so encoding one
+no interface is persisted (`aot_mode`, a native default codespace), so encoding one
 for each of them is work nothing reads: forcing every symbol's type cost a
 large one-file rebuild about as much as type checking its imports."""
 test "a compile that keeps no interface encodes none" {
     (main, dep) = _project();
     prog = JacProgram();
     options = CompileOptions(no_cgen=True, aot_mode=True, default_codespace="native");
-    assert not options.keeps_interfaces();
+    for (candidate, keeps) in [
+        (options, False),
+        (CompileOptions(force_codespace="server"), False),
+        (CompileOptions(default_codespace="native"), False),
+        (CompileOptions(default_codespace="server"), True),
+        (_check_opts(), True)
+    ] {
+        assert candidate.keeps_interfaces() == keeps , (
+            f"keeps_interfaces() for {candidate.module_projection()} should be {keeps}"
+        );
+    }
     prog.compile(main, options=options);
     assert prog.analysis.pass_runs , "the native-style compile ran no passes";
     events = prog.analysis.cache_events;
@@ -517,7 +527,6 @@ test "a compile that keeps no interface encodes none" {
         f"an interface no one persists was encoded (events: {events})"
     );
     (checked, _diags) = _check(main);
-    assert _check_opts().keeps_interfaces();
     assert checked.analysis.cache_events.get("iface_encode", 0) >= 1 , (
         f"a check stopped encoding interfaces (events: {checked.analysis.cache_events})"
     );
@@ -637,50 +646,6 @@ test "an interface is identical however many twins of its module are reachable" 
     }
     assert digests[0] == digests[1] , f"the interface digest changed between two compiles of one module: {digests}";
     assert names[0] == names[1] , f"the interface's name count changed between compiles: {names}";
-}
-
-test "an interface written from a hydrated module keeps its instance-method bits" {
-    # The native kernel reads interfaces the host writes from modules it has
-    # itself hydrated. The instance-method bit lives only on the catalog
-    # provider of a hydrated symbol, so the second encoding dropped it and the
-    # kernel bound `Cls.method(obj, ...)` as if `obj` were the first argument.
-    import from jaclang.compiler.types.stubcat.format { SYMF_INSTANCE_METHOD }
-    import from jaclang.compiler.types.stubcat.reader { CatProvider }
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
-    import from jaclang.compiler.frontend.kernel_host { ProgramResolver }
-    import from jaclang.compiler.types.stubcat.modiface {
-        open_module_iface,
-        iface_module
-    }
-    tmp = os.path.realpath(tempfile.mkdtemp());
-    src = os.path.join(tmp, "methmod.jac");
-    with open(src, "w") as fh {
-        fh.write("obj Box {\n    def get(x: int) -> int { return x; }\n}\n");
-    }
-    prog = JacProgram();
-    mod = prog.compile(
-        src,
-        options=CompileOptions(no_cgen=True, symtab_ir_only=True, need_full_ast=True)
-    );
-    payload = build_module_iface(mod, prog.get_type_evaluator(), tmp);
-    for hop in range(2) {
-        cat = open_module_iface(payload, tmp, resolver=ProgramResolver(program=prog));
-        assert cat is not None;
-        served = iface_module(cat);
-        assert served is not None;
-        box = served.lookup("Box");
-        assert box is not None and box.provider is not None;
-        box_type = box.provider.resolve_type(box);
-        assert isinstance(box_type, ClassType);
-        get = box_type.shared.symbol_table.lookup("get");
-        assert get is not None;
-        prov = get.provider;
-        assert isinstance(prov, CatProvider)
-            and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 , f"encoding {hop
-            + 1} lost the instance-method bit of Box.get";
-        payload = build_module_iface(served, prog.get_type_evaluator(), tmp);
-    }
 }
 
 test "a comptime import takes the dependency's tree and rides its edits" {

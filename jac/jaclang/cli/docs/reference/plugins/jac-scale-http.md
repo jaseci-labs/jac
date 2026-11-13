@@ -161,6 +161,13 @@ curl -X POST http://localhost:8000/walker/search \
   -d '{"query": "hello", "limit": 20}'
 ```
 
+Each value is checked against the type declared for it, and a mismatch answers `422` with an entry naming the field. Nothing is reshaped to fit. How strict the check is depends on where the value came from:
+
+- **A JSON body** already carries types, so a value must be the declared type. `"12"` is refused for an `int`, and `19.99` is refused rather than truncated. The conversions that lose nothing are allowed: `3.0` for an `int`, and `3` for a `float`.
+- **Query, path, header and form values** are always text, so they are parsed into the declared type. `?limit=20` binds `limit` as the integer `20`, and a lone value fills a `list[T]`.
+
+Browser input values are strings, so convert them before sending them to a numeric field: `int(e.target.value)`.
+
 ### Response Format
 
 Responses are wrapped in a JSON envelope. Walker `report` values arrive in
@@ -534,7 +541,7 @@ Length and the common and breached lists do most of the work; `require`, `histor
 
 **Registration and login limits.** `[serve.auth.registration] enabled = false` closes self-registration (`403 REGISTRATION_CLOSED`); accounts are then created by an admin. `[serve.auth.lockout]` limits failed logins to `max_attempts` (default `10`) per `window_seconds` (default `900`) for each source address and identity, answering `429 RATE_LIMITED`.
 
-The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services but sets none on the gateway, which is the pod an ingress talks to; list your ingress controller's address in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
+The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services, and on the gateway, which is the pod an ingress talks to, when the deploy puts an ingress in front of it (`[scale.gateway.ingress] enabled`, or a shared ingress with a domain). With no ingress it sets none on the gateway. If your ingress controller's address is outside the private ranges, list it in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
 
 **Refusals.** A value that breaks the policy is answered with `400 POLICY_VIOLATION`, and the error `details` list every rule it broke so a form can show them together:
 

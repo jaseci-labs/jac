@@ -225,11 +225,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
 impl analyze_for_compile(
     program: JacProgram, path: str, options: CompileOptions, source: str | None
 ) -> ModuleAnalysis {
-    analysis = active_host().native_analyze(program, path, options, source);
-    if analysis is None {
-        analysis = analyze_module(program, path, options, source);
-    }
-    return analysis;
+    return analyze_module(program, path, options, source);
 }
 
 impl compile_task(

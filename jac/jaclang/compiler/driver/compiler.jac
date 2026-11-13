@@ -21,10 +21,6 @@ def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
 def cached_client_pulls(full_target: str) -> str;
 
-def native_first(units: list[UnitProducts]) -> list[UnitProducts];
-
-def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]];
-
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes];
@@ -32,8 +28,7 @@ def unit_sections(
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,
         gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False,
-        session_host: (HostServices | None) = None;
+        retain_selfhost: bool = False;
 }
 
 obj JacCompiler(SessionHooks) {
@@ -50,10 +45,7 @@ obj JacCompiler(SessionHooks) {
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
-    def product_program(
-        full_target: str, target_program: JacProgram, execution: bool = False
-    ) -> JacProgram;
-
+    def product_program(full_target: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];
@@ -91,23 +83,8 @@ obj JacCompiler(SessionHooks) {
 
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
-    def _adopt_kernel_compile(
-        full_target: str, program: JacProgram, options: CompileOptions
-    ) -> tuple[bool, (bytes | None)];
-
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
-    def kernel_native_entry(
-        full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-    ) -> tuple[bool, any];
-
     def native_entry_engine(full_target: str, target_program: JacProgram) -> any;
-    def _adopt_native_unit(
-        unit: UnitProducts,
-        program: JacProgram,
-        options: CompileOptions,
-        compile_deps: bytes
-    ) -> dict[int, bytes];
-
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,

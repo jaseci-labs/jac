@@ -898,16 +898,18 @@ test "_stream_final_answer keeps the tools array intact" {
     assert [t.get_name() for t in mt_run.tools] == expected , "mt_run.tools was mutated";
 }
 
-test "finish_tool exit sends an identical tools payload on the narration call" {
+test "a cut-off loop sends an identical tools payload on the narration call" {
     def search_files(query: str) -> str {
         return f"found: {query}";
     }
 
     llm = MockLLM(
         model_name="anthropic/claude-test",
-        outputs=[finish("Fixed it."), say("Fixed it.")]
+        outputs=[tool_call("search_files", {"query": "bug"}), say("Fixed it.")]
     );
-    mt_run = mk_run(tools=[search_files], stream=True);
+    mt_run = mk_run(
+        tools=[search_files], stream=True, call_params={"max_react_iterations": 1}
+    );
 
     list(llm._invoke_streaming(mt_run));
 

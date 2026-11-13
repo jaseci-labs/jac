@@ -168,9 +168,6 @@ impl _native_deps_ok(
         if dep in edges {
             continue;
         }
-        if in_native_scope_path(dep) and not native_unit_compile_active() {
-            return False;
-        }
         info = _native_dep_scan(dep, hold_exempt=hold_exempt);
         if info is None {
             return False;
@@ -222,10 +219,6 @@ impl native_placement_candidate(
     if not env_ok {
         return (False, env_reason);
     }
-    native_unit_compile = bool(prog.options is not None and prog.options.native_unit);
-    if in_native_scope_path(mod_path) and not native_unit_compile {
-        return (False, "compiler frontend module: native only inside the kernel build");
-    }
     if not any([isinstance(e, uni.ElementStmt) for e in module.elements]) {
         return (False, "empty module: nothing to lower");
     }
@@ -273,9 +266,6 @@ impl native_closure_blocker(
         }
         seen.add(dep);
         name = os.path.basename(dep);
-        if in_native_scope_path(dep) and not native_unit_compile_active() {
-            return (f"'{name}' is a compiler frontend module", False);
-        }
         if pinned_module_space(dep) == 'server' {
             return (f"'{name}' is pinned to the server", True);
         }
@@ -883,7 +873,6 @@ impl _pull_into_target(
     if not seed_ids {
         return 0;
     }
-    import from jaclang.compiler.frontend.host { active_host }
     work = placement_work(prog);
     target_path = os.path.realpath(target.loc.mod_path or '');
     if id(target) not in work.seeded {
@@ -900,7 +889,6 @@ impl _pull_into_target(
         target, prog, seed_ref_ids=seed_ids, dual=True, pull_dependents=False
     );
     if new_stamps {
-        active_host().client_pull_grew(target_path);
         work.changed(target);
         _warn_state_forks(target, prog);
         importer = os.path.basename(module.loc.mod_path or '');

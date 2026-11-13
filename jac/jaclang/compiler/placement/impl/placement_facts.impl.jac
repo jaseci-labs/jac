@@ -128,7 +128,7 @@ impl module_record(
     if program is None {
         return _record_at(real);
     }
-    actual = program._get_compiler().product_program(real, program, execution=True);
+    actual = program._get_compiler().product_program(real, program);
     with cache_scope(owner_scope_options(actual)) {
         return _record_at(real);
     }
@@ -171,11 +171,6 @@ impl native_only(source_path: str) -> bool {
     if rel is None {
         return False;
     }
-    import from jaclang.compiler.kernel_target { active_kernel_target }
-    spec = active_kernel_target();
-    if spec is not None {
-        return spec.is_native_only(rel);
-    }
     return active_host().is_native_only_source(rel);
 }
 
@@ -183,11 +178,6 @@ impl native_lowered(source_path: str) -> bool {
     rel = _toolchain_rel(source_path);
     if rel is None {
         return False;
-    }
-    import from jaclang.compiler.kernel_target { active_kernel_target }
-    spec = active_kernel_target();
-    if spec is not None {
-        return spec.is_native_lowered(rel);
     }
     return active_host().is_native_lowered_source(rel);
 }
@@ -211,16 +201,6 @@ impl native_unit(
     import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     if effective_module_pin(source_path, prog) == SPACE_NATIVE {
         return True;
-    }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
-    if in_native_scope_path(source_path) {
-        if native_unit_compile is None {
-            import from jaclang.compiler.frontend.codeinfo {
-                native_unit_compile_active
-            }
-            native_unit_compile = native_unit_compile_active();
-        }
-        return bool(native_unit_compile);
     }
     rel = _toolchain_rel(source_path);
     if rel is not None {

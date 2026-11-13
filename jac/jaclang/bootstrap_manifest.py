@@ -57,19 +57,15 @@ def is_roster_input(rel_path: str, roster: tuple[str, ...] | None = None) -> boo
     )
 
 
-# Inputs the build LOWERS into JacPython's native object (prepare_native.py)
-# instead of shipping as source. They are compiler identity exactly like every
+# Inputs a build lowers into a native object instead of shipping as source
+# (none since JacPython was removed). They are compiler identity exactly like every
 # other declared input; a staging that omits their sources carries their hashes
 # in COMPILER_IDENTITY_NAME so its digest still covers them. This tuple is the
 # only place the set is named: the payload stager prunes by it and the digest
 # resolver completes by it, so the two can no longer disagree (they did, and a
 # pruned payload silently reported a different, smaller compiler identity than
 # the checkout it was built from).
-NATIVE_LOWERED_PATHS: tuple[str, ...] = (
-    "compiler/frontend/python",
-    "compiler/backends/py/jacpython",
-    "runtime/python",
-)
+NATIVE_LOWERED_PATHS: tuple[str, ...] = ()
 
 # Written into a staged jaclang tree at pack time, from the COMPLETE source
 # tree, before any pruning. Its `inputs` map covers every declared input so a
@@ -142,13 +138,9 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/package_boundary_pass.jac",
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
-    "compiler/native_scope.jac",
-    "compiler/kernel_target.jac",
+    "compiler/pkg_paths.jac",
     "compiler/field_semantics.jac",
     "compiler/c_interop.jac",
-    "compiler/native_compiler.jac",
-    "compiler/jc_unit.jac",
-    "compiler/jc_materialize.jac",
     "compiler/passes/execution.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
@@ -197,17 +189,13 @@ SEED_PATHS: tuple[str, ...] = (
     "project/app_kinds.jac",
 )
 
-# Modules with no bytecode meaning: they import C symbols (the kernel
-# roots and the fused-binary shims) or live under the native standard
-# library. The roster lives here, in the pure-Python tier, because the jac0
+# Modules with no bytecode meaning: they import C symbols (the fused-binary
+# shims) or live under the native standard library. The roster lives here, in the pure-Python tier, because the jac0
 # sweep and the seed-manifest gate must skip them before any .jac module can
 # load; `placement_facts.native_only` is the compiler's view of the same
 # data and the only predicate the driver, the seal and the link plan
 # consult. Tier stamping (is_seed_source) is unaffected.
 NATIVE_ONLY_REL: tuple[str, ...] = (
-    "compiler/jc_unit.jac",
-    "compiler/jc_materialize.jac",
-    "compiler/jc_ask.jac",
     "dist/fused/embed.jac",
     "dist/fused/_libc.jac",
 )

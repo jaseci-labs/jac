@@ -201,26 +201,6 @@ impl read_jir_paths(data: bytes, base_dir: str = "") -> JirPaths {
     return JirPaths.from_bytes(read_section_bytes(data, SEC_PATH_ROOT), base_dir);
 }
 
-impl create_header(
-    source_hash: int,
-    node_count: int,
-    symbol_count: int,
-    string_pool_size: int,
-    flags: int = 0
-) -> JirHeader {
-    return JirHeader(
-        magic=MAGIC,
-        format_version=FORMAT_VERSION,
-        python_version=(sys.version_info.major << 8) | sys.version_info.minor,
-        jaclang_version_hash=zlib.crc32(jaclang_version().encode()) & 0xFFFFFFFF,
-        source_content_hash=source_hash & 0xFFFFFFFF,
-        node_count=node_count,
-        symbol_count=symbol_count,
-        string_pool_size=string_pool_size,
-        flags=flags
-    );
-}
-
 impl parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
     if len(data) < HEADER_SIZE {
         return None;
@@ -253,13 +233,6 @@ impl get_jir_cache_dir -> Path {
 }
 
 impl compute_content_sha256(file_path: str) -> str {
-    held = _COMPILED_CONTENT.get();
-    if held {
-        found = held.get(os.path.realpath(file_path));
-        if found is not None {
-            return found;
-        }
-    }
     return file_sha256(file_path);
 }
 
@@ -553,40 +526,8 @@ impl dev_carry_enabled -> bool {
     }
 }
 
-impl abi_contract_digest(pkg_root: str) -> str {
-    h = hashlib.sha256();
-    for rel in KERNEL_ABI_CONTRACT_REL {
-        h.update(rel.encode("utf-8"));
-        path = os.path.join(pkg_root, *rel.split("/"));
-        h.update(
-            (unit_source_digest(path) if os.path.isfile(path) else "missing").encode(
-                "utf-8"
-            )
-        );
-    }
-    return h.hexdigest();
-}
-
-impl native_producer_digest(kernel_build: bool = False) -> str {
-    current = running_compiler_digest();
-    if not kernel_build or not dev_carry_enabled() {
-        return current;
-    }
-    known = _NATIVE_PRODUCER_DIGESTS.get(current);
-    if known is None {
-        import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
-        import from jaclang.compiler.kernel_target { target_pkg_root }
-        known = DEV_NATIVE_PRODUCER
-            + str(NATIVE_ABI_VERSION)
-            + ":"
-            + abi_contract_digest(target_pkg_root());
-        _NATIVE_PRODUCER_DIGESTS[current] = known;
-    }
-    return known;
-}
-
-impl _producer_kind(digest: str) -> str {
-    return DEV_NATIVE_PRODUCER if digest.startswith(DEV_NATIVE_PRODUCER) else "";
+impl native_producer_digest -> str {
+    return running_compiler_digest();
 }
 
 impl compiler_generation -> str {
@@ -720,34 +661,11 @@ impl _module_projection(source_path: str) -> str {
 }
 
 impl begin_prepare_memo -> any {
-    return (_PREPARE_MEMO.set({}), _COMPILED_CONTENT.set({}));
+    return _PREPARE_MEMO.set({});
 }
 
 impl end_prepare_memo(token: any) {
-    _COMPILED_CONTENT.reset(token[1]);
-    _PREPARE_MEMO.reset(token[0]);
-}
-
-impl hold_compiled_content(digests: dict[str, str]) {
-    held = _COMPILED_CONTENT.get();
-    if held is None {
-        return;
-    }
-    held.update(digests);
-    memo = _PREPARE_MEMO.get();
-    if memo is not None {
-        memo.clear();
-    }
-}
-
-@contextmanager
-impl content_on_disk -> Iterator[None] {
-    token = _COMPILED_CONTENT.set(None);
-    try {
-        yield None;
-    } finally {
-        _COMPILED_CONTENT.reset(token);
-    }
+    _PREPARE_MEMO.reset(token);
 }
 
 impl _memoized(kind: str, source_path: str, compute: any) -> str {
@@ -873,27 +791,6 @@ impl unit_source_digest(path: str) -> str {
     return h.hexdigest();
 }
 
-impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
-    units = sidecar.get("units");
-    ids = sidecar.get("unit_ids");
-    recorded = [str(u) for u in units] if isinstance(units, list) else [];
-    if not isinstance(ids, list) or len(ids) != len(recorded) {
-        return recorded;
-    }
-    pkg_parent = os.path.dirname(target_pkg_root());
-    out: list[str] = [];
-    for (path, ident) in zip(recorded, ids) {
-        ident_s = str(ident);
-        local = (
-            os.path.join(pkg_parent, ident_s)
-                if ident_s.startswith("jaclang/")
-                else path
-        );
-        out.append(local if os.path.isfile(local) else path);
-    }
-    return out;
-}
-
 impl _compute_module_key_uncached(source_path: str) -> str {
     stat_note("key_compute");
     h = hashlib.sha256();
@@ -994,7 +891,7 @@ impl _ct_pkg_ref(path: str) -> str {
 
 impl _ct_row_path(stored: str, base: str) -> str {
     if stored.startswith(CT_PKG_PREFIX) {
-        import from jaclang.compiler.kernel_target { target_pkg_root }
+        import from jaclang.compiler.pkg_paths { target_pkg_root }
         return os.path.join(target_pkg_root(), *stored[len(CT_PKG_PREFIX):].split("/"));
     }
     if os.path.isabs(stored) or not base {
@@ -1256,11 +1153,6 @@ impl stale_ct_dep_rows(text: str, base: str = "") -> list[str] {
     return _stale_ct_rows(_ct_dep_rows(text), base);
 }
 
-impl module_ct_deps_text(mod: any) -> str {
-    section = module_ct_deps_section(mod);
-    return section.decode("utf-8") if section is not None else "";
-}
-
 impl absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, flag) in _ct_dep_rows(raw.decode("utf-8")) {
@@ -1497,14 +1389,7 @@ impl get_module_cache_path(source_path: str) -> Path {
     projection = ''
         if is_package_keyed_path(str(source))
         else _module_projection(source_path);
-    import from jaclang.compiler.kernel_target {
-        is_target_package_path,
-        kernel_target_active
-    }
-    name = native_unit_identity(str(source))
-        if kernel_target_active() and is_target_package_path(str(source))
-        else str(source);
-    path_hash = hashlib.sha256((name + projection).encode()).hexdigest()[:8];
+    path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }
@@ -1517,7 +1402,9 @@ impl _touch_generation(cache_dir: Path) {
     _TOUCHED_GENERATIONS.add(key);
     import from jaclang.cache.registry { bucket }
     if cache_dir.is_dir() {
-        bucket("jir-modules").note_hit(cache_dir);
+        try {
+            bucket("jir-modules").note_hit(cache_dir);
+        } except ImportError {}
     }
 }
 
@@ -1579,14 +1466,6 @@ impl write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     buf.append(SEC_TERMINATOR);
     buf.extend(bytes(4));
     return bytes(buf);
-}
-
-impl read_sections_blob(data: bytes) -> dict[int, bytes] {
-    magic: any = SECTIONS_MAGIC;
-    if not data.startswith(magic) {
-        return {};
-    }
-    return read_sections(data, len(magic));
 }
 
 impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
@@ -1857,12 +1736,10 @@ impl merge_native_sections(
             }
         }
         if digests {
-            kinds = {_producer_kind(d) for d in digests};
             variants = {
                 key: value
                 for (key, value) in variants.items()
                 if key.split("\x1f")[0] in digests
-                    or _producer_kind(key.split("\x1f")[0]) not in kinds
             };
         }
         if tag in incoming {
@@ -1920,54 +1797,6 @@ impl carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None) {
         return None;
     }
     return None;
-}
-
-impl carried_native_sections(source_path: str, producer: str) -> dict[int, bytes] {
-    if not producer.startswith(DEV_NATIVE_PRODUCER) or not dev_carry_enabled() {
-        return {};
-    }
-    prefix = producer + "\x1f";
-    try {
-        current = get_module_cache_path(source_path);
-        candidates: list[tuple[float, str]] = [];
-        for generation in current.parent.parent.iterdir() {
-            candidate = generation / current.name;
-            if generation == current.parent or not candidate.is_file() {
-                continue;
-            }
-            candidates.append((candidate.stat().st_mtime, str(candidate)));
-        }
-        candidates.sort(reverse=True);
-        for (_mtime, candidate_path) in candidates {
-            data = Path(candidate_path).read_bytes();
-            header = parse_header(data[:HEADER_SIZE]);
-            if header is None or not header.is_compatible() {
-                continue;
-            }
-            if not jir_matches_source(data, source_path) {
-                continue;
-            }
-            found: dict[int, bytes] = {};
-            for tag in NATIVE_SECTIONS {
-                kept = {
-                    key: value
-                    for (key, value) in native_section_variants(
-                        read_section_bytes(data, tag)
-                    ).items()
-                    if key.startswith(prefix)
-                };
-                if kept {
-                    found[tag] = pack_native_variants(kept);
-                }
-            }
-            if SEC_NIFACE in found {
-                return found;
-            }
-        }
-    } except Exception {
-        return {};
-    }
-    return {};
 }
 
 impl write_module_cache(

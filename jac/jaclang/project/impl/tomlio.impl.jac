@@ -20,12 +20,3 @@ impl read_toml_with_encoding(file_path: str) -> dict[str, any] {
         raise MalformedJacTomlError(file_path, exc);
     }
 }
-
-impl _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
-    import sys;
-    sys.stderr.write(
-        f"warning: jac.toml is malformed ({exc.file_path}): {exc.original}; "
-        "ignoring [plugins].disabled. "
-        "Run a `jac` CLI command for the actionable error.\n"
-    );
-}

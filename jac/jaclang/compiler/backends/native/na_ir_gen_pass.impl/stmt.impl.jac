@@ -1962,6 +1962,21 @@ impl NaIRGenPass._bind_match_arch(
     }
 }
 
+glob AUG_OP_TOKENS: dict[str, str] = {
+         "+=": Tok.PLUS,
+         "-=": Tok.MINUS,
+         "*=": Tok.STAR_MUL,
+         "/=": Tok.DIV,
+         "//=": Tok.FLOOR_DIV,
+         "%=": Tok.MOD,
+         "**=": Tok.STAR_POW,
+         "&=": Tok.BW_AND,
+         "|=": Tok.BW_OR,
+         "^=": Tok.BW_XOR,
+         "<<=": Tok.LSHIFT,
+         ">>=": Tok.RSHIFT
+     };
+
 impl NaIRGenPass._apply_scalar_aug_op(
     current: ir.Value,
     rhs: ir.Value,
@@ -1980,21 +1995,7 @@ impl NaIRGenPass._apply_scalar_aug_op(
     if not isinstance(current.type, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         return None;
     }
-    op_toks = {
-        "+=": Tok.PLUS,
-        "-=": Tok.MINUS,
-        "*=": Tok.STAR_MUL,
-        "/=": Tok.DIV,
-        "//=": Tok.FLOOR_DIV,
-        "%=": Tok.MOD,
-        "**=": Tok.STAR_POW,
-        "&=": Tok.BW_AND,
-        "|=": Tok.BW_OR,
-        "^=": Tok.BW_XOR,
-        "<<=": Tok.LSHIFT,
-        ">>=": Tok.RSHIFT
-    };
-    if aug_op not in op_toks {
+    if aug_op not in AUG_OP_TOKENS {
         return None;
     }
     if aug_op == "/=" and isinstance(current.type, ir.IntType) {
@@ -2005,12 +2006,168 @@ impl NaIRGenPass._apply_scalar_aug_op(
     }
     coerced = self._coerce_type(rhs, current.type);
     result = self._emit_binary_op(
-        op_toks[aug_op], current, coerced, unsigned=unsigned, sized=sized
+        AUG_OP_TOKENS[aug_op], current, coerced, unsigned=unsigned, sized=sized
     );
     if result is not None and result.type != current.type {
         result = self._coerce_type(result, current.type);
     }
     return result;
+}
+
+impl NaIRGenPass._compute_aug_value(
+    nd: uni.Assignment,
+    target_expr: uni.Expr,
+    current: ir.Value,
+    rhs: ir.Value,
+    inplace_slot: (ir.Value | None)
+) -> tuple[(ir.Value | None), bool, bool] {
+    aug_tok = nd.aug_op;
+    if aug_tok is None {
+        return (None, False, False);
+    }
+    op = aug_tok.value;
+    errs_before = len(self.ctx.errors_had);
+    if not (
+        op == "+="
+        and inplace_slot is not None
+        and self._str_desc_ty is not None
+        and current.type == self._str_desc_ty
+    ) {
+        current = self._str_norm(current);
+        rhs = self._str_norm(rhs);
+    }
+    scalar_tys = (ir.IntType, ir.FloatType, ir.DoubleType);
+    if isinstance(current.type, scalar_tys) {
+        operand = rhs
+            if isinstance(rhs.type, scalar_tys)
+            else self._coerce_type(rhs, current.type);
+        result = self._apply_scalar_aug_op(
+            current,
+            operand,
+            op,
+            nd.value,
+            target_type=target_expr.type,
+            unsigned=self._is_unsigned_node(target_expr),
+            sized=self._is_sized_node(target_expr)
+        )
+            if isinstance(operand.type, scalar_tys)
+            else None;
+        if result is not None {
+            return (result, False, False);
+        }
+    } elif current.type == self.complex_struct_type.as_pointer() {
+        tok = self._complex_aug_token(op);
+        result = None;
+        if tok == Tok.STAR_POW {
+            result = self._codegen_complex_pow(current, rhs);
+        } elif tok is not None {
+            result = self._emit_binary_op(tok, current, rhs);
+        }
+        if result is not None {
+            return (result, False, False);
+        }
+    } else {
+        coerced = self._coerce_type(rhs, current.type);
+        if op == "|=" {
+            dict_key = self._dict_key_reconcile(
+                self._dict_key_of(target_expr), current
+            );
+            _de = self._ensure_emitters().get("dict");
+            if dict_key is not None and isinstance(_de, NativeDictEmitter) {
+                _de.emit_update(
+                    NativeEmitCtx(pass_ref=self, type_key=dict_key), current, [coerced]
+                );
+                self._release_owned_args([coerced], op="dict_ior");
+                return (current, True, False);
+            }
+        }
+        _se = self._ensure_emitters().get("set");
+        for (sname, stype) in self.set_types.items() {
+            if current.type == stype.as_pointer()
+                and isinstance(_se, NativeSetEmitter) {
+                set_update = {
+                    "-=": _se.emit_difference_update,
+                    "&=": _se.emit_intersection_update,
+                    "|=": _se.emit_update,
+                    "^=": _se.emit_symmetric_difference_update
+                }.get(
+                    op
+                );
+                if set_update is not None {
+                    set_update(
+                        NativeEmitCtx(pass_ref=self, type_key=sname), current, [coerced]
+                    );
+                    self._release_owned_args([coerced], op="set_aug");
+                    return (current, True, False);
+                }
+            }
+        }
+        if op == "+="
+            and "u8" in self.list_types
+            and current.type == self.list_types["u8"].as_pointer() {
+            ba_src = self._bytearray_src_of(rhs);
+            if ba_src is not None {
+                self.builder.call(
+                    self._bytearray_runtime_fns()["extend_raw"],
+                    [current, ba_src[0], ba_src[1]],
+                    name=""
+                );
+                if self._is_owned(rhs) {
+                    self._emit_rc_release_simple(rhs, op="ba_aug", loc="");
+                }
+                return (current, True, False);
+            }
+        }
+        for (key, lt) in self.list_types.items() {
+            if current.type == lt.as_pointer() and key in self.list_helpers {
+                if op == "+=" and rhs.type == current.type {
+                    self._dispatch_primitive_method(
+                        "list", "extend", current, [rhs], key
+                    );
+                    return (current, True, False);
+                }
+                repeated = self._emit_binary_op(Tok.STAR_MUL, current, rhs)
+                    if op == "*=" and isinstance(rhs.type, ir.IntType)
+                    else None;
+                if repeated is not None {
+                    self._dispatch_primitive_method("list", "clear", current, [], key);
+                    self._dispatch_primitive_method(
+                        "list", "extend", current, [repeated], key
+                    );
+                    return (current, True, False);
+                }
+            }
+        }
+        operand = coerced if op == "+=" else rhs;
+        self._last_inplace_handled = False;
+        result = self._emit_binary_op(
+            AUG_OP_TOKENS[op], current, operand, inplace_slot=inplace_slot
+        )
+            if op in AUG_OP_TOKENS
+            else None;
+        if result is not None {
+            if op == "+=" and self._is_owned(operand) {
+                self._emit_rc_release_typed(
+                    operand,
+                    op="str_rhs",
+                    loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
+            }
+            return (result, False, self._last_inplace_handled);
+        }
+    }
+    if len(self.ctx.errors_had) == errs_before {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="augmented assignment",
+            name=f"{self._get_name(target_expr)} {op}",
+            help_text="This operator has no native lowering for a variable of this type. Assign the full expression instead."
+        );
+    }
+    return (None, False, False);
 }
 
 impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None) {
@@ -2635,396 +2792,22 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
             }
             is_inplace_set_op = False;
             _ip_handled = False;
-
             if nd.aug_op is not None {
-                aug_op_val = nd.aug_op.value;
-                _ip_fast = (
-                    aug_op_val == "+="
-                    and self._str_desc_ty is not None
-                    and alloca.pointee_type == self._str_desc_ty
-                    and var_name not in self.borrowed_vars
-                    and var_name not in self.region_handle_vars
-                    and id(nd) not in self.module.managed_borrow_binds
+                _ip_slot = alloca
+                    if var_name not in self.borrowed_vars
+                        and var_name not in self.region_handle_vars
+                    else None;
+                (_aug, is_inplace_set_op, _ip_handled) = self._compute_aug_value(
+                    nd,
+                    target_expr,
+                    self.builder.load(alloca, name=f"{var_name}.cur"),
+                    value,
+                    _ip_slot
                 );
-                current = self.builder.load(alloca, name=f"{var_name}.cur");
-                if not _ip_fast {
-                    current = self._str_norm(current);
-                    value = self._str_norm(value);
+                if _aug is None {
+                    continue;
                 }
-                _scalar_aug: (ir.Value | None) = None;
-                if isinstance(current.type, (ir.IntType, ir.FloatType, ir.DoubleType))
-                    and isinstance(
-                        value.type, (ir.IntType, ir.FloatType, ir.DoubleType)
-                    )
-                    and aug_op_val != "**=" {
-                    _scalar_aug = self._apply_scalar_aug_op(
-                        current,
-                        value,
-                        aug_op_val,
-                        nd.value,
-                        target_type=target_expr.type,
-                        unsigned=self._is_unsigned_node(target_expr),
-                        sized=self._is_sized_node(target_expr)
-                    );
-                }
-                _is_cplx_lhs = current.type == self.complex_struct_type.as_pointer();
-                _cplx_aug: (ir.Value | None) = None;
-                if _scalar_aug is None and _is_cplx_lhs {
-                    _aug_tok = self._complex_aug_token(aug_op_val);
-                    if _aug_tok is not None {
-                        if _aug_tok == Tok.STAR_POW {
-                            _cplx_aug = self._codegen_complex_pow(current, value);
-                        } else {
-                            _cplx_aug = self._emit_binary_op(_aug_tok, current, value);
-                        }
-                    }
-                }
-                coerced = (
-                    value if _is_cplx_lhs else self._coerce_type(value, current.type)
-                );
-                if _scalar_aug is not None {
-                    value = _scalar_aug;
-                } elif _cplx_aug is not None {
-                    value = _cplx_aug;
-                } elif aug_op_val == "+=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self._emit_overflow_op(
-                            "add", current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                    } elif isinstance(current.type, ir.DoubleType) {
-                        value = self.builder.fadd(
-                            current, coerced, name=f"{var_name}.fadd"
-                        );
-                    } elif (
-                        isinstance(current.type, ir.PointerType)
-                        and "u8" in self.list_types
-                        and current.type == self.list_types["u8"].as_pointer()
-                    ) {
-                        _ba_aug_src = self._bytearray_src_of(value);
-                        if _ba_aug_src is not None {
-                            _ba_aug_fns = self._bytearray_runtime_fns();
-                            self.builder.call(
-                                _ba_aug_fns["extend_raw"],
-                                [current, _ba_aug_src[0], _ba_aug_src[1]],
-                                name=""
-                            );
-                            if self._is_owned(value) {
-                                self._emit_rc_release_simple(
-                                    value, op="ba_aug", loc=""
-                                );
-                            }
-                        }
-                        value = current;
-                    } elif isinstance(current.type, ir.PointerType)
-                        or (
-                            self._str_desc_ty is not None
-                            and current.type == self._str_desc_ty
-                        ) {
-                        _aug_str_rhs = coerced;
-                        _ip_slot: (ir.Value | None) = None;
-                        if (
-                            var_name not in self.borrowed_vars
-                            and var_name not in self.region_handle_vars
-                            and id(nd) not in self.module.managed_borrow_binds
-                        ) {
-                            _ip_slot = alloca;
-                        }
-                        self._last_inplace_handled = False;
-                        augmented = self._emit_binary_op(
-                            Tok.PLUS, current, _aug_str_rhs, inplace_slot=_ip_slot
-                        );
-                        _ip_handled = self._last_inplace_handled;
-                        value = augmented if augmented is not None else current;
-                        if augmented is not None {
-                            if self._is_owned(_aug_str_rhs) {
-                                _aug_rhs_loc = f"{os.path.basename(
-                                    self.module.loc.mod_path
-                                )}:{nd.loc.first_line if nd.loc else 0}";
-                                self._emit_rc_release_typed(
-                                    _aug_str_rhs, op="str_rhs", loc=_aug_rhs_loc
-                                );
-                            }
-                        }
-                    } else {
-                        value = self.builder.fadd(
-                            current, coerced, name=f"{var_name}.fadd"
-                        );
-                    }
-                } elif aug_op_val == "-=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self._emit_overflow_op(
-                            "sub", current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_difference_update(
-                                        _ctx, current, [coerced]
-                                    );
-                                }
-                                value = current;
-                                is_inplace_set_op = True;
-                                break;
-                            }
-                        }
-                    } else {
-                        value = self.builder.fsub(
-                            current, coerced, name=f"{var_name}.fsub"
-                        );
-                    }
-                } elif aug_op_val == "*=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self._emit_overflow_op(
-                            "mul", current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                    } else {
-                        value = self.builder.fmul(
-                            current, coerced, name=f"{var_name}.fmul"
-                        );
-                    }
-                } elif aug_op_val == "//=" {
-                    if isinstance(current.type, ir.IntType) {
-                        izero = ir.Constant(current.type, 0);
-                        is_zero = self.builder.icmp_signed(
-                            "==", coerced, izero, name=f"{var_name}.div.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero,
-                            "ZeroDivisionError",
-                            "integer division or modulo by zero"
-                        );
-                        (q, _) = self._emit_int_divmod(
-                            current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                        value = q;
-                    } else {
-                        fzero = ir.Constant(ir.DoubleType(), 0.0);
-                        is_zero = self.builder.fcmp_ordered(
-                            "==", coerced, fzero, name=f"{var_name}.fdiv.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero, "ZeroDivisionError", "float division by zero"
-                        );
-                        value = self._codegen_float_floor_div(current, coerced);
-                    }
-                } elif aug_op_val == "%=" {
-                    if isinstance(current.type, ir.IntType) {
-                        izero = ir.Constant(current.type, 0);
-                        is_zero = self.builder.icmp_signed(
-                            "==", coerced, izero, name=f"{var_name}.mod.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero,
-                            "ZeroDivisionError",
-                            "integer division or modulo by zero"
-                        );
-                        (_, r) = self._emit_int_divmod(
-                            current,
-                            coerced,
-                            self._is_unsigned_node(target_expr),
-                            trap_min=False
-                        );
-                        value = r;
-                    } else {
-                        fzero = ir.Constant(ir.DoubleType(), 0.0);
-                        is_zero = self.builder.fcmp_ordered(
-                            "==", coerced, fzero, name=f"{var_name}.fmod.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero, "ZeroDivisionError", "float modulo by zero"
-                        );
-                        value = self._codegen_float_floor_mod(current, coerced);
-                    }
-                } elif aug_op_val == "&=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self.builder.and_(
-                            current, coerced, name=f"{var_name}.and"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_intersection_update(
-                                        _ctx, current, [coerced]
-                                    );
-                                }
-                                value = current;
-                                is_inplace_set_op = True;
-                                break;
-                            }
-                        }
-                    }
-                } elif aug_op_val == "|=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self.builder.or_(
-                            current, coerced, name=f"{var_name}.or"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        dict_type_key = self._dict_key_reconcile(
-                            self._dict_key_of(target_expr), current
-                        );
-                        if dict_type_key is not None {
-                            _de = self._ensure_emitters().get("dict");
-                            if isinstance(_de, NativeDictEmitter) {
-                                _ctx = NativeEmitCtx(
-                                    pass_ref=self, type_key=dict_type_key
-                                );
-                                _de.emit_update(_ctx, current, [coerced]);
-                            }
-                            value = current;
-                            is_inplace_set_op = True;
-                        } else {
-                            rhs_set = coerced;
-                            lhs_set = current;
-                            set_elem_name: (str | None) = None;
-                            for (sname, stype) in self.set_types.items() {
-                                if current.type == stype.as_pointer()
-                                    or rhs_set.type == stype.as_pointer() {
-                                    set_elem_name = sname;
-                                    break;
-                                }
-                            }
-                            if set_elem_name is not None {
-                                shelpers = self.set_helpers.get(set_elem_name);
-                                if shelpers is not None {
-                                    i64 = ir.IntType(64);
-
-                                    rhs_cast = self.builder.bitcast(
-                                        rhs_set,
-                                        self.set_types[set_elem_name].as_pointer(),
-                                        name="rhs.set.cast"
-                                    );
-                                    rhs_len = self.builder.call(
-                                        shelpers["len"], [rhs_cast], name="rhs.len"
-                                    );
-
-                                    loop_idx = self._entry_alloca(i64, "union.idx");
-                                    self.builder.store(ir.Constant(i64, 0), loop_idx);
-                                    func = self.builder.function;
-                                    cond_bb = func.append_basic_block(
-                                        name="union.cond"
-                                    );
-                                    body_bb = func.append_basic_block(
-                                        name="union.body"
-                                    );
-                                    end_bb = func.append_basic_block(name="union.end");
-                                    self.builder.branch(cond_bb);
-                                    self.builder.position_at_end(cond_bb);
-                                    cur_i = self.builder.load(loop_idx, name="union.i");
-                                    cmp = self.builder.icmp_signed(
-                                        "<", cur_i, rhs_len, name="union.cmp"
-                                    );
-                                    self.builder.cbranch(cmp, body_bb, end_bb);
-                                    self.builder.position_at_end(body_bb);
-                                    elem_i = self.builder.load(
-                                        loop_idx, name="union.elem.i"
-                                    );
-                                    elem_val = self.builder.call(
-                                        shelpers["get"],
-                                        [rhs_cast, elem_i],
-                                        name="union.elem.val"
-                                    );
-                                    lhs_cast = self.builder.bitcast(
-                                        lhs_set,
-                                        self.set_types[set_elem_name].as_pointer(),
-                                        name="lhs.set.cast"
-                                    );
-                                    self.builder.call(
-                                        shelpers["add"], [lhs_cast, elem_val]
-                                    );
-                                    next_i = self.builder.add(
-                                        elem_i, ir.Constant(i64, 1), name="union.next.i"
-                                    );
-                                    self.builder.store(next_i, loop_idx);
-                                    self.builder.branch(cond_bb);
-                                    self.builder.position_at_end(end_bb);
-
-                                    value = lhs_set;
-                                    is_inplace_set_op = True;
-
-                                    self._emit_rc_release_simple(
-                                        rhs_set,
-                                        op="op_assign",
-                                        loc=f"{os.path.basename(
-                                            self.module.loc.mod_path
-                                        )}:{nd.loc.first_line if nd.loc else 0}"
-                                    );
-
-                                    _rhs_var_ior = self._get_name(nd.value)
-                                        if nd.value is not None
-                                        else None;
-                                    if _rhs_var_ior is not None
-                                        and _rhs_var_ior in self.local_vars {
-                                        _rhs_alloca_ior = self.local_vars[_rhs_var_ior];
-                                        self.builder.store(
-                                            ir.Constant(
-                                                _rhs_alloca_ior.pointee_type, None
-                                            ),
-                                            _rhs_alloca_ior
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } elif aug_op_val == "^=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self.builder.xor(
-                            current, coerced, name=f"{var_name}.xor"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_symmetric_difference_update(
-                                        _ctx, current, [coerced]
-                                    );
-                                }
-                                value = current;
-                                is_inplace_set_op = True;
-                                break;
-                            }
-                        }
-                    }
-                } elif aug_op_val == "<<=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = (
-                            self._emit_checked_shl(
-                                current, coerced, self._is_unsigned_node(target_expr)
-                            )
-                                if self._is_sized_node(target_expr)
-                                else self._emit_plain_int_shl(current, coerced)
-                        );
-                    }
-                } elif aug_op_val == ">>=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = (
-                            self._emit_shr(
-                                current, coerced, self._is_unsigned_node(target_expr)
-                            )
-                                if self._is_sized_node(target_expr)
-                                else self._emit_plain_int_shr(current, coerced)
-                        );
-                    }
-                } elif aug_op_val == "**=" {
-                    pow_res = self._apply_scalar_aug_op(
-                        current,
-                        value,
-                        "**=",
-                        nd.value,
-                        unsigned=self._is_unsigned_node(target_expr)
-                    );
-                    if pow_res is not None {
-                        value = pow_res;
-                    }
-                }
+                value = _aug;
             }
             _jacval_slot = (
                 self.jacval_type is not None
@@ -3219,219 +3002,17 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
             global_var = self.global_vars[var_name];
             _ip_ghandled = False;
             if nd.aug_op is not None {
-                aug_op_val = nd.aug_op.value;
-                _ip_gfast = (
-                    aug_op_val == "+="
-                    and self._str_desc_ty is not None
-                    and global_var.value_type == self._str_desc_ty
-                    and id(nd) not in self.module.managed_borrow_binds
+                (_gaug, _, _ip_ghandled) = self._compute_aug_value(
+                    nd,
+                    target_expr,
+                    self.builder.load(global_var, name=f"glob.{var_name}.cur"),
+                    value,
+                    global_var
                 );
-                current = self.builder.load(global_var, name=f"glob.{var_name}.cur");
-                if not _ip_gfast {
-                    current = self._str_norm(current);
-                    value = self._str_norm(value);
+                if _gaug is None {
+                    continue;
                 }
-                coerced = self._coerce_type(value, current.type);
-                if aug_op_val == "+=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self._emit_overflow_op(
-                            "add", current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                    } elif isinstance(current.type, ir.DoubleType) {
-                        value = self.builder.fadd(
-                            current, coerced, name=f"glob.{var_name}.fadd"
-                        );
-                    } elif isinstance(current.type, ir.PointerType)
-                        or (
-                            self._str_desc_ty is not None
-                            and current.type == self._str_desc_ty
-                        ) {
-                        _aug_gstr_rhs = coerced;
-                        self._last_inplace_handled = False;
-                        augmented = self._emit_binary_op(
-                            Tok.PLUS, current, _aug_gstr_rhs, inplace_slot=global_var
-                        );
-                        _ip_ghandled = self._last_inplace_handled;
-                        value = augmented if augmented is not None else current;
-                        if augmented is not None {
-                            if self._is_owned(_aug_gstr_rhs) {
-                                _aug_grhs_loc = f"{os.path.basename(
-                                    self.module.loc.mod_path
-                                )}:{nd.loc.first_line if nd.loc else 0}";
-                                self._emit_rc_release_typed(
-                                    _aug_gstr_rhs, op="str_rhs", loc=_aug_grhs_loc
-                                );
-                            }
-                        }
-                    }
-                } elif aug_op_val == "-=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self._emit_overflow_op(
-                            "sub", current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                    } elif isinstance(current.type, ir.DoubleType) {
-                        value = self.builder.fsub(
-                            current, coerced, name=f"glob.{var_name}.fsub"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_difference_update(
-                                        _ctx, current, [coerced]
-                                    );
-                                }
-                                value = current;
-                                break;
-                            }
-                        }
-                    }
-                } elif aug_op_val == "*=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self._emit_overflow_op(
-                            "mul", current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                    } elif isinstance(current.type, ir.DoubleType) {
-                        value = self.builder.fmul(
-                            current, coerced, name=f"glob.{var_name}.fmul"
-                        );
-                    }
-                } elif aug_op_val == "%=" {
-                    if isinstance(current.type, ir.IntType) {
-                        izero = ir.Constant(current.type, 0);
-                        is_zero = self.builder.icmp_signed(
-                            "==", coerced, izero, name=f"glob.{var_name}.mod.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero,
-                            "ZeroDivisionError",
-                            "integer division or modulo by zero"
-                        );
-                        (_, r) = self._emit_int_divmod(
-                            current,
-                            coerced,
-                            self._is_unsigned_node(target_expr),
-                            trap_min=False
-                        );
-                        value = r;
-                    }
-                } elif aug_op_val == "&=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self.builder.and_(
-                            current, coerced, name=f"glob.{var_name}.and"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_intersection_update(
-                                        _ctx, current, [coerced]
-                                    );
-                                }
-                                value = current;
-                                break;
-                            }
-                        }
-                    }
-                } elif aug_op_val == "|=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self.builder.or_(
-                            current, coerced, name=f"glob.{var_name}.or"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_update(_ctx, current, [coerced]);
-                                }
-                                value = current;
-                                break;
-                            }
-                        }
-                    }
-                } elif aug_op_val == "^=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = self.builder.xor(
-                            current, coerced, name=f"glob.{var_name}.xor"
-                        );
-                    } elif isinstance(current.type, ir.PointerType) {
-                        _se = self._ensure_emitters().get("set");
-                        for (sname, stype) in self.set_types.items() {
-                            if current.type == stype.as_pointer() {
-                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
-                                if isinstance(_se, NativeSetEmitter) {
-                                    _se.emit_symmetric_difference_update(
-                                        _ctx, current, [coerced]
-                                    );
-                                }
-                                value = current;
-                                break;
-                            }
-                        }
-                    }
-                } elif aug_op_val == "//=" {
-                    if isinstance(current.type, ir.IntType) {
-                        izero = ir.Constant(current.type, 0);
-                        is_zero = self.builder.icmp_signed(
-                            "==", coerced, izero, name=f"glob.{var_name}.div.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero,
-                            "ZeroDivisionError",
-                            "integer division or modulo by zero"
-                        );
-                        (q, _) = self._emit_int_divmod(
-                            current, coerced, self._is_unsigned_node(target_expr)
-                        );
-                        value = q;
-                    } else {
-                        fzero = ir.Constant(ir.DoubleType(), 0.0);
-                        is_zero = self.builder.fcmp_ordered(
-                            "==", coerced, fzero, name=f"glob.{var_name}.fdiv.zero.chk"
-                        );
-                        self._emit_runtime_raise(
-                            is_zero, "ZeroDivisionError", "float division by zero"
-                        );
-                        value = self._codegen_float_floor_div(current, coerced);
-                    }
-                } elif aug_op_val == "**=" {
-                    pow_res = self._apply_scalar_aug_op(
-                        current,
-                        value,
-                        "**=",
-                        nd.value,
-                        unsigned=self._is_unsigned_node(target_expr)
-                    );
-                    if pow_res is not None {
-                        value = pow_res;
-                    }
-                } elif aug_op_val == "<<=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = (
-                            self._emit_checked_shl(
-                                current, coerced, self._is_unsigned_node(target_expr)
-                            )
-                                if self._is_sized_node(target_expr)
-                                else self._emit_plain_int_shl(current, coerced)
-                        );
-                    }
-                } elif aug_op_val == ">>=" {
-                    if isinstance(current.type, ir.IntType) {
-                        value = (
-                            self._emit_shr(
-                                current, coerced, self._is_unsigned_node(target_expr)
-                            )
-                                if self._is_sized_node(target_expr)
-                                else self._emit_plain_int_shr(current, coerced)
-                        );
-                    }
-                }
+                value = _gaug;
             }
             _jacval_global = (
                 self.jacval_type is not None

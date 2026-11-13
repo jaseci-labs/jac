@@ -210,20 +210,19 @@ impl CompileOptions.module_projection -> str {
 
 impl CompileOptions.keeps_interfaces -> bool {
     return not (
-        self.aot_mode or bool(self.force_codespace) or bool(self.default_codespace)
+        self.aot_mode
+        or bool(self.force_codespace)
+        or self.default_codespace == 'native'
     );
 }
 
-impl CompileOptions.for_symbols(
-    need_tree: bool = False, need_bodies: bool = False
-) -> CompileOptions {
+impl CompileOptions.for_symbols(need_tree: bool = False) -> CompileOptions {
     import copy;
     result = copy.copy(self);
     result.no_cgen = True;
     result.symtab_ir_only = True;
     result.iface_ok = not need_tree;
     result.need_full_ast = need_tree;
-    result.body_demand = need_bodies;
     result.native_parity = False;
 
     return result;
@@ -240,7 +239,6 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         native_import=True,
         default_codespace='native',
         native_unit=self.native_unit,
-        kernel_build=self.kernel_build,
         native_link_mode=self.native_link_mode,
         na_gc_mode=self.na_gc_mode,
         nogc_enforce_all=self.nogc_enforce_all,
@@ -307,10 +305,6 @@ impl CompileOptions.nogc_enforced_for(mod_name: str) -> bool {
 
 impl effective_codegen_fingerprint -> str {
     return CompileOptions().codegen_fingerprint();
-}
-
-impl effective_analysis_fingerprint -> str {
-    return CompileOptions().analysis_fingerprint();
 }
 
 impl link_fingerprint_mismatches(

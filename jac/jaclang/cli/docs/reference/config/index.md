@@ -319,7 +319,9 @@ with credentials.
 The `[serve]` tables are checked when the configuration loads, in every layer
 (`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
 `jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
-`"false"` or `true` for a number, stops the load with a message naming the key.
+`"false"` or `true` for a number, stops the load. The message lists every such
+key at once and suggests the right name for a misspelled one, and nothing from a
+table with a mistake is applied.
 A layer's sub-table merges into the one below it instead of replacing it.
 `[serve.auth]` is the exception: its layers are merged first and the result is
 checked when the server starts (or a deploy builds its manifests).
@@ -569,8 +571,8 @@ require = []              # Module-name patterns whose native lowering must succ
 ```
 
 `require` makes matching modules native-only during checking and building. For
-example, `require = ["jaclang.runtime.python.*"]` covers JacPython's runtime
-modules and bindings. Lowering failures remain errors; Python fallback and
+example, `require = ["mypkg.kernels.*"]` covers every module under
+`mypkg.kernels`. Lowering failures remain errors; Python fallback and
 opaque field erasure cannot satisfy this contract. Required dependencies stay
 in the target compilation, and checks verify the native dependency closure
 without executing it. The policy is included in analysis and code-generation

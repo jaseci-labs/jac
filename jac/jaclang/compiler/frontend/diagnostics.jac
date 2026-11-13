@@ -622,6 +622,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot use {type} as an exception cause (not an exception type or None)"
      ),
+     E1164 = _err(
+         "E1164",
+         Category.TYPE,
+         "Cannot catch {type} (not an exception class)",
+         help="An except clause names the exception classes it handles, alone or in a tuple; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`."
+     ),
      E1091 = _err(
          "E1091",
          Category.TYPE,
@@ -986,9 +992,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Relative import '{module}' names no module",
          help="A dotted relative import addresses a file inside this project,"
          " counted from the importing module's folder: one dot is that folder"
-         " and each further dot climbs one level. '{module}' resolves there to"
-         " no .jac, .py, .pyi or .js file and to no package directory, and is"
-         " not looked for anywhere else, such as the project root. Create the"
+         " and each further dot climbs one level. Server code cannot climb above"
+         " the outermost folder holding a jac.toml, which the runtime cannot"
+         " import from. '{module}' climbs above it or resolves to no .jac, .py,"
+         " .pyi or .js file and to no package directory, and is not looked for"
+         " anywhere else, such as the project root. Create the"
          " module, correct the spelling or the number of dots, or drop the"
          " import. Leaving it unresolved erases the binding from the emitted"
          " client bundle, where it fails as an undefined name at runtime. Two"
@@ -1548,6 +1556,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.IMPORT,
          "String import '{name}' does not match any declared or installed npm package",
          help="A quoted bare import always means an npm package. Declare '{name}' under [dependencies.npm] in jac.toml and run 'jac install', or use a dotted module path (import from .{name}) for a local Jac module."
+     ),
+     E2001 = _err(
+         "E2001",
+         Category.SEMANTIC,
+         "Name '{name}' in an except clause is not defined",
+         help="An except clause names the exception classes it handles; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`. In client code, a JavaScript-only class such as `DOMException` or `Error` is not a name the checker knows: `except Exception as e` catches it, and `e.name` tells which one it is."
      ),
      W2001 = _warn("W2001", Category.SEMANTIC, "Name '{name}' may be undefined"),
      W2002 = _warn("W2002", Category.SEMANTIC, "Unreachable code detected"),

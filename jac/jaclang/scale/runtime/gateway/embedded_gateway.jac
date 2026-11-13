@@ -11,6 +11,7 @@ obj EmbeddedGateway(Gateway) {
         port: int = DEFAULT_GATEWAY_PORT,
         host: str = DEFAULT_GATEWAY_HOST,
         client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
+        base_path: str = ".",
         port_pinned: bool = False,
         app: any = None;
 
