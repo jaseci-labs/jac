@@ -14,6 +14,9 @@ import re;
 import from tests.support { assert_native_identity, NATIVE_FIXTURES }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.frontend.unitree { Ability, SubTag }
+import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
 import os;
 
 glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "borrow_infer.jac");
@@ -75,4 +78,26 @@ test "two loop variables of one name both stay counted" {
 
 test "the program prints what the Python backend prints under rc and managed" {
     assert_native_identity(FIXTURE, profiles=["rc", "managed"]);
+}
+
+test "the inference's remembered ancestor lookup agrees with walking each chain" {
+    prog = JacProgram();
+    mod = prog.compile(file_path=FIXTURE, no_cgen=True);
+    checker = run_pass(OwnershipCheckPass, mod, prog);
+    nodes = mod.flatten();
+    in_ability = 0;
+    in_tag = 0;
+    for order in [nodes, list(reversed(nodes))] {
+        owners: dict[int, any] = {};
+        tags: dict[int, any] = {};
+        for nd in order {
+            owner = nd.enclosing_decl(Ability);
+            tag = nd.find_parent_of_type(SubTag);
+            assert checker._infer_above(nd, Ability, owners, True) is owner;
+            assert checker._infer_above(nd, SubTag, tags, False) is tag;
+            in_ability += 1 if owner is not None else 0;
+            in_tag += 1 if tag is not None else 0;
+        }
+    }
+    assert in_ability > 0 and in_tag > 0 , (in_ability, in_tag);
 }
