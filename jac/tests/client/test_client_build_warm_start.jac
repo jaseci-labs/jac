@@ -99,14 +99,24 @@ def _stray_caches(proj: Path) -> list[str] {
 test "a warm client build over a real layout is served from the cache" {
     import from jaclang.server.hmr { HotReloader }
     import from jaclang.server.watcher { JacFileWatcher }
+    import from jaclang.client.build_stages { record_stages }
     proj = _project();
 
-    cold = _build(proj);
+    with record_stages() as stages {
+        cold = _build(proj);
+    }
     for name in ["main.jac", "Navbar.jac", "button.jac", "index.jac", "about.jac"] {
         assert name in cold , f"the cold build must compile {name}, saw {cold}";
     }
+    assert [name for (name, _) in stages]
+        == ["Entry modules emitted", "Pages compiled"] , (
+        f"a recorded build must time each compile stage, saw {stages}"
+    );
     warm = _build(proj);
     assert warm == [] , f"the warm build must be served from the cache, compiled {warm}";
+    assert len(stages) == 2 , (
+        f"a build nobody is recording must report no stage, saw {stages}"
+    );
 
     pinned = project_scope_is_pinned();
     saved = get_config();
@@ -177,4 +187,35 @@ test "a pages entry whose app cannot receive the route tree is refused" {
         refused = "children" in str(e);
     }
     assert refused , "an app that drops the route tree must fail the client build";
+}
+
+test "an entry compile that records an error is not reported as a finished stage" {
+    import from jaclang.client.build_stages { record_stages }
+    import from jaclang.client.targets.web_target { WebTarget }
+    proj = _project();
+    compiler = Jac.get_program()._get_compiler();
+    real = compiler.get_client_artifact;
+    def records_an_error(path: str, program: any) -> any {
+        program.errors_had.append("entry does not compile");
+        return None;
+    }
+    failure = "";
+    compiler.get_client_artifact = records_an_error;
+    try {
+        with record_stages() as stages {
+            try {
+                WebTarget().build(proj / "main.jac", proj);
+            } except RuntimeError as e {
+                failure = str(e);
+            }
+        }
+    } finally {
+        compiler.get_client_artifact = real;
+    }
+    assert "entry does not compile" in failure , (
+        f"the build must stop on the entry's compile error, got {failure!r}"
+    );
+    assert stages == [] , (
+        f"a stage that failed must not be reported as done, saw {stages}"
+    );
 }
