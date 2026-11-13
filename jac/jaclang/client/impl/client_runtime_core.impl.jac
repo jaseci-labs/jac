@@ -508,7 +508,7 @@ impl __jacPollBrokerSession(broker: str, timeout_ms: int, interval_ms: int) -> s
                     return token;
                 }
             }
-        } except e {
+        } except Exception as e {
             console.warn("[jac-client] session poll failed:", e);
         }
         await __jacSleep(interval_ms);

@@ -6277,6 +6277,7 @@ graph import compiler {
             E1122,
             E1123,
             E1125,
+            E2001,
             E2018,
             E2027,
             E2055,
@@ -6343,6 +6344,7 @@ graph import compiler {
             E1161,
             E1162,
             E1163,
+            E1164,
             E2015,
             W1036,
             W1037,
@@ -7754,7 +7756,8 @@ graph import compiler {
             UniNode,
             UniScopeNode,
             WhileStmt,
-            in_type_position
+            in_type_position,
+            names_except_type
         },
         passes.static_analysis_pass.StaticAnalysisPass._check_undefined_names {
             JsxElementName
@@ -8269,9 +8272,12 @@ graph import compiler {
             ParamVar
         },
     ]
-    frontend.unitree --> types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
-        in_type_position
-    }
+    frontend.unitree --> [
+        types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
+            in_type_position
+        },
+        types.type_evaluator.TypeEvaluator.get_type_of_expression { names_except_type },
+    ]
     frontend.unitree as uni ++> backends.es.backends.react
         | backends.es.backends.solid
         | backends.es.esast_gen_pass
@@ -9378,9 +9384,11 @@ graph import compiler {
         passes.type_checker_pass {
             AnyType,
             ClassType,
+            EnumMemberType,
             FunctionType,
             ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
