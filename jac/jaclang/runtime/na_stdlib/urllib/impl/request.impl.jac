@@ -171,7 +171,16 @@ impl _parse_response(raw: bytes, url: str) -> HTTPResponse {
     header_map: dict[str, str] = {};
     j: int = 0;
     while j < len(names) {
+        name_parts = names[j].split("-");
+        title_name = "";
+        for part in name_parts {
+            if title_name {
+                title_name += "-";
+            }
+            title_name += part.capitalize();
+        }
         header_map[names[j]] = values[j];
+        header_map[title_name] = values[j];
         j += 1;
     }
     return HTTPResponse(
@@ -204,6 +213,9 @@ impl urlopen(
         request = url;
         if data is not None {
             request.data = data;
+            if request.method.upper() == "GET" and len(data) > 0 {
+                request.method = "POST";
+            }
             request.headers = _replace_content_length(request.headers);
         }
     } elif isinstance(url, str) {
