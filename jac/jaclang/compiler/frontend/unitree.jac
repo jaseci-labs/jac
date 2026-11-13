@@ -2592,4 +2592,6 @@ def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
 def type_param_of(nd: NameAtom) -> (TypeParam | None);
 
+def names_except_type(nd: Name) -> bool;
+
 def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;
