@@ -94,9 +94,9 @@ obj:pub Popen {
         _comm_done: bool = False,
         _comm_has_out: bool = False,
         _comm_has_err: bool = False,
-        _comm_out: any = None,
-        _comm_err: any = None,
-        _comm_in: any = None,
+        _comm_out: bytearray = bytearray(),
+        _comm_err: bytearray = bytearray(),
+        _comm_in: bytes = b"",
         _comm_in_off: int = 0;
 
     def postinit;
