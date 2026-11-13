@@ -79,13 +79,20 @@ for kind, path in (("function", "/svc/function/ping"), ("walker", "/svc/walker/P
     conn.close()
     lat.sort()
     errors = []
+    completed = []
 
     def worker():
         c = http.client.HTTPConnection("127.0.0.1", 8000, timeout=30)
-        for _ in range(PER_THREAD):
-            if call(c, path) != 200:
-                errors.append(1)
-        c.close()
+        try:
+            for _ in range(PER_THREAD):
+                if call(c, path) == 200:
+                    completed.append(1)
+                else:
+                    errors.append("status")
+        except Exception as e:
+            errors.append(repr(e))
+        finally:
+            c.close()
 
     threads = [threading.Thread(target=worker) for _ in range(THREADS)]
     t0 = time.perf_counter()
@@ -100,9 +107,13 @@ for kind, path in (("function", "/svc/function/ping"), ("walker", "/svc/walker/P
         "seq_p50_ms": round(statistics.median(lat) * 1000, 2),
         "seq_p95_ms": round(lat[int(len(lat) * 0.95)] * 1000, 2),
         "seq_rps": round(SEQ / sum(lat), 1),
-        "conc_rps": round(THREADS * PER_THREAD / wall, 1),
+        "conc_rps": round(len(completed) / wall, 1),
+        "conc_completed": len(completed),
         "conc_errors": len(errors),
+        "conc_error_sample": errors[:3],
     }))
+    if errors:
+        sys.exit(f"{kind}: {len(errors)} concurrent calls failed")
 EOF
 
 git -C "${ROOT}" fetch -q --depth=1 origin main
@@ -136,12 +147,18 @@ round() {
     local tw_before tw_after
     tw_before=$(ss -tan state time-wait | tail -n +2 | wc -l)
     python3 "${RUNNER_TEMP:-/tmp}/bench_9836_load.py" "${variant}" | tee -a "${ROOT}/bench9836/results.jsonl"
+    local load_rc=${PIPESTATUS[0]}
     tw_after=$(ss -tan state time-wait | tail -n +2 | wc -l)
     echo "{\"variant\": \"${variant}\", \"time_wait_added\": $((tw_after - tw_before))}" | tee -a "${ROOT}/bench9836/results.jsonl"
     kill -TERM -- "-${pid}" 2>/dev/null
     wait "${pid}" 2>/dev/null
     sleep 5
     cd "${ROOT}"
+    if [ "${load_rc}" -ne 0 ]; then
+        echo "### ${variant}: load generator failed (${load_rc})"
+        tail -80 "${WS}/${variant}.log"
+    fi
+    return "${load_rc}"
 }
 
 status=0
