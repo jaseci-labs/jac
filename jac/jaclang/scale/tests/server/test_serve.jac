@@ -1329,6 +1329,7 @@ test "websocket functionality" {
 
 glob dm_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
+     dm_hmr_file: Path = dm_fixtures_dir / "minimal_hmr.jac",
      dm_api_port: int = get_free_port(),
      dm_base_url: str = f"http://localhost:{dm_api_port}";
 
@@ -1344,11 +1345,11 @@ def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
-def setup_dev_mode_server -> subprocess.Popen {
-    if not dm_test_file.exists() {
-        raise FileNotFoundError(f"Test fixture not found: {dm_test_file}");
+def setup_dev_mode_server(jac_file: Path = dm_test_file) -> subprocess.Popen {
+    if not jac_file.exists() {
+        raise FileNotFoundError(f"Test fixture not found: {jac_file}");
     }
-    cleanup_db_files(dm_fixtures_dir);
+    cleanup_db_files(jac_file.parent);
 
     # Only --api_port is pinned: that is the one this suite talks to, and a
     # pinned port is now a contract that fails rather than relocating. The app
@@ -1361,7 +1362,7 @@ def setup_dev_mode_server -> subprocess.Popen {
         "--api-port",
         str(dm_api_port),
         "--dev",
-        str(dm_test_file)
+        str(jac_file)
     ];
 
     import os;
@@ -1594,8 +1595,7 @@ test "dev mode operations" {
     }
 }
 
-test "dev mode named endpoints and HMR refresh" {
-    greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
+test "dev mode named endpoints" {
     sp = setup_dev_mode_server();
     try {
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
@@ -1611,36 +1611,86 @@ test "dev mode named endpoints and HMR refresh" {
 
         assert "/walker/{walker_name}" not in paths , "Generic /walker/{walker_name} should not exist";
         assert "/function/{function_name}" not in paths , "Generic /function/{function_name} should not exist";
+    } finally {
+        teardown_dev_mode_server(sp);
+    }
+}
 
-        with open(str(dm_test_file), 'a') as f {
+test "dev mode HMR refresh" {
+    greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
+    hmr_dir = Path(tempfile.mkdtemp(prefix="jac-hmr-"));
+    hmr_file = hmr_dir / dm_hmr_file.name;
+    shutil.copy2(dm_hmr_file, hmr_file);
+    shutil.copy2(dm_fixtures_dir / "jac.toml", hmr_dir / "jac.toml");
+    sp: (subprocess.Popen | None) = None;
+    try {
+        sp = setup_dev_mode_server(hmr_file);
+        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} before HMR: {response.text[:300]!r}";
+        paths = response.json().get("paths", {});
+        assert "/walker/Base" in paths , f"Expected /walker/Base before HMR, got: {list(
+            paths.keys()
+        )}";
+        assert "/walker/Greet" not in paths , "Greet route should not exist before the HMR edit";
+
+        with open(str(hmr_file), 'a') as f {
             f.write(greet_walker);
         }
 
-        hmr_deadline = time.monotonic() + 20;
+        hmr_deadline = time.monotonic() + 30;
         paths: dict[str, any] = {};
         last_response = "no successful OpenAPI response";
+        last_build_status = "no /__build_status response";
+        saw_compiling = False;
+        next_openapi_check = 0.0;
         while time.monotonic() < hmr_deadline {
             try {
-                response = requests.get(f"{dm_base_url}/openapi.json", timeout=5);
+                build_response = requests.get(
+                    f"{dm_base_url}/__build_status", timeout=5
+                );
             } except (requests.ConnectionError, requests.Timeout) {
-                time.sleep(0.5);
+                time.sleep(0.25);
                 continue;
             }
-            last_response = f"HTTP {response.status_code}: {response.text[:300]!r}";
-            if response.status_code == 200 {
-                paths = response.json().get("paths", {});
-                if "/walker/Greet" in paths {
-                    break;
+            last_build_status = f"HTTP {build_response.status_code}: {build_response.text[:300]!r}";
+            if build_response.status_code == 200 {
+                build_status = build_response.json();
+                if build_status.get("status") == "compiling" {
+                    saw_compiling = True;
+                } elif build_status.get("status") in ("error", "unavailable") {
+                    assert False , f"HMR build status is {build_status.get(
+                        'status'
+                    )!r}: {build_status.get('diagnostics', [])!r}";
+                }
+                check_openapi_now = saw_compiling
+                    or time.monotonic() >= next_openapi_check;
+                if build_status.get("status") == "ok" and check_openapi_now {
+                    try {
+                        response = requests.get(
+                            f"{dm_base_url}/openapi.json", timeout=10
+                        );
+                    } except (requests.ConnectionError, requests.Timeout) {
+                        time.sleep(0.25);
+                        continue;
+                    }
+                    last_response = f"HTTP {response.status_code}: {response.text[:300]!r}";
+                    if response.status_code == 200 {
+                        paths = response.json().get("paths", {});
+                        if "/walker/Greet" in paths {
+                            break;
+                        }
+                    }
+                    next_openapi_check = time.monotonic() + 1;
                 }
             }
-            time.sleep(0.5);
+            time.sleep(0.25);
         }
         if "/walker/Greet" not in paths {
             stop_server(sp);
             (server_stdout, server_stderr) = sp.communicate();
             assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
                 paths.keys()
-            )}\nLast response: {last_response}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
+            )}\nLast /__build_status: {last_build_status}\nLast response: {last_response}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
         }
 
         response = requests.post(
@@ -1650,15 +1700,8 @@ test "dev mode named endpoints and HMR refresh" {
         data = _extract_data_dev(response.json());
         assert data["reports"][0]["message"] == "Hello, Jaseci!";
     } finally {
-        with open(str(dm_test_file), 'r') as f {
-            original = f.read();
-        }
-        if greet_walker in original {
-            with open(str(dm_test_file), 'w') as f {
-                f.write(original.replace(greet_walker, ''));
-            }
-        }
         teardown_dev_mode_server(sp);
+        shutil.rmtree(hmr_dir, ignore_errors=True);
     }
 }
 
