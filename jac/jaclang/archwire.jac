@@ -12731,7 +12731,6 @@ graph import runtime {
         prepared_loader.PreparedLoader.exec_module { execute_module },
         runtime.JacLLM.get_mtir_from_map { semantic_for_scope },
         runtime.JacModule.update_walker { application_for, module_builtins },
-        runtime.interop_bridge._pyb_mirror_module { application_for, module_builtins },
         source_app { PreparedApplication, initialize_application, publish },
     ]
     prepared --> runtime.JacModule.impl_patch_filename.decorator { application_for }
