@@ -155,6 +155,10 @@ impl Memory.acommit(anchor: (Anchor | None) = None) {
     self.commit(anchor);
 }
 
+impl Memory.aabort {
+    self.abort();
+}
+
 impl Memory.on_commit(callback: Callable) {
     self._on_commit.append(callback);
 }
@@ -198,6 +202,10 @@ impl Memory.get_fetch_count -> int {
 impl Memory.unit_enter(key: (str | None) = None) {}
 
 impl Memory.unit_exit {}
+
+impl Memory.aunit_exit {
+    self.unit_exit();
+}
 
 impl Memory.unit_depth -> int {
     return 0;

@@ -3269,6 +3269,7 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.executor ++> scale.websocket.websocket { close_stream }
     server.serving.files ++> [
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_spa_fallback {
             file_response
@@ -15585,6 +15586,7 @@ graph import server {
         server { JEndPoint, WSEndPoint },
         server.restspec_fields { HTTPMethod },
     ]
+    serving.executor ++> request_scope { close_stream, iterate_sync }
     serving.files ++> endpoints.pages | endpoints.walkers { file_response }
     serving.health ++> server.JacAPIServer.register_endpoints {
         register_health_endpoints
@@ -15790,8 +15792,9 @@ graph import server.serving {
         router { HTTPMethod, JEndPoint, WSEndPoint },
     ]
     executor ++> [
-        compression | sse { iterate_sync },
-        server { SyncExecutor, iterate_sync },
+        compression { iterate_sync },
+        server { SyncExecutor, close_stream, iterate_sync },
+        sse { close_stream, iterate_sync },
     ]
     multipart ++> app { parse_multipart, parse_urlencoded_form }
     openapi ++> app.ServingApp.openapi { build_openapi }

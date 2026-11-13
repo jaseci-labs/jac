@@ -11,16 +11,23 @@ had no root as far as the websocket walker could see (#9863).
 
 Pinned here: a websocket walker and a websocket function each run on a session
 that is not the process-global one, on the database the HTTP path uses, and see
-data committed after the process-global session began reading; a stream whose
-delivery is cut off is closed before its scope ends, and one that cannot be
-closed has its request's work aborted, so in neither case does the scope
-commit unfinished work; and the executor refuses to run a call that no
-transport has given a request scope.
+data committed after the process-global session began reading; an HTTP SSE
+body owns its request scope, so its writes commit when it is delivered and roll
+back when the client goes away or the producer raises; a stream that runs
+inside another open unit leaves commit and rollback to that unit however it
+ends; a stream whose delivery is cut off is closed before its scope ends, and
+one that cannot be closed has its request's work aborted, so in neither case
+does the scope commit unfinished work; and the executor refuses to run a call
+that no transport has given a request scope.
 """
 
 import asyncio;
 import os;
+import socket;
+import struct;
 import threading;
+import time;
+import from json { dumps }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from uuid { UUID }
@@ -34,7 +41,13 @@ import from jaclang.scale.server.inprocess {
 import from jaclang.scale.server.websocket_ext { WebSocketExtension }
 import from jaclang.scale.websocket.websocket { _ws_stream_result }
 import from jaclang.server.request_scope { RequestScope }
-import from jaclang.server.serving.datatypes { WebSocketDisconnect }
+import from jaclang.server.serving.datatypes {
+    Headers,
+    Request,
+    URL,
+    WebSocketDisconnect
+}
+import from jaclang.server.serving.server { ServingServer }
 import from jaclang.server.session { Session }
 import from jaclang.testing.testkit { ServingTestClient }
 
@@ -79,6 +92,56 @@ glob _APP: str = (
          '        yield len([root -->[?:Note]]);\n'
          '    }\n'
          '    report chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note(text: str = "") -> any {\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        yield "more";\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note_async(text: str = "") -> any {\n'
+         '    async def chunks -> any {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        yield "more";\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note_then_raise(text: str = "") -> any {\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        raise ValueError("stream failed");\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note_after_pause(text: str = "") -> any {\n'
+         '    import time;\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        yield "started";\n'
+         '        time.sleep(0.5);\n'
+         '        root ++> Note(text=text);\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note_slow(text: str = "") -> any {\n'
+         '    import time;\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        time.sleep(0.3);\n'
+         '        yield "more";\n'
+         '        time.sleep(0.3);\n'
+         '        yield "tail";\n'
+         '    }\n'
+         '    return chunks();\n'
          '}\n'
          '\n'
          'walker:protect notes {\n'
@@ -293,6 +356,164 @@ test "a websocket stream runs inside its request scope and commits when it ends"
 }
 
 
+"""POST to a streamed function the way the server does: dispatch through the
+middleware chain, read `events` chunks of the body (all of them when None),
+then close the body as the response writer does when the client goes away.
+With `cancel`, the next pull is cancelled while the producer is running, as a
+connection task is when the server drains. Returns the body and the notes
+committed at the moment the body was closed, before this loop's worker
+threads are joined."""
+async def _sse_call(
+    runtime: PreparedInProcessRuntime,
+    token: str,
+    fn: str,
+    text: str,
+    events: (int | None),
+    cancel: bool = False
+) -> tuple[str, list[str]] {
+    headers = Headers();
+    headers.set("Authorization", f"Bearer {token}");
+    headers.set("Content-Type", "application/json");
+    request = Request(
+        method="POST",
+        url=URL(path=f"/function/{fn}", query=""),
+        headers=headers,
+        body=dumps({"text": text}).encode("utf-8"),
+        client_host="testclient"
+    );
+    response = await _client(runtime).app.dispatch(request);
+    assert response.stream is not None , f"{fn} did not stream: {response.body}";
+    chunks: list[str] = [];
+    async for chunk in response.stream {
+        chunks.append(chunk if isinstance(chunk, str) else chunk.decode("utf-8"));
+        if events is not None and len(chunks) >= events {
+            break;
+        }
+    }
+    if cancel {
+        try {
+            await asyncio.wait_for(response.stream.__anext__(), 0.1);
+        } except asyncio.TimeoutError {}
+    }
+    await response.stream.aclose();
+    return ("".join(chunks), _http_notes(runtime, token));
+}
+
+
+test "an HTTP SSE stream commits its writes when delivered and rolls them back otherwise" {
+    # (row, function, events read before the client goes away, cancel the
+    # next pull mid-production, the save at the end fails, committed, last
+    # frame)
+    rows: list[tuple[str, str, (int | None), bool, bool, bool, str]] = [
+        ("delivered to its end", "sse_note", None, False, False, True, "event: end"),
+        (
+            "async producer delivered to its end",
+            "sse_note_async",
+            None,
+            False,
+            False,
+            True,
+            "event: end"
+        ),
+        (
+            "client gone after the first event",
+            "sse_note",
+            1,
+            False,
+            False,
+            False,
+            'data: "written"'
+        ),
+        (
+            "producer raises mid-stream",
+            "sse_note_then_raise",
+            None,
+            False,
+            False,
+            False,
+            "event: error"
+        ),
+        # The producer is still running when delivery is cancelled. It is
+        # waited for, so it finishes (and commits) before the body is
+        # closed, not later into a scope that is already closed.
+        (
+            "cancelled while the producer runs to its end",
+            "sse_note_after_pause",
+            1,
+            True,
+            False,
+            True,
+            'data: "started"'
+        ),
+        # The save at the end of the stream fails: the client is told, not
+        # sent `end` over writes that were never stored.
+        ("save fails at the end", "sse_note", None, False, True, False, "event: error"),
+        (
+            "async producer's save fails at the end",
+            "sse_note_async",
+            None,
+            False,
+            True,
+            False,
+            "event: error"
+        ),
+
+    ];
+    prior = os.environ.get("JAC_SCALE_RUNTIME");
+    commits: list[bool] = [];
+    fail_save: list[bool] = [False];
+    original_commit = Session.commit;
+
+    def tracking_commit(self: Session, anchor: (Anchor | None) = None) {
+        on_loop = True;
+        try {
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            on_loop = False;
+        }
+        commits.append(on_loop);
+        if fail_save[0] and self._dirty {
+            fail_save[0] = False;
+            raise RuntimeError("the database went away");
+        }
+        original_commit(self, anchor);
+    }
+
+    Session.commit = tracking_commit;
+    try {
+        with TemporaryDirectory() as project {
+            runtime = _serve(project);
+            try {
+                token = _register_and_login(runtime, "sse_user");
+                for (label, fn, events, cancel, fails, committed, last) in rows {
+                    fail_save[0] = fails;
+                    (body, notes) = asyncio.run(
+                        _sse_call(runtime, token, fn, label, events, cancel)
+                    );
+                    assert not fail_save[0] , f"{label}: the save never ran";
+                    frames = body.strip().split("\n\n");
+                    assert frames and frames[-1].startswith(last) , (
+                        f"{label}: unexpected body {body!r}"
+                    );
+                    assert (label in notes) == committed , (
+                        f"{label}: the stream's write was "
+                        f"{'lost' if committed else 'committed'}"
+                    );
+                }
+            } finally {
+                runtime.close();
+                _restore_env("JAC_SCALE_RUNTIME", prior);
+            }
+        }
+    } finally {
+        Session.commit = original_commit;
+    }
+    on_loop = commits.count(True);
+    assert commits , "nothing committed";
+    assert on_loop == 0 , f"{on_loop} of {len(commits)} commits ran on the event loop";
+}
+
+
 node StreamNote {
     has text: str = "";
 }
@@ -347,6 +568,90 @@ async def _deliver(project: str, source: any, send: any) {
 }
 
 
+"""Read from `sock` until `marker` has arrived or the peer closes."""
+def _read_until(sock: socket.socket, marker: bytes) -> bytes {
+    data = b"";
+    while marker not in data {
+        part = sock.recv(4096);
+        if not part {
+            break;
+        }
+        data += part;
+    }
+    return data;
+}
+
+
+test "a stream over a real socket commits its write only if the client stays to the end" {
+    # (label, drop the connection after the first event, committed)
+    rows: list[tuple[str, bool, bool]] = [
+        ("client reads every event", False, True),
+        ("client resets the connection after the first event", True, False),
+
+    ];
+    closed = threading.Event();
+    original_aclose = RequestScope.aclose;
+
+    async def tracking_aclose(self: RequestScope) {
+        await original_aclose(self);
+        closed.set();
+    }
+
+    prior = os.environ.get("JAC_SCALE_RUNTIME");
+    with TemporaryDirectory() as project {
+        runtime = _serve(project);
+        stop: any = None;
+        try {
+            token = _register_and_login(runtime, "socket_user");
+            server = ServingServer(app=_client(runtime).app, host="127.0.0.1", port=0);
+            stop = server.serve_background();
+            RequestScope.aclose = tracking_aclose;
+            for (label, drop, committed) in rows {
+                closed.clear();
+                body = dumps({"text": label}).encode("utf-8");
+                sock = socket.create_connection(
+                    ("127.0.0.1", server.bound_port), timeout=10
+                );
+                sock.sendall(
+                    (
+                        "POST /function/sse_note_slow HTTP/1.1\r\nHost: x\r\n"
+                        f"Authorization: Bearer {token}\r\n"
+                        "Content-Type: application/json\r\n"
+                        f"Content-Length: {len(body)}\r\n\r\n"
+                    ).encode(
+                        "utf-8"
+                    )
+                        + body
+                );
+                if drop {
+                    head = _read_until(sock, b'data: "written"');
+                    assert b'data: "written"' in head , f"{label}: no first event";
+                    sock.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                    );
+                } else {
+                    seen = _read_until(sock, b"event: end");
+                    assert b"event: end" in seen , f"{label}: stream did not end";
+                }
+                sock.close();
+                assert closed.wait(15) , f"{label}: the request scope never closed";
+                assert (label in _http_notes(runtime, token)) == committed , (
+                    f"{label}: the stream's write was "
+                    f"{'lost' if committed else 'committed'}"
+                );
+            }
+        } finally {
+            RequestScope.aclose = original_aclose;
+            if stop is not None {
+                stop();
+            }
+            runtime.close();
+            _restore_env("JAC_SCALE_RUNTIME", prior);
+        }
+    }
+}
+
+
 test "a request scope cancelled while closing still closes its session and runs its effects" {
     with TemporaryDirectory() as project {
         (Path(project) / "app.jac").write_text("", encoding="utf-8");
@@ -392,6 +697,74 @@ test "a request scope cancelled while closing still closes its session and runs 
 }
 
 
+test "an async stream cancelled during its final save lets the save settle off the loop" {
+    written: list[UUID] = [];
+    async def achunks -> AsyncGenerator[str, None] {
+        written.append(_write_note("settled after a cancel"));
+        yield 'only';
+    }
+    entered = threading.Event();
+    release = threading.Event();
+    original_commit_txn = Session._commit_txn;
+    def slow_commit_txn(self: Session) {
+        entered.set();
+        release.wait(5);
+        original_commit_txn(self);
+    }
+    outcome: list[str] = [];
+    elapsed: list[float] = [];
+
+    async def consume(stream: any) {
+        try {
+            async for _ in stream {}
+        } except asyncio.CancelledError {
+            outcome.append("cancelled");
+            raise;
+        }
+    }
+
+    async def cancel_mid_save(project: str) {
+        import time;
+        scope = _open_scope(project);
+        with scope as context {
+            stream = await ExecutionContext(_parent=context).bind_stream(achunks());
+            task = asyncio.ensure_future(consume(stream));
+            while not entered.is_set() {
+                await asyncio.sleep(0.01);
+            }
+            task.cancel();
+            started = time.monotonic();
+            for _ in range(5) {
+                await asyncio.sleep(0.02);
+            }
+            elapsed.append(time.monotonic() - started);
+            release.set();
+            try {
+                await task;
+            } except asyncio.CancelledError {}
+        }
+    }
+
+    with TemporaryDirectory() as project {
+        Session._commit_txn = slow_commit_txn;
+        try {
+            asyncio.run(cancel_mid_save(project));
+        } finally {
+            Session._commit_txn = original_commit_txn;
+        }
+        assert outcome == ["cancelled"] , f"the consumer did not see the cancel: {outcome}";
+        assert elapsed[0] < 2.0 , (
+            f"the loop stalled {elapsed[
+                0
+            ]:.1f}s behind the save while the stream was cancelled"
+        );
+        assert len(written) == 1 and _committed(project, written[0]) , (
+            "a save already running when the stream was cancelled was abandoned"
+        );
+    }
+}
+
+
 test "a stream delivered to its end has its write committed when its scope closes" {
     written: list[UUID] = [];
     def chunks -> Generator[str, None, None] {
@@ -405,6 +778,92 @@ test "a stream delivered to its end has its write committed when its scope close
         assert _committed(project, written[0]) , (
             "a stream that ran to its end lost its write"
         );
+    }
+}
+
+
+test "a stream inside another open unit leaves that unit's work to the unit, however the stream ends" {
+    nested: list[UUID] = [];
+
+    def chunks(outcome: str) -> Generator[str, None, None] {
+        nested.append(_write_note(f"nested stream that {outcome}"));
+        yield 'first';
+        if outcome == "raises" {
+            raise RuntimeError("the producer failed");
+        }
+        yield 'second';
+    }
+
+    async def achunks(outcome: str) -> AsyncGenerator[str, None] {
+        nested.append(_write_note(f"nested async stream that {outcome}"));
+        yield 'first';
+        if outcome == "raises" {
+            raise RuntimeError("the producer failed");
+        }
+        yield 'second';
+    }
+
+    async def consume(stream: any, kind: str, outcome: str) {
+        if outcome == "is closed early" {
+            if kind == "async" {
+                await stream.__anext__();
+                await stream.aclose();
+            } else {
+                next(stream);
+                stream.close();
+            }
+            return;
+        }
+        try {
+            if kind == "async" {
+                async for _ in stream {}
+            } else {
+                for _ in stream {}
+            }
+        } except RuntimeError {
+            assert outcome == "raises";
+        }
+    }
+
+    async def run_nested(project: str, kind: str, outcome: str, settle: str) -> UUID {
+        scope = _open_scope(project);
+        with scope as context {
+            context.mem.unit_enter();
+            unit_write = _write_note(
+                f"the unit's work before a {kind} stream that {outcome}"
+            );
+            source = achunks(outcome) if kind == "async" else chunks(outcome);
+            stream = await ExecutionContext(_parent=context).bind_stream(source);
+            await consume(stream, kind, outcome);
+            if settle == "abort" {
+                scope.abort();
+            }
+            context.mem.unit_exit();
+        }
+        return unit_write;
+    }
+
+    rows: list[tuple[str, str, str, bool]] = [
+        ("sync", "ends", "abort", False),
+        ("sync", "ends", "commit", True),
+        ("sync", "is closed early", "commit", True),
+        ("sync", "raises", "commit", True),
+        ("async", "is closed early", "commit", True),
+        ("async", "raises", "commit", True)
+    ];
+    for (kind, outcome, settle, expected) in rows {
+        nested.clear();
+        label = f"a {kind} stream that {outcome} inside a unit that then {settle}s";
+        with TemporaryDirectory() as project {
+            unit_write = asyncio.run(run_nested(project, kind, outcome, settle));
+            assert len(nested) == 1;
+            assert _committed(project, unit_write) == expected , (
+                f"{label}: the write the unit made before the stream did not follow the unit's decision"
+            );
+            assert _committed(project, nested[0]) == expected , (
+                f"{label}: the stream's write did not follow the unit's decision"
+            );
+        }
     }
 }
 

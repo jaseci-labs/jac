@@ -56,6 +56,7 @@ obj Memory {
     async def adelete(id: UUID);
     async def ahas(id: UUID) -> bool;
     async def acommit(anchor: (Anchor | None) = None);
+    async def aabort;
     def on_commit(callback: Callable);
     def _fire_on_commit;
     def note_effect_failure(e: Exception) -> None;
@@ -67,6 +68,7 @@ obj Memory {
     def get_fetch_count -> int;
     def unit_enter(key: (str | None) = None);
     def unit_exit;
+    async def aunit_exit;
     def unit_depth -> int;
     def take_ro_retry -> str | None;
     def read_scope_enter;

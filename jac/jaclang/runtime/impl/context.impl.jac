@@ -182,13 +182,21 @@ impl ExecutionContext.bind_stream(value: any) -> any {
     context = self;
     if inspect.isgenerator(value) {
         def stream -> Generator[any, None, None] {
+            entered = False;
             try {
                 yield None;
+                context.mem.unit_enter();
+                entered = True;
                 while True {
                     token = JacRuntime.push_request_context(context);
                     try {
                         item = next(value);
                     } except StopIteration {
+                        if context.mem.unit_depth() == 1 {
+                            context.mem.commit();
+                        }
+                        entered = False;
+                        context.mem.unit_exit();
                         return;
                     } finally {
                         JacRuntime.reset_request_context(token);
@@ -196,7 +204,13 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     yield item;
                 }
             } except BaseException {
-                context.mem.abort();
+                if entered {
+                    entered = False;
+                    if context.mem.unit_depth() == 1 {
+                        context.mem.abort();
+                    }
+                    context.mem.unit_exit();
+                }
                 raise;
             } finally {
                 token = JacRuntime.push_request_context(context);
@@ -217,13 +231,21 @@ impl ExecutionContext.bind_stream(value: any) -> any {
     }
     if inspect.isasyncgen(value) {
         async def astream -> AsyncGenerator[any, None] {
+            entered = False;
             try {
                 yield None;
+                context.mem.unit_enter();
+                entered = True;
                 while True {
                     token = JacRuntime.push_request_context(context);
                     try {
                         item = await value.__anext__();
                     } except StopAsyncIteration {
+                        if context.mem.unit_depth() == 1 {
+                            await context.mem.acommit();
+                        }
+                        entered = False;
+                        await context.mem.aunit_exit();
                         return;
                     } finally {
                         JacRuntime.reset_request_context(token);
@@ -231,7 +253,13 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     yield item;
                 }
             } except BaseException {
-                context.mem.abort();
+                if entered {
+                    entered = False;
+                    if context.mem.unit_depth() == 1 {
+                        await context.mem.aabort();
+                    }
+                    await context.mem.aunit_exit();
+                }
                 raise;
             } finally {
                 token = JacRuntime.push_request_context(context);
@@ -239,7 +267,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     try {
                         await value.aclose();
                     } finally {
-                        context.close();
+                        await context.aclose();
                     }
                 } finally {
                     JacRuntime.reset_request_context(token);
