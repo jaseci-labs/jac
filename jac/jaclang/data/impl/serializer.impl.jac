@@ -512,118 +512,12 @@ impl Serializer.repair(
 }
 
 impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] {
-    if type(val) is target_type {
-        return (val, True);
-    }
-    if target_type is None or isinstance(target_type, str) {
-        return (val, False);
-    }
-
-    (origin, args) = _type_shape(target_type);
-    if origin is Union or origin is UnionType {
-        non_none = [
-            a
-            for a in args
-            if a is not NoneType
-        ];
-        if val is None {
-            return (None, True);
-        }
-
-        for variant in non_none {
-            (coerced, ok) = Serializer.coerce(val, variant);
-            if ok {
-                return (coerced, True);
-            }
-        }
-        return (val, False);
-    }
-
-    base = origin if origin is not None else target_type;
-    if not isinstance(base, type) {
-        return (val, True);
-    }
-    if val is None {
-        return (None, False);
-    }
-    if isinstance(val, base) {
-        return (val, True);
-    }
-
     try {
-        sized_name = base?.__jac_sized__;
-        if isinstance(sized_name, str) {
-            import from jaclang.runtime.sized { json_wire_read }
-            if isinstance(val, (bool, int, float, str)) {
-                return (json_wire_read(sized_name, val), True);
-            }
-            return (val, False);
-        }
-        if base is bool {
-            if isinstance(val, (int, float)) {
-                return (bool(val), True);
-            }
-            if isinstance(val, str) {
-                lowered = val.strip().lower();
-                if lowered in ('true', '1', 'yes', 'y', 'on') {
-                    return (True, True);
-                }
-                if lowered in ('false', '0', 'no', 'n', 'off', '') {
-                    return (False, True);
-                }
-            }
-            return (val, False);
-        }
-        if base is int {
-            if isinstance(val, bool) {
-                return (int(val), True);
-            }
-            if isinstance(val, (str, float)) {
-                return (int(val), True);
-            }
-        }
-        if base is float {
-            if isinstance(val, (bool, int, str)) {
-                return (float(val), True);
-            }
-        }
-        if base is str {
-            return (str(val), True);
-        }
-        if base is UUID and isinstance(val, str) {
-            return (UUID(val), True);
-        }
-
-        if base is datetime and isinstance(val, str) {
-            return (getattr(datetime, 'fromisoformat')(val), True);
-        }
-        if base is date and isinstance(val, str) {
-            return (getattr(date, 'fromisoformat')(val), True);
-        }
-        if base is time and isinstance(val, str) {
-            return (getattr(time, 'fromisoformat')(val), True);
-        }
-        if isinstance(base, type) and issubclass(base, Enum) {
-            try {
-                return (base(val), True);
-            } except (ValueError, KeyError) {
-                members = getattr(base, '__members__', {});
-                if isinstance(val, str) and val in members {
-                    return (members[val], True);
-                }
-            }
-        }
-
-        if base is tuple and isinstance(val, list) {
-            return (tuple(val), True);
-        }
-        if base is list and isinstance(val, tuple) {
-            return (list(val), True);
-        }
+        return (convert(val, target_type, ConvertMode.LENIENT), True);
     } except Exception as e {
         logger.debug(
             f"Serializer.coerce fallback: {type(val).__name__} -> "
-            f"{getattr(base, '__name__', base)}: {e}"
+            f"{getattr(target_type, '__name__', target_type)}: {e}"
         );
     }
     return (val, False);
@@ -1139,7 +1033,7 @@ impl Serializer._deserialize_archetype(
             (coerced, ok) = Serializer.coerce(deser_v, target);
             if not ok {
                 field_key = f"{module_name}.{type_name}.{k}";
-                (origin, args) = _type_shape(target);
+                (origin, args) = type_shape(target);
                 is_optional = (
                     (origin is Union or origin is UnionType) and NoneType in args
                 );
@@ -1388,20 +1282,6 @@ impl _class_fields(cls: type) -> tuple[any, ...] {
     return found;
 }
 
-
-impl _type_shape(target_type: object) -> tuple[object, tuple[object, ...]] {
-    hit = _TYPE_SHAPES.get(id(target_type));
-    if hit is not None and hit[0] is target_type {
-        return (hit[1], hit[2]);
-    }
-    origin = get_origin(target_type);
-    args = get_args(target_type);
-    if len(_TYPE_SHAPES) >= _TYPE_SHAPES_LIMIT {
-        _TYPE_SHAPES.clear();
-    }
-    _TYPE_SHAPES[id(target_type)] = (target_type, origin, args);
-    return (origin, args);
-}
 
 impl _import_retry_window(attempts: int) -> float {
     doublings = min(max(attempts - 1, 0), _IMPORT_RETRY_MAX_DOUBLINGS);

@@ -1,11 +1,19 @@
 """Serving binds request values to declared types and constructor arguments,
 independently of generated receiver names."""
 
+import from datetime { date, datetime, time }
+import from uuid { UUID }
+import from jaclang.runtime.convert { ConvertMode }
+import from jaclang.runtime.sized { SIZED_TYPES }
 import from jaclang.server.serving.coerce { coerce_value }
-import from jaclang.server.serving.openapi { _object_schema }
+import from jaclang.server.serving.openapi { _object_schema, _schema_for_type }
 import from jaclang.server.server { ModuleIntrospector }
 
-glob REFUSED: object = object();
+glob REFUSED: object = object(),
+     U8: type = SIZED_TYPES["u8"],
+     F32: type = SIZED_TYPES["f32"],
+     U64: type = SIZED_TYPES["u64"],
+     ID: str = "12345678-1234-5678-1234-567812345678";
 
 obj Payload {
     has args: int,
@@ -24,9 +32,9 @@ walker Greeting {
 test "coercion and schemas follow the declared type and the public constructor" {
     # JSON values carry types, so they are checked. Text from a query, path, header
     # or form is parsed. `want` also pins the type: 3 is not 3.0 and 1 is not True.
-    for (text, rows) in [
+    for (mode, rows) in [
         (
-            False,
+            ConvertMode.STRICT,
             [
                 (12, int, 12),
                 (3.0, int, 3),
@@ -56,11 +64,22 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 (3.9, "int", REFUSED),
                 ({"a": 1}, "any", {"a": 1}),
                 ({"inner": {"args": "1"}}, Nested, REFUSED),
-                ({"items": [{"args": True}]}, Nested, REFUSED)
+                ({"items": [{"args": True}]}, Nested, REFUSED),
+                ("2026-01-02T03:04:05", datetime, datetime(2026, 1, 2, 3, 4, 5)),
+                ("2026-01-02", date, date(2026, 1, 2)),
+                (ID, UUID, UUID(ID)),
+                (3.0, U8, 3),
+                (255.0, U8, 255),
+                (256, U8, REFUSED),
+                (3.5, U8, REFUSED),
+                ("3", U8, REFUSED),
+                (1, F32, 1.0),
+                ("18446744073709551615", U64, 18446744073709551615),
+                ("9", U64, REFUSED)
             ]
         ),
         (
-            True,
+            ConvertMode.TEXT,
             [
                 ("12", int, 12),
                 ("-12", int, -12),
@@ -77,18 +96,22 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("12", int | str, 12),
                 ("12", str | int, "12"),
                 ("3", "integer", 3),
-                ("x", Payload, REFUSED)
+                ("x", Payload, REFUSED),
+                ("10:30:00", time, time(10, 30)),
+                ("7", U8, 7),
+                ("-1", U8, REFUSED),
+                ("1.5", F32, 1.5)
             ]
         )
     ] {
         for (value, target, want) in rows {
             try {
-                got = coerce_value(value, target, text);
+                got = coerce_value(value, target, mode);
             } except (ValueError, TypeError, OverflowError) {
                 got = REFUSED;
             }
             assert got == want and type(got) is type(want) , (
-                f"text={text} {value!r} for {target}: {got!r}"
+                f"{mode} {value!r} for {target}: {got!r}"
             );
         }
     }
@@ -102,6 +125,21 @@ test "coercion and schemas follow the declared type and the public constructor" 
     schema = schemas["Payload"];
     assert set(schema["properties"]) == {"args", "kwargs"};
     assert schema["required"] == ["args"];
+    for (target, want) in [
+        (datetime, {"type": "string", "format": "date-time"}),
+        (date, {"type": "string", "format": "date"}),
+        (time, {"type": "string", "format": "time"}),
+        (UUID, {"type": "string", "format": "uuid"}),
+        (U8, {"type": "integer"}),
+        (F32, {"type": "number"}),
+        (
+            list[UUID] | None,
+            {"type": "array", "items": {"type": "string", "format": "uuid"}}
+        )
+    ] {
+        got = _schema_for_type(target);
+        assert got == want , f"{target}: {got}";
+    }
 }
 
 test "walker introspection excludes the generated receiver" {

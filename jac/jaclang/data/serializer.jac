@@ -9,7 +9,7 @@ import from decimal { Decimal }
 import from enum { Enum }
 import from hashlib { sha256 }
 import from json { dumps as _json_dumps }
-import from typing { cast, get_args, get_origin }
+import from typing { cast }
 import from types { NoneType, UnionType }
 import from typing { Union }
 import from uuid { UUID }
@@ -40,7 +40,6 @@ glob logger = logging.getLogger(__name__),
      _FROZEN_EXACT: frozenset = frozenset(
          {NoneType, bool, int, float, str, bytes, UUID, date, datetime}
      ),
-     _TYPE_SHAPES: dict[int, tuple[any, any, tuple[any, ...]]] = {},
      _TYPE_SHAPES_LIMIT: int = 4096,
      _CLASS_FIELDS: dict[int, tuple[any, tuple[any, ...]]] = {};
 
@@ -141,6 +140,5 @@ glob _register_hook: object = Archetype.install_subclass_hook(
 
 
 def frozen_value(value: any) -> bool;
-def _type_shape(target_type: object) -> tuple[object, tuple[object, ...]];
 def _class_fields(cls: type) -> tuple[any, ...];
 def frozen_fields(anchor: Anchor) -> bool;
