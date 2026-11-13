@@ -27,4 +27,12 @@ with entry {
     } except ValueError {
         print("value-completed header rejected");
     }
+    cpcr: ConfigParser = ConfigParser();
+    cpcr.add_section("s");
+    cpcr.set("s", "lone", "x\ry");
+    cpcr.set("s", "pair", "z\r\nq");
+    saved: str = cpcr.write();
+    assert saved.find("x\ry") >= 0;
+    assert saved.find("z\r\n\tq") >= 0;
+    print("carriage returns preserved");
 }
