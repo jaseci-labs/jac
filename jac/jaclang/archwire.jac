@@ -5450,6 +5450,7 @@ graph import compiler {
             | native_bindings.typeshed_stub_path
             | types.type_evaluator.TypeEvaluator.__post_init__ { jaclang_pkg_root },
         backends.es.client_kernel_cache._unit_source_path { kernel_unit_path },
+        backends.native.link_plan._compile_dep_signature { native_unit_root },
         backends.es.esast_gen_pass {
             BoundaryTypeInfo,
             ClientManifest,
@@ -5730,7 +5731,6 @@ graph import compiler {
         tools.comment_attach_pass { NodeComments },
     ]
     frontend.codeinfo --> [
-        backends.native.impl.link_plan_impl._compile_dep_signature { native_unit_root },
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
             | backends.py.jcir_gen_pass.JcirGenPass._sv_endpoint_effects
             | passes.boundary_analysis_pass.BoundaryAnalysisPass._collect_boundary_type {
