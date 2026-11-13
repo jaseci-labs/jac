@@ -10,6 +10,7 @@ import from ._subprocess_native {
     sp_fa_chdir,
     sp_fa_free,
     sp_spawn,
+    sp_envp,
     sp_pipe,
     sp_close,
     sp_read,
@@ -18,7 +19,6 @@ import from ._subprocess_native {
     sp_now_ms,
     sp_pollio
 }
-import from ._errno_native { EINTR, last_errno, raise_errno, raise_os_error }
 import from signal { signal, SIG_IGN, SIGPIPE }
 
 glob:pub PIPE: int = -1,
@@ -35,7 +35,7 @@ glob _WNOHANG: int = 1,
      _POLLERR: int = 8,
      _POLLHUP: int = 16,
      _POLLNVAL: int = 32,
-     _WRITE_CHUNK: int = 4096,
+     _WRITE_CHUNK: int = 512,
      _READ_CHUNK: int = 65536,
      _sigpipe_ignored: bool = False;
 
@@ -89,7 +89,15 @@ obj:pub Popen {
         pid: int = -1,
         _stdin_w: int = -1,
         _stdout_r: int = -1,
-        _stderr_r: int = -1;
+        _stderr_r: int = -1,
+        _comm_started: bool = False,
+        _comm_done: bool = False,
+        _comm_has_out: bool = False,
+        _comm_has_err: bool = False,
+        _comm_out: bytearray = bytearray(),
+        _comm_err: bytearray = bytearray(),
+        _comm_in: bytes = b"",
+        _comm_in_off: int = 0;
 
     def postinit;
     def _fa_stdio(
@@ -105,6 +113,7 @@ obj:pub Popen {
         input: any = None, timeout: (int | float | None) = None
     ) -> tuple[(any, any)];
 
+    def _close_pipes;
     def kill;
     def terminate;
 }

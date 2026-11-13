@@ -95,6 +95,13 @@ jobs:
         run: >-
           jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
+      - name: Run subprocess na<->sv congruence tests (darwin)
+        # signal_probe.jac calls strsignal(33)/strsignal(34), which the darwin
+        # signal floor (NSIG=32) rejects; keep this lane on subprocess until
+        # the fixture guards its linux-only signal probes.
+        run: >-
+          jac test jac/tests/compiler/backends/native/test_native_signal_subprocess.jac
+          -f "subprocess"
       - name: Provision managed Ruby, CocoaPods, and native Node
         run: |
           mkdir -p "$RUNNER_TEMP/managed-ios"
