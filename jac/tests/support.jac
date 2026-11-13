@@ -564,7 +564,10 @@ def native_build_fails(src: str, timeout: int = 900) -> str {
     return combined;
 }
 
-"""Run a built native binary and return its stdout; assert a clean exit."""
+"""Run a built native binary and return its stdout; assert a clean exit.
+
+JAC_TEST_NATIVE_RUNNER optionally supplies a shell-split argv prefix.
+"""
 def native_run(
     out_bin: str,
     args: list[str] | None = None,
@@ -572,13 +575,15 @@ def native_run(
     env: dict[str, str] | None = None
 ) -> str {
     import os;
+    import shlex;
     import subprocess;
     run_env: dict[str, str] = dict(os.environ);
     if env {
         run_env.update(env);
     }
+    runner = shlex.split(run_env.get("JAC_TEST_NATIVE_RUNNER", ""));
     proc = subprocess.run(
-        [out_bin] + list(args or []),
+        runner + [out_bin] + list(args or []),
         capture_output=True,
         text=True,
         timeout=timeout,

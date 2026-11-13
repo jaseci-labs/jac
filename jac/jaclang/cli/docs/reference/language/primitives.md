@@ -219,6 +219,12 @@ Unicode text string. Immutable.
 | Encoding | `encode()` |
 | Translation | `translate()`, `maketrans()` |
 
+In native code, `lower()`, `upper()`, and `casefold()` accelerate large ASCII
+strings when the active C character mapping agrees with ASCII. Other inputs
+retain the native character mapping. In managed and RC memory profiles,
+embedded NUL characters remain part of the string, and the result keeps its
+length and ASCII metadata.
+
 **Operators:**
 
 | Operator | Meaning |

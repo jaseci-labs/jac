@@ -565,32 +565,110 @@ impl NativeStrEmitter._emit_case_transform(
     p._set_rc_ctx("upper_lower", "");
     result = p._str_alloc(b, alloc_size, name="case.buf");
     p._clear_rc_ctx();
-    transform_fn = p._get_or_declare_extern(cfunc_name, i32, [i32]);
     func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="case.loop");
-    body_bb = func.append_basic_block(name="case.body");
-    done_bb = func.append_basic_block(name="case.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="case.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    cond = b.icmp_unsigned("<", idx, slen, name="case.cond");
-    b.cbranch(cond, body_bb, done_bb);
-    b.position_at_start(body_bb);
-    src_ptr = b.gep(target, [idx], name="case.src.ptr");
-    ch = b.load(src_ptr, name="case.ch");
-    ch_i32 = b.zext(ch, i32, name="case.ch.i32");
-    transformed = b.call(transform_fn, [ch_i32], name="case.transformed");
-    ch_out = b.trunc(transformed, i8, name="case.ch.out");
-    dst_ptr = b.gep(result, [idx], name="case.dst.ptr");
-    b.store(ch_out, dst_ptr);
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="case.next");
-    idx.add_incoming(next_idx, body_bb);
-    b.branch(loop_bb);
-    b.position_at_start(done_bb);
+    scalar = func.append_basic_block("case.scalar");
+    long = func.append_basic_block("case.long");
+    done = func.append_basic_block("case.done");
+    b.cbranch(b.icmp_unsigned("<", slen, ir.Constant(i64, 1024)), scalar, long);
+    b.position_at_end(scalar);
+    transform_fn = p._get_or_declare_extern(cfunc_name, i32, [i32]);
+    loop = func.append_basic_block("case.scalar.loop");
+    body = func.append_basic_block("case.scalar.body");
+    finish = func.append_basic_block("case.scalar.finish");
+    b.branch(loop);
+    b.position_at_end(loop);
+    index = b.phi(i64, name="case.idx");
+    index.add_incoming(ir.Constant(i64, 0), scalar);
+    b.cbranch(b.icmp_unsigned("<", index, slen), body, finish);
+    b.position_at_end(body);
+    point = b.zext(b.load(b.gep(target, [index])), i32);
+    mapped = b.trunc(b.call(transform_fn, [point]), i8);
+    b.store(mapped, b.gep(result, [index]));
+    index.add_incoming(b.add(index, ir.Constant(i64, 1)), body);
+    b.branch(loop);
+    b.position_at_end(finish);
     p._str_finish(b, result, slen);
+    b.branch(done);
+    b.position_at_end(long);
+    helper = self._emit_case_transform_helper(ctx, cfunc_name);
+    converted = b.call(helper, [target, result, slen], name="case.converted");
+    fast_finish = func.append_basic_block("case.ascii.finish");
+    b.cbranch(converted, fast_finish, scalar);
+    b.position_at_end(fast_finish);
+    p._str_finish(b, result, slen, ir.Constant(ir.IntType(1), 1));
+    b.branch(done);
+    b.position_at_end(done);
     return result;
+}
+
+impl NativeStrEmitter._emit_case_transform_helper(
+    self: NativeStrEmitter, ctx: NativeEmitCtx, cfunc_name: str
+) -> ir.Function {
+    p = ctx.pass_ref;
+    name = "__jac_str_case_" + cfunc_name;
+    existing = p.llvm_module.globals.get(name);
+    if isinstance(existing, ir.Function) {
+        return existing;
+    }
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    fn = ir.Function(p.llvm_module, ir.FunctionType(i1, [i8p, i8p, i64]), name=name);
+    fn.linkage = "private";
+    fn.attributes.add("noinline");
+    fn.args[0].add_attribute("readonly");
+    fn.args[1].add_attribute("noalias");
+    (source, result, size) = fn.args;
+    transform_fn = p._get_or_declare_extern(cfunc_name, i32, [i32]);
+    lo = 65 if cfunc_name == "tolower" else 97;
+    shift = 32 if cfunc_name == "tolower" else -32;
+    head = fn.append_basic_block("entry");
+    inspect = fn.append_basic_block("inspect");
+    guard = fn.append_basic_block("guard");
+    advance = fn.append_basic_block("guard.next");
+    fast = fn.append_basic_block("ascii");
+    reject = fn.append_basic_block("reject");
+    b = ir.IRBuilder(head);
+    b.cbranch(b.icmp_unsigned(">=", size, ir.Constant(i64, 1024)), inspect, reject);
+    b.position_at_end(inspect);
+    ascii = p._call_str_isascii(b, source, source, size, name="case.input.ascii");
+    b.cbranch(ascii, guard, reject);
+    b.position_at_end(guard);
+    point = b.phi(i32, name="case.point");
+    point.add_incoming(ir.Constant(i32, 0), inspect);
+    actual = b.call(transform_fn, [point]);
+    in_range = b.icmp_unsigned(
+        "<=", b.sub(point, ir.Constant(i32, lo)), ir.Constant(i32, 25)
+    );
+    expected = b.select(in_range, b.add(point, ir.Constant(i32, shift)), point);
+    b.cbranch(b.icmp_signed("==", actual, expected), advance, reject);
+    b.position_at_end(advance);
+    following = b.add(point, ir.Constant(i32, 1));
+    point.add_incoming(following, advance);
+    b.cbranch(b.icmp_unsigned("<", following, ir.Constant(i32, 128)), guard, fast);
+    loop = fn.append_basic_block("ascii.loop");
+    body = fn.append_basic_block("ascii.body");
+    done = fn.append_basic_block("ascii.done");
+    b.position_at_end(fast);
+    b.branch(loop);
+    b.position_at_end(loop);
+    index = b.phi(i64, name="case.index");
+    index.add_incoming(ir.Constant(i64, 0), fast);
+    b.cbranch(b.icmp_unsigned("<", index, size), body, done);
+    b.position_at_end(body);
+    ch = b.load(b.gep(source, [index]));
+    letter = b.icmp_unsigned("<=", b.sub(ch, ir.Constant(i8, lo)), ir.Constant(i8, 25));
+    mapped = b.select(letter, b.add(ch, ir.Constant(i8, shift)), ch);
+    b.store(mapped, b.gep(result, [index]));
+    index.add_incoming(b.add(index, ir.Constant(i64, 1)), body);
+    b.branch(loop);
+    b.position_at_end(done);
+    b.ret(ir.Constant(i1, 1));
+    b.position_at_end(reject);
+    b.ret(ir.Constant(i1, 0));
+    return fn;
 }
 
 impl NativeStrEmitter.emit_title(
