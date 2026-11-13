@@ -17,6 +17,9 @@ impl _raise_for_errno(code: int, message: imm str) {
     if code == EISDIR {
         raise IsADirectoryError(message);
     }
+    if code == EEXIST {
+        raise FileExistsError(message);
+    }
     if code == ENOTDIR {
         raise NotADirectoryError(message);
     }

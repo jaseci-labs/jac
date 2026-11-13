@@ -12815,6 +12815,7 @@ graph import runtime.na_stdlib {
         _time_common { last_errno, raise_errno },
         _time_native { raise_errno },
         fcntl | select { EINTR, errno_message, last_errno },
+        tempfile { EEXIST, last_errno, raise_os_error },
         termios { errno_message, last_errno },
     ]
     _errno_platform ++> _errno_native { errno_address }
