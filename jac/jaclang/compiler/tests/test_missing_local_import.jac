@@ -451,7 +451,9 @@ test "a relative import with the wrong number of dots does not find a file at th
         ("proj/feat/above.jac", "import from ...outside { of }\n", "...outside"),
         ("proj/feat/above_pkg.jac", "import from ...outpkg { of }\n", "...outpkg"),
         ("proj/feat/above_py.jac", "import from ...outpy { of }\n", "...outpy"),
-        ("proj/feat/deep/back.jac", "import from ....proj.top { t }\n", "....proj.top")
+        ("proj/feat/deep/back.jac", "import from ....proj.top { t }\n", "....proj.top"),
+        ("proj/feat/bare.jac", "import from ... { outside }\n", "'...'"),
+        ("proj/annexed.jac", "def:pub m -> int;\n", "..outside")
     ];
     outside = "def:pub of -> int {\n    return 7;\n}\n";
     base = _rooted_project(
@@ -459,6 +461,9 @@ test "a relative import with the wrong number of dots does not find a file at th
             "outside.jac": outside,
             "outpkg/__init__.jac": outside,
             "outpy.py": "def of() -> int:\n    return 7\n",
+            "proj/impl/annexed.impl.jac": (
+                "import from ..outside { of }\nimpl m -> int {\n    return of();\n}\n"
+            ),
             ** {rel: src for (rel, src, _) in cases}
         },
         under="proj"
