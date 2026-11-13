@@ -186,6 +186,7 @@ graph import {
         byllm.cli
             | byllm.model_cache._emit
             | client.asset_processor
+            | client.build_stages
             | client.cli._npm_context
             | client.client_deps.prompt_install_client_deps
             | client.compiler
@@ -4162,6 +4163,12 @@ graph import client {
             __solveRegistrationChallenge
         },
         client_runtime | solid_runtime { SignupResult },
+    ]
+    build_stages --> [
+        cli.run_client_build { record_stages },
+        jac_client_compiler.JacClientCompiler.compile
+            | targets.web_target.WebTarget.build
+            | vite_bundler.ViteBundler.build { stage },
     ]
     client_bundle ++> [
         compiler { ClientBuildInputs, ClientBundle, ClientBundleError },

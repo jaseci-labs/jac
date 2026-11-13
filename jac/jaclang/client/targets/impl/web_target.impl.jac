@@ -107,10 +107,13 @@ impl WebTarget.build(
         entry_program = client_context_program(
             program, client_source_root(project_dir, entry_file)
         );
+        import from jaclang.client.build_stages { stage }
         before = len(entry_program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(
-            str(entry_file.resolve()), entry_program
-        );
+        with stage("Entry module and its imports compiled") {
+            artifact = program._get_compiler().get_client_artifact(
+                str(entry_file.resolve()), entry_program
+            );
+        }
         if len(entry_program.errors_had) > before {
             errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
             raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
