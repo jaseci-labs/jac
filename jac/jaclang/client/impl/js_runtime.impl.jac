@@ -97,9 +97,10 @@ impl js_runtime_path -> str {
 }
 
 impl release_age_settings(npm: dict[str, any]) -> tuple[float, list[str]] {
+    excludes = npm.get("min_release_age_excludes", []);
     return (
         float(npm.get("min_release_age_days", MIN_RELEASE_AGE_DAYS)),
-        list(npm.get("min_release_age_excludes", []))
+        [excludes] if isinstance(excludes, str) else list(excludes)
     );
 }
 
@@ -122,10 +123,17 @@ impl run_pm(
         (days, excludes) = release_age or release_age_settings(_project_npm(cwd));
         args = [args[0], f"--minimum-release-age={int(days * 86400)}"] + list(args[1:]);
     }
-    owns_bunfig = bool(excludes) and not os.path.exists(bunfig);
-    if owns_bunfig {
-        with open(bunfig, "w", encoding="utf-8") as f {
-            f.write(f"[install]\nminimumReleaseAgeExcludes = {json.dumps(excludes)}\n");
+    owns_bunfig = False;
+    if excludes {
+        try {
+            with open(bunfig, "x", encoding="utf-8") as f {
+                f.write(
+                    f"[install]\nminimumReleaseAgeExcludes = {json.dumps(excludes)}\n"
+                );
+            }
+            owns_bunfig = True;
+        } except FileExistsError {
+            owns_bunfig = False;
         }
     }
     try {

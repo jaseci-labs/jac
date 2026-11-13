@@ -120,7 +120,7 @@ test "run_pm gives install and add the project's minimum release age and nothing
         with open(os.path.join(td, "jac.toml"), "w") as f {
             f.write(
                 '[project]\nname = "p"\n\n[client.npm]\nmin_release_age_days = 2\n'
-                'min_release_age_excludes = ["react"]\n'
+                'min_release_age_excludes = "react"\n'
             );
         }
         with patch.object(js_runtime, "js_runtime_path", return_value="/opt/bun"), patch(
@@ -129,8 +129,13 @@ test "run_pm gives install and add the project's minimum release age and nothing
             js_runtime.run_pm(["x", "vite"], td);
             assert js_runtime.run_pm(["add", "vite"], td, capture=True) == (0, "out");
             js_runtime.run_pm(["install"], td, release_age=(0.0, []));
+            assert not os.path.exists(os.path.join(td, "bunfig.toml"));
+            with open(os.path.join(td, "bunfig.toml"), "w") as f {
+                f.write("mine");
+            }
+            js_runtime.run_pm(["install"], td, release_age=(1.0, ["vite"]));
         }
-        assert not os.path.exists(os.path.join(td, "bunfig.toml"));
+        assert open(os.path.join(td, "bunfig.toml")).read() == "mine";
     }
     assert ran
         == [
@@ -139,6 +144,7 @@ test "run_pm gives install and add the project's minimum release age and nothing
                 ["/opt/bun", "add", "--minimum-release-age=172800", "vite"],
                 '[install]\nminimumReleaseAgeExcludes = ["react"]\n'
             ),
-            (["/opt/bun", "install", "--minimum-release-age=0"], None)
+            (["/opt/bun", "install", "--minimum-release-age=0"], None),
+            (["/opt/bun", "install", "--minimum-release-age=86400"], "mine")
         ] , ran;
 }
