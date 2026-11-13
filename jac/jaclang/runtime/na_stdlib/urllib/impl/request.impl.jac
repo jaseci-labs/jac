@@ -73,8 +73,20 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
     return header + request.data;
 }
 
+impl _replace_content_length(headers: dict[str, str]) -> dict[str, str] {
+    out: dict[str, str] = {};
+    for name in headers {
+        if name.lower() != "content-length" {
+            out[name] = headers[name];
+        }
+    }
+    return out;
+}
+
 impl _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes {
     raw = b"";
+    sock: Socket | None = None;
+    ss: SSLSocket | None = None;
     try {
         sock = create_connection((pu.host, pu.port), timeout);
         reqb = _request_bytes(pu.host, pu.path, request);
@@ -87,7 +99,6 @@ impl _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes {
                 raw += chunk;
                 chunk = ss.recv(8192);
             }
-            ss.close();
         } else {
             sock.sendall(reqb);
             chunk = sock.recv(8192);
@@ -95,12 +106,17 @@ impl _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes {
                 raw += chunk;
                 chunk = sock.recv(8192);
             }
-            sock.close();
         }
     } except OSError as e {
         raise URLError(reason=e);
     } except SSLError as e {
         raise URLError(reason=e);
+    } finally {
+        if ss is not None {
+            ss.close();
+        } elif sock is not None {
+            sock.close();
+        }
     }
     return raw;
 }
@@ -188,6 +204,7 @@ impl urlopen(
         request = url;
         if data is not None {
             request.data = data;
+            request.headers = _replace_content_length(request.headers);
         }
     } elif isinstance(url, str) {
         if data is not None {

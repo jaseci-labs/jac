@@ -30,6 +30,7 @@ impl socket.connect(address: tuple[(str, int)]) -> None {
         );
     }
     last_err: int = 0;
+    timed_out: bool = False;
     for sa in addrs {
         fam = address_family(sa);
         if fam != self.family {
@@ -40,12 +41,16 @@ impl socket.connect(address: tuple[(str, int)]) -> None {
             return;
         }
         if result < 0 {
-            raise TimeoutError("socket connect timed out");
+            timed_out = True;
+            continue;
         }
         last_err = result;
     }
     if last_err != 0 {
         raise_errno(last_err, "connect to " + host + ":" + service + " failed");
+    }
+    if timed_out {
+        raise TimeoutError("socket connect timed out");
     }
     raise OSError("connect to " + host + ":" + service + " failed");
 }
@@ -122,6 +127,9 @@ impl socket.close {
 }
 
 impl create_connection(address: tuple[(str, int)], timeout: (float | None)) -> socket {
+    if timeout is not None and timeout < 0.0 {
+        raise ValueError("timeout value must be non-negative");
+    }
     host = address[0];
     port = address[1];
     service = str(port);
@@ -132,6 +140,7 @@ impl create_connection(address: tuple[(str, int)], timeout: (float | None)) -> s
         );
     }
     last_err: int = 0;
+    timed_out: bool = False;
     for sa in addrs {
         fam = address_family(sa);
         s = socket(family=fam, _socktype=1, proto=0);
@@ -145,7 +154,8 @@ impl create_connection(address: tuple[(str, int)], timeout: (float | None)) -> s
         }
         s.close();
         if result < 0 {
-            raise TimeoutError("socket connect timed out");
+            timed_out = True;
+            continue;
         }
         last_err = result;
     }
@@ -153,6 +163,9 @@ impl create_connection(address: tuple[(str, int)], timeout: (float | None)) -> s
         raise_errno(
             last_err, "create_connection to " + host + ":" + service + " failed"
         );
+    }
+    if timed_out {
+        raise TimeoutError("socket connect timed out");
     }
     raise OSError("create_connection to " + host + ":" + service + " failed");
 }

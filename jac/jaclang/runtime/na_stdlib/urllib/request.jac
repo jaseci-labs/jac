@@ -1,5 +1,5 @@
-import from socket { create_connection }
-import from ssl { create_default_context, SSLError }
+import from socket { create_connection, socket as Socket }
+import from ssl { create_default_context, SSLError, SSLSocket }
 import from http.client { HTTPResponse }
 import from urllib.error { HTTPError, URLError }
 
@@ -26,6 +26,9 @@ def _parse_url(u: str) -> _Url;
 
 
 def _request_bytes(host: str, path: str, request: Request) -> bytes;
+
+
+def _replace_content_length(headers: dict[str, str]) -> dict[str, str];
 
 
 def _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes;
