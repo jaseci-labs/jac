@@ -16,7 +16,18 @@ wrong-target dispatch can never satisfy the asserts.
 """
 
 import ctypes;
-import from tests.support { compile_native, get_func }
+import os;
+import tempfile;
+import from pathlib { Path }
+import from tests.support {
+    compile_native,
+    get_func,
+    native_build,
+    native_build_fails,
+    native_run
+}
+
+glob FIXTURES = Path(__file__).resolve().parent / "fixtures";
 
 test "callable-in-list: append then index-set then call" {
     (eng, _) = compile_native("callable_in_container.jac");
@@ -74,4 +85,30 @@ test "callable-in-list: two rebound slots chain through each other" {
     f = get_func(eng, "chained_dispatch", ctypes.c_int64, ctypes.c_int64);
     # h_two(h_one(1)) = 200 + 101.
     assert f(1) == 301;
+}
+
+test "callable-in-any: functions read out of dict and list of any dispatch" {
+    (eng, _) = compile_native("callable_in_container.jac");
+    f = get_func(eng, "any_dispatch", ctypes.c_int64, ctypes.c_int64);
+    assert f(3) == 303;
+}
+
+test "callable-in-any: a call with no native signature is refused with a hint" {
+    out = native_build_fails(str(FIXTURES / "call_through_value_refused.jac"));
+    for fn_name in ["call_any", "call_bare_keyword", "call_bare_positional"] {
+        assert f"demoting {fn_name} to Python-only" in out , out[-1500:];
+    }
+    assert "E9003" not in out , out[-1500:];
+    assert "help: The callee's native type carries no call signature" in out , out[-1500:];
+    assert out.count("keywords or extra arguments would be lost") == 2 , out[-1500:];
+}
+
+test "callable-in-any: a class or instance raises TypeError, a boxed function keeps its identity, and a boxed closure is released" {
+    out_bin = os.path.join(tempfile.mkdtemp(), "any_callable");
+    native_build(str(FIXTURES / "any_callable.jac"), out_bin, extra=["--debug"]);
+    out = native_run(out_bin);
+    err = "TypeError: only a function stored in `any` can be called natively through a Callable\n";
+    assert out.startswith(err * 2 + "1275\nTrue False False\n") , out[:400];
+    assert "RC LIVE OBJECTS at exit" in out , out[-400:];
+    assert "<- LEAK" not in out , out[-1500:];
 }

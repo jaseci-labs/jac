@@ -1164,28 +1164,18 @@ impl NaIRGenPass._codegen_compare_link(
         and self?.jacval_type
         and left.type == self.jacval_type
         and right.type == self.jacval_type {
-        _jv_tag_eq = self.builder.icmp_unsigned(
-            "==",
-            self.builder.extract_value(left, 0, name="is.jv.l.tag"),
-            self.builder.extract_value(right, 0, name="is.jv.r.tag"),
-            name="is.jv.tag.eq"
-        );
-        _jv_pv_eq = self.builder.icmp_unsigned(
-            "==",
-            self.builder.extract_value(left, 1, name="is.jv.l.pv"),
-            self.builder.extract_value(right, 1, name="is.jv.r.pv"),
-            name="is.jv.pv.eq"
-        );
-        _jv_same = self.builder.and_(_jv_tag_eq, _jv_pv_eq, name="is.jv.same");
-        return self._compare_result(
-            self.builder.not_(_jv_same, name="is.jv.diff")
-                if op == Tok.KW_ISN
-                else _jv_same,
-            _cmp_left_orig,
-            _cmp_right_orig,
-            release_operands,
-            "cmp_is_jacval"
-        );
+        _jv_same = self._value_identity(left, right);
+        if _jv_same is not None {
+            return self._compare_result(
+                self.builder.not_(_jv_same, name="is.jv.diff")
+                    if op == Tok.KW_ISN
+                    else _jv_same,
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_is_jacval"
+            );
+        }
     }
 
     if op == Tok.KW_IN or op == Tok.KW_NIN {
@@ -1854,21 +1844,68 @@ impl NaIRGenPass._value_identity(left: ir.Value, right: ir.Value) -> (ir.Value |
         l_jv = self._box_to_jacval(left);
         r_jv = self._box_to_jacval(right);
         b = self.builder;
-        return b.and_(
-            b.icmp_unsigned(
-                "==",
-                b.extract_value(l_jv, 0, name="is.jv.ltag"),
-                b.extract_value(r_jv, 0, name="is.jv.rtag"),
-                name="is.jv.tag"
-            ),
-            b.icmp_unsigned(
-                "==",
-                b.extract_value(l_jv, 1, name="is.jv.lbits"),
-                b.extract_value(r_jv, 1, name="is.jv.rbits"),
-                name="is.jv.bits"
-            ),
+        l_tag = b.extract_value(l_jv, 0, name="is.jv.ltag");
+        r_tag = b.extract_value(r_jv, 0, name="is.jv.rtag");
+        l_bits = b.extract_value(l_jv, 1, name="is.jv.lbits");
+        r_bits = b.extract_value(r_jv, 1, name="is.jv.rbits");
+        same = b.and_(
+            b.icmp_unsigned("==", l_tag, r_tag, name="is.jv.tag"),
+            b.icmp_unsigned("==", l_bits, r_bits, name="is.jv.bits"),
             name="is.jv"
         );
+        if self._nogc_headerless() {
+            return same;
+        }
+        i1 = ir.IntType(1);
+        i8p = ir.IntType(8).as_pointer();
+        six = ir.Constant(l_tag.type, 6);
+        fn = b.function;
+        start_bb = b.block;
+        tag_bb = fn.append_basic_block(name="is.jv.clos");
+        env_bb = fn.append_basic_block(name="is.jv.env");
+        done_bb = fn.append_basic_block(name="is.jv.done");
+        b.cbranch(
+            b.and_(
+                b.not_(same),
+                b.and_(
+                    b.icmp_unsigned("==", l_tag, six), b.icmp_unsigned("==", r_tag, six)
+                )
+            ),
+            tag_bb,
+            done_bb
+        );
+        b.position_at_end(tag_bb);
+        raws = [b.inttoptr(bits, i8p, name="is.jv.raw") for bits in (l_bits, r_bits)];
+        both_clos = b.and_(
+            self._emit_hdr_tag_is(b, raws[0], ["JacClosure"]),
+            self._emit_hdr_tag_is(b, raws[1], ["JacClosure"])
+        );
+        tag_end = b.block;
+        b.cbranch(both_clos, env_bb, done_bb);
+        b.position_at_end(env_bb);
+        clos_p = ir.LiteralStructType([ir.IntType(64), i8p]).as_pointer();
+        envs = [
+            b.load(
+                b.gep(
+                    b.bitcast(raw, clos_p),
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)]
+                ),
+                name="is.jv.envv"
+            ) for raw in raws
+        ];
+        fn_same = b.and_(
+            b.icmp_unsigned("==", envs[0], envs[1], name="is.jv.enveq"),
+            self._emit_hdr_tag_is(b, envs[0], [self._fn_identity_struct()]),
+            name="is.jv.fnid"
+        );
+        env_end = b.block;
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        result = b.phi(i1, name="is.jv.same");
+        result.add_incoming(same, start_bb);
+        result.add_incoming(ir.Constant(i1, 0), tag_end);
+        result.add_incoming(fn_same, env_end);
+        return result;
     }
     for side in (left, right) {
         if self._opt_payload_of(side.type) is not None {
@@ -1904,16 +1941,18 @@ impl NaIRGenPass._value_identity(left: ir.Value, right: ir.Value) -> (ir.Value |
         load_bb
     );
     self.builder.position_at_end(load_bb);
-    same = self._word_identity(held, self.builder.load(boxed, name="is.box.val"));
-    if same is None {
-        same = ir.Constant(i1, 0);
+    loaded_same = self._word_identity(
+        held, self.builder.load(boxed, name="is.box.val")
+    );
+    if loaded_same is None {
+        loaded_same = ir.Constant(i1, 0);
     }
     load_end = self.builder.block;
     self.builder.branch(done_bb);
     self.builder.position_at_end(done_bb);
     result = self.builder.phi(i1, name="is.box");
     result.add_incoming(ir.Constant(i1, 0), start_bb);
-    result.add_incoming(same, load_end);
+    result.add_incoming(loaded_same, load_end);
     return result;
 }
 
