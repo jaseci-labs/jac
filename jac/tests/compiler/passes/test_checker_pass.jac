@@ -3334,8 +3334,8 @@ test "impl_imports_from_parent" {
     path = os.path.join(CHECKER_FIXTURES, "checker_impl_imports.jac");
     mod = program.compile(path, options=NO_TC);
 
-    # Should have 3 errors for type mismatches with jaclang types (not Python stdlib)
-    assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
+    # Should have 2 errors for type mismatches with jaclang types (not Python stdlib)
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
