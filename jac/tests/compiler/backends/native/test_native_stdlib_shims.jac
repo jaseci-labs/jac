@@ -118,6 +118,16 @@ def _same_lines(sv_text: str, na_text: str, what: str) {
     }
 }
 
+test "array.fromlist leaves the receiver unchanged after conversion failure" {
+    (na_out, _na_err) = _na_run("array_fromlist_atomic.jac");
+    assert na_out.strip() == "conversion=rejected\nvalues=[10]" , na_out;
+}
+
+test "shrinking a shared anonymous map preserves its backing mapping" {
+    (na_out, _na_err) = _na_run("mmap_shared_shrink.jac");
+    assert na_out.strip() == "length=4\nsame-address=True" , na_out;
+}
+
 test "native os path gaps answer what CPython's os.path answers" {
     (sv_out, _sv_err) = _sv_run("os_gaps_probe.jac");
     (na_out, _na_err) = _na_run("os_gaps_probe.jac");

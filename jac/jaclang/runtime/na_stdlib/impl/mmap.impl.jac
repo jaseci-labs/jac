@@ -64,6 +64,7 @@ impl mmap.init(
     }
     self._addr = addr;
     self._len = map_len;
+    self._map_len = map_len;
     self._pos = 0;
     if fileno == -1 {
         self._fd = -1;
@@ -71,7 +72,7 @@ impl mmap.init(
         self._fd = mm_dup_fd(fileno);
         if self._fd < 0 {
             msg: str = _os_err();
-            mm_unmap(self._addr, self._len);
+            mm_unmap(self._addr, self._map_len);
             self._addr = 0;
             self.closed = True;
             raise OSError(msg);
@@ -88,7 +89,7 @@ impl mmap._check_open {
 
 impl mmap.close {
     if not self.closed and self._addr != 0 {
-        mm_unmap(self._addr, self._len);
+        mm_unmap(self._addr, self._map_len);
         self._addr = 0;
     }
     if self._fd != -1 {
@@ -394,6 +395,12 @@ impl mmap.resize(newsize: int) {
             if newsize > self._len {
                 raise ValueError("mmap: can't expand a shared anonymous mapping");
             }
+
+            self._len = newsize;
+            if self._pos > newsize {
+                self._pos = newsize;
+            }
+            return;
         } else {
             raise ValueError("mmap: can't resize a file-backed shared mapping");
         }
@@ -409,9 +416,10 @@ impl mmap.resize(newsize: int) {
         keep = self._len;
     }
     mm_copy(new_addr, self._addr, keep);
-    mm_unmap(self._addr, self._len);
+    mm_unmap(self._addr, self._map_len);
     self._addr = new_addr;
     self._len = newsize;
+    self._map_len = newsize;
     if self._pos > newsize {
         self._pos = newsize;
     }

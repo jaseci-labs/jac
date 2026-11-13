@@ -39,6 +39,7 @@ def _os_err -> str;
 obj:pub mmap {
     has _addr: int = 0,
         _len: int = 0,
+        _map_len: int = 0,
         _pos: int = 0,
         closed: bool = False,
         _access: int = 0,

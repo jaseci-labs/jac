@@ -303,7 +303,9 @@ impl array._extend_bytes(data: bytes) {
 }
 
 impl array.fromlist(seq: list[any]) {
-    self.extend(seq);
+    staged: array = array(self.typecode);
+    staged.extend(seq);
+    self._extend_array(staged);
 }
 
 impl array.insert(i: int, v: any) {
