@@ -1397,9 +1397,17 @@ test "generating JavaScript does not give every tree node a codegen holder" {
         file_path=fixture_path("defpub_impl_dedup_server.jac"), no_cgen=True
     );
     nodes = ir.flatten();
-    before = sum(1 for nd in nodes if nd.has_gen());
+    before = sum(
+        1
+        for nd in nodes
+        if nd.has_gen()
+    );
     run_pass(EsastGenPass, ir, prog);
-    held = sum(1 for nd in nodes if nd.has_gen());
+    held = sum(
+        1
+        for nd in nodes
+        if nd.has_gen()
+    );
     assert held - before < len(nodes) // 4 , (
         f"the pass created a holder on {held - before} of {len(nodes)} nodes"
     );
