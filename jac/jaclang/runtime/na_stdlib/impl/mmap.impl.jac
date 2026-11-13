@@ -387,7 +387,11 @@ impl mmap.resize(newsize: int) {
     if newsize < 0 {
         raise ValueError("new size out of range");
     }
-    if (self._flags & MAP_PRIVATE) == 0 {
+    is_private: bool = (self._flags & MAP_PRIVATE) != 0;
+    if is_private and mm_resize_requires_mremap() {
+        raise SystemError("mmap: resizing not available--no mremap()");
+    }
+    if not is_private {
         if self._fd == -1 {
             if newsize > self._len {
                 raise ValueError("mmap: can't expand a shared anonymous mapping");
@@ -398,14 +402,8 @@ impl mmap.resize(newsize: int) {
                 self._pos = newsize;
             }
             return;
-        } else {
-            raise ValueError("mmap: can't resize a file-backed shared mapping");
         }
-    }
-    if (self._flags & MAP_PRIVATE) != 0 {
-        if mm_resize_requires_mremap() {
-            raise SystemError("mmap: resizing not available--no mremap()");
-        }
+        raise ValueError("mmap: can't resize a file-backed shared mapping");
     }
     new_addr: int = mm_map(
         newsize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0
