@@ -113,10 +113,10 @@ impl WebTarget.build(
             artifact = program._get_compiler().get_client_artifact(
                 str(entry_file.resolve()), entry_program
             );
-        }
-        if len(entry_program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
-            raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
+            if len(entry_program.errors_had) > before {
+                errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
+                raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
+            }
         }
         inputs = builder.prepare(loaded_mod);
         exports = list(artifact.manifest.exports or []) if artifact is not None else [];
