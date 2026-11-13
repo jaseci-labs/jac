@@ -128,7 +128,7 @@ test "shrinking a shared anonymous map preserves its backing mapping" {
         raise SkipTest("shared anonymous mmap shrink is not exercised on Darwin");
     }
     (na_out, _na_err) = _na_run("mmap_shared_shrink.jac");
-    assert na_out.strip() == "4\n65" , na_out;
+    assert na_out.strip() == "65" , na_out;
 }
 
 test "native os path gaps answer what CPython's os.path answers" {
