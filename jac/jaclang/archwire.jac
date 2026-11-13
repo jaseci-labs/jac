@@ -12916,7 +12916,6 @@ graph import runtime.na_stdlib {
         pprint | reprlib { repr_str, sorted_str_keys },
     ]
     _select_native ++> select {
-        _FD_SETSIZE,
         _POLLERR,
         _POLLHUP,
         _POLLIN,
