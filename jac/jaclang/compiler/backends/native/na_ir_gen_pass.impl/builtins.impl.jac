@@ -110,7 +110,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
             continue;
         }
         key = param.key.sym_name if param.key is not None else None;
-        named = self._print_stream_name(param.value) if key == "file" else None;
+        named = self._sys_stream_of(param.value) if key == "file" else None;
         if named is None {
             self.ctx.emit(
                 E5092,
@@ -263,21 +263,29 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     return ir.Constant(ir.IntType(64), 0);
 }
 
-impl NaIRGenPass._print_stream_name(value: uni.Expr) -> (str | None) {
-    if not isinstance(value, uni.AtomTrailer) {
+impl NaIRGenPass._sys_stream_of(value: uni.Expr) -> (str | None) {
+    if "sys" not in self._native_stdlib_modules {
         return None;
     }
-    chain = value.as_attr_list;
-    if len(chain) != 2 or chain[0].sym_name != "sys" {
+    named = value;
+    if isinstance(value, uni.AtomTrailer) and value.is_attr {
+        named = value.right;
+    }
+    if not isinstance(named, uni.Name) or named.sym is None {
         return None;
     }
-    if chain[1].sym_name == "stdout" {
-        return "stdout";
+    sym = named.sym;
+    if sym.sym_name not in ("stdout", "stderr") {
+        return None;
     }
-    if chain[1].sym_name == "stderr" {
-        return "stderr";
+    owner = sym.parent_tab;
+    if not isinstance(owner, uni.Module)
+        or not owner.stub_only
+        or owner.loc is None
+        or bundled_stdlib_module_of(owner.loc.mod_path) != "sys" {
+        return None;
     }
-    return None;
+    return sym.sym_name;
 }
 
 impl NaIRGenPass._emit_print_call(

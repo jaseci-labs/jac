@@ -81,14 +81,14 @@ impl admits_interface(task: ModuleAnalysis) -> bool {
         or not options.keeps_interfaces() {
         return False;
     }
-    return (options.no_cgen and not options.symtab_ir_only)
-        or (
-            closure.no_cgen
-            and not closure.symtab_ir_only
-            and not (
-                task.program.internal and active_host().in_compiler_tree(task.path)
-            )
-        );
+    if options.no_cgen and not options.symtab_ir_only {
+        return True;
+    }
+    if task.program.internal and active_host().in_compiler_tree(task.path) {
+        return False;
+    }
+    return (options.retain_interfaces and not options.symtab_ir_only)
+        or (closure.no_cgen and not closure.symtab_ir_only);
 }
 
 impl run_interface(task: ModuleAnalysis) {
