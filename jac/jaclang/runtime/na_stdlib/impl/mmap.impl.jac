@@ -402,7 +402,7 @@ impl mmap.resize(newsize: int) {
             raise ValueError("mmap: can't resize a file-backed shared mapping");
         }
     }
-    if mm_resize_requires_mremap() {
+    if (self._flags & MAP_PRIVATE) != 0 and mm_resize_requires_mremap() {
         raise SystemError("mmap: resizing not available--no mremap()");
     }
     new_addr: int = mm_map(
