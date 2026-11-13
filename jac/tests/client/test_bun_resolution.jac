@@ -100,3 +100,45 @@ test "a bun whose permissions cannot be repaired is unusable, not an error" {
         assert stale.found is None and "not executable" in stale.drift[0];
     }
 }
+
+
+test "run_pm gives install and add the project's minimum release age and nothing else" {
+    import from unittest.mock { patch }
+    import from jaclang.client { js_runtime }
+    ran: list[tuple[list[str], (str | None)]] = [];
+    def child(argv: list[str], **kwargs: any) -> any {
+        bunfig = os.path.join(kwargs["cwd"], "bunfig.toml");
+        ran.append((argv, open(bunfig).read() if os.path.exists(bunfig) else None));
+        class _Done {
+            has returncode: int = 0,
+                stdout: str = "out",
+                stderr: str = "";
+        }
+        return _Done();
+    }
+    with TemporaryDirectory() as td {
+        with open(os.path.join(td, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "p"\n\n[client.npm]\nmin_release_age_days = 2\n'
+                'min_release_age_excludes = ["react"]\n'
+            );
+        }
+        with patch.object(js_runtime, "js_runtime_path", return_value="/opt/bun"), patch(
+            "subprocess.run", side_effect=child
+        ) {
+            js_runtime.run_pm(["x", "vite"], td);
+            assert js_runtime.run_pm(["add", "vite"], td, capture=True) == (0, "out");
+            js_runtime.run_pm(["install"], td, release_age=(0.0, []));
+        }
+        assert not os.path.exists(os.path.join(td, "bunfig.toml"));
+    }
+    assert ran
+        == [
+            (["/opt/bun", "x", "vite"], None),
+            (
+                ["/opt/bun", "add", "--minimum-release-age=172800", "vite"],
+                '[install]\nminimumReleaseAgeExcludes = ["react"]\n'
+            ),
+            (["/opt/bun", "install", "--minimum-release-age=0"], None)
+        ] , ran;
+}
