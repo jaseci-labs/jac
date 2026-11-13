@@ -5775,7 +5775,7 @@ graph import compiler {
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish {
             endpoint_key
         },
-        driver.application.prepare_application {
+        driver.impl.application_impl.prepare_application {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
