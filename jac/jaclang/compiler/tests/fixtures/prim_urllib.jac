@@ -61,7 +61,8 @@ def urlopen_request_data_length_na -> int {
 }
 
 def request_line_injection_rejected_na -> int {
-    req = Request(url="http://127.0.0.1/", method="GET\r\nX-Test: 1");
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    req = Request(url=base + "/hello", method="GET\r\nX-Test: 1");
     try {
         urlopen(req);
     } except ValueError {
