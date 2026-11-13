@@ -1165,15 +1165,17 @@ impl NaIRGenPass._codegen_compare_link(
         and left.type == self.jacval_type
         and right.type == self.jacval_type {
         _jv_same = self._value_identity(left, right);
-        return self._compare_result(
-            self.builder.not_(_jv_same, name="is.jv.diff")
-                if op == Tok.KW_ISN
-                else _jv_same,
-            _cmp_left_orig,
-            _cmp_right_orig,
-            release_operands,
-            "cmp_is_jacval"
-        );
+        if _jv_same is not None {
+            return self._compare_result(
+                self.builder.not_(_jv_same, name="is.jv.diff")
+                    if op == Tok.KW_ISN
+                    else _jv_same,
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_is_jacval"
+            );
+        }
     }
 
     if op == Tok.KW_IN or op == Tok.KW_NIN {
@@ -1939,16 +1941,18 @@ impl NaIRGenPass._value_identity(left: ir.Value, right: ir.Value) -> (ir.Value |
         load_bb
     );
     self.builder.position_at_end(load_bb);
-    same = self._word_identity(held, self.builder.load(boxed, name="is.box.val"));
-    if same is None {
-        same = ir.Constant(i1, 0);
+    loaded_same = self._word_identity(
+        held, self.builder.load(boxed, name="is.box.val")
+    );
+    if loaded_same is None {
+        loaded_same = ir.Constant(i1, 0);
     }
     load_end = self.builder.block;
     self.builder.branch(done_bb);
     self.builder.position_at_end(done_bb);
     result = self.builder.phi(i1, name="is.box");
     result.add_incoming(ir.Constant(i1, 0), start_bb);
-    result.add_incoming(same, load_end);
+    result.add_incoming(loaded_same, load_end);
     return result;
 }
 
