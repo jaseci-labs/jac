@@ -5730,7 +5730,7 @@ graph import compiler {
         tools.comment_attach_pass { NodeComments },
     ]
     frontend.codeinfo --> [
-        backends.native.link_plan._compile_dep_signature { native_unit_root },
+        backends.native.impl.link_plan_impl._compile_dep_signature { native_unit_root },
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
             | backends.py.jcir_gen_pass.JcirGenPass._sv_endpoint_effects
             | passes.boundary_analysis_pass.BoundaryAnalysisPass._collect_boundary_type {
