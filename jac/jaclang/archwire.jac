@@ -5480,6 +5480,7 @@ graph import compiler {
             | driver.program.JacProgram.prefers_native_codespace {
             is_kernel_unit_path
         },
+        backends.native.link_plan._compile_dep_signature { native_unit_root },
         backends.native.link_plan._write_sidecar { native_unit_identity },
         backends.native.na_ir_gen_pass {
             HDR_ALLOC_ID_OFF,

@@ -59,7 +59,7 @@ impl _file_digest(path: str) -> str {
 }
 
 impl LinkPlan.unit(path: str) -> (LinkUnit | None) {
-    real = os.path.realpath(path);
+    real = self.unit_aliases.get(os.path.realpath(path), os.path.realpath(path));
     for u in self.units {
         if u.path == real {
             return u;
@@ -87,7 +87,7 @@ impl LinkPlan.root_index -> int {
 }
 
 impl LinkPlan.init_units -> list[LinkUnit] {
-    return initialization_order(self.units, self.roots);
+    return initialization_order(self.units, self.roots, self.unit_aliases);
 }
 
 impl LinkPlan.init_symbols -> list[str] {
@@ -224,10 +224,16 @@ impl LinkPlan.glue_spec(
     );
 }
 
-impl initialization_order(units: list[LinkUnit], roots: list[str]) -> list[LinkUnit] {
+impl initialization_order(
+    units: list[LinkUnit], roots: list[str], aliases: (dict[str, str] | None) = None
+) -> list[LinkUnit] {
     by_path: dict[str, LinkUnit] = {u.path: u for u in units};
+    unit_aliases = aliases or {};
     imports: dict[str, list[str]] = {
-        u.path: [os.path.realpath(d) for d in u.iface.deps] for u in units
+        u.path: [
+            unit_aliases.get(os.path.realpath(d), os.path.realpath(d))
+            for d in u.iface.deps
+        ] for u in units
     };
     walked: list[LinkUnit] = [];
     started: set[str] = set();
@@ -389,9 +395,11 @@ impl _build_link_plan(
     units: dict[str, LinkUnit] = {};
     edges: dict[str, list[str]] = {};
     virtual_sources: dict[str, str] = {};
+    prefix_owners: dict[str, str] = {};
+    unit_aliases: dict[str, str] = {};
 
     def walk_unit(path: str, stack: list[str]) -> None {
-        if path in units {
+        if path in units or path in unit_aliases {
             return;
         }
         if path in stack {
@@ -426,6 +434,72 @@ impl _build_link_plan(
                     + (f"; reached through {reached}" if reached else "")
             );
         }
+        prefix_owner: str | None = prefix_owners.get(ent.iface.prefix);
+        if prefix_owner is not None and prefix_owner != path {
+            if unit_source_digest(prefix_owner) != unit_source_digest(path) {
+                raise LinkPlanError(
+                    f"{prefix_owner} and {path} share the native unit prefix "
+                    f"{ent.iface.prefix} but have different source contents: "
+                    "their package roots have the same directory name; "
+                    "rename one root"
+                );
+            }
+            owner_ent = registry.entries.get(prefix_owner);
+            if owner_ent is None
+                or _compile_dep_signature(ent.compile_deps, path)
+                    != _compile_dep_signature(owner_ent.compile_deps, prefix_owner) {
+                raise LinkPlanError(
+                    f"{prefix_owner} and {path} share the native unit prefix "
+                    f"{ent.iface.prefix} but their compile-time inputs differ: "
+                    "their package roots have the same directory name; "
+                    "rename one root"
+                );
+            }
+            owner_dep_digests = sorted(owner_ent.dep_digests.values());
+            unit_dep_digests = sorted(ent.dep_digests.values());
+            has_incomplete_cycle = "" in owner_dep_digests or "" in unit_dep_digests;
+            same_dep_sources = False;
+            if has_incomplete_cycle {
+                owner_dep_sources: list[tuple[str, bytes]] = [];
+                for dep in owner_ent.iface.deps {
+                    dep_path = os.path.realpath(dep);
+                    dep_ent = registry.entries.get(dep_path);
+                    owner_dep_sources.append(
+                        (
+                            unit_source_digest(dep_path),
+                            dep_ent.compile_deps if dep_ent is not None else b""
+                        )
+                    );
+                }
+                unit_dep_sources: list[tuple[str, bytes]] = [];
+                for dep in ent.iface.deps {
+                    dep_path = os.path.realpath(dep);
+                    dep_ent = registry.entries.get(dep_path);
+                    unit_dep_sources.append(
+                        (
+                            unit_source_digest(dep_path),
+                            dep_ent.compile_deps if dep_ent is not None else b""
+                        )
+                    );
+                }
+                same_dep_sources = sorted(owner_dep_sources)
+                    == sorted(unit_dep_sources);
+            }
+            if unit_dep_digests != owner_dep_digests
+                and not (has_incomplete_cycle and same_dep_sources) {
+                raise LinkPlanError(
+                    f"{prefix_owner} and {path} share the native unit prefix "
+                    f"{ent.iface.prefix} but their dependencies' native "
+                    "interfaces differ: their package roots have the same "
+                    "directory name; rename one root"
+                );
+            }
+            unit_aliases[path] = prefix_owner;
+            for dep in sorted(os.path.realpath(d) for d in ent.iface.deps) {
+                walk_unit(dep, stack + [path]);
+            }
+            return;
+        }
 
         try {
             modkey = module_cache_key(path);
@@ -440,15 +514,50 @@ impl _build_link_plan(
             modkey=modkey,
             is_root=(path in real_roots)
         );
-        deps = sorted(os.path.realpath(d) for d in ent.iface.deps);
-        edges[path] = deps;
-        for dep in deps {
-            walk_unit(dep, stack + [path]);
+        prefix_owners[ent.iface.prefix] = path;
+        deps: list[str] = [];
+        for raw_dep in sorted(os.path.realpath(d) for d in ent.iface.deps) {
+            walk_unit(raw_dep, stack + [path]);
+            canonical_dep: str = unit_aliases.get(raw_dep, raw_dep);
+            if canonical_dep not in deps {
+                deps.append(canonical_dep);
+            }
         }
+        edges[path] = deps;
+    }
+
+    def recorded_deps(path: str) -> dict[str, str] {
+        out: dict[str, str] = {};
+        for (dep, digest) in registry.recorded_native_deps(path, opts) {
+            real_dep = os.path.realpath(dep);
+            out[unit_aliases.get(real_dep, real_dep)] = digest;
+        }
+        return out;
     }
 
     for root_u in real_roots {
         walk_unit(root_u, []);
+    }
+    canonical_roots: list[str] = [];
+    for root_u in real_roots {
+        canonical_root: str = unit_aliases.get(root_u, root_u);
+        if canonical_root not in canonical_roots {
+            canonical_roots.append(canonical_root);
+        }
+        if canonical_root in units {
+            units[canonical_root].is_root = True;
+        }
+    }
+    real_roots = canonical_roots;
+    for (edge_path, edge_deps) in edges.items() {
+        normalized: list[str] = [];
+        for raw_dep in edge_deps {
+            canonical_dep: str = unit_aliases.get(raw_dep, raw_dep);
+            if canonical_dep not in normalized {
+                normalized.append(canonical_dep);
+            }
+        }
+        edges[edge_path] = normalized;
     }
 
     seen: set[str] = set();
@@ -473,14 +582,14 @@ impl _build_link_plan(
                     u.path,
                     u.digest,
                     edges[u.path],
-                    registry.recorded_native_deps(u.path, opts)
+                    sorted(recorded_deps(u.path).items())
                 ] for u in ordered
             ]
         );
         if state in seen {
             disagreements: list[str] = [];
             for u in ordered {
-                recorded = dict(registry.recorded_native_deps(u.path, opts));
+                recorded = recorded_deps(u.path);
                 for dep in edges[u.path] {
                     actual = units[dep].digest;
                     prior = recorded.get(dep, "");
@@ -498,7 +607,7 @@ impl _build_link_plan(
         seen.add(state);
         rebuilt = False;
         for u in ordered {
-            recorded = dict(registry.recorded_native_deps(u.path, opts));
+            recorded = recorded_deps(u.path);
             stale = [
                 dep
                 for dep in edges[u.path]
@@ -556,12 +665,19 @@ impl _build_link_plan(
             u.iface = ent.iface;
             u.digest = ent.digest;
             u.prefix = ent.iface.prefix;
-            new_deps = sorted(os.path.realpath(d) for d in ent.iface.deps);
-            changed_edges = new_deps != edges[u.path];
-            edges[u.path] = new_deps;
-            for dep in new_deps {
+            raw_deps = sorted(os.path.realpath(d) for d in ent.iface.deps);
+            for dep in raw_deps {
                 walk_unit(dep, []);
             }
+            new_deps: list[str] = [];
+            for raw_dep in raw_deps {
+                canonical_dep: str = unit_aliases.get(raw_dep, raw_dep);
+                if canonical_dep not in new_deps {
+                    new_deps.append(canonical_dep);
+                }
+            }
+            changed_edges = new_deps != edges[u.path];
+            edges[u.path] = new_deps;
             rebuilt = True;
             if changed_edges {
                 break;
@@ -574,7 +690,7 @@ impl _build_link_plan(
 
     check_prefix_collisions(ordered);
     check_pub_collisions(ordered);
-    initialization_order(ordered, real_roots);
+    initialization_order(ordered, real_roots, unit_aliases);
 
     for unit in ordered {
         na_coverage_replay(unit.path, unit.iface.coverage or {"outcome": "native"});
@@ -585,8 +701,37 @@ impl _build_link_plan(
         roots=real_roots,
         units=ordered,
         mode=link_mode,
-        triple=triple
+        triple=triple,
+        unit_aliases=dict(unit_aliases)
     );
+}
+
+impl _compile_dep_signature(raw: bytes, unit_path: str) -> list[tuple[str, str, str]] {
+    if not raw {
+        return [];
+    }
+    package_root = native_unit_root(os.path.dirname(os.path.realpath(unit_path)));
+    rows: list[tuple[str, str, str]] = [];
+    for line in raw.decode("utf-8", errors="replace").splitlines() {
+        (stored_path, sep, rest) = line.partition("\t");
+        if not sep {
+            rows.append((stored_path, "", ""));
+            continue;
+        }
+        (digest, _sep2, flag) = rest.partition("\t");
+        normalized = stored_path;
+        if package_root is not None and os.path.isabs(stored_path) {
+            try {
+                if os.path.commonpath([stored_path, package_root]) == package_root {
+                    normalized = os.path.relpath(stored_path, package_root).replace(
+                        "\\", "/"
+                    );
+                }
+            } except ValueError {}
+        }
+        rows.append((normalized, digest, flag));
+    }
+    return sorted(rows);
 }
 
 impl _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine {
