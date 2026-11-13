@@ -511,7 +511,7 @@ impl prepare_application(
     import from jaclang.runtime.preparation_lock { PREPARATION_LOCK }
     with PREPARATION_LOCK {
         previous = get_effective_default_codespace_override();
-        preparation_codespace: str = effective_default_codespace();
+        preparation_codespace: str = 'server';
         if force_codespace {
             preparation_codespace = force_codespace;
         }
