@@ -339,7 +339,7 @@ impl TypeCheckPass.exit_binary_expr with BinaryExpr exit {
     }
     self.evaluator.get_type_of_expression(here);
     if isinstance(here.op, Token) and here.op.name == Tok.WALRUS_EQ {
-        self._check_immutable_write(here.left);
+        self._check_binder_write(here.left, binder=here);
     }
 }
 
@@ -402,7 +402,12 @@ impl TypeCheckPass._is_unannotated_rebind(prior: Symbol, target: Name) -> bool {
         site = site.parent;
     }
     return (isinstance(site, Assignment) and site.type_tag is None)
-        or isinstance(site, InForStmt);
+        or isinstance(site, InForStmt)
+        or (
+            isinstance(site, BinaryExpr)
+            and isinstance(site.op, Token)
+            and site.op.name == Tok.WALRUS_EQ
+        );
 }
 
 impl TypeCheckPass._is_exempt_rebind(
@@ -416,22 +421,23 @@ impl TypeCheckPass._is_exempt_rebind(
         and any(d.name_of.find_parent_of_type(Import) is not None for d in prior.defn);
 }
 
-impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
-    scope = find_python_scope_node_of(nd);
-    if scope is None {
-        return;
-    }
-    loop_at = (nd.loc.first_line, nd.loc.col_start);
-    for leaf in self._write_leaves(nd.target) {
+impl TypeCheckPass._judge_rebind_types(
+    target: Expr, rebind_scope: (UniNode | None), site: UniNode
+) -> None {
+    for leaf in self._write_leaves(target) {
         if not isinstance(leaf, Name) or leaf.sym is None {
             continue;
         }
-        prior = scope.lookup(leaf.value, deep=False);
-        if prior is None or prior is leaf.sym or prior.decl is None {
+        prior = self._rebound_enclosing_symbol(rebind_scope, leaf)
+            if rebind_scope is not None
+            else leaf.sym;
+        if prior is None or prior.decl is None or prior.decl.name_of is leaf {
             continue;
         }
-        if not isinstance(prior.decl.name_of, ParamVar)
-            and (prior.decl.loc.first_line, prior.decl.loc.col_start) >= loop_at {
+        if rebind_scope is not None
+            and not isinstance(prior.decl.name_of, ParamVar)
+            and (prior.decl.loc.first_line, prior.decl.loc.col_start)
+                >= (leaf.loc.first_line, leaf.loc.col_start) {
             continue;
         }
         declared = self.evaluator.get_type_of_symbol(prior);
@@ -443,25 +449,42 @@ impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
             or self._is_exempt_rebind(prior, leaf, declared) {
             continue;
         }
-        bound = self.evaluator.get_type_of_expression(leaf);
-        if isinstance(bound, UnknownType) {
+        source = site.right
+            if isinstance(site, BinaryExpr)
+            else self.evaluator._get_source_of_unpack_target(leaf);
+        bound = self.evaluator.get_type_of_expression(source, expected_type=declared)
+            if source is not None
+            else self.evaluator._get_type_of_unpack_target(leaf)
+                or self.evaluator.get_type_of_expression(leaf);
+        if bound is None or isinstance(bound, UnknownType) {
             continue;
         }
-        if not self.evaluator.assign_type(
-            bound, declared, strict=self.evaluator._is_strict_site(nd)
-        ) {
+        verdict = self.evaluator.assign_expr(
+            source, bound, declared, strict=self.evaluator._is_strict_site(site)
+        );
+        if not verdict.ok and not verdict.diagnosed {
             self.ctx.emit(
-                E1001, node_override=leaf, actual=str(bound), expected=str(declared)
+                E1042 if self.evaluator._is_awaitable_type(bound) else E1001,
+                node_override=site
+                    if leaf is target and isinstance(site, Assignment)
+                    else leaf,
+                actual=str(bound),
+                expected=str(declared)
             );
         }
     }
 }
 
-impl TypeCheckPass._check_immutable_write(
-    target: (Expr | None), rebind_scope: (UniNode | None) = None
+impl TypeCheckPass._check_binder_write(
+    target: (Expr | None),
+    rebind_scope: (UniNode | None) = None,
+    binder: (UniNode | None) = None
 ) -> None {
     if target is not None {
         self._deferred_writes.append((target, rebind_scope));
+        if binder is not None {
+            self._judge_rebind_types(target, rebind_scope, binder);
+        }
     }
 }
 
@@ -702,7 +725,10 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
         );
     }
     for write_target in here.target {
-        self._check_immutable_write(write_target);
+        self._check_binder_write(
+            write_target,
+            binder=here if here.value is not None and here.aug_op is None else None
+        );
     }
     if here.type_tag and here.type_tag.tag {
         self._check_bare_final(here.type_tag.tag, here.value);
@@ -710,16 +736,8 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
     if ((len(here.target) == 1) and (here.value is not None)) {
         target = here.target[0];
 
-        is_unannotated_reassign = False;
-
         if isinstance(target, Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
-
-            if self._is_unannotated_rebind(target.sym, target) {
-                is_unannotated_reassign = True;
-
-                left_type = self.evaluator._widen_literal_for_declaration(left_type);
-            }
 
             if isinstance(left_type, UnknownType) and left_type.is_incomplete {
                 return;
@@ -909,13 +927,14 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                 );
             }
         } else {
-            is_exempt_rebind = isinstance(target, Name)
+            is_rebind = isinstance(target, Name)
                 and target.sym is not None
-                and self._is_exempt_rebind(target.sym, target, left_type);
+                and target.sym.decl is not None
+                and target.sym.decl.name_of is not target;
             import from jaclang.compiler.c_interop { c_bytes_array_definition }
             if (
                 here.aug_op is None
-                and not is_exempt_rebind
+                and not is_rebind
                 and not c_bytes_array_definition(here, left_type)
             ) {
                 verdict = self.evaluator.assign_expr(
@@ -1842,8 +1861,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self._eval_unpacking_names(here.target);
         self.evaluator.get_type_of_expression(here.target);
     }
-    self._check_immutable_write(here.target, rebind_scope=here);
-    self._check_for_target_rebinds(here);
+    self._check_binder_write(here.target, rebind_scope=here, binder=here);
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);
 
@@ -2132,7 +2150,7 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
     exit_method = "__aexit__" if here.is_async else "__exit__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
-        self._check_immutable_write(ctx_item.alias, rebind_scope=here);
+        self._check_binder_write(ctx_item.alias, rebind_scope=here, binder=here);
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
         if not isinstance(expr_type, UnknownType) and not expr_type.is_any_instance() {
             enter_result = self.evaluator.get_type_of_magic_method_call(
@@ -2185,7 +2203,7 @@ impl TypeCheckPass.exit_except with Except exit {
             }
         }
     }
-    self._check_immutable_write(here.name, rebind_scope=here);
+    self._check_binder_write(here.name, rebind_scope=here, binder=here);
 }
 
 impl TypeCheckPass._is_exception_class_operand(
@@ -2233,7 +2251,7 @@ impl TypeCheckPass._is_exception_class_operand(
 }
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {
-    self._check_immutable_write(here.name, rebind_scope=here);
+    self._check_binder_write(here.name, rebind_scope=here);
 }
 
 impl TypeCheckPass.exit_match_arch with MatchArch exit {
@@ -2325,7 +2343,7 @@ impl TypeCheckPass.exit_yield_expr with YieldExpr exit {
 impl TypeCheckPass.exit_delete_stmt with DeleteStmt exit {
     for target in here.targets {
         self.evaluator.get_type_of_expression(target);
-        self._check_immutable_write(target);
+        self._check_binder_write(target);
     }
     for leaf in here.leaf_targets() {
         if DeleteStmt.is_location(leaf)

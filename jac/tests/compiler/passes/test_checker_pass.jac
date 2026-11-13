@@ -2577,54 +2577,44 @@ test "agentvisitor_connect_no_errors" {
 test "inferred_local_type_frozen" {
     # An unannotated local is frozen to the type inferred at its first
     # binding; reassigning an incompatible type is an error, and so is a
-    # `for` target that reuses the name, unannotated or annotated (#9972).
+    # `for` target that reuses the name, unannotated or annotated (#9972),
+    # or any other binder that writes it (#10405).
     # The `None`-sentinel pattern is the one exception (the type evolves).
+    # Every `# <-- Error` line in the fixture carries one E1001, in line order.
+    path = os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac");
     program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
-        options=NO_TC
+    program.compile(path, options=NO_TC);
+    marked = [
+        i + 1
+        for (i, line) in enumerate(Path(path).read_text().splitlines())
+        if "# <-- Error" in line
+    ];
+    errs = program.errors_had;
+    assert [e.loc.first_line for e in errs] == marked , "\n".join(
+        [e.pretty_print() for e in errs]
     );
-    assert len(program.errors_had) == 5 , f"Expected 5 type errors, but got {len(
-        program.errors_had
-    )}: "
-        + "\n".join([err.pretty_print() for err in program.errors_had]);
-    for err in program.errors_had {
-        assert err.code is not None and err.code.code == "E1001";
-    }
-    for (idx, needle) in [
-        (0, """
-        a = "some str";  # <-- Error
-    """),
-        (
-            1,
-            """
-        for a in ["x", "y"] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            2,
-            """
-        for (kind, a) in [("k", "x")] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            3,
-            """
-        for c in [1, 2] {  # <-- Error
-        Cannot assign int to str
-    """
-        ),
-        (
-            4,
-            """
-        for x in ["bad"] {  # <-- Error
-        Cannot assign str to int
-    """
-        )
-    ] {
-        assert_error_pretty_found(needle, program.errors_had[idx].pretty_print());
+    for (err, msg) in zip(
+        errs,
+        [
+            'Literal["some str"] to int',
+            "str to int",
+            "str to int",
+            "int to str",
+            "str to int",
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            "TextIOWrapper to Label",
+            "ValueError to Label",
+            "list[",
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            "LiteralString to int"
+        ]
+    ) {
+        assert err.code is not None
+            and err.code.code == "E1001"
+            and f"Cannot assign {msg}" in err.pretty_print() , err.pretty_print();
     }
 }
 
@@ -3263,11 +3253,15 @@ test "starred_unpack_barrier" {
     # After `(head, *rest) = ...` inside `if rest is not None`, rest
     # must reset to list[int] | None. The typed-local assignment then
     # fails because list[int] | None is not assignable to list[int].
-    assert len(program.errors_had) == 1 , "Expected 1 type error, but got "
+    # A target after the star narrows to the last element, not the one
+    # at its own index.
+    assert len(program.errors_had) == 2 , "Expected 2 type errors, but got "
         + f"{len(program.errors_had)}:\n"
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
     assert 'Cannot assign list[int] | NoneType to list[int]' in msg , f"Expected starred-unpack reset error, got: {msg}";
+    msg = program.errors_had[1].pretty_print();
+    assert 'Cannot assign str to int' in msg , f"Expected the last element's type, got: {msg}";
 }
 
 """Tuple-unpacking assignment acts as a narrowing barrier."""
@@ -3340,8 +3334,8 @@ test "impl_imports_from_parent" {
     path = os.path.join(CHECKER_FIXTURES, "checker_impl_imports.jac");
     mod = program.compile(path, options=NO_TC);
 
-    # Should have 3 errors for type mismatches with jaclang types (not Python stdlib)
-    assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
+    # Should have 2 errors for type mismatches with jaclang types (not Python stdlib)
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);

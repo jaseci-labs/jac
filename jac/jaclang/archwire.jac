@@ -5408,14 +5408,18 @@ graph import compiler {
         passes.cfg_build_pass.CFGBuildPass.exit_if_else_expr {
             collect_narrowing_symbols
         },
-        types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
-            find_destructure_index_path
+        types.type_evaluator.TypeEvaluator._get_source_of_unpack_target {
+            is_star_target
         },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },
         types.type_evaluator.TypeEvaluator._narrowed_type_for_expr {
             reference_key_deps
+        },
+        types.type_evaluator.TypeEvaluator._unpack_target_path {
+            is_star_target,
+            unpack_index
         },
     ]
     expr_keys --> [

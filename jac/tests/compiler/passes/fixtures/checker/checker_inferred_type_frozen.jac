@@ -11,8 +11,12 @@ to evolve, matching TypeScript's strict-mode evolving locals.
 
 A `for` target that reuses the name writes the same variable, so it is held
 to the frozen type too (#9972), in the single and the unpacking form, and
-an annotated local to its annotation.
+an annotated local to its annotation. So is every other binder that writes
+the local (#10405): unpacking, chained assignment, walrus, `with ... as` and
+`except ... as`.
 """
+
+import from typing { NamedTuple }
 
 with entry {
     # Frozen to `int` by the first binding — reassigning a `str` is an error.
@@ -62,3 +66,53 @@ impl rebinds_param(x: int) -> int {
 }
 
 def rebinds_param(x: int) -> int;
+
+obj Label {
+    has text: str = "";
+}
+
+class Row(NamedTuple) {
+    has name: str,
+        count: int;
+}
+
+def binder_rebinds(row: Row) {
+    title = Label(text="a");
+    [kind, title] = ["k", "x"];  # <-- Error
+    other = title="x";  # <-- Error
+    if (title := "x") {  # <-- Error
+        print(kind, other);
+    }
+    with open("x.txt") as title {  # <-- Error
+        print(1);
+    }
+    try {
+        print(1);
+    } except ValueError as title {  # <-- Error
+        print(2);
+    }
+    (kind, *title) = ("k", "x", "y");  # <-- Error
+    (kind, *middle, title) = ("k", Label(), Label(), "x");  # <-- Error: the last element
+    (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
+    (count, *names) = (0, "x");
+    names.append("y");  # <-- Ok: a new starred target holds only what it captures
+    (count, *spare) = (0, );
+    spare.append("y");  # <-- Ok: an empty capture is still a list
+    counts: list[int] = [];
+    (kind, *counts) = row;  # <-- Ok: a NamedTuple star captures only its fields
+    if (label := "a") and (label := "b") {  # <-- Ok: a walrus binding widens
+        print(middle, fresh, label);
+    }
+    small: u8 = 0;
+    (kind, small) = ("k", 2);  # <-- Ok
+    print(count);
+}
+
+def for_unpack_rebinds {
+    title = Label(text="a");
+    count = 0;
+    # Iterating a dict yields its keys, so `count` gets a key's characters.
+    for (key, count) in {"ab": 1} {  # <-- Error
+        print(key);
+    }
+}

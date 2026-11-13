@@ -9,13 +9,13 @@ walker Creator {
     can travel with Root | node_a entry;
 }
 
-edge MyEdge : any --> any {
+edge MyEdge: any --> any {
     has val: int = 5,
         val2: int = 10;
 }
 
-impl Creator.create{
-    end = here;
+impl Creator.create {
+    end: Root | node_a = here;
     for i = 0 while i < 5 with i += 1 {
         end ++> (end := node_a(value=i + 1));
         if i == 2 {
@@ -38,7 +38,7 @@ impl Creator.create{
     }
 }
 
-impl Creator.travel{
+impl Creator.travel {
     for i in [->:MyEdge:val<=5:->] {
         print(i.value);
     }

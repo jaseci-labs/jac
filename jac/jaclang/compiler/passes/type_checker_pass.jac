@@ -109,9 +109,14 @@ walker TypeCheckPass(TreePass) {
     def _write_leaves(target: (Expr | None)) -> list[Expr];
     def _is_unannotated_rebind(prior: Symbol, target: Name) -> bool;
     def _is_exempt_rebind(prior: Symbol, target: Name, declared: TypeBase) -> bool;
-    def _check_for_target_rebinds(nd: InForStmt) -> None;
-    def _check_immutable_write(
-        target: (Expr | None), rebind_scope: (UniNode | None) = None
+    def _judge_rebind_types(
+        target: Expr, rebind_scope: (UniNode | None), site: UniNode
+    ) -> None;
+
+    def _check_binder_write(
+        target: (Expr | None),
+        rebind_scope: (UniNode | None) = None,
+        binder: (UniNode | None) = None
     ) -> None;
 
     def _flush_immutable_writes -> None;
