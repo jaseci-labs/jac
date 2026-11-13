@@ -155,11 +155,11 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     );
     prepare_threads_fn.linkage = "weak";
     prepare_entry = prepare_threads_fn.append_basic_block("entry");
-    prepare_collect = prepare_threads_fn.append_basic_block("collect");
-    prepare_disable = prepare_threads_fn.append_basic_block("disable_cycles");
     prepare_done = prepare_threads_fn.append_basic_block("done");
     prepare_builder = ir.IRBuilder(prepare_entry);
     if self.rc_cycles_enabled_gv is not None {
+        prepare_collect = prepare_threads_fn.append_basic_block("collect");
+        prepare_disable = prepare_threads_fn.append_basic_block("disable_cycles");
         cycles_enabled = prepare_builder.load(
             self.rc_cycles_enabled_gv, name="threads.cycles.enabled"
         );
