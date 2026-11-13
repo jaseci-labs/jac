@@ -26,7 +26,7 @@ obj Label {
     has value: str;
 }
 
-def encode_label(value: any) -> dict[str, any] {
+def encode_label(value: Label) -> dict[str, any] {
     return {"label": value.value};
 }
 
