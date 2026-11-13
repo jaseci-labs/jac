@@ -171,21 +171,17 @@ impl _release(conn: _PooledConn) {
     pool[conn.origin] = bucket;
 }
 
-impl _close_idle {
-    pool = _idle_pool();
-    for bucket in pool.values() {
-        for conn in bucket {
-            _discard(conn);
-        }
-    }
-    pool.clear();
-}
-
 impl _closing_pool(coro: any) -> any {
     try {
         return await coro;
     } finally {
-        _close_idle();
+        pool = _idle_pool();
+        for bucket in pool.values() {
+            for conn in bucket {
+                _discard(conn);
+            }
+        }
+        pool.clear();
     }
 }
 
@@ -354,7 +350,7 @@ impl arequest(
     } except ClientRequestSent as e {
         if not reused
             or isinstance(e, ClientReadTimeout)
-            or verb not in _IDEMPOTENT_METHODS {
+            or verb not in _SAFE_METHODS {
             raise;
         }
         conn = await _connect(origin, timeout);
@@ -364,8 +360,10 @@ impl arequest(
     }
     chunked = 'chunked' in (resp_headers.get('Transfer-Encoding') or '').lower();
     bodiless = verb == 'HEAD' or status in (204, 304);
+    connection = [v for (name, v) in header_list if name.lower() == 'connection']
+        + resp_headers.getlist('Connection');
     reusable = version == 'HTTP/1.1'
-        and 'close' not in (resp_headers.get('Connection') or '').lower()
+        and not any('close' in v.lower() for v in connection)
         and (bodiless or chunked or resp_headers.get('Content-Length') is not None);
     response = ClientResponse(
         status_code=status,

@@ -15,14 +15,7 @@ glob DEFAULT_TIMEOUT: float = 30.0,
      IDLE_TIMEOUT: float = 30.0,
      MAX_CONNECTION_AGE: float = 120.0,
      MAX_IDLE_PER_ORIGIN: int = 32,
-     _IDEMPOTENT_METHODS: set[str] = {
-         'GET',
-         'HEAD',
-         'PUT',
-         'DELETE',
-         'OPTIONS',
-         'TRACE'
-     },
+     _SAFE_METHODS: set[str] = {'GET', 'HEAD', 'OPTIONS'},
      _FRAMING_HEADERS: set[str] = {'content-length', 'transfer-encoding'};
 
 
@@ -80,8 +73,6 @@ def _usable(conn: _PooledConn, now: float) -> bool;
 def _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None);
 
 def _release(conn: _PooledConn);
-
-def _close_idle;
 
 async def _closing_pool(coro: any) -> any;
 

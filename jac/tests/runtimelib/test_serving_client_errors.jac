@@ -202,24 +202,41 @@ def _keep_alive(reply: bytes, drop_reused: bool = False) -> any {
             }
             conn.sendall(reply);
             served += 1;
-            if "connection: close" in head or b"Connection: close" in reply {
-                conn.close();
-                return;
-            }
         }
     }
     return handle;
 }
 
 
-async def _send_each(port: int, methods: list[str]) -> list[any] {
+async def _send_each(port: int, methods: list[str], mode: str) -> list[any] {
     outcomes: list[any] = [];
+    headers = {"Connection": "close"} if mode == "close" else None;
     for method in methods {
         try {
             resp = await arequest(
-                method, f"http://127.0.0.1:{port}/x", data=b"{}", timeout=2.0
+                method,
+                f"http://127.0.0.1:{port}/x",
+                headers=headers,
+                data=b"{}",
+                timeout=2.0,
+                stream=mode in ("stream", "partial")
             );
-            outcomes.append(resp.body);
+            if mode == "stream" {
+                blocks: list[bytes] = [];
+                async for block in resp.aiter_raw() {
+                    blocks.append(block);
+                }
+                await resp.aclose();
+                outcomes.append(b"".join(blocks));
+            } elif mode == "partial" {
+                async for _ in resp.aiter_raw() {
+                    break;
+                }
+                await resp.aclose();
+                outcomes.append("partial");
+            } else {
+                outcomes.append(resp.body);
+            }
         } except ClientConnectionError as e {
             outcomes.append(type(e));
         }
@@ -232,13 +249,14 @@ glob _OK: bytes = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
 
 
 test "connection reuse follows the response framing" {
-    cases: list[tuple[str, bytes, bool, list[str], list[any], int]] = [
-        ("content-length", _OK, False, ["GET", "GET", "GET"], [b"ok"] * 3, 1),
+    cases: list[tuple[str, bytes, bool, list[str], str, list[any], int]] = [
+        ("content-length", _OK, False, ["GET", "GET", "GET"], "body", [b"ok"] * 3, 1),
         (
             "chunked",
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
             False,
             ["GET", "GET", "GET"],
+            "body",
             [b"ok"] * 3,
             1
         ),
@@ -247,6 +265,7 @@ test "connection reuse follows the response framing" {
             b"HTTP/1.1 204 No Content\r\n\r\n",
             False,
             ["GET", "GET", "GET"],
+            "body",
             [b""] * 3,
             1
         ),
@@ -255,40 +274,99 @@ test "connection reuse follows the response framing" {
             b"HTTP/1.1 100 Continue\r\n\r\n" + _OK,
             False,
             ["GET", "GET", "GET"],
+            "body",
             [b"ok"] * 3,
             1
+        ),
+        (
+            "streamed to the end",
+            _OK,
+            False,
+            ["GET", "GET", "GET"],
+            "stream",
+            [b"ok"] * 3,
+            1
+        ),
+        (
+            "stream closed after one block",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n" + b"x" * 100000,
+            False,
+            ["GET", "GET"],
+            "partial",
+            ["partial"] * 2,
+            2
         ),
         (
             "connection close",
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
             False,
             ["GET", "GET"],
+            "body",
             [b"ok"] * 2,
             2
         ),
+        (
+            "connection close after keep-alive",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+                + b"Connection: keep-alive\r\nConnection: close\r\n\r\nok",
+            False,
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        ("request asked to close", _OK, False, ["GET", "GET"], "close", [b"ok"] * 2, 2),
         (
             "content-length overrun",
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokEXTRA",
             False,
             ["GET", "GET"],
+            "body",
             [b"ok"] * 2,
             2
         ),
-        ("dead pooled GET is retried", _OK, True, ["GET", "GET"], [b"ok"] * 2, 2),
+        (
+            "dead pooled GET is retried",
+            _OK,
+            True,
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
         (
             "dead pooled POST is not replayed",
             _OK,
             True,
             ["GET", "POST"],
+            "body",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "dead pooled PUT is not replayed",
+            _OK,
+            True,
+            ["GET", "PUT"],
+            "body",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "dead pooled DELETE is not replayed",
+            _OK,
+            True,
+            ["GET", "DELETE"],
+            "body",
             [b"ok", ClientRequestSent],
             1
         )
     ];
     failures: list[str] = [];
-    for (name, reply, drop_reused, methods, expected, connections) in cases {
+    for (name, reply, drop_reused, methods, mode, expected, connections) in cases {
         (srv, held, port) = _start_server(_keep_alive(reply, drop_reused));
         try {
-            outcomes = asyncio.run(_send_each(port, methods));
+            outcomes = asyncio.run(_send_each(port, methods, mode));
             if outcomes != expected or len(held) != connections {
                 failures.append(
                     f"{name}: outcomes={outcomes!r} connections={len(held)}, "
