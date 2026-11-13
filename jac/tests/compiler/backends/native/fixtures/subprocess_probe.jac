@@ -148,7 +148,7 @@ with entry {
     } except TimeoutExpired {
         (retry_out, _retry_err) = retry.communicate(timeout=2);
         print("retry-out=" + retry_out.strip());
-        (retry_out_again, _retry_err_again) = retry.communicate();
+        (retry_out_again, _retry_err_again) = retry.communicate(timeout=2);
         print("repeat-out=" + str(retry_out_again == retry_out));
     }
 
