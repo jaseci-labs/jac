@@ -1388,3 +1388,27 @@ test "a client state setter used as a value is bound by codegen" {
         f"the setter reference must stay an ordinary reference; got:\n{js}"
     );
 }
+
+test "generating JavaScript does not give every tree node a codegen holder" {
+    # A server module lowers to no client code, so the pass has nothing to
+    # clear or emit on its nodes.
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=fixture_path("defpub_impl_dedup_server.jac"), no_cgen=True
+    );
+    nodes = ir.flatten();
+    before = sum(
+        1
+        for nd in nodes
+        if nd.has_gen()
+    );
+    run_pass(EsastGenPass, ir, prog);
+    held = sum(
+        1
+        for nd in nodes
+        if nd.has_gen()
+    );
+    assert held - before < len(nodes) // 4 , (
+        f"the pass created a holder on {held - before} of {len(nodes)} nodes"
+    );
+}
