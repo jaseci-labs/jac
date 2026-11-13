@@ -196,8 +196,8 @@ test "a unit reference prefers the owner's selected package mount" {
     os.symlink(
         selected_version, os.path.join(mounts, "edgepkg"), target_is_directory=True
     );
-    assert resolve_native_unit_ref("edgepkg/unit.jac", anchor)
-        == os.path.join(selected_version, "unit.jac");
+    assert os.path.realpath(resolve_native_unit_ref("edgepkg/unit.jac", anchor))
+        == os.path.realpath(os.path.join(selected_version, "unit.jac"));
 }
 
 test "two units sharing a symbol prefix are refused by name" {
