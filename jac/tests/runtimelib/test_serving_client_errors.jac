@@ -7,6 +7,7 @@ request, never safe to retry). These tests run against real loopback
 sockets so the classification is exercised end to end.
 """
 
+import asyncio;
 import socket;
 import struct;
 import threading;
@@ -15,6 +16,7 @@ import from jaclang.server.serving.client {
     ClientRequestNotSent,
     ClientRequestSent,
     ClientReadTimeout,
+    arequest,
     request_sync,
     post_stream_aware_sync
 }
@@ -155,6 +157,227 @@ def _sse_one_event_then_reset(conn: any) {
     _sse_reset_gate.`wait(5.0);
     conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0));
     conn.close();
+}
+
+
+def _recv_request(conn: any, pending: bytearray) -> (str | None) {
+    while b"\r\n\r\n" not in pending {
+        data = conn.recv(65536);
+        if not data {
+            return None;
+        }
+        pending.extend(data);
+    }
+    (head, _, rest) = bytes(pending).partition(b"\r\n\r\n");
+    text = head.decode("latin-1").lower();
+    length = 0;
+    for line in text.split("\r\n")[1:] {
+        (name, _, value) = line.partition(":");
+        if name.strip() == "content-length" {
+            length = int(value.strip());
+        }
+    }
+    while len(rest) < length {
+        data = conn.recv(65536);
+        if not data {
+            return None;
+        }
+        rest += data;
+    }
+    pending.clear();
+    pending.extend(rest[length:]);
+    return text;
+}
+
+
+def _keep_alive(reply: bytes, drop_reused: bool = False) -> any {
+    def handle(conn: any) {
+        pending = bytearray();
+        served = 0;
+        while True {
+            head = _recv_request(conn, pending);
+            if head is None or (drop_reused and served == 1) {
+                conn.close();
+                return;
+            }
+            conn.sendall(reply);
+            served += 1;
+        }
+    }
+    return handle;
+}
+
+
+async def _send_each(port: int, methods: list[str], mode: str) -> list[any] {
+    outcomes: list[any] = [];
+    headers = {"Connection": "close"} if mode == "close" else None;
+    for method in methods {
+        try {
+            resp = await arequest(
+                method,
+                f"http://127.0.0.1:{port}/x",
+                headers=headers,
+                data=b"{}",
+                timeout=2.0,
+                stream=mode in ("stream", "partial")
+            );
+            if mode == "stream" {
+                blocks: list[bytes] = [];
+                async for block in resp.aiter_raw() {
+                    blocks.append(block);
+                }
+                await resp.aclose();
+                outcomes.append(b"".join(blocks));
+            } elif mode == "partial" {
+                async for _ in resp.aiter_raw() {
+                    break;
+                }
+                await resp.aclose();
+                outcomes.append("partial");
+            } else {
+                outcomes.append(resp.body);
+            }
+        } except ClientConnectionError as e {
+            outcomes.append(type(e));
+        }
+    }
+    return outcomes;
+}
+
+
+glob _OK: bytes = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+
+
+test "connection reuse follows the response framing" {
+    cases: list[tuple[str, bytes, bool, list[str], str, list[any], int]] = [
+        ("content-length", _OK, False, ["GET", "GET", "GET"], "body", [b"ok"] * 3, 1),
+        (
+            "chunked",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
+            False,
+            ["GET", "GET", "GET"],
+            "body",
+            [b"ok"] * 3,
+            1
+        ),
+        (
+            "bodiless 204",
+            b"HTTP/1.1 204 No Content\r\n\r\n",
+            False,
+            ["GET", "GET", "GET"],
+            "body",
+            [b""] * 3,
+            1
+        ),
+        (
+            "interim 100 continue",
+            b"HTTP/1.1 100 Continue\r\n\r\n" + _OK,
+            False,
+            ["GET", "GET", "GET"],
+            "body",
+            [b"ok"] * 3,
+            1
+        ),
+        (
+            "streamed to the end",
+            _OK,
+            False,
+            ["GET", "GET", "GET"],
+            "stream",
+            [b"ok"] * 3,
+            1
+        ),
+        (
+            "stream closed after one block",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n" + b"x" * 100000,
+            False,
+            ["GET", "GET"],
+            "partial",
+            ["partial"] * 2,
+            2
+        ),
+        (
+            "connection close",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+            False,
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "connection close after keep-alive",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+                + b"Connection: keep-alive\r\nConnection: close\r\n\r\nok",
+            False,
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        ("request asked to close", _OK, False, ["GET", "GET"], "close", [b"ok"] * 2, 2),
+        (
+            "content-length overrun",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokEXTRA",
+            False,
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "dead pooled GET is retried",
+            _OK,
+            True,
+            ["GET", "GET"],
+            "body",
+            [b"ok"] * 2,
+            2
+        ),
+        (
+            "dead pooled POST is not replayed",
+            _OK,
+            True,
+            ["GET", "POST"],
+            "body",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "dead pooled PUT is not replayed",
+            _OK,
+            True,
+            ["GET", "PUT"],
+            "body",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "dead pooled DELETE is not replayed",
+            _OK,
+            True,
+            ["GET", "DELETE"],
+            "body",
+            [b"ok", ClientRequestSent],
+            1
+        )
+    ];
+    failures: list[str] = [];
+    for (name, reply, drop_reused, methods, mode, expected, connections) in cases {
+        (srv, held, port) = _start_server(_keep_alive(reply, drop_reused));
+        try {
+            outcomes = asyncio.run(_send_each(port, methods, mode));
+            if outcomes != expected or len(held) != connections {
+                failures.append(
+                    f"{name}: outcomes={outcomes!r} connections={len(held)}, "
+                    f"expected {expected!r} over {connections}"
+                );
+            }
+        } finally {
+            _stop_server(srv, held);
+        }
+    }
+    assert not failures , "\n".join(failures);
 }
 
 

@@ -2,14 +2,21 @@ import asyncio;
 import os;
 import ssl as ssl_lib;
 import threading;
+import time;
 import queue as queue_lib;
 import from base64 { b64encode }
 import from concurrent.futures { ThreadPoolExecutor }
+import from functools { cache }
 import from json { dumps, loads }
 import from urllib.parse { urlencode, urlsplit }
 
 
-glob DEFAULT_TIMEOUT: float = 30.0;
+glob DEFAULT_TIMEOUT: float = 30.0,
+     IDLE_TIMEOUT: float = 30.0,
+     MAX_CONNECTION_AGE: float = 120.0,
+     MAX_IDLE_PER_ORIGIN: int = 32,
+     _SAFE_METHODS: set[str] = {'GET', 'HEAD', 'OPTIONS'},
+     _FRAMING_HEADERS: set[str] = {'content-length', 'transfer-encoding'};
 
 
 obj ClientConnectionError(Exception) {
@@ -28,6 +35,19 @@ obj ClientReadTimeout(ClientRequestSent) {}
 
 def _client_json_default(o: any) -> str;
 
+obj _PooledConn {
+    has origin: tuple[str, str, int],
+        reader: any,
+        writer: any,
+        opened: float = 0.0,
+        idle_since: float = 0.0;
+}
+
+obj _IdlePool {
+    has buckets: dict[tuple[str, str, int], list[_PooledConn]],
+        swept: float = 0.0;
+}
+
 obj ClientResponse {
     has status_code: int = 0,
         reason: str = '',
@@ -35,7 +55,11 @@ obj ClientResponse {
         body: bytes = b'',
         reader: any = None,
         writer: any = None,
-        chunked: bool = False;
+        chunked: bool = False,
+        bodiless: bool = False,
+        reusable: bool = False,
+        _conn: (_PooledConn | None) = None,
+        _drained: bool = False;
 
     def json -> any;
     def text -> str;
@@ -45,13 +69,38 @@ obj ClientResponse {
     async def aclose;
 }
 
+def _idle_pool -> _IdlePool;
+
+def _discard(conn: _PooledConn);
+
+def _usable(conn: _PooledConn, now: float) -> bool;
+
+def _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None);
+
+def _sweep(pool: _IdlePool, origin: tuple[str, str, int], now: float);
+
+def _release(conn: _PooledConn);
+
+async def _closing_pool(coro: any) -> any;
+
+@cache
+def _tls_context -> any;
+
 def _split_url(url: str) -> tuple[str, str, int, str];
 
 async def _open_stream(
     scheme: str, host: str, port: int, timeout: float
 ) -> tuple[any, any];
 
-async def _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers];
+async def _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn;
+
+async def _read_response_head(
+    reader: any, timeout: float
+) -> tuple[str, int, str, Headers];
+
+async def _exchange(
+    conn: _PooledConn, payload: bytes, timeout: float
+) -> tuple[str, int, str, Headers];
 
 async def arequest(
     method: str,

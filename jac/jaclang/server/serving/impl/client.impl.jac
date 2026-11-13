@@ -25,6 +25,10 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
         }
         return;
     }
+    if self.bodiless {
+        self._drained = True;
+        return;
+    }
     if self.chunked {
         while True {
             size_line: bytes = await self.reader.readline();
@@ -39,6 +43,11 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
                 break;
             }
             if size == 0 {
+                trailer: bytes = await self.reader.readline();
+                while trailer not in (b'\r\n', b'\n', b'') {
+                    trailer = await self.reader.readline();
+                }
+                self._drained = True;
                 break;
             }
             chunk: bytes = await self.reader.readexactly(size);
@@ -57,6 +66,7 @@ impl ClientResponse.aiter_raw -> AsyncIterator[bytes] {
                 remaining -= len(block);
                 yield block;
             }
+            self._drained = remaining == 0;
         } else {
             while True {
                 block: bytes = await self.reader.read(65536);
@@ -84,11 +94,108 @@ impl ClientResponse.aiter_lines -> AsyncIterator[bytes] {
 }
 
 impl ClientResponse.aclose {
-    if self.writer is not None {
-        try {
-            self.writer.close();
-        } except Exception {}
+    conn = self._conn;
+    self._conn = None;
+    self.reader = None;
+    self.writer = None;
+    if conn is None {
+        return;
     }
+    if self.reusable and self._drained {
+        _release(conn);
+    } else {
+        _discard(conn);
+    }
+}
+
+impl _idle_pool -> _IdlePool {
+    loop: any = asyncio.get_running_loop();
+    if not hasattr(loop, '_jac_idle_conns') {
+        loop._jac_idle_conns = _IdlePool(buckets={});
+    }
+    return loop._jac_idle_conns;
+}
+
+impl _discard(conn: _PooledConn) {
+    try {
+        conn.writer.close();
+    } except Exception {}
+}
+
+impl _usable(conn: _PooledConn, now: float) -> bool {
+    return not conn.writer.is_closing()
+        and not conn.reader.at_eof()
+        and len(conn.reader._buffer) == 0
+        and now - conn.idle_since < IDLE_TIMEOUT
+        and now - conn.opened < MAX_CONNECTION_AGE;
+}
+
+impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
+    bucket = _idle_pool().buckets.get(origin) or [];
+    now = time.monotonic();
+    while bucket {
+        conn = bucket.pop();
+        if _usable(conn, now) {
+            return conn;
+        }
+        _discard(conn);
+    }
+    return None;
+}
+
+impl _sweep(pool: _IdlePool, origin: tuple[str, str, int], now: float) {
+    kept: list[_PooledConn] = [];
+    for idle in pool.buckets.get(origin, []) {
+        if _usable(idle, now) {
+            kept.append(idle);
+        } else {
+            _discard(idle);
+        }
+    }
+    if kept {
+        pool.buckets[origin] = kept;
+    } else {
+        pool.buckets.pop(origin, None);
+    }
+}
+
+impl _release(conn: _PooledConn) {
+    pool = _idle_pool();
+    now = time.monotonic();
+    if now - pool.swept >= IDLE_TIMEOUT {
+        pool.swept = now;
+        for origin in list(pool.buckets) {
+            _sweep(pool, origin, now);
+        }
+    } else {
+        _sweep(pool, conn.origin, now);
+    }
+    conn.idle_since = now;
+    bucket = pool.buckets.get(conn.origin, []);
+    if _usable(conn, now) and len(bucket) < MAX_IDLE_PER_ORIGIN {
+        bucket.append(conn);
+        pool.buckets[conn.origin] = bucket;
+    } else {
+        _discard(conn);
+    }
+}
+
+impl _closing_pool(coro: any) -> any {
+    try {
+        return await coro;
+    } finally {
+        pool = _idle_pool().buckets;
+        for bucket in pool.values() {
+            for conn in bucket {
+                _discard(conn);
+            }
+        }
+        pool.clear();
+    }
+}
+
+impl _tls_context -> any {
+    return ssl_lib.create_default_context();
 }
 
 impl _split_url(url: str) -> tuple[str, str, int, str] {
@@ -115,7 +222,7 @@ impl _open_stream(
     use_tls = scheme in ('https', 'wss');
     open_fn: any = asyncio.open_connection;
     try {
-        ssl_ctx = ssl_lib.create_default_context() if use_tls else None;
+        ssl_ctx = _tls_context() if use_tls else None;
         pair: any = await asyncio.wait_for(
             open_fn(host, port, ssl=ssl_ctx), timeout=timeout
         );
@@ -127,7 +234,15 @@ impl _open_stream(
     }
 }
 
-impl _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers] {
+impl _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn {
+    (reader, writer) = await _open_stream(origin[0], origin[1], origin[2], timeout);
+    now = time.monotonic();
+    return _PooledConn(
+        origin=origin, reader=reader, writer=writer, opened=now, idle_since=now
+    );
+}
+
+impl _read_response_head(reader: any, timeout: float) -> tuple[str, int, str, Headers] {
     while True {
         try {
             status_line: bytes = await asyncio.wait_for(
@@ -162,8 +277,24 @@ impl _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers
             }
         }
         if status == 101 or status < 100 or status >= 200 {
-            return (status, reason, headers);
+            return (parts[0], status, reason, headers);
         }
+    }
+}
+
+impl _exchange(
+    conn: _PooledConn, payload: bytes, timeout: float
+) -> tuple[str, int, str, Headers] {
+    try {
+        conn.writer.write(payload);
+        await conn.writer.drain();
+        return await _read_response_head(conn.reader, timeout);
+    } except ClientRequestSent {
+        _discard(conn);
+        raise;
+    } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
+        _discard(conn);
+        raise ClientRequestSent(detail=f"connection lost during or after send: {e!r}");
     }
 }
 
@@ -189,6 +320,9 @@ impl arequest(
     header_list: list[tuple[str, str]] = [];
     seen: set[str] = set();
     for (k, v) in (headers or {}).items() {
+        if str(k).lower() in _FRAMING_HEADERS {
+            continue;
+        }
         header_list.append((str(k), str(v)));
         seen.add(str(k).lower());
     }
@@ -200,61 +334,73 @@ impl arequest(
     } elif data is not None {
         body = data if isinstance(data, bytes) else str(data).encode('utf-8');
     }
-    (reader, writer) = await _open_stream(scheme, host, port, timeout);
-    lines = [f"{method.upper()} {path} HTTP/1.1"];
+    verb = method.upper();
+    lines = [f"{verb} {path} HTTP/1.1"];
     if 'host' not in seen {
         default_port = 443 if scheme == 'https' else 80;
         host_value = host if port == default_port else f"{host}:{port}";
         lines.append(f"Host: {host_value}");
     }
     lines.append(f"Content-Length: {len(body)}");
-    lines.append('Connection: close');
     for (name, value) in header_list {
         lines.append(f"{name}: {value}");
     }
-    blob = ('\r\n'.join(lines) + '\r\n\r\n').encode('latin-1');
+    payload = ('\r\n'.join(lines) + '\r\n\r\n').encode('latin-1') + body;
+    origin = (scheme, host, port);
+    idle = _take_idle(origin);
+    reused = idle is not None;
+    conn: _PooledConn = idle if idle is not None else await _connect(origin, timeout);
     try {
-        writer.write(blob + body);
-        await writer.drain();
-        (status, reason, resp_headers) = await _read_response_head(reader, timeout);
-    } except ClientRequestSent {
-        try {
-            writer.close();
-        } except Exception {}
-        raise;
-    } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
-        try {
-            writer.close();
-        } except Exception {}
-        raise ClientRequestSent(detail=f"connection lost during or after send: {e!r}");
+        (version, status, reason, resp_headers) = await _exchange(
+            conn, payload, timeout
+        );
+    } except ClientRequestSent as e {
+        if not reused
+            or isinstance(e, ClientReadTimeout)
+            or verb not in _SAFE_METHODS {
+            raise;
+        }
+        conn = await _connect(origin, timeout);
+        (version, status, reason, resp_headers) = await _exchange(
+            conn, payload, timeout
+        );
     }
-    transfer = (resp_headers.get('Transfer-Encoding') or '').lower();
-    chunked = 'chunked' in transfer;
+    chunked = 'chunked' in (resp_headers.get('Transfer-Encoding') or '').lower();
+    bodiless = verb == 'HEAD' or status in (204, 304);
+    connection = [
+        v
+        for (name, v) in header_list
+        if name.lower() == 'connection'
+    ]
+        + resp_headers.getlist('Connection');
+    reusable = version == 'HTTP/1.1'
+        and not any('close' in v.lower() for v in connection)
+        and (bodiless or chunked or resp_headers.get('Content-Length') is not None);
     response = ClientResponse(
-        status_code=status, reason=reason, headers=resp_headers, chunked=chunked
+        status_code=status,
+        reason=reason,
+        headers=resp_headers,
+        reader=conn.reader,
+        writer=conn.writer,
+        chunked=chunked,
+        bodiless=bodiless,
+        reusable=reusable,
+        _conn=conn
     );
     if stream {
-        response.reader = reader;
-        response.writer = writer;
         return response;
     }
     collected: list[bytes] = [];
-    response.reader = reader;
     try {
         async for block in response.aiter_raw() {
             collected.append(block);
         }
     } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
-        try {
-            writer.close();
-        } except Exception {}
         raise ClientRequestSent(detail=f"connection lost mid-body: {e!r}");
+    } finally {
+        await response.aclose();
     }
-    response.reader = None;
     response.body = b''.join(collected);
-    try {
-        writer.close();
-    } except Exception {}
     return response;
 }
 
@@ -284,7 +430,7 @@ impl aws_connect(
     }
     writer.write(('\r\n'.join(lines) + '\r\n\r\n').encode('latin-1'));
     await writer.drain();
-    (status, reason, resp_headers) = await _read_response_head(reader, timeout);
+    (_, status, reason, resp_headers) = await _read_response_head(reader, timeout);
     if status != 101 {
         try {
             writer.close();
@@ -313,10 +459,10 @@ impl run_blocking(coro: any) -> any {
     try {
         asyncio.get_running_loop();
     } except RuntimeError {
-        return asyncio.run(coro);
+        return asyncio.run(_closing_pool(coro));
     }
     with ThreadPoolExecutor(max_workers=1) as pool {
-        future = pool.submit(asyncio.run, coro);
+        future = pool.submit(asyncio.run, _closing_pool(coro));
         return future.result();
     }
 }
@@ -411,7 +557,7 @@ impl post_stream_aware_sync(
 
     def _runner {
         try {
-            asyncio.run(_pump());
+            asyncio.run(_closing_pool(_pump()));
         } except Exception as e {
             handshake.put(('exc', e));
             events.put(sentinel);
