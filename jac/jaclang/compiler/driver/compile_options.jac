@@ -13,6 +13,7 @@ obj CompileOptions {
         native_required: bool = False,
         native_require: (list[str] | None) = None,
         iface_ok: bool = False,
+        retain_interfaces: bool = False,
         need_full_ast: bool = False,
         native_tree_demand: bool = False,
         skip_analysis: bool = False,

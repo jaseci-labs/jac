@@ -32,11 +32,13 @@ glob _TRUE_STRINGS: set[str] = {'1', 'true', 'yes', 'on', 'y'},
      };
 
 
-def _coerce_bool(value: any) -> bool;
+def _mismatch(expected: str, value: any) -> ValueError;
+
+def _coerce_bool(value: any, text: bool) -> bool;
 
 def _construct_object(value: any, target: any) -> any;
 
-def _as_item_list(value: any) -> list[any];
+def _as_item_list(value: any, text: bool) -> list[any];
 
 def is_upload_type(target: any) -> bool;
 
@@ -48,9 +50,9 @@ def _accepts_single_upload(target: any) -> bool;
 
 def _without_none(target: any) -> any;
 
-def coerce_value(value: any, target: any = None) -> any;
+def coerce_value(value: any, target: any = None, text: bool = False) -> any;
 
-def _coerce_union(value: any, options: tuple[object, ...]) -> any;
+def _coerce_union(value: any, options: tuple[object, ...], text: bool) -> any;
 
 def _param_target(param: APIParameter) -> any;
 
@@ -58,7 +60,7 @@ def _header_lookup(request: Request, name: str) -> (str | None);
 
 def _extract_raw(
     param: APIParameter, request: Request, body_json: any
-) -> tuple[bool, any];
+) -> tuple[bool, any, bool];
 
 def _fresh_default(value: any) -> any;
 

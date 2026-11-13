@@ -239,15 +239,24 @@ impl PgWireConnection.postinit -> None {
 
 
 impl PgWireConnection._connect_socket -> None {
-    if self.unix_sock {
-        s: any = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM);
-        s.settimeout(self.timeout);
-        s.connect(self.unix_sock);
-    } else {
-        s: any = socket.create_connection(
-            (self.host or '127.0.0.1', self.port), timeout=self.timeout
-        );
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1);
+    host = self.host or '127.0.0.1';
+    try {
+        if self.unix_sock {
+            s: any = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM);
+            s.settimeout(self.timeout);
+            s.connect(self.unix_sock);
+        } else {
+            s: any = socket.create_connection((host, self.port), timeout=self.timeout);
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1);
+        }
+    } except OSError as e {
+        target = self.unix_sock or f"{host}:{self.port}";
+        detail = f"cannot connect to the database at {target}: {e.strerror or e}";
+
+        if e.errno is None {
+            raise type(e)(detail) from e;
+        }
+        raise type(e)(e.errno, detail) from e;
     }
     self._sock = s;
 }
