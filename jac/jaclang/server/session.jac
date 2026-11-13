@@ -122,6 +122,7 @@ obj UnflushedAnchor {
     has anchor: Anchor,
         stored: (dict[str, object] | None),
         hash: int,
+        known: (RowState | None) = None,
         written: int = 0;
 }
 
@@ -257,7 +258,9 @@ obj Session(Memory) {
     def _materialize(row: AnchorRow) -> (Anchor | None);
     def _load_edges(nd: NodeAnchor) -> list[EdgeAnchor];
     def _serialize(
-        anchor: Anchor, stored: (dict[str, object] | None) = None
+        anchor: Anchor,
+        stored: (dict[str, object] | None) = None,
+        known: (RowState | None) = None
     ) -> AnchorRow;
 
     def _forget_loaded -> None;

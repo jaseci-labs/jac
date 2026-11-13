@@ -584,8 +584,13 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
                         if isinstance(e, WriteConflict) and self._active_units == 0 {
                             self._dirty.pop(e.anchor_id, None);
                             self._ensure_txn();
-                            for row in self._store.load_full([e.anchor_id]).values() {
+                            refreshed = self._store.load_full([e.anchor_id]);
+                            for row in refreshed.values() {
                                 self._materialize(row);
+                            }
+                            if e.anchor_id not in refreshed {
+                                self.__mem__.pop(e.anchor_id, None);
+                                self._rows.forget(e.anchor_id);
                             }
                         }
                         raise;
@@ -1008,7 +1013,7 @@ impl Session._flush_locked(full: bool) -> None {
     }
     wrote = bool(unflushed or self._deleted);
     if unflushed {
-        rows = [self._serialize(u.anchor, u.stored) for u in unflushed];
+        rows = [self._serialize(u.anchor, u.stored, u.known) for u in unflushed];
         retyped = [
             row.id
             for row in rows
@@ -1100,7 +1105,9 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
             continue;
         }
         out.append(
-            UnflushedAnchor(anchor=anchor, stored=stored, hash=h, written=written)
+            UnflushedAnchor(
+                anchor=anchor, stored=stored, hash=h, known=known, written=written
+            )
         );
     }
     self._scan_safe = safe;
@@ -1109,7 +1116,9 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
 
 
 impl Session._serialize(
-    anchor: Anchor, stored: (dict[str, object] | None) = None
+    anchor: Anchor,
+    stored: (dict[str, object] | None) = None,
+    known: (RowState | None) = None
 ) -> AnchorRow {
     if stored is None {
         stored = Serializer.stored_form(anchor);
@@ -1150,7 +1159,10 @@ impl Session._serialize(
         arch_module=arch_module,
         fingerprint=fingerprint,
         root_id=anchor.root,
-        version=self._rows.write_version(row_id),
+        version=known.version
+            if known is not None
+            else self._rows.write_version(row_id),
+        expect_existing=known is not None,
         props=stored,
         src=src,
         dst=dst,
