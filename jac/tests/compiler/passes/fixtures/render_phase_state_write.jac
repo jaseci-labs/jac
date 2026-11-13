@@ -52,3 +52,13 @@ def compute_checksum(data: list[int]) -> int {
     }
     return result;
 }
+
+def:pub BrokenTuple -> JsxElement {
+    has a: int = 0,
+        b: int = 0;
+
+    (a, b) = (b + 1, a + 1);  # ERROR: a tuple write is a render-phase write too
+    for a in [1] {}  # ERROR: a loop target is a write too
+    if (b := 2) > 0 {}  # ERROR: so is a walrus
+    return <span>{a}</span>;
+}
