@@ -5864,24 +5864,6 @@ impl NativeBuiltinEmitter.emit_hasattr(
     if args[1].type != i8p {
         return None;
     }
-    if not fields and not methods {
-        has_static = False;
-        for cls in p._mro_of(type_name) {
-            inherited_static_prefix = cls + ".";
-            for static_name in p.static_fields {
-                if static_name.startswith(inherited_static_prefix) {
-                    has_static = True;
-                    break;
-                }
-            }
-            if has_static {
-                break;
-            }
-        }
-        if not has_static {
-            return ir.Constant(i1, 0);
-        }
-    }
     b = get_builder(p);
     class_cmp = p._call_str_cmp(
         b,
