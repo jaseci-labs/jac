@@ -7,7 +7,8 @@ import from _threading_native {
     th_detach,
     th_join,
     th_at_exit,
-    th_self
+    th_self,
+    th_prepare_threads
 }
 
 obj:pub Lock {

@@ -115,6 +115,7 @@ impl Thread.init(
 }
 
 impl Thread.start -> None {
+    th_prepare_threads();
     _TASKS_LOCK.acquire();
     if self._started {
         _TASKS_LOCK.release();

@@ -148,6 +148,45 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     rc_threaded_gv.initializer = ir.Constant(i8, 0);
     self.rc_threaded_gv = rc_threaded_gv;
 
+    prepare_threads_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), []),
+        name="__jac_rc_prepare_threads"
+    );
+    prepare_threads_fn.linkage = "weak";
+    prepare_entry = prepare_threads_fn.append_basic_block("entry");
+    prepare_collect = prepare_threads_fn.append_basic_block("collect");
+    prepare_disable = prepare_threads_fn.append_basic_block("disable_cycles");
+    prepare_done = prepare_threads_fn.append_basic_block("done");
+    prepare_builder = ir.IRBuilder(prepare_entry);
+    if self.rc_cycles_enabled_gv is not None {
+        cycles_enabled = prepare_builder.load(
+            self.rc_cycles_enabled_gv, name="threads.cycles.enabled"
+        );
+        prepare_builder.cbranch(
+            prepare_builder.icmp_unsigned(
+                "!=", cycles_enabled, ir.Constant(i8, 0), name="threads.cycles.on"
+            ),
+            prepare_collect,
+            prepare_disable
+        );
+        prepare_builder = ir.IRBuilder(prepare_collect);
+        if self.rc_collect_cycles_fn is not None {
+            prepare_builder.call(self.rc_collect_cycles_fn, []);
+        }
+        prepare_builder.branch(prepare_disable);
+        prepare_builder = ir.IRBuilder(prepare_disable);
+        prepare_builder.store(ir.Constant(i8, 0), self.rc_cycles_enabled_gv);
+    } else {
+        prepare_builder.branch(prepare_done);
+    }
+    if self.rc_cycles_enabled_gv is not None {
+        prepare_builder.branch(prepare_done);
+    }
+    prepare_builder = ir.IRBuilder(prepare_done);
+    prepare_builder.store_atomic(ir.Constant(i8, 1), self.rc_threaded_gv, "release", 1);
+    prepare_builder.ret_void();
+
     dis_gc_fnty = ir.FunctionType(ir.VoidType(), []);
     dis_gc_fn = self._define_function("__rc_gc_disable", dis_gc_fnty);
     dis_gc_fn.linkage = "internal";

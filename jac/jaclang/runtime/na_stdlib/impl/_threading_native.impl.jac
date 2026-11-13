@@ -39,3 +39,8 @@ impl th_at_exit(handler: int) -> int {
 impl th_self -> int {
     return int(pthread_self());
 }
+
+
+impl th_prepare_threads {
+    __jac_rc_prepare_threads();
+}

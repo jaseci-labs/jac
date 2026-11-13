@@ -1190,7 +1190,11 @@ native layout records the emitted name separately from its source-level key.
   flag, freed by `drop`. `acquire(False, timeout=x)` raises `ValueError`.
   SCOPE: `Event.wait`/`Lock.acquire` timeouts are sleep-poll loops. `join`
   polls `_alive` and then calls `pthread_join`; an `atexit` handler joins
-  non-daemon handles, while daemon threads are detached. A target exception is dropped
+  non-daemon handles, while daemon threads are detached. Starting the first
+  native thread collects pending cycles and disables cycle collection for the
+  rest of the process, because the cycle collector's root buffer is not
+  thread-safe; cyclic garbage created after that point is retained. A target
+  exception is dropped
   quietly (no `threading.excepthook`); `join()` on the calling thread is not
   detected (CPython raises `RuntimeError`); `daemon`/`name` are plain fields
   with no post-start guard; the default name is `"native-thread"` rather
