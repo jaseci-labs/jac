@@ -854,10 +854,21 @@ impl _ct_dep_rows(text: str) -> list[tuple[(str, str, str)]] {
 }
 
 impl _row_digest(path: str, flag: str) -> str {
-    if flag.startswith(CT_DEF_FLAG) {
-        return definition_digest(path, flag[len(CT_DEF_FLAG):]);
+    memo = _PREPARE_MEMO.get();
+    key = "ctrow\x1f" + flag + "\x1f" + path;
+    if memo is not None {
+        found = memo.get(key);
+        if found is not None {
+            return found;
+        }
     }
-    return ct_dep_digest(path, flag == "b");
+    digest = definition_digest(path, flag[len(CT_DEF_FLAG):])
+        if flag.startswith(CT_DEF_FLAG)
+        else ct_dep_digest(path, flag == "b");
+    if memo is not None {
+        memo[key] = digest;
+    }
+    return digest;
 }
 
 impl read_ct_deps(data: bytes) -> list[tuple[(str, str, str)]] {

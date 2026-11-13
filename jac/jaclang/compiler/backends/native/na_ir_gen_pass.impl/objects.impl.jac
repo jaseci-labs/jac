@@ -313,7 +313,7 @@ impl NaIRGenPass._predemote_capability_constructors -> None {
         if _viols is None {
             continue;
         }
-        _func = self.method_funcs.get(_full);
+        _func = self._method_func(_full);
         if _func is None {
             continue;
         }
@@ -355,7 +355,7 @@ impl NaIRGenPass._demoted_init_of(type_name: str) -> (str | None) {
             if _cand in self._native_skipped_methods {
                 return _cand;
             }
-            if _cand in self.method_funcs {
+            if self._has_method_func(_cand) {
                 return None;
             }
         }
@@ -396,9 +396,9 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
                 method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
                 if method_name is not None and method_name not in provided_methods {
                     full_name = f"{arch_name}.{method_name}";
-                    if declare and full_name not in self.method_funcs {
+                    if declare and not self._has_method_func(full_name) {
                         self._forward_declare_method(arch_name, stmt);
-                    } elif not declare and full_name in self.method_funcs {
+                    } elif not declare and self._has_method_func(full_name) {
                         self._codegen_method(arch_name, stmt);
                     }
                     provided_methods.add(method_name);
@@ -411,9 +411,9 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
                 continue;
             }
             full_name = f"{arch_name}.{_slot}";
-            if declare and full_name not in self.method_funcs {
+            if declare and not self._has_method_func(full_name) {
                 self._forward_declare_method(arch_name, _acc, field=_accvar);
-            } elif not declare and full_name in self.method_funcs {
+            } elif not declare and self._has_method_func(full_name) {
                 self._codegen_method(arch_name, _acc, field=_accvar);
             }
             provided_methods.add(_slot);
@@ -1051,7 +1051,7 @@ impl NaIRGenPass._codegen_method(
     method_name = self._method_slot_name(method, field);
 
     full_name = symbol_override or f"{arch_name}.{method_name}";
-    func = self.method_funcs.get(full_name);
+    func = self._method_func(full_name);
     if func is None {
         return;
     }
@@ -1424,7 +1424,7 @@ impl NaIRGenPass._refuse_opaque_field(
 impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
-    func = self.method_funcs.get(full_name);
+    func = self._method_func(full_name);
     if func is None {
         return;
     }
@@ -1691,7 +1691,7 @@ impl NaIRGenPass._forward_declare_event_method(
 ) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
-    if full_name in self.method_funcs {
+    if self._has_method_func(full_name) {
         return;
     }
     sig = method.signature;
@@ -1728,7 +1728,7 @@ impl NaIRGenPass._forward_declare_event_method(
 impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
-    func = self.method_funcs.get(full_name);
+    func = self._method_func(full_name);
     sig = method.signature;
     if func is None or not isinstance(sig, uni.EventSignature) {
         return;
@@ -2008,7 +2008,8 @@ impl NaIRGenPass._codegen_instantiation(
         _msg_slot is not None
         and not self.struct_constructor_order.get(type_name)
         and not any(
-            f"{_c}.init" in self.method_funcs or f"{_c}.__init__" in self.method_funcs
+            self._has_method_func(f"{_c}.init")
+                or self._has_method_func(f"{_c}.__init__")
             for _c in self._mro_of(type_name)
         )
     );
@@ -2437,7 +2438,7 @@ impl NaIRGenPass._codegen_instantiation(
     _init_owner: str = type_name;
     for _init_cls in self._mro_of(type_name) {
         for candidate in [f"{_init_cls}.init", f"{_init_cls}.__init__"] {
-            if candidate in self.method_funcs {
+            if self._has_method_func(candidate) {
                 init_fn = self.method_funcs[candidate];
                 _init_owner = _init_cls;
                 break;
@@ -2609,7 +2610,7 @@ impl NaIRGenPass._codegen_instantiation(
                     );
                     return None;
                 }
-                if pname in self.method_funcs {
+                if self._has_method_func(pname) {
                     _pi_full = pname;
                     break;
                 }
@@ -2748,7 +2749,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         for _cn in self._mro_of(self._self_arch)[1:] {
             for _mn in _sup_names {
                 _cand = f"{_cn}.{_mn}";
-                if _cand in self.method_funcs
+                if self._has_method_func(_cand)
                     and _cand not in self._native_skipped_methods {
                     _sup_full = _cand;
                     break;
@@ -2834,7 +2835,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
         for _cn in self._mro_of(target_name) {
             _cand = f"{_cn}.{method_name}";
-            if _cand in self.static_methods {
+            if self._is_static_method(_cand) {
                 _sfull = _cand;
                 break;
             }
@@ -2842,7 +2843,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if _sfull is not None
             and (
                 _sfull in self._native_skipped_methods
-                or _sfull not in self.method_funcs
+                or not self._has_method_func(_sfull)
             ) {
             self.emit(
                 E5092,
@@ -2861,7 +2862,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             for _cn in self._mro_of(target_name) {
                 for _mn in _mnames {
                     _icand = f"{_cn}.{_mn}";
-                    if _icand in self.method_funcs
+                    if self._has_method_func(_icand)
                         and _icand not in self._native_skipped_methods {
                         _sfull = _icand;
                         break;
@@ -4758,7 +4759,7 @@ impl NaIRGenPass._receiver_routed_method_fn(
         _recv_cls is not None
         and _recv_cls != _owner_cls
         and _recv_cls in self.struct_types
-        and _sfull not in self.static_methods
+        and not self._is_static_method(_sfull)
     ) {
         import from jaclang.compiler.passes.layout_pass {
             get_layout_registry as _sc_glr
@@ -4767,7 +4768,7 @@ impl NaIRGenPass._receiver_routed_method_fn(
         if not _sc_reg.is_primary_ancestor(_recv_cls, _owner_cls) {
             _mn_part = _sfull.partition(".")[2];
             _spec_key = f"{_recv_cls}.{_mn_part}${_owner_cls}";
-            if _spec_key not in self.method_funcs
+            if not self._has_method_func(_spec_key)
                 and _spec_key not in self._native_skipped_methods {
                 _anc_arch = self.arch_ast_map.get(_owner_cls);
                 _anc_meths: list[uni.Ability] = [];
@@ -4821,7 +4822,7 @@ impl NaIRGenPass._receiver_routed_method_fn(
                     _recv_cls, _anc_meths[0], symbol_override=_spec_key
                 );
             }
-            _spec_ready = self.method_funcs.get(_spec_key);
+            _spec_ready = self._method_func(_spec_key);
             if _spec_ready is None {
                 self.emit(E5092, node_override=nd, kind="call", name=_spec_key);
                 return None;
@@ -4854,7 +4855,7 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
         }
         for slot in lifecycle {
             full = f"{cls}.{slot}";
-            if full in self.method_funcs or full in self._native_skipped_methods {
+            if self._has_method_func(full) or full in self._native_skipped_methods {
                 return None;
             }
         }

@@ -1820,7 +1820,7 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                 seen_methods.add(method_name);
                 child_full = f"{child_name}.{method_name}";
 
-                if child_full in self.method_funcs {
+                if self._has_method_func(child_full) {
                     continue;
                 }
 
@@ -1828,7 +1828,7 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                 impl_class: (str | None) = None;
                 for mro_class in mro[1:] {
                     parent_full = f"{mro_class}.{method_name}";
-                    if parent_full in self.method_funcs {
+                    if self._has_method_func(parent_full) {
                         impl_func = self.method_funcs[parent_full];
                         impl_class = mro_class;
                         break;

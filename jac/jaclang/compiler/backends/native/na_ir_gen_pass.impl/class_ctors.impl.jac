@@ -97,7 +97,7 @@ impl NaIRGenPass._class_ancestors(type_name: str) -> list[str] {
 impl NaIRGenPass._class_init_owner(type_name: str) -> (str | None) {
     for cls in self._mro_of(type_name) {
         for slot in ("init", "__init__") {
-            if f"{cls}.{slot}" in self.method_funcs {
+            if self._has_method_func(f"{cls}.{slot}") {
                 return cls;
             }
         }
@@ -130,8 +130,8 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
     }
     owner = self._class_init_owner(type_name);
     if owner is not None {
-        init_fn = self.method_funcs.get(f"{owner}.init")
-            or self.method_funcs.get(f"{owner}.__init__");
+        init_fn = self._method_func(f"{owner}.init")
+            or self._method_func(f"{owner}.__init__");
         sig = self._arch_init_sig_of(owner);
         declared = self._arch_init_params_of(owner);
         if init_fn is None
