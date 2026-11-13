@@ -43,6 +43,11 @@ obj _PooledConn {
         idle_since: float = 0.0;
 }
 
+obj _IdlePool {
+    has buckets: dict[tuple[str, str, int], list[_PooledConn]],
+        swept: float = 0.0;
+}
+
 obj ClientResponse {
     has status_code: int = 0,
         reason: str = '',
@@ -64,13 +69,15 @@ obj ClientResponse {
     async def aclose;
 }
 
-def _idle_pool -> dict[tuple[str, str, int], list[_PooledConn]];
+def _idle_pool -> _IdlePool;
 
 def _discard(conn: _PooledConn);
 
 def _usable(conn: _PooledConn, now: float) -> bool;
 
 def _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None);
+
+def _sweep(pool: _IdlePool, origin: tuple[str, str, int], now: float);
 
 def _release(conn: _PooledConn);
 

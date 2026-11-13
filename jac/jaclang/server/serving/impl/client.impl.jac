@@ -108,10 +108,10 @@ impl ClientResponse.aclose {
     }
 }
 
-impl _idle_pool -> dict[tuple[str, str, int], list[_PooledConn]] {
+impl _idle_pool -> _IdlePool {
     loop: any = asyncio.get_running_loop();
     if not hasattr(loop, '_jac_idle_conns') {
-        loop._jac_idle_conns = {};
+        loop._jac_idle_conns = _IdlePool(buckets={});
     }
     return loop._jac_idle_conns;
 }
@@ -131,7 +131,7 @@ impl _usable(conn: _PooledConn, now: float) -> bool {
 }
 
 impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
-    bucket = _idle_pool().get(origin) or [];
+    bucket = _idle_pool().buckets.get(origin) or [];
     now = time.monotonic();
     while bucket {
         conn = bucket.pop();
@@ -143,27 +143,40 @@ impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
     return None;
 }
 
-impl _release(conn: _PooledConn) {
-    pool = _idle_pool();
-    now = time.monotonic();
-    bucket: list[_PooledConn] = [];
-    for idle in pool.get(conn.origin, []) {
+impl _sweep(pool: _IdlePool, origin: tuple[str, str, int], now: float) {
+    kept: list[_PooledConn] = [];
+    for idle in pool.buckets.get(origin, []) {
         if _usable(idle, now) {
-            bucket.append(idle);
+            kept.append(idle);
         } else {
             _discard(idle);
         }
     }
+    if kept {
+        pool.buckets[origin] = kept;
+    } else {
+        pool.buckets.pop(origin, None);
+    }
+}
+
+impl _release(conn: _PooledConn) {
+    pool = _idle_pool();
+    now = time.monotonic();
+    if now - pool.swept >= IDLE_TIMEOUT {
+        pool.swept = now;
+        for origin in list(pool.buckets) {
+            _sweep(pool, origin, now);
+        }
+    } else {
+        _sweep(pool, conn.origin, now);
+    }
     conn.idle_since = now;
+    bucket = pool.buckets.get(conn.origin, []);
     if _usable(conn, now) and len(bucket) < MAX_IDLE_PER_ORIGIN {
         bucket.append(conn);
+        pool.buckets[conn.origin] = bucket;
     } else {
         _discard(conn);
-    }
-    if bucket {
-        pool[conn.origin] = bucket;
-    } else {
-        pool.pop(conn.origin, None);
     }
 }
 
@@ -171,7 +184,7 @@ impl _closing_pool(coro: any) -> any {
     try {
         return await coro;
     } finally {
-        pool = _idle_pool();
+        pool = _idle_pool().buckets;
         for bucket in pool.values() {
             for conn in bucket {
                 _discard(conn);
