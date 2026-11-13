@@ -366,6 +366,11 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
         return;
     }
     ev.release_check_caches();
+    if self.mod is not None {
+        for mod in self.mod.hub.values() {
+            mod.import_bound_names = None;
+        }
+    }
 }
 
 impl JacProgram.release_compile_closure(

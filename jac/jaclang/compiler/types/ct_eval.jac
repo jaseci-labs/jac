@@ -79,7 +79,7 @@ obj CtEvaluator(CtCaller) {
         call_stack: list[str] = [],
         last_error: (str | None) = None,
         demand: bool = False,
-        _failed: set[int] = set(),
+        _failed: dict[int, UniNode] = {},
         _active: set[tuple[str, int]] = set(),
         _enum_cache: dict[int, list[CtEnumMember]] = {},
         _handling: list[CtExc] = [],
@@ -90,6 +90,7 @@ obj CtEvaluator(CtCaller) {
     def _note_ct_path(path: str, body: bool = False);
     def _note_producer(home: (Module | None), body: bool = False);
     def _note_definition(nd: UniNode);
+    def release_memos;
     def try_eval(nd: Expr, demand: bool = False) -> (CtValue | None);
     def eval_with_bindings(nd: Expr, bindings: dict[str, CtValue]) -> CtValue;
     def burn(n: int = 1);
