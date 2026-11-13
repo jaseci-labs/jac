@@ -11,8 +11,8 @@ import from jaclang.testing.requires { require_module }
 import from support {
     prompt_text,
     data_url,
-    fixture_path,
     media_blocks,
+    media_file,
     need,
     roles,
     say,
@@ -33,14 +33,14 @@ test "an image argument is inlined in its own format, under a system prompt" {
     require_module("PIL");
     # (file, expected data-url mime). A webp must not be transcoded to jpeg.
     for (filename, mime) in [
-        ("math_question.jpg", "data:image/jpeg;base64,"),
-        ("webp_image_of_person.webp", "data:image/webp;base64,")
+        (media_file("jpg"), "data:image/jpeg;base64,"),
+        (media_file("webp"), "data:image/webp;base64,")
     ] {
         llm = MockLLM(outputs=[say("answered")]);
 
         def describe(question_img: Image) -> str by llm();
 
-        assert describe(Image(fixture_path(filename))) == "answered";
+        assert describe(Image(filename)) == "answered";
         assert roles(llm) == ["system", "user"] , f"{filename}: got {roles(llm)}";
 
         blocks = user_blocks(llm);
@@ -136,7 +136,7 @@ test "an image answer is parsed into its declared type" {
 
     def get_person_info(image_content: Image) -> Person by llm();
 
-    person = get_person_info(Image(fixture_path("webp_image_of_person.webp")));
+    person = get_person_info(Image(media_file("webp")));
     assert person.full_name == "Albert Einstein" , f"got {person!r}";
     assert person.year_of_death == "1955" , f"got {person!r}";
     assert person.personality == Personality.EXTROVERT , f"got {person.personality!r}";
@@ -153,9 +153,7 @@ test "a video argument is sampled into several inlined frames" {
 
     def explain_the_video(video: Video) -> str by llm();
 
-    result = explain_the_video(
-        Video(path=fixture_path("SampleVideo_1280x720_2mb.mp4"), fps=1)
-    );
+    result = explain_the_video(Video(path=media_file("avi"), fps=1));
     assert result == explanation;
 
     frames = media_blocks(llm);
@@ -188,7 +186,7 @@ test "an image parameter carrying a sem still encodes, and the sem is dropped" {
     # asserts that), so this is specific to parameter sems. Reported on #9002.
     # Flip the last assertion when that is fixed.
     require_module("PIL");
-    result = _describe_image(Image(fixture_path("image.jpg")));
+    result = _describe_image(Image(media_file("jpg")));
     assert "hot air balloon" in result.lower() , f"got {result!r}";
 
     images = media_blocks(_sem_llm);
@@ -210,7 +208,7 @@ test "every accepted image source becomes a usable url" {
     import io;
     import from pathlib { Path }
     import from PIL { Image as PILImage }
-    jpg = fixture_path("alan-m-turing.jpg");
+    jpg = media_file("jpg");
     pil = PILImage.open(jpg);
 
     def png_bytes -> bytes {

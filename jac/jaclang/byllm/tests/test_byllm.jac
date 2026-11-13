@@ -37,6 +37,7 @@ import from support {
     finish,
     fixture_path,
     load_fixture,
+    media_file,
     mk_run,
     prompt_text,
     say,
@@ -83,7 +84,7 @@ test "the deprecated method= parameter still runs and warns once" {
 
 
 test "python lib mode" {
-    person = python_lib_mode.test_get_person_info();
+    person = python_lib_mode.test_get_person_info(media_file("jpg"));
     assert "Alan Turing" in person.name;
     assert "1912" in str(person.birth_year);
     assert "A pioneering mathematician and computer scientist" in person.description;

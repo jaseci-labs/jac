@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from os import path
 
 from jaclang.byllm.lib import Image, MockLLM, by
 
@@ -35,11 +34,6 @@ llm = MockLLM(
 def get_person_info(img: Image) -> Person: ...
 
 
-def test_get_person_info() -> Person:
-    image_path = path.join(path.dirname(__file__), "alan-m-turing.jpg")
+def test_get_person_info(image_path: str) -> Person:
     person = get_person_info(img=Image(image_path))
     return person
-
-
-if __name__ == "__main__":
-    print(test_get_person_info())
