@@ -2124,7 +2124,6 @@ impl NaIRGenPass._compute_aug_value(
                     self._dispatch_primitive_method(
                         "list", "extend", current, [rhs], key
                     );
-                    self._release_owned_args([rhs], op="list_iadd");
                     return (current, True, False);
                 }
                 repeated = self._emit_binary_op(Tok.STAR_MUL, current, rhs)
