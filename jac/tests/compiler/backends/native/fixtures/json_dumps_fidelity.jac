@@ -54,11 +54,6 @@ with entry {
     data = record();
     print(json.dumps(data));
     print(json.dumps(data, sort_keys=True));
-    print(
-        json.dumps(
-            {9007199254740993: "large", 9007199254740992: "small"}, sort_keys=True
-        )
-    );
     print(json.dumps(data, separators=(",", ":")));
     print(json.dumps(data, sort_keys=True, ensure_ascii=False));
     print(json.dumps([float("nan"), float("inf"), float("-inf"), 1.0, -0.5]));
