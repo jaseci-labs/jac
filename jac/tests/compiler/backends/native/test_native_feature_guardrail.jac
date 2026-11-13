@@ -384,6 +384,28 @@ test "hasattr on a property leaves native lowering" {
     );
 }
 
+test "hasattr with a dynamic property name demotes" {
+    src = "obj HasAttrDynamicProperty { has value: int { getter { return 1; } } }\n"
+    "def answer(item: HasAttrDynamicProperty, name: str) -> bool { return hasattr(item, name); }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_dynamic_property", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" not in ir.gen.native_layout.functions , (
+        "a dynamic name could invoke a property getter and must demote"
+    );
+}
+
+test "hasattr recognizes inherited Python object methods" {
+    src = "obj HasAttrObject { has value: int = 1; }\n"
+    "def answer -> int { item = HasAttrObject(); return 1 if hasattr(item, '__str__') else 0; }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_inherited_object", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" in ir.gen.native_layout.functions , log;
+    assert native_answer(ir.gen.native_engine, "answer") == 1;
+    assert server_answer("hasattr_inherited_object_server", src, "answer") == 1;
+}
+
 test "for-loop over a set lowers, and both lanes answer the same sum" {
     src = "def run() -> int {\n"
     "    s: set[int] = {1, 2, 3};\n"

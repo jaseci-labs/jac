@@ -5851,7 +5851,9 @@ impl NativeBuiltinEmitter.emit_hasattr(
             continue;
         }
         for method_name in layout.method_index {
-            if method_name.endswith(".getter") {
+            if method_name.endswith(".__get__") {
+                # A dynamic attribute name could select this property, whose
+                # getter may return a value or raise AttributeError.
                 return None;
             } elif method_name == "__getattr__" or method_name == "__getattribute__" {
                 return None;
@@ -5859,6 +5861,36 @@ impl NativeBuiltinEmitter.emit_hasattr(
                 methods[method_name] = 0;
             }
         }
+    }
+    # Every Jac object also inherits these attributes from Python's object
+    # type even when they are absent from the Jac layout.
+    for method_name in [
+        "__str__",
+        "__repr__",
+        "__hash__",
+        "__eq__",
+        "__ne__",
+        "__lt__",
+        "__le__",
+        "__gt__",
+        "__ge__",
+        "__init__",
+        "__new__",
+        "__getattribute__",
+        "__setattr__",
+        "__delattr__",
+        "__dir__",
+        "__format__",
+        "__sizeof__",
+        "__reduce__",
+        "__reduce_ex__",
+        "__getstate__",
+        "__subclasshook__",
+        "__init_subclass__",
+        "__doc__",
+        "__module__"
+    ] {
+        methods[method_name] = 0;
     }
     i1 = ir.IntType(1);
 
