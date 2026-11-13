@@ -5664,6 +5664,11 @@ graph import compiler {
             native_unit_root,
             _native_unit_root_name
         },
+        driver.native_iface._project_file { _native_unit_root_name },
+        driver.application {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        },
         driver.native_iface {
             NATIVE_ABI_VERSION,
             NativeEnumLayout,
@@ -5774,10 +5779,6 @@ graph import compiler {
         backends.py.jcir_gen_pass.JcirGenPass.exit_archetype
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish {
             endpoint_key
-        },
-        driver.impl.application_impl.prepare_application {
-            get_effective_default_codespace_override,
-            set_effective_default_codespace
         },
         driver.boundary_classify.bridgeable_import_target { is_shared_runtime_module },
         driver.boundary_classify.plain_native_import_target
