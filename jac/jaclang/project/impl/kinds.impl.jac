@@ -80,7 +80,7 @@ impl resolve_app_kind(config: JacConfig, app: AppConfig, entry_path: str) -> str
 
     workspace = workspace_for_path(entry_path) if entry_path else None;
     entry_pin = '';
-    if workspace is not None {
+    if workspace is not None and not pins_muted() {
         configured = workspace.app(app.name);
         pins = configured.pins if configured is not None else workspace.base_pins;
         entry_pin = match_pin(

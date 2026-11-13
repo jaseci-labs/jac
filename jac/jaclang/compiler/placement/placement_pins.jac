@@ -11,6 +11,8 @@ def match_pin(
     source_path: str, root_dir: str, pins: dict[str, str], element_name: str = ''
 ) -> str;
 
+def placement_pins_muted -> bool;
+
 def config_pins_for(source_path: str) -> dict[str, str];
 
 

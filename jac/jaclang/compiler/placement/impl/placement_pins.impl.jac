@@ -38,8 +38,15 @@ impl match_pin(
     return '';
 }
 
+impl placement_pins_muted -> bool {
+    return pins_muted();
+}
+
 impl config_pins_for(source_path: str) -> dict[str, str] {
     if not source_path {
+        return {};
+    }
+    if placement_pins_muted() {
         return {};
     }
     ws = active_host().workspace(source_path);

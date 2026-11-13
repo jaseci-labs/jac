@@ -37,3 +37,8 @@ impl match_pin(
     }
     return '';
 }
+
+impl pins_muted -> bool {
+    raw = os.environ.get('JAC_IGNORE_PLACEMENT_PINS', '').strip().lower();
+    return raw not in ('', '0', 'false', 'off', 'no');
+}

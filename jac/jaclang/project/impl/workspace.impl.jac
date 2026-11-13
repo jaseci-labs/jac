@@ -36,6 +36,9 @@ impl _table(raw: any, *keys: str) -> dict[str, any] {
 
 impl _pins_of(raw: any) -> dict[str, str] {
     pins: dict[str, str] = {};
+    if pins_muted() {
+        return pins;
+    }
     if isinstance(raw, dict) {
         for (key, value) in raw.items() {
             pins[str(key)] = str(value);
@@ -209,7 +212,8 @@ impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
     }
     toml_path = os.path.join(root_dir, 'jac.toml');
     stamp = _chain_stamp(root_dir);
-    key = _real(root_dir);
+
+    key = _real(root_dir) + "\0" + str(pins_muted());
     cached = _ws_cache.get(key);
     if cached is not None and cached[0] == stamp {
         return cached[1];
