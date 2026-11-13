@@ -188,3 +188,34 @@ test "a pages entry whose app cannot receive the route tree is refused" {
     }
     assert refused , "an app that drops the route tree must fail the client build";
 }
+
+test "an entry compile that records an error is not reported as a finished stage" {
+    import from jaclang.client.build_stages { record_stages }
+    import from jaclang.client.targets.web_target { WebTarget }
+    proj = _project();
+    compiler = Jac.get_program()._get_compiler();
+    real = compiler.get_client_artifact;
+    def records_an_error(path: str, program: any) -> any {
+        program.errors_had.append("entry does not compile");
+        return None;
+    }
+    failure = "";
+    compiler.get_client_artifact = records_an_error;
+    try {
+        with record_stages() as stages {
+            try {
+                WebTarget().build(proj / "main.jac", proj);
+            } except RuntimeError as e {
+                failure = str(e);
+            }
+        }
+    } finally {
+        compiler.get_client_artifact = real;
+    }
+    assert "entry does not compile" in failure , (
+        f"the build must stop on the entry's compile error, got {failure!r}"
+    );
+    assert stages == [] , (
+        f"a stage that failed must not be reported as done, saw {stages}"
+    );
+}
