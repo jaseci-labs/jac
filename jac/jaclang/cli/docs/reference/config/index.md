@@ -1015,13 +1015,7 @@ _authToken = "${NODE_AUTH_TOKEN}"
 
 This generates an `.npmrc` file during dependency installation for private/scoped npm packages. See [jac-client NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration) for details.
 
-```toml
-[client.npm]
-min_release_age_days = 1        # default; 0 turns it off
-min_release_age_excludes = []  # packages the age limit does not apply to
-```
-
-Dependency installs skip package versions published more recently than `min_release_age_days` and use the newest older version that still matches.
+`min_release_age_days` (default `1`, `0` turns it off) and `min_release_age_excludes` under `[client.npm]` make dependency installs skip package versions newer than that age. See [jac-client NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
 
 **Build-Time Constants (jac-client):**
 

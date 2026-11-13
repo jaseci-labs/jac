@@ -80,7 +80,7 @@ impl JacClientPluginConfig.get_config_schema -> dict[str, any] {
                     "min_release_age_excludes": {
                         "type": "list",
                         "default": [],
-                        "description": "Packages the minimum release age does not apply to (a name, or 'name@1.2.3' for one version)"
+                        "description": "Package names the minimum release age does not apply to"
                     }
                 }
             }
