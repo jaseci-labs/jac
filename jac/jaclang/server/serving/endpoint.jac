@@ -43,6 +43,7 @@ obj JEndPoint {
         forward_undeclared_query_params: bool = True,
         include_in_schema: bool = True,
         yields_to_declared: bool = False,
+        yields_to_client: bool = False,
         callback_spec: any = None,
         parameter_source: (Callable[[], list[APIParameter]] | None) = None;
 
