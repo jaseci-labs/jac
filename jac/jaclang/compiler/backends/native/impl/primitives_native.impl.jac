@@ -5850,7 +5850,9 @@ impl NativeBuiltinEmitter.emit_hasattr(
         }
         for method_name in layout.method_index {
             if method_name.endswith(".getter") {
-                methods[method_name[:-7]] = 0;
+                # hasattr executes descriptors and observes AttributeError.
+                # A name-only check cannot preserve that behavior.
+                return None;
             } elif not method_name.endswith(".setter") {
                 methods[method_name] = 0;
             }
@@ -5881,7 +5883,15 @@ impl NativeBuiltinEmitter.emit_hasattr(
         }
     }
     b = get_builder(p);
-    result: ir.Value = ir.Constant(i1, 0);
+    class_cmp = p._call_str_cmp(
+        b,
+        args[1],
+        p._make_global_string("__class__", name_prefix=".hasattr"),
+        name="hasattr.class.cmp"
+    );
+    result: ir.Value = b.icmp_signed(
+        "==", class_cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.class.match"
+    );
     for field_name in fields.keys() {
         cmp = p._call_str_cmp(
             b,

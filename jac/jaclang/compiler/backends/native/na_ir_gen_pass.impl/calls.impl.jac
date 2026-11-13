@@ -2099,6 +2099,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 func_name, arg_vals, arg_nodes=arg_nodes, kw_node=nd
             );
             self._release_owned_args(arg_vals, op="hasattr_arg");
+            if result is None {
+                self._emit_unsupported_builtin_call(nd, func_name);
+            }
             return result;
         }
 

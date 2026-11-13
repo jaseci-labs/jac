@@ -338,7 +338,7 @@ test "hasattr lowers for Jac object fields with constant and dynamic names" {
     src = "obj HasAttrBase { has base_value: int = 1; }\n"
     "obj HasAttrStaticBase(HasAttrBase) { static has COUNT: int = 1; }\n"
     "obj HasAttrChild(HasAttrStaticBase) { has nullable: str | None = None; }\n"
-    "obj HasAttrBox { has _width: int = 4, width: int { getter { return self._width; } }"
+    "obj HasAttrBox { has _width: int = 4;"
     " def measure -> int { return self._width; } }\n"
     "def probe(item: HasAttrBase) -> bool { return hasattr(item, 'nullable'); }\n"
     "def answer() -> int {\n"
@@ -349,9 +349,10 @@ test "hasattr lowers for Jac object fields with constant and dynamic names" {
     "        (100 if hasattr(item, 'absent') else 0) +\n"
     "        (10 if hasattr(item, 'nullable') else 0) +\n"
     "        (1 if hasattr(item, name) else 0) +\n"
-    "        (10000 if hasattr(box, 'width') else 0) +\n"
+    "        (10000 if hasattr(box, '_width') else 0) +\n"
     "        (100000 if hasattr(box, 'measure') else 0) +\n"
-    "        (1000000 if hasattr(item, 'COUNT') else 0);\n"
+    "        (1000000 if hasattr(item, 'COUNT') else 0) +\n"
+    "        (10000000 if hasattr(item, '__class__') else 0);\n"
     "}\n"
     "def nul_name() -> int {\n"
     "    item = HasAttrChild();\n"
@@ -366,10 +367,21 @@ test "hasattr lowers for Jac object fields with constant and dynamic names" {
         "hasattr on a base-typed value with known subclasses must demote "
         "instead of answering from the base member set"
     );
-    assert native_answer(ir.gen.native_engine, "answer") == 1111011;
-    assert server_answer("hasattr_fields_server", src, "answer") == 1111011;
+    assert native_answer(ir.gen.native_engine, "answer") == 11111011;
+    assert server_answer("hasattr_fields_server", src, "answer") == 11111011;
     assert native_answer(ir.gen.native_engine, "nul_name") == 0;
     assert server_answer("hasattr_fields_server", src, "nul_name") == 0;
+}
+
+test "hasattr on a property leaves native lowering" {
+    src = "obj HasAttrProperty { has value: int { getter { return 1; } } }\n"
+    "def answer(item: HasAttrProperty) -> bool { return hasattr(item, 'value'); }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_property", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" not in ir.gen.native_layout.functions , (
+        "hasattr must preserve property getter and AttributeError behavior"
+    );
 }
 
 test "for-loop over a set lowers, and both lanes answer the same sum" {
