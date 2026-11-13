@@ -42,10 +42,8 @@ walker:pub Ping {
 }
 EOF
 cat > "${WS}/main.jac" <<'EOF'
-import from svc { ping }
-
 def:pub greet -> str {
-    return ping();
+    return "hi";
 }
 EOF
 
