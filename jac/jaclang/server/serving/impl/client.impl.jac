@@ -146,29 +146,25 @@ impl _take_idle(origin: tuple[str, str, int]) -> (_PooledConn | None) {
 impl _release(conn: _PooledConn) {
     pool = _idle_pool();
     now = time.monotonic();
-    for origin in list(pool) {
-        kept: list[_PooledConn] = [];
-        for idle in pool[origin] {
-            if _usable(idle, now) {
-                kept.append(idle);
-            } else {
-                _discard(idle);
-            }
-        }
-        if kept {
-            pool[origin] = kept;
+    bucket: list[_PooledConn] = [];
+    for idle in pool.get(conn.origin, []) {
+        if _usable(idle, now) {
+            bucket.append(idle);
         } else {
-            del pool[origin];
+            _discard(idle);
         }
     }
     conn.idle_since = now;
-    bucket = pool.get(conn.origin, []);
-    if not _usable(conn, now) or len(bucket) >= MAX_IDLE_PER_ORIGIN {
+    if _usable(conn, now) and len(bucket) < MAX_IDLE_PER_ORIGIN {
+        bucket.append(conn);
+    } else {
         _discard(conn);
-        return;
     }
-    bucket.append(conn);
-    pool[conn.origin] = bucket;
+    if bucket {
+        pool[conn.origin] = bucket;
+    } else {
+        pool.pop(conn.origin, None);
+    }
 }
 
 impl _closing_pool(coro: any) -> any {
