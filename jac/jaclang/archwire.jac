@@ -2394,6 +2394,7 @@ graph import {
     runtime.convert ++> [
         data.serializer { ConvertMode, convert, type_shape },
         server.serving.coerce { ConvertMode, convert },
+        server.serving.openapi { STRING_FORMATS },
     ]
     runtime.debugger ++> cli.commands.execution.debug { debugger as db }
     runtime.exceptions ++> [
@@ -12775,7 +12776,7 @@ graph import runtime {
     ]
     semantic ++> runtime { Info }
     type semantic ++> prepared { Info }
-    sized ++> convert._to_sized { json_wire_read }
+    sized ++> convert._to_sized { json_wire_form, json_wire_read }
     sized as _sized_mod --> builtin.__getattr__;
 }
 

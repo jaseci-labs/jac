@@ -12,6 +12,7 @@ import from jaclang.server.server { ModuleIntrospector }
 glob REFUSED: object = object(),
      U8: type = SIZED_TYPES["u8"],
      F32: type = SIZED_TYPES["f32"],
+     U64: type = SIZED_TYPES["u64"],
      ID: str = "12345678-1234-5678-1234-567812345678";
 
 obj Payload {
@@ -72,7 +73,9 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 (256, U8, REFUSED),
                 (3.5, U8, REFUSED),
                 ("3", U8, REFUSED),
-                (1, F32, 1.0)
+                (1, F32, 1.0),
+                ("18446744073709551615", U64, 18446744073709551615),
+                ("9", U64, REFUSED)
             ]
         ),
         (

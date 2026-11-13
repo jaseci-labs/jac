@@ -143,7 +143,7 @@ impl _convert_class(value: any, target: type, mode: ConvertMode) -> any {
     if issubclass(target, Enum) {
         return _to_enum(value, target, mode);
     }
-    if target in (datetime, date, time, UUID) {
+    if target in STRING_FORMATS {
         if isinstance(value, target) {
             return value;
         }
@@ -220,6 +220,12 @@ impl _to_float(value: any, mode: ConvertMode) -> float {
 }
 
 impl _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any {
+    if mode == ConvertMode.STRICT and isinstance(value, str) {
+        wide = json_wire_read(name, value);
+        if json_wire_form(name, wide) == value {
+            return wide;
+        }
+    }
     core = _to_float(value, mode)
         if issubclass(target, float)
         else _to_int(value, mode);

@@ -11,6 +11,12 @@ enum ConvertMode { STRICT = 'strict', TEXT = 'text', LENIENT = 'lenient' }
 
 glob TRUE_WORDS: frozenset[str] = frozenset({'1', 'true', 'yes', 'on', 'y'}),
      FALSE_WORDS: frozenset[str] = frozenset({'0', 'false', 'no', 'off', 'n', ''}),
+     STRING_FORMATS: dict[type, str] = {
+         datetime: 'date-time',
+         date: 'date',
+         time: 'time',
+         UUID: 'uuid'
+     },
      _CONTAINERS: tuple[type, ...] = (list, tuple, set, dict),
      _SHAPES: dict[int, tuple[any, any, tuple[any, ...]]] = {},
      _SHAPES_LIMIT: int = 4096;
