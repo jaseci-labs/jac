@@ -5607,6 +5607,9 @@ graph import compiler {
             native_unit_identity,
             native_unit_spelling
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {
+            bundled_stdlib_module_of
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
             native_symbol_name,
             native_unit_spelling

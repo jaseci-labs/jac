@@ -694,6 +694,10 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         }
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
+    _stream = self._sys_stream_of(nd);
+    if _stream is not None {
+        return self._emit_sys_stream(_stream);
+    }
     if var_name == "__file__" and self.module?.loc and self.module.loc.mod_path {
         import os;
         return self._make_global_string(real_path(self.module.loc.mod_path));
