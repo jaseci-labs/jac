@@ -2084,6 +2084,22 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  bench-9836:
+    needs: [changes, dev-kit, dev-precompile]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Pin the runtime cache outside $HOME
+        run: echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/jac-kit
+        with:
+          dev: "true"
+      - name: Install the serve deps
+        run: jac install "python-dotenv>=1.2.1,<2.0.0" "requests>=2.32.0,<3.0.0" --global
+      - name: Benchmark forwarded calls, base vs head
+        run: bash scripts/bench_9836.sh
+
   # Aggregate gate: branch protection requires only this context. A NEW job
   # must be added to needs below by hand; always() so failures upstream fail
   # the gate instead of skipping it (skipped required checks count as passing).
