@@ -1,6 +1,9 @@
 import from socket { socket as Socket }
 
 
+def _tls_wait(fd: int, want_read: bool, timeout: float) -> bool;
+
+
 obj:pub SSLError(Exception) {}
 
 
@@ -13,6 +16,8 @@ obj:pub SSLSocket {
     def sendall(data: bytes);
     def send(data: bytes) -> int;
     def recv(bufsize: int) -> bytes;
+    def settimeout(timeout: (float | None)) -> None;
+    def gettimeout -> (float | None);
     def close;
 }
 

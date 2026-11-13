@@ -44,6 +44,10 @@ impl do_handshake(ssl: int) -> int {
     return SSL_connect(ssl);
 }
 
+impl ssl_get_error(ssl: int, ret: int) -> int {
+    return SSL_get_error(ssl, i32(ret));
+}
+
 impl verify_result(ssl: int) -> int {
     return SSL_get_verify_result(ssl);
 }
@@ -74,6 +78,13 @@ impl ssl_write_all(ssl: int, data: bytes) -> int {
     return total;
 }
 
+impl ssl_write_once(ssl: int, data: bytes) -> int {
+    if len(data) == 0 {
+        return 0;
+    }
+    return SSL_write(ssl, data, i32(len(data)));
+}
+
 impl ssl_read(ssl: int, bufsize: int) -> bytes {
     if bufsize <= 0 {
         return b"";
@@ -94,6 +105,29 @@ impl ssl_read(ssl: int, bufsize: int) -> bytes {
         }
     }
     return b"";
+}
+
+impl ssl_read_status(ssl: int, bufsize: int) -> tuple[int, int, bytes] {
+    if bufsize <= 0 {
+        return (0, _SSL_ERROR_ZERO_RETURN, b"");
+    }
+    buf = b"\x00" * bufsize;
+    got = SSL_read(ssl, buf, i32(bufsize));
+    if got > 0 {
+        return (got, 0, buf[0:got]);
+    }
+    err = SSL_get_error(ssl, got);
+    if err == _SSL_ERROR_SSL {
+        reason = int(ERR_peek_error()) & _ERR_REASON_MASK;
+        if reason == _SSL_R_UNEXPECTED_EOF_WHILE_READING {
+            return (0, _SSL_ERROR_ZERO_RETURN, b"");
+        }
+    }
+    return (got, err, b"");
+}
+
+impl ssl_pending(ssl: int) -> int {
+    return int(SSL_pending(ssl));
 }
 
 impl ssl_close(ssl: int) {

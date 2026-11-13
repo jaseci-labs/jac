@@ -12811,10 +12811,11 @@ graph import runtime.na_stdlib {
             raise_os_error
         },
         _directory_native { clear_errno, last_errno, raise_os_error },
-        _socket_native | shutil | socket { errno_message },
+        _socket_native | shutil { errno_message },
         _time_common { last_errno, raise_errno },
         _time_native { raise_errno },
         fcntl | select { EINTR, errno_message, last_errno },
+        socket { errno_message, raise_errno },
         termios { errno_message, last_errno },
     ]
     _errno_platform ++> _errno_native { errno_address }
@@ -12915,7 +12916,6 @@ graph import runtime.na_stdlib {
         pprint | reprlib { repr_str, sorted_str_keys },
     ]
     _select_native ++> select {
-        _FD_SETSIZE,
         _POLLERR,
         _POLLHUP,
         _POLLIN,
@@ -12937,6 +12937,7 @@ graph import runtime.na_stdlib {
         resolve_all,
         sock_close,
         sock_connect,
+        sock_error,
         sock_open,
         sock_recv,
         sock_send
@@ -12977,6 +12978,10 @@ graph import runtime.na_stdlib {
         sq3_total_changes
     }
     _ssl_native ++> ssl {
+        _SSL_ERROR_SSL,
+        _SSL_ERROR_WANT_READ,
+        _SSL_ERROR_WANT_WRITE,
+        _SSL_ERROR_ZERO_RETURN,
         ctx_free,
         ctx_load_ca_file,
         ctx_load_default_ca,
@@ -12984,9 +12989,12 @@ graph import runtime.na_stdlib {
         do_handshake,
         last_error,
         ssl_close,
+        ssl_get_error,
         ssl_new_client,
         ssl_read,
+        ssl_read_status,
         ssl_write_all,
+        ssl_write_once,
         verify_message,
         verify_result
     }
@@ -13178,6 +13186,10 @@ graph import runtime.na_stdlib {
         tcgetattr,
         tcsetattr
     }
+}
+
+graph import runtime.na_stdlib.urllib {
+    error ++> request { HTTPError, URLError }
 }
 
 graph import scale {

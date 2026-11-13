@@ -14,6 +14,7 @@ import from ssl { def SSL_connect(ssl: int) -> i32;  }
 import from ssl { def SSL_get_verify_result(ssl: int) -> i64;  }
 import from ssl { def SSL_get_error(ssl: int, ret: i32) -> i32;  }
 import from ssl { def SSL_read(ssl: int, buf: bytes, num: i32) -> i32;  }
+import from ssl { def SSL_pending(ssl: int) -> i32;  }
 import from ssl { def SSL_write(ssl: int, buf: bytes, num: i32) -> i32;  }
 import from ssl { def SSL_shutdown(ssl: int) -> i32;  }
 import from ssl { def SSL_free(ssl: int) -> None;  }
@@ -29,7 +30,9 @@ glob _SSL_CTRL_SET_TLSEXT_HOSTNAME: int = 55,
 glob _SSL_VERIFY_PEER: int = 1;
 
 glob _SSL_ERROR_ZERO_RETURN: int = 6,
-     _SSL_ERROR_SSL: int = 1;
+     _SSL_ERROR_SSL: int = 1,
+     _SSL_ERROR_WANT_READ: int = 2,
+     _SSL_ERROR_WANT_WRITE: int = 3;
 
 glob _ERR_REASON_MASK: int = 8388607,
      _SSL_R_UNEXPECTED_EOF_WHILE_READING: int = 294;
@@ -53,6 +56,9 @@ def:pub ssl_new_client(ctx: int, fd: int, hostname: str, check_hostname: bool) -
 def:pub do_handshake(ssl: int) -> int;
 
 
+def:pub ssl_get_error(ssl: int, ret: int) -> int;
+
+
 def:pub verify_result(ssl: int) -> int;
 
 
@@ -65,7 +71,15 @@ def:pub last_error -> str;
 def:pub ssl_write_all(ssl: int, data: bytes) -> int;
 
 
+def:pub ssl_write_once(ssl: int, data: bytes) -> int;
+
+
 def:pub ssl_read(ssl: int, bufsize: int) -> bytes;
+
+
+def:pub ssl_read_status(ssl: int, bufsize: int) -> tuple[int, int, bytes];
+
+def:pub ssl_pending(ssl: int) -> int;
 
 
 def:pub ssl_close(ssl: int);

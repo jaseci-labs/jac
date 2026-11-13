@@ -1,3 +1,5 @@
+import from platform { system }
+
 impl resolve_all(host: str, service: str) -> tuple[(list[bytes], int)] {
     out: list[bytes] = [];
     res_slot = b"\x00" * 8;
@@ -41,6 +43,22 @@ impl sock_open(family: int, socktype: int, proto: int) -> int {
 
 impl sock_connect(fd: int, sa: bytes) -> int {
     return __connect(i32(fd), sa, i32(len(sa)));
+}
+
+impl sock_error(fd: int) -> int {
+    value: bytes = b"\x00" * 4;
+    size: bytes = (4).to_bytes(4, "little");
+    level: int = 1;
+    option: int = 4;
+    if system() == "Darwin" {
+        level = 65535;
+        option = 4103;
+    }
+    rc = getsockopt(i32(fd), i32(level), i32(option), value, size);
+    if rc < 0 {
+        return last_errno();
+    }
+    return int.from_bytes(value, "little");
 }
 
 impl sock_send(fd: int, data: bytes, off: int) -> int {
