@@ -233,9 +233,7 @@ impl _connect(origin: tuple[str, str, int], timeout: float) -> _PooledConn {
     );
 }
 
-impl _read_response_head(
-    reader: any, timeout: float
-) -> tuple[str, int, str, Headers] {
+impl _read_response_head(reader: any, timeout: float) -> tuple[str, int, str, Headers] {
     while True {
         try {
             status_line: bytes = await asyncio.wait_for(
@@ -360,7 +358,11 @@ impl arequest(
     }
     chunked = 'chunked' in (resp_headers.get('Transfer-Encoding') or '').lower();
     bodiless = verb == 'HEAD' or status in (204, 304);
-    connection = [v for (name, v) in header_list if name.lower() == 'connection']
+    connection = [
+        v
+        for (name, v) in header_list
+        if name.lower() == 'connection'
+    ]
         + resp_headers.getlist('Connection');
     reusable = version == 'HTTP/1.1'
         and not any('close' in v.lower() for v in connection)
