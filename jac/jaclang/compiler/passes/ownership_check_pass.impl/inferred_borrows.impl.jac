@@ -87,6 +87,8 @@ impl OwnershipCheckPass._stamp_inferred_borrows -> None {
     if not abilities {
         return;
     }
+    self.infer_owner = {};
+    self.infer_tag = {};
     nodes: dict[int, list[UniNode]] = {};
     for ab in abilities {
         nodes[id(ab)] = self._infer_nodes_of(ab);
@@ -141,13 +143,40 @@ impl OwnershipCheckPass._infer_nodes_of(ab: Ability) -> list[UniNode] {
             seen.add(id(nd));
             if nd is not ab
                 and not isinstance(nd, ImplDef)
-                and nd.enclosing_decl(Ability) is ab {
+                and self._infer_above(nd, Ability, self.infer_owner, True) is ab {
                 out.append(nd);
             }
         }
         pending.extend(scope.linked_impls());
     }
     return out;
+}
+
+impl OwnershipCheckPass._infer_above(
+    nd: UniNode, typ: type, memo: dict[int, (UniNode | None)], decl: bool
+) -> (UniNode | None) {
+    found: (UniNode | None) = None;
+    walked: list[int] = [];
+    cur: (UniNode | None) = nd;
+    while cur is not None {
+        key = id(cur);
+        if key in memo {
+            found = memo[key];
+            break;
+        }
+        walked.append(key);
+        up: (UniNode | None) = cur.decl_parent if decl else cur.parent;
+        hit = up is None or isinstance(up, typ);
+        if hit {
+            found = up;
+            break;
+        }
+        cur = up;
+    }
+    for key in walked {
+        memo[key] = found;
+    }
+    return found;
 }
 
 impl OwnershipCheckPass._infer_is_generator(nds: list[UniNode]) -> bool {
@@ -199,8 +228,32 @@ impl OwnershipCheckPass._infer_region_effects(
     nds: list[UniNode], callees: list[Ability]
 ) -> set[str] {
     out: set[str] = set();
+
+    acted = (
+        WithStmt,
+        AwaitExpr,
+        YieldExpr,
+        ConcurrentExpr,
+        IterForStmt,
+        Assignment,
+        DeleteStmt,
+        FuncCall,
+        CompareExpr,
+        BinaryExpr,
+        BoolExpr,
+        UnaryExpr,
+        FormattedValue,
+        AtomTrailer,
+        InForStmt,
+        IfStmt,
+        WhileStmt
+    );
     for nd in nds {
-        if nd.find_parent_of_type(SubTag) is not None or self._infer_is_type_expr(nd) {
+        if not isinstance(nd, acted) {
+            continue;
+        }
+        if self._infer_above(nd, SubTag, self.infer_tag, False) is not None
+            or self._infer_is_type_expr(nd) {
             continue;
         }
         if isinstance(
