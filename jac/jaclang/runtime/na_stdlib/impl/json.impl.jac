@@ -53,9 +53,29 @@ impl JSONDecoder.decode(s: str) -> any {
 
 impl JSONDecoder.raw_decode(s: str, idx: int = 0) -> tuple[any, int] {
     p: _JsonParser = self._mkparser(s);
-    p.pos = idx;
+    p.pos = _byte_index_for_char(s, idx);
     v: any = p._parse_scalar();
-    return (v, p.pos);
+    return (v, _char_index_for_byte(p.buf, p.pos));
+}
+
+impl _byte_index_for_char(s: str, idx: int) -> int {
+    if idx < 0 {
+        return idx;
+    }
+    if idx > len(s) {
+        return len(s.encode("utf-8", "surrogatepass")) + idx - len(s);
+    }
+    return len(s[:idx].encode("utf-8", "surrogatepass"));
+}
+
+impl _char_index_for_byte(buf: bytes, idx: int) -> int {
+    if idx < 0 {
+        return idx;
+    }
+    if idx > len(buf) {
+        return len(buf.decode("utf-8", "surrogatepass")) + idx - len(buf);
+    }
+    return len(buf[:idx].decode("utf-8", "surrogatepass"));
 }
 
 impl JSONEncoder.init(
@@ -248,7 +268,7 @@ impl _JsonParser._doc -> str {
 }
 
 impl _JsonParser._fail(msg: str, pos: int) {
-    raise JSONDecodeError(msg, self._doc(), pos);
+    raise JSONDecodeError(msg, self._doc(), _char_index_for_byte(self.buf, pos));
 }
 
 impl _JsonParser._match(w: bytes) -> bool {
@@ -742,6 +762,17 @@ impl _num_key(v: any) -> (float | None) {
 }
 
 impl _key_cmp(a: any, b: any) -> int {
+    if isinstance(a, int) and isinstance(b, int) {
+        ai: int = a;
+        bi: int = b;
+        if ai < bi {
+            return -1;
+        }
+        if ai > bi {
+            return 1;
+        }
+        return 0;
+    }
     fa: (float | None) = _num_key(a);
     fb: (float | None) = _num_key(b);
     if fa is not None and fb is not None {
@@ -937,7 +968,19 @@ impl _dump_value(value: any, style: _JsonStyle, depth: int, seen: list[any]) -> 
         return r;
     }
     if style.default_fn is not None {
-        return _dump_value(_apply_hook(style.default_fn, value), style, depth, seen);
+        if style.check_circular {
+            for c in seen {
+                if c is value {
+                    raise ValueError("Circular reference detected");
+                }
+            }
+            seen.append(value);
+        }
+        result = _dump_value(_apply_hook(style.default_fn, value), style, depth, seen);
+        if style.check_circular {
+            seen.pop();
+        }
+        return result;
     }
     raise TypeError("Object of type " + typename(value) + " is not JSON serializable");
 }

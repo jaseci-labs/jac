@@ -148,6 +148,8 @@ obj _JsonParser {
 
 
 def _apply_hook(f: Callable[[any], any], v: any) -> any;
+def _byte_index_for_char(s: str, idx: int) -> int;
+def _char_index_for_byte(buf: bytes, idx: int) -> int;
 
 
 def _is_digit(c: int) -> bool;

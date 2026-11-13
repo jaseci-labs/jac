@@ -54,6 +54,11 @@ with entry {
     data = record();
     print(json.dumps(data));
     print(json.dumps(data, sort_keys=True));
+    print(
+        json.dumps(
+            {9007199254740993: "large", 9007199254740992: "small"}, sort_keys=True
+        )
+    );
     print(json.dumps(data, separators=(",", ":")));
     print(json.dumps(data, sort_keys=True, ensure_ascii=False));
     print(json.dumps([float("nan"), float("inf"), float("-inf"), 1.0, -0.5]));
@@ -65,6 +70,9 @@ with entry {
     dec = json.JSONDecoder();
     (v, end) = dec.raw_decode(" [1, 2] x", 2);
     print(json.dumps(v), end);
+    (unicode_v, unicode_end) = dec.raw_decode("\"é\" 1", 0);
+    (number_v, number_end) = dec.raw_decode("\"é\" 1", 4);
+    print("raw-unicode:", unicode_v, unicode_end, number_v, number_end);
     enc = json.JSONEncoder(sort_keys=True);
     print(enc.encode({"b": 1, "a": 2}));
     print("".join(enc.iterencode({"z": 0})));
@@ -88,6 +96,7 @@ with entry {
 }
 
 glob cycle: list[any] = [];
+
 with entry {
     cycle.append(cycle);
     try {
@@ -95,14 +104,37 @@ with entry {
     } except ValueError as e {
         print("circular:", e);
     }
-    with open("/tmp/jac_json_dump_fidelity.txt", "w") as output {
+    try {
+        json.dumps(
+            b"fallback-cycle", `default=lambda (value: any) -> any { return value; }
+        );
+        print("fallback-cycle: missed");
+    } except ValueError {
+        print("fallback-cycle: ValueError");
+    }
+    nonce = 0;
+    while True {
+        temp_dir = os.path.join(
+            "/tmp", "jac_json_dump_fidelity_" + str(os.getpid()) + "_" + str(nonce)
+        );
+        try {
+            os.mkdir(temp_dir, 0o700);
+            break;
+        } except FileExistsError {
+            nonce += 1;
+        }
+    }
+    path = os.path.join(temp_dir, "dump.txt");
+    with open(path, "w") as output {
         json.dump({"written": [1, 2]}, output, separators=(",", ":"));
     }
-    with open("/tmp/jac_json_dump_fidelity.txt", "r") as input {
+    with open(path, "r") as input {
         print("dump:", input.read());
     }
-    os.remove("/tmp/jac_json_dump_fidelity.txt");
+    os.remove(path);
+    os.rmdir(temp_dir);
     show_error("1 2");
+    show_error("\"é\" x");
     show_error("");
     show_error("-");
     show_error("01");
