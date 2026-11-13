@@ -49,3 +49,6 @@ directories = ["core"]
 title = "Tiny JacYac"
 description = "Small talk. Good company."
 icon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23355d45'/%3E%3Ctext x='11' y='29' font-family='sans-serif' font-size='30' fill='white'%3Et%3C/text%3E%3C/svg%3E"
+
+[arch]
+closed = ["*"]
