@@ -53,6 +53,15 @@ impl StudioSession.record(ev: AgentEvent) -> None {
     d = ev.data;
     if ev.kind == "message_chunk" {
         self.append_text("agent", str(d.get("text", "")));
+    } elif ev.kind == "message_reset" {
+        last = self.entries[-1] if self.entries else None;
+        if self._streaming
+            and last is not None
+            and last.get("role") == "agent"
+            and "tool_call" not in last {
+            self.entries.pop();
+        }
+        self._streaming = False;
     } elif ev.kind == "tool_call" and self.tool_entry(str(d.get("id", ""))) is None {
         tc = {
             "id": d.get("id", ""),

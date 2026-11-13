@@ -523,62 +523,6 @@ impl native_products(module: uni.Module, products: UnitProducts) {
     products.native_deps = list(gen.native_deps);
 }
 
-impl products_record(products: UnitProducts) -> dict[str, any] {
-    return {
-        "path": products.path,
-        "jcir": base64.b64encode(products.jcir).decode("ascii"),
-        "mtir": products.mtir,
-        "interop": products.interop,
-        "client": products.client,
-        "placement": products.placement,
-        "ct_file_deps": list(products.ct_file_deps),
-        "ct_body_deps": list(products.ct_body_deps),
-        "ct_def_deps": list(products.ct_def_deps),
-        "def_spans": list(products.def_spans),
-        "app": products.app,
-        "persistence": list(products.persistence),
-        "import_edges": list(products.import_edges),
-        "client_manifest": products.client_manifest,
-        "native_ir": products.native_ir,
-        "native_iface": products.native_iface,
-        "native_layout": products.native_layout,
-        "native_deps": list(products.native_deps),
-        "iface": products.iface,
-        "iface_shape": products.iface_shape,
-        "iface_jir": products.iface_jir,
-        "effects": products.effects,
-        "jac_deps": list(products.jac_deps)
-    };
-}
-
-impl products_from_record(raw: dict[str, any]) -> UnitProducts {
-    return UnitProducts(
-        path=str(raw.get("path", "")),
-        jcir=base64.b64decode(str(raw.get("jcir", "")).encode("ascii")),
-        mtir=str(raw.get("mtir", "")),
-        interop=str(raw.get("interop", "")),
-        client=str(raw.get("client", "")),
-        placement=str(raw.get("placement", "")),
-        ct_file_deps=json_str_list(raw.get("ct_file_deps")),
-        ct_body_deps=json_str_list(raw.get("ct_body_deps")),
-        ct_def_deps=json_str_list(raw.get("ct_def_deps")),
-        def_spans=json_str_list(raw.get("def_spans")),
-        app=str(raw.get("app", "")),
-        persistence=json_str_list(raw.get("persistence")),
-        import_edges=json_str_list(raw.get("import_edges")),
-        client_manifest=str(raw.get("client_manifest", "")),
-        native_ir=str(raw.get("native_ir", "")),
-        native_iface=str(raw.get("native_iface", "")),
-        native_layout=str(raw.get("native_layout", "")),
-        native_deps=json_str_list(raw.get("native_deps")),
-        iface=str(raw.get("iface", "")),
-        iface_shape=str(raw.get("iface_shape", "")),
-        iface_jir=str(raw.get("iface_jir", "")),
-        effects=str(raw.get("effects", "")),
-        jac_deps=json_str_list(raw.get("jac_deps"))
-    );
-}
-
 impl definition_deps(products: UnitProducts) -> list[tuple[str, str]] {
     out: list[tuple[str, str]] = [];
     for row in products.ct_def_deps {
@@ -588,4 +532,51 @@ impl definition_deps(products: UnitProducts) -> list[tuple[str, str]] {
         }
     }
     return out;
+}
+
+impl json_str_list(value: object) -> list[str] {
+    out: list[str] = [];
+    if isinstance(value, list) {
+        for item in value {
+            out.append(str(item));
+        }
+    }
+    return out;
+}
+
+impl json_str_map(value: object) -> dict[str, str] {
+    out: dict[str, str] = {};
+    if isinstance(value, dict) {
+        for (key, item) in value.items() {
+            out[str(key)] = str(item);
+        }
+    }
+    return out;
+}
+
+impl json_map(value: object) -> dict[str, any] {
+    out: dict[str, any] = {};
+    if isinstance(value, dict) {
+        for (key, item) in value.items() {
+            out[str(key)] = item;
+        }
+    }
+    return out;
+}
+
+impl json_maps(value: object) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    if isinstance(value, list) {
+        for item in value {
+            out.append(json_map(item));
+        }
+    }
+    return out;
+}
+
+impl json_opt_str(value: object) -> (str | None) {
+    if value is None {
+        return None;
+    }
+    return str(value);
 }

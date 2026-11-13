@@ -571,8 +571,8 @@ require = []              # Module-name patterns whose native lowering must succ
 ```
 
 `require` makes matching modules native-only during checking and building. For
-example, `require = ["jaclang.runtime.python.*"]` covers JacPython's runtime
-modules and bindings. Lowering failures remain errors; Python fallback and
+example, `require = ["mypkg.kernels.*"]` covers every module under
+`mypkg.kernels`. Lowering failures remain errors; Python fallback and
 opaque field erasure cannot satisfy this contract. Required dependencies stay
 in the target compilation, and checks verify the native dependency closure
 without executing it. The policy is included in analysis and code-generation
