@@ -35,7 +35,8 @@ myapp/
 ├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
 │   └── Button.jac     # Example component (client-side by inference)
-└── assets/            # Static assets (images, fonts)
+├── assets/            # Static assets (images, fonts)
+└── public/            # Files served at the site root (robots.txt, favicon.ico)
 ```
 
 TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
@@ -51,6 +52,68 @@ default; when several apps share one UI, point them at the shared directory
 dir = "core/site/assets"
 custom_extensions = [".pdf"]
 ```
+
+Files under `public/` are served at the site root: `public/robots.txt` at
+`/robots.txt`, `public/img/logo.png` at `/img/logo.png`. `jac build` copies them
+into `dist/` unchanged, so a deployment that serves only `dist/` answers the same
+URLs as `jac run --serve`. Only the file types the site root serves are copied:
+images, fonts, audio and video, `.css`, `.js`, `.json`, `.pdf`, `.txt` and `.xml`.
+Other files, such as `.html` or `.webmanifest`, are left out and the build names
+them; hidden files such as `.env` and `.DS_Store` are left out without a mention.
+In a workspace, the app's own `public/` is read first and the project root's
+second; for a path in both, the app's file wins. Links are followed when they point
+inside the same `public/`, as when serving, and links that leave it are skipped. A
+file whose path matches one the build writes, such as `manifest.json` in a PWA
+build, or a path that would need a folder where a file already is, fails the build
+before anything is copied.
+
+### robots.txt and sitemap.xml
+
+Set the site's public URL and `jac build` writes both files into `dist/`:
+
+```toml
+[client.seo]
+site_url = "https://example.org"   # required: nothing is generated without it
+site_hosts = ["www.example.org"]   # other hosts that serve production
+
+[client.seo.sitemap]
+exclude = ["/preview-auth"]        # paths to leave out
+extra = ["/blog/launch"]           # paths the route scanner can't see
+
+[client.seo.robots]
+disallow = ["/internal"]           # paths to block, on top of the (auth) routes
+```
+
+- The sitemap lists the routes under `pages/`, except routes in an `(auth)` group,
+  catch-all routes and routes with a dynamic segment (`[id].jac`), which can't be
+  listed. An app without `pages/` lists `/`. It has no `<lastmod>`.
+- `robots.txt` disallows the `(auth)` routes and everything in `disallow`, always
+  allows the client bundle and stylesheet so crawlers can render the app, and
+  points at the sitemap. An `(auth)` route `/admin` becomes `Disallow: /admin$` and
+  `Disallow: /admin/`, so a public `/administrators-guide` stays crawlable, and an
+  `(auth)` home page becomes `Disallow: /$`. A sitemap URL is never blocked: one that
+  an `(auth)` rule would cover gets its own `Allow:` line, and one that `disallow`
+  covers leaves the sitemap.
+- Paths are percent-encoded (`/café menu` becomes `/caf%C3%A9%20menu`).
+- Every list must be a list of strings, and an unknown key is an error.
+- A file of the same name in `public/` wins: the build uses it instead and says so.
+
+`jac run --serve` and the jac-scale gateways compare the host of a `/robots.txt`
+request with the host of `site_url` and the hosts in `site_hosts`, ignoring case,
+the port and a trailing dot. The host is the `Host` header, or `X-Forwarded-Host` when
+the request comes from a proxy listed in `[serve.proxy] trusted`. Behind a proxy
+that rewrites `Host`, list the proxy there, or the production host is not
+recognized either. On any other host, such as a preview or staging deployment, they
+answer `User-agent: *` / `Disallow: /` ahead of any route the app declares, whether
+the file was generated or hand-written, so previews are not indexed, and log a
+warning naming the host the first time. A CDN that sends its own origin name as
+`Host` is such a host: add that name to `site_hosts`. In a
+microservice deployment only the gateway checks: the apps behind it see the
+gateway's address, not the public host, so a `/robots.txt` it forwards to them is
+answered as is. Both files are served with `Cache-Control: no-cache`. In a
+workspace, `[client.seo]` applies to every app; `[apps.<name>.client.seo]`
+overrides it for one app. The build reads the settings of the app it builds, and a
+gateway those of the app it serves at `/`.
 
 ### Client Code Is Inferred
 
@@ -971,6 +1034,8 @@ async def handleSignup() -> None {
 }
 ```
 
+When the server sets `[serve.auth.registration] challenge = true`, `jacSignup` fetches the proof-of-work challenge from `POST /user/register/challenge`, solves it, and sends the proof with the registration, so no extra client code is needed. It works the same in the browser and in React Native. If the challenge cannot be fetched, solved, or expires first, the result has `success` false and `error` says why (for example "Verification expired. Please try again.").
+
 ### jacLogout / jacIsLoggedIn
 
 ```jac
@@ -1474,8 +1539,13 @@ Override Vite build options via `[client.vite.build]`:
 [client.vite.build]
 sourcemap = true
 minify = "esbuild"
-outDir = "dist"
+
+# Split vendor libraries into their own chunk
+[client.vite.build.rollupOptions.output.manualChunks]
+vendor = ["react", "react-dom", "react-router-dom"]
 ```
+
+`rollupOptions` entries are merged into Jac's own build settings. Jac always sets `outDir`, `emptyOutDir`, `rollupOptions.input` and the `entryFileNames`, `assetFileNames` and `sourcemapPathTransform` outputs, because it needs them to find and serve the bundle; if you set them, they are ignored with a warning.
 
 #### Dev Server Options
 
@@ -1675,9 +1745,9 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac run [app]` | Start dev server (the app's kind decides the client) |
 | `jac run --dev [app]` | Dev server with HMR |
 | `jac run desktop_app` | Start a `kind = "desktop"` app (see [jac-desktop](jac-desktop.md)) |
-| `jac run mobile` | Build a `kind = "mobile"` app for its platform and launch it on a device/simulator |
-| `jac run --dev mobile` | The mobile app with Metro Fast Refresh |
-| `jac run --dev --platform web mobile` | The mobile app in a browser through react-native-web |
+| `jac run mobile` | Serve a `kind = "mobile"` app to Expo Go: scan the QR code on your phone (Metro Fast Refresh) |
+| `jac run --tunnel mobile` | The same through an Expo tunnel, for a phone that can't reach this machine |
+| `jac run --platform web mobile` | The mobile app in a browser through react-native-web |
 | `jac build [app]` | Build for production (web) |
 | `jac build --all` | Build every app of the workspace into `dist/<app>/` |
 | `jac build --as client [app]` | Build only the app's client bundle |
@@ -1814,7 +1884,7 @@ jac setup [app]
 |--------|-------------|
 | `app` | An app name from `[apps]`. Omit to set up the default app |
 
-What setup does follows the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/` and its packages installed; a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup. Under `JAC_OFFLINE=1` a run cannot provision, so a missing mobile scaffold or stale packages stop with `jac setup <app>` as the hint.
+What setup does follows the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/` and its packages installed; a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup. In an offline project (`[network] offline = true` in `jac.toml`) a run cannot provision, so a missing mobile scaffold or stale packages stop with `jac setup <app>` as the hint.
 
 **Examples:**
 
@@ -1836,6 +1906,7 @@ jac-client extends several core commands:
 | `jac create` | `--app <name> --kind <kind>` | Add a client app to the current project |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs |
+| `jac run` | `--tunnel` | Reach a mobile dev server through an Expo tunnel |
 | `jac build` | `--as client` | Build only the app's client bundle |
 | `jac install` | `--npm` | Add npm (client-side) dependency |
 | `jac install` | `--npm --dev` | Add npm dev dependency |
@@ -1905,7 +1976,7 @@ A mobile app is a **mobUI** app: one source tree that compiles to both native (A
 [apps.mobile]
 kind = "mobile"
 entry-point = "mobile.main"
-platform = "android"      # optional default for `jac run mobile` / `jac build mobile`
+platform = "android"      # optional default for `jac build mobile` (and the device `jac run mobile` opens)
 ```
 
 The kind is an **app** property: it turns on the `@jac/mobui` host-tag guard for every module the app claims (its directory, or its entry file for a file-rooted app) and nothing outside it, so a workspace can hold a mobile app next to an HTML-based web app over the same shared `core/`.
@@ -1913,15 +1984,20 @@ The kind is an **app** property: it turns on the `@jac/mobui` host-tag guard for
 **Run & Build:**
 
 ```bash
-# 1. Development: Fast Refresh on device/emulator. The first run scaffolds the
+# 1. Run it on your phone: scan the QR code with Expo Go (Android) or the
+#    Camera app (iOS). Fast Refresh on save. The first run scaffolds the
 #    Expo/Metro project at .jac/mobile-rn/ and installs its packages (narrated
 #    as a one-time setup); `jac setup mobile` does the same ahead of time.
-jac run --dev mobile
-# Metro serves both platforms; pick the device in the Expo CLI
-# (press `a` for Android, `i` for iOS simulator) or scan the QR in Expo Go.
+jac run mobile
+# Metro serves both platforms; press `a` / `i` in the Expo CLI to open an
+# emulator or simulator, or pass --platform android|ios to open one up front.
+
+# Phone on another network (or this machine behind NAT, e.g. WSL2)? Tunnel it.
+# The API rides the same tunnel through Metro.
+jac run --tunnel mobile
 
 # The same UI in a browser, through react-native-web
-jac run --dev --platform web mobile
+jac run --platform web mobile
 
 # 2. Build for Android (provisions the scaffold too if this is the first native run)
 jac build mobile --platform android
@@ -1931,19 +2007,17 @@ jac build mobile --platform ios
 
 # 4. Build the browser bundle (dist/mobile/ under `jac build --all --platform web`)
 jac build mobile --platform web
-
-# Build for the app's platform, then install + launch on a device/simulator
-jac run mobile
 ```
 
-**Dev-loop knobs:** Metro defaults to port `8081` (override with `JAC_RN_METRO_PORT`); the device-visible host is auto-detected from your LAN IPv4 (override with `JAC_RN_DEV_HOST`). Each `--dev` run starts Metro with `--clear`, so warm starts re-bundle from scratch.
+`jac run` never builds the app: an installable APK or `.app` comes from `jac build`.
+
+**Dev-loop knobs:** Metro defaults to port `8081` (override with `JAC_RN_METRO_PORT`); the device-visible host is auto-detected from your LAN IPv4 (override with `--host` or `JAC_RN_DEV_HOST`) and handed to Expo, so the QR code points at the same host. `--tunnel` swaps the LAN for an Expo tunnel (Expo installs `@expo/ngrok` on first use) and routes the API through Metro at `/__jac_api`. Each run starts Metro with `--clear`, so warm starts re-bundle from scratch.
 
 **Output:**
 
 - Android: APK via `gradlew assembleDebug` (or EAS Build with `android_builder = "eas"`)
 - iOS: simulator `.app` bundle via `xcodebuild` on macOS -- `jac build` prints the
-  `xcrun simctl install booted <app>` command, and `jac run <app>`
-  builds, installs, and launches it for you; a distributable `.ipa` comes from the
+  `xcrun simctl install booted <app>` command; a distributable `.ipa` comes from the
   EAS Build path (`ios_builder = "eas"`)
 - Web: a browser bundle through the Vite pipeline, `dist/mobile/` under `jac build --all --platform web`, mounted by the served web app at `/cl/mobile/`
 
@@ -1953,7 +2027,7 @@ jac run mobile
 [client.react_native]
 project_dir = ".jac/mobile-rn"   # Expo project location (under the .jac build root; override to relocate)
 release = false                  # true for release variants
-default_platform = "android"     # platform used by a plain `jac run <app>` ([apps.<name>] platform wins)
+default_platform = "android"     # platform used by a plain `jac build <app>` ([apps.<name>] platform wins)
 android_builder = "gradle"       # "gradle" (local) or "eas" (EAS Build)
 ios_builder = "xcodebuild"       # "xcodebuild" (local, macOS) or "eas" (EAS Build)
 eas_profile = ""                 # "" -> "production" (release) / "preview" (debug)
@@ -1967,9 +2041,9 @@ Packages only the Expo project needs go under `[dependencies.npm.native]`; `jac 
 
 **Notes:**
 
-- The Expo project lives at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). The first native `jac run` / `jac run --dev` / `jac build` scaffolds it and installs its packages (narrated as a one-time setup); later runs re-sync the packages only when the manifest or lockfile changed, and `--platform web` never touches it. `jac setup mobile` provisions the same ahead of time; under `JAC_OFFLINE=1` a missing scaffold stops with that hint.
-- Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
-- `jac run <app>` without `--dev` picks its platform from `--platform` (which sets `JAC_MOBILE_PLATFORM` for the run), else `[apps.<name>] platform`, else `[client.react_native].default_platform`, else `android`.
+- The Expo project lives at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). The first native `jac run` / `jac run --dev` / `jac build` scaffolds it and installs its packages (narrated as a one-time setup); later runs re-sync the packages only when the manifest or lockfile changed, and `--platform web` never touches it. `jac setup mobile` provisions the same ahead of time; under `[network] offline = true` in `jac.toml` a missing scaffold stops with that hint.
+- Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit; under `--tunnel` the app derives it from Metro's own origin instead.
+- `jac run <app>` always serves the Expo dev server; `--platform android|ios` (or `[apps.<name>] platform`) also opens the app in Expo Go on an emulator or simulator. Expo Go loads only the native modules it ships with; an app that adds its own needs a build (`jac build <app> --platform android`).
 - iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
 - Release/debug variants via `[client.react_native].release = true`.
 - EAS Update integration for OTA updates is opt-in via config -- see [EAS Update (OTA)](#eas-update-ota) below.
@@ -2314,6 +2388,39 @@ browser's raw `stack` and the `resolved_stack` whose frames were mapped onto
 value, and the `/cl/__error__` endpoint logs it through the same renderer in
 production. See [Errors and Warnings](../diagnostics.md#dev-loop-and-client-runtime-errors-e7xxx)
 for the code catalog.
+
+The endpoint limits each client on its own, so one page reporting in a loop
+cannot hide other users' errors:
+
+- **Rate:** a client gets 20 reports a minute. Past that, every request is
+  answered `429` (`RATE_LIMITED`, the same envelope as the login and
+  registration limits) with `Retry-After` until its minute is up. The count is
+  kept in the shared database (the embedded one the server provisions, or the
+  one `[scale.database] url` names), so it holds across every worker of
+  `jac run --serve` and every replica of a deployment. If that database cannot
+  be reached, each worker process counts on its own, so a server with N workers
+  accepts up to N x 20 a minute from one client.
+- **Repeats:** the same message from the same client within 10 seconds is
+  accepted (`{"ok": true, "throttled": true}`) but not logged again. This check
+  is per worker process.
+- **Size:** a report over 64 KiB is refused with `413` before it is parsed.
+- **Browser extensions:** a report whose stack frames all point into a browser
+  extension (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`,
+  `safari-extension://`) is logged at INFO as a browser extension's error,
+  not at ERROR. The client runtime drops these itself; this covers pages still
+  running an older runtime.
+
+Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
+20) applies the same per-client limit before a report reaches any service, even
+when the gateway's general rate limit is off. Set it to `0` to turn it off.
+The gateway applies it only when it can see each browser's own address. In a
+cluster with nothing in `[serve.proxy] trusted` (`JAC_SERVE_PROXY_TRUSTED`),
+which is what `jac scale deploy` sets on the gateway, every browser arrives from
+the ingress address, so the gateway skips the limit and logs that at startup.
+The services behind it still limit each browser, because they trust the
+cluster's private ranges and read the address the gateway forwards. List the
+ingress controller's address in the gateway's `[serve.proxy] trusted` to refuse
+floods at the gateway too.
 
 Locations come from the per-file source maps the client compiler writes beside
 each `compiled/*.js`. They are segment-level -- generated line *and* column,

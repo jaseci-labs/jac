@@ -1,12 +1,4 @@
 import re;
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    Ability,
-    FuncSignature,
-    ParamVar,
-    UniNode
-}
-import from jaclang.compiler.frontend.unparse { unparse_node }
 
 glob _SCALAR_MAP: dict[str, str] = {
          "int": "number",
@@ -22,7 +14,61 @@ glob _SCALAR_MAP: dict[str, str] = {
 
      };
 
-def _split_top(s: str, sep: str) -> list[str] {
+def _split_top(s: str, sep: str) -> list[str];
+
+def _map_type(type_str: str, is_return: bool, ts: bool) -> str;
+
+impl jac_type_to_jsdoc(type_str: str, is_return: bool = False) -> str {
+    return _map_type(type_str, is_return, False);
+}
+
+impl jac_type_to_ts(type_str: str, is_return: bool = False) -> str {
+    return _map_type(type_str, is_return, True);
+}
+
+def _param_type(param: ParamVar) -> str | None;
+
+def _block_for_ability(ability: Ability) -> str | None;
+
+impl jsdoc_for_module(mod: Module) -> dict[str, str] {
+    blocks: dict[str, str] = {};
+    for nd in mod.body {
+        if isinstance(nd, Ability) {
+            name = nd?.sym_name;
+            if not name {
+                continue;
+            }
+            block = _block_for_ability(nd);
+            if block is not None {
+                blocks[name] = block;
+            }
+        }
+    }
+    return blocks;
+}
+
+impl inject_jsdoc(js: str, blocks: dict[str, str]) -> str {
+    out = js;
+    for (name, block) in blocks.items() {
+        pattern = re.compile(
+            r"(?m)^([ \t]*)((?:export\s+)?(?:async\s+)?(?:function|class)\s+"
+                + re.escape(name)
+                + r"\b)"
+        );
+
+        def _repl(m: any) -> str {
+            indent: str = m.group(1);
+            indented = "\n".join(
+                (indent + line) if line else line for line in block.split("\n")
+            );
+            return indented + "\n" + m.group(0);
+        }
+        (out, n) = pattern.subn(_repl, out, count=1);
+    }
+    return out;
+}
+
+impl _split_top(s: str, sep: str) -> list[str] {
     parts: list[str] = [];
     depth = 0;
     buf: list[str] = [];
@@ -44,7 +90,7 @@ def _split_top(s: str, sep: str) -> list[str] {
     return parts;
 }
 
-def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
+impl _map_type(type_str: str, is_return: bool, ts: bool) -> str {
     s = type_str.strip();
     any_t = "any" if ts else "*";
     if not s {
@@ -104,15 +150,7 @@ def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
     return s;
 }
 
-impl jac_type_to_jsdoc(type_str: str, is_return: bool = False) -> str {
-    return _map_type(type_str, is_return, False);
-}
-
-impl jac_type_to_ts(type_str: str, is_return: bool = False) -> str {
-    return _map_type(type_str, is_return, True);
-}
-
-def _param_type(param: ParamVar) -> str | None {
+impl _param_type(param: ParamVar) -> str | None {
     tag = param.type_tag;
     if tag is None {
         return None;
@@ -128,7 +166,7 @@ def _param_type(param: ParamVar) -> str | None {
     }
 }
 
-def _block_for_ability(ability: Ability) -> str | None {
+impl _block_for_ability(ability: Ability) -> str | None {
     sig = ability.signature;
     fsig = sig if isinstance(sig, FuncSignature) else None;
     lines: list[str] = ["/**"];
@@ -169,42 +207,4 @@ def _block_for_ability(ability: Ability) -> str | None {
     }
     lines.append(" */");
     return "\n".join(lines);
-}
-
-impl jsdoc_for_module(mod: Module) -> dict[str, str] {
-    blocks: dict[str, str] = {};
-    for nd in mod.body {
-        if isinstance(nd, Ability) {
-            name = nd?.sym_name;
-            if not name {
-                continue;
-            }
-            block = _block_for_ability(nd);
-            if block is not None {
-                blocks[name] = block;
-            }
-        }
-    }
-    return blocks;
-}
-
-impl inject_jsdoc(js: str, blocks: dict[str, str]) -> str {
-    out = js;
-    for (name, block) in blocks.items() {
-        pattern = re.compile(
-            r"(?m)^([ \t]*)((?:export\s+)?(?:async\s+)?(?:function|class)\s+"
-                + re.escape(name)
-                + r"\b)"
-        );
-
-        def _repl(m: any) -> str {
-            indent: str = m.group(1);
-            indented = "\n".join(
-                (indent + line) if line else line for line in block.split("\n")
-            );
-            return indented + "\n" + m.group(0);
-        }
-        (out, n) = pattern.subn(_repl, out, count=1);
-    }
-    return out;
 }

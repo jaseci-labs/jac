@@ -1,6 +1,4 @@
 import from bisect { bisect_left }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
 
 glob _CLOSING_DELIMS = [Tok.RBRACE, Tok.RPAREN, Tok.RSQUARE],
      _OPENING_DELIMS = [Tok.LBRACE, Tok.LPAREN, Tok.LSQUARE];

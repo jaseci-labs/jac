@@ -1,18 +1,3 @@
-import from jaclang.client.auth_contract { SignupResult }
-import from jaclang.client.endpoint_cache {
-    __jacClearCache,
-    __endpointKey,
-    __getEndpointEffects as cache___getEndpointEffects,
-    __getCacheState as cache___getCacheState,
-    __isFresh as cache___isFresh,
-    __cacheGet as cache___cacheGet,
-    __cacheSet as cache___cacheSet,
-    __evictOldest as cache___evictOldest,
-    __overlaps as cache___overlaps,
-    __invalidateEndpoint as cache___invalidateEndpoint,
-    __cachedEndpointCall as cache___cachedEndpointCall
-}
-
 import from 'react' { * as React }
 import from 'react-hook-form' { useForm }
 import from '@hookform/resolvers/zod' { zodResolver }
@@ -31,9 +16,7 @@ obj:pub BridgeError(Exception) {
         status: int = 0,
         message: str = "";
 
-    def postinit {
-        self.message = self.detail;
-    }
+    def postinit;
 }
 
 obj:pub BridgeUnavailable(BridgeError) {}
@@ -84,6 +67,8 @@ async def:pub jacLogin(
 
 def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
+def:pub __jacTokenExpired(token: str) -> bool;
+def:pub __jacDropRejectedToken(sent: str) -> bool;
 def:pub jacSetToken(token: str) -> None;
 def:pub useJacState(initial: any) -> any;
 
@@ -120,5 +105,26 @@ def:pub __jacReportError(
     source: str = "",
     componentStack: str = ""
 ) -> None;
+
+def __jacIsExtensionError(stack: str, filename: str = "") -> bool;
+
+def __jacIsExtensionUrl(url: str) -> bool;
+
+def __jacClaimErrorReport(message: str, stack: str) -> bool;
+
+glob __JAC_EXTENSION_URL_PREFIXES: list[str] = [
+         "chrome-extension://",
+         "moz-extension://",
+         "safari-web-extension://",
+         "safari-extension://"
+     ],
+     __JAC_ERROR_REPORTS_PER_MINUTE: int = 10,
+     __JAC_ERROR_REPORTS_PER_PAGE: int = 200,
+     __JAC_STACK_FRAME_RE: any = RegExp(
+         "^\\s*at\\s+(?:.*?\\()?(.*?)\\)?\\s*$|^[^@]*@(.*:\\d+:\\d+)\\s*$"
+     ),
+     __JAC_ENGINE_FRAME_RE: any = RegExp(
+         "^(?:<anonymous>|native|\\[native code\\]|index \\d+|unknown location)?$"
+     );
 
 def:pub __jacReactErrorHandler(error: any, info: any) -> None;

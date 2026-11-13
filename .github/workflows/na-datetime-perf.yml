@@ -8,12 +8,11 @@ on:
 jobs:
   bench:
     runs-on: ubuntu-latest
-    env:
-      JAC_NO_DEV_SOURCE: "1"
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: true
+      - uses: ./.github/actions/seal-checkout
 
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
@@ -38,8 +37,6 @@ jobs:
 
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
-        env:
-          JACPYTHON: "1"
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-musl --summary all

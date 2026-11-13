@@ -1,4 +1,294 @@
-def _ident_ok(name: str) -> bool {
+def _ident_ok(name: str) -> bool;
+
+
+def _scalar(v: any) -> any;
+
+
+def _pushable_value(v: any) -> bool;
+
+
+def _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str;
+
+
+def _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str];
+
+
+def _sql_type_of(v: any) -> str;
+
+
+def _sanitize_ident(name: str) -> str;
+
+
+def _promoted_col(
+    alias: str, arch_names: list[str], field: str, promotions: (dict[str, any] | None)
+) -> (str | None);
+
+
+def _field_expr(
+    alias: str, field: str, arch_names: list[str], promotions: (dict[str, any] | None)
+) -> str;
+
+
+def _row_cond(
+    alias: str,
+    p: QPred,
+    params: dict[str, any],
+    pfx: str,
+    arch_names: list[str],
+    promotions: (dict[str, any] | None)
+) -> (str | None);
+
+
+def _pred_cond(
+    alias: str,
+    p: QPred,
+    params: dict[str, any],
+    pfx: str,
+    arch_names: (list[str] | None) = None,
+    promotions: (dict[str, any] | None) = None
+) -> (str | None);
+
+
+def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str;
+
+
+def _last_mode(last: bool, count_only: bool, residual_only: bool) -> str;
+
+
+def _gated_cond(
+    alias: str,
+    root_id: str,
+    trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str;
+
+
+def _gated_pair(
+    node_alias: str,
+    edge_alias: str,
+    root_id: str,
+    node_trusted: (list[str] | None),
+    edge_trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str;
+
+
+def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]];
+
+
+def _edge_join(
+    alias: str, fid: str, dir: int, econds: list[str], reach: list[str]
+) -> str;
+
+
+def _nd_types(hop: QHop) -> list[type];
+
+
+impl compile_query(
+    q: GraphQuery,
+    upto: int,
+    store: Store,
+    promotions: (dict[str, any] | None) = None,
+    count_only: bool = False,
+    acl_root: (str | None) = None,
+    acl_residual: (dict[int, list[str]] | None) = None,
+    residual_only: bool = False,
+    group_by: (str | None) = None,
+    edge_residual: (list[str] | None) = None,
+    edge_acl: bool = False
+) -> CompiledQuery {
+    if q.after is not None {
+        if upto != 1 or len(q.hops) != 1 or len(q.origin) != 1 or q.order {
+            raise ValueError(
+                'a keyset cursor applies to one hop from one node in edge order'
+            );
+        }
+        if not isinstance(q.after[1], UUID) {
+            raise ValueError('a keyset cursor names the edge it resumes after');
+        }
+    }
+    out = CompiledQuery();
+    params: dict[str, any] = {};
+    types: dict[str, list[str]] = {};
+    params['origin'] = [];
+    joins: list[str] = [];
+    order: list[str] = [];
+    fid = 'f0.id';
+    n = 0;
+    node_names: list[str] = [];
+    edge_names: list[str] = [];
+    for (i, hop) in enumerate(q.hops[:upto]) {
+        n = i + 1;
+        e = f"e{n}";
+        nd_alias = f"n{n}";
+        pfx_e = f"h{n}e";
+        econds: list[str] = [];
+        if hop.`edge is not None {
+            import from jaclang.data.type_identity { storage_type }
+            names = _type_names(storage_type(hop.`edge), store, types);
+            econds.append(_type_cond('e', names, params, pfx_e));
+        }
+        edge_names = (
+            [str(getattr(hop.`edge, '__name__', ''))] if hop.`edge is not None else []
+        );
+        for (j, p) in enumerate(hop.epreds) {
+            cond = _pred_cond('e', p, params, f"{pfx_e}p{j}", edge_names, promotions);
+            if cond is None {
+                out.eresidual.setdefault(i, []).append(p);
+            } else {
+                econds.append(cond);
+            }
+        }
+        nconds = [f"{nd_alias}.id = {e}.other", f"{nd_alias}.kind = 'NodeAnchor'"];
+        reach: list[str] = [];
+        for (k, nt) in enumerate(_nd_types(hop)) {
+            import from jaclang.data.type_identity { storage_type }
+            tname = storage_type(nt);
+            if tname {
+                names = _type_names(tname, store, types);
+                nconds.append(_type_cond(nd_alias, names, params, f"h{n}n{k}"));
+                reach.append(f"h{n}n{k}r");
+                params[reach[-1]] = names + [''];
+            }
+        }
+        joins.append(_edge_join(e, fid, hop.dir, econds, reach));
+        node_names = [str(getattr(nt, '__name__', '')) for nt in _nd_types(hop)];
+        for (j, p) in enumerate(hop.preds) {
+            cond = _pred_cond(
+                nd_alias, p, params, f"h{n}np{j}", node_names, promotions
+            );
+            if cond is None {
+                out.residual.setdefault(i, []).append(p);
+            } else {
+                nconds.append(cond);
+            }
+        }
+        if acl_root is not None and i == upto - 1 and edge_acl {
+            nconds.append(
+                _gated_pair(
+                    nd_alias,
+                    e,
+                    acl_root,
+                    (acl_residual or {}).get(i),
+                    edge_residual,
+                    params,
+                    f"h{n}",
+                    'residual'
+                        if residual_only
+                        else ('pushed' if count_only else 'either')
+                )
+            );
+        } elif acl_root is not None {
+            nconds.append(
+                _gated_cond(
+                    nd_alias,
+                    acl_root,
+                    (acl_residual or {}).get(i),
+                    params,
+                    f"h{n}a",
+                    _last_mode(i == upto - 1, count_only, residual_only)
+                )
+            );
+        }
+        if i == upto - 1 and q.after is not None {
+            params['ks'] = int(q.after[0]);
+            params['ki'] = str(q.after[1]);
+            nconds.append(
+                f"({e}.seq, {e}.id) > (CAST(:ks AS bigint), CAST(:ki AS uuid))"
+            );
+        }
+        want = hop.only_ids();
+        if want is not None {
+            key = f"h{n}only";
+            params[key] = [str(x) for x in want];
+            nconds.append(f"{nd_alias}.id = ANY(CAST(:{key} AS uuid[]))");
+        }
+        joins.append(f"JOIN anchors {nd_alias} ON {' AND '.join(nconds)}");
+        order.append(f"{e}.seq");
+        order.append(f"{e}.id");
+        fid = f"{nd_alias}.id";
+    }
+    if n == 0 {
+        out.sql = (
+            'SELECT count(DISTINCT f0.id) FROM '
+            'unnest(CAST(:origin AS uuid[])) AS f0(id)'
+        )
+            if count_only
+            else (
+                'SELECT f0.id, NULL FROM ' 'unnest(CAST(:origin AS uuid[])) AS f0(id)'
+            );
+        out.params = params;
+        return out;
+    }
+    if group_by == 'node_ids' {
+        out.sql = (
+            f"SELECT DISTINCT n{n}.id "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+        );
+        out.params = params;
+        return out;
+    }
+    if group_by is not None {
+        keyed = f"e{n}" if group_by == 'edge' else f"n{n}";
+        out.sql = (
+            f"SELECT {keyed}.arch_type, count(DISTINCT {keyed}.id) "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+            + f" GROUP BY {keyed}.arch_type"
+        );
+        out.params = params;
+        return out;
+    }
+    if count_only {
+        counted = f"e{n}.id" if q.edges_only else f"n{n}.id";
+        out.sql = (
+            f"SELECT count(DISTINCT {counted}) "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+        );
+        out.params = params;
+        return out;
+    }
+    seq_col = f"e{n}.seq";
+    if q.order {
+        seq_col = 'NULL';
+        order = [];
+        for spec in q.order {
+            alias = f"e{n}" if spec.on_edge else f"n{n}";
+            names = edge_names if spec.on_edge else node_names;
+            col = _field_expr(alias, spec.field, names, promotions);
+            order.append(f"{col} {'DESC' if spec.desc else 'ASC'}");
+        }
+    }
+    tail = '';
+    if q.limit is not None {
+        tail += f" LIMIT {int(q.limit)}";
+    }
+    if q.offset {
+        tail += f" OFFSET {int(q.offset)}";
+    }
+    out.sql = (
+        f"SELECT n{n}.id, e{n}.id, f0.id, n{n}.arch_type, {seq_col}, e{n}.arch_type "
+        f"FROM unnest(CAST(:origin AS uuid[])) WITH ORDINALITY AS f0(id, ord) "
+        f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+        + ' '.join(joins)
+        + ' ORDER BY f0.ord, '
+        + ', '.join(order)
+        + tail
+    );
+    out.params = params;
+    return out;
+}
+
+impl _ident_ok(name: str) -> bool {
     if not name {
         return False;
     }
@@ -11,12 +301,12 @@ def _ident_ok(name: str) -> bool {
 }
 
 
-def _scalar(v: any) -> any {
+impl _scalar(v: any) -> any {
     return str(v) if isinstance(v, UUID) else v;
 }
 
 
-def _pushable_value(v: any) -> bool {
+impl _pushable_value(v: any) -> bool {
     if isinstance(v, (str, int, float, bool, UUID)) or v is None {
         return True;
     }
@@ -32,14 +322,14 @@ def _pushable_value(v: any) -> bool {
 }
 
 
-def _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str {
+impl _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str {
     key = f"{pfx}t";
     params[key] = names;
     return f"{alias}.arch_type = ANY(CAST(:{key} AS text[]))";
 }
 
 
-def _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str] {
+impl _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str] {
     if tname not in cache {
         names = list(store.subtype_names(tname));
         if tname not in names {
@@ -51,7 +341,7 @@ def _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[s
 }
 
 
-def _sql_type_of(v: any) -> str {
+impl _sql_type_of(v: any) -> str {
     if isinstance(v, bool) {
         return 'boolean';
     }
@@ -65,7 +355,7 @@ def _sql_type_of(v: any) -> str {
 }
 
 
-def _sanitize_ident(name: str) -> str {
+impl _sanitize_ident(name: str) -> str {
     out = '';
     for ch in name.lower() {
         out += ch if (ch.isalnum() or ch == '_') else '_';
@@ -74,7 +364,7 @@ def _sanitize_ident(name: str) -> str {
 }
 
 
-def _promoted_col(
+impl _promoted_col(
     alias: str, arch_names: list[str], field: str, promotions: (dict[str, any] | None)
 ) -> (str | None) {
     if not promotions {
@@ -91,7 +381,7 @@ def _promoted_col(
 }
 
 
-def _field_expr(
+impl _field_expr(
     alias: str, field: str, arch_names: list[str], promotions: (dict[str, any] | None)
 ) -> str {
     col = _promoted_col(alias, arch_names, field, promotions);
@@ -99,7 +389,7 @@ def _field_expr(
 }
 
 
-def _row_cond(
+impl _row_cond(
     alias: str,
     p: QPred,
     params: dict[str, any],
@@ -131,7 +421,7 @@ def _row_cond(
 }
 
 
-def _pred_cond(
+impl _pred_cond(
     alias: str,
     p: QPred,
     params: dict[str, any],
@@ -185,39 +475,102 @@ def _pred_cond(
 }
 
 
-def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
+impl _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
     mu = f"{pfx}mu";
     mt = f"{pfx}mt";
     params[mu] = root_id;
     params[mt] = root_id;
+    own_all = f"COALESCE(({alias}.props->'access'->>'all')::int, -1)";
     return (
         f"({alias}.root_id = CAST(:{mu} AS uuid)"
-        f" OR ({alias}.props->'access'->>'all')::int > -1"
-        f" OR ({alias}.props->'access'->'roots'->'anchors')"
-        f" ? CAST(:{mt} AS text)"
+        f" OR COALESCE("
+        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" (SELECT COALESCE("
+        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" GREATEST({own_all}, COALESCE((ro.props->'access'->>'all')::int, -1))"
+        f") FROM anchors ro WHERE ro.id = {alias}.root_id),"
+        f" {own_all}"
+        f") > -1"
         f" OR EXISTS ("
         f"SELECT 1 FROM anchors ge"
         f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
-        f" AND ({alias}.props->'access'->'groups'->'anchors')"
-        f" ? CAST(ge.dst AS text)"
+        f" AND ({alias}.props->'access'->'groups'->'anchors'->>CAST(ge.dst AS text))::int"
+        f" > -1"
         f")"
-        f" OR (EXISTS ("
-        f"SELECT 1 FROM anchors ro"
-        f" WHERE ro.id = {alias}.root_id"
-        f" AND COALESCE("
-        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" (ro.props->'access'->>'all')::int"
-        f") > -1"
-        f") AND COALESCE("
-        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" 0"
-        f") > -1)"
         f")"
     );
 }
 
 
-def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]] {
+impl _last_mode(last: bool, count_only: bool, residual_only: bool) -> str {
+    if not last {
+        return 'either';
+    }
+    if residual_only {
+        return 'residual';
+    }
+    return 'pushed' if count_only else 'either';
+}
+
+
+impl _gated_cond(
+    alias: str,
+    root_id: str,
+    trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str {
+    if trusted is None {
+        return 'FALSE'
+            if mode == 'residual'
+            else _acl_cond(alias, root_id, params, pfx);
+    }
+    known = _type_cond(alias, trusted, params, f"{pfx}r");
+    if mode == 'residual' {
+        return f"NOT {known}";
+    }
+    acl = _acl_cond(alias, root_id, params, pfx);
+    if mode == 'pushed' {
+        return f"({acl} AND {known})";
+    }
+    return f"({acl} OR NOT {known})";
+}
+
+
+impl _gated_pair(
+    node_alias: str,
+    edge_alias: str,
+    root_id: str,
+    node_trusted: (list[str] | None),
+    edge_trusted: (list[str] | None),
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str {
+    side = 'either' if mode == 'residual' else mode;
+    node_cond = _gated_cond(node_alias, root_id, node_trusted, params, pfx + 'a', side);
+    edge_cond = _gated_cond(edge_alias, root_id, edge_trusted, params, pfx + 'b', side);
+    if mode != 'residual' {
+        return f"({node_cond} AND {edge_cond})";
+    }
+    unknown: list[str] = [];
+    if node_trusted is not None {
+        unknown.append(
+            f"NOT {_type_cond(node_alias, node_trusted, params, pfx + 'x')}"
+        );
+    }
+    if edge_trusted is not None {
+        unknown.append(
+            f"NOT {_type_cond(edge_alias, edge_trusted, params, pfx + 'y')}"
+        );
+    }
+    either = ' OR '.join(unknown) or 'FALSE';
+    return f"({node_cond} AND {edge_cond} AND ({either}))";
+}
+
+
+impl _edge_branches(fid: str, dir: int) -> list[tuple[str, str]] {
     if dir == 1 {
         return [
             (f"e.dst = {fid}", 'e.src'),
@@ -237,152 +590,28 @@ def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]] {
 }
 
 
-def _edge_join(alias: str, fid: str, dir: int, econds: list[str]) -> str {
+impl _edge_join(
+    alias: str, fid: str, dir: int, econds: list[str], reach: list[str]
+) -> str {
     arms: list[str] = [];
     for (cond, other) in _edge_branches(fid, dir) {
         if fid == 'f0.id' {
             end = 'e.src' if other == 'e.dst' else 'e.dst';
             cond += f" AND {end} = ANY(CAST(:origin AS uuid[]))";
         }
-        where = ' AND '.join(["e.kind = 'EdgeAnchor'", cond] + econds);
+        col = 'e.dst_type' if other == 'e.dst' else 'e.src_type';
+        typed = [f"{col} = ANY(CAST(:{key} AS text[]))" for key in reach];
+        where = ' AND '.join(["e.kind = 'EdgeAnchor'", cond] + econds + typed);
         arms.append(f"SELECT e.*, {other} AS other FROM anchors e WHERE {where}");
     }
     return f"JOIN LATERAL ({' UNION ALL '.join(arms)}) {alias} ON TRUE";
 }
 
 
-def _nd_types(hop: QHop) -> list[type] {
+impl _nd_types(hop: QHop) -> list[type] {
     nd = hop.nd;
     if nd is None {
         return [];
     }
     return list(nd) if isinstance(nd, tuple) else [nd];
-}
-
-
-impl compile_query(
-    q: GraphQuery,
-    upto: int,
-    store: Store,
-    promotions: (dict[str, any] | None) = None,
-    count_only: bool = False,
-    acl_root: (str | None) = None
-) -> CompiledQuery {
-    out = CompiledQuery();
-    params: dict[str, any] = {};
-    types: dict[str, list[str]] = {};
-    params['origin'] = [];
-    joins: list[str] = [];
-    order: list[str] = [];
-    fid = 'f0.id';
-    n = 0;
-    node_names: list[str] = [];
-    edge_names: list[str] = [];
-    for (i, hop) in enumerate(q.hops[:upto]) {
-        n = i + 1;
-        e = f"e{n}";
-        nd_alias = f"n{n}";
-        pfx_e = f"h{n}e";
-        econds: list[str] = [];
-        if hop.`edge is not None {
-            import from jaclang.data.type_identity { storage_type }
-            names = _type_names(storage_type(hop.`edge), store, types);
-            econds.append(_type_cond('e', names, params, pfx_e));
-        }
-        edge_names = (
-            [str(getattr(hop.`edge, '__name__', ''))] if hop.`edge is not None else []
-        );
-        for (j, p) in enumerate(hop.epreds) {
-            cond = _pred_cond('e', p, params, f"{pfx_e}p{j}", edge_names, promotions);
-            if cond is None {
-                out.residual.setdefault(i, []).append(p);
-            } else {
-                econds.append(cond);
-            }
-        }
-        joins.append(_edge_join(e, fid, hop.dir, econds));
-        nconds = [f"{nd_alias}.id = {e}.other", f"{nd_alias}.kind = 'NodeAnchor'"];
-        for (k, nt) in enumerate(_nd_types(hop)) {
-            import from jaclang.data.type_identity { storage_type }
-            tname = storage_type(nt);
-            if tname {
-                names = _type_names(tname, store, types);
-                nconds.append(_type_cond(nd_alias, names, params, f"h{n}n{k}"));
-            }
-        }
-        node_names = [str(getattr(nt, '__name__', '')) for nt in _nd_types(hop)];
-        for (j, p) in enumerate(hop.preds) {
-            cond = _pred_cond(
-                nd_alias, p, params, f"h{n}np{j}", node_names, promotions
-            );
-            if cond is None {
-                out.residual.setdefault(i, []).append(p);
-            } else {
-                nconds.append(cond);
-            }
-        }
-        if acl_root is not None {
-            nconds.append(_acl_cond(nd_alias, acl_root, params, f"h{n}a"));
-        }
-        want = hop.only_ids();
-        if want is not None {
-            key = f"h{n}only";
-            params[key] = [str(x) for x in want];
-            nconds.append(f"{nd_alias}.id = ANY(CAST(:{key} AS uuid[]))");
-        }
-        joins.append(f"JOIN anchors {nd_alias} ON {' AND '.join(nconds)}");
-        order.append(f"{e}.seq");
-        order.append(f"{e}.id");
-        fid = f"{nd_alias}.id";
-    }
-    if n == 0 {
-        out.sql = (
-            'SELECT count(DISTINCT f0.id) FROM '
-            'unnest(CAST(:origin AS uuid[])) AS f0(id)'
-        )
-            if count_only
-            else (
-                'SELECT f0.id, NULL FROM ' 'unnest(CAST(:origin AS uuid[])) AS f0(id)'
-            );
-        out.params = params;
-        return out;
-    }
-    if count_only {
-        counted = f"e{n}.id" if q.edges_only else f"n{n}.id";
-        out.sql = (
-            f"SELECT count(DISTINCT {counted}) "
-            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
-            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
-            + ' '.join(joins)
-        );
-        out.params = params;
-        return out;
-    }
-    if q.order {
-        order = [];
-        for spec in q.order {
-            alias = f"e{n}" if spec.on_edge else f"n{n}";
-            names = edge_names if spec.on_edge else node_names;
-            col = _field_expr(alias, spec.field, names, promotions);
-            order.append(f"{col} {'DESC' if spec.desc else 'ASC'}");
-        }
-    }
-    tail = '';
-    if q.limit is not None {
-        tail += f" LIMIT {int(q.limit)}";
-    }
-    if q.offset {
-        tail += f" OFFSET {int(q.offset)}";
-    }
-    out.sql = (
-        f"SELECT n{n}.id, e{n}.id "
-        f"FROM unnest(CAST(:origin AS uuid[])) WITH ORDINALITY AS f0(id, ord) "
-        f"LEFT JOIN anchors s1 ON s1.id = f0.id "
-        + ' '.join(joins)
-        + ' ORDER BY f0.ord, '
-        + ', '.join(order)
-        + tail
-    );
-    out.params = params;
-    return out;
 }

@@ -3,7 +3,6 @@ import html;
 import json;
 import re;
 import from pathlib { Path }
-import type from jaclang.server.server { ModuleIntrospector }
 
 obj HeaderBuilder {
     has meta_data: dict[str, any],

@@ -25,7 +25,7 @@ zig build fetch-llvm   # one-time: range-fetch ONLY the ~84 MB the shim needs
                        # .llvm-build/ -- no xz, no clang/tools. Pure Zig.
 zig build              # compiles the shim, statically links LLVM, packs it into
                        # the jac binary, AND drops it in-tree (gitignored) for the
-                       # editable dev loop. No manual step, no JAC_LLVM_SHIM.
+                       # editable dev loop, with its artifact record.
 ```
 
 The shim is built with the **system C++ compiler** to match the official LLVM
@@ -38,12 +38,16 @@ libstdc++, not libc++ as LLVM 20 was -- a `link_libcpp` shim leaves LLVM's
 `LLVMPY_*` symbols) and places it at
 `jaclang/compiler/backends/native/llvm/libjacllvm.so` (gitignored) so the editable
 dev loop -- which runs jaclang from source, not the binary's payload -- finds
-it. `JAC_LLVM_SHIM=/path/to/libjacllvm.so` overrides the lookup if needed.
+it. Beside it, `libjacllvm.so.artifact.json` records the inputs it was built
+from and its target: the artifact router loads a placed shim only when those
+inputs are the checkout's current ones, and `zig build` reuses one instead of
+relinking LLVM. `jac native status llvm-shim` shows which shim a process uses.
 
 The shim rides in the payload trailer exactly like the bundled libpython:
 packed into the single `jac` binary, extracted at first run, and ctypes-loaded
-by the Jac binding (resolution order: `JAC_LLVM_SHIM`, the payload's
-`libjacllvm.so`, then the llvmlite wheel as a fallback).
+by the Jac binding through the artifact router (`llvm-shim`): the sealed
+image's, then the checkout's, then the kit's; without a current one, native
+code generation is unavailable and says which `jac native build` fixes it.
 
 **Notes / size follow-ups:**
 
@@ -51,7 +55,7 @@ by the Jac binding (resolution order: `JAC_LLVM_SHIM`, the payload's
   the host -- see `wasm_build.jac`), so it links the full archive set (~129 MB
   on Linux). A host-only pruned build is not viable while non-host targets are
   in use.
-- `--skip-precompile` (mkpayload) skips the JIR precompile for fast link
-  validation; shipping builds keep it for fast first-run startup.
+- `zig build -Ddev` links the compiler from the checkout and skips the JIR
+  precompile; shipping builds keep it for fast first-run startup.
 
 See issue #6925 for the llvmlite decoupling history.

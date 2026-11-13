@@ -1,6 +1,3 @@
-import from jaclang.runtime.runtime { JacRuntime }
-import from core.github { RepoMeta }
-import from core.leaderboard.scoring { RepoAnalysis, RepoFeatures }
 import os;
 import from unittest.mock { patch }
 import from tempfile { mkdtemp }
@@ -8,82 +5,24 @@ import from jaclang.testing.testing { JacTestClient, TestResponse }
 
 glob SERVER = os.path.join(os.path.dirname(__file__), "social_graph.jac");
 
-test "Genius traverses source and author nodes and respects hourly cooldown" {
-    sample = GuideSample(
-        title="osp",
-        body="Walkers visit nodes.",
-        url="https://jaclang.org/docs/latest/osp"
-    );
-    with patch(jacyac_genius.__module__ + ".random_guide", return_value=sample), patch(
-        jacyac_genius.__module__ + ".optional_fact",
-        return_value="Walkers explore graphs!\n" + sample.url
-    ) as generate {
-        root spawn jacyac_genius();
-        root spawn jacyac_genius();
-        memories = [root-->[?:GeniusMemory]];
-        assert len(memories) == 1;
-        assert memories[0].previous_guide == "osp";
-        topics = [memories[0]->:Studies:->[?:GeniusTopic]];
-        assert len(topics) == 1;
-        authors = [topics[0]->:PublishesAs:->[?:Profile]];
-        assert len(authors) == 1;
-        assert authors[0].username == "jacyac_genius";
-        assert len([authors[0]->:Post:->[?:Tweet]]) == 1;
-        assert generate.call_count == 1;
-        memories[0].last_posted = "";
-        root spawn jacyac_genius();
-        assert len([authors[0]->:Post:->[?:Tweet]]) == 2;
-        assert len([memories[0]->:Studies:->[?:GeniusTopic]]) == 1;
-    }
+test "ninjaclaw mentions are found and stripped" {
+    assert mentions_ninjaclaw("hey @ninjaclaw how do walkers work?");
+    assert mentions_ninjaclaw("@NinjaClaw help");
+    assert not mentions_ninjaclaw("email me at a@ninjaclaw.dev");
+    assert not mentions_ninjaclaw("@ninjaclawfan hi");
+    assert strip_mention("hey @ninjaclaw  how do walkers work?")
+        == "hey how do walkers work?";
 }
 
-test "Genius skips failed AI without creating a profile or post" {
-    sample = GuideSample(
-        title="osp",
-        body="Walkers visit nodes.",
-        url="https://jaclang.org/docs/latest/osp"
-    );
-    with patch(jacyac_genius.__module__ + ".random_guide", return_value=sample), patch(
-        jacyac_genius.__module__ + ".optional_fact", return_value=""
-    ) {
-        root spawn jacyac_genius();
-        assert not [root-->[?:Profile, username=="jacyac_genius"]];
-        memories = [root-->[?:GeniusMemory]];
-        assert memories[0].last_posted == "";
-    }
-}
+def make_client -> JacTestClient;
 
-def make_client -> JacTestClient {
-    return JacTestClient.from_file(SERVER, base_path=mkdtemp());
-}
+def login_as(client: JacTestClient, username: str, password: str);
 
-def close_client(client: JacTestClient) {
-    client.close();
-    JacRuntime.set_shared_root_resolver(None);
-}
+def reports_of(response: TestResponse) -> list[any];
 
-def login_as(client: JacTestClient, username: str, password: str) {
-    client.register_user(username, password);
-    client.login(username, password);
-}
+def first_report(response: TestResponse) -> any;
 
-def reports_of(response: TestResponse) -> list[any] {
-    data = response.data;
-    if data and "reports" in data {
-        return list(data["reports"]);
-    }
-    return [];
-}
-
-def first_report(response: TestResponse) -> any {
-    reports = reports_of(response);
-    return reports[0] if reports else None;
-}
-
-def jid_of(reported: any) -> str {
-    assert "_jac_id" in reported , f"expected a reported node, got {reported}";
-    return str(reported["_jac_id"]);
-}
+def jid_of(reported: any) -> str;
 
 test "register and login issues a token" {
     client = make_client();
@@ -99,7 +38,7 @@ test "register and login issues a token" {
     bad = client.login("alice", "wrongpass");
     assert not bad.ok;
 
-    close_client(client);
+    client.close();
 }
 
 test "profile setup and retrieval" {
@@ -122,7 +61,7 @@ test "profile setup and retrieval" {
     assert updated["profile"]["username"] == "alice";
     assert updated["profile"]["bio"] == "updated";
 
-    close_client(client);
+    client.close();
 }
 
 test "create tweet shows up in the feed" {
@@ -141,7 +80,7 @@ test "create tweet shows up in the feed" {
     assert len(list(feed)) == 1;
     assert feed[0]["content"] == "hello world";
 
-    close_client(client);
+    client.close();
 }
 
 test "like and comment on a tweet" {
@@ -171,7 +110,7 @@ test "like and comment on a tweet" {
         assert commented["success"] == True;
         profile = first_report(client.post("/walker/get_profile", json={}));
         assert len(list(profile["tweets"][0]["comments"])) == 1;
-        close_client(client);
+        client.close();
     }
 }
 
@@ -191,7 +130,7 @@ test "delete a tweet removes it from the feed" {
     feed = first_report(client.post("/walker/load_feed", json={}));
     assert len(list(feed)) == 0;
 
-    close_client(client);
+    client.close();
 }
 
 test "search filters the feed by content" {
@@ -206,7 +145,7 @@ test "search filters the feed by content" {
         );
         assert len(list(hits)) == 1;
         assert hits[0]["content"] == "jac is great";
-        close_client(client);
+        client.close();
     }
 }
 
@@ -222,7 +161,7 @@ test "trending surfaces hashtags" {
         tags = {row["tag"]: row["count"] for row in trending};
         assert tags["#jac"] == 2;
         assert tags["#osp"] == 1;
-        close_client(client);
+        client.close();
     }
 }
 
@@ -251,7 +190,7 @@ test "follow and unfollow another user" {
     after_unfollow = first_report(client.post("/walker/get_profile", json={}));
     assert len(list(after_unfollow["following"])) == 0;
 
-    close_client(client);
+    client.close();
 }
 
 test "feed includes tweets from followed users" {
@@ -277,7 +216,7 @@ test "feed includes tweets from followed users" {
     assert "alice's update" in contents;
     assert "bob's update" in contents;
 
-    close_client(client);
+    client.close();
 }
 
 test "directory lists every registered profile" {
@@ -295,7 +234,7 @@ test "directory lists every registered profile" {
     assert "alice" in names;
     assert "bob" in names;
 
-    close_client(client);
+    client.close();
 }
 
 test "channel create, join, post and detail" {
@@ -337,7 +276,7 @@ test "channel create, join, post and detail" {
     assert len(list(detail["posts"])) == 1;
     assert detail["posts"][0]["content"] == "welcome to the channel";
 
-    close_client(client);
+    client.close();
 }
 
 test "users only see their own profile via get_profile" {
@@ -356,15 +295,10 @@ test "users only see their own profile via get_profile" {
     assert jid_of(alice["profile"]) != jid_of(bob["profile"]);
     assert bob["profile"]["username"] == "bob";
 
-    close_client(client);
+    client.close();
 }
 
 glob PNG_1PX: str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-
-def make_offline_client -> JacTestClient {
-    os.environ["JAC_SV_SCORING_SERVICE_URL"] = "http://127.0.0.1:9";
-    return make_client();
-}
 
 test "update_profile validates and stores standard fields" {
     client = make_client();
@@ -408,7 +342,7 @@ test "update_profile validates and stores standard fields" {
     assert cleared["bundle"]["profile"]["location"] == "";
     assert cleared["bundle"]["profile"]["github"] == "";
 
-    close_client(client);
+    client.close();
 }
 
 test "avatar upload round-trips and is visible to other users" {
@@ -458,82 +392,7 @@ test "avatar upload round-trips and is visible to other users" {
     me_again = first_report(client.post("/walker/get_profile", json={}));
     assert me_again["profile"]["avatar_v"] == "";
 
-    close_client(client);
-}
-
-test "projects must be github repos and stay associated with their owner" {
-    client = make_offline_client();
-    client.register_user("alice", "secret123");
-    client.register_user("bob", "secret123");
-    client.login("alice", "secret123");
-    client.post("/walker/setup_profile", json={"username": "alice"});
-
-    bad = first_report(
-        client.post("/walker/add_project", json={"url": "https://gitlab.com/a/b"})
-    );
-    assert bad["ok"] == False;
-    assert bad["error"] == "bad_url";
-
-    added = first_report(
-        client.post("/walker/add_project", json={"url": "github.com/jaseci-labs/jac"})
-    );
-    assert added["ok"] == False , added;
-    assert added["project"] is not None , added;
-    project = added["project"];
-    assert project["full"] == "jaseci-labs/jac";
-    assert project["owner_username"] == "alice";
-    assert project["status"] == "error";
-    assert project["error"] in ["internal", "fetch_failed"];
-    project_id = jid_of(project);
-
-    dup = first_report(
-        client.post(
-            "/walker/add_project",
-            json={"url": "https://github.com/jaseci-labs/jac.git"}
-        )
-    );
-    assert dup["error"] == "duplicate";
-
-    mine = first_report(client.post("/walker/get_profile", json={}));
-    assert [p["full"] for p in mine["projects"]] == ["jaseci-labs/jac"];
-
-    client.login("bob", "secret123");
-    client.post("/walker/setup_profile", json={"username": "bob"});
-    response = client.post("/walker/get_all_projects", json={});
-    assert response.ok , response.data;
-    explore = first_report(response);
-    assert [p["full"] for p in explore] == ["jaseci-labs/jac"];
-    assert explore[0]["owner_username"] == "alice";
-
-    alice_view = first_report(
-        client.post("/walker/get_user_profile", json={"username": "ALICE"})
-    );
-    assert alice_view["ok"] == True;
-    assert alice_view["bundle"]["profile"]["username"] == "alice";
-    assert len(list(alice_view["bundle"]["projects"])) == 1;
-
-    missing = first_report(
-        client.post("/walker/get_user_profile", json={"username": "carol"})
-    );
-    assert missing["ok"] == False;
-
-    forbidden = first_report(
-        client.post("/walker/remove_project", json={"project_id": project_id})
-    );
-    assert forbidden["ok"] == False;
-    assert forbidden["error"] == "forbidden";
-
-    client.login("alice", "secret123");
-    removed = first_report(
-        client.post("/walker/remove_project", json={"project_id": project_id})
-    );
-    assert removed["ok"] == True;
-    after = first_report(client.post("/walker/get_profile", json={}));
-    assert after["projects"] == [];
-    explore_after = first_report(client.post("/walker/get_all_projects", json={}));
-    assert explore_after == [];
-
-    close_client(client);
+    client.close();
 }
 
 test "profile editor can clear a bio without losing other fields" {
@@ -553,7 +412,7 @@ test "profile editor can clear a bio without losing other fields" {
     assert profile["bio"] == "";
     assert profile["display_name"] == "Bio Editor";
     assert profile["location"] == "New York";
-    close_client(client);
+    client.close();
 }
 
 test "post validation is enforced for non-UI callers" {
@@ -565,56 +424,7 @@ test "post validation is enforced for non-UI callers" {
     assert first_report(client.post("/walker/load_feed", json={})) == [];
     client.post("/walker/create_tweet", json={"content": "x" * 280});
     assert len(first_report(client.post("/walker/load_feed", json={}))) == 1;
-    close_client(client);
-}
-
-test "typed scoring payload updates project fields and preserves failure status" {
-    project = Project(owner="old", name="repo");
-    payload = ScoredPayload(
-        ok=True,
-        sha="abc123",
-        meta=RepoMeta(owner="jac", name="example"),
-        an=RepoAnalysis(
-            jac_files=2,
-            jac_bytes=300,
-            other_code_bytes=100,
-            features=RepoFeatures(osp=True)
-        ),
-        breakdown=ScoreBreakdown(total=42, belt="green")
-    );
-    apply_score(project, payload);
-    assert project.full == "jac/example";
-    assert project.html_url == "https://github.com/jac/example";
-    assert project.jac_pct == 75;
-    assert project.features == ["osp"];
-    assert project.score == 42;
-    assert project.scored_sha == "abc123";
-    assert project.status == "scored";
-    apply_score(project, ScoredPayload(ok=False, error="fetch_failed"));
-    assert project.status == "error";
-    assert project.error == "fetch_failed";
-}
-
-test "Legacy Ninja Scores migrate once into an archive profile" {
-    hub = root ++> BoardHub();
-    hub +>:OnBoard():+> RepoEntry(
-        full="jac/legacy",
-        owner="jac",
-        name="legacy",
-        score=42,
-        breakdown=ScoreBreakdown(total=42, belt="green"),
-        belt="green"
-    );
-    import_legacy();
-    import_legacy();
-    archives = [root-->[?:Profile, username=="ninja_scores_archive"]];
-    assert len(archives) == 1;
-    projects = archives[0].projects();
-    assert len(projects) == 1;
-    assert projects[0].full == "jac/legacy";
-    assert projects[0].legacy_import and not projects[0].owner_verified;
-    assert projects[0].owner_username == "ninja_scores_archive";
-    assert projects[0].breakdown.total == 42;
+    client.close();
 }
 
 test "posts comments and channel posts use the same account quota before mutation" {
@@ -657,4 +467,54 @@ test "daily quota denies after burst check and database failures deny posting" {
     with patch(posting_limit.__module__ + '.consume_limit', return_value=-1) {
         assert posting_limit('account') is not None;
     }
+}
+
+impl make_client -> JacTestClient {
+    return JacTestClient.from_file(SERVER, base_path=mkdtemp());
+}
+
+impl login_as(client: JacTestClient, username: str, password: str) {
+    client.register_user(username, password);
+    client.login(username, password);
+}
+
+impl reports_of(response: TestResponse) -> list[any] {
+    data = response.data;
+    if data and "reports" in data {
+        return list(data["reports"]);
+    }
+    return [];
+}
+
+impl first_report(response: TestResponse) -> any {
+    reports = reports_of(response);
+    return reports[0] if reports else None;
+}
+
+impl jid_of(reported: any) -> str {
+    assert "_jac_id" in reported , f"expected a reported node, got {reported}";
+    return str(reported["_jac_id"]);
+}
+
+test "the desk never asks an old question twice, however many posts follow" {
+    desk = NinjaclawDesk(started_at="2026-01-01T00:00:00Z");
+    help = Channel(name="help");
+    tweets = {
+        "t1": Tweet(
+            content="@ninjaclaw how do walkers work?",
+            author_username="ann",
+            created_at="2026-01-01T00:01:00Z"
+        )
+    };
+    assert len(desk_asks(desk, help, tweets)) == 1;
+    assert desk_asks(desk, help, tweets) == [];
+    tweets["t2"] = Tweet(
+        content="@ninjaclaw what is a node?",
+        author_username="bob",
+        created_at="2026-01-01T01:00:00Z"
+    );
+    later = desk_asks(desk, help, tweets);
+    assert [a.question for a in later] == ["what is a node?"];
+    assert "t1" not in desk.recent_keys , "keys older than the scan window are dropped";
+    assert desk_asks(desk, help, tweets) == [] , "an aged-out key must not become new again";
 }

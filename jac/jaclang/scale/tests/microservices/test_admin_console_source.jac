@@ -10,12 +10,6 @@ the app serving 503 under a rollout that does not keep the old pod.
 import os;
 import from pathlib { Path }
 import from tempfile { mkdtemp }
-import from jaclang.scale.injector.binary {
-    admin_dist_source,
-    resolve_console_version,
-    resolve_deploy_version,
-    resolve_pinned_version
-}
 
 
 def _project(toml_body: str) -> str {

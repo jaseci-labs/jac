@@ -573,7 +573,7 @@ verbose = false                   # Log LLM calls to stderr
 temperature = 0.7                 # Optional; omit to use the provider default (0.0-2.0)
 max_tokens = 0                    # Max response tokens (0 = no limit)
 max_output_retries = 3            # Retries for structured output (0 = disabled)
-timeout = 600.0                   # Non-streaming request timeout, seconds (0 = no limit)
+timeout = 600.0                   # Deadline for a whole by llm() call, seconds (0 = no limit)
 
 [byllm.litellm]
 local_cost_map = true             # Use local cost map
@@ -617,7 +617,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 | `temperature` | float | *unset* | Creativity/randomness (0.0-2.0, lower is more deterministic). Omitted from the request when unset, so the provider applies its own default |
 | `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
 | `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
-| `timeout` | float | `600.0` | Seconds one non-streaming request may take before raising `LLMTimeout` (`0` = no limit). See [Request Timeout](#request-timeout) |
+| `timeout` | float | `600.0` | Seconds a whole `by llm()` call may take, retries, tool loop and streaming included, before raising `LLMTimeout` (`0` = no limit). See [Request Timeout](#request-timeout) |
 
 **`[byllm.litellm]` options:**
 
@@ -897,13 +897,24 @@ The original rejected text remains available on `raw_output` (see [`OutputConver
 
 ## Request Timeout
 
-`[byllm.call_params] timeout` limits one non-streaming request, in seconds. Override it with `Model(timeout=...)` or `by llm(timeout=...)`; `0` removes the limit. When it expires the call raises `LLMTimeout`, which byLLM retries like other transient errors (`[byllm.streaming] num_retries`).
+`[byllm.call_params] timeout` is a deadline for a whole `by llm()` call, in seconds. Override it with `Model(timeout=...)` or `by llm(timeout=...)`; `0` removes it. The clock starts when the call does and covers everything the call does: every request, every retry and its backoff, every turn of a tool loop including the time its tools take, typed-output retries, and a streamed answer up to its last chunk. When the deadline runs out the call raises `LLMTimeout`.
+
+| Where | What the deadline does |
+|-------|------------------------|
+| before each request | sends it with what is left as its timeout; with nothing left, raises `LLMTimeout` |
+| a transient failure | retries (`[byllm.streaming] num_retries`) only if the backoff fits in what is left |
+| a streamed answer | caps the `[byllm.streaming]` connect, read, write and pool timeouts at what is left, checks the deadline on every chunk, and closes the provider's stream however the stream ends |
+| the provider client | LiteLLM and the OpenAI client (`proxy` mode) send one request per attempt; byLLM owns every retry |
+
+A tool that is already running is not interrupted: the call ends before its next request. A request in flight is bounded by silence: it times out once the provider sends nothing for the time that was left when it was sent, so an endpoint that keeps sending bytes slowly can hold it past the deadline. A compaction summary, or a `by llm()` call made inside a tool, runs with its own deadline; the time it takes still counts against the calling `by llm()` call.
 
 | Path | Setting | Default |
 |------|---------|---------|
-| non-streaming | `[byllm.call_params] timeout` | `600.0` |
-| streaming | `[byllm.streaming] read_timeout` | `90.0` between chunks |
-| `ModelPool` | `[byllm.fallback] timeout` | `60.0` |
+| a `by llm()` call | `[byllm.call_params] timeout` | `600.0` for the whole call |
+| a stalled stream | `[byllm.streaming] read_timeout` | `90.0` between chunks, capped by the call's deadline |
+| `ModelPool` | `[byllm.fallback] timeout` | `60.0` per deployment; a pool sets no call deadline, since its Router owns retries and fallbacks |
+
+An agent whose tool loop legitimately runs longer than ten minutes needs a larger `timeout`, or `0`.
 
 ---
 
@@ -916,14 +927,14 @@ Parameters passed to `by llm()` at call time:
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Omitted when unset, so the provider default applies |
 | `max_tokens` | int | Maximum tokens in response |
 | `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
-| `timeout` | float | Seconds one non-streaming request may take before raising `LLMTimeout` (`0` = no limit). Default: `600.0` |
+| `timeout` | float | Seconds the whole call may take, retries, tool loop and streaming included, before raising `LLMTimeout` (`0` = no limit). Default: `600.0`. See [Request Timeout](#request-timeout) |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 | `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
-| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
+| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer, with a typed answer saved as its JSON) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
 | `parallelize` | bool | Enable parallel tool execution for this call. Overrides global `[byllm.parallel]` config. Default: inherits global setting |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
 | `compaction_enabled` | bool | Enable/disable auto-compaction for this call. Overrides `[byllm.compaction] enabled`. Default: `True` |
@@ -1441,6 +1452,32 @@ def my_agent(query: str) -> str by llm(
 );
 ```
 
+### Observing compactions
+
+Only an **applied** compaction is reported: byLLM keeps the old history when the result is not smaller, and that discarded compaction only logs a warning. A `logging=True` stream or a `stream_handler` gets a `compaction` event as soon as one is applied; an emergency one is reported before the retry, so it shows even when the retry fails:
+
+```jac
+with entry {
+    for event in my_agent("...") {
+        if event.event_type == "compaction" {
+            print(event.data["reason"]);           # "threshold" or "overflow"
+            print(event.data["by"]);               # "hook" or "builtin"
+            print(event.data["tokens_before"], event.data["tokens_after"]);
+        }
+    }
+}
+```
+
+| Field | Description |
+|---|---|
+| `reason` | `"threshold"` when `prompt_tokens / ctx_window` crossed `threshold_ratio`, `"overflow"` when the provider rejected the request as too long |
+| `by` | `"hook"` when your `on_compaction` produced the new history, `"builtin"` for byLLM's own compactor (which may summarise, or only clip long tool results when there is too little to summarise) |
+| `messages_before`, `messages_after` | Message count before and after, system prompt included |
+| `tokens_before`, `tokens_after` | byLLM's own size estimate (about four characters per token), the figure the applied-or-discarded decision compares. These are not provider token counts |
+| `iteration` | The ReAct iteration whose reply triggered the compaction |
+
+A compaction on the reply that ends the turn arrives just before `steps_done`, or after the answer when that reply streamed it. The built-in summariser's own call is billed as a `compaction` call in `usage_step` and `usage`. Calls that do not stream list their applied compactions in the `compactions` field of the [telemetry record](#telemetry-record-fields), as the same dicts without `iteration`.
+
 ### `CompactionNotEffectiveError`
 
 If the provider rejects a request as too long and compaction cannot reduce the history, or the request is rejected again after a compaction, byLLM raises `CompactionNotEffectiveError` rather than retrying forever. Crossing the threshold without being able to compact only logs a warning. See [Error Handling](#error-handling) for how to catch it.
@@ -1470,7 +1507,7 @@ The function returns a generator that yields raw string tokens as they arrive fr
 
 ### Streaming with Tools
 
-Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is streamed token by token:
+Streaming works with tool calling. The ReAct loop runs as usual, and the **final answer** streams token by token while the model writes it in its `finish_tool` call, without a second request to the model. When the loop is cut short by `max_react_iterations` or `ABORT_WITH_SUMMARY`, there is no answer yet, so byLLM asks for one and streams that:
 
 ```jac
 def get_weather(city: str) -> str {
@@ -1491,6 +1528,8 @@ with entry {
 
 !!! note
     With `stream=True` alone (no `logging`), the user sees nothing during intermediate tool calls -- only the final answer is streamed. For visibility into intermediate steps, add `logging=True`.
+
+    Yielded text cannot be taken back, so if the answer breaks off after part of it was yielded (a dropped connection or `max_tokens`), the call raises instead of starting the answer over. With `logging=True` or a `stream_handler`, byLLM sends a `stream_reset` and retries.
 
 ### Streaming with Logging (`StreamEvent`)
 
@@ -1591,9 +1630,11 @@ delta from a stream that replaced an abandoned one.
 | `tool_call_delta` | A tool's arguments are still being generated (opt in, see below) | `tool` (str), `call_id` (str), `arg_fragment` (str), `index` (int), `iteration` (int) |
 | `tool_call` | LLM decided to call a tool | `tool` (str), `args` (dict), `call_id` (str), `iteration` (int) |
 | `tool_result` | Tool finished executing | `tool` (str), `result` (str, truncated), `call_id` (str), `iteration` (int) |
-| `thought` | LLM produced reasoning text before a tool call | `content` (str), `iteration` (int) |
+| `thought` | Visible text the model wrote before a tool call | `content` (str), `iteration` (int) |
+| `reasoning` | Reasoning text from a model that returns it, merged into pieces of about 200 characters (see [Reasoning](#reasoning)) | `content` (str), `iteration` (int) |
 | `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
 | `chunk` | One token of the final streamed answer | `content` (str) |
+| `compaction` | Auto-compaction replaced the message history (tool-calling invocations only) | See [Observing compactions](#observing-compactions) |
 | `usage_step` | A single LLM call finished (tool-calling invocations only; see [Per-Call Usage](#per-call-usage)) | Same shape as `usage`, scoped to that one call |
 | `usage` | All LLM calls complete (always the last event) | `total` (dict), `by_kind` (dict), `per_call` (list[dict]), `requests` (int) |
 
@@ -1635,7 +1676,7 @@ with entry {
 | `call_kind` | When it happens |
 |---|---|
 | `react_iteration` | A normal turn of the ReAct loop - the calls you actually asked for |
-| `final_answer_restream` | byLLM re-asking the model to reproduce its already-known answer as a stream, once tool calls are done |
+| `final_answer_restream` | byLLM asking the model for a final answer after the loop was cut short by `max_react_iterations` or `ABORT_WITH_SUMMARY` |
 | `recovery` | byLLM re-prompting after the model skipped `finish_tool` on a structured/typed call |
 | `compaction` | The summarisation call that shrinks message history when auto-compaction fires |
 
@@ -1694,9 +1735,34 @@ Cached input tokens are billed at a fraction of the normal rate, so a high hit r
 
 ---
 
+## Reasoning
+
+Some models think before they answer. byLLM keeps whatever reasoning the provider returns on the reply, sends it back on the next call unchanged (so the prompt cache still matches), and streams any reasoning text as `reasoning` events. Models that keep their reasoning hidden (OpenAI, Claude by default) return only an encrypted copy or nothing, so there is no text to show. Each `per_call` usage entry has `reasoning_tokens`, which is already counted inside `completion_tokens`.
+
+Turn thinking on with the provider's own parameter, per call or under `[byllm.call_params]` in `jac.toml`. `reasoning_effort`, `thinking` and `extra_body` are sent only when set:
+
+```jac
+def plan(goal: str) -> str by llm(reasoning_effort="low");
+```
+
+### Recording every call
+
+`register_llm_call_hook(hook)` calls `hook(record)` after each model call of a tool-calling or non-streaming invocation, and `unregister_llm_call_hook(hook)` removes it. A hook that raises is logged, never raised, and it runs on the call's thread, so hand the record to a queue. The record has:
+
+| Field | Contents |
+|---|---|
+| `invocation_id`, `parent_invocation_id`, `caller` | Which `by llm()` call this was, as in agent telemetry |
+| `call_kind` | `react_iteration`, `final_answer_restream`, `recovery` or `compaction` |
+| `new_messages` | What this call sent that earlier calls did not; the first call includes the system prompt as sent and `conversation=` history |
+| `reply` | The full reply as a dict, reasoning included |
+| `usage` | This call's `per_call` usage entry |
+| `after_compaction` | `True` when compaction or a typed-output retry just rebuilt the history; `new_messages` is then the whole rebuilt request |
+
+---
+
 ## Multimodal Inputs
 
-byLLM supports image and video inputs through the `Image` and `Video` types. These can be used as parameters in any `by llm()` function or method.
+byLLM supports image, video and PDF document inputs through the `Image`, `Video` and `Document` types. These can be used as parameters in any `by llm()` function or method.
 
 ### Image Type
 
@@ -1752,6 +1818,23 @@ with entry {
     img_from_pil = Image(pil_img);
 }
 ```
+
+### Several Images
+
+Pass a `list` of media to send every item, in order. A list counts as media only when every element is; an empty list, or one that mixes in plain values, is described in the prompt as text instead.
+
+```jac
+import from jaclang.byllm.lib { Image }
+
+"""Name the main colour of each image."""
+def name_colours(images: list[Image]) -> str by llm();
+
+with entry {
+    print(name_colours([Image("red.png"), Image("blue.png")]));
+}
+```
+
+Lists given through `incl_info` are sent the same way. `Text` is exported next to `Image` for a text block of its own, so a list can mix both: `list[Image | Text]`.
 
 ### Structured Output from Images
 
@@ -1830,6 +1913,30 @@ obj VideoAnalysis {
 """Analyze this video and extract key information."""
 def analyze_video(video: Video) -> VideoAnalysis by llm();
 ```
+
+### Document Type
+
+The `Document` type sends a PDF to the model, from a path or from bytes:
+
+```jac
+import from jaclang.byllm.lib { Document }
+
+"""Summarise the document in two sentences."""
+def summarise(brief: Document) -> str by llm();
+
+with entry {
+    print(summarise(Document("brief.pdf")));
+}
+```
+
+#### Document Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | str, os.PathLike, bytes | required | Path to a PDF, or the PDF's bytes |
+| `filename` | str | the path's file name | Name sent with the file |
+
+Only PDFs are accepted; anything else raises a `ValueError`. Use `Text` for text files such as `.md` or `.csv`. A `Document` returned by a tool reaches the model the way an image does. Page and file size limits are the provider's.
 
 ### Multimodal with Tools
 
@@ -2083,7 +2190,7 @@ ByLLMError (base)
 ├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
-├── LLMTimeout                   - A non-streaming request outlived its timeout
+├── LLMTimeout                   - A by llm() call outlived its timeout
 └── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
 ```
 
@@ -2099,7 +2206,7 @@ All exceptions are importable from `byllm.lib`.
 | `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
-| `LLMTimeout` | A non-streaming request outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
+| `LLMTimeout` | A `by llm()` call outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
 | `CompactionNotEffectiveError` | The provider rejected a request as too long and auto-compaction could not reduce the context, or the request was rejected again after a compaction. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
@@ -2423,6 +2530,7 @@ Each callback receives a dict with these fields:
 | `status` | `str` | `"success"` or `"error"` |
 | `error` | `str \| None` | Error message if status is `"error"` (truncated to 1000 chars) |
 | `tokens` | `dict` | Same shape as the `usage` `StreamEvent` (see [Usage Tracking](#usage-tracking)); covers every invocation shape, streaming or not |
+| `compactions` | `list[dict]` | Compactions applied during the invocation, in order; see [Observing compactions](#observing-compactions). Empty when none |
 
 ### Combining with LiteLLM Per-Call Logging
 

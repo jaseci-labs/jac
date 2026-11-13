@@ -576,32 +576,13 @@ test "dev section parsing" {
     assert as_int.dev.test_jobs == "0";
 }
 
-test "parse build native_closure_cap" {
+test "a retired [build] native_closure_cap leaves the rest of [build] read" {
     config_mod._config = None;
-    cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
-    assert cfg.build.native_closure_cap == 8;
-
-    config_mod._config = None;
-    base = JacConfig.from_toml_str("\n[build]\ndir = \".jac\"\n");
-    assert base.build.native_closure_cap == 256;
-
-    config_mod._config = None;
-    bad = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 0\n");
-    assert bad.build.native_closure_cap == 256 , "invalid cap falls back to default";
-}
-
-test "closure cap override resolves through effective_native_closure_cap" {
-    import from jaclang.compiler.frontend.codeinfo {
-        set_native_closure_cap,
-        effective_native_closure_cap
-    }
-    set_native_closure_cap(3);
-    try {
-        assert effective_native_closure_cap() == 3;
-    } finally {
-        set_native_closure_cap(0);
-    }
-    assert effective_native_closure_cap() == 256;
+    cfg = JacConfig.from_toml_str(
+        "\n[build]\ndir = \".out\"\nnative_closure_cap = 8\n"
+    );
+    assert cfg.build.dir == ".out";
+    assert not hasattr(cfg.build, "native_closure_cap");
 }
 
 test "parse full config" {
@@ -658,12 +639,23 @@ test "parse full config" {
 # TestJacConfigProfiles
 # ===========================================================================
 test "apply profile" {
+    import from jaclang.project.config { ServeConfigError }
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"profile-test\"\n\n[serve]\nport = 8000\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n";
+    toml_str = "\n[project]\nname = \"profile-test\"\n\n[serve]\nport = 8000\n\n[serve.limits]\nbacklog = 512\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.development.serve.limits]\nmax_connections = 10\n\n[environments.broken.serve]\ngraph_enabled = \"false\"\n";
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.serve.port == 8000;
     cfg.apply_profile("development");
     assert cfg.serve.port == 3000;
+    assert (cfg.serve.limits.max_connections, cfg.serve.limits.backlog) == (10, 512) , (
+        "a profile's [serve.limits] replaced the base table instead of merging into it"
+    );
+    try {
+        cfg.apply_profile("broken");
+        assert False , "a quoted boolean in a profile was accepted";
+    } except ServeConfigError as refused {
+        assert "[environments.broken.serve] graph_enabled must be true or false"
+            in str(refused) , str(refused);
+    }
 }
 
 test "profile inheritance" {
@@ -992,6 +984,7 @@ test "active profile default empty" {
 # TestMergeFromTomlFile
 # ===========================================================================
 test "merge simple sections" {
+    import from jaclang.project.config { ServeConfigError }
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
@@ -999,10 +992,41 @@ test "merge simple sections" {
         assert cfg.run.cache is True;
         assert cfg.serve.port == 8000;
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[run]\ncache = false\n\n[serve]\nport = 9000\n");
+        overlay.write_text(
+            "[run]\ncache = false\n\n[serve]\nport = 9000\n\n[serve.limits]\nbacklog = 512\n\n"
+            "[serve.auth]\nsession_cookie = true\n"
+        );
         cfg.merge_from_toml_file(overlay);
         assert cfg.run.cache is False;
         assert cfg.serve.port == 9000;
+        local = temp_project / "jac.local.toml";
+        local.write_text(
+            "[serve.limits]\nmax_connections = 10\n\n[serve.auth.password]\nmin_length = 12\n"
+        );
+        cfg.merge_from_toml_file(local);
+        assert (cfg.serve.limits.max_connections, cfg.serve.limits.backlog)
+            == (10, 512);
+        assert cfg.serve.auth
+            == {"session_cookie": True, "password": {"min_length": 12}} , cfg.serve.auth;
+        local.write_text("[serve]\ngraph_enabled = \"false\"\n");
+        try {
+            cfg.merge_from_toml_file(local);
+            assert False , "a quoted boolean in jac.local.toml was accepted";
+        } except ServeConfigError as refused {
+            assert "jac.local.toml: [serve] graph_enabled must be true or false"
+                in str(refused) , str(refused);
+        }
+        local.write_text("[serve]\nport = \"x\"\n\n[serve.limits]\nbacklog = true\n");
+        try {
+            cfg.merge_from_toml_file(local);
+            assert False , "two bad values in jac.local.toml were accepted";
+        } except ServeConfigError as refused {
+            assert str(refused).splitlines()
+                == [
+                    "jac.local.toml: [serve] port must be an integer, got 'x'",
+                    "jac.local.toml: [serve.limits] backlog must be an integer, got True"
+                ];
+        }
     }
 }
 
@@ -1977,14 +2001,56 @@ test "interpolation applies to every parsed string" {
     }
 }
 
-test "serve config carries no routing keys" {
+test "serve config carries no routing keys and refuses keys or values it does not know" {
+    import from jaclang.project.config { ServeConfigError, apply_table }
     cfg = JacConfig.from_toml_str(
-        "[serve]\nport = 8080\nbase_route_app = \"app\"\ncl_route_prefix = \"x\"\n"
+        "[serve]\nport = 8080\nworkers = 4\ncors_origins = \"https://app.example\"\n\n"
+        "[serve.timeouts]\ndrain = 30\n"
     );
     assert cfg.serve.port == 8080;
-    assert not hasattr(cfg.serve, "base_route_app");
-    assert not hasattr(cfg.serve, "cl_route_prefix");
+    assert cfg.serve.workers.count == "4";
+    assert cfg.serve.cors_origins == ["https://app.example"];
+    assert cfg.serve.timeouts.drain == 30.0;
     assert not hasattr(cfg.project, "client_kind");
+    for (body, needle) in [
+        ('base_route_app = "app"', "[serve] base_route_app has moved to [apps.<name>]"),
+        ("grpah_enabled = false", "[serve] has no key 'grpah_enabled'"),
+        ('graph_enabled = "false"', "[serve] graph_enabled must be true or false"),
+        (
+            "[serve.limits]\nmax_connections = true",
+            "[serve.limits] max_connections must be an integer"
+        ),
+        ("[serve.tls]\ncertfile = false", "[serve.tls] certfile must be a string"),
+        (
+            "[serve.proxy]\ntrusted = \"10.0.0.1\"",
+            "[serve.proxy] trusted must be a list of strings"
+        ),
+        ("zzzz = 1", "[serve] has no key 'zzzz'; its keys are "),
+        ("timeouts = 5", "[serve.timeouts] must be a table"),
+        (
+            "grpah_enabled = false\n[serve.limits]\nmax_connections = true",
+            "[serve] has no key 'grpah_enabled'; did you mean 'graph_enabled'?\n"
+            "[serve.limits] max_connections must be an integer"
+        )
+    ] {
+        try {
+            JacConfig.from_toml_str("[serve]\n" + body + "\n");
+            assert False , f"{body!r} was accepted";
+        } except ServeConfigError as refused {
+            assert needle in str(refused) , str(refused);
+        }
+    }
+    try {
+        apply_table(
+            cfg.serve,
+            {"port": 9100, "timeouts": {"drain": 3}, "limits": {"backlog": True}},
+            "serve",
+            {}
+        );
+        assert False , "a bad [serve.limits] value was accepted";
+    } except ServeConfigError {
+        assert (cfg.serve.port, cfg.serve.timeouts.drain) == (8080, 30.0);
+    }
 }
 
 test "plugins table is not special-cased" {

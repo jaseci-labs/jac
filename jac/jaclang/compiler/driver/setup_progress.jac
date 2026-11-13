@@ -1,7 +1,6 @@
 import atexit;
 import os;
 import sys;
-import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
 
 obj SetupProgress {
     has _banner_shown: bool = False,

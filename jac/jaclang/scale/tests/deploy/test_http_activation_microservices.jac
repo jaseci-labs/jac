@@ -1,46 +1,6 @@
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    ScalingMode
-}
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
-import from jaclang.scale.deploy.target.kubernetes.target {
-    KubernetesTarget,
-    apply_http_activations_for_bundle,
-    reap_stale_scaling_resources_for_bundle,
-    replacing_init_containers
-}
 import unittest.mock;
 import from types { SimpleNamespace }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.observability.standard_logger { StandardLogger }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.autoscale.autoscaler {
-    AutoscalerSpec,
-    Trigger,
-    TriggerAuth
-}
-import from jaclang.scale.models.resource_status { ResourceStatus }
-import from jaclang.scale.deploy.autoscale.http_activation {
-    HTTPRoutingRule,
-    HTTPPathMatch,
-    HTTPHeaderMatch,
-    HTTPServiceTarget,
-    HTTPRequestRateMetric,
-    HTTPStaticResponse,
-    HTTPColdStartSpec,
-    HTTPTimeoutSpec
-}
-import from jaclang.scale.tests.deploy.http_activation_test_support {
-    default_http_activation_config as _cfg,
-    default_http_activation_spec as _spec,
-    mocked_keda_autoscaler as _mocked_keda
-}
-
-import from jaclang.scale.runtime.fleet { fleet_of }
 
 
 def _builder(

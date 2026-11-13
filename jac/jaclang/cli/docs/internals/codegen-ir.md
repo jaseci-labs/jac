@@ -18,26 +18,11 @@ remains ahead of it is the mega-arc's own work -- per-node dispatch, and
 retiring the Python shim seat for a generated native transcriber, which
 must conform to the bytes specified here.
 
-Status note (#8732, #8943): the native seal, the fused `libjac_compiler`
-build, the pass-serving binder, and the `mat_parse` materializer crossing
-that this document refers to were removed. The compiler modules the kernel
-links are listed in `compiler/native_scope.jac`; each is an ordinary native
-unit whose interface and object live in its module JIR, and the kernel is
-one link plan over them (`compiler/backends/native/link_plan.jac`,
-resolved by `kernel_resolve.jac`). A one-body edit to a scope module
-relinks the kernel from cached objects instead of rebuilding a fused module
-from cold. The sealed-lane paragraphs below (sections 2, 9 and 11) are the
-record of what was measured before the removal and the precedent the next
-crossing builds on; the tests and waiver tables they name no longer exist.
-
-Status note (#9615): the code generators are kernel units. The kernel's
-`jc_compile` entry runs a module through the same session pipeline the host
-uses and returns its compile products (`compiler/driver/unit_products.jac`)
-as one record, and this IR is one of them: the bytes cross base64-encoded,
-the host assembles them with `codegen_shim.compile_ir` and writes the
-module JIR from the record. That is the production crossing section 1
-describes, IR bytes out and nothing tree-shaped in between; the
-parse-and-materialize crossing (`jc_materialize`) was deleted with it.
+Status note: the native compiler kernel, which ran these code generators as
+native code, was removed; the compiler runs as Python bytecode and emits this
+IR in-process. The sealed-lane paragraphs below (sections 2, 9 and 11) are the
+record of what was measured before the removal; the tests and waiver tables
+they name no longer exist.
 
 Note on location: the task brief suggested `docs/community/internals/`; the
 corpus's actual home for internal design docs is `docs/internals/` (beside
@@ -247,10 +232,9 @@ with the register unset is a hard error instead. Downstream of the shim,
 format entirely, which is the whole point of the shim tier.
 
 Spliced statements keep the line numbers `ast.parse` gave them, shifted by
-the operand offset. This matches today's behavior exactly: `pyinline_sync`
-adds the jac node's `first_line` to inline Python, and the generated stub
-sources (interop stubs, sv-to-sv stubs, native test shims) keep their
-parse-relative 1..k line numbers with no offset.
+the operand offset. The generated stub sources (interop stubs, sv-to-sv
+stubs, native test shims) keep their parse-relative 1..k line numbers with
+no offset.
 
 ### 5.1 The deterministic loc-fill rule
 
@@ -364,7 +348,6 @@ performed by the shim because it intrinsically requires CPython.
 | Semstr decorators (`_get_sem_decorator`), `jac_test` decorators, `impl_patch_filename` decoration | IR emission | decorator `Call` nodes with `Constant` operands; the `is_test(mod_path)` predicate moves producer-side |
 | Enum lowering (`Enum`/`IntEnum`/`StrEnum` choice, `auto()` values) | IR emission | |
 | Has-var lowering (`ObjectField(init=False)`, `ObjectField(default_factory=lambda: ...)`, constant fast path) | IR emission | see fidelity note 2 |
-| `PyInlineCode` (`::py::` blocks) | shim transcription | `OP_PARSE_SPLICE` with the jac first_line as offset; `textwrap.dedent` is a producer-side string op |
 | Native interop stubs, sv-to-sv stubs, boundary stub classes, native test shims, registration map | shim transcription | producer builds the Python source text from the interop manifest (sealed-side data); shim parses via `OP_PARSE_SPLICE` with offset 0 |
 | `compile()` + `marshal.dumps` (all of pybc_gen) | shim transcription | end of the same crossing |
 | `ast3.unparse` into `gen.py` | tooling only | never crosses |
@@ -542,7 +525,7 @@ assumed away.
   Lane-portable jac with no CPython ast import anywhere; it ports
   `pyast_gen`'s decisions method by method into recipe construction
   (`CgNode` trees: class name, field names, field values, one normalized
-  location per node, `CgSplice` markers for `::py::` splices) and
+  location per node, `CgSplice` markers for generated Python stub source) and
   serializes the finished module recipe through `CodegenIrWriter`, also
   stashing the container on the module's `gen.jcir` for the pipeline
   consumer. The recipe tree is the emitter's working form; the wire
@@ -646,8 +629,8 @@ assumed away.
 
 ### 11.1 The codegen tail, after the cutover
 
-`get_py_code_gen` (compiler/driver/compiler.jac) returns one Python codegen
-tail and there is nothing to select between:
+The `PY_IR` and `BYTECODE` products (compiler/driver/pipeline.jac) are one
+Python codegen tail and there is nothing to select between:
 
 - `JcirGenPass`, `JcirBytecodeGenPass`
 

@@ -1,5 +1,4 @@
 import os;
-import type from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
 import from ctypes {
     POINTER,
     c_char_p,
@@ -8,15 +7,6 @@ import from ctypes {
     c_size_t,
     c_void_p,
     string_at
-}
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
-import from jaclang.compiler.backends.native.llvm.binding.initfini { llvm_version_info }
-import from jaclang.compiler.backends.native.llvm.binding.common {
-    _decode_string,
-    _encode_string
-}
-import from jaclang.compiler.backends.native.llvm.binding.config {
-    _has_svml as has_svml
 }
 
 """
@@ -67,8 +57,7 @@ def get_default_triple -> str {
     Get the name of the host's CPU, suitable for using with
     :meth:`Target.create_target_machine()`.
     """
-glob llvm_version_major = llvm_version_info[0],
-     _object_formats = {
+glob _object_formats = {
          0: "Unknown",
          1: "COFF",
          2: "DXContainer",
@@ -301,7 +290,6 @@ class TargetMachine(ffi.ObjectRef) {
         can name the function a fault is in.
         """
     def emit_object(self: TargetMachine, module: any) -> bytes {
-        import from jaclang.compiler.backends.native.llvm.binding.value { Linkage }
         for fn in module.functions {
             if not fn.is_declaration and fn.linkage == Linkage.private {
                 fn.linkage = Linkage.internal;

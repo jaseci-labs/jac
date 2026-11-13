@@ -44,8 +44,6 @@ impl TypeEvaluator._get_type_of_super(node_: Name) -> TypeBase {
 }
 
 impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
-    import from jaclang.compiler.symbol_utils { find_destructure_index_path }
-
     if expr.sym is not None and expr.sym.decl is expr {
         return None;
     }
@@ -203,14 +201,18 @@ impl TypeEvaluator._tuple_literal_index_type(
     return self._extract_tuple_element_type(cls, real_idx);
 }
 
-impl TypeEvaluator._container_value_type(value_type: TypeBase, at: Expr) -> TypeBase {
-    import from jaclang.compiler.frontend.unitree { in_type_position }
+impl TypeEvaluator._container_value_type(
+    value_type: TypeBase, at: Expr, widen: bool = False
+) -> TypeBase {
     if in_type_position(at, include_subscripts=False) {
         return value_type;
     }
     if isinstance(value_type, UnionType) {
         return self._union_narrowed_types(
-            [self._container_value_type(member, at) for member in value_type.types]
+            [
+                self._container_value_type(member, at, widen)
+                for member in value_type.types
+            ]
         );
     }
     if isinstance(value_type, ClassType)
@@ -223,6 +225,13 @@ impl TypeEvaluator._container_value_type(value_type: TypeBase, at: Expr) -> Type
         wrapped = self.prefetch.type_class.clone_as_instance();
         wrapped.private.type_args = [self._convert_to_instance(value_type)];
         return wrapped;
+    }
+    if widen {
+        if isinstance(value_type, EnumMemberType)
+            and value_type.enum_class is not None {
+            return self._convert_to_instance(value_type.enum_class);
+        }
+        return self._widen_literal_for_declaration(value_type);
     }
     return value_type;
 }
@@ -369,7 +378,6 @@ impl TypeEvaluator.get_type_of_int(nd: Int) -> TypeBase {
 }
 
 impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
@@ -426,9 +434,13 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                     Parameter(
                         name=extern_param.name.value,
                         category=_get_param_category(extern_param),
-                        param_type=self._extern_scalar_type(
-                            extern_param.type_tag.tag if extern_param.type_tag else None
-                        ),
+                        param_type=AnyType()
+                            if extern_param.is_vararg
+                            else self._extern_scalar_type(
+                                extern_param.type_tag.tag
+                                    if extern_param.type_tag
+                                    else None
+                            ),
                         default_value=extern_param.value,
                         param_kind=extern_param.param_kind,
                     )
@@ -451,6 +463,9 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         if param.type_tag {
             param_type_cls = self.get_type_of_expression(param.type_tag.tag);
             param_type = self._convert_to_instance(param_type_cls);
+            if param.is_vararg and is_va_list_type(param_type) {
+                param_type = AnyType();
+            }
         }
 
         is_cls_param = (
@@ -542,7 +557,6 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
 impl TypeEvaluator._apply_function_decorators(
     node_: Ability, func_type: FunctionType
 ) -> FunctionType {
-    import from jaclang.compiler.types.type_utils { apply_solved_type_vars }
     if not node_.decorators {
         return func_type;
     }
@@ -629,7 +643,9 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         }
     }
 
-    if not base_classes and self.prefetch and self.prefetch.object_class {
+    if self.prefetch
+        and self.prefetch.object_class
+        and all(base.is_class_instance() for base in base_classes) {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
         if not is_object_class {
             base_classes.append(self.prefetch.object_class);
@@ -758,7 +774,6 @@ impl TypeEvaluator.get_none_type -> TypeBase {
 
 
 impl TypeEvaluator._super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType {
-    import from jaclang.compiler.types.type_utils { collect_member_syms }
     parent = node_.parent;
     member_name: str | None = None;
     if isinstance(parent, AtomTrailer) and isinstance(parent.right, Name) {
@@ -789,8 +804,6 @@ impl TypeEvaluator._super_owner_for(node_: Name, rest: list[ClassType]) -> Class
 }
 
 impl TypeEvaluator._intrinsic_function_type(name: str) -> (FunctionType | None) {
-    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
-    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
     registry = intrinsic_registry_if_ready();
     if not isinstance(registry, IntrinsicRegistry) {
         return None;
@@ -829,7 +842,6 @@ impl TypeEvaluator._intrinsic_spec_type(spec: str) -> TypeBase {
 }
 
 impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(type_expr, Name) {
         name = type_expr.sym_name;
         if JAC_TYPE_REGISTRY.is_sized(name) {
@@ -852,8 +864,6 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
 }
 
 impl TypeEvaluator._is_typed_c_declaration(declared: TypeBase) -> bool {
-    import from jaclang.compiler.c_interop { c_builtin_kind }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(declared, UnionType) {
         saw_typed = False;
         for member in declared.types {
@@ -932,9 +942,6 @@ impl TypeEvaluator._extern_member_type(arch: Archetype, name: str) -> TypeBase {
 }
 
 impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
-    import from jaclang.compiler.types.types { create_callable_type }
-    import from jaclang.compiler.types.fixed_width { numeric_name_of }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     annotation = field.type_tag;
     if annotation is None {
         return AnyType(is_foreign=True);

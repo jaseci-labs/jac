@@ -187,7 +187,7 @@ test "placement reuses an untyped dependency tree across app contexts" {
         first = web.load_dependency_module(path, need_tree=True);
         api = context_program(web, bind_options(path, web, web.options));
         assert api is not web;
-        assert not api.analysis.analyses_run.provides(first, AnalysisFact.TYPE_OF);
+        assert not api.analysis.provides(first, AnalysisFact.TYPE_OF);
         with patch.object(
             web,
             'compile',

@@ -1,9 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir.instructions as instructions;
-import jaclang.compiler.backends.native.llvm.ir.types as types;
-import jaclang.compiler.backends.native.llvm.ir.values as values;
-import from jaclang.compiler.backends.native.llvm.ir.values { Value }
-import type from jaclang.compiler.backends.native.llvm.ir.module { Module }
-
 glob _CMP_MAP: dict[str, str] = {
          '>': 'gt',
          '<': 'lt',
@@ -997,13 +991,14 @@ class IRBuilder {
         indices: any,
         inbounds: bool = False,
         name: str = '',
-        source_etype: types.Type | None = None
+        source_etype: types.Type | None = None,
+        nusw: bool = False
     ) -> Value {
         if ptr is None {
             raise TypeError(MISSING_OPERAND);
         }
         instr = instructions.GEPInstr(
-            self.block, ptr, indices, inbounds, name, source_etype
+            self.block, ptr, indices, inbounds, name, source_etype, nusw
         );
         self._insert(instr);
         return instr;
@@ -1055,6 +1050,35 @@ class IRBuilder {
     def unreachable(self: IRBuilder) -> Value {
         inst = instructions.Unreachable(self.block);
         self._set_terminator(inst);
+        return inst;
+    }
+
+    """
+        Compare and exchange: stores `val` at `ptr` when it holds `cmp`; the
+        result is {value read, i1 success}.
+        """
+    def cmpxchg(
+        self: IRBuilder,
+        ptr: Value | None,
+        cmp: Value | None,
+        val: Value | None,
+        ordering: str,
+        failordering: str,
+        name: str = ''
+    ) -> Value {
+        if ptr is None or cmp is None or val is None {
+            raise TypeError(MISSING_OPERAND);
+        }
+        inst = instructions.CmpXchg(
+            self.block, ptr, cmp, val, ordering, failordering, name
+        );
+        self._insert(inst);
+        return inst;
+    }
+
+    def fence(self: IRBuilder, ordering: str, name: str = '') -> Value {
+        inst = instructions.Fence(self.block, ordering, name);
+        self._insert(inst);
         return inst;
     }
 

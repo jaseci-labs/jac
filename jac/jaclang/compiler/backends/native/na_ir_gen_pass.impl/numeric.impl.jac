@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.const_fold { fold_const }
-
 impl NaIRGenPass._emit_float_pow(
     base: ir.Value, exp: ir.Value, unsigned: bool = False
 ) -> ir.Value {
@@ -29,7 +27,7 @@ impl NaIRGenPass._emit_pow_zero_guard(base: ir.Value) -> None {
 }
 
 impl NaIRGenPass._codegen_int_pow(
-    base: ir.Value, exp: ir.Value, unsigned: bool = False, checked: bool = False
+    base: ir.Value, exp: ir.Value, unsigned: bool = False
 ) -> ir.Value {
     int_ty = base.type;
     one = ir.Constant(int_ty, 1);
@@ -52,11 +50,7 @@ impl NaIRGenPass._codegen_int_pow(
 
     self.builder.position_at_end(body_bb);
     cur_result = self.builder.load(result_alloca, name="pow.cur");
-    new_result = (
-        self._emit_overflow_op("mul", cur_result, base, unsigned)
-            if checked
-            else self.builder.mul(cur_result, base, name="pow.mul")
-    );
+    new_result = self._emit_overflow_op("mul", cur_result, base, unsigned);
     self.builder.store(new_result, result_alloca);
     cur_counter = self.builder.load(counter_alloca, name="pow.ci");
     next_counter = self.builder.add(cur_counter, one, name="pow.inc");
@@ -104,18 +98,78 @@ impl NaIRGenPass._load_complex_parts(ptr: ir.Value) -> tuple[(ir.Value, ir.Value
     return (re, im);
 }
 
-impl NaIRGenPass._target_fuses_fp -> bool {
-    triple = str(self.llvm_module.triple or "").lower();
-    return triple.startswith("aarch64") or triple.startswith("arm64");
+impl NaIRGenPass._target_is_wasm -> bool {
+    return "wasm" in str(self.llvm_module.triple or "").lower();
+}
+
+impl NaIRGenPass._floor_call(
+    name: str,
+    ret: ir.Type,
+    args: list[ir.Value],
+    call_name: str = "",
+    builder: (ir.IRBuilder | None) = None
+) -> ir.Value {
+    fn = self._get_or_declare_extern(name, ret, [a.type for a in args]);
+    b = builder if builder is not None else self.builder;
+    return b.call(fn, args, name=call_name or name);
+}
+
+impl NaIRGenPass._emit_stdio_handle(
+    fd: int, name: str, builder: (ir.IRBuilder | None) = None
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    b = builder if builder is not None else self.builder;
+    if self._target_is_wasm() {
+        libc_name = ["stdin", "stdout", "stderr"][fd];
+        if libc_name not in self.llvm_module.globals {
+            gv = ir.GlobalVariable(self.llvm_module, i8p, name=libc_name);
+            gv.linkage = "external";
+        }
+        return b.load(self.llvm_module.get_global(libc_name), name=name);
+    }
+    return self._floor_call(
+        "__jac_stdio", i8p, [ir.Constant(ir.IntType(32), fd)], name, b
+    );
+}
+
+impl NaIRGenPass._emit_platform_name -> ir.Value {
+    if self._target_is_wasm() {
+        triple = str(self.llvm_module.triple or "").lower();
+        return self._make_global_string(
+            "emscripten" if "emscripten" in triple else "wasi"
+        );
+    }
+    which = self._floor_call(
+        "__jac_platform_id", ir.IntType(32), [], "sys.platform.id"
+    );
+    linux = self._make_global_string("linux");
+    darwin = self._make_global_string("darwin");
+    win32 = self._make_global_string("win32");
+    is_darwin = self.builder.icmp_signed(
+        "==", which, ir.Constant(ir.IntType(32), 1), name="sys.platform.darwin"
+    );
+    is_win = self.builder.icmp_signed(
+        "==", which, ir.Constant(ir.IntType(32), 2), name="sys.platform.win32"
+    );
+    return self.builder.select(
+        is_win,
+        win32,
+        self.builder.select(is_darwin, darwin, linux, name="sys.platform.posix"),
+        name="sys.platform"
+    );
 }
 
 impl NaIRGenPass._emit_fmadd(a: ir.Value, b: ir.Value, c: ir.Value) -> ir.Value {
-    if self._target_fuses_fp() {
-        f64 = ir.DoubleType();
-        fma_fn = self._get_or_declare_extern("fma", f64, [f64, f64, f64]);
-        return self.builder.call(fma_fn, [a, b, c], name="c.fma");
+    f64 = ir.DoubleType();
+    fn = self.llvm_module.globals.get("llvm.fmuladd.f64");
+    if not isinstance(fn, ir.Function) {
+        fn = ir.Function(
+            self.llvm_module,
+            ir.FunctionType(f64, [f64, f64, f64]),
+            name="llvm.fmuladd.f64"
+        );
     }
-    return self.builder.fadd(self.builder.fmul(a, b, name="c.fm"), c, name="c.fa");
+    return self.builder.call(fn, [a, b, c], name="c.fma");
 }
 
 impl NaIRGenPass._fp_fabs(v: ir.Value) -> ir.Value {
@@ -771,8 +825,7 @@ impl NaIRGenPass._codegen_pow(
     base: ir.Value,
     exp: ir.Value,
     exp_node: (uni.Expr | None) = None,
-    unsigned: bool = False,
-    checked: bool = False
+    unsigned: bool = False
 ) -> (ir.Value | None) {
     ctype_ptr = self.complex_struct_type.as_pointer();
     if base.type == ctype_ptr or exp.type == ctype_ptr {
@@ -835,10 +888,10 @@ impl NaIRGenPass._codegen_pow(
             self._emit_pow_zero_guard(base);
             return self._emit_float_pow(base, exp, unsigned);
         }
-        return self._codegen_int_pow(base, exp, unsigned, checked);
+        return self._codegen_int_pow(base, exp, unsigned);
     }
     if unsigned {
-        return self._codegen_int_pow(base, exp, True, checked);
+        return self._codegen_int_pow(base, exp, True);
     }
 
     int_ty = base.type;
@@ -858,7 +911,7 @@ impl NaIRGenPass._codegen_pow(
     self.builder.branch(merge_bb);
 
     self.builder.position_at_end(pos_bb);
-    iresult = self._codegen_int_pow(base, exp, unsigned, checked);
+    iresult = self._codegen_int_pow(base, exp, unsigned);
     pos_pred = self.builder.block;
     i_as_f = self.builder.sitofp(iresult, f64, name="pow.i2f");
     self.builder.branch(merge_bb);

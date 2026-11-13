@@ -1,13 +1,7 @@
-import from jaclang.byllm._optdeps.litellm { when_litellm_loaded }
-
 obj ByLLMError(Exception) {
     has message: str = "";
 
     def postinit -> None;
-}
-
-impl ByLLMError.postinit -> None {
-    Exception.__init__(self, self.message);
 }
 
 obj AuthenticationError(ByLLMError) {}
@@ -27,20 +21,7 @@ obj LLMTimeout(ByLLMError) {
     def __str__ -> str;
 }
 
-impl LLMTimeout.postinit -> None {
-    Exception.__init__(self, self.message);
-}
-
-impl LLMTimeout.__str__ -> str {
-    return self.message;
-}
-
-def _adopt_provider_timeout(module: any) {
-    provider_timeout = module.Timeout;
-    if provider_timeout not in LLMTimeout.__bases__ {
-        LLMTimeout.__bases__ = (ByLLMError, provider_timeout);
-    }
-}
+def _adopt_provider_timeout(module: any);
 
 with entry {
     when_litellm_loaded(_adopt_provider_timeout);
@@ -55,3 +36,5 @@ obj ConfigurationError(ByLLMError) {}
 obj McpError(ByLLMError) {}
 
 obj CompactionNotEffectiveError(ByLLMError) {}
+
+obj OutputTruncatedError(ByLLMError) {}

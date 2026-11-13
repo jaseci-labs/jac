@@ -3,10 +3,9 @@ import logging;
 import time;
 import uuid;
 import from asyncio { Lock }
-import from jaclang.server.serving.ws { WebSocket }
-import from jaclang.server.serving.datatypes { WebSocketDisconnect }
+import from json { dumps }
+
 import from inspect { isgenerator }
-import from jaclang.scale.websocket.backplane { BaseBackplane, MemoryBackplane }
 
 glob logger = logging.getLogger(__name__),
      _WS_STREAM_STOP: any = object();
@@ -56,7 +55,9 @@ obj WebSocketConnectionManager {
         target_kind: str, target_name: str, message: dict[str, any]
     ) -> None;
 
-    async def send_to(ctx: ConnectionContext, message: dict[str, any]) -> bool;
+    async def send_to(
+        ctx: ConnectionContext, message: dict[str, any], text: (str | None) = None
+    ) -> bool;
 }
 
 def consume_rate_token(

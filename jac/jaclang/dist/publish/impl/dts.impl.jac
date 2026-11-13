@@ -1,16 +1,53 @@
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    Ability,
-    Archetype,
-    AstTypedVarNode,
-    FuncSignature,
-    GlobalVars,
-    UniNode
-}
-import from jaclang.compiler.frontend.unparse { unparse_node }
-import from jaclang.dist.publish.jsdoc { jac_type_to_ts }
+def _param_type_str(param: AstTypedVarNode) -> str;
 
-def _param_type_str(param: AstTypedVarNode) -> str {
+def _fn_decl(ability: Ability) -> str;
+
+def _class_decl(arch: Archetype) -> str;
+
+def _global_decl(assign: any, wanted: any) -> str;
+
+impl dts_for_module(mod: Module, linked: (list[str] | None) = None) -> str {
+    manifest = mod.gen.client_manifest if (mod and mod.gen) else None;
+    exports: set[str] = set(manifest.exports if manifest else []) | set(linked or []);
+    globals_set: set[str] = set(manifest.globals if manifest else [])
+        | set(linked or []);
+    if not exports and not globals_set {
+        return "";
+    }
+
+    blocks: list[str] = [];
+    for nd in mod.body {
+        if isinstance(nd, Ability) {
+            if nd?.sym_name in exports {
+                decl = _fn_decl(nd);
+                if decl {
+                    blocks.append(decl);
+                }
+            }
+        } elif isinstance(nd, Archetype) {
+            if nd?.sym_name in exports {
+                decl = _class_decl(nd);
+                if decl {
+                    blocks.append(decl);
+                }
+            }
+        } elif isinstance(nd, GlobalVars) {
+            for assign in nd?.assignments or [] {
+                decl = _global_decl(assign, globals_set);
+                if decl {
+                    blocks.append(decl);
+                }
+            }
+        }
+    }
+
+    if not blocks {
+        return "";
+    }
+    return "\n".join(blocks) + "\n";
+}
+
+impl _param_type_str(param: AstTypedVarNode) -> str {
     tag = param.type_tag;
     if tag is None {
         return "any";
@@ -26,7 +63,7 @@ def _param_type_str(param: AstTypedVarNode) -> str {
     }
 }
 
-def _fn_decl(ability: Ability) -> str {
+impl _fn_decl(ability: Ability) -> str {
     name = ability?.sym_name;
     if not name {
         return "";
@@ -62,7 +99,7 @@ def _fn_decl(ability: Ability) -> str {
     return f"export declare function {name}({', '.join(parts)}): {ret};";
 }
 
-def _class_decl(arch: Archetype) -> str {
+impl _class_decl(arch: Archetype) -> str {
     name = arch?.sym_name;
     if not name {
         return "";
@@ -85,7 +122,7 @@ def _class_decl(arch: Archetype) -> str {
     return "\n".join(lines);
 }
 
-def _global_decl(assign: any, wanted: any) -> str {
+impl _global_decl(assign: any, wanted: any) -> str {
     targets = assign?.target or [];
     if not targets {
         return "";
@@ -105,44 +142,4 @@ def _global_decl(assign: any, wanted: any) -> str {
         }
     }
     return f"export declare const {gname}: {gtype};";
-}
-
-impl dts_for_module(mod: Module) -> str {
-    manifest = mod.gen.client_manifest if (mod and mod.gen) else None;
-    exports: set[str] = set(manifest.exports) if manifest else set();
-    globals_set: set[str] = set(manifest.globals) if manifest else set();
-    if not exports and not globals_set {
-        return "";
-    }
-
-    blocks: list[str] = [];
-    for nd in mod.body {
-        if isinstance(nd, Ability) {
-            if nd?.sym_name in exports {
-                decl = _fn_decl(nd);
-                if decl {
-                    blocks.append(decl);
-                }
-            }
-        } elif isinstance(nd, Archetype) {
-            if nd?.sym_name in exports {
-                decl = _class_decl(nd);
-                if decl {
-                    blocks.append(decl);
-                }
-            }
-        } elif isinstance(nd, GlobalVars) {
-            for assign in nd?.assignments or [] {
-                decl = _global_decl(assign, globals_set);
-                if decl {
-                    blocks.append(decl);
-                }
-            }
-        }
-    }
-
-    if not blocks {
-        return "";
-    }
-    return "\n".join(blocks) + "\n";
 }

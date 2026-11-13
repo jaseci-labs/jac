@@ -11,7 +11,7 @@ be deploying. So these also cover which toolchain the host build steps run.
 
 These drive the real ManifestBuilder against real project folders (the broken
 build runs the actual `jac build` subprocess); no mocks."""
-import from jaclang.scale.tests.toolchain_http { mock_downloads }
+import from unittest.mock { patch }
 
 import hashlib;
 import json;
@@ -21,15 +21,6 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import jaclang.scale.injector.binary as binary_mod;
-import from jaclang.cli.manifest_route { resolve_cli_version }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.injector.bundle { release_binary_env }
-import from jaclang.scale.runtime.context.util { jac_executable }
-import from jaclang.scale.tests.support { require_pod_binary }
 
 # No jac release carries this version, so it can never collide with the jac
 # running the suite.
@@ -62,7 +53,7 @@ def _project(entry_source: str) -> str {
 the first `fail_first` build invocations, then hands off to the real binary.
 Every other subcommand (the dependency install that precedes the build) passes
 straight through, so the counter tracks build attempts alone. Uses the
-codebase's own JAC_EXECUTABLE substitution seam, not a mock."""
+codebase's own jac_executable substitution seam, not a mock."""
 def _counting_jac(tmp: str, fail_first: int, failure_text: str) -> tuple[any, ...] {
     counter = os.path.join(tmp, "attempts");
     real_jac = jac_executable();
@@ -217,11 +208,13 @@ test "an app without a client entry skips the build untouched" {
 
 test "a transient install failure is retried and the deploy succeeds" {
     tmp = tempfile.mkdtemp(prefix="client-retry-");
-    saved = os.environ.get("JAC_EXECUTABLE");
     try {
         project_dir = _web_app_project(tmp);
         (script, counter) = _counting_jac(tmp, 1, "bun install failed after 12.0s");
-        os.environ["JAC_EXECUTABLE"] = script;
+        _seam = patch(
+            "jaclang.scale.runtime.context.util.jac_executable", return_value=script
+        );
+        _seam.start();
         _builder(project_dir)._build_client_bundle(project_dir);
 
         assert _attempts(counter) == 2 , (
@@ -231,11 +224,7 @@ test "a transient install failure is retried and the deploy succeeds" {
         index_html = os.path.join(project_dir, ".jac", "client", "dist", "index.html");
         assert os.path.isfile(index_html) , "retry did not produce a bundle";
     } finally {
-        if saved is None {
-            os.environ.pop("JAC_EXECUTABLE", None);
-        } else {
-            os.environ["JAC_EXECUTABLE"] = saved;
-        }
+        _seam.stop();
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
@@ -243,14 +232,16 @@ test "a transient install failure is retried and the deploy succeeds" {
 
 test "a persistent transient failure still fails after a bounded retry" {
     tmp = tempfile.mkdtemp(prefix="client-retry-");
-    saved = os.environ.get("JAC_EXECUTABLE");
     raised = None;
     try {
         project_dir = _project("with entry {}\n");
         (script, counter) = _counting_jac(
             tmp, 99, "Dependency installation failed after 30.0s"
         );
-        os.environ["JAC_EXECUTABLE"] = script;
+        _seam = patch(
+            "jaclang.scale.runtime.context.util.jac_executable", return_value=script
+        );
+        _seam.start();
         try {
             _builder(project_dir)._build_client_bundle(project_dir);
         } except Exception as e {
@@ -264,11 +255,7 @@ test "a persistent transient failure still fails after a bounded retry" {
         );
         shutil.rmtree(project_dir, ignore_errors=True);
     } finally {
-        if saved is None {
-            os.environ.pop("JAC_EXECUTABLE", None);
-        } else {
-            os.environ["JAC_EXECUTABLE"] = saved;
-        }
+        _seam.stop();
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
@@ -276,12 +263,14 @@ test "a persistent transient failure still fails after a bounded retry" {
 
 test "a genuine compile error fails on the first attempt with no retry" {
     tmp = tempfile.mkdtemp(prefix="client-retry-");
-    saved = os.environ.get("JAC_EXECUTABLE");
     raised = None;
     try {
         project_dir = _project("with entry { this does not parse ((( }\n");
         (script, counter) = _counting_jac(tmp, 0, "");
-        os.environ["JAC_EXECUTABLE"] = script;
+        _seam = patch(
+            "jaclang.scale.runtime.context.util.jac_executable", return_value=script
+        );
+        _seam.start();
         try {
             _builder(project_dir)._build_client_bundle(project_dir);
         } except Exception as e {
@@ -295,11 +284,7 @@ test "a genuine compile error fails on the first attempt with no retry" {
         );
         shutil.rmtree(project_dir, ignore_errors=True);
     } finally {
-        if saved is None {
-            os.environ.pop("JAC_EXECUTABLE", None);
-        } else {
-            os.environ["JAC_EXECUTABLE"] = saved;
-        }
+        _seam.stop();
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
@@ -313,14 +298,17 @@ test "a pinned app builds its client on the pinned release, not the deploying ja
     project_dir = _web_app_project(tmp);
     _pin(project_dir, PINNED);
     cache = os.path.join(tmp, "cache");
-    saved_exec = os.environ.get("JAC_EXECUTABLE");
     saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
     saved_http = binary_mod._http_get_bytes;
     downloads = mock_downloads(lambda (url: str) { binary_mod._http_get_bytes(url); });
     downloads.start();
     # Any step still reaching for the deploying jac lands on a path that is not
     # there, so a green run cannot be one that ignored the pin.
-    os.environ["JAC_EXECUTABLE"] = os.path.join(tmp, "absent-jac");
+    _seam = patch(
+        "jaclang.scale.runtime.context.util.jac_executable",
+        return_value=os.path.join(tmp, "absent-jac")
+    );
+    _seam.start();
     os.environ["JAC_SCALE_CACHE_DIR"] = cache;
     binary_mod._http_get_bytes = _release_api(PINNED, jac_bin.read_bytes());
     try {
@@ -334,7 +322,7 @@ test "a pinned app builds its client on the pinned release, not the deploying ja
     } finally {
         downloads.stop();
         binary_mod._http_get_bytes = saved_http;
-        _restore("JAC_EXECUTABLE", saved_exec);
+        _seam.stop();
         _restore("JAC_SCALE_CACHE_DIR", saved_cache);
         shutil.rmtree(tmp, ignore_errors=True);
     }
@@ -370,31 +358,19 @@ test "no pin, and a pin naming the running jac, download nothing" {
 
 
 test "a pinned release runs without the deploying jac's compiler redirects" {
-    saved_dev = os.environ.get("JAC_DEV_SOURCE");
-    saved_exec = os.environ.get("JAC_EXECUTABLE");
-    os.environ["JAC_DEV_SOURCE"] = "/the/checkout/that/ran/this/deploy";
-    os.environ["JAC_EXECUTABLE"] = "/the/jac/that/ran/this/deploy";
+    saved_handoff = os.environ.get("JAC_HANDOFF");
+    os.environ["JAC_HANDOFF"] = '{"compiler_source": "/the/checkout/that/ran/this/deploy"}';
     try {
         env = release_binary_env();
     } finally {
-        _restore("JAC_DEV_SOURCE", saved_dev);
-        _restore("JAC_EXECUTABLE", saved_exec);
+        _restore("JAC_HANDOFF", saved_handoff);
     }
 
     assert env.get("PATH") == os.environ.get("PATH") , "not a real environment";
-    # Inherited, these point a release binary at the deploying jac's compiler,
-    # interpreter or binary, which is the pin defeated by the back door.
-    # JAC_EXECUTABLE is the quietest of them: every reader falls back to
-    # `shutil.which("jac")` when the path is absent, so a leak through it
-    # resolves to some other jac instead of failing where a test would see it.
-    for leaked in [
-        "JAC_DEV_SOURCE",
-        "JAC_EXECUTABLE",
-        "JAC_NO_PRECOMPILE",
-        "JAC_PRECOMPILE_REQUIRED",
-        "PYTHONPATH",
-        "PYTHONHOME"
-    ] {
+    # Inherited, these point a release binary at the deploying jac's compiler
+    # or interpreter, which is the pin defeated by the back door: the
+    # handoff record would run the release on the deploying checkout's source.
+    for leaked in ["JAC_HANDOFF", "PYTHONPATH", "PYTHONHOME"] {
         assert leaked not in env , f"{leaked} reaches the pinned release";
     }
 }

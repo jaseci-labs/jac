@@ -70,13 +70,17 @@ def:protect default_func -> dict[str, any] {
 @restspec(method=HTTPMethod.GET)
 walker:pub GetWalkerWithParams {
     has name: str,
-        age: int;
+        age: int,
+        tags: list[str] = [],
+        flag: bool = True;
 
     can get_data with Root entry {
         report {
             "message": "GetWalkerWithParams executed",
             "name": self.name,
-            "age": self.age
+            "age": self.age,
+            "tags": self.tags,
+            "flag": self.flag
         };
     }
 }
@@ -206,9 +210,9 @@ def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] 
 }
 
 """One field of each scalar type, plus an optional one and a list, to send
-JSON null to."""
-@restspec(method=HTTPMethod.POST, path="/nulls")
-walker:pub NullFields {
+mismatched values to."""
+@restspec(method=HTTPMethod.POST, path="/typed-fields")
+walker:pub TypedFields {
     has title: str = "seed",
         note: str | None = "seed",
         count: int = -1,
@@ -638,4 +642,19 @@ def:pub raw_origin -> str {
         return "none";
     }
     return seen.origin;
+}
+
+"""A raw-body function shapes its own status and headers with respond()."""
+@restspec(method=HTTPMethod.GET, path="/raw/respond", envelope=False)
+def:pub raw_respond -> str {
+    respond(status=404, headers={"X-Probe": "1"});
+    return "no such thing";
+}
+
+"""A raw-body function that returns a Response owns the whole wire response, so a
+respond() choice beside it is a conflict, not a silent no-op."""
+@restspec(method=HTTPMethod.GET, path="/raw/respond-conflict", envelope=False)
+def:pub raw_respond_conflict -> Response {
+    respond(status=404);
+    return Response(content="owned", status_code=200, media_type="text/plain");
 }

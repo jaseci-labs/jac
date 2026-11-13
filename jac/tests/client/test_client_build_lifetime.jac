@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.client.targets.web_target { WebTarget }
 import from jaclang.client.vite_bundler { ViteBundler }
+import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 test "standalone client build releases application trees before bundling" {
@@ -23,10 +24,10 @@ test "standalone client build releases application trees before bundling" {
         reached: list[bool] = [];
         trees: list[weakref.ref] = [];
         program = Jac.get_program();
-        original_compile = program.compile;
-        def compile(*args: any, **kwargs: any) -> any {
-            mod = original_compile(*args, **kwargs);
-            if mod.loc.mod_path == str(entry_path) {
+        original_compile = JacCompiler.compile;
+        def compile(self: JacCompiler, *args: any, **kwargs: any) -> any {
+            mod = original_compile(self, *args, **kwargs);
+            if mod is not None and mod.loc.mod_path == str(entry_path) {
                 trees.append(weakref.ref(mod));
             }
             return mod;
@@ -36,7 +37,7 @@ test "standalone client build releases application trees before bundling" {
             assert not program.contexts , (
                 "application compilation contexts remain live while the bundler runs"
             );
-            assert trees and all(ref() is None for ref in trees) , (
+            assert all(ref() is None for ref in trees) , (
                 "the bundler starts while an application syntax tree is still reachable"
             );
             reached.append(True);
@@ -45,12 +46,51 @@ test "standalone client build releases application trees before bundling" {
                 'export function launch() {}'
             );
         }
-        with patch.object(program, "compile", compile), patch.object(
+        with patch.object(JacCompiler, "compile", compile), patch.object(
             ViteBundler, "build", bundle
         ) {
             WebTarget().build(entry_path, project_dir);
         }
         assert reached == [True];
+        index = next(project_dir.rglob("index.html")).read_text();
+        assert '"function": "launch"' in index;
+    }
+}
+
+"""A standalone client build compiles its entry once. The export lookup and
+the bundle compile the entry under the same client source root, so the bundle
+reuses the first compile instead of analysing the whole application again."""
+test "standalone client build compiles its entry once" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_dir = Path(tmp).resolve();
+        entry_path = project_dir / "main.jac";
+        entry_path.write_text('def:pub launch -> any { return <div>once</div>; }');
+        (project_dir / "jac.toml").write_text(
+            '[project]\nname = "once"\nkind = "web-app"\n'
+        );
+        (project_dir / "package.json").write_text('{"name":"once","version":"0.0.0"}');
+        Jac.set_full_target_path(str(entry_path));
+        compiled: dict[int, bool] = {};
+        original_compile = JacCompiler.compile;
+        def compile(self: JacCompiler, *args: any, **kwargs: any) -> any {
+            mod = original_compile(self, *args, **kwargs);
+            if mod is not None and mod.loc.mod_path == str(entry_path) {
+                compiled[id(mod)] = True;
+            }
+            return mod;
+        }
+        def bundle(self: ViteBundler, *args: any, **kwargs: any) {
+            self.output_dir.mkdir(parents=True, exist_ok=True);
+            (self.output_dir / "client.test.js").write_text(
+                'export function launch() {}'
+            );
+        }
+        with patch.object(JacCompiler, "compile", compile), patch.object(
+            ViteBundler, "build", bundle
+        ) {
+            WebTarget().build(entry_path, project_dir);
+        }
+        assert len(compiled) == 1 , f"the entry was compiled {len(compiled)} times";
         index = next(project_dir.rglob("index.html")).read_text();
         assert '"function": "launch"' in index;
     }

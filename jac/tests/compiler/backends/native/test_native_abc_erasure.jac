@@ -1,9 +1,8 @@
 """`abc`'s abstractness markers are compile-time, so they stop poisoning placement.
 
-`import from abc { ABC }` used to be an unresolved import, which the placement
-solver treats as an all-or-nothing verdict on the whole module: one such line
-demotes the file and, through `_native_deps_ok`, every module whose import
-closure reaches it. Two of the compiler's most widely-reached modules carry
+`import from abc { ABC }` used to be an unresolved import, which placement
+treats as a refusal of the whole module: one such line keeps the file off
+native, and every module that imports it cannot call into it from native code. Two of the compiler's most widely-reached modules carry
 exactly that line -- `types/types.jac` and `compiler/passes/transform.jac`,
 the base every pass inherits -- so the reach was most of the pass tree.
 

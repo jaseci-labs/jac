@@ -1,22 +1,12 @@
 import os;
 import io;
+import shutil;
+import subprocess;
 import tarfile;
 import tempfile;
 import tomllib;
+import unittest.mock;
 import from pathlib { Path }
-import from jaclang.scale.injector.bundle { pack_jab }
-import from jaclang.dist.sanitize { sanitized_jac_toml }
-import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
-import from jaclang.scale.injector.pvc_injector {
-    PvcInjector,
-    build_bundle_pvc,
-    build_loader_pod,
-    BUNDLE_MOUNT_PATH,
-    RUNTIME_UID,
-    RUNTIME_GID,
-    build_pvc_init_container,
-    bundle_keys_from_pod_spec
-}
 
 
 glob _JAC_BIN: Path = pod_binary();
@@ -42,7 +32,7 @@ def _sanitized_toml(project: str) -> dict[str, any] {
 test "secrets are stripped and secret-bearing files excluded from the sealed .jab" {
     require_pod_binary();
     with tempfile.TemporaryDirectory() as project {
-        with open(os.path.join(project, "app.jac"), "w") as handle {
+        with open(os.path.join(project, "main.jac"), "w") as handle {
             handle.write("with entry { print(\"ok\"); }");
         }
         with open(os.path.join(project, ".env"), "w") as handle {
@@ -69,7 +59,7 @@ test "secrets are stripped and secret-bearing files excluded from the sealed .ja
             assert toml_member is not None;
             toml_text = toml_member.read().decode("utf-8");
         }
-        assert "app.jac" in names;
+        assert "main.jac" in names;
         assert "_precompiled/MANIFEST.json" in names;
         assert ".env" not in names;
         assert "tls.key" not in names;
@@ -251,4 +241,238 @@ test "a pod spec with no bootstrap container references no bundles" {
         {"initContainers": [{"name": "wait-for-postgres", "args": ["sleep 1"]}]}
     )
         == [];
+}
+
+
+# The loader pod lives on whichever cluster the Python client loaded. The fake
+# kubectl reaches that cluster only when its cluster flags and the kubeconfig
+# files it reads match $FAKE_KUBECTL_REACHES; anything else (an ambient
+# context, a kubeconfig the client did not load) answers NotFound. Like real
+# kubectl, it resolves a relative KUBECONFIG entry against its own working
+# directory and does not expand ~.
+glob _FAKE_KUBECTL: str = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+flags = []
+while args and args[0] in ("--kubeconfig", "--context"):
+    flags += args[:2]
+    args = args[2:]
+kubeconfig = os.pathsep.join(
+    os.path.join(os.getcwd(), p)
+    for p in os.environ.get("KUBECONFIG", "").split(os.pathsep) if p
+)
+seen = {"flags": flags, "kubeconfig": kubeconfig}
+with open(os.environ["FAKE_KUBECTL_LOG"], "a") as f:
+    f.write(json.dumps({"args": args, **seen}) + "\\n")
+if seen != json.loads(os.environ["FAKE_KUBECTL_REACHES"]):
+    sys.stderr.write("Error from server (NotFound): pods not found\\n")
+    sys.exit(1)
+if "test -f" in " ".join(args):
+    sys.exit(1)
+""";
+
+
+obj _OneClusterPods {
+    has pods: set[str] = set();
+
+    def create_namespaced_pod(namespace: str, body: dict[str, any]) {
+        self.pods.add(body["metadata"]["name"]);
+    }
+
+    def read_namespaced_pod(name: str, namespace: str) -> any {
+        import from types { SimpleNamespace }
+        import from kubernetes.client.exceptions { ApiException }
+        if name not in self.pods {
+            raise ApiException(status=404);
+        }
+        return SimpleNamespace(status=SimpleNamespace(phase="Running"));
+    }
+
+    def delete_namespaced_pod(name: str, namespace: str) {
+        self.pods.discard(name);
+    }
+}
+
+
+test "the bundle seed's kubectl reaches the cluster the client loaded" {
+    import json;
+    import unittest.mock;
+    import from kubernetes.config.config_exception { ConfigException }
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        KubernetesConfig
+    }
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
+        KubernetesTargetBase
+    }
+    def _loads(*args: any, **kwargs: any) {
+        return;
+    }
+    def _no_such_context(*args: any, **kwargs: any) {
+        raise ConfigException("context 'prod-eks' not found");
+    }
+    ambient = "/home/dev/.kube/config";
+    to_prod = ["--context", "prod-eks"];
+    # (configured kubeconfig, ambient KUBECONFIG, kubeconfig load, flags and
+    # kubeconfig files that reach the loaded cluster). The client expands ~,
+    # resolves relative paths against the deploy's cwd (the bundle cp runs
+    # elsewhere), and merges a path list, whether the files come from the
+    # config or the environment, so kubectl must be handed the same files.
+    # In the last row a builder pod's jac.toml names a laptop context: the
+    # client falls back to the in-cluster ServiceAccount, so kubectl must
+    # name no context and ignore the pod's own kubeconfig.
+    rows: list[tuple[str, str, any, list[str], str]] = [
+        ("/etc/jac/kubeconfig", ambient, _loads, to_prod, "/etc/jac/kubeconfig"),
+        ("", ambient, _loads, to_prod, ambient),
+        ("", "kube/prod.yaml", _loads, to_prod, os.path.abspath("kube/prod.yaml")),
+        (
+            "~/.kube/prod.yaml",
+            ambient,
+            _loads,
+            to_prod,
+            os.path.expanduser("~/.kube/prod.yaml")
+        ),
+        ("kube/prod.yaml", ambient, _loads, to_prod, os.path.abspath("kube/prod.yaml")),
+        (
+            f"/etc/jac/a.yaml{os.pathsep}kube/b.yaml",
+            ambient,
+            _loads,
+            to_prod,
+            f"/etc/jac/a.yaml{os.pathsep}{os.path.abspath('kube/b.yaml')}"
+        ),
+        ("/etc/jac/kubeconfig", ambient, _no_such_context, [], os.devnull),
+
+    ];
+    for (kubeconfig, ambient_kubeconfig, load_kube_config, flags, files) in rows {
+        reaches = {"flags": flags, "kubeconfig": files};
+        with tempfile.TemporaryDirectory() as tmp {
+            log = Path(tmp) / "kubectl.log";
+            kubectl = Path(tmp) / "kubectl";
+            kubectl.write_text(_FAKE_KUBECTL);
+            kubectl.chmod(0o755);
+            target = KubernetesTargetBase(
+                config=KubernetesConfig(kube_context="prod-eks", kubeconfig=kubeconfig)
+            );
+            cluster = _OneClusterPods();
+            injector = PvcInjector(_object_key="orders/abc.jab", _bundle_bytes=b"jab");
+            with unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "PATH": f"{tmp}{os.pathsep}{os.environ['PATH']}",
+                    "KUBECONFIG": ambient_kubeconfig,
+                    "FAKE_KUBECTL_LOG": str(log),
+                    "FAKE_KUBECTL_REACHES": json.dumps(reaches)
+                }
+            ), unittest.mock.patch.multiple(
+                "kubernetes.config",
+                load_kube_config=load_kube_config,
+                load_incluster_config=_loads
+            ), unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", return_value=cluster
+            ) {
+                target._load_cluster_config();
+                injector.seed("orders", "prod", target._kubectl);
+            }
+            calls = [json.loads(line) for line in log.read_text().splitlines()];
+            assert any(c["args"][0] == "cp" for c in calls) , (
+                f"the bundle was never copied: {calls}"
+            );
+            for c in calls {
+                assert {"flags": c["flags"], "kubeconfig": c["kubeconfig"]}
+                    == reaches , (
+                    f"kubectl left the loaded cluster: expected {reaches}, ran {c}"
+                );
+            }
+            assert not cluster.pods , "the loader pod outlived the seed";
+        }
+    }
+}
+
+
+"""Stands in for the loader pod: kubectl runs against a local directory."""
+obj _LoaderVolume {
+    has volume_dir: str,
+        fail_prune: bool = False;
+
+    def CoreV1Api -> any {
+        return self;
+    }
+
+    def create_namespaced_pod(namespace: str, body: any) -> None {
+        return;
+    }
+
+    def delete_namespaced_pod(name: str, namespace: str) -> None {
+        return;
+    }
+
+    def kubectl(args: list[str], kubectl: any = None, cwd: any = None) -> None {
+        if args[0] == "cp" {
+            dest = args[-1].split(":", 1)[1].replace(
+                BUNDLE_MOUNT_PATH, self.volume_dir
+            );
+            shutil.copy(Path(cwd) / args[-2], dest);
+            return;
+        }
+        script = args[-1].replace(BUNDLE_MOUNT_PATH, self.volume_dir);
+        if self.fail_prune and "keep=" in script {
+            raise RuntimeError("kubectl command failed: exec prune");
+        }
+        if subprocess.run(["sh", "-c", script]).returncode != 0 {
+            raise RuntimeError(f"kubectl command failed: {script}");
+        }
+    }
+}
+
+
+test "seeding prunes the bundles no retained revision references (#10095)" {
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        KubectlCluster
+    }
+    live = ["bundles/orders/live.jab", "toolchain/orders/live.tar.gz"];
+    stale = [
+        "bundles/orders/old.jab",
+        "toolchain/orders/old.tar.gz",
+        "bundles/orders/new.jab.41.part"
+    ];
+    untouched = live + [".cache/pip/wheel", "bundles/billing/old.jab"];
+    utils = "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils";
+    for (label, retained, fail_prune, survivors) in [
+        ("retained revisions", set(live), False, untouched),
+        ("no retained revisions", set(), False, untouched + stale),
+        ("failed prune", set(live), True, untouched + stale)
+    ] {
+        with tempfile.TemporaryDirectory() as volume_dir {
+            for key in untouched + stale {
+                Path(volume_dir, key).parent.mkdir(parents=True, exist_ok=True);
+                Path(volume_dir, key).write_bytes(b"x");
+            }
+            volume = _LoaderVolume(volume_dir=volume_dir, fail_prune=fail_prune);
+            injector = PvcInjector();
+            injector._object_key = "bundles/orders/new.jab";
+            injector._bundle_bytes = b"jab";
+            with unittest.mock.patch(
+                "jaclang.scale._optdeps.kubernetes.client", volume
+            ), unittest.mock.patch.multiple(
+                utils,
+                run_kubectl_command=volume.kubectl,
+                wait_for_pod_phase=unittest.mock.DEFAULT,
+                wait_for_pod_deletion=unittest.mock.DEFAULT
+            ) {
+                injector.seed(
+                    "orders",
+                    "prod",
+                    KubectlCluster(),
+                    lambda -> set[str] { return retained; }
+                );
+            }
+            on_volume = sorted(
+                str(p.relative_to(volume_dir))
+                for p in Path(volume_dir).rglob("*")
+                if p.is_file()
+            );
+            assert on_volume == sorted(survivors + ["bundles/orders/new.jab"]) , (
+                f"{label}: {on_volume}"
+            );
+        }
+    }
 }

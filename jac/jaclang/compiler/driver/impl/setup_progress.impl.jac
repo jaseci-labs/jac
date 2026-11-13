@@ -17,7 +17,7 @@ impl SetupProgress._atexit_handler -> None {
     } elif self._reuse_count > 0 {
         sys.stderr.write(
             f"Compiler sources changed: {self._reuse_count} unchanged compiler {noun} "
-            "reused from an earlier compiler build (JAC_DEV_EXACT=1 rebuilds them)\n"
+            "reused from an earlier compiler build ([dev] exact = true in jac.toml rebuilds them)\n"
         );
         sys.stderr.flush();
     }

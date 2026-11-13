@@ -2,7 +2,7 @@
 
 In most programming languages, the *interface* of a module -- what it exposes -- is interleaved with its *implementation* -- how it works. Jac takes a fundamentally different approach. Through its `impl` system, Jac allows you to cleanly separate **declarations** (the interfaces, types, and signatures that define a module's contract) from **implementations** (the method bodies and private helpers that fulfill that contract). As we will see throughout this guide, this distinction is far more than syntactic convenience -- it reshapes how both humans and AI models read, navigate, and reason about code.
 
-The same idea extends from one module to the whole project: an `arch.jac` beside `jac.toml` declares which modules feed which, and generates those imports itself. That file is covered in [Project Wiring](wiring.md).
+The same idea extends from one module to the whole project: an `archwire.jac` beside `jac.toml` declares which modules feed which, and generates those imports itself. That file is covered in [Project Wiring](wiring.md).
 
 In this guide, we will walk through the five organizational patterns used in the Jac compiler itself. For each pattern, we will examine when it is most appropriate, study real-world examples drawn from the compiler codebase, and discuss best practices for maintaining clarity and consistency as your projects grow.
 
@@ -457,6 +457,14 @@ Ordinary imports participate in the selected app's compilation context. Imports
 through another declared app entry use its public functions and walkers;
 `E2039` diagnoses access outside that surface. File location does not establish
 ownership. Declaration and implementation annexes work within every app context.
+
+Client components may also import Jac modules outside the project directory.
+For example, `myapp/frontend.jac` can import `..shared.Card` from a sibling
+`shared/Card.jac`. The client build assigns external modules distinct paths
+under its compiled output and generates imports relative
+to those output paths. External modules can import their own dependencies or
+modules inside the app; two external modules with the same filename remain
+distinct. Generated source maps continue to reference the original Jac files.
 
 ---
 

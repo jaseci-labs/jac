@@ -1,12 +1,4 @@
 import unittest.mock;
-import from jaclang.scale._optdeps.optional_deps {
-    require_optional,
-    is_optional_available
-}
-import from jaclang.scale._optdeps.prometheus { HAS_PROMETHEUS, Counter }
-import from jaclang.scale._optdeps.apscheduler { HAS_APSCHEDULER, BackgroundScheduler }
-import from jaclang.scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client }
-import from jaclang.scale._optdeps.gcs { HAS_GCS, StorageClient }
 
 test "require_optional does not raise for installed stdlib package" {
     require_optional("json", "serve");

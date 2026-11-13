@@ -1,21 +1,6 @@
 """
 Implementation of LLVM IR instructions.
 """
-import jaclang.compiler.backends.native.llvm.ir.types as types;
-import from jaclang.compiler.backends.native.llvm.ir.values {
-    Block,
-    Function,
-    NamedValue,
-    Constant,
-    MetaDataArgument,
-    MetaDataString,
-    AttributeSet,
-    ArgumentAttributes,
-    Value,
-    _value_list,
-    _str_list
-}
-import from jaclang.compiler.backends.native.llvm.ir.module { Module }
 
 glob TailMarkerOptions: frozenset[str] = frozenset(['tail', 'musttail', 'notail']),
      _CALL_ATTRS: frozenset[str] = frozenset(
@@ -26,7 +11,8 @@ glob TailMarkerOptions: frozenset[str] = frozenset(['tail', 'musttail', 'notail'
              'readonly',
              'readnone',
              'noinline',
-             'alwaysinline'
+             'alwaysinline',
+             'returns_twice'
          ]
      ),
      _FAST_MATH_FLAGS: frozenset[str] = frozenset(
@@ -157,6 +143,10 @@ class Instruction(NamedValue) {
         getter {
             return self.parent.function.module;
         }
+    }
+
+    def release(self: Instruction) {
+        self.operands = [];
     }
 
     def descr(self: Instruction, buf: list[str]) {
@@ -617,7 +607,8 @@ class CastInstr(Instruction) {
 }
 
 class LoadInstr(Instruction) {
-    has align: int | None = None;
+    has align: int | None = None,
+        volatile: bool = False;
 
     def init(
         self: LoadInstr,
@@ -629,6 +620,7 @@ class LoadInstr(Instruction) {
         loaded = typ if typ is not None else _loaded_type(ptr);
         super.init(parent, loaded, "load", [ptr], name);
         self.align = None;
+        self.volatile = False;
     }
 
     def descr(self: LoadInstr, buf: list[str]) {
@@ -639,19 +631,22 @@ class LoadInstr(Instruction) {
         } else {
             align = '';
         }
+        volatile = "volatile " if self.volatile else "";
         buf.append(
-            f"load {self.type}, {val.type} {val.get_reference()}{align}"
+            f"load {volatile}{self.type}, {val.type} {val.get_reference()}{align}"
             f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class StoreInstr(Instruction) {
-    has align: int | None = None;
+    has align: int | None = None,
+        volatile: bool = False;
 
     def init(self: StoreInstr, parent: Block, val: Value, ptr: Value) {
         super.init(parent, types.VoidType(), "store", [val, ptr]);
         self.align = None;
+        self.volatile = False;
     }
 
     def descr(self: StoreInstr, buf: list[str]) {
@@ -663,8 +658,9 @@ class StoreInstr(Instruction) {
         } else {
             align = '';
         }
+        volatile = "volatile " if self.volatile else "";
         buf.append(
-            f"store {val.type} {val.get_reference()}, {ptr.type} {ptr.get_reference()}"
+            f"store {volatile}{val.type} {val.get_reference()}, {ptr.type} {ptr.get_reference()}"
             f"{align}{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
@@ -767,7 +763,8 @@ class GEPInstr(Instruction) {
     has source_etype: types.Type | None = None,
         pointer: Value,
         indices: list[Value],
-        inbounds: bool = False;
+        inbounds: bool = False,
+        nusw: bool = False;
 
     def init(
         self: GEPInstr,
@@ -776,7 +773,8 @@ class GEPInstr(Instruction) {
         indices: any,
         inbounds: bool,
         name: str,
-        source_etype: types.Type | None = None
+        source_etype: types.Type | None = None,
+        nusw: bool = False
     ) {
         steps = _value_list(indices);
         typ: types.Type = ptr.type;
@@ -813,11 +811,14 @@ class GEPInstr(Instruction) {
         self.pointer = ptr;
         self.indices = steps;
         self.inbounds = bool(inbounds);
+        self.nusw = nusw;
     }
 
     def descr(self: GEPInstr, buf: list[str]) {
         indices = ', '.join([f"{i.type} {i.get_reference()}" for i in self.indices]);
-        op = "getelementptr inbounds" if self.inbounds else "getelementptr";
+        op = "getelementptr inbounds"
+            if self.inbounds
+            else ("getelementptr nusw" if self.nusw else "getelementptr");
         buf.append(
             f"{op} {self.source_etype}, {self.pointer.type} "
             f"{self.pointer.get_reference()}, {indices} "
@@ -976,6 +977,54 @@ class InlineAsm(Value) {
 
     def __str__(self: InlineAsm) -> str {
         return f"{self.type} {self.get_reference()}";
+    }
+}
+
+class CmpXchg(Instruction) {
+    has ordering: str = '',
+        failordering: str = '';
+
+    def init(
+        self: CmpXchg,
+        parent: Block,
+        ptr: Value,
+        cmp: Value,
+        val: Value,
+        ordering: str,
+        failordering: str,
+        name: str
+    ) {
+        outtype = types.LiteralStructType([val.type, types.IntType(1)]);
+        super.init(parent, outtype, "cmpxchg", [ptr, cmp, val], name);
+        self.ordering = ordering;
+        self.failordering = failordering;
+    }
+
+    def descr(self: CmpXchg, buf: list[str]) {
+        ptr = self.operands[0];
+        cmp = self.operands[1];
+        val = self.operands[2];
+        buf.append(
+            f"cmpxchg {ptr.type} {ptr.get_reference()}, "
+            f"{cmp.type} {cmp.get_reference()}, {val.type} {val.get_reference()} "
+            f"{self.ordering} {self.failordering}"
+            f"{self._stringify_metadata(leading_comma=True)}\n"
+        );
+    }
+}
+
+class Fence(Instruction) {
+    has ordering: str = '';
+
+    def init(self: Fence, parent: Block, ordering: str, name: str = '') {
+        super.init(parent, types.VoidType(), "fence", [], name);
+        self.ordering = ordering;
+    }
+
+    def descr(self: Fence, buf: list[str]) {
+        buf.append(
+            f"fence {self.ordering}{self._stringify_metadata(leading_comma=True)}\n"
+        );
     }
 }
 

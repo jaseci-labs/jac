@@ -1,4 +1,5 @@
-"""Input constructors retain their priority and precede explicit shared initializers."""
+"""Input constructors retain their priority and run before the shared
+initializer, which the link glue lists in `.init_array` as the last input."""
 import ctypes;
 import platform;
 import shutil;
@@ -6,9 +7,9 @@ import struct;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+import from jaclang.compiler.backends.native.native_link { NativeLinkJob, link_native }
 
-test "ELF input constructors run in priority order before the shared initializer" {
+test "ELF input constructors run in priority order before the glue's shared initializer" {
     zig = shutil.which("zig");
     assert zig is not None , "ELF constructor tests require Zig";
     for arch in ["x86_64", "aarch64"] {
@@ -21,30 +22,44 @@ test "ELF input constructors run in priority order before the shared initializer
                     + "void last(void) { value = value * 10 + 3; }\n"
                     + "int result(void) { return value; }\n"
             );
-            obj_path = Path(work) / "constructors.o";
-            subprocess.run(
-                [
-                    zig,
-                    "cc",
-                    "-target",
-                    arch + "-linux-musl",
-                    "-fPIC",
-                    "-fno-stack-protector",
-                    "-O2",
-                    "-c",
-                    str(source),
-                    "-o",
-                    str(obj_path)
-                ],
-                check=True
+            glue = Path(work) / "glue.c";
+            glue.write_text(
+                "extern void last(void);\n"
+                    + "__attribute__((section(\".init_array\"), used))\n"
+                    + "static void (*const last_entry)(void) = last;\n"
             );
+            objects: list[bytes] = [];
+            for unit in [source, glue] {
+                obj_path = unit.with_suffix(".o");
+                subprocess.run(
+                    [
+                        zig,
+                        "cc",
+                        "-target",
+                        arch + "-linux-musl",
+                        "-fPIC",
+                        "-fno-stack-protector",
+                        "-O2",
+                        "-c",
+                        str(unit),
+                        "-o",
+                        str(obj_path)
+                    ],
+                    check=True
+                );
+                objects.append(obj_path.read_bytes());
+            }
             output = Path(work) / "constructors.so";
-            assert ElfLinker.link(
-                objects=[obj_path.read_bytes()],
-                output_path=str(output),
-                shared=True,
-                export_symbols=["result"],
-                init_funcs=["last"]
+            link_native(
+                NativeLinkJob(
+                    platform="elf",
+                    triple=arch + "-unknown-linux-gnu",
+                    output_path=str(output),
+                    shared=True,
+                    soname=output.name,
+                    objects=objects,
+                    export_symbols=["result"]
+                )
             );
             raw = output.read_bytes();
             offset = struct.unpack_from("<Q", raw, 40)[0];

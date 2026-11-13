@@ -1,5 +1,3 @@
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
-import from jaclang.compiler.backends.native.llvm.binding.common { _encode_string }
 import from ctypes { c_char_p }
 """
     Set the given LLVM "command-line" option.

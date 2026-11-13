@@ -1,10 +1,10 @@
 """A broken file in the compiler's own sources is never degraded around.
 
-Every schedule builder in `compiler.driver.pipeline` degrades on `ImportError` so the
+Every product schedule in `compiler.driver.pipeline` may degrade on `ImportError` so the
 compiler can bootstrap itself and so an install missing an optional backend
 still compiles. Both of those are *absence*. When #8215 dropped a comma from
 `esast_gen_pass.jac`'s import list the file was present and simply would not
-parse, and `get_py_code_gen` degraded around it anyway: every compile silently
+parse, and the codegen schedule degraded around it anyway: every compile silently
 lost the ES and native backends with no diagnostic naming the file, and finding
 it took a bisect (#8218).
 
@@ -13,7 +13,7 @@ These tests pin the two halves of the distinction:
 1. A .jac source that fails to compile raises `JacSourceCompileError` -- an
    `ImportError` that carries the offending file -- so a caller can tell
    breakage from absence.
-2. `get_py_code_gen` re-raises that as `CompilerSourceError`, naming file and
+2. The CODEGEN product re-raises that as `CompilerSourceError`, naming file and
    diagnostics, when the file is the compiler's own; it still returns the
    bytecode-only fallback for a genuinely absent backend and for a broken
    module that belongs to user code.
@@ -30,7 +30,8 @@ import from jaclang.meta_importer { JacSourceCompileError }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.driver.module_compile { get_py_code_gen }
+import from jaclang.compiler.driver.pipeline { schedule_for }
+import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
@@ -81,13 +82,14 @@ def _absent_backend -> types.ModuleType {
     return types.ModuleType(ES_BACKEND);
 }
 
-"""Run `get_py_code_gen` with `stub` standing in for the ES backend."""
+"""Resolve the codegen lane with `stub` standing in for the ES backend."""
 def _codegen_with(stub: types.ModuleType) -> list[type] {
     had = ES_BACKEND in sys.modules;
     saved: types.ModuleType = sys.modules[ES_BACKEND] if had else stub;
     sys.modules[ES_BACKEND] = stub;
     try {
-        return get_py_code_gen();
+        return (schedule_for(CompilationProduct.CODEGEN) or [])
+            + (schedule_for(CompilationProduct.PY_IR) or []);
     } finally {
         if had {
             sys.modules[ES_BACKEND] = saved;

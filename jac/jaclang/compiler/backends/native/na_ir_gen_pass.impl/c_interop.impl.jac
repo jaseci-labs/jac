@@ -1,14 +1,3 @@
-import from jaclang.compiler.c_interop {
-    c_builtin_kind,
-    c_type_arg,
-    foreign_read_copies,
-    foreign_struct_of_type,
-    is_builtin_pin_call,
-    is_pinned_type,
-    is_ptr_type,
-    is_ptr_view_type
-}
-
 impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
     arch = foreign_struct_of_type(t);
     if arch is None or arch.name is None {
@@ -25,6 +14,9 @@ impl NaIRGenPass._lower_c_interop_type(t: any) -> (ir.Type | None) {
     }
     if kind == "PtrView" {
         return self._ptr_view_type();
+    }
+    if kind == "VaList" {
+        return ir.IntType(64);
     }
     if kind == "Pinned" {
         elem = c_type_arg(t);
@@ -48,8 +40,6 @@ impl NaIRGenPass._ptr_view_type -> ir.Type {
 }
 
 impl NaIRGenPass._c_scalar_llvm(t: any) -> (ir.Type | None) {
-    import from jaclang.compiler.types.types { ClassType as _CClassType }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if is_ptr_type(t) {
         return ir.IntType(64);
     }
@@ -286,8 +276,9 @@ impl NaIRGenPass._c_interop_store(
             value,
             nd.aug_op.value,
             nd.value,
+            target_type=target.type,
             unsigned=self._is_unsigned_node(target),
-            checked=self._is_sized_node(target) or self._is_sized_node(nd.value)
+            sized=self._is_sized_node(target)
         );
         if updated is None {
             self.ctx.emit(
@@ -344,6 +335,19 @@ impl NaIRGenPass._codegen_c_interop_call(
         }
         return (True, self._codegen_pin(params[0]));
     }
+    if is_builtin_addressof_call(nd) {
+        symbol = params[0] if len(params) == 1 else None;
+        symbol_slot = self._clib_global_of(symbol)
+            if isinstance(symbol, uni.Name)
+            else None;
+        if symbol_slot is None {
+            self.ctx.emit(
+                E5092, node_override=nd, kind="call", name="addressof(C data symbol)"
+            );
+            return (True, None);
+        }
+        return (True, self.builder.ptrtoint(symbol_slot[0], i64, name="c.addr"));
+    }
     if is_ptr_type(callee_type)
         and callee_type is not None
         and not callee_type.is_instance() {
@@ -356,7 +360,26 @@ impl NaIRGenPass._codegen_c_interop_call(
             );
             return (True, None);
         }
-        return (True, self._codegen_expr(params[0]));
+        text = c_string_literal(params[0]);
+        if text is not None {
+            return (True, self._c_string_global(text).ptrtoint(i64) as ir.Value);
+        }
+        (named, address) = self._c_function_address(params[0]);
+        if named {
+            return (True, address);
+        }
+        literal = self._c_literal_address(params[0]);
+        if literal is not None {
+            return (True, literal);
+        }
+        return (True, self._c_address_of_value(self._codegen_expr(params[0])));
+    }
+    if isinstance(nd.target, uni.Name)
+        and nd.target.value == "int"
+        and len(params) == 1
+        and not isinstance(params[0], uni.KWPair)
+        and self._reads_c_callback(params[0]) {
+        return (True, self._c_address_of_value(self._codegen_expr(params[0])));
     }
     if isinstance(nd.target, uni.Name)
         and nd.target.value == "bool"
@@ -388,6 +411,9 @@ impl NaIRGenPass._codegen_c_interop_call(
     }
     recv = nd.target.target;
     method = self._get_name(nd.target.right);
+    if is_va_list_type(recv?.type) and method == "arg" {
+        return (True, self._c_va_arg(nd, recv));
+    }
     if not is_ptr_type(recv?.type) {
         return (False, None);
     }
@@ -413,6 +439,11 @@ impl NaIRGenPass._codegen_c_interop_call(
         }
         count = self._coerce_type(count, i64);
         b = self.builder;
+        if self._unchecked_views_on() {
+            empty_view: ir.Value = ir.Constant(self._ptr_view_type(), None);
+            addr_view = b.insert_value(empty_view, addr, 0, name="c.view.addr");
+            return (True, b.insert_value(addr_view, count, 1, name="c.view.n"));
+        }
         negative = b.icmp_signed("<", count, ir.Constant(i64, 0), name="c.view.nneg");
         self._emit_runtime_raise(
             negative, "ValueError", "PtrView length must not be negative"
@@ -455,7 +486,6 @@ impl NaIRGenPass._codegen_pin(arg: uni.Expr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     ptype = p.type;
     optional = False;
     if isinstance(ptype, UnionType) {
@@ -471,13 +501,18 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
             optional = True;
         }
     }
-    borrowed = p.type_tag is not None and is_borrow_kind(p.type_tag.ownership);
+    borrowed = self._clib_param_borrowed(p);
     if is_pinned_type(ptype) {
         return {"borrow": "pinned", "optional": optional};
     }
     if is_ptr_type(ptype) {
         if borrowed {
-            return {"borrow": "scalar", "elem": ptype, "llt": ir.IntType(64)};
+            return {
+                "borrow": "scalar",
+                "elem": ptype,
+                "llt": ir.IntType(64),
+                "optional": optional
+            };
         }
         return {"cptr": True, "optional": optional};
     }
@@ -491,7 +526,32 @@ impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
     if llt is None {
         return {};
     }
-    return {"borrow": "scalar", "elem": ptype, "llt": llt};
+    return {"borrow": "scalar", "elem": ptype, "llt": llt, "optional": optional};
+}
+
+impl NaIRGenPass._clib_param_borrowed(p: uni.ParamVar) -> bool {
+    tag = p.type_tag;
+    if tag is None {
+        return False;
+    }
+    if is_borrow_kind(tag.ownership) {
+        return True;
+    }
+    pending: list[uni.UniNode] = [tag.tag];
+    while pending {
+        expr = pending.pop();
+        while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+            expr = expr.value;
+        }
+        if isinstance(expr, uni.UnaryExpr) and is_borrow_kind(expr.ownership) {
+            return True;
+        }
+        if isinstance(expr, uni.BinaryExpr) {
+            pending.append(expr.left);
+            pending.append(expr.right);
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._clib_ret_is_cptr(sig: uni.FuncSignature) -> bool {
@@ -513,7 +573,6 @@ impl NaIRGenPass._c_decl_type_of(type_expr: uni.UniNode) -> any {
 }
 
 impl NaIRGenPass._clib_place_ptr(expr: uni.Expr) -> (ir.Value | None) {
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     if isinstance(expr, uni.UnaryExpr) and is_borrow_kind(expr.ownership) {
         expr = expr.operand;
     }
@@ -552,7 +611,9 @@ impl NaIRGenPass._codegen_clib_args(
     }
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     param_plans: list[dict[str, any]] = plan["params"];
-    if len(params) != len(param_plans) {
+    variadic = self.clib_extern_fns[func_name].function_type.var_arg;
+    if len(params) < len(param_plans)
+        or (len(params) > len(param_plans) and not variadic) {
         return None;
     }
     for arg in params {
@@ -576,6 +637,18 @@ impl NaIRGenPass._codegen_clib_args(
             continue;
         }
         if info.get("borrow") != "scalar" {
+            if isinstance(arg, uni.UnaryExpr)
+                and is_borrow_kind(arg.ownership)
+                and (
+                    is_ptr_type(arg.operand.type)
+                    or self._c_scalar_llvm(arg.operand.type) is not None
+                ) {
+                lent = self._clib_place_ptr(arg);
+                if lent is not None and isinstance(lent.type, ir.PointerType) {
+                    out.append(self.builder.bitcast(lent, i8p, name=f"clib.lend.{i}"));
+                    continue;
+                }
+            }
             val = self._codegen_expr(arg);
             if val is None {
                 return out;
@@ -609,7 +682,107 @@ impl NaIRGenPass._codegen_clib_args(
         }
         out.append(self.builder.bitcast(tmp, i8p, name=f"clib.spill.arg.{i}"));
     }
+    for arg in params[len(param_plans):] {
+        extra = self._c_vararg(arg) if isinstance(arg, uni.Expr) else None;
+        if extra is None {
+            return None;
+        }
+        out.append(extra);
+    }
     return out;
+}
+
+impl NaIRGenPass._c_vararg(arg: uni.Expr) -> (ir.Value | None) {
+    if isinstance(arg, uni.UnaryExpr) and is_borrow_kind(arg.ownership) {
+        return self._c_vararg_address(arg);
+    }
+    val = self._codegen_expr(arg);
+    return self._c_vararg_value(val, arg) if val is not None else None;
+}
+
+impl NaIRGenPass._c_vararg_address(arg: uni.UnaryExpr) -> (ir.Value | None) {
+    slot = self._clib_place_ptr(arg);
+    if slot is not None and isinstance(slot.type, ir.PointerType) {
+        pointee = slot.type.pointee;
+        if (isinstance(pointee, ir.IntType) and pointee.width in (8, 16, 32, 64))
+            or isinstance(pointee, (ir.FloatType, ir.DoubleType, ir.PointerType)) {
+            return self.builder.bitcast(
+                slot, ir.IntType(8).as_pointer(), name="c.va.borrow"
+            );
+        }
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C variadic argument",
+        name=str(arg.type),
+        help_text="A borrowed C variadic argument (`&mut x`) is a variable of a C scalar or pointer type; the callee receives its address."
+    );
+    return None;
+}
+
+impl NaIRGenPass._c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    if self._foreign_struct_name_of_type(elem) is not None {
+        storage = self._codegen_expr(arg.operand);
+        if storage is not None and isinstance(storage.type, ir.PointerType) {
+            return self.builder.ptrtoint(storage, i64, name="c.lend.struct");
+        }
+    } else {
+        slot = self._clib_place_ptr(arg);
+        want = self._c_scalar_llvm(elem);
+        if slot is not None
+            and want is not None
+            and isinstance(slot.type, ir.PointerType)
+            and slot.type.pointee == want {
+            return self.builder.ptrtoint(slot, i64, name="c.lend");
+        }
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C pointer argument",
+        name=str(arg.operand.type),
+        help_text="`&mut x` passed to a `ptr[T]` parameter lends the address of a variable or field whose storage is the C `T`."
+    );
+    return None;
+}
+
+impl NaIRGenPass._c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None) {
+    if isinstance(arg, uni.UnaryExpr) and is_borrow_kind(arg.ownership) {
+        return self._c_vararg_address(arg);
+    }
+    b = self.builder;
+    i32 = ir.IntType(32);
+    if isinstance(val.type, ir.IntType) {
+        if val.type.width >= 32 {
+            return val;
+        }
+        if val.type.width == 1 or self._is_unsigned_node(arg) {
+            return b.zext(val, i32, name="c.va.zext");
+        }
+        return b.sext(val, i32, name="c.va.sext");
+    }
+    if isinstance(val.type, ir.FloatType) {
+        return b.fpext(val, ir.DoubleType(), name="c.va.fpext");
+    }
+    if isinstance(val.type, ir.DoubleType) {
+        return val;
+    }
+    if self._type_key_of(arg) == "str" {
+        return self._membrane_str_out(b, self._str_norm(val));
+    }
+    if self._is_bytes_value(val) {
+        return self._bytes_data_ptr(val);
+    }
+    self.ctx.emit(
+        E5092,
+        node_override=arg,
+        kind="C variadic argument",
+        name=str(arg.type),
+        help_text="A C variadic argument is a C scalar, `ptr`, `str` or `bytes`; a Jac object has no C representation to pass."
+    );
+    return None;
 }
 
 impl NaIRGenPass._clib_pointer_arg(val: ir.Value) -> ir.Value {
@@ -635,4 +808,580 @@ impl NaIRGenPass._clib_pointer_arg(val: ir.Value) -> ir.Value {
         return b.bitcast(val, i8p, name="clib.addr");
     }
     return self._clib_reinterpret(val, i8p, name="clib.addr");
+}
+
+impl NaIRGenPass._c_ptr_elem_llvm(ptr_type: any) -> (ir.Type | None) {
+    info = self._c_elem_info(c_type_arg(ptr_type));
+    if info is None {
+        return None;
+    }
+    elem = info[0];
+    if isinstance(elem, ir.IdentifiedStructType) and elem.is_opaque {
+        return None;
+    }
+    return elem;
+}
+
+impl NaIRGenPass._c_ptr_step(
+    addr: ir.Value, delta: ir.Value, ptr_type: any, backward: bool
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    b = self.builder;
+    count = self._coerce_type(delta, i64);
+    if backward {
+        count = b.neg(count, name="c.ptr.back");
+    }
+    elem = self._c_ptr_elem_llvm(ptr_type) or ir.IntType(8);
+    typed = b.inttoptr(addr, elem.as_pointer(), name="c.ptr.typed");
+
+    step = b.gep(typed, [count], name="c.ptr.step", nusw=True);
+    return b.ptrtoint(step, i64, name="c.ptr");
+}
+
+impl NaIRGenPass._codegen_c_ptr_arith(
+    nd: uni.BinaryExpr, op: str
+) -> tuple[bool, (ir.Value | None)] {
+    if op not in (Tok.PLUS, Tok.MINUS) or not is_ptr_type(nd.left?.type) {
+        return (False, None);
+    }
+    left = self._codegen_expr(nd.left);
+    right = self._codegen_expr(nd.right);
+    if left is None or right is None {
+        return (True, None);
+    }
+    if not (op == Tok.MINUS and is_ptr_type(nd.right?.type)) {
+        return (True, self._c_ptr_step(left, right, nd.left.type, op == Tok.MINUS));
+    }
+    b = self.builder;
+    span = b.sub(left, right, name="c.ptr.span");
+    elem = self._c_ptr_elem_llvm(nd.left.type);
+    if elem is None {
+        return (True, span);
+    }
+    return (True, b.sdiv(span, self._sizeof_llvm(elem), name="c.ptr.dist"));
+}
+
+impl NaIRGenPass._is_c_ptr_node(nd: (uni.UniNode | None)) -> bool {
+    if isinstance(nd, uni.CfgExpr) {
+        nd = nd.expr;
+    }
+    return nd is not None and is_ptr_type(nd?.type);
+}
+
+impl NaIRGenPass._c_ptr_aug(
+    current: ir.Value, rhs: ir.Value, aug_op: str, target_type: any
+) -> tuple[bool, (ir.Value | None)] {
+    if not is_ptr_type(target_type) {
+        return (False, None);
+    }
+    if aug_op not in ("+=", "-=") {
+        return (True, None);
+    }
+    return (True, self._c_ptr_step(current, rhs, target_type, aug_op == "-="));
+}
+
+impl NaIRGenPass._declare_clib_global(
+    assign: uni.Assignment, lib: (str | None), owner: uni.Module
+) -> None {
+    target = assign.target[0] if assign.target else None;
+    if not isinstance(target, uni.Name) or target.sym_name in self.clib_globals {
+        return;
+    }
+    name = target.sym_name;
+    ctype = self._c_decl_type_of(target);
+    sname = self._foreign_struct_name_of_type(ctype);
+    llt = self._c_scalar_llvm(ctype);
+    elem = c_array_elem(ctype);
+    elem_info = self._c_elem_info(elem) if elem is not None else None;
+    if elem_info is not None {
+        count = 0;
+        if owner is self.module and isinstance(assign.value, uni.ListVal) {
+            count = len(assign.value.values);
+        } elif owner is self.module
+            and (data := c_bytes_literal(assign.value)) is not None
+            and (shape := c_bytes_elem_shape(elem)) is not None {
+            count = len(data) // shape[0];
+        }
+        llt = ir.ArrayType(elem_info[0], count);
+    } elif llt is None {
+        llt = self.struct_types[sname] if sname is not None else ir.IntType(8);
+    }
+    gv = self.llvm_module.globals.get(name);
+    if not isinstance(gv, ir.GlobalVariable) {
+        gv = ir.GlobalVariable(self.llvm_module, llt, name=name);
+        gv.linkage = "external";
+    }
+    if assign.value is not None and owner is self.module {
+        decl = assign.parent;
+        private = isinstance(decl, uni.GlobalVars)
+            and decl.access is not None
+            and decl.access.tag.name == Tok.KW_PRIV;
+        gv.linkage = "internal" if private else "";
+        gv.initializer = ir.Constant(llt, None);
+        self._clib_data_inits.append((gv, assign.value, ctype));
+        if not private {
+            self._record_export(name, name, "global", True);
+            if self.module?.gen and name not in self.module.gen._exported_symbols {
+                self.module.gen._exported_symbols.append(name);
+            }
+        }
+    }
+    self.clib_globals[name] = (gv, ctype);
+    if lib is not None {
+        self._clib_symbol_lib[name] = lib;
+    }
+    self.has_native_code = True;
+}
+
+impl NaIRGenPass._emit_clib_data_inits -> None {
+    pending = self._clib_data_inits;
+    self._clib_data_inits = [];
+    for (gv, value, ctype) in pending {
+        initializer = self._c_const_init(value, ctype, gv.value_type);
+        if initializer is None {
+            self.ctx.emit(
+                E5092,
+                node_override=value,
+                kind="C data definition",
+                name=gv.name,
+                help_text="A C data definition is laid out at link time, so its initializer is a C constant: literals, `ptr[T]()`, `ptr[u8](\"text\")`, `addressof(symbol)`, named functions for callback fields, `ptr(f)` for a named function's address, `ptr[T](...)` casts of these addresses, constructors of foreign structs made of these, and for an integer array a bytes literal of its little-endian elements."
+            );
+            continue;
+        }
+        gv.initializer = initializer;
+    }
+}
+
+impl NaIRGenPass._c_string_global(text: str) -> ir.GlobalVariable {
+    found = self._c_strings.get(text);
+    if found is not None {
+        return found;
+    }
+    data = (text + "\0").encode("utf-8");
+    array_type = ir.ArrayType(ir.IntType(8), len(data));
+    gv = ir.GlobalVariable(
+        self.llvm_module, array_type, name=f".cstr.{len(self._c_strings)}"
+    );
+    gv.linkage = "private";
+    gv.global_constant = True;
+    gv.initializer = ir.Constant(array_type, bytearray(data));
+    self._c_strings[text] = gv;
+    return gv;
+}
+
+impl NaIRGenPass._c_const_init(
+    expr: uni.Expr, ctype: any, llt: ir.Type
+) -> (ir.Constant | None) {
+    while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+        expr = expr.value;
+    }
+    if isinstance(expr, uni.Null) {
+        return ir.Constant(llt, None);
+    }
+    elem = c_array_elem(ctype);
+    if elem is not None and isinstance(llt, ir.ArrayType) {
+        data = c_bytes_literal(expr);
+        if data is not None {
+            shape = c_bytes_elem_shape(elem);
+            if shape is None or len(data) != shape[0] * llt.count {
+                return None;
+            }
+            if shape[0] == 1 {
+                return ir.Constant(llt, data);
+            }
+            return ir.Constant(llt, c_bytes_array_values(data, shape[0], shape[1]));
+        }
+        if not isinstance(expr, uni.ListVal) {
+            return None;
+        }
+        items: list[ir.Constant] = [];
+        for item in expr.values {
+            value = self._c_const_init(item, elem, llt.element)
+                if isinstance(item, uni.Expr)
+                else None;
+            if value is None {
+                return None;
+            }
+            items.append(value);
+        }
+        return ir.Constant(llt, items);
+    }
+    sname = self._foreign_struct_name_of_type(ctype);
+    if sname is not None {
+        return self._c_const_struct(expr, sname);
+    }
+    if isinstance(llt, ir.PointerType) and isinstance(llt.pointee, ir.FunctionType) {
+        target = self.scope.function(expr.sym_name)
+            if isinstance(expr, uni.Name)
+            else None;
+        if not isinstance(target, ir.Function) {
+            return None;
+        }
+        if isinstance(expr, uni.Name) and expr.sym_name in self._clib_exports {
+            return self._clib_exports[expr.sym_name].bitcast(llt) as ir.Constant;
+        }
+        if not self._c_abi_same(target.function_type, llt.pointee)
+            or not self._c_calls_directly(target) {
+            target = self._emit_clib_c_trampoline(target, llt);
+        }
+        return target.bitcast(llt) as ir.Constant;
+    }
+    if is_ptr_type(ctype) {
+        return self._c_const_address(expr);
+    }
+    return self._c_const_scalar(expr, llt);
+}
+
+impl NaIRGenPass._c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool {
+    if have == want {
+        return True;
+    }
+    if have.var_arg != want.var_arg or len(have.args) != len(want.args) {
+        return False;
+    }
+    pairs: list[tuple[ir.Type, ir.Type]] = [];
+    for i in range(len(have.args)) {
+        pairs.append((have.args[i], want.args[i]));
+    }
+    pairs.append((have.return_type, want.return_type));
+    word = ir.IntType(64);
+    for (a, b) in pairs {
+        if a == b {
+            continue;
+        }
+        pointer_like = (isinstance(a, ir.PointerType) or a == word)
+            and (isinstance(b, ir.PointerType) or b == word);
+        if not pointer_like {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None) {
+    (ok, value) = c_scalar_constant(expr);
+    if not ok or not isinstance(value, (bool, int, float)) {
+        return None;
+    }
+    if isinstance(llt, ir.IntType) {
+        return ir.Constant(llt, int(value));
+    }
+    if isinstance(value, float) {
+        return ir.Constant(llt, value);
+    }
+    return ir.Constant(llt, float(int(value)));
+}
+
+impl NaIRGenPass._c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | None) {
+    if not isinstance(expr, uni.FuncCall) {
+        return None;
+    }
+    arch = foreign_struct_of_type(expr.type);
+    if arch is None or arch.name is None or arch.name.value != sname {
+        return None;
+    }
+    fields: list[uni.HasVar] = arch.get_has_vars();
+    given: dict[str, uni.Expr] = {};
+    for (i, param) in enumerate(expr.params or []) {
+        if isinstance(param, uni.KWPair) {
+            if isinstance(param.key, uni.Name) {
+                given[param.key.sym_name] = param.value;
+            }
+        } elif i < len(fields) {
+            given[fields[i].name.sym_name] = param;
+        }
+    }
+    struct_type = self.struct_types[sname];
+
+    indices = self.struct_field_indices.get(sname, {});
+    values: list[ir.Constant] = [
+        ir.Constant(elem, None) for elem in struct_type.elements
+    ];
+    for (i, field) in enumerate(fields) {
+        arg = given.get(field.name.sym_name);
+        if arg is None {
+            continue;
+        }
+        idx = indices.get(field.name.sym_name, i if not indices else -1);
+        if idx < 0 or idx >= len(values) {
+            return None;
+        }
+        value = self._c_const_init(
+            arg, self._c_decl_type_of(field), struct_type.elements[idx]
+        );
+        if value is None {
+            return None;
+        }
+        values[idx] = value;
+    }
+    return ir.Constant(struct_type, values);
+}
+
+impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
+    i64 = ir.IntType(64);
+    if isinstance(expr, uni.FuncCall) {
+        params = list(expr.params or []);
+        if is_builtin_addressof_call(expr) {
+            symbol = params[0] if len(params) == 1 else None;
+            found = self.clib_globals.get(symbol.sym_name)
+                if isinstance(symbol, uni.Name)
+                    and clib_global_of_name(symbol) is not None
+                else None;
+            return found[0].ptrtoint(i64) as ir.Constant if found is not None else None;
+        }
+        callee_type = expr.target.type;
+        if is_ptr_type(callee_type)
+            and callee_type is not None
+            and not callee_type.is_instance() {
+            if not params {
+                return ir.Constant(i64, 0);
+            }
+            arg = params[0];
+            text = c_string_literal(arg) if len(params) == 1 else None;
+            if text is not None {
+                return self._c_string_global(text).ptrtoint(i64) as ir.Constant;
+            }
+            if len(params) != 1 or isinstance(arg, uni.KWPair) {
+                return None;
+            }
+            (named, address) = self._c_function_address(arg);
+            if named {
+                return address;
+            }
+            literal = self._c_literal_address(arg);
+            if literal is not None {
+                return literal;
+            }
+            (base, count) = c_offset_address(arg);
+            if base is not None {
+                return self._c_const_offset_address(base, count);
+            }
+            return self._c_const_address(arg);
+        }
+        return None;
+    }
+    return self._c_const_scalar(expr, i64);
+}
+
+impl NaIRGenPass._c_const_offset_address(
+    call: uni.UniNode, count: int
+) -> (ir.Constant | None) {
+    params = list(call.params or []) if isinstance(call, uni.FuncCall) else [];
+    symbol = params[0] if len(params) == 1 else None;
+    found = self.clib_globals.get(symbol.sym_name)
+        if isinstance(symbol, uni.Name) and clib_global_of_name(symbol) is not None
+        else None;
+    if found is None {
+        return None;
+    }
+    target = found[0];
+    ptype = target.type;
+    if not isinstance(ptype, ir.PointerType) {
+        return None;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    pointee = ptype.pointee;
+    steps = [ir.Constant(i32, 0), ir.Constant(i64, count)]
+        if isinstance(pointee, ir.ArrayType)
+        else [ir.Constant(i64, count)];
+    return target.gep(steps).ptrtoint(i64) as ir.Constant;
+}
+
+impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {
+    if not isinstance(arg, uni.Int) {
+        return None;
+    }
+    bits = uni.int_literal_u64_bits(arg.value);
+    return ir.Constant(ir.IntType(64), bits) if bits is not None else None;
+}
+
+impl NaIRGenPass._reads_c_callback(nd: uni.Expr) -> bool {
+    found = foreign_field_of(nd);
+    if found is None {
+        return False;
+    }
+    (arch, index) = found;
+    struct_type = self.struct_types.get(arch.name.value);
+    elements = struct_type.elements if struct_type is not None else None;
+    if elements is None or index >= len(elements) {
+        return False;
+    }
+    field_type = elements[index];
+    return isinstance(field_type, ir.PointerType)
+        and isinstance(field_type.pointee, ir.FunctionType);
+}
+
+impl NaIRGenPass._c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None) {
+    if value is not None and isinstance(value.type, ir.PointerType) {
+        return self.builder.ptrtoint(value, ir.IntType(64), name="c.fn.addr");
+    }
+    return value;
+}
+
+impl NaIRGenPass._c_function_address(
+    expr: uni.Expr
+) -> tuple[bool, (ir.Constant | None)] {
+    while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, uni.Name) or named_function_of(expr) is None {
+        return (False, None);
+    }
+    i64 = ir.IntType(64);
+    name = expr.sym_name;
+    exported = self._clib_exports.get(name);
+    if exported is not None {
+        return (True, exported.ptrtoint(i64) as ir.Constant);
+    }
+    target = self.scope.function(name);
+    c_callable = False;
+    if isinstance(target, ir.Function) and not target.function_type.var_arg {
+        ftype = target.function_type;
+        passed: list[ir.Type] = list(ftype.args);
+        if not isinstance(ftype.return_type, ir.VoidType) {
+            passed.append(ftype.return_type);
+        }
+        c_callable = all(
+            (isinstance(t, ir.IntType) and t.width in (8, 16, 32, 64))
+                or isinstance(t, (ir.FloatType, ir.DoubleType, ir.PointerType))
+            for t in passed
+        );
+    }
+    if not isinstance(target, ir.Function) or not c_callable {
+        self.ctx.emit(
+            E5092,
+            node_override=expr,
+            kind="function address",
+            name=name,
+            help_text="`ptr(f)` hands C the function itself, so its parameters and result must be sized scalars, floats or pointers; define it in a C library import to give it a C-ABI entry point."
+        );
+        return (True, None);
+    }
+    if not self._c_calls_directly(target) {
+        target = self._emit_clib_c_trampoline(
+            target, target.function_type.as_pointer()
+        );
+    }
+    return (True, target.ptrtoint(i64) as ir.Constant);
+}
+
+impl NaIRGenPass._c_calls_directly(target: ir.Function) -> bool {
+    return self._is_kernel_unit() or self.clib_extern_fns.get(target.name) is target;
+}
+
+impl NaIRGenPass._clib_global_of(
+    nd: uni.Name
+) -> (tuple[ir.GlobalVariable, any] | None) {
+    c_global = self.clib_globals.get(nd.sym_name);
+    if c_global is None or nd.sym_name in self.local_vars {
+        return None;
+    }
+    if clib_global_of_name(nd) is None {
+        return None;
+    }
+    return c_global;
+}
+
+impl NaIRGenPass._c_global_store(
+    target: uni.Name, value: ir.Value, nd: uni.Assignment
+) -> None {
+    c_global = self._clib_global_of(target);
+    if c_global is None {
+        return;
+    }
+    (slot, ctype) = c_global;
+    if self._c_scalar_llvm(ctype) is None {
+        self.ctx.emit(
+            E5092, node_override=target, kind="assignment", name="C data object"
+        );
+        return;
+    }
+    if nd.aug_op is not None {
+        current = self._c_load_scalar(slot, ctype, f"c.glob.{target.sym_name}.cur");
+        updated = self._apply_scalar_aug_op(
+            current,
+            value,
+            nd.aug_op.value,
+            nd.value,
+            unsigned=self._is_unsigned_node(target),
+            target_type=ctype,
+            sized=self._is_sized_node(target)
+        );
+        if updated is None {
+            self.ctx.emit(
+                E5092,
+                node_override=target,
+                kind="augmented assignment",
+                name="C data symbol"
+            );
+            return;
+        }
+        value = updated;
+    }
+    self._c_store_scalar(value, slot, ctype);
+}
+
+impl NaIRGenPass._c_va_start(nd: uni.UniNode) -> (ir.Value | None) {
+    if self._target_is_wasm() {
+        self.ctx.emit(
+            E5092,
+            node_override=nd,
+            kind="C variadic function",
+            name=str(self.llvm_module.triple),
+            help_text="C variadic functions are not available on wasm targets."
+        );
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    storage = self._entry_alloca(ir.ArrayType(ir.IntType(64), 4), "c.va.storage");
+    raw = self.builder.bitcast(storage, i8p, name="c.va.raw");
+    start = self.llvm_module.globals.get("llvm.va_start");
+    if not isinstance(start, ir.Function) {
+        start = ir.Function(
+            self.llvm_module,
+            ir.FunctionType(ir.VoidType(), [i8p]),
+            name="llvm.va_start"
+        );
+    }
+    self.builder.call(start, [raw]);
+    held = self._floor_call("__jac_va_list", i8p, [raw], "c.va.held");
+    return self.builder.ptrtoint(held, ir.IntType(64), name="c.va");
+}
+
+impl NaIRGenPass._c_va_arg(nd: uni.FuncCall, recv: uni.Expr) -> (ir.Value | None) {
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    b = self.builder;
+    want = self._c_scalar_llvm(nd.type);
+    slot = self._clib_place_ptr(recv);
+    if want is None or slot is None or self._target_is_wasm() {
+        self.ctx.emit(
+            E5092,
+            node_override=nd,
+            kind="call",
+            name="VaList.arg(T)",
+            help_text="`args.arg(T)` reads the next C variadic argument into a local VaList variable; T is a sized scalar, `int`, `float`, `bool` or a `ptr`."
+        );
+        return None;
+    }
+    floating = isinstance(want, (ir.FloatType, ir.DoubleType));
+    word: ir.Type = ir.DoubleType() if floating else i64;
+    held = b.bitcast(slot, i8.as_pointer(), name="c.va.slot");
+    raw = self._floor_call(
+        "__jac_va_f64" if floating else "__jac_va_i64", word, [held], "c.va.raw"
+    );
+    if floating {
+        return raw if want == word else b.fptrunc(raw, want, name="c.va.float");
+    }
+    if isinstance(want, ir.IntType) and want.width < 64 {
+        raw = b.trunc(raw, want, name="c.va.narrow");
+    }
+    if isinstance(nd.type, ClassType) and nd.type.shared.class_name == "bool" {
+        return b.icmp_unsigned("!=", raw, ir.Constant(raw.type, 0), name="c.va.bool");
+    }
+    lowered = self._lower_type(nd.type);
+    return self._coerce_type(raw, lowered)
+        if lowered is not None and lowered != raw.type
+        else raw;
 }

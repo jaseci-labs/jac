@@ -1,6 +1,6 @@
 import base64;
 import logging;
-import from jaclang.byllm._optdeps.loguru { logger }
+
 import os;
 import sys;
 import json;
@@ -8,77 +8,9 @@ import random;
 import time;
 
 import from typing { AsyncGenerator, Generator, cast }
+
 import type from litellm { Router }
 import type from llama_cpp { Llama }
-import from jaclang.byllm.mtir { MTRuntime }
-import from jaclang.byllm._optdeps.litellm {
-    litellm,
-    _disable_debugging,
-    when_litellm_loaded
-}
-import from jaclang.byllm._optdeps.openai { openai, OpenAI, AsyncOpenAI }
-import from jaclang.project.capabilities { require_optional }
-import from jaclang.byllm.systemone {
-    Decision,
-    SYSTEMONE_PREFIX,
-    ProviderCaps,
-    SystemOneSpec,
-    assemble,
-    caps_for,
-    distribution,
-    lower,
-    resolve_api_key,
-    resolve_model_name,
-    wrap_result
-}
-import from jaclang.byllm.exceptions {
-    ByLLMError,
-    AuthenticationError,
-    LLMTimeout,
-    FinishToolError,
-    OutputConversionError,
-    RateLimitError,
-    ModelNotFoundError,
-    ConfigurationError,
-    CompactionNotEffectiveError
-}
-import from jaclang.byllm.types {
-    CompletionResult,
-    Image,
-    image_resp_kind,
-    response_dict,
-    LiteLLMMessage,
-    MockToolCall,
-    MockRawResponse,
-    MockError,
-    StreamEvent,
-    Tool,
-    ToolCall,
-    Message,
-    MessageRole,
-    IterationAction,
-    IterationContext,
-    content_preview,
-    reroute_tool_images_to_user_message
-}
-import from jaclang.byllm.config_loader { get_byllm_config }
-import from jaclang.byllm.telemetry {
-    _emit_agent_telemetry,
-    _current_invocation_id,
-    _aggregate_usage
-}
-import from jaclang.byllm.parallel {
-    dispatch_batch,
-    _index_by_identity,
-    _PARALLEL_TOOL_HINT
-}
-import from jaclang.byllm.schema { inject_schema_hint }
-import from jaclang.byllm.tool_protocol {
-    inject_tool_hint,
-    recover_tool_calls,
-    coerce_message_dict,
-    response_field
-}
 
 glob _byllm_config = get_byllm_config(),
      _litellm_config = _byllm_config.get_litellm_config(),
@@ -87,9 +19,7 @@ glob _byllm_config = get_byllm_config(),
      _streaming_config = _byllm_config.get_streaming_config(),
      _CACHE_CONTROL_EPHEMERAL: dict[str, any] = {"type": "ephemeral"};
 
-def _apply_litellm_debug_setting(module: any) {
-    module.suppress_debug_info = not _litellm_config.get("debug", False);
-}
+def _apply_litellm_debug_setting(module: any);
 
 with entry {
     if _litellm_config['local_cost_map'] {
@@ -105,31 +35,12 @@ glob _TOOL_DELTA_MIN_CHARS = 48,
 glob DEFAULT_BASE_URL = "http://localhost:4000",
      MODEL_MOCK = "mockllm";
 
-def _stream_chunk_builder_accepts_logging_obj -> bool {
-    import inspect;
-    try {
-        builder: any = litellm.stream_chunk_builder;
-        return "logging_obj" in inspect.signature(builder).parameters;
-    } except Exception as e {
-        logger.debug(
-            f"could not inspect stream_chunk_builder, omitting logging_obj: {e}"
-        );
-        return False;
-    }
-}
+def _stream_chunk_builder_accepts_logging_obj -> bool;
 
 glob _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ: bool | None = None,
      _stream_builder_probe_cache: dict[str, bool] = {};
 
-def _stream_builder_accepts_logging_obj -> bool {
-    if _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ is not None {
-        return _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ;
-    }
-    if "accepts" not in _stream_builder_probe_cache {
-        _stream_builder_probe_cache["accepts"] = _stream_chunk_builder_accepts_logging_obj();
-    }
-    return _stream_builder_probe_cache["accepts"];
-}
+def _stream_builder_accepts_logging_obj -> bool;
 
 obj BaseLLM {
     has model_name: str,
@@ -147,8 +58,15 @@ obj BaseLLM {
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _resolve_stream_retries(mt_run: MTRuntime) -> int;
     def _resolve_timeout(mt_run: MTRuntime) -> float | None;
+    def _call_deadline(mt_run: MTRuntime) -> CallDeadline;
+    def _arm_attempt(mt_run: MTRuntime, params: dict[str, any], stream: bool) -> None;
+    def _may_retry(mt_run: MTRuntime, e: Exception, attempt: int) -> bool;
     def _should_retry_stream(
-        mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
+        mt_run: MTRuntime,
+        e: Exception,
+        attempt: int,
+        usage_base: int = -1,
+        restartable: bool = True,
     ) -> bool;
 
     def _invoke_typed_retry(mt_run: MTRuntime) -> object;
@@ -179,18 +97,18 @@ obj BaseLLM {
     ) -> Message;
 
     def _invoke_react_loop(mt_run: MTRuntime) -> object;
-    def _invoke_react_loop_streaming(
-        mt_run: MTRuntime
-    ) -> Generator[object, None, None];
-
+    def _invoke_react_loop_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
     def make_model_params(mt_run: MTRuntime) -> dict[str, any];
     def log_info(message: str) -> None;
     def format_prompt(params: dict[str, any]) -> str;
     def dispatch_image(mt_run: MTRuntime) -> object;
     def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
-    def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
+    def dispatch_streaming(
+        mt_run: MTRuntime, retractable: bool = False
+    ) -> Generator[str, None, None];
+
     def dispatch_streaming_with_tools(
-        mt_run: MTRuntime, out: list[CompletionResult]
+        mt_run: MTRuntime, out: list[CompletionResult], retractable: bool = True
     ) -> Generator[str, None, None];
 
     async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
@@ -203,7 +121,10 @@ obj BaseLLM {
         params: dict[str, any]
     ) -> AsyncIterator[object];
 
-    def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
+    def _stream_final_answer(
+        mt_run: MTRuntime, retractable: bool = False
+    ) -> Generator[str, None, None];
+
     def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
     def _yield_recovery_result(
@@ -214,6 +135,10 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _stream_steps(
+        mt_run: MTRuntime, retractable: bool = True
+    ) -> Generator[StreamEvent, None, None];
+
     def _invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object;
     def _resolve_api_base -> str;
     def _get_ctx_window(call_params: dict[str, any]) -> int;
@@ -222,11 +147,11 @@ obj BaseLLM {
         mt_run: MTRuntime, usage: object, just_compacted: bool, cp: dict[str, any]
     ) -> bool;
 
-    def _emergency_compact_retry(
+    def _emergency_compact(
         mt_run: MTRuntime, just_compacted: bool, cp: dict[str, any]
-    ) -> CompletionResult;
+    ) -> None;
 
-    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool;
+    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any], reason: str) -> bool;
 }
 
 obj MockLLM(BaseLLM) {

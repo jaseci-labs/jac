@@ -9,28 +9,9 @@ import from kubernetes.client.exceptions { ApiException }
 import unittest.mock;
 import from types { SimpleNamespace }
 
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.models.resource_status { ResourceStatus }
-import from jaclang.scale.config.config_loader {
-    JacScaleConfig,
-    get_scale_config,
-    reset_scale_config
-}
 import from tempfile { mkdtemp }
 import shutil;
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.deploy.database.kubernetes_postgres {
-    KubernetesPostgresProvider
-}
-import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-import from jaclang.testing.requires { require_flag }
+import yaml;
 
 with entry {
     require_flag(
@@ -121,6 +102,49 @@ test "deployment target methods" {
     );
 }
 
+# A bundle PVC a destroy left Terminating, held there by a leftover loader (#10668).
+glob _HELD_BUNDLE: str = """
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata: {name: held-bundles}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 64Mi}}}
+---
+kind: Pod
+apiVersion: v1
+metadata: {name: held-bundle-loader}
+spec:
+  containers: [{name: hold, image: "registry.k8s.io/pause:3.10"}]
+  volumes: [{name: b, persistentVolumeClaim: {claimName: held-bundles}}]
+""";
+
+
+test "a redeploy replaces a bundle PVC held terminating by a leftover loader" {
+    config.load_kube_config();
+    core_v1: any = client.CoreV1Api();
+    (ns, (pvc, loader)) = ("pvc-terminating", list(yaml.safe_load_all(_HELD_BUNDLE)));
+    core_v1.create_namespace({"metadata": {"name": ns}});
+    try {
+        core_v1.create_namespaced_persistent_volume_claim(ns, pvc);
+        core_v1.create_namespaced_pod(ns, loader);
+        wait_for_pod_phase(core_v1, ns, "held-bundle-loader", {"Running"});
+        uid = lambda -> str { return core_v1.read_namespaced_persistent_volume_claim(
+            "held-bundles", ns
+        ).metadata.uid; };
+        old_uid = uid();
+        core_v1.delete_namespaced_persistent_volume_claim("held-bundles", ns);
+        cfg = get_scale_config().get_kubernetes_config()
+            | {"app_name": "held", "namespace": ns};
+        target: any = DeploymentTargetFactory.create(
+            "kubernetes", cfg, UtilityFactory.create_logger("standard")
+        );
+        target._apply_or_replace_pvc(core_v1, ns, pvc);
+        assert uid() != old_uid , "the redeploy kept the Terminating PVC";
+    } finally {
+        core_v1.delete_namespace(ns);
+    }
+}
+
+
 def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> any {
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
@@ -156,6 +180,13 @@ def _run_fleet_rollout(
     timeout: int = 30
 ) -> (Exception | None) {
     caught: (Exception | None) = None;
+    now: list[float] = [0.0];
+    def _sleep(seconds: float) {
+        now[0] += seconds;
+    }
+    def _monotonic -> float {
+        return now[0];
+    }
     with unittest.mock.patch(
         "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
@@ -167,13 +198,17 @@ def _run_fleet_rollout(
                 "jaclang.scale.deploy.target.kubernetes.target.client.CoreV1Api",
                 return_value=fake_core_v1
             ) {
-                with unittest.mock.patch.object(time, "sleep") {
-                    try {
-                        deployment_target._wait_for_fleet_rollout(
-                            bundle, timeout=timeout
-                        );
-                    } except Exception as e {
-                        caught = e;
+                with unittest.mock.patch.object(time, "sleep", side_effect=_sleep) {
+                    with unittest.mock.patch.object(
+                        time, "monotonic", side_effect=_monotonic
+                    ) {
+                        try {
+                            deployment_target._wait_for_fleet_rollout(
+                                bundle, timeout=timeout
+                            );
+                        } except Exception as e {
+                            caught = e;
+                        }
                     }
                 }
             }

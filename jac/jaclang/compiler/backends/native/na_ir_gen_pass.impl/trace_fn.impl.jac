@@ -1,6 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir as ir;
-import from jaclang.compiler.frontend.diagnostics { E9002 }
-
 impl NaIRGenPass._require_trace_fn(
     type_name: str, participates: bool, has_trace: bool
 ) -> None {

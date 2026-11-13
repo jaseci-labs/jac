@@ -33,12 +33,6 @@ import time;
 
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched
-}
-import from jaclang.compiler.driver.module_compile { get_py_code_gen }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob CORPUS: list[str] = [
@@ -58,6 +52,45 @@ glob CORPUS: list[str] = [
          "check"
      ];
 
+"""Run one schedule stage on `mod`: by product on this tree, by schedule on a baseline older than the product table."""
+def run_stage(staged: JacProgram, mod: any, stage: str) {
+    try {
+        import from jaclang.compiler.driver.pipeline { require }
+        import from jaclang.compiler.driver.pipeline_types {
+            CompilationProduct,
+            ProductRequest
+        }
+    } except ImportError {
+        import importlib;
+        pipeline_mod = importlib.import_module("jaclang.compiler.driver.pipeline");
+        codegen_mod = importlib.import_module("jaclang.compiler.driver.module_compile");
+        if stage == "ir_gen" {
+            sched = getattr(pipeline_mod, "get_ir_gen_sched")();
+        } elif stage == "analysis" {
+            sched = getattr(pipeline_mod, "get_analysis_sched")();
+        } elif stage == "boundary" {
+            sched = getattr(pipeline_mod, "get_boundary_analysis_sched")();
+        } else {
+            sched = getattr(codegen_mod, "get_py_code_gen")(native=False);
+        }
+        getattr(staged, "run_schedule")(mod, sched);
+        return;
+    }
+    products = {
+        "ir_gen": [CompilationProduct.IR],
+        "analysis": [CompilationProduct.ANALYSIS],
+        "boundary": [CompilationProduct.BOUNDARIES],
+        "codegen": [
+            CompilationProduct.CODEGEN,
+            CompilationProduct.PY_IR,
+            CompilationProduct.FROZEN
+        ]
+    };
+    for product in products[stage] {
+        require(staged, mod, product, request=ProductRequest(native=False));
+    }
+}
+
 """Time one pass of every phase over `src`, on programs nothing else has touched."""
 def phase_row(src: str) -> dict[any, any] {
     text = Path(src).read_text(encoding="utf-8");
@@ -65,13 +98,13 @@ def phase_row(src: str) -> dict[any, any] {
     t0 = time.perf_counter();
     mod = staged.parse_str(text, src);
     t1 = time.perf_counter();
-    staged.run_schedule(mod, get_ir_gen_sched());
+    run_stage(staged, mod, "ir_gen");
     t2 = time.perf_counter();
-    staged.run_schedule(mod, get_analysis_sched());
+    run_stage(staged, mod, "analysis");
     t2a = time.perf_counter();
-    staged.run_schedule(mod, get_boundary_analysis_sched());
+    run_stage(staged, mod, "boundary");
     t3 = time.perf_counter();
-    staged.run_schedule(mod, get_py_code_gen(native=False));
+    run_stage(staged, mod, "codegen");
     t4 = time.perf_counter();
     errors = len(staged.errors_had);
     staged.release_compile_closure();

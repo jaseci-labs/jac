@@ -5,6 +5,9 @@ impl JcirGenPass._apply_coercion(nd: Expr) -> None {
         return;
     }
     parent = nd.parent;
+    if isinstance(parent, Assignment) and any(t is nd for t in parent.target) {
+        return;
+    }
     if (
         isinstance(parent, FuncCall)
         and isinstance(parent.target, Name)

@@ -35,6 +35,12 @@ test "keyword construction binds against the initializer like CPython" {
     );
 }
 
+test "super.init into an obj's field-derived initializer stores the fields" {
+    assert_native_identity(
+        os.path.join(FIXTURES, "super_init_derived.jac"), profiles=PROFILES
+    );
+}
+
 test "a class with no initializer refuses constructor arguments" {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(

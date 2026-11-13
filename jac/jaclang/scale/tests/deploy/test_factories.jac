@@ -1,16 +1,9 @@
+import importlib;
+import sys;
 import unittest.mock;
+import from contextlib { contextmanager }
 import from kubernetes.client.exceptions { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-import from jaclang.scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
 import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
 
 def _as_any(v: any) -> any {
@@ -54,6 +47,94 @@ test "kubernetes target creation auto-syncs missing deploy tooling globally" {
         mock_ensure.assert_not_called();
     }
 }
+
+class _Installed(Exception) {}
+
+
+@contextmanager
+def _machine_without_kubernetes -> any {
+    def install(capability: str) -> bool {
+        del sys.modules["kubernetes"];
+        raise _Installed();
+    }
+    with unittest.mock.patch.dict(sys.modules) {
+        for name in list(sys.modules) {
+            if name.split(".")[0] == "kubernetes" or name.startswith("jaclang.scale") {
+                del sys.modules[name];
+            }
+        }
+        sys.modules["kubernetes"] = None;
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.factory.missing_capability_dists",
+            return_value=["kubernetes>=34.1.0,<35.0.0"]
+        ), unittest.mock.patch(
+            "jaclang.scale.deploy.target.factory.ensure_global_capability",
+            side_effect=install
+        ) {
+            yield None;
+        }
+    }
+}
+
+
+def _scale_command(action: str) {
+    plugin = importlib.import_module("jaclang.scale.plugin");
+    scale_config = unittest.mock.MagicMock();
+    scale_config.get_kubernetes_config.return_value = {
+        "app_name": "a",
+        "namespace": "n"
+    };
+    with unittest.mock.patch.object(
+        plugin, "get_scale_config", return_value=scale_config
+    ), unittest.mock.patch("builtins.input", return_value="y") {
+        plugin.scale_cmd(action, __file__);
+    }
+}
+
+
+def _sdk_client {
+    sdk = importlib.import_module("jaclang.scale.sdk.client");
+    spec = importlib.import_module("jaclang.scale.sdk.spec");
+    sdk.ScaleClient()._make_target(spec.DeploySpec(app_name="a", namespace="n"));
+}
+
+
+test "a command that installs the kubernetes client uses it in the same run" {
+    for (label, run) in [
+        ("deploy", lambda { _scale_command("deploy"); }),
+        ("status", lambda { _scale_command("status"); }),
+        ("destroy", lambda { _scale_command("destroy"); }),
+        ("sdk", _sdk_client)
+    ] {
+        with _machine_without_kubernetes() {
+            try {
+                run();
+            } except _Installed {}
+            target_mod = importlib.import_module(
+                "jaclang.scale.deploy.target.kubernetes.kubernetes_target"
+            );
+            assert target_mod.k8s_cluster_config is not None , label;
+            assert target_mod.ConfigException is not Exception , label;
+        }
+    }
+}
+
+
+test "a process that loaded without the kubernetes client asks for a restart" {
+    with _machine_without_kubernetes() {
+        importlib.import_module("jaclang.scale._optdeps.kubernetes");
+        factory_mod = importlib.import_module("jaclang.scale.deploy.target.factory");
+        del sys.modules["kubernetes"];
+        raised = "";
+        try {
+            factory_mod.require_deploy_tooling();
+        } except RuntimeError as e {
+            raised = str(e);
+        }
+        assert "Restart the process" in raised;
+    }
+}
+
 
 test "deployment target factory raises for unsupported target" {
     config = {"app_name": "test-app"};

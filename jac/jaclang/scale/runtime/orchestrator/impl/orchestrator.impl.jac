@@ -1,0 +1,236 @@
+impl _log_gateway_only_ready(host: str, bound: int) {
+    logger.info(
+        f"Starting gateway-only mode on {host}:{bound} "
+        f"(K8s pod context; no process spawning)"
+    );
+}
+
+impl FleetOrchestrator._gateway_port -> int {
+    return int(self.gateway_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
+}
+
+impl FleetOrchestrator._gateway_host -> str {
+    return str(self.gateway_config.get("gateway_host", DEFAULT_GATEWAY_HOST));
+}
+
+impl FleetOrchestrator._port_pinned -> bool {
+    return bool(self.gateway_config.get("gateway_port_pinned", False));
+}
+
+impl FleetOrchestrator.start_local -> None {
+    if self.fleet.is_empty() {
+        logger.warning(
+            "No apps to run as a fleet: declare [apps.<name>] kind = \"service\" "
+            "entries in jac.toml."
+        );
+        return;
+    }
+
+    registry = self._build_registry();
+    logger.info(f"Registry: {len(registry.entries)} apps");
+
+    deployer = LocalDeployer(registry=registry, dev_mode=self._dev_mode());
+    pm = deployer._ensure_pm();
+    pm.app_boot_timeout = float(
+        self.gateway_config.get("app_boot_timeout", pm.app_boot_timeout)
+    );
+    pm._boot_health_timeout = float(
+        self.gateway_config.get("boot_health_timeout", pm._boot_health_timeout)
+    );
+    pm._health_monitor_interval = float(
+        self.gateway_config.get("health_monitor_interval", pm._health_monitor_interval)
+    );
+    deployer.deploy_all();
+    max_wait: int = int(
+        max(
+            float(self.gateway_config.get("boot_max_wait", 90)), pm._boot_health_timeout
+        )
+    );
+
+    atexit.register(deployer.destroy_all);
+
+    self._wait_for_health(pm, registry, max_wait);
+
+    pm.start_health_monitor(interval=_BOOT_RECHECK_INTERVAL);
+
+    gateway = ProcessGateway(
+        registry=registry,
+        port=self._gateway_port(),
+        host=self._gateway_host(),
+        port_pinned=self._port_pinned()
+    );
+
+    import from functools { partial }
+    gateway.serve(
+        on_ready=partial(self._print_startup_banner, registry, self._gateway_host())
+    );
+
+    deployer.destroy_all();
+}
+
+impl FleetOrchestrator.start_gateway_only -> None {
+    if self.fleet.is_empty() {
+        logger.error("No fleet to front: JAC_SV_FLEET is empty");
+        return;
+    }
+
+    registry = self._build_registry();
+    for (_name, _entry) in registry.entries.items() {
+        _entry.status = ServiceStatus.STARTING;
+    }
+    _populate_k8s_urls(registry);
+
+    health_monitor = ServiceProcessManager(registry=registry);
+    health_monitor.start_health_monitor(interval=_BOOT_RECHECK_INTERVAL);
+
+    gateway = ProcessGateway(
+        registry=registry,
+        port=self._gateway_port(),
+        host=self._gateway_host(),
+        port_pinned=self._port_pinned()
+    );
+    import from functools { partial }
+    gateway.serve(on_ready=partial(_log_gateway_only_ready, self._gateway_host()));
+}
+
+impl FleetOrchestrator._dev_mode -> bool {
+    return bool(self.gateway_config.get("dev", False));
+}
+
+impl FleetOrchestrator._app_serves_client -> bool {
+    return bool(self.gateway_config.get("app_serves_client", False));
+}
+
+impl FleetOrchestrator._build_registry -> ServiceRegistry {
+    registry = ServiceRegistry();
+    serves_client: bool = self._app_serves_client();
+    for (name, member) in self.fleet.members.items() {
+        svc_entry = ServiceEntry(
+            name=name,
+            file=member.file,
+            prefix=ROOT_PREFIX if member.is_root else member.route,
+            port=0,
+            env={"JAC_SV_NAME": name},
+            is_root=member.is_root,
+            serves_client=member.is_root and member.client and serves_client
+        );
+        registry.register(svc_entry);
+        role: str = " (host)" if member.is_root else "";
+        logger.info(f"Registered app: {name} -> {svc_entry.prefix}{role}");
+    }
+    return registry;
+}
+
+impl FleetOrchestrator._wait_for_health(
+    pm: ServiceProcessManager, registry: ServiceRegistry, max_wait: int
+) -> bool {
+    logger.info("Waiting for apps to start...");
+    start_time: float = time.time();
+    all_healthy = False;
+
+    while time.time() - start_time < max_wait {
+        results = pm.check_all_health();
+        healthy_count: int = 0;
+        dead_count: int = 0;
+        for (name, `entry) in registry.entries.items() {
+            if results.get(name) {
+                healthy_count += 1;
+            } elif `entry.status == ServiceStatus.STOPPED {
+                dead_count += 1;
+            }
+        }
+        if healthy_count == len(results) {
+            all_healthy = True;
+            logger.info(f"All {len(results)} apps healthy!");
+            break;
+        }
+        if healthy_count + dead_count == len(results) {
+            logger.warning(
+                f"{dead_count} app(s) exited during boot and cannot "
+                "become healthy; not waiting further"
+            );
+            break;
+        }
+        logger.info(f"  {healthy_count}/{len(results)} apps healthy, waiting...");
+        time.sleep(2);
+    }
+
+    if not all_healthy {
+        starting: list[str] = [
+            name
+            for (name, `entry) in registry.entries.items()
+            if `entry.status not in (ServiceStatus.HEALTHY, ServiceStatus.STOPPED)
+        ];
+        if starting {
+            logger.warning(
+                f"still starting after {max_wait}s: {', '.join(starting)}. "
+                "The gateway keeps polling them and picks up their routes "
+                "as soon as they answer; until then their paths reach the "
+                "root app."
+            );
+        }
+    }
+    return all_healthy;
+}
+
+impl FleetOrchestrator._print_startup_banner(
+    registry: ServiceRegistry, gateway_host: str, gateway_port: int
+) {
+    console.print();
+    console.print("  Jac Fleet Mode", style="bold cyan");
+    console.print(f"  Gateway: http://{gateway_host}:{gateway_port}", style="bold");
+    console.print();
+    console.print("  Apps", style="bold");
+    console.print(f"  {'-' * 48}", style="muted");
+    for (name, `entry) in registry.entries.items() {
+        if `entry.status == ServiceStatus.HEALTHY {
+            icon = "●";
+            row_style = "success";
+        } else {
+            icon = "○";
+            row_style = "warning";
+        }
+        label = f"{`entry.prefix} (host)" if `entry.is_root else `entry.prefix;
+        console.print(
+            f"  {icon} {name:18s} {label:20s} -> {`entry.url}", style=row_style
+        );
+    }
+    console.print();
+}
+
+impl build_registry(fleet: FleetSpec) -> ServiceRegistry {
+    return FleetOrchestrator(fleet=fleet)._build_registry();
+}
+
+impl start_fleet_mode(fleet: FleetSpec, gateway_config: dict[str, any]) {
+    FleetOrchestrator(fleet=fleet, gateway_config=gateway_config).start_local();
+}
+
+impl start_gateway_only(fleet: FleetSpec, gateway_config: dict[str, any]) {
+    FleetOrchestrator(fleet=fleet, gateway_config=gateway_config).start_gateway_only();
+}
+
+impl _populate_k8s_urls(registry: ServiceRegistry) {
+    try {
+        import from jaclang.scale.runtime.provider { JacScaleRuntime }
+        routes: dict[str, any] = JacScaleRuntime.get_sv_service_routes();
+    } except Exception as e {
+        logger.warning(f"K8s URL population failed: {e}");
+        return;
+    }
+    for (svc_name, _entry) in registry.entries.items() {
+        route = routes.get(svc_name);
+        if route is not None and route.url {
+            _entry.url = route.url;
+            _entry.host_override = route.host_header or "";
+        }
+    }
+    logger.info(
+        f"K8s URLs populated: {sum(
+            1
+            for e in registry.entries.values()
+            if e.url
+        )}"
+        f"/{len(registry.entries)} apps"
+    );
+}

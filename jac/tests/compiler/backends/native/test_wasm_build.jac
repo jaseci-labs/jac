@@ -28,6 +28,8 @@ import from jaclang.compiler.backends.native.wasm_host_abi {
     WASM_HOST_ABI,
     WASM_HOST_MODULE
 }
+import from jaclang.compiler.backends.native.wasm_build { app_declared_imports }
+import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -35,6 +37,18 @@ glob FIXTURES = os.path.join(
      FIXTURE = "wasm_host_probe.jac";
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
+"""A wasm libc floor that carries its source manifest: this checkout's (a kit
+lane downloads it beside the tree), else the one the router resolves. A
+sealed image's own floor has no manifest to check against wasm_rt/."""
+def _manifested_libc_dir -> (str | None) {
+    import from jaclang.compiler.backends.native.floors { WASM_FLOOR_MANIFEST }
+    checkout = os.path.join(os.path.dirname(TESTS_DIR), ".pbs-build", "wasm32", "libc");
+    if os.path.isfile(os.path.join(checkout, WASM_FLOOR_MANIFEST)) {
+        return checkout;
+    }
+    return _wasm_libc_dir();
+}
+
 def _require_libc {
     if _wasm_libc_dir() is None {
         testskip("vendored wasm libc not present (run `zig build vendor-wasm-libc`)");
@@ -65,6 +79,30 @@ def fixture_ir -> str {
 }
 
 # ─── tests ───────────────────────────────────────────────────────────────────
+
+"""Serve the wasm libc from `floor` (an empty string for none) while `fn` runs:
+the checkout tier probes that directory, and no sealed image or kit
+competes."""
+def _with_floor(floor: str, fn: any) -> any {
+    import from unittest.mock { patch }
+    import jaclang.artifacts.router as router;
+    import jaclang.compiler.backends.native.floors as floors;
+    import from jaclang.artifacts.model { Probe, Source }
+    probe = floors._wasm_probe(floor, Source.CHECKOUT) if floor else Probe.missing();
+    router.forget();
+    try {
+        with patch.object(floors.WasmLibcArtifact, "probe_sealed", return_value=None), patch.object(
+            floors.WasmLibcArtifact, "probe_checkout", return_value=probe
+        ), patch.object(
+            floors.WasmLibcArtifact, "probe_kit", return_value=Probe.missing()
+        ) {
+            return fn();
+        }
+    } finally {
+        router.forget();
+    }
+}
+
 test "wasm links retain their target in a host application context" {
     import from jaclang.compiler.driver.pipeline_runner { wasm_ir }
     import from jaclang.compiler.driver.compilation_context { context_program }
@@ -77,6 +115,25 @@ test "wasm links retain their target in a host application context" {
         assert "pthread_key_create" not in llvm_ir;
         assert "pthread_getspecific" not in llvm_ir;
     }
+}
+
+test "wasm app imports use the qualified interop provider symbol" {
+    prog = JacProgram();
+    mod = prog.compile(
+        file_path=os.path.join(FIXTURES, FIXTURE), options=CompileOptions()
+    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    symbol = "__jac_na_import_pkg_helper_answer";
+    mod.gen.interop_manifest.bindings["local_alias"] = InteropBinding(
+        name="answer",
+        source_context=InteropContext.SERVER,
+        callers={InteropContext.NATIVE},
+        source_module="helper.jac",
+        symbol=symbol
+    );
+    imports = app_declared_imports(mod);
+    assert symbol in imports , f"the declared callback provider must be allowed: {imports}";
+    assert "local_alias" not in imports , f"a local alias is not an import provider: {imports}";
 }
 
 test "libc folds in-module; the host surface is jac_host1 only" {
@@ -148,24 +205,99 @@ console.log(`slen=${Number(instance.exports.slen())}`);
     assert proc.stdout.strip().splitlines()[-1] == "slen=3";
 }
 
-test "missing vendored libc falls back to the legacy env-import surface" {
-    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
-    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = os.path.join(
-        tempfile.mkdtemp(), "definitely-missing"
+"""The stdlib declares the runtime floor's functions as C imports, so a wasm
+module that reaches them (math's fmadd, for one) names them as app imports.
+wasm_rt/jac_floor.c must define every one in the module, with the
+signature the stdlib declares, or the module imports what no host supplies."""
+test "the runtime floor's functions resolve inside a wasm module" {
+    _require_libc();
+    floor_decls = {
+        "__jac_errno": "declare i64 @__jac_errno()",
+        "__jac_platform_id": "declare i32 @__jac_platform_id()",
+        "__jac_at_fdcwd": "declare i32 @__jac_at_fdcwd()",
+        "__jac_clock_id": "declare i64 @__jac_clock_id(i32)",
+        "__jac_sleep_ns": "declare i32 @__jac_sleep_ns(i64)",
+        "__jac_fmadd": "declare double @__jac_fmadd(double, double, double)",
+        "__jac_opendir": "declare i64 @__jac_opendir(ptr)",
+        "__jac_readdir": "declare i64 @__jac_readdir(i64)",
+        "__jac_closedir": "declare i32 @__jac_closedir(i64)",
+        "__jac_dirent_name": "declare i64 @__jac_dirent_name(i64)",
+        "__jac_home_dir": "declare i64 @__jac_home_dir(ptr, ptr, i64)",
+        "__jac_executable_path": "declare i64 @__jac_executable_path(ptr, i64)",
+        "__jac_addrinfo_layout": "declare i64 @__jac_addrinfo_layout(i32)",
+        "__jac_sockaddr_family": "declare i32 @__jac_sockaddr_family(ptr)"
+    };
+    calls = [
+        "  %fm = call double @__jac_fmadd(double 2.0, double 3.0, double 1.0)",
+        "  %ck = call i64 @__jac_clock_id(i32 5)",
+        "  %ai = call i64 @__jac_addrinfo_layout(i32 3)",
+        "  %e0 = call i64 @__jac_errno()",
+        "  %e1 = call i32 @__jac_platform_id()",
+        "  %e2 = call i32 @__jac_at_fdcwd()",
+        "  %e3 = call i32 @__jac_sleep_ns(i64 0)",
+        "  %e4 = call i64 @__jac_opendir(ptr null)",
+        "  %e5 = call i64 @__jac_readdir(i64 0)",
+        "  %e6 = call i32 @__jac_closedir(i64 0)",
+        "  %e7 = call i64 @__jac_dirent_name(i64 0)",
+        "  %e8 = call i64 @__jac_home_dir(ptr null, ptr null, i64 0)",
+        "  %e9 = call i64 @__jac_executable_path(ptr null, i64 0)",
+        "  %ea = call i32 @__jac_sockaddr_family(ptr @family)",
+        "  %fc = sitofp i64 %ck to double",
+        "  %fa = sitofp i64 %ai to double",
+        "  %ff = sitofp i32 %ea to double",
+        "  %s1 = fadd double %fm, %fc",
+        "  %s2 = fadd double %s1, %fa",
+        "  %s3 = fadd double %s2, %ff",
+        "  ret double %s3"
+    ];
+    app_ir = (
+        "target triple = \"wasm32-unknown-unknown\"\n"
+        + "\n".join(floor_decls.values())
+        + "\n@family = private constant [2 x i8] c\"\\0A\\00\"\n"
+        + "define double @probe() {\n"
+        + "\n".join(calls)
+        + "\n}\n"
     );
-    try {
-        mod = emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
-    } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_WASM_LIBC_DIR", None);
-        } else {
-            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
-        }
-    }
+    mod = emit_wasm_from_ir(app_ir, ["probe"], app_imports=set(floor_decls));
     imports = wasm_import_map(mod);
-    # legacy single-namespace behavior: libc leaks as env imports, no jac_host1
-    assert WASM_HOST_MODULE not in imports;
-    assert "malloc" in imports.get("env", []);
+    leaked = sorted(set(imports.get("env", [])) & set(floor_decls));
+    assert not leaked , f"floor functions became host imports: {leaked}";
+    node_bin = shutil.which("node");
+    if not node_bin {
+        testskip("node not available");
+    }
+    d = tempfile.mkdtemp();
+    wpath = os.path.join(d, "m.wasm");
+    Path(wpath).write_bytes(mod);
+    harness = """
+import { readFileSync } from "fs";
+const jac_host1 = new Proxy({}, { get: (t, k) => (...a) => 0 });
+const { instance } = await WebAssembly.instantiate(readFileSync(process.argv[2]), { jac_host1 });
+console.log(`probe=${instance.exports.probe()}`);
+""";
+    hpath = os.path.join(d, "run.mjs");
+    Path(hpath).write_text(harness);
+    proc = subprocess.run(
+        [node_bin, hpath, wpath], capture_output=True, text=True, timeout=60
+    );
+    assert proc.returncode == 0 , f"node failed: {proc.stderr}";
+    """fmadd 7, the Python monotonic clock id 1, sizeof(addrinfo) 48 and the
+    family AF_INET6 (10) read from a little-endian sockaddr.""";
+    assert proc.stdout.strip().splitlines()[-1] == "probe=66";
+}
+
+test "a missing wasm libc is an error that names the build command" {
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    def emit -> str {
+        try {
+            emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        } except ArtifactUnavailable as e {
+            return str(e);
+        }
+        return "";
+    }
+    message = _with_floor("", emit);
+    assert "jac native build wasm-libc" in message , message;
 }
 
 test "the fixture runs under node with ONLY the jac_host1 host object" {
@@ -210,6 +342,55 @@ console.log(`out=${JSON.stringify(out)} compute=${c}`);
     assert last == 'out="3.14\\n11\\nup\\nfinished\\n7\\n" compute=21' , f"unexpected: {last}";
 }
 
+test "vtable dispatch works in a wasm module: data relocations are applied" {
+    # A vtable is data holding function-table indices. The wasm linker used to
+    # apply only the code section's relocations, so every function pointer or
+    # address stored in data kept the object file's placeholder, and a call
+    # through a vtable trapped with "table index is out of bounds".
+    _require_libc();
+    node_bin = shutil.which("node");
+    if not node_bin {
+        testskip("node not available");
+    }
+    import from tests.support { jac_command }
+    d = tempfile.mkdtemp();
+    wpath = os.path.join(d, "vt.wasm");
+    comp = subprocess.run(
+        jac_command(
+            "build",
+            "--native",
+            os.path.join(FIXTURES, "wasm_vtable_dispatch.jac"),
+            "--target-triple",
+            "wasm32",
+            "--memory",
+            "nogc",
+            "-o",
+            wpath
+        ),
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    assert comp.returncode == 0 , comp.stderr[-1500:];
+    harness = """
+import { readFileSync } from "fs";
+const jac_host1 = new Proxy({ abort: () => { throw new Error("abort"); } },
+  { get: (t, k) => t[k] ?? ((...a) => 0) });
+const { instance } = await WebAssembly.instantiate(readFileSync(process.argv[2]), { jac_host1 });
+const e = instance.exports;
+if (e.__jac_glob_init) e.__jac_glob_init();
+const f = Object.keys(e).find(k => k.endsWith(".compute") || k === "compute");
+console.log(`compute=${Number(e[f](5n))}`);
+""";
+    hpath = os.path.join(d, "run.mjs");
+    Path(hpath).write_text(harness);
+    proc = subprocess.run(
+        [node_bin, hpath, wpath], capture_output=True, text=True, timeout=60
+    );
+    assert proc.returncode == 0 , f"node failed: {proc.stderr}";
+    assert proc.stdout.strip().splitlines()[-1] == "compute=5050" , proc.stdout;
+}
+
 # ─── stale-floor detection ───────────────────────────────────────────────────
 # The vendored bitcode is a build artifact with no recorded link to
 # wasm_rt/*.c. When an adapter is added to jac_abi64.c and the floor is not
@@ -220,7 +401,7 @@ console.log(`out=${JSON.stringify(out)} compute=${c}`);
 # syscalls only). These pin the two guards that now catch it up front.
 test "abi64 adapter gap is reported against the floor, not the app" {
     _require_libc();
-    src = _wasm_libc_dir();
+    src = _manifested_libc_dir();
     assert src is not None;
     d = tempfile.mkdtemp();
     floor = os.path.join(d, "libc");
@@ -236,35 +417,31 @@ test "abi64 adapter gap is reported against the floor, not the app" {
     if os.path.exists(merged) {
         os.remove(merged);
     }
-    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
-    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = floor;
-    try {
-        with testraises(RuntimeError) as ei {
+    def emit -> str {
+        try {
             emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        } except RuntimeError as e {
+            return str(e);
         }
-        msg = str(ei.value);
+        return "";
+    }
+    try {
+        msg = _with_floor(floor, emit);
         assert "is stale" in msg , msg;
         assert "__jac64_" in msg , msg;
         # Names the floor, never tells the reader to touch the host ABI.
         assert floor in msg , msg;
         assert "wasm_host_abi" not in msg , msg;
     } finally {
-        if prev is None {
-            del os.environ["JAC_NATIVE_WASM_LIBC_DIR"];
-        } else {
-            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
-        }
         shutil.rmtree(d, ignore_errors=True);
     }
 }
 
 test "every adapted libc name has a floor adapter" {
     _require_libc();
-    import from jaclang.compiler.backends.native.wasm_build {
-        _ABI64_ADAPTED,
-        _wasm_rt_src_dir
-    }
-    src = os.path.join(_wasm_rt_src_dir(), "jac_abi64.c");
+    import from jaclang.compiler.backends.native.wasm_build { _ABI64_ADAPTED }
+    import from jaclang.compiler.backends.native.floors { wasm_rt_src_dir }
+    src = os.path.join(wasm_rt_src_dir(), "jac_abi64.c");
     text = Path(src).read_text();
     missing = sorted(
         [
@@ -311,11 +488,13 @@ test "the built floor defines every abi64 adapter" {
 # the payload tool uses as its incremental-rebuild key.
 test "a floor built from different wasm_rt sources is refused" {
     _require_libc();
-    import from jaclang.compiler.backends.native.wasm_build { FLOOR_MANIFEST }
-    src = _wasm_libc_dir();
+    import from jaclang.compiler.backends.native.floors {
+        WASM_FLOOR_MANIFEST as FLOOR_MANIFEST
+    }
+    src = _manifested_libc_dir();
     assert src is not None;
     if not os.path.isfile(os.path.join(src, FLOOR_MANIFEST)) {
-        testskip("floor predates SOURCES.sha256");
+        testskip("no floor with a SOURCES.sha256 here");
     }
     d = tempfile.mkdtemp();
     floor = os.path.join(d, "libc");
@@ -338,30 +517,31 @@ test "a floor built from different wasm_rt sources is refused" {
     assert hit , "manifest has no jac_alloc.c entry";
     Path(man).write_text("\n".join(patched) + "\n");
 
-    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
-    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = floor;
-    try {
-        with testraises(RuntimeError) as ei {
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    def emit -> str {
+        try {
             emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        } except ArtifactUnavailable as e {
+            return str(e);
         }
-        msg = str(ei.value);
-        assert "different wasm_rt sources" in msg , msg;
-        assert "jac_alloc.c" in msg , msg;
+        return "";
+    }
+    try {
+        msg = _with_floor(floor, emit);
+        assert "wasm_rt/jac_alloc.c changed" in msg , msg;
+        assert "jac native build wasm-libc" in msg , msg;
     } finally {
-        if prev is None {
-            del os.environ["JAC_NATIVE_WASM_LIBC_DIR"];
-        } else {
-            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
-        }
         shutil.rmtree(d, ignore_errors=True);
     }
 }
 
-"""A floor with no manifest is unverifiable, not wrong: older artifacts and
-hand-built floors must keep working rather than hard-fail on a missing file."""
-test "a floor without a manifest still links" {
+"""A checkout or kit floor with no manifest cannot be checked against wasm_rt/,
+so the router reports it stale instead of linking it unverified."""
+test "a floor without a manifest is refused until it is rebuilt" {
     _require_libc();
-    import from jaclang.compiler.backends.native.wasm_build { FLOOR_MANIFEST }
+    import from jaclang.compiler.backends.native.floors {
+        WASM_FLOOR_MANIFEST as FLOOR_MANIFEST
+    }
     src = _wasm_libc_dir();
     assert src is not None;
     d = tempfile.mkdtemp();
@@ -371,17 +551,19 @@ test "a floor without a manifest still links" {
     if os.path.exists(man) {
         os.remove(man);
     }
-    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
-    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = floor;
-    try {
-        mod = emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
-        assert mod and len(mod) > 0;
-    } finally {
-        if prev is None {
-            del os.environ["JAC_NATIVE_WASM_LIBC_DIR"];
-        } else {
-            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    def emit -> str {
+        try {
+            emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        } except ArtifactUnavailable as e {
+            return str(e);
         }
+        return "";
+    }
+    try {
+        msg = _with_floor(floor, emit);
+        assert "no source manifest" in msg , msg;
+    } finally {
         shutil.rmtree(d, ignore_errors=True);
     }
 }

@@ -144,7 +144,7 @@ jac build --as wheel           # build the wheel; run both commands for wheel + 
 
 What goes in the package:
 
-- **Compiled JavaScript.** Every `.jac` (and plain `.jac`) client module under `[project.include]` compiles to a sibling `.js`, preserving the import structure. `def:pub` / `glob:pub` symbols become ESM exports.
+- **Compiled JavaScript.** Every `.jac` (and plain `.jac`) client module under `[project.include]` compiles to a sibling `.js`, preserving the import structure. `def:pub` / `glob:pub` symbols become ESM exports, and so does any other non-`:priv` name a sibling module in the package imports.
 - **`package.json`.** Built from `[project]` (`name`, `version`, `description`, `license`, `keywords`, `repository`) plus `[dependencies.npm]`. Override npm-specific fields under `[npm]`:
 
     ```toml

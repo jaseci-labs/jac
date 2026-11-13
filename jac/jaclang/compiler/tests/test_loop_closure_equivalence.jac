@@ -6,13 +6,6 @@ lasts; once the pass ends the closure keeps its own copy. The server lane pins
 the expected values and the client and native lanes must agree with it.
 """
 
-import from jaclang.compiler.tests.xbackend_equiv {
-    compile_fixture_to_js,
-    run_js_function,
-    run_py_fixture,
-    run_with_both
-}
-
 glob EXPECTED: dict[str, any] = {
          "target": [1, 2, 3],
          "body_local": [10, 20, 30],

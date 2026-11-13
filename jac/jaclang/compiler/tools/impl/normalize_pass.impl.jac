@@ -162,15 +162,6 @@ impl NormalizePass.enter_module_code with uni.ModuleCode entry {
     here.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass.enter_py_inline_code with uni.PyInlineCode entry {
-    new_kid: list[uni.UniNode] = [];
-    if here.doc {
-        new_kid.append(here.doc);
-    }
-    new_kid.append(here.code);
-    here.set_kids(nodes=new_kid);
-}
-
 impl NormalizePass.enter_import with uni.Import entry {
     new_kid: list[uni.UniNode] = [];
     if here.doc {
@@ -910,6 +901,9 @@ impl NormalizePass.enter_return_stmt with uni.ReturnStmt entry {
         return;
     }
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.KW_RETURN), ];
+    if here.is_tail {
+        new_kid.append(here.gen_token(Tok.KW_TAIL, "tail"));
+    }
     if here.expr {
         new_kid.append(here.expr);
     }
@@ -1756,9 +1750,9 @@ impl NormalizePass.enter_string with uni.String entry {
     here.value = f"{here.value}";
 }
 
-impl NormalizePass.enter_impl_import with uni.ImplImport entry {
+impl NormalizePass.enter_graph_import with uni.GraphImport entry {
     new_kid: list[uni.UniNode] = [
-        here.gen_token(Tok.KW_IMPL),
+        here.gen_token(Tok.KW_GRAPH),
         here.gen_token(Tok.KW_IMPORT)
     ];
     if here.scope {
@@ -1803,14 +1797,35 @@ impl NormalizePass.enter_import_wire with uni.ImportWire entry {
         new_kid.append(here.gen_token(Tok.TYP_TYPE));
     }
     new_kid.append(here.provider);
-    new_kid.append(here.gen_token(Tok.ARROW_R));
+    new_kid.append(here.gen_token(Tok.CARROW_R if here.is_injected else Tok.ARROW_R));
+    targets = here.targets;
+    if here.is_grouped {
+        new_kid.append(here.gen_token(Tok.LSQUARE));
+        for target in targets {
+            new_kid.append(target);
+            new_kid.append(here.gen_token(Tok.COMMA));
+        }
+        new_kid.append(here.gen_token(Tok.RSQUARE));
+    } else {
+        new_kid.append(targets[0]);
+        if targets[0].is_module_form {
+            new_kid.append(here.gen_token(Tok.SEMI));
+        }
+    }
+    here.set_kids(nodes=new_kid);
+}
+
+impl NormalizePass.enter_wire_target with uni.WireTarget entry {
+    new_kid: list[uni.UniNode] = [];
     for idx in range(len(here.consumers)) {
         new_kid.append(here.consumers[idx]);
         if idx < len(here.consumers) - 1 {
             new_kid.append(here.gen_token(Tok.BW_OR));
         }
     }
-    self._wiring_payload_kids(here.items, here.is_module_form, new_kid, here);
+    if not here.is_module_form {
+        self._wiring_payload_kids(here.items, False, new_kid, here);
+    }
     here.set_kids(nodes=new_kid);
 }
 
@@ -1839,9 +1854,7 @@ impl NormalizePass.enter_import_rule with uni.ImportRule entry {
 
 impl NormalizePass.enter_module_pattern with uni.ModulePattern entry {
     new_kid: list[uni.UniNode] = [];
-    if here.is_any {
-        new_kid.append(here.gen_token(Tok.TYP_ANY));
-    } elif here.path is None {
+    if here.path is None {
         new_kid.append(here.gen_token(Tok.STAR_MUL));
     } else {
         new_kid.append(here.path);

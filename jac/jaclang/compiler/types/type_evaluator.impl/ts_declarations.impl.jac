@@ -15,7 +15,7 @@ impl TypeEvaluator._ts_decl_path(from_loc: ModulePath) -> (str | None) {
     if cache_key in self._ts_decl_path_cache {
         return self._ts_decl_path_cache[cache_key];
     }
-    import from jaclang.compiler.frontend.host { active_host }
+
     dts_path: (str | None) = None;
     try {
         if spec.startswith('.') {
@@ -88,8 +88,7 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | 
     if dts_path in self._ts_decl_cache {
         return self._ts_decl_cache[dts_path];
     }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.types.ts_decl_parser { parse_dts }
+
     decls: (dict[str, TsDecl] | None) = None;
     try {
         decls = parse_dts(active_host().read_source(dts_path));
@@ -469,7 +468,7 @@ impl TypeEvaluator._untyped_external_is_error(node_: UniNode) -> bool {
     if not mod_path {
         return False;
     }
-    import from jaclang.compiler.frontend.host { active_host }
+
     facts = active_host().project_facts(mod_path);
     return facts is not None and facts.check.untyped_external_error;
 }
@@ -480,6 +479,6 @@ impl TypeEvaluator._jac_virtual_sibling_dts(
     if not import_node.is_virtual_jac or from_mod_type.file_uri is None {
         return None;
     }
-    import from jaclang.compiler.frontend.host { active_host }
+
     return active_host().sibling_declaration(str(from_mod_type.file_uri));
 }

@@ -10,37 +10,6 @@ import threading;
 import unittest.mock;
 import from pathlib { Path }
 import from types { SimpleNamespace }
-import jaclang.scale.injector.binary as binary_mod;
-import from jaclang.scale.config.dev_config {
-    resolve_dev_channel,
-    resolve_experimental_pr,
-    Channel,
-    BINARY_PATH_ENV
-}
-import from jaclang.scale.injector.binary {
-    pack_binary_bytes,
-    cluster_node_archs,
-    node_arch,
-    download_release_binary,
-    stage_admin_dist
-}
-import from jaclang.runtime.graph_utils { host_arch }
-import from jaclang.scale.injector.binary_injector { BinaryInjector }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
-import from jaclang.scale.injector.pvc_injector {
-    BUNDLE_MOUNT_PATH,
-    BUNDLE_VOLUME_NAME
-}
-import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
-    build_runtime_install_commands,
-    runtime_container_env,
-    build_service_apt_prefix,
-    build_bootstrap_init_container
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.config_loader { JacScaleConfig }
 
 
 def _write_toml(body: str) -> str {
@@ -70,18 +39,9 @@ test "whitespace [ dev ] table still resolves to the dev channel" {
 }
 
 
-test "JAC_SCALE_BINARY_PATH forces the LOCAL channel over any [dev] stanza" {
-    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
-    saved = os.environ.get(BINARY_PATH_ENV);
-    try {
-        os.environ[BINARY_PATH_ENV] = "/some/jac";
-        assert resolve_dev_channel(d) == Channel.LOCAL;
-    } finally {
-        os.environ.pop(BINARY_PATH_ENV, None);
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
-    }
+test "[dev] pod_binary selects the LOCAL channel over any other [dev] key" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\npod_binary = \"/some/jac\"\n");
+    assert resolve_dev_channel(d) == Channel.LOCAL;
 }
 
 
@@ -107,38 +67,32 @@ test "[experimental] without pr falls back to the dev base image" {
 }
 
 
-test "LOCAL channel ships the binary at JAC_SCALE_BINARY_PATH, no download" {
-    with tempfile.NamedTemporaryFile(suffix="-jac", delete=False) as tmp {
-        tmp.write(b"ELF-local-binary");
-        tmp_path = tmp.name;
+test "LOCAL channel ships the [dev] pod_binary, relative to its project, no download" {
+    d = _write_toml("[dev]\npod_binary = \"bin/jac\"\n");
+    os.makedirs(os.path.join(d, "bin"));
+    with open(os.path.join(d, "bin", "jac"), "wb") as handle {
+        handle.write(b"ELF-local-binary");
     }
-    saved = os.environ.get(BINARY_PATH_ENV);
-    try {
-        os.environ[BINARY_PATH_ENV] = tmp_path;
-        assert download_release_binary("local", node_arch()) == b"ELF-local-binary";
-    } finally {
-        os.environ.pop(BINARY_PATH_ENV, None);
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
-        os.unlink(tmp_path);
-    }
+    assert read_local_binary(d) == b"ELF-local-binary";
 }
 
 
-test "LOCAL channel without JAC_SCALE_BINARY_PATH is a loud error" {
-    saved = os.environ.pop(BINARY_PATH_ENV, None);
-    caught = False;
+test "LOCAL channel names a missing [dev] pod_binary loudly" {
+    d = _write_toml("[dev]\npod_binary = \"missing/jac\"\n");
+    caught = "";
+    try {
+        read_local_binary(d);
+    } except RuntimeError as e {
+        caught = str(e);
+    }
+    assert "pod_binary" in caught , caught;
     try {
         download_release_binary("local", node_arch());
-    } except RuntimeError {
-        caught = True;
-    } finally {
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
+        caught = "";
+    } except RuntimeError as e {
+        caught = str(e);
     }
-    assert caught;
+    assert "pod_binary" in caught , caught;
 }
 
 
@@ -209,12 +163,11 @@ test "shared pip cache is opened cross-uid, probed, with pod-local fallback" {
 }
 
 
-test "runtime_container_env exposes HOME + PATH, no precompile flags" {
+test "runtime_container_env exposes HOME + PATH, never the handoff" {
     names = [e["name"] for e in runtime_container_env()];
     assert "HOME" in names;
     assert "PATH" in names;
-    assert "JAC_NO_PRECOMPILE" not in names;
-    assert "JAC_PRECOMPILE_REQUIRED" not in names;
+    assert "JAC_HANDOFF" not in names;
 }
 
 
@@ -474,6 +427,8 @@ test "admin console asset: verified download staged, cache reused, bad checksum 
             admin = Path(proj) / ".jac" / "admin";
             assert (admin / "index.html").is_file();
             assert (admin / "assets" / "app.js").is_file();
+            # The marker is what makes the pod trust this console over its cache.
+            assert (admin / ".staged").is_file();
             # The tarball vanished from the server: a fresh deploy stages
             # from the verified cache.
             os.remove(os.path.join(serve_dir, asset));
@@ -538,17 +493,8 @@ test "explicit python_image wins over channel auto-selection" {
 
 test "local channel never auto-selects the official image" {
     import from jaclang.scale.injector.binary { resolve_pod_base_image }
-    d = _write_toml("[project]\nname = \"app\"\n");
-    saved = os.environ.get(BINARY_PATH_ENV);
-    try {
-        os.environ[BINARY_PATH_ENV] = "/some/jac";
-        assert resolve_pod_base_image(d, "") == "python:3.12-slim";
-    } finally {
-        os.environ.pop(BINARY_PATH_ENV, None);
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
-    }
+    d = _write_toml("[project]\nname = \"app\"\n\n[dev]\npod_binary = \"/some/jac\"\n");
+    assert resolve_pod_base_image(d, "") == "python:3.12-slim";
 }
 
 

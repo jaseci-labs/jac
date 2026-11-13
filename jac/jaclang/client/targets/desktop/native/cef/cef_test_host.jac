@@ -1,11 +1,4 @@
 import sys;
-import from cef {
-    cef_execute_subprocess,
-    cef_startup,
-    cef_open_browser,
-    cef_run_loop,
-    cef_cleanup,
-}
 
 glob code: i32 = cef_execute_subprocess();
 

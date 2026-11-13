@@ -1,12 +1,7 @@
 import asyncio;
 import json as json_lib;
 import unittest.mock;
-import from jaclang.server.serving.datatypes { Request, RedirectResponse }
-import from jaclang.scale.sso.google { GoogleSSOProvider }
-import from jaclang.scale.sso.apple { AppleSSOProvider }
-import from jaclang.scale.sso.github { GithubSSOProvider }
 def _callback_request(code: str = "auth-code-123") -> Request {
-    import from jaclang.server.serving.datatypes { QueryParams, URL }
     return Request(
         method="GET",
         url=URL(path="/sso/callback", query=f"code={code}"),

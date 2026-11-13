@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
 !!! tip "`jac run` is kind-aware"
-    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's *inferred* codespace: a server entry implies `service`, a client entry implies `web-app`; `cli-native` is always set explicitly), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `cli-native`), **serve** server kinds (`service`, `web-app`, ...), or **build** artifact kinds (`native-binary`, `native-lib`, `py-package`, `js-package`). `jac run --show` prints the resolved plan and the equivalent primitive command without running it. A project can hold several apps of different kinds at once -- see [One project, several apps](#one-project-several-apps) below.
+    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's *inferred* codespace: a server entry implies `service`, a client entry implies `web-app`; `cli-native` is always set explicitly), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `cli-native`, `native-binary`) or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a kind with no program to run (`native-lib`, `py-package`, `js-package`) is refused with the `jac build` command that makes it. `jac run --show` prints the resolved plan and the equivalent primitive command without running it. A project can hold several apps of different kinds at once -- see [One project, several apps](#one-project-several-apps) below.
 
 Every kind also fixes two facts the compiler and the CLI read: its **UI** (what its client renders, which decides the shell `jac run` / `jac build` produce: `dom` is React DOM, `mobui` is native views through React Native) and whether it **has a server** (which decides whether `def:pub` means an endpoint or an export, and whether the app joins a deployed fleet):
 
@@ -21,16 +21,16 @@ Every kind also fixes two facts the compiler and the CLI read: its **UI** (what 
 |---|---|:--:|:--:|
 | `cli` | execute | -- | no |
 | `cli-native` | execute | -- | no |
-| `native-binary` | build (`jac build --native`) | -- | no |
-| `native-lib` | build (`jac build --native --lib`) | -- | no |
+| `native-binary` | execute natively (`jac build` writes the binary) | -- | no |
+| `native-lib` | refused: prints `jac build <app>` (shared library) | -- | no |
 | `service` | serve (API only) | -- | **yes** |
 | `service-mesh` | serve | -- | **yes** |
 | `web-app` | serve (dev mode) | `dom` | **yes** |
 | `web-static` | serve as a static page | `dom` | no |
 | `desktop` | run the OS webview app | `dom` | no |
-| `mobile` | build for the app's platform | `mobui` | no |
-| `py-package` | build a wheel | -- | no |
-| `js-package` | build an npm tarball | `dom` | no |
+| `mobile` | serve to Expo Go (QR code; `--tunnel` off-network) | `mobui` | no |
+| `py-package` | refused: prints `jac build` (wheel) | -- | no |
+| `js-package` | refused: prints `jac build` (npm tarball) | `dom` | no |
 
 ## The recipes at a glance
 

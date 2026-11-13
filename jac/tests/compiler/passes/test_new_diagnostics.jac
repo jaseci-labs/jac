@@ -321,6 +321,21 @@ test "E0055: yield outside function" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0055"));
 }
 
+test "E0057: return inside any function body is valid" {
+    for src in [
+        'def f -> int { return 1; }',
+        'obj A { has n: int = 0; def get -> int { return self.n; } }',
+        'obj A { has n: int = 0; def get -> int; }\nimpl A.get -> int { return self.n; }',
+        'walker W { can go with Root entry { if True { return; } } }',
+        'test "early exit" { if True { return; } }',
+        'with entry { def g -> int { return 2; } f = lambda -> int { return 3; }; }'
+    ] {
+        (has_err, prog) = parse_and_validate(src);
+        errors = [str(e) for e in prog.errors_had] if prog else ["parse failed"];
+        assert not has_err , f"{src!r}: {errors}";
+    }
+}
+
 test "E0058: break outside loop" {
     (has_err, prog) = parse_and_validate('with entry { break; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0058"));
@@ -336,21 +351,35 @@ test "E0058: break inside loop is valid" {
     assert not has_err;
 }
 
-test "E0059: continue inside loop else block" {
+test "E0058: continue in a loop's else with no outer loop" {
     (has_err, prog) = parse_and_validate(
         'with entry { for i in [1,2] { } else { continue; } }'
     );
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0059"));
+    assert has_err and prog is not None and has_diagnostic_code(prog, "E0058");
 }
 
-test "E0059: break inside loop else block is valid" {
-    (has_err, _) = parse_and_validate(
+test "E0058: break in a loop's else with no outer loop" {
+    (has_err, prog) = parse_and_validate(
         'with entry { for i in [1,2] { } else { break; } }'
+    );
+    assert has_err and prog is not None and has_diagnostic_code(prog, "E0058");
+}
+
+test "E0058: continue in an inner loop's else continues the outer loop" {
+    (has_err, _) = parse_and_validate(
+        'with entry { for r in [1] { for i in [1,2] { } else { continue; } } }'
     );
     assert not has_err;
 }
 
-test "E0059: continue inside if-else inside loop is valid" {
+test "E0058: break in an inner loop's else breaks the outer loop" {
+    (has_err, _) = parse_and_validate(
+        'with entry { while True { for i in [1,2] { } else { break; } } }'
+    );
+    assert not has_err;
+}
+
+test "E0058: continue inside if-else inside loop is valid" {
     (has_err, _) = parse_and_validate(
         'with entry { for i in [1,2] { if i == 1 { } else { continue; } } }'
     );
@@ -392,6 +421,27 @@ test "E0076: Python __init__ and init are distinct methods" {
     assert not has_diagnostic_code(prog, "E0076");
 }
 
+test "E0078: a method or ability with a field's name is rejected" {
+    # The later class attribute replaced the field, so `self.rise` read the
+    # ability's function and `jac check` passed it silently.
+    (prog, _) = compile_and_check("parser_E0078_field_method_clash.jac");
+    assert count_diagnostic_code(prog, "E0078") == 3 , "the method 'grow', the ability 'rise' and the impl-block 'grow'";
+}
+
+test "E0078: distinct names, property accessors and init/postinit beside same-named fields are not clashes" {
+    (prog, _) = compile_and_check("parser_E0078_distinct_members.jac");
+    assert not has_diagnostic_code(prog, "E0078");
+}
+
+test "E0078: a Python class is not checked" {
+    prog = JacProgram();
+    prog.compile(
+        use_str="class Box:\n    grow: int = 3\n\n    def grow(self) -> int:\n        return 7\n",
+        file_path="clash.py"
+    );
+    assert not has_diagnostic_code(prog, "E0078");
+}
+
 test "E2036: a second module-level definition of a name is rejected" {
     (prog, _) = compile_and_check("scope_E2036_duplicate_def.jac");
     assert count_diagnostic_code(prog, "E2036") == 2 , "the second 'foo' and the second 'Bar'";
@@ -410,7 +460,7 @@ test "E2036: the call the checker passed against the first def is now an error" 
     assert count_diagnostic_code(prog, "E2036") == 1;
 }
 
-test "E2036: a stub with its impl and overloads are not duplicates" {
+test "E2036: an impl, overloads, a self-import and a glob assignment are not duplicates" {
     (prog, _) = compile_only("scope_E2036_allowed_redefinitions.jac");
     assert not has_diagnostic_code(prog, "E2036");
 }
@@ -420,6 +470,48 @@ test "E2036: a Python module may redefine a name" {
     prog.compile(
         use_str="def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
         file_path="redefine.py"
+    );
+    assert not has_diagnostic_code(prog, "E2036");
+}
+
+test "E2036: a local def, obj or glob that reuses an imported name is rejected" {
+    # `def Thing -> int;` used to lose to the imported record: the checker typed
+    # `Thing()` as the record and the program constructed it instead of
+    # calling the def.
+    (prog, _) = compile_and_check("scope_E2036_import_shadow.jac");
+    messages = [
+        e.msg
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E2036"
+    ];
+    assert len(messages) == 3 , messages;
+    assert "Duplicate definition of 'Thing': the import on line 2 binds it too."
+        in messages , messages;
+    assert any("'Other'" in m for m in messages) , messages;
+    assert any("'Knob'" in m for m in messages) , messages;
+}
+
+test "E2036: an import after the local definition still collides" {
+    (_, prog) = parse_and_validate(
+        "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n"
+    );
+    assert count_diagnostic_code(prog, "E2036") == 1;
+}
+
+test "E2036: a module import and an enum or type alias collide too" {
+    (_, prog) = parse_and_validate(
+        "import os;\nimport from rec { Kind, Alias }\n\n"
+            + "enum Kind { A, B }\n\ntype Alias = int;\n\n"
+            + "def os -> int {\n    return 0;\n}\n"
+    );
+    assert count_diagnostic_code(prog, "E2036") == 3;
+}
+
+test "E2036: an include does not collide with a local definition" {
+    # A module's own definition shadows a name an `include` brings in.
+    (_, prog) = parse_and_validate(
+        "include rec;\nimport from rec { Thing as Widget }\n\n"
+            + "obj Thing {}\n\ndef Widget2 -> int {\n    return 1;\n}\n"
     );
     assert not has_diagnostic_code(prog, "E2036");
 }
@@ -734,6 +826,10 @@ glob MUST_REJECT_NEW: dict[str, str] = {
      },
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
+         "E0057_return_in_entry": "with entry { return; }",
+         "E0057_return_in_entry_if": "with entry { x = 1; if x { return; } }",
+         "E0057_return_in_entry_loop": "with entry { for i in [1] { return i; } }",
+         "E0057_return_in_archetype_entry": "obj Holder { with entry { return; } }",
          "E0058_break_no_loop": "with entry { break; }",
          "E0058_continue_no_loop": "with entry { continue; }"
      };
@@ -745,6 +841,10 @@ glob IMPLEMENTED_REJECT: set[str] = {
      },
      IMPLEMENTED_VALIDATE: set[str] = {
          "E0055_yield_in_entry",
+         "E0057_return_in_entry",
+         "E0057_return_in_entry_if",
+         "E0057_return_in_entry_loop",
+         "E0057_return_in_archetype_entry",
          "E0058_break_no_loop",
          "E0058_continue_no_loop"
      };
@@ -764,8 +864,13 @@ def validate_reject_test(name_snippet: tuple[any, ...]) {
     if name not in IMPLEMENTED_VALIDATE {
         testskip(f"{name} not yet implemented");
     }
-    (has_errors, _) = parse_and_validate(snippet);
+    (has_errors, prog) = parse_and_validate(snippet);
     assert has_errors , f"Validation must reject '{name}': {snippet}";
+    code = name.split("_")[0];
+    assert prog is not None and count_diagnostic_code(prog, code) == 1 , (
+        name,
+        [str(e) for e in prog.errors_had] if prog else "parse failed"
+    );
 }
 
 # ══════════════════════════════════════════════════════════════════

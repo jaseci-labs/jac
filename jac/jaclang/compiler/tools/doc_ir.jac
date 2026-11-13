@@ -1,5 +1,3 @@
-import type jaclang.compiler.frontend.unitree as uni;
-
 type DocType = Doc
     | Text
     | Line

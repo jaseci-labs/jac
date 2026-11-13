@@ -1,6 +1,38 @@
 #!/usr/bin/env bash
-# Shared helpers for the real-cluster e2e scripts
-# (k8s_microservice_real_e2e.sh and tests/deploy/sdk_deploy_real_e2e.sh).
+# Shared helpers for the real-cluster e2e scripts (scripts/ and tests/deploy/).
+
+# --- the jac under test ------------------------------------------------------
+# Name this checkout's jac binary as the project's [dev] pod_binary, so the
+# deploy resolves to channel LOCAL and the pods run the code under test rather
+# than a published release. Returns 1 (and changes nothing) when the checkout
+# has no built binary; the caller decides whether that is fatal.
+ship_checkout_binary() {
+    local project="$1"
+    local binary
+    binary="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/jac/zig-out/bin/jac"
+    if [ ! -f "${binary}" ]; then
+        echo "no jac binary at ${binary}; build it with \`zig build\`" >&2
+        return 1
+    fi
+    python3 - "${project}/jac.toml" "${binary}" <<'PYEOF'
+import re
+import sys
+
+path, binary = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    text = f.read()
+text = re.sub(r"(?m)^pod_binary\s*=.*\n", "", text)
+entry = f'pod_binary = "{binary}"\n'
+table = re.search(r"(?m)^\[\s*dev\s*\]\s*\n", text)
+if table:
+    text = text[: table.end()] + entry + text[table.end():]
+else:
+    text = text.rstrip("\n") + "\n\n[dev]\n" + entry
+with open(path, "w") as f:
+    f.write(text)
+PYEOF
+    echo "shipping the jac under test to the pods: ${binary}"
+}
 
 # --- phase timing ----------------------------------------------------------
 # Call e2e_timing_init once, then _t "label" per phase;

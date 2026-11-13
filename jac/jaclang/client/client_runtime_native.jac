@@ -21,16 +21,6 @@ import from 'expo-secure-store' { * as SecureStore }
 import from 'expo-constants' { * as ExpoConstants }
 import from 'react-error-boundary' { ErrorBoundary }
 import from 'zod' { z }
-import from client_react_core {
-    __createJacSchema,
-    jacIsLoggedIn,
-    useJacForm,
-    __jacReportError
-}
-import from jaclang.client.targets.react_native.html_tag_map {
-    RN_HTML_VIEW_TAGS as _VIEW_TAGS,
-    RN_HTML_TEXT_TAGS as _TEXT_TAGS
-}
 
 def:pub __jacGetRenderer -> any;
 def:pub __jacNativeCreate(

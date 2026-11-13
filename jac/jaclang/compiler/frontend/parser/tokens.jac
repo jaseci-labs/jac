@@ -8,7 +8,6 @@ enum TokenKind {
     BOOL = "BOOL",
     NULL = "NULL",
     ELLIPSIS = "ELLIPSIS",
-    PYNLINE = "PYNLINE",
     NAME = "NAME",
     KWESC_NAME = "KWESC_NAME",
     TYP_STRING = "str",
@@ -361,19 +360,12 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "None": TokenKind.NULL
      };
 
-def lookup_keyword(text: str) -> TokenKind | None {
-    if text in KEYWORDS {
-        return KEYWORDS[text];
-    }
-    return None;
-}
+def lookup_keyword(text: str) -> TokenKind | None;
 
 glob RESERVED_KINDS: frozenset = frozenset(KEYWORDS.values())
          - frozenset({TokenKind.BOOL, TokenKind.NULL});
 
-def is_reserved_kind(kind: TokenKind) -> bool {
-    return kind in RESERVED_KINDS;
-}
+def is_reserved_kind(kind: TokenKind) -> bool;
 
 glob BUILTIN_TYPE_KINDS: frozenset = frozenset(
          {
@@ -401,17 +393,9 @@ glob BUILTIN_TYPE_KINDS: frozenset = frozenset(
          }
      );
 
-def is_builtin_type_kind(kind: TokenKind) -> bool {
-    return kind in BUILTIN_TYPE_KINDS;
-}
+def is_builtin_type_kind(kind: TokenKind) -> bool;
 
-def reserved_words -> list[str] {
-    return sorted(
-        word
-        for (word, kind) in KEYWORDS.items()
-        if kind in RESERVED_KINDS
-    );
-}
+def reserved_words -> list[str];
 
 glob SPECIAL_VAR_KINDS: set[TokenKind] = {
          TokenKind.KW_SELF,
@@ -424,6 +408,6 @@ glob SPECIAL_VAR_KINDS: set[TokenKind] = {
          TokenKind.KW_POST_INIT
      };
 
-def is_special_var_kind(kind: TokenKind) -> bool {
-    return kind in SPECIAL_VAR_KINDS;
-}
+def is_special_var_kind(kind: TokenKind) -> bool;
+
+def is_name_usable_kind(kind: TokenKind) -> bool;

@@ -137,6 +137,43 @@ test "a brand over a comptime-imported base loads and brands" {
 }
 
 
+test "a comptime-imported module is no link unit of its native consumer" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    opts = CompileOptions(
+        aot_mode=True, default_codespace='native', skip_native_engine=True
+    );
+    prog = JacProgram();
+    prog.options = opts;
+    plan = build_link_plan(
+        prog, [os.path.join(FIXTURE_DIR, "brand_comptime_base.jac")], opts
+    );
+    units = [os.path.basename(u.path) for u in plan.units];
+    assert "brand_comptime_base.jac" in units , units;
+    assert "base_alias.jac" not in units , (
+        f"a comptime import binds nothing at run time, so it links nothing: {units}"
+    );
+}
+
+
+test "a module also reached at run time stays a link unit whatever the import order" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    opts = CompileOptions(
+        aot_mode=True, default_codespace='native', skip_native_engine=True
+    );
+    prog = JacProgram();
+    prog.options = opts;
+    plan = build_link_plan(
+        prog, [os.path.join(FIXTURE_DIR, "ct_facade_consumer.jac")], opts
+    );
+    units = [os.path.basename(u.path) for u in plan.units];
+    assert "ct_leaf.jac" in units , (
+        f"ct_leaf is reached through a runtime import of the facade: {units}"
+    );
+}
+
+
 test "a brand over a type-only imported base loads and brands" {
     (errs, py_src) = compile_py("brand_type_only_base.jac");
     assert not errs , f"{[str(e) for e in errs]}";

@@ -5,7 +5,7 @@ subprocess + embedded-server + CLI argparse path - exactly the interface a
 developer or operator uses.
 """
 
-import from tests.support { jac_command }
+import from tests.support { jac_command, share_postgres }
 
 import os;
 import subprocess;
@@ -23,9 +23,7 @@ def _run(
     # launcher-embedded snapshot.
     env: dict[str, str] = dict(os.environ);
     cache_home = Path(cwd) / '.cache';
-    env['JAC_PG_DIST'] = PgRuntime(
-        data_dir=str(cache_home / 'pg' / 'main')
-    ).fetch_dist();
+    share_postgres(cache_home);
     env['JAC_CACHE_HOME'] = str(cache_home);
     env.pop('JAC_DB_URL', None);
     src = str(Path(jaclang.__file__).parent.parent);

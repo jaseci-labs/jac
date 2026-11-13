@@ -11,11 +11,47 @@ from __future__ import annotations
 import contextlib
 import importlib.machinery
 import importlib.util
+import json
 import os
 import site
 import sys
 from collections.abc import Sequence
 from types import ModuleType
+
+HANDOFF_ENV = "JAC_HANDOFF"
+
+
+def handoff() -> dict[str, object]:
+    """The handoff record this process inherited.
+
+    Deliberate MIRROR of ``jaclang.jac0core.handoff``: this module runs during
+    ``sitecustomize``/launcher boot, BEFORE the compiler that will run is chosen
+    and importable, and a rerouted process loads it from the kit, so code
+    inside ``jaclang`` must never import it from here. Keep the record format
+    in lockstep with the canonical module.
+    """
+    raw = os.environ.get(HANDOFF_ENV, "")
+    if not raw:
+        return {}
+    try:
+        record = json.loads(raw)
+    except ValueError:
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def update_handoff(**fields: object) -> None:
+    """Mirror of ``jaclang.jac0core.handoff.update_handoff`` (see ``handoff``)."""
+    record = handoff()
+    for key, value in fields.items():
+        if value is None:
+            record.pop(key, None)
+        else:
+            record[key] = value
+    if record:
+        os.environ[HANDOFF_ENV] = json.dumps(record, sort_keys=True)
+    else:
+        os.environ.pop(HANDOFF_ENV, None)
 
 
 def _find_project_toml() -> str | None:
@@ -59,47 +95,34 @@ def _baked_source_dir() -> str | None:
         return None
 
 
-def _dev_source_from_toml() -> str | None:
-    """Resolve ``[dev] jaclang_source`` from the nearest ``jac.toml``, or ``None``.
+def _dev_table() -> tuple[str | None, bool]:
+    """``[dev] jaclang_source`` (absolute) and ``[dev] exact`` from the nearest
+    ``jac.toml``.
 
     The stanza is read from the NEAREST ``jac.toml`` -- the same project root
     every other config setting resolves against (see ``_find_project_toml``), so
     a directory that wants the loop must carry its own ``[dev]`` stanza rather
     than inherit one from an enclosing project. A cheap substring guard avoids
-    importing ``tomllib`` unless the key is literally present, so non-dev startup
-    pays only a small file read.
+    importing ``tomllib`` unless a ``[dev]`` table is literally present, so
+    non-dev startup pays only a small file read.
     """
     toml = _find_project_toml()
     if toml is None:
-        return None
+        return (None, False)
     with open(toml, "rb") as handle:
         raw = handle.read()
-    # Fast path: skip the tomllib import/parse entirely unless the key exists.
-    if b"jaclang_source" not in raw:
-        return None
+    if b"[dev]" not in raw:
+        return (None, False)
     import tomllib
 
     section = tomllib.loads(raw.decode("utf-8")).get("dev")
     if not isinstance(section, dict):
-        return None
+        return (None, False)
+    exact = section.get("exact") is True
     src = section.get("jaclang_source")
     if not isinstance(src, str) or not src:
-        return None
-    return os.path.abspath(os.path.join(os.path.dirname(toml), src))
-
-
-def _inherited_dev_source() -> str | None:
-    """The dev source a parent jac process exported, if it still holds a tree.
-
-    ``apply_dev_source_override`` exports ``JAC_DEV_SOURCE`` whenever the loop
-    engages, so a child jac spawned from any cwd (a native build into a temp
-    dir, a desktop build compiling its host) inherits the same compiler instead
-    of silently falling back to the bundled copy.
-    """
-    src = os.environ.get("JAC_DEV_SOURCE", "")
-    if src and os.path.isdir(os.path.join(src, "jaclang")):
-        return src
-    return None
+        return (None, exact)
+    return (os.path.abspath(os.path.join(os.path.dirname(toml), src)), exact)
 
 
 def _is_bare_checkout(src_dir: str) -> bool:
@@ -128,92 +151,74 @@ def _is_bare_checkout(src_dir: str) -> bool:
 def apply_dev_source_override() -> None:
     """Reroute ``import jaclang`` to an in-repo source tree -- an editable dev loop.
 
-    The source dir comes from one of three places, in order:
+    Which compiler a process runs is decided once per process tree:
 
-    1. ``[dev] jaclang_source`` from the nearest ``jac.toml``::
+    1. A process that inherits a handoff record (``handoff()``) runs its
+       parent's compiler, whatever its cwd: the ``compiler_source`` the parent
+       recorded, or the bundled compiler when that is empty. A child spawned
+       into another directory (a native build into a temp dir, a desktop build
+       compiling its host) therefore stays on its parent's compiler, and a
+       tree started outside any ``[dev]`` project stays on the bundled one even
+       when its children run inside the repo.
+    2. A top-level process reads ``[dev] jaclang_source`` from the nearest
+       ``jac.toml``::
 
            [dev]
            jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
+           exact = true             # optional: never reuse an earlier compiler's products
 
-       This wins: inside a repo that declares its own compiler source, THAT
-       source is the developer's intent -- even when the running binary is a
-       linked dev binary baked to a different checkout (working across two
-       clones must not silently compile repo B with repo A's tree). This repo
-       ships the stanza in the single root ``jac.toml``; the nearest-ancestor
-       walk-up means the loop holds from the repo root AND from ``cd jac``
-       (where the suite runs); other subprojects opt in by adding their own
-       stanza.
-    2. Otherwise, an inherited ``JAC_DEV_SOURCE`` -- exported by a jac process
-       whose loop engaged, so the children it spawns (``jac test`` running a
-       a native build into a temp dir, a desktop build compiling its host) stay
-       on the same compiler whatever their cwd. Without this a child outside the
-       repo would silently fall back to the bundled copy.
-    3. Otherwise, a ``jac_linked_source`` marker baked into a linked dev binary
+       Inside a repo that declares its own compiler source, THAT source is the
+       developer's intent -- even when the running binary is a linked dev
+       binary baked to a different checkout.
+    3. Otherwise a ``jac_linked_source`` marker baked into a linked dev binary
        (``zig build -Ddev`` / ``-Djaclang-dir``; see ``_baked_source_dir``) --
        the cwd-independent "linked compiler" mode, where the binary ships no
-       bundled ``jaclang``.
+       bundled ``jaclang``. A baked link always applies: it is that binary's
+       only compiler.
 
-    Either way the directory is prepended to the FRONT of ``sys.path`` so
-    ``import jaclang`` resolves to the live source instead of the single binary's
-    bundled copy -- edits take effect with no rebuild. It runs in
-    ``sitecustomize`` during site init, BEFORE the launcher's BOOT_SRC does
-    ``import jaclang``, so the override wins over the bundled ``site/`` on
-    ``PYTHONPATH``.
+    The chosen directory is prepended to the FRONT of ``sys.path`` so
+    ``import jaclang`` resolves to the live source instead of the binary's
+    bundled copy. This runs in ``sitecustomize`` during site init, BEFORE the
+    launcher's BOOT_SRC does ``import jaclang``.
 
-    Set ``JAC_NO_DEV_SOURCE=1`` to force the loop OFF even when a source is in
-    scope -- used by CI jobs that must exercise the shipped binary's bundled +
-    precompiled jaclang rather than the checked-out source tree.
+    A ``jac.toml`` source is applied only when its tree is materialized (see
+    ``_is_bare_checkout``); a bare clone is refused with a note and the
+    bundled compiler serves. An inherited record is not re-judged: the top of
+    the tree already chose.
 
-    A jac.toml or inherited source is applied only when its tree is
-    materialized (see ``_is_bare_checkout``); a bare clone is refused with a
-    note and the bundled compiler serves. A baked link is never refused: a
-    linked binary has no bundled compiler to fall back on.
-
-    Caches: exports ``JAC_DEV_SOURCE``, which is both a marker for tooling
-    (``_ext_registry`` locates the registry inside the linked tree with it) and
-    the scope of the ``_precompiled`` bundle lookup. The shipped, version-keyed
-    bundle inside the binary's payload belongs to another jaclang and must never
-    serve a source run; a bundle sitting INSIDE this tree was built from this
-    tree and may. ``jir.bundle_dir_allowed`` draws that line, which is why this
-    no longer sets ``JAC_NO_PRECOMPILE=1`` -- that flag refused both, so every
-    dev run recompiled the whole compiler even when the checkout held a bundle
-    matching it exactly. Correctness does not rest on the location rule anyway:
-    both the per-module ``.jir`` cache and the bundle are content-keyed
-    (``compute_module_key`` folds the source sha256, and the bundle key folds
-    the compiler digest on top), so a stale unit can only miss.
+    The decision is recorded in the handoff (``compiler_source``, empty for the
+    bundled compiler, and ``exact``). ``compiler_source`` is also the scope of
+    the ``_precompiled`` bundle lookup: the shipped, version-keyed bundle
+    inside the binary's payload belongs to another jaclang and must never
+    serve a source run, while a bundle INSIDE this tree was built from it and
+    may (``jir.bundle_dir_allowed``).
 
     Plain Python, dev-only, never fatal.
     """
     try:
-        # A baked marker is a LINKED dev binary's ONLY compiler -- there is no
-        # bundled jaclang to fall back on -- so it must still apply even when
-        # JAC_NO_DEV_SOURCE is set. That flag means "use the shipped compiler,
-        # not a dev tree"; for a linked binary the linked tree IS the shipped
-        # compiler, so honoring it here would brick the binary (sys.path never
-        # gets the source, `import jaclang` then fails). JAC_NO_DEV_SOURCE only
-        # suppresses the jac.toml-based loop, where a bundled jaclang takes over.
-        toml_src: str | None = None
-        if not os.environ.get("JAC_NO_DEV_SOURCE"):
-            toml_src = _dev_source_from_toml() or _inherited_dev_source()
-            if toml_src is not None and _is_bare_checkout(toml_src):
+        inherited = handoff()
+        if "compiler_source" in inherited:
+            # The top of this process tree already chose; its children run it.
+            src_dir = str(inherited.get("compiler_source") or "") or None
+            exact = bool(inherited.get("exact"))
+        else:
+            (src_dir, exact) = _dev_table()
+            if src_dir is not None and _is_bare_checkout(src_dir):
                 sys.stderr.write(
-                    f"jac: ignoring [dev] jaclang_source {toml_src}: the tree has "
-                    "no typeshed stdlib stubs (run `zig build fetch-typeshed` in "
-                    "that checkout to use its compiler); the bundled compiler "
+                    f"jac: ignoring the dev compiler source {src_dir}: the tree "
+                    "has no typeshed stdlib stubs (run `zig build fetch-typeshed` "
+                    "in that checkout to use its compiler); the bundled compiler "
                     "serves this run.\n"
                 )
-                toml_src = None
-        src_dir = toml_src or _baked_source_dir()
-        if src_dir is None:
-            return
-        # Must contain a `jaclang/` package, else this would shadow nothing
-        # useful and risk hiding the real bundled copy.
-        if not os.path.isdir(os.path.join(src_dir, "jaclang")):
-            return
-        if src_dir in sys.path:
-            sys.path.remove(src_dir)
-        sys.path.insert(0, src_dir)
-        os.environ["JAC_DEV_SOURCE"] = src_dir
+                src_dir = None
+        src_dir = src_dir or _baked_source_dir()
+        if src_dir is not None and not os.path.isdir(os.path.join(src_dir, "jaclang")):
+            src_dir = None
+        if src_dir is not None:
+            if src_dir in sys.path:
+                sys.path.remove(src_dir)
+            sys.path.insert(0, src_dir)
+        update_handoff(compiler_source=src_dir or "", exact=exact or None)
     except Exception:
         # Dev convenience only; fall back to the bundled jaclang.
         pass
@@ -288,14 +293,14 @@ def _ext_registry() -> ModuleType:
     """Lazily load and cache the plain-Python extension registry by path."""
     global _registry
     if _registry is None:
-        # Prefer the linked dev source when set (JAC_DEV_SOURCE, exported by
-        # apply_dev_source_override): a `-Ddev` binary ships no bundled jaclang/
+        # Prefer the linked dev source when set (the handoff's compiler_source,
+        # recorded by apply_dev_source_override): a `-Ddev` binary ships no bundled jaclang/
         # beside this module, so the registry lives only in the linked tree. Fall
         # back through the baked marker directly (resilient even if
         # apply_dev_source_override never ran), then the bundled copy beside this
         # module for a normal self-contained binary.
         base = (
-            os.environ.get("JAC_DEV_SOURCE")
+            str(handoff().get("compiler_source") or "")
             or _baked_source_dir()
             or os.path.dirname(__file__)
         )

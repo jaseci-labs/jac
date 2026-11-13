@@ -10,6 +10,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
     import from jaclang.compiler.frontend.host { active_host }
     import_node = node_.parent_of_type(Import);
     assert import_node.from_loc is not None;
+    if self._climbs_above_project(import_node.from_loc) {
+        binding.type = UnknownType(is_diagnosed=True);
+        if not import_node.from_loc.path {
+            self._report_climb(import_node.from_loc, node_.name);
+        }
+        return binding.type;
+    }
 
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
@@ -114,8 +121,25 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
 
+            sub_dir = mod_dir / item_name;
+            if sub_dir.is_dir() and named_exactly_any(str(sub_dir)) {
+                binding.type = ModuleType(
+                    mod_name=binding.sym_name,
+                    file_uri=sub_dir.resolve(),
+                    symbol_table=None
+                );
+                binding._sym_category = SymbolType.MODULE;
+                return binding.type;
+            }
             binding.type = UnknownType(is_diagnosed=True);
-            self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            if self._relative_import_must_resolve(import_node.from_loc) {
+                sep = "" if from_mod_name.endswith(".") else ".";
+                self.emit_diag(
+                    E1134, binding, module=f"{from_mod_name}{sep}{item_name}"
+                );
+            } else {
+                self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            }
             return binding.type;
         } else {
             if not isinstance(from_mod_type, ModuleType) {
@@ -291,7 +315,6 @@ impl TypeEvaluator._resolve_star_import_symbol(
 }
 
 impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
-    import from jaclang.compiler.frontend.host { active_host }
     path_parts = node_.path;
     if path_parts {
         last_type = path_parts[-1].type;
@@ -301,6 +324,14 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 isinstance(last_type, UnknownType) and not last_type.is_diagnosed
             ) {
             return last_type;
+        }
+        if self._climbs_above_project(node_) {
+            escaped = UnknownType(is_diagnosed=True);
+            for npath in path_parts {
+                npath.type = escaped;
+            }
+            self._report_climb(node_, path_parts[-1]);
+            return escaped;
         }
         path_list = node_.resolve_relative_path_list();
 
@@ -443,7 +474,6 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
 impl TypeEvaluator._resolve_submodule_attr(
     base_type: ModuleType, attr_name: str
 ) -> (ModuleType | None) {
-    import from jaclang.compiler.frontend.host { active_host }
     if base_type.file_uri is None {
         return None;
     }
@@ -527,7 +557,6 @@ impl TypeEvaluator._import_module_from_path(
 }
 
 impl TypeEvaluator._in_flight_module(resolved_path: str) -> (Module | None) {
-    import from jaclang.compiler.driver.compilation_context { program_for }
     found = self.program.find_module(resolved_path);
     if found is None {
         found = program_for(resolved_path, self.program).find_module(resolved_path);
@@ -554,7 +583,6 @@ impl TypeEvaluator.forget_module(resolved_path: str) -> None {
 }
 
 impl TypeEvaluator._resolve_importer_path(ast_node: UniNode) -> (str | None) {
-    import from jaclang.compiler.symbol_utils { resolve_importer_path_from_node }
     return resolve_importer_path_from_node(ast_node);
 }
 
@@ -579,7 +607,6 @@ impl TypeEvaluator.get_type_of_symbol(symbol: Symbol) -> TypeBase {
 }
 
 impl TypeEvaluator._published_class_type(symbol: Symbol) -> (TypeBase | None) {
-    import from jaclang.compiler.frontend.unitree { Archetype }
     decl = symbol.decl;
     if decl is None {
         return None;
@@ -645,6 +672,29 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
 }
 
 
+impl TypeEvaluator._climbs_above_project(node_: ModulePath) -> bool {
+    if node_.level <= 1 or not node_.loc or is_client_destined(node_) {
+        return False;
+    }
+    roots = project_root_chain(node_.importer_path);
+    if not roots {
+        return False;
+    }
+    parents = Path(node_.importer_path).resolve().parents;
+    if node_.level - 1 >= len(parents) {
+        return True;
+    }
+    return not parents[node_.level - 1].is_relative_to(Path(roots[-1]).resolve());
+}
+
+impl TypeEvaluator._report_climb(node_: ModulePath, at: UniNode) -> None {
+    if self._relative_import_must_resolve(node_) {
+        self.emit_diag(E1134, at, module=node_.dot_path_str);
+    } else {
+        self.emit_diag(W1100, at);
+    }
+}
+
 impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | None) {
     if node_.level > 0 or node_.string_path_value is not None or not node_.path {
         return None;
@@ -660,7 +710,7 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
     if mod is None or not mod.loc or not mod.loc.mod_path {
         return None;
     }
-    import from jaclang.compiler.frontend.host { active_host }
+
     fallback_app = (
         self.program.options.target_app or ""
             if self.program is not None and self.program.options is not None

@@ -1,13 +1,6 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree { TreeWalker, Tok, EmptyToken, Token }
-import from jaclang.compiler.passes.context { CompileContext, TreePass }
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.roles { BodyRole, ItemsRole }
-
 walker NormalizePass(TreePass) {
+    static has contract: PassContract = PassContract();
+
     can enter_sub_tag with uni.SubTag entry;
     can enter_module with uni.Module entry;
     can enter_type_param with uni.TypeParam entry;
@@ -15,7 +8,6 @@ walker NormalizePass(TreePass) {
     can enter_global_vars with uni.GlobalVars entry;
     can enter_test with uni.Test entry;
     can enter_module_code with uni.ModuleCode entry;
-    can enter_py_inline_code with uni.PyInlineCode entry;
     can enter_import with uni.Import entry;
     can enter_module_path with uni.ModulePath entry;
     can enter_module_item with uni.ModuleItem entry;
@@ -119,8 +111,9 @@ walker NormalizePass(TreePass) {
     can enter_match_arch with uni.MatchArch entry;
     can enter_token with uni.Token entry;
     can enter_string with uni.String entry;
-    can enter_impl_import with uni.ImplImport entry;
+    can enter_graph_import with uni.GraphImport entry;
     can enter_import_wire with uni.ImportWire entry;
+    can enter_wire_target with uni.WireTarget entry;
     can enter_import_rule with uni.ImportRule entry;
     can enter_module_pattern with uni.ModulePattern entry;
     can enter_wire_item with uni.WireItem entry;

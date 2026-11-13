@@ -27,6 +27,7 @@ import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_toke
 import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.config { set_config }
 import from jaclang.runtime.builtin { printgraph }
+import from jaclang.testing.test_runner { _build_selector }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
@@ -232,6 +233,18 @@ test "jac cli run python file" {
     assert "Result: 42" in stdout_value;
     assert "Python execution completed." in stdout_value;
     assert "10" in stdout_value;
+}
+
+test "jac run python entry does not inherit future flags" {
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        execution.run(fixture_path("py_entry_future_flags.py"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    assert "py entry future flags clean" in captured.getvalue();
 }
 
 test "jac run with no filename and no resolvable entry errors cleanly" {
@@ -698,6 +711,21 @@ test "run specific test only" {
     assert "1 passed" in out;
     assert "from 2 to 10" in out;
     assert "first two" not in out;
+}
+
+
+"""`--test_name` is a name, not a filter expression: words that are also filter
+operators (`and`, `or`, `not`) still have to appear in the test's name.
+`--filter` keeps them as operators."""
+test "test_name matches every word literally, including and/or/not" {
+    by_name = _build_selector("loads and reports or not", "");
+    assert by_name is not None;
+    assert by_name.matches("native command loads and reports or not");
+    assert not by_name.matches("native command loads reports");
+    by_filter = _build_selector("", "loads and not reports");
+    assert by_filter is not None;
+    assert by_filter.matches("native command loads status");
+    assert not by_filter.matches("native command loads and reports status");
 }
 
 
@@ -2351,12 +2379,19 @@ test "jac check native coverage ranks module outcomes" {
                     + "    return 1;\n}\n"
             );
         }
+        import from jaclang.compiler.frontend.codeinfo {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        }
+        prior_codespace = get_effective_default_codespace_override();
+        set_effective_default_codespace("");
         (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
         _reset_config();
         try {
             result = analysis.check([td], native_coverage=True);
             combined = captured_stdout.getvalue() + captured_stderr.getvalue();
         } finally {
+            set_effective_default_codespace(prior_codespace);
             _restore_output(old_stdout, old_stderr);
             set_config(None);
             _reset_config();
@@ -2364,7 +2399,8 @@ test "jac check native coverage ranks module outcomes" {
         assert "native coverage" in combined.lower() , "coverage header missing";
         assert "native seams" in combined , (
             "a module whose callable demoted granularly must be reported "
-            "under the native-seams section"
+            "under the native-seams section",
+            combined
         );
         assert "E5092" in combined , (
             "the seam reason must carry the first error code"

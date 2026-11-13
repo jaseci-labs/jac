@@ -123,6 +123,25 @@ test "coerce: primitive already matches target (no-op)" {
 }
 
 
+test "coerce: a target type resolves the same on every call, hashable or not" {
+    for _ in range(3) {
+        assert Serializer.coerce("7", (int | None)) == (7, True);
+        assert Serializer.coerce(None, (int | None)) == (None, True);
+        assert Serializer.coerce("x", list[int]) == ("x", False);
+    }
+    unhashable = type("Unhashable", (), {"__hash__": None})();
+    assert Serializer.coerce(5, unhashable) == (5, True);
+}
+
+
+test "coerce: equal unions in a different member order keep their own order" {
+    for _ in range(2) {
+        assert Serializer.coerce("7", (int | str)) == (7, True);
+        assert Serializer.coerce("7", (str | int)) == ("7", True);
+    }
+}
+
+
 test "coerce: str to int, float, bool, UUID" {
     assert Serializer.coerce("42", int) == (42, True);
     assert Serializer.coerce("3.14", float) == (3.14, True);

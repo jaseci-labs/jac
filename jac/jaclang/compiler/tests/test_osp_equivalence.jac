@@ -31,8 +31,6 @@ Backend support today (see each fixture's docstring for specifics):
     is how "support landed" becomes an enforced regression.
 """
 
-import from jaclang.compiler.tests.xbackend_equiv { run_with_both, run_py_fixture }
-
 # ---------------------------------------------------------------------------
 # Spawn/dispatch core.
 # ---------------------------------------------------------------------------

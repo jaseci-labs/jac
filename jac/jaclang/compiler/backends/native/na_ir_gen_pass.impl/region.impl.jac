@@ -1,19 +1,15 @@
-import from jaclang.compiler.backends.native.region_abi { REGION_KERNEL_ABI }
-
 glob REGION_TLS_GLOBAL: str = "__jac_region_tls",
      REGION_TLS_GET: str = "__jac_region_tls_get",
      REGION_TLS_SET: str = "__jac_region_tls_set",
-     REGION_GBL_GET: str = "__jac_region_gbl_get";
+     REGION_GBL_GET: str = "__jac_region_gbl_get",
+     REGION_GBL_LIVE_SLOT: int = 2;
 
 impl NaIRGenPass._register_region_kernel -> None {
     if self._region_kernel_registered {
         return;
     }
     self._region_kernel_registered = True;
-    import from jaclang.compiler.frontend.codeinfo {
-        REGION_KERNEL_REL,
-        kernel_unit_path
-    }
+
     if not self._is_kernel_unit() {
         self._note_native_dep(kernel_unit_path(REGION_KERNEL_REL));
     }
@@ -33,7 +29,18 @@ impl NaIRGenPass._emit_region_tls_slot -> None {
     if REGION_GBL_GET in self.extern_funcs {
         return;
     }
-    self._emit_tls_slot(REGION_TLS_GLOBAL, REGION_TLS_GET, REGION_TLS_SET);
+    (_get_fn, set_fn) = self._emit_tls_slot(
+        REGION_TLS_GLOBAL, REGION_TLS_GET, REGION_TLS_SET
+    );
+
+    used_gv = ir.GlobalVariable(
+        self.llvm_module, ir.IntType(8), name=f"{REGION_TLS_GLOBAL}_used"
+    );
+    used_gv.linkage = "weak";
+    used_gv.initializer = ir.Constant(ir.IntType(8), 0);
+    ub = ir.IRBuilder(set_fn.entry_basic_block);
+    ub.position_at_start(set_fn.entry_basic_block);
+    ub.store_atomic(ir.Constant(ir.IntType(8), 1), used_gv, "monotonic", 1);
     i64 = ir.IntType(64);
     gbl_gv = ir.GlobalVariable(
         self.llvm_module, ir.ArrayType(i64, 8), name=f"{REGION_TLS_GLOBAL}_gbl"
@@ -47,6 +54,13 @@ impl NaIRGenPass._emit_region_tls_slot -> None {
     self.extern_funcs[REGION_GBL_GET] = gbl_fn;
     gblb = ir.IRBuilder(gbl_fn.append_basic_block("entry"));
     gblb.ret(gblb.ptrtoint(gbl_gv, i64, name="gbl.i64"));
+}
+
+impl NaIRGenPass._region_live_flag -> ir.Value {
+    self._emit_region_tls_slot();
+    i32 = ir.IntType(32);
+    gbl_gv = self.llvm_module.get_global(f"{REGION_TLS_GLOBAL}_gbl");
+    return gbl_gv.gep([ir.Constant(i32, 0), ir.Constant(i32, REGION_GBL_LIVE_SLOT)]);
 }
 
 impl NaIRGenPass._region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value {
@@ -82,10 +96,31 @@ impl NaIRGenPass._region_new_handle -> ir.Value {
 }
 
 impl NaIRGenPass._region_current -> ir.Value {
-    raw = self.builder.call(
-        self._region_kernel_fn("__jac_region_current"), [], name="region.cur"
+    raw_fn = self._region_kernel_fn("__jac_region_current");
+    b = self.builder;
+    i64 = ir.IntType(64);
+    fn = b.function;
+    used_gv = self.llvm_module.get_global(f"{REGION_TLS_GLOBAL}_used");
+    start = b.block;
+    read_bb = fn.append_basic_block("region.cur.read");
+    done_bb = fn.append_basic_block("region.cur.done");
+    used = b.load_atomic(used_gv, "monotonic", 1, name="region.cur.used");
+    br = b.cbranch(
+        b.icmp_unsigned(
+            "!=", used, ir.Constant(ir.IntType(8), 0), name="region.cur.used.on"
+        ),
+        read_bb,
+        done_bb
     );
-    return self._region_ptr(raw, name="region.cur.p");
+    br.set_weights([1, 2000]);
+    b.position_at_end(read_bb);
+    raw = b.call(raw_fn, [], name="region.cur");
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    cur = b.phi(i64, name="region.cur.at");
+    cur.add_incoming(ir.Constant(i64, 0), start);
+    cur.add_incoming(raw, read_bb);
+    return self._region_ptr(cur, name="region.cur.p");
 }
 
 impl NaIRGenPass._region_of_value(val: ir.Value) -> ir.Value {
@@ -123,11 +158,110 @@ impl NaIRGenPass._region_depth -> ir.Value {
     );
 }
 
+impl NaIRGenPass._region_depth_if_used -> ir.Value {
+    self._register_region_kernel();
+    b = self.builder;
+    i64 = ir.IntType(64);
+    fn = b.function;
+    used_gv = self.llvm_module.get_global(f"{REGION_TLS_GLOBAL}_used");
+    start = b.block;
+    read_bb = fn.append_basic_block("region.depth.read");
+    done_bb = fn.append_basic_block("region.depth.done");
+    used = b.load_atomic(used_gv, "monotonic", 1, name="region.used");
+    br = b.cbranch(
+        b.icmp_unsigned(
+            "!=", used, ir.Constant(ir.IntType(8), 0), name="region.used.on"
+        ),
+        read_bb,
+        done_bb
+    );
+    br.set_weights([1, 2000]);
+    b.position_at_end(read_bb);
+    read = self._region_depth();
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    depth = b.phi(i64, name="region.depth.at");
+    depth.add_incoming(ir.Constant(i64, 0), start);
+    depth.add_incoming(read, read_bb);
+    return depth;
+}
+
 impl NaIRGenPass._region_unwind(depth: ir.Value) -> None {
     self.builder.call(
         self._region_kernel_fn("__jac_region_unwind"),
         [self._coerce_type(depth, ir.IntType(64))]
     );
+}
+
+impl NaIRGenPass._region_open_test -> ir.Value {
+    self._register_region_kernel();
+    b = self.builder;
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    fn = b.function;
+    live = b.load(self._region_live_flag(), name="region.live");
+    any_live = b.icmp_unsigned("!=", live, zero, name="region.any");
+    start = b.block;
+    tls_bb = fn.append_basic_block("region.tls.read");
+    read_bb = fn.append_basic_block("region.cur.read");
+    done_bb = fn.append_basic_block("region.cur.done");
+    b.cbranch(any_live, tls_bb, done_bb).set_weights([1, 2000]);
+    b.position_at_end(tls_bb);
+    blk = b.call(self.extern_funcs[REGION_TLS_GET], [], name="region.tls");
+    has_block = b.icmp_unsigned("!=", blk, zero, name="region.tls.set");
+    b.cbranch(has_block, read_bb, done_bb);
+    b.position_at_end(read_bb);
+    cur = b.load(
+        b.inttoptr(blk, i64.as_pointer(), name="region.tls.cur"), name="region.cur"
+    );
+    is_open = b.icmp_unsigned("!=", cur, zero, name="region.cur.open");
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    opened = b.phi(ir.IntType(1), name="region.open");
+    opened.add_incoming(ir.Constant(ir.IntType(1), 0), start);
+    opened.add_incoming(ir.Constant(ir.IntType(1), 0), tls_bb);
+    opened.add_incoming(is_open, read_bb);
+    return opened;
+}
+
+impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
+    if self._direct_c_entry(self.builder.function) {
+        return None;
+    }
+    b = self.builder;
+    i64 = ir.IntType(64);
+    opened = self._region_open_test();
+    start = b.block;
+    escape_bb = b.function.append_basic_block("region.escape");
+    join_bb = b.function.append_basic_block("region.escaped");
+    b.cbranch(opened, escape_bb, join_bb);
+    b.position_at_end(escape_bb);
+    depth = b.call(
+        self._region_kernel_fn("__jac_region_escape"), [], name="region.escape.depth"
+    );
+    b.branch(join_bb);
+    b.position_at_end(join_bb);
+    saved = b.phi(i64, name="region.saved");
+    saved.add_incoming(ir.Constant(i64, -1), start);
+    saved.add_incoming(depth, escape_bb);
+    return saved;
+}
+
+impl NaIRGenPass._region_c_entry_restore(saved: (ir.Value | None)) -> None {
+    if saved is None {
+        return;
+    }
+    b = self.builder;
+    escaped = b.icmp_signed(
+        ">=", saved, ir.Constant(ir.IntType(64), 0), name="region.did.escape"
+    );
+    restore_bb = b.function.append_basic_block("region.restore");
+    cont_bb = b.function.append_basic_block("region.restored");
+    b.cbranch(escaped, restore_bb, cont_bb);
+    b.position_at_end(restore_bb);
+    b.call(self._region_kernel_fn("__jac_region_restore"), [saved]);
+    b.branch(cont_bb);
+    b.position_at_end(cont_bb);
 }
 
 impl NaIRGenPass._region_alloc_object(
@@ -151,6 +285,17 @@ impl NaIRGenPass._region_alloc_object(
     }
     dtor = self._emit_struct_drop_fields_fn(type_name);
     if dtor is not None {
+        _i8p = ir.IntType(8).as_pointer();
+        self.builder.call(
+            self._get_or_declare_extern(
+                "memset", _i8p, [_i8p, ir.IntType(32), ir.IntType(64)]
+            ),
+            [
+                self.builder.bitcast(o_ptr, _i8p, name="region.zero.p"),
+                ir.Constant(ir.IntType(32), 0),
+                self._coerce_type(size, ir.IntType(64))
+            ]
+        );
         self.builder.call(
             self._region_kernel_fn("__jac_region_log_dtor"),
             [
@@ -210,7 +355,6 @@ impl NaIRGenPass._register_region_handle_var(
 }
 
 impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
-    import from jaclang.compiler.types.type_utils { is_builtin_region_type }
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.TupleVal) {
         return False;
     }

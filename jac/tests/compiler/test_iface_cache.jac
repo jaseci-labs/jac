@@ -5,7 +5,7 @@ cache-event counters rather than timing: a warm no-edit check replays
 persisted diagnostics with zero passes; dependency ingestion hydrates
 from SEC_IFACE without touching the dep's source pipeline; a body-only
 dep edit recompiles the dep but does not cascade (interface hash
-cutoff); an interface edit does cascade; JAC_REBUILD recomputes and
+cutoff); an interface edit does cascade; a rebuild recomputes and
 rewrites with identical results; verify mode recomputes what was served
 and fails loudly when the cache lies.
 
@@ -207,26 +207,22 @@ test "an interface edit re-analyzes the importer" {
     );
 }
 
-test "JAC_REBUILD recomputes, rewrites, and matches the cold results" {
+test "a rebuild recomputes, rewrites, and matches the cold results" {
+    import from jaclang.compiler.driver.jir { set_cache_mode }
     (main, dep) = _project();
     (_cold, cold_diags) = _check(main);
-    prior = os.environ.get("JAC_REBUILD");
-    os.environ["JAC_REBUILD"] = "1";
+    set_cache_mode(rebuild=True);
     try {
         (rebuild_prog, rebuild_diags) = _check(main);
     } finally {
-        if prior is None {
-            del os.environ["JAC_REBUILD"];
-        } else {
-            os.environ["JAC_REBUILD"] = prior;
-        }
+        set_cache_mode(rebuild=False);
     }
     events = rebuild_prog.analysis.cache_events;
     assert events.get("analysis_replay", 0) == 0 , (
-        "JAC_REBUILD still served from the analysis cache"
+        "a rebuild still served from the analysis cache"
     );
-    assert rebuild_prog.analysis.pass_runs , "JAC_REBUILD ran no passes";
-    assert rebuild_diags == cold_diags , "JAC_REBUILD changed the results";
+    assert rebuild_prog.analysis.pass_runs , "a rebuild ran no passes";
+    assert rebuild_diags == cold_diags , "a rebuild changed the results";
     (warm_prog, _d) = _check(main);
     assert warm_prog.analysis.cache_events.get("analysis_replay", 0) == 1 , (
         "the rebuild did not leave a hydratable cache behind"
@@ -505,6 +501,37 @@ test "a validated disk interface seeds the encoding memo for tree consumers" {
     assert reg.entries[dep].digest == cached.digest;
 }
 
+"""A native build compiles every module it imports with options under which
+no interface is persisted (`aot_mode`, a native default codespace), so encoding one
+for each of them is work nothing reads: forcing every symbol's type cost a
+large one-file rebuild about as much as type checking its imports."""
+test "a compile that keeps no interface encodes none" {
+    (main, dep) = _project();
+    prog = JacProgram();
+    options = CompileOptions(no_cgen=True, aot_mode=True, default_codespace="native");
+    for (candidate, keeps) in [
+        (options, False),
+        (CompileOptions(force_codespace="server"), False),
+        (CompileOptions(default_codespace="native"), False),
+        (CompileOptions(default_codespace="server"), True),
+        (_check_opts(), True)
+    ] {
+        assert candidate.keeps_interfaces() == keeps , (
+            f"keeps_interfaces() for {candidate.module_projection()} should be {keeps}"
+        );
+    }
+    prog.compile(main, options=options);
+    assert prog.analysis.pass_runs , "the native-style compile ran no passes";
+    events = prog.analysis.cache_events;
+    assert events.get("iface_encode", 0) == 0 , (
+        f"an interface no one persists was encoded (events: {events})"
+    );
+    (checked, _diags) = _check(main);
+    assert checked.analysis.cache_events.get("iface_encode", 0) >= 1 , (
+        f"a check stopped encoding interfaces (events: {checked.analysis.cache_events})"
+    );
+}
+
 glob NARROW_DEP: str = """
 obj Info {
     has help_text: str = "";
@@ -774,7 +801,7 @@ test "an interface that cannot place a class is not persisted" {
         build_module_iface(provider, prog.get_type_evaluator(), jaclang_pkg_dir());
     } except IncoherentInterface as exc {
         refused = True;
-        assert any("Cfg" in o for o in exc.orphans) , f"the refusal does not name the unplaceable class: {exc.orphans}";
+        assert "Cfg" in str(exc) , f"the refusal does not name the unplaceable class: {exc}";
     }
     assert refused , "an interface with an unplaceable class was built";
     cache_path = _cache_path(paths["provider"]);
@@ -995,7 +1022,7 @@ test "failed type evaluation cannot publish an interface" {
         try {
             build_module_iface(mod, evaluator, jaclang_pkg_dir());
         } except IncoherentInterface as exc {
-            assert any("incomplete dependency" in failure for failure in exc.failures);
+            assert "incomplete dependency" in str(exc);
             refused = True;
         }
     }
@@ -1110,4 +1137,62 @@ test "equivalent external class references have one interface identity" {
         _shared=cached.shared, private=copy(original.private), flags=original.flags
     );
     assert build_module_iface(mod, evaluator, pkg) == before;
+}
+
+test "an empty dependency persists an interface its importer can replay against" {
+    import from jaclang.compiler.driver.jir { read_dep_rows }
+    tmp = tempfile.mkdtemp();
+    dep = os.path.realpath(os.path.join(tmp, "emptydep.jac"));
+    with open(dep, "w") as fh {
+        fh.write("");
+    }
+    main = os.path.realpath(os.path.join(tmp, "usesempty.jac"));
+    with open(main, "w") as fh {
+        fh.write("import emptydep;\n\nwith entry { print(emptydep); }\n");
+    }
+    (cold_prog, cold_diags) = _check(main);
+    dep_jir = _cache_path(dep, main);
+    assert dep_jir.exists() , "the empty dependency wrote no cache JIR";
+    assert read_section_bytes(dep_jir.read_bytes(), SEC_IFACE) is not None , (
+        "the empty dependency persisted no interface"
+    );
+    rows = {
+        row.path: row.digest
+        for row in read_dep_rows(_cache_path(main).read_bytes(), tmp)
+    };
+    assert rows.get(dep) , f"the importer recorded no digest for the empty module: {rows}";
+    (warm_prog, warm_diags) = _check(main);
+    events = warm_prog.analysis.cache_events;
+    assert events.get("analysis_replay", 0) == 1 , (
+        f"the importer of an empty module was not replayed (events: {events})"
+    );
+    assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
+}
+
+test "a fresh check process can serve its first unit from the cache" {
+    import subprocess;
+    import from tests.support { compiler_python_command }
+    tmp = tempfile.mkdtemp();
+    with open(os.path.join(tmp, "alpha.jac"), "w") as fh {
+        fh.write("def alpha_value(x: int) -> int { return x + 1; }\n");
+    }
+    probe = (
+        "import sys\n"
+        + "import jaclang.cli.commands.analysis as A\n"
+        + "import jaclang.compiler.driver.ifacecache as IC\n"
+        + "seen = []\n"
+        + "inner = A._check_file_job\n"
+        + "def job(req):\n"
+        + "    seen.append(IC.iface_codec() is not None)\n"
+        + "    return inner(req)\n"
+        + "A._check_file_job = job\n"
+        + "A.check([sys.argv[1]], nowarn=True, jobs='0')\n"
+        + "print('FIRST_UNIT_CODEC_READY', seen[:1])\n"
+    );
+    done = subprocess.run(
+        compiler_python_command(probe, tmp), capture_output=True, text=True, timeout=600
+    );
+    assert "FIRST_UNIT_CODEC_READY [True]" in done.stdout , (
+        f"the first unit ran before the interface codec was ready:\n{done.stdout}\n{done.stderr}"
+    );
 }

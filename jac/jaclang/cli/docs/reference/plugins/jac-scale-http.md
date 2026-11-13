@@ -84,10 +84,24 @@ to keep probe traffic out of the access log.
 
 ### CORS Configuration
 
-In single-process `jac run` mode the server installs a permissive
-CORS middleware (`allow_origins=['*']`, methods `GET`/`POST`/`PUT`/`OPTIONS`,
-headers `Content-Type`/`Authorization`); there is
-no `[scale.cors]` knob to tune it.
+The server's CORS policy comes from `[serve]`:
+
+```toml
+[serve]
+cors_origins = ["https://app.example.com"]   # default ["*"]: any origin
+cors_credentials = true                      # default false
+```
+
+The default `["*"]` lets any origin read responses, without credentials. A
+listed origin is echoed back to that origin only, and `cors_origins = []` turns
+cross-origin access off. `cors_credentials = true` adds
+`Access-Control-Allow-Credentials: true`, which a front end on another origin
+needs before the browser sends it cookies, such as the session cookie from a
+sibling subdomain. It requires a list of origins: browsers
+reject a response that allows every origin together with credentials, so the
+server refuses to start with `cors_credentials = true` and `"*"` in
+`cors_origins`. The environment mirrors are `JAC_SERVE_CORS_ORIGINS` and
+`JAC_SERVE_CORS_CREDENTIALS`.
 
 When a workspace's service apps run as a **fleet** (`jac run <app> --fleet`,
 `[scale.gateway] colocate = false`, or any deploy), the gateway that fronts
@@ -102,7 +116,15 @@ allow_headers = ["*"]
 
 Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
 disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
-`max_age`) are recognised under the same section.
+`max_age`) are recognised under the same section. `allow_credentials` defaults
+to `false`, and the same rule holds: with `"*"` in `allow_origins` the config
+is refused. `allow_methods` and `allow_headers` default to `["*"]`, meaning any
+method and any header. The gateway never sends that `*` to the browser, which
+never reads it as covering `Authorization` and, with credentials, reads it as no
+wildcard at all: a preflight is answered with the method and the headers it
+asked for, plus any methods listed beside the `*`. A response for a listed
+origin carries `Vary: Origin`, so a shared cache never hands one origin's
+answer to another.
 
 ---
 
@@ -138,6 +160,13 @@ curl -X POST http://localhost:8000/walker/search \
   -H "Content-Type: application/json" \
   -d '{"query": "hello", "limit": 20}'
 ```
+
+Each value is checked against the type declared for it, and a mismatch answers `422` with an entry naming the field. Nothing is reshaped to fit. How strict the check is depends on where the value came from:
+
+- **A JSON body** already carries types, so a value must be the declared type. `"12"` is refused for an `int`, and `19.99` is refused rather than truncated. The conversions that lose nothing are allowed: `3.0` for an `int`, and `3` for a `float`.
+- **Query, path, header and form values** are always text, so they are parsed into the declared type. `?limit=20` binds `limit` as the integer `20`, and a lone value fills a `list[T]`.
+
+Browser input values are strings, so convert them before sending them to a numeric field: `int(e.target.value)`.
 
 ### Response Format
 
@@ -512,7 +541,7 @@ Length and the common and breached lists do most of the work; `require`, `histor
 
 **Registration and login limits.** `[serve.auth.registration] enabled = false` closes self-registration (`403 REGISTRATION_CLOSED`); accounts are then created by an admin. `[serve.auth.lockout]` limits failed logins to `max_attempts` (default `10`) per `window_seconds` (default `900`) for each source address and identity, answering `429 RATE_LIMITED`.
 
-The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services but sets none on the gateway, which is the pod an ingress talks to; list your ingress controller's address in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
+The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services, and on the gateway, which is the pod an ingress talks to, when the deploy puts an ingress in front of it (`[scale.gateway.ingress] enabled`, or a shared ingress with a domain). With no ingress it sets none on the gateway. If your ingress controller's address is outside the private ranges, list it in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
 
 **Refusals.** A value that breaks the policy is answered with `400 POLICY_VIOLATION`, and the error `details` list every rule it broke so a form can show them together:
 
@@ -828,6 +857,10 @@ Only providers with both `client_id` and `client_secret` configured are enabled.
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
 | GET | `/sso/{platform}/callback` | OAuth callback handler (GET) |
 | POST | `/sso/{platform}/callback` | OAuth callback handler (POST, for Apple Sign In) |
+| POST | `/sso/{platform}/begin` | Start a client-managed flow (PKCE challenge from the client); `intent: "connect"` with `scopes` connects the provider for the signed-in caller |
+| POST | `/sso/{platform}/finish` | Finish a client-managed flow with `code`, `state` and the PKCE `verifier` |
+| GET | `/sso/connections` | The caller's connected accounts (requires auth; tokens are never returned) |
+| DELETE | `/sso/{platform}/connection` | Disconnect: forget the caller's grant and revoke it with the provider (requires auth) |
 
 Where `{platform}` is `google`, `apple`, or `github`.
 
@@ -848,6 +881,54 @@ When set, the callback endpoint redirects to the configured URL with query param
 **SSO Account Linking/Unlinking:**
 
 SSO accounts can be linked and unlinked programmatically. An SSO identity is automatically linked when a user logs in via SSO. To unlink, use the admin portal API or the `UserManager.unlink_sso_account()` method. Unlinking removes the SSO identity from the user's identity array but does not delete the user account.
+
+**Connected accounts (calling the provider's APIs):**
+
+Sign-in asks a provider for the user's identity only (`openid email profile` for Google). To call the provider's APIs on the user's behalf (Google Calendar, Gmail, a user's GitHub repositories), list the extra permissions the app may request:
+
+```toml
+[scale.sso]
+client_auth_callback_url = "http://localhost:8000/sso/done"   # a page of your app
+
+[scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+scopes = ["https://www.googleapis.com/auth/calendar.readonly"]
+```
+
+A signed-in user connects the provider from the client. `jacSsoConnect` sends the browser to the provider, which returns to `client_auth_callback_url`; that page calls `jacSsoFinish`:
+
+```jac
+import from "@jac/runtime" { jacSsoConnect, jacSsoFinish }
+
+async def connect_calendar {
+    await jacSsoConnect("google");    # every configured scope; or pass a list of them
+}
+
+async def on_callback_page {
+    result = await jacSsoFinish();    # {"ok", "connected", "platform", "error"}
+    if not result["ok"] {
+        console.warn(result["error"]);
+    }
+}
+```
+
+A connect needs a signed-in caller (`SIGN_IN_REQUIRED` otherwise), and every requested scope must be in the provider's `scopes` list (`SCOPES_NOT_ALLOWED` otherwise). Google is asked for offline access (`access_type=offline`, `prompt=consent`) and keeps earlier grants (`include_granted_scopes=true`), so connecting again with another scope adds to what was granted. Google refuses sign-in inside embedded webviews, so connect from a browser.
+
+Server code gets a valid access token for its caller:
+
+```jac
+import from jaclang.scale.sso.grants { sso_access_token }
+
+async def:protect calendar_token_ready -> bool {
+    token = await sso_access_token("google");    # "" when the caller has not connected
+    return token != "";
+}
+```
+
+`sso_access_token` refreshes an access token that expires within a minute and stores a refresh token the provider rotates. Simultaneous callers, across workers too, share one refresh: the rest keep using the current token while it is in date, or wait for the new one. When the provider refuses the refresh token (the user revoked access), the grant is forgotten and the call returns `""`, so the app can ask the user to connect again. `sso_connections()` lists the caller's connected accounts and `await sso_disconnect(platform)` forgets and revokes one; `access_token_for(user_id, platform)`, `connections_for(user_id)` and `disconnect_for(user_id, platform)` take an explicit user for code that runs outside a request, such as a scheduled job. On the client, `jacSsoConnections()` and `jacSsoDisconnect(platform)` call the endpoints above.
+
+Grants live in their own `identity_oauth_grants` table, one row per user and provider, apart from login credentials. Access and refresh tokens are encrypted at rest (an HMAC-SHA256 keystream with encrypt-then-MAC) under keys derived from `[serve.auth] secret`, are bound to their user and provider, and never leave the server. Changing that secret makes the stored grants unreadable, and users connect again. Disconnecting revokes the grant at the provider and removes it, but keeps the SSO identity, so the user can still sign in with the provider. Unlinking the SSO identity or deleting the user removes the stored grant without revoking it at the provider; call `disconnect_for` first to revoke it.
 
 **Example:**
 
@@ -1202,7 +1283,42 @@ def send_tickets(emailer: Emailer, qr_png: bytes, receipt_pdf: bytes) -> bool {
 
 A header value with a line break (the recipient, subject, `reply_to` or an attachment's filename) is refused: the SMTP emailer's `send_email` returns `False`, as for any failed send.
 
-A custom emailer's `send_email` must accept both parameters.
+### Custom Headers
+
+`send_email` also takes `headers`, a dict of extra mail headers. Use it for headers such as `List-Unsubscribe`, which mail providers read to show their one-click unsubscribe button (RFC 8058):
+
+```jac
+import from jaclang.scale.emailer.emailer { Emailer }
+
+def send_digest(emailer: Emailer, text: str, html: str, token: str) -> bool {
+    return emailer.send_email(
+        to_addr="reader@example.com",
+        subject="Your weekly digest",
+        body_text=text,
+        body_html=html,
+        headers={
+            "List-Unsubscribe": f"<https://app.example/unsubscribe?t={token}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
+    );
+}
+```
+
+The SMTP emailer keeps a long URL intact on the wire: it folds a header at its spaces, keeping them as given, and never encodes an ASCII value to make it fit.
+
+`send_email` returns `False`, as for any failed send, when a header:
+
+- sets something `send_email` owns: `From`, `To`, `Cc`, `Bcc`, `Subject`, `Reply-To`, `Sender`, `MIME-Version`, or any `Content-*` or `Resent-*` header
+- sets something the mail system adds: `Return-Path`, `Received`, `DKIM-Signature`, `Authentication-Results`, or any `ARC-*` header
+- has an invalid name, or isn't text
+- repeats a name, ignoring case
+- has a line break or control character in its value
+- has a value invalid for that header, such as an unparseable `Date`
+- has a single word too long for one mail line (998 characters, counting the name)
+
+The button also needs two things outside `send_email`. Your mail relay must sign the message with DKIM and include both headers in the signature. Your app must answer the POST that the provider sends to the URL, with `List-Unsubscribe=One-Click` as the body and no login or cookies.
+
+A custom emailer's `send_email` must accept `reply_to`, `attachments` and `headers`. `checked_headers(headers)` applies the rules above and raises `ValueError` for a header they refuse.
 
 ### Custom Emailer (Python or Jac)
 
@@ -1218,7 +1334,7 @@ class SendGridEmailer(Emailer):
         self._client = sendgrid.SendGridAPIClient(api_key=os.environ["SENDGRID_API_KEY"])
 
     def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
-                   reply_to=None, attachments=None):
+                   reply_to=None, attachments=None, headers=None):
         # ... use self._client to send ...
         return True
 
@@ -1297,7 +1413,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 # myapp/email.py
 from jaclang.scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Header, Mail
 import os, logging
 
 logger = logging.getLogger(__name__)
@@ -1308,9 +1424,14 @@ class SendGridEmailer(Emailer):
         self._client = SendGridAPIClient(api_key=api_key) if api_key else None
 
     def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
-                   reply_to=None, attachments=None):
+                   reply_to=None, attachments=None, headers=None):
         if self._client is None:
             logger.warning("SendGrid client not configured; dropping email to %s", to_addr)
+            return False
+        try:
+            extra_headers = self.checked_headers(headers)
+        except ValueError as e:
+            logger.error("SendGrid send refused: %s", e)
             return False
         msg = Mail(
             from_email=from_addr or self.from_address,
@@ -1319,6 +1440,8 @@ class SendGridEmailer(Emailer):
             plain_text_content=body_text,
             html_content=body_html,
         )
+        for name, value in extra_headers.items():
+            msg.add_header(Header(name, value))
         try:
             resp = self._client.send(msg)
             return 200 <= resp.status_code < 300
@@ -1958,6 +2081,7 @@ Serving an app (`jac run <app>`) also brings up every service app it bridges to,
 - **Colocated** (default): each service app's entry module is loaded into the served app's process and registered with `sv_client.register_local(app, module)`. Bridged calls invoke the provider's function or spawn its walker in-process -- still awaited, no sockets. One process, the boundary still compiled as a cut.
 - **Fleet**: `jac run <app> --fleet`, or `[scale.gateway] colocate = false`, runs each service app as its own local process behind the served app's gateway (one public port, one `/docs`, one `/metrics`, `X-Trace-Id` threaded through every hop). Peers are wired with `JAC_APP_<APP>_URL`. `jac scale status` / `logs` / `restart` / `stop` manage the members.
 - **Peer URLs are used as given.** A fleet member (and a deployed pod) mounts its endpoints at its root -- `/walker/<name>`, `/function/<name>` -- and the gateway strips the app's public route (`/api/<app>`) before forwarding. A consumer therefore never appends the route it compiled against to a peer URL: `JAC_APP_<APP>_URL=http://127.0.0.1:8011` is called at `http://127.0.0.1:8011/walker/<name>`. Only a route registered _together with_ a URL is appended -- `JAC_APP_<APP>_ROUTE`, or `sv_client.register(app, url, route)` -- which is how a consumer is pointed at a public gateway instead of a member.
+- **HTTP forwarding.** The serving HTTP client skips provisional `1xx` response headers until the final response; `101 Switching Protocols` remains terminal for WebSocket upgrades. The gateway removes `Expect` when forwarding requests to a service.
 - **Service identity between members.** Set `JAC_BRIDGE_TOKEN` on every member: consumers send it as a bearer on bridged calls (when no end-user `Authorization` is being forwarded), and a provider whose own `JAC_BRIDGE_TOKEN` matches the presented bearer runs the walker or function as the fixed service user `__bridge__`, which satisfies `requires_auth` endpoints and owns its own root. A mismatching bearer is still a 401; a provider without the variable set never honors it.
 - **Deployed**: `jac scale deploy` is always a fleet; see [Service Apps in Kubernetes](jac-scale-kubernetes.md#service-apps-in-kubernetes).
 
@@ -2091,17 +2215,20 @@ When server is running:
 
 ## Graph Visualization
 
-Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+Navigate to `http://localhost:8000/graph` to explore your application's graph directly in the browser.
 
-- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
-- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
+- **Without authentication** - explores the public graph (the guest root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and explore your user-specific graph
 
-The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+The explorer opens on the root and its first page of neighbors. Click a node to see its type, a short summary of its fields and its neighbor counts per node and edge type, and to load its neighbors one page at a time (**Load more** while more remain, **Collapse** to fold them away). The header picks which edges an expansion follows (outgoing, incoming or both), and the canvas stops adding nodes at 1500 with a message, so a large graph never freezes the tab. Every request reads one page and only what the caller may read. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
 
 | Endpoint | Description |
 |---|---|
-| `GET /graph` | Serves the graph visualization UI |
-| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
+| `GET /graph` | Serves the graph explorer UI |
+| `GET /graph/node?id=` | One node the caller can read (`id` defaults to the caller's root): `id`, `type`, `root`, a truncated `fields` summary, and `counts` of neighbors per node and edge type, `out` and `in`. `404` if the caller cannot read it |
+| `GET /graph/neighbors?id=&dir=&type=&edge=&limit=&cursor=` | One page of neighbors (`dir` is `out`, `in` or `both`; `type` and `edge` filter by node and edge type; `limit` defaults to 50, at most 200) with the edges that reach them, and `next_cursor` for the following page (`null` on the last) |
+
+Both take an optional `Authorization` header. The whole-graph dump `GET /graph/data` was removed: its cost grew with everything stored, not with what is on screen.
 
 ---
 

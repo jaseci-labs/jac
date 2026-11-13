@@ -1,7 +1,6 @@
 import from ctypes { c_bool, c_int, c_size_t, POINTER, Structure, byref, c_char_p }
 import from enum { IntFlag }
 import from typing { NamedTuple }
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
 def create_pass_builder(tm: any, pto: any) -> PassBuilder {
     return PassBuilder(tm, pto);
 }

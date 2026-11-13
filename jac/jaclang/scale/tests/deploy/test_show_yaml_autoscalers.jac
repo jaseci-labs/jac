@@ -2,18 +2,6 @@
 bundle carries autoscaler CONFIGS, not manifests; render_autoscaler_manifests
 turns them into the same objects the apply path builds, from the same spec."""
 
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    ScalingMode
-}
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.runtime.fleet { fleet_of }
-
-
 test "hpa engine renders the HPA manifest the apply path would build" {
     target = KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
     bundle = {

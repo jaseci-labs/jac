@@ -1,8 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir.values as values;
-import jaclang.compiler.backends.native.llvm.ir.types as types;
-import jaclang.compiler.backends.native.llvm.ir._utils as _utils;
-import from jaclang.compiler.backends.native.llvm.ir.context { Context, global_context }
-
 """The cache key of one metadata operand: equal operands share a key.
 
 Constants compare by their text and metadata strings by their string; every
@@ -225,6 +220,23 @@ class Module {
     def add_global(self: Module, globalvalue: values.GlobalValue) {
         assert (globalvalue.name not in self.globals);
         self.globals[globalvalue.name] = globalvalue;
+    }
+
+    """
+        Drop every instruction, block and global of a module nothing will read
+        again. What remains links only upward, from an instruction to its
+        block and a block to its function, so reference counting frees the
+        module without waiting for the cyclic collector.
+        """
+    def release(self: Module) {
+        for func in self.functions {
+            func.release();
+        }
+        self.globals = {};
+        self.metadata = [];
+        self.namedmetadata = {};
+        self._metadatacache = {};
+        self._debuginfocache = {};
     }
 
     def get_identified_types(self: Module) -> dict[str, types.IdentifiedStructType] {

@@ -3,10 +3,17 @@ description: >
   Download the kit artifact into the checkout (binary, typeshed stubs, vendored
   musl/wasm runtimes land at their in-tree paths), put jac on PATH, and, on a
   reroute lane, seed the checkout with the shared JIR precompile bundle. The
-  kit is the binary built from this checkout (build-kit); the job's
-  JAC_NO_DEV_SOURCE decides whether it runs sealed ("1") or through the [dev]
-  reroute (""). upload-artifact strips the executable bit; restore it.
+  kit is the binary built from this checkout (build-kit); `sealed` decides
+  whether the lane runs it sealed (the checkout's `[dev] jaclang_source` is
+  dropped) or through that reroute. upload-artifact strips the executable bit;
+  restore it.
 inputs:
+  sealed:
+    description: >
+      "true" runs the kit's bundled compiler (seal-checkout); anything else
+      runs this checkout's source through the root jac.toml's [dev] reroute.
+    required: false
+    default: "false"
   name:
     description: Kit artifact name
     required: false
@@ -17,30 +24,47 @@ inputs:
       downloads it (it boots from the payload's own sealed image instead).
     required: false
     default: jac-precompiled
+  dev:
+    description: >
+      "true" takes ci.yml's dev kit (jac-dev-kit, the jac-dev-precompiled-*
+      legs, jac-dev-stubcat): a -Ddev binary whose jaclang is this checkout, so the
+      lane is always a reroute. Its artifacts sit in their checkout tiers (the
+      shim, bun and C floor in the tree, the stub catalog in the cache home),
+      and the lane requires those by name instead of `kit`, which a dev binary
+      has no image to answer.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
     - uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.name }}
+        name: ${{ inputs.dev == 'true' && 'jac-dev-kit' || inputs.name }}
         path: jac
 
     - shell: bash
       run: |
         chmod +x "$GITHUB_WORKSPACE/jac/zig-out/bin/jac"
+        if [ -f "$GITHUB_WORKSPACE/jac/jaclang/client/_bun/bun" ]; then
+          chmod +x "$GITHUB_WORKSPACE/jac/jaclang/client/_bun/bun"
+        fi
         echo "$GITHUB_WORKSPACE/jac/zig-out/bin" >> "$GITHUB_PATH"
 
-    # A composite step's `if:` cannot read the caller's job-level env through
-    # the `env` context, so branch on a step output instead.
     - name: Resolve lane mode
       id: mode
       shell: bash
+      env:
+        SEALED: ${{ inputs.dev != 'true' && inputs.sealed || 'false' }}
       run: |
-        if [ "${JAC_NO_DEV_SOURCE:-}" = "1" ]; then
+        if [ "$SEALED" = "true" ]; then
           echo "reroute=false" >> "$GITHUB_OUTPUT"
         else
           echo "reroute=true" >> "$GITHUB_OUTPUT"
         fi
+
+    - name: Seal the checkout
+      if: steps.mode.outputs.reroute != 'true'
+      uses: ./.github/actions/seal-checkout
 
     # Reroute lanes only: one runtime cache for the whole job, outside $HOME,
     # so test steps that re-home themselves (HOME="$(mktemp -d)") keep the
@@ -64,11 +88,31 @@ runs:
     # precompiled_jir_matches_source -- module key plus ct-deps freshness -- so a
     # tree from another compiler generation can only miss, never mis-serve.
     - name: Fetch the shared precompile bundle
-      if: steps.mode.outputs.reroute == 'true'
+      if: steps.mode.outputs.reroute == 'true' && inputs.dev != 'true'
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.precompiled-name }}
         path: jac/jaclang/_precompiled
+
+    # The dev bundle comes from ci.yml's three dev-precompile legs, each a
+    # disjoint share of the same tree.
+    - name: Fetch the dev precompile bundle
+      if: inputs.dev == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: jac-dev-precompiled-*
+        merge-multiple: true
+        path: jac/jaclang/_precompiled
+
+    # The dev kit's stub catalog, into the cache-home slot the compiler looks
+    # it up in (stubcat/locate.jac dev_catalog_path, under the pinned
+    # XDG_CACHE_HOME above).
+    - name: Fetch the dev kit's stub catalog
+      if: inputs.dev == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-dev-stubcat
+        path: ${{ runner.temp }}/.cache/jac/jir/stubcat
 
     - name: Seed the reroute from the shared bundle
       if: steps.mode.outputs.reroute == 'true'
@@ -83,40 +127,17 @@ runs:
         # file removes the question entirely and leaves the key check as the one
         # reachable path.
         rm -f "$BUNDLE/MANIFEST.json"
-        DIR="$(find "$BUNDLE" -maxdepth 1 -type d -name 'cpython-*' | head -1)"
-        if [ -z "$DIR" ]; then
-          echo "::error::precompile bundle has no cpython-<ver> tree; build-kit published a malformed artifact"
-          exit 1
-        fi
-        UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
-        # The tree carries ~750+ units. A floor well under that catches an empty
-        # or truncated artifact without tracking the exact module count.
-        if [ "$UNITS" -lt 400 ]; then
-          echo "::error::precompile bundle has only $UNITS units; expected the full jaclang tree"
-          exit 1
-        fi
-        echo "seeded $UNITS precompiled units from ${DIR#"$GITHUB_WORKSPACE/"}"
-        # Strict: from here a bundled unit this compiler declines to reuse is a
-        # hard failure, not a silent 20-minute recompile. See jir.precompile_required.
-        echo "JAC_PRECOMPILE_REQUIRED=1" >> "$GITHUB_ENV"
 
     # First use unpacks the payload (sealed lanes) or binds the seeded bundle
     # (reroute lanes). Both are seconds now; this step exists to pay it once,
     # serially, and to fail the lane here rather than inside the first worker of
     # a parallel pool. `jac --version` is not enough: it touches a tenth of the
     # modules a real compile does, so it would not exercise the bundle.
-    #
-    # On a reroute lane this is also the dev loop's first run: the checkout
-    # has no kernel (libjac_* is gitignored) and nothing ever builds one
-    # implicitly, so the run must load the kit's kernel where the kit keeps
-    # it (the kit was built from these sources), print no bytecode notice,
-    # and leave nothing beside the loader. A pull request's kit carries no
-    # kernel (ci.yml build-kit): there the lane runs from bytecode by design,
-    # still quietly. See cli/docs/internals/native-units.md.
     - name: Warm the runtime cache
       shell: bash
       env:
         REROUTE: ${{ steps.mode.outputs.reroute }}
+        REQUIRE: ${{ inputs.dev == 'true' && 'precompiled,llvm-shim,typeshed,stubcat,musl,wasm-libc,c-floor,bun' || 'kit' }}
       run: |
         set -euo pipefail
         WORK="$(mktemp -d)"
@@ -127,33 +148,9 @@ runs:
         if [ "$REROUTE" != "true" ]; then
           exit 0
         fi
-        if grep -q "running from bytecode" <<<"$out"; then
-          echo "::error::the first run fell back to bytecode instead of loading the kit's kernel"
-          exit 1
-        fi
-        resolved="$(jac -c 'from jaclang.compiler.backends.native.kernel_resolve import resolve_kernel; k = resolve_kernel(); print("KERNEL", k.source if k else "none", k.lib_path if k else "")' 2>&1 | grep '^KERNEL ' | tail -1)"
-        KIT_SITE="$(jac -c 'import os, sys; print(os.path.join(os.path.dirname(sys.prefix), "site", "jaclang"))' | tail -1)"
-        python3 - "$GITHUB_WORKSPACE/jac/jaclang/compiler" "$KIT_SITE" "$resolved" <<'PY'
-        import glob, json, os, sys
-        def fail(message):
-            print(f"::error::{message}")
-            sys.exit(1)
-        tree, kit, resolved = sys.argv[1:]
-        found = glob.glob(os.path.join(tree, "libjac_compiler.*"))
-        if found:
-            fail(f"resolving a kernel wrote {found} beside the loader")
-        manifest = os.path.join(kit, "_precompiled", "MANIFEST.json")
-        native = json.load(open(manifest)).get("native") or {}
-        _, source, *path = resolved.split(" ", 2) + [""]
-        if native.get("kernel") == "none" and not native.get("artifact"):
-            if source != "none":
-                fail(f"the kit carries no kernel, but the lane resolved {resolved!r}")
-            print("kit carries no kernel: the lane runs the bytecode compiler")
-            sys.exit(0)
-        if source != "kit":
-            fail(f"the lane resolved {resolved!r}, not the kit's kernel built from these sources")
-        lib = path[0] if path else ""
-        if os.path.realpath(os.path.dirname(os.path.dirname(lib))) != os.path.realpath(kit):
-            fail(f"the kit's kernel resolved at {lib}, outside the kit at {kit}")
-        print(f"the lane runs the kit's kernel in place: {lib}")
-        PY
+        # The reroute runs this checkout on the kit, which was built from it:
+        # every artifact a kit carries must resolve -- the shim and floors
+        # from the kit, loaded in place; every compiler module from the seeded
+        # bundle, or it would be a silent recompile in every lane.
+        jac native status
+        jac native status --require "$REQUIRE"

@@ -1,6 +1,7 @@
 import os;
 
 glob WORKER_MEM_BYTES: int = 2 * 1024 * 1024 * 1024,
+     CGROUP_UNLIMITED: int = 1 << 60,
      MEM_HEADROOM: float = 0.6,
      MAX_AUTO_JOBS: int = 12,
      RAMP_START_JOBS: int = 2;

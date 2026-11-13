@@ -1,412 +1,42 @@
 import enum;
 import re;
-import from jaclang.runtime.object_interop { fields, is_record }
+
 import from types { UnionType }
-import from jaclang.byllm._optdeps.loguru { logger }
-import from jaclang.byllm.llm { BaseLLM }
-import from jaclang.byllm.systemone { ROUTE_SELECT_ATTR }
-import from jaclang.runtime.semantic { ClassInfo }
-import from jaclang.runtime.archetype { Anchor, Archetype, ObjectSpatialFunction }
 
 
-def _class_info(arch: object) -> (ClassInfo | None) {
-    import from jaclang { JacRuntime }
-    try {
-        info = JacRuntime.fetch_mtir(type(arch));
-        return info if isinstance(info, ClassInfo) else None;
-    } except Exception {
-        return None;
-    }
-}
+def _class_info(arch: object) -> (ClassInfo | None);
 
 
-def _safe_repr(value: object, limit: int = 120) -> str {
-    try {
-        text = repr(value);
-    } except Exception {
-        text = f"<{type(value).__name__}>";
-    }
-    if len(text) <= limit {
-        return text;
-    }
-    keep = (limit - 5) // 2;
-    return text[:keep] + " ... " + text[-keep:];
-}
+def _safe_repr(value: object, limit: int = 120) -> str;
 
 
-def _describe_arch(arch: object) -> str {
-    if arch is None {
-        return "(none)";
-    }
-    cls = type(arch);
-    ci = _class_info(arch);
-    head = cls.__name__;
-    fsem: dict[str, str] = {};
-    if ci is not None {
-        if ci.semstr {
-            head = ci.semstr;
-        }
-        for fi in (ci.fields or []) {
-            if fi.semstr {
-                fsem[fi.name] = fi.semstr;
-            }
-        }
-    }
-    parts: list[str] = [];
-    if is_record(arch) {
-        for f in fields(arch) {
-            if f.name.startswith("_") {
-                continue;
-            }
-            val = _safe_repr(getattr(arch, f.name));
-            label = f"{f.name} ({fsem[f.name]})" if f.name in fsem else f.name;
-            parts.append(f"{label}={val}");
-        }
-    }
-    if parts {
-        return head + "(" + ", ".join(parts) + ")";
-    }
-    return head;
-}
+def _describe_arch(arch: object) -> str;
 
 
-def _ability_fires(osf: ObjectSpatialFunction, wkr: object) -> bool {
-    trig: (type | UnionType | tuple[((type | UnionType), ...)] | None) = None;
-    try {
-        trig = osf.trigger;
-    } except Exception {
-        return False;
-    }
-    if trig is None {
-        return True;
-    }
-    if wkr is None {
-        return False;
-    }
-    try {
-        return isinstance(wkr, trig);
-    } except Exception {
-        return False;
-    }
-}
+def _ability_fires(osf: ObjectSpatialFunction, wkr: object) -> bool;
 
 
-def _node_run_desc(node_arch: object, wkr: object) -> str {
-    ci = _class_info(node_arch);
-    msem: dict[str, str] = {};
-    if ci is not None {
-        for mi in (ci.methods or []) {
-            if mi.semstr {
-                msem[mi.name] = mi.semstr;
-            }
-        }
-    }
-    funcs: list[ObjectSpatialFunction] = [];
-    if isinstance(node_arch, Archetype) {
-        funcs = node_arch._jac_entry_funcs_ or [];
-    }
-    parts: list[str] = [];
-    for osf in funcs {
-        if not _ability_fires(osf, wkr) {
-            continue;
-        }
-        `sem = msem.get(osf.name, "");
-        parts.append(osf.name + (f": {`sem}" if `sem else ""));
-    }
-    return "; ".join(parts);
-}
+def _node_run_desc(node_arch: object, wkr: object) -> str;
 
 
-def _slugify(text: object) -> str {
-    s = re.sub(r"\W+", "_", str(text)).strip("_");
-    if not s {
-        return "n";
-    }
-    if not (s[0].isalpha() or s[0] == "_") {
-        s = "n_" + s;
-    }
-    return s;
-}
+def _slugify(text: object) -> str;
 
 
-def _first_field_value(arch: object) -> object {
-    if is_record(arch) {
-        for f in fields(arch) {
-            if not f.name.startswith("_") {
-                return getattr(arch, f.name);
-            }
-        }
-    }
-    return None;
-}
+def _first_field_value(arch: object) -> object;
 
 
-def _make_handles(recs: list[dict[str, object]]) -> list[str] {
-    bases = [_slugify(type(r["node"]).__name__) for r in recs];
-    counts: dict[str, int] = {};
-    for b in bases {
-        counts[b] = counts.get(b, 0) + 1;
-    }
-    handles: list[str] = [];
-    used: set[str] = set();
-    for (i, r) in enumerate(recs) {
-        base = bases[i];
-        if counts[base] == 1 {
-            cand = base;
-        } else {
-            disc = _first_field_value(r["node"]);
-            cand = base + "_" + _slugify(disc)
-                if disc is not None
-                else base + "_" + str(i);
-        }
-        handle = cand;
-        k = 2;
-        while handle in used {
-            handle = cand + "_" + str(k);
-            k += 1;
-        }
-        used.add(handle);
-        handles.append(handle);
-    }
-    return handles;
-}
+def _make_handles(recs: list[dict[str, object]]) -> list[str];
 
 
-def _route_context -> tuple[object, (Anchor | None)] {
-    import from jaclang.runtime.osp_kernel { _current_scope }
-    import from jaclang.runtime.archetype {
-        EdgeAnchor,
-        EdgeArchetype,
-        NodeAnchor,
-        NodeArchetype,
-        WalkerAnchor
-    }
-    scope = _current_scope();
-    if scope is None {
-        return (None, None);
-    }
-
-    wkr = scope.wlk;
-    if isinstance(wkr, (NodeAnchor, EdgeAnchor, WalkerAnchor)) {
-        wkr = wkr.archetype;
-    }
-    here_step = scope.path[-1] if scope.path else None;
-    here_anchor = here_step.__jac__
-        if isinstance(here_step, (NodeArchetype, EdgeArchetype))
-        else (here_step if isinstance(here_step, Anchor) else None);
-    return (wkr, here_anchor);
-}
+def _route_context -> tuple[object, (Anchor | None)];
 
 
-def _candidate_for(item: object, here_anchor: (Anchor | None)) -> tuple[any, ...] {
-    import from jaclang.runtime.archetype {
-        EdgeAnchor,
-        EdgeArchetype,
-        NodeAnchor,
-        NodeArchetype
-    }
-    if isinstance(item, EdgeArchetype) {
-        ea = item.__jac__;
-        direction = "out";
-        dst_anchor = ea.target;
-        if here_anchor is not None and ea.target.archetype is here_anchor.archetype {
-            dst_anchor = ea.source;
-            direction = "in";
-        }
-        if ea.is_undirected {
-            direction = "undir";
-        }
-        return (item, dst_anchor.archetype, direction);
-    }
-    node_arch = item;
-    edge_arch = None;
-    direction = "out";
-    if isinstance(here_anchor, NodeAnchor) {
-        import from jaclang.runtime.osp_graph_sv { sv_register_hydrated }
-        import from jaclang.runtime.runtime { JacRuntimeInterface }
-        here_arch = here_anchor.archetype;
-        sv_register_hydrated(here_anchor, fetch_stubs=True);
-        for e in JacRuntimeInterface.hop(here_arch, 3, None, True) {
-            ea = e.__jac__;
-            if not isinstance(ea, EdgeAnchor) {
-                continue;
-            }
-            other = None;
-            dir2 = "out";
-            if ea.source.archetype is here_arch {
-                other = ea.target;
-                dir2 = "out";
-            } elif ea.target.archetype is here_arch {
-                other = ea.source;
-                dir2 = "in";
-            }
-            if ea.is_undirected {
-                dir2 = "undir";
-            }
-            if other is not None and other.archetype is node_arch {
-                edge_arch = ea.archetype;
-                direction = dir2;
-                break;
-            }
-        }
-    }
-    return (edge_arch, node_arch, direction);
-}
+def _candidate_for(item: object, here_anchor: (Anchor | None)) -> tuple[any, ...];
 
 
 def _resolve_choice(
     item: object, by_handle: dict[object, object], recs: list[dict[str, object]]
-) -> object {
-    if isinstance(item, bool) {
-        return None;
-    }
-    if isinstance(item, int) {
-        return recs[item]["node"] if 0 <= item < len(recs) else None;
-    }
-    handle: (object | None) = None;
-    if isinstance(item, str) {
-        handle = item;
-    } elif isinstance(item, enum.Enum) {
-        handle = item.value;
-    }
-    if handle is not None and handle in by_handle {
-        return by_handle[handle];
-    }
-    return None;
-}
+) -> object;
 
 
-def route_visit(candidates: list[object], model: BaseLLM) -> list[object] {
-    import from jaclang.byllm.mtir { MTRuntime }
-    import from jaclang.byllm.types { Message, MessageRole }
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-
-    if not candidates {
-        return [];
-    }
-
-    call_params: dict[str, any] = model?.call_params or {};
-    select = call_params.get("select", "all");
-
-    if isinstance(select, int) and not isinstance(select, bool) and (select < 1) {
-        select = "all";
-    }
-    intent = call_params.get("intent");
-    incl_info = call_params.get("incl_info");
-
-    (wkr, here_anchor) = _route_context();
-
-    recs: list[dict[str, object]] = [];
-    for item in candidates {
-        (edge_arch, node_arch, direction) = _candidate_for(item, here_anchor);
-        recs.append(
-            {"handle": "", "edge": edge_arch, "node": node_arch, "dir": direction}
-        );
-    }
-    for (i, handle) in enumerate(_make_handles(recs)) {
-        recs[i]["handle"] = handle;
-    }
-
-    lines: list[str] = [];
-    for r in recs {
-        node_txt = _describe_arch(r["node"]);
-        runs = _node_run_desc(r["node"], wkr);
-        if runs {
-            node_txt = node_txt + f" [runs: {runs}]";
-        }
-        if r["edge"] is None {
-            lines.append(f"{r['handle']}) {node_txt}");
-        } else {
-            edge_txt = _describe_arch(r["edge"]);
-            if r["dir"] == "in" {
-                arrow = f"<--({edge_txt})--";
-            } elif r["dir"] == "undir" {
-                arrow = f"<-({edge_txt})->";
-            } else {
-                arrow = f"--({edge_txt})-->";
-            }
-            lines.append(f"{r['handle']}) here {arrow} {node_txt}");
-        }
-    }
-    candidates_block = "\n".join(lines);
-
-    user_parts: list[str] = [];
-    if intent {
-        user_parts.append(f"Goal: {intent}");
-    }
-    if wkr is not None {
-        user_parts.append(f"Walker:\n{_describe_arch(wkr)}");
-    }
-    if here_anchor is not None {
-        user_parts.append(f"Current node:\n{_describe_arch(here_anchor.archetype)}");
-    }
-    user_parts.append(f"Candidates (choose by handle):\n{candidates_block}");
-    if incl_info and isinstance(incl_info, dict) {
-        user_parts.append("\n".join([f"{k} = {v}" for (k, v) in incl_info.items()]));
-    }
-
-    sys_txt = "You are routing a graph walker. Choose which candidate node(s) the "
-        + "walker should visit next, by handle. Return only valid handles.";
-    if select == 1 {
-        sys_txt += " Choose exactly one.";
-    } elif isinstance(select, int) and not isinstance(select, bool) {
-        sys_txt += f" Choose exactly {select}.";
-    } elif isinstance(select, tuple) and len(select) == 2 {
-        sys_txt += f" Choose between {select[0]} and {select[1]} (inclusive).";
-    }
-
-    handles = [r["handle"] for r in recs];
-
-    enum_factory: any = enum.Enum;
-    Choice = enum_factory("RouteChoice", {h: h for h in handles}) if handles else None;
-    resp_type = list[Choice] if Choice is not None else list;
-
-    api_params = {
-        k: v
-        for (k, v) in call_params.items()
-        if k not in ("select", "intent", "incl_info")
-    };
-    mt_run = MTRuntime(
-        messages=[
-            Message(role=MessageRole.SYSTEM, content=sys_txt),
-            Message(role=MessageRole.USER, content="\n\n".join(user_parts)),
-
-        ],
-        resp_type=resp_type,
-        stream=bool(call_params.get("stream", False)),
-        tools=[],
-        call_params=api_params,
-        mtir=None,
-    );
-
-    setattr(mt_run, ROUTE_SELECT_ATTR, select);
-    raw = Jac.call_llm(model, mt_run);
-
-    selected = raw if isinstance(raw, list) else [raw];
-    by_handle = {r["handle"]: r["node"] for r in recs};
-    chosen: list[object] = [];
-    seen_ids: set[int] = set();
-    for item in selected {
-        picked = _resolve_choice(item, by_handle, recs);
-        if picked is not None and id(picked) not in seen_ids {
-            seen_ids.add(id(picked));
-            chosen.append(picked);
-        }
-    }
-
-    if select == 1 {
-        chosen = chosen[:1];
-    } elif isinstance(select, int) and not isinstance(select, bool) {
-        chosen = chosen[:select];
-    } elif isinstance(select, tuple) and len(select) == 2 {
-        chosen = chosen[:select[1]];
-        if len(chosen) < select[0] {
-            logger.warning(
-                f"visit-by routing: requested at least {select[0]} node(s) (select={select}) but the model selected {len(
-                    chosen
-                )} from {len(recs)} candidate(s)."
-            );
-        }
-    }
-    return chosen;
-}
+def route_visit(candidates: list[object], model: BaseLLM) -> list[object];

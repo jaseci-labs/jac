@@ -14,7 +14,7 @@ import unittest.mock;
 import types;
 import litellm;
 import jaclang.byllm.llm as _byllm_llm_mod;
-import from jaclang.byllm.lib { Model, MockLLM }
+import from jaclang.byllm.lib { Model, MockLLM, OutputTruncatedError }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { MockToolCall, IterationContext }
 import from jaclang.byllm.telemetry { register_agent_callback, _agent_callbacks }
@@ -449,8 +449,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
     assert plain_result == "ok";
     assert "react_iteration" in plain_rec["tokens"]["by_kind"];
 
-    # A str-returning finish_tool call always triggers a final_answer_restream,
-    # consuming a second mock output - hence requests=2 here vs 1 above.
+    # The finish_tool answer is delivered as committed, with no second call.
     llm_stream = Model(
         model_name="mockllm",
         config={
@@ -458,8 +457,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
                 (
                     MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
                     {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
-                ),
-                "ok"
+                )
             ]
         }
     );
@@ -467,7 +465,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
         tools=[finish_tool], stream=True, logging=True
     );
     _assert_tokens_via_callback(
-        "streaming, tool-calling", lambda { return list(stream_task("test")); }, 2, 110
+        "streaming, tool-calling", lambda { return list(stream_task("test")); }, 1, 110
     );
 
     # Async, no tools - the branch BaseLLM.ainvoke dispatches directly rather
@@ -532,7 +530,12 @@ def _recovery_case -> MTRuntime {
 }
 
 
-def _compaction_case -> MTRuntime {
+def _compaction_case(
+    reply: any = (
+        "a summary",
+        {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
+    )
+) -> MTRuntime {
     sys_msg = {"role": "system", "content": "You are a helpful assistant."};
     user_msg = {"role": "user", "content": "Do the thing."};
     round1 = [
@@ -555,18 +558,17 @@ def _compaction_case -> MTRuntime {
     ];
     messages = [sys_msg, user_msg] + round1 + round1 + round1;
 
-    summariser = MockLLM(
-        model_name="test-model",
-        outputs=[
-            (
-                "a summary",
-                {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
-            )
-        ]
-    );
+    summariser = MockLLM(model_name="test-model", outputs=[reply]);
     parent_mt = mk_run();
-    _byllm_llm_mod._default_compact(messages, 1, summariser, parent_mt);
+    try {
+        _byllm_llm_mod._default_compact(messages, 1, summariser, parent_mt);
+    } except OutputTruncatedError {}
     return parent_mt;
+}
+
+
+def _cut_off_compaction_case -> MTRuntime {
+    return _compaction_case(say("", usage=TOKENS, finish_reason="length"));
 }
 
 
@@ -574,12 +576,13 @@ test "byLLM's own follow-up calls get a call_kind distinct from react_iteration"
     cases = [
         ("final_answer_restream", _restream_case),
         ("recovery", _recovery_case),
-        ("compaction", _compaction_case)
+        ("compaction", _compaction_case),
+        ("compaction", _cut_off_compaction_case)
     ];
     for (expected_kind, run) in cases {
         mt_run = run();
         assert len(mt_run._usage_history) == 1 , (
-            f"{expected_kind}: expected exactly one recorded call"
+            f"{run.__name__}: expected exactly one recorded call"
         );
         assert mt_run._usage_history[0]["call_kind"] == expected_kind;
         assert mt_run._call_kind == "react_iteration" , (
@@ -681,10 +684,10 @@ test "usage_step fires once per underlying call, scoped to that call's own usage
                 {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
             ),
             (
-                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                MockToolCall(tool=step_a, args={}),
                 {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
             ),
-            # A str-returning finish_tool call always triggers a
+            # The loop is cut off with no answer, so byLLM asks for one in a
             # final_answer_restream - the 3rd underlying call.
             (
                 "done",
@@ -693,7 +696,9 @@ test "usage_step fires once per underlying call, scoped to that call's own usage
         ]
     );
 
-    def task(q: str) -> str by llm(tools=[step_a], stream=True, logging=True);
+    def task(q: str) -> str by llm(
+        tools=[step_a], stream=True, logging=True, max_react_iterations=2
+    );
 
     events = list(task("go"));
     usage_steps = [e.data for e in events_of(events, "usage_step")];
@@ -761,8 +766,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
             finish(
                 "done",
                 usage={"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55}
-            ),
-            say("done")
+            )
         ]
     );
 
@@ -774,8 +778,13 @@ test "usage_step correctly attributes an interleaved compaction call" {
         keep_recent_iterations=1
     );
 
-    steps = [e.data for e in events_of(list(task("go")), "usage_step")];
+    events: list[any] = list(task("go"));
+    steps = [e.data for e in events_of(events, "usage_step")];
     assert llm.exhausted() , f"the summary was never requested: {llm.outputs}";
+    reported = [
+        (e.data["reason"], e.data["by"]) for e in events_of(events, "compaction")
+    ];
+    assert reported == [("threshold", "builtin")] , f"compaction events {reported}";
     compacted = [
         step
         for step in steps
@@ -807,8 +816,7 @@ test "usage_step fires for the recovery call" {
                 "finish_tool",
                 {"output": {"name": "Gus", "age": 29}},
                 usage={"prompt_tokens": 40, "completion_tokens": 8, "total_tokens": 48}
-            ),
-            say("Gus")
+            )
         ]
     );
     mt_run = mk_run(resp_type=_Person, tools=[step_a], stream=True);
@@ -819,7 +827,7 @@ test "usage_step fires for the recovery call" {
     assert llm.exhausted() , f"recovery never ran: {llm.outputs}";
     assert len(steps) == 1 , f"the recovery episode must report one usage_step: {steps}";
     kinds = [c["call_kind"] for c in steps[0]["per_call"]];
-    assert kinds == ["recovery", "final_answer_restream"] , (
+    assert kinds == ["recovery"] , (
         f"the usage_step must cover the recovery call, got call_kinds={kinds}"
     );
     assert steps[0]["total"]["total_tokens"] == 48;

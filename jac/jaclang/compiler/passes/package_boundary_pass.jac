@@ -1,8 +1,6 @@
-import from jaclang.compiler.passes.context { CompilerPass }
-import from jaclang.compiler.frontend.unitree { Import, Module, ModulePath }
-import from jaclang.compiler.frontend.host { ProjectFacts }
-
 walker PackageBoundaryPass(CompilerPass) {
+    static has contract: PassContract = PassContract(requires=(AnalysisFact.SYM_OF, ));
+
     can run_walk with Module entry;
     def _targets(imp: Import) -> list[ModulePath];
     def _package_of(path: str) -> (ProjectFacts | None);

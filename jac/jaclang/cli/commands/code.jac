@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_CODE: CommandSpec = CommandSpec(
          name="code",
          help="Query code structure via the compiler (grep's structural successor)",

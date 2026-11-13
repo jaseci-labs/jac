@@ -9,6 +9,9 @@ glob SYSTEM_PERSONA = """\
     output. Only use tools.
     """;
 
+def _media_entries(value: any, semstr: str) -> list[any];
+
+
 impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     caller = mtir.caller;
     args = mtir.args;
@@ -55,8 +58,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         params = [param for param in fn_info.params];
         for (key, value) in args.items() {
             idx = list(args.keys()).index(key);
-            if isinstance(value, Media) {
-                media_inputs.append((value, params[idx].semstr or ""));
+            media = _media_entries(value, params[idx].semstr or "");
+            if media {
+                media_inputs.extend(media);
                 continue;
             }
 
@@ -75,8 +79,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     } else {
         param_names = list(inspect.signature(caller).parameters.keys());
         for (key, value) in args.items() {
-            if isinstance(value, Media) {
-                media_inputs.append((value, ""));
+            media = _media_entries(value, "");
+            if media {
+                media_inputs.extend(media);
                 continue;
             }
 
@@ -94,8 +99,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     incl_info = call_params.get("incl_info");
     if incl_info and isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
-            if isinstance(value, Media) {
-                media_inputs.append((value, ""));
+            media = _media_entries(value, "");
+            if media {
+                media_inputs.extend(media);
             } else {
                 if has_mtir {
                     inputs_detail.append(f"{key} = {(value, "")}");
@@ -208,7 +214,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         if return_type is None {
             tools.append(Tool.make_finish_tool(str));
         } else {
-            tools.append(Tool.make_finish_tool(return_type));
+            tools.append(
+                Tool.make_finish_tool(
+                    return_type, fn_info.return_type if fn_info else None
+                )
+            );
         }
     }
     mt_run = MTRuntime(
@@ -270,22 +280,20 @@ impl MTRuntime.write_back_conversation -> None {
 }
 
 
-def _is_system_message(msg: any) -> bool {
-    role = msg.get("role") if isinstance(msg, dict) else msg?.role;
-    return role == MessageRole.SYSTEM;
-}
+def _is_system_message(msg: any) -> bool;
 
 
-def _is_finish_tool_call(tc: any) -> bool {
-    if tc?.function and hasattr(tc.function, "name") {
-        return tc.function.name == "finish_tool";
-    }
-    if isinstance(tc, dict) {
-        return (tc.get("function") or {}).get("name", "") == "finish_tool";
-    }
-    return False;
-}
+def _is_finish_tool_call(tc: any) -> bool;
 
+def _is_finish_result(msg: any) -> bool;
+
+def _tool_calls_of(msg: any) -> list[any];
+
+def _with_tool_calls(msg: any, tool_calls: list[any]) -> any;
+
+def _drop_unanswered_calls(msgs: list[any]) -> list[any];
+
+def _results_after(msgs: list[any], start: int) -> set[str];
 
 impl MTRuntime.get_history_for_persist -> list[MessageType] {
     scaff_ids = set(self._scaffolding_ids);
@@ -303,19 +311,16 @@ impl MTRuntime.get_history_for_persist -> list[MessageType] {
         ) {
             continue;
         }
-        if isinstance(msg, ToolCallResultMsg) and msg.name == "finish_tool" {
+        if _is_finish_result(msg) {
             continue;
         }
-        tool_calls: any = msg?.tool_calls;
-        if tool_calls is None and isinstance(msg, dict) {
-            tool_calls = msg.get("tool_calls");
-        }
+        tool_calls = _tool_calls_of(msg);
         if tool_calls and all(_is_finish_tool_call(tc) for tc in tool_calls) {
             continue;
         }
         out.append(msg);
     }
-    return out;
+    return _drop_unanswered_calls(out);
 }
 
 impl MTRuntime.parse_response(response: str) -> any {
@@ -329,11 +334,12 @@ impl MTRuntime.parse_response(response: str) -> any {
         } except OutputConversionError {
             raise;
         } except Exception as e {
+            type_name = type_display_name(self.resp_type);
             err = OutputConversionError(
-                f"Failed to convert LLM output to '{self.resp_type.__name__}': {e}"
+                f"Failed to convert LLM output to '{type_name}': {e}"
             );
             setattr(err, "raw_output", response);
-            raise err;
+            raise err from e;
         }
     }
     return response;
@@ -376,4 +382,97 @@ impl MTRuntime.get_typed_output_schema -> dict[str, any] | None {
 
 impl MTIR.runtime.getter -> MTRuntime {
     return MTRuntime.factory(self);
+}
+
+impl _is_system_message(msg: any) -> bool {
+    role = msg.get("role") if isinstance(msg, dict) else msg?.role;
+    return role == MessageRole.SYSTEM;
+}
+
+
+impl _is_finish_tool_call(tc: any) -> bool {
+    if tc?.function and hasattr(tc.function, "name") {
+        return tc.function.name == "finish_tool";
+    }
+    if isinstance(tc, dict) {
+        return (tc.get("function") or {}).get("name", "") == "finish_tool";
+    }
+    return False;
+}
+
+impl _is_finish_result(msg: any) -> bool {
+    role: any = msg.get("role") if isinstance(msg, dict) else msg?.role;
+    name: any = msg.get("name") if isinstance(msg, dict) else msg?.name;
+    return role == MessageRole.TOOL and name == "finish_tool";
+}
+
+impl _tool_calls_of(msg: any) -> list[any] {
+    tool_calls: any = msg.get("tool_calls")
+        if isinstance(msg, dict)
+        else msg?.tool_calls;
+    return tool_calls or [];
+}
+
+impl _with_tool_calls(msg: any, tool_calls: list[any]) -> any {
+    if isinstance(msg, dict) {
+        edited = dict(msg);
+        if tool_calls {
+            edited["tool_calls"] = tool_calls;
+        } else {
+            edited.pop("tool_calls", None);
+        }
+        return edited;
+    }
+    edited = copy.copy(msg);
+    setattr(edited, "tool_calls", tool_calls or None);
+    return edited;
+}
+
+impl _drop_unanswered_calls(msgs: list[any]) -> list[any] {
+    out: list[any] = [];
+    for (i, msg) in enumerate(msgs) {
+        tool_calls = _tool_calls_of(msg);
+        if not tool_calls {
+            out.append(msg);
+            continue;
+        }
+        answered = _results_after(msgs, i + 1);
+        kept: list[any] = [];
+        for tc in tool_calls {
+            call_id: any = tc.get("id") if isinstance(tc, dict) else tc?.id;
+            if str(call_id or "") in answered {
+                kept.append(tc);
+            }
+        }
+        if len(kept) == len(tool_calls) {
+            out.append(msg);
+            continue;
+        }
+        content: any = msg.get("content") if isinstance(msg, dict) else msg?.content;
+        if kept or content {
+            out.append(_with_tool_calls(msg, kept));
+        }
+    }
+    return out;
+}
+
+impl _results_after(msgs: list[any], start: int) -> set[str] {
+    answered: set[str] = set();
+    for i in range(start, len(msgs)) {
+        msg = msgs[i];
+        role: any = msg.get("role") if isinstance(msg, dict) else msg?.role;
+        if role != MessageRole.TOOL {
+            break;
+        }
+        result_id: any = msg.get("tool_call_id")
+            if isinstance(msg, dict)
+            else msg?.tool_call_id;
+        answered.add(str(result_id or ""));
+    }
+    return answered;
+}
+
+impl _media_entries(value: any, semstr: str) -> list[any] {
+    media = as_media_list(value);
+    return [] if media is None else [(media[0], semstr), *media[1:]];
 }

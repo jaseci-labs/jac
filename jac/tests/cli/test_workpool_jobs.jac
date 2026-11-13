@@ -75,6 +75,25 @@ test "memory headroom is the tightest cgroup limit on the way to the top" {
 }
 
 
+test "memory headroom reads a cgroup v1 memory limit too" {
+    with TemporaryDirectory() as td {
+        top = Path(td);
+        scope = top / "memory" / "docker" / "app";
+        scope.mkdir(parents=True);
+        (scope / "memory.limit_in_bytes").write_text(str(1 * GB));
+        (scope / "memory.usage_in_bytes").write_text(str(GB // 4));
+        (top / "memory" / "memory.limit_in_bytes").write_text(str(1 << 62));
+        (top / "memory" / "memory.usage_in_bytes").write_text(str(GB));
+        mine = top / "self_cgroup";
+        mine.write_text("4:cpu,cpuacct:/docker/app\n3:memory:/docker/app\n");
+        room = memory_headroom_bytes(cgroup_root=td, self_cgroup=str(mine));
+        assert 0 < room <= GB - GB // 4 , (
+            f"a 1 GB v1 limit with 256 MB used leaves at most 768 MB, got {room}"
+        );
+    }
+}
+
+
 def _worker_pids(headroom: int) -> set[int] {
     pids: set[int] = set();
     def job(request: dict[str, any]) -> int {

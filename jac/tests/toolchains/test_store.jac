@@ -7,6 +7,7 @@ import zipfile;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch, MagicMock }
+import from tests.support { offline_project }
 import from jaclang.toolchains.store { Artifact, extract, fetch, install, file_digest }
 
 def sample_artifact(data: bytes) -> Artifact {
@@ -39,7 +40,7 @@ def response_for(data: bytes) -> any {
 
 test "verified download installs once and reuses offline" {
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             data = archive_bytes();
             artifact = sample_artifact(data);
             with patch(
@@ -48,7 +49,7 @@ test "verified download installs once and reuses offline" {
                 destination = install(artifact, "bin/tool");
                 assert (destination / "bin/tool").read_text() == "ready";
                 assert network.call_count == 1;
-                with patch.dict(os.environ, {"JAC_OFFLINE": "1"}) {
+                with offline_project() {
                     assert install(artifact, "bin/tool") == destination;
                     assert fetch(artifact).is_file();
                 }
@@ -60,7 +61,7 @@ test "verified download installs once and reuses offline" {
 
 test "checksum failure never publishes a download or installation" {
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             artifact = sample_artifact(b"expected");
             with patch(
                 "jaclang.toolchains.store.urlopen",
@@ -86,7 +87,7 @@ test "checksum failure never publishes a download or installation" {
 
 test "missing executable does not publish an installation" {
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             data = archive_bytes();
             with patch(
                 "jaclang.toolchains.store.urlopen", return_value=response_for(data)
@@ -106,7 +107,7 @@ test "missing executable does not publish an installation" {
 
 test "offline cache misses never contact network" {
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "1"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}), offline_project() {
             with patch("jaclang.toolchains.store.urlopen") as network {
                 failed = False;
                 try {
@@ -185,7 +186,7 @@ test "a cache hit refreshes the entry's last-use marker" {
     }
     old = time.time() - 40.0 * 86400.0;
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             slot = build_slot("probe", "linux-x64", "abcdef0123456789ab");
             staged = Path(tmp) / "staged";
             staged.mkdir();
@@ -213,7 +214,7 @@ test "a cache hit refreshes the entry's last-use marker" {
             }
             os.utime(destination / ".jac-install.json", (old, old));
             os.utime(download, (old, old));
-            with patch.dict(os.environ, {"JAC_OFFLINE": "1"}) {
+            with offline_project() {
                 assert install(artifact, "bin/tool") == destination;
                 assert fetch(artifact) == download;
             }
@@ -232,7 +233,7 @@ test "every toolchain destination resolves inside a managed bucket" {
     import from jaclang.cache.registry { BUCKETS, bucket }
     import from jaclang.toolchains.store { build_slot, install_slot }
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             managed = [
                 str(b.path())
                 for b in BUCKETS
@@ -269,7 +270,7 @@ test "every toolchain destination resolves inside a managed bucket" {
 
 test "partial downloads retry from an empty temporary file" {
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             data = archive_bytes();
             truncated = response_for(data[:5]);
             truncated.headers = {"Content-Length": str(len(data))};
@@ -289,7 +290,7 @@ test "partial downloads retry from an empty temporary file" {
 test "concurrent builds publish one complete installation" {
     import from concurrent.futures { ThreadPoolExecutor }
     with TemporaryDirectory() as tmp {
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": tmp}) {
             data = archive_bytes();
             artifact = sample_artifact(data);
             with patch(

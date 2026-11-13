@@ -1,0 +1,9 @@
+impl project_env_path(code_folder: str) -> str {
+    return os.path.join(code_folder or '.', PROJECT_ENV_FILE);
+}
+
+impl load_project_env(code_folder: str) -> bool {
+    require_optional("dotenv", PROJECT_ENV_CAPABILITY);
+    import from dotenv { load_dotenv }
+    return bool(load_dotenv(project_env_path(code_folder)));
+}

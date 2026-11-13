@@ -260,6 +260,7 @@ test "the sized names, widths and signedness are defined in one table only" {
     # test pins it to the checker stub and the emitter registry.
     owners = {
         "runtime/scalars.jac",
+        "runtime/impl/scalars.impl.jac",
         "runtime/builtin.jac",
         "compiler/frontend/constant.jac",
         "compiler/frontend/parser/tokens.jac",
@@ -373,11 +374,11 @@ test "the stub catalog knows a typeshed stub reached through another tree" {
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
     import from jaclang.compiler.types.stubcat.locate {
-        ensure_catalog,
         jaclang_pkg_dir,
+        open_catalog,
         typeshed_stdlib_dir
     }
-    catalog = ensure_catalog();
+    catalog = open_catalog();
     held = os.path.join(typeshed_stdlib_dir(jaclang_pkg_dir()), "builtins.pyi");
     if catalog is None or not os.path.isfile(held) {
         testskip("no stub catalog over a vendored typeshed here");

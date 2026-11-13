@@ -11,11 +11,6 @@ import from logging.handlers { MemoryHandler }
 import glob;
 import from pathlib { Path }
 import from typing { cast }
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data
-}
 
 """Generate HMAC-SHA256 signature for webhook payload."""
 def _generate_webhook_signature(payload: bytes, secret: str) -> str {
@@ -172,6 +167,22 @@ test "webhook - invalid api key" {
             }
         );
 
+        assert response.status_code == 401 , (
+            f"Expected 401, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        client.close();
+    }
+}
+
+test "webhook - malformed api key header returns unauthorized" {
+    client = make_client();
+    try {
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content="{}",
+            headers={"Content-Type": "application/json", "X-API-Key": "W10.e30.AA"}
+        );
         assert response.status_code == 401 , (
             f"Expected 401, got {response.status_code}: {response.text}"
         );

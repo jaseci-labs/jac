@@ -33,15 +33,18 @@ def reset_config {
     config_mod._config_by_root = {};
 }
 
+"""A utility inside a checkout's jaclang tree runs as part of that tree, even
+when the checkout's [dev] stanza is gone (a sealed CI lane runs the kit's
+compiler)."""
 test "compiler checkout utilities retain the active compiler runtime" {
     import from unittest.mock { patch }
     import from jaclang.runtime.runtime { JacRuntime }
     import jaclang.compiler.driver.application as preparation;
     with tempfile.TemporaryDirectory() as world {
         base = Path(world);
-        (base / 'jac.toml').write_text('[dev]\njaclang_source="compiler"\n');
+        (base / 'jac.toml').write_text('[project]\nname="checkout"\n');
         source = base / 'compiler' / 'jaclang' / 'compiler_tool_fixture.jac';
-        source.parent.mkdir(parents=True);
+        (source.parent / 'jac0core').mkdir(parents=True);
         source.write_text('import from jaclang.runtime.runtime { JacRuntime }\n');
         try {
             with patch.object(

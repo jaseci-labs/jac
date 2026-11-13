@@ -4,9 +4,7 @@ The name bound by `except ... as err` holds the message when the clause
 catches a builtin, so its class used to be read out of a string, which
 crashed. The name comes from the exception's type code, or from the object
 when a class instance was raised."""
-obj Trouble(Exception) {
-    has code: int = 0;
-}
+obj Trouble(Exception) {}
 
 def kind_of(which: int) -> str {
     xs: list[int] = [1];

@@ -42,7 +42,6 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
-    import from jaclang.compiler.frontend.constant { SymbolStorage }
     candidates: dict[str, ir.Type] = {};
     dropped: set[str] = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
@@ -95,7 +94,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             }
         }
     }
-    import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
+
     for (var_name, var_type) in candidates.items() {
         try {
             global_var = ir.GlobalVariable(
@@ -115,11 +114,42 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
     }
 }
 
+impl NaIRGenPass._glob_storage_type(
+    assign: uni.Assignment, target: uni.UniNode
+) -> (ir.Type | None) {
+    if ModuleFacts.is_erased_type_decl(assign) {
+        return None;
+    }
+    if (
+        assign.type_tag is not None
+        and self._widened_tuple_decl_type(assign.type_tag, assign.value) is None
+        and self._quiet_glob_type(assign.type_tag) is None
+        and not self._glob_native_use_exists(target)
+    ) {
+        return None;
+    }
+    return self._decl_storage_type(assign.type_tag, assign.value);
+}
+
+impl NaIRGenPass._decl_storage_type(
+    type_tag: (uni.UniNode | None), value: (uni.UniNode | None)
+) -> ir.Type {
+    var_type: ir.Type = ir.IntType(64);
+    if type_tag is not None {
+        var_type = self._resolve_decl_type(type_tag, value);
+    } elif value is not None {
+        inferred = self._infer_global_init_type(value);
+        if inferred is not None {
+            var_type = inferred;
+        }
+    }
+    return ir.IntType(8).as_pointer()
+        if isinstance(var_type, ir.VoidType)
+        else var_type;
+}
+
 impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     for assign in nd.assignments {
-        if ModuleFacts.is_erased_type_decl(assign) {
-            continue;
-        }
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
             else [(assign.target)];
@@ -128,33 +158,15 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             if var_name is None {
                 continue;
             }
-
-            var_type: ir.Type = ir.IntType(64);
-            if assign.type_tag is not None {
-                _widened = self._widened_tuple_decl_type(assign.type_tag, assign.value);
-                if (
-                    _widened is None
-                    and self._quiet_glob_type(assign.type_tag) is None
-                    and not self._glob_native_use_exists(target)
-                ) {
-                    continue;
-                }
-                var_type = self._resolve_decl_type(assign.type_tag, assign.value);
-            } elif assign.value is not None {
-                inferred = self._infer_global_init_type(assign.value);
-                if inferred is not None {
-                    var_type = inferred;
-                }
+            var_type = self._glob_storage_type(assign, target);
+            if var_type is None {
+                continue;
             }
 
             _is_priv = bool(nd.access and nd.access.tag.name == Tok.KW_PRIV);
             _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
             _symbol = self._symbol_for(var_name, None, _is_pub);
-            try {
-                global_var = ir.GlobalVariable(
-                    self.llvm_module, var_type, name=_symbol
-                );
-            } except Exception as _dup_err {
+            if self.llvm_module.scope.is_used(_symbol) {
                 _cur_path = self.module.loc.mod_path
                     if self.module?.loc
                     else "(current module)";
@@ -164,6 +176,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 );
                 continue;
             }
+            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=_symbol);
 
             if _is_priv {
                 global_var.linkage = "internal";
@@ -240,7 +253,6 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
 impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
-    import from jaclang.compiler.frontend.const_fold { fold_const }
     if self?.jacval_type and target_type == self.jacval_type {
         return None;
     }

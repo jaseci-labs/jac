@@ -9,7 +9,6 @@ reads, registration, login by each identifier, add-identity and rename.
 import os;
 import uuid;
 import from unittest.mock { patch }
-import from jaclang.scale.tests.scale_test_client { make_client }
 
 glob STRONG: str = "correct horse battery",
      # The suite lowers the password floor for its fixtures; these tests run

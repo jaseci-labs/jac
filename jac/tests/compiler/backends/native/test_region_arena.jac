@@ -209,3 +209,10 @@ test "nested functions preserve an event's active region" {
     scenario = get_func(eng, "scenario", ctypes.c_int64);
     assert scenario() == 12;
 }
+
+test "a constructor whose argument raises leaves no stale field for the close" {
+    (eng, _) = compile_native("region_partial_ctor.jac");
+    probe = get_func(eng, "probe", ctypes.c_int64);
+    # 20 rounds of fill(50) (300 each) plus one caught failure (1 each).
+    assert probe() == 6020;
+}

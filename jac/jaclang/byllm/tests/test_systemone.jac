@@ -6,7 +6,7 @@ refused or escalated to the fallback chat model; how `visit ... by` honours `sel
 
 import asyncio;
 import os;
-import from jaclang.byllm.lib { Decision, MockLLM, MockSystemOne, Model }
+import from jaclang.byllm.lib { Decision, Image, MockLLM, MockSystemOne, Model }
 import from jaclang.byllm.llm { SystemOneModel }
 import from jaclang.byllm.mtir { MTIR, MTRuntime }
 import from jaclang.byllm.exceptions {
@@ -205,6 +205,24 @@ test "a call the protocol cannot answer goes to the fallback chat model untouche
         "three labels exceed this provider's cap of two, so the fallback answers"
     );
     assert so1.seen == [] , "nothing is sent to the endpoint for a refused call";
+}
+
+
+test "a call carrying media goes to the fallback: the state cannot hold it" {
+    fb = MockLLM(outputs=[Priority.LOW, Priority.HIGH, Priority.LOW]);
+    so1 = MockSystemOne(fallback=fb);
+    photo = Image(url="https://example.com/ticket.png");
+
+    def rank_photo(photo: Image) -> Priority by so1();
+    def rank_photos(photos: list[Image]) -> Priority by so1();
+    def rank_ticket(ticket: str) -> Priority by so1(
+        incl_info={"photos": [photo, photo]}
+    );
+
+    assert rank_photo(photo) is Priority.LOW;
+    assert rank_photos([photo, photo]) is Priority.HIGH;
+    assert rank_ticket("printer on fire") is Priority.LOW;
+    assert so1.seen == [] , "media cannot be expressed as a System One state";
 }
 
 

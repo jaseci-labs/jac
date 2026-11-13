@@ -29,9 +29,9 @@ def arena_fixture(name: str) -> str {
         with open(fixture, "w") as f {
             f.write(text[:found.start()] + text[found.end():]);
         }
-        with open(os.path.join(tmp, "arch.jac"), "a") as f {
+        with open(os.path.join(tmp, "archwire.jac"), "a") as f {
             f.write(
-                "\nimpl import core.site.game {\n    sim --> core.site.game."
+                "\ngraph import core.site.game {\n    sim ++> "
                     + name
                     + " { "
                     + names

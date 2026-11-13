@@ -666,8 +666,10 @@ test "context isolation native excluded from python" {
     ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
     # Python source should NOT contain native_add
     py_src = generated_python(ir.gen);
-    assert "native_add" not in py_src;
-    # Python source should contain server_hello
+    assert "return a + b" not in py_src , "the native body must not be in the Python output";
+    assert "get_function_address" in py_src , (
+        "a Python importer reaches native_add through its native call stub"
+    );
     assert "server_hello" in py_src;
 }
 
@@ -2747,10 +2749,24 @@ test "py interop py function not defined in native ir" {
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    import re;
     # Must not have a define (body) for py_double -- it lives in Python
     assert 'define i64 @"py_double"' not in llvm_ir_str;
-    # Should have an external declare so the native code can call it
-    assert 'declare i64 @"py_double"' in llvm_ir_str;
+    # The extern is module-qualified, so the native code calls
+    # __jac_na_import_<module>_py_double instead of a bare name resolved
+    # against the process symbol table.
+    symbol = ir.gen.interop_manifest.bindings["py_double"].symbol;
+    assert re.search(r'declare i64 @"?' + symbol + r'"?\(', llvm_ir_str) is not None , (
+        f"expected a qualified interop declare for py_double; IR excerpt: "
+        f"{[
+            ln
+            for ln in llvm_ir_str.split(chr(10))
+            if 'py_double' in ln
+        ]}"
+    );
+    # py_note has no `-> T`: it returns None, so native declares it void
+    note = ir.gen.interop_manifest.bindings["py_note"].symbol;
+    assert re.search(r'declare void @"?' + note + r'"?\(', llvm_ir_str) is not None;
 }
 
 test "py interop py functions in python codegen" {
@@ -2812,7 +2828,9 @@ test "py interop native calls python function" {
     assert eng is not None;
     # Register the Python function in the interop callback table
     py_func_table = ir.gen.interop_py_funcs;
-    py_func_table["py_double"] = lambda (x: int) { x * 2; };
+    symbol = ir.gen.interop_manifest.bindings["py_double"].symbol;
+    assert symbol.startswith("__jac_na_import_na_py_interop_") , symbol;
+    py_func_table[symbol] = lambda (x: int) { x * 2; };
     # Now call the native function
     f = get_func(eng, "native_add_one_to_doubled", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 11;  # py_double(5) = 10, + 1 = 11
@@ -2842,11 +2860,17 @@ test "py interop full entry chain" {
         "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
     };
     buf = io.StringIO();
+    err = io.StringIO();
     with contextlib.redirect_stdout(buf) {
-        exec(py_code, namespace);
+        with contextlib.redirect_stderr(err) {
+            exec(py_code, namespace);
+            # a None return crosses back from native, and py_note's None into native
+            assert namespace["native_note"](8) is None;
+        }
     }
     output = buf.getvalue().strip();
-    assert output == "11";
+    assert output.splitlines() == ["11", "7", "8"];
+    assert not err.getvalue() , err.getvalue();
 }
 
 # --- TestNativeMultiModuleInterop ---
@@ -3979,6 +4003,32 @@ test "native sys stream write returns count and hits the real fds" {
     assert got2 == b"err-7\n" , f"fd2 bytes wrong: {got2!r}";
 }
 
+test "native sys streams reached by a from-import or an alias hit the real fds" {
+    (eng, _) = compile_native("sys_streams_from_import.jac");
+    for (fn_name, fd, want_n, want_bytes) in [
+        ("write_out", 1, 10, b"out-bytes\n"),
+        ("write_err", 2, 6, b"err-7\n"),
+        ("print_err", 2, 1, b"p-err\n"),
+        ("print_module_alias_err", 2, 1, b"s-err\n")
+    ] {
+        func = get_func(eng, fn_name, ctypes.c_int64);
+        (r, w) = os.pipe();
+        saved = os.dup(fd);
+        os.dup2(w, fd);
+        os.close(w);
+        try {
+            n = func();
+        } finally {
+            os.dup2(saved, fd);
+            os.close(saved);
+        }
+        got = os.read(r, 64);
+        os.close(r);
+        assert n == want_n , f"{fn_name} returned {n}";
+        assert got == want_bytes , f"{fn_name} wrote {got!r} to fd {fd}";
+    }
+}
+
 test "sys stdout/stderr streams via nacompile" {
     import tempfile;
     fixture = str(os.path.join(FIXTURES, "sys_streams_bin.jac"));
@@ -4223,25 +4273,12 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     # + static ELF emission for a non-host arch.
     import shutil;
     import tempfile;
-    import jaclang;
     qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
-    _musl_env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
-    musl_a64 = os.path.join(_musl_env, "libc.a")
-        if _musl_env
-        else os.path.join(
-            os.path.dirname(jaclang.__file__),
-            "..",
-            ".pbs-build",
-            "linux-aarch64",
-            "musl",
-            "lib",
-            "libc.a"
-        );
-    if not qemu or not os.path.exists(musl_a64) {
+    import from jaclang.compiler.backends.native.native_link { musl_lib_dir }
+    if not qemu or musl_lib_dir("aarch64-unknown-linux-musl") is None {
         testskip(
-            "aarch64 qemu-user or cross vendored musl not present "
-            "(run `zig build vendor-musl-linux-aarch64`, or set "
-            "JAC_NATIVE_MUSL_DIR)"
+            "aarch64 qemu-user or the aarch64 musl runtime is not present "
+            "(run `jac native build musl@linux-aarch64`)"
         );
     }
     fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));
@@ -4279,86 +4316,48 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     }
 }
 
-test "elf linker rejects unhandled relocation (issue #6366 guard)" {
-    # Defense-in-depth: the linker must refuse to emit a binary when a
-    # relocation targeting an emitted section has no handler, rather than
-    # silently leaving the reference pointing at NULL (the #6366 failure mode).
-    # Pure link-time check -- no execution, so it runs without qemu.
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-    llvm.initialize_all_targets();
-    llvm.initialize_all_asmprinters();
-    # A function that loads a module global forces an address-materialization
-    # relocation into .text against the global.
-    ir = "target triple = \"aarch64-unknown-linux-gnu\"\n"
-        + "@g = global i64 0\n"
-        + "define i64 @f() {\n  %v = load i64, i64* @g\n  ret i64 %v\n}\n";
-    mod = llvm.parse_assembly(ir);
-    tm = llvm.Target.from_triple("aarch64-unknown-linux-gnu").create_target_machine(
-        opt=2
-    );
-    obj_bytes = tm.emit_object(mod);
-    linker = ElfLinker(
-        obj_data=obj_bytes,
-        sections=[],
-        symbols=[],
-        relocations=[],
-        needed_libs=["libc.so.6"]
-    );
-    assert linker.parse_object() , "parse_object failed on aarch64 object";
-    assert len(linker.relocations) > 0 , "expected at least one relocation";
-    # Corrupt a relocation that patches the emitted code section to an unknown
-    # type; the linker must raise instead of emitting an unrelocated binary.
-    target = None;
-    for r in linker.relocations {
-        if r.target_sec and "text" in r.target_sec {
-            target = r;
-            break;
-        }
-    }
-    assert target is not None , "no .text relocation found to corrupt";
-    _corrupt: any = target;
-    _corrupt.rtype = 9999;
-    raised = False;
-    try {
-        linker.build_executable();
-    } except ValueError as e {
-        raised = True;
-        assert "relocation type" in str(e) , f"unexpected message: {e}";
-    }
-    assert raised , "linker silently accepted an unhandled relocation";
-}
-
-test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
+test "an ELF executable carries DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     # A standalone binary must find a sibling shared library regardless of the
-    # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
+    # launch directory. The link sets DT_RUNPATH=$ORIGIN so the loader
     # resolves needed libraries relative to the executable. Pure link-time
     # check -- no execution, so it runs without qemu.
     import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import os;
     import struct;
-    import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+    import tempfile;
+    import from jaclang.compiler.backends.native.native_link {
+        NativeLinkJob,
+        link_native
+    }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     ir = "target triple = \"x86_64-unknown-linux-gnu\"\n"
-        + "define i64 @f() {\n  ret i64 0\n}\n";
+        + "define void @_start() {\n  ret void\n}\n";
     mod = llvm.parse_assembly(ir);
     tm = llvm.Target.from_triple("x86_64-unknown-linux-gnu").create_target_machine(
-        opt=2
+        opt=2, reloc="pic"
     );
-    obj_bytes = tm.emit_object(mod);
-    linker = ElfLinker(
-        obj_data=obj_bytes,
-        sections=[],
-        symbols=[],
-        relocations=[],
-        needed_libs=["libc.so.6", "libfoo.so"]
-    );
-    assert linker.parse_object() , "parse_object failed";
-    out = linker.build_executable();
+    with tempfile.TemporaryDirectory() as work {
+        out_path = os.path.join(work, "runpath_probe");
+        link_native(
+            NativeLinkJob(
+                platform="elf",
+                triple="x86_64-unknown-linux-gnu",
+                output_path=out_path,
+                objects=[tm.emit_object(mod)],
+                needed_libs=["libc.so.6", "libfoo.so"]
+            )
+        );
+        with open(out_path, "rb") as f {
+            out = f.read();
+        }
+    }
     # The $ORIGIN runpath string is emitted into .dynstr ...
     assert b"$ORIGIN\x00" in out , "DT_RUNPATH $ORIGIN string not emitted";
     # ... and referenced by a DT_RUNPATH (tag 29) dynamic entry.
     assert struct.pack("<q", 29) in out , "DT_RUNPATH (tag 29) dynamic entry missing";
+    assert b"libfoo.so\x00" in out , "DT_NEEDED libfoo.so not recorded";
 }
 
 test "list_bugs pop local removes element" {
@@ -6507,13 +6506,9 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
             bc2 = comp.get_bytecode(fx, prog2);
         }
         assert bc2 is not None;
-        # Without a kernel the host recompiles and builds the engine in the
-        # pass itself, so the loader sees only the failed restore.
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        rebuilds = 2 if ensure_loaded() is not None else 1;
-        assert len(loads) == rebuilds , (
-            f"expected {rebuilds} loader call(s), saw {len(loads)}"
-        );
+        # The recompile builds the engine in the pass itself, so the loader
+        # sees only the failed restore.
+        assert len(loads) == 1 , f"expected 1 loader call, saw {len(loads)}";
         (eng, _) = comp.get_native_interop_setup(fx, prog2);
         assert eng is not None , (
             "restore failure must trigger recompile for inferred modules"

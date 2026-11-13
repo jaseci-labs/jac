@@ -115,11 +115,11 @@ You can widen or move it by editing the value -- `>=0.34.3`, `<=0.34.3`, `>=0.34
 At deploy time (`jac scale deploy`), the pin selects the **pod runtime**: the deployer downloads the released `jac` binary, admin console, and base image from the release that satisfies `jac-version` and ships them to the pods, so the app runs on the toolchain it was built against -- not on whatever `latest` happens to be. Resolution rules:
 
 - **Unset** -> the latest published release.
-- **Exact pin** (`==X` / `X`) -> the `vX` release.
+- **Exact pin** (`==X` / `X`) -> the `vX` release, downloaded directly without a GitHub API request.
 - **Range** -> the newest published release that satisfies it.
 - **No published release satisfies the pin** (or the matching release lacks the pod's CPU arch or a `jac-*` asset) -> the deploy **aborts** with an error naming the pin; a pinned deploy never silently ships a different version. Fix or remove `jac-version` to proceed.
 
-The pin is honored only on the default (stable) channel; the `[dev]`, `[experimental]`, and `JAC_SCALE_BINARY_PATH` (local) channels select the pod binary by their own rules and ignore it.
+The pin is honored only on the default (stable) channel; the `[dev]`, `[experimental]`, and `[dev] pod_binary` (local) channels select the pod binary by their own rules and ignore it.
 
 ---
 
@@ -306,7 +306,29 @@ serving, building, sealed bundles, `--debug`, or `--entry`.
 Everything the server process reads, for a laptop and a pod alike. Every key
 has a `JAC_SERVE_*` environment mirror (listed with each table), and the
 deploy target sets those same variables on the pod, so one resolver answers
-both.
+both. A variable that is empty or only whitespace counts as unset, so the
+`jac.toml` value stands. A boolean variable takes `1/true/yes/on` or
+`0/false/no/off` (any case), and any other value stops the server with a
+message naming the variable. An empty `JAC_SERVE_CORS_ORIGINS` therefore keeps
+the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
+`cors_origins = []` in `jac.toml`. `cors_credentials = true` lets the origins in
+`cors_origins` send cookies; the server refuses to start if the list also holds
+`"*"`, because browsers reject a response that allows every origin together
+with credentials.
+
+The `[serve]` tables are checked when the configuration loads, in every layer
+(`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
+`jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
+`"false"` or `true` for a number, stops the load. The message lists every such
+key at once and suggests the right name for a misspelled one, and nothing from a
+table with a mistake is applied.
+A layer's sub-table merges into the one below it instead of replacing it.
+`[serve.auth]` is the exception: its layers are merged first and the result is
+checked when the server starts (or a deploy builds its manifests).
+`${VAR}` interpolation always gives text, so it can't set a `[serve]` number
+or switch; set those from the environment with their `JAC_SERVE_*` variable.
+`main`, `conflict_max_attempts` and `conflict_backoff_ms` have no such variable,
+so write them as plain values.
 
 ```toml
 [serve]
@@ -315,8 +337,9 @@ port = 8000              # Server port
 session = ""             # Session name
 main = true              # Run as main module
 docs_enabled = true      # /docs and /openapi.json
-graph_enabled = true     # /graph and /graph/data (turn off in production)
+graph_enabled = true     # /graph, /graph/node and /graph/neighbors (turn off in production)
 cors_origins = ["*"]     # Origins allowed by the CORS middleware
+cors_credentials = false # Access-Control-Allow-Credentials for listed origins; refused with "*"
 
 # Optimistic-concurrency policy for concurrent check-then-create races
 # (see Persistence -> Concurrent writes).
@@ -326,7 +349,7 @@ conflict_max_attempts = 5    # max walker/function attempts under "retry"
 conflict_backoff_ms = 0      # linear backoff between replay attempts (0 = none)
 
 [serve.workers]
-count = "1"              # Worker processes; "auto" = the CPU quota. JAC_SERVE_WORKERS
+count = ""               # Worker processes; unset = as many as fit (see below), "auto" = the CPU quota. JAC_SERVE_WORKERS
 threads = "auto"         # Sync-handler threads per worker; "auto" sizes from the quota. JAC_SERVE_THREADS
 max_requests = 0         # Recycle a worker after this many requests (0 = never). JAC_SERVE_MAX_REQUESTS
 max_requests_jitter = 0  # Random extra requests so workers do not recycle together
@@ -414,7 +437,7 @@ hash_cost = 14           # log2 of the scrypt work factor, 10..17
 
 [serve.auth.registration]
 enabled = true           # false = no self-registration; accounts are created by an admin
-challenge = false        # Proof-of-work challenge before /user/register
+challenge = false        # Proof-of-work challenge before /user/register; jacSignup solves it
 attempts_per_hour = 0    # Per source address; 0 = unlimited
 challenges_per_10_minutes = 0
 
@@ -428,6 +451,8 @@ attempts = 5
 lockout_seconds = 900
 challenge_ttl_seconds = 300
 ```
+
+Access logs replace the values of `token`, `access_token`, and `api_key` query parameters with `[REDACTED]` in both text and JSON, including WebSocket upgrades. Matching is case-insensitive and recognizes percent-encoded names; other query components keep their original encoding.
 
 Every `[serve.auth]` key can be overridden by an environment variable named
 `JAC_SERVE_AUTH_<TABLE>_<KEY>`, for example `JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH`
@@ -452,6 +477,15 @@ keeps a slow request from stalling every other request. Anything that only
 works in one process is refused when `count > 1`: `--dev` hot reload, a
 memory WebSocket backplane, or events without a database.
 
+Left unset, `count` starts one worker per core of the quota, no more than
+available memory allows at 512 MiB per worker, and falls back to one worker
+(saying why at startup) whenever more would be refused for one of the reasons
+above, so `--dev` and single-process features keep working without
+configuration. In a cluster an unset count is one worker per pod; pods scale
+by replicas, and `jac scale deploy` sets `JAC_SERVE_WORKERS` to `1` unless
+`count` is configured. Set `count` explicitly to pin it: an explicit value is
+never lowered, and is refused instead when it cannot work.
+
 `on_conflict` controls what happens when two concurrent requests race a "look it up, create it if missing" against the same node and the loser's commit is rejected. `retry` (default) re-runs the request against the now-current graph so it converges on the winner's node; `fail` surfaces a typed `409 write_conflict` for the client to handle. See [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence) for the full model.
 
 ---
@@ -463,7 +497,6 @@ Build configuration:
 ```toml
 [build]
 dir = ".jac"                # Build artifacts directory
-native_closure_cap = 256    # Largest native closure the whole-module path will link
 ```
 
 The `dir` setting controls where all build artifacts are stored:
@@ -538,27 +571,14 @@ require = []              # Module-name patterns whose native lowering must succ
 ```
 
 `require` makes matching modules native-only during checking and building. For
-example, `require = ["jaclang.runtime.python.*"]` covers JacPython's runtime
-modules and bindings. Lowering failures remain errors; Python fallback and
+example, `require = ["mypkg.kernels.*"]` covers every module under
+`mypkg.kernels`. Lowering failures remain errors; Python fallback and
 opaque field erasure cannot satisfy this contract. Required dependencies stay
 in the target compilation, and checks verify the native dependency closure
 without executing it. The policy is included in analysis and code-generation
 cache identities.
 
 A built binary reads two environment variables at run time and no others: `JAC_GC=off` disables collection for leak debugging (collection is on by default under `managed`), and `JAC_THREADS` overrides the `flow for` width. Nothing at compile time reads the environment; `jac explain memory|placement|ir` replaces the old diagnostic variables.
-
----
-
-### [arch]
-
-The default for modules that `arch.jac` does not name. See [Project Wiring](../wiring.md).
-
-```toml
-[arch]
-closed = []               # Module-name patterns sealed even when arch.jac never names them
-```
-
-A module `arch.jac` names is sealed in both directions: its project-module imports must be wires, and it flows only where a rule admits. `closed` extends that to modules the file never mentions, including packages not yet written, and applies even before `arch.jac` exists. `["*"]` closes the whole project; a pattern list such as `["core.*"]` closes it one package at a time. The policy is part of every module's cache identity, so changing it rebuilds the affected modules.
 
 ---
 
@@ -663,21 +683,33 @@ select = ["combine-has", "remove-empty-parens"]
 | `fix-impl-signature` | `W3010` | Fix signature mismatches between declarations and implementations | default |
 | `no-print` | `E3012` | Error on bare `print()` calls (use console abstraction instead) | all |
 | `remove-redundant-semi` | `W3013` | Remove standalone no-op semicolons from any body (`{;}` → `{}`, `x = 1;;` → `x = 1;`); `remove-import-semi` is an accepted alias for this rule | default |
-| `strip-comments` | `W3050` | Remove **all** comments | opt-in |
-| `strip-docstrings` | `W3051` | Remove **all** docstrings | opt-in |
+| `strip-comments` | `W3050` | Remove **all** comments | all |
+| `strip-docstrings` | `W3051` | Remove **all** docstrings, and strings written as statements inside a body | all |
+| `separate-impls` | `W3055` | Move every function, method and ability body into an `impl` in its module's `.impl.jac` annex | all |
+| `impls-in-annex` | `W3056` | Keep every `impl` in an annex inside an impl folder: none in the module itself, no annex beside it | all |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
 
-**Opt-in (deslop) rules:**
+**Rules only `all` turns on:**
 
-`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. Unlike every other rule, they are **never** activated by `select = ["all"]` or `select = ["default"]`; they fire only when named explicitly. A project that wants them on by default lists them alongside its other selections:
+`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. `separate-impls` restructures every module: `jac fmt --lintfix` keeps each declaration in place (`def f(x: int) -> int;`) and moves its body into `impl f(x: int) -> int { ... }` in the module's impl annex, in declaration order. The annex is the module's existing `.impl.jac` file, or a new `impl/<module>.impl.jac` beside it. `impl` blocks already in the module stay where they are. Bodies an `impl` cannot name stay inline: nested functions, nameless abilities (`can with Root entry`), accessors and `@property` methods, and names a field or another member of the same scope also uses. A generic function or method is separated like any other, and its impl restates the type parameters: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Client component bodies are separated like any other: a body behaves the same inline and in an `impl`, so JSX, body-level `has` state and a `JsxElement` return type all move with it.
+
+`impls-in-annex` finishes that layout: every `impl` lives in an annex inside an impl folder, which is `impl/<module>.impl.jac`, or `<module>.impl/` for a dotted stem such as a platform variant (`foo.linux.jac`), so the portable `foo.jac` does not claim its impls. It flags an `impl` block written in its module, and an annex that sits beside its module (`foo.impl.jac` next to `foo.jac`). `jac fmt --lintfix` and `jac check --lint --fix` move the module's `impl` blocks into the annex, after any impls it already holds, and relocate a sibling annex into the folder, merging the two when both apply.
+
+`select = ["all"]` turns all four on; `select = ["default"]` leaves them off. Each can also be named on its own, or turned off under `all` with `ignore`:
 
 ```toml
 [check.lint]
 select = ["default", "strip-comments", "strip-docstrings"]
 ```
 
-The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
+```toml
+[check.lint]
+select = ["all"]
+ignore = ["separate-impls"]
+```
+
+The deslop rules are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` applies it and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
 
 **Excluding files from lint:**
 
@@ -737,6 +769,75 @@ failures, and annex failures are never cached as clean. `--cache` / precommit
 enable this format cache explicitly and do **not** consult `[cache].enabled`
 (that flag gates the bytecode cache). The directory is git-ignored, so it is
 safe to delete at any time. See [`jac fmt --cache`](../cli/index.md#jac-fmt).
+
+---
+
+### [dev]
+
+Settings for working on jac itself or shipping a build of it. None of them is
+read by a sealed release; a `[dev]` table also selects the `dev` deploy channel.
+
+```toml
+[dev]
+jaclang_source = "../jac"   # run the compiler from this checkout
+exact = false               # true: never reuse an earlier compiler's products
+pod_binary = "../jac/zig-out/bin/jac"  # ship this jac to scale pods (channel local)
+```
+
+`jaclang_source` is how a project runs jac from a source checkout, for example
+one vendored as a git submodule. There is no environment variable for it.
+
+- The path is relative to this `jac.toml` and names the directory that
+  *contains* `jaclang/` (in a jac clone, its `jac/` directory).
+- Only the nearest `jac.toml` is read: a subdirectory with its own `jac.toml`
+  needs its own `[dev]` table.
+- The checkout needs its typeshed stubs (`zig build fetch-typeshed` in that
+  checkout). Without them jac prints `ignoring the dev compiler source ...` and
+  the bundled compiler serves the run.
+- The choice is made once per process tree: child processes run the same
+  compiler, even when they start in another directory.
+
+When the source is in use, every command prints
+`[dev] jac dev mode - using compiler source at <path>`.
+
+### [database]
+
+The project's own graph store. (`[scale.database]` is a different table: the
+connection a process or a deploy uses.)
+
+```toml
+[database]
+indexes = { Post = ["at", "published"] }   # promote these fields to indexed columns
+retention_days = 30          # drop databases unused this long when the embedded cluster starts
+postgres_version = "18"      # the embedded Postgres major to provision
+postgres_dist = "vendor/pg"  # a Postgres distribution to use instead of downloading one
+```
+
+- `indexes` names, per archetype, the fields that filters (`[?:Post, at > 3]`)
+  and orderings (`[?:Post, -at]`) read; the compiler reads a promoted column
+  instead of the jsonb path. Correctness never depends on it.
+- `retention_days` is unset (never) by default; `JAC_DB_RETENTION_DAYS`
+  overrides it.
+- `postgres_dist` is relative to `jac.toml`.
+
+### [network]
+
+```toml
+[network]
+offline = false  # true: never download; a missing toolchain, package,
+                 # scaffold or Postgres distribution is an error naming why
+```
+
+### [toolchains]
+
+```toml
+[toolchains]
+system = true    # false: ignore a compatible tool already on the system
+                 # (a JDK 21 at JAVA_HOME, Node 22 on PATH) and use jac's
+                 # pinned managed copy -- reproducible CI setups
+```
+
+See [Toolchains](../../build/toolchains.md).
 
 ---
 

@@ -1,14 +1,40 @@
 import from enum { StrEnum }
-import from jaclang.cli.console { console }
-import from jaclang.cache.home { cache_home }
-import from jaclang.cache.policy { format_bytes }
-import from jaclang.cache.registry { RETIRED, gc, purge, status, unmanaged }
 
 
 enum CacheAction(StrEnum) { STATUS = "status", GC = "gc", PURGE = "purge" }
 
 
-def _parse_action(action: str) -> (CacheAction | None) {
+def _parse_action(action: str) -> (CacheAction | None);
+
+
+def _live_keys -> dict[str, set[str]];
+
+
+def _cache_status -> int;
+
+
+def _cache_gc(dry_run: bool) -> int;
+
+
+def _cache_purge(bucket_name: str, dry_run: bool) -> int;
+
+
+impl cache(action: str = "status", bucket: str = "", dry_run: bool = False) -> int {
+    verb = _parse_action(action);
+    if verb is None {
+        console.error(f"unknown action: {action} (expected status, gc or purge)");
+        return 1;
+    }
+    if verb == CacheAction.STATUS {
+        return _cache_status();
+    }
+    if verb == CacheAction.GC {
+        return _cache_gc(dry_run);
+    }
+    return _cache_purge(bucket, dry_run);
+}
+
+impl _parse_action(action: str) -> (CacheAction | None) {
     for candidate in CacheAction {
         if candidate.value == action {
             return candidate;
@@ -18,7 +44,7 @@ def _parse_action(action: str) -> (CacheAction | None) {
 }
 
 
-def _live_keys -> dict[str, set[str]] {
+impl _live_keys -> dict[str, set[str]] {
     live: dict[str, set[str]] = {};
     try {
         import from jaclang.dist.fused_binary { running_runtime_entries }
@@ -38,7 +64,7 @@ def _live_keys -> dict[str, set[str]] {
 }
 
 
-def _cache_status -> int {
+impl _cache_status -> int {
     console.print(f"cache root: {cache_home()}");
     rows: list[list[str]] = [];
     total = 0;
@@ -72,7 +98,7 @@ def _cache_status -> int {
 }
 
 
-def _cache_gc(dry_run: bool) -> int {
+impl _cache_gc(dry_run: bool) -> int {
     verb = "would reclaim" if dry_run else "reclaimed";
     total = 0;
     failed = 0;
@@ -105,7 +131,7 @@ def _cache_gc(dry_run: bool) -> int {
 }
 
 
-def _cache_purge(bucket_name: str, dry_run: bool) -> int {
+impl _cache_purge(bucket_name: str, dry_run: bool) -> int {
     names = [bucket_name] if bucket_name else None;
     try {
         result = purge(names, dry_run=dry_run, live=_live_keys());
@@ -132,20 +158,4 @@ def _cache_purge(bucket_name: str, dry_run: bool) -> int {
         return 1;
     }
     return 0;
-}
-
-
-impl cache(action: str = "status", bucket: str = "", dry_run: bool = False) -> int {
-    verb = _parse_action(action);
-    if verb is None {
-        console.error(f"unknown action: {action} (expected status, gc or purge)");
-        return 1;
-    }
-    if verb == CacheAction.STATUS {
-        return _cache_status();
-    }
-    if verb == CacheAction.GC {
-        return _cache_gc(dry_run);
-    }
-    return _cache_purge(bucket, dry_run);
 }

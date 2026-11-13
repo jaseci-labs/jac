@@ -11,7 +11,7 @@ In a workspace it is an `[apps.<name>]` table beside the web app (`jac create --
 
 | Platform | Needs |
 |---|---|
-| both | Nothing extra for JS tooling: installs, Expo/Metro and Vite run on the Bun runtime bundled with `jac` (`JAC_BUN` overrides which bun is used) |
+| both | Nothing extra for JS tooling: installs, Expo/Metro and Vite run on the Bun runtime bundled with `jac` |
 | Android | Managed JDK 21 and Android SDK; accept SDK licenses during setup |
 | iOS (macOS only) | Xcode + Command Line Tools; Jac provisions Ruby/CocoaPods; other hosts need a hosted macOS builder |
 
@@ -23,7 +23,7 @@ In a workspace it is an `[apps.<name>]` table beside the web app (`jac create --
 jac setup mobile      # optional: provision ahead of time (CI images, offline prep); `jac setup` alone for the default app
 ```
 
-`jac setup` is the explicit pre-provision, not a prerequisite: it runs the same scaffold + deps sequence and prints the next steps. Under `JAC_OFFLINE=1` a missing scaffold or stale deps cannot be provisioned, so the run stops and names `jac setup <app>` to run online first. Consent-gated toolchain steps (Android SDK licenses, Linux `sudo` package installs) keep their prompt on a TTY and stop with the exact command and env override (`JAC_ACCEPT_ANDROID_LICENSES=1`) when there is none.
+`jac setup` is the explicit pre-provision, not a prerequisite: it runs the same scaffold + deps sequence and prints the next steps. In an offline project (`[network] offline = true` in `jac.toml`) a missing scaffold or stale deps cannot be provisioned, so the run stops and names `jac setup <app>` to run online first. Consent-gated toolchain steps (Android SDK licenses, Linux `sudo` package installs) keep their prompt on a TTY and stop with the exact command and env override (`JAC_ACCEPT_ANDROID_LICENSES=1`) when there is none.
 
 ## Configuration - `[client.react_native]`
 

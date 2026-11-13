@@ -21,15 +21,6 @@ import hashlib;
 import io;
 import os;
 import from compression.zstd { compress as _zc, decompress as _zd, ZstdFile }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tests.xbackend_equiv {
-    FIXTURES,
-    run_py_fixture,
-    run_native_function,
-    compare_results,
-    remember_engine_unit
-}
 
 
 """Compile a fixture with the native codespace forced on and return

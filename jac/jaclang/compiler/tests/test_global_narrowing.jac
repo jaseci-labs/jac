@@ -22,9 +22,6 @@ import tempfile;
 import importlib;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.bccache { discover_base_file }
 
 glob BATCH_DIR = str(
          Path(jaclang.__file__).parent

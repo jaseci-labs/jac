@@ -9,8 +9,6 @@ EndpointEffectPass in the same schedule.
 
 import os;
 import tempfile;
-import contextlib;
-import io;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -149,9 +147,11 @@ test "native module's pinned-server import records an na->sv binding" {
 }
 
 test "native import of a pinned-server type records a type binding" {
-    # A native-pinned module importing a non-ability symbol (an obj) from a
+    # A native module importing a non-ability symbol (an obj) from a
     # server-pinned provider must register the data shape, not fabricate a
-    # zero-arg int function binding for the type name.
+    # zero-arg int function binding for the type name. The module is forced
+    # native: a native pin is a preference, and a module whose only element
+    # is an import has nothing to place native.
     tmp = write_mods(
         {
             "jac.toml": ('[placement.pins]\nmain = "native"\nhelper = "server"\n'),
@@ -162,7 +162,7 @@ test "native import of a pinned-server type records a type binding" {
     prog = JacProgram();
     mod = prog.compile(
         os.path.join(tmp, "main.jac"),
-        options=CompileOptions(default_codespace='server')
+        options=CompileOptions(default_codespace='server', force_codespace='native')
     );
     binding = mod.gen.interop_manifest.bindings.get("Point");
     assert binding is not None , (
@@ -182,11 +182,10 @@ test "native import of a pinned-server type records a type binding" {
     );
 }
 
-test "unmappable signature on pinned-server import is E5093" {
-    # The newly-enabled na -> sv import edge enforces the same scalar checks
-    # as the same-module na{} lane: the bad signature blocks native lowering,
-    # the module demotes to the server codespace, and the E5093 reason is
-    # surfaced instead of silently accepted.
+test "a native call that cannot cross into a pinned-server import stays in Python" {
+    # The na -> sv import edge is judged by the boundary rule before anything
+    # is lowered: a list does not cross into Python, so the caller is placed
+    # in Python, nothing native is generated, and nothing has to be demoted.
     tmp = write_mods(
         {
             "jac.toml": ('[placement.pins]\nmain = "native"\nhelper = "server"\n'),
@@ -203,26 +202,21 @@ test "unmappable signature on pinned-server import is E5093" {
             )
         }
     );
-    err_stream = io.StringIO();
-    with contextlib.redirect_stderr(err_stream) {
-        prog = JacProgram();
-        mod = prog.compile(
-            os.path.join(tmp, "main.jac"),
-            options=CompileOptions(default_codespace='server')
-        );
-    }
-    msgs = [e.pretty_print() for e in prog.errors_had];
-    notes = err_stream.getvalue();
-    assert (
-        any(["E5093" in m for m in msgs])
-        or ("did not lower" in notes and "E5093" in notes)
-    ) , (
-        f"a list param on a native->server imported signature must block "
-        f"native lowering; errors: {msgs}, stderr: {notes!r}"
+    main_path = os.path.join(tmp, "main.jac");
+    prog = JacProgram();
+    mod = prog.compile(main_path, options=CompileOptions(default_codespace='server'));
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    crunch = [
+        stmt
+        for stmt in mod.body
+        if isinstance(stmt, uni.Ability)
+    ][0];
+    assert crunch.code_context.value == 'server' , (
+        "a list cannot cross into the server module, so the caller stays in Python"
     );
-    assert not mod.gen.native_codespace , (
-        "the demoted module must not keep a native verdict"
-    );
+    refused = prog.analysis.placement_refusals[os.path.realpath(main_path)]['native'];
+    assert id(crunch) in refused , "the refusal is a recorded placement fact";
+    assert not mod.gen.native_codespace , "nothing in the module is native";
 }
 
 test "native default codespace stamps the na->sv caller once" {

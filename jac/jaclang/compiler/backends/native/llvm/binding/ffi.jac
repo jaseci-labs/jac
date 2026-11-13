@@ -1,9 +1,6 @@
 import sys;
 import os;
 import ctypes;
-import from jaclang.compiler.backends.native.llvm.binding.common { _is_shutting_down }
-
-import from jaclang.compiler.backends.native.llvm.shim_path { _find_shim, _shim_name }
 
 
 class _MissingShimFunc {
@@ -13,8 +10,8 @@ class _MissingShimFunc {
     shim those assignments land here and vanish, so the modules stay
     importable (the checker resolving an import must not demand LLVM).
     Only an actual call raises, with the original locate error."""
-    def init(self: _MissingShimFunc, err: OSError) {
-        self._err: OSError = err;
+    def init(self: _MissingShimFunc, err: Exception) {
+        self._err: Exception = err;
     }
 
     def __call__(self: _MissingShimFunc, *args: any, **kwargs: any) -> any {
@@ -31,7 +28,9 @@ class _LazyLib {
     def __getattr__(self: _LazyLib, name: str) -> any {
         if self._handle is None {
             try {
-                self._handle = ctypes.CDLL(_find_shim());
+                self._handle = ctypes.CDLL(shim_path());
+            } except ArtifactUnavailable as e {
+                return _MissingShimFunc(e);
             } except OSError as e {
                 return _MissingShimFunc(e);
             }

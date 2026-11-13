@@ -5,8 +5,11 @@ and the answer arrives on the `chunk` channel; tool activity arrives before it.
 """
 
 import asyncio;
+import contextlib;
 import contextvars;
-import from jaclang.byllm.exceptions { ConfigurationError }
+import from unittest { mock }
+import from jaclang.byllm.exceptions { ConfigurationError, OutputTruncatedError }
+import from jaclang.byllm.types { StreamEvent }
 import from jaclang.byllm.telemetry { _current_invocation_id }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.lib { MockLLM }
@@ -128,6 +131,87 @@ test "a logging stream with tools reports the call, the result, then the answer"
         f"one terminal usage event, got {event_types(events)}"
     );
     assert "total" in usage[0].data and "per_call" in usage[0].data;
+}
+
+
+"""A custom finish_tool that changes the answer it is given."""
+def _shouting_finish -> any {
+    def finish_tool(final_output: str) -> str {
+        return final_output.upper();
+    }
+    return finish_tool;
+}
+
+
+test "a finish_tool answer streams to the caller as committed, with no second call" {
+    # The model's finish_tool argument is the answer, streamed as the model writes
+    # it. byLLM used to ask the model to restate it, and that reply replaced it.
+    # The second answer's escapes (quote, newline, an emoji's surrogate pair) split
+    # across the 12-character fragments. The third provider cannot stream, so the
+    # answer arrives whole. The last finish_tool changes the answer after it
+    # streamed: the streamed text is taken back, and a plain stream raises.
+    for (written, streams, finish_fn) in [
+        ("The weather in London is sunny, 25 degrees.", True, None),
+        ('London: "sunny"\n25°C bright 😀 all day', True, None),
+        ("The weather in London is sunny, 25 degrees.", False, None),
+        ("The weather in London is sunny, 25 degrees.", True, _shouting_finish())
+    ] {
+        committed = finish_fn(written) if finish_fn else written;
+        for mode in ["plain", "logging", "handler"] {
+            history: list[dict[str, any]] = [];
+            seen: list[StreamEvent] = [];
+            llm = MockLLM(
+                outputs=[
+                    call("get_weather", {"city": "London"}),
+                    finish(written),
+                    say("A different restated answer.")
+                ]
+            );
+
+            def check_weather(question: str) -> str by llm(
+                tools=[get_weather] + ([finish_fn] if finish_fn else []),
+                stream=True,
+                logging=mode == "logging",
+                stream_handler=seen.append if mode == "handler" else None,
+                conversation=history
+            );
+
+            provider = contextlib.nullcontext()
+                if streams
+                else mock.patch.object(
+                    llm, "model_call_with_stream", side_effect=NotImplementedError
+                );
+            with provider {
+                out: any = check_weather("What is the weather in London?");
+                if mode == "plain" {
+                    try {
+                        pieces = list(out);
+                    } except OutputTruncatedError {
+                        assert finish_fn , "plain: raised";
+                        continue;
+                    }
+                    got = "".join(pieces);
+                } else {
+                    events = list(out) if mode == "logging" else seen;
+                    pieces = [e.data["content"] for e in events_of(events, "chunk")];
+                    got = out if mode == "handler" else chunk_text(events);
+                }
+            }
+            assert len(pieces) > 1
+                if streams and not finish_fn
+                else pieces[-1] == committed , f"{mode}, streams={streams}: {pieces}";
+            assert got == committed , f"{mode}: the caller received {got!r}";
+            assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(
+                llm.seen
+            )}";
+            answers = [
+                m.get("content")
+                for m in history
+                if m.get("role") == "assistant" and m.get("content")
+            ];
+            assert answers == [committed] , f"{mode}: the conversation saved {answers}";
+        }
+    }
 }
 
 
@@ -270,9 +354,12 @@ test "a mid-stream drop is retried only when the error is transient" {
         model = Model(model_name="gpt-4o-mini");
         mt = mk_run(stream=True);
         raised: any = None;
+        events: list[any] = [];
         with scripted(model, replies) as script {
             try {
-                events = list(model._invoke_streaming(mt));
+                for ev in model._invoke_streaming(mt) {
+                    events.append(ev);
+                }
             } except Exception as e {
                 raised = e;
             }
@@ -280,8 +367,8 @@ test "a mid-stream drop is retried only when the error is transient" {
         assert len(script.seen) == calls , (
             f"{label}: expected {calls} model calls, got {len(script.seen)}"
         );
-        assert mt._stream_reset_count == resets , (
-            f"{label}: expected {resets} stream resets, got {mt._stream_reset_count}"
+        assert len(events_of(events, "stream_reset")) == resets , (
+            f"{label}: expected {resets} stream resets, got {event_types(events)}"
         );
         if escapes is None {
             assert raised is None , f"{label}: unexpected {raised!r}";

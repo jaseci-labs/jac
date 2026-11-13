@@ -495,7 +495,11 @@ free at the handle's static drop point; on the Python backend memory stays
 GC-managed but `drop` hooks fire at the same points. `in Region() { ... }`
 opens an anonymous region whose extent is exactly the block. A thread starts
 with no current region, so a `flow`/`thread_run` body allocates on the
-managed heap unless it opens a handle it was sent. `managed(T(...))`
+managed heap unless it opens a handle it was sent. The extent does not cross
+a foreign frame either: a Jac function that C calls (a callback stored in a
+C struct or passed to a C function, or a `def` a C library block defines)
+runs with no current region, since the C caller may keep what it allocates;
+it allocates on the managed heap unless it opens a region itself. `managed(T(...))`
 constructs on the managed heap regardless of the current region: it is the
 allocation-side exit, for bookkeeping that must outlive any open.
 

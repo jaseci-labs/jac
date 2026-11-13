@@ -1,32 +1,5 @@
 import from enum { IntEnum, auto }
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { ParamKind }
-import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
-import type from jaclang.compiler.frontend.unitree { UniScopeNode as SymbolTable }
-import type from jaclang.compiler.types.ct_value { CtValue }
-import from jaclang.compiler.frontend.relations {
-    BaseOf,
-    BoundOf,
-    ConstraintOf,
-    DeclScopeOf,
-    EnumClassOf,
-    EnumMemberOf,
-    GuardOf,
-    MemberInfoOf,
-    MroOf,
-    OverloadOf,
-    ParamDefaultOf,
-    ParamOf,
-    ParamTypeOf,
-    PrivOf,
-    ReturnsOf,
-    SharedOf,
-    TypeArgOf,
-    TypeMemberOf,
-    TypeParamOf,
-    UnionMemberOf,
-    ValueTypeOf
-}
 
 enum TypeCategory(IntEnum) {
     Unbound,
@@ -86,6 +59,7 @@ node UnknownType(TypeBase) {
 
 node NeverType(TypeBase) {
     static has CATEGORY: TypeCategory = TypeCategory.Never;
+    has residual: (TypeBase | None) = None;
 
     def __str__ -> str;
 }
@@ -169,6 +143,7 @@ node ClassDetailsShared {
         _native_name: (tuple[SymbolTable, str] | None) = None,
         _acc_cache: (dict[str, any] | None) = None,
         _mro_sig: (list[tuple[int, str]] | None) = None,
+        _fresh_epoch: int = -1,
         _provisional: bool = False,
         _heal_stamp: int = 0;
 
@@ -258,6 +233,8 @@ node ClassType(TypeBase) {
 
     has private: ClassDetailsPrivate { getter; setter(private: ClassDetailsPrivate); }
     has shared: ClassDetailsShared { getter; }
+    has _tv_key: str = "",
+        _tv_solution: (dict[str, TypeBase] | None) = None;
 
     def init(
         *,
@@ -317,6 +294,7 @@ node Parameter {
 
     has default_value: (Expr | None) { getter; setter(default_value: (Expr | None)); }
 
+    def category_code -> int;
     def init(
         *,
         name: str,
@@ -386,34 +364,7 @@ node FunctionType(TypeBase) {
 
 def create_callable_type(
     param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
-) -> FunctionType {
-    parameters: list[Parameter] = [];
-
-    for (idx, param_type) in enumerate(param_types) {
-        parameters.append(
-            Parameter(
-                name=f"__p{idx}",
-                category=ParameterCategory.Positional,
-                param_type=param_type,
-                default_value=None,
-                is_self=False,
-                is_cls=False,
-                param_kind=ParamKind.POSONLY
-            )
-        );
-    }
-
-    flags: int = FunctionTypeFlags.GradualCallableForm
-        if is_gradual
-        else FunctionTypeFlags.Null;
-
-    return FunctionType(
-        func_name="",
-        return_type=return_type,
-        parameters=parameters,
-        function_flags=flags
-    );
-}
+) -> FunctionType;
 
 node OverloadedType(TypeBase) {
     static has CATEGORY: TypeCategory = TypeCategory.Overload;
@@ -482,3 +433,5 @@ node EnumMemberType(TypeBase) {
     def __str__ -> str;
     def get_value_type -> TypeBase;
 }
+
+glob CLASS_GRAPH_EPOCH: list[int] = [0];

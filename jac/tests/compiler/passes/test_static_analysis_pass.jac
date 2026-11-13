@@ -411,6 +411,29 @@ test "module-form typing.List stays legal as the runtime-object escape hatch" {
     ]}";
 }
 
+test "jsx member tags check their head, not their attribute parts" {
+    file_path = os.path.join(FIXTURES, "jsx_member_tags.jac");
+    prog = JacProgram();
+    prog.compile(file_path);
+    member_lines = set(range(15, 26));
+    flagged = [
+        (w.code.code, w.loc.first_line, w.loc.col_start)
+        for w in prog.warnings_had
+        if w.code is not None
+            and w.code.code in ("W1050", "W1051", "W2001")
+            and w.loc.first_line in member_lines
+    ];
+    assert flagged == [] , f"Expected no diagnostics on resolvable member tags, got {flagged}";
+    unknown = sorted(
+        [
+            (w.loc.first_line, w.loc.col_start)
+            for w in prog.warnings_had
+            if w.code is not None and w.code.code == "W2001" and w.loc.first_line == 28
+        ]
+    );
+    assert unknown == [(28, 6)] , f"Expected W2001 only on the unknown head 'Missing', got {unknown}";
+}
+
 test "lowercase boolean and null literals carry a did-you-mean hint" {
     # Issue #6357: `true`/`false`/`null`/`none` parse as undefined names. The
     # W2001 warning must point the author at the right Python-style literal
@@ -458,4 +481,32 @@ test "obj bare assignment to has var name still warns as unused" {
         if "defined but never used" in w
     ];
     assert len(unused_warnings) > 0 , "Expected unused variable warning for bare 'x' in obj method, got none";
+}
+
+test "jsx closing tags are not undefined-name reads" {
+    file_path = os.path.join(FIXTURES, "jsx_closing_tags.jac");
+    prog = JacProgram();
+    prog.compile(file_path);
+    w2001 = [
+        w
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W2001"
+    ];
+    flagged = sorted([(w.loc.first_line, w.loc.col_start) for w in w2001]);
+    assert flagged == [(17, 6)] , f"Expected W2001 only on the opening tag of the unknown component <Missing> (17:6), got {flagged}: {[
+        str(w) for w in w2001
+    ]}";
+}
+
+test "client state setters are not reported as unused" {
+    file_path = os.path.join(FIXTURES, "client_state_setters.jac");
+    prog = JacProgram();
+    prog.compile(file_path);
+    unused = [
+        str(w)
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W2003"
+    ];
+    assert not any("'setCount'" in w or "'setTitle'" in w for w in unused) , f"State setters are generated, not written; got {unused}";
+    assert len(unused) == 1 and "'stale' is defined but never used" in unused[0] , f"Expected exactly one W2003, for 'stale', got {unused}";
 }

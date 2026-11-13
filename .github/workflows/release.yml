@@ -38,12 +38,8 @@ jobs:
       github.repository == 'jaseci-labs/jac' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.action == 'create-pr'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      # Run the release scripts with the published compiler. The root jac.toml
-      # otherwise reroutes the installed binary to this checkout's jaclang.
-      JAC_NO_DEV_SOURCE: "1"
     permissions:
       contents: write
       pull-requests: write
@@ -64,14 +60,22 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Validate version bump
+        # From outside the checkout, so the published compiler runs: the root
+        # jac.toml would reroute it to this checkout's jaclang. The scripts find
+        # the repository from their own path.
+        working-directory: ${{ runner.temp }}
         run: |
-          jac run scripts/validate_release.jac \
+          jac run "$GITHUB_WORKSPACE/scripts/validate_release.jac" \
             --jaclang "${{ inputs.jaclang }}"
 
       - name: Bump versions
         id: release
+        # From outside the checkout, so the published compiler runs: the root
+        # jac.toml would reroute it to this checkout's jaclang. The scripts find
+        # the repository from their own path.
+        working-directory: ${{ runner.temp }}
         run: |
-          jac run scripts/release.jac \
+          jac run "$GITHUB_WORKSPACE/scripts/release.jac" \
             --jaclang "${{ inputs.jaclang }}"
 
       - name: Configure git
@@ -118,7 +122,7 @@ jobs:
           startsWith(github.event.pull_request.head.ref, 'release/')
         )
       )
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -181,7 +185,7 @@ jobs:
   # Human approval gate (release-approval environment required reviewers).
   approve:
     needs: resolve
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     environment: release-approval
     timeout-minutes: 60
     steps:
@@ -207,7 +211,7 @@ jobs:
   # Idempotent tag + Release so a recovery re-run converges.
   tag-and-release:
     needs: [resolve, approve]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -294,7 +298,7 @@ jobs:
   # publish emits no release.published, so no re-trigger.
   publish:
     needs: [resolve, tag-and-release, build-binaries]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -331,7 +335,7 @@ jobs:
   summary:
     needs: [resolve, tag-and-release, build-binaries, publish]
     if: always() && needs.resolve.result == 'success'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Release summary
@@ -363,7 +367,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.action == 'create-github-release'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

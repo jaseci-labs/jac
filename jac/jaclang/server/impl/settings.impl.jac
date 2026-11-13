@@ -2,7 +2,6 @@ import re;
 import ssl;
 import from pathlib { Path }
 import from urllib.parse { urlsplit }
-import from jaclang.runtime.object_interop { fields, is_record }
 
 
 impl TlsSettings.build_context -> any {
@@ -40,10 +39,6 @@ impl TlsSettings.build_context -> any {
 
 
 impl AuthSettings.resolve_secret(base_path: str) -> str {
-    import from jaclang.server.serving.authcrypt {
-        PLACEHOLDER_JWT_SECRET,
-        project_signing_secret
-    }
     secret = self.secret.strip();
     if secret and secret != PLACEHOLDER_JWT_SECRET {
         return secret;
@@ -59,65 +54,7 @@ impl AuthSettings.resolve_secret(base_path: str) -> str {
 }
 
 
-def table_value(current: any, raw: any, label: str) -> any {
-    if isinstance(current, bool) {
-        if not isinstance(raw, bool) {
-            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
-        }
-        return raw;
-    }
-    if isinstance(current, int) {
-        if isinstance(raw, bool) or not isinstance(raw, int) {
-            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
-        }
-        return raw;
-    }
-    if isinstance(current, float) {
-        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
-            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
-        }
-        return float(raw);
-    }
-    if isinstance(current, list) {
-        if not isinstance(raw, list)
-            or not all(isinstance(item, str) for item in raw) {
-            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
-        }
-        return list(raw);
-    }
-    if not isinstance(raw, str) {
-        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
-    }
-    return raw;
-}
-
-
-def env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any {
-    raw = str(env_value(name, environ));
-    if isinstance(current, bool) {
-        if raw.lower() not in ENV_TRUE + ENV_FALSE {
-            raise ServeConfigError(
-                f"{ENV_PREFIX}{name} must be true or false, got {raw!r}"
-            );
-        }
-        return raw.lower() in ENV_TRUE;
-    }
-    if isinstance(current, (int, float)) {
-        try {
-            return int(raw) if isinstance(current, int) else float(raw);
-        } except ValueError {
-            raise ServeConfigError(f"{ENV_PREFIX}{name} must be a number, got {raw!r}");
-        }
-    }
-    if isinstance(current, list) {
-        return [
-            part.strip()
-            for part in raw.split(',')
-            if part.strip()
-        ];
-    }
-    return raw;
-}
+def env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any;
 
 
 impl overlay_table(
@@ -128,35 +65,16 @@ impl overlay_table(
     moved: dict[str, str],
     environ: (dict[str, str] | None) = None
 ) -> None {
-    names = [f.name for f in fields(target)];
-    for key in table {
-        if key in names {
-            continue;
-        }
-        if key in moved {
-            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
-        }
-        raise ServeConfigError(
-            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
-        );
-    }
-    for name in names {
-        current = getattr(target, name);
-        env_name = env + name.upper();
+    apply_table(target, table, section, moved);
+    for f in fields(target) {
+        current = getattr(target, f.name);
+        env_name = env + f.name.upper();
         if is_record(current) {
-            nested = table.get(name, {});
-            if not isinstance(nested, dict) {
-                raise ServeConfigError(f"[{section}.{name}] must be a table");
-            }
             overlay_table(
-                current, nested, env_name + '_', f"{section}.{name}", {}, environ
+                current, {}, env_name + '_', f"{section}.{f.name}", {}, environ
             );
-        } elif env_value(env_name, environ) {
-            setattr(target, name, env_typed(current, env_name, environ));
-        } elif name in table {
-            setattr(
-                target, name, table_value(current, table[name], f"[{section}] {name}")
-            );
+        } elif env_value(env_name, environ) is not None {
+            setattr(target, f.name, env_typed(current, env_name, environ));
         }
     }
 }
@@ -332,7 +250,6 @@ impl AuthSettings.problems -> list[str] {
 
 
 impl secret_home(base_path: str) -> str {
-    import from jaclang.project.config { find_project_root }
     start = Path(base_path) if base_path else Path.cwd();
     found = find_project_root(start);
     if found is not None {
@@ -361,6 +278,23 @@ impl resolve_count(raw: str, quota: int, label: str) -> int {
 }
 
 
+impl default_worker_count(
+    quota: int, headroom: int, clustered: bool, can_fork: bool
+) -> int {
+    if clustered or not can_fork {
+        return 1;
+    }
+    return max(1, min(quota, headroom // WORKER_MEMORY_BUDGET));
+}
+
+
+impl machine_worker_count(quota: int) -> int {
+    return default_worker_count(
+        quota, memory_headroom_bytes(), in_cluster(), hasattr(os, 'fork')
+    );
+}
+
+
 impl default_threads(worker_count: int, quota: int) -> int {
     per_worker = max(1, quota // max(1, worker_count));
     return min(32, per_worker * 4 + 4);
@@ -385,14 +319,18 @@ impl ServeSettings.load(
     quota = cpu_quota();
 
     workers_raw = str(
-        given.get('workers') or env_value('WORKERS') or cfg.workers.count
-    );
-    worker_count = resolve_count(workers_raw, quota, '[serve.workers] count');
+        given.get('workers') or env_value('WORKERS') or cfg.workers.count or ''
+    ).strip();
+    count_by_default = not workers_raw;
+    worker_count = machine_worker_count(quota)
+        if count_by_default
+        else resolve_count(workers_raw, quota, '[serve.workers] count');
     threads_raw = str(
         given.get('threads') or env_value('THREADS') or cfg.workers.threads
     );
+    threads_by_default = threads_raw.strip().lower() == WORKERS_AUTO;
     threads = default_threads(worker_count, quota)
-        if threads_raw.strip().lower() == WORKERS_AUTO
+        if threads_by_default
         else resolve_count(threads_raw, quota, '[serve.workers] threads');
 
     port = (
@@ -415,6 +353,7 @@ impl ServeSettings.load(
         docs_enabled=env_bool('DOCS', cfg.docs_enabled),
         graph_enabled=env_bool('GRAPH', cfg.graph_enabled),
         cors_origins=env_list('CORS_ORIGINS', list(cfg.cors_origins)),
+        cors_credentials=env_bool('CORS_CREDENTIALS', cfg.cors_credentials),
         public_origin=(env_value('PUBLIC_ORIGIN') or cfg.public_origin).rstrip('/'),
         workers=WorkerSettings(
             count=worker_count,
@@ -425,7 +364,9 @@ impl ServeSettings.load(
             ),
             request_timeout=env_float('REQUEST_TIMEOUT', cfg.workers.request_timeout),
             boot_timeout=env_float('BOOT_TIMEOUT', cfg.workers.boot_timeout),
-            hang_timeout=env_float('HANG_TIMEOUT', cfg.workers.hang_timeout)
+            hang_timeout=env_float('HANG_TIMEOUT', cfg.workers.hang_timeout),
+            count_by_default=count_by_default,
+            threads_by_default=threads_by_default
         ),
         tls=TlsSettings(
             certfile=env_value('TLS_CERTFILE') or cfg.tls.certfile,
@@ -509,6 +450,15 @@ impl ServeSettings.validate -> list[str] {
             );
         }
     }
+    cors_problem = cors_pair_problem(
+        self.cors_origins,
+        self.cors_credentials,
+        '[serve] cors_origins',
+        '[serve] cors_credentials'
+    );
+    if cors_problem {
+        problems.append(cors_problem);
+    }
     if self.timeouts.drain < 0 or self.timeouts.close < 0 {
         problems.append("[serve.timeouts] drain and close must not be negative");
     }
@@ -571,4 +521,98 @@ impl ServeSettings.require_valid -> None {
     if problems {
         raise ServeConfigError('\n'.join(f"- {p}" for p in problems));
     }
+}
+
+
+impl env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any {
+    if isinstance(current, bool) {
+        return env_bool(name, current, environ);
+    }
+    if isinstance(current, int) {
+        return env_int(name, current, environ);
+    }
+    if isinstance(current, float) {
+        return env_float(name, current, environ);
+    }
+    if isinstance(current, list) {
+        return env_list(name, current, environ);
+    }
+    return env_value(name, environ) or current;
+}
+
+impl WorkerSettings.multi_process -> bool {
+    return self.count > 1;
+}
+
+impl TlsSettings.enabled -> bool {
+    return bool(self.certfile);
+}
+
+impl ServeSettings.scheme -> str {
+    return 'https' if self.tls.enabled() else 'http';
+}
+
+impl in_cluster -> bool {
+    return bool(os.environ.get('KUBERNETES_SERVICE_HOST', '').strip());
+}
+
+impl env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None) {
+    raw = (os.environ if environ is None else environ).get(ENV_PREFIX + name, '');
+    return raw.strip() or None;
+}
+
+impl env_bool(
+    name: str, `default: bool, environ: (dict[str, str] | None) = None
+) -> bool {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    if raw.lower() not in ENV_TRUE + ENV_FALSE {
+        raise ServeConfigError(
+            f"{ENV_PREFIX}{name} must be true or false "
+            f"({'/'.join(ENV_TRUE)} or {'/'.join(ENV_FALSE)}), got {raw!r}"
+        );
+    }
+    return raw.lower() in ENV_TRUE;
+}
+
+impl env_int(name: str, `default: int, environ: (dict[str, str] | None) = None) -> int {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    try {
+        return int(raw);
+    } except ValueError {
+        raise ServeConfigError(f"{ENV_PREFIX}{name} must be an integer, got {raw!r}");
+    }
+}
+
+impl env_float(
+    name: str, `default: float, environ: (dict[str, str] | None) = None
+) -> float {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    try {
+        return float(raw);
+    } except ValueError {
+        raise ServeConfigError(f"{ENV_PREFIX}{name} must be a number, got {raw!r}");
+    }
+}
+
+impl env_list(
+    name: str, `default: list[str], environ: (dict[str, str] | None) = None
+) -> list[str] {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    return [
+        part.strip()
+        for part in raw.split(',')
+        if part.strip()
+    ];
 }

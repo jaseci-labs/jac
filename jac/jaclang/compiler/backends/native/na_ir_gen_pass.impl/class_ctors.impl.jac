@@ -1,6 +1,3 @@
-import from jaclang.compiler.frontend.constant { SymbolType }
-import from jaclang.compiler.field_semantics { field_initialization }
-
 glob CLASS_CTOR_BUCKETS: int = 256,
      CLASS_CTOR_REGISTRY: str = "__jac_class_ctors",
      CLASS_CTOR_MAX_PARAMS: int = 63,
@@ -37,7 +34,7 @@ impl NaIRGenPass._class_expr_bound(
     } elif not typ.is_instantiable() or typ.is_instance() {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     return class_type_native_name(typ);
 }
 
@@ -486,7 +483,352 @@ impl NaIRGenPass._class_ctor_registry -> ir.GlobalVariable {
 impl NaIRGenPass._class_record_type -> ir.LiteralStructType {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    return ir.LiteralStructType([i8p, i64, i8p, i64, i8p, i64]);
+    return ir.LiteralStructType([i8p, i64, i8p, i64, i8p, i64, i8p, i64, i8p]);
+}
+
+impl NaIRGenPass._class_static_entry_type -> ir.LiteralStructType {
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    return ir.LiteralStructType([i64, i8p, i8p, i64]);
+}
+
+impl NaIRGenPass._static_type_key(t: ir.Type) -> str {
+    payload = self._opt_payload_of(t);
+    if payload is not None {
+        return f"opt({self._static_type_key(payload)})";
+    }
+    return str(t);
+}
+
+impl NaIRGenPass._static_field_name_const(field: str) -> ir.Constant {
+    i32 = ir.IntType(32);
+    gv_name = f".jac.sfname.{field}";
+    existing = self.llvm_module.globals.get(gv_name);
+    if isinstance(existing, ir.GlobalVariable) {
+        return existing.gep([ir.Constant(i32, 0), ir.Constant(i32, 0)]);
+    }
+    text = (field + "\0").encode("utf8");
+    text_ty = ir.ArrayType(ir.IntType(8), len(text));
+    gv = ir.GlobalVariable(self.llvm_module, text_ty, name=gv_name);
+    gv.linkage = "private";
+    gv.global_constant = True;
+    gv.initializer = ir.Constant(text_ty, bytearray(text));
+    return gv.gep([ir.Constant(i32, 0), ir.Constant(i32, 0)]);
+}
+
+impl NaIRGenPass._class_static_table(name: str) -> tuple[int, ir.Value] {
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    entry_ty = self._class_static_entry_type();
+    prefix = f"{name}.";
+    entries: list[ir.Constant] = [];
+    for (full, gv) in self.static_fields.items() {
+        if not full.startswith(prefix) or gv.linkage == "external" {
+            continue;
+        }
+        field = full[len(prefix):];
+        if "." in field {
+            continue;
+        }
+        entries.append(
+            ir.Constant(
+                entry_ty,
+                [
+                    ir.Constant(i64, self._static_str_hash(field)),
+                    self._static_field_name_const(field),
+                    gv.bitcast(i8p),
+                    ir.Constant(
+                        i64, self._static_str_hash(self._static_type_key(gv.value_type))
+                    )
+                ]
+            )
+        );
+    }
+    if not entries {
+        return (0, ir.Constant(i8p, None));
+    }
+    table_ty = ir.ArrayType(entry_ty, len(entries));
+    table_gv = ir.GlobalVariable(self.llvm_module, table_ty, name=f"{name}.__statics");
+    table_gv.linkage = "private";
+    table_gv.global_constant = True;
+    table_gv.initializer = ir.Constant(table_ty, entries);
+    return (len(entries), table_gv.bitcast(i8p));
+}
+
+impl NaIRGenPass._emit_class_static_lookup_fn -> ir.Function {
+    if self._class_static_lookup_fn is not None {
+        return self._class_static_lookup_fn;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    record_ty = self._class_record_type();
+    entry_ty = self._class_static_entry_type();
+    mro_ty = ir.LiteralStructType([i64, i8p]);
+    zero = ir.Constant(i32, 0);
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    find_record = self._emit_class_record_lookup_fn();
+    fn = self._define_function(
+        "__jac_class_static", ir.FunctionType(i8p, [i8p, i8p, i64])
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "cls";
+    fn.args[1].name = "field";
+    fn.args[2].name = "fh";
+    head = fn.append_basic_block("entry");
+    have_record = fn.append_basic_block("record");
+    anc_loop = fn.append_basic_block("anc");
+    anc_body = fn.append_basic_block("anc.body");
+    anc_record = fn.append_basic_block("anc.record");
+    ent_loop = fn.append_basic_block("ent");
+    ent_hash = fn.append_basic_block("ent.hash");
+    ent_name = fn.append_basic_block("ent.name");
+    ent_next = fn.append_basic_block("ent.next");
+    hit = fn.append_basic_block("hit");
+    anc_next = fn.append_basic_block("anc.next");
+    miss = fn.append_basic_block("miss");
+
+    b = ir.IRBuilder(head);
+    raw = b.call(find_record, [fn.args[0]], name="record.raw");
+    b.cbranch(
+        b.icmp_unsigned("==", raw, ir.Constant(i8p, None), name="record.none"),
+        miss,
+        have_record
+    );
+
+    b = ir.IRBuilder(have_record);
+    record = b.bitcast(raw, record_ty.as_pointer(), name="record");
+    mro = b.bitcast(
+        b.load(
+            b.gep(record, [zero, ir.Constant(i32, CLASS_RECORD_ANCESTRY)]),
+            name="mro.raw"
+        ),
+        mro_ty.as_pointer(),
+        name="mro"
+    );
+    b.branch(anc_loop);
+
+    b = ir.IRBuilder(anc_loop);
+    anc_i = b.phi(i64, name="anc.i");
+    anc_slot = b.gep(mro, [anc_i], name="anc.slot");
+    anc_name = b.load(b.gep(anc_slot, [zero, ir.Constant(i32, 1)]), name="anc.name");
+    b.cbranch(
+        b.icmp_unsigned("==", anc_name, ir.Constant(i8p, None), name="anc.end"),
+        miss,
+        anc_body
+    );
+
+    b = ir.IRBuilder(anc_body);
+    anc_raw = b.call(find_record, [anc_name], name="anc.record.raw");
+    b.cbranch(
+        b.icmp_unsigned("==", anc_raw, ir.Constant(i8p, None), name="anc.unknown"),
+        anc_next,
+        anc_record
+    );
+
+    b = ir.IRBuilder(anc_record);
+    anc_rec = b.bitcast(anc_raw, record_ty.as_pointer(), name="anc.rec");
+    count = b.load(
+        b.gep(anc_rec, [zero, ir.Constant(i32, CLASS_RECORD_STATICS_COUNT)]),
+        name="statics.n"
+    );
+    table = b.bitcast(
+        b.load(
+            b.gep(anc_rec, [zero, ir.Constant(i32, CLASS_RECORD_STATICS)]),
+            name="statics.raw"
+        ),
+        entry_ty.as_pointer(),
+        name="statics"
+    );
+    b.branch(ent_loop);
+
+    b = ir.IRBuilder(ent_loop);
+    ent_i = b.phi(i64, name="ent.i");
+    slot = b.gep(table, [ent_i], name="ent.slot");
+    b.cbranch(b.icmp_unsigned("<", ent_i, count, name="ent.more"), ent_hash, anc_next);
+
+    b = ir.IRBuilder(ent_hash);
+    b.cbranch(
+        b.icmp_unsigned(
+            "==", b.load(b.gep(slot, [zero, zero]), name="ent.h"), fn.args[2]
+        ),
+        ent_name,
+        ent_next
+    );
+
+    b = ir.IRBuilder(ent_name);
+    b.cbranch(
+        b.icmp_signed(
+            "==",
+            b.call(
+                strcmp,
+                [
+                    b.load(b.gep(slot, [zero, ir.Constant(i32, 1)]), name="ent.name"),
+                    fn.args[1]
+                ],
+                name="ent.cmp"
+            ),
+            ir.Constant(i32, 0),
+            name="ent.same"
+        ),
+        hit,
+        ent_next
+    );
+
+    b = ir.IRBuilder(ent_next);
+    ent_after = b.add(ent_i, ir.Constant(i64, 1), name="ent.in");
+    b.branch(ent_loop);
+    ent_i.add_incoming(ir.Constant(i64, 0), anc_record);
+    ent_i.add_incoming(ent_after, ent_next);
+
+    b = ir.IRBuilder(hit);
+    b.ret(b.bitcast(slot, i8p, name="ent.hit"));
+
+    b = ir.IRBuilder(anc_next);
+    anc_after = b.add(anc_i, ir.Constant(i64, 1), name="anc.in");
+    b.branch(anc_loop);
+    anc_i.add_incoming(ir.Constant(i64, 0), have_record);
+    anc_i.add_incoming(anc_after, anc_next);
+
+    ir.IRBuilder(miss).ret(ir.Constant(i8p, None));
+    self._class_static_lookup_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._codegen_class_value_static(
+    target: uni.UniNode, bound: str, field: str
+) -> (ir.Value | None) {
+    fallback: (ir.GlobalVariable | None) = None;
+    for cls_name in self._mro_of(bound) {
+        fallback = self.static_fields.get(f"{cls_name}.{field}");
+        if fallback is not None {
+            break;
+        }
+    }
+    if fallback is None {
+        return None;
+    }
+    cls = self._codegen_expr(target);
+    if cls is None or not isinstance(cls.type, ir.PointerType) {
+        return None;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    zero = ir.Constant(i32, 0);
+    want = fallback.value_type;
+    payload = self._opt_payload_of(want);
+    entry_ty = self._class_static_entry_type();
+    raw = self.builder.call(
+        self._emit_class_static_lookup_fn(),
+        [
+            self._coerce_type(cls, i8p),
+            self._static_field_name_const(field),
+            ir.Constant(i64, self._static_str_hash(field))
+        ],
+        name=f"sfld.{field}.entry"
+    );
+    fn = self.builder.function;
+    declared_bb = fn.append_basic_block(f"sfld.{field}.declared");
+    entry_bb = fn.append_basic_block(f"sfld.{field}.override");
+    same_bb = fn.append_basic_block(f"sfld.{field}.same");
+    check_payload_bb = fn.append_basic_block(f"sfld.{field}.check");
+    payload_bb = fn.append_basic_block(f"sfld.{field}.wrap");
+    clash_bb = fn.append_basic_block(f"sfld.{field}.clash");
+    done_bb = fn.append_basic_block(f"sfld.{field}.done");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "==", raw, ir.Constant(i8p, None), name=f"sfld.{field}.static"
+        ),
+        declared_bb,
+        entry_bb
+    );
+
+    self.builder.position_at_end(declared_bb);
+    declared_val = self.builder.load(fallback, name=f"sfld.{field}.base");
+    declared_end = self.builder.block;
+    self.builder.branch(done_bb);
+
+    self.builder.position_at_end(entry_bb);
+    record_entry = self.builder.bitcast(
+        raw, entry_ty.as_pointer(), name=f"sfld.{field}.e"
+    );
+    storage = self.builder.load(
+        self.builder.gep(record_entry, [zero, ir.Constant(i32, 2)]),
+        name=f"sfld.{field}.ptr"
+    );
+    type_key = self.builder.load(
+        self.builder.gep(record_entry, [zero, ir.Constant(i32, 3)]),
+        name=f"sfld.{field}.ty"
+    );
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "==",
+            type_key,
+            ir.Constant(i64, self._static_str_hash(self._static_type_key(want))),
+            name=f"sfld.{field}.same.ty"
+        ),
+        same_bb,
+        check_payload_bb
+    );
+
+    self.builder.position_at_end(same_bb);
+    same_val = self.builder.load(
+        self.builder.bitcast(storage, want.as_pointer()), name=f"sfld.{field}.val"
+    );
+    same_end = self.builder.block;
+    self.builder.branch(done_bb);
+
+    self.builder.position_at_end(check_payload_bb);
+    if payload is not None {
+        self.builder.cbranch(
+            self.builder.icmp_unsigned(
+                "==",
+                type_key,
+                ir.Constant(i64, self._static_str_hash(self._static_type_key(payload))),
+                name=f"sfld.{field}.payload.ty"
+            ),
+            payload_bb,
+            clash_bb
+        );
+    } else {
+        self.builder.branch(clash_bb);
+    }
+
+    self.builder.position_at_end(payload_bb);
+    wrapped: (ir.Value | None) = None;
+    if payload is not None {
+        wrapped = self._coerce_type(
+            self.builder.load(
+                self.builder.bitcast(storage, payload.as_pointer()),
+                name=f"sfld.{field}.inner"
+            ),
+            want
+        );
+    }
+    payload_end = self.builder.block;
+    self.builder.branch(done_bb);
+
+    self.builder.position_at_end(clash_bb);
+    self._emit_runtime_raise(
+        ir.Constant(ir.IntType(1), 1),
+        "TypeError",
+        f"a class value's static field '{field}' is stored with a different native type than {self._arch_display(
+            bound
+        )} declares"
+    );
+    clash_end = self.builder.block;
+    self.builder.branch(done_bb);
+
+    self.builder.position_at_end(done_bb);
+    result = self.builder.phi(want, name=f"sfld.{field}");
+    result.add_incoming(declared_val, declared_end);
+    result.add_incoming(same_val, same_end);
+    result.add_incoming(
+        wrapped if wrapped is not None else ir.Constant(want, None), payload_end
+    );
+    result.add_incoming(ir.Constant(want, None), clash_end);
+    return result;
 }
 
 impl NaIRGenPass._class_ctor_entry_type -> ir.LiteralStructType {
@@ -970,9 +1312,6 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
             }
         }
         tag = stable_osp_tag(name) if name in self.osp_type_tag_field else 0;
-        if not entries and tag == 0 {
-            continue;
-        }
         table: ir.Value = ir.Constant(i8p, None);
         if entries {
             table_ty = ir.ArrayType(entry_ty, len(entries));
@@ -984,6 +1323,7 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
             table_gv.initializer = ir.Constant(table_ty, entries);
             table = table_gv.bitcast(i8p);
         }
+        (statics_count, statics_table) = self._class_static_table(name);
         record = ir.GlobalVariable(
             self.llvm_module, record_ty, name=f"{name}.__classrec"
         );
@@ -996,14 +1336,30 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
                 self._emit_class_name_const(name),
                 ir.Constant(i64, len(entries)),
                 table,
-                ir.Constant(i64, tag)
+                ir.Constant(i64, tag),
+                self._emit_vtable_ancestry(name).bitcast(i8p),
+                ir.Constant(i64, statics_count),
+                statics_table
             ]
         );
         self._class_ctor_records.append((record, self._static_str_hash(name)));
+        vtable = self.vtable_globals.get(name) if self._arch_has_vtable(name) else None;
+        if vtable is not None {
+            node_ty = ir.LiteralStructType([i8p, i8p]);
+            vt_node = ir.GlobalVariable(
+                self.llvm_module, node_ty, name=f"{name}.__vtnode"
+            );
+            vt_node.linkage = "internal";
+            vt_node.initializer = ir.Constant(
+                node_ty, [ir.Constant(i8p, None), vtable.bitcast(i8p)]
+            );
+            self._vtable_nodes.append(vt_node);
+        }
     }
 }
 
 impl NaIRGenPass._emit_class_ctor_registrations -> None {
+    self._emit_vtable_set_registrations();
     if not self._class_ctor_records {
         return;
     }

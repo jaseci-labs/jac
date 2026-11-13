@@ -9,21 +9,14 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
 glob _decoy: list[str] = [];
 
 
-def decoy_hash -> str {
-    if not _decoy {
-        _decoy.append(IdentityStorage.hash_password(uuid.uuid4().hex));
-    }
-    return _decoy[0];
-}
+def decoy_hash -> str;
 
 impl IdentityStorage.create_user(
     identities: list[dict[str, any]],
     credential: dict[str, any],
     profile: dict[str, any] | None = None
 ) -> dict[str, any] {
-    import from jaclang.runtime.constructs { Root }
     import from jaclang { JacRuntime as Jac }
-
     type_counts: dict[str, int] = {};
     for identity in identities {
         id_type = identity.get('type', '');
@@ -122,9 +115,7 @@ impl IdentityStorage.user_exists_by_id(user_id: str) -> bool {
 }
 
 impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
-    import from jaclang.runtime.constructs { Root }
     import from jaclang { JacRuntime as Jac }
-
     existing = self.get_user_by_id(user_id);
     if existing {
         return existing.get('root_id');
@@ -160,9 +151,7 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
 }
 
 impl IdentityStorage.reset_root(user_id: str) -> str | None {
-    import from jaclang.runtime.constructs { Root }
     import from jaclang { JacRuntime as Jac }
-
     existing = self.get_user_by_id(user_id);
     if not existing {
         return None;
@@ -490,6 +479,7 @@ impl IdentityStorage.unlink_sso_account(user_id: str, platform: str) -> dict[str
     if not self._remove_sso_identity(user_id, platform) {
         return {'error': 'SSO account not found for this provider'};
     }
+    self._take_oauth_grant(user_id, platform);
     return {
         'message': 'SSO account unlinked successfully',
         'user_id': user_id,
@@ -512,4 +502,22 @@ impl IdentityStorage.get_sso_accounts(user_id: str) -> list[dict[str, str]] {
         }
     }
     return accounts;
+}
+
+impl decoy_hash -> str {
+    if not _decoy {
+        _decoy.append(IdentityStorage.hash_password(uuid.uuid4().hex));
+    }
+    return _decoy[0];
+}
+
+impl primary_username(user: dict[str, any]) -> str {
+    for identity in (user.get('identities') or []) {
+        if isinstance(identity, dict) and identity.get('type') == 'username' {
+            return str(
+                identity.get('value_raw') or identity.get('value_normalized') or ''
+            );
+        }
+    }
+    return '';
 }

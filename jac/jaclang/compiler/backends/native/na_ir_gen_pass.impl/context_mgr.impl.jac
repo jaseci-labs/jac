@@ -1,5 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-
 impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
     if not nd.exprs {
         if isinstance(nd.body, (list, tuple)) {
@@ -78,10 +76,8 @@ impl NaIRGenPass._codegen_with_recursive(
     enter_owned = type_name not in ("File", "BinaryFile");
     linked = self._linked_fn_decls.get(id(enter_fn));
     if self._nogc_headerless() and linked is not None {
-        signature = linked[1].signature;
-        if isinstance(signature, uni.FuncSignature) {
-            enter_owned = not type_tag_borrows(signature.return_type);
-        }
+        import from jaclang.compiler.passes.rc_facts_pass { method_returns_borrow }
+        enter_owned = not method_returns_borrow(linked[1]);
     }
     enter_result = self.builder.call(enter_fn, enter_args, name="cm.enter");
     if enter_owned {
@@ -119,8 +115,7 @@ impl NaIRGenPass._codegen_with_recursive(
         if self._exc_raise_fn is None {
             self._declare_exception_runtime();
         }
-        func.attributes.add("optnone");
-        func.attributes.add("noinline");
+        self._mark_setjmp_function(func);
         (state, depth) = self._push_exception_handler(error_bb, body_bb);
     }
     frame = NativeFinalizer(
@@ -155,36 +150,58 @@ impl NaIRGenPass._codegen_with_recursive(
     }
     if not self.builder.block.is_terminated {
         if not slot_mode {
-            self.builder.call(self._exc_pop_fn, []);
+            self._emit_exc_pop(self.builder);
         }
         self._emit_context_exit(owner, exit_fn);
         self.builder.branch(merge_bb);
     }
     self.builder.position_at_end(error_bb);
     values: tuple[ir.Value, ir.Value, ir.Value];
+    taken: (ir.Value | None) = None;
     if slot_mode {
         (tg, og, mg) = self._nogc_err_slot();
         values = (self.builder.load(tg), self.builder.load(og), self.builder.load(mg));
         self.builder.store(ir.Constant(i32, 0), tg);
+        if self._nogc_headerless() {
+            drop_field = self._nogc_err_drop_slot();
+            taken = self.builder.load(drop_field, name="with.exc.drop");
+            self.builder.store(ir.Constant(taken.type, None), drop_field);
+        }
     } else {
         assert state is not None and depth is not None;
         self._region_unwind(self.builder.load(depth));
         values = self._exception_values(state);
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
     }
     self._caught_error_stack.append((func, values));
     suppressed = self._emit_context_exit(owner, exit_fn);
     self._caught_error_stack.pop();
     propagate = func.append_basic_block(name=f"with.propagate.{idx}");
+    swallowed = merge_bb;
+    if taken is not None {
+        swallowed = func.append_basic_block(name=f"with.suppressed.{idx}");
+    }
     self.builder.cbranch(
-        self._coerce_type(suppressed, ir.IntType(1)), merge_bb, propagate
+        self._coerce_type(suppressed, ir.IntType(1)), swallowed, propagate
     );
+    if taken is not None {
+        self.builder.position_at_end(swallowed);
+        drop_slot = self._entry_alloca(taken.type, f"with.exc.drop.{idx}");
+        obj_slot = self._entry_alloca(values[1].type, f"with.exc.obj.{idx}");
+        self.builder.store(taken, drop_slot);
+        self.builder.store(values[1], obj_slot);
+        self._emit_caught_drop(drop_slot, obj_slot);
+        self.builder.branch(merge_bb);
+    }
     self.builder.position_at_end(propagate);
     if slot_mode {
         (_slot_t, _slot_o, _slot_m) = self._nogc_err_slot();
         self.builder.store(values[0], _slot_t);
         self.builder.store(values[1], _slot_o);
         self.builder.store(values[2], _slot_m);
+        if taken is not None {
+            self.builder.store(taken, self._nogc_err_drop_slot());
+        }
         self._emit_err_propagate(loc="with.propagate");
     } else {
         self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
@@ -194,12 +211,6 @@ impl NaIRGenPass._codegen_with_recursive(
 }
 
 impl NaIRGenPass._emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Value {
-    """Call `__exit__` on the manager a `with` holds in its owner slot.
-
-    The manager is reloaded from the slot rather than reused as the value the
-    entry computed: inside a generator the body can suspend, and a resumed
-    frame reaches the exit without passing through the entry that defined it.
-    """;
     if isinstance(cm.type, ir.PointerType)
         and isinstance(cm.type.pointee, ir.PointerType) {
         cm = self.builder.load(cm, name="cm.owner");
@@ -220,11 +231,10 @@ impl NaIRGenPass._emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Va
 }
 
 impl NaIRGenPass._ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | None) {
-    """The `@contextmanager` ability a `with` item calls, if it calls one.""";
     if not isinstance(expr, uni.FuncCall) {
         return None;
     }
-    import from jaclang.compiler.erased_imports { contextmanager_ability }
+
     _callee = self._callee_ability_of(expr);
     return _callee if contextmanager_ability(_callee) else None;
 }
@@ -235,21 +245,6 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     body: Sequence[uni.CodeBlockStmt],
     callee: uni.Ability
 ) -> None {
-    """Lower `with f(...) as x` where `f` is a `@contextlib.contextmanager`.
-
-    The decorated function is compiled as the plain generator it is, so the
-    manager is its iterator and `contextlib`'s protocol is spelled here, in
-    the caller: enter advances it to its first `yield` (binding the yielded
-    value to `as`), a normal exit advances it once more expecting it to
-    finish, and an exception from the body is thrown into it at the `yield`
-    -- the frame's pending-exception record, raised on resume -- so its
-    `finally` runs and its `except` may swallow the exception. A generator
-    that finishes after the throw suppresses the exception; one that lets it
-    (or another) escape propagates it; one that yields again is a
-    `RuntimeError`, as are a generator that never yields and one that yields
-    twice. Early exits from the body (`return`, `break`, `continue`) run the
-    normal exit through the finalizer stack.
-    """;
     expr_item = exprs[idx];
     call = expr_item.expr;
     func = self.builder.function;
@@ -327,8 +322,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     body_bb = func.append_basic_block(name=f"with.gen.body.{idx}");
     error_bb = func.append_basic_block(name=f"with.gen.error.{idx}");
     merge_bb = func.append_basic_block(name=f"with.gen.merge.{idx}");
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
+    self._mark_setjmp_function(func);
     (state, depth) = self._push_exception_handler(error_bb, body_bb);
     frame = NativeFinalizer(
         body=None,
@@ -356,7 +350,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
         }
     }
     if not self.builder.block.is_terminated {
-        self.builder.call(self._exc_pop_fn, []);
+        self._emit_exc_pop(self.builder);
         self._emit_gen_context_exit(owner, out_type);
         self.builder.branch(merge_bb);
     }
@@ -364,7 +358,7 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     self.builder.position_at_end(error_bb);
     self._region_unwind(self.builder.load(depth));
     values = self._exception_values(state);
-    self.builder.call(self._exc_pop_fn, []);
+    self._emit_exc_pop(self.builder);
     again = self._emit_gen_throw(owner, out_type, values);
     self._emit_runtime_raise(
         again, "RuntimeError", "generator didn't stop after throw()"
@@ -374,7 +368,6 @@ impl NaIRGenPass._codegen_with_ctxmgr(
 }
 
 impl NaIRGenPass._emit_gen_context_exit(owner: ir.Value, out_type: ir.Type) -> None {
-    """Finish a generator-based manager after its body completed normally.""";
     i8p = ir.IntType(8).as_pointer();
     it_val = self.builder.load(owner, name="cm.gen.it");
     scratch = self._stack_entry_alloca(out_type, "cm.gen.exit.out");
@@ -387,14 +380,6 @@ impl NaIRGenPass._emit_gen_context_exit(owner: ir.Value, out_type: ir.Type) -> N
 impl NaIRGenPass._emit_gen_throw(
     owner: ir.Value, out_type: ir.Type, values: tuple[ir.Value, ir.Value, ir.Value]
 ) -> ir.Value {
-    """Throw `values` (type id, object, message) into a suspended generator.
-
-    Fills the frame's pending-exception record and resumes it; the resume
-    point raises it inside the generator. Answers whether the generator
-    yielded again. An exception the generator does not handle -- the thrown
-    one or a new one -- leaves through the resume call to the enclosing
-    handler, which is the propagation `contextlib` performs.
-    """;
     b = self.builder;
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);

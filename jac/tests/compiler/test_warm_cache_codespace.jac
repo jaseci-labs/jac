@@ -11,7 +11,7 @@ raised. The client-codespace probe caught the ImportError and answered
 
 The key is now a function of the module and the configuration, the symtab-IR
 schedule pre-imports the compiler modules its passes reach at run time (the
-discipline `get_ir_gen_sched` already kept) so no compile is ever the first to
+discipline the IR product already kept) so no compile is ever the first to
 import one, a compile that still manages to re-enter itself says so out loud
 instead of degrading, and a probe failure that comes from the compiler's own
 source refuses to answer at all.
@@ -35,17 +35,16 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.driver.pipeline {
-    ANALYSIS_SCHED_DEPS,
-    IR_SCHED_DEPS,
-    get_analysis_sched,
-    get_ir_gen_sched,
-    get_symtab_ir_sched,
+    ANALYSIS_LOADS,
+    CODEGEN_LOADS,
+    IR_LOADS,
     providers_of,
-    schedule_tier_reason
+    schedule_for,
+    tier_reason
 }
-import from jaclang.compiler.driver.module_compile {
-    CODEGEN_SCHED_DEPS,
-    get_py_code_gen
+import from jaclang.compiler.driver.pipeline_types {
+    CompilationProduct,
+    ProductRequest
 }
 import from jaclang.compiler.driver.source_failures { bootstrap_tier_failure_details }
 import from jaclang.compiler.frontend.codeinfo {
@@ -168,16 +167,59 @@ test "source cache keys use their own native policy instead of ambient config" {
 }
 
 
+test "a prepare's key memo keeps each codespace and native target apart" {
+    import tempfile;
+    import from jaclang.compiler.driver.compile_options {
+        pop_native_target,
+        push_native_target
+    }
+    import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
+    saved = get_effective_default_codespace_override();
+    with tempfile.TemporaryDirectory() as directory {
+        source = os.path.join(directory, "main.jac");
+        with open(source, "w") as f {
+            f.write("def value -> int { return 1; }\n");
+        }
+        def key_under(codespace: str, triple: (str | None)) -> str {
+            set_effective_default_codespace(codespace);
+            token = push_native_target(triple) if triple is not None else None;
+            try {
+                return module_cache_key(source);
+            } finally {
+                if triple is not None {
+                    pop_native_target(token);
+                }
+            }
+        }
+        scopes = [("", None), ("native", None), ("native", "wasm32-unknown-unknown")];
+        try {
+            expected = [key_under(c, t) for (c, t) in scopes];
+            assert len(set(expected)) > 1 , "a native target must change the key";
+            memo = begin_prepare_memo();
+            try {
+                memoized = [key_under(c, t) for (c, t) in scopes];
+            } finally {
+                end_prepare_memo(memo);
+            }
+            assert memoized == expected , (
+                f"a prepare reused one scope's key for another: {memoized} != {expected}"
+            );
+        } finally {
+            set_effective_default_codespace(saved);
+        }
+    }
+}
+
 test "the symtab-ir schedule pre-imports what its passes reach at run time" {
     saved_mod = sys.modules.pop("jaclang.compiler.symbol_utils");
     try {
-        get_symtab_ir_sched();
+        schedule_for(CompilationProduct.SYMBOLS);
         restored = sys.modules.get("jaclang.compiler.symbol_utils");
         assert restored is not None , (
             "building the symtab-IR schedule left symbol_utils unimported, so a "
             "pass reaching it at run time would be the first to import it"
         );
-        assert hasattr(restored, "collect_assigned_symbols") , (
+        assert hasattr(restored, "resolve_import_source_module") , (
             "symbol_utils came back half-initialized"
         );
     } finally {
@@ -210,7 +252,7 @@ test "a symtab-only compile survives being the first to need symbol_utils" {
 test "the ir-gen schedule pre-imports the narrowing keys its passes reach" {
     saved_mod = sys.modules.pop("jaclang.compiler.expr_keys");
     try {
-        get_ir_gen_sched();
+        schedule_for(CompilationProduct.IR);
         restored = sys.modules.get("jaclang.compiler.expr_keys");
         assert restored is not None , (
             "building the ir-gen schedule left expr_keys unimported, so "
@@ -235,23 +277,30 @@ def _with_in_flight(name: str, path: str) -> types.ModuleType {
 
 test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
     name = "jaclang.compiler.symbol_utils";
-    assert name in IR_SCHED_DEPS , "symbol_utils left the ir-gen dependency list";
+    assert name in IR_LOADS , "symbol_utils left the IR product's loads";
     saved = _with_in_flight(name, SYMBOL_UTILS);
     try {
-        reason = schedule_tier_reason();
+        reason = tier_reason(CompilationProduct.IR);
         assert name in reason , f"tier reason does not name the module in flight: {reason!r}";
-        sched = get_ir_gen_sched();
-        assert "CfgSucc" not in providers_of(sched) , (
+        sched = schedule_for(CompilationProduct.IR);
+        assert "CfgSucc" not in providers_of(sched or []) , (
             "the full ir-gen schedule was built while one of its dependencies was "
             "mid-import; a pass reaching that module at run time re-enters it"
         );
-        tail = [p.__name__ for p in get_py_code_gen()];
+        tail = [
+            p.__name__
+            for product in (
+                CompilationProduct.CODEGEN,
+                CompilationProduct.PY_IR,
+                CompilationProduct.FROZEN
+            ) for p in (schedule_for(product, ProductRequest(native=True)) or [])
+        ];
         assert tail == ["NativeImportFactsPass", "JcirGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }
-    assert schedule_tier_reason() == "" , "the tier reason outlived the import";
-    assert "CfgSucc" in providers_of(get_ir_gen_sched());
+    assert tier_reason(CompilationProduct.IR) == "" , "the tier reason outlived the import";
+    assert "CfgSucc" in providers_of(schedule_for(CompilationProduct.IR) or []);
 }
 
 
@@ -270,7 +319,7 @@ test "a silent internal compile failure names the dependency mid-import" {
         sys.modules[name] = saved;
     }
     assert name in details and "bootstrap tier" in details , details;
-    assert "IR_SCHED_DEPS" in details , f"the fix is not named: {details}";
+    assert "PRODUCTS" in details , f"the fix is not named: {details}";
 }
 
 
@@ -282,10 +331,13 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
         rel = mod_name.removeprefix("jaclang.").replace(".", os.sep) + ".jac";
         return is_seed_source(rel);
     }
+    codegen = (schedule_for(CompilationProduct.CODEGEN) or [])
+        + (schedule_for(CompilationProduct.PY_IR) or [])
+        + (schedule_for(CompilationProduct.FROZEN) or []);
     schedules = {
-        "ir-gen": (get_ir_gen_sched(), IR_SCHED_DEPS),
-        "analysis": (get_analysis_sched(), ANALYSIS_SCHED_DEPS),
-        "codegen": (get_py_code_gen(native=False), CODEGEN_SCHED_DEPS)
+        "ir-gen": (schedule_for(CompilationProduct.IR) or [], IR_LOADS),
+        "analysis": (schedule_for(CompilationProduct.ANALYSIS) or [], ANALYSIS_LOADS),
+        "codegen": (codegen, CODEGEN_LOADS)
     };
     for (origin, (passes, deps)) in schedules.items() {
         for dep in deps {
@@ -310,10 +362,6 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
 
 
 test "a compile that re-enters the module being imported says so" {
-    # The kernel's early passes carry their own expr_keys, so only the
-    # bytecode frontend reaches the module this test holds mid-import.
-    import from unittest.mock { patch }
-    import jaclang.compiler.native_compiler as native_compiler;
     ek = sys.modules["jaclang.compiler.expr_keys"];
     saved_fn = ek.collect_assigned_symbols;
     sys.modules["jac_reentrant_probe"] = initializing_stub(EXPR_KEYS);
@@ -323,13 +371,11 @@ test "a compile that re-enters the module being imported says so" {
         compiler = prog._get_compiler();
         raised = False;
         try {
-            with patch.object(native_compiler, "ensure_loaded", return_value=None) {
-                compiler.compile(
-                    file_path=EXPR_KEYS,
-                    target_program=compiler.selfhost.program,
-                    options=CompileOptions(no_cgen=True)
-                );
-            }
+            compiler.compile(
+                file_path=EXPR_KEYS,
+                target_program=compiler.selfhost.program,
+                options=CompileOptions(no_cgen=True)
+            );
         } except CompilerSourceError as loud {
             raised = True;
             assert "re-entered" in str(loud) , str(loud);
@@ -389,14 +435,13 @@ test "a bootstrap frontend retains its codegen tier after imports finish" {
     import tempfile;
     import from pathlib { Path }
     import from unittest.mock { patch }
-    import jaclang.compiler.driver.pipeline as pipeline_mod;
-    import from jaclang.compiler.driver.pipeline { get_bootstrap_ir_sched }
+    import from jaclang.compiler.driver.pipeline { PRODUCTS, bootstrap_ir_passes }
     with tempfile.TemporaryDirectory() as directory {
         source = str(Path(directory) / "bootstrap_tier.jac");
         prog = JacProgram();
-        assert schedule_tier_reason() == "";
+        assert tier_reason(CompilationProduct.IR) == "";
         with patch.object(
-            pipeline_mod, "get_ir_gen_sched", return_value=get_bootstrap_ir_sched()
+            PRODUCTS[CompilationProduct.IR], "passes", new=bootstrap_ir_passes
         ) {
             mod = prog.compile(
                 source,

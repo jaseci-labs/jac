@@ -1,17 +1,8 @@
-import type from jaclang.compiler.driver.program { JacProgram }
 import contextlib;
 import shutil;
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { cast }
-import from jaclang.compiler.frontend.codeinfo { ClientArtifact }
-import from jaclang.client.client_bundle {
-    ClientBuildInputs,
-    ClientBundle,
-    ClientBundleBuilder,
-    ClientBundleError
-}
-import from .compiler { ViteCompiler }
 
 class ViteClientBundleBuilder(ClientBundleBuilder) {
     has _compiler: (ViteCompiler | None) = None;

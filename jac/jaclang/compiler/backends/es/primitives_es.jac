@@ -1,86 +1,20 @@
-import from jaclang.compiler.backends.common.primitives {
-    PrimitiveEmitter,
-    IntEmitter,
-    FloatEmitter,
-    ComplexEmitter,
-    StrEmitter,
-    BytesEmitter,
-    ListEmitter,
-    DictEmitter,
-    SetEmitter,
-    FrozensetEmitter,
-    TupleEmitter,
-    RangeEmitter,
-    BuiltinEmitter
-}
-
 obj ESEmitCtx {
     has unparser: object,
         arg_type_names: (list[str] | None) = None,
         kwargs: (dict[str, str] | None) = None;
 }
 
-def _mcall(target: str, method: str, args: list[str]) -> str {
-    """Emit target.method(arg1, arg2, ...).""";
-    if len(args) > 0 {
-        return target + "." + method + "(" + ", ".join(args) + ")";
-    }
-    return target + "." + method + "()";
-}
+def _mcall(target: str, method: str, args: list[str]) -> str;
 
-def _fcall(name: str, args: list[str]) -> str {
-    """Emit name(arg1, arg2, ...).""";
-    if len(args) > 0 {
-        return name + "(" + ", ".join(args) + ")";
-    }
-    return name + "()";
-}
+def _fcall(name: str, args: list[str]) -> str;
 
-def _rt(ns: str, method: str, args: list[str]) -> str {
-    """Emit a Jac JS runtime helper call: _jac.ns.method(args).""";
-    if len(args) > 0 {
-        return "_jac." + ns + "." + method + "(" + ", ".join(args) + ")";
-    }
-    return "_jac." + ns + "." + method + "()";
-}
+def _rt(ns: str, method: str, args: list[str]) -> str;
 
-def _binop(left: str, op: str, right: str) -> str {
-    """Emit (left op right) with parens for safety.""";
-    return "(" + left + " " + op + " " + right + ")";
-}
+def _binop(left: str, op: str, right: str) -> str;
 
-def _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str {
-    """Emit seq.method(cb) with cb receiving exactly one element.
+def _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str;
 
-    Python's map/filter call the callback with just the element, while JS's
-    Array.prototype.map/filter also pass (index, array) -- which a two-arity
-    callable such as `int(x, base)` reads as a radix.  Binding `fn` and `seq`
-    as parameters keeps them evaluated once, in the enclosing scope, so a
-    call-expression callback is not re-run per element.
-    """;
-    return "((_f, _s) => _s."
-        + method
-        + "((_v) => "
-        + cb_body
-        + "))("
-        + fn
-        + ", "
-        + seq
-        + ")";
-}
-
-def _min_max_call(rt_name: str, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
-    n_pos = len(ctx.arg_type_names) if ctx.arg_type_names is not None else len(args);
-    positional = args[:n_pos];
-    if not positional {
-        return None;
-    }
-    items = positional[0]
-        if len(positional) == 1 and not positional[0].startswith("...")
-        else "[" + ", ".join(positional) + "]";
-    key = (ctx.kwargs or {}).get("key", "undefined");
-    return _rt("builtin", rt_name, [items, key]);
-}
+def _min_max_call(rt_name: str, ctx: ESEmitCtx, args: list[str]) -> (str | None);
 
 
 class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
@@ -1461,46 +1395,6 @@ class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     ) -> (str | None);
 }
 
-def es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None) {
-    if suffix == "IntEmitter" {
-        return ESIntEmitter();
-    }
-    if suffix == "FloatEmitter" {
-        return ESFloatEmitter();
-    }
-    if suffix == "ComplexEmitter" {
-        return ESComplexEmitter();
-    }
-    if suffix == "BoolEmitter" {
-        return ESBoolEmitter();
-    }
-    if suffix == "StrEmitter" {
-        return ESStrEmitter();
-    }
-    if suffix == "BytesEmitter" {
-        return ESBytesEmitter();
-    }
-    if suffix == "ListEmitter" {
-        return ESListEmitter();
-    }
-    if suffix == "DictEmitter" {
-        return ESDictEmitter();
-    }
-    if suffix == "SetEmitter" {
-        return ESSetEmitter();
-    }
-    if suffix == "FrozensetEmitter" {
-        return ESFrozensetEmitter();
-    }
-    if suffix == "TupleEmitter" {
-        return ESTupleEmitter();
-    }
-    if suffix == "RangeEmitter" {
-        return ESRangeEmitter();
-    }
-    return None;
-}
+def es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None);
 
-def es_sized_cast(name: str, args: list[str]) -> str {
-    return _rt("fw", "cast_" + name, [args[0] if args else "0"]);
-}
+def es_sized_cast(name: str, args: list[str]) -> str;

@@ -326,7 +326,7 @@ impl NaIRGenPass._emit_file_like_helpers(
     };
     for (_mname, _mfn) in _methods.items() {
         self.method_funcs[_mname] = _mfn;
-        self.func_symtab[_mname] = _mfn;
+        self.scope.bind_function(_mname, _mfn);
     }
 }
 
@@ -427,7 +427,9 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     return self._mark_owned(file_obj);
 }
 
-def _open_encoding_is_utf8(value: uni.Expr) -> bool {
+def _open_encoding_is_utf8(value: uni.Expr) -> bool;
+
+impl _open_encoding_is_utf8(value: uni.Expr) -> bool {
     literal: uni.UniNode = value;
     if isinstance(literal, uni.MultiString) and len(literal.strings) == 1 {
         literal = literal.strings[0];

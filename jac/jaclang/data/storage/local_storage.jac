@@ -1,7 +1,6 @@
 import shutil;
 import from pathlib { Path }
 import from typing { BinaryIO, Generator }
-import from jaclang.data.storage.storage { Storage }
 
 class LocalStorage(Storage) {
     has base_path: str = "./storage",

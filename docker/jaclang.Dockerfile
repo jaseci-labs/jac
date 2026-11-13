@@ -8,7 +8,7 @@
 #      the runtime site - pods need no pip for the serving stack (installs
 #      from an init container cannot reach the main container anyway: they
 #      land on the container-local runtime site)
-#   3. the embedded Postgres distribution (`jac db fetch` -> JAC_PG_DIST), so a
+#   3. the embedded Postgres distribution (`jac db fetch`, into the cache), so a
 #      program that does touch the graph never downloads ~40MB at container
 #      start and works in an air-gapped or registry-only cluster
 #   4. a real unprivileged account (uid/gid 1000) that the image defaults to:
@@ -78,18 +78,15 @@ RUN apt-get update \
     && chmod -R a+rX "${JAC_CACHE_HOME}" \
     && chmod 1777 "${JAC_CACHE_HOME}"
 
-# `jac db fetch` runs the runtime's own resolution chain (pinned major, newest
-# published fallback, checksum-verified download) so the version pin lives in
-# one place. The dist lands in the cache; move it to a stable path any uid can
-# read and pin JAC_PG_DIST at it, which short-circuits every later lookup.
+# `jac db fetch` downloads the pinned major (newest published fallback,
+# checksum-verified) into the cache, where every later lookup finds it before
+# reaching for the network. The pg directory stays writable so the
+# unprivileged account can create its cluster beside the distribution.
 RUN jac db fetch \
-    && mv "$(ls -d /opt/jac/state/pg/dist/*/)" /opt/jac/pg \
-    && rm -rf /opt/jac/state/pg \
-    && chmod -R a+rX /opt/jac/pg \
-    && test -x /opt/jac/pg/bin/initdb \
-    && test -x /opt/jac/pg/bin/postgres
-
-ENV JAC_PG_DIST=/opt/jac/pg
+    && chmod -R a+rX "${JAC_CACHE_HOME}/pg/dist" \
+    && chmod 1777 "${JAC_CACHE_HOME}/pg" \
+    && test -x "$(ls -d "${JAC_CACHE_HOME}"/pg/dist/*/ | head -n1)bin/initdb" \
+    && test -x "$(ls -d "${JAC_CACHE_HOME}"/pg/dist/*/ | head -n1)bin/postgres"
 
 # A real account, not just a numeric USER: initdb fails with "could not look
 # up effective user ID" for a uid absent from /etc/passwd, so the uid pods are

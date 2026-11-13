@@ -1,42 +1,6 @@
 import from pathlib { Path }
 
-def css(p: Colors) -> str {
-    return "--background:"
-        + p.bg
-        + ";--foreground:"
-        + p.text
-        + ";--card:"
-        + p.surface
-        + ";--card-foreground:"
-        + p.text
-        + ";--primary:"
-        + p.accent
-        + ";--primary-foreground:"
-        + p.accentText
-        + ";--muted:"
-        + p.elevated
-        + ";--muted-foreground:"
-        + p.muted
-        + ";--border:"
-        + p.border
-        + ";--input:"
-        + p.field
-        + ";--like:"
-        + p.like
-        + ";--reply:"
-        + p.reply
-        + ";--destructive:"
-        + p.danger
-        + ";--radius:"
-        + str(radii().sm)
-        + "px;--spacing:"
-        + str(spacing().xs)
-        + "px;--font-sans:"
-        + font_family()
-        + ",sans-serif;--font-display:"
-        + font_family()
-        + ",sans-serif;";
-}
+def css(p: Colors) -> str;
 
 with entry {
     dest = Path(__file__).resolve().parent.parent / "site" / "styles" / "brand.css";

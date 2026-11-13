@@ -86,7 +86,6 @@ impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
 }
 
 impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
-    import from jaclang.project.kinds { KIND_SPECS }
     available: set[str] = set();
     for template in self._templates.values() {
         if template.is_default_for_kind {
@@ -129,7 +128,37 @@ impl initialize_template_registry -> None {
     _register_builtin_shadcn_template(registry);
 }
 
-def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
+def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None;
+
+def _iter_template_dicts(results: any) -> list[dict[str, any]];
+
+def _register_builtin_client_templates(registry: TemplateRegistry) -> None;
+
+def _core_template(
+    kind: str, body: str, extra_config: dict[str, any] = {}
+) -> dict[str, any];
+
+def _register_core_templates(registry: TemplateRegistry);
+
+impl template_kind_for(config: dict[str, any], explicit: str = "") -> str {
+    if explicit {
+        return explicit;
+    }
+    apps = config.get("apps") if isinstance(config, dict) else None;
+    if isinstance(apps, dict) and apps {
+        if len(apps) > 1 {
+            return "workspace";
+        }
+        sole = next(iter(apps.values()));
+        sole_kind = sole.get("kind", "") if isinstance(sole, dict) else "";
+        return str(sole_kind or "") or "cli";
+    }
+    project = config.get("project", {}) if isinstance(config, dict) else {};
+    kind = project.get("kind", "") if isinstance(project, dict) else "";
+    return str(kind or "") or "cli";
+}
+
+impl _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
     try {
         import from jaclang.cli.shadcn.cli { register_project_template }
     } except Exception {
@@ -146,7 +175,7 @@ def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
     }
 }
 
-def _iter_template_dicts(results: any) -> list[dict[str, any]] {
+impl _iter_template_dicts(results: any) -> list[dict[str, any]] {
     out: list[dict[str, any]] = [];
     if results is None {
         return out;
@@ -161,7 +190,7 @@ def _iter_template_dicts(results: any) -> list[dict[str, any]] {
     return out;
 }
 
-def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
+impl _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     try {
         import from jaclang.client.plugin_config { JacClientPluginConfig }
         import from jaclang.client.desktop_plugin_config { JacDesktopPluginConfig }
@@ -185,10 +214,9 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     }
 }
 
-def _core_template(
+impl _core_template(
     kind: str, body: str, extra_config: dict[str, any] = {}
 ) -> dict[str, any] {
-    import from jaclang.project.kinds { kind_spec }
     spec = kind_spec(kind);
     if spec is None {
         raise ValueError(f"No KindSpec for core template kind '{kind}'");
@@ -220,7 +248,7 @@ def _core_template(
     };
 }
 
-def _register_core_templates(registry: TemplateRegistry) {
+impl _register_core_templates(registry: TemplateRegistry) {
     _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';
     _lib = '"""Library module for {{name}}."""\n\ndef greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n';
     _shared = '"""Shared library for {{name}} (exported C-ABI functions)."""\n\ndef add(a: int, b: int) -> int {\n    return a + b;\n}\n';
@@ -253,22 +281,4 @@ def _register_core_templates(registry: TemplateRegistry) {
     ] {
         registry.register(info);
     }
-}
-
-impl template_kind_for(config: dict[str, any], explicit: str = "") -> str {
-    if explicit {
-        return explicit;
-    }
-    apps = config.get("apps") if isinstance(config, dict) else None;
-    if isinstance(apps, dict) and apps {
-        if len(apps) > 1 {
-            return "workspace";
-        }
-        sole = next(iter(apps.values()));
-        sole_kind = sole.get("kind", "") if isinstance(sole, dict) else "";
-        return str(sole_kind or "") or "cli";
-    }
-    project = config.get("project", {}) if isinstance(config, dict) else {};
-    kind = project.get("kind", "") if isinstance(project, dict) else "";
-    return str(kind or "") or "cli";
 }

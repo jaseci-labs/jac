@@ -45,9 +45,34 @@ import from "CLIB_POINTERS_LIBRARY" {
         db: ptr[CpDb]
     ) -> None;  def cp_batch_set_active(batch: &mut Pinned[CpBatch] | None) -> None;  def cp_batch_is_active -> bool;  def cp_batch_draw(
         v: i32
-    ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_pointlist_fill(
-        pl: &mut CpPointList, n: i32
-    ) -> None;
+    ) -> i32;  def cp_counter_retain(counter: &mut Pinned[i32] | None) -> None;  def cp_counter_tick -> None;  def cp_maybe_count(
+        out: &mut i64 | None
+    ) -> i32;  def cp_pointlist_fill(pl: &mut CpPointList, n: i32) -> None;  def cp_global_read -> i32;  glob cp_global_count:
+             i32,
+         cp_global_flag: bool,
+         cp_global_origin: CpVec3,
+         cp_global_origin_ref: ptr[CpVec3]; obj CpRecipe {
+        has count: i32,
+            scale: Callable[[i32], i32],
+            label: ptr[u8],
+            origin: ptr[CpVec3];
+    }  def cp_recipe_run(r: ptr[CpRecipe], v: i32) -> i32;  def cp_label_len(
+        s: ptr[u8]
+    ) -> i32;  glob cp_jac_origin: CpVec3 = CpVec3(
+             x=f32(4.0), y=f32(5.0), z=f32(6.0)
+         ),
+         cp_jac_recipe: CpRecipe = CpRecipe(
+             count=i32(3),
+             scale=triple,
+             label=ptr[u8]("recipe"),
+             origin=addressof(cp_jac_origin)
+         ),
+         cp_jac_limit: i64 = 99,
+         cp_jac_points: list[CpVec3] = [
+             CpVec3(x=f32(1.0), y=f32(2.0), z=f32(3.0)),
+             CpVec3(x=f32(10.0))
+         ],
+         cp_jac_bytes: list[u8] = [u8(7), u8(8), u8(9)];
 }
 
 obj Session {
@@ -208,6 +233,14 @@ def counter_demo {
     cp_counter_retain(None);
 }
 
+"""An optional scalar out-parameter: None passes NULL."""
+def optional_out_demo {
+    count: i64 = i64(0);
+    print("optional none", cp_maybe_count(None));
+    written = cp_maybe_count(&mut count);
+    print("optional out", written, count);
+}
+
 """A pin owned by a Jac object, registered from a method."""
 def renderer_demo {
     renderer = Renderer(batch=pin(CpBatch()));
@@ -216,6 +249,70 @@ def renderer_demo {
     cp_batch_draw(i32(8));
     print("renderer", renderer.batch.value.draws, renderer.batch.value.last);
     cp_batch_set_active(None);
+}
+
+"""C pointer arithmetic: element steps, distances, ordering and integer addresses."""
+def arithmetic_demo {
+    pts = cp_points_new(i32(4));
+    third = pts + 2;
+    print("step", third.view(1)[0].x, (third - 1).view(1)[0].y);
+    print("distance", third - pts, pts - third);
+    cursor = pts;
+    cursor += 3;
+    cursor -= 1;
+    print("aug", cursor == third, cursor.view(1)[0].x);
+    print("order", pts < third, third <= cursor, pts + 3 > third, third >= pts + 3);
+    print("bytes", ptr[u8](third) - ptr[u8](pts));
+    address = int(third);
+    print("address", ptr[CpVec3](address) == third, address - int(pts));
+    erased = ptr(pts);
+    print("void step", int(erased + 24) == address);
+    cp_points_free(pts);
+    buf = cp_buffer_new(i32(6));
+    print("byte", (buf + 5).view(1)[0]);
+    cp_buffer_free(buf);
+}
+
+"""Variables the C library defines: read and written in place, or by address."""
+def globals_demo {
+    print("global", cp_global_count, cp_global_flag);
+    cp_global_count = i32(11);
+    cp_global_count += i32(1);
+    print("global write", cp_global_read());
+    origin = addressof(cp_global_origin);
+    print("global object", origin == cp_global_origin_ref, origin.view(1)[0].y);
+    origin.view(1)[0].z = f32(9.0);
+    print("global place", cp_global_origin_ref.view(1)[0].z);
+    count = addressof(cp_global_count);
+    count.view(1)[0] = i32(40);
+    print("global address", cp_global_count);
+    cp_global_flag = False;
+    print("global flag", cp_global_flag);
+}
+
+def triple(v: i32) -> i32 {
+    return v * i32(3);
+}
+
+"""C data Jac defines: C-layout storage with a constant initializer."""
+def definitions_demo {
+    recipe = addressof(cp_jac_recipe);
+    fields = recipe.view(1)[0];
+    print(
+        "defined",
+        cp_recipe_run(recipe, i32(5)),
+        cp_label_len(fields.label),
+        fields.origin.view(1)[0].y
+    );
+    cp_jac_limit += 1;
+    print("defined scalar", cp_jac_limit, cp_label_len(ptr[u8]("hello")));
+    points = addressof(cp_jac_points);
+    print(
+        "defined array",
+        cp_points_sum(points, i32(2)),
+        (points + 1).view(1)[0].x,
+        cp_buffer_sum(addressof(cp_jac_bytes), i32(3))
+    );
 }
 
 """A struct holding a pointer that C fills in."""
@@ -236,6 +333,10 @@ with entry {
     db_demo();
     batch_demo();
     counter_demo();
+    optional_out_demo();
     renderer_demo();
     pointer_field_demo();
+    arithmetic_demo();
+    globals_demo();
+    definitions_demo();
 }

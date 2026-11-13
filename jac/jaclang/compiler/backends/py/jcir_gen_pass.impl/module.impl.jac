@@ -13,7 +13,6 @@ impl JcirGenPass.exit_sub_tag with SubTag exit {
 }
 
 impl JcirGenPass.exit_module with Module exit {
-    import from jaclang.runtime.osp_tag { stable_osp_tag }
     _tag_names: dict[int, str] = {};
     for _stmt in (here.body or []) {
         if isinstance(_stmt, Archetype)
@@ -308,7 +307,7 @@ impl JcirGenPass.exit_test with Test exit {
     } else {
         body_stmts = self.resolve_stmt_block(here.body, doc=here.doc);
     }
-    test_directives = self.scope_directive_stmts([here]);
+    test_directives = self.scope_directive_stmts(here);
     if test_directives {
         insert_at = self._docstring_offset(body_stmts);
         body_stmts = [
@@ -430,32 +429,7 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
     self.set_out(here, stmts);
 }
 
-impl JcirGenPass.exit_py_inline_code with PyInlineCode exit {
-    if here.doc {
-        doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
-        shift = here.loc.first_line;
-        inner = doc.get('value');
-        doc.l1 = doc.l1 + shift;
-        doc.l2 = doc.l2 + shift;
-        if isinstance(inner, CgNode) {
-            inner.l1 = inner.l1 + shift;
-            inner.l2 = inner.l2 + shift;
-        }
-        self.set_out(here, [doc, CgSplice(src=here.code.value, offset=shift)]);
-    } else {
-        self.set_out(
-            here,
-            [CgSplice(src=textwrap.dedent(here.code.value), offset=here.loc.first_line)]
-        );
-    }
-}
-
 impl JcirGenPass.exit_import with Import exit {
-    import from jaclang.compiler.driver.boundary_classify {
-        CrossAppKind,
-        classify_cross_app_import,
-        import_binds_client_native
-    }
     if (
         import_binds_client_native(here, self.module.gen.interop_manifest)
         or here.native_only_drop

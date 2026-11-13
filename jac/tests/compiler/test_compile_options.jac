@@ -67,7 +67,8 @@ test "every codegen option flip changes the fingerprint" {
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
         _pinned_opts(opt_level=0),
-        _pinned_opts(native_threads=7)
+        _pinned_opts(native_threads=7),
+        _pinned_opts(client_source_root="/apps/web")
     ];
     seen: set = {base_fp};
     for flipped in flips {
@@ -80,6 +81,15 @@ test "every codegen option flip changes the fingerprint" {
     assert len(seen) == len(flips) + 1 , "fingerprint collision between flips";
 }
 
+test "client layout separates dependency caches" {
+    first = _pinned_opts(client_source_root="/apps/first");
+    second = _pinned_opts(client_source_root="/apps/second");
+    assert first.dependency_projection("/shared/Card.jac")
+        != second.dependency_projection("/shared/Card.jac");
+    assert first.unit_codegen_identity("/shared/Card.jac")
+        == second.unit_codegen_identity("/shared/Card.jac");
+}
+
 test "diagnostic-only options do not enter the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
     diag = _pinned_opts(
@@ -90,6 +100,12 @@ test "diagnostic-only options do not enter the fingerprint" {
         na_debug=True
     );
     assert diag.codegen_fingerprint() == base_fp;
+    # Strict dependency checking only changes diagnostics, so it keys the
+    # diagnostic profile, not the module's cache file.
+    strict = _pinned_opts();
+    strict.strict_dependencies = True;
+    assert strict.module_projection() == _pinned_opts().module_projection();
+    assert strict.analysis_identity() != _pinned_opts().analysis_identity();
 }
 
 
@@ -123,7 +139,15 @@ test "clone_for_native_import carries the full codegen identity" {
         memory_exempt=["legacy*"]
     );
     child = parent.clone_for_native_import();
-    assert child.skip_native_engine and child.aot_mode;
+    assert child.skip_native_engine;
+    for (label, options, hard) in [
+        ("default run", {}, False),
+        ("ahead of time", {"aot_mode": True}, True),
+        ("forced native", {"force_codespace": "native"}, True)
+    ] {
+        assert _pinned_opts(**options).clone_for_native_import().aot_mode
+            == hard , label;
+    }
     parent_id = parent.codegen_identity();
     child_id = child.codegen_identity();
     parent_tail = parent_id.split("nogc_mods=")[1];
@@ -763,7 +787,7 @@ test "symbol requests preserve their app and native target context" {
 test "native-only policy is retained in dependency and cache identities" {
     ordinary = _pinned_opts(native_require=[]);
     strict = _pinned_opts(native_required=True, native_require=[]);
-    scoped = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    scoped = _pinned_opts(native_require=["jaclang.data.*"]);
     import from jaclang.compiler.driver.program { JacProgram }
     registry = JacProgram().iface_registry();
     for options in (strict, scoped) {
@@ -776,9 +800,7 @@ test "native-only policy is retained in dependency and cache identities" {
             assert inherited.native_require == options.native_require;
         }
     }
-    assert scoped.native_required_for(
-        "/checkout/jaclang/runtime/python/bindings/module.jac"
-    );
+    assert scoped.native_required_for("/checkout/jaclang/data/store.jac");
     assert not scoped.native_required_for("/checkout/jaclang/runtime/runtime.jac");
 }
 
@@ -786,10 +808,9 @@ test "native-only dependencies stay in the target rather than the compiler host"
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
     program = JacProgram();
-    program.options = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    program.options = _pinned_opts(native_require=["jaclang.data.*"]);
     host = SelfHostCache(_jaclang_root="/checkout/jaclang");
-    assert host.resolve("/checkout/jaclang/runtime/python/capi.jac", program)
-        is program;
+    assert host.resolve("/checkout/jaclang/data/store.jac", program) is program;
     assert host.peek_program() is None;
 }
 

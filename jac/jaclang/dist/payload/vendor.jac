@@ -1,5 +1,4 @@
-glob WASM_FLOOR_MANIFEST: str = "SOURCES.sha256",
-     MUSL_ARTIFACTS: tuple[str, ...] = (
+glob MUSL_ARTIFACTS: tuple[str, ...] = (
          "libc.a",
          "libzigc.a",
          "libcompiler_rt.a",

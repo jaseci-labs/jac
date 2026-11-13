@@ -1,8 +1,3 @@
-import from jaclang.compiler.frontend.codeinfo {
-    NATIVE_SUPPORTED_STDLIB,
-    is_bundled_native_module
-}
-
 glob PY_STDLIB_BY_KIND: dict[str, (set[str] | None)] = {
          "web-app": set(),
          "web-static": set(),
@@ -18,29 +13,10 @@ glob PY_STDLIB_BY_KIND: dict[str, (set[str] | None)] = {
          "js-package"
      );
 
-def py_root_module(name: str) -> str {
-    return name.split('.')[0] if name else name;
-}
+def py_root_module(name: str) -> str;
 
-def supports(module: str, space: str, kind: str) -> bool {
-    if space == 'server' {
-        return True;
-    }
-    if space == 'native' {
-        return native_supports_py_module(module);
-    }
-    allowed = PY_STDLIB_BY_KIND.get(kind, set());
-    if allowed is None {
-        return True;
-    }
-    return py_root_module(module) in allowed;
-}
+def supports(module: str, space: str, kind: str) -> bool;
 
-def client_supports_py_module(name: str, kind: str = "web-app") -> bool {
-    return supports(name, 'client', kind);
-}
+def client_supports_py_module(name: str, kind: str = "web-app") -> bool;
 
-def native_supports_py_module(name: str) -> bool {
-    mod_root = py_root_module(name);
-    return mod_root in NATIVE_SUPPORTED_STDLIB or is_bundled_native_module(mod_root);
-}
+def native_supports_py_module(name: str) -> bool;

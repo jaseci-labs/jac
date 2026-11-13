@@ -17,6 +17,7 @@ connect time) become EdgeAnchors in `edges`.
 
 from __future__ import annotations
 
+import weakref
 from typing import Any, Callable
 
 from jaclang.runtime.archetype import (
@@ -36,6 +37,7 @@ from jaclang.runtime.archetype import (
     light_hop_answers,
     light_in,
     light_out,
+    new_connect_edge,
 )
 
 __all__ = [
@@ -46,6 +48,7 @@ __all__ = [
     "disconnect0",
     "refs0",
     "hop0",
+    "last_in0",
     "clear0",
     "spawn0",
     "visit0",
@@ -106,7 +109,7 @@ def connect0(
             if light and not (src.persistent or tgt.persistent):
                 light_connect(src, cls, tgt)
                 continue
-            e = ct() if isinstance(ct, type) else ct
+            e, built_with = new_connect_edge(ct, conn_assign)
             e.__jac__ = EdgeAnchor(archetype=e, source=src, target=tgt, is_undirected=False)
             src.edges.append(e.__jac__)
             tgt.edges.append(e.__jac__)
@@ -115,7 +118,8 @@ def connect0(
                 tgt.mixed = True
             if conn_assign:
                 for fld, val in zip(conn_assign[0], conn_assign[1], strict=False):
-                    setattr(e, fld, val)
+                    if fld not in built_with:
+                        setattr(e, fld, val)
     return right
 
 
@@ -263,6 +267,9 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
                 lst = d.get(edge) if d else None
                 if not lst:
                     return []
+                if isinstance(lst, weakref.ref):
+                    one = lst()
+                    return [one] if one is not None else []
                 out: list = []
                 for ref in lst:
                     arch = ref()
@@ -275,6 +282,38 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
     if not light_hop_answers(me, edge):
         return refs0(origin, dir, edge, edges_only)
     return light_hop(me, dir, edge, edges_only)
+
+
+def last_in0(origin: Any, edge: Any) -> Any:
+    """`[origin <-:edge:<-][-1]`, or None when there is no such neighbour.
+
+    The last live in-neighbour over one edge class, read straight from the
+    light adjacency when `hop0` would answer from it, without building the
+    list. Every other origin takes `hop0`, so the answer is always the hop's.
+    """
+    me = origin.__jac__
+    if not me._persistent and (
+        not me.edges or (not me.mixed and _light_edge_types.get(edge))
+    ):
+        subs = _edge_subtypes.get(edge)
+        if subs is None:
+            subs = edge_subtypes(edge)
+        if len(subs) == 1:
+            d = me.in_light
+            lst = d.get(edge) if d else None
+            if not lst:
+                return None
+            if isinstance(lst, weakref.ref):
+                return lst()
+            i = len(lst)
+            while i:
+                i -= 1
+                arch = lst[i]()
+                if arch is not None:
+                    return arch
+            return None
+    found = hop0(origin, 1, edge)
+    return found[-1] if found else None
 
 
 def clear0(origin: Any, dir: int, edge: Any = None) -> bool:

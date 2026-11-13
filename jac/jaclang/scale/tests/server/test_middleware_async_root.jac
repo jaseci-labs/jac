@@ -17,13 +17,6 @@ Context: there are two call sites for aset_user_root:
      of auth status and is intentionally excluded from these assertions.
 """
 
-import from jaclang.runtime.context { ExecutionContext }
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data
-}
-
 def _as_any(v: any) -> any {
     return v;
 }

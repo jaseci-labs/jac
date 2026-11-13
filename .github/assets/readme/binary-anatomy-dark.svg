@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Anatomy of the jac binary: a native launcher stub with a runtime payload appended to it, carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives; it replaces the whole development toolchain">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Anatomy of the jac binary: a native launcher stub with a runtime payload appended to it, carrying the CPython runtime, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives; it replaces the whole development toolchain">
   <style>
     .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }

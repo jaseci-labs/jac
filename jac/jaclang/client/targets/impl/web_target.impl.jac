@@ -1,26 +1,33 @@
 import os;
+
 import types;
+
 import from pathlib { Path }
+
 import from typing { Optional, cast }
-import from jaclang.client.vite_bundler { ViteBundler }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
-     JAC_LANG_ID = "jac";
+     JAC_LANG_ID = "jac",
+     PUBLIC_LEDGER = ".jac-public-files";
 
-def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
-    (base, mod) = os.path.split(str(entry_file));
-    base = base or "./";
-    if mod.endswith(JAC_FILE_EXTENSION) {
-        mod = mod[:-len(JAC_FILE_EXTENSION)];
-    }
-    return (base, mod);
-}
+def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
-def _pwa_enabled(project_dir: Path) -> bool {
-    import from jaclang.client.config_loader { JacClientConfig }
-    return JacClientConfig(project_dir).is_pwa_enabled();
-}
+def _pwa_enabled(project_dir: Path) -> bool;
+
+def _walk_public(
+    dir_path: Path,
+    rel_prefix: str,
+    public_root: Path,
+    ancestors: set[Path],
+    found: list[tuple[str, Path]]
+) -> None;
+
+def _public_files(public_dir: Path) -> list[tuple[str, Path]];
+
+def _clear_public_outputs(dist_dir: Path) -> None;
+
+def _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str];
 
 impl WebTarget.setup(project_dir: Path) -> None {
     if _pwa_enabled(project_dir) {
@@ -32,16 +39,6 @@ impl WebTarget.setup(project_dir: Path) -> None {
 impl WebTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.client.targets.client_dev_common {
-        _ClientHmrHandler,
-        dev_proxy_paths,
-        ensure_watchdog_common,
-        prepare_vite_dev_compilation,
-        stop_dev_watcher,
-        terminate_dev_processes
-    }
-
     api_p = api_port if api_port > 0 else port + 1;
 
     hot_watcher: any = None;
@@ -87,7 +84,6 @@ impl WebTarget.dev(
 impl WebTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jaclang.cli.commands.execution { serve }
     if serve(filename=str(entry_file.resolve()), port=api_port, dev=False) {
         raise RuntimeError(f'Could not start web application: {entry_file}');
     }
@@ -96,17 +92,10 @@ impl WebTarget.start(
 impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import shutil;
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-
     bundler = ViteBundler(project_dir=project_dir);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
-        if dist_dir.exists() {
-            shutil.rmtree(dist_dir);
-        }
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
@@ -115,22 +104,40 @@ impl WebTarget.build(
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     try {
-        before = len(program.errors_had);
-        program.compile(str(entry_file.resolve()));
-        if len(program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in program.errors_had[before:]);
+        entry_program = client_context_program(
+            program, client_source_root(project_dir, entry_file)
+        );
+        before = len(entry_program.errors_had);
+        artifact = program._get_compiler().get_client_artifact(
+            str(entry_file.resolve()), entry_program
+        );
+        if len(entry_program.errors_had) > before {
+            errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
             raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
         }
         inputs = builder.prepare(loaded_mod);
-        function_name = _get_client_function_name(loaded_mod);
+        exports = list(artifact.manifest.exports or []) if artifact is not None else [];
     } finally {
         program._get_compiler().release_compile_state(program);
     }
     builder.bundle(inputs);
+    return self.finish_dist(entry_file, project_dir, exports);
+}
+
+impl WebTarget.finish_dist(
+    entry_file: Path, project_dir: Path, exports: list[str]
+) -> Path {
+    function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
+    bundler = ViteBundler(project_dir=project_dir);
+    entry_path = str(entry_file.resolve());
+    seo_config = bundler.config_loader.get_seo_config(entry_path);
+    dist_dir = bundler.output_dir;
     bundle_path = bundler.find_bundle();
     if not bundle_path {
         raise RuntimeError("Web build failed: bundle not found");
     }
+    loaded_mod = types.ModuleType(entry_file.stem);
+    loaded_mod.__file__ = str(entry_file.resolve());
     _generate_index_html(
         bundle_path=bundle_path,
         bundler=bundler,
@@ -138,43 +145,187 @@ impl WebTarget.build(
         function_name=function_name,
         project_dir=project_dir
     );
-    if _pwa_enabled(project_dir) {
+    pwa = _pwa_enabled(project_dir);
+    if pwa {
         import from jaclang.client.targets.pwa_build { apply_pwa }
         apply_pwa(dist_dir, project_dir);
+    }
+    if dist_dir {
+        public_dirs = bundler.config_loader.get_public_dirs(entry_path);
+        import from jaclang.client.targets.seo_build {
+            apply_seo,
+            clear_seo_files,
+            scan_routes
+        }
+        _clear_public_outputs(dist_dir);
+        clear_seo_files(dist_dir);
+        if seo_config.get('site_url') {
+            base_path = bundler.config_loader.get_base_path();
+            asset_paths = [f"{base_path}{bundle_path.name}"];
+            css_file = bundler.find_css();
+            if css_file and css_file.exists() {
+                asset_paths.append(f"{base_path}styles.css");
+            }
+            apply_seo(
+                dist_dir,
+                seo_config,
+                scan_routes(bundler.config_loader.get_app_root(entry_path)),
+                public_dirs,
+                asset_paths
+            );
+        }
+        copied = _copy_public_dirs(public_dirs, dist_dir);
+
+        if pwa and copied {
+            import from jaclang.client.targets.pwa_build { refresh_pwa_precache }
+            refresh_pwa_precache(dist_dir);
+        }
     }
     return bundle_path;
 }
 
-def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
+def _build_css_link(bundler: ViteBundler) -> str;
 
-    mod_path = loaded_mod?.__file__;
-    if not mod_path {
-        return DEFAULT_FUNCTION_NAME;
-    }
+def _get_app_meta_data(project_dir: (Path | None) = None) -> dict[str, any];
 
-    mod = Jac.get_program().find_module(mod_path);
-    if not mod {
-        return DEFAULT_FUNCTION_NAME;
-    }
-    gen = mod?.gen;
-    if not gen {
-        return DEFAULT_FUNCTION_NAME;
-    }
+def _generate_index_html(
+    bundle_path: Path,
+    bundler: ViteBundler,
+    loaded_mod: types.ModuleType,
+    function_name: str,
+    project_dir: Path
+);
 
-    client_manifest = gen?.client_manifest;
-    if not client_manifest {
-        return DEFAULT_FUNCTION_NAME;
+impl _parse_entry_file(entry_file: Path) -> tuple[str, str] {
+    (base, mod) = os.path.split(str(entry_file));
+    base = base or "./";
+    if mod.endswith(JAC_FILE_EXTENSION) {
+        mod = mod[:-len(JAC_FILE_EXTENSION)];
     }
-
-    client_exports = client_manifest?.exports;
-    if client_exports and len(client_exports) > 0 {
-        return client_exports[0];
-    }
-    return DEFAULT_FUNCTION_NAME;
+    return (base, mod);
 }
 
-def _build_css_link(bundler: ViteBundler) -> str {
+impl _walk_public(
+    dir_path: Path,
+    rel_prefix: str,
+    public_root: Path,
+    ancestors: set[Path],
+    found: list[tuple[str, Path]]
+) -> None {
+    real = dir_path.resolve();
+    if real in ancestors {
+        return;
+    }
+    inner = ancestors | {real};
+    for child in sorted(dir_path.iterdir()) {
+        resolved = child.resolve();
+        if public_root not in resolved.parents {
+            continue;
+        }
+        rel = f"{rel_prefix}{child.name}";
+        if child.is_dir() {
+            _walk_public(child, f"{rel}/", public_root, inner, found);
+        } elif child.is_file() {
+            found.append((rel, child));
+        }
+    }
+}
+
+impl _public_files(public_dir: Path) -> list[tuple[str, Path]] {
+    found: list[tuple[str, Path]] = [];
+    _walk_public(public_dir, '', public_dir.resolve(), set(), found);
+    return found;
+}
+
+impl _clear_public_outputs(dist_dir: Path) -> None {
+    ledger = dist_dir / PUBLIC_LEDGER;
+    try {
+        previous = ledger.read_text().splitlines();
+    } except OSError {
+        previous = [];
+    }
+    dist_root = dist_dir.resolve();
+    for rel in previous {
+        stale = dist_dir / rel;
+        if dist_root not in stale.resolve().parents or not stale.is_file() {
+            continue;
+        }
+        stale.unlink();
+        parent = stale.parent;
+        while parent.resolve() != dist_root and not any(parent.iterdir()) {
+            parent.rmdir();
+            parent = parent.parent;
+        }
+    }
+    ledger.unlink(missing_ok=True);
+}
+
+impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
+    import shutil;
+    ledger = dist_dir / PUBLIC_LEDGER;
+    planned: dict[str, Path] = {};
+    skipped: list[str] = [];
+    for public_dir in public_dirs {
+        for (rel, source) in _public_files(public_dir) {
+            if rel in planned {
+                continue;
+            }
+            if Path(rel).suffix.lower() not in ROOT_ASSET_EXTENSIONS {
+                if not Path(rel).name.startswith('.') and rel not in skipped {
+                    skipped.append(rel);
+                }
+                continue;
+            }
+            if (dist_dir / rel).exists() {
+                raise RuntimeError(
+                    f"Web build failed: {source} would overwrite {rel}, which the "
+                    "build itself creates. Rename or move it out of public/."
+                );
+            }
+            planned[rel] = source;
+        }
+    }
+    for (rel, source) in planned.items() {
+        parts = rel.split('/');
+        for depth in range(1, len(parts)) {
+            folder = '/'.join(parts[:depth]);
+            if folder in planned {
+                raise RuntimeError(
+                    f"Web build failed: {planned[folder]} is a file and {source} "
+                    f"needs {folder} to be a folder. Rename one of them."
+                );
+            }
+            if (dist_dir / folder).is_file() {
+                raise RuntimeError(
+                    f"Web build failed: {source} needs {folder} to be a folder, but "
+                    "the build itself creates a file there. Rename or move it out "
+                    "of public/."
+                );
+            }
+        }
+    }
+    for (rel, source) in planned.items() {
+        target = dist_dir / rel;
+        target.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(source, target);
+    }
+    if planned {
+        ledger.write_text('\n'.join(sorted(planned)));
+    }
+    if skipped {
+        console.warning(
+            f"  Not copied from public/: {', '.join(skipped)}. The site root serves "
+            f"only {' '.join(sorted(ROOT_ASSET_EXTENSIONS))} files."
+        );
+    }
+    return sorted(planned);
+}
+
+impl _pwa_enabled(project_dir: Path) -> bool {
+    return JacClientConfig(project_dir).is_pwa_enabled();
+}
+
+impl _build_css_link(bundler: ViteBundler) -> str {
     import hashlib;
 
     css_file = bundler.find_css();
@@ -189,10 +340,11 @@ def _build_css_link(bundler: ViteBundler) -> str {
     return '';
 }
 
-def _get_app_meta_data -> dict[str, any] {
-    import from jaclang.project.config { get_config }
-
-    config = get_config();
+impl _get_app_meta_data(project_dir: (Path | None) = None) -> dict[str, any] {
+    config = get_config_for_path(project_dir) if project_dir is not None else None;
+    if config is None {
+        config = get_config();
+    }
     if not config {
         return {};
     }
@@ -203,8 +355,7 @@ def _get_app_meta_data -> dict[str, any] {
     return client_cfg.get("app_meta_data", {});
 }
 
-
-def _generate_index_html(
+impl _generate_index_html(
     bundle_path: Path,
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,
@@ -213,12 +364,11 @@ def _generate_index_html(
 ) {
     import html;
     import json;
-    import from jaclang.client.serving { HeaderBuilder }
 
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
     css_link = _build_css_link(bundler);
-    meta_data = _get_app_meta_data();
+    meta_data = _get_app_meta_data(project_dir);
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
     if css_link {

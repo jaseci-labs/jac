@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-
 impl run_lang_server -> None {
     logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();
@@ -143,4 +141,31 @@ impl lintfix_formatting(
 
 impl debug(msg: str) -> None {
     console.error(f"[SERVER] {msg}");
+}
+
+impl did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
+    ls.type_check(params.text_document.uri);
+}
+
+impl did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
+    ls.type_check(params.text_document.uri);
+}
+
+impl did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) {
+    debug(f"Did change: Type checking started.");
+    ls.type_check(params.text_document.uri);
+}
+
+impl did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) {}
+
+impl completion(
+    ls: JacLangServer, params: lspt.CompletionParams
+) -> lspt.CompletionList {
+    file_path = params.text_document.uri;
+    debug("Completion requested");
+    return await ls.get_completion(
+        params.text_document.uri,
+        params.position,
+        (params.context.trigger_character if params.context else None)
+    );
 }

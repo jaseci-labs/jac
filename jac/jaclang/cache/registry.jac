@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cache.policy { Policy, Retention, SweepReport, KeepMatch, TempLock }
 
 obj Bucket {
     has name: str,
@@ -81,10 +80,22 @@ glob RETIRED: tuple[str, ...] = (
              summary="optimized whole-program images for the in-process JIT, one per link plan"
          ),
          Bucket(
+             name="jir-nativeglue",
+             relpath="jir/nativeglue",
+             policy=Policy(ttl_days=14.0, depth=3, pattern="[0-9a-f]" * 64),
+             summary="glue-symbol scans of native unit bitcode, one per bitcode and compiler generation"
+         ),
+         Bucket(
              name="jir-digests",
              relpath="jir",
-             policy=Policy(ttl_days=14.0, pattern="compiler_digest.*.json"),
-             summary="compiler source digests, one per checkout"
+             policy=Policy(ttl_days=14.0, pattern="digests|compiler_digest.*.json"),
+             summary="file content digests keyed by file identity (retired compiler_digest manifests age out)"
+         ),
+         Bucket(
+             name="jir-nativescan",
+             relpath="jir/nativescan",
+             policy=Policy(ttl_days=14.0, depth=2, pattern="*.txt"),
+             summary="native placement scans of a module's files, keyed by content, project and compiler"
          ),
          Bucket(
              name="apps",
@@ -127,6 +138,12 @@ glob RETIRED: tuple[str, ...] = (
              root_prefix="scale-binaries"
          ),
          Bucket(
+             name="admin",
+             relpath="admin",
+             policy=Policy(ttl_days=30.0, markers=[".used"]),
+             summary="built admin consoles, one per UI source and compiler"
+         ),
+         Bucket(
              name="models",
              relpath="models",
              policy=Policy(retention=Retention.PINNED),
@@ -140,9 +157,7 @@ glob RETIRED: tuple[str, ...] = (
              policy=Policy(
                  ttl_days=14.0, temp_patterns=["*.part"], temp_lock=TempLock.SUFFIX
              ),
-             summary="verified toolchain archives (extracted into installed/)",
-             root_env="JAC_TOOLCHAIN_DIR",
-             root_prefix="toolchains"
+             summary="verified toolchain archives (extracted into installed/)"
          ),
          Bucket(
              name="toolchains-installed",
@@ -154,9 +169,7 @@ glob RETIRED: tuple[str, ...] = (
                  temp_patterns=[".install-*"],
                  temp_lock=TempLock.SIBLINGS
              ),
-             summary="installed toolchains by name, version and platform",
-             root_env="JAC_TOOLCHAIN_DIR",
-             root_prefix="toolchains"
+             summary="installed toolchains by name, version and platform"
          ),
          Bucket(
              name="toolchains-build",
@@ -168,30 +181,25 @@ glob RETIRED: tuple[str, ...] = (
                  temp_patterns=["tmp????????"],
                  temp_lock=TempLock.SIBLINGS
              ),
-             summary="toolchain builds by source digest",
-             root_env="JAC_TOOLCHAIN_DIR",
-             root_prefix="toolchains"
+             summary="toolchain builds by source digest"
          ),
          Bucket(
              name="toolchains-gradle",
              relpath="toolchains/gradle",
              policy=Policy(retention=Retention.EXTERNAL),
-             summary="Gradle's own home (GRADLE_USER_HOME)",
-             root_env="JAC_TOOLCHAIN_DIR",
-             root_prefix="toolchains"
+             summary="Gradle's own home (GRADLE_USER_HOME)"
          ),
          Bucket(
              name="toolchains-android-sdk",
              relpath="toolchains/android-sdk",
              policy=Policy(retention=Retention.EXTERNAL),
-             summary="the Android SDK (sdkmanager-managed)",
-             root_env="JAC_TOOLCHAIN_DIR",
-             root_prefix="toolchains"
+             summary="the Android SDK (sdkmanager-managed)"
          ),
          Bucket(
              name="pg",
              relpath="pg",
              policy=Policy(retention=Retention.EXTERNAL),
+             root_env="JAC_PG_HOME",
              summary="the embedded Postgres cluster and distribution (jac db)"
          )
      ];

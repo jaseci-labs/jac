@@ -6,9 +6,7 @@ import from typing { TextIO, cast }
 obj Content {
     has text: str;
 
-    def __str__ -> str {
-        return self.text;
-    }
+    def __str__ -> str;
 }
 
 obj Span {
@@ -26,72 +24,17 @@ obj _Spinner {
         _stop: any postinit,
         _thread: any = None;
 
-    def postinit {
-        import from threading { Event }
-        self._stop = Event();
-    }
-
-    def update(text: any = '') {
-        self.text = text;
-    }
-
-    def clear {
-        try {
-            self.stream.write("\r\033[K");
-            self.stream.flush();
-        } except (BrokenPipeError, OSError) {}
-    }
-
-    def _run {
-        idx = 0;
-        while not self._stop.is_set() {
-            frame = self.frames[idx % len(self.frames)];
-            current = self.text;
-            text = str(current() if callable(current) else current);
-            try {
-                width = os.get_terminal_size().columns;
-            } except OSError {
-                width = 0;
-            }
-            if width > 8 and len(text) > width - 3 {
-                text = text[:width - 6] + "...";
-            }
-            try {
-                self.stream.write(
-                    f"\r{self.style_prefix}{frame}{self.reset} {text}\033[K"
-                );
-                self.stream.flush();
-            } except (BrokenPipeError, OSError) {
-                return;
-            }
-            idx += 1;
-            self._stop.`wait(self.interval);
-        }
-    }
-
-    def start {
-        import from threading { Thread }
-        self._thread = Thread(target=self._run, daemon=True);
-        self._thread.start();
-    }
-
-    def stop {
-        self._stop.set();
-        if self._thread is not None {
-            self._thread.join(timeout=1.0);
-        }
-        self.clear();
-    }
+    def postinit;
+    def update(text: any = '');
+    def clear;
+    def _run;
+    def start;
+    def stop;
 }
 
 obj _NullStatus {
-    def update(text: any = '') -> None {
-        return;
-    }
-
-    def clear -> None {
-        return;
-    }
+    def update(text: any = '') -> None;
+    def clear -> None;
 }
 
 obj ConsoleRenderer {
@@ -158,9 +101,7 @@ def _get_console -> JacConsole;
 def use_line_buffered_output(streams: (list[TextIO] | None) = None) -> int;
 
 class _ConsoleProxy {
-    def __getattr__(self: _ConsoleProxy, name: str) -> any {
-        return getattr(_get_console(), name);
-    }
+    def __getattr__(self: _ConsoleProxy, name: str) -> any;
 }
 
 glob console: JacConsole = cast(JacConsole, _ConsoleProxy());

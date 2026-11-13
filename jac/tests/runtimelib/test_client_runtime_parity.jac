@@ -87,7 +87,8 @@ def _signatures(path: Path) -> dict[str, list[any]] {
     );
     out: dict[str, list[any]] = {};
     for abl in mod.get_all_sub_nodes(uni.Ability) {
-        name = abl.name_ref?.value;
+        name_ref = abl.name_ref;
+        name = name_ref.value if isinstance(name_ref, uni.Name) else None;
         if not name or not _is_public(abl) {
             continue;
         }
@@ -286,5 +287,24 @@ test "sign-up types a bare identifier from the server's auth policy" {
         }
         fetched = _compiled_body(path, ReactBackend(), "__authPolicy");
         assert "/user/auth-policy" in fetched , fetched;
+    }
+}
+
+test "sign-up solves the registration challenge on every core" {
+    # With `[serve.auth.registration] challenge = true` the server refuses a
+    # registration that carries no solved challenge. Both cores must read the
+    # policy's `registration.challenge` and send the shared solver's proof; the
+    # web core's behavior is run in `test_client_signup_challenge.jac`.
+    for (target, path) in _RUNTIME_CORES.items() {
+        signup = _compiled_body(path, ReactBackend(), "jacSignup");
+        for needle in [
+            '["registration"]',
+            '["challenge"]',
+            "__solveRegistrationChallenge("
+        ] {
+            assert needle in signup , (
+                f"{target}'s compiled jacSignup lost `{needle}`:\n{signup}"
+            );
+        }
     }
 }

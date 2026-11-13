@@ -1,27 +1,10 @@
 import from pathlib { Path }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes {
-    FileResponse,
-    HTMLResponse,
-    JSONResponse,
-    Response
-}
-import from jaclang.server.transport { TransportResponse }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.server { EndpointHost }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.observability.metrics { MetricsCollector }
 
 obj JacAPIServerAdmin {
     has server: (EndpointHost | None) = None,
         user_manager: (UserManager | None) = None,
-        _metrics: (MetricsCollector | None) = None;
+        _metrics: (MetricsCollector | None) = None,
+        admin_console: (AdminConsole | None) = None;
 
     def _require_user_manager -> UserManager;
     def register_admin_endpoints -> None;
@@ -80,10 +63,6 @@ obj JacAPIServerAdmin {
         username: str, Authorization: str | None = None
     ) -> TransportResponse;
 
-    def admin_graph_data(
-        username: str | None = None, Authorization: str | None = None
-    ) -> JSONResponse;
-
     def admin_get_config(
         profile: str = "default", Authorization: str | None = None
     ) -> TransportResponse;
@@ -96,6 +75,5 @@ obj JacAPIServerAdmin {
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;
     def serve_admin_asset(path: str) -> Response;
-    def build_admin_client(force: bool = False) -> bool;
     def get_admin_dist_dir -> Path;
 }

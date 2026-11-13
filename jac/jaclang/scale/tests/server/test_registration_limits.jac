@@ -1,14 +1,6 @@
 import from unittest.mock { patch, MagicMock }
 import from concurrent.futures { ThreadPoolExecutor }
 import from tempfile { mkdtemp }
-import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.data.store { PgStore }
-import from jaclang.server.identity.rate_limit { consume_limit }
-import from jaclang.server.endpoints.auth { register_auth_endpoints }
-import from jaclang.server.identity.auth_models { RegisterRequest }
-import from jaclang.server.settings { AuthSettings, RegistrationSettings }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.app { transport_to_response }
 
 test "database quotas are atomic isolated and reset only at expiration" {
     runtime = PgRuntime(data_dir=mkdtemp(prefix='jaclimits_') + '/data');

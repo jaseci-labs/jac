@@ -2,22 +2,6 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.project.config_schema { report_schema_findings }
-import from jaclang.scale.config.validation {
-    STRICT_ENV,
-    known_deploy_targets,
-    validate_scale_config
-}
-import from jaclang.comptime { fields }
-import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.config_loader {
-    JacScaleConfig,
-    get_scale_config,
-    reset_scale_config
-}
 
 def _collect_default_mismatches(
     options: dict[str, any], defaults: dict[str, any], path: str, bad: list[str]
@@ -56,6 +40,13 @@ test "unknown nested key is flagged with a suggestion" {
     assert "did you mean 'cpu_limit'" in msgs[0] , msgs[0];
 }
 
+test "initial_cooldown_period is a known [scale.kubernetes.http_activation] key" {
+    msgs = validate_scale_config(
+        {"kubernetes": {"http_activation": {"initial_cooldown_period": 120}}}
+    );
+    assert msgs == [] , msgs;
+}
+
 test "gateway nested unknown key is flagged" {
     msgs = validate_scale_config({"gateway": {"gateway_prot": 8001}});
     assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
@@ -83,7 +74,8 @@ test "valid config produces no findings" {
         "server": {"structured_logs": False},
         "kubernetes": {"namespace": "prod", "cpu_limit": "1000m"},
         "fat_bundle": True,
-        "seal_timeout": 120
+        "seal_timeout": 120,
+        "seal_cache": "../seal-cache"
     };
     assert validate_scale_config(cfg) == [];
 }

@@ -4,7 +4,6 @@ All tests instantiate TelemetryStore directly
 """
 import time;
 import json;
-import from jaclang.scale.admin.llm_telemetry { TelemetryStore, LLMCallRecord, Trace }
 
 #  Helpers
 """Build a minimal LLM event dict for record_llm_event."""
@@ -531,11 +530,7 @@ test "get_available_filters returns unique models callers statuses" {
 
 #  8. REST Endpoint Tests — auth enforcement & response shape
 import uuid;
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data
-}
+import from jaclang.scale.tests.scale_test_client { make_client }
 
 # --- Auth enforcement: all telemetry endpoints require admin token ---
 test "REST summary endpoint returns 403 without auth token" {

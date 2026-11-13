@@ -1,18 +1,20 @@
-import from jaclang.project.persistence { PersistenceConfig }
 import os;
 import re;
 import sys;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
-import from jaclang.project.dependencies { PackageDep }
+
 glob CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
          "scale",
          "client",
          "mcp",
          "desktop"
-     );
+     ),
+     SERVE_MOVED_KEYS: dict[str, str] = {
+         'base_route_app': '[apps.<name>]; the served app is at /',
+         'cl_route_prefix': '[apps.<name>] route; other client apps are at /cl/<app-name>/'
+     };
 
 obj PersonConfig {
     has name: str = "",
@@ -60,18 +62,12 @@ obj NativeConfig {
         threads: int = 4;
 }
 
-obj ArchConfig {
-    has closed: list[str] = [];
-}
-
 obj MemoryConfig {
     has profile: str = "managed",
         enforce: list[str] = [],
         exempt: list[str] = [];
 
-    def gc_mode -> str {
-        return {"managed": "cycles", "rc": "rc", "nogc": "none"}[self.profile];
-    }
+    def gc_mode -> str;
 }
 
 obj PlacementConfig {
@@ -79,8 +75,7 @@ obj PlacementConfig {
 }
 
 obj BuildConfig {
-    has dir: str = ".jac",
-        native_closure_cap: int = 256;
+    has dir: str = ".jac";
 }
 
 obj TestConfig {
@@ -95,7 +90,7 @@ obj TestConfig {
 }
 
 obj ServeWorkersConfig {
-    has count: str = "1",
+    has count: str = "",
         threads: str = "auto",
         max_requests: int = 0,
         max_requests_jitter: int = 0,
@@ -160,6 +155,7 @@ obj ServeConfig {
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ["*"],
+        cors_credentials: bool = False,
         public_origin: str = "",
         on_conflict: str = "retry",
         conflict_max_attempts: int = 5,
@@ -174,6 +170,8 @@ obj ServeConfig {
         websocket: ServeWebSocketConfig = ServeWebSocketConfig(),
         auth: dict[str, any] = {};
 }
+
+obj ServeConfigError(ValueError) {}
 
 obj FormatConfig {
     has outfile: str = "";
@@ -234,8 +232,25 @@ obj ClientConfig {
     has framework: str = "react";
 }
 
+obj DatabaseConfig {
+    has indexes: dict[str, list[str]] = {},
+        retention_days: int = 0,
+        postgres_dist: str = "",
+        postgres_version: str = "";
+}
+
+obj NetworkConfig {
+    has offline: bool = False;
+}
+
+obj ToolchainsConfig {
+    has system: bool = True;
+}
+
 obj DevConfig {
     has jaclang_source: str = "",
+        exact: bool = False,
+        pod_binary: str = "",
         jobs: str = "",
         test_jobs: str = "",
         check_jobs: str = "",
@@ -287,7 +302,6 @@ obj JacConfig {
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
         native: NativeConfig = NativeConfig(),
-        arch: ArchConfig = ArchConfig(),
         memory: MemoryConfig = MemoryConfig(),
         placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),
@@ -301,6 +315,9 @@ obj JacConfig {
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
         dev: DevConfig = DevConfig(),
+        database: DatabaseConfig = DatabaseConfig(),
+        network: NetworkConfig = NetworkConfig(),
+        toolchains: ToolchainsConfig = ToolchainsConfig(),
         dependencies: dict[str, PackageDep] = {},
         dev_dependencies: dict[str, PackageDep] = {},
         pypi_dependencies: dict[str, str] = {},
@@ -393,6 +410,23 @@ obj JacConfig {
 
 def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;
 
+def table_value(current: any, raw: any, label: str) -> any;
+
+def apply_table(
+    target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None;
+
+def _walk_table(
+    target: object,
+    table: dict[str, any],
+    section: str,
+    moved: dict[str, str],
+    problems: list[str],
+    writes: list[tuple[object, str, any]]
+) -> None;
+
+def _apply_serve_table(serve: ServeConfig, raw: any, section: str) -> None;
+
 def _parse_persons(raw: list[object]) -> list[PersonConfig];
 
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
@@ -422,5 +456,9 @@ def get_config_for_path(
 ) -> JacConfig | None;
 
 def get_config_for_dir(start_dir: str) -> JacConfig | None;
+
+def offline_mode -> bool;
+
+def use_system_toolchains -> bool;
 
 def active_profile_name(config: JacConfig | None) -> str;

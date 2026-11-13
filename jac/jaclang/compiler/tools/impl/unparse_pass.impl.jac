@@ -1,12 +1,4 @@
-def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
-    return sep.join(
-        [
-            k.gen.jac
-            for k in [nd->:Kid:->]
-            if k and k.gen.jac
-        ]
-    );
-}
+def _join_kids(nd: uni.UniNode, sep: str = " ") -> str;
 
 impl UnparsePass._comma_sep(nodes: Sequence[uni.UniNode]) -> str {
     return ", ".join(
@@ -193,10 +185,6 @@ impl UnparsePass.exit_module_code with uni.ModuleCode exit {
     body = " ".join([s.gen.jac for s in here.body]);
     parts.append("{ " + body + " }");
     here.gen.jac = " ".join(parts);
-}
-
-impl UnparsePass.exit_py_inline_code with uni.PyInlineCode exit {
-    here.gen.jac = "::py::" + here.code.value + "::py::";
 }
 
 impl UnparsePass.exit_import with uni.Import exit {
@@ -702,6 +690,9 @@ impl UnparsePass.exit_return_stmt with uni.ReturnStmt exit {
         return;
     }
     parts: list[str] = ["return"];
+    if here.is_tail {
+        parts.append("tail");
+    }
     if here.expr {
         parts.append(here.expr.gen.jac);
     }
@@ -1215,8 +1206,8 @@ impl UnparsePass.exit_match_arch with uni.MatchArch exit {
     here.gen.jac = here.name.gen.jac + "(" + ", ".join(parts) + ")";
 }
 
-impl UnparsePass.exit_impl_import with uni.ImplImport exit {
-    head = "impl import";
+impl UnparsePass.exit_graph_import with uni.GraphImport exit {
+    head = "graph import";
     if here.scope {
         head = head + " " + here.scope.gen.jac;
     }
@@ -1235,15 +1226,23 @@ impl UnparsePass.exit_import_wire with uni.ImportWire exit {
         parts.append("type");
     }
     parts.append(here.provider.gen.jac);
-    parts.append("-->");
-    consumers = " | ".join([c.gen.jac for c in here.consumers]);
-    if not here.is_module_form {
-        parts.append(consumers);
-        parts.append("{ " + self._comma_sep(here.items) + " }");
+    parts.append("++>" if here.is_injected else "-->");
+    if here.is_grouped {
+        parts.append("[" + ", ".join([t.gen.jac for t in here.targets]) + "]");
     } else {
-        parts.append(consumers + ";");
+        target = here.targets[0];
+        parts.append(target.gen.jac + (";" if target.is_module_form else ""));
     }
     here.gen.jac = " ".join(parts);
+}
+
+impl UnparsePass.exit_wire_target with uni.WireTarget exit {
+    consumers = " | ".join([c.gen.jac for c in here.consumers]);
+    if here.is_module_form {
+        here.gen.jac = consumers;
+    } else {
+        here.gen.jac = consumers + " { " + self._comma_sep(here.items) + " }";
+    }
 }
 
 impl UnparsePass.exit_import_rule with uni.ImportRule exit {
@@ -1261,9 +1260,7 @@ impl UnparsePass.exit_import_rule with uni.ImportRule exit {
 }
 
 impl UnparsePass.exit_module_pattern with uni.ModulePattern exit {
-    if here.is_any {
-        here.gen.jac = "any";
-    } elif here.path is None {
+    if here.path is None {
         here.gen.jac = "*";
     } else {
         here.gen.jac = here.path.gen.jac + (".*" if here.is_glob else "");
@@ -1276,4 +1273,14 @@ impl UnparsePass.exit_wire_item with uni.WireItem exit {
         result = result + " as " + here.alias.gen.jac;
     }
     here.gen.jac = result;
+}
+
+impl _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
+    return sep.join(
+        [
+            k.gen.jac
+            for k in [nd->:Kid:->]
+            if k and k.gen.jac
+        ]
+    );
 }

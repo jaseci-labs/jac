@@ -3,10 +3,6 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.nativecache { NativeUnitEntry }
-import from jaclang.compiler.driver.native_iface { NativeIface }
 
 test "explicit fresh compilation bypasses persisted native units" {
     with tempfile.TemporaryDirectory() as directory {

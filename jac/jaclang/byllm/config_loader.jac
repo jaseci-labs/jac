@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.plugin_config { PluginConfigBase }
 
 class JacByllmConfig(PluginConfigBase) {
     override def get_plugin_name(self: JacByllmConfig) -> str;

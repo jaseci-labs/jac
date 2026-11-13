@@ -82,6 +82,9 @@ zig-out/
 # build.zig's fetch-bun step.
 .bun-build/
 jaclang/client/_bun/
+# Zig's unpacked build.zig.zon dependencies (the JavaScript engine's foreign
+# sources).
+zig-pkg/
 
 # Vendored typeshed stdlib stubs are fetched at the pinned commit by the
 # payload tool's fetch-typeshed subcommand (zig build fetch-typeshed), not
@@ -89,7 +92,7 @@ jaclang/client/_bun/
 # the stubs are tracked.
 jaclang/vendor/typeshed/stdlib
 .llvm-build/
-# CI staging dir for a cache-restored prebuilt shim (setup-jac -Dshim-bin).
+# CI staging dir for a cache-restored prebuilt shim.
 .shim-build/
 # Persistent JIR precompile cache: mkpayload seeds site/_precompiled from it
 # and writes the refreshed tree back (see build.zig --precompiled-cache).
@@ -100,12 +103,9 @@ jaclang/vendor/typeshed/stdlib
 # Zig-built LLVMPY_* shim, placed in-tree per host platform (see build.zig).
 libjacllvm.so
 libjacllvm.dylib
+libjacllvm.*.artifact.json
+jacllvm.dll.artifact.json
 jacllvm.dll
-# Kit-built native compiler kernel (#8824), staged in-tree by mkpayload.
-libjac_compiler.so
-libjac_compiler.dylib
-libjac_compiler.so.layout.json
-libjac_compiler.dylib.layout.json
 # Any other `nacompile --shared` unit that lands in-tree with its layout
 # sidecar (a stray libjac_npy.so was committed once).
 libjac_*.so
@@ -117,6 +117,4 @@ libjacpyembed.so
 libjacpyembed.dylib
 jacpyembed.dll
 
-# A kernel publication lock keeps its inode while a build holds it.
 libjac_*.lock
-jac_compiler.dll.lock

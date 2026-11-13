@@ -9,6 +9,7 @@ run through. These tests exercise that contract on private roots only; the
 real user cache is never touched.
 """
 
+import json;
 import os;
 import shutil;
 import stat;
@@ -20,7 +21,15 @@ import from unittest.mock { patch }
 import from tests.support { cache_env }
 import from jaclang.cache.locking { FileLock }
 import from jaclang.jac0core.cache_paths { FileLock as InstallLock }
-import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
+import from jaclang.jac0core.cache_paths {
+    file_sha256,
+    flush_file_digests,
+    forget_file_digests,
+    get_cache_home,
+    get_jir_cache_dir,
+    stats_snapshot
+}
+import jaclang.jac0core.cache_paths as cache_paths;
 import from jaclang.cache.home {
     CACHEDIR_TAG,
     CACHEDIR_TAG_TEXT,
@@ -55,11 +64,13 @@ glob DAY: float = 86400.0,
          "jir-bootstrap",
          "jir-stubcat",
          "jir-digests",
+         "jir-nativeglue",
          "apps",
          "pkgs",
          "pkg-git",
          "pkg-index",
          "scale-binaries",
+         "admin",
          "models",
          "toolchains-downloads",
          "toolchains-installed",
@@ -502,28 +513,22 @@ test "nested staging uses the orphan TTL and never follows symlinks" {
     }
 }
 
-test "retired toolchains honor custom roots and never remove an active bucket root" {
+test "retired toolchains are swept and an active bucket root is kept" {
     (base, env) = private_root();
-    with tempfile.TemporaryDirectory() as custom {
-        env["JAC_TOOLCHAIN_DIR"] = custom;
-        old = entry_dir(Path(custom), "llvm-cbe", 0.0);
-        default_old = entry_dir(base, "toolchains/cocoapods", 0.0);
-        with patch.dict(os.environ, env) {
-            extra = dict(unmanaged());
-            assert str(old) in extra;
-            gc(dry_run=True);
-            assert old.exists() and default_old.exists();
-            gc();
-            assert not old.exists() and not default_old.exists();
-        }
-        env["JAC_TOOLCHAIN_DIR"] = str(base / "toolchains/llvm-cbe");
-        with patch.dict(os.environ, env) {
-            active = entry_dir(
-                bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
-            );
-            gc();
-            assert active.exists();
-        }
+    old = entry_dir(base, "toolchains/llvm-cbe", 0.0);
+    other_old = entry_dir(base, "toolchains/cocoapods", 0.0);
+    with patch.dict(os.environ, env) {
+        extra = dict(unmanaged());
+        assert "toolchains/llvm-cbe" in extra , extra;
+        gc(dry_run=True);
+        assert old.exists() and other_old.exists();
+        gc();
+        assert not old.exists() and not other_old.exists();
+        active = entry_dir(
+            bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
+        );
+        gc();
+        assert active.exists();
     }
 }
 
@@ -531,7 +536,6 @@ test "private test environments override every inherited cache family" {
     with tempfile.TemporaryDirectory() as tmp {
         inherited = {
             "JAC_CACHE_HOME": "/unrelated",
-            "JAC_TOOLCHAIN_DIR": "/unrelated-tools",
             "JAC_MODELS_DIR": "/unrelated-models",
             "JAC_SCALE_CACHE_DIR": "/unrelated-binaries"
         };
@@ -651,5 +655,193 @@ test "temporary claims hold sibling locks and release them after a partial acqui
             assert len(purge([b.name]).kept) == 1;
             assert item.exists();
         }
+    }
+}
+
+"""Replace a tree with a copy of itself, as unpacking an image layer does: the
+same paths, bytes and mtimes, on new inodes with new ctimes."""
+def recopy(tree: Path) {
+    aside = tree.with_name(tree.name + ".orig");
+    tree.rename(aside);
+    shutil.copytree(aside, tree, symlinks=True);
+    shutil.rmtree(aside);
+}
+
+"""How many of `files` file_sha256 read instead of taking from the ledger."""
+def hashes_read(files: list[Path]) -> int {
+    before = stats_snapshot().get("content_hash", 0);
+    for f in files {
+        file_sha256(f);
+    }
+    return stats_snapshot().get("content_hash", 0) - before;
+}
+
+test "a copied cache home keeps the runtime's digests and re-reads a project's" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    site = home / "rt" / "0123456789abcdef" / "site" / "jaclang";
+    site.mkdir(parents=True);
+    project = Path(tempfile.mkdtemp(prefix="jac-digest-project-"));
+    runtime = [site / "a.jac", site / "b.jac"];
+    app = project / "app.jac";
+    for (n, f) in enumerate(runtime + [app]) {
+        f.write_text(f"glob x{n}: int = {n};\n");
+        os.utime(f, ns=(0, 0));
+    }
+    # No racy window, so the warm pass records every file it reads.
+    with patch.dict(os.environ, env), patch.multiple(
+        cache_paths,
+        _DIGEST_RACY_NS=-1,
+        _digest_memo={},
+        _digest_shards={},
+        _digest_dirty=set()
+    ) {
+        assert hashes_read(runtime + [app]) == 3;
+        flush_file_digests();
+        recorded = sum(
+            len(json.loads(p.read_text()))
+            for p in (home / "jir" / "digests").glob("*.json")
+        );
+        assert recorded == 3 , f"the warm ledger holds {recorded} of 3 files";
+        forget_file_digests();
+        recopy(home);
+        recopy(project);
+        rehashed = hashes_read(runtime);
+        assert rehashed == 0 , f"{rehashed} runtime file(s) re-hashed after the cache home was copied";
+        assert hashes_read([app]) == 1 , "a project file on a new inode must be read again";
+    }
+}
+
+test "a relative cache root keeps the runtime's digests across a copy" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    site = home / "rt" / "0123456789abcdef" / "site" / "jaclang";
+    site.mkdir(parents=True);
+    runtime = [site / "a.jac", site / "b.jac"];
+    for (n, f) in enumerate(runtime) {
+        f.write_text(f"glob x{n}: int = {n};\n");
+        os.utime(f, ns=(0, 0));
+    }
+    # JAC_CACHE_HOME may be relative to the working directory.
+    relative = dict(env);
+    relative["JAC_CACHE_HOME"] = home.name;
+    cwd = os.getcwd();
+    os.chdir(home.parent);
+    try {
+        with patch.dict(os.environ, relative), patch.multiple(
+            cache_paths,
+            _DIGEST_RACY_NS=-1,
+            _digest_memo={},
+            _digest_shards={},
+            _digest_dirty=set()
+        ) {
+            assert hashes_read(runtime) == 2;
+            flush_file_digests();
+            forget_file_digests();
+            recopy(home);
+            rehashed = hashes_read(runtime);
+            assert rehashed == 0 , f"{rehashed} runtime file(s) re-hashed after a copy under a relative cache root";
+        }
+    } finally {
+        os.chdir(cwd);
+    }
+}
+
+test "a symlinked cache root keeps the runtime's digests across a copy" {
+    (base, env) = private_root();
+    real = base / "real";
+    site = real / "rt" / "0123456789abcdef" / "site" / "jaclang";
+    site.mkdir(parents=True);
+    link = base / "link";
+    link.symlink_to(real, target_is_directory=True);
+    # The compiler hashes resolved paths, so the files are named through `real`.
+    runtime = [site / "a.jac", site / "b.jac"];
+    for (n, f) in enumerate(runtime) {
+        f.write_text(f"glob x{n}: int = {n};\n");
+        os.utime(f, ns=(0, 0));
+    }
+    linked = dict(env);
+    linked["JAC_CACHE_HOME"] = str(link);
+    with patch.dict(os.environ, linked), patch.multiple(
+        cache_paths,
+        _DIGEST_RACY_NS=-1,
+        _digest_memo={},
+        _digest_shards={},
+        _digest_dirty=set()
+    ) {
+        assert hashes_read(runtime) == 2;
+        flush_file_digests();
+        forget_file_digests();
+        recopy(real);
+        rehashed = hashes_read(runtime);
+        assert rehashed == 0 , f"{rehashed} runtime file(s) re-hashed after a copy under a symlinked cache root";
+    }
+}
+
+test "file_identity derives the cache root once while its inputs stay the same" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    files = [];
+    for top in (home, base / "a" / "rel", base / "b" / "rel") {
+        site = top / "rt" / "0123456789abcdef" / "site" / "jaclang";
+        site.mkdir(parents=True);
+        for n in range(20) {
+            (site / f"m{n}.jac").write_text("glob x: int = 0;\n");
+        }
+        files.append(sorted(site.glob("*.jac")));
+    }
+    with patch.dict(os.environ, env), patch.object(
+        cache_paths, "get_cache_home", wraps=get_cache_home
+    ) as derive {
+        for f in files[0] {
+            assert cache_paths.file_identity(f)[0] == 0 , f;
+        }
+        total = len(files[0]);
+        assert derive.call_count <= 1 , f"the cache root was derived {derive.call_count} times for {total} files";
+        # A relative root follows the working directory, under one setting.
+        os.environ["JAC_CACHE_HOME"] = "rel";
+        cwd = os.getcwd();
+        try {
+            for (n, folder) in enumerate(("a", "b")) {
+                os.chdir(base / folder);
+                assert cache_paths.file_identity(files[n + 1][0])[0] == 0 , f"a runtime file under {folder}/rel";
+                assert cache_paths.file_identity(files[0][0])[0] != 0 , "a file under the old root";
+            }
+        } finally {
+            os.chdir(cwd);
+        }
+    }
+}
+
+test "a package installed into the runtime's python is read again when it is replaced" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    # `jac install --global` installs into the runtime's own site-packages.
+    package = home
+        / "rt"
+        / "0123456789abcdef"
+        / "python"
+        / "lib"
+        / "python3.14"
+        / "site-packages"
+        / "plugin";
+    package.mkdir(parents=True);
+    module = package / "mod.jac";
+    module.write_text("glob x: int = 1;\n");
+    os.utime(module, ns=(0, 0));
+    with patch.dict(os.environ, env), patch.multiple(
+        cache_paths,
+        _DIGEST_RACY_NS=-1,
+        _digest_memo={},
+        _digest_shards={},
+        _digest_dirty=set()
+    ) {
+        before = file_sha256(module);
+        # An upgrade that keeps the file's size and mtime.
+        upgrade = package / "mod.jac.new";
+        upgrade.write_text("glob x: int = 2;\n");
+        os.utime(upgrade, ns=(0, 0));
+        os.replace(upgrade, module);
+        assert file_sha256(module) != before , "a replaced package file kept its old digest";
     }
 }

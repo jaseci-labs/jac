@@ -1,34 +1,25 @@
 import logging;
 import from uuid { UUID }
-import from jaclang.runtime.archetype { Anchor, EdgeAnchor, anchor_key }
-import from jaclang.runtime.graph_query { GraphQuery, QPred }
-import from jaclang.runtime.graph_walk {
-    access_gated,
-    acl_read_ok,
-    needs_store,
-    origin_anchors,
-    pred_subject,
-    walk,
-    walk_edges,
-    walk_nodes
-}
-import from jaclang.server.session { Session }
-import from jaclang.data.sqlcompile { compile_query }
 
 glob logger = logging.getLogger(__name__),
+     COUNT_CHECK_CAP: int = 200,
+     PAGE_SCAN_FLOOR: int = 200,
+     PAGE_SCAN_FACTOR: int = 4,
      __all__ = [
          'resolve_query',
          'resolve_query_edges',
          'resolve_query_prefix',
          'resolve_query_count',
          'resolve_query_exists',
+         'resolve_query_page',
+         'resolve_query_type_counts',
          'LazyRefs'
      ];
 
 
 def _sql_pairs(
     mem: Session, origin_ids: list[UUID], q: GraphQuery, upto: int
-) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred]];
+) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred], list[QPred]];
 
 
 def resolve_query_prefix(mem: Session, q: GraphQuery, upto: int) -> list[UUID];
@@ -44,6 +35,19 @@ def resolve_query_count(mem: Session, q: GraphQuery) -> int;
 
 
 def resolve_query_exists(mem: Session, q: GraphQuery) -> bool;
+
+
+def resolve_query_page(
+    mem: Session, q: GraphQuery
+) -> tuple[
+    list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]],
+    (tuple[int, (UUID | None)] | None)
+];
+
+
+def resolve_query_type_counts(
+    mem: Session, q: GraphQuery, per: str = 'node'
+) -> tuple[dict[str, int], bool];
 
 
 class LazyRefs(list) {

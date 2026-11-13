@@ -41,19 +41,58 @@ test "precompiled interfaces are independent of the staging directory" {
 }
 
 test "precompiled modules carry their type interface on cold and cached builds" {
-    with TemporaryDirectory() as directory {
-        package = _package(Path(directory));
-        source = package / "api.jac";
-        source.write_text("def answer() -> int { return 42; }\n");
-        for _attempt in range(2) {
-            data = precompile_unit(str(source), str(package), collect=False);
-            assert data is not None , "precompilation produced no artifact";
-            assert read_section_bytes(data, SEC_IFACE) is not None , (
-                "precompilation discarded the dependency's type interface"
-            );
-            assert read_section_bytes(data, SEC_DIAG) is not None , (
-                "precompilation discarded the interface's analysis diagnostics"
-            );
+    import contextlib;
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
+    import from jaclang.dist.precompile_bytecode { precompile_unit_context }
+    import from jaclang.runtime.prepared { forget }
+    for served in (False, True) {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            source = package / "api.jac";
+            source.write_text("def answer() -> int { return 42; }\n");
+            with (contextlib.chdir(package) if served else contextlib.nullcontext()) {
+                if served {
+                    (package / "jac.toml").write_text('[project]\nname = "library"\n');
+                    app_main = package / "main.jac";
+                    app_main.write_text(
+                        "import from api { answer }\n"
+                            + "def:pub hello -> int { return answer(); }\n"
+                    );
+                    prepare_application(str(app_main), JacProgram(), str(package));
+                    forget(str(app_main));
+                    (package / ".jac" / "serve_manifest.json").write_text("{}");
+                    prepared = {
+                        str(p) for p in (package / ".jac" / "cache").rglob("api.*.jir")
+                    };
+                    with precompile_unit_context(
+                        str(source), str(package)
+                    ) as _program {
+                        codespace = effective_default_codespace();
+                        looked = str(get_module_cache_path(str(source)));
+                    }
+                    assert codespace == "server" , (
+                        f"a served app's seal compiles under {codespace!r}, its prepare under server"
+                    );
+                    assert looked in prepared , (
+                        f"the seal looks up {looked}; the prepare wrote {sorted(
+                            prepared
+                        )}"
+                    );
+                }
+                for _attempt in range(2) {
+                    data = precompile_unit(str(source), str(package), collect=False);
+                    assert data is not None , "precompilation produced no artifact";
+                    assert read_section_bytes(data, SEC_IFACE) is not None , (
+                        "precompilation discarded the dependency's type interface"
+                    );
+                    assert read_section_bytes(data, SEC_DIAG) is not None , (
+                        "precompilation discarded the interface's analysis diagnostics"
+                    );
+                }
+            }
         }
     }
 }
@@ -317,6 +356,8 @@ test "freezing bootstrap bytecode initializes and preserves its interface" {
     # Finalization is a fresh process. A selfhost symbol-only compile does not
     # initialize the interface codec implicitly, unlike an application compile.
     script = """
+from jaclang.jac0core.artifact_registry import begin
+begin(['stubcat'])
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -345,14 +386,8 @@ with TemporaryDirectory() as directory:
     assert read_section_bytes(data, SEC_IFACE) is not None, (
         'fresh bootstrap sealing lost the dependency interface')
 """;
-    env = dict(os.environ);
-    env["JAC_STUBCAT_BUILDING"] = "1";
     result = subprocess.run(
-        [sys.executable, "-c", script],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=600
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
     );
     assert result.returncode == 0 , result.stdout + result.stderr;
 }

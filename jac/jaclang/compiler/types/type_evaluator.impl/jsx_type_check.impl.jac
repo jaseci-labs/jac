@@ -21,7 +21,7 @@ impl TypeEvaluator._is_mobui_module(nd: UniNode) -> bool {
 impl TypeEvaluator._resolve_jsx_component_type(
     name: JsxElementName
 ) -> FunctionType | None {
-    if not name.parts {
+    if len(name.parts) != 1 {
         return None;
     }
     first_part = name.parts[0];
@@ -104,7 +104,7 @@ impl TypeEvaluator._validate_jsx_props(
             self._validate_component_jsx_props(expr, tag_name, func_type=func_type);
         }
     } else {
-        is_component = tag_name and tag_name[0].isupper();
+        is_component = tag_name and (len(expr.name.parts) > 1 or tag_name[0].isupper());
         if is_component {
             self._validate_component_jsx_props(expr, tag_name);
         } else {

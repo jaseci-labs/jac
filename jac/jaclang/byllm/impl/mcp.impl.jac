@@ -81,24 +81,7 @@ impl _McpState.stop -> None {
     self.connected = False;
 }
 
-async def _async_cleanup(state: _McpState) {
-    session_ctx = state.session_ctx;
-    if session_ctx is not None {
-        try {
-            await session_ctx.__aexit__(None, None, None);
-        } except Exception as e {
-            logger.debug(f"Session __aexit__ error: {e}");
-        }
-    }
-    transport_ctx = state.transport_ctx;
-    if transport_ctx is not None {
-        try {
-            await transport_ctx.__aexit__(None, None, None);
-        } except Exception as e {
-            logger.debug(f"Transport __aexit__ error: {e}");
-        }
-    }
-}
+async def _async_cleanup(state: _McpState);
 
 impl McpClient.postinit -> None {
     self._id = str(uuid.uuid4());
@@ -106,100 +89,15 @@ impl McpClient.postinit -> None {
 
 glob _states: dict[str, _McpState] = {};
 
-def _get_state(client: McpClient) -> _McpState {
-    if client._id not in _states {
-        _states[client._id] = _McpState();
-    }
-    return _states[client._id];
-}
+def _get_state(client: McpClient) -> _McpState;
 
-async def _do_connect(client: McpClient, transport_type: str) {
-    import from mcp.client.session { ClientSession }
-    import from datetime { timedelta }
-
-    state = _get_state(client);
-    (read_stream, write_stream) = await _open_transport(client, transport_type);
-
-    session_ctx = ClientSession(
-        read_stream,
-        write_stream,
-        read_timeout_seconds=timedelta(seconds=client.timeout)
-    );
-    state.session_ctx = session_ctx;
-    session = await session_ctx.__aenter__();
-    state.session = session;
-    await session.initialize();
-
-    tools_result = await session.list_tools();
-    discovered: list[McpTool] = [];
-    for t in tools_result.tools {
-        raw_schema = t?.inputSchema;
-        schema: dict[str, any] = raw_schema if isinstance(raw_schema, dict) else {};
-        discovered.append(
-            McpTool(
-                name=str(getattr(t, "name", "")),
-                description=str(getattr(t, "description", "") or ""),
-                input_schema=schema,
-                _client=client
-            )
-        );
-    }
-    state.tools_cache = discovered;
-    state.connected = True;
-    logger.info(
-        f"[MCP] Connected via {transport_type} — "
-        f"{len(state.tools_cache)} tool(s) discovered."
-    );
-}
+async def _do_connect(client: McpClient, transport_type: str);
 
 async def _do_call_tool(
     client: McpClient, name: str, arguments: dict[str, any]
-) -> str {
-    import from mcp.client.session { ClientSession }
+) -> str;
 
-    state = _get_state(client);
-    session = state.session;
-    if not isinstance(session, ClientSession) {
-        raise McpError(message="MCP session is not connected.");
-    }
-    logger.debug(f"[MCP] call_tool {name}({arguments})");
-    result = await session.call_tool(name, arguments);
-    parts: list[str] = [];
-    for item in (result.content or []) {
-        text = item?.text;
-        parts.append(str(text) if text is not None else str(item));
-    }
-    return "\n".join(parts) if parts else "MCP tool returned no content.";
-}
-
-async def _open_transport(client: McpClient, transport_type: str) -> tuple[any, ...] {
-    import from mcp.client.stdio { StdioServerParameters, stdio_client }
-    import from mcp.client.sse { sse_client }
-    import from mcp.client.streamable_http { streamablehttp_client }
-
-    if transport_type == "stdio" {
-        ctx = stdio_client(
-            StdioServerParameters(
-                command=client.command, args=client.args, env=client.env or None
-            )
-        );
-    } elif transport_type == "sse" {
-        ctx = sse_client(
-            client.url, headers=client.headers or None, timeout=float(client.timeout)
-        );
-    } elif transport_type == "streamable-http" {
-        ctx = streamablehttp_client(client.url, headers=client.headers or None);
-    } else {
-        raise McpError(
-            message=f"Unknown transport: '{transport_type}'. "
-            "Use 'stdio', 'sse', or 'streamable-http'."
-        );
-    }
-    state = _get_state(client);
-    state.transport_ctx = ctx;
-    streams = await ctx.__aenter__();
-    return (streams[0], streams[1]);
-}
+async def _open_transport(client: McpClient, transport_type: str) -> tuple[any, ...];
 
 impl McpClient.connect -> None {
     state = _get_state(self);
@@ -311,4 +209,116 @@ impl McpTool.parse_arguments(args_json: dict[str, any]) -> dict[str, any] {
 
 impl McpTool.is_finish_tool -> bool {
     return False;
+}
+
+impl _async_cleanup(state: _McpState) {
+    session_ctx = state.session_ctx;
+    if session_ctx is not None {
+        try {
+            await session_ctx.__aexit__(None, None, None);
+        } except Exception as e {
+            logger.debug(f"Session __aexit__ error: {e}");
+        }
+    }
+    transport_ctx = state.transport_ctx;
+    if transport_ctx is not None {
+        try {
+            await transport_ctx.__aexit__(None, None, None);
+        } except Exception as e {
+            logger.debug(f"Transport __aexit__ error: {e}");
+        }
+    }
+}
+
+impl _get_state(client: McpClient) -> _McpState {
+    if client._id not in _states {
+        _states[client._id] = _McpState();
+    }
+    return _states[client._id];
+}
+
+impl _do_connect(client: McpClient, transport_type: str) {
+    import from mcp.client.session { ClientSession }
+    import from datetime { timedelta }
+
+    state = _get_state(client);
+    (read_stream, write_stream) = await _open_transport(client, transport_type);
+
+    session_ctx = ClientSession(
+        read_stream,
+        write_stream,
+        read_timeout_seconds=timedelta(seconds=client.timeout)
+    );
+    state.session_ctx = session_ctx;
+    session = await session_ctx.__aenter__();
+    state.session = session;
+    await session.initialize();
+
+    tools_result = await session.list_tools();
+    discovered: list[McpTool] = [];
+    for t in tools_result.tools {
+        raw_schema = t?.inputSchema;
+        schema: dict[str, any] = raw_schema if isinstance(raw_schema, dict) else {};
+        discovered.append(
+            McpTool(
+                name=str(getattr(t, "name", "")),
+                description=str(getattr(t, "description", "") or ""),
+                input_schema=schema,
+                _client=client
+            )
+        );
+    }
+    state.tools_cache = discovered;
+    state.connected = True;
+    logger.info(
+        f"[MCP] Connected via {transport_type} — "
+        f"{len(state.tools_cache)} tool(s) discovered."
+    );
+}
+
+impl _do_call_tool(client: McpClient, name: str, arguments: dict[str, any]) -> str {
+    import from mcp.client.session { ClientSession }
+
+    state = _get_state(client);
+    session = state.session;
+    if not isinstance(session, ClientSession) {
+        raise McpError(message="MCP session is not connected.");
+    }
+    logger.debug(f"[MCP] call_tool {name}({arguments})");
+    result = await session.call_tool(name, arguments);
+    parts: list[str] = [];
+    for item in (result.content or []) {
+        text = item?.text;
+        parts.append(str(text) if text is not None else str(item));
+    }
+    return "\n".join(parts) if parts else "MCP tool returned no content.";
+}
+
+impl _open_transport(client: McpClient, transport_type: str) -> tuple[any, ...] {
+    import from mcp.client.stdio { StdioServerParameters, stdio_client }
+    import from mcp.client.sse { sse_client }
+    import from mcp.client.streamable_http { streamablehttp_client }
+
+    if transport_type == "stdio" {
+        ctx = stdio_client(
+            StdioServerParameters(
+                command=client.command, args=client.args, env=client.env or None
+            )
+        );
+    } elif transport_type == "sse" {
+        ctx = sse_client(
+            client.url, headers=client.headers or None, timeout=float(client.timeout)
+        );
+    } elif transport_type == "streamable-http" {
+        ctx = streamablehttp_client(client.url, headers=client.headers or None);
+    } else {
+        raise McpError(
+            message=f"Unknown transport: '{transport_type}'. "
+            "Use 'stdio', 'sse', or 'streamable-http'."
+        );
+    }
+    state = _get_state(client);
+    state.transport_ctx = ctx;
+    streams = await ctx.__aenter__();
+    return (streams[0], streams[1]);
 }

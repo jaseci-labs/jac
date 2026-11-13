@@ -10,14 +10,6 @@ and a deployment that configures its own secret keeps using it.
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.server.settings { ServeConfigError, ServeSettings }
-import from jaclang.server.serving.authcrypt {
-    PLACEHOLDER_JWT_SECRET,
-    jwt_decode,
-    jwt_encode,
-    project_data_dir,
-    project_signing_secret
-}
 
 glob CLUSTER_ENV: str = "KUBERNETES_SERVICE_HOST",
      DATA_PATH_ENV: str = "JAC_DATA_PATH";

@@ -1,32 +1,3 @@
-import type from jaclang.compiler.frontend.unitree {
-    Ability,
-    AstTypedVarNode,
-    ConditionalNode,
-    ContextAwareNode,
-    Expr,
-    FuncCall,
-    Import,
-    Module,
-    NameAtom,
-    Symbol,
-    UniCFGNode,
-    UniScopeNode
-}
-import type from jaclang.compiler.types.types {
-    ClassDetailsPrivate,
-    ClassDetailsShared,
-    ClassType,
-    EnumMemberInfo,
-    EnumMemberType,
-    FunctionType,
-    ModuleType,
-    OverloadedType,
-    Parameter,
-    TypeBase,
-    TypeVarType,
-    UnionType
-}
-
 edge SymOf: NameAtom --> Symbol {}
 
 edge Defines: Symbol --> NameAtom {}
@@ -49,6 +20,8 @@ edge CfgTrue: ConditionalNode --> UniCFGNode {}
 
 edge CfgFalse: ConditionalNode --> UniCFGNode {}
 
+edge CfgCatch: UniCFGNode --> UniCFGNode {}
+
 edge PlacedIn: ContextAwareNode --> Codespace {}
 
 edge DecidedCodespace: Module --> Codespace {}
@@ -67,14 +40,7 @@ glob _CODESPACES: dict[str, Codespace] = {
          "native": Codespace(kind="native")
      };
 
-def codespace_node(kind: str) -> Codespace {
-    found = _CODESPACES.get(kind);
-    if found is None {
-        found = Codespace(kind=kind);
-        _CODESPACES[kind] = found;
-    }
-    return found;
-}
+def codespace_node(kind: str) -> Codespace;
 
 edge TypeOf: AstTypedVarNode | Expr --> TypeBase {}
 

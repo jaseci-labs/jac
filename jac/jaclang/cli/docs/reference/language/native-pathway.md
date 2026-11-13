@@ -66,7 +66,7 @@ programmatically:
 | **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **C structs and pointers** | C-layout structs, `&`/`&mut` borrows to C, `ptr[T]`, `p.view(n)`, `Pinned[T]` |
 | **C interop (out)** | `jac build --native --lib` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
-| **Std library** | `import math` / `time` / `sys` / `os` / `random` / `signal` / `subprocess` (Python-congruent subset) |
+| **Std library** | `import math` / `time` / `sys` / `os` / `random` / `signal` / `subprocess` / `fcntl` / `termios` / `tty` / `select` (Python-congruent subset) |
 | **Memory model** | `[memory] profile`: `managed` (RC + cycle collector, default), `rc`, `nogc` (borrow-checked, no runtime); one-off override with `--memory` |
 | **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
@@ -86,7 +86,7 @@ There is no syntax for it -- native placement inside a file comes from evidence 
 
 # Standard Jac -- runs on Python
 def process_data(items: list[dict]) -> list[dict] {
-    # Full access to PyPI, walkers, by llm(), etc.
+    # Full access to PyPI, the persistent `root` graph, by llm(), etc.
     return [item for item in items if item["active"]];
 }
 
@@ -454,6 +454,7 @@ At native strict sites, using a `T | None` value where the unwrapped `T` is requ
 | Init constructor | `def init(x: int) { self.x = x; }` |
 | Postinit hook | `def postinit() { self.setup(); }` |
 | Recursion | `def fib(n: int) -> int { return fib(n-1) + fib(n-2); }` |
+| Guaranteed tail calls | `return tail step(n - 1, acc);` lowers to `musttail` (constant stack; `E5114` when it cannot) |
 
 ### Operators
 
@@ -593,6 +594,10 @@ to libc/libm. Where behavior can still diverge, it is noted per module below.
 | `random` | seed-sequence faithful | CPython MT19937 |
 | `signal` | subset, Linux only | libc (`bsd_signal` / `sigprocmask`) |
 | `subprocess` | subset, Linux only | `posix_spawnp` + `poll` |
+| `fcntl` | subset, POSIX hosts | libc (`fcntl(2)` / `ioctl(2)`) |
+| `termios` | subset, POSIX hosts | libc (`tcgetattr(3)` / `tcsetattr(3)`, per-OS struct layout) |
+| `tty` | subset, POSIX hosts | over the bundled `termios` |
+| `select` | subset, POSIX hosts | libc (`poll(2)`); `-1.0` is the block sentinel, not `None` |
 
 Anything not yet lowered is **rejected at compile time** (rather than silently
 producing a wrong binary), so an unsupported `import` or member fails loudly.
@@ -756,6 +761,28 @@ does not deadlock). Scoped to `args`/`stdin`/`stdout`/`stderr`/`text`/`cwd`/
 `env`/`shell`/`pid`/`returncode`; there is no file-object stream API --
 `Popen.stdout` is an int sentinel, not a reader.
 
+#### `fcntl` / `termios` / `tty` / `select` -- POSIX Terminal Floors
+
+`import fcntl` provides `fcntl(fd, cmd, arg=0)` (the `F_GETFL`/`F_SETFL`
+family) and `ioctl(fd, request, arg)`, which copies a `bytes` arg into a
+private 1024-byte buffer and answers fresh `bytes` of the same length (the
+packed `winsize` for `TIOCGWINSZ`), as CPython does. `import termios` provides
+`tcgetattr`/`tcsetattr` over the CPython `[iflag, oflag, cflag, lflag,
+ispeed, ospeed, cc]` shape (cc as NCCS ints: 32 on glibc, 20 on darwin)
+and the V*/I*/O*/C*/L* constant groups with their per-OS values. `import
+tty` provides `setraw`/`setcbreak`, CPython's `tty.py` ported over the
+bundled `termios`. `import select` provides `select(rlist, wlist, xlist,
+timeout=-1.0)` over `poll(2)` plus the `POLL*` constants.
+
+Divergences from CPython on these floors: errors raise `ValueError`
+carrying CPython's `[Errno N] <strerror>` text (CPython raises `OSError` /
+`termios.error` / `select.error`); an `ioctl` request that writes past
+its argument raises `RuntimeError` where CPython raises `SystemError`;
+`termios` does not export Linux's `VSWTC`; `select`'s
+block-forever sentinel is `-1.0` rather than `None`, `POLLERR`/`POLLHUP`
+report readable AND writable, and the exceptional list is always empty.
+`fcntl` lacks `flock`/`lockf` and the `struct flock` commands.
+
 ---
 
 ## C Library Interop
@@ -876,6 +903,8 @@ with entry {
 
 The scalar travels through an addressable slot of its C type and is written back after the call, so `&mut flag` with `flag: bool` passes a C `bool*`. On the native backend a struct is passed as a pointer to its payload; the LLVM `noalias` / `readonly` facts on borrowed Jac parameters are unaffected.
 
+That write-back is the C boundary's. A Jac function's own `&mut` scalar parameter is a value: assigning it, lending it on as `&mut p`, or passing it to a parameter the callee declares `&mut` would change only the function's copy, so the checker rejects each (`E1159`). Return the new value (a tuple for several), or take a `ptr[T]` to storage the caller owns.
+
 ### C pointers: `ptr[T]`
 
 `ptr[T]` is a **non-owning C address** of a `T` (a sized scalar, a foreign struct, an opaque C type, or another `ptr`); a bare `ptr` is `void*`. It is a builtin generic type name like `list[T]`, not a keyword, and it is plain data: it can be a local, a field of a Jac object, a container element, a foreign struct field, a clib parameter or a clib return, and it copies like an `int`. That is how a Jac object holds a C handle.
@@ -886,12 +915,16 @@ A pointer supports exactly these operations:
 |---|---|
 | `p.is_null()` | the address is NULL; `bool(p)` / `if p` test the same thing |
 | `p == q`, `p != q` | address equality |
+| `p + n`, `p - n`, `p += n`, `p -= n` | step `n` elements of `T`, as in C (bytes for a bare `ptr` or an opaque `T`) |
+| `p - q` | the distance from `q` to `p` in elements |
+| `p < q`, `p <= q`, `p > q`, `p >= q` | order by unsigned address, as C orders pointers into one object; both sides have one pointee type (a bare `ptr` side takes any `ptr[T]`, which widens to it) |
+| `int(p)`, `ptr[T](n)` | the address as an integer, and the pointer at an integer address |
 | passing `p` to C | the address, as is |
 | `p.view(n)` | a bounds-checked view of `n` elements ([below](#views-of-c-memory-pviewn)) |
 | `ptr[T]()` | the null pointer |
 | `ptr[T](q)` | the same address retyped as a `T*` |
 
-There is no dereference, no arithmetic and no `free`: C memory is freed by the C API that allocated it. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
+There is no dereference and no `free`: memory is read and written through `p.view(n)`, and C memory is freed by the C API that allocated it. As in C, a step must not carry a pointer around the ends of the address space (past address 0 or the highest address); the native backend relies on it, knowing a pointer stepped forward is not null, so a view of it needs no null check. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
 
 <!-- jac-skip -->
 ```jac
@@ -1130,9 +1163,9 @@ initializer, demoted symbols, C library needs, direct native dependencies;
 digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
 relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
 are keyed by the module's content key plus a stamp of the compiler digest,
-codegen identity and target triple in their own header, so a module the
-compiler runs as bytecode and the kernel links as a native unit keeps both
-products in one entry. Dependents record each native dependency's interface
+codegen identity and target triple in their own header, so a module that
+runs as bytecode and links as a native unit keeps both products in one
+entry. Dependents record each native dependency's interface
 digest in `SEC_NDEPS`; a body edit rebuilds one object, an interface edit
 rebuilds the dependents.
 
@@ -1151,8 +1184,7 @@ Every native artifact is produced by one link plan
 (`compiler/backends/native/link_plan.jac`; the design and its reasons are
 recorded in the [Native Units](../../internals/native-units.md) internals
 page). It resolves roots (an entry
-module, the kernel root `jc_unit`, or every native unit of a sealed
-package), walks the native edges recorded in `SEC_NDEPS` dependencies
+module, or every native unit of a sealed package), walks the native edges recorded in `SEC_NDEPS` dependencies
 first, analyzes stale units in an owned compiler session and reuses those
 analyzed trees while settling cycles, checks that every unit's recorded
 dependency digests agree with the plan and recompiles affected strongly connected
@@ -1161,38 +1193,13 @@ glue object holding `jac_entry` / `__jac_shared_init`, the platform entry
 point and the `jac_retain` / `jac_release` / `jac_str_new` wrappers (each
 wrapper only when a unit defines its target), and links. Two modes read different
 sections of the same entries: `objects`, the incremental default, links the
-units' relocatable objects; `bitcode` links every unit's bitcode into one
-LLVM module and optimizes it whole-program before a single codegen (the
-release lane; also what the in-process JIT, PE and wasm targets use).
+units' relocatable objects (sealed packages link this way); `bitcode` links every unit's bitcode into one LLVM module, optimizes
+it whole-program and splits it into one partition per emit job for code
+generation (what the in-process JIT, PE and wasm targets use).
 Select it per build with `jac build --native --link-mode bitcode` or
 `[native] link_mode = "bitcode"` in `jac.toml`. The plan writes a digest over every unit's
 keys and stamps beside the artifact and into the `<lib>.layout.json`
 sidecar, which is the merge of the units' class layouts.
-
-### The native scope and the kernel
-
-The compiler modules the kernel links are listed in
-`jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`); they are native units
-and bytecode units at once, and the kernel root (`jc_unit`) is native only.
-Whether a compile treats the scope as native is `CompileOptions.native_unit`,
-set by the link plan for the compiles it requests; there is no process-global
-mode flag. The kernel comes from one lookup, `resolve_kernel()`
-(`compiler/backends/native/kernel_resolve.jac`), with a fixed precedence:
-a sealed image's `native` record (artifact, sha256, layout
-and plan digests; missing or mismatched is a startup error), which no setting
-displaces, then, in a checkout, `JAC_COMPILER_LIB` as a path (must carry its
-sidecar) or `off` (the store parser, set by a kernel build for its own
-processes and for a kernel-free development loop), then the
-kernel beside `native_compiler.jac` when the source key its sidecar records
-(the compiler digest plus the module key of every unit it was linked from)
-equals the one the sources have now, otherwise a rebuild through the plan in
-a child `jac` process under a lock with the store parser serving meanwhile,
-and finally the store parser when there is no native toolchain. `zig build
--Ddev` needs no kernel step: the first parse derives it, and accepting an
-existing kernel costs one content hash per unit and no plan. A demotion inside a scoped module is routing,
-recorded in the module's own JIR, never a refusal. The historical
-`JAC_NO_SEAL` override is gone; setting it against a sealed image is itself a
-startup error.
 
 Toolchain location variables are read through the same boundary module, never inside passes: `JAC_LLVM_SHIM`, `JAC_LLVM_TYPED_POINTERS` (with `LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS` honored as a fallback), `JAC_NATIVE_WASM_LIBC_DIR`, `JAC_NATIVE_MUSL_DIR`, `JAC_NATIVE_FLOOR_DIR`, `JAC_NATIVE_CA_BUNDLE`.
 
@@ -1214,13 +1221,13 @@ This produces a human-readable `.ll` file that can be inspected with any text ed
 
 ### Explaining a demotion
 
-A method the backend cannot lower is *demoted*: it falls back to its Python implementation while the rest of its class stays native. The build prints a one-line `⚠ native seam -- demoting ...` warning for each. `jac explain placement <file>` turns that line into the full story:
+A method the backend cannot lower is *demoted*: it falls back to its Python implementation while the rest of its class stays native. The build prints a `⚠ native seam -- demoting ...` warning for each, naming why on one line and, when the refusal carries one, a `help:` line with the fix (for a call through an `any` value, the `Callable[[...], R]` binding). `jac explain placement <file>` turns that line into the full story:
 
 ```bash
 JAC_NA_DEBUG=1 jac build --native program.jac
 ```
 
-Each demotion emits `NA_DEBUG demote <Type>.<method>` followed by every diagnostic that made the method un-lowerable, with source context. When the emitter raised outright rather than reporting a diagnostic, the line is `NA_DEBUG raise <Type>.<method>` followed by the Python traceback pointing at the codegen site. The flag also forces the seam warning on when `[check] warn_native_seams = false` would otherwise silence it.
+Each demotion emits `NA_DEBUG demote <Type>.<method>` followed by every diagnostic that made the method un-lowerable, with source context. When the emitter raises outright rather than reporting a diagnostic, that is a compiler bug and the build fails with an `E5092` error naming the callable; under the flag the line `NA_DEBUG raise <Type>.<method>` and the Python traceback pointing at the codegen site are printed as well. Pin the module to the server codespace under `[placement.pins]` to keep working until the bug is fixed. The flag also forces the seam warning on when `[check] warn_native_seams = false` would otherwise silence it.
 
 ### Bytecode Cache
 
@@ -1239,15 +1246,15 @@ The following Jac features are **not yet available** in the native codespace:
 
 | Feature | Reason |
 |---------|--------|
-| Walkers, nodes, edges | Graph-spatial constructs require the Jac runtime |
+| Persistent graph (`root`) | Persistence across runs lives in the Jac runtime |
 | Async / await | No async runtime in native code |
-| Generators (`yield`) | Not yet implemented |
-| Lambda expressions | Not yet implemented |
-| Inline Python (`::py::`) | No Python interpreter in native binaries |
-| Decorators | Not yet implemented |
+| Lambda expressions | Partial: prefer named functions for callbacks |
+| Decorators | Only plain-name decorators on module-level functions, plus `@contextmanager` |
 | Multiple inheritance | Single inheritance only |
 | `by llm()` | Requires Python runtime for LLM calls |
 | PyPI imports | No Python ecosystem in native binaries |
+
+Object-spatial code is native: `node`/`edge`/`walker` archetypes, `spawn`, `visit`, `here`, connects, disconnects, and typed edge queries all compile, so a program can build and walk its own graph natively. Generators lower when the function declares `-> Iterator[T]`.
 
 !!! tip
     If you need a feature from the list above, keep that code in the Python codespace and place only the performance-critical parts native. The compiler handles the interop automatically.

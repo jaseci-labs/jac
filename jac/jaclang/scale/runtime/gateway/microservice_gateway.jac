@@ -1,43 +1,24 @@
+import json;
 import logging;
 import mimetypes;
+import re;
 import from pathlib { Path }
-import from jaclang.server.serving.app { ServingApp }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { HTMLResponse, JSONResponse, Response }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
-import from jaclang.scale.runtime.transport.http_forward { raw_forward }
-import from jaclang.scale.runtime.context.util {
-    DEFAULT_GATEWAY_PORT,
-    DEFAULT_GATEWAY_HOST,
-    DEFAULT_CLIENT_DIST_DIR
-}
-
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.server { EndpointHost }
-import from jaclang.server.serving.drain { DrainState }
-import from jaclang.server.serving.endpoint { JEndPoint }
-import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
-import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
-import from jaclang.scale.admin.logs { JacAPIServerLogs }
-import from jaclang.scale.admin.traces { JacAPIServerTraces }
-import from jaclang.scale.admin.ops { JacAPIServerOps }
-import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
-import from jaclang.scale.admin.network { JacAPIServerNetwork }
-import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
-import from jaclang.scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 
 glob logger = logging.getLogger(__name__),
      HOP_BY_HOP_HEADERS: set[str] = {
          "host",
          "transfer-encoding",
          "connection",
-         "keep-alive"
-     };
+         "keep-alive",
+         "expect"
+     },
+     IMMUTABLE_CACHE: str = "public, max-age=31536000, immutable",
+     _HASHED_ASSET = re.compile(
+         r"[.-](?=[\w-]{0,7}[0-9])(?=[\w-]{0,7}[A-Z])[\w-]{8}\.\w+$"
+     ),
+     _BUILT_HASHED: dict[str, tuple[int, frozenset[str]]] = {};
+
+def _built_hashed_files(dist: Path) -> (frozenset[str] | None);
 
 obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
@@ -67,11 +48,11 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def handle_health -> Response;
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
-    async def aggregate_graph_data(request: Request) -> Response | None;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;
 
+    async def merge_graph_pages(request: Request) -> Response;
     def eligible_services -> list[tuple[str, ServiceEntry]];
     def root_member -> ServiceEntry | None;
     def shell_answers(request: Request, path: str) -> bool;
@@ -103,10 +84,17 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def handle_docs -> Response;
     def has_client_bundle -> bool;
     def build_forward_headers(request: Request) -> dict[str, str];
-    def serve_static(file_path: str) -> Response | None;
-    def serve_extra_static(local_dir: str, file_path: str) -> Response | None;
-    def serve_project_static(rest: str) -> Response | None;
-    def serve_spa_fallback -> Response | None;
+    def static_file(
+        request: Request, target: Path, cache_control: str = "no-cache"
+    ) -> Response;
+
+    def serve_static(request: Request, file_path: str) -> Response | None;
+    def serve_extra_static(
+        request: Request, local_dir: str, file_path: str
+    ) -> Response | None;
+
+    def serve_project_static(request: Request, rest: str) -> Response | None;
+    def serve_spa_fallback(request: Request) -> Response | None;
     def bootstrap_admin_ui -> None;
     def _install_admin_api -> None;
     def serve_admin_asset(asset_path: str) -> Response | None;

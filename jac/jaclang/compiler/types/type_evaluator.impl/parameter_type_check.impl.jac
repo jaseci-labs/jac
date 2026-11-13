@@ -6,12 +6,14 @@ impl TypeEvaluator.validate_arg_types(
 ) -> bool {
     has_errors: bool = False;
     binding_failures: set[Expr | KWPair] = set();
+    trial: list[tuple[UniNode, str, str, bool]] = [];
 
     bindings: dict[str, TypeBase] = solved_type_vars
         if solved_type_vars is not None
         else {};
+    lent = self._c_lent_args(args);
     for (arg, param) in args.arg_params.items() {
-        if param is None or param.param_type is None {
+        if param is None or param.param_type is None or arg in lent {
             continue;
         }
         value = arg.value if isinstance(arg, KWPair) else arg;
@@ -27,7 +29,7 @@ impl TypeEvaluator.validate_arg_types(
     }
 
     for (arg, param) in args.arg_params.items() {
-        if param is None or param.param_type is None {
+        if param is None or param.param_type is None or arg in lent {
             continue;
         }
         expected = param.param_type;
@@ -72,13 +74,24 @@ impl TypeEvaluator.validate_arg_types(
             }
         }
 
-        verdict = self.assign_expr(
-            value,
-            arg_type,
-            expected,
-            strict=self._is_strict_site(arg),
-            probe=checking_overload
-        );
+        outer_trial = self._trial_notes;
+        if checking_overload {
+            self._trial_notes = [];
+        }
+        try {
+            verdict = self.assign_expr(
+                value,
+                arg_type,
+                expected,
+                strict=self._is_strict_site(arg),
+                probe=checking_overload
+            );
+        } finally {
+            if checking_overload and self._trial_notes is not None {
+                trial.extend(self._trial_notes);
+            }
+            self._trial_notes = outer_trial;
+        }
         if not verdict.ok {
             has_errors = True;
             if mismatches is not None {
@@ -103,72 +116,41 @@ impl TypeEvaluator.validate_arg_types(
             }
         }
     }
+    if checking_overload {
+        self._last_trial_notes = [] if has_errors else trial;
+    }
     return not has_errors;
 }
 
-def _q(value: object) -> str {
-    text = str(value);
-    if len(text) > MAX_TYPE_TEXT {
-        cut = text.rfind(" | ", 0, MAX_TYPE_TEXT);
-        text = text[:cut] + " | ..." if cut > 0 else text[:MAX_TYPE_TEXT] + "...";
-    }
-    return "'" + text + "'";
-}
-
-def _visible_params(fn: FunctionType) -> list[Parameter] {
-    return [
-        p
-        for p in (fn.parameters or [])
-        if not p.is_self and not p.is_cls
-    ];
-}
-
-def _has_unknown(ty: TypeBase | None) -> bool {
-    if ty is None or isinstance(ty, UnknownType) {
-        return True;
-    }
-    return isinstance(ty, UnionType) and any(_has_unknown(t) for t in ty.types);
-}
-
-def _unresolved_lambda_param(value: Expr, arg_type: TypeBase) -> str | None {
-    if not isinstance(value, LambdaExpr)
-        or value.signature is None
-        or not isinstance(arg_type, FunctionType) {
-        return None;
-    }
-    if not _has_unknown(arg_type.return_type)
-        and not any(_has_unknown(p.param_type) for p in _visible_params(arg_type)) {
-        return None;
-    }
-    for param in value.signature.get_parameters() {
-        if param.type_tag is None {
-            return param.name.value;
+impl TypeEvaluator._c_lent_args(args: MatchArgsToParamsResult) -> set[Expr | KWPair] {
+    lent: set[Expr | KWPair] = set();
+    for (arg, param) in args.arg_params.items() {
+        if param is None
+            or param.param_type is None
+            or not isinstance(arg, UnaryExpr)
+            or not is_borrow_kind(arg.ownership)
+            or c_abi_callee(arg.parent) is None {
+            continue;
+        }
+        operand = self._convert_to_instance(self.get_type_of_expression(arg.operand));
+        if c_lent_elem(param.param_type, operand) is not None {
+            lent.add(arg);
         }
     }
-    return None;
+    return lent;
 }
 
-def _overload_label(numbers: list[int]) -> str {
-    if len(numbers) == 1 {
-        return f"overload {numbers[0]}";
-    }
-    return "overloads " + ", ".join(str(n) for n in numbers);
-}
+def _q(value: object) -> str;
 
-def _grouped_lines(entries: list[tuple[int, str]]) -> list[str] {
-    groups: dict[str, list[int]] = {};
-    for (no, text) in entries {
-        groups.setdefault(text, []).append(no);
-    }
-    lines = [
-        f"  {_overload_label(nos)}: {text}"
-        for (text, nos) in list(groups.items())[:MAX_LISTED_OVERLOADS]
-    ];
-    if len(groups) > MAX_LISTED_OVERLOADS {
-        lines.append(f"  and {len(groups) - MAX_LISTED_OVERLOADS} more");
-    }
-    return lines;
-}
+def _visible_params(fn: FunctionType) -> list[Parameter];
+
+def _has_unknown(ty: TypeBase | None) -> bool;
+
+def _unresolved_lambda_param(value: Expr, arg_type: TypeBase) -> str | None;
+
+def _overload_label(numbers: list[int]) -> str;
+
+def _grouped_lines(entries: list[tuple[int, str]]) -> list[str];
 
 impl TypeEvaluator._callable_reason(
     arg_type: TypeBase, expected: TypeBase
@@ -288,6 +270,10 @@ impl TypeEvaluator._evaluate_call_args(expr: FuncCall) -> None {
 impl TypeEvaluator._validate_call_type(
     expr: FuncCall, caller_type: TypeBase
 ) -> TypeBase {
+    if isinstance(caller_type, NeverType) {
+        self._evaluate_call_args(expr);
+        return caller_type;
+    }
     if isinstance(caller_type, UnionType) {
         return self._union_narrowed_types(
             [self._validate_call_type(expr, member) for member in caller_type.types]
@@ -405,15 +391,8 @@ impl TypeEvaluator._validate_call_type(
         }
 
         if caller_type.is_self {
-            _self_arch: Archetype | Enum | None = expr.find_parent_of_type(Archetype);
-            if _self_arch is None {
-                _self_impl = expr.find_parent_of_type(ImplDef);
-                if _self_impl is not None
-                    and isinstance(_self_impl.decl_link, Ability) {
-                    _self_arch = _self_impl.decl_link.method_owner;
-                }
-            }
-            if isinstance(_self_arch, Archetype) {
+            _self_arch = expr.enclosing_decl(Archetype);
+            if _self_arch is not None {
                 _self_cls = self.get_type_of_class(_self_arch);
                 if isinstance(_self_cls, ClassType) {
                     return _self_cls.clone_as_instance();
@@ -724,6 +703,10 @@ impl TypeEvaluator._validate_call_type(
                     expr, self._create_object_init_method(caller_type)
                 );
             }
+        } elif self._dataclass_shadows_base_init(caller_type) {
+            self._validate_constructor_method(
+                expr, self._create_object_init_method(caller_type)
+            );
         }
         if matched_method is not None {
             expr.callee_signature = matched_method;
@@ -760,35 +743,7 @@ impl TypeEvaluator._validate_call_type(
     return UnknownType();
 }
 
-def _literal_kwargs_spread(arg: KWPair) -> (list[tuple[str, Expr]] | None) {
-    if arg.key is not None {
-        return None;
-    }
-    spread = arg.value;
-    while isinstance(spread, AtomUnit) and isinstance(spread.value, Expr) {
-        spread = spread.value;
-    }
-    if not isinstance(spread, DictVal) {
-        return None;
-    }
-    last: dict[str, Expr] = {};
-    for kv in spread.kv_pairs {
-        key = kv.key;
-        name: (str | bytes | None) = None;
-        if isinstance(key, String) {
-            name = key.lit_value;
-        } elif isinstance(key, MultiString)
-            and all(isinstance(part, String) for part in key.strings) {
-            name = key.lit_value;
-        }
-        if not isinstance(name, str) {
-            return None;
-        }
-        last.pop(name, None);
-        last[name] = kv.value;
-    }
-    return list(last.items());
-}
+def _literal_kwargs_spread(arg: KWPair) -> (list[tuple[str, Expr]] | None);
 
 impl TypeEvaluator.match_args_to_params(
     arg_nodes: (Sequence[Expr | KWPair] | None),
@@ -1727,4 +1682,98 @@ impl TypeEvaluator._member_is_metaclass_only(
     meta_inst = self._convert_to_instance(meta_cls);
     return isinstance(meta_inst, ClassType)
         and self._lookup_object_member(meta_inst, member_name) is not None;
+}
+
+impl _q(value: object) -> str {
+    text = str(value);
+    if len(text) > MAX_TYPE_TEXT {
+        cut = text.rfind(" | ", 0, MAX_TYPE_TEXT);
+        text = text[:cut] + " | ..." if cut > 0 else text[:MAX_TYPE_TEXT] + "...";
+    }
+    return "'" + text + "'";
+}
+
+impl _visible_params(fn: FunctionType) -> list[Parameter] {
+    return [
+        p
+        for p in (fn.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+}
+
+impl _has_unknown(ty: TypeBase | None) -> bool {
+    if ty is None or isinstance(ty, UnknownType) {
+        return True;
+    }
+    return isinstance(ty, UnionType) and any(_has_unknown(t) for t in ty.types);
+}
+
+impl _unresolved_lambda_param(value: Expr, arg_type: TypeBase) -> str | None {
+    if not isinstance(value, LambdaExpr)
+        or value.signature is None
+        or not isinstance(arg_type, FunctionType) {
+        return None;
+    }
+    if not _has_unknown(arg_type.return_type)
+        and not any(_has_unknown(p.param_type) for p in _visible_params(arg_type)) {
+        return None;
+    }
+    for param in value.signature.get_parameters() {
+        if param.type_tag is None {
+            return param.name.value;
+        }
+    }
+    return None;
+}
+
+impl _overload_label(numbers: list[int]) -> str {
+    if len(numbers) == 1 {
+        return f"overload {numbers[0]}";
+    }
+    return "overloads " + ", ".join(str(n) for n in numbers);
+}
+
+impl _grouped_lines(entries: list[tuple[int, str]]) -> list[str] {
+    groups: dict[str, list[int]] = {};
+    for (no, text) in entries {
+        groups.setdefault(text, []).append(no);
+    }
+    lines = [
+        f"  {_overload_label(nos)}: {text}"
+        for (text, nos) in list(groups.items())[:MAX_LISTED_OVERLOADS]
+    ];
+    if len(groups) > MAX_LISTED_OVERLOADS {
+        lines.append(f"  and {len(groups) - MAX_LISTED_OVERLOADS} more");
+    }
+    return lines;
+}
+
+impl _literal_kwargs_spread(arg: KWPair) -> (list[tuple[str, Expr]] | None) {
+    if arg.key is not None {
+        return None;
+    }
+    spread = arg.value;
+    while isinstance(spread, AtomUnit) and isinstance(spread.value, Expr) {
+        spread = spread.value;
+    }
+    if not isinstance(spread, DictVal) {
+        return None;
+    }
+    last: dict[str, Expr] = {};
+    for kv in spread.kv_pairs {
+        key = kv.key;
+        name: (str | bytes | None) = None;
+        if isinstance(key, String) {
+            name = key.lit_value;
+        } elif isinstance(key, MultiString)
+            and all(isinstance(part, String) for part in key.strings) {
+            name = key.lit_value;
+        }
+        if not isinstance(name, str) {
+            return None;
+        }
+        last.pop(name, None);
+        last[name] = kv.value;
+    }
+    return list(last.items());
 }

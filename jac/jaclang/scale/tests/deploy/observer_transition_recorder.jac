@@ -15,8 +15,6 @@ Env:
 import os;
 import sys;
 import time;
-import from jaclang.scale._optdeps.kubernetes { config, ApiException }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 
 
 def _log(line: str) {

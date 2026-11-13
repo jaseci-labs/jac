@@ -22,6 +22,19 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
 
+"""The JavaScript runtime this process runs (bun), or None when
+neither is built: suites that need one skip on None, and strict lanes, which
+ship a kit with bun, never see it."""
+def js_runtime_or_none -> (str | None) {
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    import from jaclang.client.js_runtime { js_runtime_path }
+    try {
+        return js_runtime_path();
+    } except ArtifactUnavailable {
+        return None;
+    }
+}
+
 """Environment overrides isolating every machine-wide cache family."""
 def cache_env(cache_dir: Path | str) -> dict[str, str] {
     import from jaclang.cache.registry { BUCKETS }
@@ -33,6 +46,28 @@ def cache_env(cache_dir: Path | str) -> dict[str, str] {
         }
     }
     return env;
+}
+
+"""Let a child under a private cache root reuse this process's Postgres
+distribution instead of provisioning its own (a system Postgres it finds
+by itself)."""
+def share_postgres(cache_home: Path | str) {
+    import from jaclang.data.pg_dist { dist_cache_dir, postgres_bin_dir }
+    dist = Path(postgres_bin_dir()).parent;
+    if not dist.is_relative_to(Path(dist_cache_dir())) {
+        return;
+    }
+    link = Path(cache_home) / "pg" / "dist" / dist.name;
+    link.parent.mkdir(parents=True, exist_ok=True);
+    if not link.exists() {
+        link.symlink_to(dist, target_is_directory=True);
+    }
+}
+
+"""Run as a project whose jac.toml sets `[network] offline`."""
+def offline_project -> any {
+    import from unittest.mock { patch }
+    return patch("jaclang.project.config.offline_mode", return_value=True);
 }
 
 """Select the parent's compiler, or an explicit checkout for comparative tests."""
@@ -266,19 +301,19 @@ bitcode merged with the link glue that defines `jac_entry`, the way an
 executable's object is assembled before the platform linker sees it. Tests
 that hand a single relocatable object to a linker start from this text."""
 def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
-    import os;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
-        NATIVE_LINK_MODE_BITCODE
+        NATIVE_LINK_MODE_BITCODE,
+        push_native_target,
+        pop_native_target
     }
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,
         build_link_plan,
         whole_program_module
     }
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = triple;
+    prev = push_native_target(triple);
     try {
         prog = JacProgram();
         opts = CompileOptions(aot_mode=True, native_link_mode=NATIVE_LINK_MODE_BITCODE);
@@ -302,11 +337,7 @@ def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
         (merged, _exports) = whole_program_module(plan, spec);
         return str(merged);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -677,4 +708,13 @@ def same_lines(sv_text: str, na_text: str, what: str) {
             idx
         ]!r}";
     }
+}
+
+"""A module's source together with its impl annexes, the unit the compiler
+weaves, so a source-contract check reads a body wherever it lives."""
+def unit_source(path: Path | str) -> str {
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+
+    files = [str(path)] + discover_annex_files(str(path), ".impl.jac");
+    return "\n".join(Path(f).read_text() for f in files);
 }

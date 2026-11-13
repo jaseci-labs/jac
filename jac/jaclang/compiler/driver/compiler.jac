@@ -1,236 +1,34 @@
-import type from jaclang.runtime.native_library { SharedNativeEngine }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
-import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import json;
 import marshal;
 import os;
 import sys;
 import types;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.jir {
-    SEC_BYTECODE,
-    SEC_MTIR,
-    SEC_INTEROP,
-    SEC_NBITCODE,
-    SEC_NOBJ,
-    SEC_PLACEMENT,
-    SEC_CLIENT,
-    SEC_CTDEPS,
-    FLAG_CARRIED,
-    FLAG_PRECOMPILED,
-    carried_module_bytecode,
-    ct_deps_section,
-    seed_definition_texts,
-    compute_content_sha256,
-    get_module_cache_path,
-    is_module_cache_valid,
-    precompiled_jir_matches_source,
-    cache_mode,
-    read_bytecode_only,
-    read_section_bytes,
-    read_sections,
-    patch_co_filenames_bytes,
-    write_module_cache,
-    SECTIONS_MAGIC,
-    HEADER_SIZE
-}
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.frontend.codeinfo {
-    CodeGenTarget,
-    NativeModuleLayout
-}
-import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
-import from jaclang.runtime.semantic { info_graph_from_json }
-import from jaclang.compiler.driver.unit_products {
-    UnitProducts,
-    client_artifact_from_json,
-    client_artifact_json,
-    client_artifact_of,
-    definition_deps,
-    interop_manifest_of,
-    interop_record,
-    placement_record,
-    unit_products
-}
-import from jaclang.project.textio { read_file_with_encoding }
-import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.selfhost { SelfHostCache }
-import type from jaclang.compiler.frontend.host { HostServices }
-import from jaclang.compiler.driver.session_compile {
-    CompileFrame,
-    SessionContext,
-    SessionHooks
-}
-import from jaclang.compiler.driver.setup_progress { setup_progress }
-import from jaclang.compiler.driver.module_compile { compile_module }
-import from jaclang.compiler.driver.pipeline_runner {
-    run_utility,
-    get_format_sched,
-    get_lint_sched
-}
-import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
-import from jaclang.compiler.driver.source_failures {
-    CompilerSourceError,
-    import_error_re_enters,
-    module_scoped_failure_details,
-    bootstrap_tier_failure_details,
-    note_compiler_source_failure
-}
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
-     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10);
+     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (300000, 10, 10);
 
-def client_dep_digests(manifest: ClientManifest) -> dict[str, str] {
-    digests: dict[str, str] = {};
-    for dep_path in manifest.imports.values() {
-        dep = str(dep_path);
-        if not os.path.isfile(dep) {
-            continue;
-        }
-        try {
-            digests[dep] = compute_content_sha256(dep);
-        } except OSError {
-            continue;
-        }
-    }
-    return digests;
-}
+def client_dep_digests(manifest: ClientManifest) -> dict[str, str];
 
-def stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact {
-    artifact.dep_digests = client_dep_digests(artifact.manifest);
-    return artifact;
-}
+def stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact;
 
-def built_client_artifact(module: uni.Module) -> (ClientArtifact | None) {
-    artifact = client_artifact_of(module);
-    return stamp_client_artifact(artifact) if artifact is not None else None;
-}
+def built_client_artifact(module: uni.Module) -> (ClientArtifact | None);
 
-def client_artifact_bytes(artifact: ClientArtifact) -> bytes {
-    return client_artifact_json(artifact).encode("utf-8");
-}
+def client_artifact_bytes(artifact: ClientArtifact) -> bytes;
 
-def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
-    try {
-        text = raw.decode("utf-8");
-    } except UnicodeDecodeError {
-        return None;
-    }
-    return client_artifact_from_json(text);
-}
+def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None);
 
-def cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
-    (rebuild, _no_precompile) = cache_mode();
-    if rebuild {
-        return None;
-    }
-    try {
-        cache_path = get_module_cache_path(full_target);
-        if not is_module_cache_valid(full_target, cache_path) {
-            return None;
-        }
-        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
-    } except Exception {
-        return None;
-    }
-    if raw is None {
-        return None;
-    }
-    return client_artifact_from_bytes(raw);
-}
+def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
-def cached_client_pulls(full_target: str) -> str {
-    held = cached_client_artifact(full_target);
-    if held is None or not held.pulled {
-        return "";
-    }
-    import from jaclang.compiler.backends.es.backends.registry {
-        resolve_active_backend
-    }
-    if held.framework != resolve_active_backend().name()
-        or not JacCompiler._client_deps_fresh(held) {
-        return "";
-    }
-    return ",".join([str(index) for index in held.pulled]);
-}
-
-def native_first(units: list[UnitProducts]) -> list[UnitProducts] {
-    by_path: dict[str, UnitProducts] = {os.path.realpath(u.path): u for u in units};
-    ordered: list[UnitProducts] = [];
-    placed: set[str] = set();
-    def place(unit: UnitProducts) {
-        real = os.path.realpath(unit.path);
-        if real in placed {
-            return;
-        }
-        placed.add(real);
-        for dep in unit.native_deps {
-            needed = by_path.get(os.path.realpath(dep));
-            if needed is not None {
-                place(needed);
-            }
-        }
-        ordered.append(unit);
-    }
-    for unit in units {
-        place(unit);
-    }
-    return ordered;
-}
-
-def assemble_jcir(jcir: bytes) -> (bytes | None) {
-    if not jcir {
-        return None;
-    }
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    result = compile_ir(jcir);
-    if result.diags or not result.modules {
-        return None;
-    }
-    return result.modules[0].bytecode;
-}
+def cached_client_pulls(full_target: str) -> str;
 
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
-) -> dict[int, bytes] {
-    sections: dict[int, bytes] = {};
-    if bytecode is not None {
-        sections[SEC_BYTECODE] = bytecode;
-    }
-    if products.mtir {
-        sections[SEC_MTIR] = products.mtir.encode("utf-8");
-    }
-    if products.interop {
-        sections[SEC_INTEROP] = products.interop.encode("utf-8");
-    }
-    if products.client {
-        artifact = client_artifact_from_json(products.client);
-        if artifact is not None {
-            sections[SEC_CLIENT] = client_artifact_bytes(
-                stamp_client_artifact(artifact)
-            );
-        }
-    }
-    if products.placement {
-        sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
-    }
-    if products.ct_file_deps or products.ct_body_deps or products.ct_def_deps {
-        seed_definition_texts(products.def_spans);
-        sections[SEC_CTDEPS] = ct_deps_section(
-            products.ct_file_deps,
-            products.ct_body_deps,
-            definitions=definition_deps(products)
-        );
-    }
-    return sections;
-}
+) -> dict[int, bytes];
 
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,
         gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False,
-        session_host: (HostServices | None) = None;
+        retain_selfhost: bool = False;
 }
 
 obj JacCompiler(SessionHooks) {
@@ -247,10 +45,7 @@ obj JacCompiler(SessionHooks) {
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
-    def product_program(
-        full_target: str, target_program: JacProgram, execution: bool = False
-    ) -> JacProgram;
-
+    def product_program(full_target: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];
@@ -288,34 +83,13 @@ obj JacCompiler(SessionHooks) {
 
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
-    def _adopt_kernel_compile(
-        full_target: str, program: JacProgram, options: CompileOptions
-    ) -> tuple[bool, (bytes | None)];
-
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
-    def _demote_adopted_native(
-        unit_path: str, program: JacProgram, options: CompileOptions, failure: Exception
-    ) -> bool;
-
-    def kernel_native_entry(
-        full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-    ) -> tuple[bool, any];
-
-    def _adopt_native_verdict(
-        unit: UnitProducts, program: JacProgram, sections: dict[int, bytes]
-    );
-
-    def _adopt_native_unit(
-        unit: UnitProducts,
-        program: JacProgram,
-        options: CompileOptions,
-        compile_deps: bytes
-    ) -> dict[int, bytes];
-
+    def native_entry_engine(full_target: str, target_program: JacProgram) -> any;
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_interop: (dict[str, any] | None)
+        cached_interop: (dict[str, any] | None),
+        options: (CompileOptions | None) = None
     ) -> None;
 
     def _sealed_native_engine(full_target: str) -> (SharedNativeEngine | None);
@@ -387,6 +161,10 @@ obj JacCompiler(SessionHooks) {
 
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
+    ) -> JacProgram;
+
+    static def _format_program(
+        source_str: str, file_path: str, auto_lint: bool
     ) -> JacProgram;
 
     static def jac_file_linter(file_path: str) -> JacProgram;

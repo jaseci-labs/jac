@@ -4,9 +4,24 @@ byLLM appends to the caller's list in place. The system prompt and finish_tool
 plumbing are filtered out on the way; a real tool result is not.
 """
 
-import from jaclang.byllm.types { Message, MessageRole }
+import from jaclang.byllm.exceptions { FinishToolError }
+import from jaclang.byllm.types { Message, MessageRole, ToolCallResultMsg }
 import from jaclang.byllm.lib { MockLLM }
-import from support { call, finish, say }
+import from litellm.types.utils {
+    ChatCompletionMessageToolCall,
+    Function,
+    Message as LiteLLMMessage
+}
+import from support {
+    call,
+    calls,
+    chunk_text,
+    finish,
+    mk_run,
+    say,
+    sent_messages,
+    stream_events
+}
 
 
 def get_weather(city: str) -> str {
@@ -103,6 +118,13 @@ test "a second turn grows the same list and keeps every earlier message" {
         f"the pre-seeded message was dropped on turn 2: {contents}"
     );
     assert any("Paris" in c for c in contents) , f"turn 1's message was dropped: {contents}";
+
+    answers = [
+        m.get("content")
+        for m in by_role(history, "assistant")
+        if m.get("content")
+    ];
+    assert answers == [first, second] , f"each turn's answer must be saved: {answers}";
 }
 
 
@@ -139,9 +161,9 @@ def assert_written_back(label: str, history: list[dict[str, any]], answer: str) 
 }
 
 
-"""One streamed turn: a tool call, the finish call, then the answer."""
+"""One streamed turn: a tool call, then the finish call that carries the answer."""
 def _stream_replies(answer: str = "Paris is sunny right now.") -> list[any] {
-    return [call("get_weather", {"city": "Paris"}), finish(answer), say(answer)];
+    return [call("get_weather", {"city": "Paris"}), finish(answer)];
 }
 
 
@@ -190,4 +212,234 @@ test "a second streamed turn grows the same history and keeps the first answer" 
     assert len(by_role(history, "user")) == 2 , (
         f"expected two user messages, got {len(by_role(history, 'user'))}"
     );
+}
+
+
+glob RAN: list[str] = [];
+
+
+def mul(a: int, b: int) -> int {
+    RAN.append(f"mul({a},{b})");
+    return a * b;
+}
+
+
+def _mul(call_id: str) -> tuple[any, ...] {
+    return ("mul", {"a": 2, "b": 3}, call_id);
+}
+
+
+def _fin(call_id: str = "cf") -> tuple[any, ...] {
+    return ("finish_tool", {"final_output": "6"}, call_id);
+}
+
+
+"""(calls no result answers, results no call asked for) in `messages`."""
+def dangling(messages: list[any]) -> tuple[list[str], list[str]] {
+    asked = {str(tc["id"]) for m in messages for tc in (m.get("tool_calls") or [])};
+    answered = {
+        str(m.get("tool_call_id"))
+        for m in messages
+        if m.get("role") == "tool"
+    };
+    return (sorted(asked - answered), sorted(answered - asked));
+}
+
+"""Each tool result's content in `messages`, by call id."""
+def results(messages: list[any]) -> dict[str, str] {
+    return {
+        str(m.get("tool_call_id")): str(m.get("content"))
+        for m in messages
+        if m.get("role") == "tool"
+    };
+}
+
+
+test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
+    # A finish_tool after a real call was written before that call's result, so
+    # it is not executed and the model answers in its next reply ("done").
+    for (label, entries, ran, skipped, answer) in [
+        ("last", [_mul("c1"), _fin()], ["mul(2,3)"], ["cf"], "done"),
+        (
+            "middle",
+            [_mul("c1"), _fin(), _mul("c2")],
+            ["mul(2,3)"],
+            ["cf", "c2"],
+            "done"
+        ),
+        ("first", [_fin(), _mul("c1"), _mul("c2")], [], ["c1", "c2"], "6"),
+        (
+            "two finishes",
+            [_mul("c1"), _fin(), _fin("cf2")],
+            ["mul(2,3)"],
+            ["cf", "cf2"],
+            "done"
+        )
+    ] {
+        # events=False runs the sync tool loop, events=True the event loop.
+        for events in [False, True] {
+            where = f"{label}, events={events}";
+            RAN.clear();
+            history: list[dict[str, any]] = [];
+            llm = MockLLM(outputs=[calls(entries), finish("done")]);
+
+            def ask(q: str) -> str by llm(
+                tools=[mul], conversation=history, stream=events, logging=events
+            );
+
+            out = ask("go");
+            if events {
+                evs = stream_events(out);
+                kinds = [ev.event_type for ev in evs];
+                assert "tool_result" not in kinds[kinds.index("steps_done"):] , f"{where}: {kinds}";
+                out = chunk_text(evs);
+            }
+            assert out == answer , f"{where}: answered {out!r}";
+            assert RAN == ran , f"{where}: ran {RAN}";
+            for n in range(len(llm.seen)) {
+                assert dangling(sent_messages(llm, n))[0] == [] , f"{where}: request {n}";
+            }
+            assert dangling(history) == ([], []) , f"{where}: saved {history}";
+            names = [str(m.get("name")) for m in history]
+                + [
+                    str(tc["function"]["name"]) for m in history
+                    for tc in (m.get("tool_calls") or [])
+                ];
+            assert "finish_tool" not in names , f"{where}: finish_tool was saved";
+            notes = results(sent_messages(llm, len(llm.seen) - 1)) | results(history);
+            for cid in skipped {
+                note = notes.get(cid, "");
+                assert "not executed" in note.lower() , f"{where}: {cid} saved as {note!r}";
+            }
+        }
+    }
+}
+
+
+def _asked(ids: list[str], content: str = "") -> dict[str, any] {
+    return {
+        "role": "assistant",
+        "content": content,
+        "tool_calls": [
+            {
+                "id": i,
+                "type": "function",
+                "function": {"name": "mul", "arguments": "{}"}
+            } for i in ids
+        ]
+    };
+}
+
+
+def _result(call_id: str, name: str = "mul") -> dict[str, any] {
+    return {"role": "tool", "tool_call_id": call_id, "name": name, "content": "r"};
+}
+
+
+def _as_dict(msg: any) -> dict[str, any] {
+    if isinstance(msg, dict) {
+        return msg;
+    }
+    return msg.to_dict() if msg?.to_dict else msg.model_dump();
+}
+
+
+test "a saved history drops calls without a result, and finish_tool in any form" {
+    q = {"role": "user", "content": "go"};
+    lone_finish = _asked(["cf"], "done");
+    lone_finish["tool_calls"][0]["function"]["name"] = "finish_tool";
+    as_object = LiteLLMMessage(
+        role="assistant",
+        content="",
+        tool_calls=[
+            ChatCompletionMessageToolCall(
+                id=i, function=Function(name="mul", arguments="{}")
+            ) for i in ["a", "z"]
+        ]
+    );
+    rows = [
+        (
+            "half answered",
+            [q, _asked(["a", "b"]), _result("a")],
+            ["user", "assistant a", "tool"]
+        ),
+        ("none answered", [q, _asked(["a"])], ["user"]),
+        (
+            "none answered, with text",
+            [q, _asked(["a"], "thinking")],
+            ["user", "assistant"]
+        ),
+        (
+            "an id reused by a later answered call",
+            [q, _asked(["c1"]), q, _asked(["c1"]), _result("c1")],
+            ["user", "user", "assistant c1", "tool"]
+        ),
+        (
+            "a lone finish_tool whose result is a dict, as after a compaction",
+            [q, lone_finish, _result("cf", "finish_tool")],
+            ["user"]
+        ),
+        (
+            "a message object",
+            [
+                q,
+                as_object,
+                ToolCallResultMsg(content="r", tool_call_id="a", name="mul")
+            ],
+            ["user", "assistant a", "tool"]
+        )
+    ];
+    for (label, messages, expected) in rows {
+        before = str(messages);
+        saved: list[str] = [];
+        for m in mk_run(tools=[mul], messages=messages).get_history_for_persist() {
+            d = _as_dict(m);
+            assert d.get("tool_calls") != [] , f"{label}: an empty tool_calls list was saved";
+            ids = " ".join(str(tc["id"]) for tc in (d.get("tool_calls") or []));
+            saved.append(f"{d.get('role')} {ids}".strip());
+        }
+        assert saved == expected , f"{label}: saved {saved}";
+        assert str(messages) == before , f"{label}: the run's own messages were edited";
+    }
+}
+
+
+"""A finish_tool that fails on its first call."""
+def _flaky_finish -> any {
+    attempts = [0];
+
+    def finish_tool(final_output: str) -> str {
+        attempts[0] += 1;
+        if attempts[0] == 1 {
+            raise FinishToolError("finish failed once");
+        }
+        return final_output;
+    }
+    return finish_tool;
+}
+
+
+test "a failed finish_tool retries with the call after it answered" {
+    for events in [False, True] {
+        RAN.clear();
+        llm = MockLLM(
+            outputs=[calls([_fin(), _mul("c2")]), finish("second try")]
+                + ([say("FINAL")] if events else [])
+        );
+
+        def ask(q: str) -> str by llm(
+            tools=[mul, _flaky_finish()], stream=events, logging=events
+        );
+
+        out = ask("go");
+        if events {
+            list(out);
+        }
+        retry = sent_messages(llm, 1);
+        notes = results(retry);
+        assert dangling(retry)[0] == [] , f"events={events}: the retry leaves a call unanswered";
+        assert "not executed" in notes.get("c2", "").lower() , f"events={events}: {notes}";
+        assert "finish failed once" in notes.get("cf", "") , f"events={events}: {notes}";
+        assert RAN == [] , f"events={events}: a call after finish_tool ran: {RAN}";
+    }
 }

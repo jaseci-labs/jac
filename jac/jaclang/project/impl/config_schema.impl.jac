@@ -49,12 +49,17 @@ impl _walk_schema(
 }
 
 impl _unknown_key_message(path: str, key: str, known: list[str]) -> str {
-    matches = get_close_matches(key, known, n=1, cutoff=0.6);
-    hint = f"; did you mean '{matches[0]}'?" if matches else ".";
+    near = closest_key(key, known);
+    hint = f"; did you mean '{near}'?" if near else ".";
     return (
         f"jac.toml [{path}] has unknown key '{key}'{hint} "
         "Unknown keys are ignored, so defaults apply instead."
     );
+}
+
+impl closest_key(key: str, known: list[str]) -> str | None {
+    matches = get_close_matches(key, known, n=1, cutoff=0.6);
+    return matches[0] if matches else None;
 }
 
 impl schema_strict_enabled(strict_env: str) -> bool {
@@ -76,7 +81,7 @@ impl report_schema_findings(
                 + "\n".join(findings)
         );
     }
-    import from jaclang.cli.console { console }
+
     for msg in findings {
         console.warning(msg);
     }

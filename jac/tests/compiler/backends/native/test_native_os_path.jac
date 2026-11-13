@@ -50,6 +50,19 @@ test "os path isfile and isdir report real file kinds natively" {
         ] , f"os.path probe mismatch: {out}";
 }
 
+test "os path dirname keeps the root and drops repeated slashes like posixpath" {
+    rows = [
+        line.split("|")
+        for line in _nacompile_run("os_path_dirname.jac").rstrip("\n").split("\n")
+    ];
+    wrong = [
+        f"{path!r}: native {head!r}, posixpath {os.path.dirname(path)!r}"
+        for (path, head) in rows
+        if head != os.path.dirname(path)
+    ];
+    assert len(rows) == 10 and not wrong , "\n".join(wrong) or str(rows);
+}
+
 test "unsupported os path members fail the native compile loudly" {
     combined = native_build_fails(os.path.join(FIXTURES, "os_path_unsupported.jac"));
     assert "islink" in combined , f"diagnostic does not name the member: {combined[-400:]}";

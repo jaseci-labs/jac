@@ -67,24 +67,12 @@ impl _npm_names_of(raw: any) -> set[str] {
 
 impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
     stamps: list[float] = [];
-    cur: (str | None) = root_dir;
-    seen: set[str] = set();
-    while cur {
-        key = _real(cur);
-        if key in seen {
-            break;
-        }
-        seen.add(key);
+    for proj_dir in project_root_chain(root_dir) {
         try {
-            stamps.append(os.path.getmtime(os.path.join(cur, 'jac.toml')));
+            stamps.append(os.path.getmtime(os.path.join(proj_dir, 'jac.toml')));
         } except OSError {
             stamps.append(-1.0);
         }
-        parent = os.path.dirname(os.path.realpath(cur));
-        if not parent or parent == os.path.realpath(cur) {
-            break;
-        }
-        cur = find_jac_project_root(parent);
     }
     return tuple(stamps);
 }
@@ -277,4 +265,17 @@ impl persistence_namespace(raw: any, project_name: str) -> str {
         raise ValueError('[persistence] namespace must be a nonempty string');
     }
     return namespace;
+}
+
+impl workspace_scope -> Iterator[None] {
+    if _resolution.get() is not None {
+        yield ;
+        return;
+    }
+    token = _resolution.set(WorkspaceResolution());
+    try {
+        yield ;
+    } finally {
+        _resolution.reset(token);
+    }
 }

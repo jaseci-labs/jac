@@ -1,17 +1,6 @@
 import from unittest.mock { patch, MagicMock }
 import from datetime { datetime, UTC, timedelta }
 import from concurrent.futures { ThreadPoolExecutor }
-import from jaclang.server.endpoints.auth { register_auth_endpoints }
-import from jaclang.server.identity.auth_models { RegisterRequest }
-import from jaclang.server.settings { AuthSettings, RegistrationSettings }
-import from jaclang.scale.sso.oauth_session { complete_identity }
-import from jaclang.scale.sso.provider { SSOUserInfo }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.identity.user_manager { SessionGrant }
-import from jaclang.server.identity.registration_challenge {
-    issue_challenge,
-    consume_challenge
-}
 
 def memory_store -> AuthTokenStore {
     with patch('jaclang.server.shared_store.shared_store', return_value=None) {

@@ -1,5 +1,4 @@
 impl EsastGenPass._osp_model -> OspModel {
-    import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _root = self.module if isinstance(self.module, uni.Module) else self.get_main_mod();
     return get_osp_model(_root);
 }
@@ -95,7 +94,6 @@ impl EsastGenPass._osp_arch_set -> set[str] {
 }
 
 impl EsastGenPass._osp_expr_arch_name(expr: (uni.UniNode | None)) -> (str | None) {
-    import from jaclang.compiler.types.types { ClassType }
     if not isinstance(expr, uni.Expr) {
         return None;
     }
@@ -111,7 +109,6 @@ impl EsastGenPass._osp_expr_arch_name(expr: (uni.UniNode | None)) -> (str | None
 }
 
 impl EsastGenPass._arch_kind_of_type(ty: object) -> (str | None) {
-    import from jaclang.compiler.types.types { ClassType }
     if not isinstance(ty, ClassType) {
         return None;
     }
@@ -316,7 +313,7 @@ impl EsastGenPass._build_osp_tags_js -> str {
         );
         lines.append(f"__ospC.osp_register_type({tag}, [{isa_members}]);");
     }
-    import from jaclang.runtime.osp_tag { stable_osp_tag }
+
     ge_tag = stable_osp_tag("GenericEdge");
     lines.append(f"__ospGenericEdge.prototype.__tag = {ge_tag};");
     lines.append(f"__ospC.osp_register_type({ge_tag}, []);");
@@ -523,7 +520,6 @@ impl EsastGenPass._edge_tag_literal(
 }
 
 impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
-    import from jaclang.compiler.frontend.diagnostics { E5097 }
     fail = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=nd);
     chain = nd.chain;
     if not chain {
@@ -646,7 +642,6 @@ impl EsastGenPass._build_osp_filter(
 impl EsastGenPass._build_osp_filter_pred(
     nd: uni.UniNode, filt: uni.FilterCompr
 ) -> (es.Expression | None) {
-    import from jaclang.compiler.frontend.diagnostics { E5097 }
     parts: list[es.Expression] = [];
     if filt.f_type is not None {
         _ntag = self._edge_tag_literal(nd, filt.f_type, True);
@@ -924,20 +919,13 @@ impl EsastGenPass._build_osp_disconnect_call(
 impl EsastGenPass._build_spawn_runtime_call(
     nd: uni.BinaryExpr, parts: SpawnCallParts
 ) -> es.AwaitExpression {
-    walker_literal = self.sync_loc(
-        es.Literal(value=parts.`walker.walker_name), jac_node=parts.`walker.call_node
-    );
-    spawn_args: list[es.Expression | es.SpreadElement] = [
-        walker_literal,
-        parts.target.expression,
-        parts.`walker.fields_object
-    ];
     call_target = parts.`walker.call_node.target;
     walker_sym = call_target.sym if isinstance(call_target, uni.AtomExpr) else None;
     item: (uni.ModuleItem | None) = None;
     if walker_sym is not None and walker_sym.defn {
         candidate = walker_sym.defn[0].parent;
-        if isinstance(candidate, uni.ModuleItem) {
+        if isinstance(candidate, uni.ModuleItem)
+            and candidate.find_parent_of_type(uni.Module) is self.module {
             item = candidate;
         }
     }
@@ -950,9 +938,7 @@ impl EsastGenPass._build_spawn_runtime_call(
     if provider_opts is None {
         provider_opts = es.ObjectExpression(properties=[]);
     }
-    import from jaclang.compiler.symbol_utils { symbol_owner_archetype }
-    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-    import from jaclang.compiler.types.types { ClassType }
+
     owner = symbol_owner_archetype(walker_sym) if walker_sym is not None else None;
     source_module = owner.find_parent_of_type(uni.Module)
         if owner is not None
@@ -966,6 +952,15 @@ impl EsastGenPass._build_spawn_runtime_call(
             endpoint_name = scope.scope_name;
         }
     }
+    walker_literal = self.sync_loc(
+        es.Literal(value=endpoint_name or parts.`walker.walker_name),
+        jac_node=parts.`walker.call_node
+    );
+    spawn_args: list[es.Expression | es.SpreadElement] = [
+        walker_literal,
+        parts.target.expression,
+        parts.`walker.fields_object
+    ];
     if source_module is not None and isinstance(provider_opts, es.ObjectExpression) {
         key = endpoint_key(source_module, "walker", endpoint_name);
         provider_opts.properties.append(
@@ -1063,10 +1058,6 @@ impl EsastGenPass._resolve_spawn_walker(
 impl EsastGenPass._build_spawn_arg_object(
     call_node: uni.FuncCall, walker_symbol: (uni.Symbol | None)
 ) -> es.ObjectExpression {
-    import from jaclang.compiler.symbol_utils {
-        collect_field_names,
-        symbol_owner_archetype
-    }
     ordered_fields = collect_field_names(walker_symbol, Tok.KW_WALKER.value);
 
     field_type_map: dict[str, str] = {};

@@ -17,16 +17,6 @@ compiler_tree() {
     awk -F '\t' '$2 ~ /\.(jac|py)$/ || $2 == "jac/jaclang/compiler_inputs.txt"' |
     awk -F '\t' '$2 !~ /\/(tests|test|__pycache__)\// && $2 !~ /\/\.[^\/]+\// && $2 !~ /\.test\./'
 }
-python_tree() {
-  tree jac/bootstrap/build_python.zig jac/bootstrap/seed.zig jac/bootstrap/python |
-    if [ "$1" = cpython ]; then
-      # Matches build_python.buildKey's host-mode exclusions. Jac sources and
-      # native bridge edits cannot invalidate the ordinary CPython SDK.
-      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c|jacpython-modules.txt)$/'
-    else
-      cat
-    fi
-}
 # The compiler-input RULE lives twice on purpose: here in awk, and in
 # jir.compiler_source_files. They cannot be merged -- this script runs at
 # checkout time, before any jac binary exists (the same acyclicity constraint as
@@ -49,18 +39,21 @@ emit() {
 }
 
 compiler_tree | emit compiler
-python_tree cpython | emit python_cpython
-{
-  python_tree jacpython
-  compiler_tree
-  tree jac/jaclang/vendor/typeshed/PIN jac/jaclang/vendor/typeshed/TARBALL_SHA256 \
-    jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
-} | emit python_jacpython
+# The prebuilt CPython tree: its pin and the seed that fetches it.
+tree jac/bootstrap/fetch_pbs.zig jac/bootstrap/seed.zig jac/bootstrap/pins.json |
+  emit python
 tree jac/jaclang | emit payload
 tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/native jac/_jac_finder.py jac/sitecustomize.py jac/examples/jaclang_org \
   jac/examples/tiny_jacyac \
   jac.toml jac/jac.toml | emit binary
+# A -Ddev binary bundles no jaclang: only the launcher (compiled by the native
+# backend, linking the fused runtime and native floors), the payload tool's
+# Python payload, and the pins. A jaclang edit elsewhere reuses it.
+tree jac/launcher jac/jaclang/dist/fused jac/jaclang/dist/payload \
+  jac/jaclang/compiler/backends/native jac/jaclang/runtime/na_stdlib \
+  jac/build.zig jac/build.zig.zon jac/bootstrap jac/native jac/_jac_finder.py \
+  jac/sitecustomize.py jac.toml jac/jac.toml | emit devbinary
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
-  jac/jaclang/client/bun_installer.jac jac/jaclang/compiler/backends/native/wasm_rt |
+  jac/jaclang/client/js_runtime.jac jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers

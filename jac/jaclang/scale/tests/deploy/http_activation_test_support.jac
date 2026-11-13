@@ -16,12 +16,6 @@ Example:
 
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.autoscale.http_activation {
-    HTTPActivationSpec,
-    HTTPServiceTarget,
-    HTTPConcurrencyMetric
-}
 
 # Base HTTPActivationSpec shared by most tests: a Deployment target on port
 # 8080 with a concurrency=10 trigger. Override only what a given test cares

@@ -8,10 +8,4 @@ glob RTLD_NOW: int = 2,
      RTLD_GLOBAL: int = 8,
      SHLIB_EXT: str = ".dylib";
 
-def:pub dl_error -> str {
-    p = dlerror();
-    if p == 0 {
-        return "unknown dl error";
-    }
-    return strdup(p);
-}
+def:pub dl_error -> str;

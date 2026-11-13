@@ -4,10 +4,6 @@ handler bodies are integration-tested via the real-cluster e2e
 (scripts/k8s_microservice_real_e2e.sh) since they require a live
 Loki backend."""
 
-import from jaclang.scale.admin.logs { JacAPIServerLogs }
-import from jaclang.scale.tests.support { RecordingHost }
-
-
 obj LogsHost(JacAPIServerLogs) {
     has server: any = None;
 }

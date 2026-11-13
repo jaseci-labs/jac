@@ -154,8 +154,7 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    import from jaclang.bootstrap_manifest { is_native_lowered }
-    if p != "runtime/python/LICENSE.cpython" and is_native_lowered(p) {
+    if is_native_lowered(p) {
         return True;
     }
     return (
@@ -259,6 +258,17 @@ impl run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) ->
         label = " ".join(os.path.basename(a) for a in argv[1:4]);
         log(f"   ({label}: {took:.1f}s)");
     }
+    if rc < 0 {
+        import signal;
+        try {
+            how = signal.Signals(-rc).name;
+        } except ValueError {
+            how = f"signal {-rc}";
+        }
+        log(f"   {argv[0]} killed by {how} after {took:.1f}s");
+    } elif not ok {
+        log(f"   {argv[0]} exited {rc} after {took:.1f}s");
+    }
     if not ok and not allow_fail {
         die(f"command failed: {argv[0]}");
     }
@@ -271,24 +281,51 @@ impl strip_best_effort(path: str, args: list[str] | None = None) {
         return;
     }
 
+    tool = "strip";
     if sys.platform == "darwin" {
         mapped: list[str] = [];
         for a in (args or []) {
             mapped.append("-S" if a == "--strip-debug" else a);
         }
         args = mapped;
+    } else {
+        for name in ["llvm-strip"] + [f"llvm-strip-{v}" for v in range(22, 13, -1)] {
+            found = shutil.which(name);
+            if found {
+                tool = found;
+                break;
+            }
+        }
     }
+
+    stripped = path + ".strip-tmp";
     try {
-        subprocess.run(
-            ["strip"] + (args or []) + [path],
+        done = subprocess.run(
+            [tool] + (args or []) + ["-o", stripped, path],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.PIPE,
+            text=True
         );
     } except OSError {
         log(f"   strip unavailable; shipping {path} unstripped");
         return;
     }
+    if done.returncode != 0
+        or "not in segment" in (done.stderr or "")
+        or not os.path.isfile(stripped) {
+        if os.path.exists(stripped) {
+            os.remove(stripped);
+        }
+        if "not in segment" in (done.stderr or "") {
+            log(
+                f"   {os.path.basename(tool)} would damage {path}; shipping it unstripped"
+            );
+        }
+        return;
+    }
+    shutil.copymode(path, stripped);
+    os.replace(stripped, path);
     after = file_size_or_zero(path);
     if after != 0 and after < before {
         log(f"   stripped {path}: {before >> 20} -> {after >> 20} MiB");
@@ -335,23 +372,9 @@ impl rd_u32(b: bytes, off: int) -> int {
     return int.from_bytes(b[off:off + 4], "little");
 }
 
-def _default_modes -> tuple[int, int] {
-    um = os.umask(0);
-    os.umask(um);
-    return (0o666 & ~um, 0o777 & ~um);
-}
+def _default_modes -> tuple[int, int];
 
-def _stripped_name(name: str, strip_components: int) -> str | None {
-    parts = [
-        part
-        for part in name.split("/")
-        if part not in ("", ".")
-    ];
-    if len(parts) <= strip_components {
-        return None;
-    }
-    return "/".join(parts[strip_components:]);
-}
+def _stripped_name(name: str, strip_components: int) -> str | None;
 
 impl extract_tar(
     tar_bytes: bytes, dest: str, strip_components: int, exec_bit_only: bool
@@ -398,4 +421,22 @@ impl extract_tar(
         }
     }
     os.chmod(dest, dir_default | 0o700);
+}
+
+impl _default_modes -> tuple[int, int] {
+    um = os.umask(0);
+    os.umask(um);
+    return (0o666 & ~um, 0o777 & ~um);
+}
+
+impl _stripped_name(name: str, strip_components: int) -> str | None {
+    parts = [
+        part
+        for part in name.split("/")
+        if part not in ("", ".")
+    ];
+    if len(parts) <= strip_components {
+        return None;
+    }
+    return "/".join(parts[strip_components:]);
 }

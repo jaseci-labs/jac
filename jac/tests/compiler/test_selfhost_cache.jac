@@ -68,16 +68,12 @@ def _check(path: str, prog: JacProgram) -> list[str] {
 }
 
 def _check_recomputed(path: str, prog: JacProgram) -> list[str] {
-    saved = os.environ.get("JAC_REBUILD");
-    os.environ["JAC_REBUILD"] = "1";
+    import from jaclang.compiler.driver.jir { set_cache_mode }
+    set_cache_mode(rebuild=True);
     try {
         return _check(path, prog);
     } finally {
-        if saved is None {
-            del os.environ["JAC_REBUILD"];
-        } else {
-            os.environ["JAC_REBUILD"] = saved;
-        }
+        set_cache_mode(rebuild=False);
     }
 }
 

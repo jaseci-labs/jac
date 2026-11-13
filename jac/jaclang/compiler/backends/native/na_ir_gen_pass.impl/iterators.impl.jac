@@ -73,6 +73,14 @@ impl NaIRGenPass._alloc_iter_struct(name: str) -> ir.Value {
         dtor_i64 = self.builder.ptrtoint(dtor, i64, name="it.dtor.i64");
         self.builder.store(dtor_i64, dtor_slot_p);
     }
+    if (name in self.closure_sig_registry or name == "JacFnIdentity")
+        and not self._nogc_headerless() {
+        self._emit_set_type_tag(
+            self.builder,
+            self.builder.bitcast(it_obj, i8p, name="it.clos.i8"),
+            "JacClosure" if name in self.closure_sig_registry else name
+        );
+    }
     return it_obj;
 }
 
@@ -230,12 +238,12 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
     i1 = ir.IntType(1);
     state_ptr_type = self.struct_types["StrIterState"].as_pointer();
     if self.str_len_fn is None {
         self._emit_str_len_helpers();
     }
+    self._emit_utf8_helpers();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_str");
     fn.linkage = "private";
@@ -255,22 +263,15 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     );
     idx = b.load(idx_slot, name="sit.idx");
     n = b.call(self.str_len_fn, [s_ptr], name="sit.len");
-    ok = b.icmp_signed("<", idx, n, name="sit.ok");
+    ok = b.icmp_unsigned("<", idx, n, name="sit.ok");
     b.cbranch(ok, cont, stop);
     b.position_at_end(cont);
 
-    char_ptr = b.gep(s_ptr, [idx], name="sit.char.ptr");
-    char_val = b.load(char_ptr, name="sit.char");
-    byte_idx = b.zext(char_val, i64, name="sit.char.idx");
-    cache_gv = self._get_char_cache_gv();
-    ch = b.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="sit.char.cached"
-    );
+    ch = b.call(self.utf8_char_at_fn, [s_ptr, n, idx], name="sit.char");
+    idx_next = b.call(self.utf8_cp_len_at_fn, [s_ptr, n, idx], name="sit.adv");
     out_t = b.bitcast(fn.args[1], i8p.as_pointer(), name="sit.out");
     b.store(ch, out_t);
-    b.store(b.add(idx, ir.Constant(i64, 1), name="sit.idx.next"), idx_slot);
+    b.store(b.add(idx, idx_next, name="sit.idx.next"), idx_slot);
     b.ret(ir.Constant(i1, 1));
     b.position_at_end(stop);
     b.ret(ir.Constant(i1, 0));
@@ -629,7 +630,7 @@ impl NaIRGenPass._make_iter_from_value(
             return (
                 self._make_list_iter(val, _checked_list, elem_type),
                 _checked_list,
-                elem_type,
+                self._iter_yield_llvm(elem_type, expr),
 
             );
         }
@@ -637,7 +638,11 @@ impl NaIRGenPass._make_iter_from_value(
     for (lk, lt) in self.list_types.items() {
         if val.type == lt.as_pointer() {
             elem_type = self.list_helpers[lk]["elem_type"];
-            return (self._make_list_iter(val, lk, elem_type), lk, elem_type);
+            return (
+                self._make_list_iter(val, lk, elem_type),
+                lk,
+                self._iter_yield_llvm(elem_type, expr)
+            );
         }
     }
 
@@ -655,7 +660,11 @@ impl NaIRGenPass._make_iter_from_value(
     for (sk, st) in self.set_types.items() {
         if val.type == st.as_pointer() {
             elem_type = self.set_helpers[sk]["elem_type"];
-            return (self._make_set_iter(val, sk, elem_type), sk, elem_type);
+            return (
+                self._make_set_iter(val, sk, elem_type),
+                sk,
+                self._iter_yield_llvm(elem_type, expr)
+            );
         }
     }
 
@@ -682,6 +691,17 @@ impl NaIRGenPass._make_iter_from_value(
     return None;
 }
 
+impl NaIRGenPass._iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type {
+    if storage != ir.IntType(8).as_pointer() {
+        return storage;
+    }
+    refined = self._static_elem_llvm_of(expr);
+    if refined is not None and isinstance(refined, ir.PointerType) {
+        return refined;
+    }
+    return storage;
+}
+
 impl NaIRGenPass._adapter_clos_parts(clos: ir.Value) -> (NativeIterCallback | None) {
     sn = self._closure_struct_of(clos.type);
     if sn is None {
@@ -706,14 +726,14 @@ impl NaIRGenPass._adapter_clos_parts(clos: ir.Value) -> (NativeIterCallback | No
 
 impl NaIRGenPass._adapter_callee(fn_expr: uni.UniNode) -> (NativeIterCallback | None) {
     fname = self._get_name(fn_expr);
-    if fname is not None and fname in self.nested_captures {
+    if fname is not None and self.scope.closure(fname) is not None {
         clos = self._emit_closure_value(fname, fn_expr);
         if clos is not None {
             return self._adapter_clos_parts(clos);
         }
         return None;
     }
-    named = self.func_symtab.get(fname) if fname is not None else None;
+    named = self.scope.function(fname) if fname is not None else None;
     if named is not None and isinstance(named, ir.Function) {
         return NativeIterCallback(function=named, function_type=named.function_type);
     }
@@ -1075,7 +1095,6 @@ impl NaIRGenPass._make_zip_iter(
 impl NaIRGenPass._resolve_method_owner(
     arch_name: str, method_name: str
 ) -> (str | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     owner = get_layout_registry(self.module, self.prog).resolve_method_owner(
         arch_name, method_name
     );
@@ -1097,7 +1116,6 @@ impl NaIRGenPass._resolve_method_owner(
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     _reg = get_layout_registry(self.module, self.prog);
     cur: (str | None) = arch_name;
     _guard = 0;
@@ -1142,8 +1160,7 @@ impl NaIRGenPass._user_iter_next_fn(
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_user_" + iter_struct);
     fn.linkage = "private";
-    fn.attributes.add("optnone");
-    fn.attributes.add("noinline");
+    self._mark_setjmp_function(fn);
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -1160,24 +1177,24 @@ impl NaIRGenPass._user_iter_next_fn(
     recv = b.bitcast(obj_i8, struct_ptr_type, name="usr.obj");
 
     exc_state = b.alloca(exc_state_type, name="usr.exc.state");
-    b.call(self._exc_push_fn, [exc_state]);
+    self._emit_exc_push(b, exc_state);
     env_ptr = b.gep(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="usr.env.i8p");
-    sj = b.call(self._exc_setjmp_fn(), [env_i8p], name="usr.sj");
+    sj = self._emit_exc_arm(b, env_i8p, "usr.sj");
     is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
     b.cbranch(is_exc, caught_bb, call_bb);
 
     b.position_at_end(call_bb);
     v = b.call(next_method_fn, [recv], name="usr.v");
-    b.call(self._exc_pop_fn, []);
+    self._emit_exc_pop(b);
     out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="usr.out");
     b.store(v, out_t);
     b.ret(ir.Constant(i1, 1));
 
     b.position_at_end(caught_bb);
-    b.call(self._exc_pop_fn, []);
+    self._emit_exc_pop(b);
     exc_type_ptr = b.gep(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="usr.exc.type.ptr"
     );
@@ -1261,9 +1278,6 @@ impl NaIRGenPass._make_user_iter_from_obj(
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
-    """`next(it)` / `next(it, default)`. An argument that is not already an
-    iterator (a list, a generator expression, a user iterable) gets a
-    temporary iterator, released once the element is taken.""";
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params
         or len(params) > 2
@@ -1458,18 +1472,6 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     _loc = "iter_for";
     tuple_target = nd.target if isinstance(nd.target, uni.TupleVal) else None;
 
-    _gen_it_spill: (ir.Value | None) = None;
-    if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
-        _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
-        self.builder.store(iter_val, _gen_it_spill);
-    }
-
-    _it_slot_var: (str | None) = None;
-    if _gen_it_spill is None and owns_iter {
-        _it_slot_var = self._bind_loop_coll_slot(iter_val);
-    }
-
-    elem_slot = self._entry_alloca(elem_type, "iter.elem");
     if tuple_target is not None {
         targets = tuple_target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
@@ -1480,6 +1482,22 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     } elif self._get_name(nd.target) is None {
         return False;
     }
+
+    _gen_it_spill: (ir.Value | None) = None;
+    if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
+        _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
+        if not owns_iter {
+            self._emit_rc_retain(iter_val, op="iter_spill", loc=_loc);
+        }
+        self.builder.store(iter_val, _gen_it_spill);
+    }
+
+    _it_slot_var: (str | None) = None;
+    if _gen_it_spill is None and owns_iter {
+        _it_slot_var = self._bind_loop_coll_slot(iter_val);
+    }
+
+    elem_slot = self._entry_alloca(elem_type, "iter.elem");
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="iterf.cond");
     body_bb = func.append_basic_block(name="iterf.body");
@@ -1517,7 +1535,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
             return False;
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
 
     _iter_prebody = set(self.local_vars.keys());
@@ -1533,16 +1551,18 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         );
         self.builder.branch(cond_bb);
     }
-    self._emit_loop_else(nd, else_bb, end_bb);
     self.loop_stack.pop();
-
-    if _gen_it_spill is not None {
-        iter_val = self.builder.load(_gen_it_spill, name="iterf.it.end");
-    }
-    if _it_slot_var is not None {
-        self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
-    } elif owns_iter {
-        self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
+    if else_bb is None {
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+    } else {
+        join_bb = self.builder.function.append_basic_block(name="iterf.join");
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(else_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self._emit_loop_else(nd, else_bb, join_bb);
     }
     return True;
 }

@@ -25,7 +25,25 @@ nineteen files exist, CI runs them, and what they run is the container.
 
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.module_compile { get_py_code_gen }
+import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline_types {
+    CompilationProduct,
+    ProductRequest
+}
+
+"""The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
+def codegen_lane(native: bool) -> list[type] {
+    lane: list[type] = [];
+    for product in (
+        CompilationProduct.CODEGEN,
+        CompilationProduct.PY_IR,
+        CompilationProduct.FROZEN
+    ) {
+        lane.extend(product_passes(product, ProductRequest(native=native)));
+    }
+    return lane;
+}
+
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 
@@ -119,7 +137,7 @@ test "the manifest has no duplicates and covers both lanes" {
 }
 
 test "the lane the canaries measure is the container, with no alternative" {
-    sched = get_py_code_gen(native=False);
+    sched = codegen_lane(False);
     assert JcirGenPass in sched , (
         f"the codegen schedule does not emit JCIR: {[p.__name__ for p in sched]}"
     );

@@ -6,8 +6,8 @@ needed for the parts pinned here: the `NullTranslations` passthrough plus its
 fallback chain, `textdomain`/`bindtextdomain` state, the module-level
 `gettext`/`ngettext` (which fall back to the msgid when no catalogue is found),
 and the C plural-form expression engine -- CPython compiles it to a lambda via
-`c2py`, the native module parses it to an AST evaluated by `_peval`, so the
-lanes call their own entry point and compare the resulting plural indices.
+`c2py`, the native module parses it to an AST and returns a closure over it,
+so both lanes call `c2py` and compare the resulting plural indices.
 Per-lane bodies (never a shared helper) because a dict cannot cross the
 native->Python call boundary. ES/JS opts out.
 """
@@ -105,23 +105,23 @@ def gettext_na -> dict[str, any] {
     mod_g = gettext.gettext("missing");
     mod_n1 = gettext.ngettext("apple", "apples", 1);
     mod_n2 = gettext.ngettext("apple", "apples", 4);
-    germanic = gettext.c2py_ast("n != 1");
-    plural_1 = gettext.plural_index(germanic, 1);
-    plural_2 = gettext.plural_index(germanic, 2);
-    slavic = gettext.c2py_ast(
+    germanic = gettext.c2py("n != 1");
+    plural_1 = germanic(1);
+    plural_2 = germanic(2);
+    slavic = gettext.c2py(
         "n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 &&"
         " (n%100<10 || n%100>=20) ? 1 : 2"
     );
-    sl_1 = gettext.plural_index(slavic, 1);
-    sl_3 = gettext.plural_index(slavic, 3);
-    sl_11 = gettext.plural_index(slavic, 11);
-    zero = gettext.c2py_ast("0");
-    zero_5 = gettext.plural_index(zero, 5);
-    nested = gettext.c2py_ast("(n > 1) + (n > 10)");
-    nested_11 = gettext.plural_index(nested, 11);
+    sl_1 = slavic(1);
+    sl_3 = slavic(3);
+    sl_11 = slavic(11);
+    zero = gettext.c2py("0");
+    zero_5 = zero(5);
+    nested = gettext.c2py("(n > 1) + (n > 10)");
+    nested_11 = nested(11);
     bad = "";
     try {
-        gettext.c2py_ast("n $ 1");
+        gettext.c2py("n $ 1");
     } except Exception as e {
         bad = "ERR";
     }

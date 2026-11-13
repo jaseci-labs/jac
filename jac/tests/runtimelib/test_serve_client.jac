@@ -2350,18 +2350,19 @@ without a restart), while genuine build failures stay memoized."""
 test "ensure_bundle retries a missing-bun failure and a build error alike" {
     import from unittest.mock { MagicMock }
     import from jaclang.server.server { ModuleIntrospector }
-    import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    import from jaclang.client.client_bundle { ClientBundleError }
     intro = ModuleIntrospector("serve_api", FIXTURES);
     intro._module = types.ModuleType("serve_api");
     intro._module.__file__ = fixture_abs_path("serve_api.jac");
     bun_missing = MagicMock();
-    bun_missing.build.side_effect = MissingBunError("bun is not available");
+    bun_missing.build.side_effect = ArtifactUnavailable("bun is not available");
     intro._bundle_builder = bun_missing;
     for _ in range(2) {
         try {
             intro.ensure_bundle();
             assert False , "ensure_bundle should raise while bun is missing";
-        } except ClientBundleError {}
+        } except ArtifactUnavailable {}
     }
     assert bun_missing.build.call_count == 2 , "missing bun must be re-checked on every call, not memoized";
 
@@ -2502,7 +2503,7 @@ for (const row of ROWS) {
     token: Boolean(localStorage.getItem("jac_token")),
     badge: document.getElementById("mode-badge").textContent,
     error: errorEl.style.display === "block" ? errorEl.textContent : null,
-    authedGraph: calls.some((c) => c.url.endsWith("/graph/data") && Boolean(c.auth)),
+    authedGraph: calls.some((c) => c.url.includes("/graph/node?") && Boolean(c.auth)),
   };
   const want = { token: row.token, badge: row.badge, error: row.error, authedGraph: row.token };
   const ok = JSON.stringify(seen) === JSON.stringify(want);
@@ -2512,10 +2513,139 @@ for (const row of ROWS) {
 process.exit(failed ? 1 : 0);
 """;
 
-"""The stdlib server serves /graph, /graph/data and /docs, and the /graph login
-modal signs in against it (#8951)."""
+"""Serve settings for `base` as if JAC_SERVE_WORKERS were unset."""
+def _settings_without_worker_env(
+    base: str, overrides: (dict[str, any] | None) = None, config: any = None
+) -> any {
+    import from jaclang.server.settings { ServeSettings }
+    saved = os.environ.pop("JAC_SERVE_WORKERS", None);
+    try {
+        return ServeSettings.load(base, overrides, config=config);
+    } finally {
+        if saved is not None {
+            os.environ["JAC_SERVE_WORKERS"] = saved;
+        }
+    }
+}
+
+
+test "an unset worker count picks as many as fit; an explicit one is kept" {
+    import from jaclang.server.settings {
+        ServeSettings,
+        WORKER_MEMORY_BUDGET,
+        default_worker_count
+    }
+    budget = WORKER_MEMORY_BUDGET;
+    cases = [
+        (8, 64 * budget, False, True, 8, "ample memory gives one worker per core"),
+        (8, 2 * budget, False, True, 2, "two budgets of memory give two workers"),
+        (8, 2 * budget - 1, False, True, 1, "just under two budgets gives one"),
+        (8, budget // 2, False, True, 1, "less than one budget gives one"),
+        (8, 0, False, True, 1, "no free memory gives one"),
+        (8, 64 * budget, True, True, 1, "a cluster pod gives one"),
+        (8, 64 * budget, False, False, 1, "no fork gives one"),
+        (1, 64 * budget, False, True, 1, "one core gives one")
+    ];
+    for (quota, headroom, clustered, can_fork, expected, why) in cases {
+        got = default_worker_count(quota, headroom, clustered, can_fork);
+        assert got == expected , f"{why}: expected {expected}, got {got}";
+    }
+    with TemporaryDirectory() as tmpdir {
+        unset = _settings_without_worker_env(tmpdir, {"workers": ""});
+        assert unset.workers.count_by_default;
+        assert unset.workers.count >= 1;
+        pinned = ServeSettings.load(tmpdir, {"workers": "3"});
+        assert not pinned.workers.count_by_default;
+        assert pinned.workers.count == 3;
+    }
+}
+
+
+test "a [serve] table stands where it omits a key or a JAC_SERVE_* variable is blank" {
+    import from unittest.mock { patch }
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.server.settings { ServeConfigError }
+    with TemporaryDirectory() as tmpdir {
+        manifest = Path(tmpdir) / "jac.toml";
+        manifest.write_text(
+            '[project]\nname = "workers-unset"\n\n'
+            '[serve]\nport = 9123\ngraph_enabled = false\n'
+            'cors_origins = ["https://app.example"]\n'
+        );
+        config = JacConfig.load(manifest);
+        assert config.serve.port == 9123;
+        assert config.serve.workers.count == "" , (
+            f"an absent worker count loaded as {config.serve.workers.count!r}"
+        );
+        settings = _settings_without_worker_env(tmpdir, config=config);
+        assert settings.workers.count_by_default , (
+            "a [serve] port pinned the app to an explicit worker count"
+        );
+        blank = {
+            name: ""
+            for name in ["JAC_SERVE_GRAPH", "JAC_SERVE_PORT", "JAC_SERVE_CORS_ORIGINS"]
+        };
+        with patch.dict(os.environ, blank) {
+            loaded = _settings_without_worker_env(tmpdir, config=config);
+        }
+        seen = (loaded.graph_enabled, loaded.port, loaded.cors_origins);
+        assert seen == (False, 9123, ["https://app.example"]) , (
+            f"a blank JAC_SERVE_* variable overrode jac.toml: {seen}"
+        );
+        with patch.dict(os.environ, {"JAC_SERVE_GRAPH": "disabled"}) {
+            try {
+                _settings_without_worker_env(tmpdir, config=config);
+                assert False , "JAC_SERVE_GRAPH=disabled was read as a boolean";
+            } except ServeConfigError as refused {
+                assert "JAC_SERVE_GRAPH must be true or false" in str(refused) , (
+                    str(refused)
+                );
+            }
+        }
+    }
+}
+
+
+test "an unset worker count falls back to one worker where more would be refused" {
+    import from jaclang.server.settings { ServeConfigError, ServeSettings }
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            fixture_abs_path("serve_shared_root.jac"), base_path=tmpdir
+        );
+        try {
+            chosen = _settings_without_worker_env(tmpdir, {"workers": ""});
+            chosen.workers.count = 4;
+            chosen.dev = True;
+            client.server.settings = chosen;
+            client.server._validate_or_raise();
+            assert chosen.workers.count == 1 , (
+                f"--dev kept {chosen.workers.count} default workers"
+            );
+            pinned = ServeSettings.load(tmpdir, {"workers": "2"});
+            pinned.dev = True;
+            client.server.settings = pinned;
+            refused = "";
+            try {
+                client.server._validate_or_raise();
+            } except ServeConfigError as e {
+                refused = str(e);
+            }
+            assert "workers = 1 for development" in refused , (
+                f"an explicit count of 2 with --dev was not refused: {refused!r}"
+            );
+            assert pinned.workers.count == 2 , "an explicit count was lowered";
+        } finally {
+            client.close();
+        }
+    }
+}
+
+
+"""The stdlib server serves /graph, the explorer's /graph/node and
+/graph/neighbors, and /docs, and the /graph login modal signs in against it
+(#8951)."""
 test "stdlib server serves graph visualizer and docs" {
-    import from jaclang.client.bun_installer { get_bun }
+    import from tests.support { js_runtime_or_none }
     import from jaclang.server.settings { ServeSettings }
     import from .react_jsdom_harness { REACT_JSDOM_DEPS, bun_install, run_harness }
 
@@ -2528,11 +2658,13 @@ test "stdlib server serves graph visualizer and docs" {
         assert "<html" in page.text.lower() , "/graph should serve the visualizer html";
         seeded = client.post("/walker/leave_note", json={"text": "hi"});
         assert seeded.ok , f"seed walker failed: {seeded.text}";
-        data = client.get("/graph/data");
-        assert data.status_code == 200 , f"/graph/data: {data.text}";
-        payload = data.json();
-        assert "nodes" in payload and "edges" in payload , f"payload: {data.text}";
-        assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
+        opened = client.get("/graph/node");
+        assert opened.status_code == 200 , f"/graph/node: {opened.text}";
+        assert opened.json()["root"] is True , f"/graph/node opens on the root: {opened.text}";
+        page = client.get(f"/graph/neighbors?id={opened.json()['id']}");
+        assert page.status_code == 200 , f"/graph/neighbors: {page.text}";
+        payload = page.json();
+        assert "nodes" in payload and "edges" in payload , f"payload: {page.text}";
         docs = client.get("/docs");
         assert docs.status_code == 200 , f"/docs: {docs.status_code}";
         assert "swagger-ui" in docs.text.lower() , "/docs should serve the API explorer";
@@ -2542,8 +2674,8 @@ test "stdlib server serves graph visualizer and docs" {
         assert "/walker/leave_note" in paths , "openapi should list the module's walkers";
         assert "/user/login" in paths , "openapi should list auth endpoints";
         _require_client_integration();
-        bun = get_bun();
-        assert bun is not None , "bun is on PATH but get_bun() could not locate it";
+        bun = js_runtime_or_none();
+        assert bun is not None , "bun is on PATH but js_runtime_or_none() could not locate it";
         registered = client.register_user("graph_viewer", "pw12345678");
         assert registered.ok , f"register failed: {registered.text}";
         client.server.settings = ServeSettings.load(
@@ -2994,7 +3126,7 @@ test "serve: X-Jac-Idempotency-Key replays the first response for a repeated cal
             );
             assert first.ok , f"greet should be callable: {first.data}";
             scoped = scoped_idempotency_key(
-                "outbox-entry-1", Con.GUEST.value, "serve_api", "greet"
+                "outbox-entry-1", Con.GUEST.value, client.server.module_name, "greet"
             );
             assert cached_result(scoped) is not None , (
                 "a successful keyed call is remembered in the outbox seen-table "

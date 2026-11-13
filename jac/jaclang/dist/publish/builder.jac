@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 
 glob _WHEEL_TIMESTAMP: tuple[int, int, int, int, int, int] = (2016, 1, 1, 0, 0, 0),
      _SDIST_MTIME: int = 1451606400;
@@ -22,7 +21,8 @@ obj WheelBuilder {
     def _assemble_src_data -> dict[str, bytes];
     def _vendor_runtime_into(src_data: dict[str, bytes], codes: list[str]) -> None;
     def _top_level_names(src_data: dict[str, bytes]) -> list[str];
-    def _build_backend_script(src_data: dict[str, bytes]) -> str;
+    def _dist_info_files(src_data: dict[str, bytes]) -> list[tuple[str, str]];
+    def _build_data(src_data: dict[str, bytes]) -> str;
     def build -> bytes;
     def build_to(output_dir: Path) -> Path;
     def install_editable(src_dir: Path, site_pkgs: Path) -> Path;

@@ -5,7 +5,7 @@ import re;
 import subprocess;
 import from tempfile { TemporaryDirectory }
 import from tests.support { JAC_ROOT }
-import from jaclang.client.bun_installer { get_bun }
+import from tests.support { js_runtime_or_none }
 import from jaclang.compiler.driver.program { JacProgram }
 
 test "JavaScript boundary types preserve provider scopes and aliases" {
@@ -22,7 +22,7 @@ test "JavaScript boundary types preserve provider scopes and aliases" {
     mod = prog.compile(path);
     assert not prog.errors_had , str(prog.errors_had);
     js = mod.gen.js;
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("Bun is required to execute generated JavaScript");
     }
@@ -79,7 +79,7 @@ test "a boundary type the module also imports from its own module keeps one bind
     # identifier are a SyntaxError that leaves the whole page blank.
     assert re.search(r"import \{[^}]*\bRepoMeta\b[^}]*\} from", js) , js[:400];
     assert not re.search(r"^class RepoMeta\b", js, re.M) , "decoder reuses the imported name";
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("Bun is required to execute generated JavaScript");
     }

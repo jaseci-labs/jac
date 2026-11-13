@@ -2,16 +2,18 @@ import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.pipeline {
-    pass_requires,
-    pass_provides,
-    get_analysis_sched,
-    get_ir_gen_sched,
-    get_boundary_analysis_sched,
+    contract_of,
+    execute_passes,
+    product_passes,
     providers_of,
     validate_schedule
 }
-import from jaclang.compiler.driver.module_compile { get_py_code_gen, module_pipeline }
-import from jaclang.compiler.driver.pipeline_types { CompilationPhase }
+import from jaclang.compiler.driver.module_analysis { ANALYSIS_PLAN }
+import from jaclang.compiler.driver.module_compile { CODEGEN_PLAN }
+import from jaclang.compiler.driver.pipeline_types {
+    CompilationProduct,
+    ProductRequest
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
 import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
@@ -63,16 +65,30 @@ test "validation accepts a schedule whose dependencies run earlier in it" {
 }
 
 test "the analysis stage always carries type checking and the checkers" {
-    sched = get_analysis_sched();
+    sched = product_passes(CompilationProduct.ANALYSIS);
     assert TypeCheckPass in sched;
     assert StaticAnalysisPass in sched;
     assert OwnershipCheckPass in sched;
     assert sched.index(TypeCheckPass) < sched.index(OwnershipCheckPass);
 }
 
+def canonical_pipeline -> list[type] {
+    sched: list[type] = [];
+    for product in (
+        CompilationProduct.IR,
+        CompilationProduct.ANALYSIS,
+        CompilationProduct.BOUNDARIES,
+        CompilationProduct.CODEGEN,
+        CompilationProduct.PY_IR,
+        CompilationProduct.FROZEN
+    ) {
+        sched.extend(product_passes(product, ProductRequest(native=True)));
+    }
+    return sched;
+}
+
 test "the canonical compile pipeline validates end to end" {
-    sched = get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched();
-    sched += get_py_code_gen(provided=providers_of(sched));
+    sched = canonical_pipeline();
     assert CFGBuildPass in sched;
     assert TypeCheckPass in sched;
     assert OwnershipCheckPass in sched;
@@ -81,14 +97,13 @@ test "the canonical compile pipeline validates end to end" {
 }
 
 test "every declared requirement is satisfied within the one pipeline" {
-    sched = get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched();
-    sched += get_py_code_gen(provided=providers_of(sched));
+    sched = canonical_pipeline();
     provided: set[AnalysisFact] = set();
     for p in sched {
-        for tag in pass_requires(p) {
+        for tag in contract_of(p).requires {
             assert tag in provided , f"{p.__name__} requires '{tag}' with no earlier provider";
         }
-        for tag in pass_provides(p) {
+        for tag in contract_of(p).provides {
             provided.add(tag);
         }
     }
@@ -100,12 +115,12 @@ test "providers_of reports the tags a schedule segment supplies" {
     assert providers_of([]) == set();
 }
 
-test "run_schedule rejects an incoherent schedule before running any pass" {
+test "execute_passes rejects an incoherent schedule before running any pass" {
     prog = JacProgram();
     stub = uni.Module.make_stub(inject_name='sched_stub');
     err = '';
     try {
-        prog.run_schedule(stub, [OwnershipCheckPass]);
+        execute_passes(prog, stub, [OwnershipCheckPass]);
     } except RuntimeError as e {
         err = str(e);
     }
@@ -114,18 +129,18 @@ test "run_schedule rejects an incoherent schedule before running any pass" {
     assert 'scheduling error' in err;
 }
 
-test "the module pipeline declares its complete phase order" {
-    assert module_pipeline()
+test "the module plan declares its complete step order" {
+    assert [step.name for step in ANALYSIS_PLAN + CODEGEN_PLAN]
         == [
-            CompilationPhase.PARSE,
-            CompilationPhase.IR,
-            CompilationPhase.PLACEMENT,
-            CompilationPhase.ANALYSIS,
-            CompilationPhase.BOUNDARIES,
-            CompilationPhase.NATIVE_CHECKS,
-            CompilationPhase.CLIENT_DEPENDENCIES,
-            CompilationPhase.INTERFACE,
-            CompilationPhase.CODEGEN
+            "PARSE",
+            "IR",
+            "PLACEMENT",
+            "ANALYSIS",
+            "BOUNDARIES",
+            "NATIVE_CHECKS",
+            "CLIENT_DEPENDENCIES",
+            "INTERFACE",
+            "CODEGEN"
         ];
 }
 
@@ -153,6 +168,6 @@ test "symbols-only requests never resolve types to serialize an interface" {
             assert not encode.called;
         }
         assert not program.errors_had;
-        assert not program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
+        assert not program.analysis.provides(module, AnalysisFact.TYPE_OF);
     }
 }

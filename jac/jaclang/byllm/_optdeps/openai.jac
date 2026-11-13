@@ -1,9 +1,4 @@
 import types;
-import from jaclang.byllm._optdeps._deferred {
-    DeferredClassMeta,
-    DeferredModule,
-    is_installed
-}
 
 glob HAS_OPENAI: bool = is_installed("openai");
 
@@ -15,12 +10,16 @@ with entry {
         class _OpenAIAuthError(_OpenAIUnavailable) {}
         class _OpenAIRateLimit(_OpenAIUnavailable) {}
         class _OpenAINotFound(_OpenAIUnavailable) {}
-        class _OpenAITimeout(_OpenAIUnavailable) {}
+        class _OpenAIConnection(_OpenAIUnavailable) {}
+        class _OpenAITimeout(_OpenAIConnection) {}
+        class _OpenAIInternalServer(_OpenAIUnavailable) {}
         openai = types.SimpleNamespace(
             AuthenticationError=_OpenAIAuthError,
             RateLimitError=_OpenAIRateLimit,
             NotFoundError=_OpenAINotFound,
-            APITimeoutError=_OpenAITimeout
+            APITimeoutError=_OpenAITimeout,
+            APIConnectionError=_OpenAIConnection,
+            InternalServerError=_OpenAIInternalServer
         );
     }
 }

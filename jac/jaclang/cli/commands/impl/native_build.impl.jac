@@ -1,43 +1,11 @@
 import os;
 import sys;
 
-import from jaclang.cli.console { console }
-import from jaclang.compiler.backends.native.link_plan { LinkPlan }
+
+def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]];
 
 
-def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
-    import re;
-    syms: set[str] = set();
-    for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
-        syms.add(m.group(0));
-    }
-    probes: list[str] = [];
-    for probe in ["JAC_GC"] {
-        if probe in llvm_ir_str {
-            probes.append(probe);
-        }
-    }
-    return (sorted(syms), probes);
-}
-
-
-def _application_ir(plan: LinkPlan) -> str {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
-    registry = plan.prog.native_units();
-    parts: list[str] = [];
-    for u in plan.units {
-        if native_unit_identity(u.path).startswith("jaclang/") {
-            continue;
-        }
-        bc = registry.bitcode_for(u.path, plan.options);
-        if bc is None {
-            continue;
-        }
-        parts.append(str(llvm.parse_bitcode(bc)));
-    }
-    return "\n".join(parts);
-}
+def _application_ir(plan: LinkPlan) -> str;
 
 
 impl native_build(
@@ -68,18 +36,6 @@ impl native_build(
             return target if "-" in target else "x86_64-unknown-linux-gnu";
         }
         return "" if target in ("", "host") else target;
-    }
-
-    import from jaclang.jac0core.ext_registry {
-        is_jac,
-        is_retired_native_marker,
-        base_stem
-    }
-    import from jaclang.project { get_config }
-    import from jaclang.compiler.driver.compile_options {
-        NATIVE_LINK_MODES,
-        pop_native_target,
-        push_native_target
     }
 
     _cfg = get_config();
@@ -143,15 +99,6 @@ impl native_build(
 
     console.print(f"Compiling {filename} to native binary");
 
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        LinkPlanError,
-        build_link_plan,
-        link_artifact
-    }
-
     try {
         prog = JacProgram();
         options = CompileOptions(
@@ -197,7 +144,7 @@ impl native_build(
         if not (ir_module and ir_module.decided_codespace == 'native') {
             console.error(
                 "This .jac file is not compatible with native compilation.\n"
-                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+                "  It may use async, by llm(), the persistent root graph, or other\n"
                 "  constructs not supported by the native backend.\n"
                 "  Remove the incompatible constructs it names."
             );
@@ -284,6 +231,7 @@ impl native_build(
     kind = ArtifactKind.SHARED
         if shared
         else (ArtifactKind.WASM if is_wasm else ArtifactKind.EXECUTABLE);
+    plan.library_api = shared;
     app_imports: (set | None) = None;
     if is_wasm {
         import from jaclang.compiler.backends.native.wasm_build { app_declared_imports }
@@ -340,70 +288,41 @@ impl native_build(
 }
 
 
-def _restore_target(prev_target: (str | None)) {
-    import from jaclang.compiler.driver.compile_options { pop_native_target }
+def _restore_target(prev_target: (str | None));
+
+impl _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
+    import re;
+    syms: set[str] = set();
+    for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
+        syms.add(m.group(0));
+    }
+    probes: list[str] = [];
+    for probe in ["JAC_GC"] {
+        if probe in llvm_ir_str {
+            probes.append(probe);
+        }
+    }
+    return (sorted(syms), probes);
+}
+
+
+impl _application_ir(plan: LinkPlan) -> str {
+    registry = plan.prog.native_units();
+    parts: list[str] = [];
+    for u in plan.units {
+        if is_toolchain_unit(u.path) {
+            continue;
+        }
+        bc = registry.bitcode_for(u.path, plan.options);
+        if bc is None {
+            continue;
+        }
+        parts.append(str(llvm.parse_bitcode(bc)));
+    }
+    return "\n".join(parts);
+}
+
+
+impl _restore_target(prev_target: (str | None)) {
     pop_native_target(prev_target);
-}
-
-
-def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
-    import os;
-
-    cand = os.path.join(os.path.dirname(pkg_root), "python", "floor", "cacert.pem");
-    if os.path.isfile(cand) {
-        return cand;
-    }
-
-    import glob;
-    bundles = sorted(
-        `glob.`glob(
-            os.path.join(
-                pkg_root, ".python-build", "*", "*", "python", "build", "cacert.pem"
-            )
-        )
-    );
-    if bundles {
-        return bundles[0];
-    }
-    source_bundles = sorted(
-        `glob.`glob(
-            os.path.join(
-                pkg_root, ".python-build", "*", "python", "build", "cacert.pem"
-            )
-        )
-    );
-    if source_bundles {
-        return source_bundles[0];
-    }
-    hits = sorted(
-        `glob.`glob(
-            os.path.join(
-                pkg_root,
-                ".python-build",
-                "*",
-                "python",
-                "install",
-                "lib",
-                "python*",
-                "site-packages",
-                "pip",
-                "_vendor",
-                "certifi",
-                "cacert.pem"
-            )
-        )
-    );
-    return hits[0] if hits else None;
-}
-
-
-def _floor_ca_bundle -> (str | None) {
-    import os;
-    env = os.environ.get("JAC_NATIVE_CA_BUNDLE", "");
-    if env and os.path.isfile(env) {
-        return env;
-    }
-    import jaclang;
-    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
-    return _resolve_ca_bundle(pkg_root);
 }

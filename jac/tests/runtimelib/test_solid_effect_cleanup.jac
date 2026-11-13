@@ -3,7 +3,7 @@ import subprocess;
 import shutil;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.client.bun_installer { get_bun }
+import from tests.support { js_runtime_or_none }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
@@ -37,7 +37,7 @@ console.log('PASS Solid closure-local cleanup');
 
 test "solid returned cleanup runs on invalidation and disposal" {
     require_client_integration("Solid lifecycle cleanup");
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required");
     }

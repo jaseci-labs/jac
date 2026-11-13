@@ -1,14 +1,7 @@
+import json;
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.server.serving.datatypes { Headers, Request, URL }
-import from jaclang.scale.tests.support { get_free_port }
 
 test "resolve strips prefix and preserves walker path" {
     reg = ServiceRegistry();
@@ -303,17 +296,36 @@ test "browser navigation to a client route gets the SPA index (history fallback)
     );
 }
 
-"""Serve `payload` as JSON on every GET; returns (server, port)."""
-def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
+"""Serve the JSON payload `answers` holds for each `path?query` and 404 anything
+else, gzipping the body whenever the request accepts it, the way a real
+service's compression middleware does; returns (server, port)."""
+def _serve_owned(answers: dict[str, any]) -> tuple[any, ...] {
+    import gzip;
     import http.server;
     import json;
     import threading;
 
-    body = json.dumps(payload).encode();
-
     def _do_get(handler_self: any) {
-        handler_self.send_response(200);
+        payload = answers.get(handler_self.path);
+        status = 200 if payload is not None else 404;
+        if isinstance(payload, dict) and "__status__" in payload {
+            status = payload["__status__"];
+            payload = {
+                k: v
+                for (k, v) in payload.items()
+                if k != "__status__"
+            };
+        }
+        body = json.dumps(payload or {"error": "Node not found"}).encode();
+        zipped = "gzip" in handler_self.headers.get("Accept-Encoding", "");
+        if zipped {
+            body = gzip.compress(body);
+        }
+        handler_self.send_response(status);
         handler_self.send_header("Content-Type", "application/json");
+        if zipped {
+            handler_self.send_header("Content-Encoding", "gzip");
+        }
         handler_self.send_header("Content-Length", str(len(body)));
         handler_self.end_headers();
         handler_self.wfile.write(body);
@@ -322,7 +334,7 @@ def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
     def _log_quiet(handler_self: any, fmt: str, *args: any) {}
 
     handler_cls = type(
-        "_FragmentHandler",
+        "_OwnedHandler",
         (http.server.BaseHTTPRequestHandler, ),
         {"do_GET": _do_get, "log_message": _log_quiet}
     );
@@ -332,39 +344,95 @@ def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
     return (srv, srv.server_address[1]);
 }
 
-test "/graph/data merges the graph fragments of every healthy service" {
-    frag_a = {
-        "version": "1.0",
-        "nodes": [{"id": "r", "label": "root"}, {"id": "a", "label": "A"}],
-        "edges": [{"from": "r", "to": "a"}]
-    };
-    frag_b = {
-        "version": "1.0",
-        "nodes": [{"id": "r", "label": "root"}, {"id": "b", "label": "B"}],
-        "edges": [{"from": "r", "to": "b"}]
-    };
-    (srv_a, port_a) = _serve_fragment(frag_a);
-    (srv_b, port_b) = _serve_fragment(frag_b);
 
-    reg = ServiceRegistry();
-    reg.register(
-        ServiceEntry(
-            name="analytics",
-            file="analytics.jac",
-            prefix="/analytics",
-            port=port_a,
-            url=f"http://127.0.0.1:{port_a}",
-            status=ServiceStatus.HEALTHY
-        )
+def _json_body(resp: any) -> any {
+    import gzip;
+    import json;
+    raw = resp.content;
+    if resp.headers.get("content-encoding") == "gzip" {
+        raw = gzip.decompress(raw);
+    }
+    return json.loads(raw);
+}
+
+
+"""One service's page of `r`'s neighbors: an edge per (seq, node) pair."""
+def _neighbors(
+    rows: list[tuple[int, str]], more: bool, resume: (str | None) = None
+) -> dict[str, any] {
+    edges = [
+        {"id": f"e{seq}", "from": "r", "to": nid, "cursor": f"{seq}.e{seq}"}
+        for (seq, nid) in rows
+    ];
+    return {
+        "id": "r",
+        "dir": "out",
+        "nodes": [{"id": nid, "type": "Doc"} for (_, nid) in rows],
+        "edges": edges,
+        "next_cursor": resume or (edges[-1]["cursor"] if more and edges else None)
+    };
+}
+
+
+test "graph reads reach every service that can read the node, compressed or not" {
+    # Both services share root r but each loads only its own neighbors, so a
+    # page is the edge-ordered merge of both services' pages for the same
+    # cursor; a node only one service can read is answered by that one.
+    (srv_a, port_a) = _serve_owned(
+        {
+            "/graph/node?id=a": {"id": "a"},
+            "/graph/neighbors?id=r&limit=2": _neighbors([(1, "a"), (3, "c")], True),
+            "/graph/neighbors?id=r&limit=5": _neighbors([(1, "a"), (3, "c")], False),
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(3, "c")], False),
+            "/graph/neighbors?id=r&limit=3": _neighbors([], False, "5.e5"),
+            "/graph/neighbors?id=r&type=Task": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            },
+            "/graph/neighbors?id=r&type=Nope": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            }
+        }
     );
+    (srv_b, port_b) = _serve_owned(
+        {
+            "/graph/node?id=b": {"id": "b"},
+            "/graph/neighbors?id=r&limit=2": _neighbors([(2, "b"), (4, "d")], False),
+            "/graph/neighbors?id=r&limit=5": _neighbors([(2, "b"), (4, "d")], False),
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(4, "d")], False),
+            "/graph/neighbors?id=r&limit=3": _neighbors([(2, "b"), (7, "g")], False),
+            "/graph/neighbors?id=r&type=Task": _neighbors([(2, "b")], False),
+            "/graph/neighbors?id=r&type=Nope": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            }
+        }
+    );
+    reg = ServiceRegistry();
+    for (name, port) in [("analytics", port_a), ("guestbook", port_b)] {
+        reg.register(
+            ServiceEntry(
+                name=name,
+                file=f"{name}.jac",
+                prefix=f"/{name}",
+                port=port,
+                url=f"http://127.0.0.1:{port}",
+                status=ServiceStatus.HEALTHY
+            )
+        );
+    }
     reg.register(
         ServiceEntry(
-            name="guestbook",
-            file="guestbook.jac",
-            prefix="/guestbook",
-            port=port_b,
-            url=f"http://127.0.0.1:{port_b}",
-            status=ServiceStatus.HEALTHY
+            name="stopped",
+            file="stopped.jac",
+            prefix="/stopped",
+            port=1,
+            url="http://127.0.0.1:1",
+            status=ServiceStatus.STOPPED
         )
     );
     gw = MicroserviceGateway(registry=reg);
@@ -372,69 +440,74 @@ test "/graph/data merges the graph fragments of every healthy service" {
 
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
+    # (path, Accept-Encoding, status, node ids, next cursor): the browser's gzip
+    # never breaks the merge, a stopped service is skipped.
+    rows = [
+        ("/graph/node?id=a", "identity", 200, None, None),
+        ("/graph/node?id=b", "gzip, deflate, br", 200, None, None),
+        ("/graph/neighbors?id=r&limit=2", "gzip, deflate, br", 200, ["a", "b"], "2.e2"),
+        ("/graph/neighbors?id=r&limit=2&cursor=2.e2", "gzip", 200, ["c", "d"], None),
+        ("/graph/neighbors?id=r&limit=5", "identity", 200, ["a", "b", "c", "d"], None),
+        # A service that stopped early at 5 has not ruled out rows before 7.
+        ("/graph/neighbors?id=r&limit=3", "identity", 200, ["b"], "5.e5"),
+        # Only one service loads Task; the other's "unknown type" is not an error.
+        ("/graph/neighbors?id=r&type=Task", "identity", 200, ["b"], None),
+        ("/graph/neighbors?id=r&type=Nope", "identity", 400, None, None),
+        ("/graph/node?id=nobody", "gzip, deflate, br", 404, None, None),
+        ("/graph/neighbors?id=nobody", "gzip, deflate, br", 404, None, None)
+    ];
     try {
-        resp = client.get("/graph/data");
-        assert resp.status_code == 200;
-        data = resp.json();
-        node_ids = {n["id"] for n in data["nodes"]};
-        assert node_ids == {"r", "a", "b"} , (
-            f"each service only resolves its own archetypes, so /graph/data "
-            f"must merge ALL services' fragments, got nodes: {node_ids}"
+        for (path, encoding, status, ids, cursor) in rows {
+            resp = client.get(path, headers={"Accept-Encoding": encoding});
+            assert resp.status_code == status , (path, encoding, resp.status_code);
+            if status != 200 {
+                continue;
+            }
+            body = _json_body(resp);
+            if ids is None {
+                assert body["id"] == path.split("=")[1] , (path, body);
+            } else {
+                assert [n["id"] for n in body["nodes"]] == ids , (path, body);
+                assert body["next_cursor"] == cursor , (path, body);
+            }
+        }
+        # A routable service that does not answer must not let the others
+        # advance the shared cursor past rows it still holds.
+        down = ServiceRegistry();
+        down.register(
+            ServiceEntry(
+                name="analytics",
+                file="analytics.jac",
+                prefix="/analytics",
+                port=port_a,
+                url=f"http://127.0.0.1:{port_a}",
+                status=ServiceStatus.HEALTHY
+            )
         );
-        assert len(data["nodes"]) == 3 , (
-            f"shared nodes must be deduplicated by id: {data['nodes']}"
+        down.register(
+            ServiceEntry(
+                name="silent",
+                file="silent.jac",
+                prefix="/silent",
+                port=1,
+                url="http://127.0.0.1:1",
+                status=ServiceStatus.HEALTHY
+            )
         );
-        edge_pairs = {(e["from"], e["to"]) for e in data["edges"]};
-        assert edge_pairs == {("r", "a"), ("r", "b")};
+        gw_down = MicroserviceGateway(registry=down);
+        gw_down.setup();
+        resp = TestClient(gw_down.app).get("/graph/neighbors?id=r&limit=2");
+        assert resp.status_code == 503 , (resp.status_code, resp.text);
     } finally {
         srv_a.shutdown();
         srv_b.shutdown();
     }
 }
 
-test "/graph/data still answers when one service is down (partial merge)" {
-    frag_a = {"version": "1.0", "nodes": [{"id": "r", "label": "root"}], "edges": []};
-    (srv_a, port_a) = _serve_fragment(frag_a);
-
-    reg = ServiceRegistry();
-    reg.register(
-        ServiceEntry(
-            name="analytics",
-            file="analytics.jac",
-            prefix="/analytics",
-            port=port_a,
-            url=f"http://127.0.0.1:{port_a}",
-            status=ServiceStatus.HEALTHY
-        )
-    );
-    reg.register(
-        ServiceEntry(
-            name="guestbook",
-            file="guestbook.jac",
-            prefix="/guestbook",
-            port=1,
-            url="http://127.0.0.1:1",
-            status=ServiceStatus.HEALTHY
-        )
-    );
-    gw = MicroserviceGateway(registry=reg);
-    gw.setup();
-
-    import from jaclang.testing.testkit { ServingTestClient as TestClient }
-    client = TestClient(gw.app);
-    try {
-        resp = client.get("/graph/data");
-        assert resp.status_code == 200;
-        node_ids = {n["id"] for n in resp.json()["nodes"]};
-        assert node_ids == {"r"};
-    } finally {
-        srv_a.shutdown();
-    }
-}
-
-"""Serves `payload` as JSON on every GET and records the Host header each
-request actually carried, so a test can verify the header genuinely reached
-the wire -- not just that a headers dict was built correctly in memory."""
+"""Answers every GET with `payload` as a JSON 404, so a probing gateway asks
+each service in turn, and records the Host header each request actually
+carried, so a test can verify the header genuinely reached the wire -- not just
+that a headers dict was built correctly in memory."""
 def _serve_capturing(payload: dict[str, any]) -> tuple[any, ...] {
     import http.server;
     import json;
@@ -445,7 +518,7 @@ def _serve_capturing(payload: dict[str, any]) -> tuple[any, ...] {
 
     def _do_get(handler_self: any) {
         observed_hosts.append(handler_self.headers.get("Host", ""));
-        handler_self.send_response(200);
+        handler_self.send_response(404);
         handler_self.send_header("Content-Type", "application/json");
         handler_self.send_header("Content-Length", str(len(body)));
         handler_self.end_headers();
@@ -473,8 +546,7 @@ def _serve_capturing(payload: dict[str, any]) -> tuple[any, ...] {
 # one per service, exactly the mechanism the interceptor relies on to tell
 # which HTTP-activated target a request is actually for.
 test "forwarded requests carry each service's own host_override as the wire Host header" {
-    frag = {"version": "1.0", "nodes": [{"id": "r", "label": "root"}], "edges": []};
-    (srv, port, observed_hosts) = _serve_capturing(frag);
+    (srv, port, observed_hosts) = _serve_capturing({"error": "Node not found"});
 
     reg = ServiceRegistry();
     reg.register(
@@ -505,8 +577,8 @@ test "forwarded requests carry each service's own host_override as the wire Host
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
     try {
-        resp = client.get("/graph/data");
-        assert resp.status_code == 200;
+        resp = client.get("/graph/node?id=unowned");
+        assert resp.status_code == 404;
         assert set(observed_hosts)
             == {
                 "orders-app-service.shop.svc.cluster.local",
@@ -856,7 +928,7 @@ test "serve static returns file with correct mime type" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("assets/app.js");
+    resp = gw.serve_static(Request(), "assets/app.js");
     assert resp is not None;
     assert "javascript" in resp.media_type;
     assert b"hello" in resp.body;
@@ -871,7 +943,7 @@ test "serve static returns none for missing file" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("nonexistent.js");
+    resp = gw.serve_static(Request(), "nonexistent.js");
     assert resp is None;
 
     import shutil;
@@ -884,7 +956,7 @@ test "serve static blocks path traversal" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("../../etc/passwd");
+    resp = gw.serve_static(Request(), "../../etc/passwd");
     assert resp is None;
 
     import shutil;
@@ -899,7 +971,7 @@ test "serve static css file returns text content type" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_static("style.css");
+    resp = gw.serve_static(Request(), "style.css");
     assert resp is not None;
     assert resp.media_type == "text/css";
 
@@ -916,7 +988,7 @@ test "serve_extra_static serves a file from a configured local dir" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_extra_static(str(assets), "logo.png");
+    resp = gw.serve_extra_static(Request(), str(assets), "logo.png");
     assert resp is not None;
     assert b"PNG_DATA" in resp.body;
     assert "image/png" in resp.media_type;
@@ -929,7 +1001,7 @@ test "serve_extra_static returns None when local_dir is empty" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
 
-    resp = gw.serve_extra_static("", "anything.txt");
+    resp = gw.serve_extra_static(Request(), "", "anything.txt");
     assert resp is None;
 }
 
@@ -938,7 +1010,7 @@ test "serve_extra_static returns None for missing file" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
 
-    resp = gw.serve_extra_static(tmp, "nonexistent.png");
+    resp = gw.serve_extra_static(Request(), tmp, "nonexistent.png");
     assert resp is None;
 
     import shutil;
@@ -956,7 +1028,7 @@ test "serve_extra_static blocks path traversal escape" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
 
-    resp = gw.serve_extra_static(str(assets), "../secret.txt");
+    resp = gw.serve_extra_static(Request(), str(assets), "../secret.txt");
     assert resp is None;
 
     import shutil;
@@ -1056,7 +1128,7 @@ test "spa fallback serves index.html" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_spa_fallback();
+    resp = gw.serve_spa_fallback(Request());
     assert resp is not None;
     assert b"SPA" in resp.body;
 
@@ -1070,7 +1142,7 @@ test "spa fallback returns none when no index.html" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
 
-    resp = gw.serve_spa_fallback();
+    resp = gw.serve_spa_fallback(Request());
     assert resp is None;
 
     import shutil;
@@ -1110,6 +1182,159 @@ test "gateway serves spa fallback for html navigation" {
     resp = client.get("/dashboard", headers={"Accept": "text/html"});
     assert resp.status_code == 200;
     assert "SPA App" in resp.text;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "a client build's manifest decides which static files are immutable" {
+    tmp = tempfile.mkdtemp();
+    dist = Path(tmp);
+    (dist / "assets").mkdir();
+    (dist / ".vite").mkdir();
+    for name in ["client.CAdHr-OU.js", "assets/page-k3lmnopq.js", "styles.css"] {
+        (dist / name).write_text("x");
+    }
+    (dist / "assets" / "logo-Ab12cdEf.png").write_bytes(b"png");
+    (dist / ".vite" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "main.js": {
+                    "file": "client.CAdHr-OU.js",
+                    "isEntry": True,
+                    "css": ["styles.css"],
+                    "assets": ["assets/logo-Ab12cdEf.png"]
+                },
+                "_page.js": {"file": "assets/page-k3lmnopq.js"}
+            }
+        )
+    );
+
+    gw = MicroserviceGateway(registry=ServiceRegistry(), client_dist_dir=tmp);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+
+    def cache_of(path: str) -> str {
+        resp = client.get(path);
+        assert resp.status_code == 200 , (path, resp.status_code);
+        return resp.headers.get("cache-control");
+    }
+
+    # Chunks the build emitted are immutable whatever their hash contains.
+    assert cache_of("/client.CAdHr-OU.js") == "public, max-age=31536000, immutable";
+    assert cache_of("/assets/page-k3lmnopq.js")
+        == "public, max-age=31536000, immutable";
+    # Files the build did not hash revalidate, even when their name looks hashed.
+    assert cache_of("/styles.css") == "no-cache";
+    assert cache_of("/assets/logo-Ab12cdEf.png") == "no-cache";
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+
+test "gateway static files revalidate by etag and hashed names are immutable" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "assets").mkdir();
+    bundle = ("console.log('ok');\r\n" * 200).encode("utf-8");
+    (Path(tmp) / "client.Ab3dE9xQ.js").write_bytes(bundle);
+    (Path(tmp) / "styles.css").write_text("body { color: red; }");
+    logo = bytes([137, 80, 78, 71, 13, 10, 26, 10, 0, 255]);
+    (Path(tmp) / "assets" / "logo.png").write_bytes(logo);
+    (Path(tmp) / "index.html").write_text("<html>SPA App</html>");
+
+    gw = MicroserviceGateway(registry=ServiceRegistry(), client_dist_dir=tmp);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+
+    # Hashed bundle: exact bytes on disk, an ETag, and a year-long immutable cache.
+    first = client.get("/client.Ab3dE9xQ.js");
+    assert first.status_code == 200;
+    assert first.content == bundle;
+    assert "javascript" in first.headers.get("content-type", "");
+    tag = first.headers.get("etag");
+    assert tag;
+    cache = first.headers.get("cache-control");
+    assert cache == "public, max-age=31536000, immutable";
+
+    again = client.get("/client.Ab3dE9xQ.js", headers={"If-None-Match": tag});
+    assert again.status_code == 304;
+    assert again.content == b"";
+
+    # Unhashed names must revalidate, never sit in a long-lived cache.
+    css = client.get("/styles.css");
+    assert css.status_code == 200;
+    assert css.headers.get("content-type") == "text/css; charset=utf-8";
+    assert css.headers.get("cache-control") == "no-cache";
+
+    png = client.get("/assets/logo.png");
+    assert png.status_code == 200;
+    assert png.content == logo;
+    assert png.headers.get("content-type") == "image/png";
+    assert png.headers.get("cache-control") == "no-cache";
+
+    # The SPA shell is revalidated too, so a deploy is picked up immediately.
+    page = client.get("/dashboard", headers={"Accept": "text/html"});
+    assert page.status_code == 200;
+    assert "SPA App" in page.text;
+    assert page.headers.get("cache-control") == "no-cache";
+    page_tag = page.headers.get("etag");
+    assert page_tag;
+    page_again = client.get(
+        "/dashboard", headers={"Accept": "text/html", "If-None-Match": page_tag}
+    );
+    assert page_again.status_code == 304;
+    assert page_again.content == b"";
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "gateway honours If-Range so a stale resume gets the whole file" {
+    tmp = tempfile.mkdtemp();
+    body = bytes(range(256)) * 16;
+    (Path(tmp) / "data.bin").write_bytes(body);
+
+    gw = MicroserviceGateway(registry=ServiceRegistry(), client_dist_dir=tmp);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+
+    first = client.get("/data.bin");
+    assert first.status_code == 200;
+    tag = first.headers.get("etag");
+    modified = first.headers.get("last-modified");
+    assert tag;
+    assert modified;
+
+    # If-Range needs a strong validator, so the weak ETag sends the whole file.
+    whole = client.get("/data.bin", headers={"Range": "bytes=0-99", "If-Range": tag});
+    assert whole.status_code == 200;
+    assert whole.content == body;
+    assert whole.headers.get("content-range") is None;
+    dated = client.get(
+        "/data.bin", headers={"Range": "bytes=0-99", "If-Range": modified}
+    );
+    assert dated.status_code == 206;
+
+    # A stale validator must get the whole current file, never a mixed slice.
+    stale = client.get(
+        "/data.bin", headers={"Range": "bytes=0-99", "If-Range": 'W/"stale"'}
+    );
+    assert stale.status_code == 200;
+    assert stale.content == body;
+    assert stale.headers.get("content-range") is None;
+    old = client.get(
+        "/data.bin",
+        headers={"Range": "bytes=0-99", "If-Range": "Mon, 01 Jan 2001 00:00:00 GMT"}
+    );
+    assert old.status_code == 200;
+    assert old.content == body;
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1180,6 +1405,7 @@ test "serve admin asset returns index.html for root" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Portal</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1197,6 +1423,8 @@ test "serve admin asset returns static file" {
     admin_dir = Path(tmp) / "admin";
     assets = admin_dir / "assets";
     assets.mkdir(parents=True);
+    (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
     (assets / "admin.js").write_text("var admin = true;");
 
     reg = ServiceRegistry();
@@ -1204,7 +1432,8 @@ test "serve admin asset returns static file" {
 
     resp = gw.serve_admin_asset("assets/admin.js");
     assert resp is not None;
-    assert b"admin" in resp.body;
+    assert resp.status_code == 200;
+    assert b"var admin = true;" in resp.body;
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1215,6 +1444,7 @@ test "serve admin asset spa fallback for unknown route" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin SPA</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1231,6 +1461,8 @@ test "serve admin asset blocks path traversal" {
     tmp = tempfile.mkdtemp();
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
+    (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1247,6 +1479,7 @@ test "admin redirect via testclient" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1267,6 +1500,7 @@ test "admin index served at /admin/" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Dashboard</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1388,7 +1622,6 @@ obj _FakeScaleConfig {
 
 
 def _with_cors_config(cfg: dict[str, any], fn: any) -> any {
-    import jaclang.scale.config.config_loader as config_loader;
     orig = config_loader.get_scale_config;
     fake = _FakeScaleConfig(_cors=cfg);
     def fake_factory(project_dir: object = None) -> object {
@@ -1705,7 +1938,12 @@ def _start_backend(
                 target = parts[1].split("?")[0] if len(parts) > 1 else "";
                 key = f"{method} {target}";
                 hits[key] = hits.get(key, 0) + 1;
-                (status, body) = routes.get(key, (404, '{"detail": "nope"}'));
+                reply = routes.get(key, (404, '{"detail": "nope"}'));
+                if reply is None {
+                    conn.close();
+                    continue;
+                }
+                (status, body) = reply;
                 conn.sendall(_http_response(status, body));
                 conn.close();
             } except OSError {}
@@ -1721,6 +1959,15 @@ def _stop_backend(srv: any) {
     try {
         srv.close();
     } except OSError {}
+}
+
+
+"""A bound port that never listens, so a connect is refused; the socket is
+returned so the port stays reserved until `_stop_backend` releases it."""
+def _refused_port -> tuple[any, ...] {
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+    s.bind(("127.0.0.1", 0));
+    return (s, s.getsockname()[1]);
 }
 
 
@@ -1865,28 +2112,52 @@ test "an unsafe miss probes only the services whose routes are unknown" {
 }
 
 
+# With docs disabled everywhere, ownership is unknowable, so the gateway probes
+# svc_a then svc_b. Only a request that provably never reached a service lets
+# the probe move on: one that was sent and lost may have run, so it is not
+# replayed on the next service.
 test "a fleet that publishes no specs keeps walker discovery by probing" {
-    hits_a: dict[str, any] = {};
-    hits_b: dict[str, any] = {};
-    (srv_a, port_a) = _start_backend(hits_a, {});
-    (srv_b, port_b) = _start_backend(
-        hits_b, {"POST /walker/create_user": (200, '{"ok": true}')}
-    );
-    try {
-        (gw, client) = _gateway(
-            [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
-        );
-        resp = client.post("/walker/create_user", json={"name": "x"});
-
-        assert resp.status_code == 200 , (
-            "with docs disabled everywhere, ownership is unknowable and the "
-            "walker must still be reachable through the gateway"
-        );
-        assert hits_b.get("POST /walker/create_user", 0) == 1;
-    } finally {
-        _stop_backend(srv_a);
-        _stop_backend(srv_b);
+    route = "POST /walker/create_user";
+    owns = {route: (200, '{"ok": true}')};
+    # (label, svc_a, svc_b routes, expected status, svc_b hits, 503 names)
+    # svc_a is "live" (404s the walker), "refused" or "drops" (reads, no reply)
+    cases: list[tuple[str, str, dict[str, any], int, int, str]] = [
+        ("svc_a does not own the walker", "live", owns, 200, 1, ""),
+        ("svc_a refuses the connection", "refused", owns, 200, 1, ""),
+        ("svc_a refuses and svc_b does not own it", "refused", {}, 503, 1, "svc_a"),
+        ("svc_a drops the request after reading it", "drops", owns, 503, 0, "svc_a")
+    ];
+    wrong: list[str] = [];
+    for (label, a_kind, b_routes, status, b_hits, named) in cases {
+        hits_a: dict[str, any] = {};
+        hits_b: dict[str, any] = {};
+        if a_kind == "refused" {
+            (srv_a, port_a) = _refused_port();
+        } else {
+            (srv_a, port_a) = _start_backend(
+                hits_a, {route: None} if a_kind == "drops" else {}
+            );
+        }
+        (srv_b, port_b) = _start_backend(hits_b, b_routes);
+        try {
+            (gw, client) = _gateway(
+                [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
+            );
+            resp = client.post("/walker/create_user", json={"name": "x"});
+            got = (
+                resp.status_code,
+                hits_b.get(route, 0),
+                resp.json()["error"]["service"] if resp.status_code == 503 else ""
+            );
+            if got != (status, b_hits, named) {
+                wrong.append(f"{label}: expected {(status, b_hits, named)}, got {got}");
+            }
+        } finally {
+            _stop_backend(srv_a);
+            _stop_backend(srv_b);
+        }
     }
+    assert wrong == [] , "\n".join(wrong);
 }
 
 
@@ -1920,7 +2191,7 @@ test "identity fallthrough POST is delivered exactly once" {
 test "replicated auth families are delivered once and never learned" {
     hits_a: dict[str, any] = {};
     hits_b: dict[str, any] = {};
-    spec = _spec(["/api-key/create", "/sso/firebase/token", "/graph/data"]);
+    spec = _spec(["/api-key/create", "/sso/firebase/token", "/user/login"]);
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": spec});
     (srv_b, port_b) = _start_backend(hits_b, {"GET /openapi.json": spec});
     try {
@@ -1928,7 +2199,7 @@ test "replicated auth families are delivered once and never learned" {
             [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
         );
         assert client.post("/walker/anything", json={}).status_code == 404;
-        for prefix in ["/api-key/create", "/sso/firebase/token", "/graph/data"] {
+        for prefix in ["/api-key/create", "/sso/firebase/token", "/user/login"] {
             assert gw.route_table.owner(prefix) == "" , (
                 f"{prefix} is served identically by every service; ownership "
                 f"is meaningless and must not be learned"
@@ -2144,7 +2415,6 @@ test "learn skips bare builtin API roots so one service cannot capture them" {
 
 
 def gw_route_table_for_poison_test -> any {
-    import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
     table = ServiceRouteTable();
     table.learn(
         "core_app",
@@ -2157,7 +2427,7 @@ def gw_route_table_for_poison_test -> any {
             "/sso/{platform}/callback",
             "/api-key/create",
             "/jobs",
-            "/graph/data"
+            "/graph/neighbors"
         ]
     );
     return table;
@@ -2223,9 +2493,13 @@ test "forward headers append the peer to the forwarded chain" {
     h = Headers();
     h.append("x-forwarded-for", "203.0.113.7");
     h.append("X-Forwarded-For", "198.51.100.9");
+    h.append("Expect", "100-continue");
+    h.append("X-Ordinary", "kept");
     req = Request(url=URL(path="/api/x"), headers=h, client_host="10.0.0.1");
     fwd = gw.build_forward_headers(req);
     assert fwd["X-Forwarded-For"] == "203.0.113.7, 198.51.100.9, 10.0.0.1";
+    assert all(k.lower() != "expect" for k in fwd.keys());
+    assert fwd["X-Ordinary"] == "kept";
     xff_keys = [
         k
         for k in fwd.keys()

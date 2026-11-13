@@ -136,14 +136,15 @@ test "typed values round-trip through the real parser" {
 test "a bare string for a typed return that cannot be a string is parsed like model text" {
     m_int = MockLLM(outputs=["36"]);
     m_optional_int = MockLLM(outputs=["x"]);
-    def age -> int by m_int();
-    def maybe_age -> int | None by m_optional_int();
+    def age -> int by m_int(max_output_retries=0);
+    def maybe_age -> int | None by m_optional_int(max_output_retries=0);
     for (label, call) in [("int", age), ("int | None", maybe_age)] {
         raised = False;
         try {
             call();
-        } except (OutputConversionError, IndexError) {
+        } except OutputConversionError as e {
             raised = True;
+            assert f"'{label}'" in str(e) , f"{label}: the error should name the type, got: {e}";
         }
         assert raised , f"{label}: a string is not a valid answer, so it must fail as model text";
     }

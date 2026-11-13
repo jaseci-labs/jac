@@ -1,6 +1,6 @@
 """The AOT lane fails out loud, or it does not fail at all.
 
-A dropped comma in `esast_gen_pass.jac` once made `get_py_code_gen` swallow the
+A dropped comma in `esast_gen_pass.jac` once made the codegen schedule swallow the
 ImportError that source raised and hand back the Python-only schedule. A
 natively-decided program then compiled with no native passes in it: no LLVM IR,
 no alert in the ledger, and a bare "Native compilation produced no LLVM IR" from
@@ -18,13 +18,25 @@ import subprocess;
 import tempfile;
 import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    providers_of
+import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline_types {
+    CompilationProduct,
+    ProductRequest
 }
-import from jaclang.compiler.driver.module_compile { get_py_code_gen }
+
+"""The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
+def codegen_lane(native: bool) -> list[type] {
+    lane: list[type] = [];
+    for product in (
+        CompilationProduct.CODEGEN,
+        CompilationProduct.PY_IR,
+        CompilationProduct.FROZEN
+    ) {
+        lane.extend(product_passes(product, ProductRequest(native=native)));
+    }
+    return lane;
+}
+
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -36,14 +48,7 @@ glob FIXTURES = os.path.join(
 test "the native codegen schedule carries the native passes" {
     import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
     import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
-    # Codegen runs after the analysis stage in the single pipeline, so the
-    # standalone schedule is constructed against its provides.
-    sched = get_py_code_gen(
-        native=True,
-        provided=providers_of(
-            get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched()
-        )
-    );
+    sched = codegen_lane(True);
     names = [p.__name__ for p in sched];
     assert NaIRGenPass in sched , (
         f"native codegen schedule lost NaIRGenPass: {names}"

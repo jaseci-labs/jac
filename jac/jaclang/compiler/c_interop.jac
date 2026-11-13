@@ -1,192 +1,70 @@
-import from jaclang.compiler.frontend.unitree {
-    Archetype,
-    Assignment,
-    AtomTrailer,
-    AtomUnit,
-    Expr,
-    Import,
-    UnaryExpr,
-    UniNode
-}
+glob C_BUILTIN_TYPES: tuple[str, ...] = ("ptr", "PtrView", "Pinned", "VaList");
 
-import type from jaclang.compiler.types.types { ClassType, TypeBase }
+def clib_import_of(nd: (UniNode | None)) -> (Import | None);
 
-glob C_BUILTIN_GENERICS: tuple[str, ...] = ("ptr", "PtrView", "Pinned");
+def clib_block_defines(imp: (UniNode | None)) -> bool;
 
-def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
-    if nd is None {
-        return None;
-    }
-    imp = nd if isinstance(nd, Import) else nd.find_parent_of_type(Import);
-    if imp is not None and imp.clib_decls {
-        return imp;
-    }
-    return None;
-}
+def is_clib_archetype(arch: (UniNode | None)) -> bool;
 
-def is_clib_archetype(arch: (UniNode | None)) -> bool {
-    return isinstance(arch, Archetype) and clib_import_of(arch) is not None;
-}
+def is_opaque_c_archetype(arch: (UniNode | None)) -> bool;
 
-def is_opaque_c_archetype(arch: (UniNode | None)) -> bool {
-    return isinstance(arch, Archetype)
-        and is_clib_archetype(arch)
-        and arch.body is None;
-}
+def is_foreign_struct_archetype(arch: (UniNode | None)) -> bool;
 
-def is_foreign_struct_archetype(arch: (UniNode | None)) -> bool {
-    return isinstance(arch, Archetype)
-        and is_clib_archetype(arch)
-        and arch.body is not None;
-}
+def _class_of(t: (TypeBase | None)) -> (ClassType | None);
 
-def _class_of(t: (TypeBase | None)) -> (ClassType | None) {
-    return t.as_class() if t is not None else None;
-}
+def clib_archetype_of_type(t: (TypeBase | None)) -> (Archetype | None);
 
-def clib_archetype_of_type(t: (TypeBase | None)) -> (Archetype | None) {
-    cls = _class_of(t);
-    if cls is None {
-        return None;
-    }
-    arch = cls.shared.symbol_table;
-    if isinstance(arch, Archetype) and is_clib_archetype(arch) {
-        return arch;
-    }
-    return None;
-}
+def foreign_struct_of_type(t: (TypeBase | None)) -> (Archetype | None);
 
-def foreign_struct_of_type(t: (TypeBase | None)) -> (Archetype | None) {
-    arch = clib_archetype_of_type(t);
-    return arch if is_foreign_struct_archetype(arch) else None;
-}
+def opaque_c_of_type(t: (TypeBase | None)) -> (Archetype | None);
 
-def opaque_c_of_type(t: (TypeBase | None)) -> (Archetype | None) {
-    arch = clib_archetype_of_type(t);
-    return arch if is_opaque_c_archetype(arch) else None;
-}
+def c_builtin_kind(t: (TypeBase | None)) -> str;
 
-def c_builtin_kind(t: (TypeBase | None)) -> str {
-    cls = _class_of(t);
-    if cls is None or cls.shared.class_name not in C_BUILTIN_GENERICS {
-        return "";
-    }
-    if cls.is_builtin(list(C_BUILTIN_GENERICS)) {
-        return cls.shared.class_name;
-    }
-    return "";
-}
+def is_ptr_type(t: (TypeBase | None)) -> bool;
 
-def is_ptr_type(t: (TypeBase | None)) -> bool {
-    return c_builtin_kind(t) == "ptr";
-}
+def is_ptr_view_type(t: (TypeBase | None)) -> bool;
 
-def is_ptr_view_type(t: (TypeBase | None)) -> bool {
-    return c_builtin_kind(t) == "PtrView";
-}
+def is_pinned_type(t: (TypeBase | None)) -> bool;
 
-def is_pinned_type(t: (TypeBase | None)) -> bool {
-    return c_builtin_kind(t) == "Pinned";
-}
+def is_va_list_type(t: (TypeBase | None)) -> bool;
 
-def c_type_arg(t: (TypeBase | None)) -> (TypeBase | None) {
-    cls = _class_of(t);
-    if cls is None or not c_builtin_kind(cls) {
-        return None;
-    }
-    args = cls.private.type_args if cls.private else None;
-    if not args {
-        return None;
-    }
-    import from jaclang.compiler.types.types { AnyType, ClassType, UnknownType }
-    arg = args[0];
-    if isinstance(arg, AnyType) or isinstance(arg, UnknownType) {
-        return None;
-    }
-    if isinstance(arg, ClassType) and arg.is_builtin(["object", "Any"]) {
-        return None;
-    }
-    return arg;
-}
+def c_variadic_param(sig: (UniNode | None)) -> (ParamVar | None);
 
-def reads_foreign_storage(nd: (UniNode | None)) -> bool {
-    if not isinstance(nd, AtomTrailer) {
-        return False;
-    }
-    if foreign_struct_of_type(nd.type) is None {
-        return False;
-    }
-    base_type = nd.target.type;
-    if nd.is_attr {
-        return foreign_struct_of_type(base_type) is not None;
-    }
-    return is_ptr_view_type(base_type);
-}
+def c_type_arg(t: (TypeBase | None)) -> (TypeBase | None);
 
-def foreign_read_is_place(nd: UniNode) -> bool {
-    cur = nd;
-    parent = cur.parent;
-    while isinstance(parent, AtomUnit) and parent.value is cur {
-        cur = parent;
-        parent = cur.parent;
-    }
-    if isinstance(parent, AtomTrailer) and parent.target is cur {
-        return True;
-    }
-    if isinstance(parent, UnaryExpr) and parent.operand is cur {
-        import from jaclang.compiler.frontend.constant { is_borrow_kind }
-        return is_borrow_kind(parent.ownership);
-    }
-    if isinstance(parent, Assignment) {
-        for tgt in parent.target {
-            if tgt is cur {
-                return True;
-            }
-        }
-    }
-    return False;
-}
+def reads_foreign_storage(nd: (UniNode | None)) -> bool;
 
-def foreign_read_copies(nd: (UniNode | None)) -> bool {
-    return nd is not None
-        and reads_foreign_storage(nd)
-        and not foreign_read_is_place(nd);
-}
+def foreign_field_of(nd: (UniNode | None)) -> (tuple[Archetype, int] | None);
 
-def is_builtin_pin_call(call: (UniNode | None)) -> bool {
-    import from jaclang.compiler.frontend.unitree { FuncCall, Name }
-    if not isinstance(call, FuncCall) or not isinstance(call.target, Name) {
-        return False;
-    }
-    tgt = call.target;
-    if tgt.value != "pin" {
-        return False;
-    }
-    import from jaclang.compiler.types.types { FunctionType }
-    decl = tgt.sym.decl if tgt.sym is not None else None;
-    if decl is not None and decl.loc is not None {
-        if str(decl.loc.mod_path).endswith(".jac") {
-            return False;
-        }
-    }
-    fn_type = tgt.type;
-    return isinstance(fn_type, FunctionType) and is_pinned_type(fn_type.return_type);
-}
+def foreign_read_is_place(nd: UniNode) -> bool;
 
-def is_c_value_type(t: (TypeBase | None)) -> bool {
-    return c_builtin_kind(t) in ("ptr", "PtrView");
-}
+def foreign_read_copies(nd: (UniNode | None)) -> bool;
 
-def c_call_borrows_args(call: (UniNode | None)) -> bool {
-    import from jaclang.compiler.frontend.unitree { FuncCall }
-    if not isinstance(call, FuncCall) {
-        return False;
-    }
-    if call.call_kind == "clib" or is_builtin_pin_call(call) {
-        return True;
-    }
-    return is_ptr_type(call.target.type);
-}
+def _ambient_c_call_returns(
+    call: (UniNode | None), name: str
+) -> list[(TypeBase | None)];
+
+def is_builtin_pin_call(call: (UniNode | None)) -> bool;
+
+def is_builtin_addressof_call(call: (UniNode | None)) -> bool;
+
+def is_c_value_type(t: (TypeBase | None)) -> bool;
+
+def c_call_borrows_args(call: (UniNode | None)) -> bool;
+
+def c_lent_elem(
+    param_type: (TypeBase | None), operand_type: (TypeBase | None)
+) -> (TypeBase | None);
+
+def c_spec_same(a: any, b: any) -> bool;
+
+def c_abi_callee(call: (UniNode | None)) -> (Ability | None);
+
+def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None);
+
+def c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None);
+
+def c_lent_param(arg: UniNode, allow_borrow: bool = False) -> (ParamVar | None);
 
 glob _SPEC_SCALAR_ALIASES: dict[str, str] = {"int": "i64", "float": "f64"};
 
@@ -194,104 +72,38 @@ def c_type_spec(
     t: (TypeBase | None),
     annotation: (UniNode | None) = None,
     written_in: (UniNode | None) = None
-) -> list[any] {
-    import from jaclang.compiler.types.types { ClassType, FunctionType, UnionType }
-    spelled = written_in if written_in is not None else annotation;
-    if isinstance(t, UnionType) {
-        members = [
-            m
-            for m in (t.types or [])
-            if not (
-                isinstance(m, ClassType) and m.shared.class_name in ("NoneType", "None")
-            )
-        ];
-        if len(members) == 1 {
-            inner = c_type_spec(members[0], None, spelled);
-            return ["opt", inner] if len(members) < len(t.types or []) else inner;
-        }
-        return ["any"];
-    }
-    if isinstance(t, FunctionType) {
-        return [
-            "fn",
-            [c_type_spec(p.param_type, None, spelled) for p in (t.parameters or [])],
-            c_type_spec(t.return_type, None, spelled)
-        ];
-    }
-    if isinstance(t, ClassType) and t._shared is not None {
-        kind = c_builtin_kind(t);
-        if kind == "ptr" {
-            arg = c_type_arg(t);
-            return ["ptr", None if arg is None else c_type_spec(arg, None, spelled)];
-        }
-        if kind == "Pinned" {
-            return ["pinned", c_type_spec(c_type_arg(t), None, spelled)];
-        }
-        name = t.shared.class_name;
-        if name in ("NoneType", "None") {
-            return ["void"];
-        }
-        arch = clib_archetype_of_type(t);
-        if arch is not None {
-            return [
-                "opaque" if is_opaque_c_archetype(arch) else "struct",
-                _spelled_c_type_name(arch, spelled)
-            ];
-        }
-        if t.is_builtin() {
-            return _spec_for_name(name) or ["any"];
-        }
-        return ["any"];
-    }
-    written = _annotation_name(annotation);
-    if written is not None {
-        return _spec_for_name(written) or ["any"];
-    }
-    return ["any"];
-}
+) -> list[any];
 
-def _spelled_c_type_name(arch: Archetype, written_in: (UniNode | None)) -> str {
-    import from jaclang.compiler.frontend.unitree { Name }
-    declared: str = arch.name.value;
-    if written_in is None {
-        return declared;
-    }
-    if isinstance(written_in, Name)
-        and clib_archetype_of_type(written_in.type) is arch {
-        return written_in.value;
-    }
-    for nm in written_in.get_all_sub_nodes(Name) {
-        if clib_archetype_of_type(nm.type) is arch {
-            return nm.value;
-        }
-    }
-    return declared;
-}
+def _spelled_c_type_name(arch: Archetype, written_in: (UniNode | None)) -> str;
 
-def _spec_for_name(name: str) -> (list[any] | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    if name == "str" {
-        return ["str"];
-    }
-    if name in ("bytes", "bytearray") {
-        return ["bytes"];
-    }
-    if name == "None" {
-        return ["void"];
-    }
-    if JAC_TYPE_REGISTRY.is_numeric(name) {
-        return ["s", _SPEC_SCALAR_ALIASES.get(name, name)];
-    }
-    return None;
-}
+def _spec_for_name(name: str) -> (list[any] | None);
 
-def _annotation_name(annotation: (UniNode | None)) -> (str | None) {
-    import from jaclang.compiler.frontend.unitree { Name, Null }
-    if isinstance(annotation, Null) {
-        return "None";
-    }
-    if isinstance(annotation, Name) {
-        return annotation.value;
-    }
-    return None;
-}
+def _annotation_name(annotation: (UniNode | None)) -> (str | None);
+
+def clib_global_assignment(decl: (UniNode | None)) -> (Assignment | None);
+
+def clib_global_of_symbol(sym: (Symbol | None)) -> (Assignment | None);
+
+def clib_global_of_name(nd: (UniNode | None)) -> (Assignment | None);
+
+def c_string_literal(expr: (UniNode | None)) -> (str | None);
+
+def named_function_of(nd: (UniNode | None)) -> (UniNode | None);
+
+def final_glob_value(nd: (UniNode | None)) -> (Expr | None);
+
+def c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any];
+
+def c_offset_address(expr: (UniNode | None)) -> tuple[(UniNode | None), int];
+
+def _fold_with_finals(expr: UniNode, depth: int) -> tuple[bool, any];
+
+def c_array_elem(t: (TypeBase | None)) -> (TypeBase | None);
+
+def c_bytes_literal(expr: (UniNode | None)) -> (bytes | None);
+
+def c_bytes_elem_shape(elem: (TypeBase | None)) -> (tuple[int, bool] | None);
+
+def c_bytes_array_values(data: bytes, width: int, signed: bool) -> list[int];
+
+def c_bytes_array_definition(assign: Assignment, ctype: (TypeBase | None)) -> bool;

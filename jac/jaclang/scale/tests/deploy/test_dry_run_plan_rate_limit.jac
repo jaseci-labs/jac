@@ -10,7 +10,6 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.runtime.context.util { jac_executable }
 
 
 def _project(rate_limit: str) -> Path {

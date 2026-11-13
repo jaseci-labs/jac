@@ -1,179 +1,33 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    TreeWalker,
-    UniNode,
-    Ability,
-    ArchHas,
-    Archetype,
-    AssertStmt,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    BinaryExpr,
-    BuiltinType,
-    CodeBlockStmt,
-    CompareExpr,
-    DeleteStmt,
-    EdgeRefTrailer,
-    Enum,
-    EventSignature,
-    Except,
-    Expr,
-    ExprAsItem,
-    FilterCompr,
-    FormattedValue,
-    FString,
-    FuncCall,
-    FuncSignature,
-    GenCompr,
-    HasVar,
-    ImplDef,
-    Import,
-    InForStmt,
-    IndexSlice,
-    JsxElement,
-    JsxElementName,
-    KWPair,
-    LambdaExpr,
-    ListVal,
-    Literal,
-    MatchAs,
-    MatchArch,
-    ModuleCode,
-    ImportRule,
-    ModuleItem,
-    ModulePath,
-    MultiString,
-    Name,
-    Null,
-    ParamVar,
-    RaiseStmt,
-    ReportStmt,
-    ReturnStmt,
-    Slice,
-    SpecialVarRef,
-    Symbol,
-    SubTag,
-    Token,
-    UnaryExpr,
-    TupleVal,
-    TypeAlias,
-    VisitStmt,
-    in_type_position,
-    type_only_import_of,
-    IfStmt,
-    ElseIf,
-    WhileStmt,
-    WithStmt,
-    YieldExpr,
-    find_python_scope_node_of,
-    WireItem
-}
-import from jaclang.compiler.passes.context { CompileContext, TreePass }
-
-import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.constant { ImmutabilityKind, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
-import from jaclang.compiler.types.ct_value {
-    CT_DEFERRED,
-    CtValue,
-    ct_is_iterable,
-    ct_str,
-    ct_truthy,
-    ct_type_name
-}
-import from jaclang.compiler.types.types {
-    AnyType,
-    ClassType,
-    FunctionType,
-    ModuleType,
-    TypeBase,
-    TypeVarType,
-    UnionType,
-    UnknownType
-}
-import from jaclang.compiler.types.type_utils {
-    BARE_GENERIC_REQUIRED,
-    PropertyWriteKind,
-    get_declared_generator_return_type,
-    get_generator_yield_type,
-    is_generator_family_type
-}
-import from jaclang.compiler.types.operations {
-    ARITHMETIC_OPERATORS,
-    AUG_OPERATOR_MAP,
-    AUG_TO_BINARY_MAP,
-    BINARY_OPERATOR_MAP,
-    BITWISE_OPERATORS,
-    COMPLEX_ARITH_OPS,
-    SHIFT_OPERATORS,
-    get_complex_arith_result_type,
-    get_numeric_promotion_type,
-    get_pow_result_type
-}
-import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-import from jaclang.compiler.frontend.diagnostics {
-    Category,
-    DiagnosticInfo,
-    E1001,
-    E1002,
-    E1003,
-    E1004,
-    E1005,
-    E1010,
-    E1011,
-    E1020,
-    E1021,
-    E1022,
-    E1042,
-    E1060,
-    E1061,
-    E1090,
-    E1091,
-    E1092,
-    E1093,
-    E1094,
-    E1095,
-    E1106,
-    E1107,
-    E1109,
-    E1112,
-    E1113,
-    E1116,
-    E1117,
-    E1119,
-    E1124,
-    E1132,
-    E1133,
-    E1135,
-    E1150,
-    E1151,
-    E1152,
-    E1036,
-    W1036,
-    W1037,
-    W1052,
-    W2014,
-    W6008,
-    E2015
-}
-
 glob FW_INTERVAL_OPS: dict[str, str] = {
          "PLUS": "+",
          "MINUS": "-",
          "STAR_MUL": "*"
-     };
+     },
+     CTOR_METHODS: tuple[str, ...] = ("init", "__init__"),
+     POSTINIT_METHODS: tuple[str, ...] = ("postinit", "__post_init__");
+
+obj InitFlow {
+    has method: Ability,
+        gen: dict[int, set[SymId]],
+        flow_in: dict[int, set[SymId]],
+        nodes: list[UniCFGNode];
+
+    def set_before(anchor: (UniCFGNode | None)) -> set[SymId];
+    def set_at_exit -> set[SymId];
+}
 
 walker TypeCheckPass(TreePass) {
+    static has contract: PassContract = PassContract(provides=(AnalysisFact.TYPE_OF, ));
     has evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
         _lambda_depth: int = 0,
         _restores_evaluator: bool = False,
         _outer_pass: (CompileContext | None) = None,
-        _outer_ct_quiet: bool = False;
+        _outer_ct_quiet: bool = False,
+        _generator_bodies: dict[int, bool] = {};
 
     def postinit -> None;
+    def _is_generator(scope: Ability) -> bool;
     can initialize with entry;
     override def release -> None;
     can prepare with entry;
@@ -201,9 +55,18 @@ walker TypeCheckPass(TreePass) {
     def _c_plain_data(t: (TypeBase | None), allow_callable: bool = False) -> bool;
     def _opaque_member(t: (TypeBase | None)) -> (Archetype | None);
     def _check_c_type_use(ann_node: (UniNode | None)) -> None;
+    def _check_c_global_use(nd: Name) -> None;
+    def _check_c_variadic_def(nd: Ability) -> None;
+    def _check_c_function_def(nd: Ability) -> None;
+    def _check_c_variadic_args(nd: FuncCall) -> None;
+    def _check_c_global_decl(assign: Assignment) -> None;
+    def _c_const_problem(expr: Expr, ctype: (TypeBase | None)) -> (str | None);
     def _check_c_interop_import(imp: Import) -> None;
     def _foreign_struct_contains(t: (TypeBase | None), target: Archetype) -> bool;
     def _check_c_interop_call(nd: FuncCall) -> None;
+    def _borrowed_scalar_param(name: Name) -> bool;
+    def _check_borrowed_scalar_write(leaf: Expr) -> None;
+    def _check_borrowed_scalar_forward(nd: FuncCall) -> None;
     def _c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None);
     can exit_gen_compr with GenCompr exit;
     def _check_intrinsic_collision(nd: Ability) -> None;
@@ -218,7 +81,9 @@ walker TypeCheckPass(TreePass) {
     can exit_has_var with HasVar exit;
     can exit_in_for_stmt with InForStmt exit;
     can exit_raise_stmt with RaiseStmt exit;
+    def _is_exception_operand(ty: TypeBase, allow_none: bool) -> bool;
     can exit_except with Except exit;
+    def _is_exception_class_operand(ty: TypeBase, allow_tuple: bool = True) -> bool;
     can exit_match_as with MatchAs exit;
     can exit_match_arch with MatchArch exit;
     can enter_with_stmt with WithStmt entry;
@@ -229,6 +94,7 @@ walker TypeCheckPass(TreePass) {
     def _in_comptime_context(nd: UniNode) -> bool;
     def _check_comptime_only_use(nd: Name) -> None;
     def _check_type_only_value_use(nd: Name) -> None;
+    def _check_type_param_value_use(nd: Name) -> None;
     can exit_if_stmt with IfStmt exit;
     can exit_else_if with ElseIf exit;
     can exit_while_stmt with WhileStmt exit;
@@ -241,17 +107,27 @@ walker TypeCheckPass(TreePass) {
     can exit_sub_tag with SubTag exit;
     def _eval_unpacking_names(container: Expr) -> None;
     def _write_leaves(target: (Expr | None)) -> list[Expr];
+    def _is_unannotated_rebind(prior: Symbol, target: Name) -> bool;
+    def _is_exempt_rebind(prior: Symbol, target: Name, declared: TypeBase) -> bool;
+    def _check_for_target_rebinds(nd: InForStmt) -> None;
     def _check_immutable_write(
         target: (Expr | None), rebind_scope: (UniNode | None) = None
     ) -> None;
 
     def _flush_immutable_writes -> None;
-    def _judge_immutable_write(
+    def _immutable_write_leaves(
         target: (Expr | None), rebind_scope: (UniNode | None) = None
-    ) -> None;
+    ) -> list[tuple[Expr, Name, Symbol]];
 
     def _rebound_enclosing_symbol(scope: UniNode, leaf: Name) -> (Symbol | None);
-    def _is_initializer_write(target: Expr, decl_sym: Symbol) -> bool;
+    def _initializer_of(target: Expr, decl_sym: Symbol) -> (Ability | None);
+    def _first_init_writes(writes: list[tuple[Expr, Name, Symbol]]) -> set[int];
+    def _init_flow(method: Ability, inits: list[tuple[Expr, Symbol]]) -> InitFlow;
+    def _set_before_initializer(
+        method: Ability, ctor_writes: dict[int, set[SymId]]
+    ) -> set[SymId];
+
+    def _check_bare_final(ann_node: Expr, value: (Expr | None)) -> None;
     def _is_self_ref(base: Name, method: Ability) -> bool;
     def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
     def _check_bare_generic(

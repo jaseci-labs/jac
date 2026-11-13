@@ -1,10 +1,5 @@
 import from pathlib { Path }
-import from jaclang.project.plugin_config { PluginConfigBase }
-import from jaclang.scale.config.firebase_env {
-    FIREBASE_AUTH_PROJECT_ID_ENV,
-    FIRESTORE_PROJECT_ID_ENV,
-    resolve_firebase_project_id
-}
+
 import os;
 
 glob ADMIN_PASSWORD_ENV: str = "JAC_SCALE_ADMIN_PASSWORD",
@@ -80,6 +75,7 @@ glob _scale_config_instance: JacScaleConfig | None = None,
      _app_scale_cache: dict[str, dict[str, any]] = {},
      _prometheus_namespace_warned: bool = False;
 
+def _scope_text(value: any) -> str;
 def sanitize_prometheus_namespace(name: str) -> str;
 def _resolve_prometheus_namespace(configured: str | None, k8s_namespace: str) -> str;
 def _ws_positive(

@@ -3,40 +3,8 @@ import json;
 import base64;
 import unittest.mock as mock;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    CONFIG_REVISION_ANNOTATION,
-    with_config_revision
-}
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    create_k8s_secret,
-    resolve_minted_secret
-}
-import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
 import from kubernetes.client.exceptions { ApiException }
 import from types { SimpleNamespace }
-import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
-    build_k8s_registry,
-    K8sRuntimeServiceResolver,
-    resolve_peer_route
-}
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry
-}
-import from jaclang.server.sv_client { peer_url_env_key }
-import from jaclang.scale.runtime.fleet { FLEET_ENV, fleet_of }
-import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
-    DatabaseProvisioner
-}
-import jaclang.scale.injector.binary as binary_mod;
 
 
 glob _K8S_E2E_FIXTURE: Path = Path(__file__).parents[1] / "fixtures" / "k8s_e2e",
@@ -261,7 +229,6 @@ def _entrypoint_run(
     failing_tools: (list[str] | None) = None
 ) -> tuple[int, str, str] {
     import subprocess;
-    import from jaclang.scale.injector.bundle { APP_MOUNT_PATH }
     cfg = cfg or KubernetesConfig(app_name="jac-shop", namespace="ns");
     script: str = ManifestBuilder(k8s_config=cfg)._pod_entrypoint()["args"][0];
     mount = f"cd {APP_MOUNT_PATH}; ";
@@ -886,8 +853,68 @@ test "build_env bakes a direct peer URL only for peers that are not HTTP-activat
             )
         );
         env = {e["name"]: e["value"] for e in builder._build_env("app", {})};
-        assert ("JAC_APP_WORKER_URL" in env) == baked , f"{label}: {env}";
+        assert bool(env.get("JAC_APP_WORKER_URL", "")) == baked , f"{label}: {env}";
     }
+}
+
+
+test "turning on http_activation for a deployed peer routes the gateway through the interceptor" {
+    # A redeploy patches the live Deployment, and Kubernetes merges `env` by
+    # name, so a JAC_APP_<PEER>_URL baked while the peer was plain keeps its
+    # value unless the activated manifest overwrites it. That value then wins
+    # in resolve_peer_route and the gateway calls a Service with no endpoints.
+    import jaclang.scale.config.config_loader as config_loader_mod;
+
+    activation = {
+        "enabled": True,
+        "target_port": 8000,
+        "concurrency_target": 1,
+        "rules": [{"hosts": ["worker.ns.local"]}]
+    };
+
+    def gateway_env(overrides: dict[str, any]) -> list[dict[str, str]] {
+        builder = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="jac-shop", namespace="ns"),
+            fleet=fleet_of(
+                {"worker": "/worker"},
+                root_app="app",
+                root_file="app.jac",
+                overrides=overrides
+            )
+        );
+        return builder._build_env("__gateway__", {});
+    }
+
+    live: dict[str, str] = {e["name"]: e["value"] for e in gateway_env({})};
+    assert live.get("JAC_APP_WORKER_URL") , "a plain peer's URL is baked";
+    for e in gateway_env({"worker": {"http_activation": activation}}) {
+        live[e["name"]] = e["value"];
+    }
+
+    def activated_config(project_dir: object = None) -> object {
+        return SimpleNamespace(
+            get_kubernetes_config=lambda { {}},
+            get_app_scale_config=lambda (app_name: str) { {
+                "http_activation": activation
+            }
+                if app_name == "worker"
+                else {}}
+        );
+    }
+
+    original_get_scale_config = config_loader_mod.get_scale_config;
+    setattr(config_loader_mod, "get_scale_config", activated_config);
+    try {
+        with mock.patch.dict(
+            os.environ, {"JAC_APP_WORKER_URL": live.get("JAC_APP_WORKER_URL", "")}
+        ) {
+            route = resolve_peer_route("worker", "ns", 8000);
+        }
+    } finally {
+        setattr(config_loader_mod, "get_scale_config", original_get_scale_config);
+    }
+    assert route.host_header == "worker-service.ns.svc.cluster.local" , route;
+    assert "interceptor" in route.url , route;
 }
 
 

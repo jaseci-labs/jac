@@ -5,7 +5,7 @@ binding they pull in -- are only scheduled when a module actually needs native
 codegen. These tests pin the two building blocks the compile scheduler relies
 on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
 
-1. `get_py_code_gen(native=...)` includes the native passes iff `native=True`.
+1. `codegen_lane(native=...)` includes the native passes iff `native=True`.
 2. `ModuleFacts.has_native_context_stmts` -- the shared predicate the gate
    and the pass share -- is False for a plain Python module and True for a
    module carrying an inline `na {}` block.
@@ -14,13 +14,25 @@ on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
 import os;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    providers_of
+import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline_types {
+    CompilationProduct,
+    ProductRequest
 }
-import from jaclang.compiler.driver.module_compile { get_py_code_gen }
+
+"""The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
+def codegen_lane(native: bool) -> list[type] {
+    lane: list[type] = [];
+    for product in (
+        CompilationProduct.CODEGEN,
+        CompilationProduct.PY_IR,
+        CompilationProduct.FROZEN
+    ) {
+        lane.extend(product_passes(product, ProductRequest(native=native)));
+    }
+    return lane;
+}
+
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
@@ -47,22 +59,15 @@ test "importing the native package does not initialize code generation" {
 }
 
 
-test "get_py_code_gen omits the native passes when native=False" {
-    without_native = get_py_code_gen(native=False);
+test "the codegen lane omits the native passes when native=False" {
+    without_native = codegen_lane(False);
     assert NaIRGenPass not in without_native;
     assert NativeCompilePass not in without_native;
 }
 
 
-test "get_py_code_gen schedules the native passes when native=True" {
-    # Codegen runs after the analysis stage in the single pipeline, so the
-    # standalone schedule is constructed against its provides.
-    with_native = get_py_code_gen(
-        native=True,
-        provided=providers_of(
-            get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched()
-        )
-    );
+test "the codegen lane schedules the native passes when native=True" {
+    with_native = codegen_lane(True);
     assert NaIRGenPass in with_native;
     assert NativeCompilePass not in with_native;
 }

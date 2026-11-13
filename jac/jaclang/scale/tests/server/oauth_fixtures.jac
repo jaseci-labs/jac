@@ -1,6 +1,4 @@
 import from unittest.mock { MagicMock }
-import from jaclang.scale.sso.github { GithubSSOProvider }
-import from jaclang.server.identity.user_manager { SessionGrant }
 
 obj FakeTokens {
     has records: dict[str, any] = {},

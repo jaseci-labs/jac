@@ -1,6 +1,5 @@
 impl load_handler(name: str) -> Callable {
     import importlib;
-    import from jaclang.cli.manifest { get_command_meta }
 
     meta = get_command_meta(name);
     if meta is None {

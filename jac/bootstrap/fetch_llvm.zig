@@ -51,8 +51,11 @@ pub fn main(init: std.process.Init) !void {
     const rel = try readLlvmRelease(io, a, args[3], osarch);
     const macos = std.mem.startsWith(u8, osarch, "macos");
     const marker_lib = if (macos and rel.upstream) "libLTO.dylib" else "libLLVMCore.a";
+    // A slice extracted before the shim linked LLD has every LLVM member but
+    // no LLD archive; it is only complete once liblldCommon.a is there too.
+    const lld_marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/liblldCommon.a", .{ dest, rel.dirname });
     const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/{s}", .{ dest, rel.dirname, marker_lib });
-    if (fileExists(io, marker)) {
+    if (fileExists(io, marker) and fileExists(io, lld_marker)) {
         log("fetch-llvm: already present at {s}/{s}", .{ dest, rel.dirname });
         return;
     }
@@ -60,6 +63,7 @@ pub fn main(init: std.process.Init) !void {
     try Io.Dir.cwd().createDirPath(io, dest);
     try fetchLlvmSlice(io, gpa, a, args[3], dest, rel, macos);
     if (!fileExists(io, marker)) die("fetch-llvm: fetch produced no {s}", .{marker_lib});
+    if (!fileExists(io, lld_marker)) die("fetch-llvm: the slice carries no LLD archives (liblldCommon.a); pin a slice built with LLD", .{});
     log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
 }
 
@@ -224,7 +228,9 @@ fn manifestShaMap(a: Allocator, manifest: []const u8, rel: LlvmRelease) !std.Str
 
 fn sliceWanted(name: []const u8, macos: bool) bool {
     if (std.mem.startsWith(u8, name, "lib/libLLVM") and std.mem.endsWith(u8, name, ".a")) return true;
+    if (std.mem.startsWith(u8, name, "lib/liblld") and !std.mem.startsWith(u8, name, "lib/liblldb") and std.mem.endsWith(u8, name, ".a")) return true;
     if (std.mem.startsWith(u8, name, "include/llvm/") or std.mem.startsWith(u8, name, "include/llvm-c/")) return true;
+    if (std.mem.startsWith(u8, name, "include/lld/")) return true;
     return macos and std.mem.eql(u8, name, "lib/libLTO.dylib");
 }
 
@@ -391,4 +397,7 @@ test "sliceWanted selects llvm libs and headers" {
     try std.testing.expect(!sliceWanted("share/doc/README", false));
     try std.testing.expect(sliceWanted("lib/libLTO.dylib", true));
     try std.testing.expect(!sliceWanted("lib/libLTO.dylib", false));
+    try std.testing.expect(sliceWanted("lib/liblldELF.a", false));
+    try std.testing.expect(sliceWanted("include/lld/Common/Driver.h", false));
+    try std.testing.expect(!sliceWanted("lib/liblldb.a", false));
 }

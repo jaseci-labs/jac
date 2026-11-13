@@ -10,14 +10,6 @@ real embedded Postgres.
 import os;
 import uuid;
 import from datetime { UTC, datetime, timedelta }
-import from jaclang.server.serving.authcrypt { jwt_encode }
-import from jaclang.scale.config.config_loader { normalize_gateway_config }
-import from jaclang.server.identity.config {
-    signing_algorithm as jwt_algorithm,
-    signing_secret as jwt_secret
-}
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.server.extensions { fleet_provisions_unknown_users }
 
 glob _SV_ENV: str = "JAC_SV_NAME";
 

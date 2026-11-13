@@ -1,12 +1,6 @@
 """Prelude exports are read from the same module tree as other compiler facts."""
 
 import ast;
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.frontend.parser.frontend { parse }
-import from jaclang.compiler.frontend.unitree { Module, PythonModuleAst, Source }
-import from jaclang.compiler.driver.pipeline_runner { run_utility }
-import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
-import from jaclang.compiler.driver.program { JacProgram }
 
 def jac_module(source: str) -> Module {
     (module, failed) = parse(source, "module_exports.jac");
@@ -46,7 +40,7 @@ test "Python stub trees use the same export extraction" {
         + "from first import B\nfrom second import C\n"
         + "__all__ = ('Alias', 'B', 'C', 3)\n";
     module = run_utility(
-        UtilityProduct.PYTHON_AST,
+        CompilationProduct.PYTHON_AST,
         PythonModuleAst(
             ast.parse(source), orig_src=Source(source, "module_exports.pyi")
         ),

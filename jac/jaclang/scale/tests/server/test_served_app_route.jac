@@ -16,11 +16,7 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.application { prepare_application }
-import from jaclang.project.config { set_config }
 import from jaclang.server { sv_client }
-import from jaclang.server.server { JacAPIServer }
-import from jaclang.testing.testkit { ServingTestClient as TestClient }
 
 
 glob _WEB_SRC: str = (
@@ -34,6 +30,16 @@ glob _WEB_SRC: str = (
          "\n"
          "def:pub shout(text: str) -> str {\n"
          "    return text.upper();\n"
+         "}\n"
+         "\n"
+         "walker:pub NamesMissingUser {\n"
+         "    can run with Root entry {\n"
+         "        raise ValueError(\"User not found\");\n"
+         "    }\n"
+         "}\n"
+         "\n"
+         "def:pub names_missing_user -> int {\n"
+         "    raise ValueError(\"User not found\");\n"
          "}\n"
      ),
      _TOML: str = (
@@ -89,7 +95,7 @@ test "the served workspace app is mounted under its own route" {
         set_config(None);
         Jac.set_full_target_path(os.path.join(tmp, "web", "main.jac"));
         sv_client.set_consumer_app("web");
-        (client, _srv) = _serve(tmp, "main", os.path.join(tmp, "web"));
+        (client, srv) = _serve(tmp, "main", os.path.join(tmp, "web"));
 
         root_listing = client.get("/walkers");
         assert root_listing.status_code == 200 , root_listing.text;
@@ -104,9 +110,32 @@ test "the served workspace app is mounted under its own route" {
         assert spawned.status_code == 200 , spawned.text;
         assert "hello route" in spawned.text , spawned.text;
 
+        for body in ({"_jac_spawn_node": 123}, {"_jac_spawn_node": "zzz"}) {
+            bad_node = client.post("/api/web/walker/Hello", json=body);
+            assert bad_node.status_code == 400 , bad_node.text;
+            assert bad_node.json()["error"]["code"] == "INVALID_NODE_ID" , bad_node.text;
+        }
+
         called = client.post("/api/web/function/shout", json={"text": "hi"});
         assert called.status_code == 200 , called.text;
         assert "HI" in called.text , called.text;
+
+        ghost = {
+            "Authorization": f"Bearer {srv.user_manager.create_jwt_token('ghost')}"
+        };
+        for path in (
+            "/api/web/walker/NamesMissingUser",
+            "/api/web/function/names_missing_user"
+        ) {
+            for (headers, status, message) in (
+                ({}, 500, "User not found"),
+                (ghost, 401, "Unauthorized: unknown user")
+            ) {
+                failed = client.post(path, json={}, headers=headers);
+                assert failed.status_code == status , failed.text;
+                assert failed.json()["error"]["message"] == message , failed.text;
+            }
+        }
     } finally {
         _reset(tmp);
     }

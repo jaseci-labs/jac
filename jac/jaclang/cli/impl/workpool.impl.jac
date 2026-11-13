@@ -1,3 +1,5 @@
+def stops_command(exc: BaseException) -> bool;
+
 impl WorkPool.postinit -> None {
     self.kids = [];
     self.crashlogs = [];
@@ -54,6 +56,9 @@ impl WorkPool.run_inline -> None {
         } except KeyboardInterrupt {
             raise;
         } except BaseException as exc {
+            if stops_command(exc) {
+                raise;
+            }
             record = {"error": "".join(format_exception(exc)).rstrip()};
         }
         self.on_record(idx, record);
@@ -156,7 +161,11 @@ impl WorkPool._worker_loop(dispatch_fd: int, result_fd: int) -> None {
         try {
             record = {"result": self.job(request)};
         } except BaseException as exc {
-            record = {"error": "".join(format_exception(exc)).rstrip()};
+            if stops_command(exc) {
+                record = {"exit": getattr(exc, "code", 1)};
+            } else {
+                record = {"error": "".join(format_exception(exc)).rstrip()};
+            }
         }
         served += 1;
         rss = worker_rss_mb();
@@ -253,6 +262,10 @@ impl WorkPool._handle_record(kid: dict[(str, any)], line: str) -> None {
         record = json.loads(text);
     } except Exception {
         return;
+    }
+    if "exit" in record {
+        self.stopping = True;
+        raise SystemExit(record["exit"]);
     }
     done = kid["inflight"];
     kid["inflight"] = None;
@@ -551,34 +564,52 @@ impl memory_headroom_bytes(
             }
         }
     } except Exception {}
+    rel = "";
+    rel_v1 = "";
     try {
-        rel = "";
         with open(self_cgroup, encoding="utf-8") as f {
             for line in f {
-                if line.startswith("0::") {
-                    rel = line.strip()[3:];
+                parts = line.strip().split(":", 2);
+                if len(parts) != 3 {
+                    continue;
+                }
+                if parts[0] == "0" and parts[1] == "" {
+                    rel = parts[2];
+                } elif "memory" in parts[1].split(",") {
+                    rel_v1 = parts[2];
                 }
             }
-        }
-        top = Path(cgroup_root);
-        cg = top / rel.lstrip("/") if rel else top;
-        while True {
-            limit = cg / "memory.max";
-            if limit.is_file() {
-                text = limit.read_text(encoding="utf-8").strip();
-                if text and text != "max" {
-                    used = int(
-                        (cg / "memory.current").read_text(encoding="utf-8").strip()
-                    );
-                    known.append(max(1, int(text) - used));
-                }
-            }
-            if cg == top or cg.parent == cg {
-                break;
-            }
-            cg = cg.parent;
         }
     } except Exception {}
+    for (top, path, limit_name, used_name) in (
+        (Path(cgroup_root), rel, "memory.max", "memory.current"),
+        (
+            Path(cgroup_root) / "memory",
+            rel_v1,
+            "memory.limit_in_bytes",
+            "memory.usage_in_bytes"
+        )
+    ) {
+        try {
+            cg = top / path.lstrip("/") if path else top;
+            while True {
+                limit = cg / limit_name;
+                if limit.is_file() {
+                    text = limit.read_text(encoding="utf-8").strip();
+                    if text and text != "max" and int(text) < CGROUP_UNLIMITED {
+                        used = int(
+                            (cg / used_name).read_text(encoding="utf-8").strip()
+                        );
+                        known.append(max(1, int(text) - used));
+                    }
+                }
+                if cg == top or cg.parent == cg {
+                    break;
+                }
+                cg = cg.parent;
+            }
+        } except Exception {}
+    }
     if not known {
         try {
             known.append(os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE"));
@@ -686,4 +717,8 @@ impl forced_serial(requested: (str | int | None) = None) -> bool {
         return False;
     }
     return str(requested).strip() == "0";
+}
+
+impl stops_command(exc: BaseException) -> bool {
+    return isinstance(exc, SystemExit) and bool(getattr(exc, "stops_command", False));
 }

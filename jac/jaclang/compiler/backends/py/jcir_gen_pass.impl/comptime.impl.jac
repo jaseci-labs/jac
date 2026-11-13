@@ -1,24 +1,4 @@
 impl JcirGenPass._ct_kind(v: CtValue) -> str {
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     if ct_is_scalar(v) {
         return "scalar";
     }
@@ -41,26 +21,6 @@ impl JcirGenPass._ct_kind(v: CtValue) -> str {
 }
 
 impl JcirGenPass._ct_materializable(v: CtValue) -> bool {
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     return ct_is_materializable(v);
 }
 
@@ -163,7 +123,6 @@ impl JcirGenPass._import_ref(module: str, name: str, jac_node: UniNode) -> CgNod
 }
 
 impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
-    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
     if module == "builtins" or not module {
         return self.name_load(name, jac_node);
     }
@@ -181,26 +140,6 @@ impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode
 }
 
 impl JcirGenPass._ct_order_key(v: CtValue) -> str {
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     if isinstance(v, CtNone) {
         return "0";
     }
@@ -262,27 +201,6 @@ impl JcirGenPass._ct_ordered(items: list[CtValue]) -> list[CtValue] {
 }
 
 impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) {
-    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     load = self.nod('Load', [], []);
     if isinstance(v, CtInt) {
         return self.int_const_of(v, jac_node);

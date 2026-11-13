@@ -1,4 +1,3 @@
-import from jaclang.scale.tests.toolchain_http { mock_downloads }
 import os;
 import shutil;
 import tempfile;
