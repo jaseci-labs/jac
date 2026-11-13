@@ -49,6 +49,18 @@ node RBag {
     has items: list[int] = [];
 }
 
+obj RLabel {
+    has name: str = "";
+}
+
+node RBin {
+    has items: list[int] = [],
+        tags: dict[str, int] = {},
+        nest: dict[str, list[int]] = {},
+        flex: list[any] = [],
+        label: (RLabel | None) = None;
+}
+
 enum RShelf { FULL = [1] }
 
 glob PEEK_TARGETS: list[any] = [];
@@ -63,6 +75,23 @@ node RPeeker {
             return len(PEEK_TARGETS);
         }
     }
+}
+
+obj RPeekLabel {
+    has name: str = "";
+    has peek: int {
+        getter {
+            for bag in PEEK_TARGETS {
+                bag.items.append(99);
+            }
+            return 0;
+        }
+    }
+}
+
+node RPeekHolder {
+    has items: list[int] = [],
+        label: (RPeekLabel | None) = None;
 }
 
 node RShelved {
@@ -741,7 +770,7 @@ test "a loaded anchor is hashed once (#9410)" {
 }
 
 
-test "loading anchors hashes only those whose fields can change in place" {
+test "loading anchors hashes none of them, even those whose fields can change in place" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
@@ -780,11 +809,11 @@ test "loading anchors hashes only those whose fields can change in place" {
                 json.dumps = real_dumps;
             }
             assert len(loaded) == len(ids) + 1;
-            assert len(dumps_calls) == 1 , (
-                f"loading five anchors hashed {len(dumps_calls)} stored forms; only "
-                "the one holding a list can change without a field write"
+            assert dumps_calls == [] , (
+                f"loading five anchors hashed {len(dumps_calls)} stored forms; the "
+                "one holding a list keeps a field baseline instead of a hash"
             );
-            assert all(loaded[i].hash != 0 for i in ids) , (
+            assert all(loaded[i].hash != 0 for i in ids + [bag_id]) , (
                 "a loaded anchor must not look newly created to access checks"
             );
             _as_any(loaded[bag_id].archetype).items.append(2);
@@ -833,7 +862,7 @@ test "frozen_value accepts exactly the immutable value kinds" {
 }
 
 
-test "a commit re-hashes only loaded anchors whose fields can change in place" {
+test "a commit hashes no loaded anchor, and still finds every in-place change" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
@@ -841,6 +870,7 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
         ids: list[UUID] = [];
         bag_id = UUID(int=0);
         shelf_id = UUID(int=0);
+        bin_id = UUID(int=0);
         try {
             ids = [_loose(seed, n).ensure_id() for n in range(4)];
             shelved: NodeAnchor = _as_any(RShelved()).__jac__;
@@ -851,6 +881,18 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
             bag.persistent = True;
             seed.mem.put(bag);
             bag_id = bag.ensure_id();
+            filled: NodeAnchor = _as_any(
+                RBin(
+                    items=[1, 2, 3],
+                    tags={"a": 1},
+                    nest={"a": [1]},
+                    flex=[1],
+                    label=RLabel(name="a")
+                )
+            ).__jac__;
+            filled.persistent = True;
+            seed.mem.put(filled);
+            bin_id = filled.ensure_id();
             seed.mem.commit();
         } finally {
             JacRuntime.exec_ctx = old;
@@ -870,20 +912,20 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
         try {
             _ = ctx.user_root;
             ctx.mem.commit();
-            loaded = ctx.mem.batch_get(ids + [bag_id]);
-            assert len(loaded) == len(ids) + 1;
+            loaded: dict[UUID, any] = {};
             json.dumps = counting_dumps;
             try {
+                loaded = ctx.mem.batch_get(ids + [bag_id, bin_id]);
                 for _ in range(3) {
                     ctx.mem.commit();
                 }
             } finally {
                 json.dumps = real_dumps;
             }
-            assert len(dumps_calls) == 3 , (
-                f"three commits hashed {len(dumps_calls)} stored forms; only the "
-                "anchor holding a list can change without a field write, so only "
-                "it needs re-hashing (once per commit)"
+            assert len(loaded) == len(ids) + 2;
+            assert dumps_calls == [] , (
+                f"loading and three commits hashed {len(dumps_calls)} stored forms; "
+                "nothing changed, so each field only needs comparing to its baseline"
             );
             _as_any(loaded[bag_id].archetype).items.append(2);
             ctx.mem.commit();
@@ -906,6 +948,60 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
             assert _stored(ctx, shelf_id, "shelf") == "[1, 2]" , (
                 "an enum whose value is a list can change in place; it must be scanned"
             );
+            held = _as_any(loaded[bin_id].archetype);
+            changes: list[tuple[str, any, str, str]] = [
+                (
+                    "a list item set",
+                    lambda { held.items[0] = 5; },
+                    "items",
+                    "[5, 2, 3]"
+                ),
+                (
+                    "a slice assignment",
+                    lambda { held.items[1:] = [7]; },
+                    "items",
+                    "[5, 7]"
+                ),
+                (
+                    "an in-place sort",
+                    lambda { held.items.sort(reverse=True); },
+                    "items",
+                    "[7, 5]"
+                ),
+                (
+                    "a dict item set",
+                    lambda { held.tags["b"] = 2; },
+                    "tags",
+                    '{"a": 1, "b": 2}'
+                ),
+                ("a dict pop", lambda { held.tags.pop("a"); }, "tags", '{"b": 2}'),
+                (
+                    "a list inside a dict",
+                    lambda { held.nest["a"].append(2); },
+                    "nest",
+                    '{"a": [1, 2]}'
+                ),
+                (
+                    "an int turned bool",
+                    lambda { held.flex[0] = True; },
+                    "flex",
+                    "[true]"
+                ),
+                ("a bool turned int", lambda { held.flex[0] = 1; }, "flex", "[1]"),
+                (
+                    "an int turned float",
+                    lambda { held.flex[0] = 1.0; },
+                    "flex",
+                    "[1.0]"
+                ),
+                ("an object's field", lambda { held.label.name = "b"; }, "label", '"b"')
+            ];
+            for (label, change, field, expected) in changes {
+                change();
+                ctx.mem.commit();
+                stored = _stored(ctx, bin_id, field) or "";
+                assert expected in stored , f"{label} was not written: {field} is {stored}";
+            }
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();
@@ -1064,14 +1160,19 @@ test "commits after a sealed scan skip in-place scans until user code runs again
 }
 
 
-test "a write the session was not told about survives a retried flush" {
+test "a write the session was not told about survives a retried flush, and one made during the upsert reaches the next commit" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
         JacRuntime.exec_ctx = seed;
         id = UUID(int=0);
+        bag_id = UUID(int=0);
         try {
             id = _loose(seed, 7).ensure_id();
+            bag: NodeAnchor = _as_any(RBag(items=[1])).__jac__;
+            bag.persistent = True;
+            seed.mem.put(bag);
+            bag_id = bag.ensure_id();
             seed.mem.commit();
         } finally {
             JacRuntime.exec_ctx = old;
@@ -1109,6 +1210,36 @@ test "a write the session was not told about survives a retried flush" {
             other.close();
             JacRuntime.exec_ctx = old;
             ctx.close();
+        }
+        during = _ctx(td);
+        JacRuntime.exec_ctx = during;
+        try {
+            _ = during.user_root;
+            bag_arch = _as_any(during.mem.batch_get([bag_id])[bag_id].archetype);
+            bag_arch.items.append(2);
+            store: any = during.mem.store;
+            real_upsert = store.upsert;
+            def racing_upsert(rows: any) {
+                bag_arch.items.append(3);
+                real_upsert(rows);
+            }
+            store.upsert = racing_upsert;
+            try {
+                during.mem.commit();
+            } finally {
+                store.upsert = real_upsert;
+            }
+            assert _stored(during, bag_id, "items") == "[1, 2]" , (
+                "the row holds what was serialized; the append during the upsert came later"
+            );
+            during.mem.commit();
+            assert _stored(during, bag_id, "items") == "[1, 2, 3]" , (
+                "an append made while the row was being written must reach the next "
+                "commit; a baseline taken from the live fields after the upsert hides it"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            during.close();
         }
     }
 }
@@ -1234,14 +1365,19 @@ test "request loop: a conflict re-run starts from the database, not from the rol
 }
 
 
-test "a scan that ran a node's own getters is never sealed" {
+test "a scan that ran getters, on a node or on an object it holds, is never sealed" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
         JacRuntime.exec_ctx = seed;
         bag_id = UUID(int=0);
         peek_id = UUID(int=0);
+        holder_id = UUID(int=0);
         try {
+            holder: NodeAnchor = _as_any(RPeekHolder(items=[1])).__jac__;
+            holder.persistent = True;
+            seed.mem.put(holder);
+            holder_id = holder.ensure_id();
             bag: NodeAnchor = _as_any(RBag(items=[1])).__jac__;
             bag.persistent = True;
             seed.mem.put(bag);
@@ -1297,6 +1433,57 @@ test "a scan that ran a node's own getters is never sealed" {
             PEEK_TARGETS.clear();
             JacRuntime.exec_ctx = old;
             later.close();
+        }
+        final = _ctx(td);
+        JacRuntime.exec_ctx = final;
+        try {
+            _ = final.user_root;
+            bag_arch = _as_any(final.mem.batch_get([bag_id])[bag_id].archetype);
+            peek_arch = _as_any(final.mem.batch_get([peek_id])[peek_id].archetype);
+            bag_arch.items.append(5);
+            peek_arch.n = 2;
+            PEEK_TARGETS.append(bag_arch);
+            final.mem.commit();
+            PEEK_TARGETS.clear();
+            final.mem.commit();
+            in_memory = bag_arch.items.count(99);
+            stored = _stored(final, bag_id, "items") or "";
+            assert in_memory > 0 and stored.count("99") == in_memory , (
+                "a getter appended to a list already captured for writing; once the "
+                f"getters stop, the append must still be saved: {in_memory} in memory, "
+                f"the row holds {stored}"
+            );
+        } finally {
+            PEEK_TARGETS.clear();
+            JacRuntime.exec_ctx = old;
+            final.close();
+        }
+        nested = _ctx(td);
+        JacRuntime.exec_ctx = nested;
+        try {
+            _ = nested.user_root;
+            holder_arch = _as_any(
+                nested.mem.batch_get([holder_id])[holder_id].archetype
+            );
+            holder_arch.label = RPeekLabel(name="a");
+            nested.mem.commit();
+            PEEK_TARGETS.append(holder_arch);
+            nested.mem.commit();
+            nested.mem.seal_scan();
+            nested.mem.commit();
+            PEEK_TARGETS.clear();
+            nested.mem.commit();
+            in_memory = holder_arch.items.count(99);
+            stored = _stored(nested, holder_id, "items") or "";
+            assert in_memory > 0 and stored.count("99") == in_memory , (
+                "a getter on an object the node holds appended to the node's own "
+                "list after the scan compared it; the scan must save it and stay "
+                f"unsealed: {in_memory} in memory, the row holds {stored}"
+            );
+        } finally {
+            PEEK_TARGETS.clear();
+            JacRuntime.exec_ctx = old;
+            nested.close();
         }
     }
 }
