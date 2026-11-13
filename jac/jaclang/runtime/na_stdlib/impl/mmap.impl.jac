@@ -387,10 +387,10 @@ impl mmap.resize(newsize: int) {
     if newsize < 0 {
         raise ValueError("new size out of range");
     }
-    is_private: bool = (self._flags & MAP_PRIVATE) != 0;
-    if is_private and mm_resize_requires_mremap() {
+    if mm_resize_requires_mremap() {
         raise SystemError("mmap: resizing not available--no mremap()");
     }
+    is_private: bool = (self._flags & MAP_PRIVATE) != 0;
     if not is_private {
         if self._fd == -1 {
             if newsize > self._len {

@@ -62,7 +62,9 @@ import from tests.support { jac_command, python_run }
 
 import os;
 import subprocess;
+import sys;
 import tempfile;
+import from unittest { SkipTest }
 import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
@@ -122,6 +124,9 @@ test "array.fromlist leaves the receiver unchanged after conversion failure" {
 }
 
 test "shrinking a shared anonymous map preserves its backing mapping" {
+    if sys.platform == "darwin" {
+        raise SkipTest("shared anonymous mmap shrink is not available on Darwin");
+    }
     (na_out, _na_err) = _na_run("mmap_shared_shrink.jac");
     assert na_out.strip() == "65" , na_out;
 }
