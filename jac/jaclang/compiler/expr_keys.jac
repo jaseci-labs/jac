@@ -16,6 +16,10 @@ def collect_narrowing_symbols(condition: Expr) -> set[str];
 
 def find_destructure_index_path(target: UniNode, key: str) -> list[int] | None;
 
+def is_star_target(nd: UniNode) -> bool;
+
+def unpack_index(targets: list[UniNode], at: int) -> int;
+
 def collect_assignment_target_keys(target: UniNode) -> set[str];
 
 def collect_assigned_symbols(nd: UniNode) -> set[str];

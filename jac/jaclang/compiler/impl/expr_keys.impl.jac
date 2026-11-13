@@ -233,23 +233,27 @@ impl find_destructure_index_path(target: UniNode, key: str) -> list[int] | None 
         return find_destructure_index_path(target.value, key);
     }
     if isinstance(target, (TupleVal, ListVal)) and target.values {
-        after_star = False;
         for (i, sub) in enumerate(target.values) {
-            if (
-                isinstance(sub, UnaryExpr)
-                and isinstance(sub.op, Token)
-                and sub.op.name == Tok.STAR_MUL
-            ) {
-                after_star = True;
+            if is_star_target(sub) {
                 continue;
             }
             sub_path = find_destructure_index_path(sub, key);
             if sub_path is not None {
-                return [i - len(target.values) if after_star else i] + sub_path;
+                return [unpack_index(target.values, i)] + sub_path;
             }
         }
     }
     return None;
+}
+
+impl is_star_target(nd: UniNode) -> bool {
+    return isinstance(nd, UnaryExpr)
+        and isinstance(nd.op, Token)
+        and nd.op.name == Tok.STAR_MUL;
+}
+
+impl unpack_index(targets: list[UniNode], at: int) -> int {
+    return at - len(targets) if any(is_star_target(t) for t in targets[:at]) else at;
 }
 
 impl collect_assignment_target_keys(target: UniNode) -> set[str] {

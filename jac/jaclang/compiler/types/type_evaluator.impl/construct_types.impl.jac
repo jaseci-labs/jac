@@ -61,7 +61,7 @@ impl TypeEvaluator._unpack_target_path(
     lhs_root: UniNode = expr;
     star_targets: (TupleVal | ListVal | None) = None;
     holder = expr.parent;
-    if holder is not None and self._is_star_target(holder) {
+    if holder is not None and is_star_target(holder) {
         if not isinstance(holder.parent, (TupleVal, ListVal)) {
             return None;
         }
@@ -72,11 +72,16 @@ impl TypeEvaluator._unpack_target_path(
     path: list[int] = [];
     while isinstance(parent, (TupleVal, ListVal, AtomUnit)) {
         if isinstance(parent, (TupleVal, ListVal)) {
-            position = self._unpack_position(parent, lhs_root);
-            if position is None {
+            values = parent.values or [];
+            at = [
+                i
+                for (i, v) in enumerate(values)
+                if v is lhs_root
+            ];
+            if not at {
                 return None;
             }
-            path.insert(0, position);
+            path.insert(0, unpack_index(values, at[0]));
         }
         lhs_root = parent;
         parent = parent.parent;
@@ -96,28 +101,6 @@ impl TypeEvaluator._unpack_target_path(
         return (parent, path, star_targets);
     }
     return None;
-}
-
-impl TypeEvaluator._unpack_position(
-    targets: (TupleVal | ListVal), item: UniNode
-) -> int | None {
-    values = targets.values or [];
-    after_star = False;
-    for (i, v) in enumerate(values) {
-        if v is item {
-            return i - len(values) if after_star else i;
-        }
-        if self._is_star_target(v) {
-            after_star = True;
-        }
-    }
-    return None;
-}
-
-impl TypeEvaluator._is_star_target(nd: UniNode) -> bool {
-    return isinstance(nd, UnaryExpr)
-        and isinstance(nd.op, Token)
-        and nd.op.name == Tok.STAR_MUL;
 }
 
 impl TypeEvaluator._get_type_of_unpack_target(expr: Name) -> TypeBase | None {
@@ -167,7 +150,7 @@ impl TypeEvaluator._get_source_of_unpack_target(expr: Name) -> Expr | None {
             return None;
         }
         values = source.values or [];
-        if any(self._is_star_target(v) for v in values) {
+        if any(is_star_target(v) for v in values) {
             return None;
         }
         if idx >= len(values) or idx < -len(values) {

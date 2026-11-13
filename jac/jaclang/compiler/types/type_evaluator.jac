@@ -482,8 +482,6 @@ walker TypeEvaluator {
     ]
         | None;
 
-    def _unpack_position(targets: (TupleVal | ListVal), item: UniNode) -> int | None;
-    def _is_star_target(nd: UniNode) -> bool;
     def _get_type_of_unpack_target(expr: Name) -> TypeBase | None;
     def _get_source_of_unpack_target(expr: Name) -> Expr | None;
     def _starred_target_type(
