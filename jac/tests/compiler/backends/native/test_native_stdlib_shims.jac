@@ -88,9 +88,10 @@ def _na_run(fixture: str) -> tuple[(str, str)] {
         text=True,
         timeout=900
     );
-    assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-800:]
-        if comp.stderr
-        else '(empty)'}";
+    assert comp.returncode == 0 , (
+        f"nacompile failed; stdout={comp.stdout[-1200:] if comp.stdout else '(empty)'}; "
+        f"stderr={comp.stderr[-800:] if comp.stderr else '(empty)'}"
+    );
     proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
     assert proc.returncode == 0 , f"binary failed: {proc.stderr[-400:]
         if proc.stderr
