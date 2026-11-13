@@ -5853,6 +5853,8 @@ impl NativeBuiltinEmitter.emit_hasattr(
         for method_name in layout.method_index {
             if method_name.endswith(".getter") {
                 return None;
+            } elif method_name == "__getattr__" or method_name == "__getattribute__" {
+                return None;
             } elif not method_name.endswith(".setter") {
                 methods[method_name] = 0;
             }
