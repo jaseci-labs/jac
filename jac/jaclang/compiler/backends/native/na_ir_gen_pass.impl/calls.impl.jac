@@ -3644,67 +3644,22 @@ impl NaIRGenPass._emit_isinstance_ptr_tags(
     operand: ir.Value, tags: list[int]
 ) -> ir.Value {
     i1 = ir.IntType(1);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    i8p = ir.IntType(8).as_pointer();
-
     _prefixes: dict[int, str] = {3: "list_", 4: "dict_", 5: "set_"};
     if 6 in tags {
         return ir.Constant(i1, 1);
     }
     _want = [
-        t
+        _prefixes[t]
         for t in sorted(tags)
         if t in _prefixes
     ];
     if not _want {
         return ir.Constant(i1, 0);
     }
-    b = self.builder;
-    raw = b.bitcast(operand, i8p, name="isinst.hdr.raw");
-    fn = b.block.function;
-    pre_bb = b.block;
-    tag_bb = fn.append_basic_block("isinst.hdr.tag");
-    cmp_bb = fn.append_basic_block("isinst.hdr.cmp");
-    done_bb = fn.append_basic_block("isinst.hdr.done");
-    magic_ok = self._emit_magic_check(b, raw, name_prefix="isinst.mc");
-    b.cbranch(magic_ok, tag_bb, done_bb);
-
-    b.position_at_end(tag_bb);
-    tag_slot = b.gep(raw, [ir.Constant(i64, HDR_TAG_OFF)], name="isinst.tag.slot");
-    tag_pp = b.bitcast(tag_slot, i8p.as_pointer(), name="isinst.tag.pp");
-    tag_ptr = b.load(tag_pp, name="isinst.tag.name");
-    tag_nn = b.icmp_unsigned(
-        "!=", tag_ptr, ir.Constant(i8p, None), name="isinst.tag.nn"
+    raw = self.builder.bitcast(
+        operand, ir.IntType(8).as_pointer(), name="isinst.hdr.raw"
     );
-    b.cbranch(tag_nn, cmp_bb, done_bb);
-
-    b.position_at_end(cmp_bb);
-    memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
-    matched: (ir.Value | None) = None;
-    for t in _want {
-        pfx = _prefixes[t];
-        pfx_gv = self._get_snprintf_fmt(pfx);
-        pfx_ptr = b.gep(
-            pfx_gv, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="isinst.pfx"
-        );
-        cmp_res = b.call(
-            memcmp_fn,
-            [tag_ptr, pfx_ptr, ir.Constant(i64, len(pfx))],
-            name="isinst.memcmp"
-        );
-        eq = b.icmp_signed("==", cmp_res, ir.Constant(i32, 0), name="isinst.pfx.eq");
-        matched = eq if matched is None else b.or_(matched, eq, name="isinst.pfx.or");
-    }
-    cmp_end_bb = b.block;
-    b.branch(done_bb);
-
-    b.position_at_end(done_bb);
-    res = b.phi(i1, name="isinst.hdr.res");
-    res.add_incoming(ir.Constant(i1, 0), pre_bb);
-    res.add_incoming(ir.Constant(i1, 0), tag_bb);
-    res.add_incoming(matched, cmp_end_bb);
-    return res;
+    return self._emit_hdr_tag_is(self.builder, raw, _want, exact=False);
 }
 
 impl NaIRGenPass._emit_isinstance_mixed(
