@@ -157,7 +157,7 @@ with entry {
         empty_args: list[str] = [];
         run(empty_args);
         print("empty-args-missed");
-    } except ValueError {
+    } except IndexError {
         print("empty-args-raised");
     }
 
