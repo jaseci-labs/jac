@@ -124,8 +124,22 @@ def run_file(
     explicit: bool = False,
     xit: bool = False,
     maxfail: (int | None) = None,
-    seen_failures: int = 0
+    seen_failures: int = 0,
+    part: int = 0,
+    parts: int = 1
 ) -> list[TestOutcome];
+
+glob TIMINGS_ENV: str = "JAC_TEST_TIMINGS",
+     SPLIT_ENV: str = "JAC_TEST_SPLIT_SECONDS",
+     _FILE_SECONDS: dict[(str, float)] = {};
+
+def _timing_key(path: str) -> str;
+
+def _load_timings -> dict[(str, float)];
+
+def _store_timings -> None;
+
+def _schedule(files: list[str], workers: int) -> list[tuple[(str, int, int)]];
 
 def run_tests(
     paths: (list[str] | None) = None,

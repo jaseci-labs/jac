@@ -881,15 +881,32 @@ jobs:
         with:
           version: "0.16.0"
           use-cache: false
+      # Per-file times from this lane's earlier runs: jac test starts the
+      # heaviest files first and splits any over JAC_TEST_SPLIT_SECONDS across
+      # workers, then records this run's times for the next.
+      - name: Restore this lane's test timings
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/test-timings.json
+          key: jac-test-timings-compiler-${{ matrix.chunk }}-${{ github.run_id }}
+          restore-keys: jac-test-timings-compiler-${{ matrix.chunk }}-
       - name: Run ${{ matrix.chunk }} chunk
         working-directory: jac
         env:
           JAC_IFACE_VERIFY: ${{ matrix.iface_verify || '' }}
           JAC_TEST_ARTIFACTS: ${{ runner.temp }}/native-test-artifacts
+          JAC_TEST_TIMINGS: ${{ runner.temp }}/test-timings.json
+          JAC_TEST_SPLIT_SECONDS: "240"
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
+      - name: Save this lane's test timings
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/test-timings.json
+          key: jac-test-timings-compiler-${{ matrix.chunk }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Preserve failed native executables
         if: failure() && startsWith(matrix.chunk, 'passes-native')
         uses: actions/upload-artifact@v4
@@ -943,13 +960,31 @@ jobs:
       # Bun setup above provides -- with JAC_TEST_STRICT=1 they must run here,
       # so a new jsdom suite is covered the moment it exists instead of when
       # someone remembers to name it in this file.
+      # Per-file times from this lane's earlier runs: jac test starts the
+      # heaviest files first and splits any over JAC_TEST_SPLIT_SECONDS across
+      # workers, then records this run's times for the next.
+      - name: Restore this lane's test timings
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/test-timings.json
+          key: jac-test-timings-runtime-${{ matrix.leg }}-${{ github.run_id }}
+          restore-keys: jac-test-timings-runtime-${{ matrix.leg }}-
       - name: Runtime suite via the binary
         working-directory: jac
+        env:
+          JAC_TEST_TIMINGS: ${{ runner.temp }}/test-timings.json
+          JAC_TEST_SPLIT_SECONDS: "240"
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
             ${{ matrix.ignore != '' && format('--ignore {0}', matrix.ignore) || '' }}
+      - name: Save this lane's test timings
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/test-timings.json
+          key: jac-test-timings-runtime-${{ matrix.leg }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   # In-package tests that do not pass through the reroute, run here against
   # the built kit. Each entry names a real divergence between the reroute and
@@ -1044,6 +1079,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
       - name: Install the scale dep the in-process dispatch tests import
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
+      # Per-file times from this lane's earlier runs: jac test starts the
+      # heaviest files first and splits any over JAC_TEST_SPLIT_SECONDS across
+      # workers, then records this run's times for the next.
+      - name: Restore this lane's test timings
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/test-timings.json
+          key: jac-test-timings-client-${{ github.run_id }}
+          restore-keys: jac-test-timings-client-
       - name: Run all client tests
         # Was serial for a collection race in the old pytest-xdist runner,
         # which jac test's own worker pool does not have.
@@ -1052,7 +1096,15 @@ jobs:
           JAC_TEST_JOBS: "2"
           JAC_TEST_RSS_LOG: "1"
           JAC_TEST_STRICT: "1"
+          JAC_TEST_TIMINGS: ${{ runner.temp }}/test-timings.json
+          JAC_TEST_SPLIT_SECONDS: "240"
         run: jac test jac/tests/client
+      - name: Save this lane's test timings
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/test-timings.json
+          key: jac-test-timings-client-${{ github.run_id }}-${{ github.run_attempt }}
 
   # The jsdom suites gate on bun being on PATH and run in test-runtime under
   # JAC_TEST_STRICT=1; the desktop tests live in tests/client (test-client).
