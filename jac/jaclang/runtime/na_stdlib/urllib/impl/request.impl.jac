@@ -268,7 +268,7 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
                 }
                 next_method = request.method;
                 next_data = request.data;
-                switch_to_get = changed_origin
+                switch_to_get = (changed_origin and request.method.upper() != "HEAD")
                     or (resp.status == 303 and request.method.upper() != "HEAD")
                     or (
                         (resp.status == 301 or resp.status == 302)
