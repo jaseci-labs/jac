@@ -82,6 +82,7 @@ impl ExecutionManager._finalize_call_response(
     ctx = Jac.get_context();
     await ctx.mem.acommit();
     call_state.committed = True;
+    ctx.mem.unit_committed();
     ctx.run_pending_effects();
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
         return result;
@@ -107,6 +108,25 @@ impl ExecutionManager._finalize_call_response(
 }
 
 def _plain_value(val: object) -> bool;
+
+async def _settle_request_thread(work: Callable) -> any;
+
+impl _settle_request_thread(work: Callable) -> any {
+    job = asyncio.ensure_future(asyncio.to_thread(work));
+    try {
+        return await asyncio.shield(job);
+    } except asyncio.CancelledError {
+        while not job.done() {
+            try {
+                await asyncio.shield(job);
+            } except asyncio.CancelledError {}
+        }
+        if not job.cancelled() {
+            job.exception();
+        }
+        raise;
+    }
+}
 
 async def _run_function_with_occ(
     mgr: ExecutionManager,
@@ -143,7 +163,10 @@ impl ExecutionManager.execute_function_sync(
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
-        result = await asyncio.to_thread(func, **args);
+        def invoke -> any {
+            return func(**args);
+        }
+        result = await _settle_request_thread(invoke);
 
         if iscoroutine(result) {
             result = await result;
@@ -195,7 +218,10 @@ impl ExecutionManager.spawn_walker_sync(
         if isinstance(target_node, dict) {
             return target_node;
         }
-        result = await asyncio.to_thread(Jac.`spawn, `walker, target_node);
+        def invoke -> any {
+            return Jac.`spawn(`walker, target_node);
+        }
+        result = await _settle_request_thread(invoke);
 
         if iscoroutine(result) {
             result = await result;
@@ -1907,6 +1933,19 @@ impl _run_function_with_occ(
     }
     (ctx, req_token, root_id) = resolved;
     ctx.mem.unit_enter(unit_key);
+    def failed_after_commit(e: BaseException) -> dict[str, JsonValue] {
+        ctx.mem.abort();
+        ctx.pending_effects.clear();
+        logger.error(
+            f"{unit_key or 'request'} failed after durable work: {type(e).__name__}: {e}"
+        );
+        return {
+            'error': 'The request may have committed work before failing. Repeating the request may repeat work already saved.',
+            'error_code': 'failed_after_commit',
+            'http_status': 500,
+            'final': True
+        };
+    }
     settled = False;
     streaming = False;
     try {
@@ -1930,28 +1969,18 @@ impl _run_function_with_occ(
                 try {
                     outcome = await run_attempt(call_state, ctx);
                     await ctx.mem.acommit();
-                } except ReadOnlyRetry {
+                } except ReadOnlyRetry as e {
+                    if ctx.mem.has_durable_boundary() {
+                        return failed_after_commit(e);
+                    }
                     raise;
                 } except Exception as e {
-                    if not call_state.committed {
+                    if not call_state.committed
+                        and not ctx.mem.has_durable_boundary()
+                        and not isinstance(e, PartialCommitError) {
                         raise;
                     }
-                    ctx.mem.abort();
-                    ctx.pending_effects.clear();
-                    logger.exception(
-                        f"{unit_key or 'request'} failed after its commit: "
-                        f"{type(e).__name__}: {e}"
-                    );
-                    return {
-                        'error': (
-                            'The request committed, but a step after that commit '
-                            'failed and its writes were lost. Repeating the request '
-                            'may repeat the work it already saved.'
-                        ),
-                        'error_code': 'failed_after_commit',
-                        'http_status': 500,
-                        'final': True
-                    };
+                    return failed_after_commit(e);
                 }
                 if _plain_value(outcome) {
                     ctx.mem.seal_scan();
@@ -1960,7 +1989,15 @@ impl _run_function_with_occ(
                 settled = True;
                 streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
                 return await ctx.bind_stream(outcome) if streaming else outcome;
+            } except asyncio.CancelledError as cancelled {
+                if call_state.committed or ctx.mem.has_durable_boundary() {
+                    return failed_after_commit(cancelled);
+                }
+                raise;
             } except ReadOnlyRetry as rr {
+                if ctx.mem.has_durable_boundary() {
+                    return failed_after_commit(rr);
+                }
                 settled = False;
                 ctx.mem.take_ro_retry();
                 if ctx.mem.unit_depth() == 0 {
@@ -1978,6 +2015,9 @@ impl _run_function_with_occ(
                 }
                 reload_root = True;
             } except WriteConflict as wc {
+                if ctx.mem.has_durable_boundary() {
+                    return failed_after_commit(wc);
+                }
                 settled = False;
                 if ctx.mem.unit_depth() == 0 {
                     ctx.mem.unit_enter(unit_key);
@@ -2024,6 +2064,10 @@ impl _run_function_with_occ(
                 }
                 reload_root = True;
             } except Exception as e {
+                if isinstance(e, PartialCommitError)
+                    or ctx.mem.has_durable_boundary() {
+                    return failed_after_commit(e);
+                }
                 import from jaclang.server.session { transient_db_error }
                 if attempt < max_attempts and transient_db_error(e) {
                     settled = False;

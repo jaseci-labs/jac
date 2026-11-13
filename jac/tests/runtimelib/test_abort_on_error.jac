@@ -106,6 +106,82 @@ test "successful walker still persists (positive control)" {
     }
 }
 
+test "cancelled durable request returns the same final response for its idempotency key" {
+    import threading;
+    import from jaclang.server.endpoints.colocated { _walker_callback }
+    import from jaclang.server.serving.app { transport_to_response }
+    import from jaclang.server.serving.datatypes { Headers, JSONResponse, Request }
+    import from jaclang.server.transport { TransportResponse }
+    prior = os.environ.get(RO_UNITS_ENV);
+    os.environ[RO_UNITS_ENV] = "0";
+    try {
+        with TemporaryDirectory() as td {
+            client = make_client(td);
+            try {
+                assert client.register_user("cancel_durable", "pw12345_Secure1").ok;
+                server = client.server;
+                intro = server.introspector;
+                mod = sys.modules[intro.target("CancelDurable").__module__];
+                mod.runs.clear();
+                mod.late_runs.clear();
+                mod.cancel_started = threading.Event();
+                mod.cancel_release = threading.Event();
+                callback = _walker_callback(
+                    server, "abort", "CancelDurable", intro, False
+                );
+                def request -> Request {
+                    return Request(
+                        method="POST",
+                        headers=Headers([("X-Jac-Idempotency-Key", "cancel-durable")]),
+                        body=b"{}"
+                    );
+                }
+                async def cancelled -> any {
+                    with server.request_scope() {
+                        task = asyncio.create_task(callback(request()));
+                        try {
+                            assert await asyncio.to_thread(mod.cancel_started.wait, 10);
+                            task.cancel();
+                            await asyncio.sleep(0);
+                            assert not task.done();
+                        } finally {
+                            mod.cancel_release.set();
+                        }
+                        return await task;
+                    }
+                }
+                async def replay -> any {
+                    with server.request_scope() {
+                        return await callback(request());
+                    }
+                }
+                first = _as_any(asyncio.run(cancelled()));
+                second = _as_any(asyncio.run(replay()));
+                if isinstance(first, TransportResponse) {
+                    first = transport_to_response(first);
+                }
+                if isinstance(second, TransportResponse) {
+                    second = transport_to_response(second);
+                }
+                assert isinstance(first, JSONResponse)
+                    and isinstance(second, JSONResponse);
+                assert first.status_code == 500 and second.status_code == 500;
+                assert first.content == second.content;
+                assert "FAILED_AFTER_COMMIT" in json.dumps(first.content);
+                assert mod.runs == [1] and mod.late_runs == [1];
+            } finally {
+                client.close();
+            }
+        }
+    } finally {
+        if prior is None {
+            os.environ.pop(RO_UNITS_ENV, None);
+        } else {
+            os.environ[RO_UNITS_ENV] = prior;
+        }
+    }
+}
+
 
 obj LateCase {
     has label: str,
@@ -138,6 +214,11 @@ test "a failure after the first commit is answered once and replayed, never re-r
     refused = {"late": bad, "status": 429};
     cases = [
         LateCase("clean", status=200, code="", saved=2),
+        LateCase("nested durable conflict", body={"fault": "nested_serial"}, saved=2),
+        LateCase("child durable conflict", body={"fault": "child_serial"}, saved=0),
+        LateCase(
+            "explicit durable conflict", body={"fault": "explicit_serial"}, saved=1
+        ),
         LateCase("bad late write, after respond(429)", body=refused),
         LateCase("function", via="function", body=refused),
         # Colocated callbacks run off this user's root, so its count stays put.
@@ -182,13 +263,10 @@ test "a failure after the first commit is answered once and replayed, never re-r
         ),
         LateCase("getter raises while serializing", via="peek", callbacks=0),
         LateCase(
-            "late write on the read tier re-runs as a writer",
+            "late write on the read tier fails after callback ran",
             via="read tier",
             read_tier=True,
-            status=200,
-            code="",
-            runs=2,
-            callbacks=2
+            saved=0
         ),
         LateCase(
             "first commit fails",

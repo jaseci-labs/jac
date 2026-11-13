@@ -1170,6 +1170,9 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
     mod.failed_commits.clear();
     mod.lock_exhaustions.clear();
     mod.exhausted_queries.clear();
+    mod.profile_runs.clear();
+    mod.profile_effect_runs.clear();
+    mod.profile_effect_faults.clear();
     return (exec_mgr, walkers, mod);
 }
 
@@ -1332,7 +1335,7 @@ test "request loop: the response shows what on_commit callbacks changed" {
 }
 
 
-test "request loop: a COMMIT conflict the session retries does not cost a re-run" {
+test "request loop: a COMMIT conflict re-runs the decisions as well as the writes" {
     prior = _without_read_tier();
     try {
         with TemporaryDirectory() as td {
@@ -1343,9 +1346,9 @@ test "request loop: a COMMIT conflict the session retries does not cost a re-run
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert mod.commit_faults == [] , "the COMMIT failure was never armed";
             assert "error" not in voted , f"the vote failed: {voted}";
-            assert len(mod.runs) == 1 , (
-                "the session retried the COMMIT itself, so the request loop has "
-                f"nothing to re-run; the walker ran {len(mod.runs)} times"
+            assert len(mod.runs) == 2 , (
+                "the failed transaction lost its read predicates, so its "
+                f"decisions must be re-run; the walker ran {len(mod.runs)} times"
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);
             assert tally.get("reports") == [{"cast": True, "total": 1}] , f"{tally}";
@@ -1390,8 +1393,8 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
             assert "error" not in seeded , f"seeding failed: {seeded}";
             (mode, max_attempts, _backoff) = _occ_policy();
             attempts = 1 if mode == "fail" else max(1, max_attempts);
-            # Every run spends the session's whole retry budget on its COMMIT.
-            mod.commit_faults.extend([MAX_RETRIES + 1] * attempts);
+            # One conflict ends the attempt; only the request can replay its reads.
+            mod.commit_faults.extend([1] * attempts);
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert voted.get("error_code") == "write_conflict" , f"{voted}";
             assert voted.get("http_status") == 409 , f"{voted}";
@@ -1399,9 +1402,8 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
                 f"the request loop owns the re-runs: {attempts} attempts allowed, "
                 f"the walker ran {len(mod.runs)} times"
             );
-            assert len(mod.failed_commits) == attempts * (MAX_RETRIES + 1) , (
-                f"each attempt retries its COMMIT {MAX_RETRIES} times before the "
-                f"session hands the conflict to the request loop; "
+            assert len(mod.failed_commits) == attempts , (
+                "each conflict must be handed to the request loop immediately; "
                 f"{len(mod.failed_commits)} COMMITs failed in {attempts} attempts"
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);

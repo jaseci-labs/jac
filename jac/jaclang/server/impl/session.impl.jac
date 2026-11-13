@@ -242,6 +242,8 @@ def _settle_written(anchor: Anchor, seen: int);
 
 def _is_serialization_conflict(e: Exception) -> bool;
 
+def _is_ambiguous_commit(e: Exception) -> bool;
+
 
 impl transient_db_error(e: Exception) -> bool {
     return _is_serialization_conflict(e);
@@ -352,6 +354,7 @@ impl Session.postinit -> None {
     self._rows = RowLedger();
     self._lost = False;
     self._active_units = 0;
+    self._committed_units = set();
     self._flushing = None;
     self._read_scopes = 0;
     self._ro_units = 0;
@@ -370,6 +373,9 @@ impl Session.postinit -> None {
     self._scan_clean = False;
     self._scan_sealed = False;
     self._scan_safe = True;
+    if self._store is not None {
+        self._store._unit_guard = self._prepare_raw_rows;
+    }
 }
 
 
@@ -393,6 +399,7 @@ impl Session._boot_store -> None {
         self._store = PgStore(
             conninfo=conninfo_from_url(url), promotions=promos, auto_schema=True
         );
+        self._store._unit_guard = self._prepare_raw_rows;
         return;
     }
     lease = self._runtime_lease();
@@ -408,6 +415,7 @@ impl Session._boot_store -> None {
         }
     }
     self._store = pgs;
+    pgs._unit_guard = self._prepare_raw_rows;
     self._data_location = f"{rt.data_dir}/{rt.database}";
 }
 
@@ -572,7 +580,21 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
                 try {
                     self.flush(full=True);
                     wrote = self._rows.in_flight();
+                    durable = bool(self._rows._upserted) or bool(self._rows._removed);
+                    if not durable
+                        and self._store._raw_rows_in_txn
+                        and self._store.in_txn() {
+                        state = self._store._read_rows(
+                            "SELECT CASE WHEN pg_current_xact_id_if_assigned() IS NULL "
+                            "THEN 0 ELSE 1 END",
+                            {}
+                        );
+                        durable = bool(state and state[0][0]);
+                    }
                     self._commit_txn();
+                    if durable {
+                        self._durable_boundary.mark();
+                    }
                     self._leave_queue();
                     if wrote and self._active_units > 0 and self._ro_units > 0 {
                         self._register_ro_writers();
@@ -602,13 +624,32 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
             self._dirty.clear();
             self._deleted.clear();
         }
+        callback_depth = self._active_units;
+        already_committed = callback_depth in self._committed_units;
+        if callback_depth > 0 {
+            self._committed_units.add(callback_depth);
+        }
     }
-    self._fire_on_commit();
+    try {
+        self._fire_on_commit();
+    } finally {
+        if not already_committed {
+            with self._lock {
+                self._committed_units.discard(callback_depth);
+            }
+        }
+    }
+    if self._lost {
+        raise PartialCommitError(
+            "callback writes failed after committed work; replay is unsafe"
+        );
+    }
 }
 
 
 impl Session.abort -> None {
     with self._lock {
+        self._committed_units.discard(self._active_units);
         self._contended |= self._last_conflict;
         self._last_conflict = set();
         self._rollback_txn();
@@ -751,6 +792,27 @@ impl Session._ensure_txn -> None {
     }
 }
 
+impl Session._prepare_raw_rows(raw: bool = False, writable: bool = False) -> None {
+    with self._lock {
+        if self._store is None {
+            return;
+        }
+        if self._active_units > 0 {
+            if writable {
+                if self._ro_units > 0 {
+                    self._raise_ro_retry();
+                }
+                self._begin_writable();
+            } elif not self._store.in_txn() {
+                self._ensure_txn();
+            }
+        }
+        if raw and self._active_units > 0 and self._store.in_txn() {
+            self._raw_rows_pending = True;
+        }
+    }
+}
+
 
 impl Session.unit_enter(key: (str | None) = None) -> None {
     with self._lock {
@@ -761,9 +823,38 @@ impl Session.unit_enter(key: (str | None) = None) -> None {
             self._ro_units += 1;
         }
         self._unit_stack.append((key, ro));
-        if self._store is not None and self._store.in_txn() {
-            self._ensure_txn();
+        self._unit_generations.append(self._durable_boundary.current());
+        try {
+            if self._store is not None
+                and self._store?.in_txn
+                and self._store.in_txn() {
+                self._ensure_txn();
+            }
+        } except BaseException {
+            self._active_units -= 1;
+            self._unit_generations.pop();
+            (_key, was_ro) = self._unit_stack.pop();
+            if was_ro {
+                self._ro_units -= 1;
+            }
+            raise;
         }
+    }
+}
+
+impl Session.unit_committed -> None {
+    with self._lock {
+        if self._active_units > 0 {
+            self._committed_units.add(self._active_units);
+            self._unit_generations[-1] = self._durable_boundary.current();
+        }
+    }
+}
+
+impl Session.has_durable_boundary -> bool {
+    with self._lock {
+        return bool(self._unit_generations)
+            and self._durable_boundary.current() != self._unit_generations[-1];
     }
 }
 
@@ -799,9 +890,8 @@ impl Session.read_scope_exit -> None {
 
 impl Session.unit_exit -> None {
     with self._lock {
-        self._active_units = max(0, self._active_units - 1);
         try {
-            if self._active_units > 0 {
+            if self._active_units > 1 {
                 return;
             }
             if self._lost {
@@ -823,12 +913,27 @@ impl Session.unit_exit -> None {
                 raise;
             } except WriteConflict {
                 raise;
+            } except PartialCommitError {
+                self.abort();
+                raise;
             } except Exception as e {
                 logger.warning(
                     f"unit close commit failed; rolled back: {type(e).__name__}: {e}"
                 );
             }
+        } except Exception as e {
+            if self.has_durable_boundary() and not isinstance(e, PartialCommitError) {
+                raise PartialCommitError(
+                    "request failed after durable work; replay is unsafe"
+                ) from e;
+            }
+            raise;
         } finally {
+            self._committed_units.discard(self._active_units);
+            self._active_units = max(0, self._active_units - 1);
+            if self._unit_generations {
+                self._unit_generations.pop();
+            }
             if self._unit_stack {
                 (_key, was_ro) = self._unit_stack.pop();
                 if was_ro {
@@ -847,6 +952,8 @@ impl Session.note_effect_failure(e: Exception) -> None {
         cause = cause.__cause__ or cause.__context__;
     }
     if cause is not None
+        or isinstance(e, PartialCommitError)
+        or _is_serialization_conflict(e)
         or (isinstance(e, WriteConflict) and not isinstance(e, ReadOnlyRetry)) {
         self._lost = True;
     }
@@ -870,8 +977,19 @@ impl Session.get_fetch_count -> int {
 
 impl Session._commit_txn -> None {
     if self._store is not None {
-        self._store.commit();
+        try {
+            self._store.commit();
+        } except Exception as e {
+            if _is_ambiguous_commit(e) {
+                self._durable_boundary.mark();
+                raise PartialCommitError(
+                    "commit outcome is unknown; replay is unsafe"
+                ) from e;
+            }
+            raise;
+        }
         self._rows.promote();
+        self._raw_rows_pending = False;
     }
     self._txn_gen += 1;
 }
@@ -885,6 +1003,7 @@ impl Session._rollback_txn -> None {
             logger.debug(f"rollback failed: {type(e).__name__}: {e}");
         }
     }
+    self._raw_rows_pending = False;
     self._txn_gen += 1;
     lost = self._rows.discard();
     if lost.joined {
@@ -908,8 +1027,15 @@ impl Session._rollback_txn -> None {
 
 
 impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
+    raw = self._raw_rows_pending;
     self._rollback_txn();
-    if exhausted {
+
+    if raw
+        or exhausted
+        or (
+            self._active_units > 0 and self._active_units not in self._committed_units
+        ) {
+        self._last_conflict |= set(self._dirty) | self._deleted;
         self._lost = True;
     }
     if self._lost {
@@ -919,10 +1045,14 @@ impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
 
 
 impl Session._reclaim_dead_txn -> None {
-    if not self._rows.in_flight() or self._store is None or self._store.in_txn() {
+    if not (self._rows.in_flight() or self._raw_rows_pending)
+        or self._store is None
+        or self._store.in_txn() {
         return;
     }
+    raw = self._raw_rows_pending;
     self._rollback_txn();
+    self._lost |= raw;
     if self._lost {
         raise TransactionLost(anchor_id=UUID(int=0));
     }
@@ -1024,6 +1154,9 @@ impl Session._flush_locked(full: bool) -> None {
             self._last_conflict = {wc.anchor_id};
             raise;
         } except Exception as e {
+            if _is_serialization_conflict(e) {
+                self._last_conflict |= {row.id for row in rows};
+            }
             if self._queued or not _is_lock_timeout(e) {
                 raise;
             }
@@ -1359,10 +1492,24 @@ async def _off_loop(work: Callable) -> any;
 
 
 impl Session.acommit(anchor: (Anchor | None) = None) -> None {
+    import asyncio;
     def settle {
         self.commit(anchor);
     }
-    await _off_loop(settle);
+    job = asyncio.ensure_future(_off_loop(settle));
+    try {
+        await asyncio.shield(job);
+    } except asyncio.CancelledError {
+        while not job.done() {
+            try {
+                await asyncio.shield(job);
+            } except asyncio.CancelledError {}
+        }
+        if not job.cancelled() {
+            job.exception();
+        }
+        raise;
+    }
 }
 
 impl Session.aclose -> None {
@@ -1397,29 +1544,47 @@ impl Session._leave_queue -> None {
 }
 
 impl Session.run_request(body: Callable) -> any {
-    attempt = 0;
-    while True {
-        try {
-            result = body();
-            self.commit();
-            return result;
-        } except Exception as e {
-            if (
-                self._store is not None
-                and (isinstance(e, WriteConflict) or _is_serialization_conflict(e))
-                and attempt < MAX_RETRIES
-            ) {
-                attempt += 1;
-                logger.info(
-                    "serialization conflict; re-running request "
-                    f"(attempt {attempt}/{MAX_RETRIES})"
-                );
+    self.unit_enter();
+    try {
+        attempt = 0;
+        while True {
+            try {
+                result = body();
+                self.commit();
+                self.unit_committed();
+
+                self.commit();
+                return result;
+            } except Exception as e {
+                if (
+                    self.has_durable_boundary()
+                    or self._active_units in self._committed_units
+                )
+                    and not isinstance(e, PartialCommitError) {
+                    self.abort();
+                    raise PartialCommitError(
+                        "request failed after durable work; replay is unsafe"
+                    ) from e;
+                }
+                if (
+                    self._store is not None
+                    and (isinstance(e, WriteConflict) or _is_serialization_conflict(e))
+                    and attempt < MAX_RETRIES
+                ) {
+                    attempt += 1;
+                    logger.info(
+                        "serialization conflict; re-running request "
+                        f"(attempt {attempt}/{MAX_RETRIES})"
+                    );
+                    self.abort();
+                    continue;
+                }
                 self.abort();
-                continue;
+                raise;
             }
-            self.abort();
-            raise;
         }
+    } finally {
+        self.unit_exit();
     }
 }
 
@@ -1583,7 +1748,7 @@ impl _settle_written(anchor: Anchor, seen: int) {
 
 
 impl _is_serialization_conflict(e: Exception) -> bool {
-    if isinstance(e, WriteConflict) {
+    if isinstance(e, (WriteConflict, PartialCommitError)) {
         return False;
     }
     seen = 0;
@@ -1597,6 +1762,24 @@ impl _is_serialization_conflict(e: Exception) -> bool {
             }
         }
         cur = c.__cause__ or c.__context__;
+        seen += 1;
+    }
+    return False;
+}
+
+impl _is_ambiguous_commit(e: Exception) -> bool {
+    seen = 0;
+    cur: (BaseException | None) = e;
+    while cur is not None and seen < 8 {
+        if isinstance(cur, (OSError, EOFError, TimeoutError)) {
+            return True;
+        }
+        for arg in getattr(cur, 'args', ()) {
+            if isinstance(arg, dict) and str(arg.get('C', '')).startswith('08') {
+                return True;
+            }
+        }
+        cur = cur.__cause__ or cur.__context__;
         seen += 1;
     }
     return False;
@@ -1680,11 +1863,13 @@ impl Session.new_session(target_path: str) -> Session {
     if self.store is None {
         raise RuntimeError('Cannot create a provider session without a bound store');
     }
-    return Session(
+    child = Session(
         _store=self.store.new_session(),
         base_path=self.base_path,
         target_path=target_path
     );
+    child._durable_boundary = self._durable_boundary;
+    return child;
 }
 
 impl Session.preserve_unresolved_ref(id: UUID) -> bool {
