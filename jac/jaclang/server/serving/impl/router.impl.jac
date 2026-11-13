@@ -93,6 +93,9 @@ impl route_sort_key(route: CompiledRoute) -> tuple[int, int, int, int, str] {
 impl Router.add(endpoint: JEndPoint) {
     route = compile_route(endpoint.path);
     route.endpoint = endpoint;
+    if route.catchall is not None {
+        self.catchalls.add(id(endpoint));
+    }
     method = str(endpoint.method.value)
         if isinstance(endpoint.method, HTTPMethod)
         else str(endpoint.method);
@@ -110,10 +113,15 @@ impl Router.add_ws(endpoint: WSEndPoint) {
 impl Router.clear {
     self.routes = {};
     self.ws_routes = [];
+    self.catchalls = set();
+}
+
+impl Router.is_catchall(endpoint: JEndPoint) -> bool {
+    return id(endpoint) in self.catchalls;
 }
 
 impl Router.resolve(
-    method: str, path: str
+    method: str, path: str, declared_only: bool = False
 ) -> tuple[(JEndPoint | None), dict[(str, str)], list[str]] {
     segments = [
         p
@@ -123,10 +131,16 @@ impl Router.resolve(
     trailing = len(path) > 1 and path.endswith('/');
     lookup = 'GET' if method.upper() == 'HEAD' else method.upper();
     for route in self.routes.get(lookup, []) {
+        if declared_only and route.catchall is not None {
+            continue;
+        }
         params = route.`match(segments, trailing);
         if params is not None and route.endpoint is not None {
             return (route.endpoint, params, []);
         }
+    }
+    if declared_only {
+        return (None, {}, []);
     }
     allowed: list[str] = [];
     for (other_method, bucket) in self.routes.items() {
