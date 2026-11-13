@@ -116,7 +116,14 @@ impl ssl_read_status(ssl: int, bufsize: int) -> tuple[int, int, bytes] {
     if got > 0 {
         return (got, 0, buf[0:got]);
     }
-    return (got, SSL_get_error(ssl, got), b"");
+    err = SSL_get_error(ssl, got);
+    if err == _SSL_ERROR_SSL {
+        reason = int(ERR_peek_error()) & _ERR_REASON_MASK;
+        if reason == _SSL_R_UNEXPECTED_EOF_WHILE_READING {
+            return (0, _SSL_ERROR_ZERO_RETURN, b"");
+        }
+    }
+    return (got, err, b"");
 }
 
 impl ssl_pending(ssl: int) -> int {

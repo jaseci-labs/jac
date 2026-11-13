@@ -27,20 +27,24 @@ impl SSLSocket.sendall(data: bytes) {
     off = 0;
     while off < len(data) {
         chunk = data[off:];
-        written = ssl_write_once(self._ssl, chunk);
-        if written > 0 {
-            off += written;
-            continue;
-        }
-        error = ssl_get_error(self._ssl, written);
-        if error == _SSL_ERROR_WANT_READ or error == _SSL_ERROR_WANT_WRITE {
-            remain = max(0.0, deadline - time.monotonic());
-            if not _tls_wait(self.fileno(), error == _SSL_ERROR_WANT_READ, remain) {
-                raise TimeoutError("TLS write timed out");
+        while True {
+            written = ssl_write_once(self._ssl, chunk);
+            if written > 0 {
+                off += written;
+                break;
             }
-            continue;
+            error = ssl_get_error(self._ssl, written);
+            if error == _SSL_ERROR_WANT_READ or error == _SSL_ERROR_WANT_WRITE {
+                remain = max(0.0, deadline - time.monotonic());
+                if not _tls_wait(
+                    self.fileno(), error == _SSL_ERROR_WANT_READ, remain
+                ) {
+                    raise TimeoutError("TLS write timed out");
+                }
+                continue;
+            }
+            raise SSLError("TLS write failed: " + last_error());
         }
-        raise SSLError("TLS write failed: " + last_error());
     }
 }
 
