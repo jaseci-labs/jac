@@ -10,6 +10,19 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
     return True;
 }
 
+impl on_drain(hook: Callable[[], any]) -> Callable[[], any] {
+    if hook not in DRAIN_HOOKS {
+        DRAIN_HOOKS.append(hook);
+        if len(DRAIN_HOOKS) == 101 {
+            logger.warning(
+                "on_drain: over 100 hooks registered, likely one per request. "
+                "Pass a module-level function, not a lambda."
+            );
+        }
+    }
+    return hook;
+}
+
 impl _start_drain_hooks -> threading.Thread {
     thread = threading.Thread(
         target=_run_drain_hooks, name='jac-drain-hooks', daemon=True

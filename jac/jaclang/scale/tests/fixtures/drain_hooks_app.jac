@@ -3,6 +3,7 @@ file HOOK_MARK names. The last hook outlasts the drain budget the test sets."""
 
 import os;
 import time;
+import from jaclang.server.serving.drain { on_drain }
 
 def _mark(stage: str) {
     with open(os.environ["HOOK_MARK"], "a") as f {
