@@ -2391,6 +2391,10 @@ graph import {
     type runtime.context ++> cli.commands.cli_helpers
         | scale.runtime.provider
         | scale.server.inprocess { ExecutionContext }
+    runtime.convert ++> [
+        data.serializer { ConvertMode, convert, type_shape },
+        server.serving.coerce { ConvertMode, convert },
+    ]
     runtime.debugger ++> cli.commands.execution.debug { debugger as db }
     runtime.exceptions ++> [
         data.store { WriteConflict },
@@ -2451,7 +2455,7 @@ graph import {
             | project.config._walk_table
             | server.serving.model
             | server.settings { fields, is_record },
-        byllm.schema | server.serving.coerce { is_record },
+        byllm.schema { is_record },
         byllm.systemone._record_fields | server.server {
             fields as record_fields,
             is_record
@@ -2699,7 +2703,6 @@ graph import {
         compiler.tests.test_fixed_width_equivalence
             | data.serializer.Serializer._declared_of { SIZED_TYPES },
         data.serializer.Serializer._serialize_value { json_wire_form },
-        data.serializer.Serializer.coerce { json_wire_read },
     ]
     runtime.source_app ++> dist.source.project.export_project { SOURCE_FORMAT }
     runtime.surface ++> compiler.driver.unit_products
@@ -12772,6 +12775,7 @@ graph import runtime {
     ]
     semantic ++> runtime { Info }
     type semantic ++> prepared { Info }
+    sized ++> convert._to_sized { json_wire_read }
     sized as _sized_mod --> builtin.__getattr__;
 }
 

@@ -40,6 +40,12 @@ impl _schema_for_type(
         return {'type': 'boolean'};
     }
     if isinstance(target, type) {
+        if target in _STRING_FORMATS {
+            return {'type': 'string', 'format': _STRING_FORMATS[target]};
+        }
+        if isinstance(target?.__jac_sized__, str) {
+            return {'type': 'number' if issubclass(target, float) else 'integer'};
+        }
         return _object_schema(target, schemas);
     }
     return {};
