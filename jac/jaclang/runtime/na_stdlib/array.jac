@@ -1,5 +1,6 @@
 import struct;
 import from _typename { typename }
+import from io { BytesIO, FileIO }
 
 
 def _arr_itemsize(tc: str) -> int;

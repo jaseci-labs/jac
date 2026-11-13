@@ -492,7 +492,13 @@ impl array.frombytes(data: bytes) {
 }
 
 impl array.tofile(f: any) {
-    f.write(bytes(self._buf));
+    if isinstance(f, BytesIO) {
+        f.write(bytes(self._buf));
+    } elif isinstance(f, FileIO) {
+        f.write(bytes(self._buf));
+    } else {
+        raise TypeError("native array.tofile requires a native binary stream");
+    }
 }
 
 impl array.fromfile(f: any, n: int) {
@@ -500,9 +506,13 @@ impl array.fromfile(f: any, n: int) {
         raise ValueError("negative count");
     }
     need: int = n * self.itemsize;
-    data: any = f.read(need);
-    if not isinstance(data, bytes) {
-        raise TypeError("read() didn't return bytes");
+    data: bytes;
+    if isinstance(f, BytesIO) {
+        data = f.read(need);
+    } elif isinstance(f, FileIO) {
+        data = f.read(need);
+    } else {
+        raise TypeError("native array.fromfile requires a native binary stream");
     }
     self.frombytes(data);
     if len(data) != need {
