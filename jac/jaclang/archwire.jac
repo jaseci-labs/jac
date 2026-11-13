@@ -5635,6 +5635,7 @@ graph import compiler {
             native_unit_prefix
         },
         driver.application | driver.nativecache.NativeUnitRegistry._source_key {
+            effective_default_codespace,
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
