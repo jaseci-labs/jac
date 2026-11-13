@@ -12492,6 +12492,7 @@ graph import project {
     placement ++> [
         kinds.resolve_app_kind { match_pin, pins_muted, validate_pins },
         workspace._pins_of { pins_muted },
+        workspace._workspace_for_path { pins_muted },
     ]
     pyvenv ++> [
         capabilities.ensure_global_capability
