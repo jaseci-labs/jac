@@ -64,6 +64,7 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
+import from unittest { SkipTest }
 import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
@@ -88,9 +89,8 @@ def _na_run(fixture: str) -> tuple[(str, str)] {
         text=True,
         timeout=900
     );
-    assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-800:]
-        if comp.stderr
-        else '(empty)'}";
+    diagnostics = (comp.stderr[-800:] + "\n" + comp.stdout[-800:]).strip();
+    assert comp.returncode == 0 , f"nacompile failed: {diagnostics or '(empty)'}";
     proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
     assert proc.returncode == 0 , f"binary failed: {proc.stderr[-400:]
         if proc.stderr
@@ -116,6 +116,19 @@ def _same_lines(sv_text: str, na_text: str, what: str) {
             idx
         ]!r}";
     }
+}
+
+test "array.fromlist leaves the receiver unchanged after conversion failure" {
+    (na_out, _na_err) = _na_run("array_fromlist_atomic.jac");
+    assert na_out.strip() == "conversion=rejected\nvalues=[10]" , na_out;
+}
+
+test "shrinking a shared anonymous map preserves its backing mapping" {
+    if sys.platform == "darwin" {
+        raise SkipTest("shared anonymous mmap shrink is not available on Darwin");
+    }
+    (na_out, _na_err) = _na_run("mmap_shared_shrink.jac");
+    assert na_out.strip() == "65" , na_out;
 }
 
 test "native os path gaps answer what CPython's os.path answers" {

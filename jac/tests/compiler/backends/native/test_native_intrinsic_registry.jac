@@ -122,9 +122,7 @@ def _probe_source(intr: any) -> str {
         return "def probe(x: int) -> int { " + intr.name + "(); return x + 7; }\n";
     }
     if intr.dispatch in (IntrinsicDispatch.MEM_LOAD, IntrinsicDispatch.MEM_STORE) {
-        spec = intr.result_spec
-            if intr.dispatch == IntrinsicDispatch.MEM_LOAD
-            else intr.param_specs[1];
+        spec = "i" + intr.name.rsplit("_i", 1)[1];
         return (
             RAW_MEM_IMPORTS
             + "def probe(x: int) -> int { p = malloc(8); __mem_store_"
@@ -298,6 +296,27 @@ test "32 bit memory operations preserve adjacent storage and signed values" {
     assert fn(-123) == 0;
     assert fn(2147483647) == 2147483770;
     assert fn(-2147483648) == -2147483525;
+}
+
+test "narrow memory loads sign extend into i64" {
+    (prog, ir_mod) = _compile_src(
+        RAW_MEM_IMPORTS
+            + "def probe8(x: int) -> int { p = malloc(8); __mem_store_i8(p, x); "
+            + "v = int(__mem_load_i8(p)); free(p); return v; }\n"
+            + "def probe16(x: int) -> int { p = malloc(8); __mem_store_i16(p, x); "
+            + "v = int(__mem_load_i16(p)); free(p); return v; }\n"
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+    eng = ir_mod.gen.native_engine;
+    assert eng is not None;
+    fn8 = _get_func(eng, "probe8", ctypes.c_int64, ctypes.c_int64);
+    fn16 = _get_func(eng, "probe16", ctypes.c_int64, ctypes.c_int64);
+    for (value, expected) in [(255, -1), (128, -128), (127, 127), (0, 0)] {
+        assert fn8(value) == expected , f"i8 load of {value}: {fn8(value)}";
+    }
+    for (value, expected) in [(32768, -32768), (65535, -1), (32767, 32767)] {
+        assert fn16(value) == expected , f"i16 load of {value}: {fn16(value)}";
+    }
 }
 
 test "gc-gated intrinsic is a declared no-op outside its gc mode" {
