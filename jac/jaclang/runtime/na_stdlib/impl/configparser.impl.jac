@@ -587,7 +587,18 @@ impl ConfigParser.getfloat(
 impl _strict_float(raw: str) -> float {
     value = raw.strip();
     lowered = value.lower();
-    if lowered in ["inf", "+inf", "-inf", "infinity", "+infinity", "-infinity", "nan", "+nan", "-nan"] {
+    if lowered
+        in [
+            "inf",
+            "+inf",
+            "-inf",
+            "infinity",
+            "+infinity",
+            "-infinity",
+            "nan",
+            "+nan",
+            "-nan"
+        ] {
         return float(value);
     }
     i = 0;
