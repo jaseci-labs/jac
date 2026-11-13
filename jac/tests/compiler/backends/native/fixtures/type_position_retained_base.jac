@@ -6,10 +6,10 @@ can supply it. Waving this through would trade a clear refusal for a class
 that silently loses everything it inherited.
 """
 
-import threading;
+import queue;
 
 
-obj Holder(threading.Event) {
+obj Holder(queue.Queue) {
     has n: int = 3;
 }
 

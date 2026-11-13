@@ -48,6 +48,7 @@ glob FIXTURE = os.path.join(
      ),
      EXPECTED = "7780\n26400000\nshared-4950\nend\n",
      MARK_RE = re.compile(r'store atomic i8 1, \S+ @"?__jac_rc_threaded"?'),
+     PREPARE_CALL_RE = re.compile(r'call void @"?__jac_rc_prepare_threads"?\('),
      SPAWN_RE = re.compile(r'call i32 @"?pthread_create"?\(');
 
 def _compile_ir(gc_mode: str, path: str = FIXTURE, debug: bool = False) -> str {
@@ -96,7 +97,9 @@ test "flow spawns set the flag before pthread_create" {
 test "sequential builds never set the flag" {
     text = _compile_ir("cycles");
     assert SPAWN_RE.search(text) is None , "cycles build must stay sequential";
-    assert MARK_RE.search(text) is None , "no spawn, so RC must stay on the plain path";
+    assert PREPARE_CALL_RE.search(text) is None , (
+        "no spawn, so the thread preparation helper must stay unused"
+    );
 }
 
 test "a C-imported pthread_create sets the flag before the call" {

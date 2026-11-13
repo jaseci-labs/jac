@@ -2,17 +2,17 @@
 
 The bare-import spelling of this module already refuses, pinned in
 `type_position_retained_base.jac`. Naming the base through a `from` import
-changes nothing about what the archetype needs: `Event` has to be there for
+changes nothing about what the archetype needs: `Queue` has to be there for
 `Holder` to mean what it says, and no native unit can supply it.
 
 Lowering this module anyway produced a `Holder` with everything it inherits
 silently missing -- a wrong binary in place of a refusal.
 """
 
-import from threading { Event }
+import from queue { Queue }
 
 
-obj Holder(Event) {
+obj Holder(Queue) {
     has n: int = 3;
 }
 

@@ -5,11 +5,11 @@ compile-time positions must not accept a name a native unit would have to
 call.
 """
 
-import threading;
+import queue;
 
 
 def run -> int {
-    ev = threading.Event();
-    ev.set();
-    return 1;
+    q = queue.Queue();
+    q.put(1);
+    return q.qsize();
 }

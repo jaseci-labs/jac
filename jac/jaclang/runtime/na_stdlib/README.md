@@ -1180,6 +1180,29 @@ native layout records the emitted name separately from its source-level key.
   and Darwin tables only; no `strerror`-style message lookup is exported
   (`os.strerror` stays a compiler intercept).
 
+- **`threading.jac`** (Mechanism F) + **`_threading_native.jac`** (libc FFI
+  floor: `pthread_create`/`pthread_detach`/`pthread_join`, `pthread_self`,
+  the `pthread_mutex_*` family, `malloc`/`free`, `atexit`) -- `Lock`
+  (`acquire`/`release`, `with` blocks, blocking/non-blocking/timeout
+  acquire), `Event` (`set`/`clear`/`is_set`/`wait`), and `Thread`
+  (`start`/`is_alive`/`join`, `daemon`/`name` fields). `release()` on an
+  un-acquired lock raises `RuntimeError`; the lock uses an allocated atomic
+  flag, freed by `drop`. `acquire(False, timeout=x)` raises `ValueError`.
+  SCOPE: `Event.wait`/`Lock.acquire` timeouts are sleep-poll loops. `join`
+  polls `_alive` and then calls `pthread_join`; an `atexit` handler joins
+  non-daemon handles, while daemon threads are detached. Starting the first
+  native thread collects pending cycles and disables cycle collection for the
+  rest of the process, because the cycle collector's root buffer is not
+  thread-safe; cyclic garbage created after that point is retained. A target
+  exception is dropped
+  quietly (no `threading.excepthook`); `join()` on the calling thread is not
+  detected (CPython raises `RuntimeError`); `daemon`/`name` are plain fields
+  with no post-start guard; the default name is `"native-thread"` rather
+  than `"Thread-N"`. `Thread(target, args=..., kwargs=...)`, `run`,
+  `ident`, `RLock`, `Condition`, `Semaphore`, `Barrier`, `current_thread`
+  and the module-level helpers are not provided -- bind arguments in a
+  closure instead.
+
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
 intercepts, reached via the flat `import os`, not bundled here (see
