@@ -155,11 +155,9 @@ with entry {
     print("sigpipe-ign=" + str(getsignal(SIGPIPE) is SIG_IGN));
     try {
         empty_args: list[str] = [];
-        empty_args.append("placeholder");
-        empty_args.pop();
         run(empty_args);
         print("empty-args-missed");
-    } except IndexError {
+    } except ValueError {
         print("empty-args-raised");
     }
 
