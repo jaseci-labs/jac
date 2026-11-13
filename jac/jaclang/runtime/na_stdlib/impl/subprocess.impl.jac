@@ -285,8 +285,12 @@ impl Popen.communicate(
         raise ValueError("Cannot send input after starting communication");
     }
     if self._comm_done {
-        done_out: any = self._render(bytes(self._comm_out)) if self._comm_has_out else None;
-        done_err: any = self._render(bytes(self._comm_err)) if self._comm_has_err else None;
+        done_out: any = self._render(bytes(self._comm_out))
+            if self._comm_has_out
+            else None;
+        done_err: any = self._render(bytes(self._comm_err))
+            if self._comm_has_err
+            else None;
         return (done_out, done_err);
     }
     deadline_ms = _deadline_ms(timeout);
