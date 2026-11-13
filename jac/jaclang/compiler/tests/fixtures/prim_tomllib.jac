@@ -184,7 +184,6 @@ def tomllib_na -> dict[str, any] {
     local_at: datetime = server["local_at"];
     tea: time = server["tea"];
     dob: date = owner["dob"];
-    custom_float: any = loads("value = 1.25", parse_float=parse_float_marker)["value"];
     e1: str = "";
     try {
         loads("a = \"abc");
@@ -252,7 +251,6 @@ def tomllib_na -> dict[str, any] {
         "binval": v["binval"],
         "neg": v["neg"],
         "expf": v["expf"],
-        "custom_float": custom_float,
         "ports_n": len(ports),
         "ports_0": ports[0],
         "ports_2": ports[2],

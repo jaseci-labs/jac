@@ -1212,10 +1212,9 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
   return real `datetime.date` / `datetime.time` / `datetime.datetime` values:
   naive locals stay naive, `Z` maps to `timezone.utc`, and `+hh:mm`/`-hh:mm`
   maps to `timezone(timedelta(...))` exactly like CPython's
-  `match_to_datetime`. `loads` also honors the keyword-only `parse_float`
-  hook (applied to every float spelling incl. `inf`/`nan`, raw matched text
-  passed through; `dict`/`list` returns raise `ValueError`, mirroring
-  `make_safe_parse_float`).
+  `match_to_datetime`. The Python lane honors the keyword-only `parse_float`
+  hook. The native lane raises `NotImplementedError` when the callback is
+  supplied; callback forwarding is not implemented yet.
   Verified against CPython 3.14 by a 180-case battery and a 100,000-case
   differential fuzz (random token soup, seed-doc mutations, exhaustive-ish
   datetime space): zero mismatches in values, types, or error strings.

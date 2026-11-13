@@ -1,8 +1,13 @@
 impl loads(
     s: str, *, parse_float: (Callable[[str], any] | None) = None
 ) -> dict[str, any] {
+    if parse_float is not None {
+        raise NotImplementedError(
+            "native tomllib does not support a parse_float callback yet"
+        );
+    }
     src: str = s.replace("\r\n", "\n");
-    p: _Parser = _Parser(src, parse_float);
+    p: _Parser = _Parser(src);
     return p._run();
 }
 

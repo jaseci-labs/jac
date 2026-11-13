@@ -189,6 +189,11 @@ test "native ConfigParser rejects option names that cannot round-trip" {
         == "valid bracket option round-trips\ninvalid option name rejected\nvalue-completed header rejected\ncarriage returns preserved" , na_out;
 }
 
+test "native tomllib reports unsupported parse_float callbacks" {
+    (na_out, _na_err) = _na_run("tomllib_parse_float_unsupported.jac");
+    assert na_out.strip() == "native parse_float callback unsupported" , na_out;
+}
+
 test "native ConfigParser getfloat validates and accepts underscores like CPython" {
     (sv_out, _sv_err) = _sv_run("configparser_float_probe.jac");
     (na_out, _na_err) = _na_run("configparser_float_probe.jac");
