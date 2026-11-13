@@ -6273,16 +6273,19 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         if earlier.guard is not None {
             continue;
         }
-        if self._pattern_is_structural(earlier.pattern) {
-            after_structural = True;
-            continue;
+        top = earlier.pattern;
+        if isinstance(top, MatchAs) and top.pattern is not None {
+            top = top.pattern;
         }
-        if not self._pattern_covers_class(earlier.pattern) {
-            continue;
-        }
-        matched = self._get_type_from_match_pattern(earlier.pattern);
-        if matched is not None {
-            subject = self.exclude_type_from_union(subject, matched);
+        for alt in (top.patterns if isinstance(top, MatchOr) else [top]) {
+            if self._pattern_is_structural(alt) {
+                after_structural = True;
+            } elif self._pattern_covers_class(alt) {
+                matched = self._get_type_from_match_pattern(alt);
+                if matched is not None {
+                    subject = self.exclude_type_from_union(subject, matched);
+                }
+            }
         }
     }
     bound: (TypeBase | None) = subject;
@@ -6297,7 +6300,11 @@ impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | Non
         return bound;
     }
     members = bound.types if isinstance(bound, UnionType) and bound.types else [bound];
-    kept = [m for m in members if not self._may_match_structural(m)];
+    kept = [
+        m
+        for m in members
+        if not self._may_match_structural(m)
+    ];
     if not kept {
         return None;
     }

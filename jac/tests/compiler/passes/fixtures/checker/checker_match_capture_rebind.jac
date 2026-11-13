@@ -31,7 +31,7 @@ def checked(v: str | int, w: float | int, flag: bool, xs: list[int] | str | int)
     }
 }
 
-def unchecked(v: str | int | None, xs: list[int] | int) {
+def unchecked(v: str | int | None, xs: list[int] | int, u: str | int) {
     n = 0;
     match v {
         case None:
@@ -47,6 +47,14 @@ def unchecked(v: str | int | None, xs: list[int] | int) {
     match xs {
         case [ * items ]:
             print(items);
+
+        case n:
+            print(n);
+
+    }
+    match u {
+        case [] | str():
+            print(u);
 
         case n:
             print(n);
