@@ -92,7 +92,10 @@ with entry {
     print(json.dumps(label, `default=encode_label));
     custom_enc = json.JSONEncoder(`default=encode_label);
     print(custom_enc.encode(Label(value="encoder")));
-    print(json.dumps({"keep": 1, (2, 3): "skip"}, skipkeys=True));
+    skipkeys_input: dict[any, any] = {};
+    skipkeys_input["keep"] = 1;
+    skipkeys_input[(2, 3)] = "skip";
+    print(json.dumps(skipkeys_input, skipkeys=True));
 }
 
 glob cycle: list[any] = [];
