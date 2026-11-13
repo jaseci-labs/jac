@@ -99,14 +99,24 @@ def _stray_caches(proj: Path) -> list[str] {
 test "a warm client build over a real layout is served from the cache" {
     import from jaclang.server.hmr { HotReloader }
     import from jaclang.server.watcher { JacFileWatcher }
+    import from jaclang.client.build_stages { record_stages }
     proj = _project();
 
-    cold = _build(proj);
+    with record_stages() as stages {
+        cold = _build(proj);
+    }
     for name in ["main.jac", "Navbar.jac", "button.jac", "index.jac", "about.jac"] {
         assert name in cold , f"the cold build must compile {name}, saw {cold}";
     }
+    assert [name for (name, _) in stages]
+        == ["Entry modules emitted", "Pages compiled"] , (
+        f"a recorded build must time each compile stage, saw {stages}"
+    );
     warm = _build(proj);
     assert warm == [] , f"the warm build must be served from the cache, compiled {warm}";
+    assert len(stages) == 2 , (
+        f"a build nobody is recording must report no stage, saw {stages}"
+    );
 
     pinned = project_scope_is_pinned();
     saved = get_config();
