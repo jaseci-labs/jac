@@ -20,6 +20,8 @@ def find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None)
 
 def find_jac_project_root(start: (str | None) = None) -> (str | None);
 
+def project_root_chain(start: str) -> list[str];
+
 glob _mounts_by_root: dict[str, tuple[str, str]] = {},
      _self_mounted: set[str] = set(),
      MOUNTS_DIR_NAME: str = 'packages';
