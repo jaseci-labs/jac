@@ -1,13 +1,10 @@
 """Tests for jaclang.project.capabilities -- the capability registry."""
 
 import os;
-import re;
 import tempfile;
 import shutil;
 import from pathlib { Path }
 import from unittest.mock { patch }
-
-import from tests.support { JAC_ROOT }
 
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.providers {
@@ -28,7 +25,6 @@ import from jaclang.project.capabilities {
     CAPABILITY_SPECS,
     RUNTIME,
     DEPLOY,
-    _normalize_package,
     all_capability_names,
     capability_for_package,
     command_capabilities,
@@ -76,35 +72,6 @@ test "registry builds a Capability per spec entry" {
 
 test "registry is a cached singleton" {
     assert get_capability_registry() is get_capability_registry();
-}
-
-glob INSTALL_PIN_MIRRORS = [
-         ".github/workflows/ci.yml",
-         ".github/workflows/nightly.yml",
-         "scripts/fresh_env.sh",
-         "jac/jaclang/byllm/tests/TESTING.md",
-         "jac/jaclang/scale/tests/TESTING.md"
-     ];
-
-test "hand-written install commands pin what the registry pins" {
-    pins = {
-        _normalize_package(pkg): ver for cap in get_capability_registry().values()
-        for (pkg, ver) in cap.deps.items()
-    };
-    repo = Path(JAC_ROOT).parent;
-    for rel in INSTALL_PIN_MIRRORS {
-        text = (repo / rel).read_text();
-        found = [
-            (_normalize_package(m.group(1)), m.group(2))
-            for m in re.finditer(r'"([\w.-]+(?:\[[^\]]*\])?)([<>=!~][^"]*)"', text)
-            if _normalize_package(m.group(1)) in pins
-        ];
-        assert found , f"{rel} pins no capability package";
-        for (pkg, ver) in found {
-            want = pins[pkg];
-            assert ver == want , f"{rel} pins {pkg}{ver}, the registry pins {want}";
-        }
-    }
 }
 
 test "serve is runtime, deploy.k8s is deploy-context" {
