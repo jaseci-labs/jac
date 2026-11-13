@@ -56,7 +56,9 @@ walker OwnershipCheckPass(CompilerPass) {
         nogc_prov: (str | None) = None,
         receiver_modes: dict[int, OwnershipKind] = {},
         receiver_probe: set[int] = set(),
-        arch_view_syms: set[SymId] = set();
+        arch_view_syms: set[SymId] = set(),
+        infer_owner: dict[int, (UniNode | None)] = {},
+        infer_tag: dict[int, (UniNode | None)] = {};
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
@@ -134,6 +136,10 @@ walker OwnershipCheckPass(CompilerPass) {
     def _stamp_managed_borrows -> None;
     def _stamp_inferred_borrows -> None;
     def _infer_nodes_of(ab: Ability) -> list[UniNode];
+    def _infer_above(
+        nd: UniNode, typ: type, memo: dict[int, (UniNode | None)], decl: bool
+    ) -> (UniNode | None);
+
     def _infer_is_generator(nds: list[UniNode]) -> bool;
     def _infer_plain_type(t: (TypeBase | None)) -> bool;
     def _infer_expr_plain(e: object) -> bool;
