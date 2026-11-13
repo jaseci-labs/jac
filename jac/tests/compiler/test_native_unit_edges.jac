@@ -112,20 +112,19 @@ test "a unit reference to an installed package resolves through the import path"
         assert resolve_native_unit_ref("edgepkg/unit.jac") == target;
         assert native_unit_identity(target) == "edgepkg/unit.jac";
 
-    scoped = os.path.join(site, "checkout-scoped");
-    os.makedirs(scoped);
-    with open(os.path.join(scoped, "jac.toml"), "w") as handle {
-        handle.write('[project]\nname = "acme/math"\n');
-    }
-    scoped_target = os.path.join(scoped, "unit.jac");
-    with open(scoped_target, "w") as handle {
-        handle.write("glob y = 1;\n");
-    }
-    assert native_unit_identity(scoped_target) == "acme/math/unit.jac";
-    assert resolve_native_unit_ref("acme/math/unit.jac") == scoped_target;
-    assert resolve_native_unit_ref(
-        "acme/math/unit.jac", scoped_target
-    ) == scoped_target;
+        scoped = os.path.join(site, "checkout-scoped");
+        os.makedirs(scoped);
+        with open(os.path.join(scoped, "jac.toml"), "w") as handle {
+            handle.write('[project]\nname = "acme/math"\n');
+        }
+        scoped_target = os.path.join(scoped, "unit.jac");
+        with open(scoped_target, "w") as handle {
+            handle.write("glob y = 1;\n");
+        }
+        assert native_unit_identity(scoped_target) == "acme/math/unit.jac";
+        assert resolve_native_unit_ref("acme/math/unit.jac") == scoped_target;
+        assert resolve_native_unit_ref("acme/math/unit.jac", scoped_target)
+            == scoped_target;
     } finally {
         sys.path.remove(site);
     }

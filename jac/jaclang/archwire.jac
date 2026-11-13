@@ -5628,6 +5628,10 @@ graph import compiler {
             native_test_symbol,
             native_unit_prefix
         },
+        driver.application | driver.nativecache.NativeUnitRegistry._source_key {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        },
         driver.boundary_classify._default_codespace_for { effective_default_codespace },
         driver.boundary_classify.import_binds_client_native
             | driver.session_compile.drop_native_bindings {
@@ -5659,16 +5663,6 @@ graph import compiler {
             is_native_by_location
         },
         driver.jir { is_compiler_source_path, is_package_keyed_path },
-        driver.native_iface.resolve_native_unit_ref { _native_unit_root_name },
-        driver.native_iface._named_project_file {
-            native_unit_root,
-            _native_unit_root_name
-        },
-        driver.native_iface._project_file { _native_unit_root_name },
-        driver.application {
-            get_effective_default_codespace_override,
-            set_effective_default_codespace
-        },
         driver.native_iface {
             NATIVE_ABI_VERSION,
             NativeEnumLayout,
@@ -5680,10 +5674,12 @@ graph import compiler {
             native_unit_identity,
             native_unit_root
         },
-        driver.nativecache.NativeUnitRegistry._source_key {
-            get_effective_default_codespace_override,
-            set_effective_default_codespace
+        driver.native_iface._named_project_file {
+            _native_unit_root_name,
+            native_unit_root
         },
+        driver.native_iface._project_file { _native_unit_root_name },
+        driver.native_iface.resolve_native_unit_ref { _native_unit_root_name },
         driver.program.JacProgram.declared_codespace { is_client_by_location },
         driver.program.JacProgram.init { forget_real_paths },
         driver.session_compile.compile_in_session {
@@ -9218,7 +9214,6 @@ graph import compiler {
     }
     types.stubcat.resolver ++> driver.ifacecache { CatalogResolver }
     types.stubcat.writer ++> [
-        types.stubcat.build._build_catalog_inner { CatalogWriter },
         driver.ifacecache.IfaceRegistry._encode_iface {
             IncoherentInterface,
             PackagePathMapper
@@ -11972,7 +11967,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        build._build_catalog_inner { CatalogWriter },
+    ]
 }
 
 graph import data {
