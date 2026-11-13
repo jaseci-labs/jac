@@ -186,6 +186,13 @@ test "native ConfigParser rejects option names that cannot round-trip" {
         == "valid bracket option round-trips\ninvalid option name rejected\nvalue-completed header rejected" , na_out;
 }
 
+test "native ConfigParser getfloat validates and accepts underscores like CPython" {
+    (sv_out, _sv_err) = _sv_run("configparser_float_probe.jac");
+    (na_out, _na_err) = _na_run("configparser_float_probe.jac");
+    _same_lines(sv_out, na_out, "configparser getfloat");
+    assert na_out.strip() == "valid=1000.5\ninvalid=rejected" , na_out;
+}
+
 test "a program's own Token lives beside the contextvars shim's token" {
     py_out = python_run(os.path.join(FIXTURES, "contextvars_own_token.jac"));
     (na_out, _na_err) = _na_run("contextvars_own_token.jac");

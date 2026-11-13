@@ -581,7 +581,72 @@ impl ConfigParser.getfloat(
         }
         return fallback;
     }
-    return float(v);
+    return _strict_float(v);
+}
+
+impl _strict_float(raw: str) -> float {
+    value = raw.strip();
+    lowered = value.lower();
+    if lowered in ["inf", "+inf", "-inf", "infinity", "+infinity", "-infinity", "nan", "+nan", "-nan"] {
+        return float(value);
+    }
+    i = 0;
+    n = len(value);
+    while i < n {
+        if value[i] == "_" {
+            if (
+                i == 0
+                or i + 1 >= n
+                or value[i - 1] < "0"
+                or value[i - 1] > "9"
+                or value[i + 1] < "0"
+                or value[i + 1] > "9"
+            ) {
+                raise ValueError(f"could not convert string to float: {raw!r}");
+            }
+        }
+        i += 1;
+    }
+    value = value.replace("_", "");
+    i = 0;
+    n = len(value);
+    if i < n and value[i] in ["+", "-"] {
+        i += 1;
+    }
+    before = 0;
+    while i < n and value[i] >= "0" and value[i] <= "9" {
+        before += 1;
+        i += 1;
+    }
+    after = 0;
+    if i < n and value[i] == "." {
+        i += 1;
+        while i < n and value[i] >= "0" and value[i] <= "9" {
+            after += 1;
+            i += 1;
+        }
+    }
+    if before == 0 and after == 0 {
+        raise ValueError(f"could not convert string to float: {raw!r}");
+    }
+    if i < n and value[i] in ["e", "E"] {
+        i += 1;
+        if i < n and value[i] in ["+", "-"] {
+            i += 1;
+        }
+        exponent_digits = 0;
+        while i < n and value[i] >= "0" and value[i] <= "9" {
+            exponent_digits += 1;
+            i += 1;
+        }
+        if exponent_digits == 0 {
+            raise ValueError(f"could not convert string to float: {raw!r}");
+        }
+    }
+    if i != n {
+        raise ValueError(f"could not convert string to float: {raw!r}");
+    }
+    return float(value);
 }
 
 

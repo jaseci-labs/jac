@@ -20,6 +20,7 @@ def _is_ws(s: str, at: int) -> bool;
 
 
 def _starts_at(s: str, sub: str, at: int) -> bool;
+def _strict_float(raw: str) -> float;
 
 
 def _find_from(s: str, sub: str, start: int) -> int;
