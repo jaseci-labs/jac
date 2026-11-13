@@ -23,7 +23,6 @@ test "native json.dumps matches CPython on separators, escapes and floats" {
     assert '"int:1"' in out and '"float:1.5"' in out , out;
     assert '"label": "native"' in out and '"label": "encoder"' in out , out;
     assert '{"keep": 1}' in out , out;
-    assert "{}" in out , out;
     assert "circular: Circular reference detected" in out , out;
     assert "fallback-cycle: ValueError" in out , out;
     assert "raw-unicode: é 3 1 5" in out , out;

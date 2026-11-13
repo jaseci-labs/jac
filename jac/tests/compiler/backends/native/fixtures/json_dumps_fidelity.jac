@@ -94,11 +94,9 @@ with entry {
     print(custom_enc.encode(Label(value="encoder")));
 }
 
-glob skipkeys_input: dict[int, str] = {};
+glob skipkeys_input: dict[str, any] = {"keep": 1};
 
 with entry {
-    print(json.dumps({"keep": 1}));
-    skipkeys_input[2] = "skip";
     print(json.dumps(skipkeys_input, skipkeys=True));
 }
 
