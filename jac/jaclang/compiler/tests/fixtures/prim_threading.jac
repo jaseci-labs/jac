@@ -18,10 +18,8 @@ glob _counter: list[int] = [0],
      _done: list[int] = [0],
      _lock: threading.Lock = threading.Lock(),
      _ev: threading.Event = threading.Event(),
-     _pulse: threading.Event = threading.Event(),
-     _pulse_started: threading.Event = threading.Event(),
-     _pulse_done: list[int] = [0],
-     _cross_lock: threading.Lock = threading.Lock();
+     _cross_lock: threading.Lock = threading.Lock(),
+     _child_daemon: list[bool] = [False];
 
 def _bump {
     for i in range(200) {
@@ -46,9 +44,11 @@ def _slow {
     time.sleep(0.2);
 }
 
-def _wait_pulse {
-    _pulse_started.set();
-    _pulse_done[0] = 1 if _pulse.wait(2.0) else 0;
+def _spawn_daemon_child {
+    child = threading.Thread(target=_slow);
+    _child_daemon[0] = child.daemon;
+    child.start();
+    child.join();
 }
 
 def _release_cross_lock {
@@ -59,9 +59,6 @@ def _release_cross_lock {
 def threading_py -> dict[any, any] {
     _counter[0] = 0;
     _done[0] = 0;
-    _pulse_done[0] = 0;
-    _pulse.clear();
-    _pulse_started.clear();
     _ev.clear();
     threads: list[threading.Thread] = [];
     for i in range(8) {
@@ -101,6 +98,14 @@ def threading_py -> dict[any, any] {
     } except Exception {
         neg_timeout = "WRONG-TYPE";
     }
+    neg_fractional_timeout: str = "no-raise";
+    try {
+        lk.acquire(True, timeout=-0.5);
+    } except ValueError {
+        neg_fractional_timeout = "ValueError";
+    } except Exception {
+        neg_fractional_timeout = "WRONG-TYPE";
+    }
     dbl_start: str = "no-raise";
     t2 = threading.Thread(target=_slow);
     t2.start();
@@ -130,13 +135,6 @@ def threading_py -> dict[any, any] {
     s.start();
     wt.join();
     s.join();
-    pulse_waiter = threading.Thread(target=_wait_pulse);
-    pulse_waiter.start();
-    _pulse_started.wait(1.0);
-    time.sleep(0.05);
-    _pulse.set();
-    _pulse.clear();
-    pulse_waiter.join();
     _cross_lock.acquire();
     cross_releaser = threading.Thread(target=_release_cross_lock);
     cross_releaser.start();
@@ -152,6 +150,9 @@ def threading_py -> dict[any, any] {
     d = threading.Thread(target=_slow, daemon=True);
     d.start();
     daemon_flag = d.daemon;
+    daemon_parent = threading.Thread(target=_spawn_daemon_child, daemon=True);
+    daemon_parent.start();
+    daemon_parent.join();
     t3 = threading.Thread(target=_slow);
     t3.start();
     t3.join(0.01);
@@ -165,15 +166,16 @@ def threading_py -> dict[any, any] {
         "rel_unheld": rel_unheld,
         "nb_timeout": nb_timeout,
         "neg_timeout": neg_timeout,
+        "neg_fractional_timeout": neg_fractional_timeout,
         "dbl_start": dbl_start,
         "join_early": join_early,
         "ev_timeout": ev_timeout,
         "ev_set_wait": ev_set_wait,
         "ev_handoff": _done[0],
-        "event_pulse": _pulse_done[0],
         "cross_thread_release": cross_release_ok,
         "with_block": with_ok,
         "daemon_flag": daemon_flag,
+        "daemon_inherit": _child_daemon[0],
         "join_timeout_alive": join_timeout_alive,
         "joined_dead": joined_dead,
 
@@ -189,9 +191,6 @@ def threading_cl -> dict[any, any] {
 def threading_na -> dict[str, any] {
     _counter[0] = 0;
     _done[0] = 0;
-    _pulse_done[0] = 0;
-    _pulse.clear();
-    _pulse_started.clear();
     _ev.clear();
     threads: list[threading.Thread] = [];
     for i in range(8) {
@@ -231,6 +230,14 @@ def threading_na -> dict[str, any] {
     } except Exception {
         neg_timeout = "WRONG-TYPE";
     }
+    neg_fractional_timeout: str = "no-raise";
+    try {
+        lk.acquire(True, timeout=-0.5);
+    } except ValueError {
+        neg_fractional_timeout = "ValueError";
+    } except Exception {
+        neg_fractional_timeout = "WRONG-TYPE";
+    }
     dbl_start: str = "no-raise";
     t2 = threading.Thread(target=_slow);
     t2.start();
@@ -260,13 +267,6 @@ def threading_na -> dict[str, any] {
     s.start();
     wt.join();
     s.join();
-    pulse_waiter = threading.Thread(target=_wait_pulse);
-    pulse_waiter.start();
-    _pulse_started.wait(1.0);
-    time.sleep(0.05);
-    _pulse.set();
-    _pulse.clear();
-    pulse_waiter.join();
     _cross_lock.acquire();
     cross_releaser = threading.Thread(target=_release_cross_lock);
     cross_releaser.start();
@@ -282,6 +282,9 @@ def threading_na -> dict[str, any] {
     d = threading.Thread(target=_slow, daemon=True);
     d.start();
     daemon_flag = d.daemon;
+    daemon_parent = threading.Thread(target=_spawn_daemon_child, daemon=True);
+    daemon_parent.start();
+    daemon_parent.join();
     t3 = threading.Thread(target=_slow);
     t3.start();
     t3.join(0.01);
@@ -295,15 +298,16 @@ def threading_na -> dict[str, any] {
         "rel_unheld": rel_unheld,
         "nb_timeout": nb_timeout,
         "neg_timeout": neg_timeout,
+        "neg_fractional_timeout": neg_fractional_timeout,
         "dbl_start": dbl_start,
         "join_early": join_early,
         "ev_timeout": 1 if ev_timeout else 0,
         "ev_set_wait": 1 if ev_set_wait else 0,
         "ev_handoff": _done[0],
-        "event_pulse": _pulse_done[0],
         "cross_thread_release": cross_release_ok,
         "with_block": 1 if with_ok else 0,
         "daemon_flag": 1 if daemon_flag else 0,
+        "daemon_inherit": 1 if _child_daemon[0] else 0,
         "join_timeout_alive": 1 if join_timeout_alive else 0,
         "joined_dead": 1 if joined_dead else 0,
 

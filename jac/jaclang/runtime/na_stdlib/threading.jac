@@ -6,7 +6,8 @@ import from _threading_native {
     th_spawn,
     th_detach,
     th_join,
-    th_at_exit
+    th_at_exit,
+    th_self
 }
 
 obj:pub Lock {
@@ -57,7 +58,8 @@ glob _TASKS: dict[int, Thread] = {},
      _JOINABLE: dict[int, int] = {},
      _TASKS_LOCK: Lock = Lock(),
      _NEXT_TASK_ID: int = 1,
-     _EXIT_HOOK_SET: bool = False;
+     _EXIT_HOOK_SET: bool = False,
+     _THREAD_DAEMON: dict[int, bool] = {};
 
 def _thread_entry(task_id: int) -> int;
 

@@ -3,6 +3,7 @@ import from c {
 }
 import from c { def pthread_detach(thread: int) -> i32;  }
 import from c { def pthread_join(thread: int, retval: int) -> i32;  }
+import from c { def pthread_self -> u64;  }
 import from c { def malloc(size: u64) -> int;  }
 import from c { def free(pointer: int);  }
 import from c { def atexit(handler: int) -> i32;  }
@@ -23,3 +24,6 @@ def:pub th_join(handle: int) -> int;
 
 
 def:pub th_at_exit(handler: int) -> int;
+
+
+def:pub th_self -> int;

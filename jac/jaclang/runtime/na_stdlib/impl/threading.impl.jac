@@ -103,7 +103,14 @@ impl Thread.init(
     target: Callable[[], any], daemon: (bool | None) = None, name: (str | None) = None,
 ) {
     self.target = target;
-    self.daemon = daemon if daemon is not None else False;
+    if daemon is not None {
+        self.daemon = daemon;
+    } else {
+        native_id = th_self();
+        _TASKS_LOCK.acquire();
+        self.daemon = _THREAD_DAEMON.get(native_id, False);
+        _TASKS_LOCK.release();
+    }
     self.name = name if name is not None else "native-thread";
 }
 
@@ -174,10 +181,15 @@ impl _thread_entry(task_id: int) -> int {
     if task is None {
         return 0;
     }
+    native_id = th_self();
+    _TASKS_LOCK.acquire();
+    _THREAD_DAEMON[native_id] = task.daemon;
+    _TASKS_LOCK.release();
     try {
         task.target();
     } except BaseException {} finally {
         _TASKS_LOCK.acquire();
+        _THREAD_DAEMON.pop(native_id, None);
         task._alive = False;
         _TASKS_LOCK.release();
     }

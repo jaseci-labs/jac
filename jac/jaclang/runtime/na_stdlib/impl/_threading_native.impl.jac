@@ -34,3 +34,8 @@ impl th_join(handle: int) -> int {
 impl th_at_exit(handler: int) -> int {
     return atexit(handler);
 }
+
+
+impl th_self -> int {
+    return int(pthread_self());
+}
