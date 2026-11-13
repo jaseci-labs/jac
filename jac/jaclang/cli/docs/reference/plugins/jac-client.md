@@ -2269,6 +2269,11 @@ def:pub CustomInstallUI() -> JsxElement {
 
 The client runtime automatically caches responses from reader endpoints and invalidates caches when writer endpoints are called. This uses compiler-provided `endpoint_effects` metadata -- no manual cache annotations or `jacInvalidate()` calls needed.
 
+Explicit `jaclang.lib.effects.effects` declarations keep their canonical
+identity when imported through a cached compiler interface, including an
+aliased import. Warming the compilation cache does not change whether those
+declarations classify an endpoint as a reader or writer.
+
 **How it works:**
 
 1. The compiler classifies each walker/function endpoint as a **reader** (no side effects) or **writer** (modifies state)
