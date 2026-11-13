@@ -5850,8 +5850,6 @@ impl NativeBuiltinEmitter.emit_hasattr(
         }
         for method_name in layout.method_index {
             if method_name.endswith(".getter") {
-                # hasattr executes descriptors and observes AttributeError.
-                # A name-only check cannot preserve that behavior.
                 return None;
             } elif not method_name.endswith(".setter") {
                 methods[method_name] = 0;
