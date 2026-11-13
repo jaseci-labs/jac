@@ -120,6 +120,20 @@ impl find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
+impl project_root_chain(start: str) -> list[str] {
+    chain: list[str] = [];
+    cur = find_jac_project_root(start);
+    while cur and cur not in chain {
+        chain.append(cur);
+        parent = os.path.dirname(cur);
+        if parent == cur {
+            break;
+        }
+        cur = find_jac_project_root(parent);
+    }
+    return chain;
+}
+
 impl is_scoped_package_name(name: str) -> bool {
     parts = (name or '').split('/');
     if len(parts) != 2 {
