@@ -48,6 +48,7 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def handle_health -> Response;
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
+    async def aggregate_schedules(request: Request) -> Response | None;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;
@@ -83,7 +84,10 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     async def handle_openapi -> Response;
     def handle_docs -> Response;
     def has_client_bundle -> bool;
-    def build_forward_headers(request: Request) -> dict[str, str];
+    def build_forward_headers(
+        request: Request, identity: bool = False
+    ) -> dict[str, str];
+
     def static_file(
         request: Request, target: Path, cache_control: str = "no-cache"
     ) -> Response;

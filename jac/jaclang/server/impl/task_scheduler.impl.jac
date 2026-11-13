@@ -707,6 +707,9 @@ impl Scheduler._report(outcome: RunOutcome) -> None {
             );
         }
     }
+    if outcome.status != "skipped" {
+        self._remember(outcome);
+    }
     for (name, listener) in list(self._listeners.items()) {
         try {
             listener(outcome);
@@ -714,4 +717,83 @@ impl Scheduler._report(outcome: RunOutcome) -> None {
             logger.warning(f"run listener '{name}' failed on {outcome.task}: {e}");
         }
     }
+}
+
+impl Scheduler._last_key(name: str) -> str {
+    return f"sched-last:{self.namespace}:{name}";
+}
+
+impl Scheduler._remember(outcome: RunOutcome) -> None {
+    last: dict[str, any] = {
+        "tick": outcome.tick.isoformat(),
+        "worker": outcome.worker,
+        "status": outcome.status,
+        "duration_ms": round(outcome.duration * 1000, 1),
+        "error": outcome.error,
+        "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    };
+    self._last[outcome.task] = last;
+    if self.record is None {
+        return;
+    }
+    record_fn: any = self.record;
+    key = self._last_key(outcome.task);
+    try {
+        record_fn(key, json.dumps(last));
+    } except Exception as e {
+        if key not in self._failing_claims {
+            self._failing_claims.add(key);
+            logger.warning(
+                f"could not record the last run of '{outcome.task}': {e}; "
+                "listings show this worker's own runs until a record succeeds"
+            );
+        }
+        return;
+    }
+    if key in self._failing_claims {
+        self._failing_claims.discard(key);
+        logger.info(f"last-run records for '{outcome.task}' are succeeding again");
+    }
+}
+
+impl Scheduler.last_run_of(name: str) -> (dict[str, any] | None) {
+    key = self._last_key(name);
+    if self.recall is not None and key not in self._failing_claims {
+        recall_fn: any = self.recall;
+        read_key = f"{key}#read";
+        try {
+            raw = recall_fn(key);
+            answer = json.loads(raw) if raw else None;
+            if read_key in self._failing_claims {
+                self._failing_claims.discard(read_key);
+                logger.info(f"last-run reads for '{name}' are succeeding again");
+            }
+            return answer;
+        } except Exception as e {
+            if read_key not in self._failing_claims {
+                self._failing_claims.add(read_key);
+                logger.warning(
+                    f"could not read the last run of '{name}': {e}; "
+                    "showing this worker's own last run until a read succeeds"
+                );
+            }
+        }
+    }
+    return self._last.get(name);
+}
+
+impl Scheduler.schedules -> list[dict[str, any]] {
+    return [
+        {
+            "name": task.name,
+            "kind": "walker" if task.is_walker else "function",
+            "interval": task.spec.interval,
+            "cron": task.spec.cron,
+            "date": task.spec.date,
+            "next_run": task.next_run.isoformat()
+                if task.next_run is not None
+                else None,
+            "last_run": self.last_run_of(task.name)
+        } for task in self._tasks
+    ];
 }

@@ -47,7 +47,7 @@ obj EventsExtension(ServerExtension) {
 }
 
 
-obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
+obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerSchedules) {
     def validate(server: JacAPIServer) -> list[str];
     def register(server: JacAPIServer) -> None;
 }
