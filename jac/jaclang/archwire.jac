@@ -2063,6 +2063,9 @@ graph import {
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module
         },
+        compiler.types.type_evaluator.TypeEvaluator._climbs_above_project {
+            project_root_chain
+        },
         compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             named_exactly_any
         },
@@ -5604,6 +5607,9 @@ graph import compiler {
             native_unit_identity,
             native_unit_spelling
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {
+            bundled_stdlib_module_of
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
             native_symbol_name,
             native_unit_spelling
@@ -6277,6 +6283,7 @@ graph import compiler {
             E1122,
             E1123,
             E1125,
+            E2001,
             E2018,
             E2027,
             E2055,
@@ -6343,6 +6350,7 @@ graph import compiler {
             E1161,
             E1162,
             E1163,
+            E1164,
             E2015,
             W1036,
             W1037,
@@ -7754,7 +7762,8 @@ graph import compiler {
             UniNode,
             UniScopeNode,
             WhileStmt,
-            in_type_position
+            in_type_position,
+            names_except_type
         },
         passes.static_analysis_pass.StaticAnalysisPass._check_undefined_names {
             JsxElementName
@@ -8269,9 +8278,12 @@ graph import compiler {
             ParamVar
         },
     ]
-    frontend.unitree --> types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
-        in_type_position
-    }
+    frontend.unitree --> [
+        types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
+            in_type_position
+        },
+        types.type_evaluator.TypeEvaluator.get_type_of_expression { names_except_type },
+    ]
     frontend.unitree as uni ++> backends.es.backends.react
         | backends.es.backends.solid
         | backends.es.esast_gen_pass
@@ -9378,9 +9390,11 @@ graph import compiler {
         passes.type_checker_pass {
             AnyType,
             ClassType,
+            EnumMemberType,
             FunctionType,
             ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -11730,7 +11744,9 @@ graph import compiler.types {
             AnyType,
             ClassType,
             FunctionType,
+            ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -12472,6 +12488,7 @@ graph import project {
         compiler_host.package_name_of { is_scoped_package_name },
         config.find_project_root { find_project_root as _find_project_root },
         package_scope { MOUNTS_DIR_NAME, is_scoped_package_name },
+        workspace._chain_stamp { project_root_chain },
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [

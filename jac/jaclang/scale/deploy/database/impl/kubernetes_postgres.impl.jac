@@ -302,8 +302,7 @@ impl KubernetesPostgresProvider.deploy(config: dict[str, any] = {}) -> dict[str,
         'metadata': {'name': n['service'], 'labels': {'managed': 'jac-scale'}},
         'spec': {
             'selector': {'app': n['name']},
-            'ports': [{'port': PG_PORT, 'targetPort': PG_PORT}],
-            'clusterIP': 'None'
+            'ports': [{'port': PG_PORT, 'targetPort': PG_PORT}]
         }
     };
     self.connection_string = url;
