@@ -923,7 +923,7 @@ impl IfaceRegistry._persist_in_context(
             sections[SEC_INTEROP] = json.dumps(interop_dict).encode("utf-8");
         } except Exception {}
     }
-    if options.no_cgen {
+    if options.no_cgen or options.retain_interfaces {
         profiles = self._existing_profiles(resolved);
         errors: list[dict[str, any]] = [];
         for alert in self.prog.errors_had[err_start:] {
