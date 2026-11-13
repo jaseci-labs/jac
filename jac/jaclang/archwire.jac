@@ -13758,7 +13758,10 @@ graph import scale {
             PSS_SOURCE_LABEL,
             PSS_WARN_LABEL,
             default_pss_labels,
-            privileged_pss_labels
+            job_finished,
+            pod_spec_escapes_baseline,
+            privileged_pss_labels,
+            released_pss_labels
         },
     ]
     deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity
@@ -14845,8 +14848,11 @@ graph import scale.deploy.target.kubernetes {
             delete_namespace,
             ensure_namespace_exists,
             get_cluster_provider,
+            job_finished,
             namespace_is_owned,
+            pod_spec_escapes_baseline,
             privileged_pss_labels,
+            released_pss_labels,
             resolve_minted_secret
         },
         target.KubernetesTarget._apply_or_replace_pvc { wait_until_deleted },
