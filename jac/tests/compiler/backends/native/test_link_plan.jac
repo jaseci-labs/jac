@@ -1248,6 +1248,34 @@ test "the JIT reuses the optimized image of an unchanged link plan" {
     }
 }
 
+test "a JIT engine for an unchanged link plan loads its machine code instead of generating it again" {
+    import ctypes;
+    import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
+    with tempfile.TemporaryDirectory(prefix="jac-jit-object-") as cache_dir {
+        source = str(Path(cache_dir) / "reuse_object.jac");
+        Path(source).write_text("def:pub answer -> int { return 6 * 7; }\n");
+        opts = _opts(NATIVE_LINK_MODE_BITCODE);
+        first = JacProgram();
+        first.options = opts;
+        engine = jit_engine_for_cached(first, source, opts);
+        assert engine is not None;
+        address = engine.get_function_address("answer");
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == 42;
+        events = first.analysis.cache_events;
+        assert events.get("jit_object_build", 0) == 1 , dict(events);
+        assert events.get("jit_object_hit", 0) == 0 , dict(events);
+        second = JacProgram();
+        second.options = opts;
+        again = jit_engine_for_cached(second, source, opts);
+        assert again is not None;
+        address = again.get_function_address("answer");
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == 42;
+        events = second.analysis.cache_events;
+        assert events.get("jit_object_hit", 0) == 1 , dict(events);
+        assert events.get("jit_object_build", 0) == 0 , dict(events);
+    }
+}
+
 test "an analysis-only consumer records a dependency's interface without emitting its products" {
     import from jaclang.compiler.driver.jir {
         get_module_cache_path,
