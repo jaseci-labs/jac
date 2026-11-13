@@ -89,7 +89,9 @@ def _na_run(fixture: str) -> tuple[(str, str)] {
         timeout=900
     );
     assert comp.returncode == 0 , (
-        f"nacompile failed; stdout={comp.stdout[-1200:] if comp.stdout else '(empty)'}; "
+        f"nacompile failed; stdout={comp.stdout[-1200:]
+            if comp.stdout
+            else '(empty)'}; "
         f"stderr={comp.stderr[-800:] if comp.stderr else '(empty)'}"
     );
     proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
@@ -184,7 +186,7 @@ test "native ContextVar.set returns a Token that reset honors like CPython" {
 test "native ConfigParser rejects option names that cannot round-trip" {
     (na_out, _na_err) = _na_run("configparser_invalid_option.jac");
     assert na_out.strip()
-        == "valid bracket option round-trips\ninvalid option name rejected\nvalue-completed header rejected" , na_out;
+        == "valid bracket option round-trips\ninvalid option name rejected\nvalue-completed header rejected\ncarriage returns preserved" , na_out;
 }
 
 test "native ConfigParser getfloat validates and accepts underscores like CPython" {

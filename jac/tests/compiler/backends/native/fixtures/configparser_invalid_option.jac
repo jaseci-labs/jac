@@ -1,11 +1,11 @@
 import from configparser { ConfigParser }
 
 with entry {
-    cp: any = ConfigParser();
+    cp: ConfigParser = ConfigParser();
     cp.add_section("s");
     cp.set("s", "[abc", "1");
     text = cp.write();
-    roundtrip: any = ConfigParser();
+    roundtrip: ConfigParser = ConfigParser();
     roundtrip.read_string(text);
     assert roundtrip.get("s", "[abc") == "1";
     print("valid bracket option round-trips");
@@ -18,7 +18,7 @@ with entry {
         print("invalid option name rejected");
     }
 
-    cpv: any = ConfigParser();
+    cpv: ConfigParser = ConfigParser();
     cpv.add_section("s");
     cpv.set("s", "[abc", "x]");
     try {
