@@ -2092,7 +2092,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 if property_type is not None
                     and self._accessor_slot_of(
                         property_type, params_l[1].lit_value, "property"
-                    ) is not None {
+                    )
+                        is not None {
                     self._emit_unsupported_builtin_call(nd, func_name);
                     return None;
                 }

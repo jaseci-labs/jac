@@ -5852,8 +5852,6 @@ impl NativeBuiltinEmitter.emit_hasattr(
         }
         for method_name in layout.method_index {
             if method_name.endswith(".__get__") {
-                # A dynamic attribute name could select this property, whose
-                # getter may return a value or raise AttributeError.
                 return None;
             } elif method_name == "__getattr__" or method_name == "__getattribute__" {
                 return None;
@@ -5862,8 +5860,7 @@ impl NativeBuiltinEmitter.emit_hasattr(
             }
         }
     }
-    # Every Jac object also inherits these attributes from Python's object
-    # type even when they are absent from the Jac layout.
+
     for method_name in [
         "__str__",
         "__repr__",
