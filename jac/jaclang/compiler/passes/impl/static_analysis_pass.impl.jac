@@ -193,6 +193,11 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             }
         }
 
+        if names_except_type(name_nd) {
+            self.ctx.emit(E2001, node_override=name_nd, name=name_nd.value);
+            continue;
+        }
+
         hint = None;
         suggestion = self._literal_case_suggestion(name_nd.value);
         if suggestion is not None {
