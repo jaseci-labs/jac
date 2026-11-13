@@ -239,7 +239,7 @@ impl find_destructure_index_path(target: UniNode, key: str) -> list[int] | None 
             }
             sub_path = find_destructure_index_path(sub, key);
             if sub_path is not None {
-                return [unpack_index(target.values, i)] + sub_path;
+                return [unpack_index(target, i)] + sub_path;
             }
         }
     }
@@ -252,8 +252,9 @@ impl is_star_target(nd: UniNode) -> bool {
         and nd.op.name == Tok.STAR_MUL;
 }
 
-impl unpack_index(targets: list[UniNode], at: int) -> int {
-    return at - len(targets) if any(is_star_target(t) for t in targets[:at]) else at;
+impl unpack_index(targets: (TupleVal | ListVal), at: int) -> int {
+    values = targets.values or [];
+    return at - len(values) if any(is_star_target(v) for v in values[:at]) else at;
 }
 
 impl collect_assignment_target_keys(target: UniNode) -> set[str] {

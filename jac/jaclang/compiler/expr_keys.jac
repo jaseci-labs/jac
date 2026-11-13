@@ -18,7 +18,7 @@ def find_destructure_index_path(target: UniNode, key: str) -> list[int] | None;
 
 def is_star_target(nd: UniNode) -> bool;
 
-def unpack_index(targets: list[UniNode], at: int) -> int;
+def unpack_index(targets: (TupleVal | ListVal), at: int) -> int;
 
 def collect_assignment_target_keys(target: UniNode) -> set[str];
 

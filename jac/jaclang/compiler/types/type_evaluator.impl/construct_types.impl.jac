@@ -81,7 +81,7 @@ impl TypeEvaluator._unpack_target_path(
             if not at {
                 return None;
             }
-            path.insert(0, unpack_index(values, at[0]));
+            path.insert(0, unpack_index(parent, at[0]));
         }
         lhs_root = parent;
         parent = parent.parent;
