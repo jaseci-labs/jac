@@ -117,7 +117,9 @@ test "sealed images persist placement and expose it without re-derivation" {
     import from pathlib { Path }
     img = SealedImage(Path(pre), manifest);
     assert img.placement == {"svc.jac": ["server"], "ui/page.jac": ["client"]};
-    old = SealedImage(Path(pre), {"format": 4, "package": "app", "modules": {}});
+    old = SealedImage(
+        Path(pre), {"format": MANIFEST_FORMAT, "package": "app", "modules": {}}
+    );
     assert old.placement == {};
 }
 

@@ -75,9 +75,6 @@ impl find_jac_files(package_dir: str) -> list[str] {
         rel_path = jac_file.relative_to(pkg);
         rel = str(rel_path);
 
-        if pkg.name == "jaclang" and is_native_lowered(rel) {
-            continue;
-        }
         if is_arch_file(str(jac_file)) {
             continue;
         }

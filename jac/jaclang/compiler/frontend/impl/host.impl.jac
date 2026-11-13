@@ -309,10 +309,6 @@ impl HostServices.is_native_only_source(rel: str) -> bool {
     return False;
 }
 
-impl HostServices.is_native_lowered_source(rel: str) -> bool {
-    return False;
-}
-
 impl HostServices.default_target_triple -> str {
     return "";
 }

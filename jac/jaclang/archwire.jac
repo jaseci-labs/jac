@@ -89,17 +89,8 @@ graph import {
         compiler.driver.jir {
             COMPILER_DIGEST_ROOTS,
             COMPILER_DIGEST_ROSTER,
-            COMPILER_IDENTITY_NAME,
-            NATIVE_LOWERED_PATHS,
-            is_native_lowered,
             is_roster_input,
-            is_staging_rewritten,
             read_input_rules
-        },
-        dist.payload.fsutil.skip_jaclang
-            | dist.precompile_bytecode.find_jac_files
-            | project.compiler_host.ProjectHost.is_native_lowered_source {
-            is_native_lowered
         },
         dist.precompile_bytecode.seal_bootstrap { is_native_only, seed_abs_entries },
         dist.precompile_bytecode.sealable_sources
@@ -835,7 +826,6 @@ graph import {
     compiler.driver.jir --> [
         cli.commands.cache._live_keys { compiler_generation },
         cli.commands.execution._exec_file { scrub_cache_dirs },
-        dist.payload.assemble.assemble_site { write_compiler_identity },
         dist.precompile_bytecode._native_extra { rebase_placement_section },
         dist.precompile_bytecode._precompile_unit { cache_mode },
     ]
@@ -986,7 +976,6 @@ graph import {
             wiring_facts,
             wiring_for_path
         },
-        dist.payload.assemble.ship_wiring { ARCH_FILE_NAME, prune_wiring_source },
         dist.precompile_bytecode.find_jac_files { is_arch_file },
         project.compiler_host.ProjectHost.place_wired_imports { place_wired_imports },
         project.compiler_host.ProjectHost.session { wiring_scope },
@@ -5119,9 +5108,11 @@ graph import compiler {
     }
     type driver.ifacecache ++> frontend.host { IfaceRegistry }
     driver.jir ++> [
-        backends.es.client_kernel_cache._artifact_path { running_compiler_digest },
+        backends.es.client_kernel_cache._artifact_path
+            | backends.native.link_plan.LinkPlan.plan_digest {
+            running_compiler_digest
+        },
         backends.native.link_plan { unit_source_digest },
-        backends.native.link_plan.LinkPlan.plan_digest { native_producer_digest },
         backends.native.link_plan._build_link_plan.walk_unit { module_cache_key },
         backends.native.link_plan._glue_symbols_store {
             cache_mode,
@@ -5130,7 +5121,7 @@ graph import compiler {
         },
         backends.native.link_plan._jit_image_path { cache_mode, get_jir_cache_dir },
         backends.native.link_plan._reuse_artifact { cache_mode },
-        backends.native.link_plan._write_sidecar { native_producer_digest },
+        backends.native.link_plan._write_sidecar { running_compiler_digest },
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
@@ -6673,7 +6664,6 @@ graph import compiler {
             | driver.wiring.WiringSpec.wire_import { parse_woven },
         driver.wiring.canonical_wiring_source { parse_woven },
         driver.wiring.parse_records { parse_woven },
-        driver.wiring.prune_wiring_source { parse_woven },
         passes.variant_agreement_pass.VariantAgreementPass._parse_sibling
             | tests.test_module_exports { parse },
         placement.placement_solver._native_dep_scan
@@ -8818,8 +8808,8 @@ graph import compiler {
             native_unit as _typed_native_unit
         },
         driver.module_analysis.run_analysis { settle_server },
-        driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
-        pkg_paths.package_host_edge { native_lowered, native_unit },
+        driver.nativecache.NativeUnitRegistry.known_native_deps
+            | pkg_paths.package_host_edge { native_unit },
     ]
     placement.placement_pins ++> [
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
@@ -10330,11 +10320,11 @@ graph import compiler.driver {
             module_cache_invalid_reason,
             module_cache_key,
             module_ct_deps_section,
-            native_producer_digest,
             native_section_payload,
             read_jir,
             read_native_dep_hashes,
             read_section_bytes,
+            running_compiler_digest,
             stale_ct_dep_rows,
             write_module_cache
         },
@@ -12097,7 +12087,7 @@ graph import dist.payload {
     assemble --> cli.dispatch { resolve_python, run_stubcat }
     fetch ++> [
         assemble { TYPESHED_VENDOR },
-        cli { fetch_bun, fetch_llvm, fetch_typeshed, typeshed_sha },
+        cli { fetch_bun, fetch_typeshed, typeshed_sha },
     ]
     fsutil ++> [
         assemble {
@@ -12137,7 +12127,6 @@ graph import dist.payload {
             extract_tar,
             file_exists,
             find_sum_line,
-            host_os_arch,
             log,
             make_dirs,
             rd_u16,
@@ -12171,7 +12160,6 @@ graph import dist.payload {
     pins ++> [
         assemble { py_ver },
         cli { host_py_minor, py_ver },
-        fetch { LlvmSlice, llvm_release, pins },
     ]
     vendor ++> [
         assemble { MUSL_ARTIFACTS },

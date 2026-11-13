@@ -174,14 +174,6 @@ impl native_only(source_path: str) -> bool {
     return active_host().is_native_only_source(rel);
 }
 
-impl native_lowered(source_path: str) -> bool {
-    rel = _toolchain_rel(source_path);
-    if rel is None {
-        return False;
-    }
-    return active_host().is_native_lowered_source(rel);
-}
-
 impl native_unit(
     source_path: str,
     native_unit_compile: (bool | None) = None,

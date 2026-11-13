@@ -65,8 +65,6 @@ def variant_selected(source_path: str) -> (bool | None);
 
 def native_only(source_path: str) -> bool;
 
-def native_lowered(source_path: str) -> bool;
-
 def native_unit(
     source_path: str,
     native_unit_compile: (bool | None) = None,

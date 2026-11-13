@@ -726,10 +726,6 @@ impl ProjectHost.is_native_only_source(rel: str) -> bool {
     return is_native_only(rel);
 }
 
-impl ProjectHost.is_native_lowered_source(rel: str) -> bool {
-    return is_native_lowered(rel);
-}
-
 impl ProjectHost.default_target_triple -> str {
     try {
         import from jaclang.compiler.backends.native.llvm.binding { get_default_triple }

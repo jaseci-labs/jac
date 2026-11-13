@@ -168,7 +168,6 @@ def _entry_order(
 
 def _block_text(block: str, body: list[str]) -> str;
 def canonical_wiring_source(source: str, path: str) -> str;
-def prune_wiring_source(source: str, path: str, dropped: Callable[[str], bool]) -> str;
 
 def encode_records(
     parse_failed: bool, wires: list[WireRec], rules: list[RuleRec]

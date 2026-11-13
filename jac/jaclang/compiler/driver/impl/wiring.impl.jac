@@ -1614,46 +1614,6 @@ impl canonical_wiring_source(source: str, path: str) -> str {
     return render_wiring(spec, wiring_facts(wires), rules);
 }
 
-impl prune_wiring_source(
-    source: str, path: str, dropped: Callable[[str], bool]
-) -> str {
-    (mod, had_error) = parse_woven(source, path, None, []);
-    if had_error {
-        return source;
-    }
-    spec = WiringSpec(
-        root_dir=os.path.dirname(os.path.abspath(path)), path=path, wires=[], rules=[]
-    );
-    text = list(source);
-    def blank(span: UniNode) {
-        for at in range(span.loc.pos_start, span.loc.pos_end) {
-            if text[at] != "\n" {
-                text[at] = " ";
-            }
-        }
-    }
-    for stmt in mod.body {
-        if not isinstance(stmt, GraphImport) {
-            continue;
-        }
-        kept = 0;
-        for item in stmt.body {
-            found = spec.module_file(item.provider_path)
-                if isinstance(item, ImportWire)
-                else None;
-            if found is not None and dropped(found) {
-                blank(item);
-            } else {
-                kept += 1;
-            }
-        }
-        if stmt.body and not kept {
-            blank(stmt);
-        }
-    }
-    return "".join(text);
-}
-
 impl _package_prefix(root_dir: str) -> str {
     facts = active_host().project_facts(root_dir);
     if facts is None or not facts.package_name {

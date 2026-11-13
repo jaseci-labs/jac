@@ -137,19 +137,11 @@ def compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]
 
 def compiler_source_files(pkg_dir: str) -> list[str];
 
-def compiler_identity_path(pkg_dir: str) -> Path;
-
-def read_compiler_identity(pkg_dir: str) -> dict[str, str];
-
-def declared_compiler_inputs(pkg_dir: str, recorded: dict[str, str]) -> list[str];
-
-def resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) -> str;
+def resolve_compiler_input(pkg_dir: str, rel: str) -> str;
 
 def fold_compiler_digest(rows: list[tuple[str, str]]) -> str;
 
 def compiler_source_digest(pkg_dir: str) -> str;
-
-def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str;
 
 glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
@@ -173,8 +165,6 @@ def _handoff -> dict[str, object];
 def dev_source -> str;
 
 def dev_carry_enabled -> bool;
-
-def native_producer_digest -> str;
 
 glob _COMPILER_GENERATION_CACHE: list[str] = [];
 
