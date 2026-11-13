@@ -9,8 +9,8 @@ import from uuid { UUID }
 
 enum ConvertMode { STRICT = 'strict', TEXT = 'text', LENIENT = 'lenient' }
 
-glob TRUE_WORDS: frozenset[str] = frozenset({'1', 'true', 'yes', 'on', 'y'}),
-     FALSE_WORDS: frozenset[str] = frozenset({'0', 'false', 'no', 'off', 'n', ''}),
+glob _TRUE_WORDS: frozenset[str] = frozenset({'1', 'true', 'yes', 'on', 'y'}),
+     _FALSE_WORDS: frozenset[str] = frozenset({'0', 'false', 'no', 'off', 'n', ''}),
      STRING_FORMATS: dict[type, str] = {
          datetime: 'date-time',
          date: 'date',

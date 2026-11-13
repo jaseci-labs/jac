@@ -23,11 +23,8 @@ impl convert(value: any, target: any, mode: ConvertMode = ConvertMode.STRICT) ->
     if origin is Union or origin is UnionType {
         return _convert_union(value, args, mode);
     }
-    if origin is not None and origin not in _CONTAINERS {
-        return value;
-    }
     base = origin if origin is not None else target;
-    if not isinstance(base, type) {
+    if not isinstance(base, type) or (origin is not None and base not in _CONTAINERS) {
         return value;
     }
     if value is None {
@@ -63,10 +60,7 @@ impl _convert_union(value: any, members: tuple[any, ...], mode: ConvertMode) -> 
             last_error = e;
         }
     }
-    if last_error is not None {
-        raise last_error;
-    }
-    return value;
+    raise last_error if last_error is not None else _mismatch('union member', value);
 }
 
 impl _convert_container(
@@ -166,10 +160,10 @@ impl _to_bool(value: any, mode: ConvertMode) -> bool {
     }
     if isinstance(value, str) and mode != ConvertMode.STRICT {
         word = value.strip().lower();
-        if word in TRUE_WORDS {
+        if word in _TRUE_WORDS {
             return True;
         }
-        if word in FALSE_WORDS {
+        if word in _FALSE_WORDS {
             return False;
         }
         raise ValueError(f"invalid boolean: {value!r}");
@@ -231,9 +225,7 @@ impl _construct(value: any, target: any, mode: ConvertMode) -> any {
     hints: dict[str, any] = {};
     try {
         hints = get_type_hints(target.__init__);
-    } except Exception {
-        hints = {};
-    }
+    } except Exception {}
     kwargs: dict[str, any] = {};
     for (pname, param) in inspect.signature(target).parameters.items() {
         if param.kind
