@@ -224,8 +224,7 @@ impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
     }
     toml_path = os.path.join(root_dir, 'jac.toml');
     stamp = _chain_stamp(root_dir);
-    # Pins are resolved from the environment when the workspace is built, so
-    # each mute state needs its own cached workspace identity.
+
     key = _real(root_dir) + "\0" + str(pins_muted());
     cached = _ws_cache.get(key);
     if cached is not None and cached[0] == stamp {
