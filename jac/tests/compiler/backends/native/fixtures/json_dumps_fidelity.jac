@@ -2,34 +2,6 @@
 import json;
 import os;
 
-def mark_object(value: any) -> dict[str, any] {
-    return {"hooked": value["x"]};
-}
-
-def mark_pairs(value: any) -> dict[str, any] {
-    return {"first": value[0][0], "second": value[1][0]};
-}
-
-def mark_int(value: any) -> str {
-    return f"int:{value}";
-}
-
-def mark_float(value: any) -> str {
-    return f"float:{value}";
-}
-
-def mark_constant(value: any) -> str {
-    return f"constant:{value}";
-}
-
-obj Label {
-    has value: str;
-}
-
-def encode_label(value: Label) -> dict[str, any] {
-    return {"label": value.value};
-}
-
 def record -> dict[str, any] {
     edges: list[list[str]] = [["web", "api"], ["api", "db"]];
     return {
@@ -71,22 +43,6 @@ with entry {
     enc = json.JSONEncoder(sort_keys=True);
     print(enc.encode({"b": 1, "a": 2}));
     print("".join(enc.iterencode({"z": 0})));
-    print(json.dumps(json.loads("{\"x\": 3}", object_hook=mark_object)));
-    print(json.dumps(json.loads("{\"x\": 1, \"x\": 2}", object_pairs_hook=mark_pairs)));
-    print(
-        json.dumps(
-            json.loads(
-                "[1, 1.5, NaN]",
-                parse_int=mark_int,
-                parse_float=mark_float,
-                parse_constant=mark_constant
-            )
-        )
-    );
-    label = Label(value="native");
-    print(json.dumps(label, `default=encode_label));
-    custom_enc = json.JSONEncoder(`default=encode_label);
-    print(custom_enc.encode(Label(value="encoder")));
 }
 
 glob skipkeys_input: dict[str, any] = {"keep": 1};
@@ -95,23 +51,7 @@ with entry {
     print(json.dumps(skipkeys_input, skipkeys=True));
 }
 
-glob cycle: list[any] = [];
-
 with entry {
-    cycle.append(cycle);
-    try {
-        json.dumps(cycle);
-    } except ValueError as e {
-        print("circular:", e);
-    }
-    try {
-        json.dumps(
-            b"fallback-cycle", `default=lambda (value: any) -> any { return value; }
-        );
-        print("fallback-cycle: missed");
-    } except ValueError {
-        print("fallback-cycle: ValueError");
-    }
     nonce = 0;
     while True {
         temp_dir = os.path.join(

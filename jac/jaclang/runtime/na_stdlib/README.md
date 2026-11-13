@@ -89,9 +89,11 @@ native layout records the emitted name separately from its source-level key.
   `dumps` takes `skipkeys`, `ensure_ascii`, `check_circular`, `allow_nan`,
   `indent` (int or str), `separators`, `default` and `sort_keys`; pretty
   printing, non-ASCII escaping (`\uXXXX`, astral characters as surrogate
-  pairs), key coercion for int/float/bool/None keys, circular detection and the
-  `default` fallback match CPython byte for byte, as does float text (native
-  `str(float)` is the shortest-round-trip repr -- #6940 Phase 0.3). The
+  pairs), and float text (native `str(float)` is the shortest-round-trip repr
+  -- #6940 Phase 0.3) match CPython byte for byte. Native lowering currently
+  supports string-keyed dictionaries; non-string keys, callback hooks/defaults,
+  and self-referential containers remain compiler-limited and are not covered
+  by the native conformance fixture. The
   scanner reports the errors CPython's does, at the same `pos`/`lineno`/
   `colno`: `Expecting value`, `Extra data`, `Expecting ',' delimiter`,
   `Expecting ':' delimiter`, `Expecting property name enclosed in double
