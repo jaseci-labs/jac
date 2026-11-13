@@ -2063,6 +2063,9 @@ graph import {
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module
         },
+        compiler.types.type_evaluator.TypeEvaluator._climbs_above_project {
+            project_root_chain
+        },
         compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             named_exactly_any
         },
@@ -12480,6 +12483,7 @@ graph import project {
         compiler_host.package_name_of { is_scoped_package_name },
         config.find_project_root { find_project_root as _find_project_root },
         package_scope { MOUNTS_DIR_NAME, is_scoped_package_name },
+        workspace._chain_stamp { project_root_chain },
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [
