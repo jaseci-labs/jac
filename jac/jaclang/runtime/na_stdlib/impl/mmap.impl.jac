@@ -156,7 +156,7 @@ impl mmap.seek(pos: int, whence: int = 0) {
 impl mmap.read(n: int = -1) -> bytes {
     self._check_open();
     cnt: int = n;
-    if cnt < 0 or self._pos + cnt > self._len {
+    if cnt < 0 or cnt > self._len - self._pos {
         cnt = self._len - self._pos;
     }
     if cnt <= 0 {
@@ -387,9 +387,6 @@ impl mmap.resize(newsize: int) {
     if newsize < 0 {
         raise ValueError("new size out of range");
     }
-    if mm_resize_requires_mremap() {
-        raise SystemError("mmap: resizing not available--no mremap()");
-    }
     if (self._flags & MAP_PRIVATE) == 0 {
         if self._fd == -1 {
             if newsize > self._len {
@@ -404,6 +401,9 @@ impl mmap.resize(newsize: int) {
         } else {
             raise ValueError("mmap: can't resize a file-backed shared mapping");
         }
+    }
+    if mm_resize_requires_mremap() {
+        raise SystemError("mmap: resizing not available--no mremap()");
     }
     new_addr: int = mm_map(
         newsize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0
