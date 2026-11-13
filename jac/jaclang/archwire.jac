@@ -5450,7 +5450,6 @@ graph import compiler {
             | native_bindings.typeshed_stub_path
             | types.type_evaluator.TypeEvaluator.__post_init__ { jaclang_pkg_root },
         backends.es.client_kernel_cache._unit_source_path { kernel_unit_path },
-        backends.native.link_plan._compile_dep_signature { native_unit_root },
         backends.es.esast_gen_pass {
             BoundaryTypeInfo,
             ClientManifest,
@@ -5478,6 +5477,7 @@ graph import compiler {
             | driver.program.JacProgram.prefers_native_codespace {
             is_kernel_unit_path
         },
+        backends.native.link_plan._compile_dep_signature { native_unit_root },
         backends.native.link_plan._write_sidecar { native_unit_identity },
         backends.native.na_ir_gen_pass {
             HDR_ALLOC_ID_OFF,

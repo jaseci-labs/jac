@@ -707,7 +707,6 @@ impl _build_link_plan(
 }
 
 impl _compile_dep_signature(raw: bytes, unit_path: str) -> list[tuple[str, str, str]] {
-    import from jaclang.compiler.frontend.codeinfo { native_unit_root }
     if not raw {
         return [];
     }
