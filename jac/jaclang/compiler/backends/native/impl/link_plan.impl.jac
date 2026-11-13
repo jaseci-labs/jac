@@ -1534,6 +1534,38 @@ impl _mark_host_rc_threaded(engine: ExecutionEngine) {
     }
 }
 
+impl _cache_jit_objects(
+    engine: ExecutionEngine, path: str, merged: ModuleRef, registry: any
+) {
+    def stored(module: any) -> (bytes | None) {
+        if module is not merged {
+            return None;
+        }
+        try {
+            with open(path, "rb") as f {
+                data = f.read();
+            }
+        } except OSError {
+            return None;
+        }
+        if not data {
+            return None;
+        }
+        registry._event("jit_object_hit");
+        return data;
+    }
+    def compiled(module: any, data: bytes) {
+        if module is not merged {
+            return;
+        }
+        registry._event("jit_object_build");
+        try {
+            atomic_write(path, data);
+        } except Exception {}
+    }
+    engine.set_object_cache(compiled, stored);
+}
+
 impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     tm = _target_machine(plan, ArtifactKind.JIT);
     registry = plan.prog.native_units();
@@ -1597,6 +1629,10 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     has_rc_flag = _has_global(merged, RC_THREADED_SYMBOL);
     engine = llvm.create_mcjit_compiler(merged, tm);
     assert isinstance(engine, llvm.ExecutionEngine);
+
+    if image is not None {
+        _cache_jit_objects(engine, image[:-len(".bc")] + ".o", merged, registry);
+    }
     for (symbol, address) in symbols.items() {
         engine.add_global_mapping(merged.get_function(symbol), address);
     }

@@ -218,6 +218,10 @@ def _has_global(module: ModuleRef, name: str) -> bool;
 
 def _mark_host_rc_threaded(engine: ExecutionEngine);
 
+def _cache_jit_objects(
+    engine: ExecutionEngine, path: str, merged: ModuleRef, registry: any
+);
+
 def jit_engine(plan: LinkPlan) -> ExecutionEngine;
 
 def jit_engine_for_module(
