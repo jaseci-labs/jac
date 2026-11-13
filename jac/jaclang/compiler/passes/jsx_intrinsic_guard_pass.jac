@@ -1,6 +1,7 @@
 glob _GENERIC_SUGGESTION: str = "an @jac/mobui component",
      _tag_suggestions: (dict[str, str] | None) = None;
 
+
 def _suggestion_for(tag: str) -> str;
 
 walker JsxIntrinsicGuardPass(TreePass) {
