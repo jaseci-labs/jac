@@ -97,6 +97,49 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
+glob _UNSET: object = object();
+
+obj EchoBox {
+    has hits: int = 0;
+}
+
+"""Optional parameters of each kind, echoed so a caller sees what each received.
+
+`tags` and `box` are changed so a shared default would show up on the next call.
+`limit` and `grid` have no plain JSON form. `marker` is a sentinel, so it must
+reach the function as the same object, not a copy.
+"""
+def:pub echo_defaults(
+    count: int = 5,
+    ratio: float = 0.5,
+    flag: bool = False,
+    title: str = "seed",
+    tags: list[str] = [],
+    note: str | None = None,
+    box: EchoBox = EchoBox(),
+    limit: float = float("inf"),
+    grid: dict[tuple[int, int], str] = {(1, 2): "x"},
+    pairs: tuple[list[str]] = ([], ),
+    marker: object = _UNSET
+) -> dict[str, any] {
+    tags.append("seen");
+    box.hits += 1;
+    pairs[0].append("seen");
+    return {
+        "count": count,
+        "ratio": ratio,
+        "flag": flag,
+        "title": title,
+        "tags": tags,
+        "note": note,
+        "hits": box.hits,
+        "limit": limit,
+        "grid": grid,
+        "pairs": pairs,
+        "unset": marker is _UNSET
+    };
+}
+
 glob WELCOME_TITLE: str = "Runtime Test";
 
 def:pub client_page -> JsxElement {

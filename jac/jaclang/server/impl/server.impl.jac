@@ -617,7 +617,7 @@ impl ModuleIntrospector.introspect_callable(
             'required': (param.`default == inspect.Parameter.empty),
             'default': None
                 if (param.`default == inspect.Parameter.empty)
-                else str(param.`default)
+                else param.`default
         } for (name, param) in sig.parameters.items()
     };
     return_type = type_hints.get('return', any);
@@ -1617,7 +1617,9 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
 
     def format_param(name: str, info: dict[(str, any)]) -> str {
         req = 'required' if info['required'] else 'optional';
-        `default = f", default: {info['default']}" if info.get('default') else '';
+        `default = f", default: {info['default']!r}"
+            if info.get('default') is not None
+            else '';
         return f"{name}: {info['type']} ({req}{`default})";
     }
     console.print(('\n' + ('=' * 80)));

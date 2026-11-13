@@ -2271,7 +2271,7 @@ graph import {
         compiler.frontend.host { AppSpec, WorkspaceSpec },
     ]
     runtime.archetype ++> [
-        byllm.llm._mock_jsonable { Archetype },
+        byllm.llm._mock_jsonable | server.serving.coerce._fresh_default { Archetype },
         byllm.visit_routing { Anchor, Archetype, ObjectSpatialFunction },
         byllm.visit_routing._candidate_for { EdgeAnchor, EdgeArchetype, NodeAnchor },
         byllm.visit_routing._route_context {
