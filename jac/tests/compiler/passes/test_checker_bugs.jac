@@ -406,6 +406,40 @@ test "bug_15_no_generic_variance_check" {
     assert len(program.errors_had) >= 1 , "Bug #15: No generic type argument checking. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
     "list[int] should NOT be assignable to list[str].";
+
+    numeric_program = compile_and_check("checker_bug_numeric_container_invariance.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in numeric_program.errors_had
+        if e.loc
+    };
+    expected_errors = [
+        (46, "list[int]", "list[float]"),
+        (48, "IntBox", "Box[float]"),
+        (50, "dict[str, int]", "dict[str, float]"),
+        (51, "list[int]", "NoneType"),
+        (53, "list[int | NoneType]", "list[float | NoneType]")
+    ];
+    assert len(numeric_program.errors_had) == len(expected_errors) , (
+        "Bug #8580: numeric widening must not pass through mutable containers. "
+        f"Got: {[str(e) for e in numeric_program.errors_had]}"
+    );
+    for (line, source_type, dest_type) in expected_errors {
+        message = by_line.get(line, "");
+        assert source_type in message and dest_type in message , (
+            f"Bug #8580: line {line} must reject {source_type} into "
+            f"{dest_type}. Reported: {message}"
+        );
+    }
+
+    positive_program = compile_and_check(
+        "checker_bug_numeric_container_invariance_positive.jac"
+    );
+    assert positive_program.errors_had == [] , (
+        "Bug #8580: non-numeric covariance, declared variance, generic "
+        "inference, and literal widening must keep checking. "
+        f"Got: {[str(e) for e in positive_program.errors_had]}"
+    );
 }
 
 # =========================================================================

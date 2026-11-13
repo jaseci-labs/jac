@@ -3099,6 +3099,50 @@ impl TypeEvaluator._callable_mismatch(
     return None;
 }
 
+impl TypeEvaluator._numeric_args_invariant(
+    src_arg: TypeBase,
+    dest_arg: TypeBase,
+    tp: (TypeVarType | None) = None,
+    strict: bool = False
+) -> bool {
+    if tp is not None and tp.is_covariant {
+        return True;
+    }
+    if isinstance(dest_arg, UnionType) and dest_arg.types {
+        for member in dest_arg.types {
+            if not self._numeric_args_invariant(src_arg, member, tp, strict) {
+                return False;
+            }
+        }
+        return True;
+    }
+    if not self._numeric_instance(dest_arg) {
+        return True;
+    }
+    if isinstance(src_arg, UnionType) {
+        return self.assign_type(dest_arg, src_arg, strict);
+    }
+    if not self._numeric_instance(src_arg) {
+        return True;
+    }
+    return self.assign_type(dest_arg, src_arg, strict);
+}
+
+impl TypeEvaluator._numeric_instance(t: TypeBase) -> bool {
+    return isinstance(t, ClassType)
+        and t.is_class_instance()
+        and not t.is_literal_type()
+        and JAC_TYPE_REGISTRY.is_numeric(t.shared.class_name);
+}
+
+impl TypeEvaluator._type_param_at(cls_type: ClassType, i: int) -> (TypeVarType | None) {
+    params = cls_type.shared.type_params;
+    if not params {
+        return None;
+    }
+    return params[min(i, len(params) - 1)];
+}
+
 impl TypeEvaluator._assign_class(
     src_type: ClassType, dest_type: ClassType, strict: bool = False
 ) -> bool {
@@ -3127,6 +3171,12 @@ impl TypeEvaluator._assign_class(
                     if not self.assign_type(src_arg, dest_arg, strict) {
                         return False;
                     }
+
+                    if not self._numeric_args_invariant(
+                        src_arg, dest_arg, self._type_param_at(dest_type, i), strict
+                    ) {
+                        return False;
+                    }
                 }
             }
         }
@@ -3143,23 +3193,18 @@ impl TypeEvaluator._assign_class(
                     dest_arg = self._convert_to_instance(
                         dest_type.private.type_args[i]
                     );
-
-                    tp = dest_type.shared.type_params[i]
-                        if (
-                            dest_type.shared.type_params
-                            and i < len(dest_type.shared.type_params)
-                        )
-                        else None;
-                    if tp and tp.is_covariant {
-                        if not self.assign_type(src_arg, dest_arg, strict) {
-                            return False;
-                        }
-                    } elif tp and tp.is_contravariant {
+                    tp = self._type_param_at(dest_type, i);
+                    if tp and tp.is_contravariant {
                         if not self.assign_type(dest_arg, src_arg, strict) {
                             return False;
                         }
                     } else {
                         if not self.assign_type(src_arg, dest_arg, strict) {
+                            return False;
+                        }
+                        if not self._numeric_args_invariant(
+                            src_arg, dest_arg, tp, strict
+                        ) {
                             return False;
                         }
                     }

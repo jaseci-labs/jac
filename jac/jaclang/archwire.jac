@@ -9046,7 +9046,8 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_raise_stmt
             | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
-            | passes.type_checker_pass.TypeCheckPass.exit_type_alias {
+            | passes.type_checker_pass.TypeCheckPass.exit_type_alias
+            | types.type_evaluator.TypeEvaluator._numeric_instance {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass._raised_exc_identity
