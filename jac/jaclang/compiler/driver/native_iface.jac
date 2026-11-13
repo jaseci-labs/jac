@@ -4,7 +4,8 @@ import os;
 
 def native_unit_ref(path: str) -> str;
 
-def _named_project_file(search_dir: str, root_name: str, rel: str) -> (str | None);
+def _named_project_file(search_dir: str, ref: str) -> (str | None);
+def _project_file(project_root: str, ref: str) -> (str | None);
 
 def resolve_native_unit_ref(ref: str, anchor: str = "") -> str;
 
