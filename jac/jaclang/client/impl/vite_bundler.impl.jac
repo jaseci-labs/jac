@@ -873,6 +873,12 @@ export default defineConfig({{
             + self._format_config_object(output_overrides, indent=6)
             if output_overrides
             else '';
+        chunk_names = output_overrides.get('chunkFileNames');
+        manifest_str = '    manifest: true,\n'
+            if chunk_names is None
+                or '[hash]' in str(chunk_names)
+                or '[hash:' in str(chunk_names)
+            else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
             if (isinstance(server_config, dict) and server_config)
@@ -935,7 +941,7 @@ export default defineConfig({{
   envDir: projectRoot, // Load .env files from project root
     build: {{
     sourcemap: true, // Enable source maps for better error messages
-{build_overrides_str}
+{manifest_str}{build_overrides_str}
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
       output: {{
@@ -1139,10 +1145,8 @@ impl ViteBundler._build_inputs_digest(
             rows.append(f"{env_file.name}:{file_sha256(str(env_file))}");
         }
     }
-    for (key, value) in sorted(os.environ.items()) {
-        if key.startswith("VITE_") or key in ("NODE_ENV", API_BASE_URL_ENV_VAR) {
-            rows.append(f"env:{key}={value}");
-        }
+    for row in client_build_env() {
+        rows.append(f"env:{row}");
     }
     return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest();
 }
@@ -1729,7 +1733,7 @@ impl _split_build_overrides(
     }
     output = dict(output);
     ignored: list[str] = [];
-    for key in ('outDir', 'emptyOutDir') {
+    for key in ('outDir', 'emptyOutDir', 'manifest') {
         if build.pop(key, None) is not None {
             ignored.append(key);
         }
@@ -1822,4 +1826,12 @@ impl _build_vite_dev_command(
         cmd.append('--host');
     }
     return cmd;
+}
+
+impl client_build_env -> list[str] {
+    return [
+        f"{key}={value}"
+        for (key, value) in sorted(os.environ.items())
+        if key.startswith("VITE_") or key in ("NODE_ENV", API_BASE_URL_ENV_VAR)
+    ];
 }

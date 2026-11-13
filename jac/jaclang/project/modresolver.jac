@@ -20,6 +20,8 @@ def find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None)
 
 def find_jac_project_root(start: (str | None) = None) -> (str | None);
 
+def project_root_chain(start: str) -> list[str];
+
 glob _mounts_by_root: dict[str, tuple[str, str]] = {},
      _self_mounted: set[str] = set(),
      MOUNTS_DIR_NAME: str = 'packages';
@@ -35,8 +37,6 @@ def project_mounts_dir(project_root: str) -> str;
 def enclosing_mounts(project_root: str) -> (str | None);
 
 def project_mounts(project_root: str) -> (str | None);
-
-def module_name_in(root_dir: str, path: str) -> (str | None);
 
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str];
 
