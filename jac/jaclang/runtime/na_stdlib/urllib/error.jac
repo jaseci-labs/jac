@@ -1,4 +1,4 @@
-import from http.client { HTTPResponse }
+import from http.client { HTTPHeaders, HTTPResponse }
 
 
 obj:pub URLError(OSError) {
@@ -10,7 +10,7 @@ obj:pub HTTPError(URLError) {
     has url: str = "",
         code: int = 0,
         msg: str = "",
-        hdrs: dict[str, str] = {},
+        hdrs: HTTPHeaders = HTTPHeaders(),
         fp: HTTPResponse | None = None;
 
     def read(amt: (int | None) = None) -> bytes;

@@ -2,6 +2,7 @@ import fcntl;
 import from _errno_native { last_errno }
 import errno;
 import select;
+import time;
 
 
 impl socket.postinit {
@@ -30,7 +31,6 @@ impl socket.connect(address: tuple[(str, int)]) -> None {
         );
     }
     last_err: int = 0;
-    timed_out: bool = False;
     for sa in addrs {
         fam = address_family(sa);
         if fam != self.family {
@@ -41,16 +41,12 @@ impl socket.connect(address: tuple[(str, int)]) -> None {
             return;
         }
         if result < 0 {
-            timed_out = True;
-            continue;
+            raise TimeoutError("socket connect timed out");
         }
         last_err = result;
     }
     if last_err != 0 {
         raise_errno(last_err, "connect to " + host + ":" + service + " failed");
-    }
-    if timed_out {
-        raise TimeoutError("socket connect timed out");
     }
     raise OSError("connect to " + host + ":" + service + " failed");
 }
@@ -59,6 +55,14 @@ impl socket.connect(address: tuple[(str, int)]) -> None {
 impl socket.settimeout(timeout: (float | None)) -> None {
     if timeout is not None and timeout < 0.0 {
         raise ValueError("timeout value must be non-negative");
+    }
+    if self._fd >= 0 {
+        flags = fcntl.fcntl(self._fd, fcntl.F_GETFL);
+        if timeout is not None {
+            fcntl.fcntl(self._fd, fcntl.F_SETFL, flags | fcntl.O_NONBLOCK);
+        } else {
+            fcntl.fcntl(self._fd, fcntl.F_SETFL, flags & ~fcntl.O_NONBLOCK);
+        }
     }
     self._timeout = timeout;
 }
@@ -69,28 +73,40 @@ impl socket.gettimeout -> (float | None) {
 }
 
 impl socket.send(data: bytes) -> int {
-    if self._timeout is not None {
-        (_readable, writable, _exceptional) = select.select(
-            [], [self._fd], [], self._timeout
-        );
+    if self._timeout is None {
+        sent = sock_send(self._fd, data, 0);
+        if sent < 0 {
+            raise OSError("send failed: " + errno_message());
+        }
+        return sent;
+    }
+    deadline = time.monotonic() + self._timeout;
+    while True {
+        remain = max(0.0, deadline - time.monotonic());
+        (_readable, writable, _exceptional) = select.select([], [self._fd], [], remain);
         if self._fd not in writable {
             raise TimeoutError("socket write timed out");
         }
+        sent = sock_send(self._fd, data, 0);
+        if sent >= 0 {
+            return sent;
+        }
+        err = last_errno();
+        if err != errno.EAGAIN and err != errno.EWOULDBLOCK and err != errno.EINTR {
+            raise OSError("send failed: " + errno_message());
+        }
     }
-    sent = sock_send(self._fd, data, 0);
-    if sent < 0 {
-        raise OSError("send failed: " + errno_message());
-    }
-    return sent;
 }
 
 impl socket.sendall(data: bytes) {
     total = len(data);
     off = 0;
+    deadline = time.monotonic() + self._timeout if self._timeout is not None else 0.0;
     while off < total {
         if self._timeout is not None {
+            remain = max(0.0, deadline - time.monotonic());
             (_readable, writable, _exceptional) = select.select(
-                [], [self._fd], [], self._timeout
+                [], [self._fd], [], remain
             );
             if self._fd not in writable {
                 raise TimeoutError("socket write timed out");
@@ -98,6 +114,15 @@ impl socket.sendall(data: bytes) {
         }
         sent = sock_send(self._fd, data, off);
         if sent < 0 {
+            err = last_errno();
+            if self._timeout is not None
+                and (
+                    err == errno.EAGAIN
+                    or err == errno.EWOULDBLOCK
+                    or err == errno.EINTR
+                ) {
+                continue;
+            }
             raise OSError("send failed: " + errno_message());
         }
         if sent == 0 {
@@ -108,15 +133,27 @@ impl socket.sendall(data: bytes) {
 }
 
 impl socket.recv(bufsize: int) -> bytes {
-    if self._timeout is not None {
-        (readable, _writable, _exceptional) = select.select(
-            [self._fd], [], [], self._timeout
-        );
+    if self._timeout is None {
+        return sock_recv(self._fd, bufsize);
+    }
+    deadline = time.monotonic() + self._timeout;
+    while True {
+        remain = max(0.0, deadline - time.monotonic());
+        (readable, _writable, _exceptional) = select.select([self._fd], [], [], remain);
         if self._fd not in readable {
             raise TimeoutError("socket read timed out");
         }
+        try {
+            return sock_recv(self._fd, bufsize);
+        } except OSError {
+            err = last_errno();
+            if err != errno.EAGAIN
+                and err != errno.EWOULDBLOCK
+                and err != errno.EINTR {
+                raise;
+            }
+        }
     }
-    return sock_recv(self._fd, bufsize);
 }
 
 impl socket.close {
@@ -149,7 +186,7 @@ impl create_connection(address: tuple[(str, int)], timeout: (float | None)) -> s
         }
         result = _connect_one(s, sa, timeout);
         if result == 0 {
-            s._timeout = timeout;
+            s.settimeout(timeout);
             return s;
         }
         s.close();

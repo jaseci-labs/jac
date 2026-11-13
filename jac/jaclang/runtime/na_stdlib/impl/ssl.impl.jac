@@ -1,6 +1,14 @@
 import fcntl;
 import select;
 import time;
+impl _tls_wait(fd: int, want_read: bool, timeout: float) -> bool {
+    if want_read {
+        (readable, _writable, _exceptional) = select.select([fd], [], [], timeout);
+        return fd in readable;
+    }
+    (_readable, writable, _exceptional) = select.select([], [fd], [], timeout);
+    return fd in writable;
+}
 
 
 impl SSLSocket.fileno -> int {
@@ -9,50 +17,83 @@ impl SSLSocket.fileno -> int {
 
 impl SSLSocket.sendall(data: bytes) {
     timeout = self._sock.gettimeout();
-    if timeout is not None {
-        (_readable, writable, _exceptional) = select.select(
-            [], [self.fileno()], [], timeout
-        );
-        if self.fileno() not in writable {
-            raise TimeoutError("TLS write timed out");
+    if timeout is None {
+        if ssl_write_all(self._ssl, data) < 0 {
+            raise SSLError("TLS write failed: " + last_error());
         }
+        return;
     }
-    if ssl_write_all(self._ssl, data) < 0 {
+    deadline = time.monotonic() + timeout;
+    off = 0;
+    while off < len(data) {
+        chunk = data[off:];
+        written = ssl_write_once(self._ssl, chunk);
+        if written > 0 {
+            off += written;
+            continue;
+        }
+        error = ssl_get_error(self._ssl, written);
+        if error == _SSL_ERROR_WANT_READ or error == _SSL_ERROR_WANT_WRITE {
+            remain = max(0.0, deadline - time.monotonic());
+            if not _tls_wait(self.fileno(), error == _SSL_ERROR_WANT_READ, remain) {
+                raise TimeoutError("TLS write timed out");
+            }
+            continue;
+        }
         raise SSLError("TLS write failed: " + last_error());
     }
 }
 
 impl SSLSocket.send(data: bytes) -> int {
     timeout = self._sock.gettimeout();
-    if timeout is not None {
-        (_readable, writable, _exceptional) = select.select(
-            [], [self.fileno()], [], timeout
-        );
-        if self.fileno() not in writable {
+    if timeout is None {
+        n = ssl_write_once(self._ssl, data);
+        if n < 0 {
+            raise SSLError("TLS write failed: " + last_error());
+        }
+        return n;
+    }
+    deadline = time.monotonic() + timeout;
+    while True {
+        n = ssl_write_once(self._ssl, data);
+        if n >= 0 {
+            return n;
+        }
+        error = ssl_get_error(self._ssl, n);
+        if error != _SSL_ERROR_WANT_READ and error != _SSL_ERROR_WANT_WRITE {
+            raise SSLError("TLS write failed: " + last_error());
+        }
+        remain = max(0.0, deadline - time.monotonic());
+        if not _tls_wait(self.fileno(), error == _SSL_ERROR_WANT_READ, remain) {
             raise TimeoutError("TLS write timed out");
         }
     }
-    n = ssl_write_all(self._ssl, data);
-    if n < 0 {
-        raise SSLError("TLS write failed: " + last_error());
-    }
-    return n;
 }
 
 impl SSLSocket.recv(bufsize: int) -> bytes {
     timeout = self._sock.gettimeout();
-    if timeout is not None and ssl_pending(self._ssl) <= 0 {
-        (readable, _writable, _exceptional) = select.select(
-            [self.fileno()], [], [], timeout
-        );
-        if self.fileno() not in readable {
+    if timeout is None {
+        return ssl_read(self._ssl, bufsize);
+    }
+    deadline = time.monotonic() + timeout;
+    while True {
+        (got, error, data) = ssl_read_status(self._ssl, bufsize);
+        if got > 0 {
+            return data;
+        }
+        if error == _SSL_ERROR_ZERO_RETURN {
+            return b"";
+        }
+        if error == _SSL_ERROR_SSL {
+            raise SSLError("TLS read failed: " + last_error());
+        }
+        if error != _SSL_ERROR_WANT_READ and error != _SSL_ERROR_WANT_WRITE {
+            raise SSLError("TLS read failed: " + last_error());
+        }
+        remain = max(0.0, deadline - time.monotonic());
+        if not _tls_wait(self.fileno(), error == _SSL_ERROR_WANT_READ, remain) {
             raise TimeoutError("TLS read timed out");
         }
-    }
-    try {
-        return ssl_read(self._ssl, bufsize);
-    } except OSError as e {
-        raise SSLError("TLS read error");
     }
 }
 

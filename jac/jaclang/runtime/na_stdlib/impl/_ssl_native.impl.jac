@@ -78,6 +78,13 @@ impl ssl_write_all(ssl: int, data: bytes) -> int {
     return total;
 }
 
+impl ssl_write_once(ssl: int, data: bytes) -> int {
+    if len(data) == 0 {
+        return 0;
+    }
+    return SSL_write(ssl, data, i32(len(data)));
+}
+
 impl ssl_read(ssl: int, bufsize: int) -> bytes {
     if bufsize <= 0 {
         return b"";
@@ -98,6 +105,18 @@ impl ssl_read(ssl: int, bufsize: int) -> bytes {
         }
     }
     return b"";
+}
+
+impl ssl_read_status(ssl: int, bufsize: int) -> tuple[int, int, bytes] {
+    if bufsize <= 0 {
+        return (0, _SSL_ERROR_ZERO_RETURN, b"");
+    }
+    buf = b"\x00" * bufsize;
+    got = SSL_read(ssl, buf, i32(bufsize));
+    if got > 0 {
+        return (got, 0, buf[0:got]);
+    }
+    return (got, SSL_get_error(ssl, got), b"");
 }
 
 impl ssl_pending(ssl: int) -> int {

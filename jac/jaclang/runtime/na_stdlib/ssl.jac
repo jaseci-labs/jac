@@ -1,6 +1,9 @@
 import from socket { socket as Socket }
 
 
+def _tls_wait(fd: int, want_read: bool, timeout: float) -> bool;
+
+
 obj:pub SSLError(Exception) {}
 
 

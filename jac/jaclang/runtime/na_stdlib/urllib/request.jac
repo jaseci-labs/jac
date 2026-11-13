@@ -1,6 +1,6 @@
 import from socket { create_connection, socket as Socket }
 import from ssl { create_default_context, SSLError, SSLSocket }
-import from http.client { HTTPResponse }
+import from http.client { HTTPHeaders, HTTPResponse }
 import from urllib.error { HTTPError, URLError }
 
 
@@ -8,9 +8,7 @@ obj:pub Request {
     has url: str,
         data: bytes = b"",
         headers: dict[str, str] = {},
-        method: str = "GET";
-
-    def postinit;
+        method: (str | None) = None;
 }
 
 
@@ -26,6 +24,9 @@ def _parse_url(u: str) -> _Url;
 
 
 def _request_bytes(host: str, path: str, request: Request) -> bytes;
+
+
+def _request_method(request: Request) -> str;
 
 
 def _replace_content_length(headers: dict[str, str]) -> dict[str, str];

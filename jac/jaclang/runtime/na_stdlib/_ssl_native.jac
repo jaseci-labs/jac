@@ -71,7 +71,13 @@ def:pub last_error -> str;
 def:pub ssl_write_all(ssl: int, data: bytes) -> int;
 
 
+def:pub ssl_write_once(ssl: int, data: bytes) -> int;
+
+
 def:pub ssl_read(ssl: int, bufsize: int) -> bytes;
+
+
+def:pub ssl_read_status(ssl: int, bufsize: int) -> tuple[int, int, bytes];
 
 def:pub ssl_pending(ssl: int) -> int;
 

@@ -1,7 +1,8 @@
-impl Request.postinit {
-    if self.method.upper() == "GET" and len(self.data) > 0 {
-        self.method = "POST";
+impl _request_method(request: Request) -> str {
+    if request.method is not None {
+        return request.method;
     }
+    return "POST" if len(request.data) > 0 else "GET";
 }
 
 impl _parse_url(u: str) -> _Url {
@@ -32,9 +33,10 @@ impl _parse_url(u: str) -> _Url {
 }
 
 impl _request_bytes(host: str, path: str, request: Request) -> bytes {
-    if request.method.find("\r") != -1
-        or request.method.find("\n") != -1
-        or request.method.find(" ") != -1
+    method = _request_method(request);
+    if method.find("\r") != -1
+        or method.find("\n") != -1
+        or method.find(" ") != -1
         or path.find("\r") != -1
         or path.find("\n") != -1 {
         raise ValueError("illegal request method or path");
@@ -50,7 +52,7 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
         }
         provided[name.lower()] = value;
     }
-    lines: list[str] = [request.method + " " + path + " HTTP/1.0"];
+    lines: list[str] = [method + " " + path + " HTTP/1.0"];
     if "host" not in provided {
         lines.append("Host: " + host);
     }
@@ -163,24 +165,15 @@ impl _parse_response(raw: bytes, url: str) -> HTTPResponse {
         line = lines[i];
         colon = line.find(":");
         if colon != -1 {
-            names.append(line[:colon].strip().lower());
+            names.append(line[:colon].strip());
             values.append(line[colon + 1:].strip());
         }
         i += 1;
     }
-    header_map: dict[str, str] = {};
+    header_map = HTTPHeaders();
     j: int = 0;
     while j < len(names) {
-        name_parts = names[j].split("-");
-        title_name = "";
-        for part in name_parts {
-            if title_name {
-                title_name += "-";
-            }
-            title_name += part.capitalize();
-        }
-        header_map[names[j]] = values[j];
-        header_map[title_name] = values[j];
+        header_map.add(names[j], values[j]);
         j += 1;
     }
     return HTTPResponse(
@@ -213,9 +206,6 @@ impl urlopen(
         request = url;
         if data is not None {
             request.data = data;
-            if request.method.upper() == "GET" and len(data) > 0 {
-                request.method = "POST";
-            }
             request.headers = _replace_content_length(request.headers);
         }
     } elif isinstance(url, str) {
@@ -266,13 +256,13 @@ impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse
                     }
                     next_headers[name] = request.headers[name];
                 }
-                next_method = request.method;
+                next_method = _request_method(request);
                 next_data = request.data;
-                switch_to_get = (changed_origin and request.method.upper() != "HEAD")
-                    or (resp.status == 303 and request.method.upper() != "HEAD")
+                switch_to_get = (changed_origin and next_method.upper() != "HEAD")
+                    or (resp.status == 303 and next_method.upper() != "HEAD")
                     or (
                         (resp.status == 301 or resp.status == 302)
-                        and request.method.upper() == "POST"
+                        and next_method.upper() == "POST"
                     );
                 if switch_to_get {
                     next_method = "GET";
