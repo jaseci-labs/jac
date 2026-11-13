@@ -5776,7 +5776,6 @@ graph import compiler {
             endpoint_key
         },
         driver.application.prepare_application {
-            effective_default_codespace,
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
