@@ -21,48 +21,6 @@ impl ServiceTransport.call_walker(
     );
 }
 
-impl _member_key(service: str, name: str) -> str {
-    return f"{service}:{name}";
-}
-
-impl InProcessTransport.register_function(service: str, name: str, handler: any) {
-    self._functions[_member_key(service, name)] = handler;
-}
-
-impl InProcessTransport.register_walker(service: str, name: str, handler: any) {
-    self._walkers[_member_key(service, name)] = handler;
-}
-
-impl InProcessTransport.call_function(
-    service: str,
-    name: str,
-    payload: dict[str, any],
-    headers: dict[str, str] | None = None
-) -> any {
-    key = _member_key(service, name);
-    handler = self._functions.get(key);
-    if handler is None {
-        raise KeyError(f"no in-process function registered for {key}");
-    }
-    return handler(payload);
-}
-
-impl InProcessTransport.call_walker(
-    service: str,
-    name: str,
-    payload: dict[str, any],
-    stub_cls: any = None,
-    headers: dict[str, str] | None = None
-) -> any {
-    key = _member_key(service, name);
-    handler = self._walkers.get(key);
-    if handler is None {
-        raise KeyError(f"no in-process walker registered for {key}");
-    }
-
-    return handler(payload);
-}
-
 impl HttpTransport.call_function(
     service: str,
     name: str,
