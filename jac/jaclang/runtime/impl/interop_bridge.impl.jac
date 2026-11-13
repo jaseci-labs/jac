@@ -129,6 +129,7 @@ impl _pyb_mirror_module(mod_path: str, package: str, import_name: str) -> object
     }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.runtime.prepared { application_for, module_builtins }
     prog = JacProgram();
     options = CompileOptions(
         force_codespace="server", default_codespace="server", no_ir_cache=True
@@ -144,6 +145,10 @@ impl _pyb_mirror_module(mod_path: str, package: str, import_name: str) -> object
     mod = types.ModuleType(mirror_name);
     mod.__file__ = key;
     mod.__package__ = package_name;
+    application = application_for(key, mirror_name);
+    if application is not None {
+        mod.__dict__["__builtins__"] = module_builtins(application, key);
+    }
     sys.modules[mirror_name] = mod;
     try {
         code = compile(mod_ir.gen.py_ast[0], key, "exec");
