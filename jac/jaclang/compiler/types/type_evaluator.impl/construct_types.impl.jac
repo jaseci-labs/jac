@@ -172,14 +172,25 @@ impl TypeEvaluator._starred_target_type(
     }
     values = star_targets.values or [];
     element: TypeBase | None = None;
-    if isinstance(container, ClassType)
-        and container.is_builtin("tuple")
-        and container.private.type_args
-        and not self._tuple_has_variadic_arg(container) {
-        args = container.private.type_args;
+    size: int | None = None;
+    if isinstance(container, ClassType) {
+        scope = container.shared.symbol_table;
+        if container.is_namedtuple() and isinstance(scope, Archetype) {
+            size = len(scope.get_has_vars());
+        } elif container.is_builtin("tuple")
+            and container.private.type_args
+            and not self._tuple_has_variadic_arg(container) {
+            size = len(container.private.type_args);
+        }
+    }
+    if size is not None {
         captured: list[TypeBase] = [];
-        for arg in args[star_at:len(args) - (len(values) - star_at - 1)] {
-            self._collect_unique_types(self._convert_to_instance(arg), captured);
+        for i in range(star_at, size - (len(values) - star_at - 1)) {
+            field = self._extract_tuple_element_type(container, i);
+            if field is None {
+                return None;
+            }
+            self._collect_unique_types(field, captured);
         }
         if not captured {
             return self.prefetch.list_class.clone_as_instance();

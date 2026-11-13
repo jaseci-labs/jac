@@ -16,6 +16,8 @@ the local (#10405): unpacking, chained assignment, walrus, `with ... as` and
 `except ... as`.
 """
 
+import from typing { NamedTuple }
+
 with entry {
     # Frozen to `int` by the first binding — reassigning a `str` is an error.
     a = 90;
@@ -69,7 +71,12 @@ obj Label {
     has text: str = "";
 }
 
-def binder_rebinds {
+class Row(NamedTuple) {
+    has name: str,
+        count: int;
+}
+
+def binder_rebinds(row: Row) {
     title = Label(text="a");
     [kind, title] = ["k", "x"];  # <-- Error
     other = title="x";  # <-- Error
@@ -91,6 +98,8 @@ def binder_rebinds {
     names.append("y");  # <-- Ok: a new starred target holds only what it captures
     (count, *spare) = (0, );
     spare.append("y");  # <-- Ok: an empty capture is still a list
+    counts: list[int] = [];
+    (kind, *counts) = row;  # <-- Ok: a NamedTuple star captures only its fields
     if (label := "a") and (label := "b") {  # <-- Ok: a walrus binding widens
         print(middle, fresh, label);
     }
