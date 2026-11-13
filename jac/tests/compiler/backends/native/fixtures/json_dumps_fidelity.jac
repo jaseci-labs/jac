@@ -92,9 +92,12 @@ with entry {
     print(json.dumps(label, `default=encode_label));
     custom_enc = json.JSONEncoder(`default=encode_label);
     print(custom_enc.encode(Label(value="encoder")));
-    skipkeys_input: dict[any, any] = {};
-    skipkeys_input["keep"] = 1;
-    skipkeys_input[(2, 3)] = "skip";
+}
+
+glob skipkeys_input: dict[int, str] = {};
+
+with entry {
+    skipkeys_input[2] = "skip";
     print(json.dumps(skipkeys_input, skipkeys=True));
 }
 
