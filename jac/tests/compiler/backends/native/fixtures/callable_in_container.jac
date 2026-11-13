@@ -102,3 +102,11 @@ def chained_dispatch(n: int) -> int {
     g: Callable[[int], int] = tbl[1];
     return g(f(n));
 }
+
+def any_dispatch(n: int) -> int {
+    tags: dict[str, any] = {"bad": h_bad, "one": h_one};
+    items: list[any] = [h_bad, h_two];
+    f: Callable[[int], int] = tags["one"];
+    g: Callable[[int], int] = items[1];
+    return g(f(n));
+}
