@@ -739,10 +739,6 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
         if isinstance(target, Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
 
-            if self._is_unannotated_rebind(target.sym, target) {
-                left_type = self.evaluator._widen_literal_for_declaration(left_type);
-            }
-
             if isinstance(left_type, UnknownType) and left_type.is_incomplete {
                 return;
             }
