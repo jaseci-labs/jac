@@ -554,6 +554,7 @@ test "a rebuilt consumer of a deduplicated copy keeps its edge on the canonical 
 
 test "same-prefix copies whose recorded dependencies differ are refused" {
     import from jaclang.compiler.driver.native_iface { NativeIface }
+    import from jaclang.compiler.driver.jir { ct_dep_digest }
     (copy_a, copy_b, _) = _alias_copy_fixture();
     scratch = Path(copy_a).parent.parent.parent;
     helper_a = scratch / "a" / "pkg" / "helper.jac";
@@ -621,19 +622,21 @@ test "same-prefix copies whose recorded dependencies differ are refused" {
     payload_b = Path(copy_b).parent / "payload.txt";
     payload_a.write_text("same payload");
     payload_b.write_text("same payload");
-    same_digest = hashlib.sha256(b"same payload").hexdigest();
+    same_digest = ct_dep_digest(str(payload_a.resolve()));
     registry.entries[copy_a].compile_deps = (
         f"{payload_a.resolve()}\t{same_digest}\t".encode()
     );
+    registry.entries[copy_a].compile_deps_base = str(Path(copy_a).parent.resolve());
     registry.entries[copy_b].compile_deps = (
         f"{payload_b.resolve()}\t{same_digest}\t".encode()
     );
+    registry.entries[copy_b].compile_deps_base = str(Path(copy_b).parent.resolve());
     identical_inputs_plan = build_link_plan(prog, [copy_a, copy_b], opts);
     assert copy_b not in [u.path for u in identical_inputs_plan.units] , (
         "identical embedded inputs should alias across package copies"
     );
     payload_b.write_text("different payload");
-    different_digest = hashlib.sha256(b"different payload").hexdigest();
+    different_digest = ct_dep_digest(str(payload_b.resolve()));
     registry.entries[copy_b].compile_deps = (
         f"{payload_b.resolve()}\t{different_digest}\t".encode()
     );

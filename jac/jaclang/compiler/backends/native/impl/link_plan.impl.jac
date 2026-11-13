@@ -445,17 +445,9 @@ impl _build_link_plan(
                 );
             }
             owner_ent = registry.entries.get(prefix_owner);
-            unit_inputs = _compile_dep_signature(ent.compile_deps, path);
-            owner_inputs = (
-                _compile_dep_signature(owner_ent.compile_deps, prefix_owner)
-                if owner_ent is not None
-                else []
-            );
-            unit_input_digests = sorted(row[1] for row in unit_inputs);
-            owner_input_digests = sorted(row[1] for row in owner_inputs);
             if owner_ent is None
-                or unit_inputs != owner_inputs
-                or unit_input_digests != owner_input_digests {
+                or _compile_dep_signature(ent.compile_deps, path)
+                    != _compile_dep_signature(owner_ent.compile_deps, prefix_owner) {
                 raise LinkPlanError(
                     f"{prefix_owner} and {path} share the native unit prefix "
                     f"{ent.iface.prefix} but their compile-time inputs differ: "
