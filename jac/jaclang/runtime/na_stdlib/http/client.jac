@@ -1,4 +1,4 @@
-obj: HTTPHeaders {
+obj HTTPHeaders {
     has _keys: list[str] = [],
         _data: dict[str, str] = {};
 
