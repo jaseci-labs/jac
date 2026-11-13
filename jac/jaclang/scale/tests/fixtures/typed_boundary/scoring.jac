@@ -87,3 +87,19 @@ def:pub inherited_score -> DerivedPayload {
 def:pub walker_value -> ScoreWalker {
     return ScoreWalker(payload=fetch_score());
 }
+
+def:pub score_stream -> Generator[int, None, None] {
+    for i in range(3) {
+        yield i;
+    }
+}
+
+walker:pub StreamWalker {
+    can run with Root entry {
+        report (i for i in range(3));
+    }
+}
+
+def:pub score_boom -> int {
+    raise ValueError("score failed");
+}
