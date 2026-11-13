@@ -1517,6 +1517,19 @@ Cannot return int, expected bool
              0,
              True,
              []
+         ),
+         (
+             "match_capture_rebind_checked",
+             "checker",
+             "checker_match_capture_rebind.jac",
+             4,
+             True,
+             [
+                 (0, "Cannot assign str to int\ncase str() as n:"),
+                 (1, "Cannot assign float | int to int\ncase n:"),
+                 (2, "Cannot assign str | int to int\ncase n:"),
+                 (3, "Cannot assign str to int\ncase str() as n:")
+             ]
          )
      ];
 

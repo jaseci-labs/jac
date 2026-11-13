@@ -4529,6 +4529,8 @@ impl TypeEvaluator._prefetch_types {
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.generator_class = get_typing_class("Generator");
+    self.prefetch.sequence_class = get_typing_class("Sequence");
+    self.prefetch.mapping_class = get_typing_class("Mapping");
     self.prefetch.function_class = get_types_class("FunctionType");
     self.prefetch.mappingproxy_class = get_types_class("MappingProxyType");
 
@@ -6235,13 +6237,12 @@ impl TypeEvaluator._get_type_from_match_pattern(
         pattern_types: list[TypeBase] = [];
         for sub_pattern in pattern.patterns {
             sub_type = self._get_type_from_match_pattern(sub_pattern);
-            if sub_type is not None {
-                pattern_types.append(sub_type);
+            if sub_type is None {
+                return None;
             }
+            pattern_types.append(sub_type);
         }
-        if len(pattern_types) == 0 {
-            return None;
-        } elif len(pattern_types) == 1 {
+        if len(pattern_types) == 1 {
             return pattern_types[0];
         } else {
             return UnionType(types=pattern_types);
@@ -6256,7 +6257,115 @@ impl TypeEvaluator._get_type_from_match_pattern(
         return None;
     }
 
+    if isinstance(pattern, MatchSingleton) and isinstance(pattern.value, Null) {
+        return self._literal_type_from_expr(pattern.value);
+    }
+
     return None;
+}
+
+impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | None {
+    case_node: (UniNode | None) = capture.parent;
+    while isinstance(case_node, (MatchOr, MatchAs)) {
+        case_node = case_node.parent;
+    }
+    stmt = case_node.parent if isinstance(case_node, MatchCase) else None;
+    if not isinstance(stmt, MatchStmt) {
+        return None;
+    }
+    subject = self.get_type_of_expression(stmt.target);
+    after_structural = False;
+    for earlier in stmt.cases {
+        if earlier is case_node {
+            break;
+        }
+        if earlier.guard is not None {
+            continue;
+        }
+        top = earlier.pattern;
+        if isinstance(top, MatchAs) and top.pattern is not None {
+            top = top.pattern;
+        }
+        for alt in (top.patterns if isinstance(top, MatchOr) else [top]) {
+            if self._pattern_is_structural(alt) {
+                after_structural = True;
+            } elif self._pattern_covers_class(alt) {
+                matched = self._get_type_from_match_pattern(alt);
+                if matched is not None {
+                    subject = self.exclude_type_from_union(subject, matched);
+                }
+            }
+        }
+    }
+    bound: (TypeBase | None) = subject;
+    if capture.pattern is not None {
+        pattern_type = self._get_type_from_match_pattern(capture.pattern);
+        if pattern_type is None {
+            return None;
+        }
+        bound = self._narrow_type_to(subject, pattern_type);
+    }
+    if bound is None or not after_structural {
+        return bound;
+    }
+    members = bound.types if isinstance(bound, UnionType) and bound.types else [bound];
+    kept = [
+        m
+        for m in members
+        if not self._may_match_structural(m)
+    ];
+    if not kept {
+        return None;
+    }
+    return self._union_narrowed_types(kept);
+}
+
+impl TypeEvaluator._may_match_structural(member: TypeBase) -> bool {
+    if not isinstance(member, ClassType) {
+        return True;
+    }
+    sequence_cls = self.prefetch.sequence_class;
+    if sequence_cls is not None
+        and not member.is_builtin(["str", "bytes", "bytearray"])
+        and self.is_sub_class(sequence_cls, member, ignore_unknown=True) {
+        return True;
+    }
+    mapping_cls = self.prefetch.mapping_class;
+    return mapping_cls is not None
+        and self.is_sub_class(mapping_cls, member, ignore_unknown=True);
+}
+
+impl TypeEvaluator._pattern_is_structural(pattern: MatchPattern) -> bool {
+    if isinstance(pattern, MatchAs) and pattern.pattern is not None {
+        return self._pattern_is_structural(pattern.pattern);
+    }
+    if isinstance(pattern, MatchOr) {
+        return any(self._pattern_is_structural(p) for p in pattern.patterns);
+    }
+    return isinstance(pattern, (MatchSequence, MatchMapping));
+}
+
+impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {
+    if isinstance(pattern, MatchAs) {
+        return pattern.pattern is not None
+            and self._pattern_covers_class(pattern.pattern);
+    }
+    if isinstance(pattern, MatchOr) {
+        return bool(pattern.patterns)
+            and all(self._pattern_covers_class(p) for p in pattern.patterns);
+    }
+    if isinstance(pattern, MatchSingleton) {
+        return isinstance(pattern.value, Null);
+    }
+    if isinstance(pattern, MatchArch) {
+        subs: list[MatchPattern] = list(pattern.arg_patterns or [])
+            + [kv.value for kv in (pattern.kw_patterns or [])];
+        return all(
+            isinstance(p, MatchWild) or (isinstance(p, MatchAs) and p.pattern is None)
+            for p in subs
+        );
+    }
+    return False;
 }
 
 impl TypeEvaluator._union_contains_none(union_type: TypeBase) -> bool {

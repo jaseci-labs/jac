@@ -416,22 +416,25 @@ impl TypeCheckPass._is_exempt_rebind(
         and any(d.name_of.find_parent_of_type(Import) is not None for d in prior.defn);
 }
 
-impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
+impl TypeCheckPass._check_target_rebinds(nd: (InForStmt | MatchAs)) -> None {
     scope = find_python_scope_node_of(nd);
     if scope is None {
         return;
     }
-    loop_at = (nd.loc.first_line, nd.loc.col_start);
-    for leaf in self._write_leaves(nd.target) {
+    at = (nd.loc.first_line, nd.loc.col_start);
+    leaves = self._write_leaves(nd.target) if isinstance(nd, InForStmt) else [nd.name];
+    for leaf in leaves {
         if not isinstance(leaf, Name) or leaf.sym is None {
             continue;
         }
         prior = scope.lookup(leaf.value, deep=False);
-        if prior is None or prior is leaf.sym or prior.decl is None {
+        if prior is None
+            or (prior is leaf.sym and isinstance(nd, InForStmt))
+            or prior.decl is None {
             continue;
         }
         if not isinstance(prior.decl.name_of, ParamVar)
-            and (prior.decl.loc.first_line, prior.decl.loc.col_start) >= loop_at {
+            and (prior.decl.loc.first_line, prior.decl.loc.col_start) >= at {
             continue;
         }
         declared = self.evaluator.get_type_of_symbol(prior);
@@ -443,8 +446,10 @@ impl TypeCheckPass._check_for_target_rebinds(nd: InForStmt) -> None {
             or self._is_exempt_rebind(prior, leaf, declared) {
             continue;
         }
-        bound = self.evaluator.get_type_of_expression(leaf);
-        if isinstance(bound, UnknownType) {
+        bound = self.evaluator.get_type_of_match_capture(nd)
+            if isinstance(nd, MatchAs)
+            else self.evaluator.get_type_of_expression(leaf);
+        if bound is None or isinstance(bound, UnknownType) {
             continue;
         }
         if not self.evaluator.assign_type(
@@ -1843,7 +1848,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self.evaluator.get_type_of_expression(here.target);
     }
     self._check_immutable_write(here.target, rebind_scope=here);
-    self._check_for_target_rebinds(here);
+    self._check_target_rebinds(here);
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);
 
@@ -2234,6 +2239,7 @@ impl TypeCheckPass._is_exception_class_operand(
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {
     self._check_immutable_write(here.name, rebind_scope=here);
+    self._check_target_rebinds(here);
 }
 
 impl TypeCheckPass.exit_match_arch with MatchArch exit {
