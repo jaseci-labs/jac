@@ -124,7 +124,7 @@ test "array.fromlist leaves the receiver unchanged after conversion failure" {
 
 test "shrinking a shared anonymous map preserves its backing mapping" {
     if sys.platform == "darwin" {
-        return;
+        testskip("shared anonymous mmap shrink is not exercised on Darwin");
     }
     (na_out, _na_err) = _na_run("mmap_shared_shrink.jac");
     assert na_out.strip() == "4\n65" , na_out;
