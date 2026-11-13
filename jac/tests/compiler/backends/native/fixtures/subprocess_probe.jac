@@ -132,6 +132,23 @@ with entry {
         print("ve-capture-raised");
     }
 
+    inherited = os.environ.get("HOME", "");
+    env_probe = run(
+        ["sh", "-c", "printf %s \"$HOME\""], capture_output=True, text=True
+    );
+    print("inherited-env=" + str(env_probe.stdout == inherited));
+
+    retry = Popen(
+        args=["sh", "-c", "sleep 0.1; printf retry-out"], stdout=PIPE, text=True
+    );
+    try {
+        retry.communicate(timeout=0.01);
+        print("retry-timeout-missed");
+    } except TimeoutExpired {
+        (retry_out, _retry_err) = retry.communicate(timeout=2);
+        print("retry-out=" + retry_out.strip());
+    }
+
     print("sigpipe-ign=" + str(getsignal(SIGPIPE) is SIG_IGN));
     try {
         run([]);
