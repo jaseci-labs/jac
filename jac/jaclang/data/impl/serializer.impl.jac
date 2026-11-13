@@ -512,9 +512,6 @@ impl Serializer.repair(
 }
 
 impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] {
-    if target_type is None {
-        return (val, False);
-    }
     try {
         return (convert(val, target_type, ConvertMode.LENIENT), True);
     } except Exception as e {

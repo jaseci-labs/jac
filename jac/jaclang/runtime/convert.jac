@@ -37,9 +37,7 @@ def _convert_class(value: any, target: type, mode: ConvertMode) -> any;
 
 def _to_bool(value: any, mode: ConvertMode) -> bool;
 
-def _to_int(value: any, mode: ConvertMode) -> int;
-
-def _to_float(value: any, mode: ConvertMode) -> float;
+def _to_number(value: any, kind: type, mode: ConvertMode) -> any;
 
 def _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any;
 

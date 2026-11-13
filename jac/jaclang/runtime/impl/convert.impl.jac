@@ -116,11 +116,8 @@ impl _convert_class(value: any, target: type, mode: ConvertMode) -> any {
     if target is bool {
         return _to_bool(value, mode);
     }
-    if target is int {
-        return _to_int(value, mode);
-    }
-    if target is float {
-        return _to_float(value, mode);
+    if target is int or target is float {
+        return _to_number(value, target, mode);
     }
     if target is str {
         if isinstance(value, str) {
@@ -183,40 +180,17 @@ impl _to_bool(value: any, mode: ConvertMode) -> bool {
     raise _mismatch('boolean', value);
 }
 
-impl _to_int(value: any, mode: ConvertMode) -> int {
-    if isinstance(value, bool) {
-        if mode == ConvertMode.LENIENT {
-            return int(value);
-        }
-        raise _mismatch('integer', value);
-    }
-    if isinstance(value, int) {
-        return value;
-    }
-    if isinstance(value, float)
-        and (value.is_integer() or mode == ConvertMode.LENIENT) {
-        return int(value);
-    }
+impl _to_number(value: any, kind: type, mode: ConvertMode) -> any {
+    expected = 'integer' if kind is int else 'number';
     if isinstance(value, str) and mode != ConvertMode.STRICT {
-        return int(value);
+        return kind(value);
     }
-    raise _mismatch('integer', value);
-}
-
-impl _to_float(value: any, mode: ConvertMode) -> float {
-    if isinstance(value, bool) {
-        if mode == ConvertMode.LENIENT {
-            return float(value);
-        }
-        raise _mismatch('number', value);
+    lossy = isinstance(value, bool)
+        or (kind is int and isinstance(value, float) and not value.is_integer());
+    if not isinstance(value, (int, float)) or (lossy and mode != ConvertMode.LENIENT) {
+        raise _mismatch(expected, value);
     }
-    if isinstance(value, (int, float)) {
-        return float(value);
-    }
-    if isinstance(value, str) and mode != ConvertMode.STRICT {
-        return float(value);
-    }
-    raise _mismatch('number', value);
+    return kind(value);
 }
 
 impl _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any {
@@ -226,9 +200,7 @@ impl _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any {
             return wide;
         }
     }
-    core = _to_float(value, mode)
-        if issubclass(target, float)
-        else _to_int(value, mode);
+    core = _to_number(value, float if issubclass(target, float) else int, mode);
     return json_wire_read(name, core);
 }
 
