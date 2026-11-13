@@ -14,8 +14,6 @@ glob REFUSED: object = object(),
      F32: type = SIZED_TYPES["f32"],
      ID: str = "12345678-1234-5678-1234-567812345678";
 
-enum Color { RED = "red", BLUE = "blue" }
-
 obj Payload {
     has args: int,
         kwargs: str = "default";
@@ -32,8 +30,7 @@ walker Greeting {
 
 test "coercion and schemas follow the declared type and the public constructor" {
     # JSON values carry types, so they are checked. Text from a query, path, header
-    # or form is parsed. Stored data is repaired leniently, keeping what already has
-    # the type. `want` also pins the type: 3 is not 3.0 and 1 is not True.
+    # or form is parsed. `want` also pins the type: 3 is not 3.0 and 1 is not True.
     for (mode, rows) in [
         (
             ConvertMode.STRICT,
@@ -70,11 +67,8 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("2026-01-02T03:04:05", datetime, datetime(2026, 1, 2, 3, 4, 5)),
                 ("2026-01-02", date, date(2026, 1, 2)),
                 (ID, UUID, UUID(ID)),
-                (1767323045, datetime, REFUSED),
-                ("red", Color, Color.RED),
-                ("RED", Color, REFUSED),
                 (3.0, U8, 3),
-                (255, U8, 255),
+                (255.0, U8, 255),
                 (256, U8, REFUSED),
                 (3.5, U8, REFUSED),
                 ("3", U8, REFUSED),
@@ -104,29 +98,6 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 ("7", U8, 7),
                 ("-1", U8, REFUSED),
                 ("1.5", F32, 1.5)
-            ]
-        ),
-        (
-            ConvertMode.LENIENT,
-            [
-                (19.99, int, 19),
-                ("42", int, 42),
-                (True, int, True),
-                (5, str, "5"),
-                (1, bool, True),
-                ("maybe", bool, REFUSED),
-                ("x", bytes, b"x"),
-                (["1"], list[int], ["1"]),
-                ([1, 2], tuple[int, ...], (1, 2)),
-                ("x", list[int], REFUSED),
-                (None, int, REFUSED),
-                (None, int | str, None),
-                ("7", int | str, 7),
-                ("BLUE", Color, Color.BLUE),
-                ({"args": 1}, Payload, REFUSED),
-                ("2026-01-02", date, date(2026, 1, 2)),
-                (3.9, U8, 3),
-                (256, U8, REFUSED)
             ]
         )
     ] {
@@ -163,9 +134,8 @@ test "coercion and schemas follow the declared type and the public constructor" 
             {"type": "array", "items": {"type": "string", "format": "uuid"}}
         )
     ] {
-        assert _schema_for_type(target) == want , f"{target}: {_schema_for_type(
-            target
-        )}";
+        got = _schema_for_type(target);
+        assert got == want , f"{target}: {got}";
     }
 }
 

@@ -142,11 +142,12 @@ test "coerce: equal unions in a different member order keep their own order" {
 }
 
 
-test "coerce: str to int, float, bool, UUID" {
+test "coerce: str to int, float, bool, bytes, UUID" {
     assert Serializer.coerce("42", int) == (42, True);
     assert Serializer.coerce("3.14", float) == (3.14, True);
     assert Serializer.coerce("true", bool) == (True, True);
     assert Serializer.coerce("False", bool) == (False, True);
+    assert Serializer.coerce("x", bytes) == (b"x", True);
     u = uuid4();
     assert Serializer.coerce(str(u), UUID) == (u, True);
 }
