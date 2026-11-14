@@ -1,7 +1,6 @@
 import hashlib;
 import os;
 import sys;
-
 obj CatalogOrigin {
     has path: str,
         offset: int = 0,

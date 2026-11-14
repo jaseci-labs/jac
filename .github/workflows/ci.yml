@@ -1277,7 +1277,7 @@ jobs:
       - name: Install qemu-user and aarch64 cross libc
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
+          sudo apt-get install -y --no-install-recommends qemu-user-binfmt libc6-arm64-cross
       - uses: ./.github/actions/jac-kit
         with:
           dev: "true"

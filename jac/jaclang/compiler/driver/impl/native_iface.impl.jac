@@ -4,28 +4,73 @@ impl native_unit_ref(path: str) -> str {
     return ident if ident != rp else rp;
 }
 
+impl _project_file(project_root: str, ref: str) -> (str | None) {
+    root_name = _native_unit_root_name(project_root);
+    prefix = root_name + "/";
+    if not ref.startswith(prefix) {
+        return None;
+    }
+    candidate = os.path.join(project_root, ref[len(prefix):]);
+    return candidate if os.path.isfile(candidate) else None;
+}
+
+impl _named_project_file(search_dir: str, ref: str) -> (str | None) {
+    if not os.path.isdir(search_dir) {
+        return None;
+    }
+    current_root = native_unit_root(search_dir);
+    if current_root is not None and current_root == search_dir {
+        candidate = _project_file(current_root, ref);
+        if candidate is not None {
+            return candidate;
+        }
+    }
+    direct = os.path.join(search_dir, ref);
+    if os.path.isfile(direct) {
+        return direct;
+    }
+    for child in os.listdir(search_dir) {
+        child_dir = os.path.join(search_dir, child);
+        if not os.path.isdir(child_dir) {
+            continue;
+        }
+        project_root = native_unit_root(child_dir);
+        if project_root is not None {
+            candidate = _project_file(project_root, ref);
+            if candidate is not None {
+                return candidate;
+            }
+        }
+    }
+    return None;
+}
+
 impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     if not ref or os.path.isabs(ref) {
         return ref;
     }
-    (root_name, _sep, rel) = ref.partition("/");
-    if not rel {
-        return ref;
-    }
-    if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(target_pkg_root()), ref);
-    }
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
         if anchor_root is not None {
-            if os.path.basename(anchor_root) == root_name {
-                return os.path.join(anchor_root, rel);
+            anchor_candidate = _project_file(anchor_root, ref);
+            if anchor_candidate is not None {
+                return anchor_candidate;
             }
-            sibling = os.path.join(os.path.dirname(anchor_root), ref);
-            if os.path.isfile(sibling) {
+            mounts = project_mounts(anchor_root);
+            if mounts is not None {
+                mounted_candidate = _named_project_file(mounts, ref);
+                if mounted_candidate is not None {
+                    return mounted_candidate;
+                }
+            }
+            sibling = _named_project_file(os.path.dirname(anchor_root), ref);
+            if sibling is not None {
                 return sibling;
             }
         }
+    }
+    if ref.startswith("jaclang/") {
+        return os.path.join(os.path.dirname(target_pkg_root()), ref);
     }
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.backends.native.na_constants {
@@ -37,8 +82,8 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         FACT_SEP
     ) {
         if search_dir and os.path.isabs(search_dir) {
-            candidate = os.path.join(search_dir, ref);
-            if os.path.isfile(candidate) {
+            candidate = _named_project_file(search_dir, ref);
+            if candidate is not None {
                 return candidate;
             }
         }
@@ -52,8 +97,8 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
                 continue;
             }
             for name in sorted(os.listdir(org_dir)) {
-                candidate = os.path.join(org_dir, name, ref);
-                if os.path.isfile(candidate) {
+                candidate = _named_project_file(os.path.join(org_dir, name), ref);
+                if candidate is not None {
                     return candidate;
                 }
             }

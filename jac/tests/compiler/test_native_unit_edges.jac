@@ -5,6 +5,7 @@ share one symbol prefix."""
 import os;
 import sys;
 import tempfile;
+import jaclang;
 import from jaclang.compiler.driver.jir {
     NativeStamp,
     SEC_BYTECODE,
@@ -22,6 +23,7 @@ import from jaclang.compiler.driver.jir {
     write_module_cache
 }
 import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
+import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
 import from jaclang.compiler.backends.native.link_plan {
     LinkPlanError,
     LinkUnit,
@@ -96,17 +98,106 @@ test "a unit reference found under no root never resolves against the working di
 
 test "a unit reference to an installed package resolves through the import path" {
     site = tempfile.mkdtemp(prefix="jac_native_site_");
-    os.makedirs(os.path.join(site, "edgepkg"));
-    target = os.path.join(site, "edgepkg", "unit.jac");
+    checkout = os.path.join(site, "checkout-b");
+    os.makedirs(checkout);
+    with open(os.path.join(checkout, "jac.toml"), "w") as handle {
+        handle.write('["project"]\n"name" = "edgepkg"\n');
+    }
+    target = os.path.join(checkout, "unit.jac");
     with open(target, "w") as handle {
         handle.write("glob x = 1;\n");
     }
     sys.path.append(site);
     try {
         assert resolve_native_unit_ref("edgepkg/unit.jac") == target;
+        assert native_unit_identity(target) == "edgepkg/unit.jac";
+
+        scoped = os.path.join(site, "checkout-scoped");
+        os.makedirs(scoped);
+        with open(os.path.join(scoped, "jac.toml"), "w") as handle {
+            handle.write('[project]\nname = "acme/math"\n');
+        }
+        scoped_target = os.path.join(scoped, "unit.jac");
+        with open(scoped_target, "w") as handle {
+            handle.write("glob y = 1;\n");
+        }
+        assert native_unit_identity(scoped_target) == "acme/math/unit.jac";
+        assert resolve_native_unit_ref("acme/math/unit.jac") == scoped_target;
+        assert resolve_native_unit_ref("acme/math/unit.jac", scoped_target)
+            == scoped_target;
     } finally {
         sys.path.remove(site);
     }
+
+    parent = os.path.join(site, "parent");
+    nested = os.path.join(parent, "nested");
+    os.makedirs(nested);
+    with open(os.path.join(parent, "jac.toml"), "w") as handle {
+        handle.write('[project]\nname = "outer"\n');
+    }
+    with open(os.path.join(nested, "jac.toml"), "w") as handle {
+        handle.write('["project"]\n"name" = "nested"\n');
+    }
+    nested_unit = os.path.join(nested, "unit.jac");
+    with open(nested_unit, "w") as handle {
+        handle.write("glob x = 1;\n");
+    }
+    assert native_unit_identity(nested_unit) == "nested/unit.jac";
+
+    named_jaclang = os.path.join(site, "named-jaclang");
+    os.makedirs(named_jaclang);
+    with open(os.path.join(named_jaclang, "jac.toml"), "w") as handle {
+        handle.write('["project"]\n"name" = "jaclang"\n');
+    }
+    own_unit = os.path.join(named_jaclang, "unit.jac");
+    with open(own_unit, "w") as handle {
+        handle.write("glob x = 2;\n");
+    }
+    resolved_own_unit = resolve_native_unit_ref("jaclang/unit.jac", own_unit);
+    assert os.path.realpath(resolved_own_unit) == os.path.realpath(own_unit) , (
+        resolved_own_unit
+    );
+    bundled_runtime = resolve_native_unit_ref(
+        "jaclang/runtime/region_native.jac", own_unit
+    );
+    expected_runtime = os.path.join(
+        os.path.dirname(jaclang.__file__), "runtime", "region_native.jac"
+    );
+    assert os.path.realpath(bundled_runtime) == os.path.realpath(expected_runtime) , (
+        bundled_runtime
+    );
+}
+
+test "a unit reference prefers the owner's selected package mount" {
+    site = tempfile.mkdtemp(prefix="jac_native_mounts_");
+    owner = os.path.join(site, "owner");
+    old_version = os.path.join(site, "edgepkg-old");
+    selected_version = os.path.join(site, "edgepkg-selected");
+    os.makedirs(owner);
+    os.makedirs(old_version);
+    os.makedirs(selected_version);
+    for version_root in [old_version, selected_version] {
+        with open(os.path.join(version_root, "jac.toml"), "w") as handle {
+            handle.write('[project]\nname = "edgepkg"\n');
+        }
+        with open(os.path.join(version_root, "unit.jac"), "w") as handle {
+            handle.write("glob version = 1;\n");
+        }
+    }
+    with open(os.path.join(owner, "jac.toml"), "w") as handle {
+        handle.write('[project]\nname = "edgeowner"\n');
+    }
+    anchor = os.path.join(owner, "main.jac");
+    with open(anchor, "w") as handle {
+        handle.write("glob x = 1;\n");
+    }
+    mounts = os.path.join(owner, ".jac", "packages");
+    os.makedirs(mounts);
+    os.symlink(
+        selected_version, os.path.join(mounts, "edgepkg"), target_is_directory=True
+    );
+    assert os.path.realpath(resolve_native_unit_ref("edgepkg/unit.jac", anchor))
+        == os.path.realpath(os.path.join(selected_version, "unit.jac"));
 }
 
 test "two units sharing a symbol prefix are refused by name" {

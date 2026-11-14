@@ -112,6 +112,8 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.type_registry',
          'jaclang.compiler.field_semantics',
          'jaclang.compiler.intrinsic_registry',
+         'jaclang.compiler.types.fixed_width',
+         'jaclang.compiler.types.ct_eval',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.types.stubcat.modiface',
          'jaclang.compiler.types.stubcat.writer',
@@ -127,6 +129,8 @@ glob IR_LOADS: list[str] = [
      ANALYSIS_LOADS: list[str] = [
          'jaclang.compiler.field_semantics',
          'jaclang.compiler.passes.type_checker_pass',
+         'jaclang.compiler.types.fixed_width',
+         'jaclang.compiler.types.ct_eval',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.passes.pyast_load_pass',
          'jaclang.compiler.passes.rc_facts_pass',

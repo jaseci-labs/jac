@@ -75,6 +75,10 @@ impl find_jac_files(package_dir: str) -> list[str] {
         rel_path = jac_file.relative_to(pkg);
         rel = str(rel_path);
 
+        if variant_selected(str(jac_file)) is False {
+            continue;
+        }
+
         if pkg.name == "jaclang" and is_native_lowered(rel) {
             continue;
         }
@@ -1720,7 +1724,7 @@ impl run_precompile(
                         "message": f"FAIL (native unit did not lower): {rel}"
                     };
                 }
-                if jac_path in native_only_units {
+                if native_only(jac_path) {
                     jir_bytes: (bytes | None) = write_precompiled_jir(
                         None,
                         compute_precompile_module_key(jac_path),

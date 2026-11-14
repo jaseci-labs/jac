@@ -407,6 +407,43 @@ impl native_unit_root(directory: str) -> (str | None) {
     }
 }
 
+impl _jac_toml_project_name(toml_path: str) -> (str | None) {
+    try {
+        import tomllib;
+        with open(toml_path, "rb") as f {
+            config = tomllib.load(f);
+        }
+        project = config.get("project", {});
+        if isinstance(project, dict) {
+            name = project.get("name");
+            if isinstance(name, str) and name.strip() {
+                return name;
+            }
+        }
+    } except Exception {
+        return None;
+    }
+    return None;
+}
+
+impl _native_unit_root_name(unit_root: str) -> str {
+    memo = _native_unit_root_name_memo.get(unit_root);
+    if memo is not None {
+        return memo;
+    }
+    import os;
+    name = os.path.basename(unit_root);
+    toml_path = os.path.join(unit_root, "jac.toml");
+    if os.path.isfile(toml_path) {
+        pname = _jac_toml_project_name(toml_path);
+        if pname is not None {
+            name = pname;
+        }
+    }
+    _native_unit_root_name_memo[unit_root] = name;
+    return name;
+}
+
 impl native_unit_identity(path: str) -> str {
     memo = _native_unit_identity_memo.get(path);
     if memo is not None {
@@ -418,7 +455,7 @@ impl native_unit_identity(path: str) -> str {
     identity = rp;
     if unit_root is not None {
         rel = os.path.relpath(rp, unit_root).replace("\\", "/");
-        identity = f"{os.path.basename(unit_root)}/{rel}";
+        identity = f"{_native_unit_root_name(unit_root)}/{rel}";
     }
     _native_unit_identity_memo[path] = identity;
     return identity;
@@ -866,6 +903,12 @@ impl resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True
 ) -> tuple[(str | None, str | None)] {
     import os;
+    if os.path.isabs(module_name)
+        and module_name.endswith('.jac')
+        and os.path.isfile(module_name) {
+        path = real_path(module_name);
+        return (path, path);
+    }
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
 

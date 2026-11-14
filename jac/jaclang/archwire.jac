@@ -1178,8 +1178,9 @@ graph import {
             module_spaces,
             spaces_are_client_only
         },
-        dist.precompile_bytecode.find_jac_files { native_only },
+        dist.precompile_bytecode.find_jac_files { native_only, variant_selected },
         dist.precompile_bytecode.package_native_units { native_units_of },
+        dist.precompile_bytecode.run_precompile.unit_job { native_only },
         dist.publish.runtime_vendor._compile_runtime_module
             | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
@@ -2059,6 +2060,7 @@ graph import {
             resolve_jac_virtual_module_path
         },
         compiler.backends.py.artifact_imports.resolve_imports
+            | compiler.driver.native_iface
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module
@@ -4947,6 +4949,9 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
+            native_only_import_target
+        },
         backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
         backends.py.jcir_gen_pass.JcirGenPass.exit_import {
             CrossAppKind,
@@ -5633,6 +5638,10 @@ graph import compiler {
             native_test_symbol,
             native_unit_prefix
         },
+        driver.application | driver.nativecache.NativeUnitRegistry._source_key {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        },
         driver.boundary_classify._default_codespace_for { effective_default_codespace },
         driver.boundary_classify.import_binds_client_native
             | driver.session_compile.drop_native_bindings {
@@ -5675,10 +5684,8 @@ graph import compiler {
             native_unit_identity,
             native_unit_root
         },
-        driver.nativecache.NativeUnitRegistry._source_key {
-            get_effective_default_codespace_override,
-            set_effective_default_codespace
-        },
+        driver.native_iface._named_project_file { native_unit_root },
+        driver.native_iface._project_file { _native_unit_root_name },
         driver.program.JacProgram.declared_codespace { is_client_by_location },
         driver.program.JacProgram.init { forget_real_paths },
         driver.session_compile.compile_in_session {
@@ -5775,10 +5782,6 @@ graph import compiler {
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish {
             endpoint_key
         },
-        driver.application.prepare_application {
-            get_effective_default_codespace_override,
-            set_effective_default_codespace
-        },
         driver.boundary_classify.bridgeable_import_target { is_shared_runtime_module },
         driver.boundary_classify.plain_native_import_target
             | types.stubcat.build._cached_catalog { jaclang_pkg_root },
@@ -5825,6 +5828,7 @@ graph import compiler {
             bundled_stdlib_module_of,
             is_toolchain_unit
         },
+        pkg_paths.package_host_edge { native_unit_root },
         placement.placement_facts.native_unit { is_kernel_unit_path },
         placement.placement_solver._import_source_module { is_compiler_source_path },
         tests.xbackend_equiv {
@@ -11318,7 +11322,10 @@ graph import compiler.types {
         ct_type_attr,
         ct_value_attr
     }
-    ct_eval ++> type_evaluator { CtEvaluator }
+    ct_eval ++> [
+        type_evaluator { CtEvaluator },
+        type_evaluator.TypeEvaluator.__post_init__ { CtEvaluator },
+    ]
     ct_format ++> [
         ct_builtins { ct_binary, ct_format, ct_str_format },
         ct_eval { ct_binary, ct_convert, ct_format, ct_inplace },
@@ -11969,7 +11976,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        build._build_catalog_inner { CatalogWriter },
+    ]
 }
 
 graph import data {
