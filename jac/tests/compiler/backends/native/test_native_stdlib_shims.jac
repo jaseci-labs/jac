@@ -88,9 +88,12 @@ def _na_run(fixture: str) -> tuple[(str, str)] {
         text=True,
         timeout=900
     );
-    assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-800:]
-        if comp.stderr
-        else '(empty)'}";
+    assert comp.returncode == 0 , (
+        f"nacompile failed; stdout={comp.stdout[-1200:]
+            if comp.stdout
+            else '(empty)'}; "
+        f"stderr={comp.stderr[-800:] if comp.stderr else '(empty)'}"
+    );
     proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
     assert proc.returncode == 0 , f"binary failed: {proc.stderr[-400:]
         if proc.stderr
@@ -178,6 +181,24 @@ test "native ContextVar.set returns a Token that reset honors like CPython" {
     py_out = python_run(os.path.join(FIXTURES, "contextvars_token.jac"));
     (na_out, _na_err) = _na_run("contextvars_token.jac");
     _same_lines(py_out, na_out, "contextvars token");
+}
+
+test "native ConfigParser rejects option names that cannot round-trip" {
+    (na_out, _na_err) = _na_run("configparser_invalid_option.jac");
+    assert na_out.strip()
+        == "valid bracket option round-trips\ninvalid option name rejected\nvalue-completed header rejected\ncarriage returns preserved" , na_out;
+}
+
+test "native tomllib reports unsupported parse_float callbacks" {
+    (na_out, _na_err) = _na_run("tomllib_parse_float_unsupported.jac");
+    assert na_out.strip() == "native parse_float callback unsupported" , na_out;
+}
+
+test "native ConfigParser getfloat validates and accepts underscores like CPython" {
+    (sv_out, _sv_err) = _sv_run("configparser_float_probe.jac");
+    (na_out, _na_err) = _na_run("configparser_float_probe.jac");
+    _same_lines(sv_out, na_out, "configparser getfloat");
+    assert na_out.strip() == "valid=1000.5\ninvalid=rejected" , na_out;
 }
 
 test "a program's own Token lives beside the contextvars shim's token" {
