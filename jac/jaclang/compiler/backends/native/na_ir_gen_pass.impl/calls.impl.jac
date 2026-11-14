@@ -2083,6 +2083,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if func_name == "hasattr" {
             params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+            if params_l
+                and not isinstance(params_l[0], uni.KWPair)
+                and isinstance(params_l[0], (uni.String, uni.MultiString)) {
+                self._emit_unsupported_builtin_call(nd, func_name);
+                return None;
+            }
             if len(params_l) == 2
                 and not isinstance(params_l[0], uni.KWPair)
                 and not isinstance(params_l[1], uni.KWPair)

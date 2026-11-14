@@ -395,6 +395,17 @@ test "hasattr with a dynamic property name demotes" {
     );
 }
 
+test "hasattr on a Python string receiver demotes without dropping arguments" {
+    src = "def get_name -> str { print('name evaluated'); return 'missing'; }\n"
+    "def answer -> bool { return hasattr('text', get_name()); }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_string_receiver", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is None
+        or "answer" not in ir.gen.native_layout.functions , (
+        "unsupported hasattr receivers must demote so argument evaluation runs"
+    );
+}
+
 test "hasattr recognizes inherited Python object methods" {
     src = "obj HasAttrObject { has value: int = 1; }\n"
     "def answer -> int { item = HasAttrObject(); return 1 if hasattr(item, '__str__') else 0; }\n";
