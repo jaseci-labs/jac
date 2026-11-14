@@ -5477,7 +5477,9 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass.prepare { ClientManifest },
         backends.native.link_glue.inject_heap_accounting { HDR_TOTAL },
         backends.native.link_plan { JAC_ENTRY_SYMBOL, kernel_unit_path },
-        backends.native.link_plan.LinkPlan.plan_digest { native_unit_identity },
+        backends.native.link_plan.LinkPlan.plan_digest | pkg_paths.package_host_edge {
+            native_unit_identity
+        },
         backends.native.link_plan._build_link_plan
             | backends.native.na_ir_gen_pass.NaIRGenPass._is_kernel_unit
             | driver.program.JacProgram.prefers_native_codespace {
@@ -5826,7 +5828,7 @@ graph import compiler {
             bundled_stdlib_module_of,
             is_toolchain_unit
         },
-        pkg_paths.package_host_edge { native_unit_identity, native_unit_root },
+        pkg_paths.package_host_edge { native_unit_root },
         placement.placement_facts.native_unit { is_kernel_unit_path },
         placement.placement_solver._import_source_module { is_compiler_source_path },
         tests.xbackend_equiv {
