@@ -1186,6 +1186,7 @@ graph import {
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
+        dist.precompile_bytecode.run_precompile.unit_job { native_only },
         dist.precompile_bytecode.sealable_sources {
             discover_spaces,
             spaces_are_client_only
