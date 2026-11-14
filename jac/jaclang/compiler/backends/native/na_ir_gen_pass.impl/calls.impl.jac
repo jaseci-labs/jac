@@ -2085,6 +2085,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         _hasattr_string_receiver = _hasattr_params
             and not isinstance(_hasattr_params[0], uni.KWPair)
             and isinstance(_hasattr_params[0], (uni.String, uni.MultiString));
+        if func_name == "hasattr" and _hasattr_string_receiver {
+            self._emit_unsupported_builtin_call(nd, func_name);
+            return None;
+        }
         if func_name == "hasattr" and not _hasattr_string_receiver {
             params_l: list[uni.Expr | uni.KWPair] = _hasattr_params;
             if len(params_l) == 2
