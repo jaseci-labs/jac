@@ -1180,13 +1180,13 @@ graph import {
         },
         dist.precompile_bytecode.find_jac_files { native_only, variant_selected },
         dist.precompile_bytecode.package_native_units { native_units_of },
+        dist.precompile_bytecode.run_precompile.unit_job { native_only },
         dist.publish.runtime_vendor._compile_runtime_module
             | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
-        dist.precompile_bytecode.run_precompile.unit_job { native_only },
         dist.precompile_bytecode.sealable_sources {
             discover_spaces,
             spaces_are_client_only
