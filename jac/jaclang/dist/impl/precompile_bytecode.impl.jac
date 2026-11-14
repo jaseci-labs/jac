@@ -1703,7 +1703,6 @@ impl run_precompile(
             rel = Path(jac_path).relative_to(pkg_path);
             jir_path = out_dir / rel.with_suffix(".jir");
             try {
-                import from jaclang.compiler.placement.placement_facts { native_only }
                 if jir_path.is_file() {
                     existing = jir_path.read_bytes();
                     if precompiled_jir_matches_source(

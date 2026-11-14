@@ -176,11 +176,11 @@ test "a unit reference prefers the owner's selected package mount" {
     os.makedirs(owner);
     os.makedirs(old_version);
     os.makedirs(selected_version);
-    for root in [old_version, selected_version] {
-        with open(os.path.join(root, "jac.toml"), "w") as handle {
+    for version_root in [old_version, selected_version] {
+        with open(os.path.join(version_root, "jac.toml"), "w") as handle {
             handle.write('[project]\nname = "edgepkg"\n');
         }
-        with open(os.path.join(root, "unit.jac"), "w") as handle {
+        with open(os.path.join(version_root, "unit.jac"), "w") as handle {
             handle.write("glob version = 1;\n");
         }
     }
