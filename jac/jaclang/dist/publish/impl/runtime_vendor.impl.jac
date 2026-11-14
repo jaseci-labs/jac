@@ -68,9 +68,13 @@ impl scan_jaclang_imports(
 impl _runtime_dependencies(
     pkg_root: Path, source: py_ast.Module, module: str = '', package: bool = False
 ) -> set[str] {
+    runtime_module = module.startswith(('jaclang.runtime.', 'jaclang.lib.'));
     for required in scan_jaclang_imports(
         source, module, package, include_symbols=False
     ) {
+        if runtime_module and required.startswith('jaclang.compiler') {
+            continue;
+        }
         namespace = pkg_root.joinpath(*required.split('.')[1:]);
         if required != 'jaclang'
             and _module_to_file(pkg_root, required) is None
@@ -81,7 +85,15 @@ impl _runtime_dependencies(
             );
         }
     }
-    return scan_jaclang_imports(source, module, package);
+    dependencies = scan_jaclang_imports(source, module, package);
+    if runtime_module {
+        dependencies = {
+            required
+            for required in dependencies
+            if not required.startswith('jaclang.compiler')
+        };
+    }
+    return dependencies;
 }
 
 impl _declared_literal(tree: py_ast.Module, name: str) -> object {

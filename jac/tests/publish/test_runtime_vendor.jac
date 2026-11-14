@@ -2,6 +2,24 @@
 
 import from jaclang.dist.publish.runtime_vendor { build_runtime_closure }
 
+test "runtime vendoring ignores deferred compiler-only imports" {
+    import ast as py_ast;
+    import jaclang;
+    import jaclang.dist.publish.runtime_vendor as vendor;
+    import from pathlib { Path }
+    pkg_root = Path(str(jaclang.__file__)).parent;
+    source = py_ast.parse(
+        "def build():\n"
+            + "    from jaclang.compiler.driver.program import JacProgram\n"
+    );
+    runtime_deps = vendor._runtime_dependencies(
+        pkg_root, source, "jaclang.runtime.interop_bridge"
+    );
+    app_deps = vendor._runtime_dependencies(pkg_root, source, "app");
+    assert not any(dep.startswith("jaclang.compiler") for dep in runtime_deps);
+    assert "jaclang.compiler.driver.program" in app_deps;
+}
+
 test "unresolvable extra seed fails loudly" {
     # This exact module was deleted by #7947; the vendorer used to skip the
     # seed silently and exit 0, leaving a backend that dies on first import.
