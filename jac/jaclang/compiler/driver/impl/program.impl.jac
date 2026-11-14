@@ -697,15 +697,11 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
     imports = list(mod.get_all_sub_nodes(uni.Import));
     for imp in imports {
         target = native_only_import_target(imp, self);
-        drop = needs_native
-            and (
-                bool(imp.clib_decls)
-                or (
-                    target is not None
-                    and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target)
-                )
-            );
-        if drop {
+
+        native_app_target = target is not None
+            and (os.sep + 'jaclang' + os.sep) not in os.path.abspath(target);
+        drop = native_app_target or (needs_native and bool(imp.clib_decls));
+        if drop and not native_app_target {
             if py_refs is None {
                 py_refs = python_side_name_refs(mod);
             }
@@ -719,6 +715,17 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
             }
         }
         imp.native_only_drop = drop;
+        imp.native_mirror_target = None;
+        imp.native_mirror_import_name = None;
+        imp.native_mirror_names = [];
+        if drop and native_app_target {
+            imp.native_mirror_target = target;
+            imp.native_mirror_import_name = (
+                imp.from_loc.dot_path_str if imp.from_loc is not None else None
+            );
+
+            imp.native_mirror_names = import_bound_names(imp);
+        }
     }
 
     settled = False;
@@ -734,6 +741,9 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
             if imp.native_only_drop
                 and any(name in kept for name in import_bound_names(imp)) {
                 imp.native_only_drop = False;
+                imp.native_mirror_target = None;
+                imp.native_mirror_import_name = None;
+                imp.native_mirror_names = [];
                 settled = False;
             }
         }

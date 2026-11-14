@@ -10,7 +10,8 @@ waived the method for exactly that reason.
 
 The driver now answers them once and stamps the verdict on the node, the
 way `Module.access_enforced` and `Module.mobui_enforced_root` are
-stamped. The pass consumes a bool.
+stamped. The pass consumes the stamp: the drop flag, the resolved mirror
+target, and which bound names the python side references.
 
 Pinned here: the stamp lands where the coverage says it must (before the
 emitter runs), it agrees with the computation it replaced, and the pass
@@ -124,25 +125,45 @@ test "the stamped verdict is the computation it replaced" {
     py_refs = python_side_name_refs(mod);
     for imp in mod.get_all_sub_nodes(uni.Import) {
         target = native_only_import_target(imp, prog);
-        expected = (
-            bool(imp.clib_decls)
+        native_app_target = (
+            target is not None
+            and (os.sep + "jaclang" + os.sep) not in os.path.abspath(target)
+        );
+        # Native-app targets drop unconditionally; a `py_refs` rescue belongs
+        # only to the clib path, which this fixture's native context needs.
+        expected = native_app_target
             or (
-                target is not None
-                and (os.sep + "jaclang" + os.sep) not in os.path.abspath(target)
-            )
-        )
-            and not any(name in py_refs for name in import_bound_names(imp));
+                bool(imp.clib_decls)
+                and not any(name in py_refs for name in import_bound_names(imp))
+            );
         assert imp.native_only_drop == expected , (
             f"the stamp and the retired computation disagree for the "
             f"import at line {imp.loc.first_line}: stamped "
             f"{imp.native_only_drop}, computed {expected}"
         );
+        if expected and native_app_target {
+            assert imp.native_mirror_target == target , (
+                "a dropped native-app import must carry the resolved target "
+                "the emitter mirrors, not re-resolve it"
+            );
+            assert imp.native_mirror_names == import_bound_names(imp) , (
+                "all module-level imported names remain available for "
+                "downstream re-exports"
+            );
+            assert imp.native_mirror_import_name == imp.from_loc.dot_path_str , (
+                "the mirror keeps the import identity for resolving its "
+                "own relative imports"
+            );
+        } else {
+            assert imp.native_mirror_target is None;
+        }
     }
 }
 
 """Write the anchored-library project: `anchor_lib` declares a C import, so it
-is native-only; `anchor_user` is inferred native and names `Counter` in a field
-default its Python side evaluates; `main` is pinned to the server."""
+is native-only; `anchor_user` stays on the server side of the boundary and
+names `Counter` in a field default its Python side evaluates; `main` is pinned
+to the server."""
 def _anchor_project(proj: str) {
     files = {
         "jac.toml": '[project]\nname = "anchor"\n\n[placement.pins]\nmain = "server"\n',
@@ -155,7 +176,7 @@ def _anchor_project(proj: str) {
     }
 }
 
-test "an import the python side names survives in an inferred-native module" {
+test "an import the python side names is mirrored in an inferred-native module" {
     with tempfile.TemporaryDirectory() as proj {
         _anchor_project(proj);
         prog = JacProgram();
@@ -168,16 +189,18 @@ test "an import the python side names survives in an inferred-native module" {
             if "Counter" in import_bound_names(imp)
         ];
         assert len(imports) == 1 , "anchor_user imports Counter once";
-        assert mod.decided_codespace == "native" , (
-            f"anchor_user must infer native to exercise the drop; decided "
-            f"{mod.decided_codespace!r}"
-        );
         assert native_only_import_target(imports[0], prog) is not None , (
             "anchor_lib's C import must make it a native-only target"
         );
-        assert not imports[0].native_only_drop , (
-            "the python side of anchor_user evaluates `Counter()` in a field "
-            "default, so dropping the import leaves the name unbound there"
+        assert imports[0].native_only_drop , (
+            "anchor_user evaluates `Counter()` in a field default on the "
+            "Python side, so its native-only import must be replaced by a "
+            "server mirror binding rather than removed"
+        );
+        assert imports[0].native_mirror_target
+            == native_only_import_target(imports[0], prog) , "the stamp must carry the resolved mirror target";
+        assert imports[0].native_mirror_names == ["Counter"] , (
+            "the module exports Counter through its import binding"
         );
     }
 }
@@ -465,5 +488,9 @@ test "the emitter unit no longer names the driver" {
     assert "native_only_import_target" not in text , (
         "the emitter resolves import placement itself again instead of "
         "consuming the stamped verdict"
+    );
+    assert "resolve_relative_path" not in text , (
+        "the emitter resolves import paths itself again instead of "
+        "consuming the stamped mirror target"
     );
 }

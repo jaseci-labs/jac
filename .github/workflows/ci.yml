@@ -903,10 +903,10 @@ jobs:
     needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
-    # Two legs split by measured runtime (main run 42587577723: runtimelib +
-    # language + dist ~41 min of worker time, the rest ~45, each slowest
-    # file ~12 min: cli/test_plugin_integration and a test_publish). The
-    # second leg is "everything else", so a new test directory runs there.
+    # Split the non-core sweep by directory so a runner shutdown in one slow
+    # suite does not discard the results for every other runtime test. The
+    # CLI plugin integration and publish tests are the longest individual
+    # files, so they run in a small dedicated leg.
     name: test-runtime (${{ matrix.leg }})
     strategy:
       fail-fast: false
@@ -914,10 +914,84 @@ jobs:
         include:
           - leg: runtimelib
             paths: tests/runtimelib tests/language tests/dist
+            filter: ""
             ignore: ""
-          - leg: rest
-            paths: tests/
-            ignore: tests/compiler tests/client tests/runtimelib tests/language tests/dist
+            jobs: auto
+          - leg: cli
+            paths: tests/cli
+            filter: ""
+            ignore: tests/cli/test_plugin_integration.jac
+            jobs: auto
+          - leg: publish
+            paths: tests/publish
+            filter: ""
+            ignore: tests/publish/test_publish.jac
+            jobs: auto
+          - leg: packages
+            paths: tests/packages tests/payload tests/project tests/release
+            filter: ""
+            ignore: tests/packages/test_publish.jac
+            jobs: auto
+          - leg: cli-plugin
+            paths: tests/cli/test_plugin_integration.jac
+            filter: ""
+            ignore: ""
+            jobs: "1"
+          - leg: package-publish
+            paths: tests/packages/test_publish.jac
+            filter: ""
+            ignore: ""
+            jobs: "1"
+          - leg: publish-metadata
+            paths: tests/publish/test_publish.jac
+            filter: (normalize or constraint or metadata or classifier or record_entry or generate_record or generate_wheel_file or wheel_filename or dist_info_dirname or entry_points or read_source_file)
+            ignore: ""
+            jobs: "1"
+          - leg: publish-collection
+            paths: tests/publish/test_publish.jac
+            filter: collect_source_files
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-build
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and (produces or collision or annex or reproducible or deflates or build_to))
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-install
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and (install_editable or raises))
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-import
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and (rewrites or refuses))
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-vendor-runtime
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and vendors and transpiled)
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-vendor-sized
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and vendors and sized)
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-dependency
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and honors)
+            ignore: ""
+            jobs: "1"
+          - leg: publish-sdist
+            paths: tests/publish/test_publish.jac
+            filter: (sdist or pyproject or wheel_module_name or rewrite_imports or write_wheel or package-data)
+            ignore: ""
+            jobs: "1"
+          - leg: support
+            paths: tests/artifacts tests/cache tests/langserve tests/studio tests/toolchains tests/utils
+            filter: ""
+            ignore: ""
+            jobs: auto
     steps:
       - uses: actions/checkout@v5
       # The deps installed below with --global land in the binary's runtime
@@ -947,8 +1021,12 @@ jobs:
         working-directory: jac
         run: |
           set -uxo pipefail
+          (while sleep 60; do echo "Runtime suite (${{ matrix.leg }}) is still running"; done) &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
           WORK="$(mktemp -d)"
-          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
+          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
+            ${{ matrix.filter != '' && format('--filter "{0}"', matrix.filter) || '' }} \
             ${{ matrix.ignore != '' && format('--ignore {0}', matrix.ignore) || '' }}
 
   # In-package tests that do not pass through the reroute, run here against
@@ -1104,7 +1182,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [server, data, microservices, deploy, misc]
+        group: [server, server-metrics-merge, server-metrics-kill, server-metrics-exported, data, microservices, deploy, misc]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1130,22 +1208,37 @@ jobs:
             requests "moto[s3]>=5.0.0" \
             --global
       - name: Install scale firebase deps
-        if: matrix.group == 'data' || matrix.group == 'server'
+        if: matrix.group == 'data' || matrix.group == 'server' || startsWith(matrix.group, 'server-metrics-')
         run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
       # One process per file comes from the [test] isolate marks in the root
       # jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
       # files sequential the way the old shell loop ran them. The HMR test in
       # server/test_serve.jac runs in test-in-package-sealed. Every test file
-      # lives in one of the five group directories; deploy/test_deploy_k8s.jac
-      # asks for JAC_TEST_K8S and skips itself here, the cluster leg runs it.
+      # lives in one of the five group directories. The three metrics worker
+      # tests run separately so one stalled server cannot mask their status;
+      # deploy/test_deploy_k8s.jac asks for JAC_TEST_K8S and skips here.
       - name: Run ${{ matrix.group }} tests
         env:
           JAC_TEST_JOBS: "1"
+          JAC_TEST_RSS_LOG: "1"
           JAC_TEST_STRICT: "1"
         run: |
           set -euo pipefail
+          (while sleep 60; do echo "Scale ${{ matrix.group }} tests are still running"; done) &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
           if [ "${{ matrix.group }}" = "server" ]; then
-            jac test jac/jaclang/scale/tests/server -f "not hmr"
+            jac test jac/jaclang/scale/tests/server -f "not hmr" \
+              --ignore jac/jaclang/scale/tests/server/test_metrics_workers.jac
+          elif [ "${{ matrix.group }}" = "server-metrics-merge" ]; then
+            jac test jac/jaclang/scale/tests/server/test_metrics_workers.jac \
+              --test_name "a two-worker scrape merges every worker into one series per metric"
+          elif [ "${{ matrix.group }}" = "server-metrics-kill" ]; then
+            jac test jac/jaclang/scale/tests/server/test_metrics_workers.jac \
+              --test_name "a worker killed mid-request stops counting as in progress"
+          elif [ "${{ matrix.group }}" = "server-metrics-exported" ]; then
+            jac test jac/jaclang/scale/tests/server/test_metrics_workers.jac \
+              --test_name "an exported source project merges its workers into one scrape"
           else
             jac test jac/jaclang/scale/tests/${{ matrix.group }}
           fi
@@ -1277,7 +1370,7 @@ jobs:
       - name: Install qemu-user and aarch64 cross libc
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
+          sudo apt-get install -y --no-install-recommends qemu-user-binfmt libc6-arm64-cross
       - uses: ./.github/actions/jac-kit
         with:
           dev: "true"

@@ -714,7 +714,8 @@ graph import {
     ]
     compiler.driver.compile_options --> [
         cli.commands.execution._exec_file { CompileOptions as _RunOpts },
-        lsp.server.engine.JacLangServer.type_check_file { CompileOptions },
+        lsp.server.engine.JacLangServer.type_check_file
+            | runtime.interop_bridge._pyb_mirror_module { CompileOptions },
     ]
     type compiler.driver.compile_options ++> project.compiler_host { CompileOptions }
     compiler.driver.compiler ++> [
@@ -927,6 +928,7 @@ graph import {
     ]
     compiler.driver.program --> [
         dist.precompile_bytecode.sealable_sources
+            | runtime.interop_bridge._pyb_mirror_module
             | scale.tests.apps.test_fleet_from_apps { JacProgram },
         dist.publish.builder.WheelBuilder._assemble_src_data {
             JacProgram as JacProgramRt
@@ -12731,7 +12733,10 @@ graph import runtime {
         runtime.JacModule.update_walker { application_for, module_builtins },
         source_app { PreparedApplication, initialize_application, publish },
     ]
-    prepared --> runtime.JacModule.impl_patch_filename.decorator { application_for }
+    prepared --> [
+        interop_bridge._pyb_mirror_module { application_for, module_builtins },
+        runtime.JacModule.impl_patch_filename.decorator { application_for },
+    ]
     type prepared ++> build_services | prepared_loader { PreparedApplication }
     prepared_loader ++> prepared.publish { PreparedFinder }
     prepared_loader --> prepared.ensure_namespace { PreparedLoader }

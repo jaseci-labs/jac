@@ -85,6 +85,95 @@ impl _pyb_import_module(mod_path: str) -> object {
     return mod;
 }
 
+impl _pyb_mirror_module(mod_path: str, package: str, import_name: str) -> object {
+    import os;
+    key = os.path.abspath(mod_path);
+    resolved_name = import_name;
+    if import_name.startswith(".") {
+        level = len(import_name) - len(import_name.lstrip("."));
+        parent_parts = (package or "").split(".");
+        keep = max(0, len(parent_parts) - level + 1);
+        tail = import_name[level:];
+        resolved_name = ".".join(parent_parts[:keep] + ([tail] if tail else []));
+    }
+    package_name: str = package or "";
+    if resolved_name and not os.path.isabs(resolved_name) {
+        if os.path.basename(key).startswith("__init__") {
+            package_name = resolved_name;
+        } elif "." in resolved_name {
+            package_name = resolved_name.rsplit(".", 1)[0];
+        } else {
+            package_name = "";
+        }
+    }
+    cache_key = key + "|" + package_name;
+    cached = _pyb_module_memo.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    import sys;
+    import types;
+    import hashlib;
+    stem = os.path.splitext(os.path.basename(key))[0];
+    path_tag = hashlib.sha1(key.encode()).hexdigest()[:12];
+    mirror_name = (
+        (package_name + "." if package_name else "")
+        + stem
+        + "__jac_server_mirror"
+        + path_tag
+    );
+    existing = sys.modules.get(mirror_name);
+    if existing is not None {
+        _pyb_module_memo[cache_key] = existing;
+        return existing;
+    }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.runtime.prepared { application_for, module_builtins }
+    prog = JacProgram();
+    options = CompileOptions(
+        force_codespace="server", default_codespace="server", no_ir_cache=True
+    );
+    mod_ir = prog.compile(file_path=key, options=options);
+    if prog.errors_had {
+        errors = "\n".join(str(alert) for alert in prog.errors_had);
+        raise ImportError(f"could not build server mirror for {key}: {errors}");
+    }
+    if not mod_ir.gen.py_ast {
+        raise ImportError(f"server mirror for {key} produced no Python image");
+    }
+    mod = types.ModuleType(mirror_name);
+    mod.__file__ = key;
+    mod.__package__ = package_name;
+    application = application_for(key, mirror_name);
+    if application is not None {
+        mod.__dict__["__builtins__"] = module_builtins(application, key);
+    }
+    sys.modules[mirror_name] = mod;
+    try {
+        code = compile(mod_ir.gen.py_ast[0], key, "exec");
+        exec(code, mod.__dict__);
+    } except Exception {
+        sys.modules.pop(mirror_name, None);
+        raise;
+    }
+    _pyb_module_memo[cache_key] = mod;
+    return mod;
+}
+
+impl pyb_mirror_member(
+    mod_path: str, name: str, package: str, import_name: str
+) -> object {
+    mod = _pyb_mirror_module(mod_path, package, import_name);
+    if not hasattr(mod, name) {
+        raise AttributeError(
+            f"native-placed module '{mod_path}' exposes no '{name}' "
+                + "to mirror into the server codespace"
+        );
+    }
+    return getattr(mod, name);
+}
+
 impl _pyb_class_for(
     mod_path: str, base_name: str, cls_name: str, suppress_postinit: bool
 ) -> type {
