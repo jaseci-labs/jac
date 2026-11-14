@@ -171,7 +171,7 @@ ingress_node_port = 30080
 | `[scale.kubernetes]` `database_url` | Connection URL for `external` mode | `""` |
 | `[scale.kubernetes]` `database_namespace` | Namespace that runs the external database service | `""` |
 | `[scale.database]` `postgres_image` | Image used for the StatefulSet | `postgres:18` |
-| `[scale.database]` `postgres_storage` | Postgres data PVC size | `2Gi` |
+| `[scale.database]` `postgres_storage` | Postgres data PVC size | Keeps existing size; `2Gi` for a new volume |
 
 To use an external database instead of the auto-provisioned one, say so in the deploy config:
 

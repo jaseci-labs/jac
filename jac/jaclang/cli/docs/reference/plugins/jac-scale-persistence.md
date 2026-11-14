@@ -387,7 +387,7 @@ Graph persistence is **Postgres-native** and there is exactly one stack:
 | `url` | `null` | Postgres connection URL (`postgresql://user:pass@host:port/db`) for this process. `JAC_DB_URL` overrides it at runtime. Set here (not via the env var), it also makes a deploy of this app point at that database instead of provisioning one. |
 | `deploy_mode` | `"image"` | How a provisioned Postgres runs: `"image"` (official postgres image) or `"embedded"` (the app's jac image running `jac db serve`). |
 | `postgres_image` | `"postgres:18"` | Image used in `deploy_mode = "image"`. |
-| `postgres_storage` | `"2Gi"` | PVC size for the provisioned StatefulSet. |
+| `postgres_storage` | Unset | Keeps an existing PVC at its current size. New StatefulSet volumes use `2Gi`; an explicit value requests that size. |
 | `indexes` | `{}` | Archetype fields to index, as `{ Arch = ["field", ...] }`. Each named field is promoted to a generated `jsonb` column over `props->'archetype'->'<field>'` -- the same expression and type the query compiler compares against -- and indexed. Predicates, orderings and composite keys on a promoted field then name the column instead of the raw path, which is the difference between an index scan and a sequential one. |
 
 ### Promoted fields
