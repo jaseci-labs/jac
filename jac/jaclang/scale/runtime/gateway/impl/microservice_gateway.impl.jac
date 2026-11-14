@@ -13,6 +13,11 @@ def _without_refused_credentials(
 ) -> dict[str, str];
 
 
+async def _forwarded_headers(
+    gw: MicroserviceGateway, request: Request
+) -> dict[str, str];
+
+
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
     import jaclang;
     registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
@@ -302,7 +307,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
 
     fwd_headers = {
         k: v
-        for (k, v) in self.build_forward_headers(request).items()
+        for (k, v) in (await _forwarded_headers(self, request)).items()
         if k.lower() != "accept-encoding"
     };
     fwd_headers["Accept-Encoding"] = "identity";
@@ -612,7 +617,7 @@ impl MicroserviceGateway.deliver_once(request: Request, path: str) -> Response |
 impl MicroserviceGateway.probe_services(
     request: Request, path: str, candidates: list[tuple[str, ServiceEntry]]
 ) -> Response {
-    fwd_headers = self.build_forward_headers(request);
+    fwd_headers = await _forwarded_headers(self, request);
     body: bytes = request.body;
     query: str = str(request.url.query);
 
@@ -692,7 +697,7 @@ impl MicroserviceGateway.forward_to(
         return service_unavailable(service_entry.name, service_entry.status.value);
     }
 
-    fwd_headers = self.build_forward_headers(request);
+    fwd_headers = await _forwarded_headers(self, request);
     if service_entry.host_override {
         fwd_headers["Host"] = service_entry.host_override;
     }
@@ -1233,21 +1238,19 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
         }
         remaining = remaining or "/";
         query: str = str(websocket.url.query);
-        guard = GatewaySessionGuard(
-            manager=gw.user_manager,
-            token=str(websocket.query_params.get('token') or '')
-        );
-
-        header_guard: any = None;
+        query_token = str(websocket.query_params.get('token') or '');
         authorization = websocket.headers.get('Authorization') or '';
-        if authorization.startswith('Bearer ') and gw.user_manager is not None {
-            header_guard = GatewaySessionGuard(
-                manager=gw.user_manager, token=authorization[7:]
-            );
-            if not await header_guard.allow() {
-                await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason='revoked');
-                return;
-            }
+        bearer = authorization[7:] if authorization.startswith('Bearer ') else '';
+        guard = GatewaySessionGuard(
+            manager=gw.user_manager, token=query_token or bearer
+        );
+        if query_token
+            and bearer
+            and not await GatewaySessionGuard(
+                manager=gw.user_manager, token=bearer
+            ).allow() {
+            await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason='revoked');
+            return;
         }
         if not await guard.allow() {
             await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason='revoked');
@@ -1258,20 +1261,11 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
             target_http = f"{target_http}?{query}";
         }
 
-        async def _session_current(
-            frame: (dict[str, any] | None) = None, force: bool = False
-        ) -> bool {
-            if header_guard is not None and not await header_guard.allow(force=force) {
-                return False;
-            }
-            return await guard.allow(frame, force=force);
-        }
-
         async def _accept_as_upstream_did(selected: str) {
             await websocket.accept(subprotocol=selected);
         }
-        req_headers: dict[str, str] = _without_refused_credentials(
-            gw, dict(websocket.headers.items())
+        req_headers: dict[str, str] = await asyncio.to_thread(
+            _without_refused_credentials, gw, dict(websocket.headers.items())
         );
         logger.debug(f"ws proxy: {full_path} -> {target_http}");
         await websocket_forward(
@@ -1279,7 +1273,7 @@ impl _install_ws_catchall(gw: MicroserviceGateway) {
             target_http,
             req_headers,
             on_upstream=_accept_as_upstream_did,
-            session_guard=_session_current if gw.user_manager is not None else None
+            session_guard=guard.allow if gw.user_manager is not None else None
         );
     }
     gw.app.add_ws_endpoint(WSEndPoint(path="/{ws_path:path}", handler=ws_proxy));
@@ -1303,11 +1297,12 @@ impl _without_refused_credentials(
 ) -> dict[str, str] {
     import from http.cookies { SimpleCookie }
     kept: dict[str, str] = {};
-    refused_bearer = any(
-        key.lower() == 'authorization'
-            and value.startswith('Bearer ')
-            and _session_refused(gw, value[7:]) for (key, value) in headers.items()
-    );
+    bearers = [
+        value[7:]
+        for (key, value) in headers.items()
+        if key.lower() == 'authorization' and value.startswith('Bearer ')
+    ];
+    refused_bearer = any(_session_refused(gw, token) for token in bearers);
     for (key, value) in headers.items() {
         lowered = key.lower();
         if lowered == 'authorization' and value.startswith('Bearer ') {
@@ -1326,7 +1321,11 @@ impl _without_refused_credentials(
             }
             session = jar.get(SESSION_COOKIE);
             if refused_bearer
-                or (session is not None and _session_refused(gw, session.value)) {
+                or (
+                    not bearers
+                    and session is not None
+                    and _session_refused(gw, session.value)
+                ) {
                 rest = [
                     f"{name}={morsel.coded_value}"
                     for (name, morsel) in jar.items()
@@ -1367,15 +1366,9 @@ impl GatewaySessionGuard.allow(
                 } except (ValueError, TypeError) {}
             }
             if isinstance(data, dict)
-                and (
-                    (self.first_frame and not self.token)
-                    or data.get('type') == 'refresh'
-                )
-                and 'token' in data {
-                if not isinstance(data['token'], str) or not data['token'] {
-                    self.refused = True;
-                    return False;
-                }
+                and (self.first_frame or data.get('type') == 'refresh')
+                and isinstance(data.get('token'), str)
+                and data['token'] {
                 candidate = data['token'];
             }
             self.first_frame = False;
@@ -1418,4 +1411,16 @@ impl GatewaySessionGuard.allow(
         self.checked_at = now;
         return True;
     }
+}
+
+
+impl _forwarded_headers(gw: MicroserviceGateway, request: Request) -> dict[str, str] {
+    if gw.user_manager is None
+        or not (
+            request.headers.get('Authorization')
+            or SESSION_COOKIE in (request.headers.get('Cookie') or '')
+        ) {
+        return gw.build_forward_headers(request);
+    }
+    return await asyncio.to_thread(gw.build_forward_headers, request);
 }

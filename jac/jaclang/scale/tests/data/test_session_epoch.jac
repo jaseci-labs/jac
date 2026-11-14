@@ -533,3 +533,19 @@ test "the gateway leaves a service's own accounts to the service" {
     }
     asyncio.run(verify());
 }
+
+
+test "the gateway leaves an app's own socket tokens alone" {
+    manager = _manager();
+    async def verify {
+        assert await GatewaySessionGuard(manager=manager, token="app-token").allow();
+        for token in [42, "opaque-app-token", None] {
+            guard = GatewaySessionGuard(manager=manager);
+            assert await guard.allow({"text": json.dumps({"token": token})});
+            assert await guard.allow(
+                {"text": json.dumps({"type": "refresh", "token": token})}
+            );
+        }
+    }
+    asyncio.run(verify());
+}
