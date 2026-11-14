@@ -967,9 +967,14 @@ jobs:
             filter: (wheelbuilder and not sdist and (rewrites or refuses))
             ignore: ""
             jobs: "1"
-          - leg: publish-wheel-vendor
+          - leg: publish-wheel-vendor-runtime
             paths: tests/publish/test_publish.jac
-            filter: (wheelbuilder and not sdist and vendors)
+            filter: (wheelbuilder and not sdist and vendors and runtime)
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-vendor-sized
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and vendors and sized)
             ignore: ""
             jobs: "1"
           - leg: publish-wheel-dependency
