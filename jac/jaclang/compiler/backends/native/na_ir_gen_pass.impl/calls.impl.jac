@@ -1802,9 +1802,14 @@ impl NaIRGenPass._emit_intrinsic_list_data(
         self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
         return None;
     }
-    _ld_pointee = lst.type?.pointee;
-    _ld_name = str(getattr(_ld_pointee, "name", "") or "");
-    if not isinstance(lst.type, ir.PointerType) or not _ld_name.startswith("List.") {
+    _ld_name = "";
+    if isinstance(lst.type, ir.PointerType)
+        and isinstance(lst.type.pointee, ir.IdentifiedStructType) {
+        _ld_name = lst.type.pointee.name;
+    }
+    if not isinstance(lst.type, ir.PointerType)
+        or len(_ld_name) < 5
+        or _ld_name[:5] != "List." {
         self._emit_intrinsic_misuse(
             nd, intr, f"operand of type {lst.type} is not a list"
         );
@@ -2074,6 +2079,53 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if func_name == "isinstance" {
             return self._emit_isinstance(nd);
+        }
+
+        _hasattr_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+        _hasattr_string_receiver = _hasattr_params
+            and not isinstance(_hasattr_params[0], uni.KWPair)
+            and isinstance(_hasattr_params[0], (uni.String, uni.MultiString));
+        if func_name == "hasattr" and _hasattr_string_receiver {
+            self._emit_unsupported_builtin_call(nd, func_name);
+            return None;
+        }
+        if func_name == "hasattr" and not _hasattr_string_receiver {
+            params_l: list[uni.Expr | uni.KWPair] = _hasattr_params;
+            if len(params_l) == 2
+                and not isinstance(params_l[0], uni.KWPair)
+                and not isinstance(params_l[1], uni.KWPair)
+                and isinstance(params_l[1], (uni.String, uni.MultiString))
+                and isinstance(params_l[1].lit_value, str) {
+                property_type = self._struct_name_of(params_l[0]);
+                if property_type is not None
+                    and self._accessor_slot_of(
+                        property_type, params_l[1].lit_value, "property"
+                    )
+                        is not None {
+                    self._emit_unsupported_builtin_call(nd, func_name);
+                    return None;
+                }
+            }
+            arg_vals: list[ir.Value] = [];
+            arg_nodes: list[uni.UniNode] = [];
+            for param in params_l {
+                if isinstance(param, uni.KWPair) {
+                    continue;
+                }
+                value = self._codegen_expr(param);
+                if value is not None {
+                    arg_vals.append(value);
+                    arg_nodes.append(param);
+                }
+            }
+            result = self._dispatch_builtin(
+                func_name, arg_vals, arg_nodes=arg_nodes, kw_node=nd
+            );
+            self._release_owned_args(arg_vals, op="hasattr_arg");
+            if result is None {
+                self._emit_unsupported_builtin_call(nd, func_name);
+            }
+            return result;
         }
 
         if func_name == "type" {

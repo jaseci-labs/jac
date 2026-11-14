@@ -47,6 +47,8 @@ def app_edges_record(edges: list[tuple[str, str]]) -> list[any];
 
 def interop_manifest_of(record: dict[str, any]) -> InteropManifest;
 
+def _interop_context_of(value: str) -> InteropContext;
+
 def literal_to_json(value: any) -> dict[str, any];
 
 def literal_from_json(raw: any) -> any;

@@ -334,6 +334,89 @@ test "guardrail: call to an undefined function is rejected" {
 # answer instead; agreement between the lanes promises the native answer is
 # right. A regression to a silent body-drop fails on the value, a regression to
 # demotion fails on layout membership, and either way this test names it.
+test "hasattr lowers for Jac object fields with constant and dynamic names" {
+    src = "obj HasAttrBase { has base_value: int = 1; }\n"
+    "obj HasAttrStaticBase(HasAttrBase) { static has COUNT: int = 1; }\n"
+    "obj HasAttrChild(HasAttrStaticBase) { has nullable: str | None = None; }\n"
+    "obj HasAttrBox { has _width: int = 4;"
+    " def measure -> int { return self._width; } }\n"
+    "def probe(item: HasAttrBase) -> bool { return hasattr(item, 'nullable'); }\n"
+    "def answer() -> int {\n"
+    "    item = HasAttrChild();\n"
+    "    box = HasAttrBox();\n"
+    "    name: str = 'base_value';\n"
+    "    return (1000 if hasattr(item, 'base_value') else 0) +\n"
+    "        (100 if hasattr(item, 'absent') else 0) +\n"
+    "        (10 if hasattr(item, 'nullable') else 0) +\n"
+    "        (1 if hasattr(item, name) else 0) +\n"
+    "        (10000 if hasattr(box, '_width') else 0) +\n"
+    "        (100000 if hasattr(box, 'measure') else 0) +\n"
+    "        (1000000 if hasattr(item, 'COUNT') else 0) +\n"
+    "        (10000000 if hasattr(item, '__class__') else 0);\n"
+    "}\n"
+    "def nul_name() -> int {\n"
+    "    item = HasAttrChild();\n"
+    "    try { return 1 if hasattr(item, 'base_value\\x00extra') else 0; }\n"
+    "    except Exception { return 0; }\n"
+    "}\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_fields", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" in ir.gen.native_layout.functions , log;
+    assert "probe" not in ir.gen.native_layout.functions , (
+        "hasattr on a base-typed value with known subclasses must demote "
+        "instead of answering from the base member set"
+    );
+    assert native_answer(ir.gen.native_engine, "answer") == 11111011;
+    assert server_answer("hasattr_fields_server", src, "answer") == 11111011;
+    assert native_answer(ir.gen.native_engine, "nul_name") == 0;
+    assert server_answer("hasattr_fields_server", src, "nul_name") == 0;
+}
+
+test "hasattr on a property leaves native lowering" {
+    src = "obj HasAttrProperty { has value: int { getter { return 1; } } }\n"
+    "def answer(item: HasAttrProperty) -> bool { return hasattr(item, 'value'); }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_property", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" not in ir.gen.native_layout.functions , (
+        "hasattr must preserve property getter and AttributeError behavior"
+    );
+}
+
+test "hasattr with a dynamic property name demotes" {
+    src = "obj HasAttrDynamicProperty { has value: int { getter { return 1; } } }\n"
+    "def answer(item: HasAttrDynamicProperty, name: str) -> bool { return hasattr(item, name); }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_dynamic_property", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" not in ir.gen.native_layout.functions , (
+        "a dynamic name could invoke a property getter and must demote"
+    );
+}
+
+test "hasattr on a Python string receiver demotes without dropping arguments" {
+    src = "def get_name -> str { print('name evaluated'); return 'missing'; }\n"
+    "def answer -> bool { return hasattr('text', get_name()); }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_string_receiver", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is None
+        or "answer" not in ir.gen.native_layout.functions , (
+        "unsupported hasattr receivers must demote so argument evaluation runs"
+    );
+}
+
+test "hasattr recognizes inherited Python object methods" {
+    src = "obj HasAttrObject { has value: int = 1; }\n"
+    "def answer -> int { item = HasAttrObject(); return 1 if hasattr(item, '__str__') else 0; }\n";
+    (prog, ir, log) = compile_na_inline_demote("hasattr_inherited_object", src);
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir.gen.native_layout is not None , log;
+    assert "answer" in ir.gen.native_layout.functions , log;
+    assert native_answer(ir.gen.native_engine, "answer") == 1;
+    assert server_answer("hasattr_inherited_object_server", src, "answer") == 1;
+}
+
 test "for-loop over a set lowers, and both lanes answer the same sum" {
     src = "def run() -> int {\n"
     "    s: set[int] = {1, 2, 3};\n"
