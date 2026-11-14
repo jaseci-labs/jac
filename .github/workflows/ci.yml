@@ -957,9 +957,24 @@ jobs:
             filter: (wheelbuilder and not sdist and (produces or collision or annex or reproducible or deflates or build_to))
             ignore: ""
             jobs: "1"
-          - leg: publish-wheel-other
+          - leg: publish-wheel-install
             paths: tests/publish/test_publish.jac
-            filter: (wheelbuilder and not sdist and not (produces or collision or annex or reproducible or deflates or build_to))
+            filter: (wheelbuilder and not sdist and (install_editable or raises))
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-import
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and (rewrites or refuses))
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-vendor
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and vendors)
+            ignore: ""
+            jobs: "1"
+          - leg: publish-wheel-dependency
+            paths: tests/publish/test_publish.jac
+            filter: (wheelbuilder and not sdist and honors)
             ignore: ""
             jobs: "1"
           - leg: publish-sdist
