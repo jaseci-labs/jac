@@ -903,10 +903,10 @@ jobs:
     needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
-    # Two legs split by measured runtime (main run 42587577723: runtimelib +
-    # language + dist ~41 min of worker time, the rest ~45, each slowest
-    # file ~12 min: cli/test_plugin_integration and a test_publish). The
-    # second leg is "everything else", so a new test directory runs there.
+    # Split the non-core sweep by directory so a runner shutdown in one slow
+    # suite does not discard the results for every other runtime test. The
+    # CLI plugin integration and publish tests are the longest individual
+    # files, so they run in a small dedicated leg.
     name: test-runtime (${{ matrix.leg }})
     strategy:
       fail-fast: false
@@ -915,9 +915,21 @@ jobs:
           - leg: runtimelib
             paths: tests/runtimelib tests/language tests/dist
             ignore: ""
-          - leg: rest
-            paths: tests/
-            ignore: tests/compiler tests/client tests/runtimelib tests/language tests/dist
+          - leg: cli
+            paths: tests/cli
+            ignore: tests/cli/test_plugin_integration.jac
+          - leg: publish
+            paths: tests/publish
+            ignore: tests/publish/test_publish.jac
+          - leg: packages
+            paths: tests/packages tests/payload tests/project tests/release
+            ignore: tests/packages/test_publish.jac
+          - leg: long-files
+            paths: tests/cli/test_plugin_integration.jac tests/packages/test_publish.jac tests/publish/test_publish.jac
+            ignore: ""
+          - leg: support
+            paths: tests/artifacts tests/cache tests/langserve tests/studio tests/toolchains tests/utils
+            ignore: ""
     steps:
       - uses: actions/checkout@v5
       # The deps installed below with --global land in the binary's runtime
