@@ -15,7 +15,11 @@ def scan_jaclang_imports(
 ) -> set[str];
 
 def _runtime_dependencies(
-    pkg_root: Path, source: py_ast.Module, module: str = '', package: bool = False
+    pkg_root: Path,
+    source: py_ast.Module,
+    module: str = '',
+    package: bool = False,
+    include_compiler: bool = False
 ) -> set[str];
 
 def _declared_literal(tree: py_ast.Module, name: str) -> object;

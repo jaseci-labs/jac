@@ -15,8 +15,12 @@ test "runtime vendoring ignores deferred compiler-only imports" {
     runtime_deps = vendor._runtime_dependencies(
         pkg_root, source, "jaclang.runtime.interop_bridge"
     );
+    mirror_deps = vendor._runtime_dependencies(
+        pkg_root, source, "jaclang.runtime.interop_bridge", include_compiler=True
+    );
     app_deps = vendor._runtime_dependencies(pkg_root, source, "app");
     assert not any(dep.startswith("jaclang.compiler") for dep in runtime_deps);
+    assert "jaclang.compiler.driver.program" in mirror_deps;
     assert "jaclang.compiler.driver.program" in app_deps;
 }
 

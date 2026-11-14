@@ -66,9 +66,14 @@ impl scan_jaclang_imports(
 }
 
 impl _runtime_dependencies(
-    pkg_root: Path, source: py_ast.Module, module: str = '', package: bool = False
+    pkg_root: Path,
+    source: py_ast.Module,
+    module: str = '',
+    package: bool = False,
+    include_compiler: bool = False
 ) -> set[str] {
-    runtime_module = module.startswith(('jaclang.runtime.', 'jaclang.lib.'));
+    runtime_module = module.startswith(('jaclang.runtime.', 'jaclang.lib.'))
+        and not include_compiler;
     for required in scan_jaclang_imports(
         source, module, package, include_symbols=False
     ) {
@@ -179,6 +184,7 @@ impl build_runtime_closure(
     native_sources: bool = True
 ) -> dict[str, bytes] {
     pkg_root = _pkg_root();
+    include_compiler = any('pyb_mirror_member' in source for source in user_codes);
     requested = set(extra_seeds or []);
     if prepared {
         requested.add('jaclang.runtime.source_app');
@@ -293,7 +299,10 @@ impl build_runtime_closure(
         }
         modules.append(record);
         pending.update(
-            _runtime_dependencies(pkg_root, tree, module, package) - processed
+            _runtime_dependencies(
+                pkg_root, tree, module, package, include_compiler=include_compiler
+            )
+                - processed
         );
     }
     if program.contexts {
