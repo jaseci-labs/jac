@@ -768,16 +768,7 @@ impl NaIRGenPass._register_static_fields(
         if full_name in self.static_fields {
             continue;
         }
-        ftype: ir.Type = ir.IntType(64);
-        if var.type_tag is not None {
-            ftype = self._resolve_decl_type(var.type_tag, var.value);
-        } elif var.value is not None {
-            inferred = self._infer_global_init_type(var.value);
-            if inferred is not None {
-                ftype = inferred;
-            }
-        }
-
+        ftype = self._decl_storage_type(var.type_tag, var.value);
         symbol = self._symbol_for(full_name, owner if imported else None);
         if symbol in self.llvm_module.globals {
             continue;
@@ -1277,10 +1268,19 @@ impl NaIRGenPass._place_unit_python(
         import from jaclang.compiler.frontend.host { active_host }
         import from jaclang.compiler.frontend.codeinfo { native_display_text }
         _why = "; ".join(_r.located() for _r in refusals);
+        _help = next(
+            iter(
+                _r.help
+                for _r in refusals
+                if _r.help
+            ),
+            None
+        );
         active_host().note(
             native_display_text(
                 f"native seam -- demoting {full_name} to Python-only "
                 f"(un-lowerable): {_why}"
+                    + (f"\nhelp: {_help}" if _help else "")
             ),
             style="warning"
         );

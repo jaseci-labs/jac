@@ -163,6 +163,13 @@ impl is_annotation_type(evaluator: TypeEvaluator, ty: TypeBase) -> bool {
     return False;
 }
 
+impl _is_plain_value(t: TypeBase) -> bool {
+    if isinstance(t, FunctionType) {
+        return not t.is_from_callable_annotation();
+    }
+    return t.is_class_instance() or isinstance(t, (OverloadedType, ModuleType));
+}
+
 impl _is_literal_form(operand: Expr) -> bool {
     if not isinstance(operand, AtomTrailer) or operand.is_attr {
         return False;
@@ -172,6 +179,11 @@ impl _is_literal_form(operand: Expr) -> bool {
         head = head.right;
     }
     return isinstance(head, Name) and head.value == "Literal";
+}
+
+impl _is_tuple_form(operand: Expr) -> bool {
+    return isinstance(operand, TupleVal)
+        and in_type_position(operand, include_subscripts=False);
 }
 
 impl get_type_of_binary_operation(
@@ -284,10 +296,15 @@ impl get_type_of_binary_operation(
 
     if (isinstance(expr.op, Token) and (expr.op.name in BINARY_OPERATOR_MAP)) {
         if expr.op.name == Tok.BW_OR {
-            if (is_annotation_type(evaluator, left_type) or _is_literal_form(expr.left))
+            if (
+                is_annotation_type(evaluator, left_type)
+                or _is_literal_form(expr.left)
+                or _is_tuple_form(expr.left)
+            )
                 and (
                     is_annotation_type(evaluator, right_type)
                     or _is_literal_form(expr.right)
+                    or _is_tuple_form(expr.right)
                 ) {
                 return UnionType(
                     types=[
@@ -341,7 +358,12 @@ impl get_type_of_binary_operation(
         }
 
         if result is None {
-            if expr.op.name == Tok.BW_OR {
+            if expr.op.name == Tok.BW_OR
+                and not (
+                    _is_plain_value(left_type)
+                    and _is_plain_value(right_type)
+                    and not in_type_position(expr)
+                ) {
                 return UnionType(types=[left_type, right_type]);
             }
             if _has_gradual_type_args(left_type)

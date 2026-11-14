@@ -1573,8 +1573,7 @@ graph import {
             | project.placement
             | runtime.prepared
             | scale.server.inprocess
-            | server.hmr.HotReloader._get_js_filename
-            | testing.test_runner.run_file { base_stem },
+            | server.hmr.HotReloader._get_js_filename { base_stem },
         cli.commands.native_build.native_build {
             base_stem,
             is_jac,
@@ -1610,6 +1609,7 @@ graph import {
         testing.test_runner._iter_candidate_files { is_impl, is_jac },
         testing.test_runner._suite_source { is_test },
         testing.test_runner.discover { is_jac },
+        testing.test_runner.run_file { base_stem, is_annex_path_of },
     ]
     jac0core.ext_registry --> [
         compiler.driver.bccache.host_layout_tables {
@@ -1634,6 +1634,7 @@ graph import {
         compiler.driver.jir.require_exact_compiler_products { update_handoff },
         compiler.driver.jir.set_cache_mode { update_handoff },
     ]
+    jac0core.osp0 ++> compiler.frontend.unitree { last_in0 }
     jac0core.sealed ++> [
         compiler.driver.application._prepare_sealed {
             image_for_bundle_dir,
@@ -2061,6 +2062,12 @@ graph import {
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module
+        },
+        compiler.types.type_evaluator.TypeEvaluator._climbs_above_project {
+            project_root_chain
+        },
+        compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
+            named_exactly_any
         },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
@@ -3641,7 +3648,7 @@ graph import byllm {
     _optdeps.openai ++> llm { AsyncOpenAI, OpenAI, openai }
     _optdeps.pillow ++> types { PILImageCls, open_image }
     _optdeps.pydantic ++> [
-        llm { from_json },
+        llm { TypeAdapter, from_json },
         schema | types { TypeAdapter },
     ]
     config_loader ++> llm | mtir { get_byllm_config }
@@ -5611,6 +5618,9 @@ graph import compiler {
             native_unit_identity,
             native_unit_spelling
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {
+            bundled_stdlib_module_of
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
             native_symbol_name,
             native_unit_spelling
@@ -6284,6 +6294,7 @@ graph import compiler {
             E1122,
             E1123,
             E1125,
+            E2001,
             E2018,
             E2027,
             E2055,
@@ -6350,6 +6361,7 @@ graph import compiler {
             E1161,
             E1162,
             E1163,
+            E1164,
             E2015,
             W1036,
             W1037,
@@ -7761,7 +7773,8 @@ graph import compiler {
             UniNode,
             UniScopeNode,
             WhileStmt,
-            in_type_position
+            in_type_position,
+            names_except_type
         },
         passes.static_analysis_pass.StaticAnalysisPass._check_undefined_names {
             JsxElementName
@@ -8093,7 +8106,8 @@ graph import compiler {
             Name,
             Token,
             TupleVal,
-            UniNode
+            UniNode,
+            in_type_position
         },
         types.ownership { Archetype, HasVar },
         types.stubcat.reader {
@@ -8275,9 +8289,12 @@ graph import compiler {
             ParamVar
         },
     ]
-    frontend.unitree --> types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
-        in_type_position
-    }
+    frontend.unitree --> [
+        types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
+            in_type_position
+        },
+        types.type_evaluator.TypeEvaluator.get_type_of_expression { names_except_type },
+    ]
     frontend.unitree as uni ++> backends.es.backends.react
         | backends.es.backends.solid
         | backends.es.esast_gen_pass
@@ -9384,9 +9401,11 @@ graph import compiler {
         passes.type_checker_pass {
             AnyType,
             ClassType,
+            EnumMemberType,
             FunctionType,
             ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -11736,7 +11755,9 @@ graph import compiler.types {
             AnyType,
             ClassType,
             FunctionType,
+            ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -12478,6 +12499,7 @@ graph import project {
         compiler_host.package_name_of { is_scoped_package_name },
         config.find_project_root { find_project_root as _find_project_root },
         package_scope { MOUNTS_DIR_NAME, is_scoped_package_name },
+        workspace._chain_stamp { project_root_chain },
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [
@@ -14220,7 +14242,8 @@ graph import scale {
             k8s_service_dns_url
         },
         deploy.target.kubernetes.runtime_resolver { DEFAULT_GATEWAY_PORT },
-        tests.deploy.test_destroy_reclaim
+        tests.deploy.test_deployment_overlay
+            | tests.deploy.test_destroy_reclaim
             | tests.deploy.test_http_activation_microservices
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_ops_rbac

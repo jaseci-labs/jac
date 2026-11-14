@@ -149,6 +149,9 @@ def _answer_events(
 def _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str;
 
 
+def _recovered_answer(mt_run: MTRuntime, recovery_resp: CompletionResult) -> object;
+
+
 def _message_role(msg: dict[str, any]) -> str;
 
 
@@ -828,15 +831,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
             if recovery_resp is None {
                 raise;
             }
-            if recovery_resp.tool_calls {
-                for tool_call in recovery_resp.tool_calls {
-                    if tool_call.is_finish_call() {
-                        mt_run.add_message(tool_call());
-                        return tool_call.get_output();
-                    }
-                }
-            }
-            return recovery_resp.output;
+            return _recovered_answer(mt_run, recovery_resp);
         }
         usage: dict[str, any] = resp.usage or {};
         total_tokens += int(
@@ -888,6 +883,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                     continue;
                 }
                 mt_run.add_message(finish_msg);
+                _commit_answer(mt_run, final_output, finish_tc.call_id);
                 return final_output;
             }
         } else {
@@ -895,15 +891,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
             if recovery_resp is None {
                 break;
             }
-            if recovery_resp.tool_calls {
-                for tool_call in recovery_resp.tool_calls {
-                    if tool_call.is_finish_call() {
-                        mt_run.add_message(tool_call());
-                        return tool_call.get_output();
-                    }
-                }
-            }
-            return recovery_resp.output;
+            return _recovered_answer(mt_run, recovery_resp);
         }
     }
     return resp.output;
@@ -1733,16 +1721,8 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     }
     mt_run._call_kind = "final_answer_restream";
     try {
-        final_resp = self.dispatch_no_streaming(mt_run);
-        if final_resp.tool_calls {
-            for tool_call in final_resp.tool_calls {
-                if tool_call.is_finish_call() {
-                    mt_run.add_scaffolding_message(tool_call());
-                    return tool_call.get_output();
-                }
-            }
-        }
-        return str(final_resp.output) if final_resp.output else "";
+        output = _recovered_answer(mt_run, self.dispatch_no_streaming(mt_run));
+        return output if mt_run._has_final_output else str(output or "");
     } finally {
         mt_run._call_kind = original_call_kind;
         mt_run.call_params.pop("tool_choice", None);
@@ -1848,22 +1828,10 @@ impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
 impl BaseLLM._yield_recovery_result(
     recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
-    finish_found = False;
-    if recovery_resp.tool_calls {
-        for tool_call in recovery_resp.tool_calls {
-            if tool_call.is_finish_call() {
-                mt_run.add_message(tool_call());
-                _commit_answer(mt_run, tool_call.get_output(), tool_call.call_id);
-                finish_found = True;
-                break;
-            }
-        }
-    }
+    output = _recovered_answer(mt_run, recovery_resp);
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
-    if not finish_found and recovery_resp.output {
-        yield StreamEvent(
-            event_type="chunk", data={"content": str(recovery_resp.output)}
-        );
+    if not mt_run._has_final_output and output {
+        yield StreamEvent(event_type="chunk", data={"content": str(output)});
     }
     yield from _usage_step_events(mt_run, usage_base);
 }
@@ -2803,11 +2771,19 @@ impl _answer_events(
 impl _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str {
     mt_run._final_output = output;
     mt_run._has_final_output = True;
-    if mt_run.resp_type is not None and mt_run.resp_type is not str {
-        return "";
+    is_text = mt_run.resp_type is None or mt_run.resp_type is str;
+    text = str(output or "");
+    if not is_text {
+        try {
+            text = TypeAdapter(mt_run.resp_type).dump_json(output).decode();
+        } except Exception as e {
+            logger.debug(
+                f"typed answer is not JSON-serialisable, keeping its text: {e}"
+            );
+            text = str(output);
+        }
     }
-    answer = str(output or "");
-    if answer {
+    if text {
         final: dict[str, any] = {"role": "assistant"};
         for msg in reversed(mt_run.messages) {
             if isinstance(msg, dict)
@@ -2820,10 +2796,23 @@ impl _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str {
             }
         }
         final.pop("tool_calls", None);
-        final["content"] = answer;
+        final["content"] = text;
         mt_run.add_message(final);
     }
-    return answer;
+    return text if is_text else "";
+}
+
+
+impl _recovered_answer(mt_run: MTRuntime, recovery_resp: CompletionResult) -> object {
+    for tool_call in recovery_resp.tool_calls or [] {
+        if tool_call.is_finish_call() {
+            mt_run.add_message(tool_call());
+            output = tool_call.get_output();
+            _commit_answer(mt_run, output, tool_call.call_id);
+            return output;
+        }
+    }
+    return recovery_resp.output;
 }
 
 
