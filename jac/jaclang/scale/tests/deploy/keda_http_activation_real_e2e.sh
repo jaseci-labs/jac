@@ -75,8 +75,9 @@ print(act.get('cooldown_period', 300))
 ")
 APP_NAME=$(echo "${CFG}" | sed -n '1p')
 # The unified deploy path names every workload "<app>-deployment" (even a solo
-# app behind its gateway), and the KEDA InterceptorRoute/ScaledObject are named
-# after that scale target, so they are "<app>-deployment-http-{route,scaledobject}".
+# app behind its gateway), and the KEDA InterceptorRoute is named after that
+# scale target, "<app>-deployment-http-route". The ScaledObject carries the
+# target as its app label: a name too long for KEDA is shortened.
 SCALE_TARGET="${APP_NAME}-deployment"
 NAMESPACE=$(echo "${CFG}" | sed -n '2p')
 ROUTE_HOST=$(echo "${CFG}" | sed -n '3p')
@@ -116,7 +117,7 @@ dump_state() {
     kubectl get events -n "${NAMESPACE}" --sort-by=.lastTimestamp || true
     kubectl logs -n "${NAMESPACE}" -l "app=${APP_NAME}" --tail=200 --all-containers=true || true
     kubectl describe interceptorroute "${SCALE_TARGET}-http-route" -n "${NAMESPACE}" || true
-    kubectl describe scaledobject "${SCALE_TARGET}-http-scaledobject" -n "${NAMESPACE}" || true
+    kubectl describe scaledobject -l "app=${SCALE_TARGET}" -n "${NAMESPACE}" || true
     echo "--- HTTP Add-on component logs (namespace=keda) ---"
     kubectl logs -n keda -l app=keda-add-ons-http-interceptor --tail=100 || true
     kubectl logs -n keda -l app=keda-add-ons-http-external-scaler --tail=100 || true
@@ -201,7 +202,14 @@ if ! wait_for_ready interceptorroute "${SCALE_TARGET}-http-route"; then
     dump_state
     exit 1
 fi
-if ! wait_for_ready scaledobject "${SCALE_TARGET}-http-scaledobject"; then
+SCALED_OBJECT=$(kubectl get scaledobject -l "app=${SCALE_TARGET}" -n "${NAMESPACE}" \
+    -o jsonpath='{.items[*].metadata.name}')
+if [ -z "${SCALED_OBJECT}" ]; then
+    echo "FAIL: no ScaledObject has the label app=${SCALE_TARGET}" >&2
+    dump_state
+    exit 1
+fi
+if ! wait_for_ready scaledobject "${SCALED_OBJECT}"; then
     dump_state
     exit 1
 fi
