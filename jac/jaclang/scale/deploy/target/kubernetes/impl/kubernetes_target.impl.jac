@@ -149,15 +149,18 @@ impl KubernetesTargetBase._deploy_databases(
         }
     }
     pg_pvc_name = f"{pg_name}-data-{pg_name}-0";
-    resize_pvc_if_needed(
-        core_v1,
-        namespace,
-        pg_pvc_name,
-        str(
-            get_scale_config().get_deploy_database_config().get('postgres_storage')
-                or '2Gi'
-        )
+    postgres_storage = get_scale_config().get_deploy_database_config().get(
+        'postgres_storage'
     );
+    if postgres_storage is not None {
+        try {
+            resize_pvc_if_needed(
+                core_v1, namespace, pg_pvc_name, str(postgres_storage)
+            );
+        } except ValueError as exc {
+            raise ValueError(f"[scale.database] postgres_storage: {exc}") from exc;
+        }
+    }
     try {
         existing = core_v1.read_namespaced_service(
             name=pg_service_name, namespace=namespace

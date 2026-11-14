@@ -392,8 +392,8 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                     },
                     "postgres_storage": {
                         "type": "string",
-                        "default": "2Gi",
-                        "description": "PVC size for the provisioned Postgres StatefulSet. Must be a valid Kubernetes quantity, e.g. 2Gi."
+                        "default": None,
+                        "description": "PVC size for the provisioned Postgres StatefulSet. When unset, keeps an existing volume's size; new volumes use 2Gi. Explicit sizes must be valid Kubernetes quantities, e.g. 10Gi."
                     }
                 }
             },

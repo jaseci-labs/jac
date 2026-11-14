@@ -603,18 +603,21 @@ Persistent storage covers two volumes: the **application bundle PVC** (holds the
 | TOML Key | Default | Description |
 |----------|---------|-------------|
 | `bundle_storage_class` | `""` | StorageClass for the application bundle PVC. The PVC needs `ReadWriteMany`; set this to an RWX-capable class (e.g. EFS, NFS). When empty, the single-app deploy silently omits `storageClassName` and uses the cluster default; the microservice bundle path errors instead, since most cloud default classes are RWO-only |
-| `postgres_storage` (`[scale.database]`) | `2Gi` | Storage size for the Postgres data PVC |
+| `postgres_storage` (`[scale.database]`) | Unset | Keeps an existing Postgres data PVC at its current size; new volumes use `2Gi` |
 
 **To change in `jac.toml`:**
 
 ```toml
 [scale.kubernetes]
 bundle_storage_class = "efs-sc"
-postgres_storage = "10Gi"  # under [scale.database]
+
+[scale.database]
+postgres_storage = "10Gi"
 ```
 
 **Postgres PVC resize behaviour:**
 
+- **Unset**: Omitting `[scale.database] postgres_storage` preserves the current size of an existing PVC. A new PVC starts at `2Gi`.
 - **Increase**: Applying a larger `postgres_storage` on redeploy automatically patches the existing PVC. Your stored data is preserved - only the capacity request is updated.
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.

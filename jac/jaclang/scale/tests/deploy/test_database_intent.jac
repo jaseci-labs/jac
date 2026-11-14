@@ -375,3 +375,82 @@ test "no deploy module can reach the env-reading database resolver" {
     }
     assert offenders == [] , f"deploy modules must call get_deploy_database_config(), not the env-reading get_database_config(): {offenders}";
 }
+
+
+test "an unset postgres size preserves a grown volume and explicit sizes still resize" {
+    import from tempfile { TemporaryDirectory }
+
+    for mode in ["image", "embedded"] {
+        for (current, desired) in [
+            ("20Gi", None),
+            (None, None),
+            (None, "10Gi"),
+            ("20Gi", "20Gi"),
+            ("20Gi", "30Gi"),
+            ("20Gi", "2Gi")
+        ] {
+            with TemporaryDirectory() as tmp {
+                config_text = f'[scale.database]\ndeploy_mode = "{mode}"\n';
+                if desired is not None {
+                    config_text += f'postgres_storage = "{desired}"\n';
+                }
+                (Path(tmp) / "jac.toml").write_text(config_text);
+                reset_scale_config();
+                try {
+                    scale_config = get_scale_config(Path(tmp));
+                    apis = _mock_apis();
+                    core_v1 = apis["core_v1"];
+                    apps_v1 = apis["apps_v1"];
+                    if current is not None {
+                        apps_v1.read_namespaced_stateful_set.side_effect = None;
+                        core_v1.read_namespaced_persistent_volume_claim.side_effect = None;
+                        core_v1.read_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
+                            spec=SimpleNamespace(
+                                resources=SimpleNamespace(requests={"storage": current})
+                            )
+                        );
+                    }
+                    cfg = KubernetesConfig(
+                        app_name="storage-test", namespace="storage-ns"
+                    );
+                    rejected = False;
+                    try {
+                        _run_deploy(cfg, "storage-test", apis);
+                    } except ValueError as exc {
+                        rejected = True;
+                        assert current == "20Gi" and desired == "2Gi" , (
+                            f"{mode}: an unset size must keep the existing volume: {exc}"
+                        );
+                        assert "postgres_storage" in str(exc) , str(exc);
+                        assert "20Gi" in str(exc) and "2Gi" in str(exc) , str(exc);
+                    }
+                    assert rejected == (current == "20Gi" and desired == "2Gi");
+                    assert scale_config.get_deploy_database_config()["postgres_storage"]
+                        == desired;
+                    if current is None {
+                        manifest = apps_v1.create_namespaced_stateful_set.call_args.kwargs[
+                            "body"
+                        ];
+                        storage = manifest["spec"]["volumeClaimTemplates"][0]["spec"][
+                            "resources"
+                        ]["requests"]["storage"];
+                        assert storage == (desired or "2Gi");
+                    } else {
+                        apps_v1.create_namespaced_stateful_set.assert_not_called();
+                    }
+                    if current == "20Gi" and desired == "30Gi" {
+                        core_v1.patch_namespaced_persistent_volume_claim.assert_called_once_with(
+                            "storage-test-postgres-data-storage-test-postgres-0",
+                            "storage-ns",
+                            {"spec": {"resources": {"requests": {"storage": "30Gi"}}}}
+                        );
+                    } else {
+                        core_v1.patch_namespaced_persistent_volume_claim.assert_not_called();
+                    }
+                } finally {
+                    reset_scale_config();
+                }
+            }
+        }
+    }
+}
