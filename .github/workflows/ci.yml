@@ -1141,6 +1141,7 @@ jobs:
       - name: Run ${{ matrix.group }} tests
         env:
           JAC_TEST_JOBS: "1"
+          JAC_TEST_RSS_LOG: "1"
           JAC_TEST_STRICT: "1"
         run: |
           set -euo pipefail
