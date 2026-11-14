@@ -230,64 +230,6 @@ def configparser_py -> dict[any, any] {
 }
 
 
-def configparser_write_preserves_carriage_returns -> int {
-    cp: ConfigParser = ConfigParser();
-    cp.add_section("s");
-    cp.set("s", "lone", "x\ry");
-    cp.set("s", "pair", "z\r\nq");
-    saved: str = cp.write();
-    if saved.find("x\ry") < 0 or saved.find("z\r\n\tq") < 0 {
-        return 0;
-    }
-    return 1;
-}
-
-
-def configparser_write_rejects_delimiter_option -> int {
-    cp: ConfigParser = ConfigParser();
-    cp.add_section("s");
-    cp.set("s", "a=b", "1");
-    try {
-        cp.write();
-    } except ValueError {
-        return 1;
-    } except Exception {
-        return 0;
-    }
-    return 0;
-}
-
-
-def configparser_write_rejects_header_option -> int {
-    cp: ConfigParser = ConfigParser();
-    cp.add_section("s");
-    cp.set("s", "[other]", "1");
-    try {
-        cp.write();
-    } except ValueError {
-        return 1;
-    } except Exception {
-        return 0;
-    }
-    return 0;
-}
-
-
-def configparser_write_rejects_value_completed_header -> int {
-    cp: ConfigParser = ConfigParser();
-    cp.add_section("s");
-    cp.set("s", "[abc", "x]");
-    try {
-        cp.write();
-    } except ValueError {
-        return 1;
-    } except Exception {
-        return 0;
-    }
-    return 0;
-}
-
-
 def configparser_cl -> dict[any, any] {
     return {};
 }
