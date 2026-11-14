@@ -207,11 +207,19 @@ impl SecondFactorManager.remove(
 }
 
 impl SecondFactorManager.begin_login(
-    user_id: str, method: str = METHOD_PASSWORD
+    user_id: str, method: str = METHOD_PASSWORD, session_epoch: (int | None) = None
 ) -> dict[str, any] {
+    if session_epoch is None {
+        state = self.storage.session_state(user_id);
+        session_epoch = session_epoch_value(state['session_epoch']) if state else 0;
+    }
     ttl = max(30, int(auth_settings().second_factor.challenge_ttl_seconds));
     token = AuthTokenStore.instance().create_token(
-        user_id, LOGIN_CHALLENGE_PURPOSE, ttl, method
+        user_id,
+        LOGIN_CHALLENGE_PURPOSE,
+        ttl,
+        method,
+        extra={'session_epoch': session_epoch}
     );
     return {
         'mfa_required': True,
@@ -235,8 +243,12 @@ impl SecondFactorManager.complete_login(
     }
     store = AuthTokenStore.instance();
     record = store.peek_token(challenge_token, LOGIN_CHALLENGE_PURPOSE);
-    user_id = str(record.get('user_id') or '') if record else '';
-    if not user_id {
+    if record is None {
+        return _refused('INVALID_CHALLENGE');
+    }
+    user_id = str(record.get('user_id') or '');
+    epoch = record.get('session_epoch');
+    if not user_id or epoch is None {
         return _refused('INVALID_CHALLENGE');
     }
     proof = self.prove(user_id, code, recovery_code);
@@ -251,9 +263,8 @@ impl SecondFactorManager.complete_login(
         'ok': True,
         'user_id': user_id,
         'method': proof['method'],
-        'first_method': str(record.get('identity_value') or METHOD_PASSWORD)
-            if record
-            else METHOD_PASSWORD
+        'first_method': str(record.get('identity_value') or METHOD_PASSWORD),
+        'session_epoch': epoch
     };
 }
 

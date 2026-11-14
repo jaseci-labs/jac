@@ -68,7 +68,10 @@ impl ws_authenticate(
 }
 
 impl ws_heartbeat_loop(
-    ctx: ConnectionContext, heartbeat_seconds: float, missed_allowed: int
+    ctx: ConnectionContext,
+    heartbeat_seconds: float,
+    missed_allowed: int,
+    session_current: any = None
 ) -> None {
     try {
         while not ctx.closed {
@@ -84,6 +87,20 @@ impl ws_heartbeat_loop(
                     );
                 } except Exception as e {
                     logger.debug(f"WS expiry close failed: {e}");
+                }
+                ctx.closed = True;
+                break;
+            }
+            if session_current is not None
+                and ctx.user_id
+                and not await ws_session_still_current(session_current, ctx) {
+                logger.info(f"WS session close conn_id={ctx.conn_id}; session ended");
+                try {
+                    await ctx.websocket.close(
+                        code=WS_CLOSE_UNAUTHORIZED, reason='revoked'
+                    );
+                } except Exception as e {
+                    logger.debug(f"WS session close failed: {e}");
                 }
                 ctx.closed = True;
                 break;
@@ -139,7 +156,8 @@ impl ws_reject_auth(websocket: WebSocket, auth_detail: dict[str, any]) {
         'missing': 'Invalid or missing token',
         'expired': 'Token expired',
         'invalid': 'Invalid or missing token',
-        'unknown_user': 'User associated with token no longer exists'
+        'unknown_user': 'User associated with token no longer exists',
+        'revoked': 'Session has ended'
     };
     msg = message_map.get(str(status), 'Invalid or missing token');
     reason = auth_detail.get('reason') or msg;
@@ -256,6 +274,7 @@ impl ws_handle_control(
         refreshed_uid = detail.get('user_id');
         refreshed_exp = detail.get('exp');
         ctx.user_id = str(refreshed_uid) if refreshed_uid is not None else None;
+        ctx.session_epoch = detail.get('session_epoch');
         ctx.exp = (
             float(refreshed_exp) if isinstance(refreshed_exp, (int, float)) else None
         );
@@ -292,5 +311,30 @@ impl ws_execute_target(
         logger.error(f"WS {label.lower()} execution error '{name}': {e}");
         await websocket.send_json(ws_error_frame('INTERNAL_ERROR', str(e)));
         return (False, None);
+    }
+}
+
+impl ws_session_still_current(
+    session_current: any, ctx: ConnectionContext, reuse_recent: bool = False
+) -> bool {
+    now = time.monotonic();
+    if reuse_recent
+        and ctx.session_checked_at
+        and now - ctx.session_checked_at < SESSION_RECHECK_SECONDS {
+        return True;
+    }
+    try {
+        current = bool(
+            await asyncio.to_thread(session_current, ctx.user_id, ctx.session_epoch)
+        );
+        if current {
+            ctx.session_checked_at = now;
+        }
+        return current;
+    } except Exception as e {
+        logger.warning(
+            f"WS session check failed conn_id={ctx.conn_id}; closing connection: {e}"
+        );
+        return False;
     }
 }

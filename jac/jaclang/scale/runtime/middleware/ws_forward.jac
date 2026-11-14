@@ -24,10 +24,23 @@ def _select_handshake_headers(
 ) -> dict[str, str];
 
 
-async def _pump_client_to_upstream(client_ws: any, upstream_ws: any);
+async def _pump_client_to_upstream(
+    client_ws: any, upstream_ws: any, session_guard: any = None
+);
 
 
-async def _pump_upstream_to_client(upstream_ws: any, client_ws: any);
+async def _pump_upstream_to_client(
+    upstream_ws: any, client_ws: any, session_guard: any = None
+);
+
+async def _forward_session_current(
+    client_ws: any,
+    session_guard: any,
+    frame: (dict[str, any] | None) = None,
+    force: bool = False
+) -> bool;
+
+async def _watch_forward_session(client_ws: any, session_guard: any);
 
 
 async def websocket_forward(
@@ -35,5 +48,6 @@ async def websocket_forward(
     upstream_url: str,
     request_headers: dict[str, str],
     timeout: int = 30,
-    on_upstream: any = None
+    on_upstream: any = None,
+    session_guard: any = None
 ) -> None;

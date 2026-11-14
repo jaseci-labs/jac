@@ -175,7 +175,7 @@ impl IdentityStorage.authenticate(
     }
 
     user_id = user['user_id'];
-    credentials = self._get_credentials(user_id);
+    (credentials, epoch) = self.credential_state(user_id);
     for cred in credentials {
         if cred.get('type') != 'password' {
             continue;
@@ -189,7 +189,8 @@ impl IdentityStorage.authenticate(
             result: dict[str, any] = {
                 'user_id': user_id,
                 'root_id': user['root_id'],
-                'role': user.get('role', 'user')
+                'role': user.get('role', 'user'),
+                'session_epoch': epoch
             };
             if self.password_expired(user, cred)
                 and not user.get('requires_password_reset') {
@@ -266,8 +267,11 @@ impl IdentityStorage.password_reused(
 }
 
 impl IdentityStorage.write_password(
-    user_id: str, credentials: list[dict[str, any]], new_password: str
-) -> None {
+    user_id: str,
+    credentials: list[dict[str, any]],
+    new_password: str,
+    expected_epoch: (int | None) = None
+) -> int | None {
     kept = max(0, int(auth_settings().password.history));
     new_hash = IdentityStorage.hash_password(new_password);
     now = datetime.now(UTC).isoformat();
@@ -290,14 +294,21 @@ impl IdentityStorage.write_password(
             {'type': 'password', 'password_hash': new_hash, 'changed_at': now}
         );
     }
-    self._update_credentials(user_id, credentials);
-    self._update_fields(user_id, {'requires_password_reset': False, 'updated_at': now});
+    return self._end_sessions(
+        user_id,
+        {
+            'credentials': credentials,
+            'requires_password_reset': False,
+            'updated_at': now
+        },
+        expected_epoch
+    );
 }
 
 impl IdentityStorage.update_password(
     user_id: str, current_password: str, new_password: str
 ) -> dict[str, any] {
-    credentials = self._get_credentials(user_id);
+    (credentials, stored) = self.credential_state(user_id);
     if not credentials {
         return {'error': 'User not found'};
     }
@@ -310,16 +321,34 @@ impl IdentityStorage.update_password(
     if not matched {
         return {'error': 'Current password is incorrect'};
     }
-    self.write_password(user_id, credentials, new_password);
-    return {'user_id': user_id, 'message': 'Password updated successfully'};
+    expected = session_epoch_value(stored) if stored is not None else None;
+    if stored is not None and expected is None {
+        return {'error': 'The account cannot be updated; contact support'};
+    }
+    epoch = self.write_password(user_id, credentials, new_password, expected);
+    if epoch is None {
+        return {'error': 'The password changed meanwhile; sign in again'};
+    }
+    return {
+        'user_id': user_id,
+        'message': 'Password updated successfully',
+        'session_epoch': epoch
+    };
 }
 
 impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str, any] {
     if not self.user_exists_by_id(user_id) {
         return {'error': 'User not found'};
     }
-    self.write_password(user_id, self._get_credentials(user_id), new_password);
-    return {'user_id': user_id, 'message': 'Password updated successfully'};
+    epoch = self.write_password(user_id, self._get_credentials(user_id), new_password);
+    if epoch is None {
+        return {'error': 'Password could not be reset'};
+    }
+    return {
+        'user_id': user_id,
+        'message': 'Password updated successfully',
+        'session_epoch': epoch
+    };
 }
 
 impl IdentityStorage.password_expired(
@@ -520,4 +549,43 @@ impl primary_username(user: dict[str, any]) -> str {
         }
     }
     return '';
+}
+
+impl IdentityStorage._end_sessions(
+    user_id: str, patch: dict[str, any], expected: (int | None) = None
+) -> int | None {
+    raise NotImplementedError(
+        f"{type(self).__name__} must apply the patch and advance session_epoch "
+        "in one atomic write"
+    );
+}
+
+impl IdentityStorage.credential_state(
+    user_id: str
+) -> tuple[list[dict[str, any]], any] {
+    return (self._get_credentials(user_id), None);
+}
+
+impl IdentityStorage.session_state(user_id: str) -> dict[str, any] | None {
+    user = self.get_user_by_id(user_id);
+    if user is None {
+        return None;
+    }
+    return {
+        'user_id': user.get('user_id'),
+        'root_id': user.get('root_id'),
+        'status': user.get('status') or 'active',
+        'session_epoch': user['session_epoch'] if 'session_epoch' in user else 0
+    };
+}
+
+impl IdentityStorage.end_sessions(user_id: str) -> int | None {
+    return self._end_sessions(user_id, {'updated_at': datetime.now(UTC).isoformat()});
+}
+
+impl session_epoch_value(raw: any) -> int | None {
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0 {
+        return None;
+    }
+    return raw;
 }

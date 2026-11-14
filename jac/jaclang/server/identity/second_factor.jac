@@ -37,7 +37,10 @@ obj SecondFactorManager {
         user_id: str, factor_id: str, code: str, recovery_code: str
     ) -> dict[str, any];
 
-    def begin_login(user_id: str, method: str = METHOD_PASSWORD) -> dict[str, any];
+    def begin_login(
+        user_id: str, method: str = METHOD_PASSWORD, session_epoch: (int | None) = None
+    ) -> dict[str, any];
+
     def complete_login(
         challenge_token: str, code: str, recovery_code: str
     ) -> dict[str, any];

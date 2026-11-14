@@ -29,6 +29,17 @@ impl request_caller(server: JacAPIServer, request: Request) -> (str | None) {
     return ident;
 }
 
+impl unknown_caller(request: Request) -> (TransportResponse | None) {
+    if not request.state?.unknown_subject {
+        return None;
+    }
+    return TransportResponse.fail(
+        code='UNAUTHORIZED',
+        message='Unauthorized: unknown user',
+        meta=Meta(extra={'http_status': 401})
+    );
+}
+
 impl idempotency_key(request: Request, username: str, app: str, target: str) -> str {
     return scoped_idempotency_key(
         str(request.headers.get(IDEMPOTENCY_HEADER) or ''), username, app, target
@@ -205,6 +216,10 @@ impl walker_callback(
     async def callback(
         request: Request, /, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
+        refused = unknown_caller(request);
+        if refused is not None {
+            return refused;
+        }
         username = request_caller(server, request);
         if requires_auth and not username {
             return _unauthorized();
@@ -377,6 +392,10 @@ impl function_callback(
     async def callback(
         request: Request, /, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse | Response) {
+        refused = unknown_caller(request);
+        if refused is not None {
+            return refused;
+        }
         username = request_caller(server, request);
         if requires_auth and not username {
             return _unauthorized();

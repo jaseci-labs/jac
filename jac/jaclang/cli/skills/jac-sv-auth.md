@@ -64,7 +64,7 @@ curl -X POST http://localhost:8000/function/my_todos \
 curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile, identities, role
 ```
 
-Identity types: `username`, `email` (max one of each; login works with either unless `login_with` narrows it). Which ones an account needs, and how strong the password must be, is the project's **auth policy** (below); a value that breaks it gets `400 POLICY_VIOLATION` with every broken rule in `error.details.violations`. Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
+Identity types: `username`, `email` (max one of each; login works with either unless `login_with` narrows it). Which ones an account needs, and how strong the password must be, is the project's **auth policy** (below); a value that breaks it gets `400 POLICY_VIOLATION` with every broken rule in `error.details.violations`. Also available: `POST /user/refresh-token`, `PUT /user/password`, `POST /user/logout-all`, password-reset/verify endpoints via a configured emailer. A password change, a password reset, `logout-all` and disabling the account end every session of the account (each token carries the account's session epoch); a password change answers a replacement `token` the client must switch to.
 
 ## Media and downloads: the session cookie
 
@@ -72,7 +72,7 @@ A browser cannot attach `Authorization` to `<img src>`, `<video src>`, `<audio s
 
 - It is read for `GET` and `HEAD` only, and only when the request has no `Authorization` header. A write never authenticates by cookie, so keep `GET` endpoints read-only.
 - A bad, expired or duplicated cookie is anonymous (401 on a protected endpoint), exactly like a bad header. The token is never read from the query string.
-- `POST /user/logout` clears it (so do a password change and a password reset), and `jacLogout()` calls it. The cookie is invisible to script, so a hand-rolled client that only drops its stored token stays signed in for media until the token expires.
+- `POST /user/logout` clears it (so does a password reset; a password change replaces it with the replacement token's cookie), and `jacLogout()` calls it. The cookie is invisible to script, so a hand-rolled client that only drops its stored token stays signed in for media until the token expires.
 - A session that began elsewhere (SSO, a token minted before the switch) gets its cookie from `POST /user/refresh-token`.
 - Cookie-authorized responses get `Vary: Cookie` and, unless the endpoint set its own, `Cache-Control: private`.
 - The cookie is host-only: pages and API must share an origin. `Secure` follows the request scheme, so behind a TLS-terminating proxy list it in `[serve.proxy] trusted`. In a fleet, the gateway and every service must agree, which `jac.toml` gives you for free; if you use the variable instead, set it everywhere. Admin, `/metrics`, WebSockets and service-to-service calls stay header-only.
@@ -164,7 +164,7 @@ secret = "long-random-string"     # or env JAC_SERVE_AUTH_SECRET; algorithm HS25
 session_cookie = false            # true: also set the media cookie above; env JAC_SERVE_AUTH_SESSION_COOKIE
 ```
 
-No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[scale.sso.<platform>]` and send users to `/sso/<platform>/login`. To call a provider's APIs for a user, list `scopes = [...]` there, let the signed-in user connect with `jacSsoConnect` (see `jac-cl-auth`), and read a fresh access token in an `async def:protect` endpoint with `await sso_access_token("<platform>")` from `jaclang.scale.sso.grants` (`""` when not connected; refreshing is handled).
+A token stays valid until it expires unless the account's sessions end: a password change, a password reset, `POST /user/logout-all` or disabling the account refuses every token issued before it (a fleet service accepts a gateway's token until expiry and does not renew it). SSO (Google/Apple/GitHub): configure `[scale.sso.<platform>]` and send users to `/sso/<platform>/login`. To call a provider's APIs for a user, list `scopes = [...]` there, let the signed-in user connect with `jacSsoConnect` (see `jac-cl-auth`), and read a fresh access token in an `async def:protect` endpoint with `await sso_access_token("<platform>")` from `jaclang.scale.sso.grants` (`""` when not connected; refreshing is handled).
 
 ## Sharing data with specific users
 
