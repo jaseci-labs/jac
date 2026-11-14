@@ -959,6 +959,9 @@ jobs:
         working-directory: jac
         run: |
           set -uxo pipefail
+          (while sleep 60; do echo "Runtime suite (${{ matrix.leg }}) is still running"; done) &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test ${{ matrix.paths }} \
             ${{ matrix.ignore != '' && format('--ignore {0}', matrix.ignore) || '' }}
@@ -1157,6 +1160,9 @@ jobs:
           JAC_TEST_STRICT: "1"
         run: |
           set -euo pipefail
+          (while sleep 60; do echo "Scale ${{ matrix.group }} tests are still running"; done) &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
           if [ "${{ matrix.group }}" = "server" ]; then
             jac test jac/jaclang/scale/tests/server -f "not hmr"
           else
