@@ -256,7 +256,7 @@ Keywords that commonly need backtick escaping when used as identifiers: `type`, 
 In Jac (like Python), mutable objects (lists, dicts) are passed by reference by default. You don't need any special syntax:
 
 ```jac
-def modify(data: list) -> None {
+def modify(data: list[int]) -> None {
     data.append(42);
 }
 ```
@@ -337,7 +337,7 @@ Use Python-style `True`/`False`/`None`:
 
 ```jac
 has active: bool = True;
-has data: dict | None = None;
+has data: dict[str, str] | None = None;
 ```
 
 ### 15. List/Dict comprehensions
@@ -478,7 +478,7 @@ Use `glob` for module-level variables:
 
 ```jac
 glob MAX_SIZE = 100;
-glob config: dict = {};
+glob config: dict[str, str] = {};
 ```
 
 ## Client-Side & Full-Stack Gotchas
@@ -498,8 +498,8 @@ function Greeting(props) {
 RIGHT (the JSX return is what makes it a client component -- no wrapper or marker exists):
 
 ```jac
-def:pub Greeting(props: dict) -> JsxElement {
-    return <h1>Hello, {props.name}!</h1>;
+def:pub Greeting(name: str) -> JsxElement {
+    return <h1>Hello, {name}!</h1>;
 }
 ```
 
@@ -554,15 +554,19 @@ RIGHT (immutable update -- creates new list):
 
 ```jac
 def:pub TodoApp() -> JsxElement {
-    has todos: list = [];
+    has todos: list[dict[str, any]] = [];
 
     def add_todo() -> None {
-        todos = todos + [{"text": "new item"}];  # New list reference triggers re-render
+        todos = todos + [{"id": len(todos), "text": "new item"}];  # New list reference triggers re-render
     }
 
     def remove_todo(id: int) -> None {
         todos = [t for t in todos if t["id"] != id];  # Filter to new list
     }
+
+    return <ul>
+        {[<li key={t["id"]}>{t["text"]}</li> for t in todos]}
+    </ul>;
 }
 ```
 
@@ -618,7 +622,7 @@ NOT IDIOMATIC (manual useEffect -- valid but not preferred):
 import from "react" { useEffect }
 
 def:pub DataLoader() -> JsxElement {
-    has data: list = [];
+    has data: list[dict[str, any]] = [];
 
     useEffect(lambda -> None {
         fetch_data();
@@ -631,8 +635,12 @@ def:pub DataLoader() -> JsxElement {
 PREFERRED (on mount -- empty dependency array):
 
 ```jac
+async def fetch_data() -> list[dict[str, any]] {
+    return [{"id": "1", "name": "first"}];
+}
+
 def:pub DataLoader() -> JsxElement {
-    has data: list = [];
+    has data: list[dict[str, any]] = [];
     has loading: bool = True;
 
     async can with entry {
@@ -646,7 +654,7 @@ def:pub DataLoader() -> JsxElement {
     }
 
     return <ul>
-        {[<li key={item.id}>{item.name}</li> for item in data]}
+        {[<li key={item["id"]}>{item["name"]}</li> for item in data]}
     </ul>;
 }
 ```
@@ -656,7 +664,7 @@ RIGHT (with dependency array -- runs when `query` changes):
 ```jac
 def:pub SearchResults() -> JsxElement {
     has query: str = "";
-    has results: list = [];
+    has results: list[dict[str, any]] = [];
 
     async can with [query] entry {
         if query {
@@ -761,7 +769,7 @@ RIGHT:
 import from ...main { get_tasks }
 
 def:pub TaskList() -> JsxElement {
-    has tasks: list = [];
+    has tasks: list[dict[str, any]] = [];
 
     async can with entry {
         result = root spawn get_tasks();
@@ -771,7 +779,7 @@ def:pub TaskList() -> JsxElement {
     }
 
     return <ul>
-        {[<li key={task.id}>{task.title}</li> for task in tasks]}
+        {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
     </ul>;
 }
 ```
@@ -814,9 +822,9 @@ if result.reports and result.reports.length > 0 {
 
 ## API Endpoint & Auth Gotchas
 
-### 37. Public endpoints use `walker:pub` or `def:pub`, private use `:priv`
+### 37. Public endpoints use `walker:pub` or `def:pub`, authenticated ones `:protect`
 
-To expose a walker or function as an HTTP endpoint, use the `:pub` (public, no auth) or `:priv` (private, JWT auth required) access modifier. Without these modifiers, walkers and functions are internal only.
+To expose a walker or function as an HTTP endpoint, use the `:pub` (public, no auth) or `:protect` (JWT auth required) access modifier. A plain or `:priv` walker or function is private: it is never registered as an endpoint, and calling it over HTTP answers 404 or 405.
 
 WRONG (no access modifier -- not exposed as endpoint):
 
@@ -838,10 +846,10 @@ walker:pub get_tasks {
 }
 ```
 
-RIGHT (private endpoint, JWT auth required, per-user data isolation):
+RIGHT (authenticated endpoint, JWT required, per-user data isolation):
 
 ```jac
-walker:priv create_task {
+walker:protect create_task {
     has title: str;
 
     can create with Root entry {
@@ -854,11 +862,11 @@ walker:priv create_task {
 The same applies to functions:
 
 ```jac
-def:pub get_status() -> dict {
+def:pub get_status() -> dict[str, str] {
     return {"status": "ok"};
 }
 
-def:priv get_user_data() -> dict {
+def:protect get_user_data() -> dict[str, str] {
     # Each user sees their own data automatically
     return {"user": "data"};
 }
@@ -892,14 +900,14 @@ walker:pub create_task {
 }
 ```
 
-### 39. `:priv` gives per-user data isolation automatically
+### 39. `:protect` gives per-user data isolation automatically
 
-With `walker:priv` or `def:priv`, each authenticated user gets their own isolated graph `root`. You do NOT need to filter data by user ID -- the runtime handles isolation.
+With `walker:protect` or `def:protect`, each authenticated user gets their own isolated graph `root`. You do NOT need to filter data by user ID -- the runtime handles isolation.
 
 WRONG (manual user filtering):
 
 ```
-walker:priv get_my_tasks {
+walker:protect get_my_tasks {
     has user_id: str;
 
     can fetch with Root entry {
@@ -912,7 +920,7 @@ walker:priv get_my_tasks {
 RIGHT (isolation is automatic):
 
 ```jac
-walker:priv get_my_tasks {
+walker:protect get_my_tasks {
     can fetch with Root entry {
         report [-->][?:Task];  # Only returns THIS user's tasks automatically
     }
