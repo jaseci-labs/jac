@@ -1165,9 +1165,15 @@ test "plain client kwargs lower to ordered js arguments" {
 }
 
 test "an annex repeating a bridged import emits one stub" {
-    # Two `function greet` in one module is a SyntaxError the browser raises (#10756).
-    js_code = compile_fixture_to_js("svc_kwargs/sv_import_annex_client.jac", FIXTURES);
-    assert js_code.count("function greet(") == 1 , js_code;
+    # A repeat binds once (two `function greet` is a browser SyntaxError, #10756);
+    # the same name from a different service is a conflict and stays visible.
+    for (fixture, stubs) in [
+        ("svc_kwargs/sv_import_annex_client.jac", 1),
+        ("svc_kwargs/sv_import_annex_conflict_client.jac", 2)
+    ] {
+        js_code = compile_fixture_to_js(fixture, FIXTURES);
+        assert js_code.count("function greet(") == stubs , f"{fixture}: {js_code}";
+    }
 }
 
 test "bridged call duplicate kwarg is a compile error" {

@@ -308,11 +308,10 @@ impl EsastGenPass._generate_sv_import_stubs(
         if binding is not None and binding.kind != 'function' {
             continue;
         }
-        target_mod = binding.ast_node.loc.mod_path
-            if binding is not None and binding.ast_node is not None
-            else "";
+        source_path = (nd.from_loc.resolve_relative_path() if nd.from_loc else "")
+            or "";
         if not self._new_import_binding(
-            local_name, "sv:" + target_mod + ":" + func_name
+            local_name, "sv:" + str(source_path) + ":" + func_name
         ) {
             continue;
         }
