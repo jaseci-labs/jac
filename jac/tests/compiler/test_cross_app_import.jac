@@ -264,6 +264,50 @@ test "missing await on a SERVICE_BRIDGE stub is E1042" {
     );
 }
 
+test "two aliases of one server function are typed by their own import's placement" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with tempfile.TemporaryDirectory(prefix="jac-alias-bridge-") as tmp {
+        base = Path(tmp);
+        (base / "jac.toml").write_text(
+            '[project]\nname = "notes"\nkind = "web-app"\nentry-point = "main"\n\n'
+                + '[placement.pins]\n"notes.helper.count_notes" = "client"\n'
+        );
+        (base / "main.jac").write_text(
+            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
+        );
+        (base / "notes").mkdir();
+        (base / "notes" / "store.jac").write_text(
+            "node Note {\n    has title: str;\n}\n\n"
+                + "def:pub list_notes -> list[str] {\n"
+                + "    return [n.title for n in [root --> [?:Note]]];\n}\n"
+        );
+        (base / "notes" / "helper.jac").write_text(
+            "import from .store { list_notes as client_list }\n"
+                + "import from .store { list_notes as server_list }\n\n"
+                + "def count_notes -> int {\n    return len(client_list());\n}\n\n"
+                + "def:pub note_total -> int {\n    return len(server_list());\n}\n"
+        );
+        prog = JacProgram();
+        prog.compile(
+            str(base / "notes" / "helper.jac"),
+            options=CompileOptions(no_cgen=True, skip_native_engine=True)
+        );
+        lines = sorted(
+            [
+                e.loc.first_line
+                for e in prog.errors_had
+                if "Coroutine" in str(e)
+            ]
+        );
+        assert lines == [5] , (
+            "only the client alias is an RPC stub; the server alias of the same "
+            + f"function returns its value: {[str(e) for e in prog.errors_had]}"
+        );
+    }
+}
+
 test "a generator-returning SERVICE_BRIDGE stub is a coroutine until awaited" {
     # The bridge stub is `async def` whatever the provider returns, so a
     # streaming provider is reached as `await narrate(...)`; iterating the

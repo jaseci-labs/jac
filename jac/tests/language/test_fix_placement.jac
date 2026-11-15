@@ -238,7 +238,7 @@ glob NOTES_STORE: str = (
      ),
      NOTES_HELPER: str = (
          "sv import from .store { list_notes }\n\n"
-         "cl def count_notes -> int {\n    return len(list_notes());\n}\n"
+         "cl def count_notes -> None {\n    list_notes();\n}\n"
      );
 
 
@@ -323,7 +323,7 @@ test "fix placement declares a service app only for a server-placed sv import" {
             "files": {
                 "notes/helper.jac": "sv import from .store { list_notes as client_list }\n"
                 "import from .store { list_notes as server_list }\n\n"
-                "cl def count_notes -> int {\n    return len(client_list());\n}\n\n"
+                "cl def count_notes -> None {\n    client_list();\n}\n\n"
                 "def:pub note_total -> int {\n    return len(server_list());\n}\n"
             },
             "services": [],
