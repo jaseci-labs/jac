@@ -86,7 +86,7 @@ impl prepare_serve_payloads(
     entry_file: Path, proj_root: Path, client: bool = False
 ) -> (tuple[dict[str, any], str] | None) {
     program = JacProgram();
-    program.options = CompileOptions(skip_native_engine=True);
+    program.options = CompileOptions(skip_native_engine=True, retain_interfaces=True);
 
     try {
         config = get_config_for_path(proj_root);

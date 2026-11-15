@@ -2272,7 +2272,7 @@ graph import {
         compiler.frontend.host { AppSpec, WorkspaceSpec },
     ]
     runtime.archetype ++> [
-        byllm.llm._mock_jsonable { Archetype },
+        byllm.llm._mock_jsonable | server.serving.coerce._fresh_default { Archetype },
         byllm.visit_routing { Anchor, Archetype, ObjectSpatialFunction },
         byllm.visit_routing._candidate_for { EdgeAnchor, EdgeArchetype, NodeAnchor },
         byllm.visit_routing._route_context {
@@ -5609,6 +5609,9 @@ graph import compiler {
             native_unit_identity,
             native_unit_spelling
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {
+            bundled_stdlib_module_of
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
             native_symbol_name,
             native_unit_spelling
@@ -7138,6 +7141,7 @@ graph import compiler {
             TryStmt,
             TupleVal,
             TypeAlias,
+            UnaryExpr,
             UniNode,
             WhileStmt,
             WithStmt,
@@ -11743,7 +11747,9 @@ graph import compiler.types {
             AnyType,
             ClassType,
             FunctionType,
+            ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,

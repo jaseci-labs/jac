@@ -21,7 +21,7 @@ walker ASTValidationPass(TreePass) {
     can enter_enum with Enum entry;
     can enter_switch_stmt with SwitchStmt entry;
     can enter_assignment with Assignment entry;
-    def _check_render_phase_state_write(nd: Assignment) -> None;
+    def _check_render_phase_state_write(nd: UniNode, targets: list[UniNode]) -> None;
     def _scope_declares_state(scope: (Ability | ImplDef), name: str) -> bool;
     def _returns_jsx(scope: (Ability | ImplDef)) -> bool;
     can enter_in_for_stmt with InForStmt entry;

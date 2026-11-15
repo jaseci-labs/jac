@@ -643,7 +643,9 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         }
     }
 
-    if not base_classes and self.prefetch and self.prefetch.object_class {
+    if self.prefetch
+        and self.prefetch.object_class
+        and all(base.is_class_instance() for base in base_classes) {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
         if not is_object_class {
             base_classes.append(self.prefetch.object_class);
