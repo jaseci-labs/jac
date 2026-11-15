@@ -2272,6 +2272,20 @@ test "jac run warns when the running toolchain does not satisfy the project's ja
         met = outcomes[">=0.0.1"];
         assert met.returncode == 0 and "ran" in met.stdout , met.stderr;
         assert "this project targets jac" not in met.stderr , met.stderr;
+
+        # Run from outside the project: the pin that counts is the one of the
+        # project that owns the file, not the shell's.
+        (project / "jac.toml").write_text(
+            '[project]\nname = "pinned"\nversion = "0.1.0"\njac-version = "<=0.0.1"\n'
+        );
+        outside = subprocess.run(
+            jac_command("run", str(project / "main.jac")),
+            cwd=str(project.parent),
+            capture_output=True,
+            text=True
+        );
+        assert outside.returncode == 0 and "ran" in outside.stdout , outside.stderr;
+        assert "this project targets jac <=0.0.1" in outside.stderr , outside.stderr;
     } finally {
         shutil.rmtree(project, ignore_errors=True);
     }
