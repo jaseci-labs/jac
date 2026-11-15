@@ -1535,10 +1535,15 @@ impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
 
 impl NaIRGenPass._erased_field_owner(type_name: str, fname: str) -> (str | None) {
     _lay = self._arch_layout(type_name);
-    if _lay is None or fname not in _lay.field_index {
+    if _lay is None {
         return None;
     }
-    return _lay.fields[_lay.field_index[fname]].owner or None;
+    for _f in _lay.fields {
+        if _f.name == fname {
+            return _f.owner or None;
+        }
+    }
+    return None;
 }
 
 impl NaIRGenPass._erased_boxable(
