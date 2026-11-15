@@ -66,6 +66,40 @@ test "config pin moves an element the solver would leave on the server" {
 }
 
 
+test "what a client pin uses is shared with the server code that also uses it" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        _write(
+            tmpdir,
+            "jac.toml",
+            "[project]\nname = \"pins\"\n\n"
+            "[placement.pins]\n\"app.show\" = \"client\"\n"
+        );
+        app = _write(
+            tmpdir,
+            "app.jac",
+            "enum Color: int { RED, GREEN }\n\n"
+            "def show -> int { return int(Color.GREEN); }\n\n"
+            "def:pub count -> int { return int(Color.RED); }\n"
+        );
+        prog = JacProgram();
+        mod = prog.compile(app, no_cgen=True);
+        assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+        assert _stamp_of(mod, "show") == "client";
+        assert _stamp_of(mod, "count") == "server" , (
+            "a server function sharing what a client pin uses must stay on the server"
+        );
+        color = [
+            s
+            for s in mod.body
+            if isinstance(s, uni.Enum) and s.name.value == "Color"
+        ][0];
+        assert str(color.code_context) == "client" and color.codespace_dual , (
+            "what a client pin uses reaches the client and stays on the server"
+        );
+    }
+}
+
+
 test "module-glob pin matches every element of the module" {
     with tempfile.TemporaryDirectory() as tmpdir {
         _write(
