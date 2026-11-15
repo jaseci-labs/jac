@@ -2181,7 +2181,7 @@ test "jac check of a directory skips the build directory and dependency trees" {
         for vendored in [
             tree_root / ".jac" / "venv" / "lib" / "pkg" / "vendored.jac",
             tree_root / "node_modules" / "dep" / "dep.jac",
-            tree_root / "out" / "venv" / "copy.jac"
+            tree_root / "out" / "gen" / "copy.jac"
         ] {
             vendored.parent.mkdir(parents=True);
             vendored.write_text(broken);
@@ -2205,6 +2205,21 @@ test "jac check of a directory skips the build directory and dependency trees" {
         for name in ["vendored.jac", "dep.jac", "copy.jac"] {
             assert name not in output , output;
         }
+        # From the parent directory the build dir still comes from the project
+        # that owns the walked tree, not from the shell's directory.
+        os.chdir(tree_root.parent);
+        _reset_config();
+        captured = io.StringIO();
+        sys.stdout = captured;
+        sys.stderr = captured;
+        try {
+            rc = analysis.check([str(tree_root)]);
+        } finally {
+            sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
+        }
+        output = captured.getvalue();
+        assert rc == 0 and "copy.jac" not in output , output;
     } finally {
         _reset_config();
         os.chdir(original_cwd);
