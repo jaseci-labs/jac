@@ -3952,18 +3952,20 @@ graph import cli {
             | dispatch._exit_on_malformed_jac_toml
             | shadcn.cli.retheme { console },
         check_report.print_final_summary
-            | dispatch.warn_unmet_jac_version
+            | dispatch.run_selected_command
             | shadcn.cli.run_shadcn_add { console },
         check_report.print_guide_hint
-            | dispatch.run_selected_command
+            | dispatch.warn_unmet_jac_version
             | shadcn.cli.run_shadcn_remove { console },
         check_report.print_native_coverage { console },
         check_report.print_placement_report { console },
         check_report.print_section { console },
         commands.execution { console, use_line_buffered_output },
     ]
-    dispatch ++> commands.execution._pin_run_scope { warn_unmet_jac_version }
-    dispatch ++> manifest_route.handle_manifest_route { run_selected_command }
+    dispatch ++> [
+        commands.execution._pin_run_scope { warn_unmet_jac_version },
+        manifest_route.handle_manifest_route { run_selected_command },
+    ]
     errmap --> executor.CommandExecutor.execute { humanize_error, show_tracebacks }
     executor ++> dispatch.run_selected_command { get_executor }
     format_cache --> [
