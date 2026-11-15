@@ -82,6 +82,55 @@ test "lazy finder loads a top-level .jac module" {
     }
 }
 
+test "a jaclang in the project venv never shadows the toolchain's own" {
+    import jaclang;
+    finder = Path(str(jaclang.__file__)).resolve().parent.parent / "_jac_finder.py";
+    project = Path(tempfile.mkdtemp(prefix="jac-shadow-")).resolve();
+    try {
+        (project / "jac.toml").write_text(
+            '[project]\nname = "shadow"\nversion = "0.1.0"\n'
+        );
+        site_dir = project
+            / ".jac"
+            / "venv"
+            / "lib"
+            / (
+                "python"
+                + str(sys.version_info.major)
+                + "."
+                + str(sys.version_info.minor)
+            )
+            / "site-packages";
+        (site_dir / "jaclang").mkdir(parents=True);
+        (site_dir / "jaclang" / "__init__.py").write_text(
+            'raise ImportError("venv jaclang")\n'
+        );
+        (site_dir / "pinneddep.py").write_text("WHERE = 'venv'\n");
+        snippet = (
+            "import importlib.util, importlib.machinery, os, sys;"
+            + "spec = importlib.util.spec_from_file_location('jf', "
+            + repr(str(finder))
+            + ");"
+            + "jf = importlib.util.module_from_spec(spec); spec.loader.exec_module(jf);"
+            + "os.chdir("
+            + repr(str(project))
+            + ");"
+            + "jf.add_project_venv_to_path();"
+            + "find = importlib.machinery.PathFinder.find_spec;"
+            + "print(find('jaclang', sys.path).origin);"
+            + "print(find('pinneddep', sys.path).origin)"
+        );
+        result = _run_clean(snippet);
+        assert result.returncode == 0 , result.stderr;
+        (jaclang_origin, dep_origin) = result.stdout.strip().splitlines()[-2:];
+        assert str(site_dir) not in jaclang_origin , jaclang_origin;
+        assert dep_origin.startswith(str(site_dir)) , "the venv still serves its own dependencies";
+        assert "ignoring the 'jaclang' package" in result.stderr;
+    } finally {
+        shutil.rmtree(project, ignore_errors=True);
+    }
+}
+
 """Make a fake compiler source dir (contains a jaclang/ package dir)."""
 def _fake_source(stubs: bool = True) -> str {
     src = tempfile.mkdtemp(prefix="jac-devsrc-");

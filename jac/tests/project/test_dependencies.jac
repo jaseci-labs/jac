@@ -2255,6 +2255,33 @@ test "jac install keeps a sealed venv when jac.lock pins differ" {
     }
 }
 
+test "jac install refuses jaclang as a PyPI dependency and installs nothing" {
+    import from contextlib { redirect_stderr }
+    import from io { StringIO }
+    import from jaclang.packages.commands { install_project }
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        toml = project_dir / "jac.toml";
+        toml.write_text(
+            toml.read_text().replace(
+                'requests = ">=2.28.0"', 'requests = ">=2.28.0"\njaclang = ">=0.16.7"'
+            )
+        );
+        config = JacConfig.load(toml);
+        errors = StringIO();
+        with redirect_stderr(errors) {
+            rc = install_project(config, skip_npm=True);
+        }
+        assert rc == 1;
+        assert "'jaclang' is the Jac toolchain itself" in errors.getvalue() , errors.getvalue();
+        assert not config.get_venv_dir().exists() , "nothing may be installed";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 test "standalone pip ignores inherited Python paths and user site" {
     import from jaclang.project.pyvenv { pip_env }
     inherited = {
