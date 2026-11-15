@@ -1587,15 +1587,34 @@ impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | Non
         return None;
     }
 
-    _owner_key = class_type_native_name(owner) or owner.shared.class_name;
-    _params: list[str] = self.arch_type_params.get(_owner_key) or [];
-    _args: list[TypeBase] = owner.private.type_args or [];
-    for _tv in tv_names {
-        if _tv in _params {
-            _idx = _params.index(_tv);
-            if _idx < len(_args) {
-                return self._lower_type(_args[_idx]);
+    import from jaclang.compiler.types.types { TypeVarType as _EwTypeVarType }
+    _todo: list[tuple[ClassType, list[TypeBase]]] = [
+        (owner, list(owner.private.type_args or []))
+    ];
+    while _todo {
+        (_cls, _args) = _todo.pop(0);
+        _key = class_type_native_name(_cls) or _cls.shared.class_name;
+        _params: list[str] = self.arch_type_params.get(_key) or [];
+        for _tv in tv_names {
+            if _tv in _params {
+                _idx = _params.index(_tv);
+                if _idx < len(_args) {
+                    return self._lower_type(_args[_idx]);
+                }
             }
+        }
+        _bound = dict(zip(_params, _args));
+        for _base in (_cls.shared.base_classes or []) {
+            if not isinstance(_base, ClassType) or _base._shared is None {
+                continue;
+            }
+            _bargs: list[TypeBase] = [];
+            for _a in (_base.private.type_args or []) {
+                _bargs.append(
+                    _bound.get(_a.name, _a) if isinstance(_a, _EwTypeVarType) else _a
+                );
+            }
+            _todo.append((_base, _bargs));
         }
     }
     return None;

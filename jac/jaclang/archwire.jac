@@ -9432,6 +9432,9 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._erased_typevar_names {
             TypeVarType as _EtvTypeVarType
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._erased_want {
+            TypeVarType as _EwTypeVarType
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._foreign_optional_field {
             ClassType as _FofClassType,
             TypeVarType as _FofTypeVarType,

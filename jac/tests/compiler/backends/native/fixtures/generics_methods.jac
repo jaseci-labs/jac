@@ -47,6 +47,12 @@ def holder_first_int(v: int) -> int {
     return Holder[int](val=v).first("k", 7);
 }
 
+obj SubHolder[W](Holder[W]) {}
+
+def sub_float_echo_int(v: int) -> float {
+    return SubHolder[float](val=1.5).echo("k", v);
+}
+
 def holder_echo_int(v: int) -> int {
     return Holder[int](val=5).echo("k", v);
 }
