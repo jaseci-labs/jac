@@ -2220,7 +2220,28 @@ test "jac check of a directory skips the build directory and dependency trees" {
         }
         output = captured.getvalue();
         assert rc == 0 and "copy.jac" not in output , output;
+
+        # An active profile that moves the build dir moves the exclusion with it.
+        (tree_root / "jac.prod.toml").write_text('[build]\ndir = "prod-out"\n');
+        (tree_root / "prod-out" / "gen").mkdir(parents=True);
+        (tree_root / "prod-out" / "gen" / "prod.jac").write_text(broken);
+        (tree_root / "out" / "gen" / "copy.jac").unlink();
+        os.environ["JAC_PROFILE"] = "prod";
+        os.chdir(tree_root);
+        _reset_config();
+        captured = io.StringIO();
+        sys.stdout = captured;
+        sys.stderr = captured;
+        try {
+            rc = analysis.check(["."]);
+        } finally {
+            sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
+        }
+        output = captured.getvalue();
+        assert rc == 0 and "prod.jac" not in output , output;
     } finally {
+        os.environ.pop("JAC_PROFILE", None);
         _reset_config();
         os.chdir(original_cwd);
         shutil.rmtree(tree_root, ignore_errors=True);
