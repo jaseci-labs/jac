@@ -40,7 +40,7 @@ Before diving into the code, try running the chess engine. You have three option
 jac run jac/examples/chess/chess.jac
 ```
 
-The native codespace is the default for markerless `.jac` modules: the compiler analyzes the program and, since chess only uses native-compatible features (no walkers, async, lambdas, PyPI imports, etc.), compiles it whole-module native and JIT-executes it -- no flags, no config.
+The native codespace is the default for markerless `.jac` modules: the compiler analyzes the program and, since chess only uses native-compatible features (no async, `by llm()`, persistent `root` graph, PyPI imports, etc.), compiles it whole-module native and JIT-executes it -- no flags, no config.
 
 ### Option B: Opt Out to the Python Backend
 

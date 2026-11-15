@@ -81,14 +81,14 @@ impl admits_interface(task: ModuleAnalysis) -> bool {
         or not options.keeps_interfaces() {
         return False;
     }
-    return (options.no_cgen and not options.symtab_ir_only)
-        or (
-            closure.no_cgen
-            and not closure.symtab_ir_only
-            and not (
-                task.program.internal and active_host().in_compiler_tree(task.path)
-            )
-        );
+    if options.no_cgen and not options.symtab_ir_only {
+        return True;
+    }
+    if task.program.internal and active_host().in_compiler_tree(task.path) {
+        return False;
+    }
+    return (options.retain_interfaces and not options.symtab_ir_only)
+        or (closure.no_cgen and not closure.symtab_ir_only);
 }
 
 impl run_interface(task: ModuleAnalysis) {
@@ -225,11 +225,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
 impl analyze_for_compile(
     program: JacProgram, path: str, options: CompileOptions, source: str | None
 ) -> ModuleAnalysis {
-    analysis = active_host().native_analyze(program, path, options, source);
-    if analysis is None {
-        analysis = analyze_module(program, path, options, source);
-    }
-    return analysis;
+    return analyze_module(program, path, options, source);
 }
 
 impl compile_task(

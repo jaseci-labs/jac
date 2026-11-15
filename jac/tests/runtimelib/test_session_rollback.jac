@@ -1415,6 +1415,22 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
 }
 
 
+test "request loop: a plain answer leaves the scan sealed for the session's close" {
+    with TemporaryDirectory() as td {
+        (exec_mgr, walkers, _) = _vote_app(td);
+        assert "error" not in _spawn(exec_mgr, walkers["Seed"]);
+        ambient = JacRuntime.get_context();
+        async def sealed -> bool {
+            with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
+                await exec_mgr.spawn_walker(walkers["ReadPoll"], {}, "voter");
+                return _sess(JacRuntime.get_context())._scan_sealed;
+            }
+        }
+        assert asyncio.run(sealed()) , "the close would scan everything again";
+    }
+}
+
+
 def _bump_burst(busy: bool) -> tuple[list[any], int] {
     with TemporaryDirectory() as td {
         (exec_mgr, walkers, mod) = _vote_app(td);

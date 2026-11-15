@@ -50,8 +50,7 @@ walker SymTabBuildPass(TreePass) {
             AnalysisFact.IN_SCOPE,
             AnalysisFact.SCOPE_CHILD,
 
-        ),
-        kernel_safe=True
+        )
     );
 
     has cur_sym_tab: list[UniScopeNode] = [];

@@ -37,7 +37,7 @@ A **codespace** determines *where* your code runs. You do not say where: the com
 
 The rules are:
 
-- **Server is the default.** Python imports, graph archetypes, and similar constructs anchor a module server, and unreferenced pure code in such a module compiles to the Python backend, exactly as before.
+- **Server is the default.** Python imports, `root` access, and similar constructs anchor a module server, and unreferenced pure code in such a module compiles to the Python backend, exactly as before.
 - **Client is inferred.** Declarations whose syntax is structurally client-only -- JSX, or a string-path import from the npm ecosystem (`import from "react" { ... }`) -- are placed in the client codespace automatically. From those seeds, placement propagates through symbol references: a helper, `glob`, or import that client code uses joins the client bundle too. Propagation is scope-aware (a local variable that shadows a module-level name does not count) and never relocates things the compiler already bridges across the boundary -- `def:pub` endpoints and walkers stay on the server behind auto-generated RPC calls, and top-level objects referenced from both sides are shared into the bundle.
 - **Native is inferred from FFI surfaces -- and at module granularity.** An import whose braces contain C-ABI function *declarations* (`import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) declares an extern surface only the native backend can satisfy, so it seeds native placement, and code using those extern names follows. Consuming a native *module* (`import from mymod { fast_fn }` where `mymod` is native) is NOT a native signal -- that is the server-to-native interop crossing. Whole anchor-free modules are placed at module granularity: under `[placement] default = "native"` (the default), the placement solver compiles a module native when its import closure can lower, and a module that prefers native but cannot lower demotes to the server codespace with a note. Inside a server-anchored module, native-*compatible* pure code stays server: there, compatibility is not intent, and the decision stays with `"native"` pins or the forced path (`jac build <file> --native` / `CompileOptions(force_codespace='native')`).
 - **Pins always win.** Inference never overrides a `[placement.pins]` entry.
@@ -72,7 +72,7 @@ Here `app` and the `clsx` import are client (JSX and npm are client-only syntax)
 
 | Codespace | How code gets there | Compiles To | Ecosystem |
 |-----------|--------------------|-------------|-----------|
-| Server    | inferred (the default; python imports and graph archetypes anchor); `[placement.pins]` -> `"server"` | Python | PyPI |
+| Server    | inferred (the default; python imports and `root` access anchor); `[placement.pins]` -> `"server"` | Python | PyPI |
 | Client    | inferred (JSX, browser globals, npm imports); `[placement.pins]` -> `"client"` | JavaScript / TypeScript | npm |
 | Native    | inferred (extern C declarations, whole-module verdict); `[placement.pins]` -> `"native"`; forced via `jac build <file> --native` | LLVM IR → machine code | C ABI |
 

@@ -299,11 +299,11 @@ test "source and LLVM pins agree with the payload" {
     assert llvm_release("linux-x86_64") is lx;
     assert lx.dirname == "LLVM-22.1.8-Linux-X64-libcxx-lld";
     assert lx.triple == "x86_64-linux-libcxx-lld";
-    assert lx.zip_size == 1423609156;
+    assert lx.zip_size == 122878759;
     assert not lx.upstream;
     la = slices["linux-aarch64"];
     assert la.dirname == "LLVM-22.1.8-Linux-ARM64-libcxx-lld"
-        and la.zip_size == 1424249476;
+        and la.zip_size == 117923127;
     assert la.triple == "aarch64-linux-libcxx-lld" and not la.upstream;
     ma = slices["macos-aarch64"];
     assert ma.dirname == "LLVM-22.1.8-macOS-ARM64"

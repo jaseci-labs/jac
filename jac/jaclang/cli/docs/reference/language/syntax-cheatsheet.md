@@ -1343,7 +1343,7 @@ obj Res {
 #                                propagates (scope-aware, across
 #                                modules) to helpers, globs, and
 #                                imports the client code uses
-#   python imports, node/edge/walker archetypes,
+#   python imports, root access,
 #   typed context blocks      => server anchors (server is also the
 #                                default for unreferenced pure code)
 #   def:pub / walkers         => stay server endpoints (client calls
@@ -1359,7 +1359,7 @@ obj Res {
 
 # A mixed module -- every placement below is inferred:
 
-# Server code (a node archetype anchors the module server)
+# Server code (root access and the def:pub endpoint anchor it server)
 node Todo {
     has title: str, done: bool = False;
 }

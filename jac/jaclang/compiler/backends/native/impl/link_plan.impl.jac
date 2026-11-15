@@ -105,7 +105,7 @@ impl LinkPlan.plan_digest -> str {
     h.update(self.triple.encode());
     h.update(self.options.codegen_identity().encode());
 
-    h.update(native_producer_digest(self.options.kernel_build).encode());
+    h.update(native_producer_digest().encode());
     if self.library_api {
         h.update(b"library-api");
     }
@@ -1031,7 +1031,7 @@ impl _write_sidecar(
         "layout_digest": ldigest,
         "units": unit_paths,
         "unit_ids": [native_unit_identity(p) for p in unit_paths],
-        "compiler_digest": native_producer_digest(plan.options.kernel_build),
+        "compiler_digest": native_producer_digest(),
         "codegen_identity": plan.options.base_codegen_identity(),
         "triple": plan.triple,
         "link_mode": plan.mode,

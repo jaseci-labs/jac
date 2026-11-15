@@ -70,13 +70,17 @@ def:protect default_func -> dict[str, any] {
 @restspec(method=HTTPMethod.GET)
 walker:pub GetWalkerWithParams {
     has name: str,
-        age: int;
+        age: int,
+        tags: list[str] = [],
+        flag: bool = True;
 
     can get_data with Root entry {
         report {
             "message": "GetWalkerWithParams executed",
             "name": self.name,
-            "age": self.age
+            "age": self.age,
+            "tags": self.tags,
+            "flag": self.flag
         };
     }
 }
@@ -206,9 +210,9 @@ def:pub echo_order(request: dict[str, any], status: str = "") -> dict[str, any] 
 }
 
 """One field of each scalar type, plus an optional one and a list, to send
-JSON null to."""
-@restspec(method=HTTPMethod.POST, path="/nulls")
-walker:pub NullFields {
+mismatched values to."""
+@restspec(method=HTTPMethod.POST, path="/typed-fields")
+walker:pub TypedFields {
     has title: str = "seed",
         note: str | None = "seed",
         count: int = -1,

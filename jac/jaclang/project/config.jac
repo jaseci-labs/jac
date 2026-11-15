@@ -155,6 +155,7 @@ obj ServeConfig {
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ["*"],
+        cors_credentials: bool = False,
         public_origin: str = "",
         on_conflict: str = "retry",
         conflict_max_attempts: int = 5,
@@ -413,6 +414,15 @@ def table_value(current: any, raw: any, label: str) -> any;
 
 def apply_table(
     target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None;
+
+def _walk_table(
+    target: object,
+    table: dict[str, any],
+    section: str,
+    moved: dict[str, str],
+    problems: list[str],
+    writes: list[tuple[object, str, any]]
 ) -> None;
 
 def _apply_serve_table(serve: ServeConfig, raw: any, section: str) -> None;

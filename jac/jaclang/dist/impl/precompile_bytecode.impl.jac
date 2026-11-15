@@ -233,7 +233,12 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
         }
         import from jaclang.compiler.driver.program { JacProgram }
         discovery = JacProgram();
-        facts = discover_spaces(candidates, discovery);
+        discovery.options = precompile_context(
+            os.path.join(package_dir, '__init__.jac'), package_dir, discovery, app
+        ).options;
+        with served_codespace(package_dir) {
+            facts = discover_spaces(candidates, discovery);
+        }
         _placement_cache[key] = facts;
         if discovery.errors_had {
             console.print(
@@ -467,6 +472,34 @@ impl precompile_native_unit(jac_path: str, collect: bool = True) -> str {
     return ent.digest if ent is not None else "";
 }
 
+impl _served_codespace(pkg_root: str) -> str {
+    return 'server' if (Path(pkg_root) / SERVE_MANIFEST_REL).is_file() else '';
+}
+
+impl _served_client_root(pkg_root: str) -> str {
+    manifest = Path(pkg_root) / SERVE_MANIFEST_REL;
+    try {
+        stamp = manifest.stat().st_mtime_ns;
+    } except OSError {
+        return '';
+    }
+    key = os.path.realpath(pkg_root);
+    held = _client_roots.get(key);
+    if held is not None and held[0] == stamp {
+        return held[1];
+    }
+    try {
+        data = json.loads(manifest.read_text(encoding="utf-8"));
+    } except (OSError, ValueError) {
+        data = {};
+    }
+    found = key
+        if isinstance(data, dict) and data.get('client_prepared') is True
+        else '';
+    _client_roots[key] = (stamp, found);
+    return found;
+}
+
 impl precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram {
@@ -487,7 +520,11 @@ impl precompile_context(
         entry_path,
         program,
         CompileOptions(
-            entry_point=entry_path, project_root=pkg_root, skip_native_engine=True
+            entry_point=entry_path,
+            project_root=pkg_root,
+            skip_native_engine=True,
+            default_codespace=_served_codespace(pkg_root),
+            client_source_root=_served_client_root(pkg_root)
         )
     );
     options = bind_options(jac_path, program, options);
@@ -506,22 +543,37 @@ impl precompile_unit_context(
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
-    selected = precompile_context(jac_path, pkg_root, program, source_app);
-    compiler.unit_collect = collect;
-    owner_options = owner_scope_options(selected);
-    with cache_scope(owner_options) {
-        try {
-            yield selected;
-        } finally {
-            owner = selected.context_root
-                if selected.context_root is not None
-                else selected;
-            owner.release_compile_closure(collect=collect);
-            if owner is not compiler.selfhost.program {
-                compiler.selfhost.program.release_compile_closure(collect=collect);
+    with served_codespace(pkg_root) {
+        selected = precompile_context(jac_path, pkg_root, program, source_app);
+        compiler.unit_collect = collect;
+        owner_options = owner_scope_options(selected);
+        with cache_scope(owner_options) {
+            try {
+                yield selected;
+            } finally {
+                owner = selected.context_root
+                    if selected.context_root is not None
+                    else selected;
+                owner.release_compile_closure(collect=collect);
+                if owner is not compiler.selfhost.program {
+                    compiler.selfhost.program.release_compile_closure(collect=collect);
+                }
+                maybe_malloc_trim();
             }
-            maybe_malloc_trim();
         }
+    }
+}
+
+impl served_codespace(pkg_root: str) -> Iterator[None] {
+    previous = get_effective_default_codespace_override();
+    codespace = _served_codespace(pkg_root);
+    if codespace {
+        set_effective_default_codespace(codespace);
+    }
+    try {
+        yield ;
+    } finally {
+        set_effective_default_codespace(previous);
     }
 }
 
@@ -563,7 +615,8 @@ impl _precompile_unit(
             cached_data = cache_path.read_bytes();
             cached_bc = read_section_bytes(cached_data, SEC_BYTECODE);
             if cached_bc is not None
-                and read_section_bytes(cached_data, SEC_IFACE) is not None {
+                and read_section_bytes(cached_data, SEC_IFACE) is not None
+                and read_section_bytes(cached_data, SEC_DIAG) is not None {
                 rewrapped = patch_co_filenames_bytes(
                     cached_bc, pkg_root, PRECOMPILE_SENTINEL
                 );
@@ -892,7 +945,13 @@ impl seal_runtime_closure(
 ) -> bool {
     base = str(pkg_path.resolve());
     sources = sealable_sources(base, app);
-    pending = list(out_dir.rglob("*.jir"));
+    pending: list[Path] = [];
+    for source in sources {
+        artifact = out_dir / Path(source).relative_to(pkg_path).with_suffix(".jir");
+        if artifact.is_file() {
+            pending.append(artifact);
+        }
+    }
     visited: set[str] = set();
     imports_of: dict[str, list[str]] = {};
 
@@ -954,6 +1013,14 @@ impl seal_runtime_closure(
             Path(dependency).relative_to(pkg_path).as_posix()
             for dependency in dependencies
         );
+    }
+    reached = {
+        Path(source).relative_to(pkg_path).with_suffix(".jir") for source in sources
+    };
+    for artifact in sorted(out_dir.rglob("*.jir")) {
+        if artifact.relative_to(out_dir) not in reached {
+            artifact.unlink();
+        }
     }
     if serving.is_file() {
         recorded = json.loads(serving.read_text());
@@ -1025,13 +1092,15 @@ impl seal_finalize(
     identity = compiler_identity();
     _phase("completeness check");
     foreign: list[str] = [];
-    for p in sealable_sources(str(pkg_path), app) {
-        rel = Path(p).relative_to(pkg_path);
-        jir = precompiled_dir / pyver / rel.with_suffix(".jir");
-        if not precompiled_jir_matches_source(
-            jir.read_bytes(), p, identity, str(pkg_path)
-        ) {
-            foreign.append(str(rel));
+    with served_codespace(str(pkg_path)) {
+        for p in sealable_sources(str(pkg_path), app) {
+            rel = Path(p).relative_to(pkg_path);
+            jir = precompiled_dir / pyver / rel.with_suffix(".jir");
+            if not precompiled_jir_matches_source(
+                jir.read_bytes(), p, identity, str(pkg_path)
+            ) {
+                foreign.append(str(rel));
+            }
         }
     }
     if foreign {
@@ -1127,31 +1196,11 @@ impl seal_finalize(
         manifest_modules,
         payloads,
         app_meta,
-        native_record,
-        kit_omissions(pkg_name)
+        native_record
     );
     _phase("payloads and manifest");
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
     return 0;
-}
-
-impl native_roots(pkg_name: str, units: list[str]) -> list[str] {
-    if pkg_name == "jaclang" {
-        import from jaclang.compiler.native_scope { kernel_root_path }
-        return [kernel_root_path()];
-    }
-    return list(units);
-}
-
-impl kit_omissions(pkg_name: str) -> list[str] {
-    return ["kernel"] if pkg_name == "jaclang" and pr_kit_omits("kernel") else [];
-}
-
-impl _compiler_kernel_units -> set[str] {
-    linked = {os.path.realpath(p) for p in kernel_unit_paths()};
-    scope = {os.path.realpath(p) for p in native_scope_paths()};
-    scope.add(os.path.realpath(kernel_root_path()));
-    return scope - linked;
 }
 
 impl prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
@@ -1199,14 +1248,7 @@ impl prebuild_native_units(roots: list[str]) {
 impl seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None) {
-    kernel_dir = os.environ.get(SEAL_KERNEL_DIR_ENV, "");
-    if pkg_name == "jaclang" and kernel_dir {
-        return adopt_kernel(pkg_path, out_dir, manifest_modules, kernel_dir);
-    }
-    if "kernel" in kit_omissions(pkg_name) {
-        console.print(
-            "  Native artifact: none (a pull request's kit leaves the kernel out)"
-        );
+    if pkg_name == "jaclang" {
         return None;
     }
     units = package_native_units(str(pkg_path));
@@ -1233,22 +1275,14 @@ impl seal_native(
         skip_native_engine=True,
         native_target=host_target_spec().triple
     );
-    roots = native_roots(pkg_name, units);
-    artifact_rel = os.path.join("compiler", kernel_lib_name())
-        if pkg_name == "jaclang"
-        else os.path.join(NATIVE_DIR_REL, "lib" + pkg_name + _shared_suffix());
+    roots = list(units);
+    artifact_rel = os.path.join(NATIVE_DIR_REL, "lib" + pkg_name + _shared_suffix());
     console.print(f"  Native units: {len(units)} (roots: {len(roots)})");
     import time;
     native_start = time.monotonic();
     artifact_path = pkg_path / artifact_rel;
     artifact_path.parent.mkdir(parents=True, exist_ok=True);
     plan = build_link_plan(prog, roots, options, native_unit=True);
-    if pkg_name == "jaclang" {
-        import from jaclang.compiler.backends.native.kernel_stage0 {
-            refuse_missing_entries
-        }
-        refuse_missing_entries(plan, str(pkg_path));
-    }
 
     prog.release_compile_closure();
     result = link_artifact(
@@ -1274,15 +1308,6 @@ impl seal_native(
         mod_entry = manifest_modules.get(rel);
         if mod_entry is None {
             raise RuntimeError(f"native unit {rel} has no sealed JIR");
-        }
-        if pkg_name == "jaclang" {
-            if in_native_scope_path(u.path)
-                and _drop_native_twin(out_dir / mod_entry["jir"]) {
-                mod_entry["sha256"] = hashlib.sha256(
-                    (out_dir / mod_entry["jir"]).read_bytes()
-                ).hexdigest();
-            }
-            continue;
         }
         _refresh_native_twin(out_dir / mod_entry["jir"], u.path, str(pkg_path));
         jir_bytes = (out_dir / mod_entry["jir"]).read_bytes();
@@ -1312,87 +1337,6 @@ impl seal_native(
         "mode": plan.mode
     };
     return {"units": unit_records, "artifact": artifact};
-}
-
-impl adopt_kernel(
-    pkg_path: Path, out_dir: Path, manifest_modules: dict[str, any], kernel_dir: str
-) -> dict[str, any] {
-    import shutil;
-
-    spec = host_target_spec();
-    name = kernel_lib_name();
-    src = os.path.join(kernel_dir, name);
-    sidecar = read_sidecar(src);
-    if not os.path.isfile(src) or sidecar is None {
-        raise RuntimeError(
-            f"{SEAL_KERNEL_DIR_ENV} names {kernel_dir}, which holds no {name} "
-            f"with its {LAYOUT_SIDECAR_SUFFIX} sidecar"
-        );
-    }
-    ids_raw = sidecar.get("unit_ids");
-    ids = [str(i) for i in ids_raw] if isinstance(ids_raw, list) else [];
-    recorded = sidecar.get("unit_sources");
-    if not ids or not isinstance(recorded, dict) or not recorded {
-        raise RuntimeError(f"prebuilt kernel {src} names no unit sources");
-    }
-    units = [str(pkg_path.parent / ident) for ident in ids];
-    missing = [
-        ident
-        for ident in ids
-        if not os.path.isfile(str(pkg_path.parent / ident))
-    ];
-    if missing {
-        raise RuntimeError(
-            f"prebuilt kernel {src} was built from units this tree lacks: "
-                + ", ".join(missing[:5])
-        );
-    }
-    drift = unit_drift(sidecar, recorded, units, spec);
-    if drift {
-        raise RuntimeError(
-            f"prebuilt kernel {src} was not built from this tree for {spec.osarch}: "
-                + "; ".join(drift[:5])
-                + (f" (and {len(drift) - 5} more)" if len(drift) > 5 else "")
-        );
-    }
-    dst = pkg_path / "compiler" / name;
-    dst.parent.mkdir(parents=True, exist_ok=True);
-    shutil.copyfile(src, str(dst));
-    os.chmod(str(dst), 0o755);
-    shutil.copyfile(src + LAYOUT_SIDECAR_SUFFIX, str(dst) + LAYOUT_SIDECAR_SUFFIX);
-    sha = hashlib.sha256(dst.read_bytes()).hexdigest();
-    if sha != str(sidecar.get("artifact_sha256", "")) {
-        raise RuntimeError(f"prebuilt kernel {src} does not match its sidecar sha256");
-    }
-    for ident in ids {
-        rel = ident[len("jaclang/"):] if ident.startswith("jaclang/") else ident;
-        mod_entry = manifest_modules.get(rel);
-        if mod_entry is None {
-            continue;
-        }
-        if in_native_scope_path(str(pkg_path / rel))
-            and _drop_native_twin(out_dir / mod_entry["jir"]) {
-            mod_entry["sha256"] = hashlib.sha256(
-                (out_dir / mod_entry["jir"]).read_bytes()
-            ).hexdigest();
-        }
-    }
-    artifact_rel = os.path.join("compiler", name);
-    console.print(
-        f"  Native artifact: {artifact_rel} adopted from {kernel_dir} "
-        f"({len(ids)} units, plan {str(sidecar.get('plan_digest', ''))[:12]})"
-    );
-    return {
-        "units": {},
-        "artifact": {
-            "path": Path(artifact_rel).as_posix(),
-            "sha256": sha,
-            "layout_digest": str(sidecar.get("layout_digest", "")),
-            "plan_digest": str(sidecar.get("plan_digest", "")),
-            "triple": str(sidecar.get("triple", "")),
-            "mode": str(sidecar.get("link_mode", ""))
-        }
-    };
 }
 
 impl _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
@@ -1426,32 +1370,6 @@ impl _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
     twin.write_bytes(
         write_precompiled_jir(bytecode, module_key, header.flags, sections)
     );
-}
-
-impl _drop_native_twin(twin: Path) -> bool {
-    data = twin.read_bytes();
-    header = parse_header(data[:HEADER_SIZE]);
-    if header is None {
-        return False;
-    }
-    magic: any = SECTIONS_MAGIC;
-    pos = data.find(magic, HEADER_SIZE);
-    if pos < 0 {
-        return False;
-    }
-    sections = read_sections(data, pos + len(magic));
-    kept: dict[int, bytes] = {
-        sec: raw
-        for (sec, raw) in sections.items()
-        if sec not in NATIVE_SECTIONS
-    };
-    if len(kept) == len(sections) {
-        return False;
-    }
-    bytecode = kept.pop(SEC_BYTECODE, None);
-    module_key = (kept.pop(SEC_MODKEY, b"") or b"").decode("utf-8");
-    twin.write_bytes(write_precompiled_jir(bytecode, module_key, header.flags, kept));
-    return True;
 }
 
 impl _shared_suffix -> str {
@@ -1604,6 +1522,23 @@ impl is_toolchain_package(package_dir: str) -> bool {
     return os.path.realpath(package_dir) == os.path.realpath(jaclang_pkg_root());
 }
 
+impl _shard_sources(jac_files: list[str]) -> (list[str] | None) {
+    spec = os.environ.get("JAC_PRECOMPILE_SHARD", "").strip();
+    if not spec {
+        return jac_files;
+    }
+    (k, _, n) = spec.partition("/");
+    if not (k.isdigit() and n.isdigit()) or not (1 <= int(k) <= int(n)) {
+        return None;
+    }
+    ordered = sorted(jac_files, key=lambda (p: str) { (-os.path.getsize(p), p); });
+    return [
+        p
+        for (idx, p) in enumerate(ordered)
+        if idx % int(n) == int(k) - 1
+    ];
+}
+
 impl run_precompile(
     source_dir: str,
     seal: bool = False,
@@ -1681,26 +1616,23 @@ impl run_precompile(
                 jac_files.append(unit);
             }
         }
-        if pkg_name == "jaclang" {
-            kernel_only = _compiler_kernel_units();
-            dropped = {
-                u
-                for u in native_units_set
-                if os.path.realpath(u) in kernel_only
-            };
-            native_units_set = native_units_set - dropped;
-            if dropped {
-                console.print(
-                    f"  Compiler kernel: {len(dropped)} unit(s) "
-                        + (
-                            "left unlowered; this pull-request kit omits the kernel"
-                                if "kernel" in kit_omissions(pkg_name)
-                                else "left to the native seal; lowering the units programs link"
-                        )
-                );
-            }
-        }
     }
+
+    sharded = _shard_sources(jac_files);
+    if sharded is None {
+        console.error(
+            "JAC_PRECOMPILE_SHARD must be K/N with 1 <= K <= N, got "
+                + repr(os.environ.get("JAC_PRECOMPILE_SHARD"))
+        );
+        sys.`exit(2);
+    }
+    if len(sharded) != len(jac_files) {
+        console.print(
+            f"  Shard {os.environ['JAC_PRECOMPILE_SHARD']}: {len(sharded)} of "
+            f"{len(jac_files)} .jac files"
+        );
+    }
+    jac_files = sharded;
 
     if not jac_files and not exclude_seed {
         console.print("  No .jac files to precompile.");
@@ -1716,10 +1648,25 @@ impl run_precompile(
     expected: set[str] = {
         str(Path(p).relative_to(pkg_path).with_suffix(".jir")) for p in jac_files
     };
+    keep_seeded = seal and pkg_name != "jaclang";
     for old_jir in sorted(out_dir.rglob("*.jir")) {
-        if str(old_jir.relative_to(out_dir)) not in expected {
-            old_jir.unlink();
+        rel_jir = old_jir.relative_to(out_dir);
+        if str(rel_jir) in expected {
+            continue;
         }
+        source = pkg_path / rel_jir.with_suffix(".jac");
+        if keep_seeded and source.is_file() {
+            existing = old_jir.read_bytes();
+            with served_codespace(package_dir) {
+                seeded = precompiled_jir_matches_source(
+                    existing, str(source), package_root=package_dir
+                );
+            }
+            if seeded and embed_src == (read_debug_source(existing) is not None) {
+                continue;
+            }
+        }
+        old_jir.unlink();
     }
 
     raw_jobs = jobs_setting("precompile", jobs_arg);
@@ -1747,66 +1694,68 @@ impl run_precompile(
     }
 
     def unit_job(request: dict[(str, any)]) -> dict[(str, any)] {
-        jac_path = str(request["path"]);
-        rel = Path(jac_path).relative_to(pkg_path);
-        jir_path = out_dir / rel.with_suffix(".jir");
-        try {
-            if jir_path.is_file() {
-                existing = jir_path.read_bytes();
-                if precompiled_jir_matches_source(
-                    existing, jac_path, package_root=package_dir
-                )
-                    and embed_src == (read_debug_source(existing) is not None) {
-                    return {"status": "reused", "rel": str(rel)};
+        with served_codespace(package_dir) {
+            jac_path = str(request["path"]);
+            rel = Path(jac_path).relative_to(pkg_path);
+            jir_path = out_dir / rel.with_suffix(".jir");
+            try {
+                if jir_path.is_file() {
+                    existing = jir_path.read_bytes();
+                    if precompiled_jir_matches_source(
+                        existing, jac_path, package_root=package_dir
+                    )
+                        and embed_src == (read_debug_source(existing) is not None) {
+                        return {"status": "reused", "rel": str(rel)};
+                    }
                 }
-            }
-            is_native = bool(
-                native_units_set and os.path.realpath(jac_path) in native_units_set
-            );
-            if is_native
-                and not precompile_native_unit(jac_path, collect=not use_pool) {
+                is_native = bool(
+                    native_units_set and os.path.realpath(jac_path) in native_units_set
+                );
+                if is_native
+                    and not precompile_native_unit(jac_path, collect=not use_pool) {
+                    jir_path.unlink(missing_ok=True);
+                    return {
+                        "status": "failed",
+                        "rel": str(rel),
+                        "message": f"FAIL (native unit did not lower): {rel}"
+                    };
+                }
+                if jac_path in native_only_units {
+                    jir_bytes: (bytes | None) = write_precompiled_jir(
+                        None,
+                        compute_precompile_module_key(jac_path),
+                        FLAG_PRECOMPILED,
+                        _unit_extra(jac_path, package_dir, embed_src)
+                    );
+                } else {
+                    jir_bytes = precompile_unit(
+                        jac_path,
+                        package_dir,
+                        embed_src,
+                        collect=not use_pool,
+                        app=app,
+                        skip_analysis=skip_analysis
+                    );
+                }
+                if jir_bytes is None {
+                    jir_path.unlink(missing_ok=True);
+                    return {
+                        "status": "failed",
+                        "rel": str(rel),
+                        "message": f"  SKIP (no bytecode): {rel}"
+                    };
+                }
+                jir_path.parent.mkdir(parents=True, exist_ok=True);
+                jir_path.write_bytes(jir_bytes);
+                return {"status": "compiled", "rel": str(rel)};
+            } except Exception as e {
                 jir_path.unlink(missing_ok=True);
                 return {
                     "status": "failed",
                     "rel": str(rel),
-                    "message": f"FAIL (native unit did not lower): {rel}"
+                    "message": f"FAIL: {rel} - {type(e).__name__}: {e}{raised_at(e)}"
                 };
             }
-            if jac_path in native_only_units {
-                jir_bytes: (bytes | None) = write_precompiled_jir(
-                    None,
-                    compute_precompile_module_key(jac_path),
-                    FLAG_PRECOMPILED,
-                    _unit_extra(jac_path, package_dir, embed_src)
-                );
-            } else {
-                jir_bytes = precompile_unit(
-                    jac_path,
-                    package_dir,
-                    embed_src,
-                    collect=not use_pool,
-                    app=app,
-                    skip_analysis=skip_analysis
-                );
-            }
-            if jir_bytes is None {
-                jir_path.unlink(missing_ok=True);
-                return {
-                    "status": "failed",
-                    "rel": str(rel),
-                    "message": f"  SKIP (no bytecode): {rel}"
-                };
-            }
-            jir_path.parent.mkdir(parents=True, exist_ok=True);
-            jir_path.write_bytes(jir_bytes);
-            return {"status": "compiled", "rel": str(rel)};
-        } except Exception as e {
-            jir_path.unlink(missing_ok=True);
-            return {
-                "status": "failed",
-                "rel": str(rel),
-                "message": f"FAIL: {rel} - {type(e).__name__}: {e}{raised_at(e)}"
-            };
         }
     }
 
@@ -1841,11 +1790,7 @@ impl run_precompile(
 
     _phase("unit discovery");
     if use_pool and native_units_set {
-        prebuild_native_units(
-            sorted(native_units_set)
-                if pkg_name == "jaclang"
-                else native_roots(pkg_name, sorted(native_units_set))
-        );
+        prebuild_native_units(sorted(native_units_set));
     }
 
     _phase("native prebuild");

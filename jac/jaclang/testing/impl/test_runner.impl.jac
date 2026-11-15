@@ -726,6 +726,11 @@ impl run_file(
         pending: list[any] = [];
         for (_key, registered) in list(JacTestCheck.test_suite_path.items()) {
             for info in list(registered) {
+                if info.source
+                    and info.source != source
+                    and not is_annex_path_of(info.source, source) {
+                    continue;
+                }
                 pending.append(info);
             }
         }

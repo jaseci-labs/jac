@@ -1,6 +1,7 @@
 impl JacTestCheck.add_test(
     filepath: str, func_name: str, test_func: Callable, display_name: str = ""
 ) -> None {
+    source = os.path.realpath(filepath) if filepath else "";
     if filepath {
         filepath = strip_suffix(filepath);
     }
@@ -12,7 +13,8 @@ impl JacTestCheck.add_test(
         JacTestCheck.TestSuite(
             test_case=test_case,
             func_name=func_name,
-            display_name=display_name or func_name
+            display_name=display_name or func_name,
+            source=source
         )
     );
     JacTestCheck.test_suite.addTest(test_case);

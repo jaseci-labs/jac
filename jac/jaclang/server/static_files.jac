@@ -1,3 +1,4 @@
+import logging;
 import from pathlib { Path }
 
 
@@ -45,7 +46,24 @@ def find_static_candidate(
 ) -> (Path | None);
 
 glob ROOT_ASSET_EXTENSIONS: set[str] = DEFAULT_ASSET_EXTENSIONS
-         | {'.pdf', '.txt', '.xml'};
+         | {'.pdf', '.txt', '.xml'},
+     ROBOTS_PATH: str = 'robots.txt',
+     SITEMAP_PATH: str = 'sitemap.xml',
+     DISALLOW_ALL_ROBOTS: str = 'User-agent: *\nDisallow: /\n';
+
+glob SEO_ROOT_FILES: set[str] = {ROBOTS_PATH, SITEMAP_PATH};
+
+glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
+     _seo_logged: set[str] = set(),
+     SEO_LOG_LIMIT: int = 32;
+
+def served_host(host: str) -> str;
+
+def robots_override(site_url: str, host: str, site_hosts: list[str]) -> (str | None);
+
+def robots_response(
+    request: Request, base_path: str, entry_path: str = ''
+) -> (Response | None);
 
 
 def find_root_asset(

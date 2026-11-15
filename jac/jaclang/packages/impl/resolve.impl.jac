@@ -46,12 +46,6 @@ impl GraphSource.registry_for(name: str) -> Registry {
     return registry_named(self.origin_registry.get(name, ""), self.registries);
 }
 
-impl GraphSource.note_requirement(name: str, req: Requirement) {
-    if req.names_prerelease {
-        self.prerelease.add(name);
-    }
-}
-
 impl GraphSource.add_local(dep: PackageDep, base: Path) -> LocalPackage {
     if dep.kind() == "path" {
         tree = resolve_path(base, dep.path);
@@ -171,7 +165,6 @@ impl GraphSource.dependencies(name: str, version: Version) -> dict[str, Requirem
         } except SemverError as e {
             raise ResolveError(f"{name} {version} -> {dep_name}: {e}");
         }
-        self.note_requirement(dep_name, req);
         out[dep_name] = req;
     }
     return out;
@@ -208,10 +201,6 @@ impl GraphSource.preferred(name: str) -> Version | None {
     } except SemverError {
         return None;
     }
-}
-
-impl GraphSource.allows_prerelease(name: str) -> bool {
-    return name in self.prerelease;
 }
 
 impl GraphSource.locked_entry(name: str, version: Version) -> LockedPackage {
@@ -289,7 +278,6 @@ impl resolve_graph(
         } except SemverError as e {
             raise ResolveError(f"jac.toml: {dep.name}: {e}");
         }
-        source.note_requirement(dep.name, req);
         root_deps[dep.name] = req;
     }
     root_name = config.project.name

@@ -320,3 +320,36 @@ test "single app dev keeps the unscoped compiled entry and aliases" {
         }
     }
 }
+
+
+"""A deploy seal finishes the page from outside the app directory, so the head
+comes from the project being built, not from wherever the process started."""
+test "the production page carries the configured head when built from outside the project" {
+    import os;
+    import tempfile;
+    import from jaclang.client.targets.web_target { WebTarget }
+    import from jaclang.client.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = Path(tmp).resolve() / "app";
+        proj.mkdir();
+        (proj / "jac.toml").write_text(
+            '[project]\nname = "site"\nentry-point = "main"\n\n'
+                + '[client.app_meta_data]\ntitle = "My Site"\n'
+        );
+        entry_file = proj / "main.jac";
+        entry_file.write_text('def:pub app -> JsxElement {\n    return <div/>;\n}\n');
+        out = ViteBundler(project_dir=proj).output_dir;
+        out.mkdir(parents=True, exist_ok=True);
+        (out / "client.abc123.js").write_text("export function app() {}\n");
+        old_cwd = os.getcwd();
+        os.chdir(tmp);
+        try {
+            WebTarget().finish_dist(entry_file, proj, ["app"]);
+        } finally {
+            os.chdir(old_cwd);
+        }
+        page = (out / "index.html").read_text(encoding="utf-8");
+    }
+    assert "<title>My Site</title>" in page , page;
+}

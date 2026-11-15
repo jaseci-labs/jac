@@ -63,8 +63,7 @@ def _link_macho_with_archive(relobj: bytes, triple: str, out: str, archive: str)
 """Locate a bundled archive by name from any pbs build, or None."""
 def _find_bundled(libname: str) -> (str | None) {
     jac_dir = Path(__file__).resolve().parents[4];
-    hits = sorted(jac_dir.`glob(f".python-build/*/*/python/build/lib/{libname}"));
-    hits += sorted(jac_dir.`glob(f".python-build/*/python/build/lib/{libname}"));
+    hits = sorted(jac_dir.`glob(f".pbs-build/*/python/build/lib/{libname}"));
     return str(hits[0]) if hits else None;
 }
 

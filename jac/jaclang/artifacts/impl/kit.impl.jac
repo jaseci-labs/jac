@@ -6,10 +6,6 @@ impl kit_image -> (tuple[str, SealedImage] | None) {
     return (site_pkg, image) if image is not None else None;
 }
 
-impl pr_kit_omits(name: str) -> bool {
-    return name in os.environ.get("JAC_KIT_OMIT", "").split(",");
-}
-
 impl kit_path(rel: str) -> str {
     found = kit_image();
     return os.path.join(found[0], rel) if found is not None else "";

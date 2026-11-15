@@ -3,12 +3,12 @@ import from typing { cast }
 walker CFGBuildPass(TreePass) {
     static has contract: PassContract = PassContract(
         provides=(
+            AnalysisFact.CFG_CATCH,
             AnalysisFact.CFG_SUCC,
             AnalysisFact.CFG_TRUE,
             AnalysisFact.CFG_FALSE,
 
-        ),
-        kernel_safe=True
+        )
     );
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
@@ -16,6 +16,9 @@ walker CFGBuildPass(TreePass) {
     def _exit_wired(nd: UniCFGNode) -> bool;
     def _in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool;
     def _connect_tails(parent: UniNode, target: UniCFGNode) -> None;
+    def _connect_tail(k: UniNode, target: UniCFGNode) -> None;
+    def _raising_stmts(stmts: Sequence[UniNode]) -> list[CodeBlockStmt];
+    def _can_raise(nd: CodeBlockStmt) -> bool;
     def _link_body_tails_to_header(
         nd: WhileStmt | ForeverStmt | InForStmt | IterForStmt
     ) -> None;

@@ -10,7 +10,11 @@ import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import jaclang.cli.workpool as pool;
 import jaclang.dist.precompile_bytecode as packaging;
-import from jaclang.dist.precompile_bytecode { _precompile_retire, run_precompile }
+import from jaclang.dist.precompile_bytecode {
+    _precompile_retire,
+    _shard_sources,
+    run_precompile
+}
 
 obj ReleasedCycle {
     has next: ReleasedCycle | None = None;
@@ -127,6 +131,35 @@ test "precompile publishes bytecode and interfaces across memory reclamation" {
             data = output.read_bytes();
             assert read_section_bytes(data, SEC_BYTECODE) is not None;
             assert read_section_bytes(data, SEC_IFACE) is not None , str(output);
+        }
+    }
+}
+
+test "precompile shards split the sources largest first and cover them once" {
+    with TemporaryDirectory() as td {
+        files: list[str] = [];
+        for (name, size) in [("a", 50), ("b", 10), ("c", 40), ("d", 30), ("e", 20)] {
+            path = os.path.join(td, f"{name}.jac");
+            with open(path, "w") as f {
+                f.write("x" * size);
+            }
+            files.append(path);
+        }
+        shards: list[list[str]] = [];
+        for k in (1, 2) {
+            with patch.dict(os.environ, {"JAC_PRECOMPILE_SHARD": f"{k}/2"}) {
+                shard = _shard_sources(files);
+                assert shard is not None;
+                shards.append(shard);
+            }
+        }
+        names = [[os.path.basename(p)[0] for p in shard] for shard in shards];
+        assert names == [["a", "d", "b"], ["c", "e"]] , names;
+        with patch.dict(os.environ, {"JAC_PRECOMPILE_SHARD": "3/2"}) {
+            assert _shard_sources(files) is None;
+        }
+        with patch.dict(os.environ, {"JAC_PRECOMPILE_SHARD": ""}) {
+            assert _shard_sources(files) == files;
         }
     }
 }

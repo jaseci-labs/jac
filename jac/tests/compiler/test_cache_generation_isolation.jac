@@ -141,29 +141,6 @@ test "a zero TTL disables the sweep" {
     assert gen.is_dir();
 }
 
-test "JacPython sources participate in the producing compiler identity" {
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        _manifest_compiler_digest
-    }
-    prefixes = (
-        "compiler/frontend/python/",
-        "compiler/backends/py/jacpython/",
-        "runtime/python/"
-    );
-    with tempfile.TemporaryDirectory() as pkg {
-        for prefix in prefixes {
-            src = Path(pkg) / prefix / "module.jac";
-            src.parent.mkdir(parents=True, exist_ok=True);
-            src.write_text("def f() -> int { return 1; }\n");
-            before = compiler_source_digest(pkg);
-            src.write_text("def f() -> int { return 2; }\n");
-            assert compiler_source_digest(pkg) != before;
-            assert _manifest_compiler_digest(pkg) != before;
-        }
-    }
-}
-
 test "the wiring file is part of the producing compiler identity" {
     # Every module under jaclang/ takes its imports from archwire.jac, so the
     # same sources wired differently are a different compiler.
@@ -229,58 +206,6 @@ test "a staging that ships the wiring rewritten keeps the checkout's identity" {
         # Only the rewritten inputs take the record over the staged file.
         (staged / "compiler" / "pass.jac").write_text("def f -> int { return 2; }\n");
         assert compiler_source_digest(str(staged)) != expected;
-    }
-}
-
-test "a pruned staging resolves compiler identity from its recorded hashes" {
-    # The payload drops the natively lowered trees (they live in JacPython's
-    # native object, not as source), so a staged jaclang holds fewer files than
-    # the checkout it was built from. Identity must still describe the SAME
-    # compiler: the staging records what it dropped and the digest resolves
-    # those inputs from the record. Without the record it must refuse to report
-    # an identity at all -- silently reporting a smaller one is how a payload
-    # and its own checkout came to disagree.
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        write_compiler_identity
-    }
-    import shutil;
-    with tempfile.TemporaryDirectory() as tmp {
-        full = Path(tmp) / "full";
-        full.mkdir();
-        (full / "compiler_inputs.txt").write_text("compiler\nruntime\n");
-        for rel in (
-            "compiler/pass.jac",
-            "compiler/frontend/python/ast_input.jac",
-            "compiler/backends/py/jacpython/cpy_assemble.jac",
-            "runtime/python/bindings/heapq.jac"
-        ) {
-            f = full / rel;
-            f.parent.mkdir(parents=True, exist_ok=True);
-            f.write_text("def f -> int { return 1; }\n");
-        }
-        expected = compiler_source_digest(str(full));
-        pruned = Path(tmp) / "pruned";
-        shutil.copytree(full, pruned);
-        for prefix in (
-            "compiler/frontend/python",
-            "compiler/backends/py/jacpython",
-            "runtime/python"
-        ) {
-            shutil.rmtree(pruned / prefix);
-        }
-        raised = False;
-        try {
-            compiler_source_digest(str(pruned));
-        } except RuntimeError {
-            raised = True;
-        }
-        assert raised , "a pruned staging with no record reported an identity";
-        write_compiler_identity(str(full), str(pruned));
-        assert compiler_source_digest(str(pruned)) == expected;
-        # The record completes identity; it never overrides a present source.
-        (pruned / "compiler/pass.jac").write_text("def f -> int { return 2; }\n");
-        assert compiler_source_digest(str(pruned)) != expected;
     }
 }
 

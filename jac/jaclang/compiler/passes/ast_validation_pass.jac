@@ -3,7 +3,7 @@ import os;
 
 
 walker ASTValidationPass(TreePass) {
-    static has contract: PassContract = PassContract(kernel_safe=True);
+    static has contract: PassContract = PassContract();
 
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;
@@ -21,7 +21,7 @@ walker ASTValidationPass(TreePass) {
     can enter_enum with Enum entry;
     can enter_switch_stmt with SwitchStmt entry;
     can enter_assignment with Assignment entry;
-    def _check_render_phase_state_write(nd: Assignment) -> None;
+    def _check_render_phase_state_write(nd: UniNode, targets: list[UniNode]) -> None;
     def _scope_declares_state(scope: (Ability | ImplDef), name: str) -> bool;
     def _returns_jsx(scope: (Ability | ImplDef)) -> bool;
     can enter_in_for_stmt with InForStmt entry;
@@ -33,6 +33,7 @@ walker ASTValidationPass(TreePass) {
     def _reject_undeletable(target: UniNode) -> None;
     can enter_param_var with ParamVar entry;
     can enter_yield_expr with YieldExpr entry;
+    can enter_return_stmt with ReturnStmt entry;
     can enter_ctrl_stmt with CtrlStmt entry;
     can enter_global_vars with GlobalVars entry;
     can enter_func_call with FuncCall entry;

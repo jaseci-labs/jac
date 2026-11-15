@@ -329,6 +329,7 @@ impl ViteCompiler.init(
         raise ClientBundleError('Client compiled directory could not be resolved');
     }
     self.compiled_dir = compiled_dir;
+    self.jac_client_compiler.scan_routes_with_bundle = True;
     self.jac_compiler = self.jac_client_compiler.jac_compiler;
     self.vite_bundler = ViteBundler(
         self.project_dir, vite_output_dir, vite_minify, entry_path=entry_path

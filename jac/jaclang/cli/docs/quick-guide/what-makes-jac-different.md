@@ -274,7 +274,7 @@ The [two design ideas](ideas-behind-jac.md) provide background for this combinat
 | Syntax | Meaning |
 |--------|---------|
 | JSX / `import from "pkg" { }` | Client placement evidence (inferred) |
-| `import os;` / `node` / `walker` | Server anchor (inferred; server is the default) |
+| `import os;` / `root` | Server anchor (inferred; server is the default) |
 | `[placement.pins]` in jac.toml | Placement override (`"server"`/`"client"`/`"native"`) |
 | `node X { has ...; }` | Declare a graph data type |
 | `root` | Built-in starting node (persistence anchor) |

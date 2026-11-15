@@ -1643,7 +1643,7 @@ test "node tooling runs installs and tools on the bundled bun only" {
         assert runner == ["/opt/jac/_bun/bun", str(`entry.resolve())];
     }
     # No system tooling is ever probed or used -- bundled bun only.
-    assert ["/opt/jac/_bun/bun", "install"] in calls;
+    assert ["/opt/jac/_bun/bun", "install", "--minimum-release-age=86400"] in calls;
     assert "x" not in runner;
     for cmd in calls {
         assert cmd[0] != "npm" and cmd[0] != "npx" and cmd[0] != "bunx" , (
@@ -1689,7 +1689,10 @@ test "run_manifest_install skips bun install while the stamp is current" {
             "jaclang.client.js_runtime.js_runtime_path", side_effect=_fake_get_bun
         ) {
             run_manifest_install(project_dir);
-            assert calls == [["/opt/jac/_bun/bun", "install"]] , calls;
+            assert calls
+                == [
+                    ["/opt/jac/_bun/bun", "install", "--minimum-release-age=86400"]
+                ] , calls;
             assert (project_dir / ".jac-dependencies.sha256").is_file() , (
                 "a successful install writes the stamp"
             );

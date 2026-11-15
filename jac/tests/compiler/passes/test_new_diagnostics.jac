@@ -321,6 +321,21 @@ test "E0055: yield outside function" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0055"));
 }
 
+test "E0057: return inside any function body is valid" {
+    for src in [
+        'def f -> int { return 1; }',
+        'obj A { has n: int = 0; def get -> int { return self.n; } }',
+        'obj A { has n: int = 0; def get -> int; }\nimpl A.get -> int { return self.n; }',
+        'walker W { can go with Root entry { if True { return; } } }',
+        'test "early exit" { if True { return; } }',
+        'with entry { def g -> int { return 2; } f = lambda -> int { return 3; }; }'
+    ] {
+        (has_err, prog) = parse_and_validate(src);
+        errors = [str(e) for e in prog.errors_had] if prog else ["parse failed"];
+        assert not has_err , f"{src!r}: {errors}";
+    }
+}
+
 test "E0058: break outside loop" {
     (has_err, prog) = parse_and_validate('with entry { break; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0058"));
@@ -811,6 +826,10 @@ glob MUST_REJECT_NEW: dict[str, str] = {
      },
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
+         "E0057_return_in_entry": "with entry { return; }",
+         "E0057_return_in_entry_if": "with entry { x = 1; if x { return; } }",
+         "E0057_return_in_entry_loop": "with entry { for i in [1] { return i; } }",
+         "E0057_return_in_archetype_entry": "obj Holder { with entry { return; } }",
          "E0058_break_no_loop": "with entry { break; }",
          "E0058_continue_no_loop": "with entry { continue; }"
      };
@@ -822,6 +841,10 @@ glob IMPLEMENTED_REJECT: set[str] = {
      },
      IMPLEMENTED_VALIDATE: set[str] = {
          "E0055_yield_in_entry",
+         "E0057_return_in_entry",
+         "E0057_return_in_entry_if",
+         "E0057_return_in_entry_loop",
+         "E0057_return_in_archetype_entry",
          "E0058_break_no_loop",
          "E0058_continue_no_loop"
      };
@@ -841,8 +864,13 @@ def validate_reject_test(name_snippet: tuple[any, ...]) {
     if name not in IMPLEMENTED_VALIDATE {
         testskip(f"{name} not yet implemented");
     }
-    (has_errors, _) = parse_and_validate(snippet);
+    (has_errors, prog) = parse_and_validate(snippet);
     assert has_errors , f"Validation must reject '{name}': {snippet}";
+    code = name.split("_")[0];
+    assert prog is not None and count_diagnostic_code(prog, code) == 1 , (
+        name,
+        [str(e) for e in prog.errors_had] if prog else "parse failed"
+    );
 }
 
 # ══════════════════════════════════════════════════════════════════

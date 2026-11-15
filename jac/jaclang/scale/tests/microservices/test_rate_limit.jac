@@ -47,6 +47,26 @@ test "token bucket keeps per-key state isolated" {
 }
 
 
+test "a shared bucket is never counted without its lock" {
+    held = InProcessStateBackend();
+    assert held.acquire_lock("rl:lock:busy", 5);
+    (allowed, retry) = StateBackendRateLimiter(
+        backend=held, rate_per_sec=0.01, capacity=3.0
+    ).consume(
+        "busy"
+    );
+    assert (allowed, retry) == (True, 0.0) , (allowed, retry);
+    assert held.get("rl:busy") is None , "a call without the lock wrote the bucket";
+    held.release_lock("rl:lock:busy");
+    (allowed, _) = StateBackendRateLimiter(
+        backend=held, rate_per_sec=0.01, capacity=3.0
+    ).consume(
+        "busy"
+    );
+    assert allowed and held.get("rl:busy") is not None;
+}
+
+
 def _run(coro: object) -> object {
     loop = asyncio.new_event_loop();
     try {

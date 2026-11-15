@@ -8,7 +8,7 @@ impl _state_at(state: dict[int, set[SymId]], key: int) -> set[SymId] {
 }
 
 impl solve_forward(
-    cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
+    cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer, catch_edges: bool = False
 ) -> dict[int, set[SymId]] {
     state: dict[int, set[SymId]] = {};
     for n in cfg_nodes {
@@ -24,10 +24,22 @@ impl solve_forward(
                 new_state.add(x);
             }
         }
+        if catch_edges {
+            for pred in n.bb_catch_in {
+                for x in _state_at(state, id(pred)) {
+                    new_state.add(x);
+                }
+            }
+        }
         if new_state != _state_at(state, id(n)) {
             state[id(n)] = new_state;
             for nb in n.bb_out {
                 worklist.append(nb);
+            }
+            if catch_edges {
+                for nb in n.bb_catch_out {
+                    worklist.append(nb);
+                }
             }
         }
     }
@@ -122,4 +134,19 @@ impl solve_backward(
         }
     }
     return state;
+}
+
+impl is_scope_exit(nd: UniCFGNode) -> bool {
+    if not nd.bb_out {
+        return bool(nd.bb_in);
+    }
+    if isinstance(nd, AstElseBodyNode) and nd.else_body is not None {
+        return False;
+    }
+    for succ in nd.bb_out {
+        if succ is nd or not succ.is_within(nd) {
+            return False;
+        }
+    }
+    return True;
 }

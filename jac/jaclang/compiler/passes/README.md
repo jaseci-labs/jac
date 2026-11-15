@@ -22,8 +22,7 @@ results, completion tracking, and delivery of diagnostics. Standalone callers
 can use `run_walker` without a program or construct and spawn a walker directly.
 Callers using temporary resources supply `resources=ExitStack()` when creating
 the context and enclose direct spawning in `with ctx.resources` so cleanup also
-runs on exceptions. The execution helper supplies this Python resource scope;
-native compiler walkers leave it unset.
+runs on exceptions. The execution helper supplies this Python resource scope.
 
 Type checking and Python code generation sometimes synchronously traverse an
 attached implementation with the same walker. They use `ctx.walk_subtree` to

@@ -4,7 +4,6 @@ import os;
 import struct;
 import sys;
 import zlib;
-import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from pathlib { Path }
 
@@ -116,14 +115,6 @@ obj JirHeader {
     def is_compatible -> bool;
 }
 
-def create_header(
-    source_hash: int,
-    node_count: int,
-    symbol_count: int,
-    string_pool_size: int,
-    flags: int = 0
-) -> JirHeader;
-
 def parse_header(data: (bytes | memoryview)) -> (JirHeader | None);
 
 def get_jir_cache_dir -> Path;
@@ -162,12 +153,10 @@ def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str;
 
 glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
-     _PY_EMITTER_DIGESTS: dict[str, str] = {},
-     _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
+     _PY_EMITTER_DIGESTS: dict[str, str] = {};
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
-     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
-     DEV_NATIVE_PRODUCER: str = "abi:";
+     PY_EMITTER_EXCLUDED: tuple[str, ...] = ();
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
 
@@ -185,11 +174,7 @@ def dev_source -> str;
 
 def dev_carry_enabled -> bool;
 
-def abi_contract_digest(pkg_root: str) -> str;
-
-def native_producer_digest(kernel_build: bool = False) -> str;
-
-def _producer_kind(digest: str) -> str;
+def native_producer_digest -> str;
 
 glob _COMPILER_GENERATION_CACHE: list[str] = [];
 
@@ -219,19 +204,11 @@ def _module_projection(source_path: str) -> str;
 
 glob _PREPARE_MEMO: ContextVar[dict[str, str] | None] = ContextVar(
          'jac_prepare_memo', `default=None
-     ),
-     _COMPILED_CONTENT: ContextVar[dict[str, str] | None] = ContextVar(
-         'jac_compiled_content', `default=None
      );
 
 def begin_prepare_memo -> any;
 
 def end_prepare_memo(token: any);
-
-def hold_compiled_content(digests: dict[str, str]);
-
-@contextmanager
-def content_on_disk -> Iterator[None];
 
 def _memoized(kind: str, source_path: str, compute: any) -> str;
 
@@ -247,8 +224,6 @@ def _arch_stamp(arch: str, package_name: str) -> (str | None);
 def stored_wiring_digest(source_path: str) -> str;
 
 def unit_source_digest(path: str) -> str;
-
-def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str];
 
 def _compute_module_key_uncached(source_path: str) -> str;
 
@@ -317,8 +292,6 @@ def ct_deps_fresh(data: bytes, base: str = "") -> bool;
 def ct_dep_text_fresh(text: str, base: str = "") -> bool;
 
 def stale_ct_dep_rows(text: str, base: str = "") -> list[str];
-
-def module_ct_deps_text(mod: any) -> str;
 
 def absolutize_ct_deps_section(raw: bytes, base: str) -> bytes;
 
@@ -394,8 +367,6 @@ def scrub_cache_dirs(root_dir: str) -> int;
 
 def write_sections(sections: (dict[int, bytes] | None)) -> bytes;
 
-def read_sections_blob(data: bytes) -> dict[int, bytes];
-
 def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes];
 
 def _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes];
@@ -440,7 +411,6 @@ def _module_lock_path(cache_path: Path) -> Path;
 
 def carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None);
 
-def carried_native_sections(source_path: str, producer: str) -> dict[int, bytes];
 
 def write_module_cache(
     source_path: str,

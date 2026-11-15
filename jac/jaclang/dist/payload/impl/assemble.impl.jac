@@ -116,10 +116,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(repo_root, "bootstrap", "pins.json"),
             os.path.join(site, "jaclang", "dist", "payload", "pins.json")
         );
-        copy_file(
-            os.path.join(repo_root, "bootstrap", "python", "sources.json"),
-            os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
-        );
 
         for (name, example) in [
             ("awesome", "jaclang_org"),
@@ -235,7 +231,7 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
 
     delete_file(os.path.join(site_pre, "MANIFEST.json"));
     run_stubcat_stage(py, python_dir, site, opts);
-    precompile(py, python_dir, site, opts.seal, opts.debug_src, opts.kernel_dir);
+    precompile(py, python_dir, site, opts.seal, opts.debug_src);
     if pc is not None {
         delete_tree(pc);
         copy_tree(site_pre, pc, skip_none);
@@ -302,6 +298,17 @@ impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
         return False;
     }
     log(f"   stub catalog: {os.path.getsize(out)} bytes");
+    if cached {
+        import shutil;
+        try {
+            os.makedirs(os.path.dirname(cached), exist_ok=True);
+            tmp = f"{cached}.{os.getpid()}.tmp";
+            shutil.copyfile(out, tmp);
+            os.replace(tmp, cached);
+        } except OSError as e {
+            log(f"   stub catalog not cached ({type(e).__name__}); continuing");
+        }
+    }
     return True;
 }
 
@@ -319,14 +326,7 @@ impl precompile_env(python_dir: str, site: str) -> dict[str, str] {
     return env;
 }
 
-impl precompile(
-    py: str,
-    python_dir: str,
-    site: str,
-    seal: bool,
-    debug_src: bool,
-    kernel_dir: (str | None) = None
-) {
+impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool) {
     import time;
     compile_start = time.monotonic();
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
@@ -350,10 +350,6 @@ impl precompile(
     }
 
     env: dict[str, str] = precompile_env(python_dir, site);
-    if kernel_dir {
-        env["JAC_SEAL_KERNEL_DIR"] = os.path.abspath(kernel_dir);
-        log(f"   the seal adopts the prebuilt kernel in {kernel_dir}");
-    }
     run_child(argv, env, True);
 
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
@@ -400,7 +396,7 @@ impl stage_python_bin(python_dir: str, stage: str) {
     dst = os.path.join(bin_dst, bare);
     copy_file(py, dst);
     os.chmod(dst, 0o755);
-    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else None);
+    strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else ["--strip-debug"]);
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
 }
 
@@ -419,7 +415,7 @@ impl stage_tree(
     found = find_libpython(python_lib);
     staged_lib = os.path.join(lib_dst, found.bare);
     copy_file(os.path.join(python_lib, found.src), staged_lib);
-    strip_best_effort(staged_lib);
+    strip_best_effort(staged_lib, ["--strip-debug"]);
 
     stage_stdlib(python_lib, lib_dst);
     dynload = os.path.join(lib_dst, f"python{py_ver()}", "lib-dynload");
@@ -433,7 +429,6 @@ impl stage_tree(
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
     strip_best_effort(site_shim_path(os.path.join(stage, "site")));
-    strip_kernel_best_effort(os.path.join(stage, "site"));
 
     stage_python_bin(python_dir, stage);
 
@@ -697,7 +692,7 @@ impl tar_zst_dir(stage: str, out: str, layer_cache: str | None) {
 
     deps_frame = deps_frame_cached(layer_cache, deps_tar);
 
-    log(f"==> packing jac layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
+    log(f"==> packing jac layer | zstd -{zstd_level()}");
     jac_frame = zstd_compress(jac_tar);
 
     with open(out, "wb") as f {
@@ -706,9 +701,14 @@ impl tar_zst_dir(stage: str, out: str, layer_cache: str | None) {
     }
 }
 
+impl zstd_level -> int {
+    raw = os.environ.get(PAYLOAD_ZSTD_LEVEL_ENV, "").strip();
+    return int(raw) if raw.lstrip("-").isdigit() else PAYLOAD_ZSTD_LEVEL;
+}
+
 impl zstd_compress(data: bytes) -> bytes {
     opts: dict[int, int] = {
-        int(CompressionParameter.compression_level): PAYLOAD_ZSTD_LEVEL,
+        int(CompressionParameter.compression_level): zstd_level(),
         int(CompressionParameter.window_log): PAYLOAD_WINDOW_LOG,
         int(CompressionParameter.checksum_flag): 0
     };
@@ -724,7 +724,7 @@ impl zstd_compress(data: bytes) -> bytes {
 impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
     key = sha256_hex(tar_bytes);
     cache_path = (
-        os.path.join(layer_cache, f"deps-{key}.tar.zst")
+        os.path.join(layer_cache, f"deps-{key}-l{zstd_level()}.tar.zst")
             if layer_cache is not None
             else None
     );
@@ -745,7 +745,7 @@ impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
         }
     }
 
-    log(f"==> packing deps layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
+    log(f"==> packing deps layer | zstd -{zstd_level()}");
     fresh = zstd_compress(tar_bytes);
     if cache_path is not None and layer_cache is not None {
         prune_layer_cache(layer_cache, os.path.basename(cache_path));
@@ -784,45 +784,6 @@ impl prune_layer_cache(dir_path: str, keep: str) {
         if os.path.isfile(stale) {
             delete_file(stale);
         }
-    }
-}
-
-impl strip_kernel_best_effort(site: str) {
-    import hashlib;
-    import json;
-    manifest_path = os.path.join(site, "jaclang", "_precompiled", "MANIFEST.json");
-    if not file_exists(manifest_path) {
-        return;
-    }
-    manifest: dict[str, any] = {};
-    with open(manifest_path, "r", encoding="utf-8") as f {
-        manifest = dict(json.load(f));
-    }
-    native_rec: any = manifest.get("native") or {};
-    record: any = native_rec.get("artifact");
-    if not isinstance(record, dict) {
-        return;
-    }
-    lib: str = os.path.join(site, "jaclang", str(record["path"]));
-    if not file_exists(lib) {
-        return;
-    }
-    strip_best_effort(lib);
-    with open(lib, "rb") as lf {
-        record["sha256"] = hashlib.sha256(lf.read()).hexdigest();
-    }
-    sidecar_path = lib + ".layout.json";
-    if file_exists(sidecar_path) {
-        with open(sidecar_path, "r", encoding="utf-8") as sf {
-            sidecar = dict(json.load(sf));
-        }
-        sidecar["artifact_sha256"] = record["sha256"];
-        with open(sidecar_path, "w", encoding="utf-8") as sf {
-            sf.write(json.dumps(sidecar, sort_keys=True));
-        }
-    }
-    with open(manifest_path, "w", encoding="utf-8") as f {
-        f.write(json.dumps(manifest, sort_keys=True, indent=1) + "\n");
     }
 }
 

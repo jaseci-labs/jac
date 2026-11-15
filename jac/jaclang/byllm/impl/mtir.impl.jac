@@ -214,7 +214,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         if return_type is None {
             tools.append(Tool.make_finish_tool(str));
         } else {
-            tools.append(Tool.make_finish_tool(return_type));
+            tools.append(
+                Tool.make_finish_tool(
+                    return_type, fn_info.return_type if fn_info else None
+                )
+            );
         }
     }
     mt_run = MTRuntime(

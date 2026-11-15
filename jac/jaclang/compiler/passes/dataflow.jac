@@ -4,7 +4,7 @@ type DataflowTransfer = Callable[[UniCFGNode, set[SymId]], set[SymId]];
 def _state_at(state: dict[int, set[SymId]], key: int) -> set[SymId];
 
 def solve_forward(
-    cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
+    cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer, catch_edges: bool = False
 ) -> dict[int, set[SymId]];
 
 def solve_forward_must(
@@ -18,3 +18,5 @@ def solve_backward_gen_kill(
 def solve_backward(
     cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]];
+
+def is_scope_exit(nd: UniCFGNode) -> bool;

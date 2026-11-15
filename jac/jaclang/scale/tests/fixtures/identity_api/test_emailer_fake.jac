@@ -24,8 +24,14 @@ obj FakeEmailer(Emailer) {
         body_html: (str | None) = None,
         from_addr: (str | None) = None,
         reply_to: (str | None) = None,
-        attachments: (list[EmailAttachment] | None) = None
+        attachments: (list[EmailAttachment] | None) = None,
+        headers: (dict[str, str] | None) = None
     ) -> bool {
+        try {
+            headers = self.checked_headers(headers);
+        } except ValueError {
+            return False;
+        }
         SENT.append(
             {
                 "to": to_addr,
@@ -34,7 +40,8 @@ obj FakeEmailer(Emailer) {
                 "body_html": body_html,
                 "from": from_addr or self.from_address,
                 "reply_to": reply_to,
-                "attachments": attachments or []
+                "attachments": attachments or [],
+                "headers": headers
             }
         );
         return True;
