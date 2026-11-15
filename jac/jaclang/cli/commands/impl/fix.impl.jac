@@ -20,6 +20,7 @@ glob _ELEMENT_KEYWORDS: tuple[str, ...] = (
          'let'
      ),
      _NAMED_ELEMENT_KEYWORDS: tuple[str, ...] = (
+         'async',
          'def',
          'obj',
          'class',
