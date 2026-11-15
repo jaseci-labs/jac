@@ -2294,7 +2294,10 @@ test "jac run warns when the running toolchain does not satisfy the project's ja
         );
         for args in [[], ["tool"]] {
             routed = subprocess.run(
-                jac_command("run", *args), cwd=str(project), capture_output=True, text=True
+                jac_command("run", *args),
+                cwd=str(project),
+                capture_output=True,
+                text=True
             );
             assert routed.returncode == 0 and "ran" in routed.stdout , routed.stderr;
             assert "this project targets jac <=0.0.1" in routed.stderr , routed.stderr;
