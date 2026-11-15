@@ -2007,7 +2007,7 @@ graph import {
         packages.migrate { migrate_dependency_table },
     ]
     project.jac_version ++> [
-        cli.dispatch._warn_unmet_jac_version { satisfies },
+        cli.dispatch.warn_unmet_jac_version { satisfies },
         packages.resolve | packages.templates { satisfies as jac_satisfies },
         scale.injector.binary {
             exact_pin,
@@ -3952,7 +3952,7 @@ graph import cli {
             | dispatch._exit_on_malformed_jac_toml
             | shadcn.cli.retheme { console },
         check_report.print_final_summary
-            | dispatch._warn_unmet_jac_version
+            | dispatch.warn_unmet_jac_version
             | shadcn.cli.run_shadcn_add { console },
         check_report.print_guide_hint
             | dispatch.run_selected_command
@@ -3962,6 +3962,7 @@ graph import cli {
         check_report.print_section { console },
         commands.execution { console, use_line_buffered_output },
     ]
+    dispatch ++> commands.execution._pin_run_scope { warn_unmet_jac_version }
     dispatch ++> manifest_route.handle_manifest_route { run_selected_command }
     errmap --> executor.CommandExecutor.execute { humanize_error, show_tracebacks }
     executor ++> dispatch.run_selected_command { get_executor }
@@ -4026,7 +4027,7 @@ graph import cli {
     ]
     manifest_parse ++> dispatch.run_selected_command { build_command_parser }
     manifest_route ++> [
-        cli.jac_version | dispatch._warn_unmet_jac_version { resolve_cli_version },
+        cli.jac_version | dispatch.warn_unmet_jac_version { resolve_cli_version },
         cli.start_cli { handle_manifest_route },
     ]
     manifest_route --> commands.project.update { resolve_cli_version }

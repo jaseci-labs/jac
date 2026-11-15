@@ -5,9 +5,8 @@ def _discover_project_config(
     profile: str | None = None, tolerate_invalid: bool = False, command_name: str = ""
 ) -> bool;
 
-glob _PIN_CHECKED_COMMANDS: tuple[str, ...] = ("build", "check", "run", "test");
+glob _PIN_CHECKED_COMMANDS: tuple[str, ...] = ("build", "check", "test");
 
-def _warn_unmet_jac_version(pin: str);
 
 def _exit_on_invalid_jac_toml(exc: any);
 
@@ -157,7 +156,7 @@ impl _discover_project_config(
         if config is not None {
             add_venv_to_path(config);
             if command_name in _PIN_CHECKED_COMMANDS {
-                _warn_unmet_jac_version(str(config.project.jac_version or "").strip());
+                warn_unmet_jac_version(str(config.project.jac_version or "").strip());
             }
         }
     } except MalformedJacTomlError as exc {
@@ -171,7 +170,7 @@ impl _discover_project_config(
     return True;
 }
 
-impl _warn_unmet_jac_version(pin: str) {
+impl warn_unmet_jac_version(pin: str) {
     running = resolve_cli_version();
     if not pin or not running or satisfies(running, pin) {
         return;

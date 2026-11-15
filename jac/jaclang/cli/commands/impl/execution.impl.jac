@@ -966,6 +966,7 @@ impl _pin_run_scope(filename: str, takeover: (bool | None)) -> None {
     pin_project_scope(chosen);
     if chosen is not None {
         add_venv_to_path(chosen);
+        warn_unmet_jac_version(str(chosen.project.jac_version or "").strip());
     }
 }
 
