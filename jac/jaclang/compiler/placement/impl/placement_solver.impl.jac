@@ -633,6 +633,7 @@ impl solve_module_placement(
         }
     }
     client_tops: list[uni.UniNode] = [];
+    pinned_client: list[uni.UniNode] = [];
     native_tops: list[uni.UniNode] = [];
     inferable: list[uni.UniNode] = [];
     for (sidx, stmt) in enumerate(module.body) {
@@ -640,7 +641,11 @@ impl solve_module_placement(
             continue;
         }
         if stmt.code_context == CodeContext.CLIENT {
-            client_tops.append(stmt);
+            if sidx in pinned_idx {
+                pinned_client.append(stmt);
+            } else {
+                client_tops.append(stmt);
+            }
             continue;
         }
         if stmt.code_context == CodeContext.NATIVE {
@@ -660,7 +665,10 @@ impl solve_module_placement(
         client_tops = [];
         native_tops = [];
     }
-    if ((not client_tops and not native_tops and not has_seeds) or not inferable) {
+    if (
+        (not client_tops and not native_tops and not pinned_client and not has_seeds)
+        or not inferable
+    ) {
         _invalidate_stale_codegen();
         return stamp_count[0];
     }
@@ -690,6 +698,9 @@ impl solve_module_placement(
             na_seed_ids.add(id(elem));
         }
         na_ref_ids.update(body_refs[id(elem)]);
+    }
+    for elem in pinned_client {
+        cl_ref_ids.update(body_refs[id(elem)]);
     }
     for elem in inferable {
         uses_map[id(elem)] = body_refs[id(elem)];
