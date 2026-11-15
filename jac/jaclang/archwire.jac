@@ -1829,19 +1829,22 @@ graph import {
             | scale.plugin.scale_local_serve
             | server.endpoints.pages.register_diagnostics_endpoints.client_error
             | server.server.print_endpoint_docs { get_config },
-        cli.commands.analysis.check
+        cli.commands.analysis._iter_jac_files
             | cli.commands.execution._load_cwd_config
             | cli.commands.project.deps
             | cli.shadcn.cli.run_shadcn_remove { get_config },
-        cli.commands.analysis.format
+        cli.commands.analysis.check
             | cli.commands.execution._resolve_target
             | cli.commands.project.install { get_config },
-        cli.commands.analysis.precommit
+        cli.commands.analysis.format
             | cli.commands.execution._run_node_tool
             | cli.commands.project.publish { get_config },
-        cli.commands.analysis.test
+        cli.commands.analysis.precommit
             | cli.commands.execution._tool_tiers
             | cli.commands.project.remove { get_config },
+        cli.commands.analysis.test
+            | cli.commands.execution.serve
+            | cli.commands.project.script { get_config },
         cli.commands.code
             | cli.commands.project._create_app
             | client.vite_bundler.ViteBundler.init
@@ -1915,7 +1918,6 @@ graph import {
             get_config,
             pin_project_scope
         },
-        cli.commands.execution.serve | cli.commands.project.script { get_config },
         cli.commands.execution.x | cli.commands.project.update { get_config },
         cli.commands.fix._append_app_table { _toml_append_section },
         cli.commands.fix._report_invalid_manifest { JacConfig },
@@ -2173,6 +2175,9 @@ graph import {
     ]
     project.pyvenv --> cli.dispatch._discover_project_config { add_venv_to_path }
     project.source ++> [
+        cli.commands.analysis._iter_jac_files | cli.commands.fix._iter_migration_files {
+            is_pruned_source_dir
+        },
         cli.commands.analysis._normalize_ignore_patterns { normalize_exclude_patterns },
         cli.commands.analysis._should_ignore
             | compiler.tools.jac_auto_lint_pass.JacAutoLintPass._is_file_excluded

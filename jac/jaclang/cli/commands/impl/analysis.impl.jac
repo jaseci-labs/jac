@@ -2468,13 +2468,27 @@ impl _iter_jac_files(
                 explicit.add(os.path.realpath(path));
             }
         } elif path_obj.is_dir() {
+            config = get_config();
+            build_dir = os.path.realpath(str(config.get_build_dir()))
+                if config is not None
+                else "";
             walked: list[str] = [];
-            for jac_file in path_obj.`glob('**/*.jac') {
-                if not jac_file.is_file() {
-                    continue;
-                }
-                if not _should_ignore(str(jac_file), ignore_list) {
-                    walked.append(str(jac_file));
+            for (cur, dirnames, filenames) in os.walk(path) {
+                kept = [
+                    d
+                    for d in sorted(dirnames)
+                    if not is_pruned_source_dir(d)
+                        and os.path.realpath(os.path.join(cur, d)) != build_dir
+                ];
+                dirnames.clear();
+                dirnames.extend(kept);
+                for fn in sorted(filenames) {
+                    jac_file = os.path.join(cur, fn);
+                    if fn.endswith('.jac')
+                        and os.path.isfile(jac_file)
+                        and not _should_ignore(jac_file, ignore_list) {
+                        walked.append(jac_file);
+                    }
                 }
             }
             if drop_git_ignored([str(path_obj)]) {
