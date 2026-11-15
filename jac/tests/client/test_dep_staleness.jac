@@ -129,7 +129,9 @@ test "an install passes the app's min_release_age_days and excludes to bun" {
         (build_dir / "configs" / "package.json").write_text(
             json.dumps({"name": "app"})
         );
-        with patch("subprocess.run", side_effect=bun) {
+        with patch("jaclang.client.vite_bundler._require_bun"), patch(
+            "jaclang.client.js_runtime.js_runtime_path", return_value="/opt/bun"
+        ), patch("subprocess.run", side_effect=bun) {
             ViteBundler(base, entry_path=app_entry).install_packages(
                 install_dir=build_dir, force=True, capture_output=True
             );
