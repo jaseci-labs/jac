@@ -1686,7 +1686,7 @@ graph import {
         dist.seal.vendor_packages { stage_source_tree },
     ]
     packages.commands ++> [
-        cli.commands.project.install { install_project },
+        cli.commands.project.install { install_project, refuse_toolchain_packages },
         cli.commands.project.update { PYPI_HINT, install_project, split_package_specs },
     ]
     packages.commands --> [

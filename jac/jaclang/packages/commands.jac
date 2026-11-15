@@ -31,6 +31,8 @@ def install_project(
     ctx: InstallContext | None = None
 ) -> int;
 
+def refuse_toolchain_packages(names: list[str]) -> bool;
+
 def _org_collisions(config: JacConfig, lock: Lockfile) -> list[str];
 
 def _bun_lock_digest(config: JacConfig) -> str;
