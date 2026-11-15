@@ -1859,11 +1859,6 @@ graph import {
             | scale.plugin.scale_local_serve
             | server.endpoints.pages.register_diagnostics_endpoints.client_error
             | server.server.print_endpoint_docs { get_config },
-        cli.commands.code
-            | cli.commands.project._create_app
-            | client.vite_bundler.ViteBundler.init
-            | scale.tests.server.test_examples
-            | server.settings.secret_home { find_project_root },
         cli.commands.analysis.check
             | cli.commands.execution._load_cwd_config
             | cli.commands.project.deps
@@ -1877,6 +1872,11 @@ graph import {
         cli.commands.analysis.test
             | cli.commands.execution._tool_tiers
             | cli.commands.project.remove { get_config },
+        cli.commands.code
+            | cli.commands.project._create_app
+            | client.vite_bundler.ViteBundler.init
+            | scale.tests.server.test_examples
+            | server.settings.secret_home { find_project_root },
         cli.commands.config._config_path { find_project_root, get_config },
         cli.commands.config._config_set
             | scale.injector.binary.deploy_generation_refusal {
