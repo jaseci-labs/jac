@@ -2471,7 +2471,9 @@ impl _iter_jac_files(
             }
         } elif path_obj.is_dir() {
             owner = find_project_root(path_obj.resolve());
-            build_dirs: set[str] = {_build_dir_of(owner[1])} if owner is not None else set();
+            build_dirs: set[str] = {_build_dir_of(owner[1])}
+                if owner is not None
+                else set();
             walked: list[str] = [];
             for (cur, dirnames, filenames) in os.walk(path) {
                 if "jac.toml" in filenames {
