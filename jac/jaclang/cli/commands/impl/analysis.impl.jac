@@ -1608,7 +1608,7 @@ def _iter_jac_files(
     paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool];
 
-def _build_dir_of(toml_path: Path) -> str;
+def _build_dir_of(project_dir: Path) -> str;
 
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str];
 
@@ -2470,14 +2470,11 @@ impl _iter_jac_files(
                 explicit.add(os.path.realpath(path));
             }
         } elif path_obj.is_dir() {
-            owner = find_project_root(path_obj.resolve());
-            build_dirs: set[str] = {_build_dir_of(owner[1])}
-                if owner is not None
-                else set();
+            build_dirs: set[str] = {_build_dir_of(path_obj.resolve())};
             walked: list[str] = [];
             for (cur, dirnames, filenames) in os.walk(path) {
                 if "jac.toml" in filenames {
-                    build_dirs.add(_build_dir_of(Path(cur) / "jac.toml"));
+                    build_dirs.add(_build_dir_of(Path(cur)));
                 }
                 kept = [
                     d
@@ -2512,13 +2509,14 @@ impl _iter_jac_files(
     return (result, had_errors);
 }
 
-impl _build_dir_of(toml_path: Path) -> str {
+impl _build_dir_of(project_dir: Path) -> str {
     import os;
     try {
-        return os.path.realpath(str(JacConfig.load(toml_path).get_build_dir()));
+        config = JacConfig.resolve(start_path=project_dir);
     } except Exception {
         return "";
     }
+    return os.path.realpath(str(config.get_build_dir())) if config is not None else "";
 }
 
 impl _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {

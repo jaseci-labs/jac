@@ -1859,8 +1859,7 @@ graph import {
             | scale.plugin.scale_local_serve
             | server.endpoints.pages.register_diagnostics_endpoints.client_error
             | server.server.print_endpoint_docs { get_config },
-        cli.commands.analysis._iter_jac_files
-            | cli.commands.code
+        cli.commands.code
             | cli.commands.project._create_app
             | client.vite_bundler.ViteBundler.init
             | scale.tests.server.test_examples
