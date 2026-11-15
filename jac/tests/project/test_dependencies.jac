@@ -2276,7 +2276,7 @@ test "jac install refuses jaclang as a PyPI dependency and installs nothing" {
             toml.read_text().replace(
                 'requests = ">=2.28.0"', 'requests = ">=2.28.0"\njaclang = ">=0.16.7"'
             )
-            + '\n[dependencies]\n"local/left" = { path = "../left" }\n'
+                + '\n[dependencies]\n"local/left" = { path = "../left" }\n'
         );
         config = JacConfig.load(toml);
         errors = StringIO();
