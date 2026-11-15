@@ -22,7 +22,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-import from jaclang.client.bun_installer { get_bun }
+import from tests.support { js_runtime_or_none }
 import from .react_jsdom_harness {
     bun_install,
     compile_page,
@@ -113,7 +113,7 @@ process.exit(failures.length ? 1 : 0);
 
 test "react state semantics: all four contract faces hold live in jsdom" {
     require_client_integration("React state-semantics");
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }

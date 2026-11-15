@@ -1,25 +1,22 @@
 import os;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    merge_manifest_overlay,
-    CONFIG_REVISION_ANNOTATION,
-    with_config_revision
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.config_loader { JacScaleConfig }
-import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler, AutoscalerSpec }
-import from jaclang.scale.runtime.fleet { fleet_of }
 
 
-def _builder(services: dict[str, any]) -> ManifestBuilder {
+def _builder(services: dict[str, any], project_dir: str = "") -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
+        project_dir=project_dir,
         fleet=fleet_of({}, overrides=services),
         dry_run=True
     );
+}
+
+
+def _project_with(serve_toml: str) -> str {
+    import tempfile;
+    tmp = tempfile.mkdtemp();
+    Path(tmp, "jac.toml").write_text('[project]\nname = "t"\n' + serve_toml);
+    return tmp;
 }
 
 
@@ -321,6 +318,93 @@ test "embedder-supplied overrides reach the builder with gateway defaults" {
     assert b._drain_timeout() == 10;
     assert b._service_config("svc_a") == {"replicas": 2};
     assert b._service_config("svc_b") == {};
+
+    deployer = _project_with(
+        '[serve.timeouts]\ndrain = 900.0\n[serve.auth]\nsecret = "deployer-toml"\n'
+    );
+    leaked_env = {
+        "JAC_SERVE_DRAIN_TIMEOUT": "900",
+        "JAC_SERVE_AUTH_SECRET": "deployer-env",
+        "JAC_SERVE_WORKERS": "7",
+        "JAC_SERVE_PROXY_TRUSTED": "1.2.3.4/32"
+    };
+    saved = {name: os.environ.get(name) for name in leaked_env};
+    os.environ.update(leaked_env);
+    reset_scale_config();
+    get_scale_config(project_dir=Path(deployer));
+    try {
+        for (serve_toml, drain, secret, workers, trusted) in [
+            (
+                "",
+                "10",
+                PLACEHOLDER_JWT_SECRET,
+                "1",
+                "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            ),
+            (
+                '[serve.timeouts]\ndrain = 30.0\n[serve.auth]\nsecret = "app"\n'
+                    + '[serve.workers]\ncount = "3"\n'
+                    + '[serve.proxy]\ntrusted = ["10.1.0.0/16"]\n',
+                "30",
+                "app",
+                "3",
+                "10.1.0.0/16"
+            ),
+            (
+                None,
+                "10",
+                PLACEHOLDER_JWT_SECRET,
+                "1",
+                "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            ),
+            (
+                '[serve.workers]\ncount = "auto"\n',
+                "10",
+                PLACEHOLDER_JWT_SECRET,
+                "auto",
+                "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            )
+        ] {
+            app_dir = _project_with(serve_toml)
+                if serve_toml is not None
+                else str(Path(deployer, "bare"));
+            Path(app_dir).mkdir(exist_ok=True);
+            app = _builder({"svc_a": {}}, project_dir=app_dir);
+            env = {e["name"]: e["value"] for e in app._serve_env("svc_a", {})};
+            assert env["JAC_SERVE_DRAIN_TIMEOUT"] == drain , app_dir;
+            assert env["JAC_SERVE_WORKERS"] == workers , app_dir;
+            assert env["JAC_SERVE_PROXY_TRUSTED"] == trusted , app_dir;
+            assert app._signing_secret() == secret , app_dir;
+        }
+        app = _builder({"svc_a": {}}, project_dir=str(Path(deployer, "bare")));
+        for (svc_workers, expected) in [
+            ("2", "2"),
+            (" auto ", "auto"),
+            ("0", None),
+            ("many", None)
+        ] {
+            raised = False;
+            try {
+                env = {
+                    e["name"]: e["value"]
+                    for e in app._serve_env("svc_a", {"workers": svc_workers})
+                };
+                assert env["JAC_SERVE_WORKERS"] == expected , svc_workers;
+            } except ServeConfigError {
+                raised = True;
+            }
+            assert raised == (expected is None) , svc_workers;
+        }
+    } finally {
+        reset_scale_config();
+        for (name, value) in saved.items() {
+            if value is None {
+                os.environ.pop(name, None);
+            } else {
+                os.environ[name] = value;
+            }
+        }
+    }
 }
 
 
@@ -345,4 +429,68 @@ test "embedder gateway overrides survive normalization" {
     assert cfg["gateway_port"] == 9001;
     assert b._client_entry() == "";
     assert b._service_config("__gateway__") == {"replicas": 3};
+}
+
+
+test "the gateway trusts the cluster ranges only when an ingress fronts it" {
+    private = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+    bare = _project_with("");
+    listed = _project_with('[serve.proxy]\ntrusted = ["10.1.0.0/16"]\n');
+    def trusted_of(builder: ManifestBuilder, svc: str) -> str | None {
+        env = {e["name"]: e["value"] for e in builder._serve_env(svc, {})};
+        return env.get("JAC_SERVE_PROXY_TRUSTED");
+    }
+    for (label, k8s, gateway, project, expected) in [
+        (
+            "no ingress",
+            KubernetesConfig(app_name="t", namespace="t-ns"),
+            None,
+            bare,
+            None
+        ),
+        (
+            "[scale.gateway.ingress] enabled",
+            KubernetesConfig(app_name="t", namespace="t-ns"),
+            {"ingress": {"enabled": True, "host": "app.example.com"}},
+            bare,
+            private
+        ),
+        (
+            "shared ingress with a domain",
+            KubernetesConfig(
+                app_name="t",
+                namespace="t-ns",
+                shared_ingress=True,
+                domain="app.example.com"
+            ),
+            None,
+            bare,
+            private
+        ),
+        (
+            "shared ingress without a domain",
+            KubernetesConfig(app_name="t", namespace="t-ns", shared_ingress=True),
+            None,
+            bare,
+            None
+        ),
+        (
+            "an ingress, with [serve.proxy] trusted listed",
+            KubernetesConfig(app_name="t", namespace="t-ns"),
+            {"ingress": {"enabled": True}},
+            listed,
+            "10.1.0.0/16"
+        )
+    ] {
+        builder = ManifestBuilder(
+            k8s_config=k8s,
+            project_dir=project,
+            fleet=fleet_of({}, overrides={"svc_a": {}}),
+            gateway_config=gateway or {},
+            dry_run=True
+        );
+        assert trusted_of(builder, GATEWAY_NAME) == expected , label;
+        assert trusted_of(builder, "svc_a")
+            == ("10.1.0.0/16" if project == listed else private) , label;
+    }
 }

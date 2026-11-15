@@ -10,7 +10,6 @@ import os;
 import unittest.mock;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.server.identity.user_manager { UserManager }
 
 
 """Apply `values` over the environment, returning what was there before."""

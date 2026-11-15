@@ -20,7 +20,12 @@ import ctypes;
 import os;
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    assert_native_identity,
+    native_address,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -113,4 +118,34 @@ test "repeated connects replace string fields on every edge" {
     for _ in range(3) {
         assert answer(eng, "repeated_connects") == 500124751;
     }
+}
+
+"""An edge type whose fields have no defaults cannot be built with no
+arguments, so a connect that names them passes them to the constructor, as
+`E(f=v)` does, on the Python tier and in native binaries alike. Both used to
+build `E()` first: Python raised a missing-argument TypeError and native
+raised "edge type cannot be constructed without arguments". A defaulted
+field named beside them is still set after `postinit`, every value is
+evaluated in source order before the edge is built, a list connect
+evaluates the values once, and an edge with its own `init` gets the
+parameters it requires."""
+test "connects build edges whose constructor requires the assigned fields" {
+    out = assert_native_identity(
+        os.path.join(FIXTURES, "connect_required_fields.jac"),
+        profiles=["rc", "managed"]
+    );
+    assert out
+        == (
+            "step 2 1\n"
+            "in a function 4 0\n"
+            "backward 5 3\n"
+            "named n4 7\n"
+            "postinit kept 101\n"
+            "fan out 1 3\n"
+            "fan out labels 2 ['fan2', 'fan2']\n"
+            "custom init 3 8 custom\n"
+            "source order 3 4\n"
+            "kept alive old4 9 new4\n"
+            "fan kept alive ['old4', 'old4'] new4\n"
+        ) , out;
 }

@@ -1,13 +1,10 @@
 import from pathlib { Path }
-import from jaclang.project.plugin_config { PluginConfigBase }
-import from jaclang.scale.config.firebase_env {
-    FIREBASE_AUTH_PROJECT_ID_ENV,
-    FIRESTORE_PROJECT_ID_ENV,
-    resolve_firebase_project_id
-}
+
 import os;
 
-glob APP_SCALE_KEYS: tuple[str, ...] = (
+glob ADMIN_PASSWORD_ENV: str = "JAC_SCALE_ADMIN_PASSWORD",
+     SIGNING_SECRET_ENV: str = "JAC_SERVE_AUTH_SECRET",
+     APP_SCALE_KEYS: tuple[str, ...] = (
          "rpc_timeout",
          "http_forward_timeout",
          "replicas",
@@ -63,7 +60,6 @@ class JacScaleConfig(PluginConfigBase) {
     def get_scheduler_config(self: JacScaleConfig) -> dict[str, any];
     def get_telemetry_config(self: JacScaleConfig) -> dict[str, any];
     def get_emailer_config(self: JacScaleConfig) -> dict[str, any];
-    def get_auth_config(self: JacScaleConfig) -> dict[str, any];
     def get_gateway_config(self: JacScaleConfig) -> dict[str, any];
     def get_app_scale_config(self: JacScaleConfig, app_name: str) -> dict[str, any];
 }
@@ -79,6 +75,7 @@ glob _scale_config_instance: JacScaleConfig | None = None,
      _app_scale_cache: dict[str, dict[str, any]] = {},
      _prometheus_namespace_warned: bool = False;
 
+def _scope_text(value: any) -> str;
 def sanitize_prometheus_namespace(name: str) -> str;
 def _resolve_prometheus_namespace(configured: str | None, k8s_namespace: str) -> str;
 def _ws_positive(

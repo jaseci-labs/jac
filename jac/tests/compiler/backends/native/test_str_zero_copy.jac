@@ -127,3 +127,17 @@ test "suffix views handed to builtins, methods and containers are released" {
         assert not leaks , f"suffix views leaked: {leaks[:5]}";
     }
 }
+
+test "a view returned through a union, optional or any result is a string of its own" {
+    expected = "abc\n['abc']\n200\n['abc', 'defg'] hijkl";
+    with tempfile.TemporaryDirectory() as tmp {
+        for (mode, flags) in MODE_FLAGS.items() {
+            if mode == "none" {
+                continue;
+            }
+            ran = _run_fixture("str_view_return.jac", flags, tmp);
+            assert ran.returncode == 0 , f"{mode}: exit {ran.returncode}: {ran.stderr[-400:]}";
+            assert ran.stdout.strip() == expected , f"{mode}: {ran.stdout!r}";
+        }
+    }
+}

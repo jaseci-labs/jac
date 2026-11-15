@@ -112,10 +112,40 @@ test "shortcoming_26_lambda_unknown" {
 test "shortcoming_30_try_except_no_narrowing" {
     program = compile_and_check("checker_bug_try_except_no_narrowing.jac");
 
-    # Expected: at least 1 error (ValueError assigned to int, or raise non-exception)
-    assert len(program.errors_had) >= 1 , "#30: Try/except has no exception type narrowing. "
-    f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    "'except ValueError as e:' should narrow e to ValueError.";
+    # Exactly the marked lines error; every accepted raise stays clean.
+    found = {
+        (e.code.code, e.loc.first_line)
+        for e in program.errors_had
+        if e.code
+    };
+    expected = {
+        ("E1001", 21),
+        ("E1090", 26),
+        ("E1090", 92),
+        ("E1090", 96),
+        ("E1090", 100),
+        ("E1161", 104),
+        ("E1161", 108),
+        ("E1164", 142),
+        ("E1164", 148),
+        ("E1164", 154),
+        ("E2001", 160),
+        ("E2001", 166),
+        ("E2001", 180),
+        ("E1164", 186),
+        ("E1164", 192),
+        ("E1163", 198),
+        ("E1163", 204),
+        ("E1164", 212),
+        ("E1164", 224)
+    };
+    assert found == expected , f"#30: expected {sorted(expected)}, got {sorted(found)}";
+    unresolved = [
+        w.loc.first_line
+        for w in program.warnings_had
+        if w.code and w.code.code in ("W1051", "W2001")
+    ];
+    assert unresolved == [] , f"#30: E2001 lines also warned at {unresolved}";
 }
 
 # =========================================================================
@@ -186,4 +216,17 @@ test "shortcoming_34_never_calls_end_control_flow" {
     assert len(implicit) == 2 , f"Unexpected fallthrough diagnostics: {messages}";
     assert any("'conditional'" in message for message in implicit);
     assert any("'ordinary'" in message for message in implicit);
+}
+
+test "a type parameter cannot be used as a value" {
+    program = compile_and_check("checker_bug_type_param_value.jac");
+    found = {
+        (e.code.code, e.loc.first_line)
+        for e in program.errors_had
+        if e.code
+    };
+    expected = {("E1163", line) for line in (48, 52, 56, 60, 64, 69, 73, 78, 83, 87)};
+    assert found == expected , f"expected {sorted(expected)}, got {sorted(found)}";
+    messages = [str(e) for e in program.errors_had];
+    assert all("'T' is a type parameter" in m for m in messages) , messages;
 }

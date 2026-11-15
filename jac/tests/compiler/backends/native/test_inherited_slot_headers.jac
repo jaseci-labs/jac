@@ -16,8 +16,10 @@ fields at all, and every method touching one demoted to a seam.
 The rule is now inherited rather than re-derived: a class carries a vtable
 when something is dispatched through it, or when an ancestor already carries
 one. Intra-module hierarchies are unchanged -- a base with a local subclass
-still gains the header and still passes it down -- and the cross-module pair
-now agrees on flat.
+still gains the header and still passes it down. A base whose methods another
+module can override is dispatched through, so `SlotBase` carries the header
+in its own module and the cross-module pair agrees on it; a base with no
+overridable method stays flat and its children agree on flat.
 
 `inherited_slot_novt.jac` is the control that places the fault. It overrides
 nothing, so if the override were what forced the vtable it would have lowered
@@ -93,7 +95,7 @@ test "an imported dispatcher invokes implementations absent from its own module"
 }
 
 
-test "a child of a flat imported base carries the same header its base does" {
+test "a child of an imported base carries the same header its base does" {
     (ir, _coverage) = _compile(CHILD);
     reg = ir.gen.layout_registry;
     assert reg is not None , "no layout registry was built";
@@ -107,9 +109,10 @@ test "a child of a flat imported base carries the same header its base does" {
         f"base vtable_ptr_slot={base.vtable_ptr_slot}, "
         f"child vtable_ptr_slot={child.vtable_ptr_slot}"
     );
-    assert not child.has_vtable , (
-        "nothing is dispatched through SlotChild and its base is flat, so it "
-        "must not carry a vtable its base lacks"
+    assert base.has_vtable and child.has_vtable , (
+        "SlotBase declares a method a module it never sees may override, and "
+        "SlotChild does, so a call through a SlotBase reference must dispatch: "
+        "both carry the vtable"
     );
 }
 

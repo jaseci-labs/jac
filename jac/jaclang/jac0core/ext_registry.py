@@ -203,10 +203,8 @@ def is_annex_path_of(candidate_path: str, base_path: str) -> bool:
         if base_path.endswith(JAC_SUFFIX)
         else base_path
     )
-    if candidate_path.startswith(stem):
+    if candidate_path.startswith(stem + "."):
         rest = candidate_path[len(stem) :]
-        if not rest.startswith("."):
-            return False
         return any(
             rest.endswith(suffix) or rest.startswith(folder + os.sep)
             for suffix, folder in ANNEX_FOLDER.items()

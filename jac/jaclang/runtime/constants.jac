@@ -9,9 +9,7 @@ class Constants(StrEnum) {
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 
-    def __str__(self: Constants) -> str {
-        return self.value;
-    }
+    def __str__(self: Constants) -> str;
 }
 
 enum EdgeDir: int { IN = 1, OUT = 2, ANY = 3 }
@@ -42,4 +40,11 @@ glob colors: list[str] = [
          '#F0F8FF',
          '#F8F8FF',
          '#F0FFFF'
-     ];
+     ],
+     JAC_TO_CTYPES_STR: dict[str, str] = {
+         'int': 'ctypes.c_int64',
+         'float': 'ctypes.c_double',
+         'bool': 'ctypes.c_bool',
+         'str': 'ctypes.c_char_p',
+         'None': 'None'
+     };

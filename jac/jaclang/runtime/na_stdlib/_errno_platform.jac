@@ -1,5 +1,3 @@
-import from c { def __errno_location -> int;  }
+import from c { def __jac_errno -> int;  }
 
-def:pub errno_address -> int {
-    return __errno_location();
-}
+def:pub errno_address -> int;

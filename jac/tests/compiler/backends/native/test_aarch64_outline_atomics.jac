@@ -5,12 +5,8 @@ import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.dist.payload.vendor { build_outline_atomics }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-import from jaclang.compiler.backends.native.linker_common {
-    parse_ar_archive,
-    object_undefined_symbols
-}
-import from jaclang.compiler.backends.native.static_link { StaticRuntime }
+import from jaclang.compiler.backends.native.native_link { NativeLinkJob, link_native }
+import jaclang.compiler.backends.native.llvm.binding as llvm;
 
 glob _runtime_cache: list[bytes] = [];
 
@@ -30,24 +26,39 @@ def _runtime -> bytes {
     return _runtime_cache[0];
 }
 
-def _parsed(blob: bytes) -> ElfLinker {
-    linker = ElfLinker(
-        obj_data=blob, sections=[], symbols=[], relocations=[], needed_libs=[]
-    );
-    assert linker.parse_object();
-    return linker;
+"""The (name, bytes) members of a GNU `ar` archive, symbol and name tables
+skipped."""
+def _ar_members(blob: bytes) -> list[tuple[str, bytes]] {
+    assert blob[:8] == b"!<arch>\n";
+    names = b"";
+    members: list[tuple[str, bytes]] = [];
+    offset = 8;
+    while offset + 60 <= len(blob) {
+        header = blob[offset:offset + 60];
+        name = header[:16].decode().strip();
+        size = int(header[48:58].decode().strip());
+        data = blob[offset + 60:offset + 60 + size];
+        if name == "//" {
+            names = data;
+        } elif name not in ("/", "/SYM64/") {
+            if name.startswith("/") and names {
+                start = int(name[1:]);
+                name = names[start:names.index(b"/\n", start)].decode();
+            }
+            members.append((name.rstrip("/"), data));
+        }
+        offset += 60 + size + (size % 2);
+    }
+    return members;
 }
 
 test "upstream runtime has independently selectable helpers without libc definitions" {
-    members = parse_ar_archive(_runtime());
     definitions: dict[str, str] = {};
-    for member in members {
-        parsed = _parsed(member.data);
-        for symbol in parsed.symbols {
-            if symbol.shndx > 0 and symbol.bind > 0 {
-                assert symbol.name not in definitions;
-                definitions[symbol.name] = member.name;
-            }
+    for (name, data) in _ar_members(_runtime()) {
+        (defined, _undefined) = llvm.object_symbols(data);
+        for symbol in defined {
+            assert symbol not in definitions;
+            definitions[symbol] = name;
         }
     }
     assert "__aarch64_have_lse_atomics" in definitions;
@@ -65,8 +76,7 @@ test "upstream runtime has independently selectable helpers without libc definit
     assert len(helpers) == len(set(helpers)) == 125;
 }
 
-test "archive selection supplies a floor atomic and its runtime feature detection" {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
+test "the atomics archive supplies a floor atomic and its runtime feature detection" {
     import from jaclang.compiler.backends.native.link_glue { init_object_codegen }
     init_object_codegen();
     triple = "aarch64-unknown-linux-gnu";
@@ -77,19 +87,22 @@ test "archive selection supplies a floor atomic and its runtime feature detectio
     );
     tm = llvm.Target.from_triple(triple).create_target_machine(opt=2, reloc="pic");
     caller = tm.emit_object(module);
-    runtime = StaticRuntime(archives=[_runtime()], crt_objects=[]);
-    selected = runtime.select([caller]);
-    assert len(selected) == 2;
-    assert any("getauxval" in object_undefined_symbols(blob) for blob in selected);
     with tempfile.TemporaryDirectory() as work {
+        archive = Path(work) / "libclang_rt.atomics.a";
+        archive.write_bytes(_runtime());
         output = str(Path(work) / "probe.so");
-        assert ElfLinker.link(
-            objects=[caller],
-            archive_members=selected,
-            output_path=output,
-            shared=True,
-            export_symbols=["probe"],
-            needed_libs=["libc.so.6"]
+        link_native(
+            NativeLinkJob(
+                platform="elf",
+                triple=triple,
+                output_path=output,
+                shared=True,
+                soname="probe.so",
+                objects=[caller],
+                archives=[str(archive)],
+                export_symbols=["probe"],
+                needed_libs=["libc.so.6"]
+            )
         );
         raw = Path(output).read_bytes();
         offset = struct.unpack_from("<Q", raw, 40)[0];

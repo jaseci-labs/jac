@@ -52,50 +52,13 @@ between this file costing one native compile and costing four.
 """
 
 import os;
-import subprocess;
-import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
+import from tests.support { TESTS_DIR, sv_run, na_run }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      MAIN_FIXTURE = "xmod_dispatch_main.jac",
      _RUN_MEMO: dict[(str, str)] = {};
-
-"""Run a fixture through the server pathway and hand back its stdout."""
-def sv_run(fixture: str) -> str {
-    proc = subprocess.run(
-        jac_command("run", os.path.join(FIXTURES, fixture)),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert proc.returncode == 0 , f"sv run failed: {proc.stderr[-800:]
-        if proc.stderr
-        else '(empty)'}";
-    return proc.stdout;
-}
-
-"""Compile a fixture to a native binary, run it, and hand back its stdout."""
-def na_run(fixture: str) -> str {
-    out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
-    comp = subprocess.run(
-        jac_command(
-            "build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin
-        ),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-900:]
-        if comp.stderr
-        else '(empty)'}";
-    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
-    assert proc.returncode == 0 , f"binary exited {proc.returncode}: {proc.stderr[-400:]
-        if proc.stderr
-        else '(empty)'}";
-    return proc.stdout;
-}
 
 """Split stdout into the non-empty lines a comparison should see."""
 def kept_lines(text: str) -> list[str] {
@@ -110,7 +73,8 @@ def kept_lines(text: str) -> list[str] {
 def na_lines(fixture: str) -> list[str] {
     key = f"na:{fixture}";
     if key not in _RUN_MEMO {
-        _RUN_MEMO[key] = na_run(fixture);
+        (out, _err) = na_run(os.path.join(FIXTURES, fixture));
+        _RUN_MEMO[key] = out;
     }
     return kept_lines(_RUN_MEMO[key]);
 }
@@ -119,7 +83,8 @@ def na_lines(fixture: str) -> list[str] {
 def sv_lines(fixture: str) -> list[str] {
     key = f"sv:{fixture}";
     if key not in _RUN_MEMO {
-        _RUN_MEMO[key] = sv_run(fixture);
+        (out, _err) = sv_run(os.path.join(FIXTURES, fixture));
+        _RUN_MEMO[key] = out;
     }
     return kept_lines(_RUN_MEMO[key]);
 }

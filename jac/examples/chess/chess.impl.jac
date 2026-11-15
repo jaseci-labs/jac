@@ -227,7 +227,7 @@ impl King.raw_moves(board: Board) -> list[Move] {
 }
 
 # ────────────────────── Board ──────────────────────
-impl Board.postinit{
+impl Board.postinit {
     self.squares = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)];
     self.setup_pieces();
 }
@@ -492,7 +492,7 @@ impl Board.fen_placement -> str {
 }
 
 # ────────────────────── Game ──────────────────────
-impl Game.postinit{
+impl Game.postinit {
     self.board = Board();
 }
 

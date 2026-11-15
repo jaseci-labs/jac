@@ -9,6 +9,7 @@ import from ....constants.users { ROLE_OPTIONS }
 
 def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement {
     has newUsername: str = "",
+        newEmail: str = "",
         newPassword: str = "",
         newRole: str = "user",
         createError: str = "";
@@ -16,9 +17,10 @@ def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement
     async def handleSubmit(e: any) {
         e.preventDefault();
         createError = "";
-        result = await onCreate(newUsername, newPassword, newRole);
+        result = await onCreate(newUsername, newEmail, newPassword, newRole);
         if result["ok"] {
             newUsername = "";
+            newEmail = "";
             newPassword = "";
             newRole = "user";
             onClose();
@@ -29,6 +31,7 @@ def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement
 
     def handleClose {
         newUsername = "";
+        newEmail = "";
         newPassword = "";
         newRole = "user";
         createError = "";
@@ -43,6 +46,13 @@ def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement
                 type="text"
                 value={newUsername}
                 onChange={lambda (e: any) { newUsername = e.target.value; }}
+                className="mb-3"
+            />
+            <Input
+                label="Email"
+                type="email"
+                value={newEmail}
+                onChange={lambda (e: any) { newEmail = e.target.value; }}
                 className="mb-3"
             />
             <Input

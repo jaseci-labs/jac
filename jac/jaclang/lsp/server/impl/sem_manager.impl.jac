@@ -32,7 +32,7 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list[uni.NameAtom] 
         return resolved_cache[mp] == target;
     }
     nodes: list[uni.NameAtom] = [];
-    for nd in ir._in_mod_nodes {
+    for nd in ir._in_mod_nodes or [] {
         if isinstance(nd, uni.NameAtom) {
             if nd.sem_token and belongs(nd.loc.mod_path) {
                 nodes.append(nd);

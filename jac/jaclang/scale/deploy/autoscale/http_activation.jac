@@ -60,6 +60,7 @@ obj HTTPActivationSpec {
         max_replicas: int = 1,
         polling_interval: int = 30,
         cooldown_period: int = 300,
+        initial_cooldown_period: int = 0,
         concurrency: (HTTPConcurrencyMetric | None) = None,
         request_rate: (HTTPRequestRateMetric | None) = None,
         cold_start: (HTTPColdStartSpec | None) = None,

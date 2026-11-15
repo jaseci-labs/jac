@@ -25,7 +25,16 @@ def _compile_runtime_core_js(proj: Path) -> str {
     compiler.runtime_path = proj / "package.json";
     compiler.compiled_dir = out_dir;
     compiler.jac_client_compiler.compiled_dir = out_dir;
+    # A full compile emits the app's closure, which reaches the runtime through
+    # @jac/runtime, before compile_runtime_utils writes it: both must agree.
+    (proj / "app.jac").write_text(
+        'def:pub app() -> any {\n    has count: int = 0;\n    return <div>{count}</div>;\n}\n'
+    );
+    compiler.jac_client_compiler.emit_dependencies(proj / "app.jac", visited=set());
+    runtime_js = out_dir / "client_runtime.js";
+    emitted = runtime_js.read_text();
     compiler.compile_runtime_utils();
+    assert runtime_js.read_text() == emitted , "client_runtime.js has two writers that disagree";
 
     core_js = out_dir / "client_runtime_core.js";
     assert core_js.exists() , "compile path should emit client_runtime_core.js";
@@ -54,5 +63,35 @@ test "compiled runtime core does not re-import globals it defines" {
         # local function.
         assert "function __jacSpawn(" in js;
         assert "{__jacJsx, __jacSpawn}" not in js;
+    }
+}
+
+test "every framework's runtime is written where @jac/runtime resolves" {
+    import jaclang.client.runtime_source as runtime_source;
+    import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
+
+    original = runtime_source.client_runtime_cl_basename;
+    try {
+        for basename in ["client_runtime.jac", "solid_runtime.jac"] {
+            runtime_source.client_runtime_cl_basename = lambda (
+                framework: str = ""
+            ) -> str { return basename; };
+            with TemporaryDirectory() as tmp {
+                proj = Path(tmp);
+                (proj / "package.json").write_text('{"name":"t","version":"0.0.0"}');
+                compiler = ViteClientBundleBuilder(
+                    vite_package_json=proj / "package.json"
+                )._get_compiler();
+                compiler.runtime_path = proj / "package.json";
+                compiler.compiled_dir = proj / "out";
+                compiler.jac_client_compiler.compiled_dir = proj / "out";
+                compiler.compile_runtime_utils();
+                runtime_js = proj / "out" / "client_runtime.js";
+                assert runtime_js.exists() , f"{basename} was not written to client_runtime.js";
+                assert basename in runtime_js.read_text().split("\n", 1)[0];
+            }
+        }
+    } finally {
+        runtime_source.client_runtime_cl_basename = original;
     }
 }

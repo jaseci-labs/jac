@@ -1,5 +1,3 @@
-import from jaclang.dist.payload.assemble { MkPayloadOpts }
-
 glob SUBCOMMANDS: tuple[str, ...] = (
          "fetch-typeshed",
          "fetch-llvm",
@@ -13,9 +11,9 @@ glob SUBCOMMANDS: tuple[str, ...] = (
      ),
      MKPAYLOAD_USAGE: str = (
          "usage: payload mkpayload <python-dir> <repo-root> <out.tar.zst> [--shim=PATH]"
-         " [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--layer-cache=DIR]"
+         " [--link-source=PATH] [--precompiled-cache=DIR] [--layer-cache=DIR]"
          " [--bun=PATH] [--musl=DIR] [--wasm-libc=DIR] [--seal] [--debug-src]"
-         " [--stubcat-out=PATH] [--skip-stubcat]\n"
+         " [--stubcat-out=PATH]\n"
          "(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)"
      );
 

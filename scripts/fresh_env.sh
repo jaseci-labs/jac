@@ -34,7 +34,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Place the pinned, contained bun runtime into the source tree
 # (jac/jaclang/client/_bun) so the -Ddev linked binary below can
-# resolve it for client/cl work via get_bun(). Release binaries bundle bun into
+# resolve it as the bun artifact for client/cl work. Release binaries bundle bun into
 # the payload instead; this is the editable/source-checkout equivalent.
 ( cd jac && zig build fetch-bun )
 
@@ -48,6 +48,11 @@ JAC_BIN="$PWD/jac/zig-out/bin/jac"
 echo "Built: $JAC_BIN"
 echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
+
+# Native artifacts are built only on request; `jac native status` shows what
+# is in place. The quick ones: the stub catalog the type checker reads and the
+# static musl / wasm runtimes native targets link against.
+jac native build stubcat musl wasm-libc
 
 # byLLM's `llm` capability deps (global so they're importable from anywhere).
 # Pins mirror jac/jaclang/project/capabilities.jac. Optional: drop this line if

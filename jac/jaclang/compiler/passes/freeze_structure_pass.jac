@@ -1,10 +1,5 @@
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import jaclang.compiler.frontend.unitree as uni;
-
 walker FreezeStructurePass(CompilerPass) {
-    can freeze with uni.Module entry;
-}
+    static has contract: PassContract = PassContract(provides=(AnalysisFact.FROZEN, ));
 
-impl FreezeStructurePass.freeze with uni.Module entry {
-    here.freeze_structure();
+    can freeze with uni.Module entry;
 }

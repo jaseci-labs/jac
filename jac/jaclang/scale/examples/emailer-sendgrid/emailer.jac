@@ -9,11 +9,22 @@ API key is read from the SENDGRID_API_KEY env var. If unset, sends are
 logged and dropped (the server keeps running with email features off).
 """
 
+import base64;
 import logging;
 import os;
-import from jaclang.scale.emailer.emailer { Emailer }
+import from jaclang.scale.emailer.emailer { Emailer, EmailAttachment }
 import from sendgrid { SendGridAPIClient }
-import from sendgrid.helpers.mail { Mail }
+import from sendgrid.helpers.mail {
+    Mail,
+    Attachment,
+    ContentId,
+    Disposition,
+    FileContent,
+    FileName,
+    FileType,
+    Header,
+    ReplyTo
+}
 
 glob _logger = logging.getLogger("sendgrid-emailer");
 
@@ -40,9 +51,18 @@ obj SendGridEmailer(Emailer) {
         subject: str,
         body_text: str,
         body_html: (str | None) = None,
-        from_addr: (str | None) = None
+        from_addr: (str | None) = None,
+        reply_to: (str | None) = None,
+        attachments: (list[EmailAttachment] | None) = None,
+        headers: (dict[str, str] | None) = None
     ) -> bool {
         if self._client is None {
+            return False;
+        }
+        try {
+            extra_headers = self.checked_headers(headers);
+        } except ValueError as e {
+            _logger.error("SendGrid send refused: %s", e);
             return False;
         }
         sender = from_addr or self.from_address;
@@ -62,6 +82,25 @@ obj SendGridEmailer(Emailer) {
                 to_emails=to_addr,
                 subject=subject,
                 plain_text_content=body_text
+            );
+        }
+        if reply_to {
+            msg.reply_to = ReplyTo(reply_to);
+        }
+        for (name, value) in extra_headers.items() {
+            msg.add_header(Header(name, value));
+        }
+        for att in attachments or [] {
+            cid = att.bare_content_id();
+            inline = bool(cid and body_html);
+            msg.add_attachment(
+                Attachment(
+                    FileContent(base64.b64encode(att.content).decode('ascii')),
+                    FileName(att.filename),
+                    FileType(att.media_type()),
+                    Disposition('inline' if inline else 'attachment'),
+                    ContentId(cid) if inline else None
+                )
             );
         }
         try {

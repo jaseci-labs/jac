@@ -21,16 +21,6 @@ import from 'expo-secure-store' { * as SecureStore }
 import from 'expo-constants' { * as ExpoConstants }
 import from 'react-error-boundary' { ErrorBoundary }
 import from 'zod' { z }
-import from client_react_core {
-    __createJacSchema,
-    jacIsLoggedIn,
-    useJacForm,
-    __jacReportError
-}
-import from jaclang.client.targets.react_native.html_tag_map {
-    RN_HTML_VIEW_TAGS as _VIEW_TAGS,
-    RN_HTML_TEXT_TAGS as _TEXT_TAGS
-}
 
 def:pub __jacGetRenderer -> any;
 def:pub __jacNativeCreate(
@@ -117,6 +107,12 @@ def:pub AuthGuard(
 
 def:pub ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+def _changeTextHandler(on_change: any) -> Callable[[any], None];
+def _fieldSetter(form: any, field_name: str, value: any) -> Callable[[], None];
+def _passwordToggle(
+    field_name: str, is_visible: bool, visible: any, set_visible: any
+) -> Callable[[], None];
+
 def:pub JacForm(props: dict[str, any]) -> JsxElement;
 def:pub __jacInstallErrorHandlers -> None;
 def:pub __jacWirePlatformAdapters -> None;

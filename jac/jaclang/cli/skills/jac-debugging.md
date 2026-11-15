@@ -40,7 +40,7 @@ Start with the first diagnostic, the selected app, and the active storage config
 | Symptom | Next check |
 |---|---|
 | Invalid anchor or missing node | Check the ID, app/store selection, deletion history, and access context. After schema edits, inspect migration aliases and quarantined records with the persistence guide. |
-| Edits appear ignored | Confirm which source and compiler version are running; restart the server after server changes. If compiled artifacts are stale, use `jac clean --cache`. |
+| Edits appear ignored | Confirm which source and compiler version are running. Under `jac run --dev`, look for `[HMR] Reloaded: <file>` after the save (a reload that failed logs the error instead); without `--dev`, or after a `jac.toml` change, restart the server. If compiled artifacts are stale, use `jac clean --cache`. |
 | Tests depend on run order or old nodes | Create isolated fixtures, identify the nodes each test creates, and clean up those fixtures. Do not assert totals on a shared root. |
 | A server returns 500 after a model change | Read the server traceback and compare the stored schema with the current declarations before choosing a migration or repair. |
 

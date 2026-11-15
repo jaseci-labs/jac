@@ -1,26 +1,14 @@
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.unparse { unparse_node }
-import from jaclang.runtime.semantic {
-    ClassInfo,
-    FieldInfo,
-    FunctionInfo,
-    MethodInfo,
-    ParamInfo,
-    TypeForm,
-    mk_dict,
-    mk_form,
-    mk_list,
-    type_to_str
-}
 
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
+    self._owned = [];
     for nd in ir_in.get_all_sub_nodes(Ability) {
         self._process_ability(nd);
     }
     for arch in self._collect_routing_archetypes(ir_in) {
         self._register_archetype_light(arch);
     }
+    self.prog.analysis.mtir_owned[ir_in.loc.mod_path] = list(self._owned);
     return ir_in;
 }
 
@@ -323,7 +311,7 @@ impl MTIRGenPass._extract_method_info(
     nd: Ability, by_call: bool = False
 ) -> MethodInfo {
     func_info = self._extract_function_info(nd=nd);
-    parent_arch = nd.find_parent_of_type(Archetype);
+    parent_arch = nd.enclosing_decl(Archetype);
     parent_sym = parent_arch.name.sym if parent_arch else None;
     parent_class_info: (ClassInfo | None) = None;
     if parent_sym is not None and by_call {
@@ -453,6 +441,7 @@ impl MTIRGenPass._process_ability(nd: Ability) -> None {
     }
     scope = self._get_scope_str(nd);
     self.prog.mtir_map[scope] = func_info;
+    self._owned.append(scope);
 }
 
 impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
@@ -469,12 +458,12 @@ impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
             continue;
         }
         saw_routing = True;
-        scope_node = vs.find_parent_of_type(Ability) or ir_in;
-        walker_arch = vs.find_parent_of_type(Archetype);
+        scope_node = vs.enclosing_decl(Ability) or ir_in;
+        walker_arch = vs.enclosing_decl(Archetype);
         if walker_arch is not None {
             scoped[id(walker_arch)] = walker_arch;
         }
-        here_arch = self._archetype_from_event(vs.find_parent_of_type(Ability));
+        here_arch = self._archetype_from_event(vs.enclosing_decl(Ability));
         if here_arch is not None {
             scoped[id(here_arch)] = here_arch;
         }
@@ -596,7 +585,9 @@ impl MTIRGenPass._register_archetype_light(nd: Archetype) -> None {
         base_classes=[],
         methods=methods
     );
-    self.prog.mtir_map[self._get_scope_str(nd)] = class_info;
+    scope = self._get_scope_str(nd);
+    self.prog.mtir_map[scope] = class_info;
+    self._owned.append(scope);
 }
 
 impl MTIRGenPass.run_walk with Module entry {

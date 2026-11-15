@@ -3,20 +3,7 @@
 Covers Event, the publisher facade, and @subscribe registry. LocalEventStream behavior is in test_local_stream.jac.
 """
 
-import from jaclang.scale.events.broker {
-    EventStreamBroker,
-    Event,
-    RetryPolicy,
-    HealthStatus,
-    StreamPosition,
-    starts_at_earliest
-}
 import from threading { Event as _ThreadStop }
-import from jaclang.scale.events.publisher { publish, set_broker }
-import from jaclang.scale.events.subscriber { subscribe, get_subscriptions }
-import from jaclang.scale.events.streams._stream_common { consumer_loop }
-import from jaclang.scale.events.streams.local { LocalEventStream }
-import from jaclang.scale.events.streams.postgres { PgEventStream }
 
 
 """Broker stub that raises on publish; verifies the facade swallows errors."""

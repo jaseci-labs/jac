@@ -6,6 +6,7 @@
     "production-build": {"measure": "command", "hang_seconds": 420, "max_rss_mib": 6200},
     "quickstart-ready": {"measure": "readiness"},
     "production-ready": {"measure": "readiness"},
-    "fleet-ready": {"measure": "readiness"}
+    "fleet-ready": {"measure": "readiness"},
+    "walker-scale-ready": {"measure": "readiness"}
   }
 }

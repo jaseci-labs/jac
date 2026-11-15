@@ -37,12 +37,16 @@ impl toc_of(text: str) -> list[TocEntry] {
         if ln.strip().startswith("```") {
             fenced = not fenced;
         } elif not fenced {
-            if ln.startswith("## ") {
-                t = ln[3:].strip();
-                toc.append(TocEntry(level=2, text=t, anchor=slugify(t)));
-            } elif ln.startswith("### ") {
-                t = ln[4:].strip();
-                toc.append(TocEntry(level=3, text=t, anchor=slugify(t)));
+            level = 2 if ln.startswith("## ") else (3 if ln.startswith("### ") else 0);
+            if level {
+                t = ln[level + 1:].strip();
+                anchor = "";
+                m = re.search(r"\s*\{#([A-Za-z0-9_\-]+)\}\s*$", t);
+                if m {
+                    anchor = m.group(1) as str;
+                    t = t[:m.start()].rstrip();
+                }
+                toc.append(TocEntry(level=level, text=t, anchor=anchor or slugify(t)));
             }
         }
     }
@@ -473,4 +477,61 @@ impl llms_txt -> str {
         lines.append("");
     }
     return "\n".join(lines);
+}
+
+impl PublicNode.__jac_access__ -> AccessLevel {
+    return AccessLevel.READ;
+}
+
+impl PublicEdge.__jac_access__ -> AccessLevel {
+    return AccessLevel.READ;
+}
+
+impl trace_route.arrive with DocVersion entry {}
+
+impl _version(wanted: str) -> list[DocVersion] {
+    all_vers = [root.shared-->[?:DocsHub]->:HasVersion:->[?:DocVersion]];
+    if wanted == "latest" {
+        lab = _latest_label([v.label for v in all_vers]);
+        if lab != "" {
+            wanted = lab;
+        }
+    }
+    vers = [
+        v
+        for v in all_vers
+        if v.label == wanted
+    ];
+    if not vers {
+        return [];
+    }
+    best = vers[0];
+    for v in vers {
+        if v.fetched_at > best.fetched_at {
+            best = v;
+        }
+    }
+    return [best];
+}
+
+impl collect_tree.scan with DocContainer entry {
+    visit [-->[?:DocDir]];
+}
+
+impl collect_tree.fold_version with DocVersion exit {
+    (self.tree, self.seq) = self.fold_children(here);
+}
+
+impl docs_status -> DocsStatus {
+    hub = _get_hub();
+    if hub is None {
+        return DocsStatus();
+    }
+    infos = _version_list();
+    return DocsStatus(
+        ready=True,
+        built_at=hub.built_at,
+        latest_label=_latest_label([v.label for v in infos]),
+        versions=infos
+    );
 }

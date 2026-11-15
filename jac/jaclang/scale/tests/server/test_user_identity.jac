@@ -12,13 +12,6 @@ import subprocess;
 import time;
 import requests;
 import from pathlib { Path }
-import from jaclang.scale.tests.support {
-    extract,
-    get_free_port,
-    register_user,
-    start_server,
-    stop_server
-}
 
 glob FIXTURES_DIR: Path = Path(__file__).parent.parent
          / "fixtures"

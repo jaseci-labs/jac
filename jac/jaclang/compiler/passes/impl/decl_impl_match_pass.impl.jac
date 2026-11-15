@@ -64,7 +64,7 @@ impl DeclImplMatchPass._impl_optional(
             return True;
         }
     }
-    holder = ability.find_parent_of_type(AstImplNeedingNode);
+    holder = ability.enclosing_decl(AstImplNeedingNode);
     if holder is not None and holder.sym_name in supplied {
         return ability.sym_name in supplied[holder.sym_name];
     }
@@ -108,10 +108,18 @@ impl DeclImplMatchPass._find_archetype_defn(lookup: Symbol) -> (NameAtom | None)
 impl DeclImplMatchPass.connect_impls(
     source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
 ) -> None {
+    pending: list[tuple[ImplDef, str]] = [];
     for sym in source_sym_tab.names_in_scope.values() {
         for defn in sym.defn {
             if isinstance(defn.name_of, ImplDef) {
-                self._connect_one_impl(defn.name_of, sym.sym_name, target_sym_tab);
+                pending.append((defn.name_of, sym.sym_name));
+            }
+        }
+    }
+    for depth in sorted({len(impl_node.target) for (impl_node, _) in pending}) {
+        for (impl_node, sym_name) in pending {
+            if len(impl_node.target) == depth {
+                self._connect_one_impl(impl_node, sym_name, target_sym_tab);
             }
         }
     }
@@ -212,6 +220,9 @@ impl DeclImplMatchPass._connect_one_impl(
     }
     self.validate_params_match(impl_node, sym_name, decl_node.name_of);
     valid_decl.link_impl(impl_node);
+    if isinstance(valid_decl, UniScopeNode) {
+        valid_decl.fold_scope(impl_node);
+    }
     for (idx, a) in enumerate(impl_node.target) {
         if ((idx < len(name_of_links)) and (link := name_of_links[idx])) {
             a.name_spec.name_of = link.name_of;
@@ -220,21 +231,17 @@ impl DeclImplMatchPass._connect_one_impl(
             }
         }
     }
-    self._share_scope_names(impl_node, valid_decl);
 
-    for assignment in impl_node.get_all_sub_nodes(Assignment) {
-        if assignment.type_tag is not None {
+    for site in binding_sites_in(impl_node) {
+        if isinstance(site, Assignment) {
             import from jaclang.compiler.frontend.diagnostics { E0064 }
-            for i in assignment.target {
-                if isinstance(i, Name) {
-                    scope = find_python_scope_node_of(i);
-                    if scope is not None and i.sym_name in scope.implicit_rebinds {
-                        self.ctx.emit(E0064, node_override=i, name=i.sym_name);
-                    }
-                }
+            for name in typed_rebind_names(site) {
+                self.ctx.emit(E0064, node_override=name, name=name.sym_name);
             }
+            bind_assignment_targets(site);
+        } elif isinstance(site, BinaryExpr) {
+            bind_walrus_target(site);
         }
-        bind_assignment_targets(assignment);
     }
     self._resolve_symbols_in_subtree(impl_node);
 
@@ -245,17 +252,6 @@ impl DeclImplMatchPass._connect_one_impl(
     ) {
         self._populate_self_member_symbols(impl_node, name_of_links[0].name_of);
     }
-
-    self._share_scope_names(impl_node, valid_decl);
-}
-
-impl DeclImplMatchPass._share_scope_names(
-    impl_node: ImplDef, valid_decl: AstImplNeedingNode
-) -> None {
-    merged = dict(impl_node.sym_tab.names_in_scope);
-    merged.update(valid_decl.sym_tab.names_in_scope);
-    impl_node.sym_tab.set_primary_names(merged);
-    valid_decl.sym_tab.set_primary_names(merged);
 }
 
 impl DeclImplMatchPass._report_bare_redecls(sym_tab: UniScopeNode) -> None {
@@ -293,6 +289,18 @@ impl DeclImplMatchPass._report_bare_redecls(sym_tab: UniScopeNode) -> None {
 impl DeclImplMatchPass.validate_params_match(
     impl_node: ImplDef, sym_name: str, valid_decl: AstSymbolNode
 ) -> None {
+    if impl_node.type_params and isinstance(valid_decl, (Ability, Archetype)) {
+        decl_tps = [tp.name.value for tp in valid_decl.type_params];
+        impl_tps = [tp.name.value for tp in impl_node.type_params];
+        if decl_tps != impl_tps {
+            self.ctx.emit(
+                E2030,
+                node_override=impl_node.type_params[0],
+                decl_params=", ".join(decl_tps),
+                impl_params=", ".join(impl_tps)
+            );
+        }
+    }
     if (
         isinstance(valid_decl, Ability)
         and isinstance(valid_decl.signature, FuncSignature)
@@ -369,8 +377,6 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(root_node: UniNode) -> None {
 impl DeclImplMatchPass._populate_self_member_symbols(
     impl_def: ImplDef, archetype: Archetype
 ) -> None {
-    import from jaclang.compiler.frontend.diagnostics { W2080 }
-
     for trailer_node in impl_def.get_all_sub_nodes(AtomTrailer) {
         if not (trailer_node.parent and isinstance(trailer_node.parent, Assignment)) {
             continue;
@@ -415,8 +421,6 @@ impl DeclImplMatchPass._populate_self_member_symbols(
 }
 
 impl DeclImplMatchPass._populate_inline_init_symbols(archetype: Archetype) -> None {
-    import from jaclang.compiler.frontend.diagnostics { W2080 }
-
     if archetype.arch_type.name == 'KW_CLASS' {
         return;
     }

@@ -10,7 +10,10 @@ against a heap-boxed tuple of its shape compares against the box's contents
 (a null box is `None`). A by-value value is never identical to a reference
 or to `None`. This agrees with CPython wherever CPython's answer does not
 depend on object caching: aliases of one tuple are identical, tuples with a
-differing field are not, and a tuple or scalar is never `None`.
+differing field are not, and a tuple or scalar is never `None`. An option
+over a by-value payload (`bool | None`, `int | None`) follows the same rule
+behind its presence tag: identical when both sides are present with the same
+bits, or both absent.
 
 Previously a tuple operand could not lower at all, and `is` / `is not`
 between two scalars fell through to the left operand's truthiness, so

@@ -35,3 +35,33 @@ def sum_empty_floats -> float {
     values: list[float] = [];
     return sum(values);
 }
+
+def sum_float_start_keeps_small_ints -> float {
+    values: list[int] = [1, 1];
+    return sum(values, 1e16);
+}
+
+def sum_float_start_keeps_small_floats -> float {
+    values: list[float] = [1.0, 1.0];
+    return sum(values, 1e16);
+}
+
+def sum_floats_keeps_small_terms -> float {
+    values: list[float] = [1e16, 1.0, 1.0];
+    return sum(values);
+}
+
+def sum_int_start_adds_first_float_plainly -> float {
+    values: list[float] = [1.0, 1.0];
+    return sum(values, 10000000000000000);
+}
+
+def sum_tenths -> float {
+    values: list[float] = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
+    return sum(values);
+}
+
+def sum_floats_overflow -> float {
+    values: list[float] = [1e308, 1e308, -1e308];
+    return sum(values);
+}

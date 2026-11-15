@@ -6,8 +6,6 @@ import from "@jac/webgl" {
     _install_input,
     _remove_input
 }
-import from .arena { init, frame, get_score, get_hp, get_deaths, shutdown }
-import type from .sim { Game }
 
 obj Shim(WebGLHost) {
     has game: Game | None = None,

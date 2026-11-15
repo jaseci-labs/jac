@@ -32,6 +32,8 @@ Platform roots:
 """
 
 import errno
+import hashlib
+import json
 import os
 import time
 import secrets
@@ -159,3 +161,213 @@ def atomic_write(path: str | Path, data: bytes, mode: int | None = None) -> None
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+# File content digests: the one authority for "sha256 of this file". A digest
+# is memoized for the process and recorded in a ledger shared across
+# processes (one shard per directory under ``jir/digests``, holding that
+# directory's files by name), keyed by the
+# file's identity: inode, size, and nanosecond mtime and ctime. ctime moves on
+# every write and cannot be set back, so a same-size rewrite that restores its
+# mtime still misses. The extracted runtime is never rewritten, so its files
+# are keyed on size and mtime alone (see file_identity) and a ledger copied
+# with the cache home stays valid. A digest is only reused when the file was
+# already stable when it was hashed (the racy-entry rule git uses), so a file
+# edited within one timestamp tick is always read again.
+
+_DIGEST_RACY_NS = 2_000_000_000
+_DIGEST_SHARD_CAP = 4096
+_digest_memo: dict[str, tuple[tuple[int, int, int, int], str]] = {}
+_digest_shards: dict[str, dict[str, list]] = {}
+_digest_dirty: set[str] = set()
+_digest_flush_armed: list[bool] = []
+_runtime_root_memo: dict[tuple[str | None, ...], str] = {}
+_resolved_dir_memo: dict[str, str] = {}
+# The variables get_cache_home() reads on this platform.
+_CACHE_HOME_INPUTS = ("JAC_CACHE_HOME", "XDG_CACHE_HOME") + (
+    ("LOCALAPPDATA", "USERPROFILE") if sys.platform == "win32" else ("HOME",)
+)
+
+
+def get_digest_ledger_dir() -> Path:
+    """Directory of the cross-process file-digest ledger."""
+    return get_jir_cache_dir() / "digests"
+
+
+def _runtime_dir(home: str | Path) -> str:
+    return os.path.join(os.path.realpath(home), "rt", "")
+
+
+def _runtime_root() -> str:
+    """The cache home's ``rt/``, resolved, memoized on the variables
+    get_cache_home() reads. A relative root also depends on the working
+    directory, so only it pays for os.getcwd()."""
+    key = tuple(os.environ.get(name) for name in _CACHE_HOME_INPUTS)
+    found = _runtime_root_memo.get(key)
+    if found is None:
+        home = get_cache_home()
+        found = _runtime_dir(home) if home.is_absolute() else ""
+        _runtime_root_memo[key] = found
+    if found:
+        return found
+    key += (os.getcwd(),)
+    found = _runtime_root_memo.get(key)
+    if found is None:
+        found = _runtime_dir(os.path.abspath(get_cache_home()))
+        _runtime_root_memo[key] = found
+    return found
+
+
+def _resolved_dir(path: str) -> str:
+    """The resolved directory of an absolute path, memoized per directory: a
+    file is named through whatever alias its caller used (the compiler hashes
+    resolved paths), and resolving each directory once is cheaper than
+    resolving every file."""
+    folder = os.path.dirname(path)
+    found = _resolved_dir_memo.get(folder)
+    if found is None:
+        found = os.path.join(os.path.realpath(folder), "")
+        _resolved_dir_memo[folder] = found
+    return found
+
+
+def file_identity(path: str | Path) -> tuple[int, int, int, int] | None:
+    """The (inode, size, mtime_ns, ctime_ns) identity of a file, or None.
+
+    A file of an extracted runtime's own sources (``rt/<key>/site/``) is
+    (0, size, mtime_ns, 0): they are written once per payload and never in
+    place, and copying the cache home (an image layer unpacked on a node)
+    moves only their inode and ctime. The runtime's python (``rt/<key>/python/``)
+    keeps the full identity: ``jac install --global`` installs into it.
+    """
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    folder = _resolved_dir(os.path.abspath(path))
+    root = _runtime_root()
+    if folder.startswith(root) and folder[len(root) :].split(os.sep)[1:2] == ["site"]:
+        return (0, st.st_size, st.st_mtime_ns, 0)
+    return (st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+def _digest_shard(name: str) -> dict[str, list]:
+    entries = _digest_shards.get(name)
+    if entries is None:
+        entries = {}
+        try:
+            raw = json.loads((get_digest_ledger_dir() / f"{name}.json").read_text())
+            if isinstance(raw, dict):
+                entries = raw
+        except (OSError, ValueError):
+            pass
+        _digest_shards[name] = entries
+    return entries
+
+
+def _hash_file(path: str) -> str:
+    stat_note("content_hash")
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def file_sha256(path: str | Path) -> str:
+    """The sha256 hex digest of a file's contents (raises OSError like open)."""
+    full = os.path.abspath(path)
+    ident = file_identity(full)
+    if ident is None:
+        return _hash_file(full)
+    known = _digest_memo.get(full)
+    if known is not None and known[0] == ident:
+        return known[1]
+    (folder, base) = os.path.split(full)
+    name = hashlib.sha256(folder.encode()).hexdigest()[:16]
+    rec = _digest_shard(name).get(base)
+    if isinstance(rec, list) and len(rec) == 5 and tuple(rec[:4]) == ident:
+        _digest_memo[full] = (ident, str(rec[4]))
+        return str(rec[4])
+    digest = _hash_file(full)
+    if time.time_ns() - max(ident[2], ident[3]) > _DIGEST_RACY_NS:
+        _digest_memo[full] = (ident, digest)
+        _digest_shard(name)[base] = [*ident, digest]
+        _digest_dirty.add(name)
+        if not _digest_flush_armed:
+            import atexit
+
+            atexit.register(flush_file_digests)
+            _digest_flush_armed.append(True)
+    return digest
+
+
+def flush_file_digests() -> None:
+    """Merge the digests this process recorded into the shared ledger."""
+    if not _digest_dirty:
+        return
+    base = get_digest_ledger_dir()
+    for name in sorted(_digest_dirty):
+        path = base / f"{name}.json"
+        merged: dict[str, list] = {}
+        try:
+            with FileLock(base / ".lock", timeout=5.0):
+                try:
+                    on_disk = json.loads(path.read_text())
+                    if isinstance(on_disk, dict):
+                        merged.update(on_disk)
+                except (OSError, ValueError):
+                    pass
+                merged.update(_digest_shards.get(name, {}))
+                if len(merged) > _DIGEST_SHARD_CAP:
+                    merged = dict(list(merged.items())[-_DIGEST_SHARD_CAP:])
+                atomic_write(path, json.dumps(merged).encode())
+        except (OSError, TimeoutError):
+            pass
+    _digest_dirty.clear()
+
+
+def forget_file_digests() -> None:
+    """Drop this process's digest memo (the shared ledger is kept)."""
+    _digest_memo.clear()
+    _digest_shards.clear()
+    _digest_dirty.clear()
+
+
+# Cache work counters: the one telemetry authority for "how much work did this
+# process do". Every tier notes events here (JIR reads, decodes and writes, key
+# computations, content hashes, parses, analyses, codegen, bundle builds), and
+# JAC_CACHE_STATS dumps the totals at exit: "1" writes a JSON line to stderr,
+# a path appends one JSON line per process to that file.
+
+_stat_counts: dict[str, int] = {}
+_stat_dump_armed: list[bool] = []
+
+
+def stat_note(event: str, n: int = 1) -> None:
+    """Count one occurrence of a cache-relevant event."""
+    _stat_counts[event] = _stat_counts.get(event, 0) + n
+    if not _stat_dump_armed:
+        _stat_dump_armed.append(True)
+        if os.environ.get("JAC_CACHE_STATS", "").strip():
+            import atexit
+
+            atexit.register(_dump_stats)
+
+
+def stats_snapshot() -> dict[str, int]:
+    """The counters noted so far in this process."""
+    return dict(sorted(_stat_counts.items()))
+
+
+def _dump_stats() -> None:
+    sink = os.environ.get("JAC_CACHE_STATS", "").strip()
+    line = json.dumps({"pid": os.getpid(), "argv": sys.argv[1:4], "stats": stats_snapshot()})
+    if os.sep in sink:
+        try:
+            with open(sink, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+    else:
+        sys.stderr.write(f"jac cache stats: {line}\n")

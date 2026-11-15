@@ -11,7 +11,8 @@ import from unittest.mock { MagicMock, patch }
 import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
+import from jaclang.server.server { JacAPIServer, ModuleIntrospector, ServerExtension }
+import from jaclang.runtime.constructs { WalkerArchetype }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -31,23 +32,23 @@ def get_free_port -> int {
 def _identity(tmpdir: str) -> any {
     import from jaclang.server.identity.config { configure_identity }
     import from jaclang.server.identity.user_manager { UserManager }
-    import from jaclang.server.settings { AuthSettings }
+    import from jaclang.server.settings { AuthSettings, PasswordSettings }
     Jac.set_base_path(tmpdir);
-    configure_identity(AuthSettings(password_hash_cost=10), tmpdir);
+    configure_identity(AuthSettings(password=PasswordSettings(hash_cost=10)), tmpdir);
     return UserManager(base_path=tmpdir);
 }
 
 test "user manager creation" {
     with TemporaryDirectory() as tmpdir {
         user_mgr = _identity(tmpdir);
-        result1 = user_mgr.create_user("user1", "pass1");
+        result1 = user_mgr.create_internal_user("user1", "pass1");
         assert "user_id" in result1 , f"{result1}";
         root1 = user_mgr.get_root_id(result1["user_id"]);
         assert root1;
-        result2 = user_mgr.create_user("user2", "pass2");
+        result2 = user_mgr.create_internal_user("user2", "pass2");
         assert "user_id" in result2;
         assert user_mgr.get_root_id(result2["user_id"]) != root1;
-        result3 = user_mgr.create_user("user1", "pass3");
+        result3 = user_mgr.create_internal_user("user1", "pass3");
         assert "error" in result3;
         user_mgr.close();
     }
@@ -56,11 +57,11 @@ test "user manager creation" {
 test "user manager authentication" {
     with TemporaryDirectory() as tmpdir {
         user_mgr = _identity(tmpdir);
-        created = user_mgr.create_user("testuser", "testpass");
+        created = user_mgr.create_internal_user("testuser", "testpass");
         auth_result = user_mgr.authenticate("testuser", "testpass");
         assert auth_result is not None;
         assert auth_result["user_id"] == created["user_id"];
-        assert auth_result["token"];
+        assert user_mgr.open_session(auth_result["user_id"]).token;
         assert user_mgr.authenticate("testuser", "wrongpass") is None;
         assert user_mgr.authenticate("nouser", "pass") is None;
         user_mgr.close();
@@ -70,7 +71,7 @@ test "user manager authentication" {
 test "user manager token validation" {
     with TemporaryDirectory() as tmpdir {
         user_mgr = _identity(tmpdir);
-        created = user_mgr.create_user("validuser", "validpass");
+        created = user_mgr.create_internal_user("validuser", "validpass");
         token = user_mgr.create_jwt_token(created["user_id"]);
         assert user_mgr.validate_token(token) == created["user_id"];
         assert user_mgr.validate_token("invalid_token") is None;
@@ -110,7 +111,7 @@ test "faux flag prints endpoint docs" {
         # Verify summary is present
         assert "TOTAL:" in output;
         # 2 functions / 20 endpoints: only the two user functions (add_numbers,
-        # greet) are exposed. _collect_functions skips jaclang framework helpers
+        # greet) are exposed. The served surface skips jaclang framework helpers
         # (connect, spawn, on_entry, set_trigger, …) that the compiler imports
         # into every module's namespace, so they no longer leak as endpoints.
         assert "2 functions" in output;
@@ -283,6 +284,19 @@ test "jac run --dev auto-installs watchdog even when not in jac.toml" {
     assert mock_provider.install_specs.call_args.args[1] == ["watchdog>=3.0.0"];
 }
 
+# `jac run --platform web <mobile app>` falls through to this serve path; it
+# must compile the client it is about to serve, like it does for a web app.
+test "a mobile app served on the web platform gets its client prepared" {
+    assert execution._serves_web_client(None, "");
+    assert execution._serves_web_client("web-app", "");
+    assert execution._serves_web_client("mobile", "web");
+    assert execution._serves_web_client("mobile", " Web ");
+    assert not execution._serves_web_client("mobile", "");
+    assert not execution._serves_web_client("mobile", "android");
+    assert not execution._serves_web_client("service", "web");
+    assert not execution._serves_web_client("desktop", None);
+}
+
 test "dev banner headlines vite port not api port" {
     with TemporaryDirectory() as tmpdir {
         captured_output = io.StringIO();
@@ -303,6 +317,56 @@ test "dev banner headlines vite port not api port" {
         assert "Local:     http://localhost:8000/" in output;
         assert "App:  http://localhost:8000/" in output;
         assert "API:  http://localhost:8001/" in output;
+    }
+}
+
+test "a vite dev server that fails to start reports why instead of a port" {
+    import from jaclang.client.artifact { ClientBundleError }
+    with TemporaryDirectory() as tmpdir {
+        with patch("jaclang.client.vite_bundler.ViteBundler") as bundler_cls {
+            bundler_cls.return_value.start_dev_server.side_effect = ClientBundleError(
+                "Vite exited with code 3 before it was ready: vite: bad config"
+            );
+            with redirect_stdout(io.StringIO()) {
+                with redirect_stderr(io.StringIO()) {
+                    (process, port, reason) = execution._start_vite_dev_server(
+                        tmpdir, 8000, 8001
+                    );
+                }
+            }
+        }
+        assert process is None;
+        assert port == 8000;
+        assert "exited with code 3" in reason , reason;
+    }
+}
+
+test "dev banner with no vite dev server shows the api and why, not an app url" {
+    with TemporaryDirectory() as tmpdir {
+        captured_output = io.StringIO();
+        with patch(
+            "jaclang.cli.commands.execution._get_network_ips", return_value=[]
+        ) {
+            with redirect_stdout(captured_output) {
+                with redirect_stderr(captured_output) {
+                    execution._print_startup_message(
+                        dev=True,
+                        no_client=False,
+                        primary_port=8001,
+                        api_port=8001,
+                        base_path=tmpdir,
+                        client_error="bun is unavailable"
+                    );
+                }
+            }
+        }
+        output = captured_output.getvalue();
+        assert "Local:     http://localhost:8001/" in output , output;
+        assert "Server ready (API only)" in output , output;
+        assert "The client dev server is not running: bun is unavailable"
+            in output , output;
+        assert "with HMR" not in output , output;
+        assert "App:" not in output , output;
     }
 }
 
@@ -328,6 +392,113 @@ test "api server construction is socket-free and builds a serving app" {
         app = srv.build_app();
         assert isinstance(app, ServingApp);
         assert app.router.all_endpoints() , "built app has no endpoints";
+    }
+}
+
+obj _CountingIntrospector(ModuleIntrospector) {
+    has resolves: int = 0;
+
+    def _resolve_declared(rel: str, name: str) -> any {
+        self.resolves += 1;
+        return super._resolve_declared(rel, name);
+    }
+}
+
+"""Looking up the served walkers used to re-resolve every one of them, so route
+registration paid the walker count twice over. Loading resolves nothing; the
+first full lookup resolves each served target once and later lookups reuse it."""
+test "repeated walker lookups do not re-resolve an unchanged module" {
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application }
+    prepared = prepare_application(
+        fixture_abs_path('serve_api.jac'), Jac.get_program(), FIXTURES
+    );
+    module = initialize_application(prepared);
+    with TemporaryDirectory() as tmpdir {
+        Jac.set_base_path(tmpdir);
+        introspector = _CountingIntrospector(module.__name__, tmpdir);
+        introspector.load();
+        assert introspector.resolves == 0 , f"load resolved {introspector.resolves} targets";
+        assert introspector.get_walkers() , "the fixture declares served walkers";
+        served = len(
+            [
+                rec
+                for rec in introspector._surface.values()
+                if rec.kind in ('walker', 'function') and rec.is_served()
+            ]
+        );
+        assert introspector.resolves == served , f"{introspector.resolves} resolutions for {served} targets";
+        for _ in range(8) {
+            introspector.get_walkers();
+        }
+        extra = introspector.resolves - served;
+        assert extra == 0 , f"lookups re-resolved {extra} times";
+    }
+}
+
+"""Registering routes used to re-sort a method's whole route list on every add and
+to look each walker up again through the full walker table, so startup grew with
+the square of the route count. Routes now come from the surface manifest, so
+registration resolves no walker class at all. Counted on a real build, not timed."""
+test "route registration grows with the route count, not its square" {
+    import math;
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application, forget }
+    walkers = 60;
+    with TemporaryDirectory() as tmpdir {
+        main_file = Path(tmpdir) / 'main.jac';
+        main_file.write_text(
+            ''.join(
+                'walker:pub w_'
+                    + str(i)
+                    + ' {\n    can go with Root entry {\n'
+                    + '        report 1;\n    }\n}\n\n' for i in range(walkers)
+            )
+        );
+        prepared = prepare_application(str(main_file), Jac.get_program(), tmpdir);
+        try {
+            module = initialize_application(prepared);
+            Jac.set_base_path(tmpdir);
+            srv = JacAPIServer(
+                module_name=module.__name__, port=get_free_port(), base_path=tmpdir
+            );
+            calls = {'sort_keys': 0, 'walker_tables': 0, 'resolves': 0};
+            def tally(frame: any, event: str, arg: any) {
+                if event != 'call' {
+                    return;
+                }
+                name = frame.f_code.co_name;
+                if name == 'route_sort_key' {
+                    calls['sort_keys'] += 1;
+                } elif name == 'get_walkers'
+                    and isinstance(frame.f_locals.get('self'), ModuleIntrospector) {
+                    calls['walker_tables'] += 1;
+                } elif name == '_resolve_declared' {
+                    calls['resolves'] += 1;
+                }
+            }
+            sys.setprofile(tally);
+            try {
+                app = srv.build_app();
+            } finally {
+                sys.setprofile(None);
+            }
+            routes = sum(len(bucket) for bucket in app.router.routes.values())
+                + len(app.router.ws_routes);
+            assert routes > 2 * walkers , f"expected every walker routed, got {routes}";
+            bound = routes * (math.ceil(math.log2(routes)) + 2);
+            assert calls['sort_keys'] <= bound , (
+                f"{calls['sort_keys']} sort-key calls for {routes} routes"
+            );
+            assert calls['walker_tables'] < walkers // 4 , (
+                f"{calls['walker_tables']} walker-table lookups for {walkers} walkers"
+            );
+            assert calls['resolves'] == 0 , (
+                f"registering {routes} routes resolved {calls['resolves']} targets"
+            );
+        } finally {
+            forget(str(main_file));
+        }
     }
 }
 

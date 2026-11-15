@@ -1,5 +1,3 @@
-import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-
 obj PreactBackend(ReactBackend) {
     def name -> str;
     def runtime_module -> str;

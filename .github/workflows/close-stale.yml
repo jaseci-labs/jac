@@ -23,7 +23,7 @@ on:
       days:
         description: 'Days without activity before an item is closed'
         type: string
-        default: '10'
+        default: '30'
       max_ops:
         description: 'Maximum items to close in one run'
         type: string
@@ -48,7 +48,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run == true }}
-          DAYS: ${{ inputs.days || '10' }}
+          DAYS: ${{ inputs.days || '30' }}
           MAX_OPS: ${{ inputs.max_ops || '150' }}
         run: |
           set -euo pipefail

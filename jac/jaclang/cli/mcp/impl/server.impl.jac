@@ -15,13 +15,6 @@ WORKFLOW:
 6. Do not present code to the user until it passes validation""";
 
 impl JacMcpServer.start -> None {
-    import from jaclang.cli.mcp.protocol {
-        build_engine,
-        serve_stdio,
-        serve_streamable_http,
-        serve_sse
-    }
-
     engine = build_engine(instructions=SERVER_INSTRUCTIONS);
 
     if self.transport == "stdio" {

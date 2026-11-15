@@ -15,7 +15,7 @@ impl NaIRGenPass._hash_order_position_ptr(
 impl NaIRGenPass._hash_order_alloc(b: ir.IRBuilder, capacity: ir.Value) -> ir.Value {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    malloc_fn = self._heap_extern("malloc");
     count = b.add(b.mul(capacity, ir.Constant(i64, 2)), ir.Constant(i64, 1));
     raw = b.call(malloc_fn, [b.mul(count, ir.Constant(i64, 8))], name="order.raw");
     order = b.bitcast(raw, i64.as_pointer(), name="order.array");
@@ -39,18 +39,25 @@ impl NaIRGenPass._emit_hash_order_compact_fn(
     order = b.load(
         b.gep(container, [ir.Constant(i32, 0), ir.Constant(i32, layout["order_idx"])])
     );
-    extent_ptr = self._hash_order_extent_ptr(b, order, capacity);
-    extent = b.load(extent_ptr);
     read_ptr = b.alloca(i64, name="order.read");
     write_ptr = b.alloca(i64, name="order.write");
     b.store(ir.Constant(i64, 0), read_ptr);
     b.store(ir.Constant(i64, 0), write_ptr);
+    live = fn.append_basic_block("live");
     scan = fn.append_basic_block("scan");
     check = fn.append_basic_block("check");
     copy = fn.append_basic_block("copy");
     advance = fn.append_basic_block("advance");
     finish = fn.append_basic_block("finish");
     done = fn.append_basic_block("done");
+    b.cbranch(
+        b.icmp_unsigned("==", order, ir.Constant(order.type, None), name="order.none"),
+        done,
+        live
+    );
+    b = ir.IRBuilder(live);
+    extent_ptr = self._hash_order_extent_ptr(b, order, capacity);
+    extent = b.load(extent_ptr);
     b.cbranch(b.icmp_unsigned("==", extent, length), done, scan);
     bs = ir.IRBuilder(scan);
     read = bs.load(read_ptr);

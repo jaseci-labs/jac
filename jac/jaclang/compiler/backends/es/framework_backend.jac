@@ -1,14 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
-import type from jaclang.compiler.backends.es.view_ir { ViewElement }
-
 obj FrameworkBackend {
     def name -> str abst;
     def runtime_module -> str;
@@ -19,7 +8,7 @@ obj FrameworkBackend {
     def lower_async_boundary(a: AsyncBoundary) -> es.Expression abst;
     def lower_state_read(name: str) -> es.Expression abst;
     def lower_view_expr(expr: es.Expression) -> es.Expression;
-    def lower_view(view: ViewElement, sync_loc: any) -> es.Expression abst;
+    def lower_view(view: ViewElement, locator: ViewLocator) -> es.Expression abst;
     def _get_setter_name(var_name: str) -> str;
     def state_field_symbols(s: StateField) -> list[str] abst;
     def ref_field_symbols(r: RefField) -> list[str] abst;

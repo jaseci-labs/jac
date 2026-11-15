@@ -434,6 +434,10 @@ test "apply_pwa decorates a built web dist" {
             assert "addEventListener" in sw;
             assert "install" in sw and "fetch" in sw;
             assert "client.ABC123.js" in sw , "the bundle is precached";
+            apply_pwa(dist_dir, project_dir);
+            assert "sw.js" not in (dist_dir / "sw.js").read_text() , (
+                "a rebuild over the last dist made the service worker precache itself"
+            );
             html = (dist_dir / "index.html").read_text();
             assert 'rel="manifest"' in html;
             assert "serviceWorker" in html;

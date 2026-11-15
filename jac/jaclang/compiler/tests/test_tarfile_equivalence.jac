@@ -22,14 +22,6 @@ import shutil;
 import tarfile;
 import tempfile;
 import from compression.zstd { ZstdCompressor, CompressionParameter }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tests.xbackend_equiv {
-    FIXTURES,
-    run_py_fixture,
-    get_func,
-    remember_engine_unit
-}
 
 
 """Build a deterministic PAX tar archive as bytes."""

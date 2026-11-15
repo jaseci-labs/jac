@@ -34,9 +34,9 @@ def get_jac_command -> list[str] {
 
 """Get environment dict with bun in PATH."""
 def get_env_with_bun -> dict[str, str] {
-    import from jaclang.client { get_bun }
+    import from tests.support { js_runtime_or_none }
     env = os.environ.copy();
-    bun_path = get_bun();
+    bun_path = js_runtime_or_none();
     if not bun_path {
         bun_path = shutil.which("bun");
     }

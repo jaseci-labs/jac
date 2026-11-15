@@ -63,6 +63,25 @@ glob FIXTURES = os.path.join(
          + "def span_width(s: Span) -> int {\n    return int(s.hi - s.lo);\n}\n\n"
          + "def measured(x: int) -> int {\n    m = Meter();\n    m.add(x);\n    return m.n;\n}\n"
      ),
+     EMBED_DECL = (
+         "import from c {\n    obj Inner {\n        has lo: i64,\n            hi: i64;\n    }\n"
+         + "    def labs(x: i64) -> i64;\n}\n\n"
+         + "def inner_width(lo: int, hi: int) -> int {\n    return int(labs(hi - lo));\n}\n"
+     ),
+     EMBED_USER = (
+         "import from embed_decl { Inner }\nimport from embed_decl { inner_width }\n"
+         + "import from c {\n    obj Outer {\n        has count: i64,\n            inner: Inner;\n    }\n"
+         + "    def llabs(x: i64) -> i64;\n}\n\n"
+         + "obj Holder {\n    has outer: Outer | None = None,\n        n: int = 3;\n}\n\n"
+         + "def held(x: int) -> int {\n    return Holder().n + int(llabs(x)) + inner_width(2, 7);\n}\n"
+     ),
+     EMBED_BARE_DECL = (
+         "import from c {\n    obj Inner {\n        has lo: i64,\n            hi: i64;\n    }\n}\n"
+     ),
+     EMBED_MAIN = (
+         "import from embed_user { held }\n\n"
+         + "with entry {\n    print(held(-4));\n}\n"
+     ),
      SPAN_TESTS = (
          "import from span_user { measured }\n\n"
          + 'test "a C struct re-exported by an inferred-native module" {\n'
@@ -275,6 +294,115 @@ test "a python importer binds a C struct re-exported by an inferred-native modul
     }
 }
 
+"""Write the embedding project: `embed_decl` declares the C record `Inner`;
+`embed_user` declares `Outer`, which holds an `Inner` by value, and names
+`Outer` (never `Inner`) in code its Python side emits; `main` is pinned to
+the server, so it reaches `embed_user` through that Python side."""
+def _embed_project(proj: str, alias: str = "", bare: bool = False) {
+    user = EMBED_USER;
+    if bare {
+        user = user.replace("import from embed_decl { inner_width }\n", "").replace(
+            " + inner_width(2, 7)", ""
+        );
+        assert "inner_width" not in user;
+    }
+    if alias {
+        user = user.replace("{ Inner }", f"{{ Inner as {alias} }}").replace(
+            "inner: Inner", f"inner: {alias}"
+        );
+        assert user != EMBED_USER;
+    }
+    files = {
+        "jac.toml": '[project]\nname = "embed"\n\n[placement.pins]\nmain = "server"\n',
+        "embed_decl.jac": EMBED_BARE_DECL if bare else EMBED_DECL,
+        "embed_user.jac": user,
+        "main.jac": EMBED_MAIN
+    };
+    for (name, text) in files.items() {
+        Path(proj, name).write_text(text, encoding="utf-8");
+    }
+}
+
+test "an import a kept C block's declarations are typed by is kept with it" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _embed_project(proj);
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=os.path.join(proj, "embed_user.jac"), options=CompileOptions()
+        );
+        assert mod.decided_codespace == "native" , mod.decided_codespace;
+        assert "Inner" not in python_side_name_refs(mod) , (
+            "the premise is gone: embed_user's python side names Inner itself"
+        );
+        blocks = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if imp.clib_decls
+        ];
+        assert len(blocks) == 1 and not blocks[0].native_only_drop , (
+            "Holder names Outer on embed_user's python side, so its C block stays"
+        );
+        inner = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if "Inner" in import_bound_names(imp)
+        ];
+        assert len(inner) == 1;
+        assert not inner[0].native_only_drop , (
+            "the kept C block binds Outer as it loads, and Outer holds an Inner: "
+            "dropping the import leaves `Inner` unbound there"
+        );
+    }
+}
+
+test "a python caller binds a C record that embeds another module's record" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _embed_project(proj);
+        # Holder().n + llabs(-4) + labs(7 - 2).
+        assert _run_anchor_main(proj) == "12";
+    }
+}
+
+test "a python caller binds an embedded C record imported under another name" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        # `import from embed_decl { Inner as Held }` binds only `Held` on the
+        # Python side, so the record's descriptor has to name its field's
+        # type the way the module spells it.
+        _embed_project(proj, alias="Held");
+        assert _run_anchor_main(proj) == "12";
+    }
+}
+
+test "a module that only declares a C record still binds it on its python side" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        # `embed_decl` holds nothing but the record: no statement on its
+        # Python side names `Inner`, yet another module's kept C block does.
+        _embed_project(proj, bare=True);
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=os.path.join(proj, "embed_decl.jac"), options=CompileOptions()
+        );
+        assert mod.decided_codespace == "native" , mod.decided_codespace;
+        assert not python_side_name_refs(mod) , (
+            "the premise is gone: embed_decl's python side names something"
+        );
+        blocks = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if imp.clib_decls
+        ];
+        assert len(blocks) == 1 and not blocks[0].native_only_drop , (
+            "a record is a name other modules import: its block stays bound"
+        );
+        # Holder().n + llabs(-4).
+        assert _run_anchor_main(proj) == "7";
+    }
+}
+
 test "a python-side C binding loads its library when a function is first called" {
     import from jaclang.runtime.cinterop { clib_bind }
     import json;
@@ -299,6 +427,29 @@ test "a python-side C binding loads its library when a function is first called"
         raised = True;
     }
     assert raised , "calling into an unloadable library must say so";
+}
+
+test "a python-side C binding finds a system library by its bare name" {
+    import from jaclang.runtime.cinterop { clib_bind }
+    import json;
+    # `import from c { ... }` names the library `c`. Where the file that name
+    # spells out is not the library itself (glibc's `libc.so` is a linker
+    # script), the binding asks the system which file the name means.
+    desc = {
+        "lib": {"names": ["c"], "level": 0},
+        "structs": [],
+        "opaque": [],
+        "functions": [
+            {
+                "name": "labs",
+                "params": [["x", ["s", "i64"]]],
+                "ret": ["s", "i64"],
+                "variadic": False
+            }
+        ]
+    };
+    bound = clib_bind({"__file__": ""}, json.dumps(desc));
+    assert bound["labs"](-7) == 7;
 }
 
 test "the emitter unit no longer names the driver" {

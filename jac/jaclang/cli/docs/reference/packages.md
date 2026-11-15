@@ -44,6 +44,8 @@ A Jac dependency is either a version requirement string (from a registry) or a t
 
 Names are always scoped: `org/name`, both halves lowercase identifiers (`[a-z][a-z0-9_]*`).
 
+Repeated path dependencies must resolve to the same directory; relative and symlink aliases are allowed. Different directories for one package name fail with both sources and their requesting manifests in the error. Repeated git dependencies must use the same repository URL and resolved commit.
+
 !!! note "Migrating from the old `[dependencies]`"
     Before packages, `[dependencies]` held PyPI requirements. `jac.toml` now rejects a bare `numpy = ">=2"` under `[dependencies]` with an error that names the move. Run `jac fix dependencies` to move every PyPI entry (including the old `[dependencies.git]` table) into `[dependencies.pypi]`.
 
@@ -144,7 +146,7 @@ jac publish               # build and open the index pull request
 - `jac check` is clean under the package's own configuration
 - every dependency comes from a registry (no `path` or `git` dependencies)
 - `[project.urls] repository` names the public source repository
-- **semver**: the exported API is compared with the latest release of the same major version. Removing or changing anything a consumer can use (a module, a function, a parameter, a field, an ability) needs a major bump; additions need at least a minor bump. A changed `has` field on a `node` or `edge` is also reported as a persistence schema change, since stored graphs may no longer load.
+- **semver**: the exported API is compared with the latest release of the same major version. Removing or changing anything a consumer can use (a module, a function, a parameter, a field, an ability) needs a major bump; additions need at least a minor bump. A new parameter that an existing call's positional argument would bind to (one inserted before an existing positional parameter, or placed ahead of `*args`) changes what that call means, so it also needs a major bump. The same holds for the `has` fields an archetype's constructor binds in declaration order, inherited fields first: a field inserted before an existing one, a reorder, or a field added to a base class changes what an existing `Foo(7)` builds and needs a major bump, while a field appended after the existing ones stays minor. An archetype with its own `init` is compared through that `init`'s signature instead. A changed `has` field on a `node` or `edge` is also reported as a persistence schema change, since stored graphs may no longer load.
 
 It then uploads the `.jab` as a release asset on your fork of the index repository and opens a pull request that adds one line to `index/<org>/<name>.json` and, for a library, the version's API to `api/<org>/<name>/<version>.json`. The index's CI re-runs the gates, copies the artifact into the index's immutable blob store, and merges. Published versions never change; `jac publish --yank <version>` opens a pull request that marks a version yanked, which stops new resolutions from choosing it while existing locks keep working.
 
@@ -172,7 +174,7 @@ internal = "https://raw.githubusercontent.com/acme/jac-index/main/"
 "acme/secret" = { version = "^1", registry = "internal" }
 ```
 
-`JAC_REGISTRY` overrides the default registry's URL (a mirror, or a `file://` directory in tests), and `JAC_OFFLINE=1` resolves from cached index files and the store only.
+`JAC_REGISTRY` overrides the default registry's URL (a mirror, or a `file://` directory in tests), and an offline project (`[network] offline = true` in `jac.toml`) resolves from cached index files and the store only.
 
 ## Templates
 

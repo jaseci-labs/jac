@@ -220,7 +220,7 @@ impl scope_stylesheet(css: str, module_path: str, class_map: dict[str, str]) -> 
 }
 
 impl load_style_annex(module_path: str) -> (ScopedStyleSheet | None) {
-    css_path = discover_style_annex(module_path);
+    css_path = style_annex_of(module_path);
     if (css_path is None) {
         return None;
     }

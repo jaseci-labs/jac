@@ -4,6 +4,8 @@ import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.tools.cfg_dot { cfg_dot_from_file }
+import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.frontend.unitree as uni;
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
 
@@ -319,6 +321,49 @@ test "cfg for else" {
     assert dot == expected_dot;
 }
 
+test "cfg break and continue in a loop else leave for the enclosing loop" {
+    dot = cfg_dot_from_file(
+        file_name=os.path.join(FIXTURES, "cfg_loop_else_control.jac")
+    );
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef keep_odd( rows : list [ list [ int ] ] ) -> int\\nkept = 0 ;", shape=box];\n'
+        + '  1 [label="BB1\\nfor row in rows", shape=box];\n'
+        + '  2 [label="BB2\\nfor x in row", shape=box];\n'
+        + '  3 [label="BB3\\nif x % 2 == 0", shape=box];\n'
+        + '  4 [label="BB4\\nbreak ;\\nkept += 1 ;", shape=box];\n'
+        + '  5 [label="BB5\\ncontinue ;", shape=box];\n'
+        + '  6 [label="BB6\\nreturn kept ;", shape=box];\n'
+        + '  7 [label="BB7\\ndef stop_at_odd( rows : list [ list [ int ] ] ) -> int\\nseen = 0 ;", shape=box];\n'
+        + '  8 [label="BB8\\nfor row in rows", shape=box];\n'
+        + '  9 [label="BB9\\nfor x in row", shape=box];\n'
+        + '  10 [label="BB10\\nif x % 2 == 0", shape=box];\n'
+        + '  11 [label="BB11\\nbreak ;\\nseen += 1 ;", shape=box];\n'
+        + '  12 [label="BB12\\nbreak ;", shape=box];\n'
+        + '  13 [label="BB13\\nreturn seen ;", shape=box];\n'
+        + "  0 -> 1;\n"
+        + "  1 -> 2;\n"
+        + "  1 -> 6;\n"
+        + "  2 -> 3;\n"
+        + "  2 -> 5;\n"
+        + '  3 -> 4 [label="T"];\n'
+        + "  3 -> 2;\n"
+        + "  4 -> 1;\n"
+        + "  5 -> 1;\n"
+        + "  7 -> 8;\n"
+        + "  8 -> 9;\n"
+        + "  8 -> 13;\n"
+        + "  9 -> 10;\n"
+        + "  9 -> 12;\n"
+        + '  10 -> 11 [label="T"];\n'
+        + "  10 -> 9;\n"
+        + "  11 -> 8;\n"
+        + "  12 -> 13;\n"
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
 test "cfg raise terminal" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_raise.jac"));
     expected_dot = (
@@ -489,4 +534,24 @@ test "cfg comprehension in ternary branch" {
         + "}\n"
     );
     assert dot == expected_dot;
+}
+
+test "cfg try tails run finally" {
+    dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_try_tails.jac"));
+    assert "  2 -> 3;\n" in dot and "  2 -> 4;\n" not in dot , dot;
+    assert "  8 -> 9;\n" in dot and "  8 -> 10;\n" not in dot , dot;
+}
+
+test "cfg try body statements may raise into except" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "cfg_try_catch.jac"));
+    handler = mod.get_all_sub_nodes(uni.Except)[0];
+    sources = sorted([nd.loc.first_line for nd in handler.bb_catch_in]);
+    assert sources == [4, 5, 6] , sources;
+    for nd in handler.bb_catch_in {
+        assert handler not in nd.bb_out , nd.loc.first_line;
+    }
+    bare_return_handler = mod.get_all_sub_nodes(uni.Except)[1];
+    sources = [nd.loc.first_line for nd in bare_return_handler.bb_catch_in];
+    assert sources == [16] , sources;
 }

@@ -21,7 +21,6 @@ import os;
 import sys;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
 
 
 glob _LIB_SRC: str = (

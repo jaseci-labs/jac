@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 
 def deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any];
 

@@ -203,7 +203,13 @@ impl WebSocketConnectionManager._local_fanout(
     if not conns {
         return;
     }
-    tasks = [self.send_to(ctx, message) for ctx in conns];
+    text: (str | None) = None;
+    try {
+        text = dumps(message, `default=_ws_json_default);
+    } except Exception {
+        text = None;
+    }
+    tasks = [self.send_to(ctx, message, text) for ctx in conns];
     await asyncio.gather(*tasks, return_exceptions=True);
 }
 
@@ -221,15 +227,18 @@ impl WebSocketConnectionManager.broadcast_target(
 }
 
 impl WebSocketConnectionManager.send_to(
-    ctx: ConnectionContext, message: dict[str, any]
+    ctx: ConnectionContext, message: dict[str, any], text: (str | None) = None
 ) -> bool {
     if ctx.closed {
         return False;
     }
     try {
-        await asyncio.wait_for(
-            ctx.websocket.send_json(message), timeout=self.send_timeout
-        );
+        if text is None {
+            sending = ctx.websocket.send_json(message);
+        } else {
+            sending = ctx.websocket.send_text(text);
+        }
+        await asyncio.wait_for(sending, timeout=self.send_timeout);
         return True;
     } except asyncio.TimeoutError {
         logger.warning(
@@ -271,7 +280,28 @@ impl _ws_stream_next(gen: any) -> any {
     }
 }
 
-impl _ws_stream_result(send_result: any, result: any) {
+impl _ws_close_stream(result: any, abandon: Callable[[], None]) -> None {
+    try {
+        if isgenerator(result) {
+            await asyncio.get_running_loop().run_in_executor(None, result.close);
+        } else {
+            await result.aclose();
+        }
+    } except BaseException as e {
+        logger.warning(
+            f"WS stream could not be closed ({type(e).__name__}: {e}); aborting "
+            "its request's work so the request scope does not commit it. A "
+            "stream still running in its thread can write again before the "
+            "scope closes."
+        );
+        abandon();
+        if not isinstance(e, Exception) {
+            raise;
+        }
+    }
+}
+
+impl _ws_stream_result(send_result: any, result: any, abandon: Callable[[], None]) {
     stream_error: (str | None) = None;
     try {
         if isgenerator(result) {
@@ -293,6 +323,8 @@ impl _ws_stream_result(send_result: any, result: any) {
     } except Exception as e {
         logger.error(f"WS stream error: {e}");
         stream_error = str(e);
+    } finally {
+        await _ws_close_stream(result, abandon);
     }
     if stream_error is None {
         await send_result({'ok': True, 'type': 'done'});

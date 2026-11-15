@@ -517,3 +517,24 @@ def:protect normal_func -> dict[str, any] {
 def:protect get_execution_log -> dict[str, any] {
     return {"log": list(execution_log)};
 }
+
+# ============================================================================
+# Session assurance (second factor) - read by an app for the current caller
+# ============================================================================
+import from jaclang.server.identity.assurance {
+    caller_assurance_level,
+    caller_authentication_methods
+}
+
+def:protect session_assurance -> dict[str, any] {
+    return {
+        "level": caller_assurance_level(),
+        "methods": caller_authentication_methods()
+    };
+}
+
+walker:protect SessionAssurance {
+    can run with Root entry {
+        report {"level": caller_assurance_level()};
+    }
+}

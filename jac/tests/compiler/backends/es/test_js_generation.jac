@@ -12,6 +12,7 @@ import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import from tests.compiler.backends.es.codegen_helpers {
+    analyze_fixture_and_emit_js,
     compile_fixture_to_js,
     compile_fixture_to_js_production,
     run_js_module,
@@ -359,19 +360,22 @@ test "empty file generates minimal js" {
     }
 }
 
-test "type to typeof transformation" {
-    jac_code = "\"\"\"Test type() to typeof conversion.\"\"\"\n\ndef check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
+test "type() lowers to the runtime type object" {
+    jac_code = "\"\"\"Test type() lowering.\"\"\"\n\ndef check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
 
     temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
 
-        for pattern in ["typeof x", "typeof y", "typeof my_obj", "typeof arr[0]"] {
+        for pattern in [
+            "_jac.builtin.type(x)",
+            "_jac.builtin.type(y)",
+            "_jac.builtin.type(my_obj)",
+            "_jac.builtin.type(arr[0])"
+        ] {
             assert pattern in js_code;
         }
-        assert "type(" not in js_code;
-        assert js_code.count("typeof") == 4;
         assert_balanced_syntax(js_code, temp_path);
     } finally {
         os.unlink(temp_path);
@@ -550,6 +554,49 @@ test "lambda assignment to an enclosing local stays a closure rebind" {
     );
     assert "let count = (count + 1);" not in js_code;
     assert_balanced_syntax(js_code, temp_path);
+}
+
+test "every handler a for slot builds acts on its own item" {
+    # #8168: a local assigned in a `for` slot body, bare or annotated, is local
+    # to the loop, so each handler keeps its own iteration's value. The loop
+    # target, a .map() lambda-body local (#8130) and a parameter-bound factory
+    # are the same contract.
+    fixture_file_path = os.path.join(FIXTURES, "for_slot_handlers.jac");
+    (prog, js_code) = analyze_fixture_and_emit_js(fixture_file_path);
+    assert not prog.errors_had , "\n".join(e.pretty_print() for e in prog.errors_had);
+
+    harness = (
+        "\nfunction __jacJsx(tag, props, kids) {"
+        " return {tag, props, kids: kids === undefined ? [] : kids}; }\n"
+        "const out = [];\n"
+        "const tree = Handlers({items: [{id: 'first'}, {id: 'second'}, {id: 'last'}],"
+        " sink: (t) => out.push(t)});\n"
+        "const found = [];\n"
+        "(function walk(n, section) {\n"
+        "  if (n == null || typeof n !== 'object') return;\n"
+        "  if (Array.isArray(n)) { for (const c of n) walk(c, section); return; }\n"
+        "  if (n.props && n.props.id) section = n.props.id;\n"
+        "  if (n.props && typeof n.props.onClick === 'function')"
+        " found.push([section, n.props.onClick]);\n"
+        "  walk(n.kids, section);\n"
+        "})(tree, '?');\n"
+        "const bySection = {};\n"
+        "for (const [s, fn] of found) { out.length = 0; fn();"
+        " (bySection[s] = bySection[s] || []).push(out[0]); }\n"
+        "console.log(JSON.stringify(bySection));\n"
+    );
+    result = run_js_module(js_code + harness);
+    assert result.returncode == 0 , (
+        f"for-slot handlers crashed in Node:\nstderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    for section in ["for_slot", "annotated", "factory", "map_lambda", "loop_target"] {
+        assert got.get(section)
+            == [f"{section}:{item}" for item in ["first", "second", "last"]] , (
+            f"every '{section}' handler must act on its own item, got {got}\njs:\n{js_code}"
+        );
+    }
+    assert_balanced_syntax(js_code, fixture_file_path);
 }
 
 test "lambda returning dict literal parenthesises the arrow body" {
@@ -2889,6 +2936,52 @@ test "builtin type used as a value lowers to a callable (#7454)" {
     assert_balanced_syntax(js_code, "builtin_type_as_value.jac");
 }
 
+"""`type`, `list`, `dict`, `str` and `set` lex as type keywords, so every read
+of a parameter, loop variable or local with one of those names parsed as a
+BuiltinType and lowered to `_jac.types.<name>`: a component prop named `type`
+called `.toUpperCase()` on the runtime's type object."""
+test "a binding named after a builtin type reads the binding, not the type (#9643)" {
+    js_code = compile_fixture_to_js("builtin_type_name_bindings.jac", FIXTURES);
+    fn_idx = js_code.find("function upper_type");
+    assert fn_idx >= 0 , "compiled function upper_type must be present";
+    user_js = js_code[fn_idx:];
+    for name in ["type", "list", "dict", "set"] {
+        assert f"_jac.types.{name}" not in user_js , (
+            f"a read of the binding `{name}` lowered to the runtime type:\n" + user_js
+        );
+    }
+
+    wrapper = (
+        js_code
+        + "\nconsole.log(JSON.stringify({"
+        + "  upper_type: upper_type(\"abc\"),"
+        + "  count_items: count_items([\"a\", \"b\", \"c\"]),"
+        + "  value_of: value_of({\"k\": 7}, \"k\"),"
+        + "  exclaim: exclaim(\"hi\"),"
+        + "  uppers: uppers([\"x\", \"y\"]),"
+        + "  still_types: still_types(5)"
+        + "}));\n"
+    );
+    result = run_js_module(wrapper);
+    assert result.returncode == 0 , (
+        "builtin-type-named bindings crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["upper_type"] == "ABC" , f"param `type`: {got['upper_type']}\njs:\n{js_code}";
+    assert got["count_items"] == 3 , f"param `list`: {got['count_items']}\njs:\n{js_code}";
+    assert got["value_of"] == 7 , f"param `dict`: {got['value_of']}\njs:\n{js_code}";
+    assert got["exclaim"] == "hi!" , f"param `str`: {got['exclaim']}\njs:\n{js_code}";
+    assert got["uppers"] == ["X", "Y", "done"] , (
+        f"loop variable `type` and local `set`: {got['uppers']}\njs:\n{js_code}"
+    );
+    assert got["still_types"] == ["5", False] , (
+        f"str(x) and isinstance(x, str): {got['still_types']}\njs:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, "builtin_type_name_bindings.jac");
+}
+
 test "imported JS/TS class constructs with new (#8017)" {
     # A `.d.ts`-declared class binds as a plain `variable` symbol, so
     # classify_call reports "function" and the pre-fix backend emitted
@@ -3014,6 +3107,11 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
         + "  min_max_key: min_max_by_key([\"ccc\", \"a\", \"bb\"]),"
         + "  min_spread: min_of_spread([5, 1, 3]),"
         + "  min_max_varargs: min_max_varargs(3, 1, 2),"
+        + "  sorted_kwargs_order: sorted_kwargs_order([\"ccc\", \"a\", \"bb\"]),"
+        + "  sorted_kwargs_spread: sorted_kwargs_spread("
+        + "[\"ccc\", \"a\", \"bb\"], {key: (s) => s.length}),"
+        + "  pos_spread_kwargs: pos_spread_with_kwargs([3.14159], [[1, 2, 3]]),"
+        + "  method_kwargs: method_kwargs([\"ccc\", \"a\", \"bb\"], \"a b c\"),"
         + "  empty_error: _emptyErr"
         + "}));\n"
     );
@@ -3045,6 +3143,7 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
     # one `...xs` entry, which the fix must wrap in `[...]` rather than pass
     # straight through -- otherwise xs's elements splice into the runtime
     # helper's own argument list instead of forming the array it expects.
+    # The keyword rows below (#9120) must resolve by name, not source order.
     expected_scalars = {
         "combined min(a)": (got["combined"][0], 1),
         "combined max(a)": (got["combined"][1], 2),
@@ -3052,7 +3151,41 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
         "max(items, key=)": (got["min_max_key"][1], "ccc"),
         "min(*xs)": (got["min_spread"], 1),
         "min(a, b, c)": (got["min_max_varargs"][0], 1),
-        "max(a, b, c)": (got["min_max_varargs"][1], 3)
+        "max(a, b, c)": (got["min_max_varargs"][1], 3),
+        "sorted(xs, reverse=True)": (got["summarize"]["sorted_reverse"], [3, 2, 1]),
+        "sum(xs, start=)": (got["summarize"]["sum_kwarg"], 16),
+        "enumerate(xs, start=)": (
+            got["summarize"]["enumerated_kwarg"],
+            [[5, 3], [6, 1], [7, 2]]
+        ),
+        "round(x, ndigits=)": (got["numeric"]["round_kwarg"], 3.14),
+        "sorted(key=, reverse=)": (
+            got["sorted_kwargs_order"]["key_then_reverse"],
+            ["ccc", "bb", "a"]
+        ),
+        "sorted(reverse=, key=)": (
+            got["sorted_kwargs_order"]["reverse_then_key"],
+            ["ccc", "bb", "a"]
+        ),
+        "pow(base=, exp=)": (got["numeric"]["pow_base_exp"], 125),
+        "pow(exp=, base=)": (got["numeric"]["pow_exp_base"], 125),
+        "complex(imag=, real=)": (got["numeric"]["complex_kwarg"], {"re": 1, "im": 2}),
+        "sorted(reverse=, **spread)": (got["sorted_kwargs_spread"], ["ccc", "bb", "a"]),
+        "round(*args, ndigits=)": (got["pos_spread_kwargs"][0], 3.14),
+        "sum(*args, start=)": (got["pos_spread_kwargs"][1], 16),
+        "list.sort(reverse=)": (
+            got["method_kwargs"]["sort_reverse"],
+            ["ccc", "bb", "a"]
+        ),
+        "list.sort(reverse=, key=)": (
+            got["method_kwargs"]["sort_reverse_key"],
+            ["ccc", "bb", "a"]
+        ),
+        "str.split(maxsplit=)": (got["method_kwargs"]["split_maxsplit"], ["a", "b c"]),
+        "str.split(maxsplit=, sep=)": (
+            got["method_kwargs"]["split_kw_order"],
+            ["a", "b c"]
+        )
     };
     for (label, (actual, expected)) in expected_scalars.items() {
         assert actual == expected , (

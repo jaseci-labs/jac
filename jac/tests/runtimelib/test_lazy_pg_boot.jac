@@ -371,14 +371,14 @@ test "candidate discovery never offers a privileged account" {
 
 test "the official image bakes the embedded postgres distribution" {
     text = DOCKERFILE.read_text();
-    pinned = re.search(r"(?m)^ENV\s+JAC_PG_DIST=(\S+)", text);
-    assert pinned is not None , (
-        "the image must pin JAC_PG_DIST so no distribution is fetched at boot"
+    assert re.search(r"(?m)^RUN jac db fetch\b", text) , (
+        "the image must fetch the distribution at build time, not at boot"
     );
-    dist = pinned.group(1);
-    assert f"{dist}" in text.split("ENV JAC_PG_DIST=")[0] , (
-        f"nothing in the build populates {dist}; the image would still "
-        f"download postgres at container start"
+    assert "JAC_PG_DIST" not in text , (
+        "the cached distribution is found by the router; nothing pins it by env"
+    );
+    assert 'chmod 1777 "${JAC_CACHE_HOME}/pg"' in text , (
+        "the unprivileged account must be able to create its cluster under pg/"
     );
 }
 

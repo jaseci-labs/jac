@@ -2,7 +2,7 @@ node a {
     has val: float;
 }
 
-edge Edge1 : any --> any {
+edge Edge1: any --> any {
     has val: int = 5;
 }
 
@@ -22,6 +22,7 @@ with entry {
 }
 
 glob p = b[1];
+
 with entry {
     for k in range(0, 10) {
         p +>:Edge1:val=6:+> (p := a(val=k));
@@ -58,11 +59,15 @@ with entry {
         d2.count('a(val') == 19,
         d2.count('#F5E5FF') == 2,
         'Edge1' not in d2,
-        d2.count('label=""') == 42
+        d2.count('label=""') == 45
     );
     print(d3.count('a(val') == 6, d3.count('label=""') == 5, d3.count('#F5E5FF') == 1);
     print(d4.count("a(val") == 25, d4.count('label=""') == 66, d4.count('#FFF0F') == 3);
-    print(d5.count("Edge1(val=6)") == 2, d5.count('label=""') == 30);
+    print(
+        d5.count("a(val") == 10,
+        d5.count("Edge1(val=6)") == 1,
+        d5.count('label=""') == 17
+    );
     # print(l3<l2);
 
     # print(d1);

@@ -1,26 +1,4 @@
 import from types { SimpleNamespace }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.deploy.target.kubernetes.target {
-    KubernetesTarget,
-    restorable_pod_template,
-    app_bundle_digest,
-    releases_from_revisions,
-    fleet_targets_for_release,
-    fleet_revert_order
-}
-import from jaclang.scale.sdk {
-    ScaleClient,
-    AutoscalerRuntimeStatus,
-    AutoscalerTransition
-}
-import from jaclang.scale.models.resource_status {
-    REPLICA_FLOOR_ANNOTATION,
-    assess_workload
-}
 
 # A Deployment as a pre-0.34.9 toolchain wrote it: bare app name, no role label,
 # and the same pod selector the current one uses.
@@ -72,10 +50,15 @@ def _hand_rolled_canary(app: str) -> any {
 
 obj FakeAppsV1 {
     has items: list[any],
-        deleted: list[str] = [];
+        deleted: list[str] = [],
+        stateful_sets: list[any] = [];
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
         return SimpleNamespace(items=list(self.items));
+    }
+
+    def list_namespaced_stateful_set(namespace: str, **kwargs: any) -> any {
+        return SimpleNamespace(items=list(self.stateful_sets));
     }
 
     def delete_namespaced_deployment(name: str, namespace: str, **kwargs: any) {
@@ -634,6 +617,203 @@ test "assess_workload settles only on active or intentionally inactive" {
 }
 
 
+obj FakeCoreV1 {
+    has pods: list[any];
+
+    def list_namespaced_pod(namespace: str, **kwargs: any) -> any {
+        return SimpleNamespace(items=list(self.pods));
+    }
+
+    def list_node(**kwargs: any) -> any {
+        return SimpleNamespace(items=[]);
+    }
+}
+
+
+def _container(
+    ready: bool,
+    restarts: int,
+    waiting: (str | None) = None,
+    last_terminated: bool = False
+) -> any {
+    return SimpleNamespace(
+        name="main",
+        ready=ready,
+        restart_count=restarts,
+        state=SimpleNamespace(
+            waiting=SimpleNamespace(reason=waiting) if waiting else None,
+            running=None if waiting else SimpleNamespace(),
+            terminated=None
+        ),
+        last_state=SimpleNamespace(
+            terminated=SimpleNamespace(exit_code=1) if last_terminated else None
+        )
+    );
+}
+
+
+def _pod(
+    app: str,
+    ready: bool,
+    restarts: int,
+    waiting: (str | None) = None,
+    last_terminated: bool = False,
+    deleting: bool = False,
+    labeled: bool = True,
+    statuses: bool = True,
+    init_statuses: (list[any] | None) = None,
+    phase: str = "Running"
+) -> any {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(
+            name=f"{app}-pod",
+            labels={"app": app} if labeled else None,
+            deletion_timestamp="2026-01-01T00:00:00Z" if deleting else None
+        ),
+        status=SimpleNamespace(
+            phase=phase,
+            init_container_statuses=init_statuses,
+            container_statuses=[_container(ready, restarts, waiting, last_terminated)]
+                if statuses
+                else None
+        )
+    );
+}
+
+
+# restart_count is the lifetime total and never goes down. `jac deploy status`
+# read any nonzero count as "crash-looping", so a pod that restarted once while
+# its volume attached read degraded through every later rollout. Only a
+# container (init containers included) that is not Ready now and has restarted
+# is crash-looping, which is the rule the deploy-wait path shares.
+test "status reads a container's current state, not its lifetime restart count" {
+    import unittest.mock;
+    # (label, the app's pod, expected status of a Deployment mid-rollout)
+    cases: list[tuple[str, any, str]] = [
+        (
+            "restarted twice, Ready now",
+            _pod("standup", ready=True, restarts=2),
+            "activating"
+        ),
+        (
+            "waiting in CrashLoopBackOff",
+            _pod("standup", ready=False, restarts=2, waiting="CrashLoopBackOff"),
+            "degraded"
+        ),
+        (
+            "not Ready and its last run terminated",
+            _pod("standup", ready=False, restarts=3, last_terminated=True),
+            "degraded"
+        ),
+        (
+            "not Ready, running, restarted, no last state recorded",
+            _pod("standup", ready=False, restarts=3),
+            "degraded"
+        ),
+        (
+            "an init container in CrashLoopBackOff",
+            _pod(
+                "standup",
+                ready=False,
+                restarts=0,
+                waiting="PodInitializing",
+                init_statuses=[_container(False, 2, waiting="CrashLoopBackOff")]
+            ),
+            "degraded"
+        ),
+        (
+            "an init container that finished after a restart",
+            _pod(
+                "standup",
+                ready=True,
+                restarts=0,
+                init_statuses=[_container(True, 2, last_terminated=True)]
+            ),
+            "activating"
+        ),
+        (
+            "still starting, never restarted",
+            _pod("standup", ready=False, restarts=0, waiting="ContainerCreating"),
+            "activating"
+        ),
+        (
+            "an outgoing pod being deleted",
+            _pod(
+                "standup",
+                ready=False,
+                restarts=5,
+                waiting="CrashLoopBackOff",
+                deleting=True
+            ),
+            "activating"
+        ),
+        (
+            "an evicted pod whose container had restarted",
+            _pod(
+                "standup", ready=False, restarts=1, last_terminated=True, phase="Failed"
+            ),
+            "activating"
+        ),
+        (
+            "another app's crash-looping pod",
+            _pod("other", ready=False, restarts=5, waiting="CrashLoopBackOff"),
+            "activating"
+        ),
+        (
+            "a pod with no labels",
+            _pod(
+                "standup",
+                ready=False,
+                restarts=5,
+                waiting="CrashLoopBackOff",
+                labeled=False
+            ),
+            "activating"
+        ),
+        (
+            "a pod that reports no container statuses yet",
+            _pod("standup", ready=False, restarts=0, statuses=False),
+            "activating"
+        )
+    ];
+    deployment = _rollout(generation=2, observed=2, replicas=2, updated=1, available=1);
+    deployment.metadata.name = "standup";
+    core = FakeCoreV1(pods=[]);
+    wrong: list[str] = [];
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
+    ), unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+        return_value=FakeAppsV1(items=[deployment])
+    ), unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.CoreV1Api",
+        return_value=core
+    ) {
+        for (label, pod, expected) in cases {
+            core.pods = [pod];
+            status = _target().get_full_status("standup");
+            app = [
+                c
+                for c in status["components"]
+                if c["name"] == "Jaseci App"
+            ][0];
+            if app["status"] != expected {
+                wrong.append(f"{label}: expected {expected}, got {app['status']}");
+            }
+        }
+    }
+    assert wrong == [] , "\n".join(wrong);
+    # min_restarts is one threshold for every state, so a waiting container
+    # under it is tolerated and one at it is not.
+    assert not container_crashlooping(
+        _container(False, 1, waiting="CrashLoopBackOff"), 3
+    );
+    assert container_crashlooping(_container(False, 3, waiting="CrashLoopBackOff"), 3);
+    assert container_crashlooping(_container(False, 3), 3);
+    assert not container_crashlooping(_container(True, 9), 3);
+}
+
+
 # ReplicaSet list order is not guaranteed by the API. Keying a release on the
 # bundle digest alone puts every revision of a deployment that shipped that
 # bundle into one release, so taking the last one seen would let the API report
@@ -1001,48 +1181,92 @@ test "a compensating restore puts back the marker the live template carried" {
 }
 
 
-obj _UnreadableApps {
+obj _RetentionApps {
+    has broken: str = "";
+
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
-        return SimpleNamespace(items=[]);
+        if self.broken == "deployments" {
+            raise RuntimeError("deployments is forbidden: RBAC");
+        }
+        pending = {
+            "initContainers": [
+                {
+                    "name": "jac-bootstrap",
+                    "args": ["/jac-bundles/bundles/app/pending.jab"]
+                }
+            ]
+        };
+        return SimpleNamespace(
+            items=[
+                SimpleNamespace(
+                    metadata=SimpleNamespace(name="app-deployment"),
+                    spec=SimpleNamespace(template=SimpleNamespace(spec=pending))
+                )
+            ]
+        );
     }
 
     def list_namespaced_replica_set(namespace: str, **kwargs: any) -> any {
-        raise RuntimeError("replicasets is forbidden: RBAC");
+        if self.broken == "replicasets" {
+            raise RuntimeError("replicasets is forbidden: RBAC");
+        }
+        return SimpleNamespace(items=[_rs_for("app-deployment", 1)]);
     }
 }
 
 
-# The retention contract is "a bundle a retained revision references is never
-# deleted". An unreadable cluster returning an empty keep-set is that contract
-# inverted: a pruner reads it as "nothing is referenced" and deletes every
-# bundle the app owns, including the one its live pods mount. list_revisions
-# stays lenient -- an empty history costs a rollback, not the app.
-test "the retention keep-set refuses to answer from an unreadable cluster" {
-    api = _UnreadableApps();
-    raised = False;
+# The keep-set is strict; a deploy that cannot read it warns and skips the prune.
+test "the retention keep-set covers every template and refuses an unreadable cluster" {
+    import from jaclang.scale.models.progress { CallbackSink, ProgressEvent }
+    for (broken, expected) in [
+        ("replicasets", None),
+        ("deployments", None),
+        ("", {"bundles/app/old.jab", "bundles/app/pending.jab"})
+    ] {
+        api = _RetentionApps(broken=broken);
+        keys: (set[str] | None) = None;
+        deploy_keys: set[str] = set();
+        events: list[ProgressEvent] = [];
+        sink = CallbackSink(callback=lambda (e: ProgressEvent) { events.append(e); });
 
-    with unittest.mock.patch.object(target_mod, "client", _FakeClient(apps=api)) {
-        with unittest.mock.patch.object(
-            target_mod.KubernetesTarget, "_load_cluster_config", return_value=None
-        ) {
-            t = target_mod.KubernetesTarget(
-                config=KubernetesConfig(app_name="shop", namespace="shop")
-            );
-            try {
-                t.referenced_bundle_keys("shop");
-            } except Exception {
-                raised = True;
+        with unittest.mock.patch.object(target_mod, "client", _FakeClient(apps=api)) {
+            with unittest.mock.patch.object(
+                target_mod.KubernetesTarget, "_load_cluster_config", return_value=None
+            ) {
+                t = target_mod.KubernetesTarget(
+                    config=KubernetesConfig(app_name="shop", namespace="shop"),
+                    events=sink
+                );
+                try {
+                    keys = t.referenced_bundle_keys("shop");
+                } except Exception {
+                    keys = None;
+                }
+                deploy_keys = t._bundle_keep_set();
+                if broken {
+                    assert t.list_revisions("shop") == [] , (
+                        f"{broken}: list_revisions stays lenient; only the keep-set is strict"
+                    );
+                }
             }
-            assert t.list_revisions("shop") == [] , (
-                "list_revisions stays lenient; only the keep-set is strict"
-            );
         }
-    }
 
-    assert raised , (
-        "an empty keep-set from an unreadable cluster tells a pruner to delete "
-        "every bundle the app references"
-    );
+        assert keys == expected , (
+            f"unlisted {broken or 'nothing'}: got {keys}; an empty keep-set tells a "
+            "pruner to delete every bundle the app references"
+        );
+        assert deploy_keys == (expected or set()) , (
+            f"unlisted {broken or 'nothing'}: the deploy pruned against {deploy_keys}"
+        );
+        warnings = [
+            e.message
+            for e in events
+            if e.status == "warn"
+        ];
+        assert bool(warnings) == bool(broken) , (
+            f"unlisted {broken or 'nothing'}: warnings {warnings}"
+        );
+    }
 }
 
 

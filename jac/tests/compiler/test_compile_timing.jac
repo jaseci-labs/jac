@@ -157,10 +157,11 @@ def publish(name: str, text: str) {
 
 """Keep the probe's imports and native tooling on its selected compiler tree."""
 def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
+    import json;
     env: dict[str, str] = dict(os.environ);
-    env.pop("JAC_NO_DEV_SOURCE", None);
-    env["JAC_DEV_SOURCE"] = os.path.abspath(tree_dir);
-    env["JAC_NO_PRECOMPILE"] = "1";
+    env["JAC_HANDOFF"] = json.dumps(
+        {"compiler_source": os.path.abspath(tree_dir), "no_precompile": True}
+    );
     env.update(cache_env(cache));
     return env;
 }
@@ -369,7 +370,7 @@ test "timing subprocess selects each requested compiler checkout" {
                 "import json, os, sys\nfrom pathlib import Path\n"
                     + "print('TIMING_ROW ' + json.dumps({"
                     + "'compiler': str(Path(__file__).resolve().parent.parent),"
-                    + "'dev_source': os.environ.get('JAC_DEV_SOURCE'),"
+                    + "'dev_source': json.loads(os.environ.get('JAC_HANDOFF') or '{}').get('compiler_source'),"
                     + "'args': sys.argv[1:]}))\n"
             );
             rows = run_probe(str(tree), str(Path(tmp) / "cache"));
@@ -547,8 +548,9 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
         }
     }
     shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
+    import from jaclang.compiler.driver.jir { set_cache_mode }
     if rebuild {
-        os.environ["JAC_REBUILD"] = "1";
+        set_cache_mode(rebuild=True);
     }
     prior_default = get_effective_default_codespace_override();
     set_effective_default_codespace("server");
@@ -560,7 +562,7 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
     } finally {
         set_effective_default_codespace(prior_default);
         if rebuild {
-            os.environ.pop("JAC_REBUILD", None);
+            set_cache_mode(rebuild=False);
         }
     }
     wall = time.perf_counter() - started;
@@ -576,6 +578,8 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
     return (runs, events, wall, );
 }
 
+"""This measures the precompile's own work: its pass runs and the
+dependencies it hydrates."""
 test "the cold precompile path stays inside its work envelope" {
     import from jaclang.dist.precompile_bytecode {
         precompile_unit,

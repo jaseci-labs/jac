@@ -23,8 +23,8 @@ def:pub SelectGroup(props: any) -> JsxElement {
 def:pub SelectValue(props: any) -> JsxElement {
     <SelectPrimitive.Value
         data-slot="select-value"
-        className={cn("cn-select-value", props["className"])}
         {**props}
+        className={cn("cn-select-value", props["className"])}
     />
 }
 

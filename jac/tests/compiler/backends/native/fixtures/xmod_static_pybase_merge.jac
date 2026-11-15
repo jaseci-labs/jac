@@ -1,8 +1,7 @@
 """A merge module the native import walk classifies Python-side.
 
-The inline `::py::` body is the statically-known native-incompatible
-construct, so the walk registers no struct type for `Merger` in any importing
-unit. `merge` is a *static* method, which is the form #8248 dropped: the
+The `async` method is the statically-known native-incompatible construct, so
+the walk registers no struct type for `Merger` in any importing unit. `merge` is a *static* method, which is the form #8248 dropped: the
 importing unit found no native `Merger`, and the class-qualified call form had
 no arm that said so.
 """
@@ -12,10 +11,8 @@ import from xmod_static_types { Item }
 obj PyMergeBase(ABC) {
     has tag: str = "merge";
 
-    def describe -> str {
-        ::py::
-        return "py:" + self.tag
-        ::py::
+    async def describe -> str {
+        return "py:" + self.tag;
     }
 }
 

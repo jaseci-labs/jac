@@ -106,11 +106,46 @@ test "desktop jacLogout drops the broker session too (DELETE /__jac/session)" {
     # Local session is cleared synchronously...
     assert jacIsLoggedIn() == False;
     # ...and a DELETE was issued against the broker session endpoint.
-    assert len(urls) == 1 , "logout should issue exactly one broker request";
-    assert urls[0].includes("/__jac/session");
-    assert methods[0] == "DELETE";
+    broker_calls = [
+        i
+        for i in range(len(urls))
+        if urls[i].includes("/__jac/")
+    ];
+    assert len(broker_calls) == 1 , "logout should issue exactly one broker request";
+    assert urls[broker_calls[0]].includes("/__jac/session");
+    assert methods[broker_calls[0]] == "DELETE";
 
     window.__JAC_DESKTOP__ = False;
     window.__JAC_BROKER__ = "";
     globalThis.fetch = undefined;
+}
+
+
+test "jacLogout ends the server session cookie too (POST /user/logout)" {
+    # The session cookie is HttpOnly: script cannot delete it, so dropping the
+    # stored token alone would leave media requests signed in.
+    window.__JAC_DESKTOP__ = False;
+    window.__JAC_BROKER__ = "";
+    __setLocalStorage("jac_token", "tok-xyz");
+
+    urls = [];
+    methods = [];
+    globalThis.fetch = lambda (url: any, opts: any) -> any {
+        urls.append(url);
+        methods.append(opts["method"] if opts else "GET");
+        return Promise.resolve(_resp({"ok": True}));
+    };
+
+    jacLogout();
+
+    assert jacIsLoggedIn() == False;
+    assert len(urls) == 1 , "a web logout makes exactly one request";
+    assert urls[0].endsWith("/user/logout");
+    assert methods[0] == "POST";
+
+    # A failing or absent network never blocks the local logout.
+    globalThis.fetch = undefined;
+    __setLocalStorage("jac_token", "tok-xyz");
+    jacLogout();
+    assert jacIsLoggedIn() == False;
 }

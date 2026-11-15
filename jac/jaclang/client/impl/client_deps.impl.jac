@@ -10,7 +10,13 @@ impl ensure_client_deps(config_loader: JacClientConfig) -> bool {
     return prompt_install_client_deps(config_loader);
 }
 
-def _resolve_client_framework -> str {
+def _resolve_client_framework -> str;
+
+def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]];
+
+def prompt_install_client_deps(config_loader: JacClientConfig) -> bool;
+
+impl _resolve_client_framework -> str {
     try {
         import from jaclang.project.config { get_config }
         cfg = get_config();
@@ -21,7 +27,7 @@ def _resolve_client_framework -> str {
     return "react";
 }
 
-def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]] {
+impl _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]] {
     if framework == "solid" {
         runtime_deps: dict[str, str] = {
             'solid-js': '^1.9.13',
@@ -38,17 +44,12 @@ def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]
         return (runtime_deps, dev_deps);
     }
 
-    import from jaclang.client.npm_provider {
-        CORE_DEV_DEPS,
-        CORE_RUNTIME_DEPS,
-        OPTIONAL_RUNTIME_DEPS
-    }
     return ({** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}, {** CORE_DEV_DEPS});
 }
 
-def prompt_install_client_deps(config_loader: JacClientConfig) -> bool {
+impl prompt_install_client_deps(config_loader: JacClientConfig) -> bool {
     import sys;
-    import from jaclang.cli.console { console }
+
     framework = _resolve_client_framework();
     console.error("\n  ⚠ Client dependencies are not configured.");
     console.error(

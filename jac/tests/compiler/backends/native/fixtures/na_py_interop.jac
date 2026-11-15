@@ -8,6 +8,8 @@ Call chain:
       returns py_double(x) + 1
     returns the native result
   prints result
+  → native_note(x)  (native, no `-> T`: returns None across the bridge)
+    → py_note(x)  (Python, no `-> T`: prints x, returns None)
 """
 
 # Python function in the main codespace — compiled to Python bytecode.
@@ -16,10 +18,22 @@ def py_double(x: int) -> int {
 }
 
 
+# Python function with no return annotation: its native caller declares it void.
+def py_note(x: int) {
+    print(x);
+}
+
+
 # Native function — compiled to LLVM IR / machine code.
 # Calls py_double which lives in the Python (non-na) codespace.
 def native_add_one_to_doubled(x: int) -> int {
     return py_double(x) + 1;
+}
+
+
+# Native function with no return annotation: it returns None to Python.
+def native_note(x: int) {
+    py_note(x);
 }
 
 
@@ -32,4 +46,5 @@ def call_native(x: int) -> int {
 with entry {
     result = call_native(5);
     print(result);
+    native_note(7);
 }

@@ -1,66 +1,11 @@
 import importlib.metadata;
 import from pathlib { Path }
-import from jaclang.dist.publish.npm_tarball { pack_tarball }
-import from jaclang.dist.publish.npm_sources {
-    collect_npm_sources,
-    resolve_npm_entry,
-    runtime_pkg_name
-}
-import from jaclang.dist.publish.package_json {
-    generate_package_json,
-    npm_tarball_filename
-}
 
-def _react_peer_floor(pkg: str) -> str {
-    import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS }
-    pin = str(CORE_RUNTIME_DEPS.get(pkg, ""));
-    major = pin.lstrip("^~>=< v").split(".")[0];
-    if major.isdigit() {
-        return f">={major}.0.0";
-    }
-    return ">=19.0.0";
-}
+def _react_peer_floor(pkg: str) -> str;
 
 def _resolve_externals(
     config: any, files: list[any]
-) -> tuple[dict[str, str], dict[str, str]] {
-    externals: set[str] = set();
-    for f in files {
-        for ext in f.external_imports {
-            externals.add(ext);
-        }
-    }
-    deps: dict[str, str] = {};
-    peers: dict[str, str] = {};
-    if not externals {
-        return (deps, peers);
-    }
-
-    rt_pkg = runtime_pkg_name(config);
-    npm = config._raw_data.get("npm", {});
-    npm = npm if isinstance(npm, dict) else {};
-
-    if rt_pkg in externals {
-        rt_ver = npm.get("runtime_version", "");
-        if not rt_ver {
-            try {
-                rt_ver = "^" + importlib.metadata.version("jaclang");
-            } except Exception {
-                rt_ver = "*";
-            }
-        }
-        deps[rt_pkg] = rt_ver;
-    }
-    if "react" in externals {
-        peers["react"] = npm.get("react_version", _react_peer_floor("react"));
-    }
-    if "react-dom" in externals {
-        peers["react-dom"] = npm.get(
-            "react_dom_version", _react_peer_floor("react-dom")
-        );
-    }
-    return (deps, peers);
-}
+) -> tuple[dict[str, str], dict[str, str]];
 
 impl NpmBuilder.postinit -> None {
     if self.project_root is None {
@@ -123,4 +68,54 @@ impl NpmBuilder.build_to(output_dir: Path) -> Path {
     dest = output_dir / npm_tarball_filename(self.config);
     dest.write_bytes(self.build());
     return dest;
+}
+
+impl _react_peer_floor(pkg: str) -> str {
+    pin = str(CORE_RUNTIME_DEPS.get(pkg, ""));
+    major = pin.lstrip("^~>=< v").split(".")[0];
+    if major.isdigit() {
+        return f">={major}.0.0";
+    }
+    return ">=19.0.0";
+}
+
+impl _resolve_externals(
+    config: any, files: list[any]
+) -> tuple[dict[str, str], dict[str, str]] {
+    externals: set[str] = set();
+    for f in files {
+        for ext in f.external_imports {
+            externals.add(ext);
+        }
+    }
+    deps: dict[str, str] = {};
+    peers: dict[str, str] = {};
+    if not externals {
+        return (deps, peers);
+    }
+
+    rt_pkg = runtime_pkg_name(config);
+    npm = config._raw_data.get("npm", {});
+    npm = npm if isinstance(npm, dict) else {};
+
+    if rt_pkg in externals {
+        rt_ver = npm.get("runtime_version", "");
+        if not rt_ver {
+            try {
+                rt_ver = "^" + importlib.metadata.version("jaclang");
+            } except Exception {
+                rt_ver = "*";
+            }
+        }
+        deps[rt_pkg] = rt_ver;
+    }
+    if "react" in externals {
+        peers["react"] = npm.get("react_version", _react_peer_floor("react"));
+    }
+    if "react-dom" in externals {
+        peers["react-dom"] = npm.get(
+            "react_dom_version", _react_peer_floor("react-dom")
+        );
+    }
+    return (deps, peers);
 }

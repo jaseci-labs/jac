@@ -50,8 +50,7 @@ glob SPEC_SRC: str = "obj Spec {\n    has name: str,\n        help: str;\n}\n",
 
 def _isolated(tmp: str) -> any {
     env = cache_env(os.path.join(tmp, "cache"));
-    env["JAC_REBUILD"] = "";
-    env["JAC_NO_PRECOMPILE"] = "";
+    env["JAC_HANDOFF"] = "";
     return patch.dict(os.environ, env);
 }
 

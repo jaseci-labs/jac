@@ -1,6 +1,7 @@
 impl TypeEvaluator.release_check_caches -> None {
     self._flow_node_type_cache.clear();
     self._flow_key_type_cache.clear();
+    self._narrow_expr_memo.clear();
     self._and_narrowing_overrides.clear();
     self._strict_site_cache.clear();
     self._sv_async_syms_cache.clear();

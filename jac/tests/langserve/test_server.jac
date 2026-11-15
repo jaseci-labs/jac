@@ -281,11 +281,11 @@ test "test_go_to_definition_md_path" {
             (11, 51, "jaclang/compiler/frontend/constant.jac:2:5-2:15"),
             (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/types/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/types/types.jac:61:5-61:13"),
+            (18, 5, "compiler/types/types.jac:34:5-34:13"),
             (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
-            (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
+            (24, 44, "jaclang/lsp/protocol/server.jac:67:4-67:18"),
             (26, 31, "jaclang/lsp/protocol/types.jac:0:0-0:0"),
 
         ];
@@ -1428,7 +1428,13 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
         data = bytearray(cache_path.read_bytes());
         # Header layout <4sHHIIIIII>: jaclang_version_hash is at offset 8.
         struct.pack_into("<I", data, 8, 0xDEADBEEF);
-        cache_path.write_bytes(bytes(data));
+        # Replace the file the way every JIR write does (scratch file, then
+        # os.replace), so it gets a new inode. An in-place write keeps the
+        # inode and size, and when it lands in the same timestamp tick as the
+        # compile's write, read_jir's memo still serves the pre-tamper bytes.
+        tampered = cache_path.with_name(cache_path.name + ".tamper");
+        tampered.write_bytes(bytes(data));
+        os.replace(tampered, cache_path);
 
         # The cache should now be rejected.
         with cache_scope(program.options) {

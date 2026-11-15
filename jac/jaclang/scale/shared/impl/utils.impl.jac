@@ -1,0 +1,71 @@
+impl is_safe_loopback_redirect(url: str | None) -> bool {
+    if not url {
+        return False;
+    }
+    try {
+        parsed = urlparse(url);
+    } except Exception {
+        return False;
+    }
+    if parsed.scheme not in ('http', 'https') {
+        return False;
+    }
+
+    host = parsed.hostname;
+    return host in _LOOPBACK_HOSTS;
+}
+
+impl _extract_path_param_names(path: (str | None)) -> list[str] {
+    if not path {
+        return [];
+    }
+    param_names: list[str] = [];
+    for segment in path.split('/') {
+        if (segment.startswith('{') and segment.endswith('}') and (len(segment) > 2)) {
+            raw_param = segment[1:-1].strip();
+            if raw_param {
+                param_name = raw_param.split(':', 1)[0].strip();
+                if (param_name and not (param_name in param_names)) {
+                    param_names.append(param_name);
+                }
+            }
+        }
+    }
+    return param_names;
+}
+
+impl generate_random_password(length: int = 32) -> str {
+    import secrets;
+    return secrets.token_urlsafe(max(16, length));
+}
+
+impl extract_bearer_token(authorization: str | None, user_manager: any) -> str | None {
+    token: (str | None) = None;
+    if (
+        authorization
+        and isinstance(authorization, str)
+        and authorization.startswith('Bearer ')
+    ) {
+        token = authorization[7:];
+    }
+    return user_manager.validate_jwt_token(token) if token else None;
+}
+
+impl authenticate_or_fail(
+    authorization: str | None,
+    user_manager: any,
+    message: str = 'Authorization required'
+) -> tuple[str | None, TransportResponse | None] {
+    user_id = extract_bearer_token(authorization, user_manager);
+    if not user_id {
+        return (
+            None,
+            TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message=message,
+                meta=Meta(extra={'http_status': 401})
+            )
+        );
+    }
+    return (user_id, None);
+}

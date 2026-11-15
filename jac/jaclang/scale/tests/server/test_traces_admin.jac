@@ -6,15 +6,6 @@ between logs and Tempo), TraceQL query building, and flattening Tempo's
 OTLP-JSON trace into the flat span list the React waterfall consumes.
 """
 
-import from jaclang.scale.admin.traces {
-    _normalize_trace_id,
-    _build_traceql,
-    _otlp_value,
-    _otlp_attrs,
-    _flatten_tempo_trace
-}
-
-
 test "normalize_trace_id: dashed UUID or 32-hex -> 32-hex; garbage -> ''" {
     # A dashed UUID and Tempo's 32-hex are the same 128 bits.
     assert _normalize_trace_id("0af76519-16cd-43dd-8448-eb211c80319c")

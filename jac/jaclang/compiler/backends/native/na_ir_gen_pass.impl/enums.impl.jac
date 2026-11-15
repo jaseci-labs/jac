@@ -29,7 +29,6 @@ impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> No
 }
 
 impl NaIRGenPass._codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None) {
-    import from jaclang.compiler.passes.layout_pass { class_form_enum_member }
     _member = class_form_enum_member(nd.type);
     if _member is None {
         return None;
@@ -42,12 +41,6 @@ impl NaIRGenPass._codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | No
 }
 
 impl NaIRGenPass._ensure_enum_lowered(t: any) -> (ir.Type | None) {
-    import from jaclang.compiler.passes.layout_pass {
-        is_enum_class_type,
-        enum_decl_of,
-        enum_value_type_of,
-        class_form_enum_scalar
-    }
     if not is_enum_class_type(t) {
         return None;
     }
@@ -55,8 +48,7 @@ impl NaIRGenPass._ensure_enum_lowered(t: any) -> (ir.Type | None) {
     if _decl is not None {
         self._codegen_enum(_decl);
     } else {
-        _shared = t?.shared;
-        _enm = _shared.class_name if _shared is not None else None;
+        _enm = t.shared.class_name if isinstance(t, ClassType) else None;
         if _enm is not None {
             self._codegen_enum_layout(_enm, None);
         }
@@ -67,24 +59,28 @@ impl NaIRGenPass._ensure_enum_lowered(t: any) -> (ir.Type | None) {
     return ir.IntType(64);
 }
 
-impl NaIRGenPass._codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None {
+impl NaIRGenPass._codegen_enum(
+    nd: (uni.Enum | uni.Archetype), quiet: bool = False
+) -> None {
     enum_name = (nd).name.value if (nd).name else "unknown_enum";
     if isinstance(nd, uni.Archetype) {
         self.has_native_code = True;
         return;
     }
     _owner_mod = nd.find_parent_of_type(uni.Module) or self.module;
-    self._codegen_enum_layout(enum_name, _owner_mod);
+    self._codegen_enum_layout(enum_name, _owner_mod, decl=nd, quiet=quiet);
 }
 
 impl NaIRGenPass._codegen_enum_layout(
-    enum_name: str, owner: (uni.Module | None)
+    enum_name: str,
+    owner: (uni.Module | None),
+    decl: (uni.Enum | None) = None,
+    quiet: bool = False
 ) -> None {
     if enum_name in self.enum_types {
         return;
     }
 
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     candidates: list[uni.Module] = [];
     if owner is not None {
         candidates.append(owner);
@@ -105,6 +101,26 @@ impl NaIRGenPass._codegen_enum_layout(
     }
     if lay.is_class_form {
         self.has_native_code = True;
+        return;
+    }
+    if not lay.all_values_known {
+        if not quiet and enum_name not in self._unencodable_enums {
+            self._unencodable_enums.add(enum_name);
+            _local = decl is not None
+                and decl.find_parent_of_type(uni.Module) is self.module;
+            self.ctx.emit(
+                E5092,
+                node_override=(decl if _local else None),
+                kind="enum",
+                name=enum_name,
+                help_text=(
+                    f"A native enum is a table of int or str member values. A "
+                    f"member of '{enum_name}' has some other value, so its "
+                    f"members could not be told apart. Give every member an int "
+                    f"or str value, or move the enum to a @sv/Python context."
+                )
+            );
+        }
         return;
     }
     self.enum_types[enum_name] = ir.IntType(64);
@@ -299,7 +315,6 @@ impl NaIRGenPass._codegen_enum_attr_runtime(
 }
 
 impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     candidates: list[uni.Module] = [];
     _arch = self.arch_ast_map.get(enum_name);
     if _arch is not None {

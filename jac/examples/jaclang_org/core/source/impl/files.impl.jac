@@ -122,16 +122,3 @@ impl source_span(
         raw_lines=view.raw_lines[lo:hi + 1],
     );
 }
-
-impl example_sources -> list[SourceView] {
-    out: list[SourceView] = [];
-    for f in _walk_sources() {
-        if f.dir == EXAMPLES_DIR {
-            view = source_file(f.path);
-            if view is not None {
-                out.append(view);
-            }
-        }
-    }
-    return out;
-}

@@ -20,6 +20,7 @@ import from tests.support {
 import jaclang;
 
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -269,4 +270,39 @@ test "generator: capturing lambda as a map callback inside a generator" {
     (eng, _) = compile_native("generators_closures.jac");
     f = get_func(eng, "sum_gen_mapped", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 36 , "11+12+13";
+}
+
+test "generator: enumerate inside a generator body survives frame drop" {
+    (eng, _) = compile_native("generators_iter_ownership.jac");
+    f = get_func(eng, "total_picked", ctypes.c_int64, ctypes.c_int64);
+    assert f(200) == 200 * (20 + 30);
+}
+
+def iter_refs(it: int) -> int {
+    return ctypes.c_int64.from_address(it + HDR_RC_OFF).value;
+}
+
+test "generator: a for-loop iterator in a frame slot is released exactly once" {
+    # The caller keeps two references to one iterator so an extra release
+    # shows up as a count instead of a freed block. Draining a generator
+    # whose loop iterates an owned alias, a borrowed parameter, or abandons
+    # the loop mid-way must leave the caller's count where it was.
+    (eng, _) = compile_native("generators_iter_ownership.jac");
+    make = get_func(eng, "make_counter", ctypes.c_void_p, ctypes.c_int64);
+    alias = get_func(eng, "alias", ctypes.c_void_p, ctypes.c_void_p);
+    drain_owned = get_func(eng, "drain_owned", ctypes.c_int64, ctypes.c_void_p);
+    drain_borrowed = get_func(eng, "drain_borrowed", ctypes.c_int64, ctypes.c_void_p);
+    first_borrowed = get_func(eng, "first_borrowed", ctypes.c_int64, ctypes.c_void_p);
+    for (label, run, expected) in [
+        ("owned", drain_owned, 6),
+        ("borrowed", drain_borrowed, 6),
+        ("abandoned", first_borrowed, 0)
+    ] {
+        it = make(4);
+        assert alias(it) == it;
+        before = iter_refs(it);
+        assert before == 2 , f"{label}: caller holds two references";
+        assert run(it) == expected , label;
+        assert iter_refs(it) == before , f"{label}: iterator reference count drifted";
+    }
 }

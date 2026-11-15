@@ -12,9 +12,7 @@ database outage is the second question, never the first. So liveness must not
 touch the database at all, and readiness must report 503 rather than blowing up.
 """
 
-import from jaclang.data.pgwire { PgWireError }
 import from jaclang.scale.memory { context as scale_ctx_mod }
-import from jaclang.scale.tests.scale_test_client { make_client }
 
 def _as_any(v: any) -> any {
     return v;

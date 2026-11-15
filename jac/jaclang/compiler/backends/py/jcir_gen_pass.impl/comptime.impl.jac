@@ -1,24 +1,4 @@
 impl JcirGenPass._ct_kind(v: CtValue) -> str {
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     if ct_is_scalar(v) {
         return "scalar";
     }
@@ -41,26 +21,6 @@ impl JcirGenPass._ct_kind(v: CtValue) -> str {
 }
 
 impl JcirGenPass._ct_materializable(v: CtValue) -> bool {
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     return ct_is_materializable(v);
 }
 
@@ -108,27 +68,26 @@ impl JcirGenPass._is_comptime_only_name(nd: Name) -> bool {
     if nd.sym_name in self._comptime_only_names() {
         return True;
     }
-    for sym in (nd.sym, ) {
-        if sym is None {
-            continue;
-        }
-        decl = sym.decl;
-        imp = decl.find_parent_of_type(Import) if isinstance(decl, Name) else None;
-        if imp is not None and imp.is_comptime {
-            return True;
-        }
-        owner = decl.name_of;
-        if isinstance(owner, Ability) and owner.is_comptime {
-            return True;
-        }
-        par = decl.parent if isinstance(decl, Name) else None;
-        if isinstance(par, Assignment) and isinstance(par.parent, GlobalVars) {
-            home = par.find_parent_of_type(Module);
-            if home is not None and home is not self.module {
-                hp = (home.loc.mod_path if home.loc else "").replace("\\", "/");
-                if hp.endswith("jaclang/comptime.jac") {
-                    return True;
-                }
+    sym = nd.sym;
+    if sym is None {
+        return False;
+    }
+    decl = sym.decl;
+    imp = decl.find_parent_of_type(Import) if isinstance(decl, Name) else None;
+    if imp is not None and imp.is_comptime {
+        return True;
+    }
+    owner = decl.name_of;
+    if isinstance(owner, Ability) and owner.is_comptime {
+        return True;
+    }
+    par = decl.parent if isinstance(decl, Name) else None;
+    if isinstance(par, Assignment) and isinstance(par.parent, GlobalVars) {
+        home = par.find_parent_of_type(Module);
+        if home is not None and home is not self.module {
+            hp = (home.loc.mod_path if home.loc else "").replace("\\", "/");
+            if hp.endswith("jaclang/comptime.jac") {
+                return True;
             }
         }
     }
@@ -164,7 +123,6 @@ impl JcirGenPass._import_ref(module: str, name: str, jac_node: UniNode) -> CgNod
 }
 
 impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
-    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
     if module == "builtins" or not module {
         return self.name_load(name, jac_node);
     }
@@ -182,40 +140,29 @@ impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode
 }
 
 impl JcirGenPass._ct_order_key(v: CtValue) -> str {
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
-    }
     if isinstance(v, CtNone) {
         return "0";
     }
     if isinstance(v, CtBool) {
         return "1" + ("1" if v.value else "0");
     }
-    if isinstance(v, (CtInt, CtFloat)) {
+    if isinstance(v, CtInt) {
+        return "2" + ct_repr(v);
+    }
+    if isinstance(v, CtFloat) {
         return "2" + ct_repr(v);
     }
     if isinstance(v, CtStr) {
         return "3" + v.value;
     }
     if isinstance(v, CtBytes) {
-        return "4" + v.value.hex();
+        digits = "0123456789abcdef";
+        hex_parts: list[str] = [];
+        for byte in v.value {
+            hex_parts.append(digits[byte // 16]);
+            hex_parts.append(digits[byte % 16]);
+        }
+        return "4" + "".join(hex_parts);
     }
     if isinstance(v, CtSet) and v.frozen {
         return "5" + "\x00".join(sorted([self._ct_order_key(x) for x in v.items]));
@@ -234,29 +181,30 @@ impl JcirGenPass._ct_order_key(v: CtValue) -> str {
     return "7" + self._ct_kind(v) + ":" + enum_name + ":" + member + ":" + label;
 }
 
-impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) {
-    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
-    import from jaclang.compiler.types.ct_value {
-        CtBool,
-        CtBytes,
-        CtDict,
-        CtEnumMember,
-        CtFloat,
-        CtFunc,
-        CtInt,
-        CtList,
-        CtNone,
-        CtRecord,
-        CtSet,
-        CtStr,
-        CtTuple,
-        CtType,
-        ct_host_scalar,
-        ct_is_materializable,
-        ct_is_scalar,
-        ct_repr
+impl JcirGenPass._ct_ordered(items: list[CtValue]) -> list[CtValue] {
+    keys: list[str] = [];
+    for item in items {
+        keys.append(self._ct_order_key(item));
     }
+    taken: set[int] = set();
+    ordered: list[CtValue] = [];
+    for key in sorted(keys) {
+        for index in range(len(items)) {
+            if index not in taken and keys[index] == key {
+                taken.add(index);
+                ordered.append(items[index]);
+                break;
+            }
+        }
+    }
+    return ordered;
+}
+
+impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) {
     load = self.nod('Load', [], []);
+    if isinstance(v, CtInt) {
+        return self.int_const_of(v, jac_node);
+    }
     if ct_is_scalar(v) {
         return self.const_of(ct_host_scalar(v), jac_node);
     }
@@ -275,7 +223,7 @@ impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) 
     }
     if isinstance(v, CtSet) {
         elts2: list[CgNode] = [];
-        for item in sorted(v.items, key=self._ct_order_key) {
+        for item in self._ct_ordered(v.items) {
             m = self._materialize(item, jac_node);
             if m is None {
                 return None;
@@ -388,12 +336,12 @@ impl JcirGenPass._is_ct_type_param(nd: Name) -> bool {
 }
 
 impl JcirGenPass._ct_param_decls(cls_expr: Expr) -> (list[TypeParam] | None) {
-    t: any = cls_expr.type;
-    shared: any = t?.shared;
-    if shared is None or not shared?.ct_params {
+    t = cls_expr.type;
+    cls = t.as_class() if t is not None else None;
+    if cls is None or not cls.shared.ct_params {
         return None;
     }
-    arch = shared.symbol_table;
+    arch = cls.shared.symbol_table;
     if not isinstance(arch, Archetype) {
         return None;
     }

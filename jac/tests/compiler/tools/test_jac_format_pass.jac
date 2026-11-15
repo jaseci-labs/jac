@@ -442,7 +442,7 @@ test "empty blocks format without inner space" {
     formatted = prog.mod.main.gen.jac;
 
     assert "obj Empty {}" in formatted;
-    assert "impl HasM.m{}" in formatted;
+    assert "impl HasM.m {}" in formatted;
     assert "can go with Root entry {}" in formatted;
     assert "def multi {}" in formatted;
     assert "if x > 0 {} else {}" in formatted;

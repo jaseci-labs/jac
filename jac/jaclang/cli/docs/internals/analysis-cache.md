@@ -140,8 +140,9 @@ module itself is served from `SEC_IFACE`.
 
 There is no flag that disables hydration. The two escape hatches are:
 
-- `JAC_REBUILD=1` -- recompute everything and **rewrite** the cache. Results
-  are identical by construction; the cache is never silently bypassed.
+- `jac cache purge jir-modules` -- drop the cache; the next run recomputes
+  everything and **rewrites** it. Results are identical by construction; the
+  cache is never silently bypassed.
 - `JAC_IFACE_VERIFY=1` -- serve from the cache *and* recompute in a fresh
   program, then diff: hydrated dependency interfaces against a source
   compile of the dep, replayed diagnostics against a fresh analysis. Any

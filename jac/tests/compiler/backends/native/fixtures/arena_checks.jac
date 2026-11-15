@@ -1,6 +1,4 @@
 import from sim {
-    Game,
-    Projectile,
     Spark,
     world_new,
     tick_player,

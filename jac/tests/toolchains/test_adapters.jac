@@ -2,7 +2,8 @@ import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
-import from jaclang.toolchains.android { AndroidEnvironment, compatible_jdk }
+import from jaclang.toolchains.android { AndroidEnvironment }
+import from jaclang.toolchains.tools { compatible_jdk }
 import from jaclang.toolchains.desktop { source_workspace }
 import from jaclang.toolchains.cef { cef_artifact }
 import from jaclang.toolchains.pins {
@@ -49,7 +50,7 @@ test "native build environments do not mutate the shell" {
 
 test "missing JDK is rejected without invoking subprocesses" {
     with TemporaryDirectory() as tmp {
-        with patch("jaclang.toolchains.android.subprocess.run") as process {
+        with patch("jaclang.toolchains.tools.subprocess.run") as process {
             assert not compatible_jdk(Path(tmp));
             process.assert_not_called();
         }
@@ -62,7 +63,7 @@ test "native source workspaces never write into installed package assets" {
         source = base / "package";
         source.mkdir();
         (source / "binding.jac").write_text("glob value = 1;");
-        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": str(base / "cache")}) {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": str(base / "cache")}) {
             first = source_workspace(source, "binding");
             assert first != source;
             (first / ".native-build.lock").touch();
@@ -74,6 +75,26 @@ test "native source workspaces never write into installed package assets" {
             second = source_workspace(source, "binding");
             assert second != first;
             assert (first / "binding.jac").read_text() == "glob value = 1;";
+        }
+    }
+}
+
+test "source workspaces carry each module's impl annexes" {
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        source = base / "source";
+        (source / "impl").mkdir(parents=True);
+        (source / "binding.jac").write_text("def value -> int;");
+        (source / "impl" / "binding.impl.jac").write_text(
+            "impl value -> int { return 1; }"
+        );
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": str(base / "cache")}) {
+            first = source_workspace(source, "binding");
+            assert (first / "impl" / "binding.impl.jac").is_file();
+            (source / "impl" / "binding.impl.jac").write_text(
+                "impl value -> int { return 2; }"
+            );
+            assert source_workspace(source, "binding") != first;
         }
     }
 }

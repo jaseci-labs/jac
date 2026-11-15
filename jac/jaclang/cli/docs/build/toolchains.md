@@ -31,9 +31,8 @@ generated project.
 ## Installation and storage
 
 Large downloads and tool installations are shared between projects under Jac's
-platform cache root (`~/.cache/jac/toolchains` on Linux). Set
-`JAC_TOOLCHAIN_DIR=/path/to/cache` to relocate them; a project-local `.jac/toolchains`
-path works for isolated builds. Generated app projects remain under `.jac/`.
+platform cache root (`~/.cache/jac/toolchains` on Linux); they move with the
+cache root (`JAC_CACHE_HOME`). Generated app projects remain under `.jac/`.
 
 Everything there lives in one of three managed buckets that `jac cache status`
 reports and `jac cache gc` reclaims by last use: `downloads/` (verified archives,
@@ -51,8 +50,15 @@ SDK Manager, Gradle, CocoaPods, and system package managers display their own
 installation progress. Toolchain versions and checksums are pinned in source;
 Jac does not silently select the latest JDK or Android command-line tools.
 
-Set `JAC_TOOLCHAIN_USE_SYSTEM=0` to force pinned managed tools, useful for CI and
-reproducible setup. By default, compatible `JAVA_HOME` / PATH JDK 21 installations
+Set `system = false` under `[toolchains]` in `jac.toml` to force pinned managed
+tools, useful for CI and reproducible setup:
+
+```toml
+[toolchains]
+system = false
+```
+
+By default, compatible `JAVA_HOME` / PATH JDK 21 installations
 are reused. An incompatible JDK
 is left intact while Jac selects its managed JDK. `ANDROID_HOME` (or
 `ANDROID_SDK_ROOT`) selects an existing SDK; otherwise Jac creates a managed SDK.
@@ -90,8 +96,15 @@ Building a release artifact does not configure a signing identity or publish it.
 ## Offline builds
 
 First provision the toolchain and perform a successful online build to populate
-package-manager caches. Set `JAC_OFFLINE=1` for cached managed artifacts and Android
-Gradle builds. Missing tools fail without starting a download. JavaScript dependency
+package-manager caches. Then set `offline = true` under `[network]` in `jac.toml`
+for cached managed artifacts and Android Gradle builds:
+
+```toml
+[network]
+offline = true
+```
+
+Missing tools fail without starting a download. JavaScript dependency
 reuse requires an unchanged manifest/lockfile and installed packages; otherwise
 setup fails with instructions to synchronize online.
 

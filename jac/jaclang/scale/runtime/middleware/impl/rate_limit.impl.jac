@@ -1,0 +1,215 @@
+impl _resolve_user_key(request: any) -> str | None {
+    auth = request.headers.get("Authorization");
+    if not auth {
+        return None;
+    }
+    return hashlib.sha256(auth.encode("utf-8")).hexdigest()[:32];
+}
+
+impl build_rate_limit_middleware(cfg: dict[str, any]) -> any {
+    if not cfg.get("enabled") {
+        return None;
+    }
+    per_ip_rpm: int = int(cfg.get("per_ip_rpm", 60));
+    per_user_rpm: int = int(cfg.get("per_user_rpm", 0));
+    burst: float = float(cfg.get("burst_multiplier", 2.0));
+    exempt: set[str] = set(cfg.get("exempt_paths", []));
+
+    backend: StateBackend = get_state_backend(shared=bool(cfg.get("shared", False)));
+
+    ns: str = NAMESPACE;
+
+    ip_limiter: StateBackendRateLimiter | None = None;
+    if per_ip_rpm > 0 {
+        ip_limiter = StateBackendRateLimiter(
+            backend=backend,
+            rate_per_sec=per_ip_rpm / 60.0,
+            capacity=max(1.0, per_ip_rpm * burst / 60.0)
+        );
+    }
+    user_limiter: StateBackendRateLimiter | None = None;
+    if per_user_rpm > 0 {
+        user_limiter = StateBackendRateLimiter(
+            backend=backend,
+            rate_per_sec=per_user_rpm / 60.0,
+            capacity=max(1.0, per_user_rpm * burst / 60.0)
+        );
+    }
+
+    async def rate_limit_middleware(request: any, call_next: any) -> any {
+        path: str = request.url.path;
+        if path in exempt {
+            return await call_next(request);
+        }
+        retry_after: float = 0.0;
+        if ip_limiter is not None {
+            key = f"{ns}:ip:{request.client_host or 'unknown'}";
+            (ok, ra) = ip_limiter.consume(key);
+            if not ok {
+                retry_after = max(retry_after, ra);
+                return error_response(
+                    code="RATE_LIMITED",
+                    message="Too many requests; slow down.",
+                    status=429,
+                    retry_after_seconds=int(retry_after) + 1
+                );
+            }
+        }
+        if user_limiter is not None {
+            user_key = _resolve_user_key(request);
+            if user_key is not None {
+                (ok, ra) = user_limiter.consume(f"{ns}:user:{user_key}");
+                if not ok {
+                    return error_response(
+                        code="RATE_LIMITED",
+                        message="Per-user rate limit exceeded.",
+                        status=429,
+                        retry_after_seconds=int(ra) + 1
+                    );
+                }
+            }
+        }
+        return await call_next(request);
+    }
+
+    return rate_limit_middleware;
+}
+
+impl build_client_error_limit_middleware(cfg: dict[str, any]) -> any {
+    rpm: int = int(cfg.get("client_error_rpm", 20));
+    if rpm <= 0 {
+        return None;
+    }
+    try {
+        backend: StateBackend = get_state_backend(
+            shared=bool(cfg.get("shared", False))
+        );
+    } except RuntimeError as e {
+        logger.warning(f"Error-report limit counts per gateway process: {e}");
+        backend = InProcessStateBackend();
+    }
+    limiter = StateBackendRateLimiter(
+        backend=backend, rate_per_sec=rpm / 60.0, capacity=float(rpm)
+    );
+    storage: dict[str, bool] = {"failing": False};
+
+    async def client_error_limit(request: any, call_next: any) -> any {
+        if request.method != "POST" or request.url.path != CLIENT_ERROR_PATH {
+            return await call_next(request);
+        }
+        key = f"{NAMESPACE}:client_error:{request.client_host or 'unknown'}";
+        try {
+            (ok, retry_in) = await asyncio.to_thread(limiter.consume, key);
+        } except Exception as e {
+            if not storage["failing"] {
+                logger.warning(
+                    f"Error-report limit storage failed, so the gateway passes reports through and each service limits them per client: {e}"
+                );
+            }
+            storage["failing"] = True;
+            return await call_next(request);
+        }
+        storage["failing"] = False;
+        if ok {
+            return await call_next(request);
+        }
+        return transport_to_response(throttled(int(retry_in) + 1, "Error reporting"));
+    }
+
+    return client_error_limit;
+}
+
+impl client_error_limit_skipped(
+    cfg: dict[str, any], trusted: list[str], clustered: bool
+) -> str {
+    rpm: int = int(cfg.get("client_error_rpm", 20));
+    if rpm <= 0 or trusted or not clustered {
+        return "";
+    }
+    return (
+        "[scale.gateway.rate_limit] client_error_rpm is not applied at the "
+        "gateway: [serve.proxy] trusted is empty in a cluster, so every browser "
+        "arrives from the ingress address and they would all share one budget. "
+        "Each service still limits error reports per client. List the ingress "
+        "in [serve.proxy] trusted (JAC_SERVE_PROXY_TRUSTED) to limit them at "
+        "the gateway too."
+    );
+}
+
+impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
+    now: float = time.time();
+    with _rl_lock {
+        bucket = self.buckets.get(key);
+        if bucket is None {
+            bucket = TokenBucket(
+                rate_per_sec=self.rate_per_sec,
+                capacity=self.capacity,
+                tokens=self.capacity,
+                last_refill=now
+            );
+            self.buckets[key] = bucket;
+        }
+        elapsed: float = now - bucket.last_refill;
+        if elapsed > 0 {
+            bucket.tokens = min(
+                bucket.capacity, bucket.tokens + elapsed * bucket.rate_per_sec
+            );
+            bucket.last_refill = now;
+        }
+        if bucket.tokens >= 1.0 {
+            bucket.tokens -= 1.0;
+            return (True, 0.0);
+        }
+        retry = (1.0 - bucket.tokens) / bucket.rate_per_sec;
+        return (False, retry);
+    }
+}
+
+
+impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
+    state_key: str = f"rl:{key}";
+    lock_key: str = f"rl:lock:{key}";
+
+    acquired: bool = False;
+    for _ in range(50) {
+        if self.backend.acquire_lock(lock_key, self.lock_ttl_seconds) {
+            acquired = True;
+            break;
+        }
+        time.sleep(0.001);
+    }
+    if not acquired {
+        return (True, 0.0);
+    }
+    now: float = time.time();
+    try {
+        raw = self.backend.get(state_key);
+        if raw is None {
+            tokens: float = self.capacity;
+            last_refill: float = now;
+        } else {
+            parts = raw.split(":");
+            tokens = float(parts[0]);
+            last_refill = float(parts[1]);
+        }
+        elapsed: float = now - last_refill;
+        if elapsed > 0 {
+            tokens = min(self.capacity, tokens + elapsed * self.rate_per_sec);
+            last_refill = now;
+        }
+        if tokens >= 1.0 {
+            tokens -= 1.0;
+            allowed: bool = True;
+            retry: float = 0.0;
+        } else {
+            allowed = False;
+            retry = (1.0 - tokens) / self.rate_per_sec;
+        }
+        self.backend.set(
+            state_key, f"{tokens}:{last_refill}", ttl_seconds=self.state_ttl_seconds
+        );
+        return (allowed, retry);
+    } finally {
+        self.backend.release_lock(lock_key);
+    }
+}

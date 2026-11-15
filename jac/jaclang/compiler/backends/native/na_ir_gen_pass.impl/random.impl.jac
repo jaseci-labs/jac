@@ -24,7 +24,7 @@ impl NaIRGenPass._mt_ensure -> None {
     idx.global_constant = False;
     idx.initializer = ir.Constant(i32, _MT_N + 1);
 
-    def elem(b: any, k: any) -> any {
+    def elem(b: ir.IRBuilder, k: ir.Value) -> ir.Value {
         return b.gep(mt, [ir.Constant(i32, 0), k]);
     }
 
@@ -284,7 +284,7 @@ impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     f64 = ir.DoubleType();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    params: Sequence[any] = nd.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
 
     f_gen = self._get_or_declare_extern("__mt_genrand_u32", i32, []);
     f_iba = self._get_or_declare_extern(
@@ -306,7 +306,7 @@ impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         );
         low = self.builder.trunc(absv, i32);
         high = self.builder.trunc(self.builder.lshr(absv, ir.Constant(i64, 32)), i32);
-        keybuf = self.builder.alloca(ir.ArrayType(i32, 2), name="seed.key");
+        keybuf = self._stack_entry_alloca(ir.ArrayType(i32, 2), "seed.key");
         p0 = self.builder.gep(keybuf, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
         p1 = self.builder.gep(keybuf, [ir.Constant(i32, 0), ir.Constant(i32, 1)]);
         self.builder.store(low, p0);

@@ -1,7 +1,8 @@
 import re;
 import from contextlib { contextmanager }
 
-glob _COLOR_CACHE: dict[(str, bool)] = {};
+glob _COLOR_CACHE: dict[(str, bool)] = {},
+     _RUNTIME_JS: list[tuple[str, str]] = [];
 
 glob _RESULT_SENTINEL: str = "__JAC_CL_TEST_RESULTS__",
      _NPM_STUB_FILE: str = "__jac_npm_stub.js",

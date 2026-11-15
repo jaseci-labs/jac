@@ -1,9 +1,5 @@
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
 
 def _make_deployer(domain: str = '', cert_email: str = '') -> IngressDeployer {
     cfg = KubernetesConfig(domain=domain, cert_manager_email=cert_email);

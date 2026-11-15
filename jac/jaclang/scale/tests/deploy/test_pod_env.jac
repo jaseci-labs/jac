@@ -3,40 +3,8 @@ import json;
 import base64;
 import unittest.mock as mock;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    CONFIG_REVISION_ANNOTATION,
-    with_config_revision
-}
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    create_k8s_secret,
-    resolve_signing_secret
-}
-import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
 import from kubernetes.client.exceptions { ApiException }
 import from types { SimpleNamespace }
-import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
-    build_k8s_registry,
-    K8sRuntimeServiceResolver,
-    resolve_peer_route
-}
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry
-}
-import from jaclang.server.sv_client { peer_url_env_key }
-import from jaclang.scale.runtime.fleet { FLEET_ENV, fleet_of }
-import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
-    DatabaseProvisioner
-}
-import jaclang.scale.injector.binary as binary_mod;
 
 
 glob _K8S_E2E_FIXTURE: Path = Path(__file__).parents[1] / "fixtures" / "k8s_e2e",
@@ -261,7 +229,6 @@ def _entrypoint_run(
     failing_tools: (list[str] | None) = None
 ) -> tuple[int, str, str] {
     import subprocess;
-    import from jaclang.scale.injector.bundle { APP_MOUNT_PATH }
     cfg = cfg or KubernetesConfig(app_name="jac-shop", namespace="ns");
     script: str = ManifestBuilder(k8s_config=cfg)._pod_entrypoint()["args"][0];
     mount = f"cd {APP_MOUNT_PATH}; ";
@@ -342,6 +309,50 @@ test "every service pod carries the sibling flag in its env, and no override dro
         if e["name"] == "JAC_SV_SIBLING"
     ];
     assert values == ["1"] , overridden;
+}
+
+
+# Every init container is a serial container start on the cold-wake path, so
+# unpacking the bundle happens inside the bootstrap container rather than in a
+# container of its own, and the probes report Ready as soon as the app answers.
+test "app pods unpack and bootstrap in one init container and probe for a fast first Ready" {
+    import from jaclang.scale.injector.pvc_injector {
+        BUNDLE_MOUNT_PATH,
+        PVC_BOOTSTRAP_NAME,
+        bundle_keys_from_pod_spec
+    }
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = ManifestBuilder(
+        k8s_config=cfg,
+        project_dir=str(_K8S_E2E_FIXTURE),
+        fleet=fleet_of(
+            {"orders_app": "/orders", "cart_app": "/cart"},
+            root_app="main",
+            root_file="main.jac"
+        )
+    );
+    builder._bundle_object_key = "bundles/jac-shop/aaa.jab";
+    builder._toolchain_object_key = "toolchain/jac-shop/bbb.tar.gz";
+    app_cfg = AppConfig(code_folder=str(_K8S_E2E_FIXTURE), app_name="jac-shop");
+    cart = builder.generate_service_pod_specs(app_cfg, "img")["cart_app"];
+    names = [c["name"] for c in cart["initContainers"]];
+    assert PVC_BOOTSTRAP_NAME not in names , names;
+    boot = [
+        c
+        for c in cart["initContainers"]
+        if c["name"] == "jac-bootstrap"
+    ];
+    assert len(boot) == 1 , names;
+    script = boot[0]["args"][0];
+    assert script.index("tar xzf " + BUNDLE_MOUNT_PATH) < script.index("jac install");
+    assert bundle_keys_from_pod_spec(cart) , script;
+    container = cart["containers"][0];
+    assert container["startupProbe"]["periodSeconds"] == 1;
+    assert container["startupProbe"]["periodSeconds"]
+        * container["startupProbe"]["failureThreshold"]
+        == 900;
+    assert container["readinessProbe"]["initialDelaySeconds"] == 0;
+    assert "bundles/jac-shop/aaa.jab" in bundle_keys_from_pod_spec(cart);
 }
 
 
@@ -842,8 +853,68 @@ test "build_env bakes a direct peer URL only for peers that are not HTTP-activat
             )
         );
         env = {e["name"]: e["value"] for e in builder._build_env("app", {})};
-        assert ("JAC_APP_WORKER_URL" in env) == baked , f"{label}: {env}";
+        assert bool(env.get("JAC_APP_WORKER_URL", "")) == baked , f"{label}: {env}";
     }
+}
+
+
+test "turning on http_activation for a deployed peer routes the gateway through the interceptor" {
+    # A redeploy patches the live Deployment, and Kubernetes merges `env` by
+    # name, so a JAC_APP_<PEER>_URL baked while the peer was plain keeps its
+    # value unless the activated manifest overwrites it. That value then wins
+    # in resolve_peer_route and the gateway calls a Service with no endpoints.
+    import jaclang.scale.config.config_loader as config_loader_mod;
+
+    activation = {
+        "enabled": True,
+        "target_port": 8000,
+        "concurrency_target": 1,
+        "rules": [{"hosts": ["worker.ns.local"]}]
+    };
+
+    def gateway_env(overrides: dict[str, any]) -> list[dict[str, str]] {
+        builder = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="jac-shop", namespace="ns"),
+            fleet=fleet_of(
+                {"worker": "/worker"},
+                root_app="app",
+                root_file="app.jac",
+                overrides=overrides
+            )
+        );
+        return builder._build_env("__gateway__", {});
+    }
+
+    live: dict[str, str] = {e["name"]: e["value"] for e in gateway_env({})};
+    assert live.get("JAC_APP_WORKER_URL") , "a plain peer's URL is baked";
+    for e in gateway_env({"worker": {"http_activation": activation}}) {
+        live[e["name"]] = e["value"];
+    }
+
+    def activated_config(project_dir: object = None) -> object {
+        return SimpleNamespace(
+            get_kubernetes_config=lambda { {}},
+            get_app_scale_config=lambda (app_name: str) { {
+                "http_activation": activation
+            }
+                if app_name == "worker"
+                else {}}
+        );
+    }
+
+    original_get_scale_config = config_loader_mod.get_scale_config;
+    setattr(config_loader_mod, "get_scale_config", activated_config);
+    try {
+        with mock.patch.dict(
+            os.environ, {"JAC_APP_WORKER_URL": live.get("JAC_APP_WORKER_URL", "")}
+        ) {
+            route = resolve_peer_route("worker", "ns", 8000);
+        }
+    } finally {
+        setattr(config_loader_mod, "get_scale_config", original_get_scale_config);
+    }
+    assert route.host_header == "worker-service.ns.svc.cluster.local" , route;
+    assert "interceptor" in route.url , route;
 }
 
 
@@ -1253,7 +1324,14 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
         if isinstance(expected, type) {
             raised = False;
             try {
-                resolve_signing_secret(api, "ns", "app-secrets", data);
+                resolve_minted_secret(
+                    api,
+                    "ns",
+                    "app-secrets",
+                    data,
+                    "JAC_SERVE_AUTH_SECRET",
+                    "freshly-minted"
+                );
                 create_k8s_secret(api, "ns", "app-secrets", data);
             } except expected {
                 raised = True;
@@ -1266,7 +1344,10 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
             );
             continue;
         }
-        assert resolve_signing_secret(api, "ns", "app-secrets", data) == minted , label;
+        assert resolve_minted_secret(
+            api, "ns", "app-secrets", data, "JAC_SERVE_AUTH_SECRET", "freshly-minted"
+        )
+            == minted , label;
         revision = create_k8s_secret(api, "ns", "app-secrets", data);
 
         if expected is None {
@@ -1284,14 +1365,60 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
         assert api.created == [];
     }
 
-    rendered = ManifestBuilder(
-        k8s_config=KubernetesConfig(app_name="app", namespace="ns")
-    )._build_user_secret_manifest()["stringData"];
+    with mock.patch.dict(os.environ) {
+        os.environ.pop("JAC_SCALE_ADMIN_PASSWORD", None);
+        rendered = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+        )._build_user_secret_manifest()["stringData"];
+    }
+    with mock.patch.dict(
+        os.environ, {"JAC_SCALE_ADMIN_PASSWORD": "From-The-Shell-1!"}
+    ) {
+        from_shell = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+        )._build_user_secret_manifest()["stringData"];
+        assert from_shell["JAC_SCALE_ADMIN_PASSWORD"] == "From-The-Shell-1!" , (
+            "a password given only in the deploy shell must reach the pods, or "
+            "nothing is minted and the cluster never gets an admin"
+        );
+        kept = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns"),
+            secrets={"JAC_SCALE_ADMIN_PASSWORD": "From-Scale-Secrets-1!"}
+        )._build_user_secret_manifest()["stringData"];
+        assert kept["JAC_SCALE_ADMIN_PASSWORD"] == "From-Scale-Secrets-1!";
+    }
+    with mock.patch.dict(
+        os.environ, {"JAC_SCALE_ADMIN_PASSWORD": " spaced pass 1! "}
+    ) {
+        spaced = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+        )._build_user_secret_manifest()["stringData"];
+        assert spaced["JAC_SCALE_ADMIN_PASSWORD"] == " spaced pass 1! " , (
+            "a password is copied as given; trimming it changes what signs in"
+        );
+    }
     assert rendered["JAC_SERVE_AUTH_SECRET"] == PLACEHOLDER_JWT_SECRET , (
         "a rendered manifest must never carry a random value the apply will not use"
     );
     first = _FakeSecrets();
-    assert resolve_signing_secret(first, "ns", "app-secrets", rendered);
+    assert resolve_minted_secret(
+        first, "ns", "app-secrets", rendered, "JAC_SERVE_AUTH_SECRET", "freshly-minted"
+    );
+    assert rendered["JAC_SCALE_ADMIN_PASSWORD"] == PLACEHOLDER_JWT_SECRET , (
+        "with no admin password configured the deploy mints one, like the signing secret"
+    );
+    assert resolve_minted_secret(
+        first,
+        "ns",
+        "app-secrets",
+        rendered,
+        "JAC_SCALE_ADMIN_PASSWORD",
+        "freshly-minted"
+    );
+    assert rendered["JAC_SCALE_ADMIN_PASSWORD"] == "freshly-minted" , (
+        "the apply writes the value it was handed, so the admin password can be "
+        "minted to the project's own length bounds"
+    );
     assert rendered["JAC_SERVE_AUTH_SECRET"] not in ("", PLACEHOLDER_JWT_SECRET) , "a first deploy mints a real secret";
 }
 

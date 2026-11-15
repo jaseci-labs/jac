@@ -7,13 +7,6 @@ gateway permanently misses the routes of every service that was slow to start.
 A service is only quotable once it is healthy.
 """
 
-import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceEntry,
-    ServiceStatus
-}
-
-
 def _entry(status: ServiceStatus) -> ServiceEntry {
     return ServiceEntry(
         name="scoring",

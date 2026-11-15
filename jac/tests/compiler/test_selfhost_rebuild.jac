@@ -8,6 +8,15 @@ once, the unit collector fires on its budget rather than on every module, no
 interface is encoded inside a codegen-driven closure, and the peak memory of
 the process stays under a ceiling with room to spare.
 
+The program the rebuild runs is a two-line entry that imports only `gc`, which
+keeps it on the Python lane (a module with nothing but a print is placed
+native, and a cold native build is a different measurement). The counters
+are read by the driver once it has run. A program that imported a compiler module to
+read them would be compiled by the kernel, which asks the host for that
+module's interface; building the interfaces of compiler modules is a cost of
+its own (there is no prebuilt catalog of them yet) and would be measured
+here on top of the rebuild.
+
 It takes minutes, which is why it lives alone in this file: the runner
 parallelizes across files, so a slow file costs wall time only for itself.
 It forces the rerouted compiler source so the rebuild is of this checkout
@@ -24,37 +33,50 @@ glob SYMTAB_PER_MODULE: float = 1.75,
      COLLECT_SLACK: int = 8,
      PEAK_RSS_CEILING_MB: int = 4096,
      PROBE_SRC: str = (
-         "import gc;\n"
-         "import json;\n"
-         "import from jaclang.runtime.runtime { JacRuntime }\n\n"
+         "import gc;\n\n"
          "with entry {\n"
-         "    a = JacRuntime.get_selfhost().program.analysis;\n"
-         "    print(\"SELFHOST=\" + json.dumps({\n"
-         "        \"runs\": a.pass_runs,\n"
-         "        \"events\": a.cache_events,\n"
-         "        \"collections\": getattr(gc.collect, \"call_count\")\n"
-         "    }));\n"
+         "    print(\"rebuilt\", gc.isenabled());\n"
          "}\n"
      ),
      DRIVER: str = (
-         "import atexit, gc, resource, sys\n"
+         "import atexit, gc, json, resource, sys\n"
          "from unittest.mock import patch\n"
-         "def peak():\n"
-         "    usage = [resource.getrusage(w).ru_maxrss\n"
-         "             for w in (resource.RUSAGE_SELF, resource.RUSAGE_CHILDREN)]\n"
+         "collect = patch('gc.collect', wraps=gc.collect).start()\n"
+         "def own_peak():\n"
+         "    try:\n"
+         "        with open('/proc/self/status') as status:\n"
+         "            for line in status:\n"
+         "                if line.startswith('VmHWM:'):\n"
+         "                    return int(line.split()[1])\n"
+         "    except (OSError, ValueError, IndexError):\n"
+         "        pass\n"
+         "    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
+         "def report():\n"
+         "    usage = [own_peak(),\n"
+         "             resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss]\n"
          "    print('PEAK_RSS=' + str(max(usage)), flush=True)\n"
-         "atexit.register(peak)\n"
-         "with patch('gc.collect', wraps=gc.collect):\n"
-         "    from jaclang.cli.cli_boot import start_cli\n"
-         "    sys.argv = ['jac', 'run', sys.argv[1]]\n"
-         "    start_cli()"
+         "    print('PEAK_SPLIT=' + json.dumps(usage), flush=True)\n"
+         "    from jaclang.runtime.runtime import JacRuntime\n"
+         "    a = JacRuntime.get_selfhost().program.analysis\n"
+         "    print('SELFHOST=' + json.dumps({\n"
+         "        'runs': dict(a.pass_runs),\n"
+         "        'events': dict(a.cache_events),\n"
+         "        'collections': collect.call_count\n"
+         "    }), flush=True)\n"
+         "atexit.register(report)\n"
+         "from jaclang.cli.cli_boot import start_cli\n"
+         "sys.argv = ['jac', 'run', sys.argv[1]]\n"
+         "start_cli()"
      );
 
 """Convert a `PEAK_RSS=` report from the driver to MB.
 
 The driver reports its own peak and its children's, so the figure covers the
 rebuild alone. `RUSAGE_CHILDREN` read here would also count every earlier
-child of a pooled test worker."""
+child of a pooled test worker. On Linux the driver's own peak is `VmHWM`, not
+`RUSAGE_SELF`: `execve` folds the spawning worker's high-water mark into the
+new program's `ru_maxrss`, so a driver spawned by a worker that an earlier
+test grew to 6.8 GB reported 6.8 GB whatever the rebuild used."""
 def _peak_mb(stdout: str) -> int {
     peak = 0;
     for line in stdout.splitlines() {
@@ -80,9 +102,8 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
     env.update(cache_env(os.path.join(work, "cache")));
     env["LOCALAPPDATA"] = os.path.join(work, "cache");
     for knob in [
-        "JAC_NO_DEV_SOURCE",
+        "JAC_HANDOFF",
         "JAC_NO_UNIT_EVICT",
-        "JAC_REBUILD",
         "JAC_PRECOMPILE_LIMIT",
         "JAC_UNIT_COLLECT_EVERY",
         "JAC_UNIT_COLLECT_GROWTH_MB"
@@ -117,6 +138,11 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
         }
     }
     assert payload is not None , f"no SELFHOST= line in stdout:\n{proc.stdout[-1500:]}";
+    for line in proc.stdout.splitlines() {
+        if line.startswith("PEAK_SPLIT=") {
+            payload["split"] = json.loads(line[len("PEAK_SPLIT="):]);
+        }
+    }
     return (compiled, payload, _peak_mb(proc.stdout), );
 }
 
@@ -142,5 +168,7 @@ test "a cold compiler rebuild ingests each dependency about once and collects on
     );
     assert peak_mb <= PEAK_RSS_CEILING_MB , (
         f"the rebuild peaked at {peak_mb} MB of RSS, above the {PEAK_RSS_CEILING_MB} MB ceiling"
+        f" (self and children max RSS: {payload.get('split')}; {compiled} modules"
+        f" compiled; pass runs: {runs}; events: {events})"
     );
 }

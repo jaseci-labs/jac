@@ -1,12 +1,13 @@
 name: Set up jac binary
 description: >
-  Make the self-contained `jac` binary (a Jac launcher + bundled JacPython) available
-  on PATH. Replaces `pip install -e ./jac`: jaclang ships as the binary, not a
-  PyPI/editable package, so no system Python is needed to get the `jac` command.
+  Make the self-contained `jac` binary (a Jac launcher + the bundled prebuilt
+  CPython) available on PATH. Replaces `pip install -e ./jac`: jaclang ships as
+  the binary, not a PyPI/editable package, so no system Python is needed to get
+  the `jac` command.
 
   The binary is an OUTPUT cache keyed on the content that goes into it (jaclang
-  source, build.zig, and the launcher -- including bootstrap/pins.json, which pins the
-  LLVM pin and the separate Python source manifest). Merges to main seed the cache;
+  source, build.zig, and the launcher -- including bootstrap/pins.json, which pins
+  the prebuilt CPython and the LLVM slices). Merges to main seed the cache;
   every other job and workflow restores the prebuilt binary in seconds instead
   of rebuilding (PR branches cross-restore main's entry, and build their own on
   a miss). Exact-key match only (no restore-keys), so a stale binary can never
@@ -15,13 +16,28 @@ description: >
 inputs:
   need-build-inputs:
     description: >
-      Restore the source-built Python and the LLVMPY_* shim even when the
+      Restore the prebuilt CPython tree and the LLVMPY_* shim even when the
       binary cache hits. Set it when the job runs `zig build` steps of its own:
-      every payload-tool step (vendor-musl, vendor-wasm-libc, ...) runs through
-      the source-built interpreter, and building that interpreter compiles the
-      Jac compiler to native code, which loads the shim. A binary hit alone
-      leaves neither on disk, so those steps rebuild the SDK and die in
-      prepare_native.py with a missing libjacllvm.so.
+      every payload-tool step (vendor-musl, vendor-wasm-libc, ...) runs on that
+      CPython, and the compiler it runs loads the shim. A binary hit alone
+      leaves neither on disk.
+    required: false
+    default: "false"
+  bytecode-kit:
+    description: >
+      A CI kit, not a release: the payload is packed at zstd 3 instead of 19,
+      and its binary and layer caches are keyed apart, so such a kit never
+      serves a build that ships one.
+    required: false
+    default: "false"
+  dev:
+    description: >
+      Build an editable dev binary (zig build -Ddev): the launcher and Python
+      payload, with jaclang linked from this checkout instead of bundled. No
+      JIR precompile, native prebuild, stub catalog or seal; ci.yml's dev-kit
+      job builds the precompile bundle and the stub catalog beside it, and
+      test lanes run the checkout through the [dev] reroute. Its binary cache
+      is keyed apart from a sealed kit's.
     required: false
     default: "false"
 runs:
@@ -63,10 +79,10 @@ runs:
         # the compiler suite. Without them here, a binary cache hit skips the
         # build and the upload step fails on a fresh checkout.
         #
-        # .precompiled-build/jacpython rides WITH the binary, not beside it.
+        # .precompiled-build/cpython rides WITH the binary, not beside it.
         # ci.yml publishes that tree as the `jac-precompiled` artifact and every
-        # reroute lane runs against it under JAC_PRECOMPILE_REQUIRED=1, so a
-        # tree that does not match this checkout is a hard failure, not a slow
+        # reroute lane requires it (`jac native status --require precompiled`), so
+        # a tree that does not match this checkout is a hard failure, not a slow
         # lane. Keyed together, a hit restores the exact pair that was built;
         # keyed apart, a hit on one with a restore-keys prefix hit on the other
         # could ship a bundle one payload fingerprint stale. The read-mostly
@@ -75,8 +91,8 @@ runs:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-          jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
+          jac/.precompiled-build/cpython
+        key: jac-bin-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -93,33 +109,33 @@ runs:
     # made every "stable" entry a recurring miss. Main runs seed and
     # refresh the shared copies.
 
-    # The runtime key covers native JacPython, its producing Jac compiler, and
-    # all source/build inputs. The build-only host has its own fingerprint.
-    - name: Restore cached source-built Python
+    # The prebuilt CPython tree (bootstrap/fetch_pbs.zig), keyed on its pin
+    # and the fetcher. fetch_pbs reuses a tree whose stamp names the pinned
+    # archive, so a hit skips the download.
+    - name: Restore cached prebuilt CPython
       id: python-cache
       if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.python-build/jacpython
-        key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_jacpython }}
-        restore-keys: |
-          python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+        path: jac/.pbs-build/*/python
+        key: pbs-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.python }}
 
     # The LLVMPY_* shim is the single most expensive build artifact (statically
     # links ~0.5 GB of LLVM archives; several minutes) and depends only on
     # native/**, build.zig, and the pinned slice (bootstrap/pins.json) -- NOT on
     # jaclang/**. Cache the built shim itself so compiler-only merges (the
     # common case for a binary-cache miss) skip both the LLVM fetch below and
-    # the link: the build step passes the restored file via `-Dshim-bin`. The
-    # cache path is the shim's in-tree place path, which a from-source build
-    # populates, so a main-branch miss self-seeds when the job ends.
+    # the link. The cache path is the shim's in-tree place path, record
+    # included: `zig build` reuses a placed shim whose record names these
+    # inputs and this target. A from-source build populates it, so a
+    # main-branch miss self-seeds when the job ends.
     - name: Restore cached LLVMPY shim
       id: shim-cache
       if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
 
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
@@ -138,7 +154,7 @@ runs:
     # The contained bun runtime is fetched + sha256-verified and bundled into the
     # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
     # miss does not re-download it, keyed on the resolver pin in
-    # bun_installer.jac (the one definition; the Jac payload tool imports it, so no lockstep
+    # client/js_runtime.jac (the one definition; the Jac payload tool imports it, so no lockstep
     # check). Only engaged on a binary miss.
     - name: Restore cached bun runtime
       id: bun-cache
@@ -146,11 +162,11 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/js_runtime.jac') }}
 
     # The JIR precompile is mkpayload's single most expensive stage (~24 min:
-    # it compiles every bundled jaclang module). ONE tree per (code version,
-    # runtime variant) serves all of CI; nothing else may recompile it.
+    # it compiles every bundled jaclang module). ONE tree per code version
+    # serves all of CI; nothing else may recompile it.
     #
     # No runner.os, no runner.arch: a precompiled unit is pure marshalled
     # bytecode plus metadata, and its key folds only the jaclang version, the
@@ -161,13 +177,6 @@ runs:
     # under the jaclang package. Stored paths are relocatable through
     # PRECOMPILE_SENTINEL (JirPaths.encode/resolve), so the Linux kit's tree
     # loads unchanged on the macOS and aarch64 lanes.
-    #
-    # The `jacpython` token, by contrast, IS load-bearing and stays. Bytecode
-    # for a .jac module comes out of the HOST interpreter's `compile`
-    # (codegen_shim.compile_ir falls back to the builtin), which on JacPython is
-    # the native Jac compiler and on CPython is CPython's own. Equivalent
-    # behavior is not identical bytecode, and the module key has no variant
-    # axis to catch the difference, so the two variants must never share a tree.
     #
     # restore-keys stays: mkpayload re-validates every seeded .jir per module
     # and recompiles only the mismatches, so a near-miss tree makes the BUILD
@@ -180,10 +189,10 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.precompiled-build/jacpython
-        key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+        path: jac/.precompiled-build/cpython
+        key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
         restore-keys: |
-          jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
+          jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
 
     # The payload's compressed deps-layer frame (mkpayload --layer-cache): the
     # level-19 zstd of the ~600 MB dependency layer, the pack's single most
@@ -200,10 +209,10 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.payload-layers/jacpython
-        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+        path: jac/.payload-layers/cpython
+        key: payload-layers-cpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
         restore-keys: |
-          payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
+          payload-layers-cpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-
 
     # The Zig package store (.zig-cache/p): every git/tarball dependency
     # `zig build` fetches, as pinned by build.zig.zon. Content-addressed and
@@ -237,7 +246,7 @@ runs:
     # Download + extract the pinned LLVM into jac/.llvm-build (idempotent: a no-op
     # when the cache above restored it). Must run before `zig build` so the shim's
     # static archives exist when build.zig configures the jacllvm step. Skipped
-    # entirely when a cached shim was restored (-Dshim-bin needs no LLVM).
+    # entirely when a cached shim was restored (a current shim needs no LLVM).
     - name: Fetch LLVM for the jacllvm shim
       if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
       shell: bash
@@ -252,29 +261,34 @@ runs:
       # the stubs otherwise.
       run: zig build fetch-typeshed --summary all
 
+    # The stub catalog the payload build makes (~3.5 min). mkpayload reuses
+    # one from the cache home when its file name, the digest of the
+    # type-system sources (stubcat/locate.jac catalog_key), matches, so this
+    # key mirrors TYPE_SYSTEM_ROOTS and a compiler change outside them
+    # still hits. Linux only: that is where ~/.cache/jac is the cache home.
+    - name: Restore the build's stub catalog
+      id: build-stubcat-cache
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/jac/jir/stubcat
+        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
+      # On a shim-cache hit the build reuses the restored shim in place. On a
+      # miss it links the shim from source, the place step writes it in-tree,
+      # and the shim cache saves it at job end.
       env:
-        # The shared CI kit exercises the native Python compiler.
-        JACPYTHON: "1"
-        # A PR reuses the JacPython runtime main last built when the sources it
-        # was lowered from are unchanged (build_python.zig sourcesKey). Main
-        # keeps the full key, so the runtime is at most one main build behind.
-        JAC_JACPYTHON_REUSE: ${{ github.event_name == 'pull_request' && '1' || '' }}
-      # On a shim-cache hit, stage the restored shim OUTSIDE its in-tree place
-      # path before passing it via -Dshim-bin: the build's place step copies
-      # -Dshim-bin back to that path, and a self-copy would read the file it is
-      # truncating. On a shim miss the plain build links it from source, the
-      # place step writes it in-tree, and the shim cache saves it at job end.
+        # A bytecode kit lives one run: pack it at zstd 3 (seconds) instead of
+        # a release's 19 (about 5 minutes on a 4 vCPU runner).
+        JAC_PAYLOAD_ZSTD_LEVEL: ${{ inputs.bytecode-kit == 'true' && '3' || '' }}
+        DEV: ${{ inputs.dev }}
       run: |
-        SHIM_ARG=()
-        if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
-          mkdir -p .shim-build
-          cp jaclang/compiler/backends/native/llvm/libjacllvm.* .shim-build/
-          SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
-        fi
+        PY=()
+        if [ "$DEV" = true ]; then PY+=(-Ddev); fi
         TARGET_ARG=()
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64) TARGET_ARG=(-Dtarget=x86_64-linux-gnu.2.17) ;;
@@ -287,7 +301,7 @@ runs:
         set -o pipefail
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
-          if zig build "${TARGET_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+          if zig build "${PY[@]}" "${TARGET_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
             exit 0
           fi
           if grep -qE 'Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then
@@ -301,31 +315,44 @@ runs:
 
     # Seed the shared binary cache from trusted refs only (see the note by the
     # restore step). Saved after the build so both the binary and the materialized
-    # typeshed stdlib stubs (part of this cache's path) exist.
+    # typeshed stdlib stubs (part of this cache's path) exist. A dev binary is
+    # saved from pull requests too: its key covers only the launcher and
+    # payload sources, so a branch's later pushes reuse it.
     - name: Save jac binary cache (trusted refs only)
       if: >-
-        github.ref == 'refs/heads/main' &&
+        (github.ref == 'refs/heads/main' || inputs.dev == 'true') &&
         steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-          jac/.precompiled-build/jacpython
-        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
+          jac/.precompiled-build/cpython
+        key: jac-bin-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
     # above the restore steps). Main runs seed
     # pin bumps; PR runs never duplicate these entries.
-    - name: Save source Python cache (trusted refs only)
+    - name: Save prebuilt CPython cache (trusted refs only)
       if: >-
         github.ref == 'refs/heads/main' &&
         steps.cache.outputs.cache-hit != 'true' &&
         steps.python-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.python-build/jacpython
-        key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_jacpython }}
+        path: jac/.pbs-build/*/python
+        key: pbs-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.python }}
+
+    - name: Save the build's stub catalog (trusted refs only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        runner.os == 'Linux' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.build-stubcat-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/jac/jir/stubcat
+        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
 
     - name: Save LLVMPY shim cache (trusted refs only)
       if: >-
@@ -335,7 +362,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
 
     - name: Save LLVM cache (trusted refs only)
       if: >-
@@ -356,7 +383,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/js_runtime.jac') }}
 
     # cache-hit is only 'true' on an exact-key match, so a restore-keys prefix
     # hit still saves here -- that is what keeps the entry tracking HEAD (each
@@ -374,8 +401,8 @@ runs:
         steps.precompiled-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.precompiled-build/jacpython
-        key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+        path: jac/.precompiled-build/cpython
+        key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
     # Same prefix-hit re-save logic as the precompile cache above.
     - name: Save payload deps-layer cache (trusted refs only)
@@ -385,8 +412,8 @@ runs:
         steps.layers-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.payload-layers/jacpython
-        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+        path: jac/.payload-layers/cpython
+        key: payload-layers-cpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
 
     # Seed the Zig package store from trusted refs only (see the restore note).
     # Like the precompile cache, a restore-keys prefix hit still leaves cache-hit

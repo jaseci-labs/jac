@@ -32,5 +32,5 @@ def str_through_base -> int {
 }
 
 def base_without_str_keeps_default_repr -> int {
-    return 1 if str(pick(3)).startswith("<") else 0;
+    return 1 if str(pick(3)) == "Blob(sides=0)" else 0;
 }

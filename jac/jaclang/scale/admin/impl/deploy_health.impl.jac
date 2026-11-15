@@ -1,22 +1,72 @@
 import asyncio;
 import logging;
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse }
-import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
-import from jaclang.scale.models.resource_status { assess_workload }
-import from jaclang.scale.admin.k8s_ops {
-    apps_api,
-    core_api,
-    ops_namespace,
-    k8s_available,
-    api_error_detail,
-    unavailable_detail
-}
 
 glob logger = logging.getLogger(__name__);
 
 
-def _s(v: any) -> str {
+def _s(v: any) -> str;
+
+
+def _rollout_status(dep: dict[str, any]) -> dict[str, any];
+
+
+def summarize_deployment(dep: dict[str, any]) -> dict[str, any];
+
+
+def _container_state(cs: dict[str, any]) -> dict[str, any];
+
+
+def summarize_pod(pod: dict[str, any]) -> dict[str, any];
+
+
+def build_deploy_health(
+    namespace: str, deployments: list[dict[str, any]], pods: list[dict[str, any]]
+) -> dict[str, any];
+
+
+def _collect_deploy_health -> dict[str, any];
+
+
+impl JacAPIServerDeployHealth.register_deploy_health_endpoints -> None {
+    async def deploy_handler(request: Request) -> JSONResponse {
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
+        }
+        try {
+            data = await asyncio.to_thread(_collect_deploy_health);
+        } except Exception as e {
+            logger.warning(f"deploy-health handler error: {e}");
+            data = {"available": False, "detail": f"self-check error: {e}"};
+        }
+        return JSONResponse(content={"ok": True, "data": data});
+    }
+    server = self.server;
+    if server is None {
+        return;
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path="/admin/ops/deploy",
+            callback=deploy_handler,
+            parameters=[],
+            response_model=None,
+            tags=["Operations"],
+            summary="Deploy health (pods + deployments)",
+            description=(
+                "Namespace-scoped read of deployments (desired/ready/"
+                "available/updated + rollout status) and pods (phase, ready "
+                "containers, restarts, node, per-container image vs imageID). "
+                "Needs the read-only Ops Console Role; renders 'unavailable' "
+                "off-cluster, never a 500."
+            )
+        )
+    );
+    logger.info("Deploy-health endpoint registered: /admin/ops/deploy");
+}
+
+impl _s(v: any) -> str {
     if v is None {
         return "";
     }
@@ -24,7 +74,7 @@ def _s(v: any) -> str {
 }
 
 
-def _rollout_status(dep: dict[str, any]) -> dict[str, any] {
+impl _rollout_status(dep: dict[str, any]) -> dict[str, any] {
     health = assess_workload(dep);
     return {
         "status": health.status.value,
@@ -34,7 +84,7 @@ def _rollout_status(dep: dict[str, any]) -> dict[str, any] {
 }
 
 
-def summarize_deployment(dep: dict[str, any]) -> dict[str, any] {
+impl summarize_deployment(dep: dict[str, any]) -> dict[str, any] {
     meta: any = dep.get("metadata", {}) or {};
     spec: any = dep.get("spec", {}) or {};
     status: any = dep.get("status", {}) or {};
@@ -61,7 +111,7 @@ def summarize_deployment(dep: dict[str, any]) -> dict[str, any] {
 }
 
 
-def _container_state(cs: dict[str, any]) -> dict[str, any] {
+impl _container_state(cs: dict[str, any]) -> dict[str, any] {
     state: any = cs.get("state", {}) or {};
     if state.get("running") {
         return {"state": "running", "reason": ""};
@@ -78,7 +128,7 @@ def _container_state(cs: dict[str, any]) -> dict[str, any] {
 }
 
 
-def summarize_pod(pod: dict[str, any]) -> dict[str, any] {
+impl summarize_pod(pod: dict[str, any]) -> dict[str, any] {
     meta: dict[str, any] = pod.get("metadata", {}) or {};
     spec: dict[str, any] = pod.get("spec", {}) or {};
     status: dict[str, any] = pod.get("status", {}) or {};
@@ -123,7 +173,7 @@ def summarize_pod(pod: dict[str, any]) -> dict[str, any] {
 }
 
 
-def build_deploy_health(
+impl build_deploy_health(
     namespace: str, deployments: list[dict[str, any]], pods: list[dict[str, any]]
 ) -> dict[str, any] {
     deps = [summarize_deployment(d) for d in deployments];
@@ -139,7 +189,7 @@ def build_deploy_health(
 }
 
 
-def _collect_deploy_health -> dict[str, any] {
+impl _collect_deploy_health -> dict[str, any] {
     if not k8s_available() {
         return {"available": False, "detail": unavailable_detail()};
     }
@@ -159,44 +209,4 @@ def _collect_deploy_health -> dict[str, any] {
     deployments = [d.to_dict() for d in (dep_objs or [])];
     pods = [p.to_dict() for p in (pod_objs or [])];
     return build_deploy_health(ns, deployments, pods);
-}
-
-
-impl JacAPIServerDeployHealth.register_deploy_health_endpoints -> None {
-    async def deploy_handler(request: Request) -> JSONResponse {
-        guard = self.require_admin_json(request.headers.get("Authorization"));
-        if guard {
-            return guard;
-        }
-        try {
-            data = await asyncio.to_thread(_collect_deploy_health);
-        } except Exception as e {
-            logger.warning(f"deploy-health handler error: {e}");
-            data = {"available": False, "detail": f"self-check error: {e}"};
-        }
-        return JSONResponse(content={"ok": True, "data": data});
-    }
-    server = self.server;
-    if server is None {
-        return;
-    }
-    server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path="/admin/ops/deploy",
-            callback=deploy_handler,
-            parameters=[],
-            response_model=None,
-            tags=["Operations"],
-            summary="Deploy health (pods + deployments)",
-            description=(
-                "Namespace-scoped read of deployments (desired/ready/"
-                "available/updated + rollout status) and pods (phase, ready "
-                "containers, restarts, node, per-container image vs imageID). "
-                "Needs the read-only Ops Console Role; renders 'unavailable' "
-                "off-cluster, never a 500."
-            )
-        )
-    );
-    logger.info("Deploy-health endpoint registered: /admin/ops/deploy");
 }

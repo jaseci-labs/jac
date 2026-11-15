@@ -106,3 +106,29 @@ def construct -> list[int] {
         'assert.deepEqual(construct(), [1, 2, 3]);'
     );
 }
+
+"""A u64 literal past the signed 64-bit top becomes a BigInt spelled from its
+source text: the compiler, which may run as the native kernel, holds no wider
+int. JavaScript allows an underscore only between digits, so the one Jac allows
+right after a radix prefix is dropped."""
+test "a wide u64 literal is a BigInt JavaScript can parse" {
+    js = compile_client(
+        """
+def top -> u64 { return 0x_FFFF_FFFF_FFFF_FFFF; }
+def paren -> u64 { return (18446744073709551615); }
+def small -> u64 { return 0x_10; }
+"""
+    );
+    assert "0xFFFF_FFFF_FFFF_FFFFn" in js , js;
+    assert "0x_" not in js , js;
+    assert "18446744073709551615n" in js , js;
+    if shutil.which("node") {
+        run_client(
+            """
+def top -> u64 { return 0x_FFFF_FFFF_FFFF_FFFF; }
+def paren -> u64 { return (18446744073709551615); }
+""",
+            "assert.equal(top(), 18446744073709551615n);\nassert.equal(paren(), 18446744073709551615n);"
+        );
+    }
+}

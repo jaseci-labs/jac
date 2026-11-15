@@ -1,6 +1,6 @@
 """Native os.path members must report real file-system state on the host."""
 
-import from tests.support { jac_command }
+import from tests.support { jac_command, native_build_fails }
 
 import os;
 import subprocess;
@@ -50,16 +50,20 @@ test "os path isfile and isdir report real file kinds natively" {
         ] , f"os.path probe mismatch: {out}";
 }
 
+test "os path dirname keeps the root and drops repeated slashes like posixpath" {
+    rows = [
+        line.split("|")
+        for line in _nacompile_run("os_path_dirname.jac").rstrip("\n").split("\n")
+    ];
+    wrong = [
+        f"{path!r}: native {head!r}, posixpath {os.path.dirname(path)!r}"
+        for (path, head) in rows
+        if head != os.path.dirname(path)
+    ];
+    assert len(rows) == 10 and not wrong , "\n".join(wrong) or str(rows);
+}
+
 test "unsupported os path members fail the native compile loudly" {
-    src = os.path.join(FIXTURES, "os_path_unsupported.jac");
-    out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
-    comp = subprocess.run(
-        jac_command("build", "--native", src, "-o", out_bin),
-        capture_output=True,
-        text=True,
-        timeout=300
-    );
-    combined = (comp.stdout or "") + (comp.stderr or "");
-    assert comp.returncode != 0 , f"unsupported os.path member compiled silently: {combined[-400:]}";
+    combined = native_build_fails(os.path.join(FIXTURES, "os_path_unsupported.jac"));
     assert "islink" in combined , f"diagnostic does not name the member: {combined[-400:]}";
 }

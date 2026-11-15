@@ -35,9 +35,14 @@ def fixture(*parts: str) -> str {
     return os.path.join(APPS_DIR, *parts);
 }
 
-def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple[any, ...] {
+def compile_fixture(
+    path: str, cgen: bool = False, app: str = "", provider: str = ""
+) -> tuple[any, ...] {
     prog = JacProgram();
     import from jaclang.compiler.driver.compile_options { CompileOptions }
+    if provider {
+        prog.compile(provider, options=CompileOptions(no_cgen=not cgen));
+    }
     options = CompileOptions(no_cgen=not cgen);
     if app {
         options.target_app = app;
@@ -99,12 +104,28 @@ test "server-context import of another serving app is SERVICE_BRIDGE" {
     assert "E5104" not in codes(prog);
 }
 
-test "bridging to a plain (private) walker of another app is E5106" {
-    (prog, mod) = compile_fixture(fixture("web", "bad_walker_bridge.jac"));
-    found = codes(prog);
-    assert "E5106" in found , (
-        f"expected E5106 for a private walker, got {[str(e) for e in prog.errors_had]}"
-    );
+test "bridging to a private element of another app is E5106" {
+    cases = [
+        ("bad_bridge.jac", "hidden"),
+        ("bad_walker_bridge.jac", "Housekeep"),
+        ("bad_reexport_bridge.jac", "Sweep")
+    ];
+    for (consumer, name) in cases {
+        (prog, mod) = compile_fixture(fixture("web", consumer));
+        found = codes(prog);
+        msgs = [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code == "E5106"
+        ];
+        assert any(f"'{name}'" in m for m in msgs) , (
+            f"{consumer}: expected E5106 naming '{name}', got "
+            + str([str(e) for e in prog.errors_had])
+        );
+        assert "E5082" not in found , (
+            f"{consumer}: cross-app dead bindings report E5106, not E5082"
+        );
+    }
 }
 
 test "SERVICE_BRIDGE stubs are typed-async and keyed by the owner app" {
@@ -146,17 +167,61 @@ test "client-context import of server-placed elements is CLIENT_BRIDGE" {
     assert ("web", "social") in mod.gen.interop_manifest.app_edges;
 }
 
-test "direct and aliased client RPC calls retain the service route" {
-    (prog, mod) = compile_fixture(fixture("web", "panel.jac"), cgen=True, app="web");
+test "direct, aliased and re-imported client RPC calls retain the service route" {
+    (prog, mod) = compile_fixture(
+        fixture("web", "panel.jac"),
+        cgen=True,
+        app="web",
+        provider=fixture("social_app.jac")
+    );
     assert not prog.errors_had , str(prog.errors_had);
-    calls = re.findall(r'__jacCallFunction\("greet",[^\n]+', mod.gen.js);
-    assert len(calls) == 4 , mod.gen.js;
+    js = mod.gen.js;
+    calls = re.findall(r'__jacCallFunction\("greet",[^\n]+', js);
+    assert len(calls) == 4 , js;
+    for name in ["relay", "relay_alias"] {
+        assert js.count(f"async function {name}(") == 1 , (
+            f"'{name}' is re-imported by the social entry from social_ops and "
+            "bridges to exactly one stub; got:\n"
+            + js
+        );
+    }
+    relayed = re.findall(r'__jacCallFunction\("relay",[^\n]+', js);
+    assert len(relayed) >= 2 , js;
+    assert '__jacCallFunction("relay_alias"' not in js , (
+        "the entry's alias is a local name; the endpoint is the declared one"
+    );
+    for call in relayed {
+        assert '"name":' in call , (
+            "the re-imported def's signature reaches the bridge binding; got: " + call
+        );
+    }
+    calls += relayed;
     for call in calls {
         assert '"app": "social"' in call , call;
         assert '"route": "/api/social"' in call , call;
         assert '"contract":' in call , call;
     }
-    assert '__jacCallFunction("hello"' not in mod.gen.js;
+    assert '__jacCallFunction("hello"' not in js;
+    spawns = re.findall(r'__jacSpawn\("Relay(?:Alias)?",[^\n]+', js);
+    assert len(spawns) == 2 , js;
+    for call in spawns {
+        assert call.startswith('__jacSpawn("Relay",') , (
+            "a walker spawn targets the declared walker, not the entry's alias: " + call
+        );
+        assert '"app": "social"' in call , call;
+    }
+    assert "class Badge" in js , js;
+    assert "const Medal = Badge;" in js , (
+        "a type renamed by both the entry and the client binds its declaration: " + js
+    );
+    social_path = os.path.realpath(fixture("social_app.jac"));
+    assert all(
+        os.path.realpath(path) != social_path
+        for path in mod.gen.client_manifest.runtime_imports
+    ) , (
+        "bridged names never become runtime imports of the provider entry; got "
+        + str(mod.gen.client_manifest.runtime_imports)
+    );
 }
 
 test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
@@ -175,15 +240,6 @@ test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
         source_module=resolved
     );
     assert classify_cross_app_import(imp, manifest) == CrossAppKind.NATIVE_BIND;
-}
-
-test "bridging to a non-pub def of another app is E5106" {
-    (prog, mod) = compile_fixture(fixture("web", "bad_bridge.jac"));
-    found = codes(prog);
-    assert "E5106" in found , (
-        f"expected E5106, got {[str(e) for e in prog.errors_had]}"
-    );
-    assert "E5082" not in found , "cross-app dead bindings report E5106, not E5082";
 }
 
 test "app dependency cycle is E5104" {
@@ -303,4 +359,45 @@ test "a provider's import of a shared pure helper is not an app edge" {
     assert import_provider_app(import_of(ui, "feed_app")) == "feed" , (
         "the walker import still bridges to its owner when the binding is unlinked"
     );
+}
+
+def _client_top_scans(imports: int) -> int {
+    import sys;
+    import tempfile;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    scans = [0];
+    with tempfile.TemporaryDirectory() as tmp {
+        lines: list[str] = [];
+        for k in range(imports) {
+            with open(os.path.join(tmp, f'm{k}.jac'), 'w') as f {
+                f.write(f'def:pub f{k} -> int {{ return {k}; }}\n');
+            }
+            lines.append(f'import from m{k} {{ f{k} }}\n');
+        }
+        main = os.path.join(tmp, 'main.jac');
+        with open(main, 'w') as f {
+            f.write(''.join(lines));
+        }
+        def tally(frame: any, event: str, arg: any) {
+            if event == 'call' and frame.f_code.co_name == 'module_has_client_top' {
+                scans[0] += 1;
+            }
+        }
+        sys.setprofile(tally);
+        try {
+            JacProgram().compile(main, options=CompileOptions(no_cgen=True));
+        } finally {
+            sys.setprofile(None);
+        }
+    }
+    return scans[0];
+}
+
+"""Classifying each import as a client-native edge used to rescan the importing
+module's top-level statements, so an entry with many imports was analysed in
+time quadratic in its import count. The module is scanned once per pass."""
+test "client-native edge checks scan a module once, not once per import" {
+    few = _client_top_scans(10);
+    many = _client_top_scans(40);
+    assert many == few , f"{few} scans for 10 imports, {many} for 40";
 }

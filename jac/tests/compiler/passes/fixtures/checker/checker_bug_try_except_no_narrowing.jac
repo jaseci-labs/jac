@@ -4,8 +4,14 @@ The type checker has no exit_try_stmt or related methods. Exception
 variables in except blocks get no type narrowing, and raising
 non-exceptions is not detected.
 
-Expected: `except ValueError as e:` should narrow e to ValueError.
+Expected: `except ValueError as e:` should narrow e to ValueError, and
+`except (A, B) as e:` to `A | B`. A raised value must be an exception (E1090)
+and a `from` cause an exception or None (E1161); `any` is accepted.
 """
+
+import from types { NoneType }
+
+obj NotAnError {}
 
 with entry {
     try {
@@ -18,7 +24,202 @@ with entry {
     # Raising a non-exception should be an error
     try {
         raise 42;  # <-- Should be Error (int is not an exception type)
-    } except Exception as e {
-        ;
+    } except Exception as e {}
+}
+
+# Accepted: each of these raises an exception (or `any`, which may be one).
+def raise_any_subscript(b: dict[str, any]) {
+    raise b["error"];
+}
+
+def raise_any_param(e: any) {
+    raise e;
+}
+
+def raise_exception_class(t: type[ValueError]) {
+    raise t;
+}
+
+def raise_any_class(c: type) {
+    raise c;
+}
+
+def raise_exception_union(e: ValueError | TypeError) {
+    raise e;
+}
+
+def raise_narrowed_optional(e: ValueError | None) {
+    if e is not None {
+        raise e;
     }
+}
+
+def raise_bounded_type_var[T: Exception](e: T) {
+    raise e;
+}
+
+def raise_from_optional_exception(c: Exception | None) {
+    raise ValueError("a") from c;
+}
+
+def raise_from_any(c: any) {
+    raise ValueError("b") from c;
+}
+
+def raise_from_none {
+    raise ValueError("c") from None;
+}
+
+def reraise_from_tuple_handler {
+    try {
+        raise TimeoutError("slow");
+    } except (TimeoutError, RuntimeError) as exc {
+        print(exc.args);
+        raise RuntimeError("wrapped") from exc;
+    }
+}
+
+def reraise_tuple_handler {
+    try {
+        raise KeyError("k");
+    } except (KeyError, ValueError) as exc {
+        raise exc;
+    }
+}
+
+# Rejected: each raise below is an error.
+def raise_non_exception_instance {
+    raise NotAnError();  # <-- E1090
+}
+
+def raise_optional(e: ValueError | None) {
+    raise e;  # <-- E1090
+}
+
+def raise_mixed_union(e: ValueError | int) {
+    raise e;  # <-- E1090
+}
+
+def raise_from_int {
+    raise ValueError("x") from 5;  # <-- E1161
+}
+
+def raise_from_nonetype_class {
+    raise ValueError("y") from NoneType;  # <-- E1161
+}
+
+# Accepted: each handler names exception classes, or a value that may be one.
+glob CAUGHT = (KeyError, ValueError);
+
+def catch_class_param(t: type[ValueError]) {
+    try {
+        raise ValueError("p");
+    } except t {}
+}
+
+def catch_any_param(t: any) {
+    try {
+        raise ValueError("q");
+    } except t {}
+}
+
+def catch_tuple_glob {
+    try {
+        raise KeyError("k");
+    } except CAUGHT {}
+}
+
+def catch_starred_tuple {
+    try {
+        raise KeyError("s");
+    } except (*CAUGHT, TypeError) {}
+}
+
+# Rejected: each handler below is an error.
+def catch_non_exception_class {
+    try {
+        raise ValueError("x");
+    } except NotAnError {}  # <-- E1164
+}
+
+def catch_exception_instance(e: ValueError) {
+    try {
+        raise ValueError("y");
+    } except e {}  # <-- E1164
+}
+
+def catch_int_in_tuple {
+    try {
+        raise ValueError("z");
+    } except (ValueError, 5) {}  # <-- E1164
+}
+
+def catch_undefined_name {
+    try {
+        raise ValueError("u");
+    } except err {}  # <-- E2001
+}
+
+def catch_misspelled_class {
+    try {
+        raise OverflowError("o");
+    } except (ValueError, OverflwoError) {}  # <-- E2001
+}
+
+def catch_parenthesized_class {
+    try {
+        raise ValueError("g");
+    } except (ValueError) {}
+}
+
+def not_a_handler {}
+
+def catch_parenthesized_undefined {
+    try {
+        raise ValueError("h");
+    } except (ValueEror) {}  # <-- E2001
+}
+
+def catch_function {
+    try {
+        raise ValueError("f");
+    } except not_a_handler {}  # <-- E1164
+}
+
+def catch_nested_tuple {
+    try {
+        raise ValueError("n");
+    } except (ValueError, (TypeError, )) {}  # <-- E1164
+}
+
+def catch_type_param[T: Exception](e: T) {
+    try {
+        raise ValueError("p");
+    } except T {}  # <-- E1163
+}
+
+def catch_type_param_in_tuple[T: Exception](e: T) {
+    try {
+        raise ValueError("q");
+    } except (KeyError, T) {}  # <-- E1163
+}
+
+enum Signal { STOP }
+
+def catch_enum_member {
+    try {
+        raise ValueError("m");
+    } except Signal.STOP {}  # <-- E1164
+}
+
+def catch_optional_exception_class(err_cls: type[ValueError] | None) {
+    try {
+        raise ValueError("v");
+    } except err_cls {}
+}
+
+def catch_none_only(err_cls: None) {
+    try {
+        raise ValueError("w");
+    } except err_cls {}  # <-- E1164
 }

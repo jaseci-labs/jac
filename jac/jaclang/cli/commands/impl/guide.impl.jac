@@ -2,181 +2,20 @@ import json;
 import shutil;
 import sys;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.cli.guide_store {
-    Guide,
-    list_guides,
-    guide_sections,
-    list_docs,
-    get_guide,
-    guide_group,
-    grouped_guides,
-    doc_corpora,
-    corpus_blurb,
-    grep_guides,
-    nav_manifest
-}
 
-def _emit(text: str) {
-    sys.stdout.write(text + "\n");
-}
+def _emit(text: str);
 
-def _export_guides(dest: str) -> int {
-    guides = list_guides();
-    if not guides {
-        console.error("No guides are bundled with this Jac installation.");
-        return 1;
-    }
-    out_dir = Path(dest).expanduser();
-    for g in guides {
-        skill_dir = out_dir / g.name;
-        skill_dir.mkdir(parents=True, exist_ok=True);
-        shutil.copyfile(g.path, skill_dir / "SKILL.md");
-    }
-    console.success(f"Exported {len(guides)} guides to {out_dir}");
-    console.print(
-        "These are Claude Code Agent Skills -- point your agent tool at this "
-        "directory (e.g. copy into ~/.claude/skills/).",
-        style="muted"
-    );
-    return 0;
-}
+def _export_guides(dest: str) -> int;
 
-def _print_entries(entries: list[Guide]) {
-    for g in entries {
-        console.print(f"  {g.name}", style="bold cyan");
-        console.print(f"      {g.description}", style="muted");
-    }
-}
+def _print_entries(entries: list[Guide]);
 
-def _corpus_listing(ns: str, members: list[Guide], as_json: bool) -> int {
-    if as_json {
-        _emit(
-            json.dumps(
-                [{"name": g.name, "description": g.description} for g in members],
-                indent=2
-            )
-        );
-        return 0;
-    }
-    console.print();
-    console.print(f"Bundled docs: {ns}/ -- {corpus_blurb(ns)}", style="bold");
-    console.print();
-    _print_entries(members);
-    console.print();
-    console.print("Read one with:  jac guide <name>", style="muted");
-    console.print();
-    return 0;
-}
+def _corpus_listing(ns: str, members: list[Guide], as_json: bool) -> int;
 
-def _search_guides(query: str, as_json: bool) -> int {
-    hits = grep_guides(query);
-    if as_json {
-        _emit(
-            json.dumps(
-                [{"guide": h.guide, "line": h.line_no, "text": h.text} for h in hits],
-                indent=2
-            )
-        );
-        return 0;
-    }
-    if not hits {
-        console.warning(f"No matches for '{query}' in any bundled guide or doc.");
-        console.print(
-            "Line hits need every term on one line -- try fewer or more "
-            "specific terms.",
-            style="muted"
-        );
-        return 0;
-    }
-    for h in hits {
-        if h.line_no == 0 {
-            _emit(f"{h.guide}: {h.text}");
-        } else {
-            _emit(f"{h.guide}:{h.line_no}: {h.text}");
-        }
-    }
-    console.print();
-    tail = "Read a doc with:  jac guide <name>";
-    if len(hits) >= 200 {
-        tail = "Showing the first 200 matches -- refine the query. " + tail;
-    }
-    console.print(f"{len(hits)} matches. {tail}", style="muted");
-    return 0;
-}
+def _search_guides(query: str, as_json: bool) -> int;
 
-def _print_nav(as_json: bool) -> int {
-    manifest = nav_manifest();
-    if not manifest {
-        if as_json {
-            _emit(
-                json.dumps(
-                    {
-                        "error": "No docs navigation is bundled with this Jac installation"
-                    }
-                )
-            );
-        } else {
-            console.error("No docs navigation is bundled with this Jac installation.");
-        }
-        return 1;
-    }
-    if as_json {
-        _emit(json.dumps(manifest, indent=2));
-        return 0;
-    }
+def _print_nav(as_json: bool) -> int;
 
-    def walk(items: list[object], depth: int) {
-        pad = "  " * (depth + 1);
-        for item in items {
-            if not isinstance(item, dict) {
-                continue;
-            }
-            title = str(item.get("title", "")).strip();
-            if "page" in item {
-                name = str(item["page"]);
-                if name.endswith(".md") {
-                    name = name[:-3];
-                }
-                _emit(f"{pad}{title}  [{name}]");
-            } elif "items" in item {
-                console.print(f"{pad}{title}", style="bold");
-                walk(item["items"] as list[object], depth + 1);
-            } elif "url" in item {
-                _emit(f"{pad}{title}  {item['url']}");
-            }
-        }
-    }
-    console.print();
-    console.print("Bundled docs navigation", style="bold");
-    console.print();
-    walk(manifest.get("nav", []) as list[object], 0);
-    console.print();
-    console.print("Read a doc with:  jac guide <name>", style="muted");
-    console.print("Manifest as JSON: jac guide --nav --json", style="muted");
-    console.print();
-    return 0;
-}
-
-def _index_payload -> list[dict[str, any]] {
-    payload = [
-        {
-            "name": g.name,
-            "description": g.description,
-            "group": guide_group(g.name),
-            "kind": "skill"
-        } for g in list_guides()
-    ];
-    payload += [
-        {
-            "name": g.name,
-            "description": g.description,
-            "group": g.name.split("/")[0],
-            "kind": "doc"
-        } for g in list_docs()
-    ];
-    return payload;
-}
+def _index_payload -> list[dict[str, any]];
 
 impl guide(
     topic: str = "",
@@ -263,8 +102,21 @@ impl guide(
                     if e.title.lower() == section.lower()
                 ];
             }
+            if not matches {
+                wanted = section.lower();
+                matches = [
+                    e
+                    for e in entries
+                    if e.slug.startswith(wanted) or e.title.lower().startswith(wanted)
+                ];
+            }
             if len(matches) != 1 {
-                message = f"Section '{section}' not found or ambiguous. Use 'jac guide {g.name} --sections' for exact slugs.";
+                message = f"Section '{section}' not found. Use 'jac guide {g.name} --sections' for exact slugs.";
+                if len(matches) > 1 {
+                    message = f"Section '{section}' is ambiguous: "
+                        + ", ".join([e.slug for e in matches])
+                        + ".";
+                }
                 if as_json {
                     _emit(json.dumps({"error": message}));
                 } else {
@@ -347,4 +199,165 @@ impl guide(
     console.print("Full index as JSON:   jac guide --json", style="muted");
     console.print();
     return 0;
+}
+
+impl _emit(text: str) {
+    sys.stdout.write(text + "\n");
+}
+
+impl _export_guides(dest: str) -> int {
+    guides = list_guides();
+    if not guides {
+        console.error("No guides are bundled with this Jac installation.");
+        return 1;
+    }
+    out_dir = Path(dest).expanduser();
+    for g in guides {
+        skill_dir = out_dir / g.name;
+        skill_dir.mkdir(parents=True, exist_ok=True);
+        shutil.copyfile(g.path, skill_dir / "SKILL.md");
+    }
+    console.success(f"Exported {len(guides)} guides to {out_dir}");
+    console.print(
+        "These are Claude Code Agent Skills -- point your agent tool at this "
+        "directory (e.g. copy into ~/.claude/skills/).",
+        style="muted"
+    );
+    return 0;
+}
+
+impl _print_entries(entries: list[Guide]) {
+    for g in entries {
+        console.print(f"  {g.name}", style="bold cyan");
+        console.print(f"      {g.description}", style="muted");
+    }
+}
+
+impl _corpus_listing(ns: str, members: list[Guide], as_json: bool) -> int {
+    if as_json {
+        _emit(
+            json.dumps(
+                [{"name": g.name, "description": g.description} for g in members],
+                indent=2
+            )
+        );
+        return 0;
+    }
+    console.print();
+    console.print(f"Bundled docs: {ns}/ -- {corpus_blurb(ns)}", style="bold");
+    console.print();
+    _print_entries(members);
+    console.print();
+    console.print("Read one with:  jac guide <name>", style="muted");
+    console.print();
+    return 0;
+}
+
+impl _search_guides(query: str, as_json: bool) -> int {
+    hits = grep_guides(query);
+    if as_json {
+        _emit(
+            json.dumps(
+                [{"guide": h.guide, "line": h.line_no, "text": h.text} for h in hits],
+                indent=2
+            )
+        );
+        return 0;
+    }
+    if not hits {
+        console.warning(f"No matches for '{query}' in any bundled guide or doc.");
+        console.print(
+            "Line hits need every term on one line -- try fewer or more "
+            "specific terms.",
+            style="muted"
+        );
+        return 0;
+    }
+    for h in hits {
+        if h.line_no == 0 {
+            _emit(f"{h.guide}: {h.text}");
+        } else {
+            _emit(f"{h.guide}:{h.line_no}: {h.text}");
+        }
+    }
+    console.print();
+    tail = "Read a doc with:  jac guide <name>";
+    if len(hits) >= 200 {
+        tail = "Showing the first 200 matches -- refine the query. " + tail;
+    }
+    console.print(f"{len(hits)} matches. {tail}", style="muted");
+    return 0;
+}
+
+impl _print_nav(as_json: bool) -> int {
+    manifest = nav_manifest();
+    if not manifest {
+        if as_json {
+            _emit(
+                json.dumps(
+                    {
+                        "error": "No docs navigation is bundled with this Jac installation"
+                    }
+                )
+            );
+        } else {
+            console.error("No docs navigation is bundled with this Jac installation.");
+        }
+        return 1;
+    }
+    if as_json {
+        _emit(json.dumps(manifest, indent=2));
+        return 0;
+    }
+
+    def walk(items: list[object], depth: int) {
+        pad = "  " * (depth + 1);
+        for item in items {
+            if not isinstance(item, dict) {
+                continue;
+            }
+            title = str(item.get("title", "")).strip();
+            if "page" in item {
+                name = str(item["page"]);
+                if name.endswith(".md") {
+                    name = name[:-3];
+                }
+                _emit(f"{pad}{title}  [{name}]");
+            } elif "items" in item {
+                console.print(f"{pad}{title}", style="bold");
+                walk(item["items"] as list[object], depth + 1);
+            } elif "url" in item {
+                _emit(f"{pad}{title}  {item['url']}");
+            }
+        }
+    }
+    console.print();
+    console.print("Bundled docs navigation", style="bold");
+    console.print();
+    walk(manifest.get("nav", []) as list[object], 0);
+    console.print();
+    console.print("Read a doc with:  jac guide <name>", style="muted");
+    console.print("Manifest as JSON: jac guide --nav --json", style="muted");
+    console.print();
+    return 0;
+}
+
+impl _index_payload -> list[dict[str, any]] {
+    payload = [
+        {
+            "name": g.name,
+            "description": g.description,
+            "group": guide_group(g.name),
+            "kind": "skill"
+        } for g in list_guides()
+    ];
+    payload += [
+        {
+            "name": g.name,
+            "description": g.description,
+            "group": g.name.split("/")[0],
+            "kind": "doc"
+        } for g in list_docs()
+    ];
+    return payload;
 }

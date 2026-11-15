@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jac Graph Visualizer</title>
-    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -122,31 +122,76 @@
             background: #0f172a;
         }
 
-        .tooltip {
+        .node-panel {
             position: absolute;
-            z-index: 50;
+            top: 64px;
+            right: 16px;
+            width: 300px;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            z-index: 20;
             background: #1e293b;
             border: 1px solid #334155;
             border-radius: 8px;
             padding: 12px;
-            max-width: 320px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            pointer-events: none;
             display: none;
             font-size: 13px;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            color: #f8fafc;
+        }
+
+        .panel-id {
+            color: #64748b;
+            font-family: monospace;
+            font-size: 11px;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+
+        .panel-subtitle {
+            color: #94a3b8;
+            font-weight: 600;
+            margin: 8px 0 4px;
+        }
+
+        .panel-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .panel-key {
+            color: #94a3b8;
+        }
+
+        .panel-value {
+            color: #e2e8f0;
+            word-break: break-all;
+            text-align: right;
+        }
+
+        .panel-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .panel-status {
+            color: #f59e0b;
+            font-size: 12px;
+            margin-top: 8px;
         }
 
         .tooltip-title {
             font-weight: 600;
             color: #f8fafc;
             margin-bottom: 4px;
-        }
-
-        .tooltip-label {
-            color: #94a3b8;
-            font-family: monospace;
-            font-size: 12px;
-            word-break: break-all;
         }
 
         .tooltip-id {
@@ -386,6 +431,11 @@
             <div class="stats" id="stats"></div>
         </div>
         <div class="header-right">
+            <select class="btn" id="dir-select" title="Edges to follow when expanding">
+                <option value="out">Outgoing</option>
+                <option value="in">Incoming</option>
+                <option value="both">Both</option>
+            </select>
             <button class="btn" onclick="refreshGraph()" title="Refresh">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 2v6h-6" />
@@ -431,12 +481,30 @@
         </div>
     </div>
     <div id="graph-container"></div>
-    <div class="tooltip" id="tooltip"></div>
+    <div class="node-panel" id="node-panel">
+        <div id="panel-body"></div>
+        <div class="panel-actions">
+            <button class="btn" id="expand-btn" onclick="expandSelected()">Expand</button>
+            <button class="btn" id="more-btn" onclick="expandSelected()">Load more</button>
+            <button class="btn" id="collapse-btn" onclick="collapseSelected()">Collapse</button>
+        </div>
+        <div class="panel-status" id="panel-status"></div>
+    </div>
 
     <script>
+        const MAX_NODES = 1500;
+        const PAGE_SIZE = 50;
         let network = null;
-        let graphData = null;
+        let nodes = null;
+        let edges = null;
         let physicsEnabled = true;
+        let capped = false;
+        let selectedId = null;
+        let rootId = null;
+        let generation = 0;
+        const pages = new Map();
+        const edgeOwners = new Map();
+        const typeColors = new Map();
         // ?public=1 pins the visualizer to the public (super root) graph,
         // ignoring any stored session token - useful for embeds.
         const forcePublic = new URLSearchParams(window.location.search).get("public") === "1";
@@ -445,16 +513,20 @@
             : localStorage.getItem("jac_token") || null;
         const baseUrl = window.location.origin;
 
-        // Load graph immediately and update header buttons
         updateHeaderButtons();
-        loadGraphData();
+        loadRoot();
 
-        // Enter key submits login
         document
             .getElementById("login-password")
             .addEventListener("keydown", function (e) {
                 if (e.key === "Enter") doLogin();
             });
+        document.getElementById("dir-select").addEventListener("change", function () {
+            if (selectedId && pages.has(selectedId)) {
+                collapse(selectedId);
+                expand(selectedId);
+            }
+        });
 
         function updateHeaderButtons() {
             document.getElementById("auth-btn").style.display =
@@ -506,7 +578,7 @@
                     localStorage.setItem("jac_token", authToken);
                     closeLogin();
                     updateHeaderButtons();
-                    loadGraphData();
+                    loadRoot();
                 } else {
                     errEl.textContent = errorMessage(result, resp.status);
                     errEl.style.display = "block";
@@ -530,118 +602,114 @@
             authToken = null;
             localStorage.removeItem("jac_token");
             updateHeaderButtons();
-            loadGraphData();
+            loadRoot();
         }
 
-        async function loadGraphData() {
-            document.getElementById("graph-container").innerHTML =
-                '<div class="loading"><div class="spinner"></div><div>Loading graph data...</div></div>';
-            try {
-                const headers = {};
-                if (authToken) {
-                    headers["Authorization"] = "Bearer " + authToken;
-                }
-                const resp = await fetch(baseUrl + "/graph/data", { headers });
-                const data = await resp.json();
-                if (data.nodes && data.edges) {
-                    graphData = data;
-                    renderGraph(data);
-                } else {
-                    document.getElementById("graph-container").innerHTML =
-                        '<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/></svg><div>No graph data available</div><div style="font-size:13px">Run your Jac program to create graph nodes</div></div>';
-                }
-            } catch (err) {
-                document.getElementById("graph-container").innerHTML =
-                    '<div class="empty-state"><div style="color:#ef4444">Failed to load graph: ' +
-                    err.message +
-                    "</div></div>";
-            }
+        async function getJson(path, params) {
+            const url = new URL(baseUrl + path);
+            Object.entries(params || {}).forEach(([k, v]) => {
+                if (v !== null && v !== undefined && v !== "") url.searchParams.set(k, v);
+            });
+            const headers = {};
+            if (authToken) headers["Authorization"] = "Bearer " + authToken;
+            const resp = await fetch(url.toString(), { headers });
+            const body = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(body.error || "HTTP " + resp.status);
+            return body;
         }
 
-        function getNodeColor(label, isRoot) {
-            if (isRoot || label === "root")
-                return { background: "#ff7743", border: "#e05a2a" };
-            const match = label.match(/^([a-zA-Z0-9_]+)\(/);
-            if (match) {
-                let hash = 0;
-                for (let c of match[1]) hash = c.charCodeAt(0) + ((hash << 5) - hash);
-                const hue = Math.abs(hash % 360);
-                return {
-                    background: `hsl(${hue}, 60%, 50%)`,
-                    border: `hsl(${hue}, 60%, 35%)`,
-                };
-            }
-            return { background: "#3b82f6", border: "#374151" };
+        function el(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
         }
 
-        function getDisplayLabel(label) {
-            if (label === "root") return "root";
-            const nameMatch = label.match(/name='([^']+)'/);
-            if (nameMatch) return nameMatch[1];
-            const typeMatch = label.match(/^([a-zA-Z0-9_]+)\(/);
-            if (typeMatch) return typeMatch[1];
-            return label.length > 20 ? label.substring(0, 17) + "..." : label;
-        }
-
-        function getEdgeLabel(label) {
-            if (!label) return "";
-            const m = label.match(/='([a-zA-Z0-9_]+)'/);
-            return m ? m[1] : "";
-        }
-
-        function renderGraph(data) {
+        function showMessage(text, isError) {
             const container = document.getElementById("graph-container");
-            container.innerHTML = "";
+            container.replaceChildren();
+            const box = el("div", "empty-state");
+            const msg = el("div", null, text);
+            if (isError) msg.style.color = "#ef4444";
+            box.appendChild(msg);
+            container.appendChild(box);
+        }
 
-            const nodeTypes = new Map();
-            const nodes = new vis.DataSet(
-                data.nodes.map((n) => {
-                    const isRoot = n.label === "root";
-                    const colors = getNodeColor(n.label, isRoot);
-                    const display = getDisplayLabel(n.label);
-                    // Track node types for legend
-                    const typeMatch = n.label.match(/^([a-zA-Z0-9_]+)\(/);
-                    const typeName = isRoot
-                        ? "root"
-                        : typeMatch
-                            ? typeMatch[1]
-                            : "other";
-                    if (!nodeTypes.has(typeName))
-                        nodeTypes.set(typeName, colors.background);
-                    return {
-                        id: n.id,
-                        label: display,
-                        color: {
-                            background: colors.background,
-                            border: colors.border,
-                            highlight: { background: "#f59e0b", border: "#f59e0b" },
-                        },
-                        font: { color: "#ffffff", size: 13 },
-                        _rawLabel: n.label,
-                        _rawId: n.id,
-                    };
-                }),
-            );
+        function colorFor(type, isRoot) {
+            if (isRoot) return { background: "#ff7743", border: "#e05a2a" };
+            let hash = 0;
+            for (const c of type) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+            const hue = Math.abs(hash % 360);
+            return {
+                background: `hsl(${hue}, 60%, 50%)`,
+                border: `hsl(${hue}, 60%, 35%)`,
+            };
+        }
 
-            const edges = new vis.DataSet(
-                data.edges.map((e, i) => ({
-                    id: "edge_" + i,
-                    from: e.from,
-                    to: e.to,
-                    label: getEdgeLabel(e.label),
-                    title: e.label || "connection",
-                    arrows: "to",
-                    color: { color: "#64748b", opacity: 0.8 },
-                    font: {
-                        color: "#94a3b8",
-                        size: 11,
-                        strokeWidth: 2,
-                        strokeColor: "#0f172a",
-                        align: "top",
-                    },
-                })),
-            );
+        function tooltipFor(n) {
+            const box = el("div");
+            box.appendChild(el("div", "tooltip-title", n.root ? "root" : n.type));
+            box.appendChild(el("div", "tooltip-id", "ID: " + n.id));
+            return box;
+        }
 
+        function addNode(n) {
+            if (nodes.get(n.id)) return true;
+            if (nodes.length >= MAX_NODES) {
+                capped = true;
+                return false;
+            }
+            const colors = colorFor(n.type, n.root);
+            const legendKey = n.root ? "root" : n.type;
+            if (!typeColors.has(legendKey)) typeColors.set(legendKey, colors.background);
+            nodes.add({
+                id: n.id,
+                label: n.root ? "root" : n.type,
+                title: tooltipFor(n),
+                color: {
+                    background: colors.background,
+                    border: colors.border,
+                    highlight: { background: "#f59e0b", border: "#f59e0b" },
+                },
+                font: { color: "#ffffff", size: 13 },
+                isRoot: !!n.root,
+            });
+            return true;
+        }
+
+        function addEdge(e, owner) {
+            const id = e.id || e.from + ">" + e.to;
+            if (!nodes.get(e.from) || !nodes.get(e.to)) return;
+            if (!edgeOwners.has(id)) edgeOwners.set(id, new Set());
+            edgeOwners.get(id).add(owner);
+            if (edges.get(id)) return;
+            edges.add({
+                id,
+                from: e.from,
+                to: e.to,
+                label: e.label || "",
+                title: e.type || "edge",
+                arrows: e.undirected ? "" : "to",
+                color: { color: "#64748b", opacity: 0.8 },
+                font: {
+                    color: "#94a3b8",
+                    size: 11,
+                    strokeWidth: 2,
+                    strokeColor: "#0f172a",
+                    align: "top",
+                },
+            });
+        }
+
+        function buildNetwork() {
+            const container = document.getElementById("graph-container");
+            container.replaceChildren();
+            nodes = new vis.DataSet([]);
+            edges = new vis.DataSet([]);
+            pages.clear();
+            edgeOwners.clear();
+            typeColors.clear();
+            capped = false;
             const options = {
                 autoResize: true,
                 nodes: {
@@ -656,7 +724,7 @@
                     arrows: { to: { enabled: true, scaleFactor: 0.5 } },
                 },
                 physics: {
-                    enabled: true,
+                    enabled: physicsEnabled,
                     solver: "forceAtlas2Based",
                     forceAtlas2Based: {
                         gravitationalConstant: -50,
@@ -666,12 +734,7 @@
                         damping: 0.4,
                         avoidOverlap: 0.8,
                     },
-                    stabilization: {
-                        enabled: true,
-                        iterations: 200,
-                        updateInterval: 25,
-                        fit: true,
-                    },
+                    stabilization: { enabled: true, iterations: 200, updateInterval: 25 },
                 },
                 interaction: {
                     hover: true,
@@ -680,81 +743,215 @@
                     dragView: true,
                     dragNodes: true,
                 },
-                layout: { improvedLayout: true },
             };
-
             network = new vis.Network(container, { nodes, edges }, options);
-
-            // Tooltip handling
-            const tooltip = document.getElementById("tooltip");
-            network.on("hoverNode", function (e) {
-                const nodeData = nodes.get(e.node);
-                if (!nodeData) return;
-                const pos = e.event.center || {
-                    x: e.pointer.DOM.x,
-                    y: e.pointer.DOM.y,
-                };
-                tooltip.innerHTML =
-                    '<div class="tooltip-title">' +
-                    getDisplayLabel(nodeData._rawLabel) +
-                    "</div>" +
-                    '<div class="tooltip-label">' +
-                    nodeData._rawLabel +
-                    "</div>" +
-                    '<div class="tooltip-id">ID: ' +
-                    nodeData._rawId +
-                    "</div>";
-                tooltip.style.left =
-                    Math.min(pos.x + 15, window.innerWidth - 340) + "px";
-                tooltip.style.top = pos.y + 60 + "px";
-                tooltip.style.display = "block";
-                container.style.cursor = "pointer";
+            network.on("click", function (params) {
+                if (!params.nodes.length) return;
+                const id = params.nodes[0];
+                selectNode(id);
+                if (!pages.has(id)) expand(id);
             });
-            network.on("blurNode", function () {
-                tooltip.style.display = "none";
-                container.style.cursor = "grab";
-            });
-            network.on("dragStart", function () {
-                container.style.cursor = "grabbing";
-            });
-            network.on("dragEnd", function () {
-                container.style.cursor = "grab";
-            });
-            network.on("stabilized", function () {
-                network.fit({
-                    animation: { duration: 300, easingFunction: "easeInOutQuad" },
-                });
-            });
-
-            // Stats
-            document.getElementById("stats").textContent =
-                data.nodes.length + " nodes, " + data.edges.length + " edges";
             container.style.cursor = "grab";
+        }
 
-            // Add legend
-            if (nodeTypes.size > 0) {
-                let legendEl = document.getElementById("graph-legend");
-                if (!legendEl) {
-                    legendEl = document.createElement("div");
-                    legendEl.id = "graph-legend";
-                    legendEl.className = "legend";
-                    container.appendChild(legendEl);
-                }
-                let html = '<div class="legend-title">Node Types</div>';
-                nodeTypes.forEach((color, type) => {
-                    html +=
-                        '<div class="legend-item"><div class="legend-color" style="background:' +
-                        color +
-                        '"></div>' +
-                        type +
-                        "</div>";
-                });
-                legendEl.innerHTML = html;
+        function currentDir() {
+            return document.getElementById("dir-select").value;
+        }
+
+        async function loadRoot() {
+            const gen = ++generation;
+            document.getElementById("node-panel").style.display = "none";
+            showMessage("Loading graph...");
+            try {
+                const root = await getJson("/graph/node", { id: "root" });
+                if (gen !== generation) return;
+                buildNetwork();
+                addNode({ id: root.id, type: root.type, root: root.root });
+                rootId = root.id;
+                selectedId = root.id;
+                renderPanel(root);
+                await expand(root.id);
+            } catch (err) {
+                showMessage("Failed to load graph: " + err.message, true);
             }
         }
 
+        async function expand(id) {
+            const gen = generation;
+            const state = pages.get(id) || { dir: currentDir(), cursor: null, done: false, busy: false };
+            if (state.done || state.busy) return;
+            const room = MAX_NODES - nodes.length;
+            if (room <= 0) {
+                capped = true;
+                updateStats();
+                return;
+            }
+            pages.set(id, state);
+            state.busy = true;
+            try {
+                const page = await getJson("/graph/neighbors", {
+                    id,
+                    dir: state.dir,
+                    limit: Math.min(PAGE_SIZE, room),
+                    cursor: state.cursor,
+                });
+                if (gen !== generation || pages.get(id) !== state) return;
+                page.nodes.forEach(addNode);
+                page.edges.forEach((e) => addEdge(e, id));
+                state.cursor = page.next_cursor;
+                state.done = !page.next_cursor;
+                if (!page.nodes.length && page.next_cursor) {
+                    setStatus("Nothing readable in this stretch; Load more keeps looking.");
+                }
+            } catch (err) {
+                if (gen !== generation) return;
+                setStatus("Could not load neighbors: " + err.message + " (Load more retries)");
+            } finally {
+                state.busy = false;
+            }
+            updateStats();
+            if (selectedId === id) refreshPanelButtons();
+        }
+
+        function collapse(id) {
+            const dropped = [];
+            edgeOwners.forEach((owners, edgeId) => {
+                owners.delete(id);
+                if (!owners.size) dropped.push(edgeId);
+            });
+            dropped.forEach((edgeId) => edgeOwners.delete(edgeId));
+            edges.remove(dropped);
+            pages.delete(id);
+            const reached = new Set(rootId ? [rootId] : []);
+            const queue = rootId ? [rootId] : [];
+            while (queue.length) {
+                const at = queue.shift();
+                network.getConnectedNodes(at).forEach((next) => {
+                    if (!reached.has(next)) {
+                        reached.add(next);
+                        queue.push(next);
+                    }
+                });
+            }
+            const gone = nodes.getIds().filter((n) => !reached.has(n));
+            gone.forEach((n) => {
+                const linked = network.getConnectedEdges(n);
+                linked.forEach((edgeId) => edgeOwners.delete(edgeId));
+                edges.remove(linked);
+                pages.delete(n);
+            });
+            nodes.remove(gone);
+            if (gone.includes(selectedId)) {
+                selectedId = null;
+                document.getElementById("node-panel").style.display = "none";
+            }
+            capped = false;
+            updateStats();
+            refreshPanelButtons();
+        }
+
+        async function selectNode(id) {
+            const gen = generation;
+            selectedId = id;
+            try {
+                const detail = await getJson("/graph/node", { id });
+                if (gen !== generation || selectedId !== id) return;
+                renderPanel(detail);
+            } catch (err) {
+                if (gen !== generation || selectedId !== id) return;
+                setStatus("Could not load node: " + err.message);
+            }
+        }
+
+        function renderCounts(parent, title, counts, exact) {
+            const rows = Object.entries(counts || {});
+            if (!rows.length) return;
+            parent.appendChild(el("div", "panel-subtitle", exact === false ? title + " (at least)" : title));
+            rows.forEach(([key, count]) => {
+                const row = el("div", "panel-row");
+                row.appendChild(el("span", "panel-key", key.split(".").pop()));
+                row.appendChild(el("span", "panel-value", exact === false ? String(count) + "+" : String(count)));
+                parent.appendChild(row);
+            });
+        }
+
+        function renderPanel(detail) {
+            const panel = document.getElementById("node-panel");
+            const body = document.getElementById("panel-body");
+            body.replaceChildren();
+            body.appendChild(el("div", "panel-title", detail.root ? "root" : detail.type));
+            body.appendChild(el("div", "panel-id", detail.id));
+            const fields = Object.entries(detail.fields || {});
+            if (fields.length) {
+                body.appendChild(el("div", "panel-subtitle", "Fields"));
+                fields.forEach(([key, value]) => {
+                    const row = el("div", "panel-row");
+                    row.appendChild(el("span", "panel-key", key));
+                    row.appendChild(el("span", "panel-value", value));
+                    body.appendChild(row);
+                });
+            }
+            const counts = detail.counts || {};
+            const out = counts.out || {};
+            const inc = counts.in || {};
+            renderCounts(body, "Outgoing nodes", out.nodes, out.exact);
+            renderCounts(body, "Outgoing edges", out.edges, out.exact);
+            renderCounts(body, "Incoming nodes", inc.nodes, inc.exact);
+            renderCounts(body, "Incoming edges", inc.edges, inc.exact);
+            panel.style.display = "block";
+            refreshPanelButtons();
+        }
+
+        function refreshPanelButtons() {
+            const state = selectedId ? pages.get(selectedId) : null;
+            document.getElementById("more-btn").style.display =
+                state && !state.done ? "inline-flex" : "none";
+            document.getElementById("expand-btn").style.display =
+                state ? "none" : "inline-flex";
+            document.getElementById("collapse-btn").style.display =
+                state ? "inline-flex" : "none";
+        }
+
+        function expandSelected() {
+            if (selectedId) expand(selectedId);
+        }
+
+        function collapseSelected() {
+            if (selectedId) collapse(selectedId);
+        }
+
+        function setStatus(text) {
+            document.getElementById("panel-status").textContent = text;
+        }
+
+        function updateStats() {
+            let text = nodes.length + " nodes, " + edges.length + " edges";
+            if (capped) text += " (showing the first " + MAX_NODES + "; collapse a node to explore further)";
+            document.getElementById("stats").textContent = text;
+            updateLegend();
+        }
+
+        function updateLegend() {
+            const container = document.getElementById("graph-container");
+            let legend = document.getElementById("graph-legend");
+            if (!legend) {
+                legend = el("div", "legend");
+                legend.id = "graph-legend";
+                container.appendChild(legend);
+            }
+            legend.replaceChildren(el("div", "legend-title", "Node Types"));
+            typeColors.forEach((color, type) => {
+                const item = el("div", "legend-item");
+                const swatch = el("div", "legend-color");
+                swatch.style.background = color;
+                item.appendChild(swatch);
+                item.appendChild(document.createTextNode(type));
+                legend.appendChild(item);
+            });
+        }
+
         function refreshGraph() {
-            loadGraphData();
+            loadRoot();
         }
         function fitGraph() {
             if (network)

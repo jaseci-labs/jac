@@ -3,8 +3,8 @@
 `HollowGenBase[T_in, T_out]` / `HollowGenMid[T, R]` is `BaseTransform` /
 `Transform` in miniature: two type parameters threaded through a middle
 class, a slot typed by a parameter, and a `postinit` that runs the work
-and stores its answer. The inline `::py::` block is what keeps the module
-out of any native closure, so a native unit inheriting the chain must
+and stores its answer. The `async` method is what keeps the module out of
+any native closure, so a native unit inheriting the chain must
 reach it through the interop bridge.
 """
 import from abc { ABC }
@@ -14,7 +14,7 @@ obj HollowGenBase[T_in, T_out](ABC) {
         marker: int = 0,
         ir_out: T_out postinit;
 
-    def postinit -> None {
+    def postinit {
         self.marker = self.marker + 10;
         self.ir_out = self.transform(ir_in=self.ir_in);
     }
@@ -23,10 +23,8 @@ obj HollowGenBase[T_in, T_out](ABC) {
         return ir_in;
     }
 
-    def note_origin {
-        ::py::
-        self.marker = self.marker + 0
-        ::py::
+    async def note_origin {
+        self.marker = self.marker + 0;
     }
 }
 

@@ -6,7 +6,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     declared_fields: list[ir.Type] = [];
     if isinstance(declared, ir.PointerType)
         and isinstance(declared.pointee, ir.LiteralStructType)
-        and len(declared.pointee.elements) == len(nd.values) {
+        and len(declared.pointee.members()) == len(nd.values) {
         declared_fields = list(declared.pointee.elements);
     }
 
@@ -23,6 +23,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         _anc = _anc.parent;
     }
     _ret_direct = isinstance(nd.parent, uni.ReturnStmt);
+    moved_locals: set[str] = set();
     for val in nd.values {
         v = self._codegen_expr(val);
         if v is None {
@@ -38,14 +39,16 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
 
         _owns = self._is_owned(v);
         if _in_return and self._is_reference_type(v.type) and not _owns {
-            is_named_local = isinstance(val, uni.Name)
-                and val.sym_name in self.local_vars
-                and val.sym_name not in self.param_vars;
-            if not is_named_local {
+            local_name = val.sym_name if isinstance(val, uni.Name) else "";
+            is_named_local = bool(local_name)
+                and local_name in self.local_vars
+                and local_name not in self.param_vars;
+            if not is_named_local or (_ret_direct and local_name in moved_locals) {
                 self._emit_take_ref(v, op="return_tuple_elem");
                 self._mark_owned(v);
                 _owns = True;
             } elif _ret_direct {
+                moved_locals.add(local_name);
                 _owns = True;
             }
         }
@@ -75,15 +78,41 @@ impl NaIRGenPass._codegen_tuple_unpack(
     tuple_val: ir.Value,
     tuple_node: (uni.UniNode | None)
 ) -> bool {
+    replaced: list[tuple[str, ir.Value]] = [];
+    if not self._unpack_into(targets, tuple_val, tuple_node, replaced) {
+        return False;
+    }
+    for (how, gone) in replaced {
+        if how == "local" {
+            self._emit_slot_release(gone, op="unpack_old");
+        } elif how == "typed" {
+            self._emit_rc_release_typed(gone, op="overwrite", loc="");
+        } elif how == "payload" {
+            self._emit_rc_release_simple(gone, op="overwrite", loc="");
+        } else {
+            self._emit_slot_release(gone, op="unpack_box");
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._unpack_into(
+    targets: Sequence[uni.UniNode],
+    tuple_val: ir.Value,
+    tuple_node: (uni.UniNode | None),
+    replaced: list[tuple[str, ir.Value]]
+) -> bool {
     _elem_owned = tuple_val?.na_tuple_owned;
     _tu_opt = self._opt_payload_of(tuple_val.type);
     if _tu_opt is not None {
         tuple_val = self._coerce_type(tuple_val, _tu_opt);
     }
     _orig_tv = tuple_val;
-    struct_type = self._tuple_struct_of_value(tuple_val);
+    list_get = self._list_get_of_value(tuple_val);
+    struct_type = self._tuple_struct_of_value(tuple_val) if list_get is None else None;
     is_value = isinstance(tuple_val.type, ir.LiteralStructType);
-    if isinstance(tuple_val.type, ir.PointerType)
+    if list_get is None
+        and isinstance(tuple_val.type, ir.PointerType)
         and isinstance(tuple_node, uni.Expr) {
         cast_ptr_type = self._lower_type(tuple_node.type);
         if cast_ptr_type is not None
@@ -95,30 +124,38 @@ impl NaIRGenPass._codegen_tuple_unpack(
             struct_type = cast_ptr_type.pointee;
         }
     }
-    if struct_type is None {
-        return False;
-    }
-    if len(targets) != len(struct_type.elements) {
-        return False;
+    if list_get is None {
+        if struct_type is None {
+            return False;
+        }
+        if len(targets) != len(struct_type.members()) {
+            return False;
+        }
     }
 
     for target in targets {
-        if self._get_name(target) is None {
+        if not self._unpack_target_ok(target) {
             return False;
         }
     }
 
     rc_ok = (not is_value) or not self._nogc_headerless();
-    pending_old: list[ir.Value] = [];
     for (i, target) in enumerate(targets) {
-        if i >= len(struct_type.elements) {
+        if struct_type is not None and i >= len(struct_type.members()) {
             break;
         }
         var_name = self._get_name(target);
-        if var_name is None {
+        if var_name is None and not isinstance(target, uni.TupleVal) {
             return False;
         }
-        if is_value {
+        elem_val: ir.Value;
+        if list_get is not None {
+            elem_val = self.builder.call(
+                list_get,
+                [tuple_val, ir.Constant(ir.IntType(64), i)],
+                name=f"unpack.{i}"
+            );
+        } elif is_value {
             elem_val = self.builder.extract_value(tuple_val, i, name=f"unpack.{i}");
         } else {
             elem_ptr = self.builder.gep(
@@ -133,17 +170,63 @@ impl NaIRGenPass._codegen_tuple_unpack(
             and _elem_owned is not None
             and i < len(_elem_owned)
             and _elem_owned[i];
-        if var_name in self.local_vars {
+        if isinstance(target, uni.TupleVal) or var_name is None {
+            if not isinstance(target, uni.TupleVal) {
+                return False;
+            }
+            inner = target.values or [];
+            if moved and isinstance(elem_val.type, ir.LiteralStructType) {
+                elem_val.na_tuple_owned = [True] * len(inner);
+            }
+            if not self._unpack_into(inner, elem_val, None, replaced) {
+                return False;
+            }
+            continue;
+        }
+        if var_name not in self.local_vars
+            and var_name in self.global_vars
+            and isinstance(target, uni.NameAtom)
+            and target.sym is not None
+            and target.sym.storage == SymbolStorage.MODULE_GLOBAL {
+            if not self._unpack_store_global(
+                var_name, elem_val, moved, target, replaced
+            ) {
+                return False;
+            }
+            continue;
+        }
+        fresh = var_name not in self.local_vars;
+        if not fresh {
             alloca = self.local_vars[var_name];
             if not isinstance(alloca.type, ir.PointerType) {
                 return False;
             }
             slot_type = alloca.pointee_type;
-            stored = self._coerce_container_element(elem_val, slot_type)
-                if slot_type == self.jacval_type
-                else self._coerce_type(elem_val, slot_type);
-        } else {
-            alloca = self._entry_alloca(elem_val.type, var_name);
+            _target_ty = self._lower_type(target.type)
+                if isinstance(target, uni.Expr)
+                else None;
+            fresh = self._rebinds_slot(slot_type, _target_ty, elem_val.type);
+            if not fresh {
+                stored = self._coerce_container_element(elem_val, slot_type)
+                    if slot_type == self.jacval_type
+                    else self._coerce_type(elem_val, slot_type);
+                fresh = stored.type != slot_type;
+            }
+        }
+        if fresh {
+            _i8p = ir.IntType(8).as_pointer();
+            _want = self._lower_type(target.type)
+                if isinstance(target, uni.Expr)
+                else None;
+            if elem_val.type == _i8p
+                and isinstance(_want, ir.PointerType)
+                and _want != _i8p
+                and not isinstance(_want.pointee, ir.FunctionType) {
+                elem_val = self.builder.bitcast(
+                    elem_val, _want, name=f"unpack.{i}.typed"
+                );
+            }
+            alloca = self._binding_slot(elem_val.type, var_name);
             self.local_vars[var_name] = alloca;
             stored = elem_val;
         }
@@ -155,18 +238,148 @@ impl NaIRGenPass._codegen_tuple_unpack(
             } else {
                 self._emit_take_ref(stored, op="unpack");
             }
-            pending_old.append(self.builder.load(alloca, name=f"unpack.{i}.old"));
+            replaced.append(
+                ("local", self.builder.load(alloca, name=f"unpack.{i}.old"))
+            );
         }
         self.builder.store(stored, alloca);
+        self._mark_bound(var_name, target);
     }
 
-    for old_val in pending_old {
-        self._emit_slot_release(old_val, op="unpack_old");
-    }
     if (not is_value) and self._is_owned(_orig_tv) {
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
     return True;
+}
+
+impl NaIRGenPass._value_kind(ty: ir.Type) -> str {
+    if isinstance(ty, ir.IntType) {
+        return "int";
+    }
+    if isinstance(ty, (ir.DoubleType, ir.FloatType)) {
+        return "float";
+    }
+    if isinstance(
+        ty, (ir.PointerType, ir.IdentifiedStructType, ir.LiteralStructType)
+    ) {
+        return "reference";
+    }
+    return "other";
+}
+
+impl NaIRGenPass._rebinds_slot(
+    slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+) -> bool {
+    if target_type is None
+        or slot_type == self.jacval_type
+        or target_type == self.jacval_type
+        or value_type == self.jacval_type
+        or target_type == slot_type
+        or value_type == slot_type
+        or self._opt_payload_of(slot_type) is not None {
+        return False;
+    }
+    slot_kind = self._value_kind(slot_type);
+    if slot_kind == "other" {
+        return False;
+    }
+    return slot_kind != self._value_kind(target_type)
+        and self._value_kind(target_type) != "other";
+}
+
+impl NaIRGenPass._unpack_store_global(
+    var_name: str,
+    value: ir.Value,
+    moved: bool,
+    at: uni.UniNode,
+    replaced: list[tuple[str, ir.Value]]
+) -> bool {
+    slot = self.global_vars[var_name];
+    slot_type = slot.value_type;
+    boxed_slot = self.jacval_type is not None and slot_type == self.jacval_type;
+    stored = self._coerce_container_element(value, slot_type)
+        if boxed_slot
+        else self._coerce_type(value, slot_type);
+    loc = f"{os.path.basename(self.module.loc.mod_path)}:{at.loc.first_line
+        if at.loc
+        else 0}";
+    owned = moved or self._is_owned(value);
+    raw = self._is_raw_int_ptr(stored);
+    is_str = self._str_desc_ty is not None and slot_type == self._str_desc_ty;
+    if (isinstance(slot_type, ir.PointerType) or is_str) and not raw {
+        if self._nogc_headerless() {
+            return False;
+        }
+        if owned {
+            self.rc_ops_elided += 1;
+        } else {
+            self._emit_rc_retain(stored, op="unpack", loc=loc);
+        }
+        replaced.append(
+            ("typed", self.builder.load(slot, name=f"glob.{var_name}.old"))
+        );
+    } elif self._opt_ptr_payload_of(slot_type) is not None and not raw {
+        if self._nogc_headerless() {
+            return False;
+        }
+        if owned {
+            self.rc_ops_elided += 1;
+        } else {
+            self._emit_rc_retain(
+                self.builder.extract_value(
+                    stored, 1, name=f"glob.{var_name}.opt.newpv"
+                ),
+                op="unpack",
+                loc=loc
+            );
+        }
+        before = self.builder.load(slot, name=f"glob.{var_name}.opt.old");
+        replaced.append(
+            (
+                "payload",
+                self.builder.extract_value(before, 1, name=f"glob.{var_name}.opt.oldpv")
+            )
+        );
+    } elif boxed_slot and self._gc_mode() != "none" {
+        if owned {
+            self.rc_ops_elided += 1;
+        } else {
+            self._emit_take_ref(stored, op="unpack_box", loc=loc);
+        }
+        replaced.append(
+            ("box", self.builder.load(slot, name=f"glob.{var_name}.box.old"))
+        );
+    }
+    self.builder.store(stored, slot);
+    return True;
+}
+
+impl NaIRGenPass._unpack_target_ok(target: uni.UniNode) -> bool {
+    if isinstance(target, uni.TupleVal) {
+        for inner in (target.values or []) {
+            if not self._unpack_target_ok(inner) {
+                return False;
+            }
+        }
+        return True;
+    }
+    return self._get_name(target) is not None;
+}
+
+impl NaIRGenPass._list_get_of_value(value: ir.Value) -> (ir.Function | None) {
+    if not isinstance(value.type, ir.PointerType) {
+        return None;
+    }
+    for helpers in self.list_helpers.values() {
+        made = helpers.get("new");
+        fetch = helpers.get("get");
+        if isinstance(made, ir.Function)
+            and isinstance(fetch, ir.Function)
+            and made.function_type.return_type == value.type {
+            return fetch;
+        }
+    }
+    return None;
 }
 
 impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
@@ -196,7 +409,7 @@ impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
 impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list[int] {
     return [
         index
-        for (index, element) in enumerate(struct_type.elements)
+        for (index, element) in enumerate(struct_type.members())
         if self._is_reference_type(element)
     ];
 }
@@ -331,11 +544,11 @@ impl NaIRGenPass._coerce_tuple_to_struct(
         return val;
     }
     if val.type == target_struct
-        or len(val.type.elements) != len(target_struct.elements) {
+        or len(val.type.members()) != len(target_struct.members()) {
         return val;
     }
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
-    for i in range(len(target_struct.elements)) {
+    for i in range(len(target_struct.members())) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
         tgt_ty = target_struct.elements[i];
         if fld.type != tgt_ty {
@@ -360,7 +573,7 @@ impl NaIRGenPass._codegen_tuple_index(
     if idx is None {
         return None;
     }
-    if idx < 0 or idx >= len(struct_type.elements) {
+    if idx < 0 or idx >= len(struct_type.members()) {
         return None;
     }
 
@@ -379,15 +592,6 @@ impl NaIRGenPass._codegen_tuple_index(
 impl NaIRGenPass._variadic_tuple_seq_type(
     type_args: list[TypeBase]
 ) -> (ir.Type | None) {
-    """The native shape of a tuple annotation that withholds its arity.
-
-    `tuple[T, ...]` describes any number of `T`, and a native tuple carries its
-    arity in its type, so no tuple struct can stand for it. The one native shape
-    that holds N-of-T with N only known at runtime is the sequence `list[T]`
-    already lowers to, and that is what such an annotation means here. The type
-    system marks the variadic form by parking an `UnknownType` among the type
-    arguments, which is the same signal `_tuple_has_variadic_arg` reads.
-    """;
     try {
         import from jaclang.compiler.types.types { UnknownType as _VtUnknown }
     } except ImportError {
@@ -424,13 +628,6 @@ impl NaIRGenPass._variadic_tuple_seq_type(
 impl NaIRGenPass._tuple_seq_coerce(
     val: ir.Value, target_type: ir.Type
 ) -> (ir.Value | None) {
-    """Materialize a tuple value into the sequence a variadic tuple lowers to.
-
-    Fires when the target is exactly the sequence type the value's own element
-    flavor would build, or when it is the boxed `jacval` sequence an erased
-    `tuple[Any, ...]` lowers to, which holds any element flavor by boxing each
-    one. It never reinterprets one unboxed element flavor as another.
-    """;
     if not isinstance(target_type, ir.PointerType) {
         return None;
     }
@@ -463,17 +660,6 @@ impl NaIRGenPass._tuple_seq_coerce(
 impl NaIRGenPass._variadic_elem_coerce(
     val: ir.Value, container: (uni.UniNode | None)
 ) -> ir.Value {
-    """Give a fixed-arity tuple the shape a `list[tuple[T, ...]]` slot holds.
-
-    A variadic tuple lowers to the sequence `list[T]` does (see
-    `_variadic_tuple_seq_type`), and every read out of such a list views its
-    erased slot through that sequence type. A tuple display stored into the
-    list is built with its own fixed arity, though, and the erased `i8*` slot
-    took the tuple box as it was, so the next read walked a tuple struct as a
-    list header. Every element store into a list whose checked element type
-    is variadic comes through here and is materialized as that sequence; any
-    other value, or a list of anything else, passes through untouched.
-    """;
     if self._tuple_struct_of_value(val) is None {
         return val;
     }

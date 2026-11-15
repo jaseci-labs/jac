@@ -8,6 +8,10 @@ element rather than to cast the handle.
 
 The sums are what prove the rebuild is real: a cast would leave the pointer
 slots holding boxed words, and reading `.n` back off them would not add up.
+
+The `union_*` functions take the opposite direction: a `list[ptr]` passed to a
+`list[Node | str | None]` parameter is boxed element by element, and each
+element must keep its own kind (jac#10320).
 """
 
 obj Node {
@@ -55,4 +59,35 @@ def join_str_elems(flag: bool) -> int {
         total += len(s);
     }
     return total;
+}
+
+
+def _union_total(items: list[(Node | str | None)]) -> int {
+    total = 0;
+    for x in items {
+        if isinstance(x, Node) {
+            total += x.n;
+        } elif isinstance(x, str) {
+            total += 100 * len(x);
+        }
+    }
+    return total;
+}
+
+
+def union_obj_elems(flag: bool) -> int {
+    nodes = [Node(n=3), Node(n=4)];
+    if not flag {
+        nodes = [Node(n=10)];
+    }
+    return _union_total(nodes);
+}
+
+
+def union_str_elems(flag: bool) -> int {
+    words = ["ab", "c"];
+    if not flag {
+        words = ["defg"];
+    }
+    return _union_total(words);
 }

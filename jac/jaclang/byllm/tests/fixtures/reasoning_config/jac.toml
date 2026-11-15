@@ -1,0 +1,9 @@
+[project]
+name = "byllm-reasoning-test"
+version = "0.1.0"
+
+[byllm.call_params]
+reasoning_effort = "low"
+
+[byllm.call_params.thinking]
+type = "enabled"

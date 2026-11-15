@@ -1,20 +1,6 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.injector.bundle { pack_jab, content_address }
-import from jaclang.scale.injector.binary { pack_binary_bytes }
-import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
-import from jaclang.compiler.driver.jir {
-    FLAG_PRECOMPILED,
-    compiler_source_digest,
-    compiler_source_files,
-    compute_module_key,
-    compute_precompile_module_key,
-    module_cache_key,
-    precompiled_jir_matches_source,
-    running_compiler_digest,
-    write_precompiled_jir
-}
 
 
 glob _JAC_BIN: Path = pod_binary();
@@ -28,7 +14,7 @@ test "identical content packs to identical bytes (content-address stable)" {
     require_pod_binary();
     binary = _JAC_BIN.read_bytes();
     d = tempfile.mkdtemp();
-    src = Path(d, "svc.jac");
+    src = Path(d, "main.jac");
     src.write_text("with entry { print(\"ok\"); }");
     first = pack_jab(d, binary);
     # A different mtime on the same content must not change the digest.
@@ -39,6 +25,16 @@ test "identical content packs to identical bytes (content-address stable)" {
         import shutil;
         shutil.rmtree(d, ignore_errors=True);
     }
+}
+
+
+test "deploy archives compress at gzip level 6, not the slow level 9" {
+    # Byte 8 of a gzip header is XFL: 2 means level 9, 4 means level 1, and 0
+    # means anything in between. Level 9 costs about 2.7x the CPU of level 6
+    # for a 0.3% smaller bundle, and a deploy compresses the bundle twice.
+    raw = pack_binary_bytes(b"ELF" * 4096);
+    assert raw[:2] == b"\x1f\x8b" , raw[:10];
+    assert raw[8] == 0 , f"gzip XFL byte is {raw[8]}, expected 0 (level 6)";
 }
 
 

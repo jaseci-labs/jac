@@ -42,7 +42,11 @@ obj JEndPoint {
         requires_auth: bool = False,
         forward_undeclared_query_params: bool = True,
         include_in_schema: bool = True,
-        callback_spec: any = None;
+        yields_to_declared: bool = False,
+        callback_spec: any = None,
+        parameter_source: (Callable[[], list[APIParameter]] | None) = None;
+
+    def declared_parameters -> list[APIParameter];
 }
 
 obj WSEndPoint {

@@ -1,12 +1,6 @@
 import json;
-import from jaclang.compiler.frontend.constant { is_borrow_kind }
 
 impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
-    import from jaclang.compiler.c_interop {
-        c_type_spec,
-        is_foreign_struct_archetype,
-        is_opaque_c_archetype
-    }
     lib: dict[str, any] = {};
     if imp.from_loc is not None and imp.from_loc.path {
         names: list[str] = [];
@@ -28,18 +22,35 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     structs: list[dict[str, any]] = [];
     opaque: list[str] = [];
     functions: list[dict[str, any]] = [];
+    data: list[list[any]] = [];
     for decl in imp.clib_decls or [] {
-        if isinstance(decl, Archetype) and is_opaque_c_archetype(decl) {
+        if isinstance(decl, GlobalVars) {
+            for assign in decl.assignments {
+                target = assign.target[0] if assign.target else None;
+                tag = assign.type_tag.tag if assign.type_tag else None;
+                if isinstance(target, Name) {
+                    data.append([target.sym_name, c_type_spec(target.type, tag)]);
+                }
+            }
+        } elif isinstance(decl, Archetype) and is_opaque_c_archetype(decl) {
             opaque.append(decl.name.value);
         } elif isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             fields: list[list[any]] = [];
+            defaults: dict[str, any] = {};
             for hv in decl.get_has_vars() {
                 tag = hv.type_tag.tag if hv.type_tag else None;
                 fields.append([hv.name.sym_name, c_type_spec(hv.type, tag)]);
+                (folded, value) = fold_const(hv.value);
+                if folded and isinstance(value, (int, float, bool)) and value {
+                    defaults[hv.name.sym_name] = value;
+                }
             }
-            structs.append({"name": decl.name.value, "fields": fields});
+            structs.append(
+                {"name": decl.name.value, "fields": fields, "defaults": defaults}
+            );
         } elif isinstance(decl, Ability)
-            and isinstance(decl.signature, FuncSignature) {
+            and isinstance(decl.signature, FuncSignature)
+            and not decl.body {
             params: list[list[any]] = [];
             for p in decl.signature.get_parameters() {
                 if p.is_vararg or p.is_kwargs {
@@ -48,7 +59,11 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
                 tag = p.type_tag.tag if p.type_tag else None;
                 spec = c_type_spec(p.type, tag);
                 if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
-                    spec = ["ref", p.type_tag.ownership.name == "MUT_BORROW", spec];
+                    spec = [
+                        "ref",
+                        p.type_tag.ownership == OwnershipKind.MUT_BORROW,
+                        spec
+                    ];
                 }
                 params.append([p.name.value, spec]);
             }
@@ -72,7 +87,13 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
             );
         }
     }
-    return {"lib": lib, "structs": structs, "opaque": opaque, "functions": functions};
+    return {
+        "lib": lib,
+        "structs": structs,
+        "opaque": opaque,
+        "functions": functions,
+        "globals": data
+    };
 }
 
 impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
@@ -98,8 +119,22 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
             jac_node=imp
         )
     ];
-    declared: list[str] = desc["opaque"] + [s["name"] for s in desc["structs"]];
-    declared += [f["name"] for f in desc["functions"]];
+    declared: list[str] = [];
+    for key in ["opaque", "structs", "functions"] {
+        entries: list[any] = desc[key];
+        for item in entries {
+            if isinstance(item, str) {
+                declared.append(item);
+            } else {
+                named: dict[str, any] = item;
+                declared.append(str(named["name"]));
+            }
+        }
+    }
+    globals_desc: list[any] = desc["globals"];
+    for glob_desc in globals_desc {
+        declared.append(str(glob_desc[0]));
+    }
     for name in declared {
         out.append(
             self.nod(
@@ -124,6 +159,67 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
             )
         );
     }
+    for decl in imp.clib_decls or [] {
+        if isinstance(decl, Ability) and decl.body {
+            out.extend(
+                [
+                    item
+                    for item in self.outs(decl)
+                    if isinstance(item, CgNode)
+                ]
+            );
+            continue;
+        }
+        if not isinstance(decl, GlobalVars) {
+            continue;
+        }
+        for assign in decl.assignments {
+            target = assign.target[0] if assign.target else None;
+            if not isinstance(target, Name) or assign.value is None {
+                continue;
+            }
+            thunk = self.nod(
+                'Lambda',
+                ['args', 'body'],
+                [
+                    self.nod(
+                        'arguments',
+                        [
+                            'posonlyargs',
+                            'args',
+                            'kwonlyargs',
+                            'kw_defaults',
+                            'defaults'
+                        ],
+                        [[], [], [], [], []]
+                    ),
+                    self.val(assign.value)
+                ]
+            );
+            out.append(
+                self.nod(
+                    'Expr',
+                    ['value'],
+                    [
+                        self.call_node(
+                            self.nod(
+                                'Attribute',
+                                ['value', 'attr', 'ctx'],
+                                [
+                                    self.name_load(target.sym_name),
+                                    'define',
+                                    self.nod('Load', [], [])
+                                ]
+                            ),
+                            [thunk],
+                            []
+                        )
+                    ],
+                    jac_node=assign
+                )
+            );
+        }
+    }
     return out;
 }
 
@@ -142,78 +238,184 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
 }
 
 impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
-    import from jaclang.compiler.c_interop { c_type_spec, is_builtin_pin_call }
+    outs = self.outs(nd);
+    call = outs[0] if outs else None;
+    callee_type = nd.target.type if nd.target is not None else None;
+    cast_args: list[Expr | KWPair] = list(nd.params or []);
+    cast_fn = cast_args[0] if len(cast_args) == 1 else None;
+    if is_ptr_type(callee_type)
+        and callee_type is not None
+        and not callee_type.is_instance()
+        and isinstance(cast_fn, Expr)
+        and named_function_of(cast_fn) is not None {
+        if isinstance(call, CgNode) and call.cls == 'Call' {
+            fn_spec = self.const_of(json.dumps(c_type_spec(cast_fn.type, None)));
+            scope = self.call_node(self.name_load('globals'), [], []);
+            self.set_out(
+                nd,
+                [
+                    self.call_node(
+                        self.builtin_name('_jac_c_function_ptr'),
+                        [call.items('args')[0], fn_spec, scope],
+                        [],
+                        jac_node=nd
+                    )
+                ]
+            );
+        }
+        return;
+    }
     if is_builtin_pin_call(nd) {
-        args = [
-            p
-            for p in (nd.params or [])
-            if not isinstance(p, KWPair)
-        ];
-        call = self.outs(nd)[0] if self.outs(nd) else None;
-        if args and isinstance(call, CgNode) and call.cls == 'Call' {
-            spec = c_type_spec(args[0].type, None);
-            call.get('args').append(self.const_of(json.dumps(spec)));
+        pinned: (Expr | None) = None;
+        for param in (nd.params or []) {
+            if not isinstance(param, KWPair) {
+                pinned = param;
+                break;
+            }
+        }
+        if pinned is not None and isinstance(call, CgNode) and call.cls == 'Call' {
+            spec = c_type_spec(pinned.type, None);
+            call.push('args', self.const_of(json.dumps(spec)));
         }
         return;
     }
-    if nd.call_kind != "clib" or not isinstance(nd.callee_decl, Ability) {
-        return;
-    }
-    sig = nd.callee_decl.signature;
-    if not isinstance(sig, FuncSignature) {
-        return;
-    }
-    decl_params = [
-        p
-        for p in sig.get_parameters()
-        if not (p.is_vararg or p.is_kwargs)
-    ];
-    borrowed: list[tuple[int, list[any]]] = [];
-    for (i, p) in enumerate(decl_params) {
-        if p.type_tag is None or not is_borrow_kind(p.type_tag.ownership) {
-            continue;
-        }
-        spec = c_type_spec(p.type, p.type_tag.tag);
-        inner = spec[1] if spec[0] == "opt" else spec;
-        if inner[0] in ("s", "ptr") {
-            borrowed.append((i, inner));
+
+    borrowed_at: list[int] = [];
+    borrowed_spec: list[list[any]] = [];
+    borrowed_lent: list[(list[any] | None)] = [];
+    position = 0;
+    for arg in (nd.params or []) {
+        index = position;
+        position += 1;
+        lent = c_lent_arg_elem(arg);
+        lent_param = c_lent_param(arg) if lent is not None else None;
+        if lent is not None and lent_param is not None {
+            param_type = c_param_type(nd, lent_param);
+            borrowed_at.append(index);
+            borrowed_spec.append(c_type_spec(lent, None));
+            borrowed_lent.append(c_type_spec(param_type, None));
         }
     }
-    if not borrowed {
+    callee = nd.callee_decl;
+    callee_sig = callee.signature if isinstance(callee, Ability) else None;
+    if isinstance(callee_sig, FuncSignature)
+        and nd.call_kind != "clib"
+        and c_variadic_param(callee_sig) is not None {
+        self._c_vararg_rewrite(
+            nd, len(callee_sig.posonly_params) + len(callee_sig.params or [])
+        );
+    } elif nd.call_kind == "clib" and isinstance(callee_sig, FuncSignature) {
+        fixed = 0;
+        for p in callee_sig.get_parameters() {
+            if p.is_vararg or p.is_kwargs {
+                continue;
+            }
+            index = fixed;
+            fixed += 1;
+            type_tag = p.type_tag;
+            if type_tag is None or not is_borrow_kind(type_tag.ownership) {
+                continue;
+            }
+            spec = c_type_spec(p.type, type_tag.tag);
+            inner: list[any] = spec;
+            if spec[0] == "opt" {
+                inner = spec[1];
+            }
+            if inner[0] == "s" or inner[0] == "ptr" {
+                borrowed_at.append(index);
+                borrowed_spec.append(inner);
+                borrowed_lent.append(None);
+            }
+        }
+        if callee_sig.varargs is not None {
+            self._c_vararg_rewrite(nd, fixed);
+            position = 0;
+            for arg in (nd.params or []) {
+                index = position;
+                position += 1;
+                if index >= fixed
+                    and isinstance(arg, UnaryExpr)
+                    and is_borrow_kind(arg.ownership) {
+                    spec = c_type_spec(arg.operand.type, None);
+                    if spec[0] == "s" or spec[0] == "ptr" {
+                        borrowed_at.append(index);
+                        borrowed_spec.append(spec);
+                        borrowed_lent.append(None);
+                    }
+                }
+            }
+        }
+    }
+    if not borrowed_at {
         return;
     }
     params: list[Expr | KWPair] = list(nd.params or []);
-    call = self.outs(nd)[0] if self.outs(nd) else None;
     if not isinstance(call, CgNode) or call.cls != 'Call' {
         return;
     }
-    call_args = call.get('args');
-    if any([isinstance(p, KWPair) for p in params]) or len(call_args) != len(params) {
+    call_args = call.items('args');
+    for param in params {
+        if isinstance(param, KWPair) {
+            return;
+        }
+    }
+    if len(call_args) != len(params) {
         return;
     }
     pre: list[CgNode] = [];
     post: list[CgNode] = [];
     scope = self.call_node(self.name_load('globals'), [], []);
-    for (i, spec) in borrowed {
-        if i >= len(params) {
+    for slot_index in range(len(borrowed_at)) {
+        i = borrowed_at[slot_index];
+        if i >= len(params) or isinstance(params[i], Null) {
             continue;
         }
+        spec = borrowed_spec[slot_index];
+        lent_spec = borrowed_lent[slot_index];
         spec_const = self.const_of(json.dumps(spec));
-        parts = self._place_parts(params[i]);
-        if parts is None {
+        if lent_spec is not None and spec[0] == "struct" {
             call_args[i] = self.call_node(
-                self.builtin_name('_jac_c_cell'), [spec_const, call_args[i], scope], []
+                self.builtin_name('_jac_c_lend'),
+                [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                []
             );
             continue;
         }
-        (kind, owner, key) = parts;
+        place = self._place_parts(params[i]);
+        if place is None {
+            call_args[i] = self.call_node(
+                self.builtin_name('_jac_c_cell'), [spec_const, call_args[i], scope], []
+            );
+            if lent_spec is not None {
+                call_args[i] = self.call_node(
+                    self.builtin_name('_jac_c_lend'),
+                    [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                    []
+                );
+            }
+            continue;
+        }
         cell = self._c_temp_name("cell");
-        if kind == 'name' {
-            initial = self.name_load(owner);
+        readback = self.call_node(
+            self.nod(
+                'Attribute',
+                ['value', 'attr', 'ctx'],
+                [self.name_load(cell), 'get', self.nod('Load', [], [])]
+            ),
+            [],
+            []
+        );
+        initial: CgNode;
+        if place.kind == 'name' {
+            initial = self.name_load(place.name);
+            post.append(self._c_named(place.name, readback));
         } else {
+            target = place.target;
+            key = place.key;
+            assert target is not None and key is not None , "attribute and item places carry a target and a key";
             holder = self._c_temp_name("own");
-            pre.append(self._c_named(holder, owner));
-            if kind == 'attr' {
+            pre.append(self._c_named(holder, target));
+            if place.kind == 'attr' {
                 initial = self.nod(
                     'Attribute',
                     ['value', 'attr', 'ctx'],
@@ -233,7 +435,16 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
                 );
                 key = self.name_load(slot);
             }
-            owner = self.name_load(holder);
+            helper = '_jac_replace_attr'
+                if place.kind == 'attr'
+                else '_jac_replace_item';
+            post.append(
+                self.call_node(
+                    self.builtin_name(helper),
+                    [self.name_load(holder), key, readback],
+                    []
+                )
+            );
         }
         call_args[i] = self._c_named(
             cell,
@@ -241,34 +452,20 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
                 self.builtin_name('_jac_c_cell'), [spec_const, initial, scope], []
             )
         );
-        readback = self.call_node(
-            self.nod(
-                'Attribute',
-                ['value', 'attr', 'ctx'],
-                [self.name_load(cell), 'get', self.nod('Load', [], [])]
-            ),
-            [],
-            []
-        );
-        if kind == 'name' {
-            post.append(self._c_named(owner, readback));
-        } elif kind == 'attr' {
-            post.append(
-                self.call_node(
-                    self.builtin_name('_jac_replace_attr'), [owner, key, readback], []
-                )
-            );
-        } else {
-            post.append(
-                self.call_node(
-                    self.builtin_name('_jac_replace_item'), [owner, key, readback], []
-                )
+        if lent_spec is not None {
+            call_args[i] = self.call_node(
+                self.builtin_name('_jac_c_lend'),
+                [self.const_of(json.dumps(lent_spec)), call_args[i], scope],
+                []
             );
         }
     }
-    sequence = self.nod(
-        'Tuple', ['elts', 'ctx'], [pre + [call] + post, self.nod('Load', [], [])]
-    );
+    call.setf('args', call_args);
+    elements: list[CgNode] = [];
+    elements.extend(pre);
+    elements.append(call);
+    elements.extend(post);
+    sequence = self.nod('Tuple', ['elts', 'ctx'], [elements, self.nod('Load', [], [])]);
     self.set_out(
         nd,
         [
@@ -283,7 +480,6 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
 }
 
 impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
-    import from jaclang.compiler.c_interop { foreign_read_copies }
     if not foreign_read_copies(nd) {
         return;
     }
@@ -295,4 +491,43 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
         nd,
         [self.call_node(self.builtin_name('_jac_c_copy'), [got[0]], [], jac_node=nd)]
     );
+}
+
+impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
+    if clib_global_of_name(nd) is None
+        or (
+            nd.find_parent_of_type(Import) is not None
+            and nd.enclosing_decl(Ability) is None
+        ) {
+        return False;
+    }
+    return not is_builtin_addressof_call(nd.parent);
+}
+
+impl JcirGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
+    params: list[Expr | KWPair] = list(nd.params or []);
+    call = self.outs(nd)[0] if self.outs(nd) else None;
+    if not isinstance(call, CgNode)
+        or call.cls != 'Call'
+        or any([isinstance(p, KWPair) for p in params]) {
+        return;
+    }
+    call_args = call.items('args');
+    if len(call_args) != len(params) {
+        return;
+    }
+    for i in range(fixed, len(params)) {
+        arg = params[i];
+        if not isinstance(arg, Expr)
+            or (isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership)) {
+            continue;
+        }
+        spec = c_type_spec(arg.type, None);
+        call_args[i] = self.call_node(
+            self.builtin_name('_jac_c_vararg'),
+            [call_args[i], self.const_of(json.dumps(spec))],
+            []
+        );
+    }
+    call.setf('args', call_args);
 }

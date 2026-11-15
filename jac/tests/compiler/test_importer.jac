@@ -231,7 +231,9 @@ test "compiler separates internal from user modules" {
         internal_hub_paths = list(compiler.selfhost.program.mod.hub.keys());
         user_hub_paths = list(user_program.mod.hub.keys());
 
-        assert len(user_hub_paths) > 0 , "User program hub should not be empty";
+        assert not any(path.startswith(user_file) for path in internal_hub_paths) , (
+            "the user module was compiled in the compiler's internal program"
+        );
 
         for path in internal_hub_paths {
             assert path.startswith(jaclang_root) , (
@@ -250,6 +252,81 @@ test "compiler separates internal from user modules" {
         Jac.program = old_program;
         Jac.selfhost = old_selfhost;
     }
+}
+
+test "a program's view of the compiler's own modules carries none of their warnings" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.jir { set_cache_mode }
+    import from jaclang.compiler.driver.pass_driver { deliver_alerts }
+    import from jaclang.compiler.frontend.diagnostics { W1051 }
+    import from jaclang.compiler.frontend.srcloc { Span }
+    import from jaclang.compiler.passes.context { Alert }
+    import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+    project = tempfile.mkdtemp(dir=_test_tmp_dir);
+    Path(project, "helper.jac").write_text(
+        'def:pub helper_fn -> int {\n    "Docstring inside the body.";\n    return 1;\n}\n'
+    );
+    main_file = os.path.join(project, "main.jac");
+    Path(main_file).write_text(
+        "import from jaclang.runtime.runtime { JacRuntime }\n"
+            + "import from jaclang.project.config { find_project_root }\n"
+            + "import from helper { helper_fn }\n\n"
+            + "def:pub where -> str {\n"
+            + "    return str(find_project_root()) + str(JacRuntime) + str(helper_fn());\n"
+            + "}\n"
+    );
+    jaclang_root = os.path.realpath(os.path.dirname(jaclang.__file__)) + os.sep;
+
+    def check_app -> JacProgram {
+        options = CompileOptions(no_cgen=True, iface_ok=True, strict_dependencies=True);
+        options.entry_point = main_file;
+        program = JacProgram();
+        program.compile(main_file, options=options);
+        leaked = [
+            str(w)
+            for w in program.warnings_had
+            if w.loc and os.path.realpath(w.loc.mod_path).startswith(jaclang_root)
+        ];
+        assert not leaked , f"the compiler's own modules leaked warnings: {leaked[:3]}";
+        helper_codes = [
+            w.code.code
+            for w in program.warnings_had
+            if w.code is not None and w.loc and w.loc.mod_path.endswith("helper.jac")
+        ];
+        assert "W0060" in helper_codes , f"an application dependency keeps its warnings, got {helper_codes}";
+        return program;
+    }
+
+    set_cache_mode(rebuild=True);
+    try {
+        cold = check_app();
+    } finally {
+        set_cache_mode(rebuild=False);
+    }
+    assert cold.analysis.cache_events.get("dep_hydrate", 0) == 0;
+    Path(main_file).write_text(
+        Path(main_file).read_text()
+            + "\ndef:pub again -> str {\n    return where();\n}\n"
+    );
+    warm = check_app();
+    assert warm.analysis.cache_events.get("dep_hydrate", 0) > 0 , f"the second check did not replay cached dependencies: {warm.analysis.cache_events}";
+
+    runtime_module = os.path.join(jaclang_root, "runtime", "object_model.jac");
+    source = Path(runtime_module).read_text();
+    span = Span.make(runtime_module, source, (1, 1), (1, 2), (0, 1));
+    alert = Alert(
+        msg="typed while checking the application",
+        loc=span,
+        from_pass=TypeCheckPass,
+        code=W1051
+    );
+    deliver_alerts([], [alert], warm, module_path=main_file);
+    assert alert not in warm.warnings_had;
+    deliver_alerts([], [alert], warm, module_path=runtime_module);
+    assert alert in warm.warnings_had;
+    assert warm.toolchain_dependency(runtime_module);
+    warm.options.entry_point = runtime_module;
+    assert not warm.toolchain_dependency(runtime_module);
 }
 
 test "get bytecode uses JIR cache on second call" {
@@ -928,8 +1005,8 @@ test "internal get_bytecode evicts unit AST after compile" {
     for p in samples {
         assert os.path.isfile(p) , f"missing fixture {p}";
     }
-    old_rebuild = os.environ.get("JAC_REBUILD");
-    os.environ["JAC_REBUILD"] = "1";
+    import from jaclang.compiler.driver.jir { set_cache_mode }
+    set_cache_mode(rebuild=True);
     try {
         for p in samples {
             code = compiler.get_bytecode(p, prog);
@@ -946,10 +1023,6 @@ test "internal get_bytecode evicts unit AST after compile" {
             );
         }
     } finally {
-        if old_rebuild is None {
-            os.environ.pop("JAC_REBUILD", None);
-        } else {
-            os.environ["JAC_REBUILD"] = old_rebuild;
-        }
+        set_cache_mode(rebuild=False);
     }
 }

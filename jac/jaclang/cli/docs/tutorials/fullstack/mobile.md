@@ -70,7 +70,7 @@ To provision ahead of time (a CI image, an offline laptop), run the same sequenc
 jac setup mobile
 ```
 
-Under `JAC_OFFLINE=1` a run cannot provision, so a missing scaffold stops with that command as the hint.
+In an offline project (`[network] offline = true` in `jac.toml`) a run cannot provision, so a missing scaffold stops with that command as the hint.
 
 ---
 

@@ -7,28 +7,7 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 import from jaclang.server { sv_client }
-import from jaclang.scale.runtime.fleet {
-    FLEET_ENV,
-    FleetSpec,
-    ROOT_PREFIX,
-    consumer_provider_edges,
-    fleet_from_config,
-    fleet_from_env,
-    fleet_of,
-    guard_fleet_routes,
-    order_by_edges,
-    solo_fleet
-}
-import from jaclang.scale.runtime.orchestrator.orchestrator { build_registry }
-import from jaclang.scale.runtime.gateway.dispatch { classify_route, ROUTE_PROXY }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 
 glob _WORKSPACE_TOML: str = '[project]\nname = "shop"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.orders]\nkind = "service"\nentry-point = "core.orders"\n\n[apps.cart]\nkind = "service"\nentry-point = "core.cart"\nroute = "/api/basket"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n';
 
@@ -396,7 +375,7 @@ test "edge analysis visits modules registered while analyzing either hub" {
     import jaclang.compiler.driver.pipeline as pipeline;
     with patch.object(JacProgram, "compile"), patch.object(
         JacProgram, "execution_hubs", return_value=[user_hub, compiler_hub]
-    ), patch.object(pipeline, "require_product", analyze) {
+    ), patch.object(pipeline, "require", analyze) {
         edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
         assert set(edges) == {("web", "orders"), ("orders", "db")} , (
             edges,

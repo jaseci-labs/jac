@@ -66,7 +66,7 @@ isolated root automatically. `walker:priv` enforces auth. `walker:pub` = public.
 ### [E] Full-Stack Development (Codespaces)
 
 Single .jac file = complete full-stack app. Placement is inferred: JSX/npm imports = client
-code (React/JSX); python imports and graph archetypes = server. Overrides go in jac.toml
+code (React/JSX); python imports and `root` access = server. Overrides go in jac.toml
 (`[placement.pins]`), never in the source.
 
 **Client components**: `def:pub Name(prop: str) -> JsxElement { ... }` (the JSX places it client)
@@ -135,8 +135,9 @@ Run with `jac test`.
 ### [J] Python Integration
 
 Import Python packages with `import from os { path }` (same syntax, no import:py prefix).
-Inline Python: `::py:: ... ::py::`. Use `class` only for Python-specific features (metaclasses,
-decorators, @property). Prefer `obj` for everything else.
+Code that must stay Python goes in a `.py` file next to your sources, imported like any module.
+Use `class` only for Python-specific features (metaclasses, decorators, @property). Prefer `obj`
+for everything else.
 
   jac://guide/jac-python-interop   PyPI imports, using Python from Jac and Jac from Python
 

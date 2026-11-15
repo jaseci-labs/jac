@@ -1,7 +1,5 @@
 """The JavaScript equivalence harness accepts bundles larger than argv limits."""
 
-import from jaclang.compiler.tests.xbackend_equiv { run_js_function, run_js_expr }
-
 test "JavaScript equivalence helpers accept large bundles" {
     script = "/*"
         + "x" * (256 * 1024)

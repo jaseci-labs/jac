@@ -1,0 +1,66 @@
+impl ensure_apple -> dict[str, str] {
+    if not host_platform().startswith("mac-") {
+        raise RuntimeError(
+            "iOS builds require a macOS build host with Xcode. Use a Mac or a hosted macOS builder."
+        );
+    }
+    xcode = shutil.which("xcodebuild");
+    if not xcode
+        or subprocess.run([xcode, "-version"], capture_output=True).returncode != 0 {
+        raise RuntimeError(
+            "Install Xcode from the Mac App Store, select it with sudo xcode-select --switch /Applications/Xcode.app, and finish its first-launch setup. Apple requires this setup before iOS builds."
+        );
+    }
+    env: dict[str, str] = dict(os.environ);
+    if shutil.which("pod") and use_system_tools() {
+        return env;
+    }
+
+    ruby_dir = install(
+        RUBY_ARTIFACTS[host_platform()], f"portable-ruby/{RUBY_VERSION}/bin/ruby"
+    )
+        / "portable-ruby"
+        / RUBY_VERSION;
+    ruby = str(ruby_dir / "bin" / "ruby");
+    gem = str(ruby_dir / "bin" / "gem");
+    home = install_slot("cocoapods", "1.16.2", f"{host_platform()}-ruby{RUBY_VERSION}");
+    env["PATH"] = str(ruby_dir / "bin") + os.pathsep + env.get("PATH", "");
+    env["GEM_HOME"] = str(home);
+    env["GEM_PATH"] = str(home);
+    env["PATH"] = str(home / "bin") + os.pathsep + env.get("PATH", "");
+    with FileLock(home.with_suffix(".lock")) {
+        if not ((home / "bin" / "pod").is_file() and slot_installed(home)) {
+            if offline() {
+                raise RuntimeError(
+                    "CocoaPods is missing from the offline cache. Run setup online first."
+                );
+            }
+            home.mkdir(parents=True, exist_ok=True);
+            run_step(
+                "Installing CocoaPods 1.16.2 into the Jac toolchain cache",
+                [
+                    ruby,
+                    gem,
+                    "install",
+                    "cocoapods",
+                    "--version",
+                    "1.16.2",
+                    "--no-document"
+                ],
+                home,
+                env
+            );
+            publish_install_slot(
+                home,
+                {
+                    "name": "cocoapods",
+                    "version": "1.16.2",
+                    "platform": host_platform(),
+                    "ruby": RUBY_VERSION
+                }
+            );
+        }
+    }
+    run_step("Checking CocoaPods", [str(home / "bin" / "pod"), "--version"], home, env);
+    return env;
+}

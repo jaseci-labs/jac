@@ -3,8 +3,10 @@
 Assert on the request byLLM actually sent, not on a rendered string.
 """
 
-import from jaclang.byllm.lib { Image, Video }
+import from jaclang.byllm.lib { Image, Text, Video }
 import from jaclang.byllm.lib { ConfigurationError, MockLLM }
+import from jaclang.byllm.mtir { MTIR }
+import from jaclang.runtime.semantic { FunctionInfo, ParamInfo }
 import from jaclang.testing.requires { require_module }
 import from support {
     prompt_text,
@@ -56,6 +58,66 @@ test "an image argument is inlined in its own format, under a system prompt" {
         assert data_url(images[0]).startswith(mime) , (
             f"{filename}: expected {mime}, got {data_url(images[0])[:40]!r}"
         );
+    }
+}
+
+
+def _look(items: any) -> str {
+    return "";
+}
+
+
+"""The blocks after the prompt text when `value` reaches the model through `route`."""
+def _inlined(route: str, value: any) -> list[any] {
+    blocks: any = [];
+    if route == "typed" {
+        info = FunctionInfo(
+            name="look",
+            semstr=None,
+            params=[ParamInfo(name="items", semstr=None, type_info="list")]
+        );
+        user = [
+            m
+            for m in MTIR(_look, {"items": value}, {}, info).runtime.get_msg_list()
+            if m["role"] == "user"
+        ];
+        blocks = user[-1]["content"];
+    } else {
+        llm = MockLLM(outputs=[say("ok")]);
+        def look(items: any) -> str by llm();
+        def look_with(q: str) -> str by llm(incl_info={"items": value});
+        if route == "argument" {
+            look(value);
+        } else {
+            look_with("q");
+        }
+        blocks = user_blocks(llm);
+    }
+    if isinstance(blocks, str) {
+        return [];
+    }
+    return [data_url(b) if b["type"] == "image_url" else b["text"] for b in blocks[1:]];
+}
+
+
+test "a Media or a list of only Media is inlined in order, by every route; anything else stays text" {
+    (white, black) = ("https://example.com/white.png", "https://example.com/black.png");
+    rows = [
+        ("one image", Image(url=white), [white]),
+        ("a list of images", [Image(url=white), Image(url=black)], [white, black]),
+        (
+            "a list mixing kinds",
+            [Image(url=white), Text("A white square.")],
+            [white, "A white square."]
+        ),
+        ("an empty list", [], []),
+        ("a list with a plain value", [Image(url=white), "a caption"], [])
+    ];
+    for route in ["argument", "incl_info", "typed"] {
+        for (label, value, expected) in rows {
+            got = _inlined(route, value);
+            assert got == expected , f"{route}, {label}: got {got}";
+        }
     }
 }
 

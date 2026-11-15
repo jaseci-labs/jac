@@ -8,25 +8,14 @@ obj PluginMetadata {
         version: str,
         description: str;
 
-    def to_dict -> dict[str, str] {
-        return {
-            'name': self.name,
-            'version': self.version,
-            'description': self.description
-        };
-    }
+    def to_dict -> dict[str, str];
 }
 
 
-def desktop_sdk_path -> str {
-    this_dir = os.path.dirname(os.path.abspath(__file__));
-    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.jac');
-}
+def desktop_sdk_path -> str;
 
 
-def desktop_sdk_exports -> list[str] {
-    return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
-}
+def desktop_sdk_exports -> list[str];
 
 obj ConfigOptionSpec {
     has type: str,
@@ -41,187 +30,35 @@ obj ConfigOptionSpec {
         value_is_empty_dict: bool = False,
         nested: dict[str, ConfigOptionSpec] = {};
 
-    def _default_value -> object {
-        if self.value_is_int {
-            return self.value_int;
-        }
-        if self.value_is_bool {
-            return self.value_bool;
-        }
-        if self.value_is_list {
-            return self.value_list;
-        }
-        if self.value_is_empty_dict {
-            return {};
-        }
-        return self.value_str;
-    }
-
-    def to_dict -> dict[str, object] {
-        if self.nested {
-            nested_out: dict[str, object] = {};
-            for (k, spec) in self.nested.items() {
-                nested_out[k] = spec.to_dict();
-            }
-            return {
-                'type': self.type,
-                'default': self._default_value(),
-                'description': self.description,
-                'nested': nested_out
-            };
-        }
-        return {
-            'type': self.type,
-            'default': self._default_value(),
-            'description': self.description
-        };
-    }
+    def _default_value -> object;
+    def to_dict -> dict[str, object];
 }
 
 obj PluginConfigSchema {
     has section: str,
         options: dict[str, ConfigOptionSpec];
 
-    def to_dict -> dict[str, object] {
-        options_out: dict[str, object] = {};
-        for (k, spec) in self.options.items() {
-            options_out[k] = spec.to_dict();
-        }
-        return {'section': self.section, 'options': options_out};
-    }
+    def to_dict -> dict[str, object];
 }
 
-def schema_str_option(value: str, description: str) -> ConfigOptionSpec {
-    return ConfigOptionSpec(type="str", value_str=value, description=description);
-}
+def schema_str_option(value: str, description: str) -> ConfigOptionSpec;
 
-def schema_int_option(value: int, description: str) -> ConfigOptionSpec {
-    return ConfigOptionSpec(
-        type="int", value_int=value, value_is_int=True, description=description
-    );
-}
+def schema_int_option(value: int, description: str) -> ConfigOptionSpec;
 
-def schema_bool_option(value: bool, description: str) -> ConfigOptionSpec {
-    return ConfigOptionSpec(
-        type="bool", value_bool=value, value_is_bool=True, description=description
-    );
-}
+def schema_bool_option(value: bool, description: str) -> ConfigOptionSpec;
 
-def schema_list_option(value: list[str], description: str) -> ConfigOptionSpec {
-    return ConfigOptionSpec(
-        type="list", value_list=value, value_is_list=True, description=description
-    );
-}
+def schema_list_option(value: list[str], description: str) -> ConfigOptionSpec;
 
 def schema_dict_option(
     description: str, nested: dict[str, ConfigOptionSpec] | None = None
-) -> ConfigOptionSpec {
-    nested_opts = nested if nested is not None else {};
-    return ConfigOptionSpec(
-        type="dict",
-        description=description,
-        nested=nested_opts,
-        value_is_empty_dict=True
-    );
-}
+) -> ConfigOptionSpec;
 
-def _desktop_config_schema -> PluginConfigSchema {
-    return PluginConfigSchema(
-        section="desktop",
-        options={
-            "name": schema_str_option("my-jac-app", "Display name for the desktop app"),
-            "identifier": schema_str_option(
-                "com.myapp", "Reverse-domain identifier (com.example.myapp)"
-            ),
-            "version": schema_str_option("1.0.0", "Desktop app version"),
-            "icon": schema_str_option(
-                "",
-                "App icon for packaged builds, a .icns or .png path relative to the project; the macOS bundle carries it"
-            ),
-            "engine": schema_str_option(
-                "native",
-                "Desktop engine: 'native' (OS webview) or 'cef' (Chromium Embedded Framework)"
-            ),
-            "backend": schema_str_option(
-                "embedded",
-                "Where the app's server runs: 'embedded' (in the desktop process, from the sealed image shipped with the binary) or the URL of a remote server the bundle talks to"
-            ),
-            "window": schema_dict_option(
-                "Window geometry: title, width, height, min_width, min_height, resizable.",
-                nested={
-                    "title": schema_str_option("", ""),
-                    "width": schema_int_option(1200, ""),
-                    "height": schema_int_option(800, ""),
-                    "min_width": schema_int_option(800, ""),
-                    "min_height": schema_int_option(600, ""),
-                    "resizable": schema_bool_option(True, "")
-                }
-            ),
-            "plugins": schema_dict_option(
-                "Desktop capability plugins: each key is a plugin name (window, path, fs, notification, clipboard, dialog, shell). Value can be true (enabled with defaults) or a dict of plugin-specific config.",
-                nested={
-                    "window": schema_bool_option(True, "Enable window control plugin"),
-                    "path": schema_bool_option(True, "Enable path resolution plugin"),
-                    "fs": schema_dict_option(
-                        "Filesystem plugin config",
-                        nested={
-                            "allow_read": schema_list_option(
-                                ["$HOME"], "Glob paths allowed for read operations"
-                            ),
-                            "allow_write": schema_list_option(
-                                ["$APP_DATA"], "Glob paths allowed for write operations"
-                            )
-                        }
-                    ),
-                    "notification": schema_bool_option(
-                        True, "Enable notification plugin"
-                    ),
-                    "clipboard": schema_dict_option(
-                        "Clipboard plugin config",
-                        nested={
-                            "allow_read": schema_bool_option(
-                                True, "Allow clipboard read"
-                            ),
-                            "allow_write": schema_bool_option(
-                                True, "Allow clipboard write"
-                            )
-                        }
-                    ),
-                    "dialog": schema_bool_option(True, "Enable dialog plugin"),
-                    "shell": schema_dict_option(
-                        "Shell plugin config (deny-all by default)",
-                        nested={
-                            "allow": schema_list_option(
-                                [],
-                                "Glob patterns for allowed commands (e.g. ['git *'])"
-                            )
-                        }
-                    )
-                }
-            )
-        }
-    );
-}
+def _desktop_config_schema -> PluginConfigSchema;
 
 class JacDesktopPluginConfig {
-    static def get_plugin_metadata -> dict[str, str] {
-        return PluginMetadata(
-            name="desktop",
-            version=pkg_version("jaclang"),
-            description="Jac-native desktop target (webview + native build)."
-        ).to_dict();
-    }
-
-    static def get_config_schema -> dict[str, object] {
-        return _desktop_config_schema().to_dict();
-    }
-
-    static def desktop_project_template -> dict[str, object] | None {
-        return _load_desktop_template();
-    }
+    static def get_plugin_metadata -> dict[str, str];
+    static def get_config_schema -> dict[str, object];
+    static def desktop_project_template -> dict[str, object] | None;
 }
 
-def _load_desktop_template -> dict[str, object] | None {
-    import from jaclang.client.plugin_config { _load_template }
-    return _load_template("desktop");
-}
+def _load_desktop_template -> dict[str, object] | None;

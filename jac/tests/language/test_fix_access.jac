@@ -100,10 +100,16 @@ test "fix access reports :priv declarations that used to be served" {
     }
 }
 
-test "fix access --dry-run writes nothing and a second run is a no-op" {
+test "fix access writes nothing on a dry run or an invalid jac.toml, and a second run is a no-op" {
     with tempfile.TemporaryDirectory() as tmpdir {
         proj = _write_project(tmpdir);
         before = _read(os.path.join(proj, "main.jac"));
+        with open(os.path.join(proj, "jac.toml"), "a") as f {
+            f.write('\n[dependencies]\nrequests = ">=2"\n');
+        }
+        assert fix("access", [proj]) == 2;
+        assert _read(os.path.join(proj, "main.jac")) == before;
+        assert fix("dependencies", [proj]) == 0;
         assert fix("access", [proj], dry_run=True) == 0;
         assert _read(os.path.join(proj, "main.jac")) == before;
         assert fix("access", [proj]) == 0;

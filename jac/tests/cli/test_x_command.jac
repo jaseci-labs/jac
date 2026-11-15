@@ -456,9 +456,9 @@ test "_run_node_tool invokes bun with the shim and forwards args" {
     try {
         bin_dir = Path(tmp) / "bin";
         shim = make_fake_node_bin(bin_dir, "demo");
-        with patch("jaclang.client.bun_installer.get_bun", return_value="/fake/bun"), patch(
-            "subprocess.run"
-        ) as mock_run {
+        with patch(
+            "jaclang.client.js_runtime.js_runtime_path", return_value="/fake/bun"
+        ), patch("subprocess.run") as mock_run {
             mock_run.return_value = MagicMock(returncode=3);
             rc = exec_cmds._run_node_tool("demo", shim, ["a", "b"]);
         }
@@ -473,7 +473,11 @@ test "_run_node_tool errors cleanly when bun is unavailable" {
     tmp = tempfile.mkdtemp(prefix="jac_x_test_");
     try {
         shim = make_fake_node_bin(Path(tmp) / "bin", "demo");
-        with patch("jaclang.client.bun_installer.get_bun", return_value=None) {
+        import from jaclang.artifacts.model { ArtifactUnavailable }
+        with patch(
+            "jaclang.client.js_runtime.js_runtime_path",
+            side_effect=ArtifactUnavailable("bun is unavailable")
+        ) {
             assert exec_cmds._run_node_tool("demo", shim, []) == 1;
         }
     } finally {
@@ -541,9 +545,9 @@ test "run_npm_add --global installs into the jac global npm dir via bun add" {
     try {
         gdir = Path(tmp) / "gdir";
         os.environ["JAC_GLOBAL_DIR"] = str(gdir);
-        with patch("jaclang.client.bun_installer.get_bun", return_value="/fake/bun"), patch(
-            "subprocess.run"
-        ) as mock_run {
+        with patch(
+            "jaclang.client.js_runtime.js_runtime_path", return_value="/fake/bun"
+        ), patch("subprocess.run") as mock_run {
             mock_run.return_value = MagicMock(returncode=0);
             rc = npm_cli.run_npm_add(["eslint@9"], False, True);
         }
@@ -572,9 +576,9 @@ test "run_npm_add --global --dev forwards --dev to bun add" {
     old_env = os.environ.get("JAC_GLOBAL_DIR");
     try {
         os.environ["JAC_GLOBAL_DIR"] = str(Path(tmp) / "gdir");
-        with patch("jaclang.client.bun_installer.get_bun", return_value="/fake/bun"), patch(
-            "subprocess.run"
-        ) as mock_run {
+        with patch(
+            "jaclang.client.js_runtime.js_runtime_path", return_value="/fake/bun"
+        ), patch("subprocess.run") as mock_run {
             mock_run.return_value = MagicMock(returncode=0);
             rc = npm_cli.run_npm_add(["typescript"], True, True);
         }

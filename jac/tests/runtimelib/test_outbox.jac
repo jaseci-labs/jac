@@ -792,6 +792,8 @@ test "core server: the bridge secret authenticates a service caller" {
             assert denied.status_code == 401 , denied.text;
             wrong = _spawn(client, "not-the-secret", "k-wrong");
             assert wrong.status_code == 401 , wrong.text;
+            non_ascii = _spawn(client, "\u00e9", "k-non-ascii");
+            assert non_ascii.status_code == 401 , non_ascii.text;
             ok = _spawn(client, "fleet-secret", "k-bridge");
             assert ok.status_code == 200 , ok.text;
             bridge_root = ok.json()["data"]["reports"][0];

@@ -1,16 +1,4 @@
 import ctypes;
-import from jaclang.testing.test { parametrize }
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_with_both,
-    run_py_fixture,
-    compile_fixture_to_js,
-    run_js_function,
-    compile_native,
-    compile_native_errors,
-    get_func,
-    compare_results
-}
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 # (case, fixture, py fn, cl fn, na fn, [backends that must run])
 """Rows `prim_str`'s native lane does not produce yet.
@@ -386,6 +374,15 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "bundled functools",
+             "prim_functools.jac",
+             "functools_py",
+             "functools_cl",
+             "functools_na",
+             ["na"],
+             ["cmp_sort", "wraps_name"]
+         ),
+         (
              "bundled statistics",
              "prim_statistics.jac",
              "statistics_py",
@@ -483,6 +480,49 @@ glob STR_NA_GAPS: list[any] = [
              "hashlib_py",
              "hashlib_cl",
              "hashlib_na",
+             ["na"]
+         ),
+         (
+             "errno bundled",
+             "prim_errno.jac",
+             "errno_py",
+             "errno_cl",
+             "errno_na",
+             ["na"]
+         ),
+         (
+             "fcntl bundled",
+             "prim_fcntl.jac",
+             "fcntl_py",
+             "fcntl_cl",
+             "fcntl_na",
+             ["na"]
+         ),
+         (
+             "termios bundled",
+             "prim_termios.jac",
+             "termios_py",
+             "termios_cl",
+             "termios_na",
+             ["na"]
+         ),
+         ("tty bundled", "prim_tty.jac", "tty_py", "tty_cl", "tty_na", ["na"]),
+         (
+             "select bundled",
+             "prim_select.jac",
+             "select_py",
+             "select_cl",
+             "select_na",
+             ["na"]
+         ),
+         ("glob bundled", "prim_glob.jac", "glob_py", "glob_cl", "glob_na", ["na"]),
+         ("stat bundled", "prim_stat.jac", "stat_py", "stat_cl", "stat_na", ["na"]),
+         (
+             "platform bundled",
+             "prim_platform.jac",
+             "platform_py",
+             "platform_cl",
+             "platform_na",
              ["na"]
          ),
          (
@@ -585,6 +625,14 @@ glob STR_NA_GAPS: list[any] = [
          ),
          ("csv bundled", "prim_csv.jac", "csv_py", "csv_cl", "csv_na", ["na"]),
          (
+             "itertools bundled",
+             "prim_itertools.jac",
+             "itertools_py",
+             "itertools_cl",
+             "itertools_na",
+             ["na"]
+         ),
+         (
              "pprint bundled",
              "prim_pprint.jac",
              "pprint_py",
@@ -608,7 +656,41 @@ glob STR_NA_GAPS: list[any] = [
              "sqlite3_na",
              ["na"]
          ),
+         (
+             "string bundled",
+             "prim_string.jac",
+             "string_py",
+             "string_cl",
+             "string_na",
+             ["na"]
+         ),
+         ("re bundled", "prim_re.jac", "re_py", "re_cl", "re_na", ["na"]),
+         ("re pins bundled", "prim_re.jac", "pins_py", "pins_cl", "pins_na", ["na"]),
+         (
+             "re fuzz bundled",
+             "prim_re_fuzz.jac",
+             "re_fuzz_py",
+             "re_fuzz_cl",
+             "re_fuzz_na",
+             ["na"]
+         ),
+         (
+             "reprlib bundled",
+             "prim_reprlib.jac",
+             "reprlib_py",
+             "reprlib_cl",
+             "reprlib_na",
+             ["na"]
+         ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),
+         (
+             "bare from-imported stdlib names",
+             "prim_from_imports.jac",
+             "from_imports_py",
+             "from_imports_cl",
+             "from_imports_na",
+             ["na"]
+         ),
          (
              "any dispatch",
              "prim_any.jac",
@@ -679,6 +761,14 @@ glob STR_NA_GAPS: list[any] = [
              "builtins_introspection_py",
              "builtins_introspection_cl",
              "builtins_introspection_na"
+         ),
+         (
+             "type identity",
+             "prim_builtins_introspection.jac",
+             "type_identity_py",
+             "type_identity_cl",
+             "builtins_introspection_na",
+             ["cl"]
          ),
          (
              "match sequence",
@@ -858,6 +948,23 @@ test "native call fills omitted defaults from the bundled stdlib signature" {
     );
     assert hex_val == 64 , (
         f"token_hex() with the default nbytes=32: na={hex_val} chars, CPython=64"
+    );
+}
+
+test "native reduce tells an explicit None initializer from an omitted one" {
+    (eng, _) = compile_native("bundled_functools_reduce_init.jac");
+    none_init = get_func(eng, "reduce_none_initial", ctypes.c_int64)();
+    no_init = get_func(eng, "reduce_no_initial", ctypes.c_int64)();
+    int_init = get_func(eng, "reduce_int_initial", ctypes.c_int64)();
+    empty_none = get_func(eng, "reduce_empty_none_initial", ctypes.c_int64)();
+    assert none_init == 102 , (
+        f"reduce(f, [1, 2], None) starts the fold at None: na={none_init}, "
+        f"CPython=102 (starting at the first item gives 3)"
+    );
+    assert no_init == 3 , f"reduce(f, [1, 2]): na={no_init}, CPython=3";
+    assert int_init == 13 , f"reduce(f, [1, 2], 10): na={int_init}, CPython=13";
+    assert empty_none == 1 , (
+        "reduce(f, [], None) answers None instead of raising, as on CPython"
     );
 }
 
@@ -1059,4 +1166,14 @@ test "prim_runtime_errors" {
     _prim_runtime_errors__runtime_key_error_parent(_eng, _ir);
     _prim_runtime_errors__runtime_multi_handler(_eng, _ir);
     _prim_runtime_errors__runtime_error_with_finally(_eng, _ir);
+}
+
+test "native sort keys retain captured scalar and object parameters" {
+    run_with_both(
+        "prim_sort_capture.jac",
+        "sort_capture_py",
+        "",
+        "sort_capture_na",
+        require=["na"]
+    );
 }

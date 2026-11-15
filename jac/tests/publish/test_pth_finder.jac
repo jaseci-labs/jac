@@ -113,57 +113,44 @@ def _load_finder -> any {
     return mod;
 }
 
-"""Run apply_dev_source_override with baked/toml sources patched, restoring
-sys.path and env afterwards; returns the resulting sys.path[0]."""
+"""Run apply_dev_source_override with the baked link, the `[dev]` table and the
+inherited handoff controlled per call (`inherited` None means a top-level
+process, "" a parent pinned to the bundled compiler), restoring sys.path and
+the handoff afterwards; returns sys.path[0] and the compiler source the
+override handed on."""
 def _override_result(
-    baked: (str | None),
-    toml_src: (str | None),
-    no_dev_env: bool = False,
-    inherited: (str | None) = None
-) -> str {
+    baked: (str | None), toml_src: (str | None), inherited: (str | None) = None
+) -> tuple[str, str] {
+    import json;
     _jac_finder = _load_finder();
     import from unittest.mock { patch }
     saved_path = list(sys.path);
-    saved_dev = os.environ.get("JAC_DEV_SOURCE");
-    saved_no_dev = os.environ.get("JAC_NO_DEV_SOURCE");
+    saved_handoff = os.environ.get(_jac_finder.HANDOFF_ENV);
     try {
-        # CI's binary jobs export JAC_NO_DEV_SOURCE=1 globally, which would
-        # suppress the toml loop under test -- so the flag is controlled
-        # HERE, per call, never inherited from the environment. The same goes
-        # for JAC_DEV_SOURCE: a rerouted `jac test` exports it, and the finder
-        # now reads it as a parent's source, so each call sets it explicitly.
-        if no_dev_env {
-            os.environ["JAC_NO_DEV_SOURCE"] = "1";
+        if inherited is None {
+            os.environ.pop(_jac_finder.HANDOFF_ENV, None);
         } else {
-            os.environ.pop("JAC_NO_DEV_SOURCE", None);
-        }
-        if inherited is not None {
-            os.environ["JAC_DEV_SOURCE"] = inherited;
-        } else {
-            os.environ.pop("JAC_DEV_SOURCE", None);
+            os.environ[_jac_finder.HANDOFF_ENV] = json.dumps(
+                {"compiler_source": inherited}
+            );
         }
         with patch.object(_jac_finder, "_baked_source_dir", return_value=baked), patch.object(
-            _jac_finder, "_dev_source_from_toml", return_value=toml_src
+            _jac_finder, "_dev_table", return_value=(toml_src, False)
         ) {
             _jac_finder.apply_dev_source_override();
         }
-        return sys.path[0];
+        return (sys.path[0], str(_jac_finder.handoff().get("compiler_source")));
     } finally {
         sys.path[:] = saved_path;
-        if saved_dev is None {
-            os.environ.pop("JAC_DEV_SOURCE", None);
+        if saved_handoff is None {
+            os.environ.pop(_jac_finder.HANDOFF_ENV, None);
         } else {
-            os.environ["JAC_DEV_SOURCE"] = saved_dev;
-        }
-        if saved_no_dev is None {
-            os.environ.pop("JAC_NO_DEV_SOURCE", None);
-        } else {
-            os.environ["JAC_NO_DEV_SOURCE"] = saved_no_dev;
+            os.environ[_jac_finder.HANDOFF_ENV] = saved_handoff;
         }
     }
 }
 
-test "dev override prefers the repo's own toml stanza over a baked link" {
+test "a top-level jac prefers the repo's own toml stanza over a baked link" {
     # A binary linked to checkout A, run inside checkout B whose jac.toml
     # declares [dev] jaclang_source: B's own compiler must win -- that is
     # the whole point of the per-repo dev stanza. The baked link is the
@@ -171,28 +158,26 @@ test "dev override prefers the repo's own toml stanza over a baked link" {
     baked = _fake_source();
     toml_src = _fake_source();
     try {
-        assert _override_result(baked, toml_src) == toml_src , "the nearest jac.toml [dev] stanza must beat the binary's baked link";
-        assert _override_result(baked, None) == baked , "with no toml stanza in scope, the baked link still applies";
+        assert _override_result(baked, toml_src) == (toml_src, toml_src) , "the nearest jac.toml [dev] stanza must beat the binary's baked link";
+        assert _override_result(baked, None) == (baked, baked) , "with no toml stanza in scope, the baked link still applies";
     } finally {
         shutil.rmtree(baked, ignore_errors=True);
         shutil.rmtree(toml_src, ignore_errors=True);
     }
 }
 
-test "a child jac inherits its parent's dev source when no stanza is in scope" {
-    # A rerouted jac exports JAC_DEV_SOURCE; a child it spawns from any cwd (a
-    # nacompile into a temp dir) must stay on that compiler rather than fall
-    # back to the bundled copy. The repo's own stanza still wins, and
-    # JAC_NO_DEV_SOURCE switches the inherited loop off like the toml one.
+test "a child jac runs its parent's compiler whatever its cwd" {
+    # A rerouted jac hands its children its compiler; a child spawned from any
+    # cwd (a nacompile into a temp dir, a test running inside another
+    # project) stays on that compiler, so a process tree never mixes two.
     parent_src = _fake_source();
     baked = _fake_source();
     toml_src = _fake_source();
     try {
-        assert _override_result(None, None, inherited=parent_src) == parent_src , "an inherited JAC_DEV_SOURCE must reroute a child with no stanza in scope";
-        assert _override_result(baked, None, inherited=parent_src) == parent_src , "the parent's source must beat the baked link";
-        assert _override_result(baked, toml_src, inherited=parent_src) == toml_src , "the nearest jac.toml [dev] stanza must beat an inherited source";
-        assert _override_result(baked, None, no_dev_env=True, inherited=parent_src)
-            == baked , "JAC_NO_DEV_SOURCE must suppress the inherited loop, not the baked link";
+        assert _override_result(None, None, inherited=parent_src)
+            == (parent_src, parent_src);
+        assert _override_result(baked, toml_src, inherited=parent_src)[0]
+            == parent_src , "the parent's compiler must beat both the child's stanza and the baked link";
     } finally {
         shutil.rmtree(parent_src, ignore_errors=True);
         shutil.rmtree(baked, ignore_errors=True);
@@ -200,13 +185,15 @@ test "a child jac inherits its parent's dev source when no stanza is in scope" {
     }
 }
 
-test "JAC_NO_DEV_SOURCE disables the toml loop but keeps a linked binary alive" {
+test "a tree pinned to the bundled compiler stays there but keeps a linked binary alive" {
     baked = _fake_source();
     toml_src = _fake_source();
     try {
-        # A linked binary has no bundled jaclang: the baked path must apply
-        # even under JAC_NO_DEV_SOURCE, or `import jaclang` bricks.
-        assert _override_result(baked, toml_src, no_dev_env=True) == baked , "JAC_NO_DEV_SOURCE must suppress the toml loop, not the baked link";
+        (first, handed) = _override_result(None, toml_src, inherited="");
+        assert first != toml_src and handed == "" , "a bundled parent's child must not reroute into a [dev] stanza";
+        # A linked binary has no bundled jaclang: its baked path applies even
+        # in a pinned tree, or `import jaclang` bricks.
+        assert _override_result(baked, toml_src, inherited="")[0] == baked;
     } finally {
         shutil.rmtree(baked, ignore_errors=True);
         shutil.rmtree(toml_src, ignore_errors=True);
@@ -218,9 +205,10 @@ test "a bare checkout (no typeshed stubs) is refused as a dev source; a baked li
     # (zig build fetch-typeshed materializes it), and rerouting into it breaks
     # the first compile with "Stub file not found at .../typing.pyi" -- a
     # released binary run inside a repo whose jac.toml ships a [dev] stanza
-    # for its contributors. The toml and inherited loops refuse such a tree
-    # with a note naming the fix; the baked link still applies, because a
-    # linked binary has no bundled compiler to fall back on.
+    # for its contributors. The top-level process refuses such a tree with a
+    # note naming the fix; the baked link still applies, because a linked
+    # binary has no bundled compiler to fall back on. A child runs whatever
+    # the top of its tree chose: an inherited record is not re-judged.
     import io;
     import from contextlib { redirect_stderr }
     bare = _fake_source(stubs=False);
@@ -229,12 +217,12 @@ test "a bare checkout (no typeshed stubs) is refused as a dev source; a baked li
     try {
         err = io.StringIO();
         with redirect_stderr(err) {
-            assert _override_result(None, bare) != bare , "a checkout without typeshed stubs must not be rerouted into";
+            assert _override_result(None, bare)[0] != bare , "a checkout without typeshed stubs must not be rerouted into";
         }
         assert "typeshed" in err.getvalue() and "fetch-typeshed" in err.getvalue() , f"the refusal must say what is missing and how to fix it, got: {err.getvalue()!r}";
-        assert _override_result(baked, bare) == baked , "a refused stanza falls through to the baked link";
-        assert _override_result(None, None, inherited=bare) != bare , "an inherited source without stubs is refused the same way";
-        assert _override_result(bare_baked, None) == bare_baked , "a baked link is never refused: a linked binary has nothing else to run";
+        assert _override_result(baked, bare)[0] == baked , "a refused stanza falls through to the baked link";
+        assert _override_result(None, None, inherited=bare)[0] == bare , "a child runs the compiler the top of its tree chose";
+        assert _override_result(bare_baked, None)[0] == bare_baked , "a baked link is never refused: a linked binary has nothing else to run";
     } finally {
         shutil.rmtree(bare, ignore_errors=True);
         shutil.rmtree(baked, ignore_errors=True);

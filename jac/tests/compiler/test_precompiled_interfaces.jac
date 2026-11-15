@@ -41,19 +41,58 @@ test "precompiled interfaces are independent of the staging directory" {
 }
 
 test "precompiled modules carry their type interface on cold and cached builds" {
-    with TemporaryDirectory() as directory {
-        package = _package(Path(directory));
-        source = package / "api.jac";
-        source.write_text("def answer() -> int { return 42; }\n");
-        for _attempt in range(2) {
-            data = precompile_unit(str(source), str(package), collect=False);
-            assert data is not None , "precompilation produced no artifact";
-            assert read_section_bytes(data, SEC_IFACE) is not None , (
-                "precompilation discarded the dependency's type interface"
-            );
-            assert read_section_bytes(data, SEC_DIAG) is not None , (
-                "precompilation discarded the interface's analysis diagnostics"
-            );
+    import contextlib;
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
+    import from jaclang.dist.precompile_bytecode { precompile_unit_context }
+    import from jaclang.runtime.prepared { forget }
+    for served in (False, True) {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            source = package / "api.jac";
+            source.write_text("def answer() -> int { return 42; }\n");
+            with (contextlib.chdir(package) if served else contextlib.nullcontext()) {
+                if served {
+                    (package / "jac.toml").write_text('[project]\nname = "library"\n');
+                    app_main = package / "main.jac";
+                    app_main.write_text(
+                        "import from api { answer }\n"
+                            + "def:pub hello -> int { return answer(); }\n"
+                    );
+                    prepare_application(str(app_main), JacProgram(), str(package));
+                    forget(str(app_main));
+                    (package / ".jac" / "serve_manifest.json").write_text("{}");
+                    prepared = {
+                        str(p) for p in (package / ".jac" / "cache").rglob("api.*.jir")
+                    };
+                    with precompile_unit_context(
+                        str(source), str(package)
+                    ) as _program {
+                        codespace = effective_default_codespace();
+                        looked = str(get_module_cache_path(str(source)));
+                    }
+                    assert codespace == "server" , (
+                        f"a served app's seal compiles under {codespace!r}, its prepare under server"
+                    );
+                    assert looked in prepared , (
+                        f"the seal looks up {looked}; the prepare wrote {sorted(
+                            prepared
+                        )}"
+                    );
+                }
+                for _attempt in range(2) {
+                    data = precompile_unit(str(source), str(package), collect=False);
+                    assert data is not None , "precompilation produced no artifact";
+                    assert read_section_bytes(data, SEC_IFACE) is not None , (
+                        "precompilation discarded the dependency's type interface"
+                    );
+                    assert read_section_bytes(data, SEC_DIAG) is not None , (
+                        "precompilation discarded the interface's analysis diagnostics"
+                    );
+                }
+            }
         }
     }
 }
@@ -111,6 +150,56 @@ test "skipping analysis changes no precompiled product, only analysis dependency
                 + f"in section {key} that analysis did not"
             );
         }
+    }
+}
+
+"""LLVM keeps process-wide tables (metadata kinds, for one) that grow with
+whatever was compiled, and a module's bitcode carries them. A unit written
+from the shared context therefore differed, byte for byte, from the same unit
+written in a process that had compiled something else first, with identical
+IR. Every unit is written from a context of its own."""
+test "a unit's native bitcode does not depend on what the process compiled before" {
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        SEC_NBITCODE,
+        read_sections
+    }
+    import from jaclang.compiler.driver.program { JacProgram }
+    earlier = JacProgram();
+    earlier.compile(
+        file_path="bitcode_context_probe.jac",
+        use_str=(
+            "import os;\n"
+            + "glob xs: list[int] = [len(os.getcwd())];\n"
+            + "def f(a: dict[str, int]) -> str { return str(sorted(a.items())); }\n"
+        )
+    );
+    assert not earlier.errors_had , [e.pretty_print() for e in earlier.errors_had];
+    with TemporaryDirectory() as directory {
+        written: dict[bool, (bytes | None)] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            (package / "model.jac").write_text("obj Box { has value: int; }\n");
+            source = package / "api.jac";
+            source.write_text(
+                "import from .model { Box }\n"
+                    + "def make() -> Box { return Box(42); }\n"
+            );
+            data = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+            assert data is not None;
+            start = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+            assert start >= 0;
+            written[skipped] = read_sections(data, start + len(SECTIONS_MAGIC)).get(
+                SEC_NBITCODE
+            );
+        }
+        assert written[False] is not None , "the unit was not placed native";
+        assert written[False] == written[True] , (
+            "the same unit was written as different bitcode"
+        );
     }
 }
 
@@ -267,6 +356,8 @@ test "freezing bootstrap bytecode initializes and preserves its interface" {
     # Finalization is a fresh process. A selfhost symbol-only compile does not
     # initialize the interface codec implicitly, unlike an application compile.
     script = """
+from jaclang.jac0core.artifact_registry import begin
+begin(['stubcat'])
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -295,14 +386,8 @@ with TemporaryDirectory() as directory:
     assert read_section_bytes(data, SEC_IFACE) is not None, (
         'fresh bootstrap sealing lost the dependency interface')
 """;
-    env = dict(os.environ);
-    env["JAC_STUBCAT_BUILDING"] = "1";
     result = subprocess.run(
-        [sys.executable, "-c", script],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=600
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
     );
     assert result.returncode == 0 , result.stdout + result.stderr;
 }

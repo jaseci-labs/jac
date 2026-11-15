@@ -360,6 +360,73 @@ test "repeated main execution keeps prior module globals and type identities" {
 }
 
 
+test "a stored type resolves from its application once, and again after a reload" {
+    import os;
+    import from jaclang.runtime { prepared as prepared_runtime }
+    with TemporaryDirectory() as td {
+        path = Path(td) / 'records.jac';
+        path.write_text('node Record { has value: str = "saved"; }\n');
+        app = prepare_application(str(path), JacProgram(), td);
+        real_load = prepared_runtime.load_prepared_module;
+        loads: list[str] = [];
+        def counting_load(*args: any, **kwargs: any) -> any {
+            loads.append(str(args[0]) if args else '');
+            return real_load(*args, **kwargs);
+        }
+        try {
+            module = load_prepared_module(app.entry, app);
+            payload = cast(
+                dict[str, object],
+                Serializer.serialize(module.Record(), include_type=True)
+            );
+            prepared_runtime.load_prepared_module = counting_load;
+            with resolution_scope(app) {
+                for _ in range(50) {
+                    assert type(Serializer.deserialize(payload)) is module.Record;
+                }
+            }
+            assert len(loads) <= 1 , (
+                f"50 rows of one stored type loaded its module {len(loads)} times"
+            );
+            exec(app.code[os.path.realpath(app.entry)], module.__dict__);
+            reloaded = module.Record;
+            with resolution_scope(app) {
+                restored = Serializer.deserialize(payload);
+            }
+            assert type(restored) is reloaded , (
+                "a stored type kept resolving to the class from before the reload"
+            );
+        } finally {
+            prepared_runtime.load_prepared_module = real_load;
+            forget(app.entry);
+        }
+    }
+}
+
+
+test "the resolved-type cache holds neither its classes nor its applications" {
+    import gc;
+    import weakref;
+    import from jaclang.data.type_identity { _remember_type, _resolved }
+    app = PreparedApplication(
+        `root='/tmp/cache-probe', `entry='/tmp/cache-probe/main.jac'
+    );
+    app_id = id(app);
+    probe = type('Probe', (object, ), {});
+    class_ref = weakref.ref(probe);
+    _remember_type(app, 'jac:probe.Probe', probe);
+    assert app_id in _resolved;
+    del probe;
+    gc.collect();
+    assert class_ref() is None , "the cache kept a resolved class alive";
+    app_ref = weakref.ref(app);
+    del app;
+    gc.collect();
+    assert app_ref() is None , "the cache kept its application alive";
+    assert app_id not in _resolved , "a collected application kept its cache slot";
+}
+
+
 test "obsolete compiled persistence metadata requires a rebuild" {
     obsolete = type(
         'Obsolete',

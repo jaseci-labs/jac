@@ -1,8 +1,10 @@
 import os;
 
 glob WORKER_MEM_BYTES: int = 2 * 1024 * 1024 * 1024,
+     CGROUP_UNLIMITED: int = 1 << 60,
      MEM_HEADROOM: float = 0.6,
-     MAX_AUTO_JOBS: int = 12;
+     MAX_AUTO_JOBS: int = 12,
+     RAMP_START_JOBS: int = 2;
 
 obj WorkPool {
     has items: list[str],
@@ -18,7 +20,11 @@ obj WorkPool {
         isolate: (set[str] | None) = None,
         rss_log_env: str = "JAC_WORKPOOL_RSS_LOG",
         crash_prefix: str = "jac-work-crash-",
+        headroom: (Callable[[], int] | None) = None,
         cursor: int = 0,
+        target: int = 0,
+        next_slot: int = 0,
+        peak_mb: int = 0,
         stopping: bool = False,
         kids: list[dict[(str, any)]] postinit,
         crashlogs: list[str] postinit;
@@ -37,6 +43,7 @@ obj WorkPool {
     ) -> None;
 
     def _reap(kid: dict[(str, any)]) -> None;
+    def _widen -> None;
     def _should_stop -> bool;
     def _shutdown -> None;
 }
@@ -45,11 +52,19 @@ def pool_available -> bool;
 
 def worker_rss_mb -> int;
 
+def worker_peak_mb -> int;
+
 def should_retire(served: int, recycle: int, rss_mb: int, rss_cap: int) -> bool;
 
 def env_int(name: str, fallback: int) -> int;
 
 def maybe_malloc_trim -> None;
+
+def memory_headroom_bytes(
+    cgroup_root: str = "/sys/fs/cgroup", self_cgroup: str = "/proc/self/cgroup"
+) -> int;
+
+def cpu_quota -> int;
 
 def default_jobs(worker_bytes: int = 0, avail_bytes: int = 0) -> int;
 

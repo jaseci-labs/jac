@@ -1,14 +1,4 @@
 import asyncio;
-import from jaclang.scale.runtime.middleware.ws_forward {
-    _to_ws_scheme,
-    _select_handshake_headers,
-    websocket_forward
-}
-import from jaclang.scale.runtime.transport.http_forward {
-    ForwardResult,
-    stream_forward,
-    raw_forward
-}
 
 
 test "ws scheme rewrite: http -> ws" {
@@ -84,11 +74,6 @@ test "handshake headers are case-insensitive on the filter" {
 The forwarders used to be exercised against an aiohttp server; the runtime no
 longer depends on aiohttp, so the upstream is the same server jac ships."""
 def _spawn_upstream -> tuple[object, object, str] {
-    import from jaclang.server.serving.app { ServingApp }
-    import from jaclang.server.serving.datatypes { Request, Response }
-    import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
-    import from jaclang.server.serving.server { ServingServer }
-
     def echo(request: Request) -> Response {
         return Response(content=request.body, media_type="application/octet-stream");
     }
@@ -208,12 +193,19 @@ test "stream_forward.cleanup closes session without streaming" {
 }
 
 
-test "stream_forward returns None on connect refused (caller emits 502)" {
+# A refused connect is the one failure that provably never delivered the
+# request, so it is raised for the caller to tell apart from a lost response:
+# the gateway probe moves on to the next service only on this.
+test "stream_forward raises ClientRequestNotSent on connect refused" {
     async def body -> object {
-        fr = await stream_forward("GET", "http://127.0.0.1:1/does/not/matter", {}, b"");
-        return fr;
+        try {
+            await stream_forward("GET", "http://127.0.0.1:1/does/not/matter", {}, b"");
+        } except ClientRequestNotSent {
+            return "not sent";
+        }
+        return "no error";
     }
-    assert _run(body()) is None;
+    assert _run(body()) == "not sent";
 }
 
 
@@ -342,10 +334,6 @@ obj FakeClientWS {
 def _spawn_ws_upstream(
     captured_headers: list[any] | None = None
 ) -> tuple[object, object, str] {
-    import from jaclang.server.serving.app { ServingApp }
-    import from jaclang.server.serving.endpoint { WSEndPoint }
-    import from jaclang.server.serving.server { ServingServer }
-
     async def ws_echo(ws: any) {
         if captured_headers is not None {
             captured_headers.append(dict(ws.headers.items()));
@@ -448,10 +436,6 @@ test "websocket_forward closes the client with 1011 when the upstream handshake 
 
 """Upstream that selects a subprotocol, the way vite's HMR server does."""
 def _spawn_ws_upstream_with_protocol(protocol: str) -> tuple[any, any, str] {
-    import from jaclang.server.serving.app { ServingApp }
-    import from jaclang.server.serving.endpoint { WSEndPoint }
-    import from jaclang.server.serving.server { ServingServer }
-
     async def ws_echo(ws: any) {
         offered: str = str(ws.headers.get("sec-websocket-protocol") or "");
         await ws.accept(subprotocol=protocol if protocol in offered else "");

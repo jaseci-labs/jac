@@ -5,8 +5,6 @@ No external dependencies; runs everywhere.
 
 import time;
 import threading;
-import from jaclang.scale.events.broker { Event, RetryPolicy }
-import from jaclang.scale.events.streams.local { LocalEventStream }
 
 
 def _make_broker(

@@ -70,6 +70,20 @@ test "objects built by the defining module carry the same vtable" {
     assert f(1) == 0 , "a Square built inside the library must not match Circle";
 }
 
+test "isinstance against a module-qualified imported class" {
+    (eng, _) = compile_native("xmod_isinstance_qualified_main.jac");
+    f = get_func(eng, "chk_qualified", ctypes.c_int64, ctypes.c_int64);
+    got = [f(k) for k in range(3)];
+    assert got == [1, 1, 0] , f"lib.Circle/lib.Square must match lib.Shape, got {got}";
+}
+
+test "class patterns match archetypes an imported module defines" {
+    (eng, _) = compile_native("xmod_match_main.jac");
+    f = get_func(eng, "shape_kind", ctypes.c_int64, ctypes.c_int64);
+    got = [f(k) for k in range(3)];
+    assert got == [1, 2, 0] , f"imported class patterns matched {got}";
+}
+
 """A subclass defined in a module the checking module never imports.
 
 The checking module's candidate vtables and class index only list the classes

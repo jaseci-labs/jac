@@ -99,6 +99,7 @@ test "emit_agent_telemetry builds record with correct fields" {
             caller_args={"country": "France"}
         );
 
+        mt._compactions = [{"reason": "threshold", "by": "hook"}];
         _emit_agent_telemetry(
             mt,
             "Paris",  # result
@@ -117,6 +118,7 @@ test "emit_agent_telemetry builds record with correct fields" {
         assert record["latency_ms"] == 150.0;
         assert record["status"] == "success";
         assert record["error"] is None;
+        assert record["compactions"] == mt._compactions;
 
         # user_prompt extracted from mt_run.messages[1].content[0].text
         assert record["user_prompt"] == "What is the capital of France?";

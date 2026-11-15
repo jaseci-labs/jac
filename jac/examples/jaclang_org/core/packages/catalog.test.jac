@@ -4,34 +4,9 @@ import tempfile;
 import from pathlib { Path }
 import from unittest.mock { patch }
 
-def _entry(version: str, yanked: bool = False, role: str = "lib") -> IndexEntry {
-    return IndexEntry(
-        name="acme/kit",
-        version=version,
-        sha256="0" * 64,
-        role=role,
-        yanked=yanked,
-        description="Geometry kit",
-        exports=["geo"],
-        source="https://github.com/acme/kit"
-    );
-}
+def _entry(version: str, yanked: bool = False, role: str = "lib") -> IndexEntry;
 
-def _registry(entries: list[IndexEntry], api: dict[str, any]) -> Path {
-    base = Path(tempfile.mkdtemp(prefix="site-packages-"));
-    (base / "config.json").write_text(
-        json.dumps({"protocol": 1, "blob_base": "blobs/", "repo": "t/i"})
-    );
-    index = base / "index" / "acme";
-    index.mkdir(parents=True);
-    (index / "kit.json").write_text("\n".join([e.to_line() for e in entries]) + "\n");
-    for e in entries {
-        target = base / "api" / "acme" / "kit" / f"{e.version}.json";
-        target.parent.mkdir(parents=True, exist_ok=True);
-        target.write_text(json.dumps(api));
-    }
-    return base;
-}
+def _registry(entries: list[IndexEntry], api: dict[str, any]) -> Path;
 
 glob API: dict[str, any] = {
          "format": 1,
@@ -155,4 +130,33 @@ test "the catalog and a package page read the index without downloading artifact
         assert not package_detail(name="not a name").found;
     }
     _CACHE.clear();
+}
+
+impl _entry(version: str, yanked: bool = False, role: str = "lib") -> IndexEntry {
+    return IndexEntry(
+        name="acme/kit",
+        version=version,
+        sha256="0" * 64,
+        role=role,
+        yanked=yanked,
+        description="Geometry kit",
+        exports=["geo"],
+        source="https://github.com/acme/kit"
+    );
+}
+
+impl _registry(entries: list[IndexEntry], api: dict[str, any]) -> Path {
+    base = Path(tempfile.mkdtemp(prefix="site-packages-"));
+    (base / "config.json").write_text(
+        json.dumps({"protocol": 1, "blob_base": "blobs/", "repo": "t/i"})
+    );
+    index = base / "index" / "acme";
+    index.mkdir(parents=True);
+    (index / "kit.json").write_text("\n".join([e.to_line() for e in entries]) + "\n");
+    for e in entries {
+        target = base / "api" / "acme" / "kit" / f"{e.version}.json";
+        target.parent.mkdir(parents=True, exist_ok=True);
+        target.write_text(json.dumps(api));
+    }
+    return base;
 }

@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_MCP_CMD: CommandSpec = CommandSpec(
          name="mcp",
          help="Start the MCP (Model Context Protocol) server for AI-assisted Jac development",

@@ -182,7 +182,7 @@ its verdict. The single query surface is
 Tools must not read `[placement.pins]` directly as if it were the placement
 verdict -- pins are one input to the solver, and most client modules carry no
 pin at all. Direct `placement_pins` imports are restricted to the solver
-layer and enforced by a repository test.
+layer and the placement pass, and enforced by a repository test.
 
 ## When do I still pin?
 

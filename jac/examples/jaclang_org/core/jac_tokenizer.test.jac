@@ -1,10 +1,6 @@
-def kinds(line: str) -> list[str] {
-    return [t.kind for t in scan_line(line).tokens];
-}
+def kinds(line: str) -> list[str];
 
-def texts(line: str) -> list[str] {
-    return [t.text for t in scan_line(line).tokens];
-}
+def texts(line: str) -> list[str];
 
 test "keywords types and literals are classified" {
     assert classify("walker", " ") == "kw";
@@ -86,4 +82,12 @@ test "round trip preserves every character" {
     src = 'def f(x: int) -> str { return "a" + str(x); }  # note';
     joined = "".join(texts(src));
     assert joined == src;
+}
+
+impl kinds(line: str) -> list[str] {
+    return [t.kind for t in scan_line(line).tokens];
+}
+
+impl texts(line: str) -> list[str] {
+    return [t.text for t in scan_line(line).tokens];
 }

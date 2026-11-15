@@ -4,8 +4,6 @@ import from collections.abc { Callable }
 import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
-import type from jaclang.runtime.constructs { AccessLevel, NodeArchetype }
-import type from jaclang.runtime.runtime { LLMModel }
 import type from jaclang { JacRuntimeInterface }
 
 enum APIProtocol(StrEnum) {
@@ -53,9 +51,14 @@ glob _CINTEROP_NAMES: dict[str, str] = {
          'PtrView': 'JacPtrView',
          'Pinned': 'JacPinned',
          'pin': 'jac_pin',
+         'addressof': 'jac_addressof',
+         'VaList': 'JacVaList',
          '_jac_clib_bind': 'clib_bind',
          '_jac_c_copy': 'c_copy',
-         '_jac_c_cell': 'c_cell'
+         '_jac_c_cell': 'c_cell',
+         '_jac_c_lend': 'c_lend',
+         '_jac_c_function_ptr': 'c_function_ptr',
+         '_jac_c_vararg': 'c_vararg'
      };
 
 def __getattr__(name: str) -> object;
@@ -72,11 +75,11 @@ def printgraph(
     format: str = 'dot'
 ) -> str;
 
-def _jac_graph_json(file: (str | None) = None) -> str;
-
 def restspec(**specs: any) -> Callable;
 
 def schedule(**kwargs: any) -> Callable;
+
+def on_drain(hook: Callable[[], any]) -> Callable[[], any];
 
 def new(cls: any, *args: any) -> any;
 
@@ -137,6 +140,7 @@ glob __all__ = [
          'save',
          'commit',
          'on_commit',
+         'on_drain',
          'store',
          'llm',
          'new',
@@ -184,9 +188,14 @@ glob __all__ = [
          'PtrView',
          'Pinned',
          'pin',
+         'addressof',
+         'VaList',
          '_jac_clib_bind',
          '_jac_c_copy',
          '_jac_c_cell',
+         '_jac_c_lend',
+         '_jac_c_function_ptr',
+         '_jac_c_vararg',
          '_jac_region_open',
          '_jac_region_close',
          '_jac_region_register',

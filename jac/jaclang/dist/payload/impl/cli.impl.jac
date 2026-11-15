@@ -1,21 +1,7 @@
 import os;
 import sys;
 
-import from jaclang.dist.payload.assemble { mk_payload }
-import from jaclang.dist.payload.fetch {
-    fetch_bun,
-    fetch_llvm,
-    fetch_typeshed,
-    typeshed_sha
-}
-import from jaclang.dist.payload.fsutil { PayloadDie, die }
-import from jaclang.dist.payload.pack { pack }
-import from jaclang.dist.payload.pins { host_py_minor, py_ver }
-import from jaclang.dist.payload.vendor { build_musl, build_wasm_libc }
-
 impl main(argv: list[str]) -> int {
-    import os;
-    os.environ.setdefault("JAC_COMPILER_LIB", "off");
     try {
         dispatch(list(argv));
     } except PayloadDie as e {
@@ -26,11 +12,7 @@ impl main(argv: list[str]) -> int {
     return 0;
 }
 
-def _need(argv: list[str], count: int, usage: str) {
-    if len(argv) < count {
-        die(usage);
-    }
-}
+def _need(argv: list[str], count: int, usage: str);
 
 impl dispatch(argv: list[str]) {
     if len(argv) < 1 {
@@ -87,17 +69,12 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
         "--shim=": "shim_so",
         "--bun=": "bun_bin",
         "--link-source=": "link_source",
-        "--musl=": "musl_dir",
         "--wasm-libc=": "wasm_libc_dir",
         "--precompiled-cache=": "precompiled_cache",
         "--layer-cache=": "layer_cache",
         "--stubcat-out=": "stubcat_out"
     };
     for arg in flags {
-        if arg == "--skip-precompile" {
-            opts.skip_precompile = True;
-            continue;
-        }
         if arg == "--seal" {
             opts.seal = True;
             continue;
@@ -106,8 +83,8 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
             opts.debug_src = True;
             continue;
         }
-        if arg == "--skip-stubcat" {
-            opts.skip_stubcat = True;
+        if arg.startswith("--musl=") {
+            opts.musl_dirs.append(arg[len("--musl="):]);
             continue;
         }
         for (prefix, field) in valued.items() {
@@ -120,12 +97,18 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
     return opts;
 }
 
-impl check_host_python{
+impl check_host_python {
     want = py_ver();
     have = host_py_minor();
     if want != have {
         die(
             f"mkpayload: must run on the bundled CPython {want} (this interpreter is {have}); invoke it with the source-built python"
         );
+    }
+}
+
+impl _need(argv: list[str], count: int, usage: str) {
+    if len(argv) < count {
+        die(usage);
     }
 }

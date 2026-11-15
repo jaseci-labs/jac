@@ -9,12 +9,6 @@ manager that never booted a fleet is not treated as booting forever.
 """
 import socket;
 import time;
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceEntry,
-    ServiceRegistry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 
 """A port nobody listens on, so every health probe is refused at once."""
 def _unbound_port -> int {

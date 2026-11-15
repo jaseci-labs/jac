@@ -1,4 +1,5 @@
-"""Every ```jac code block in the bundled docs corpus parses.
+"""Every ```jac code block in the bundled docs corpus -- and the repo-root
+README.md -- parses.
 
 The suite home of what `scripts/validate_docs_code.jac` did from a ci.yml
 step: extract fenced jac blocks from the corpus markdown and hold them to
@@ -52,6 +53,12 @@ test "docs corpus jac code blocks all parse" {
         if (f.name not in SKIP_FILES) and not any(d in f.parts for d in SKIP_DIRS)
     ];
     assert md_files , "no markdown files found in the docs corpus";
+    # The README quick-start blocks parse too: #8491 was a README snippet
+    # teaching a removed `cl` marker that the corpus test never saw.
+    readme = docs_dir.parents[3] / "README.md";
+    if readme.is_file() {
+        md_files.append(readme);
+    }
     failures: list[str] = [];
     total = 0;
     for md in md_files {

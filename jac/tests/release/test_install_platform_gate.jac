@@ -140,13 +140,19 @@ test "an Intel Mac is told the release has no build for it, and which one does" 
 
 test "an Intel Mac installs normally from a release that does carry the binary" {
     fx = scaffold("x86_64", ["jac-0.37.1-macos-x86_64", "jac-0.37.1-macos-aarch64"]);
+    Path(fx["downloads"] + "/jac-0.37.1-macos-x86_64").write_bytes(b"fake jac binary");
     try {
         res = run_installer(fx);
         out = res.stdout + res.stderr;
+        assert res.returncode == 0 , out;
         assert ("Downloading jac-0.37.1-macos-x86_64" in out) , "a present asset must go straight to the download: "
             + out;
         assert ("no jac binary" not in out) , "a present asset must not trip the missing-platform message: "
             + out;
+        marker = Path(fx["base"]) / ".local" / "bin" / ".jac-install";
+        assert marker.read_text().strip() == "installed-by-jaseci-labs-install-script";
+        run_installer(fx, ["--uninstall"]);
+        assert not marker.exists() , "uninstall must remove the ownership marker";
     } finally {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }
@@ -172,59 +178,6 @@ test "an early asset match survives a release larger than the pipe buffer" {
         res = run_installer(fx);
         out = res.stdout + res.stderr;
         assert "Downloading jac-0.37.1-macos-aarch64" in out , out;
-    } finally {
-        shutil.rmtree(fx["base"], ignore_errors=True);
-    }
-}
-
-test "the installer downloads and verifies only the selected runtime" {
-    standard = "jac-0.37.1-macos-aarch64";
-    native = standard + "-jacpython";
-    for (args, selected) in [
-        ([], standard),
-        (["--jacpython", "--version", "0.37.1"], native)
-    ] {
-        fx = scaffold(
-            "arm64", [native, native + ".sha256", standard, standard + ".sha256"]
-        );
-        try {
-            for asset in [standard, native] {
-                body = f'#!/usr/bin/env bash\necho "{asset}"\n';
-                Path(fx["downloads"], asset).write_text(body);
-                digest = hashlib.sha256(body.encode()).hexdigest();
-                Path(fx["downloads"], asset + ".sha256").write_text(
-                    f"{digest}  {asset}\n"
-                );
-            }
-            res = run_installer(fx, args);
-            out = res.stdout + res.stderr;
-            assert res.returncode == 0 , out;
-            assert "Checksum verified." in out , out;
-            installed = Path(fx["base"], ".local", "bin", "jac");
-            assert installed.read_text() == Path(fx["downloads"], selected).read_text();
-            downloads = [
-                url.rsplit("/", 1)[-1]
-                for url in Path(fx["log"]).read_text().splitlines()
-                if "/releases/download/" in url
-            ];
-            assert downloads == [selected, selected + ".sha256"] , str(downloads);
-        } finally {
-            shutil.rmtree(fx["base"], ignore_errors=True);
-        }
-    }
-}
-
-test "a missing JacPython asset fails without installing the default runtime" {
-    fx = scaffold("x86_64", ["jac-0.37.1-macos-x86_64"]);
-    try {
-        res = run_installer(fx, ["--jacpython"]);
-        out = res.stdout + res.stderr;
-        assert res.returncode != 0;
-        assert "no JacPython binary" in out , out;
-        assert "omit --jacpython" in out , out;
-        assert "no Intel macOS build" not in out , out;
-        assert "/releases/download/" not in Path(fx["log"]).read_text();
-        assert not Path(fx["base"], ".local", "bin", "jac").exists();
     } finally {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }

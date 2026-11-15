@@ -1,16 +1,7 @@
-import type from jaclang.compiler.driver.program { JacProgram }
 import contextlib;
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING }
-import from jaclang.client.client_bundle {
-    ClientBuildInputs,
-    ClientBundle,
-    ClientBundleError
-}
-import from jaclang.client.jac_client_compiler { JacClientCompiler }
-import from jaclang.client.vite_bundler { ViteBundler }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
 
 with entry {
     if TYPE_CHECKING {}
@@ -25,7 +16,7 @@ class ViteCompiler {
         vite_output_dir: (Path | None) = None,
         vite_minify: bool = False,
         runtime_path: (Path | None) = None,
-        compile_to_js_func: Callable[[Path], ClientArtifact],
+        compile_to_js_func: Callable[[Path, Path | None], ClientArtifact],
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
@@ -41,6 +32,7 @@ class ViteCompiler {
     def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
     def _emit_wasm_module(self: ViteCompiler, module_path: Path) -> bool;
     def _wasm_targets(self: ViteCompiler, module_path: Path) -> list[Path];
+    def _wasm_input_key(self: ViteCompiler, units: list[list[str]]) -> str;
     def _compile_wasm_module(
         self: ViteCompiler, module_path: Path
     ) -> dict[str, bytes];

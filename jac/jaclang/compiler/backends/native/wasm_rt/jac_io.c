@@ -40,3 +40,13 @@ int putchar(int c) {
     write(1, &b, 1);
     return c;
 }
+
+/* Uncaught compiler exceptions go to stderr without importing libc stdio. */
+void __jac_uncaught_exception(const char *msg) {
+    static const char prefix[] = "Uncaught exception: ";
+    write(2, prefix, sizeof prefix - 1);
+    if (msg) {
+        write(2, msg, strlen(msg));
+    }
+    write(2, "\n", 1);
+}

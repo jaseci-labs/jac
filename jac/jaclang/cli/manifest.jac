@@ -1,46 +1,6 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { module_of }
-
-comptime import from jaclang.cli.commands.analysis {
-    SPEC_CHECK,
-    SPEC_EXPLAIN,
-    SPEC_FORMAT,
-    SPEC_GEN_PARSER,
-    SPEC_PRECOMMIT,
-    SPEC_TEST
-}
 comptime import from jaclang.cli.commands.arch { SPEC_ARCH }
-comptime import from jaclang.cli.commands.browse { SPEC_BROWSE }
-comptime import from jaclang.cli.commands.build { SPEC_BUILD }
-comptime import from jaclang.cli.commands.cache { SPEC_CACHE }
-comptime import from jaclang.cli.commands.code { SPEC_CODE }
-comptime import from jaclang.cli.commands.config { SPEC_CONFIG }
-comptime import from jaclang.cli.commands.db { SPEC_DB }
-comptime import from jaclang.cli.commands.execution { SPEC_RUN, SPEC_X }
-comptime import from jaclang.cli.commands.fix { SPEC_FIX }
-comptime import from jaclang.cli.commands.guide { SPEC_GUIDE }
-comptime import from jaclang.cli.commands.mcp { SPEC_MCP_CMD }
-comptime import from jaclang.cli.commands.precompile { SPEC_PRECOMPILE }
-comptime import from jaclang.cli.commands.project {
-    SPEC_CLEAN,
-    SPEC_CREATE,
-    SPEC_INSTALL,
-    SPEC_PUBLISH,
-    SPEC_REMOVE,
-    SPEC_UPDATE
-}
-comptime import from jaclang.cli.commands.tools {
-    SPEC_COMPLETIONS,
-    SPEC_DOT,
-    SPEC_LSP,
-    SPEC_TOOL
-}
-comptime import from jaclang.byllm.cli { SPEC_MODEL }
-comptime import from jaclang.cli.shadcn.cli { SPEC_RETHEME }
-comptime import from jaclang.client.cli { SPEC_SETUP }
-comptime import from jaclang.scale.plugin { SPEC_SCALE_CMD }
 
-comptime VERB_BUDGET: int = 27,
+comptime VERB_BUDGET: int = 28,
      TOMBSTONED_VERBS: dict[str, str] = {
          "add": "jac install <pkg>",
          "format": "jac fmt",
@@ -121,6 +81,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_LSP),
          _route(SPEC_MCP_CMD),
          _route(SPEC_MODEL),
+         _route(SPEC_NATIVE),
          _route(SPEC_PRECOMMIT),
          _route(SPEC_PRECOMPILE),
          _route(SPEC_PUBLISH),
@@ -129,6 +90,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_RUN),
          _route(SPEC_SCALE_CMD),
          _route(SPEC_SETUP),
+         _route(SPEC_STUDIO),
          _route(SPEC_TEST),
          _route(SPEC_TOOL),
          _route(SPEC_UPDATE),

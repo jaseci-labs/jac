@@ -1,27 +1,4 @@
-impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
-    self.pass_ref = pass_ref;
-    import from jaclang.compiler.backends.es { estree as es }
-    self.es = es;
-
-    self._view_by_node: dict[int, ViewElement] = {};
-}
-
-impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
-    es = self.es;
-
-    import from jaclang.compiler.backends.es.view_ir {
-        ViewElement,
-        HostTag,
-        ComponentTag,
-        FragmentTag,
-        DynamicTag,
-        SpreadAttr,
-        TextChild,
-        DynamicChild,
-        ElementChild,
-        SlotChild
-    }
-
+impl EsJsxProcessor.element(nd: uni.JsxElement) -> Expression {
     if nd.dynamic_tag is not None {
         dyn_expr: Expression = cast(
             es.Expression,
@@ -118,11 +95,11 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     self._view_by_node[id(nd)] = view;
     backend = self.pass_ref.resolved_backend;
     assert backend is not None , "framework backend was not initialized";
-    return backend.lower_view(view, self.pass_ref.sync_loc);
+    return backend.lower_view(view, ViewLocator(anchor=self.pass_ref.ctx.current_node));
 }
 
 impl EsJsxProcessor._lift_control_flow(
-    self: EsJsxProcessor, child: uni.JsxExpression
+    child: uni.JsxExpression
 ) -> (IfChild | EachChild | None) {
     expr = child.expr;
 
@@ -136,14 +113,8 @@ impl EsJsxProcessor._lift_control_flow(
 }
 
 impl EsJsxProcessor._lift_each(
-    self: EsJsxProcessor, child: uni.JsxExpression, compr: uni.ListCompr
+    child: uni.JsxExpression, compr: uni.ListCompr
 ) -> (EachChild | None) {
-    es = self.es;
-    import from jaclang.compiler.backends.es.view_ir {
-        ViewElement,
-        ElementChild,
-        EachChild
-    }
     if len(compr.compr) != 1 {
         return None;
     }
@@ -201,11 +172,8 @@ impl EsJsxProcessor._lift_each(
 }
 
 impl EsJsxProcessor._lift_if(
-    self: EsJsxProcessor, child: uni.JsxExpression, ternary: uni.IfElseExpr
+    child: uni.JsxExpression, ternary: uni.IfElseExpr
 ) -> (IfChild | None) {
-    es = self.es;
-    import from jaclang.compiler.backends.es.view_ir { IfChild }
-
     cons_inner = ternary.value.expr;
     alt_inner = ternary.else_value.expr;
     if not isinstance(cons_inner, uni.JsxElement) {
@@ -241,10 +209,7 @@ impl EsJsxProcessor._lift_if(
     );
 }
 
-impl EsJsxProcessor._view_arm(
-    self: EsJsxProcessor, nd: uni.JsxElement
-) -> (list[ViewChild] | None) {
-    import from jaclang.compiler.backends.es.view_ir { ElementChild }
+impl EsJsxProcessor._view_arm(nd: uni.JsxElement) -> (list[ViewChild] | None) {
     ve = self._view_by_node.get(id(nd));
     if ve is None {
         return None;
@@ -253,16 +218,17 @@ impl EsJsxProcessor._view_arm(
 }
 
 impl EsJsxProcessor._split_key(
-    self: EsJsxProcessor, ve: ViewElement
+    ve: ViewElement
 ) -> tuple[
     Expression | None,
     list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr]
 ] {
-    import from jaclang.compiler.backends.es.view_ir { StaticAttr, DynamicAttr }
-    key_expr = None;
-    kept = [];
+    key_expr: (Expression | None) = None;
+    kept: list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr] = [];
     for a in ve.attrs {
-        if isinstance(a, (StaticAttr, DynamicAttr)) and a.name == "key" {
+        if isinstance(a, StaticAttr) and a.name == "key" {
+            key_expr = a.value;
+        } elif isinstance(a, DynamicAttr) and a.name == "key" {
             key_expr = a.value;
         } else {
             kept.append(a);
@@ -271,10 +237,7 @@ impl EsJsxProcessor._split_key(
     return (key_expr, kept);
 }
 
-impl EsJsxProcessor.element_name(
-    self: EsJsxProcessor, nd: uni.JsxElementName
-) -> Expression {
-    es = self.es;
+impl EsJsxProcessor.element_name(nd: uni.JsxElementName) -> Expression {
     if not nd.parts {
         expr: es.Expression = self.pass_ref.sync_loc(
             es.Literal(value=None), jac_node=nd
@@ -311,10 +274,7 @@ impl EsJsxProcessor.element_name(
     return expr;
 }
 
-impl EsJsxProcessor.spread_attribute(
-    self: EsJsxProcessor, nd: uni.JsxSpreadAttribute
-) -> Expression {
-    es = self.es;
+impl EsJsxProcessor.spread_attribute(nd: uni.JsxSpreadAttribute) -> Expression {
     expr: Expression = cast(es.Expression, nd.expr.gen.es_ast)
         if (nd.expr and nd.expr.gen.es_ast)
         else self.pass_ref.sync_loc(es.ObjectExpression(properties=[]), jac_node=nd);
@@ -323,16 +283,8 @@ impl EsJsxProcessor.spread_attribute(
 }
 
 impl EsJsxProcessor.normal_attribute(
-    self: EsJsxProcessor, nd: uni.JsxNormalAttribute
+    nd: uni.JsxNormalAttribute
 ) -> (StaticAttr | DynamicAttr | EventAttr | RefAttr) {
-    es = self.es;
-
-    import from jaclang.compiler.backends.es.view_ir {
-        StaticAttr,
-        DynamicAttr,
-        EventAttr,
-        RefAttr
-    }
     attr_name = nd.name.value;
     if (nd.value is None) {
         value_expr: es.Expression = self.pass_ref.sync_loc(
@@ -369,9 +321,8 @@ impl EsJsxProcessor.normal_attribute(
     return DynamicAttr(name=attr_name, value=value_expr, jac_node=nd);
 }
 
-impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
+impl EsJsxProcessor.text(nd: uni.JsxText) -> Expression {
     import html;
-    es = self.es;
     expr = self.pass_ref.sync_loc(
         es.Literal(value=html.unescape(nd.get_normalized_text())), jac_node=nd
     );
@@ -379,10 +330,7 @@ impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
     return expr;
 }
 
-impl EsJsxProcessor.expression(
-    self: EsJsxProcessor, nd: uni.JsxExpression
-) -> Expression {
-    es = self.es;
+impl EsJsxProcessor.expression(nd: uni.JsxExpression) -> Expression {
     expr: Expression = cast(es.Expression, nd.expr.gen.es_ast)
         if (nd.expr and nd.expr.gen.es_ast)
         else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.expr);

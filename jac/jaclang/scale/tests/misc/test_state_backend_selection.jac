@@ -14,10 +14,6 @@ PgStateBackend) needs the deploy tier and is not here; see
 """
 
 import os;
-import jaclang.scale.state.factory as factory_mod;
-import jaclang.server.shared_store as store_mod;
-import from jaclang.scale.state.factory { get_state_backend, in_fleet }
-import from jaclang.scale.state.state_backend { InProcessStateBackend }
 
 glob _CLUSTER_ENV = 'KUBERNETES_SERVICE_HOST',
      _SIBLING_ENV = 'JAC_SV_SIBLING',
@@ -46,11 +42,30 @@ def _set_env(pairs: dict[str, str | None]) -> dict[str, str | None] {
 
 
 test "outside a fleet, unshared state stays in this process" {
+    import from unittest.mock { patch }
     previous = _set_env({_CLUSTER_ENV: None, _SIBLING_ENV: None});
     _reset();
     try {
         assert not in_fleet();
-        assert isinstance(get_state_backend(False), InProcessStateBackend);
+        backend = get_state_backend(False);
+        assert isinstance(backend, InProcessStateBackend);
+        clock = [1000.0];
+        def frozen -> float {
+            return clock[0];
+        }
+        with patch("time.time", frozen) {
+            for i in range(100) {
+                backend.set(f"rl:client-{i}", "1:0", ttl_seconds=1);
+            }
+            backend.set("kept", "1");
+            backend.set("rl:latest", "1:0", ttl_seconds=120);
+            assert len(backend._values) == 102 , "live entries were swept";
+            clock[0] += backend.sweep_seconds + 1;
+            backend.increment("rl:other", ttl_seconds=60);
+        }
+        assert sorted(backend._values) == ["kept", "rl:latest", "rl:other"] , (
+            f"{len(backend._values)} entries kept after every client's window expired"
+        );
     } finally {
         _set_env(previous);
         _reset();

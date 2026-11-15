@@ -72,11 +72,11 @@ test "a clean module still reaches code generation" {
 test "type inference is a hard requirement of the environment" {
     import from jaclang.compiler.driver.pipeline {
         TypeshedUnavailableError,
-        require_typeshed_stubs,
-        typeshed_stubs_available
+        require_typeshed_stubs
     }
+    import from jaclang.artifacts.router { require }
 
-    assert typeshed_stubs_available() , "vendored typeshed stubs are missing, so no module can compile";
+    assert require("typeshed").found is not None , "vendored typeshed stubs are missing, so no module can compile";
     require_typeshed_stubs();
     assert issubclass(TypeshedUnavailableError, RuntimeError);
 }

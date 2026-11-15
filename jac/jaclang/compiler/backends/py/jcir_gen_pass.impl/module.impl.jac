@@ -13,7 +13,6 @@ impl JcirGenPass.exit_sub_tag with SubTag exit {
 }
 
 impl JcirGenPass.exit_module with Module exit {
-    import from jaclang.runtime.osp_tag { stable_osp_tag }
     _tag_names: dict[int, str] = {};
     for _stmt in (here.body or []) {
         if isinstance(_stmt, Archetype)
@@ -154,7 +153,7 @@ impl JcirGenPass.exit_module with Module exit {
             )
         );
     }
-    merged_body = self._merge_module_bodies(here);
+    merged_body = ModuleFacts.merged_body(here);
     body_items: list[CgItem] = [];
     if here.doc {
         body_items.append(
@@ -214,8 +213,7 @@ impl JcirGenPass.exit_module with Module exit {
             body_items.extend(stmts);
         }
     }
-    new_body = self._flatten_ast_list(body_items);
-    module = self.nod('Module', ['body', 'type_ignores'], [new_body, []]);
+    module = self.nod('Module', ['body', 'type_ignores'], [body_items, []]);
     self.set_out(here, [module]);
     self._module_root = module;
     self._module_path = here.loc.mod_path;
@@ -285,10 +283,14 @@ impl JcirGenPass.exit_type_alias with TypeAlias exit {
 }
 
 impl JcirGenPass.exit_global_vars with GlobalVars exit {
-    assigns_ast = self._flatten_ast_list([self.outs(a) for a in here.assignments]);
+    assigns_ast: list[CgItem] = [];
+    for assignment in here.assignments {
+        assigns_ast.extend(self.outs(assignment));
+    }
     if here.doc {
         doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
-        self.set_out(here, [doc] + assigns_ast);
+        assigns_ast.insert(0, doc);
+        self.set_out(here, assigns_ast);
     } else {
         self.set_out(here, assigns_ast);
     }
@@ -305,7 +307,7 @@ impl JcirGenPass.exit_test with Test exit {
     } else {
         body_stmts = self.resolve_stmt_block(here.body, doc=here.doc);
     }
-    test_directives = self.scope_directive_stmts([here]);
+    test_directives = self.scope_directive_stmts(here);
     if test_directives {
         insert_at = self._docstring_offset(body_stmts);
         body_stmts = [
@@ -378,11 +380,13 @@ impl JcirGenPass.exit_test with Test exit {
             )
         );
     }
-    func.get('decorator_list').append(
+    func.push(
+        'decorator_list',
         self.call_node(self.jaclib_obj('jac_test'), [], jac_test_keywords)
     );
     if jcir_is_test_path(here.loc.mod_path) {
-        func.get('decorator_list').append(
+        func.push(
+            'decorator_list',
             self.call_node(
                 self.jaclib_obj('impl_patch_filename'),
                 [],
@@ -425,32 +429,7 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
     self.set_out(here, stmts);
 }
 
-impl JcirGenPass.exit_py_inline_code with PyInlineCode exit {
-    if here.doc {
-        doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
-        shift = here.loc.first_line;
-        inner = doc.get('value');
-        doc.l1 = doc.l1 + shift;
-        doc.l2 = doc.l2 + shift;
-        if isinstance(inner, CgNode) {
-            inner.l1 = inner.l1 + shift;
-            inner.l2 = inner.l2 + shift;
-        }
-        self.set_out(here, [doc, CgSplice(src=here.code.value, offset=shift)]);
-    } else {
-        self.set_out(
-            here,
-            [CgSplice(src=textwrap.dedent(here.code.value), offset=here.loc.first_line)]
-        );
-    }
-}
-
 impl JcirGenPass.exit_import with Import exit {
-    import from jaclang.compiler.driver.boundary_classify {
-        CrossAppKind,
-        classify_cross_app_import,
-        import_binds_client_native
-    }
     if (
         import_binds_client_native(here, self.module.gen.interop_manifest)
         or here.native_only_drop

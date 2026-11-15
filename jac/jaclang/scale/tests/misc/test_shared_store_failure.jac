@@ -14,9 +14,6 @@ manager rendering it verbatim, and failures staying retryable.
 import os;
 import tempfile;
 import unittest.mock;
-import jaclang.server.shared_store as pg_mod;
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import from jaclang.server.identity.user_manager { UserManager }
 import from pathlib { Path }
 
 glob _DEAD_URL = 'postgresql://jac:jac@127.0.0.1:1/jac';

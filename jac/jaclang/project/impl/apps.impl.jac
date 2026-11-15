@@ -3,7 +3,6 @@ impl _norm_path(path: str) -> str {
 }
 
 impl AppConfig.entry_path(project_root: str) -> str {
-    import from jaclang.project.app_kinds { kind_entry }
     return resolve_entry_path(self.entry_point or kind_entry(self.kind), project_root);
 }
 
@@ -21,7 +20,6 @@ impl validate_entry_point(module: str) -> str {
 }
 
 impl resolve_entry_path(module: str, project_root: str) -> str {
-    import from jaclang.project.modresolver { resolve_local_module }
     validate_entry_point(module);
     base = os.path.abspath(project_root);
     parts = module.split('.');
@@ -38,7 +36,6 @@ impl AppConfig.effective_route -> str {
 }
 
 impl AppConfig.ui -> str {
-    import from jaclang.project.app_kinds { kind_ui }
     return kind_ui(self.kind);
 }
 
@@ -61,7 +58,6 @@ impl validate_app_name(name: str) -> None {
 impl parse_apps(
     project_data: dict[str, any], apps_data: dict[str, any]
 ) -> dict[str, AppConfig] {
-    import from jaclang.project.app_kinds { KIND_SPECS }
     if not isinstance(apps_data, dict) {
         raise ValueError("[apps] must be a table of [apps.<name>] tables");
     }

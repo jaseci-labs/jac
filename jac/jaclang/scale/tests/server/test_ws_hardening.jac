@@ -7,19 +7,6 @@ import os;
 import shutil;
 import time;
 import from tempfile { mkdtemp }
-import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.tests.scale_test_client { make_client }
-import from jaclang.scale.websocket.websocket {
-    WebSocketConnectionManager,
-    ConnectionContext
-}
-import from jaclang.scale.websocket.backplane {
-    BaseBackplane,
-    MemoryBackplane,
-    build_backplane
-}
-import from jaclang.scale.websocket.protocol { ws_handle_control, ws_heartbeat_loop }
 
 
 def _ws_client -> any {
@@ -95,6 +82,18 @@ obj _FailingBackplane(BaseBackplane) {
 
     async def unsubscribe(channel: str, handler: any) {}
     async def close {}
+}
+
+
+"""A value the JSON encoder can only render through its default hook, so each
+serialization of a message holding it bumps `renders` once."""
+obj _RenderCounter {
+    has renders: int = 0;
+
+    def __str__ -> str {
+        self.renders += 1;
+        return 'counted';
+    }
 }
 
 
@@ -243,6 +242,64 @@ test "a concurrent registration never survives on an unsubscribed target" {
 }
 
 
+test "a broadcast serializes once and every live connection gets the same bytes" {
+    import socket;
+    async def body -> tuple[int, list[bytes], list[str]] {
+        mgr = WebSocketConnectionManager(backplane=MemoryBackplane());
+        value = _RenderCounter();
+        peers: list[any] = [];
+        writers: list[any] = [];
+        results: list[str] = [];
+        received: list[bytes] = [];
+        try {
+            for i in range(3) {
+                (ours, theirs) = socket.socketpair();
+                peers.append(theirs);
+                (reader, writer) = await asyncio.open_connection(sock=ours);
+                writers.append(writer);
+                ws = WebSocket(reader=reader, writer=writer, accepted=True);
+                ctx = ConnectionContext(
+                    websocket=ws, target_kind='walker', target_name='X', conn_id=f"c{i}"
+                );
+                results.append(str(await mgr.register(ctx)));
+            }
+            # A socket that already went away must not stop the others.
+            dead = ConnectionContext(
+                websocket=WebSocket(closed=True),
+                target_kind='walker',
+                target_name='X',
+                conn_id='dead'
+            );
+            results.append(str(await mgr.register(dead)));
+            await mgr.broadcast_target('walker', 'X', {'items': [value]});
+            for peer in peers {
+                # A missing frame reads as b'' after the deadline instead of hanging.
+                peer.settimeout(2.0);
+                try {
+                    received.append(peer.recv(65536));
+                } except TimeoutError {
+                    received.append(b'');
+                }
+            }
+        } finally {
+            for writer in writers {
+                writer.close();
+            }
+            for peer in peers {
+                peer.close();
+            }
+        }
+        return (value.renders, received, results);
+    }
+    (renders, received, results) = asyncio.run(body());
+    assert results == ['None', 'None', 'None', 'None'] , f"register: {results}";
+    assert renders == 1 , f"message was serialized {renders} times for 4 sockets";
+    assert b'' not in received , f"a live connection got no frame: {received}";
+    assert len(received) == 3 and len(set(received)) == 1 , f"got {received}";
+    assert received[0].endswith(b'{"items": ["counted"]}') , f"got {received[0]}";
+}
+
+
 test "control frames are charged against the rate limit" {
     (test_dir, um) = _real_user_manager();
     try {
@@ -366,7 +423,7 @@ test "a refresh frame on a public endpoint does not disconnect the client" {
 test "a refresh with the connection's own valid token is accepted" {
     (test_dir, um) = _real_user_manager();
     try {
-        owner = um.create_user("ws_owner", "Secret123!");
+        owner = um.create_internal_user("ws_owner", "Secret123!");
         owner_id = owner["user_id"];
         owner_token = um.create_jwt_token(owner_id);
         async def body -> str {
@@ -395,8 +452,8 @@ test "a refresh with the connection's own valid token is accepted" {
 test "a refresh carrying another user's real token is rejected as an identity mismatch" {
     (test_dir, um) = _real_user_manager();
     try {
-        user_a = um.create_user("ws_user_a", "Secret123!");
-        user_b = um.create_user("ws_user_b", "Secret123!");
+        user_a = um.create_internal_user("ws_user_a", "Secret123!");
+        user_b = um.create_internal_user("ws_user_b", "Secret123!");
         a_id = user_a["user_id"];
         b_id = user_b["user_id"];
         token_a = um.create_jwt_token(a_id);

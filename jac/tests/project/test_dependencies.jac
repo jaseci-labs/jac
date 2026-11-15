@@ -2215,6 +2215,46 @@ test "install_specs honors the sealed-venv marker" {
 }
 
 
+test "jac install keeps a sealed venv when jac.lock pins differ" {
+    import from jaclang.packages.commands { install_project }
+    import from jaclang.packages.lock { Lockfile, digest_of }
+    import from jaclang.packages.install { write_lock }
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    saved = {k: os.environ.get(k) for k in ("PIP_NO_INDEX", "PIP_FIND_LINKS")};
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        specs = ["requests>=2.28.0"];
+        write_lock(
+            config,
+            Lockfile(
+                pypi_resolved=["requests==0.0.0.unavailable"],
+                pypi_inputs=digest_of(sorted(specs))
+            )
+        );
+        venv_dir = config.get_venv_dir();
+        site = venv_dir / "lib" / "python3.12" / "site-packages";
+        site.mkdir(parents=True);
+        (site / "sealed.py").write_text("SEALED = True\n");
+        write_venv_deps_marker(venv_dir, specs);
+        os.environ["PIP_NO_INDEX"] = "1";
+        os.environ["PIP_FIND_LINKS"] = str(Path(tmp) / "no-wheels");
+        assert install_project(config, skip_npm=True) == 0;
+        assert (site / "sealed.py").exists();
+        assert venv_deps_satisfied(venv_dir, specs);
+    } finally {
+        for (k, v) in saved.items() {
+            if v is None {
+                os.environ.pop(k, None);
+            } else {
+                os.environ[k] = v;
+            }
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 test "standalone pip ignores inherited Python paths and user site" {
     import from jaclang.project.pyvenv { pip_env }
     inherited = {

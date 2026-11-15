@@ -22,6 +22,19 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
 
+"""The JavaScript runtime this process runs (bun), or None when
+neither is built: suites that need one skip on None, and strict lanes, which
+ship a kit with bun, never see it."""
+def js_runtime_or_none -> (str | None) {
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    import from jaclang.client.js_runtime { js_runtime_path }
+    try {
+        return js_runtime_path();
+    } except ArtifactUnavailable {
+        return None;
+    }
+}
+
 """Environment overrides isolating every machine-wide cache family."""
 def cache_env(cache_dir: Path | str) -> dict[str, str] {
     import from jaclang.cache.registry { BUCKETS }
@@ -33,6 +46,28 @@ def cache_env(cache_dir: Path | str) -> dict[str, str] {
         }
     }
     return env;
+}
+
+"""Let a child under a private cache root reuse this process's Postgres
+distribution instead of provisioning its own (a system Postgres it finds
+by itself)."""
+def share_postgres(cache_home: Path | str) {
+    import from jaclang.data.pg_dist { dist_cache_dir, postgres_bin_dir }
+    dist = Path(postgres_bin_dir()).parent;
+    if not dist.is_relative_to(Path(dist_cache_dir())) {
+        return;
+    }
+    link = Path(cache_home) / "pg" / "dist" / dist.name;
+    link.parent.mkdir(parents=True, exist_ok=True);
+    if not link.exists() {
+        link.symlink_to(dist, target_is_directory=True);
+    }
+}
+
+"""Run as a project whose jac.toml sets `[network] offline`."""
+def offline_project -> any {
+    import from unittest.mock { patch }
+    return patch("jaclang.project.config.offline_mode", return_value=True);
 }
 
 """Select the parent's compiler, or an explicit checkout for comparative tests."""
@@ -266,19 +301,19 @@ bitcode merged with the link glue that defines `jac_entry`, the way an
 executable's object is assembled before the platform linker sees it. Tests
 that hand a single relocatable object to a linker start from this text."""
 def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
-    import os;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
-        NATIVE_LINK_MODE_BITCODE
+        NATIVE_LINK_MODE_BITCODE,
+        push_native_target,
+        pop_native_target
     }
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,
         build_link_plan,
         whole_program_module
     }
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = triple;
+    prev = push_native_target(triple);
     try {
         prog = JacProgram();
         opts = CompileOptions(aot_mode=True, native_link_mode=NATIVE_LINK_MODE_BITCODE);
@@ -302,11 +337,7 @@ def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
         (merged, _exports) = whole_program_module(plan, spec);
         return str(merged);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -507,6 +538,32 @@ def native_build(
     return (comp.stdout or "") + (comp.stderr or "");
 }
 
+"""Build `src` natively expecting the compile to fail; return combined output.
+
+The counterpart to `native_build` for refusal-path tests: asserts the build
+did not succeed and hands back stdout+stderr so the caller can pin the
+diagnostic naming the offending construct.
+"""
+def native_build_fails(src: str, timeout: int = 900) -> str {
+    import os;
+    import subprocess;
+    import tempfile;
+    assert os.path.exists(src) , f"fixture missing: {src}";
+    out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
+    comp = subprocess.run(
+        jac_command("build", "--native", src, "-o", out_bin),
+        capture_output=True,
+        text=True,
+        timeout=timeout
+    );
+    combined = (comp.stdout or "") + (comp.stderr or "");
+    assert comp.returncode != 0 , (
+        f"expected a refused native build for {os.path.basename(src)},"
+        f" but it compiled cleanly: {combined[-600:]}"
+    );
+    return combined;
+}
+
 """Run a built native binary and return its stdout; assert a clean exit."""
 def native_run(
     out_bin: str,
@@ -591,4 +648,73 @@ def assert_native_identity(
         );
     }
     return reference;
+}
+
+"""Run `src` on the sv lane (CPython is the oracle); return (stdout, stderr).
+
+On this lane `import <mod>` binds CPython's own stdlib module, so sv output is
+the reference every bundled-stdlib congruence probe compares against. Bare
+`jac run` is used deliberately: the explicit `--backend python` route installs
+jac's own logging config (INFO level, a `LEVEL - msg` format), which changes
+what a probe that touches `logging` observes.
+"""
+def sv_run(src: str, timeout: int = 900) -> tuple[(str, str)] {
+    import subprocess;
+    proc = subprocess.run(
+        jac_command("run", src), capture_output=True, text=True, timeout=timeout
+    );
+    assert proc.returncode == 0 , f"sv run failed for {src}: {proc.stderr[-800:]
+        if proc.stderr
+        else '(empty)'}";
+    return (proc.stdout, proc.stderr);
+}
+
+"""Compile `src` to a native binary, run it, and return (stdout, stderr).
+
+On this lane `import <mod>` binds the bundled na_stdlib module, so comparing
+na output to `sv_run` output pins the sv<->na congruence contract.
+"""
+def na_run(src: str, timeout: int = 900) -> tuple[(str, str)] {
+    import os;
+    import subprocess;
+    import tempfile;
+    with tempfile.TemporaryDirectory() as tmp {
+        out_bin = os.path.join(tmp, "probe.bin");
+        native_build(src, out_bin, timeout=timeout);
+        proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
+        assert proc.returncode == 0 , f"binary failed for {src}: {proc.stderr[-400:]
+            if proc.stderr
+            else '(empty)'}";
+        return (proc.stdout, proc.stderr);
+    }
+}
+
+"""Assert two captured outputs agree non-blank line for non-blank line."""
+def same_lines(sv_text: str, na_text: str, what: str) {
+    sv = [
+        _l
+        for _l in sv_text.split("\n")
+        if _l.strip()
+    ];
+    na = [
+        _l
+        for _l in na_text.split("\n")
+        if _l.strip()
+    ];
+    assert sv , f"{what}: sv pathway produced no output";
+    assert len(sv) == len(na) , f"{what} line count: sv {len(sv)} vs na {len(na)}";
+    for idx in range(len(sv)) {
+        assert sv[idx] == na[idx] , f"{what} line {idx}: sv {sv[idx]!r} vs na {na[
+            idx
+        ]!r}";
+    }
+}
+
+"""A module's source together with its impl annexes, the unit the compiler
+weaves, so a source-contract check reads a body wherever it lives."""
+def unit_source(path: Path | str) -> str {
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+
+    files = [str(path)] + discover_annex_files(str(path), ".impl.jac");
+    return "\n".join(Path(f).read_text() for f in files);
 }

@@ -1,9 +1,4 @@
 """Graph construction must compile and run on every backend."""
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_with_both,
-    run_py_fixture,
-    run_js_module_fixture
-}
 
 test "client module fixtures run through symlinked directories" {
     import from pathlib { Path }

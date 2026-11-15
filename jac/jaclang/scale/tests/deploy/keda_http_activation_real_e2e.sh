@@ -55,6 +55,11 @@ with open(path, "w") as f:
 PYEOF
 fi
 
+# Ship the jac built from this checkout to the pods (channel local), so the
+# e2e validates the code under test rather than a published release.
+ship_checkout_binary "${FIXTURE_DIR}" \
+    || echo "WARN: pods will bootstrap from a published release binary instead of the code under test."
+
 CFG=$(cd "${FIXTURE_DIR}" && jac -c "
 import tomllib
 with open('jac.toml', 'rb') as f:

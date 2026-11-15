@@ -1,6 +1,6 @@
 """Smoke fixture for the PE/COFF link path.
 
-Exercises the import surface the PeLinker must wire up: a string print
+Exercises the import surface a PE link must wire up: a string print
 (puts/printf), formatted output (snprintf), heap use via a list
 (malloc/free/memcpy), and floating point (which makes LLVM reference the
 MSVC `_fltused` marker the entry injection must define locally).

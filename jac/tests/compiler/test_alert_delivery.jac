@@ -4,8 +4,8 @@
 diagnostic and read project config per emit, which made every pass body own
 an unwaivable Python seam. The redesigned flow is one-directional data:
 emission appends plain `Alert` objects to the pass-local `errors_had` /
-`warnings_had` lists, and the Python driver (`run_pass` /
-`JacCompiler.run_schedule`) delivers them to the program ledger after the
+`warnings_had` lists, and the Python driver (`run_pass`, reached through
+`require`) delivers them to the program ledger after the
 pass body finishes -- applying suppression policy at that boundary. These
 tests pin the contract: accumulation never touches the program mid-pass,
 delivery preserves emission order, suppression is decided from the

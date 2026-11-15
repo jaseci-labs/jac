@@ -229,7 +229,8 @@ impl GraphQuery.init(
     order: (list[QOrder] | None) = None,
     limit: (int | None) = None,
     offset: int = 0,
-    level: str = 'default'
+    level: str = 'default',
+    after: (tuple[int, (UUID | None)] | None) = None
 ) -> None {
     self.origin = origin if isinstance(origin, list) else [origin];
     self.hops = hops if hops is not None else [];
@@ -239,6 +240,7 @@ impl GraphQuery.init(
     self.order = order if order is not None else [];
     self.limit = limit;
     self.offset = offset;
+    self.after = after;
     self.level = level;
 }
 
@@ -280,4 +282,37 @@ impl GraphQuery.repr -> str {
         tail += f" level={self.level}";
     }
     return f"GraphQuery(|origin|={len(self.origin)} {hops}{tail})";
+}
+
+impl filter_query_nodes(
+    nodes: list[any], nd: (type | tuple[type, ...] | None), preds: list[QPred]
+) -> list[any] {
+    if nd is not None {
+        node_types = nd if isinstance(nd, tuple) else (nd, );
+        for cls in node_types {
+            nodes = [
+                node
+                for node in nodes
+                if isinstance(node, cls)
+            ];
+        }
+    }
+    for pred in preds {
+        matches_pred = pred.matches;
+        field = pred.field;
+        if isinstance(field, str) {
+            nodes = [
+                node
+                for node in nodes
+                if matches_pred(getattr(node, field, None))
+            ];
+        } else {
+            nodes = [
+                node
+                for node in nodes
+                if matches_pred(tuple(getattr(node, name, None) for name in field))
+            ];
+        }
+    }
+    return nodes;
 }

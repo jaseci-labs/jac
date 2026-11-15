@@ -1,11 +1,5 @@
 import unittest.mock;
 import subprocess;
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.orchestrator.local_deployer { LocalDeployer }
 
 def _as_any(v: any) -> any {
     return v;

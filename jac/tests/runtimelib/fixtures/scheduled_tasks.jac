@@ -23,6 +23,7 @@ walker DateWalker {
 walker IntervalWalker {
     can tick with Root entry {
         execution_log.append("interval-walker");
+        report "interval-walker-report";
     }
 }
 

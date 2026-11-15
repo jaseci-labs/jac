@@ -237,7 +237,7 @@ test "deferred field" {
 
 test "gen dot builtin" {
     output = run_jac(os.path.join(FIXTURES, "builtin_printgraph.jac"));
-    assert output.count("True") == 16;
+    assert output.count("True") == 17 , output;
 }
 
 test "with contexts" {
@@ -745,9 +745,9 @@ test "for else" {
     assert "Done" in lines[1];
 }
 
-test "break in loop else stays in its owning loop" {
-    output = run_jac(os.path.join(FIXTURES, "loop_else_break.jac"));
-    assert output.strip() == "1444";
+test "break and continue in a loop else belong to the enclosing loop" {
+    output = run_jac(os.path.join(FIXTURES, "loop_else_control.jac"));
+    assert output.strip() == "112 [[2, 5]] 3";
 }
 
 test "forever loop" {
@@ -1057,6 +1057,11 @@ test "multiple impl-separated property accessors in one class resolve independen
     # name in the class scope; the decl/impl resolver must scope each
     # `impl Cls.prop.getter` to its own property rather than collapsing them.
     output = run_jac(os.path.join(FIXTURES, "prop_multi.jac"));
+    assert output == "ok\n";
+}
+
+test "a property setter on a class receives the instance and the value" {
+    output = run_jac(os.path.join(FIXTURES, "prop_class_setter.jac"));
     assert output == "ok\n";
 }
 

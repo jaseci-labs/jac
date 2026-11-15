@@ -1,115 +1,5 @@
 import from collections.abc { Sequence }
 
-import from jaclang.compiler.frontend.roles {
-    ImplOf,
-    AccessRole,
-    AccessorsRole,
-    AliasRole,
-    ArchTagInfoRole,
-    ArchTypeRole,
-    ArgPatternsRole,
-    AssignmentsRole,
-    AssignsRole,
-    AttributesRole,
-    AugOpRole,
-    AwaitingBodyRole,
-    BaseClassesRole,
-    BodyRole,
-    BoundRole,
-    CasesRole,
-    CastTypeRole,
-    CauseRole,
-    ChainRole,
-    ChildrenRole,
-    ClibDeclsRole,
-    CodeRole,
-    CollectionRole,
-    ComparesRole,
-    ComprRole,
-    ConditionRole,
-    ConditionalRole,
-    ConnAssignRole,
-    ConnTypeRole,
-    ConsumersRole,
-    CountByRole,
-    CtrlRole,
-    DecoratorsRole,
-    DefaultValRole,
-    DescriptionRole,
-    DocRole,
-    DynamicTagRole,
-    EdgeSpecRole,
-    ElseBodyRole,
-    ElseValueRole,
-    EndRole,
-    ErrorMsgRole,
-    EventRole,
-    ExTypeRole,
-    ExceptsRole,
-    ExprRole,
-    ExprsRole,
-    FTypeRole,
-    FilterCondRole,
-    FinallyBodyRole,
-    FormatPartRole,
-    FormatSpecRole,
-    FromLocRole,
-    FromTargetRole,
-    GuardRole,
-    HintRole,
-    InsertLocRole,
-    ItemsRole,
-    IterRole,
-    KeyRole,
-    KeywordsRole,
-    KvPairRole,
-    KvPairsRole,
-    KwPatternsRole,
-    KwargsRole,
-    KwonlyargsRole,
-    LeftRole,
-    MainRole,
-    NameRole,
-    NameRefRole,
-    OpRole,
-    OperandRole,
-    OpsRole,
-    OutExprRole,
-    ParamsRole,
-    PartsRole,
-    PathRole,
-    PatternPathRole,
-    PatternRole,
-    PatternsRole,
-    PosonlyParamsRole,
-    ProviderRole,
-    ReturnTypeRole,
-    RightRole,
-    RightsRole,
-    ScopeRole,
-    SignatureRole,
-    SlicesRole,
-    SourcesRole,
-    SpecRole,
-    SrcEndpointRole,
-    StartRole,
-    StepRole,
-    StopRole,
-    StringsRole,
-    TargetRole,
-    TargetsRole,
-    TgtEndpointRole,
-    TokRole,
-    TypeCtxRole,
-    TypeParamsRole,
-    TypeTagRole,
-    UnpackRole,
-    ValueRole,
-    ValueTypeRole,
-    ValuesRole,
-    VarargsRole,
-    VarsRole
-}
 
 impl UniNode.__repr__ -> str {
     return f"{type(self).__name__}";
@@ -227,6 +117,14 @@ impl SubTag.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
+impl Module.elements.getter -> list[UniNode] {
+    return [
+        stmt
+        for stmt in self.body
+        if stmt.top_element is stmt
+    ];
+}
+
 impl Module.body.getter -> Sequence[ElementStmt | String | EmptyToken] {
     return ([self->:BodyRole:->]) as Sequence[ElementStmt | String | EmptyToken];
 }
@@ -319,14 +217,6 @@ impl ModuleCode.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
-impl PyInlineCode.code.getter -> Token {
-    return [self->:CodeRole:->][0];
-}
-
-impl PyInlineCode.__repr__ -> str {
-    return f"{type(self).__name__}";
-}
-
 impl Import.from_loc.getter -> (ModulePath | None) {
     found = [self->:FromLocRole:->];
     return found[0] if found else None;
@@ -375,16 +265,16 @@ impl ModuleItem.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
-impl ImplImport.scope.getter -> (ModulePath | None) {
+impl GraphImport.scope.getter -> (ModulePath | None) {
     found = [self->:ScopeRole:->];
     return found[0] if found else None;
 }
 
-impl ImplImport.body.getter -> Sequence[ImportWire | ImportRule] {
+impl GraphImport.body.getter -> Sequence[ImportWire | ImportRule] {
     return ([self->:BodyRole:->]) as Sequence[ImportWire | ImportRule];
 }
 
-impl ImplImport.__repr__ -> str {
+impl GraphImport.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
@@ -392,12 +282,20 @@ impl ImportWire.provider.getter -> ModulePath {
     return ([self->:ProviderRole:->][0]) as ModulePath;
 }
 
-impl ImportWire.consumers.getter -> Sequence[ModulePath] {
+impl ImportWire.targets.getter -> Sequence[WireTarget] {
+    return ([self->:TargetsRole:->]) as Sequence[WireTarget];
+}
+
+impl WireTarget.consumers.getter -> Sequence[ModulePath] {
     return ([self->:ConsumersRole:->]) as Sequence[ModulePath];
 }
 
-impl ImportWire.items.getter -> Sequence[WireItem] {
+impl WireTarget.items.getter -> Sequence[WireItem] {
     return ([self->:ItemsRole:->]) as Sequence[WireItem];
+}
+
+impl WireTarget.__repr__ -> str {
+    return f"{type(self).__name__}";
 }
 
 impl ImportWire.__repr__ -> str {
@@ -494,6 +392,10 @@ impl ImplDef.decl_link.getter -> (UniNode | None) {
 
 impl ImplDef.decorators.getter -> (Sequence[Expr] | None) {
     return [self->:DecoratorsRole:->];
+}
+
+impl ImplDef.type_params.getter -> list[TypeParam] {
+    return [self->:TypeParamsRole:->][?:TypeParam];
 }
 
 impl ImplDef.target.getter -> Sequence[NameAtom] {
@@ -1931,18 +1833,6 @@ impl ModuleCode.init(
     self.postinit();
 }
 
-impl PyInlineCode.init(
-    *,
-    is_enum_stmt: bool = False,
-    doc: (String | None) = None,
-    code: Token,
-    kid: Sequence[UniNode] = []
-) -> None {
-    self.is_enum_stmt = is_enum_stmt;
-    self._link(kid, {DocRole: doc, CodeRole: code});
-    self.postinit();
-}
-
 impl Import.init(
     *,
     doc: (String | None) = None,
@@ -1990,7 +1880,7 @@ impl ModuleItem.init(
     self.postinit();
 }
 
-impl ImplImport.init(
+impl GraphImport.init(
     *,
     doc: (String | None) = None,
     scope: (ModulePath | None),
@@ -2004,20 +1894,31 @@ impl ImplImport.init(
 impl ImportWire.init(
     *,
     provider: ModulePath,
-    consumers: Sequence[ModulePath],
-    items: (Sequence[WireItem] | None),
+    targets: Sequence[WireTarget],
+    is_grouped: bool = False,
+    is_injected: bool = False,
     is_absorb: bool = False,
     is_typed: bool = False,
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
+    self.is_injected = is_injected;
     self.is_absorb = is_absorb;
     self.is_typed = is_typed;
     self.is_comptime = is_comptime;
+    self.is_grouped = is_grouped;
+    self._link(kid, {ProviderRole: provider, TargetsRole: targets});
+    self.postinit();
+}
+
+impl WireTarget.init(
+    *,
+    consumers: Sequence[ModulePath],
+    items: (Sequence[WireItem] | None),
+    kid: Sequence[UniNode] = []
+) -> None {
     self.is_module_form = items is None;
-    self._link(
-        kid, {ProviderRole: provider, ConsumersRole: consumers, ItemsRole: items or []}
-    );
+    self._link(kid, {ConsumersRole: consumers, ItemsRole: items or []});
     self.postinit();
 }
 
@@ -2043,14 +1944,9 @@ impl ImportRule.init(
 }
 
 impl ModulePattern.init(
-    *,
-    path: (ModulePath | None),
-    is_glob: bool = False,
-    is_any: bool = False,
-    kid: Sequence[UniNode] = []
+    *, path: (ModulePath | None), is_glob: bool = False, kid: Sequence[UniNode] = []
 ) -> None {
     self.is_glob = is_glob;
-    self.is_any = is_any;
     self._link(kid, {PatternPathRole: path});
     self.postinit();
 }
@@ -2099,6 +1995,7 @@ impl ImplDef.init(
     codespace_dual: bool = False,
     decorators: (Sequence[Expr] | None),
     target: Sequence[NameAtom],
+    type_params: (Sequence[TypeParam] | None) = None,
     spec: (Sequence[Expr] | FuncSignature | EventSignature | None),
     body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
     kid: Sequence[UniNode] = []
@@ -2110,6 +2007,7 @@ impl ImplDef.init(
             DocRole: doc,
             DecoratorsRole: decorators,
             TargetRole: target,
+            TypeParamsRole: type_params,
             SpecRole: spec,
             BodyRole: body
         }
@@ -2520,9 +2418,14 @@ impl ReportStmt.init(*, expr: Expr, kid: Sequence[UniNode] = []) -> None {
 }
 
 impl ReturnStmt.init(
-    *, expr: (Expr | None), is_implicit: bool = False, kid: Sequence[UniNode] = []
+    *,
+    expr: (Expr | None),
+    is_implicit: bool = False,
+    is_tail: bool = False,
+    kid: Sequence[UniNode] = []
 ) -> None {
     self.is_implicit = is_implicit;
+    self.is_tail = is_tail;
     self._link(kid, {ExprRole: expr});
     self.postinit();
 }

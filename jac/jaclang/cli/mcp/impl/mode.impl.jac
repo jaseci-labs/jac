@@ -1,4 +1,3 @@
-import from jaclang.project.config { get_config, set_config, JacConfig }
 import logging;
 
 glob _logger = logging.getLogger("jaclang.cli.mcp.mode");

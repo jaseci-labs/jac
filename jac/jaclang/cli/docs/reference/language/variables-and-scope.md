@@ -163,6 +163,41 @@ def example() {
 }
 ```
 
+**Closures created in a loop:**
+
+A name whose every assignment is inside a loop is *local to that loop*: the loop target, and any local the loop body introduces (annotated or not). A `lambda` or nested `def` created in the loop body shares such a name with the rest of the function only while its pass through the body lasts. When that pass ends -- at the end of the body, at `continue`, or at `break` -- the closure keeps the value the name holds at that moment as its own. So every closure a loop creates sees its own iteration:
+
+```jac
+def build(names: list[str]) -> list[Callable[[], str]] {
+    greeters: list[Callable[[], str]] = [];
+    for name in names {
+        label = name.upper();
+        greeters.append(lambda -> str { return f"{name}: {label}"; });
+    }
+    return greeters;    # each greeter returns its own name and label
+}
+```
+
+Within its pass the closure and the function share the name both ways: a later assignment in the same pass is visible to the closure, and a closure called during the pass can update the name for the code that follows it. Code after the loop reads the value the last pass left, as usual.
+
+A name that is also assigned outside the loop is not local to it, so every closure keeps sharing it with the function. That is how a flag or a running total set by the loop stays visible to handlers created in it:
+
+```jac
+def watch(steps: list[str]) -> list[Callable[[], bool]] {
+    finished = False;
+    checks: list[Callable[[], bool]] = [];
+    for step in steps {
+        checks.append(lambda -> bool { return finished; });
+        if step == "last" {
+            finished = True;
+        }
+    }
+    return checks;    # every check sees the final `finished`
+}
+```
+
+The rule is the same in every codespace: server, client, and native code all give a loop's closures the same bindings. A comprehension follows the same rule: a closure created for one element sees that element's variables.
+
 ## 5 Truthiness
 
 Values are evaluated as boolean in conditions. The following are **falsy** (evaluate to `False`):

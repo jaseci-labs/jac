@@ -1,38 +1,9 @@
 import os;
 import from pathlib { Path }
-import from jaclang.cache.home {
-    CACHEDIR_TAG,
-    cache_home,
-    ensure_root,
-    ensure_cache_dir
-}
-import from jaclang.cache.policy {
-    CacheEntry,
-    EntryKind,
-    Retention,
-    SWEEP_SENTINEL,
-    dir_size,
-    scan_entries,
-    TemporaryClaim,
-    maybe_sweep_dir,
-    remove_entry,
-    sweep_dir,
-    touch
-}
 
-def _override_root(root_env: str) -> Path | None {
-    custom = os.environ.get(root_env, "").strip() if root_env else "";
-    return Path(custom).expanduser() if custom else None;
-}
+def _override_root(root_env: str) -> Path | None;
 
-def _resolve_path(relpath: str, root_env: str = "", root_prefix: str = "") -> Path {
-    custom = _override_root(root_env);
-    if custom is None {
-        return cache_home() / relpath;
-    }
-    rest = relpath[len(root_prefix):].lstrip("/");
-    return custom / rest if rest else custom;
-}
+def _resolve_path(relpath: str, root_env: str = "", root_prefix: str = "") -> Path;
 
 impl Bucket.path -> Path {
     if self.root_dir {
@@ -56,17 +27,9 @@ impl Bucket.note_hit(item: Path) -> None {
     self.policy.note_hit(item);
 }
 
-def _registered(name: str) -> Bucket | None {
-    for b in BUCKETS {
-        if b.name == name {
-            return b;
-        }
-    }
-    return None;
-}
+def _registered(name: str) -> Bucket | None;
 
 impl project_bucket -> Bucket | None {
-    import from jaclang.project.config { get_config }
     modules = _registered("jir-modules");
     if modules is None {
         return None;
@@ -130,24 +93,9 @@ impl maybe_sweep(name: str, keep: set[str] | None = None, force: bool = False) -
     return maybe_sweep_dir(b.ensure(), b.policy, keep=keep, force=force);
 }
 
-def _live_for(live: dict[str, set[str]] | None, name: str) -> set[str] {
-    if live is None {
-        return set();
-    }
-    return live.get(name) or set();
-}
+def _live_for(live: dict[str, set[str]] | None, name: str) -> set[str];
 
-def _entries(b: Bucket) -> list[CacheEntry] {
-    return scan_entries(
-        b.path(),
-        b.policy,
-        exclude={
-            str(other.path())
-            for other in all_buckets()
-            if other.name != b.name
-        }
-    );
-}
+def _entries(b: Bucket) -> list[CacheEntry];
 
 impl status -> list[BucketStatus] {
     rows: list[BucketStatus] = [];
@@ -183,25 +131,7 @@ impl status -> list[BucketStatus] {
     return rows;
 }
 
-def _unmanaged_children(parent: Path, owned: set[str], out: set[str]) {
-    try {
-        children: list[Path] = sorted(parent.iterdir());
-    } except OSError {
-        return;
-    }
-    for child in children {
-        path = str(child);
-        if path in owned or child.name in [CACHEDIR_TAG, SWEEP_SENTINEL] {
-            continue;
-        }
-        if not child.is_symlink()
-            and any([p.startswith(path + os.sep) for p in owned]) {
-            _unmanaged_children(child, owned, out);
-        } else {
-            out.add(path);
-        }
-    }
-}
+def _unmanaged_children(parent: Path, owned: set[str], out: set[str]);
 
 impl unmanaged -> list[tuple[str, int]] {
     base = cache_home();
@@ -234,43 +164,9 @@ impl unmanaged -> list[tuple[str, int]] {
     return out;
 }
 
-def _reclaim_into(result: PurgeReport, path: Path, label: str, dry_run: bool) {
-    if dry_run {
-        result.removed.append(label);
-        result.reclaimed_bytes += dir_size(path);
-        return;
-    }
-    (ok, size, err) = remove_entry(path);
-    if ok {
-        result.removed.append(label);
-        result.reclaimed_bytes += size;
-    } else {
-        result.errors.append(err);
-    }
-}
+def _reclaim_into(result: PurgeReport, path: Path, label: str, dry_run: bool);
 
-def _retired_dirs -> list[Path] {
-    paths: set[Path] = set();
-    for rel in RETIRED {
-        paths.add(cache_home() / rel);
-        for b in BUCKETS {
-            if b.root_prefix and rel.startswith(b.root_prefix + "/") {
-                paths.add(_resolve_path(rel, b.root_env, b.root_prefix));
-            }
-        }
-    }
-    found: list[Path] = [];
-    for p in paths {
-        if any([b.path().is_relative_to(p) for b in BUCKETS]) {
-            continue;
-        }
-        if p.exists() or p.is_symlink() {
-            found.append(p);
-        }
-    }
-    found.sort();
-    return found;
-}
+def _retired_dirs -> list[Path];
 
 impl gc(
     dry_run: bool = False, live: dict[str, set[str]] | None = None
@@ -309,35 +205,7 @@ impl gc(
     return reports;
 }
 
-def _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport) {
-    p = b.path();
-    if not p.is_dir() {
-        return;
-    }
-    for candidate in _entries(b) {
-        item = candidate.path;
-        if candidate.kind not in [EntryKind.STORED, EntryKind.TEMPORARY] {
-            continue;
-        }
-        rel = item.relative_to(p).as_posix();
-        if candidate.kind == EntryKind.TEMPORARY {
-            with TemporaryClaim(item, b.policy) as claim {
-                if claim.reclaimable {
-                    _reclaim_into(result, item, f"{b.name}/{rel}", dry_run);
-                } else {
-                    result.kept.append(f"{b.name}/{rel}");
-                }
-            }
-            continue;
-        }
-        if candidate.kind == EntryKind.STORED
-            and b.policy.is_kept(rel, item.name, keep) {
-            result.kept.append(f"{b.name}/{rel}");
-            continue;
-        }
-        _reclaim_into(result, item, f"{b.name}/{rel}", dry_run);
-    }
-}
+def _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport);
 
 impl purge(
     names: list[str] | None = None,
@@ -365,4 +233,134 @@ impl purge(
         ensure_root();
     }
     return result;
+}
+
+impl _override_root(root_env: str) -> Path | None {
+    custom = os.environ.get(root_env, "").strip() if root_env else "";
+    return Path(custom).expanduser() if custom else None;
+}
+
+impl _resolve_path(relpath: str, root_env: str = "", root_prefix: str = "") -> Path {
+    custom = _override_root(root_env);
+    if custom is None {
+        return cache_home() / relpath;
+    }
+    rest = relpath[len(root_prefix):].lstrip("/");
+    return custom / rest if rest else custom;
+}
+
+impl _registered(name: str) -> Bucket | None {
+    for b in BUCKETS {
+        if b.name == name {
+            return b;
+        }
+    }
+    return None;
+}
+
+impl _live_for(live: dict[str, set[str]] | None, name: str) -> set[str] {
+    if live is None {
+        return set();
+    }
+    return live.get(name) or set();
+}
+
+impl _entries(b: Bucket) -> list[CacheEntry] {
+    return scan_entries(
+        b.path(),
+        b.policy,
+        exclude={
+            str(other.path())
+            for other in all_buckets()
+            if other.name != b.name
+        }
+    );
+}
+
+impl _unmanaged_children(parent: Path, owned: set[str], out: set[str]) {
+    try {
+        children: list[Path] = sorted(parent.iterdir());
+    } except OSError {
+        return;
+    }
+    for child in children {
+        path = str(child);
+        if path in owned or child.name in [CACHEDIR_TAG, SWEEP_SENTINEL] {
+            continue;
+        }
+        if not child.is_symlink()
+            and any([p.startswith(path + os.sep) for p in owned]) {
+            _unmanaged_children(child, owned, out);
+        } else {
+            out.add(path);
+        }
+    }
+}
+
+impl _reclaim_into(result: PurgeReport, path: Path, label: str, dry_run: bool) {
+    if dry_run {
+        result.removed.append(label);
+        result.reclaimed_bytes += dir_size(path);
+        return;
+    }
+    (ok, size, err) = remove_entry(path);
+    if ok {
+        result.removed.append(label);
+        result.reclaimed_bytes += size;
+    } else {
+        result.errors.append(err);
+    }
+}
+
+impl _retired_dirs -> list[Path] {
+    paths: set[Path] = set();
+    for rel in RETIRED {
+        paths.add(cache_home() / rel);
+        for b in BUCKETS {
+            if b.root_prefix and rel.startswith(b.root_prefix + "/") {
+                paths.add(_resolve_path(rel, b.root_env, b.root_prefix));
+            }
+        }
+    }
+    found: list[Path] = [];
+    for p in paths {
+        if any([b.path().is_relative_to(p) for b in BUCKETS]) {
+            continue;
+        }
+        if p.exists() or p.is_symlink() {
+            found.append(p);
+        }
+    }
+    found.sort();
+    return found;
+}
+
+impl _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport) {
+    p = b.path();
+    if not p.is_dir() {
+        return;
+    }
+    for candidate in _entries(b) {
+        item = candidate.path;
+        if candidate.kind not in [EntryKind.STORED, EntryKind.TEMPORARY] {
+            continue;
+        }
+        rel = item.relative_to(p).as_posix();
+        if candidate.kind == EntryKind.TEMPORARY {
+            with TemporaryClaim(item, b.policy) as claim {
+                if claim.reclaimable {
+                    _reclaim_into(result, item, f"{b.name}/{rel}", dry_run);
+                } else {
+                    result.kept.append(f"{b.name}/{rel}");
+                }
+            }
+            continue;
+        }
+        if candidate.kind == EntryKind.STORED
+            and b.policy.is_kept(rel, item.name, keep) {
+            result.kept.append(f"{b.name}/{rel}");
+            continue;
+        }
+        _reclaim_into(result, item, f"{b.name}/{rel}", dry_run);
+    }
 }

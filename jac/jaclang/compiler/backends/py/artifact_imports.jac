@@ -2,97 +2,15 @@ import dis;
 import os;
 import types;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.host { active_host }
 
-def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
-    import from jaclang.project.modresolver { project_mounts }
-    sources: set[str] = `set();
-    mounts = project_mounts(`root);
-    pending = [code];
-    while pending {
-        unit = pending.pop();
-        pending.extend(
-            c
-            for c in unit.co_consts
-            if isinstance(c, types.CodeType)
-        );
+def import_specs(
+    code: types.CodeType, source: str
+) -> list[tuple[int, str, (tuple[str, ...] | None)]];
 
-        instructions = [
-            instruction
-            for instruction in dis.get_instructions(unit)
-            if instruction.opname != 'EXTENDED_ARG'
-        ];
-        for (index, instruction) in enumerate(instructions) {
-            if ((instruction.opname != 'IMPORT_NAME') or (index < 2)) {
-                continue;
-            }
-            level = instructions[(index - 2)].argval;
-            names: tuple[str, ...] | None = instructions[(index - 1)].argval;
-            if not isinstance(level, int) {
-                raise RuntimeError(
-                    f'Nonconstant import level in prepared module {source}'
-                );
-            }
-            name = instruction.argval;
-            base = Path(source).parent;
-            if level {
-                for _ in range((level - 1)) {
-                    base = base.parent;
-                }
-                roots = [base];
-            } else {
-                roots = `list(`dict.fromkeys([base, Path(`root)]));
-                if mounts {
-                    roots.append(Path(mounts));
-                }
-            }
-            for search_root in roots {
-                target = search_root.joinpath(*name.split('.'))
-                    if name
-                    else search_root;
-                resolved = active_host().resolve_local_module(
-                    str(search_root), name.split('.') if name else []
-                );
-                if resolved and resolved[1] in ('jac', 'py') {
-                    sources.add(os.path.realpath(resolved[0]));
-                } elif not target.is_dir() {
-                    continue;
-                }
-                if target.is_dir() and isinstance(names, tuple) {
-                    for member in names {
-                        child = active_host().resolve_local_module(
-                            str(target), [member]
-                        );
-                        if child and child[1] in ('jac', 'py') {
-                            sources.add(os.path.realpath(child[0]));
-                        }
-                    }
-                }
-                sources.update(
-                    package_sources(
-                        str(target / '__init__') if target.is_dir() else str(target),
-                        str(search_root)
-                    )
-                );
-                break;
-            }
-        }
-    }
-    return sources;
-}
+def resolve_imports(
+    specs: list[tuple[int, str, (tuple[str, ...] | None)]], source: str, `root: str
+) -> set[str];
 
-def package_sources(source: str, project_root: str) -> set[str] {
-    result: set[str] = set();
-    parent = Path(source).parent;
-    while parent.is_relative_to(project_root) {
-        initializer = active_host().resolve_local_module(str(parent), []);
-        if initializer and initializer[1] in ('jac', 'py') {
-            result.add(os.path.realpath(initializer[0]));
-        }
-        if parent == Path(project_root) {
-            break;
-        }
-        parent = parent.parent;
-    }
-    return result;
-}
+def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str];
+
+def package_sources(source: str, project_root: str) -> set[str];

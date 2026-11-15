@@ -4,12 +4,6 @@ import tempfile;
 import unittest.mock;
 import from contextlib { redirect_stderr, redirect_stdout }
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.scale.config.app_config { deployed_tree }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.runtime.fleet { fleet_of }
-import from jaclang.scale.runtime.realizer.kubernetes_realizer { KubernetesRealizer }
-import jaclang.scale.runtime.realizer.kubernetes_realizer as realizer_mod;
 
 
 def _write_app(tmpdir: str) -> str {

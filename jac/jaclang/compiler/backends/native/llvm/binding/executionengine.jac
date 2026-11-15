@@ -13,7 +13,6 @@ import from ctypes {
     py_object,
     Structure
 }
-import from jaclang.compiler.backends.native.llvm.binding { ffi, targets, object_file }
 
 with entry {
     ffi.lib.LLVMPY_LinkInMCJIT;

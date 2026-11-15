@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.jac0core.cache_paths { get_cache_home }
 
 impl cache_home -> Path {
     return get_cache_home();

@@ -1,14 +1,3 @@
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.project.jac_version { version_key }
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-
-import from jaclang.scale.runtime.fleet { fleet_of }
-
-
 def _builder(
     services: dict[str, any], k8s_config: KubernetesConfig | None = None
 ) -> ManifestBuilder {
@@ -31,19 +20,31 @@ def _triggers(
 
 
 test "builder resolves has_memory_request from service, global, and defaults" {
-    b = _builder({"billing_ops": {}});
-    assert b._get_autoscaler_config("billing_ops")["has_memory_request"];
-    assert b._get_autoscaler_config(GATEWAY_NAME)["has_memory_request"];
-
-    b = _builder({"billing_ops": {"memory_request": ""}});
-    assert not b._get_autoscaler_config("billing_ops")["has_memory_request"];
-
-    b = _builder(
-        {"billing_ops": {}, "orders_ops": {"memory_request": "512Mi"}},
-        k8s_config=KubernetesConfig(app_name="t", namespace="t-ns", memory_request="")
-    );
-    assert not b._get_autoscaler_config("billing_ops")["has_memory_request"];
-    assert b._get_autoscaler_config("orders_ops")["has_memory_request"];
+    cases = [
+        # (services, global memory_request, service, has_request, configured)
+        ({"billing_ops": {}}, None, "billing_ops", True, False),
+        ({"billing_ops": {}}, None, GATEWAY_NAME, True, False),
+        ({"billing_ops": {"memory_request": "512Mi"}}, None, "billing_ops", True, True),
+        ({"billing_ops": {}}, "2Gi", "billing_ops", True, True),
+        ({"billing_ops": {"memory_request": ""}}, None, "billing_ops", False, False),
+        ({"billing_ops": {}}, "", "billing_ops", False, False),
+        ({"orders_ops": {"memory_request": "512Mi"}}, "", "orders_ops", True, True)
+    ];
+    for (services, global_req, svc, has_request, configured) in cases {
+        b = _builder(
+            services,
+            k8s_config=KubernetesConfig(
+                app_name="t", namespace="t-ns", memory_request=global_req
+            )
+        );
+        cfg = b._get_autoscaler_config(svc);
+        assert cfg["has_memory_request"] == has_request , (services, global_req, svc);
+        assert cfg["memory_request_configured"] == configured , (
+            services,
+            global_req,
+            svc
+        );
+    }
 }
 
 test "_get_autoscaler_config surfaces the per-service hpa.behavior fragment" {
@@ -101,9 +102,30 @@ test "hpa.enabled false still short-circuits before behavior is considered" {
     assert b._get_autoscaler_config("billing_ops") is None;
 }
 
-test "memory triggers are seeded or skipped based on the resolved request" {
-    assert _triggers({}) == ["cpu", "memory"];
-    assert _triggers({"has_memory_request": False}) == ["cpu"];
+test "memory triggers are seeded or skipped based on the configured request" {
+    configured = {"billing_ops": {"memory_request": "512Mi"}};
+    for (cfg, expected) in [
+        ({}, ["cpu"]),
+        ({"has_memory_request": True}, ["cpu"]),
+        (
+            {"has_memory_request": True, "memory_request_configured": True},
+            ["cpu", "memory"]
+        ),
+        ({"has_memory_request": False}, ["cpu"]),
+        (_builder({"billing_ops": {}})._get_autoscaler_config("billing_ops"), ["cpu"]),
+        (_builder(configured)._get_autoscaler_config("billing_ops"), ["cpu", "memory"]),
+        (
+            {
+                "has_memory_request": True,
+                "triggers": [
+                    {"type": "memory", "metadata": {"averageUtilization": "80"}}
+                ]
+            },
+            ["memory"]
+        )
+    ] {
+        assert _triggers(cfg) == expected , cfg;
+    }
 
     explicit = {
         "has_memory_request": False,
@@ -165,10 +187,6 @@ test "deploy loads the cluster config before it resolves the pod arch" {
     import unittest.mock;
     import tempfile;
     import from pathlib { Path }
-    import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig
-    }
     import from jaclang.scale.config.app_config { AppConfig }
     import jaclang.scale.injector.binary as binary_mod;
     import from jaclang.cli.manifest_route { resolve_cli_version }

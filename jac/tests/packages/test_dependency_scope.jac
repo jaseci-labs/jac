@@ -86,3 +86,20 @@ test "a dependency's key ignores the consumer's app and root but not its target"
         assert own_a != own_b;
     }
 }
+
+test "resolving from inside a mounted package links nothing into it" {
+    import from jaclang.project.modresolver { get_jac_search_paths }
+    tmp = os.path.realpath(tempfile.mkdtemp());
+    manifest = "[project]\nname = \"acme/core\"\nversion = \"1.0.0\"\n";
+    mounts = os.path.join(tmp, "app", ".jac", "packages");
+    vendored = os.path.join(mounts, "acme", "core");
+    _write(os.path.join(vendored, "jac.toml"), manifest);
+    _write(os.path.join(vendored, "text.jac"), "def shout -> int { return 1; }\n");
+    paths = get_jac_search_paths(vendored);
+    assert mounts in paths , paths;
+    assert not os.path.lexists(os.path.join(vendored, ".jac")) , "a mounted package was linked into";
+    standalone = os.path.join(tmp, "core");
+    _write(os.path.join(standalone, "jac.toml"), manifest);
+    get_jac_search_paths(standalone);
+    assert os.path.islink(os.path.join(standalone, ".jac", "packages", "acme", "core"));
+}

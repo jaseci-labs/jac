@@ -5,6 +5,10 @@
 imm handles so no noalias). Managed params carry no ownership attributes.
 The membrane makes these facts stronger than usual: managed code holds no
 aliases into the owned world, and nothing unsafe can undermine them.
+
+`readonly` appears only in builds without refcounts: under `rc` and `managed`
+a retain or release writes the borrowed object's count header through the
+pointer, and LLVM deletes plain stores through a `readonly` argument.
 """
 
 import os;
@@ -25,14 +29,17 @@ glob FIXTURE = os.path.join(
          "ownership_param_attrs.jac"
      );
 
-def _compile_ir -> str {
+def _compile_ir(gc_mode: (str | None) = None) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
             file_path=FIXTURE,
             options=CompileOptions(
-                aot_mode=True, no_ir_cache=True, skip_native_engine=True
+                aot_mode=True,
+                no_ir_cache=True,
+                skip_native_engine=True,
+                na_gc_mode=gc_mode
             )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
@@ -54,7 +61,7 @@ def _fn_line(ir: str, name: str) -> str {
 }
 
 test "shared borrow params are noalias readonly" {
-    line = _fn_line(_compile_ir(), "attr_reader");
+    line = _fn_line(_compile_ir("none"), "attr_reader");
     assert "noalias" in line , line;
     assert "readonly" in line , line;
 }
@@ -71,9 +78,21 @@ test "own params are noalias" {
 }
 
 test "imm params are readonly but may alias" {
-    line = _fn_line(_compile_ir(), "attr_viewer");
+    line = _fn_line(_compile_ir("none"), "attr_viewer");
     assert "readonly" in line , line;
     assert "noalias" not in line , line;
+}
+
+test "refcounted builds keep borrow and imm params writable" {
+    for gc_mode in ("cycles", "rc") {
+        ir = _compile_ir(gc_mode);
+        reader = _fn_line(ir, "attr_reader");
+        assert "noalias" in reader , reader;
+        assert "readonly" not in reader , reader;
+        viewer = _fn_line(ir, "attr_viewer");
+        assert "readonly" not in viewer , viewer;
+        assert "noalias" not in viewer , viewer;
+    }
 }
 
 test "managed params carry no ownership attributes" {

@@ -1,18 +1,4 @@
 import unittest;
-import from jaclang.scale.runtime.context.tracing {
-    uuid_to_trace_id,
-    trace_id_hex,
-    new_span_id,
-    build_traceparent,
-    parse_traceparent,
-    current_traceparent,
-    start_server_span,
-    end_span,
-    start_memory_span,
-    end_memory_span,
-    install_tracing,
-    tracing_active
-}
 
 glob _UUID: str = "0af76519-16cd-43dd-8448-eb211c80319c",
      _UUID_HEX: str = "0af7651916cd43dd8448eb211c80319c",

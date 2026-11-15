@@ -13,11 +13,6 @@ import from ctypes {
     string_at
 }
 import enum;
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
-import from jaclang.compiler.backends.native.llvm.binding.common {
-    _decode_string,
-    _encode_string
-}
 
 class Linkage(`enum.IntEnum) {
     with entry {

@@ -1,21 +1,7 @@
 import os;
 import tempfile;
 import unittest.mock;
-import from jaclang.project.capabilities { CAPABILITY_SPECS }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.target.kubernetes { ingress as ingress_mod }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.runtime.realizer.kubernetes_realizer { KubernetesRealizer }
-import from jaclang.scale.injector.binary_injector { BinaryInjector }
-import jaclang.scale.injector.binary as binary_mod;
-import jaclang.scale.injector.binary_injector as binary_injector_mod;
-import jaclang.scale.runtime.realizer.kubernetes_realizer as realizer_mod;
-import from jaclang.project.config { JacConfig }
-import from jaclang.scale.runtime.fleet { fleet_of }
 
 # What an operator machine is missing when the 'deploy.k8s' capability is unsynced.
 glob _MISSING: list[str] = ["docker>=7.1.0,<8.0.0", "kubernetes>=34.1.0,<35.0.0"];
@@ -254,13 +240,16 @@ test "the packing config is on the injector before prepare runs" {
 
 
 test "a dry run injector refuses to seed placeholder bytes" {
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        KubectlCluster
+    }
     with tempfile.TemporaryDirectory() as tmpdir {
         (injector, _) = binary_injector_mod.select_injector(
             "standard", "app", "ns", tmpdir, dry_run=True
         );
         seed_failed = False;
         try {
-            injector.seed("app", "ns");
+            injector.seed("app", "ns", KubectlCluster());
         } except ValueError {
             seed_failed = True;
         }
@@ -292,9 +281,7 @@ test "resolving the pod base image for a dry run makes no network probe" {
     with tempfile.TemporaryDirectory() as tmpdir {
         with unittest.mock.patch(
             "jaclang.scale.injector.binary._http_get_bytes"
-        ) as mock_http, unittest.mock.patch.dict(
-            os.environ, {"JAC_SCALE_BINARY_PATH": ""}
-        ) {
+        ) as mock_http {
             image = binary_mod.resolve_pod_base_image(tmpdir, "", probe=False);
             mock_http.assert_not_called();
         }

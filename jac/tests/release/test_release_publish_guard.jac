@@ -65,9 +65,8 @@ glob ALL_PLATFORMS: list[str] = [
          "macos-x86_64"
      ];
 
-test "both runtimes and their checksums are required for every automatic platform" {
-    platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"];
-    required = platforms + [p + "-jacpython" for p in platforms];
+test "every automatic platform's binary and its checksum are required" {
+    required = ["linux-x86_64", "linux-aarch64", "macos-aarch64"];
     assets = assets_for(required);
     for missing in [""] + assets[:-1] {
         fx = scaffold(

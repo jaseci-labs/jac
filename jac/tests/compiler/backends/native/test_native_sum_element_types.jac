@@ -26,3 +26,21 @@ test "sum follows list element types and start values" {
         < 1e-12;
     assert get_func(eng, "sum_empty_floats", ctypes.c_double)() == 0.0;
 }
+
+test "a float sum keeps the terms a plain running total rounds away" {
+    (eng, _ir) = compile_native("sum_element_types.jac");
+    # CPython carries the rounding error of each float addition beside the
+    # total (Neumaier's compensated sum) and folds it in at the end.
+    kept = 10000000000000002.0;
+    assert get_func(eng, "sum_float_start_keeps_small_ints", ctypes.c_double)() == kept;
+    assert get_func(eng, "sum_float_start_keeps_small_floats", ctypes.c_double)()
+        == kept;
+    assert get_func(eng, "sum_floats_keeps_small_terms", ctypes.c_double)() == kept;
+    # An int start meets the first float in an ordinary addition; only the
+    # additions after it are compensated.
+    assert get_func(eng, "sum_int_start_adds_first_float_plainly", ctypes.c_double)()
+        == 1e16;
+    assert get_func(eng, "sum_tenths", ctypes.c_double)() == 1.0;
+    # A total that overflowed stays infinite: its error term is not finite.
+    assert get_func(eng, "sum_floats_overflow", ctypes.c_double)() == float("inf");
+}

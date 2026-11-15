@@ -7,12 +7,6 @@ generic 500 SCHEDULER_ERROR and the 503 path was unreachable.
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.data.pgwire { PgWireError }
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import from jaclang.scale.server.jobs_ext { _err_response }
-import from jaclang.scale.scheduler.scheduler { MemoryJobStore, TriggerSpec }
-import from jaclang.scale.tests.scale_test_client { ScaleTestClient }
-import from jaclang.testing.requires { require_module }
 
 
 test "pg wire failure maps to 503 storage unavailable" {

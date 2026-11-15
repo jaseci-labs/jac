@@ -395,7 +395,7 @@ Graph persistence is **Postgres-native** and there is exactly one stack:
 A field predicate or an ordering term reads `props->'archetype'->'<field>'`. Postgres cannot use an index for that unless one exists over the same expression, so an unpromoted field is a scan of the joined set:
 
 ```toml
-[scale.database]
+[database]
 indexes = { Msg = ["at", "seq"], Post = ["published"] }
 ```
 

@@ -1,12 +1,7 @@
 import logging;
 import os;
 import tempfile;
-import from jaclang.scale.observability.metrics { NoOpMetricsCollector }
-import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.observability { prometheus_metrics }
-import from jaclang.scale.observability.prometheus_metrics {
-    PrometheusMetricsCollector
-}
 import from unittest.mock { patch, MagicMock }
 
 test "noop is disabled" {
@@ -322,10 +317,6 @@ glob BAND_TRAFFIC: list[tuple[float, int]] = [
 
 
 def _distribution_for(cfg: dict[str, any]) -> list[dict[str, str | int]] {
-    import from jaclang.scale.admin.admin_portal {
-        _parse_prometheus_text,
-        _calculate_metrics_summary
-    }
     collector = PrometheusMetricsCollector(config=cfg);
     for (latency, n) in BAND_TRAFFIC {
         for _ in range(n) {
@@ -432,6 +423,34 @@ test "prometheus counts read-tier retries per unit" {
     body = collector.expose().decode("utf-8");
     assert 'test_app_read_tier_retries_total{unit="walker:app.place_order"} 2.0'
         in body , (f"read-tier retries must be exposed per unit key, got:\n{body}");
+}
+
+
+test "prometheus counts scheduled runs and skipped ticks per task" {
+    collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
+    for (status, reason, seconds) in [
+        ("ok", "", 0.2),
+        ("ok", "", 0.4),
+        ("failed", "", 1.5),
+        ("skipped", "claimed_elsewhere", 0.0),
+        ("skipped", "still_running", 0.0)
+    ] {
+        collector.record_scheduled_run("nightly", status, reason, seconds);
+    }
+    body = collector.expose().decode("utf-8");
+    for line in [
+        'test_app_scheduled_runs_total{status="ok",task="nightly"} 2.0',
+        'test_app_scheduled_runs_total{status="failed",task="nightly"} 1.0',
+        'test_app_scheduled_run_duration_seconds_count{task="nightly"} 3.0',
+        'test_app_scheduled_ticks_skipped_total{reason="claimed_elsewhere",task="nightly"} 1.0',
+        'test_app_scheduled_ticks_skipped_total{reason="still_running",task="nightly"} 1.0'
+    ] {
+        assert line in body , f"missing {line!r} in:\n{body}";
+    }
+    assert 'status="skipped"' not in body , body;
+    noop = NoOpMetricsCollector();
+    noop.record_scheduled_run("nightly", "ok", "", 0.2);
+    assert noop.expose() == b"";
 }
 
 

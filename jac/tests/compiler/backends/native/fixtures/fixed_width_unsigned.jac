@@ -285,28 +285,141 @@ def:pub literal_adopts_i32 -> int {
     return int(w);
 }
 
-def:pub plain_int_is_not_sized -> int {
-    big: int = 1 << 62;
-    shifted = big << 2;
-    m: int = -9223372036854775807 - 1;
-    negated = -m;
-    absolute = abs(m);
-    p: int = 3;
-    powered = p ** 41;
+def:pub plain_int_add_overflow_traps -> int {
+    out: int = 0;
+    try {
+        a = 9223372036854775807;
+        b = a + 1;
+        out = int(b);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_sub_underflow_traps -> int {
+    out: int = 0;
+    try {
+        a = -9223372036854775807 - 1;
+        b = a - 1;
+        out = int(b);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_mul_overflow_traps -> int {
+    out: int = 0;
+    try {
+        b = 3037000500 * 3037000500;
+        out = int(b);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_pow_overflow_traps -> int {
+    out: int = 0;
+    try {
+        b = 10 ** 30;
+        out = int(b);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_pow_in_range -> int {
     ok = 0;
-    if shifted == 0 {
+    if 10 ** 18 == 1000000000000000000 {
         ok += 1;
     }
-    if negated == m {
+    if 2 ** 62 == 4611686018427387904 {
         ok += 1;
     }
-    if absolute == m {
-        ok += 1;
-    }
-    if powered != 0 {
+    if 3 ** 39 == 4052555153018976267 {
         ok += 1;
     }
     return ok;
+}
+
+def:pub plain_int_shl_overflow_traps -> int {
+    out: int = 0;
+    try {
+        big = 1 << 62;
+        shifted = big << 2;
+        out = int(shifted);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_large_shift_results -> int {
+    positive = 1 >> 64;
+    negative = -1 >> 64;
+    zero = 0 << 64;
+    return int(positive + negative + zero);
+}
+
+def:pub plain_int_aug_large_shift_results -> int {
+    positive = 1;
+    positive >>= 64;
+    negative = -1;
+    negative >>= 64;
+    zero = 0;
+    zero <<= 64;
+    return int(positive + negative + zero);
+}
+
+def:pub plain_int_neg_min_traps -> int {
+    m = -9223372036854775807 - 1;
+    out: int = 0;
+    try {
+        negated = -m;
+        out = int(negated);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_abs_min_traps -> int {
+    m = -9223372036854775807 - 1;
+    out: int = 0;
+    try {
+        absolute = abs(m);
+        out = int(absolute);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_aug_mul_traps -> int {
+    out: int = 0;
+    try {
+        x = 4294967296;
+        x *= 2147483648;
+        out = int(x);
+    } except OverflowError {
+        out = 1;
+    }
+    return out;
+}
+
+def:pub plain_int_aug_floordiv_zero_raises -> int {
+    out: int = 0;
+    try {
+        x = 7;
+        x //= 0;
+        out = int(x);
+    } except ZeroDivisionError {
+        out = 1;
+    }
+    return out;
 }
 
 

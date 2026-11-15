@@ -6,11 +6,11 @@ async def:pub getUsers(token: str) -> dict[str, any] {
 }
 
 async def:pub createUser(
-    username: str, password: str, role: str, token: str
+    username: str, email: str, password: str, role: str, token: str
 ) -> dict[str, any] {
     return await post(
         "/admin/users",
-        {"username": username, "password": password, "role": role},
+        {"username": username, "email": email, "password": password, "role": role},
         token
     );
 }

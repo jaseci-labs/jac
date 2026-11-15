@@ -169,7 +169,7 @@ jac test
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--test_name` | `-t` | Run specific test by name |
+| `--test_name` | `-t` | Run the tests whose name contains every word given (case-insensitive; `and`/`or`/`not` match as plain words) |
 | `--filter` | `-f` | Select tests by name expression (`and`/`or`/`not`, parens) |
 | `--xit` | `-x` | Exit on first failure |
 | `--maxfail` | `-m` | Stop after N failures |

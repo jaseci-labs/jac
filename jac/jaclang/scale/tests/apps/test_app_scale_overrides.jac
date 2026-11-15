@@ -7,26 +7,6 @@ import shutil;
 import tempfile;
 import from contextlib { redirect_stderr }
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.scale.config.config_loader {
-    APP_SCALE_KEYS,
-    JacScaleConfig,
-    app_scale_overrides,
-    get_scale_config,
-    normalize_gateway_config,
-    reset_scale_config
-}
-import from jaclang.scale.config.validation {
-    STRICT_ENV,
-    validate_app_scale_config,
-    validate_scale_config
-}
-import from jaclang.scale.runtime.fleet { fleet_from_config }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
 
 glob _TOML: str = '[project]\n'
      'name = "shop"\n'
@@ -139,8 +119,33 @@ test "timeouts resolve per app, then the gateway, then the default" {
         get_scale_config(project_dir=Path(d));
         assert _sv_rpc_timeout("orders") == 120.0;
         assert _sv_rpc_timeout("web") == 10.0;
-        assert http_forward_timeout("orders") == 30.0;
+        assert http_forward_timeout("orders") == 300.0;
+        assert http_forward_timeout("web") == 30.0;
         assert boot_health_timeout() == 120.0;
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+# A request to a scaled-to-zero app blocks on the pod's boot, so the default
+# deadlines of an HTTP-activated app have to outlast a cold wake instead of
+# timing out while the pod is still starting.
+test "an HTTP-activated app without explicit timeouts waits out a cold wake" {
+    import from jaclang.scale.runtime.context.util { http_forward_timeout }
+    import from jaclang.scale.runtime.rpc.rpc { _sv_rpc_timeout }
+    d = tempfile.mkdtemp(prefix="jac-app-scale-");
+    (Path(d) / "jac.toml").write_text(
+        _TOML.replace("rpc_timeout = 120.0\n", ""), encoding="utf-8"
+    );
+    (Path(d) / "main.jac").write_text("with entry {}\n", encoding="utf-8");
+    reset_scale_config();
+    try {
+        get_scale_config(project_dir=Path(d));
+        assert _sv_rpc_timeout("orders") == 300.0;
+        assert http_forward_timeout("orders") == 300.0;
+        assert _sv_rpc_timeout("web") == 10.0;
     } finally {
         reset_scale_config();
         shutil.rmtree(d, ignore_errors=True);

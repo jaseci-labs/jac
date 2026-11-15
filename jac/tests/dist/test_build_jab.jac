@@ -111,6 +111,40 @@ test "build_jab seals the named app and its manifest names it" {
 }
 
 
+test "a build that bakes the client rebuilds it when the API base URL changes" {
+    tmp = tempfile.mkdtemp(prefix="jac_build_jab_client_");
+    try {
+        (Path(tmp) / "jac.toml").write_text(
+            '[project]\nname = "webby"\nkind = "web-app"\nentry-point = "main"\n\n'
+            '[dependencies.npm]\nreact = "^19.2.0"\nreact-dom = "^19.2.0"\n'
+        );
+        (Path(tmp) / "main.jac").write_text(
+            "def:pub ping -> str { return \"pong\"; }\n\n"
+            "def:pub app() -> JsxElement {\n    return <div>webby</div>;\n}\n"
+        );
+        config = JacConfig.load(Path(tmp) / "jac.toml");
+        stamp = Path(".jac") / "client" / "dist" / ".jac-build-inputs";
+        first = build_jab(config, Path(tmp) / "out" / "first.jab", bake_client=True);
+        before = (materialize_jab(str(first)) / stamp).read_text();
+        os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+        try {
+            moved = build_jab(
+                config, Path(tmp) / "out" / "moved.jab", bake_client=True
+            );
+        } finally {
+            os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+        }
+        after = (materialize_jab(str(moved)) / stamp).read_text();
+        assert after != before , (
+            "the sealed client kept the bundle built for the old API base URL"
+        );
+    } finally {
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
 test "build_jab seals the default app when no app is named" {
     ws = _workspace();
     try {
@@ -122,5 +156,205 @@ test "build_jab seals the default app when no app is named" {
     } finally {
         set_config(None);
         shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
+    }
+}
+
+
+test "a sealed boot reads each module's imports from the seal instead of disassembling it" {
+    import json;
+    import from jaclang.compiler.backends.py { artifact_imports }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.runtime.prepared { forget }
+    ws = _workspace();
+    real_sources = artifact_imports.runtime_sources;
+    scanned: list[str] = [];
+    def counting_sources(code: any, source: str, `root: str) -> set[str] {
+        scanned.append(source);
+        return real_sources(code, source, `root);
+    }
+    entry_file = "";
+    manifest_path: (Path | None) = None;
+    original_manifest = "";
+    try {
+        config = JacConfig.load(Path(ws) / "jac.toml");
+        out = Path(ws) / "out" / "web.jab";
+        build_jab(config, out, bake_client=False);
+        img = materialize_jab(str(out));
+        manifest_path = img / ".jac" / "serve_manifest.json";
+        original_manifest = manifest_path.read_text();
+        serving = json.loads(original_manifest);
+        recorded: dict[str, list[str]] = serving.get("runtime_imports") or {};
+        main_imports: list[str] = recorded.get("web/main.jac", []);
+        assert "core/helper.jac" in main_imports , (
+            f"the seal did not record web/main.jac's imports: {recorded}"
+        );
+        entry_file = str(img / "web" / "main.jac");
+        artifact_imports.runtime_sources = counting_sources;
+        prepared = prepare_application(entry_file, JacProgram(), str(img));
+        assert os.path.realpath(str(img / "core" / "helper.jac")) in prepared.code , (
+            "the sealed boot did not load the module web/main.jac imports"
+        );
+        assert not scanned , (
+            f"the sealed boot disassembled {len(scanned)} modules whose imports the "
+            f"seal had recorded: {scanned}"
+        );
+        partial = dict(serving);
+        partial["runtime_imports"] = {
+            source: imports
+            for (source, imports) in recorded.items()
+            if source != "web/main.jac"
+        };
+        missing = dict(serving);
+        missing.pop("runtime_imports", None);
+        for (label, variant) in [
+            ("one module unrecorded", partial),
+            ("no map", missing)
+        ] {
+            manifest_path.write_text(json.dumps(variant));
+            forget(entry_file);
+            scanned.clear();
+            prepared = prepare_application(entry_file, JacProgram(), str(img));
+            assert os.path.realpath(str(img / "core" / "helper.jac"))
+                in prepared.code , (
+                f"{label}: the boot did not load the module web/main.jac imports"
+            );
+            assert any(path.endswith("main.jac") for path in scanned) , (
+                f"{label}: the boot did not fall back to reading web/main.jac's imports"
+            );
+        }
+    } finally {
+        if manifest_path is not None and original_manifest {
+            manifest_path.write_text(original_manifest);
+        }
+        artifact_imports.runtime_sources = real_sources;
+        if entry_file {
+            forget(entry_file);
+        }
+        set_config(None);
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
+    }
+}
+
+test "only server and desktop apps include sibling services" {
+    with tempfile.TemporaryDirectory() as directory {
+        project_dir = Path(directory);
+        api_dir = project_dir / "api";
+        api_dir.mkdir();
+        (project_dir / "jac.toml").write_text(
+            "[project]\nname=\"topology\"\ndefault-app=\"cli\"\n"
+                + "[apps.cli]\nkind=\"cli\"\nentry-point=\"cli\"\n"
+                + "[apps.desktop]\nkind=\"desktop\"\nentry-point=\"main\"\n"
+                + "[apps.api]\nkind=\"service\"\nentry-point=\"api.main\"\n"
+        );
+        (project_dir / "cli.jac").write_text("with entry {}\n");
+        (project_dir / "main.jac").write_text("with entry {}\n");
+        (api_dir / "main.jac").write_text("with entry {}\n");
+        config = JacConfig.load(project_dir / "jac.toml");
+        import from jaclang.server.assembly { service_apps }
+        cli_services = service_apps(config, config.app("cli"));
+        desktop_services = service_apps(config, config.app("desktop"));
+        assert not cli_services , cli_services;
+        assert [app.name for app in desktop_services] == ["api"] , desktop_services;
+    }
+}
+
+
+"""A sealed image never carries secrets, and honors `.jacignore`.
+
+The `.jab` is what a desktop build ships beside its binary and what `jac build`
+hands out, so it must hold the same floor the deploy bundle does: no `.env`
+files (a project's model and API keys live there), no key material. A tree
+parked in `.jacignore` (a vendored jac checkout, local data) stays out too.
+"""
+test "build_jab never seals secrets and leaves out what .jacignore parks" {
+    ws = _workspace();
+    try {
+        base = Path(ws);
+        (base / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-secret\n");
+        (base / ".env.local").write_text("TOKEN=local\n");
+        (base / "web" / ".env").write_text("NESTED=1\n");
+        (base / "deploy.pem").write_text("-----BEGIN PRIVATE KEY-----\n");
+        (base / "id_ed25519").write_text("key\n");
+        (base / "vendor" / "jac").mkdir(parents=True);
+        (base / "vendor" / "jac" / "big.jac").write_text("with entry { print(1); }\n");
+        (base / "notes").mkdir();
+        (base / "notes" / "todo.md").write_text("ship it\n");
+        (base / ".jacignore").write_text("vendor/\nnotes/*.md\n");
+        config = JacConfig.load(base / "jac.toml");
+        out = base / "out" / "web.jab";
+        build_jab(config, out, app="web", bake_client=False);
+        img = materialize_jab(str(out));
+        for leaked in [
+            ".env",
+            ".env.local",
+            "web/.env",
+            "deploy.pem",
+            "id_ed25519",
+            "vendor",
+            "notes/todo.md"
+        ] {
+            assert not (img / leaked).exists() , f"{leaked} must not be sealed";
+        }
+        assert (img / "core" / "helper.jac").is_file() , "the app's own code still ships";
+        assert (img / ".jacignore").is_file() , ".jacignore itself ships";
+        import gzip;
+        assert b"sk-ant-secret" not in gzip.decompress(out.read_bytes());
+    } finally {
+        set_config(None);
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
+    }
+}
+
+
+"""`.jacignore` rules match a directory by its place in the project, so a
+symlink to a directory outside the project seals like any other directory."""
+test "build_jab seals through a directory symlink while .jacignore is in force" {
+    ws = _workspace();
+    outside = tempfile.mkdtemp(prefix="jac_build_jab_outside_");
+    try {
+        base = Path(ws);
+        Path(outside, "shared.jac").write_text(
+            "def:pub shared -> int {\n    return 1;\n}\n"
+        );
+        Path(outside, ".env").write_text("TOKEN=outside\n");
+        os.symlink(outside, base / "linked");
+        (base / ".jacignore").write_text("notes/\n");
+        config = JacConfig.load(base / "jac.toml");
+        out = base / "out" / "web.jab";
+        build_jab(config, out, app="web", bake_client=False);
+        img = materialize_jab(str(out));
+        assert (img / "linked" / "shared.jac").is_file() , "the linked tree is sealed";
+        assert not (img / "linked" / ".env").exists() , "and its secrets are not";
+    } finally {
+        set_config(None);
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
+        shutil.rmtree(outside, ignore_errors=True);
+    }
+}
+
+
+"""Jac package sources a seal vendors (and a package publish packs) get the same
+never-ship floor as the project itself."""
+test "staged package sources leave out .env files and key material" {
+    import from jaclang.packages.artifact { stage_source_tree }
+    src = tempfile.mkdtemp(prefix="jac_pkg_src_");
+    dest_root = tempfile.mkdtemp(prefix="jac_pkg_dest_");
+    try {
+        Path(src, "jac.toml").write_text("[project]\nname = \"pkg\"\n");
+        Path(src, "lib.jac").write_text("def:pub f -> int {\n    return 1;\n}\n");
+        Path(src, ".env").write_text("API_KEY=secret\n");
+        Path(src, "deploy.pem").write_text("-----BEGIN PRIVATE KEY-----\n");
+        os.makedirs(os.path.join(src, "sub"));
+        Path(src, "sub", ".env.local").write_text("X=1\n");
+        dest = Path(dest_root) / "pkg";
+        stage_source_tree(Path(src), dest);
+        assert (dest / "lib.jac").is_file();
+        for leaked in [".env", "deploy.pem", "sub/.env.local"] {
+            assert not (dest / leaked).exists() , leaked;
+        }
+    } finally {
+        shutil.rmtree(src, ignore_errors=True);
+        shutil.rmtree(dest_root, ignore_errors=True);
     }
 }

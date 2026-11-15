@@ -9,7 +9,7 @@ Every test owns an isolated cluster under a temp dir, so nothing here touches
 the developer's shared cluster at ~/.cache/jac/pg/main.
 """
 
-import from tests.support { jac_command }
+import from tests.support { jac_command, share_postgres }
 
 import io;
 import os;
@@ -158,7 +158,7 @@ def _child_env(cluster: Cluster, scratch: bool) -> dict[str, any] {
     src = str(Path(jaclang.__file__).parent.parent);
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "");
     env["JAC_CACHE_HOME"] = cluster.cache_home;
-    env["JAC_PG_DIST"] = cluster.bin_dir;
+    share_postgres(cluster.cache_home);
     env.pop("JAC_DB_URL", None);
     # The test runner exports itself as the owner of every database its
     # children create; these fixtures model a child outside any runner.

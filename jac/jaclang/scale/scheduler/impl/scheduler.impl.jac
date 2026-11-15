@@ -1,11 +1,7 @@
-def _utc_now_iso -> str {
-    return datetime.datetime.now(datetime.timezone.utc).isoformat();
-}
+def _utc_now_iso -> str;
 
 
-def _min_interval -> float {
-    return float(get_scale_config().get_scheduler_config()['min_interval']);
-}
+def _min_interval -> float;
 
 
 impl TriggerSpec.validate(
@@ -95,7 +91,6 @@ impl TriggerSpec.apscheduler_kwargs -> dict[str, any] {
 }
 
 impl new_engine(pool_size: int, misfire_grace: int) -> any {
-    import from jaclang.scale.scheduler.fire_executor { FireTimeExecutor }
     return BackgroundScheduler(
         executors={'default': FireTimeExecutor(pool_size)},
         job_defaults={
@@ -107,21 +102,9 @@ impl new_engine(pool_size: int, misfire_grace: int) -> any {
     );
 }
 
-def _doc_row(raw: any) -> dict[str, any] {
-    return raw if isinstance(raw, dict) else json.loads(str(raw));
-}
+def _doc_row(raw: any) -> dict[str, any];
 
-def _where_sql(where: dict[str, any] | None, params: dict[str, any]) -> str {
-    sql = '';
-    n = 0;
-    for (k, v) in (where or {}).items() {
-        key = f"w{n}";
-        n += 1;
-        params[key] = json.dumps(v, `default=str);
-        sql += f" AND doc->'{k}' = CAST(:{key} AS jsonb)";
-    }
-    return sql;
-}
+def _where_sql(where: dict[str, any] | None, params: dict[str, any]) -> str;
 
 impl PgJobStore.postinit -> None {
     self._quota_store = None;
@@ -629,7 +612,7 @@ impl JacScaleScheduler.create_job(
     now_str = _utc_now_iso();
 
     introspector = self._server.introspector if self._server else None;
-    is_walker = name in (introspector._walkers or {}) if introspector else False;
+    is_walker = isinstance(introspector.target(name), type) if introspector else False;
 
     job_data: dict[str, any] = {
         'job_id': job_id,
@@ -768,12 +751,7 @@ impl JacScaleScheduler._execute_task(
         }
 
         async def _run {
-            import from jaclang.scale.memory.context { JScaleExecutionContext }
-            import from jaclang { JacRuntime as Jac }
-
-            ctx = JScaleExecutionContext();
-            ctx_token = Jac.push_request_context(ctx);
-            try {
+            with self._server.request_scope() {
                 if is_walker {
                     result = await self._server.execution_manager.spawn_walker(
                         target, {}, user_id
@@ -789,14 +767,6 @@ impl JacScaleScheduler._execute_task(
                     self._mark_failed(job_id, err);
                 } elif job_id {
                     self._record_run(job_id, 'succeeded');
-                }
-            } finally {
-                try {
-                    ctx.mem.close();
-                } except Exception as ce {
-                    logger.warning(f"Scheduled job context close failed: {ce}");
-                } finally {
-                    Jac.reset_request_context(ctx_token);
                 }
             }
         }
@@ -828,12 +798,8 @@ impl JacScaleScheduler._target(name: str, is_walker: bool) -> any {
     if self._server is None {
         return None;
     }
-    introspector = self._server.introspector;
-    registry: dict[str, any] = (
-        introspector._walkers if is_walker else introspector._functions
-    )
-        or {};
-    return registry.get(name);
+    target = self._server.introspector.target(name);
+    return target if isinstance(target, type) == is_walker else None;
 }
 
 impl JacScaleScheduler._serves(job: dict[str, any]) -> bool {
@@ -994,4 +960,30 @@ impl JacScaleScheduler._schedule_apscheduler_job(
     self._apscheduler.add_job(
         job_func, spec.trigger, id=job_id, replace_existing=True, **kwargs
     );
+}
+
+impl _utc_now_iso -> str {
+    return datetime.datetime.now(datetime.timezone.utc).isoformat();
+}
+
+
+impl _min_interval -> float {
+    return float(get_scale_config().get_scheduler_config()['min_interval']);
+}
+
+
+impl _doc_row(raw: any) -> dict[str, any] {
+    return raw if isinstance(raw, dict) else json.loads(str(raw));
+}
+
+impl _where_sql(where: dict[str, any] | None, params: dict[str, any]) -> str {
+    sql = '';
+    n = 0;
+    for (k, v) in (where or {}).items() {
+        key = f"w{n}";
+        n += 1;
+        params[key] = json.dumps(v, `default=str);
+        sql += f" AND doc->'{k}' = CAST(:{key} AS jsonb)";
+    }
+    return sql;
 }

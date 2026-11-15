@@ -5,15 +5,6 @@ client's ECMAScript. A value or a trap that differs between lanes fails here.
 """
 
 import json;
-import from jaclang.compiler.tests.xbackend_equiv {
-    call_py_fixture,
-    compile_fixture_to_js,
-    encode_py_wire,
-    run_js_expr,
-    run_js_function,
-    run_py_fixture,
-    run_with_both
-}
 
 glob EXPECTED: dict[str, any] = {
          "overflow_add": 1,

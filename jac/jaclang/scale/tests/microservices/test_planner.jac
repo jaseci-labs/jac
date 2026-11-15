@@ -1,6 +1,3 @@
-import from jaclang.scale.runtime.planner.planner { plan_realization }
-
-
 test "a single local process is planned as a monolith" {
     plan = plan_realization(False, 1);
     assert plan.environment == "local";

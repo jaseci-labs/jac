@@ -36,7 +36,8 @@ def f_param(a: own Box) -> int {
     return take(b2);
 }
 
-# 3. Source is passed as a call-arg (a non-alias use) -> disqualified -> b3 NOT.
+# 3. Source is passed as a call-arg, then copied at its last use -> b3 marked:
+#    the copy holds the object as long as the source would have.
 #    Plain local: an `own` source re-read after the call is E1301 and cannot compile.
 def f_callarg -> int {
     a: Box = Box(v=1);
@@ -45,7 +46,8 @@ def f_callarg -> int {
     return take(b3);
 }
 
-# 4. Source stored into a field (escapes) -> disqualified -> b4 NOT.
+# 4. Source stored into a field (the field keeps its own reference), then copied
+#    at its last use -> b4 marked.
 #    Plain local: an `own` source re-read after the field store cannot compile.
 def f_fieldstore -> int {
     a: Box = Box(v=1);
@@ -108,4 +110,22 @@ def f_loop_safe(n: int) -> int {
         i = i + 1;
     }
     return total;
+}
+
+# 10. Source is a method's receiver. `self` is the caller's reference, bound by
+#     the call like a param, so moving it releases a reference the method never
+#     owned -> b10 NOT. It walks up from `self` the way `UniNode.sym_tab` does.
+obj Chain {
+    has up: (Chain | None) = None;
+
+    def top -> Chain {
+        b10: (Chain | None) = self;
+        while b10 is not None and b10.up is not None {
+            b10 = b10.up;
+        }
+        if b10 is None {
+            raise ValueError("a walk from `self` cannot end at None");
+        }
+        return b10;
+    }
 }

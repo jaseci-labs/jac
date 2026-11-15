@@ -3,10 +3,17 @@
     .version = "0.30.0",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x125cfde06c37a26a,
-    // The launcher, the payload tool and their tests are Jac: the build has no
-    // Zig dependencies. Zig is the bootstrap seed (bootstrap/build_python.zig) and
-    // the C/C++ cross-compiler for the LLVM shim and the vendored runtimes.
-    .dependencies = .{},
+    // The launcher, the payload tool and their tests are Jac. Zig is the
+    // bootstrap seed (bootstrap/fetch_pbs.zig) and the C/C++ cross-compiler
+    // for the LLVM shim and the vendored runtimes; the dependency below is the
+    // zstd an upstream macOS LLVM slice needs (macosShim in build.zig).
+    .dependencies = .{
+        .zstd = .{
+            .url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+            .hash = "N-V-__8AAPZ7fwBg4JoCzM_0o2A8wxH2hsUUeiU1iuZv53L5",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

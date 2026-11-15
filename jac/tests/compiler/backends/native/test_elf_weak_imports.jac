@@ -7,7 +7,29 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+import from jaclang.compiler.backends.native.native_link { NativeLinkJob, link_native }
+import jaclang.compiler.backends.native.llvm.binding as llvm;
+
+def _link(
+    output: Path,
+    objects: list[bytes],
+    shared: bool,
+    needed_libs: list[str] = [],
+    export_symbols: list[str] = []
+) {
+    link_native(
+        NativeLinkJob(
+            platform="elf",
+            triple=llvm.get_default_triple(),
+            output_path=str(output),
+            shared=shared,
+            soname=output.name,
+            objects=objects,
+            needed_libs=needed_libs,
+            export_symbols=export_symbols
+        )
+    );
+}
 
 
 def _weak_probe(shared: bool, provided: bool = False) {
@@ -56,13 +78,12 @@ def _weak_probe(shared: bool, provided: bool = False) {
             members.append(main_object);
             main_object = entry_obj.read_bytes();
         }
-        assert ElfLinker.link(
-            objects=[main_object],
-            output_path=str(output),
-            needed_libs=needed_libs,
-            shared=shared,
-            export_symbols=["probe"] if shared else [],
-            archive_members=members
+        _link(
+            output,
+            [main_object] + members,
+            shared,
+            needed_libs,
+            ["probe"] if shared else []
         );
         if shared {
             library = ctypes.CDLL(str(output));
@@ -117,12 +138,15 @@ test "a strong reference remains required when merged with a weak reference" {
                 sources.reverse();
             }
             output = temp_dir / f"required_{reverse}.so";
-            assert ElfLinker.link(
-                objects=[sources[0].with_suffix(".o").read_bytes()],
-                output_path=str(output),
-                shared=True,
-                export_symbols=["weak_use", "strong_use"],
-                archive_members=[sources[1].with_suffix(".o").read_bytes()]
+            _link(
+                output,
+                [
+                    sources[0].with_suffix(".o").read_bytes(),
+                    sources[1].with_suffix(".o").read_bytes()
+                ],
+                True,
+                [],
+                ["weak_use", "strong_use"]
             );
             rejected = False;
             try {

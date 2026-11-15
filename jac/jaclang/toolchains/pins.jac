@@ -1,5 +1,3 @@
-import from jaclang.toolchains.store { Artifact }
-
 glob JDK_VERSION: str = "21.0.12.1+1",
      JDK_ARTIFACTS: dict[str, Artifact] = {
          "linux-x64": Artifact(

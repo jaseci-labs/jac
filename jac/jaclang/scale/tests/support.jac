@@ -13,6 +13,7 @@ import gc;
 import glob;
 import os;
 import shutil;
+import signal;
 import socket;
 import subprocess;
 import time;
@@ -20,7 +21,10 @@ import unittest;
 import requests;
 import from pathlib { Path }
 import from typing { cast }
-import from jaclang.testing.test_runner { STRICT_ENV, strict_mode }
+
+with entry {
+    apply_fixture_policy();
+}
 
 """A port nothing is listening on."""
 def get_free_port -> int {
@@ -141,19 +145,22 @@ compile the app before it can serve /healthz.
 def start_server(
     fixtures_dir: Path, jac_file: Path, port: int, env: dict[str, str] | None = None
 ) -> subprocess.Popen {
-    import from jaclang.scale.runtime.context.util { jac_executable }
     cmd = [jac_executable(), "run", "--serve", "--port", str(port), str(jac_file.name)];
     proc_env = os.environ.copy();
     if env {
         proc_env.update(env);
     }
+    apply_fixture_policy(proc_env);
+    # Its own session makes the server lead a process group that holds its
+    # forked workers too, so stop_server can take them down together.
     server = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         cwd=str(fixtures_dir),
-        env=proc_env
+        env=proc_env,
+        start_new_session=True
     );
     base_url = f"http://localhost:{port}";
     # A subprocess that has to compile the tree cold takes minutes, and a
@@ -187,16 +194,24 @@ def start_server(
 
 """Terminate a server started by start_server, escalating to kill if it lingers.
 
+Each signal also goes to the server's process group when the server leads
+one, as `stop_service` does: a killed supervisor would otherwise leave its
+forked workers running, holding the stdout/stderr pipes open, and a later
+`communicate()` on the server would never return. A server the caller did
+not start in its own session is signalled alone.
+
 Tolerates None so a caller's `finally` needs no guard, and yields the port
 before returning: a terminated child can hold the listening socket briefly.
 """
 def stop_server(server: subprocess.Popen | None) {
     if server {
         server.terminate();
+        _signal_group(server.pid, int(signal.SIGTERM));
         try {
             server.`wait(timeout=5);
         } except subprocess.TimeoutExpired {
             server.kill();
+            _signal_group(server.pid, int(signal.SIGKILL));
             server.`wait();
         }
     }

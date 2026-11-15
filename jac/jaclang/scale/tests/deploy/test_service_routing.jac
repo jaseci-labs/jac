@@ -4,26 +4,6 @@ the KEDA HTTP Add-on interceptor. Every function under test here is
 pure dict-in/dict-out, so no Kubernetes API client or config-loader mocking
 is needed anywhere in this file."""
 
-import from jaclang.scale.runtime.context.service_routing {
-    ServiceRoute,
-    KEDA_INTERCEPTOR_SERVICE_ADDRESS,
-    k8s_service_dns_host,
-    resolve_interceptor_service_address,
-    resolve_http_activation_config,
-    resolve_service_route
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
-    build_k8s_registry_routes
-}
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-
-
 test "resolve_http_activation_config merges per-service over top-level and honors enabled on both" {
     for (label, top, app, expect_port) in [
         ("neither side configured", {}, {}, None),

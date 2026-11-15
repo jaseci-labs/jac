@@ -1,6 +1,7 @@
 import from enum { StrEnum }
 
 enum AnalysisFact(StrEnum) {
+    CFG_CATCH = 'CfgCatch',
     CFG_FALSE = 'CfgFalse',
     CFG_SUCC = 'CfgSucc',
     CFG_TRUE = 'CfgTrue',
@@ -17,6 +18,7 @@ enum AnalysisFact(StrEnum) {
     CLIENT_CAPABILITY = 'client_capability',
     CODESPACE_PULL = 'codespace-pull',
     COMPTIME = 'comptime',
+    DECL_TYPES = 'decl-types',
     FROZEN = 'frozen',
     OWNERSHIP = 'ownership',
     PORTABILITY = 'portability',
@@ -33,14 +35,46 @@ obj PassContract {
 
 enum CompilationProduct {
     SYMBOLS = "symbols",
-    INTERFACE = "interface",
+    IR = "ir",
     FLOW = "flow",
+    PLACEMENT = "placement",
     ANALYSIS = "analysis",
+    DECLARATIONS = "declarations",
     BOUNDARIES = "boundaries",
+    INTERFACE = "interface",
     CLIENT = "client",
     LAYOUT = "layout",
+    CODEGEN = "codegen",
+    PY_IR = "py-ir",
+    FROZEN = "frozen",
+    BYTECODE = "bytecode",
     NATIVE_IR = "native-ir",
-    EXECUTABLE = "executable"
+    NATIVE_LOWER = "native-lower",
+    NATIVE_OBJECT = "native-object",
+    FORMAT = "format",
+    FORMAT_LINTFIX = "format-lintfix",
+    LINT = "lint",
+    PYTHON_AST = "python-ast",
+    PYTHON_SYMBOLS = "python-symbols",
+    GRAMMAR = "grammar",
+    CFG_DOT = "cfg-dot",
+    NORMALIZE = "normalize",
+    UNPARSE = "unparse",
+    DOC = "doc",
+    FORMAT_TEXT = "format-text"
+}
+
+enum ImportFallback {
+    RAISE = "raise",
+    BOOTSTRAP = "bootstrap",
+    BOOTSTRAP_INTERNAL = "bootstrap-internal",
+    REPORT = "report"
+}
+
+obj ProductRequest {
+    has gen_mtir: bool = True,
+        native: bool = False,
+        endpoint_effects: bool = True;
 }
 
 enum TaskState {
@@ -54,28 +88,6 @@ enum TaskState {
 obj ProductTask {
     has product: CompilationProduct,
         state: TaskState = TaskState.PENDING,
-        elapsed: float = 0.0;
-}
-
-enum UtilityProduct {
-    PYTHON_AST = "python-ast",
-    PYTHON_SYMBOLS = "python-symbols",
-    GRAMMAR = "grammar",
-    CFG_DOT = "cfg-dot",
-    NORMALIZE = "normalize",
-    UNPARSE = "unparse",
-    DOC = "doc",
-    FORMAT = "format"
-}
-
-enum CompilationPhase {
-    PARSE = "parse",
-    IR = "ir",
-    PLACEMENT = "placement",
-    ANALYSIS = "analysis",
-    BOUNDARIES = "boundaries",
-    NATIVE_CHECKS = "native_checks",
-    CLIENT_DEPENDENCIES = "client_dependencies",
-    INTERFACE = "interface",
-    CODEGEN = "codegen"
+        elapsed: float = 0.0,
+        import_fallback: bool = False;
 }

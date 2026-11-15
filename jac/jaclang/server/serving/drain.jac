@@ -1,70 +1,43 @@
+import asyncio;
+import inspect;
 import logging;
+import threading;
 import time;
-import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 
 glob logger: logging.Logger = logging.getLogger(__name__),
      HEALTH_PATHS: set[str] = {'/healthz', '/healthz/live', '/healthz/ready'},
-     LIVENESS_PATHS: set[str] = {'/healthz', '/healthz/live'};
+     LIVENESS_PATHS: set[str] = {'/healthz', '/healthz/live'},
+     DRAIN_HOOKS: list[Callable[[], any]] = [],
+     DRAIN_TAKEN: set[int] = set();
 
 
 obj DrainState {
     has draining: bool = False,
         started_at: float = 0.0,
         timeout: float = 10.0,
-        reason: str = '';
+        reason: str = '',
+        hooks_thread: (threading.Thread | None) = None;
 
-    def start(reason: str = 'shutdown') -> bool {
-        if self.draining {
-            return False;
-        }
-        self.draining = True;
-        self.started_at = time.monotonic();
-        self.reason = reason;
-        logger.warning(f"drain: started ({reason}, budget {self.timeout:.1f}s)");
-        return True;
-    }
-
-    def remaining -> float {
-        if not self.draining {
-            return self.timeout;
-        }
-        return max(0.0, self.timeout - (time.monotonic() - self.started_at));
-    }
-
-    def reset {
-        self.draining = False;
-        self.started_at = 0.0;
-        self.reason = '';
-    }
+    def start(reason: str = 'shutdown') -> bool;
+    def wait_for_hooks;
+    async def await_hooks;
+    def remaining -> float;
+    def reset;
 }
 
 
-def draining_response(service: str = 'service') -> Response {
-    resp = JSONResponse(
-        status_code=503,
-        content={
-            'ok': False,
-            'error': {
-                'code': 'SERVICE_UNAVAILABLE',
-                'message': f"{service} is draining; retry against another instance"
-            }
-        }
-    );
-    resp.headers.set('Retry-After', '1');
-    resp.headers.set('Connection', 'close');
-    return resp;
-}
+async def run_hooks(hooks: list[Callable[..., any]], what: str);
+
+
+def _start_drain_hooks -> threading.Thread;
+
+
+def _run_drain_hooks;
+
+
+def draining_response(service: str = 'service') -> Response;
 
 
 def drain_middleware(
     state: DrainState, service: str = 'service'
-) -> Callable[..., any] {
-    async def _middleware(request: Request, call_next: any) -> Response {
-        next_fn: any = call_next;
-        if request.url.path in HEALTH_PATHS or not state.draining {
-            return await next_fn(request);
-        }
-        return draining_response(service);
-    }
-    return _middleware;
-}
+) -> Callable[..., any];

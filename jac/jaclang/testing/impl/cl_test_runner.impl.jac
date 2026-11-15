@@ -9,33 +9,35 @@ import tempfile;
 import time;
 import from contextlib { suppress }
 import from pathlib { Path }
-import from jaclang.cli.console { console }
 
 impl compile_cl_module(
     filepath: str
 ) -> tuple[str, list[any], dict[str, any], list[any]] {
-    import from jaclang.compiler.driver.program { JacProgram }
     prog = JacProgram();
-    mod = prog.compile(str(filepath));
-    if prog.errors_had {
-        errs = "\n".join([str(e) for e in prog.errors_had]);
+    artifact = prog._get_compiler().get_client_artifact(
+        os.path.abspath(str(filepath)), prog
+    );
+    if prog.errors_had or artifact is None {
+        errs = "\n".join([str(e) for e in prog.errors_had]) or "no client artifact";
         raise RuntimeError(f"Failed to compile {filepath}:\n{errs}");
     }
-    manifest = mod.gen.client_manifest;
+    manifest = artifact.manifest;
     tests = list(getattr(manifest, "tests", []) or []);
     imports = dict(getattr(manifest, "imports", {}) or {});
     server_imports = list(getattr(manifest, "server_imports", []) or []);
-    return (mod.gen.js, tests, imports, server_imports);
+    return (artifact.js, tests, imports, server_imports);
 }
 
 impl _compile_runtime -> tuple[str, str] {
-    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
-
+    if _RUNTIME_JS {
+        return _RUNTIME_JS[0];
+    }
     runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
     if (not runtime_src) or (not Path(runtime_src).exists()) {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
     (js, _tests, _imports, _server_imports) = compile_cl_module(runtime_src);
+    _RUNTIME_JS.append((runtime_src, js));
     return (runtime_src, js);
 }
 
@@ -46,7 +48,6 @@ impl _point_at_staged_runtime(js: str) -> str {
 }
 
 impl _point_at_staged_prelude(js: str) -> str {
-    import from jaclang.compiler.backends.es.jac_runtime_js { point_jac_prelude_at }
     return point_jac_prelude_at(js);
 }
 
@@ -428,15 +429,7 @@ impl _run_harness(
     timeout: float,
     source_path: (str | None) = None
 ) -> list[ClTestResult] {
-    import from jaclang.client.bun_installer { get_bun }
-
-    bun = get_bun();
-    if bun is None {
-        raise RuntimeError(
-            "bun is required to run client (cl) tests but could not be located "
-            "or installed."
-        );
-    }
+    bun = js_runtime_path();
 
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
@@ -555,12 +548,11 @@ impl _parse_results(stdout: str, tests: list[any]) -> (list[ClTestResult] | None
 }
 
 impl module_entry_for(filepath: str) -> str {
-    import from jaclang.jac0core.ext_registry { is_annex }
     path = str(filepath);
     if not is_annex(os.path.basename(path)) {
         return path;
     }
-    import from jaclang.compiler.driver.bccache { discover_base_file }
+
     return discover_base_file(path) or path;
 }
 
@@ -569,9 +561,12 @@ impl module_is_client(filepath: str) -> bool {
     if path in _COLOR_CACHE {
         return _COLOR_CACHE[path];
     }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.program { JacProgram }
+
+    recorded = module_record(path, JacRuntime.get_program());
+    if recorded is not None {
+        _COLOR_CACHE[path] = recorded.client_declared;
+        return recorded.client_declared;
+    }
     result = False;
     try {
         mod = JacProgram().compile(path, options=CompileOptions(symtab_ir_only=True));
@@ -622,8 +617,6 @@ impl is_cl_test_file_for_discovery(filepath: str) -> bool {
 }
 
 impl register_results_into_jactestcheck(filepath: str, results: list[any]) -> None {
-    import from jaclang.testing.test { JacTestCheck }
-
     for res in results {
         def make_case(r: ClTestResult) -> Callable {
             def synthetic_case {

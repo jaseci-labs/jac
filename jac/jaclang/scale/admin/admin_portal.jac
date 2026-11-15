@@ -1,32 +1,22 @@
 import from pathlib { Path }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes {
-    FileResponse,
-    HTMLResponse,
-    JSONResponse,
-    Response
-}
-import from jaclang.server.transport { TransportResponse }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.server { EndpointHost }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.observability.metrics { MetricsCollector }
 
 obj JacAPIServerAdmin {
     has server: (EndpointHost | None) = None,
         user_manager: (UserManager | None) = None,
-        _metrics: (MetricsCollector | None) = None;
+        _metrics: (MetricsCollector | None) = None,
+        admin_console: (AdminConsole | None) = None;
 
     def _require_user_manager -> UserManager;
     def register_admin_endpoints -> None;
     def bootstrap_admin -> None;
-    def admin_login(username: str, password: str) -> TransportResponse;
+    def admin_login(
+        username: str,
+        password: str,
+        code: str = '',
+        recovery_code: str = '',
+        request: (Request | None) = None
+    ) -> TransportResponse;
+
     def validate_admin_token(Authorization: str | None) -> (str | None);
     def require_admin(Authorization: str | None) -> TransportResponse | None;
     def require_admin_json(Authorization: str | None) -> JSONResponse | None;
@@ -39,10 +29,11 @@ obj JacAPIServerAdmin {
     ) -> TransportResponse;
 
     def admin_create_user(
-        username: str,
-        password: str,
+        username: str = '',
+        password: str = '',
         role: str = 'user',
-        Authorization: str | None = None
+        Authorization: str | None = None,
+        email: str = ''
     ) -> TransportResponse;
 
     def admin_update_user(
@@ -72,10 +63,6 @@ obj JacAPIServerAdmin {
         username: str, Authorization: str | None = None
     ) -> TransportResponse;
 
-    def admin_graph_data(
-        username: str | None = None, Authorization: str | None = None
-    ) -> JSONResponse;
-
     def admin_get_config(
         profile: str = "default", Authorization: str | None = None
     ) -> TransportResponse;
@@ -88,6 +75,5 @@ obj JacAPIServerAdmin {
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;
     def serve_admin_asset(path: str) -> Response;
-    def build_admin_client(force: bool = False) -> bool;
     def get_admin_dist_dir -> Path;
 }

@@ -77,3 +77,18 @@ test "jac0 preserves escaped field names that resemble constructor methods" {
     assert callable(record.__init__);
     assert record.read();
 }
+
+
+test "jac0 keeps a tuple in a list literal after a keyword" {
+    source = "def pairs(c: bool) -> list[tuple[str, str]] {\n"
+        + "    if c {\n"
+        + "        return [(\"a\", \"b\")];\n"
+        + "    }\n"
+        + "    held: dict[(str, int)] = {};\n"
+        + "    return held if held else [(\"c\", \"d\")];\n"
+        + "}\n";
+    namespace: dict[str, any] = {};
+    exec(compile_jac(source, "tuple_list.jac"), namespace);
+    assert namespace["pairs"](True) == [("a", "b")];
+    assert namespace["pairs"](False) == [("c", "d")];
+}

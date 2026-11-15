@@ -195,7 +195,8 @@ impl NaIRGenPass._copy_is_atomic(
         return True;
     }
     _args = self._container_type_args(hint);
-    for (i, elem) in enumerate(info.elements) {
+    _tuple_ty: ir.LiteralStructType = info;
+    for (i, elem) in enumerate(_tuple_ty.members()) {
         if not self._copy_is_atomic(elem, _args[i] if i < len(_args) else None, True) {
             return False;
         }
@@ -277,10 +278,9 @@ impl NaIRGenPass._copy_refusal(
 }
 
 impl NaIRGenPass._copy_candidates(arch: str) -> list[str] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     out: list[str] = [arch];
-    for cand in get_layout_registry(self.module, self.prog).mro_order {
-        if cand != arch and cand in self.struct_types and arch in self._mro_of(cand) {
+    for cand in get_layout_registry(self.module, self.prog).descendants_of([arch]) {
+        if cand != arch and cand in self.struct_types {
             out.append(cand);
         }
     }
@@ -350,7 +350,7 @@ impl NaIRGenPass._copy_class_refusal(
         if not deep {
             continue;
         }
-        if "wasm" in str(self.llvm_module.triple or "") {
+        if self._target_is_wasm() {
             return f"{_label} on a wasm target, where the class dispatch of a deep copy cannot raise";
         }
         for (fname, ftype) in self.struct_field_types[cand].items() {

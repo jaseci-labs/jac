@@ -32,7 +32,10 @@ glob _ABSTRACT_IR_TYPES: set = {
      };
 
 
-"""One representative instance of every concrete `ir` type class, by class name."""
+"""One representative instance of every concrete `ir` type class, by class name.
+
+A key may carry a variant after a space: a typed pointer is a `PointerType`
+that remembers its pointee, so it is a second specimen of that class."""
 def _ir_type_specimens -> dict[str, object] {
     i32 = ir.IntType(32);
     return {
@@ -51,7 +54,7 @@ def _ir_type_specimens -> dict[str, object] {
         "PointerType": ir.PointerType(),
         "VectorType": ir.VectorType(i32, 2),
         "VoidType": ir.VoidType(),
-        "_TypedPointerType": ir.PointerType(i32)
+        "PointerType typed": ir.PointerType(i32)
     };
 }
 
@@ -135,12 +138,13 @@ test "vendored binding parses, verifies and prints a module" {
 
 test "every concrete ir type class has an __eq__ specimen" {
     specimens = _ir_type_specimens();
-    missing = _concrete_ir_type_classes() - set(specimens.keys());
+    missing = _concrete_ir_type_classes()
+        - {key.split(" ")[0] for key in specimens.keys()};
     assert not missing , "new ir type class(es) "
         + f"{sorted(missing)} need a specimen in _ir_type_specimens() so the "
         + "__eq__ totality cross product keeps covering the whole module";
     for (name, spec) in specimens.items() {
-        assert type(spec).__name__ == name , f"specimen for {name} is a "
+        assert type(spec).__name__ == name.split(" ")[0] , f"specimen for {name} is a "
             + f"{type(spec).__name__}";
     }
 }

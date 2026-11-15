@@ -59,6 +59,7 @@ glob STRICT_ENV: str = "JAC_TEST_STRICT";
 
 obj NameFilter {
     has expr: str,
+        literal: bool = False,
         tree: any = None;
 
     def postinit -> None;
@@ -90,12 +91,6 @@ obj Reporter {
     def total_count -> int;
     def summarize(elapsed: float) -> int;
     def _pct_text -> str;
-}
-
-import from jaclang.cli.workpool {
-    WorkPool,
-    should_retire as _should_retire,
-    worker_rss_mb as _worker_rss_mb
 }
 
 def _test_retire(served: int, rss_mb: int) -> bool;

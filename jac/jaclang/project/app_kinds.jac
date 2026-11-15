@@ -36,9 +36,9 @@ glob KIND_SPECS: dict[str, KindSpec] = {
                  name="native-binary",
                  description="Natively-compiled standalone binary (built into dist/)",
                  `entry="main",
-                 action="build",
+                 action="execute",
                  verb="native",
-                 summary="Build native binary -> {output}",
+                 summary="Execute {kind} entry-point {entry} natively (jac build --native writes {output})",
                  output_dir="dist"
              ),
              KindSpec(
@@ -124,9 +124,10 @@ glob KIND_SPECS: dict[str, KindSpec] = {
                  name="mobile",
                  description="Jac mobile app (mobUI over React Native)",
                  `entry="main",
-                 action="build",
-                 verb="build",
-                 summary="Build mobile app bundle",
+                 action="serve",
+                 verb="run",
+                 summary="Serve mobile app to Expo Go (scan the QR code; Metro Fast Refresh)",
+                 flags={"dev": True},
                  ui="mobui"
              )
          ]
@@ -136,38 +137,18 @@ glob KIND_SPECS: dict[str, KindSpec] = {
      UI_MOBUI: str = "mobui",
      MOBILE_PLATFORMS: list[str] = ["android", "ios", "web"];
 
-def kind_spec(kind: str) -> KindSpec | None {
-    return KIND_SPECS.get(kind);
-}
+def kind_spec(kind: str) -> KindSpec | None;
 
-def kind_entry(kind: str) -> str {
-    spec = KIND_SPECS.get(kind);
-    return spec.`entry if spec else "main";
-}
+def kind_entry(kind: str) -> str;
 
-def is_valid_kind(kind: str) -> bool {
-    return kind in KIND_SPECS;
-}
+def is_valid_kind(kind: str) -> bool;
 
-def kind_ui(kind: str) -> str {
-    spec = KIND_SPECS.get(kind);
-    return spec.ui if spec else "";
-}
+def kind_ui(kind: str) -> str;
 
-def kind_has_client(kind: str) -> bool {
-    return bool(kind_ui(kind));
-}
+def kind_has_client(kind: str) -> bool;
 
-def kind_is_mobui(kind: str) -> bool {
-    return kind_ui(kind) == UI_MOBUI;
-}
+def kind_is_mobui(kind: str) -> bool;
 
-def kind_codespace(kind: str) -> str {
-    spec = KIND_SPECS.get(kind);
-    return spec.codespace if spec else '';
-}
+def kind_codespace(kind: str) -> str;
 
-def kind_has_server(kind: str) -> bool {
-    spec = KIND_SPECS.get(kind);
-    return spec.has_server if spec else kind == '';
-}
+def kind_has_server(kind: str) -> bool;

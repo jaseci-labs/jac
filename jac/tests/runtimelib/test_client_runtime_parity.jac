@@ -87,7 +87,8 @@ def _signatures(path: Path) -> dict[str, list[any]] {
     );
     out: dict[str, list[any]] = {};
     for abl in mod.get_all_sub_nodes(uni.Ability) {
-        name = abl.name_ref?.value;
+        name_ref = abl.name_ref;
+        name = name_ref.value if isinstance(name_ref, uni.Name) else None;
         if not name or not _is_public(abl) {
             continue;
         }
@@ -256,6 +257,53 @@ test "every target's compiled AuthGuard actually renders its children" {
                 "The `(auth)/` codegen and `<Route element={<AuthGuard/>}>` pass "
                 "no children and need it to resolve the matched child route; "
                 "without it every protected route group goes blank."
+            );
+        }
+    }
+}
+
+test "sign-up types a bare identifier from the server's auth policy" {
+    # A username may not contain `@`, so a helper that always sent a bare string
+    # as a `username` identity would fail every `jacSignup(email, password)`.
+    # Both cores must ask the server which identifiers it accepts and type the
+    # string from that, and the signature alone cannot show that they do.
+    # Sign-in types by shape alone: the server finds the account by value, so an
+    # account whose identifier kind was later turned off still signs in.
+    for (target, path) in _RUNTIME_CORES.items() {
+        signup = _compiled_body(path, ReactBackend(), "jacSignup");
+        assert "__authPolicy()" in signup , (
+            f"{target}'s compiled jacSignup never reads the auth policy:\n{signup}"
+        );
+        signin = _compiled_body(path, ReactBackend(), "jacLogin");
+        assert "__authPolicy()" not in signin , (
+            f"{target}'s compiled jacLogin types its identifier from the policy, "
+            f"which locks out accounts holding a kind that was turned off:\n{signin}"
+        );
+        typed = _compiled_body(path, ReactBackend(), "__normalizeIdentity");
+        for needle in ['"email"', '"username"', 'indexOf("@")', '"off"'] {
+            assert needle in typed , (
+                f"{target}'s compiled __normalizeIdentity lost `{needle}`:\n{typed}"
+            );
+        }
+        fetched = _compiled_body(path, ReactBackend(), "__authPolicy");
+        assert "/user/auth-policy" in fetched , fetched;
+    }
+}
+
+test "sign-up solves the registration challenge on every core" {
+    # With `[serve.auth.registration] challenge = true` the server refuses a
+    # registration that carries no solved challenge. Both cores must read the
+    # policy's `registration.challenge` and send the shared solver's proof; the
+    # web core's behavior is run in `test_client_signup_challenge.jac`.
+    for (target, path) in _RUNTIME_CORES.items() {
+        signup = _compiled_body(path, ReactBackend(), "jacSignup");
+        for needle in [
+            '["registration"]',
+            '["challenge"]',
+            "__solveRegistrationChallenge("
+        ] {
+            assert needle in signup , (
+                f"{target}'s compiled jacSignup lost `{needle}`:\n{signup}"
             );
         }
     }

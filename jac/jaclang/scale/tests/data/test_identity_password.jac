@@ -1,7 +1,6 @@
 """Unit tests for IdentityStorage password hashing/verification."""
 
 import hashlib;
-import from jaclang.server.identity.identity_storage { IdentityStorage }
 
 
 """An IdentityStorage whose three storage primitives live in memory."""

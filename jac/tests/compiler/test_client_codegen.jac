@@ -9,6 +9,7 @@ import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+import from jaclang.compiler.driver.client_graph { link_exports, link_tail }
 
 test "endpoint identity preserves compact JSON and escaping" {
     import json;
@@ -88,21 +89,22 @@ test "compilation skips python stubs" {
     assert mod.gen.client_manifest.params.get("component", []) == [];
 }
 
-# Consolidated: typeof conversion + spawn operator (share one JacProgram)
-test "type to typeof and spawn operator" {
+# Consolidated: type() lowering + spawn operator (share one JacProgram)
+test "type() lowering and spawn operator" {
     prog = JacProgram();
 
-    # --- type to typeof conversion ---
-    typeof_code = '"""Test type() to typeof conversion."""\n\ndef check_types() -> any {\n    x = 42;\n    y = "hello";\n    z = True;\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(z);\n    t4 = type("world");\n\n    return t1;\n}\n';
+    # --- type() lowering ---
+    typeof_code = '"""Test type() lowering."""\n\ndef check_types() -> any {\n    x = 42;\n    y = "hello";\n    z = True;\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(z);\n    t4 = type("world");\n\n    return t1;\n}\n';
     mod = compile_inline(typeof_code, prog, client=True);
     assert mod.gen.js.strip() , "Expected JavaScript output for client code";
-    assert "typeof" in mod.gen.js , "type() should be converted to typeof";
-    assert mod.gen.js.count("typeof") == 4 , "Should have 4 typeof expressions";
-    assert "type(" not in mod.gen.js , "No type() calls should remain in JavaScript";
-    assert "typeof x" in mod.gen.js;
-    assert "typeof y" in mod.gen.js;
-    assert "typeof z" in mod.gen.js;
-    assert 'typeof "world"' in mod.gen.js;
+    for pattern in [
+        "_jac.builtin.type(x)",
+        "_jac.builtin.type(y)",
+        "_jac.builtin.type(z)",
+        '_jac.builtin.type("world")'
+    ] {
+        assert pattern in mod.gen.js;
+    }
 
     # --- spawn operator supports positional and spread ---
     spawn_code = "walker MixedWalker {\n    has label: str;\n    has count: int;\n    has meta: dict[any, any] = {};\n    can execute with Root entry { }\n}\n\ndef spawn_client() -> dict[any, any] {\n    node_id = \"abcd\";\n    extra = {\"meta\": {\"source\": \"client\"}};\n    positional = node_id spawn MixedWalker(\"First\", 3);\n    spread = MixedWalker(\"Second\", 1, **extra) spawn root;\n    return {\"positional\": positional, \"spread\": spread};\n}\n";
@@ -236,7 +238,7 @@ test "lowercase client components get PascalCase runtime names with export contr
     assert "function helper()" in js;
     assert "function Helper" not in js;
     # Mixed module (helper export) must NOT be stamped hot-swap-eligible
-    assert "/*jac:refresh-boundary*/" not in js;
+    assert not link_exports(mod.gen.client_manifest, {}).boundary;
 }
 
 test "component-only modules are stamped as fast-refresh boundaries" {
@@ -253,11 +255,27 @@ test "component-only modules are stamped as fast-refresh boundaries" {
     # Several components in one file: all exported, module stamped eligible
     assert "function Card()" in js;
     assert "function CardTitle()" in js;
-    assert "/*jac:refresh-boundary*/" in js;
+    link = link_exports(mod.gen.client_manifest, {});
+    assert "/*jac:refresh-boundary*/" in link_tail(link);
 
     glob_mod = compile_inline("glob:pub PRODUCTS = [1, 2];\n", client=True);
     # Value exports are never swap-safe: no stamp, dev server full-reloads
-    assert "/*jac:refresh-boundary*/" not in glob_mod.gen.js;
+    assert not link_exports(glob_mod.gen.client_manifest, {}).boundary;
+    helper_mod = compile_inline(
+        "def:pub Card() -> JsxElement {\n"
+        "    return <div>card</div>;\n"
+        "}\n"
+        "def helper() -> str {\n"
+        "    return \"x\";\n"
+        "}\n",
+        client=True
+    );
+    # A plain helper nothing imports stays unexported and keeps the stamp;
+    # once another client module imports it, the module full-reloads.
+    manifest = helper_mod.gen.client_manifest;
+    assert link_exports(manifest, {}).boundary;
+    imported = link_exports(manifest, {Path("use.jac"): ["helper"]});
+    assert imported.names == ["helper"] and not imported.boundary;
 }
 
 test "component rename is skipped when the PascalCase name is already taken" {

@@ -65,7 +65,6 @@ glob GAP_FILES = [
          "impl_by_expr.jac",
          "fstring_nested_fmt.jac",
          "match_multistring.jac",
-         "enum_pynline.jac",
          "enum_free_code.jac",
          "trailing_comma_collections.jac",
          "safe_call_subscript.jac",

@@ -1,4 +1,5 @@
 glob PAYLOAD_ZSTD_LEVEL: int = 19,
+     PAYLOAD_ZSTD_LEVEL_ENV: str = "JAC_PAYLOAD_ZSTD_LEVEL",
      PAYLOAD_WINDOW_LOG: int = 24,
      TAR_PAX_FORMAT: int = 2,
      TAR_REGTYPE: bytes = b"0",
@@ -43,6 +44,7 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
      STUBCAT_BOOT_SRC: str = (
          "import sys\n"
          "import _jac_finder; _jac_finder.install()\n"
+         "from jaclang.jac0core.artifact_registry import begin; begin(['stubcat'])\n"
          "from jaclang.compiler.types.stubcat.build import main\n"
          "sys.exit(main(sys.argv[1:] + ['--cache']))\n"
      );
@@ -50,16 +52,14 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
 obj MkPayloadOpts {
     has shim_so: str | None = None,
         bun_bin: str | None = None,
-        skip_precompile: bool = False,
         link_source: str | None = None,
-        musl_dir: str | None = None,
+        musl_dirs: list[str] = [],
         wasm_libc_dir: str | None = None,
         precompiled_cache: str | None = None,
         layer_cache: str | None = None,
         seal: bool = False,
         debug_src: bool = False,
-        stubcat_out: str | None = None,
-        skip_stubcat: bool = False;
+        stubcat_out: str | None = None;
 }
 
 obj FoundLib {
@@ -75,21 +75,14 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
+def ship_wiring(package_root: str, site_package: str);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
-def strip_kernel_best_effort(site: str);
 def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool;
 def cached_stubcat(pkg_dir: str) -> str;
-def precompile(
-    py: str,
-    python_dir: str,
-    site: str,
-    seal: bool,
-    debug_src: bool,
-    skip_stubcat: bool = False
-);
+def precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool);
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];
 def stage_python_bin(python_dir: str, stage: str);
@@ -97,7 +90,7 @@ def stage_tree(
     python_dir: str,
     site: str,
     stage: str,
-    musl_dir: str | None,
+    musl_dirs: list[str],
     wasm_libc_dir: str | None
 );
 
@@ -114,6 +107,7 @@ def is_volatile_path(p: str) -> bool;
 def collect_stage_entries(stage: str) -> list[TarEntry];
 def tar_stage(stage: str) -> tuple[bytes, bytes];
 def tar_zst_dir(stage: str, out: str, layer_cache: str | None);
+def zstd_level -> int;
 def zstd_compress(data: bytes) -> bytes;
 def deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes;
 def frame_decodes_to(frame: bytes, expect: bytes) -> bool;

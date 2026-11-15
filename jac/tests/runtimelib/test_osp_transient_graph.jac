@@ -174,6 +174,94 @@ test "detaching an edge is flat in the number of edge rows ever allocated" {
 }
 
 # ---------------------------------------------------------------------------
+# A''. A hub's incoming light links are dropped by lookup, not by a scan.
+# ---------------------------------------------------------------------------
+node HubNode {}
+
+edge HubRel: any --> any {}
+
+"""Fan n sources into one hub over a light edge, then move every link the way a
+reassigned reference does (drop it, connect it again), newest first; returns
+seconds per move."""
+def _churn(n: int) -> float {
+    hub = HubNode();
+    srcs = [HubNode() for _ in range(n)];
+    for s in srcs {
+        s +>:HubRel:+> hub;
+    }
+    t0 = time.perf_counter();
+    for s in reversed(srcs) {
+        del [edge s->:HubRel:->];
+        s +>:HubRel:+> hub;
+    }
+    dt = time.perf_counter() - t0;
+    seen = len([hub<-:HubRel:<-]);
+    assert seen == n , f"hub of {n} sources reports {seen} after the moves";
+    return dt / float(n);
+}
+
+test "moving a link into a hub stays flat as the hub's fan-in grows" {
+    # Multiples of 64 on purpose: a drop then a connect lands the list on the
+    # length that used to trigger a full compaction on every move.
+    _churn(2048);
+    small = 1.0;
+    big = 1.0;
+    for trial in range(3) {
+        small = min(small, _churn(1024));
+        big = min(big, _churn(8192));
+    }
+    r = _ratio(small, big);
+    assert r < 4.0 , (
+        f"per-move cost grew {r:.1f}x when the hub's fan-in grew 8x "
+        f"({small * 1e6:.1f}us -> {big * 1e6:.1f}us per move); a link must be "
+        "found by its source, not by scanning the hub's incoming list"
+    );
+}
+
+test "a hub keeps exactly its live sources, in order, through drops and collection" {
+    import gc;
+    hub = HubNode();
+    srcs = [HubNode() for _ in range(300)];
+    for s in srcs {
+        s +>:HubRel:+> hub;
+    }
+    for s in srcs[::3] {
+        del [edge s->:HubRel:->];
+    }
+    kept = [
+        s
+        for (i, s) in enumerate(srcs)
+        if i % 3 != 0
+    ];
+    moved = kept[:10];
+    for s in moved {
+        del [edge s->:HubRel:->];
+        s +>:HubRel:+> hub;
+    }
+    gone = kept[10:60];
+    kept = kept[60:];
+    srcs = [];
+    gone = [];
+    gc.collect();
+    late = [HubNode() for _ in range(400)];
+    for s in late {
+        s +>:HubRel:+> hub;
+    }
+    expected = kept + moved + late;
+    seen = [hub<-:HubRel:<-];
+    assert len(seen) == len(expected) , (
+        f"hub reports {len(seen)} sources, expected {len(expected)}"
+    );
+    assert all(a is b for (a, b) in zip(seen, expected)) , (
+        "hub's sources are not the live ones in connection order"
+    );
+    for s in late[::2] {
+        del [edge s->:HubRel:->];
+    }
+    assert len([hub<-:HubRel:<-]) == len(expected) - len(late[::2]);
+}
+
+# ---------------------------------------------------------------------------
 # B. A transient anchor is identity plus topology, nothing else.
 # ---------------------------------------------------------------------------
 def _edge_anchors(nodes: list[TNode]) -> list[Anchor] {

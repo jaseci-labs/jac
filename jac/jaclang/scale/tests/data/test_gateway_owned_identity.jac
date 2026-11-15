@@ -10,14 +10,6 @@ real embedded Postgres.
 import os;
 import uuid;
 import from datetime { UTC, datetime, timedelta }
-import from jaclang.server.serving.authcrypt { jwt_encode }
-import from jaclang.scale.config.config_loader { normalize_gateway_config }
-import from jaclang.server.identity.config {
-    signing_algorithm as jwt_algorithm,
-    signing_secret as jwt_secret
-}
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.server.extensions { fleet_provisions_unknown_users }
 
 glob _SV_ENV: str = "JAC_SV_NAME";
 
@@ -114,6 +106,42 @@ test "an expired gateway token is never provisioned into existence" {
     detail = manager.validate_jwt_token_detail(expired);
     assert detail["status"] == "expired";
     assert manager.user_exists(user_id) is False;
+}
+
+
+test "a fleet service reads the assurance level the gateway put in the session" {
+    import asyncio;
+    import from jaclang.server.identity.assurance {
+        caller_assurance_level,
+        second_factor_claims
+    }
+    import from jaclang.server.middleware { jwt_middleware }
+    import from jaclang.server.serving.datatypes { Request, Response }
+    gateway = _manager("__gateway__");
+    service = _manager("orders_app");
+    if gateway is None or service is None {
+        return;
+    }
+    user_id = str(uuid.uuid4());
+    # The service's own middleware, fed the token the gateway forwards.
+    def level_seen(token: str) -> str {
+        request = Request();
+        request.headers.set("Authorization", "Bearer " + token);
+        seen: list[str] = [];
+        async def next_fn(req: Request) -> Response {
+            seen.append(caller_assurance_level());
+            return Response();
+        }
+        asyncio.run(jwt_middleware(service)(request, next_fn));
+        return seen[0];
+    }
+    strong = gateway.create_jwt_token(
+        user_id, assurance=second_factor_claims(["pwd", "otp"])
+    );
+    assert level_seen(strong) == "aal2";
+    assert level_seen(gateway.create_jwt_token(user_id)) == "aal1";
+    assert level_seen("not.a.token") == "";
+    assert caller_assurance_level() == "";
 }
 
 

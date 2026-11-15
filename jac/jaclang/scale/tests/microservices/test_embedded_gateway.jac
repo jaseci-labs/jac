@@ -1,13 +1,3 @@
-import from jaclang.testing.testkit { ServingTestClient as TestClient }
-import from jaclang.scale.runtime.gateway.embedded_gateway { EmbeddedGateway }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry
-}
-import from jaclang.scale.runtime.transport.transport { InProcessTransport }
-import from jaclang.scale.runtime.middleware.middleware { Middleware }
-
-
 def _make_gateway(dist: str = "/nonexistent-dist") -> EmbeddedGateway {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));

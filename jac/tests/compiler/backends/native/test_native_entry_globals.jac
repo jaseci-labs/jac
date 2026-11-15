@@ -9,7 +9,13 @@ closures, and free defs all observe the same module state as CPython.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts,
+    python_run
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -32,4 +38,25 @@ test "entry globals: a free def reads entry-assigned module state" {
     entry_fn();
     f = get_func(eng, "read_k", ctypes.c_int64);
     assert f() == 100 , "def sees the final entry-assigned value of k";
+}
+
+test "entry globals: augmented assignment and bool() rows match Python" {
+    (eng, _) = compile_native("entry_aug_bool.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    libc = ctypes.CDLL(None);
+    libc.fflush(None);
+    (r, w) = os.pipe();
+    saved = os.dup(1);
+    os.dup2(w, 1);
+    try {
+        entry_fn();
+        libc.fflush(None);
+    } finally {
+        os.dup2(saved, 1);
+        os.close(saved);
+        os.close(w);
+    }
+    out = os.read(r, 65536).decode();
+    os.close(r);
+    assert out == python_run(os.path.join(FIXTURES, "entry_aug_bool.jac")) , out;
 }

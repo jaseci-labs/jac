@@ -112,7 +112,9 @@ impl EsastGenPass._lower_place_builtin(nd: uni.FuncCall) -> es.Expression | None
 }
 
 
-def _place_pair(place: es.Expression) -> es.ArrayExpression {
+def _place_pair(place: es.Expression) -> es.ArrayExpression;
+
+impl _place_pair(place: es.Expression) -> es.ArrayExpression {
     value = es.Identifier(name="$jacValue");
     return es.ArrayExpression(
         elements=[

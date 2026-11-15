@@ -6,13 +6,9 @@ directly: `register_diagnostics_endpoints` against a recording host, then the
 endpoint's own callback.
 """
 
-import from jaclang.server.build_status { BuildMonitor }
-
 import asyncio;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.server.hmr { HotReloader }
-import from jaclang.server.watcher { JacFileWatcher }
 
 obj _CapturedServer {
     has endpoints: list[any] = [],
@@ -29,11 +25,6 @@ Test workers are pooled, so a live HotReloader or a latched rate limiter would
 ride into whatever runs next in the same worker.
 """
 def _reset_client_globals {
-    import from jaclang.client.source_mapping {
-        _locator_cache,
-        _mapper_cache,
-        _error_rate_limiter
-    }
     _locator_cache.clear();
     _mapper_cache.clear();
     _error_rate_limiter._seen = {};

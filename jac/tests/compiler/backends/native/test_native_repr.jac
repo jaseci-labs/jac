@@ -117,8 +117,7 @@ test "obj element default repr" {
     (eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "obj_elem_default", ctypes.c_char_p);
     out = f();
-    assert out.startswith(b"[<Plain object at 0x") , f"got {out!r}";
-    assert out.endswith(b">]") , f"got {out!r}";
+    assert out == b"[Plain(n=1)]" , f"got {out!r}";
 }
 
 test "print(list) and print(tuple) to stdout" {

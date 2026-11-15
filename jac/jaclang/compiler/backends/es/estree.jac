@@ -1,11 +1,8 @@
-import from typing { TypeAlias }
 import from typing { Literal as TypingLiteral }
 
-glob VariableDeclarationKind: TypeAlias = TypingLiteral[('var', 'let', 'const')],
-     PropertyKind: TypeAlias = TypingLiteral[('init', 'get', 'set')],
-     MethodDefinitionKind: TypeAlias = TypingLiteral[
-         ('constructor', 'method', 'get', 'set')
-     ];
+type VariableDeclarationKind = TypingLiteral['var', 'let', 'const'];
+type PropertyKind = TypingLiteral['init', 'get', 'set'];
+type MethodDefinitionKind = TypingLiteral['constructor', 'method', 'get', 'set'];
 
 obj SourceLocation {
     has source: (str | None) = None,
@@ -455,14 +452,14 @@ obj IndexInfo {
     has value: (Node | None) = None;
 }
 
-glob Pattern: TypeAlias = Identifier
-         | ArrayPattern
-         | ObjectPattern
-         | AssignmentPattern
-         | RestElement,
-     Declaration: TypeAlias = FunctionDeclaration
-         | VariableDeclaration
-         | ClassDeclaration,
-     ModuleDeclaration: TypeAlias = ImportDeclaration | ExportNamedDeclaration;
+type Pattern = Identifier
+    | ArrayPattern
+    | ObjectPattern
+    | AssignmentPattern
+    | RestElement;
 
+type Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration;
+type ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
+
+def es_children(nd: Node) -> dict[str, any];
 def es_node_to_dict(nd: Node) -> dict[str, any];

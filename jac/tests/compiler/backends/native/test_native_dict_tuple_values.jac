@@ -33,6 +33,14 @@ test "unpack an imported tuple-valued dictionary" {
     assert get_func(engine, "imported_tuple", ctypes.c_int64)() == 34;
 }
 
+test "setdefault and get keep a key's boxed tuple alive" {
+    (engine, module) = compile_native("dict_nested_tuple_keys.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , str(issues);
+    assert get_func(engine, "setdefault_nested_keys", ctypes.c_int64)() == 121;
+    assert get_func(engine, "get_nested_keys", ctypes.c_int64)() == 1;
+}
+
 test "subscript tuple values read from dictionaries" {
     (engine, module) = compile_native("dict_tuple_reads.jac");
     issues = native_lowering_issues(str(module.gen.llvm_ir));

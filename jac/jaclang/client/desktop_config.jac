@@ -1,6 +1,4 @@
 import from pathlib { Path }
-import from jaclang.comptime { fields, get_field }
-import from jaclang.project.plugin_config { PluginConfigBase }
 
 obj DesktopIdentity {
     has name: str,
@@ -18,17 +16,7 @@ obj WindowConfig {
 
     static def from_dict(
         data: dict[str, any], title_fallback: str = ""
-    ) -> WindowConfig {
-        kw: dict[str, any] = {
-            "title": str(data.get("title", title_fallback) or title_fallback)
-        };
-        comptime for f in fields(WindowConfig) {
-            comptime if f.name != "title" {
-                kw[f.name] = f.`type(data.get(f.name, f.`default));
-            }
-        }
-        return WindowConfig(**kw);
-    }
+    ) -> WindowConfig;
 }
 
 obj DispatchConfig {
@@ -36,13 +24,7 @@ obj DispatchConfig {
         max_queue: int = 128,
         debug: bool = False;
 
-    static def from_dict(data: dict[str, any]) -> DispatchConfig {
-        kw: dict[str, any] = {};
-        comptime for f in fields(DispatchConfig) {
-            kw[f.name] = f.`type(data.get(f.name, f.`default));
-        }
-        return DispatchConfig(**kw);
-    }
+    static def from_dict(data: dict[str, any]) -> DispatchConfig;
 }
 
 obj DesktopDefaultConfig {
@@ -51,19 +33,7 @@ obj DesktopDefaultConfig {
         version: str,
         window: WindowConfig;
 
-    def to_dict -> dict[str, any] {
-        window: dict[str, any] = {};
-        comptime for f in fields(WindowConfig) {
-            window[f.name] = get_field(self.window, f.name);
-        }
-        window['fullscreen'] = False;
-        return {
-            'name': self.name,
-            'identifier': self.identifier,
-            'version': self.version,
-            'window': window
-        };
-    }
+    def to_dict -> dict[str, any];
 }
 
 class JacDesktopConfig(PluginConfigBase) {
@@ -74,6 +44,10 @@ class JacDesktopConfig(PluginConfigBase) {
     def get_dispatch_config(self: JacDesktopConfig) -> DispatchConfig;
     def get_engine(self: JacDesktopConfig) -> str;
     def get_backend(self: JacDesktopConfig) -> str;
+    def get_backends(self: JacDesktopConfig) -> dict[str, str];
+    def get_default_backend(self: JacDesktopConfig) -> str;
+    def get_build_backend(self: JacDesktopConfig) -> str;
+    def get_profiles(self: JacDesktopConfig) -> bool;
     def get_plugin_configs(self: JacDesktopConfig) -> dict[str, any];
     def get_icon(self: JacDesktopConfig) -> Path | None;
     def validate(self: JacDesktopConfig) -> None;

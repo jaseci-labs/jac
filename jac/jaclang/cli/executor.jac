@@ -1,5 +1,3 @@
-import from jaclang.cli.command { CommandSpec }
-
 obj ExecutionResult {
     has return_code: int = 0,
         error: Exception | None = None;

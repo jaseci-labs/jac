@@ -7,17 +7,13 @@ otherwise, and since the build is fatal that kills the whole deploy.
 These drive the real ManifestBuilder against real project folders, running the
 actual `jac install` and `jac build` subprocesses; no mocks. Where a test needs
 to see inside the build's ephemeral stage, it goes through the codebase's own
-JAC_EXECUTABLE seam with a wrapper that hands every call to the real binary."""
+jac_executable seam with a wrapper that hands every call to the real binary."""
 
+import from unittest.mock { patch }
 import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.runtime.context.util { jac_executable }
 
 # Tiny, pure-python, zero-dependency package: enough to prove the host build
 # env is populated from [dependencies] without making this a download test.
@@ -100,19 +96,17 @@ test "the host client build installs the app's declared dependencies" {
     project_dir = _project(f'{APP_DEP} = ">=1.10"', APP_DEP);
     record = tempfile.mkdtemp(prefix="client-build-deps-rec-");
     script = _venv_probing_jac(record, record);
-    saved = os.environ.get("JAC_EXECUTABLE");
-    os.environ["JAC_EXECUTABLE"] = script;
+    _seam = patch(
+        "jaclang.scale.runtime.context.util.jac_executable", return_value=script
+    );
+    _seam.start();
     raised = None;
     try {
         _builder(project_dir)._build_client_bundle(project_dir);
     } except Exception as e {
         raised = e;
     } finally {
-        if saved is None {
-            os.environ.pop("JAC_EXECUTABLE", None);
-        } else {
-            os.environ["JAC_EXECUTABLE"] = saved;
-        }
+        _seam.stop();
         built = (
             Path(project_dir) / ".jac" / "client" / "dist" / "index.html"
         ).is_file();

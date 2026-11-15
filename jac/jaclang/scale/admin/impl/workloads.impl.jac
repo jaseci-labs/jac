@@ -2,111 +2,26 @@ import os;
 import time;
 import math;
 import logging;
-import from jaclang.server.serving.datatypes { Request }
+
 import asyncio;
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.observability.prometheus_client {
-    query as prom_query,
-    query_range as prom_query_range,
-    scalar as prom_scalar,
-    resolve_prometheus_url
-}
-import from jaclang.scale.admin.workload_helpers {
-    phase_to_status,
-    owner_name_from_pod,
-    match_owner
-}
 
 glob logger = logging.getLogger(__name__);
 
 def _index_by(
     rows: list[dict[str, any]], label: str, as_int: bool = False
-) -> dict[str, float] {
-    out: dict[str, float] = {};
-    for `entry in rows {
-        key = `entry.get("metric", {}).get(label, "");
-        v = `entry.get("value", [0, "0"]);
-        if key {
-            val = float(v[1]) if len(v) > 1 else 0.0;
-            if not math.isfinite(val) {
-                val = 0.0;
-            }
-            out[key] = int(val) if as_int else val;
-        }
-    }
-    return out;
-}
+) -> dict[str, float];
 
-def _finite(v: list[float | str]) -> float {
-    try {
-        val = float(v[1]) if len(v) > 1 else 0.0;
-    } except Exception {
-        return 0.0;
-    }
-    return val if math.isfinite(val) else 0.0;
-}
+def _finite(v: list[float | str]) -> float;
 
-def _workload_to_service(name: str) -> str {
-    base = name;
-    for suffix in ['-deployment', '-statefulset', '-daemonset'] {
-        if base.endswith(suffix) {
-            base = base[:len(base) - len(suffix)];
-            break;
-        }
-    }
-    return base.replace('-', '_');
-}
+def _workload_to_service(name: str) -> str;
 
-def _metrics_namespace -> str {
-    try {
-        import from jaclang.scale.config.config_loader { get_scale_config }
-        return str(
-            get_scale_config().get_monitoring_config().get('namespace', 'jaclang_scale')
-        );
-    } except Exception {}
-    return 'jaclang_scale';
-}
+def _metrics_namespace -> str;
 
-def _traffic_queries -> dict[str, any] {
-    if prom_query('count({__name__=~".+_gateway_requests_total"})') {
-        return {
-            'rate': 'sum(rate({__name__=~".+_gateway_requests_total"}[1m]))',
-            'errors': 'sum(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))',
-            'p95': 'histogram_quantile(0.95, sum(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])) by (le))',
-            'by_service': True
-        };
-    }
-    ns = _metrics_namespace();
-    return {
-        'rate': f'sum(rate({ns}_http_requests_total[1m]))',
-        'errors': f'sum(rate({ns}_http_requests_total{{status_code=~"5.."}}[1m]))',
-        'p95': f'histogram_quantile(0.95, sum(rate({ns}_http_request_duration_seconds_bucket[5m])) by (le))',
-        'by_service': False
-    };
-}
+def _traffic_queries -> dict[str, any];
 
-def _scoped(metric: str, ns_filter: str) -> str {
-    return f'{metric}{{{ns_filter}}}' if ns_filter else metric;
-}
+def _scoped(metric: str, ns_filter: str) -> str;
 
-def _unavailable_reason -> str {
-    try {
-        import from jaclang.scale.config.config_loader { get_scale_config }
-        if not bool(get_scale_config().get_monitoring_config().get('enabled', False)) {
-            return "Monitoring is disabled. Set [scale.monitoring] enabled = true in jac.toml and redeploy to see workload metrics.";
-        }
-    } except Exception {}
-    if resolve_prometheus_url() is None {
-        return "Prometheus URL not configured (K8S_APP_NAME unset).";
-    }
-    return "";
-}
+def _unavailable_reason -> str;
 
 impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     server = self.server;
@@ -613,34 +528,9 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
 
 def _rollup_range(
     rows: list[dict[str, any]], names: list[str]
-) -> dict[str, dict[float, float]] {
-    out: dict[str, any] = {};
-    for `entry in rows {
-        pod = `entry.get("metric", {}).get("pod", "");
-        owner = match_owner(pod, names);
-        series = out.get(owner, {});
-        for v in `entry.get("values", []) {
-            if len(v) >= 2 {
-                try {
-                    ts = float(v[0]);
-                } except (ValueError, TypeError) {
-                    continue;
-                }
-                series[ts] = series.get(ts, 0.0) + _finite(v);
-            }
-        }
-        out[owner] = series;
-    }
-    return out;
-}
+) -> dict[str, dict[float, float]];
 
-def _series_points(tsmap: dict[float, float]) -> list[dict[str, float]] {
-    pts: list[dict[str, float]] = [];
-    for ts in sorted(tsmap.keys()) {
-        pts.append({'t': ts, 'v': round(tsmap[ts], 4)});
-    }
-    return pts;
-}
+def _series_points(tsmap: dict[float, float]) -> list[dict[str, float]];
 
 impl JacAPIServerWorkloads.admin_workloads_timeseries(
     range_minutes: int = 60, Authorization: str | None = None
@@ -752,4 +642,118 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
         },
         meta=Meta(extra={'http_status': 200})
     );
+}
+
+impl _index_by(
+    rows: list[dict[str, any]], label: str, as_int: bool = False
+) -> dict[str, float] {
+    out: dict[str, float] = {};
+    for `entry in rows {
+        key = `entry.get("metric", {}).get(label, "");
+        v = `entry.get("value", [0, "0"]);
+        if key {
+            val = float(v[1]) if len(v) > 1 else 0.0;
+            if not math.isfinite(val) {
+                val = 0.0;
+            }
+            out[key] = int(val) if as_int else val;
+        }
+    }
+    return out;
+}
+
+impl _finite(v: list[float | str]) -> float {
+    try {
+        val = float(v[1]) if len(v) > 1 else 0.0;
+    } except Exception {
+        return 0.0;
+    }
+    return val if math.isfinite(val) else 0.0;
+}
+
+impl _workload_to_service(name: str) -> str {
+    base = name;
+    for suffix in ['-deployment', '-statefulset', '-daemonset'] {
+        if base.endswith(suffix) {
+            base = base[:len(base) - len(suffix)];
+            break;
+        }
+    }
+    return base.replace('-', '_');
+}
+
+impl _metrics_namespace -> str {
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        return str(
+            get_scale_config().get_monitoring_config().get('namespace', 'jaclang_scale')
+        );
+    } except Exception {}
+    return 'jaclang_scale';
+}
+
+impl _traffic_queries -> dict[str, any] {
+    if prom_query('count({__name__=~".+_gateway_requests_total"})') {
+        return {
+            'rate': 'sum(rate({__name__=~".+_gateway_requests_total"}[1m]))',
+            'errors': 'sum(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))',
+            'p95': 'histogram_quantile(0.95, sum(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])) by (le))',
+            'by_service': True
+        };
+    }
+    ns = _metrics_namespace();
+    return {
+        'rate': f'sum(rate({ns}_http_requests_total[1m]))',
+        'errors': f'sum(rate({ns}_http_requests_total{{status_code=~"5.."}}[1m]))',
+        'p95': f'histogram_quantile(0.95, sum(rate({ns}_http_request_duration_seconds_bucket[5m])) by (le))',
+        'by_service': False
+    };
+}
+
+impl _scoped(metric: str, ns_filter: str) -> str {
+    return f'{metric}{{{ns_filter}}}' if ns_filter else metric;
+}
+
+impl _unavailable_reason -> str {
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        if not bool(get_scale_config().get_monitoring_config().get('enabled', False)) {
+            return "Monitoring is disabled. Set [scale.monitoring] enabled = true in jac.toml and redeploy to see workload metrics.";
+        }
+    } except Exception {}
+    if resolve_prometheus_url() is None {
+        return "Prometheus URL not configured (K8S_APP_NAME unset).";
+    }
+    return "";
+}
+
+impl _rollup_range(
+    rows: list[dict[str, any]], names: list[str]
+) -> dict[str, dict[float, float]] {
+    out: dict[str, any] = {};
+    for `entry in rows {
+        pod = `entry.get("metric", {}).get("pod", "");
+        owner = match_owner(pod, names);
+        series = out.get(owner, {});
+        for v in `entry.get("values", []) {
+            if len(v) >= 2 {
+                try {
+                    ts = float(v[0]);
+                } except (ValueError, TypeError) {
+                    continue;
+                }
+                series[ts] = series.get(ts, 0.0) + _finite(v);
+            }
+        }
+        out[owner] = series;
+    }
+    return out;
+}
+
+impl _series_points(tsmap: dict[float, float]) -> list[dict[str, float]] {
+    pts: list[dict[str, float]] = [];
+    for ts in sorted(tsmap.keys()) {
+        pts.append({'t': ts, 'v': round(tsmap[ts], 4)});
+    }
+    return pts;
 }

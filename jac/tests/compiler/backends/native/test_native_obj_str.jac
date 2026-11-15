@@ -65,12 +65,11 @@ test "f-string interpolates obj via __str__" {
 }
 
 # --- default repr fallback (no __str__) ---
-test "str(obj) without __str__ falls back to default repr, not garbage" {
+test "str(obj) without __str__ writes the object's fields, as the Python tier does" {
     (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_default_repr", ctypes.c_char_p);
     got = f();
-    assert got.startswith(b"<Plain object at 0x") , f"got: {got!r}";
-    assert got.endswith(b">") , f"got: {got!r}";
+    assert got == b"Plain(x=7)" , f"got: {got!r}";
 }
 
 # --- polymorphism (vtable dispatch through a base-typed receiver) ---

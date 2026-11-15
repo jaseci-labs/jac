@@ -1,12 +1,3 @@
-import from jaclang.project.config_schema {
-    report_schema_findings,
-    validate_against_schema
-}
-import from jaclang.scale.config.plugin_config {
-    JacScalePluginConfig,
-    app_scale_schema
-}
-import from jaclang.scale.deploy.target.registry { DeploymentTargetRegistry }
 import math;
 
 impl known_deploy_targets -> list[str] {

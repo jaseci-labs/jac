@@ -1,168 +1,142 @@
-"""Unit gate for the floor locator's two shipping shapes (#6978 Phase 0.2).
-
-`nacompile` static-links a bundled C floor from a `.a` it resolves at compile
-time. `resolve_floor_dir` (in `compiler.backends.native.static_link`) and
-`_resolve_ca_bundle` map the jaclang package root + a
-target triple to that archive dir (and the CA bundle) under either the dev
-`.python-build` tree or the installed `python/floor` payload layout (staged into the
-runtime cache by `mkpayload`). These build each layout synthetically in a temp
-dir so the resolution is covered without a real pbs build or a relocated jaclang
--- the production lookups (`floor_lib_dir` / `_floor_ca_bundle`) just feed the real
-`jaclang.__file__`-derived root into these resolvers.
+"""The native floors are artifacts the router resolves per target: the C floor
+archives (`c-floor@<os-arch>`), the static musl runtime (`musl@<os-arch>`) and
+the wasm32 libc bitcode (`wasm-libc`). Each is found in the sealed image's
+`python/floor`, the checkout's build trees, or the kit's `python/floor`, and
+only for the architecture asked for. These build each layout synthetically in
+a temp dir so resolution is covered without a real Python or Zig build.
 """
 
+import hashlib;
 import os;
 import tempfile;
-import from jaclang.compiler.backends.native.static_link {
-    resolve_floor_dir,
-    floor_lib_dir
-}
-import from jaclang.cli.commands.native_build { _resolve_ca_bundle, _floor_ca_bundle }
+import from unittest.mock { patch }
+import jaclang.artifacts.router as router;
+import jaclang.compiler.backends.native.floors as floors;
+import from jaclang.artifacts.model { Source }
+import from jaclang.artifacts.kit { osarch }
 
-
-"""mkdir -p `path`, returning it."""
 def _mk(path: str) -> str {
     os.makedirs(path, exist_ok=True);
     return path;
 }
 
-
-test "installed payload: python/floor/<osarch> resolves by arch (#6978 0.2)" {
-    rt = tempfile.mkdtemp();
-    pkg_root = _mk(os.path.join(rt, "site"));  # jaclang pkg root == <rt>/site
-    floor = _mk(os.path.join(rt, "python", "floor", "linux-x86_64"));
-    got = resolve_floor_dir(pkg_root, "x86_64-unknown-linux-gnu");
-    assert got == floor , f"expected {floor}, got {got}";
+def _touch(path: str, data: bytes = b"") -> str {
+    _mk(os.path.dirname(path));
+    with open(path, "wb") as f {
+        f.write(data);
+    }
+    return path;
 }
 
-
-test "installed payload: cross-arch target does not match host floor (#6978 0.2)" {
-    rt = tempfile.mkdtemp();
-    pkg_root = _mk(os.path.join(rt, "site"));
-    _mk(os.path.join(rt, "python", "floor", "linux-x86_64"));
-    # Only an x86_64 floor is staged; an arm64 target must NOT grab it -- linking
-    # host-arch archives into a cross-arch binary is broken, so this stays None.
-    got = resolve_floor_dir(pkg_root, "aarch64-unknown-linux-gnu");
-    assert got is None , f"expected None for cross-arch, got {got}";
+def _unsealed -> any {
+    return patch("jaclang.jac0core.sealed._jaclang_image", return_value=None);
 }
 
+test "osarch names a triple the way the build trees do" {
+    assert osarch("x86_64-unknown-linux-gnu") == "linux-x86_64";
+    assert osarch("aarch64-unknown-linux-musl") == "linux-aarch64";
+    assert osarch("arm64-apple-macosx11.0.0") == "macos-aarch64";
+    assert osarch("wasm32-unknown-unknown") == "wasm32";
+}
 
-test "dev tree: .python-build/<osarch>/python/build/lib resolves (#6978 0.2)" {
-    base = tempfile.mkdtemp();
-    libdir = _mk(
-        os.path.join(base, ".python-build", "linux-x86_64", "python", "build", "lib")
+test "the checkout's C floor resolves per arch, never across arches" {
+    repo = tempfile.mkdtemp();
+    x86 = _mk(
+        os.path.join(repo, ".pbs-build", "linux-x86_64", "python", "build", "lib")
     );
-    got = resolve_floor_dir(base, "x86_64-unknown-linux-gnu");
-    assert got == libdir , f"expected {libdir}, got {got}";
-}
-
-test "JacPython resolves its development archives and CA bundle" {
-    with tempfile.TemporaryDirectory() as base {
-        build = _mk(
-            os.path.join(
-                base, ".python-build", "jacpython", "linux-x86_64", "python", "build"
-            )
-        );
-        libdir = _mk(os.path.join(build, "lib"));
-        ca = os.path.join(build, "cacert.pem");
-        with open(ca, "w") as f {
-            f.write("# test CA bundle\n");
-        }
-        assert resolve_floor_dir(base, "x86_64-unknown-linux-gnu") == libdir;
-        assert _resolve_ca_bundle(base) == ca;
+    _touch(os.path.join(x86, "libssl.a"));
+    with patch.object(floors, "_repo_root", return_value=repo), _unsealed() {
+        found = floors.CFloorArtifact(variant="linux-x86_64").probe_checkout();
+        assert found.found is not None and found.found.path == x86;
+        other = floors.CFloorArtifact(variant="linux-aarch64").probe_checkout();
+        assert other.found is None , "an aarch64 build must never link the x86_64 floor";
     }
 }
 
-test "CPython resolves its release archives and CA bundle on macOS and Linux" {
-    for (osarch, triple) in [
-        ("macos-aarch64", "arm64-apple-darwin"),
-        ("linux-x86_64", "x86_64-unknown-linux-gnu"),
-        ("linux-aarch64", "aarch64-unknown-linux-gnu")
-    ] {
-        with tempfile.TemporaryDirectory() as base {
-            build = _mk(
-                os.path.join(
-                    base, ".python-build", "cpython", osarch, "python", "build"
-                )
-            );
-            libdir = _mk(os.path.join(build, "lib"));
-            ca = os.path.join(build, "cacert.pem");
-            with open(ca, "w") as f {
-                f.write("# test CA bundle\n");
-            }
-            assert resolve_floor_dir(base, triple) == libdir;
-            assert _resolve_ca_bundle(base) == ca;
-            # A second variant in a warm checkout must not hide the default build.
-            _mk(
-                os.path.join(
-                    base, ".python-build", "jacpython", osarch, "python", "build", "lib"
-                )
-            );
-            assert resolve_floor_dir(base, triple) == libdir;
-        }
-    }
-}
-
-test "no floor anywhere resolves to None (#6978 0.2)" {
-    base = tempfile.mkdtemp();
-    got = resolve_floor_dir(base, "x86_64-unknown-linux-gnu");
-    assert got is None , f"expected None, got {got}";
-}
-
-
-test "JAC_NATIVE_FLOOR_DIR overrides resolution (#6978 0.2)" {
-    `override = tempfile.mkdtemp();
-    prev = os.environ.get("JAC_NATIVE_FLOOR_DIR", None);
-    os.environ["JAC_NATIVE_FLOOR_DIR"] = `override;
-    try {
-        got = floor_lib_dir("x86_64-unknown-linux-gnu");
-        assert got == `override , f"env override ignored: {got}";
-    } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_FLOOR_DIR", None);
-        } else {
-            os.environ["JAC_NATIVE_FLOOR_DIR"] = prev;
-        }
-    }
-}
-
-
-test "CA bundle resolves from installed python/floor/cacert.pem (#6978 0.2)" {
+test "a sealed image and a kit serve their own python/floor" {
     rt = tempfile.mkdtemp();
-    pkg_root = _mk(os.path.join(rt, "site"));
-    _mk(os.path.join(rt, "python", "floor"));
-    ca = os.path.join(rt, "python", "floor", "cacert.pem");
-    with open(ca, "w") as f {
-        f.write("# test bundle\n");
-    }
-    got = _resolve_ca_bundle(pkg_root);
-    assert got == ca , f"expected {ca}, got {got}";
-}
-
-
-test "CA bundle is None when neither installed nor dev bundle exists (#6978 0.2)" {
-    pkg_root = _mk(os.path.join(tempfile.mkdtemp(), "site"));
-    got = _resolve_ca_bundle(pkg_root);
-    assert got is None , f"expected None, got {got}";
-}
-
-
-test "JAC_NATIVE_CA_BUNDLE overrides CA resolution (#6978 0.2)" {
-    d = tempfile.mkdtemp();
-    `override = os.path.join(d, "my-ca.pem");
-    with open(`override, "w") as f {
-        f.write("# override\n");
-    }
-    prev = os.environ.get("JAC_NATIVE_CA_BUNDLE", None);
-    os.environ["JAC_NATIVE_CA_BUNDLE"] = `override;
-    try {
-        got = _floor_ca_bundle();
-        assert got == `override , f"env override ignored: {got}";
-    } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_CA_BUNDLE", None);
-        } else {
-            os.environ["JAC_NATIVE_CA_BUNDLE"] = prev;
+    floor = _mk(os.path.join(rt, "python", "floor"));
+    _touch(os.path.join(floor, "linux-x86_64", "libssl.a"));
+    _touch(os.path.join(floor, "linux-aarch64", "musl", "libc.a"));
+    _touch(os.path.join(floor, "wasm32", "libc", "libc.bc"));
+    with patch.object(floors, "runtime_floor_root", return_value=floor) {
+        with patch("jaclang.jac0core.sealed._jaclang_image", return_value=object()) {
+            c = floors.CFloorArtifact(variant="linux-x86_64").probe_sealed();
+            assert c is not None
+                and c.found is not None
+                and c.found.source == Source.SEALED;
+            m = floors.MuslArtifact(variant="linux-aarch64").probe_sealed();
+            assert m is not None and m.found is not None , "a kit bundles the cross musl too";
+            w = floors.WasmLibcArtifact().probe_sealed();
+            assert w is not None and w.found is not None;
         }
+        kit = floors.MuslArtifact(variant="linux-aarch64").probe_kit();
+        assert kit.found is not None and kit.found.source == Source.KIT;
+        absent = floors.MuslArtifact(variant="linux-x86_64").probe_kit();
+        assert absent.found is None;
+    }
+}
+
+test "a runtime being sealed serves the floor staged beside it" {
+    import jaclang;
+    rt = tempfile.mkdtemp();
+    pkg = _touch(os.path.join(rt, "site", "jaclang", "__init__.py"));
+    staged = _mk(os.path.join(rt, "python", "floor", "macos-aarch64"));
+    _touch(os.path.join(staged, "libcrypto.a"));
+    with patch("jaclang.artifacts.kit.kit_image", return_value=None) {
+        with patch.object(jaclang, "__file__", pkg) {
+            found = floors.CFloorArtifact(variant="macos-aarch64").probe_kit();
+            assert found.found is not None and found.found.path == staged;
+        }
+        bare = _touch(
+            os.path.join(tempfile.mkdtemp(), "site", "jaclang", "__init__.py")
+        );
+        with patch.object(jaclang, "__file__", bare) {
+            assert floors.CFloorArtifact(variant="macos-aarch64").probe_kit().found
+                is None;
+        }
+    }
+}
+
+test "a wasm libc floor is current only while its manifest matches wasm_rt" {
+    libc = tempfile.mkdtemp();
+    _touch(os.path.join(libc, "libc.bc"));
+    src = os.path.join(floors.wasm_rt_src_dir(), "jac_abi64.c");
+    with open(src, "rb") as f {
+        digest = hashlib.sha256(f.read()).hexdigest();
+    }
+    manifest = os.path.join(libc, floors.WASM_FLOOR_MANIFEST);
+    unchecked = floors._wasm_probe(libc, Source.CHECKOUT);
+    assert unchecked.found is None and "manifest" in unchecked.drift[0];
+    _touch(manifest, f"{digest} jac_abi64.c\n".encode());
+    assert floors._wasm_probe(libc, Source.CHECKOUT).found is not None;
+    _touch(manifest, f"{'0' * 64} jac_abi64.c\n".encode());
+    moved = floors._wasm_probe(libc, Source.CHECKOUT);
+    assert moved.found is None and moved.drift == ["wasm_rt/jac_abi64.c changed"];
+}
+
+test "static linking asks the router for the target's floors" {
+    import from jaclang.compiler.backends.native.native_link {
+        floor_lib_dir,
+        musl_lib_dir
+    }
+    repo = tempfile.mkdtemp();
+    lib = _mk(
+        os.path.join(repo, ".pbs-build", "linux-aarch64", "python", "build", "lib")
+    );
+    _touch(os.path.join(lib, "libssl.a"));
+    musl = _mk(os.path.join(repo, ".pbs-build", "linux-aarch64", "musl", "lib"));
+    _touch(os.path.join(musl, "libc.a"));
+    router.forget();
+    try {
+        with patch.object(floors, "_repo_root", return_value=repo), _unsealed() {
+            with patch.object(floors, "runtime_floor_root", return_value="") {
+                assert floor_lib_dir("aarch64-unknown-linux-gnu") == lib;
+                assert musl_lib_dir("aarch64-unknown-linux-musl") == musl;
+                assert musl_lib_dir("x86_64-unknown-linux-musl") is None;
+            }
+        }
+    } finally {
+        router.forget();
     }
 }

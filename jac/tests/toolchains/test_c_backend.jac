@@ -7,9 +7,10 @@ import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.backends.native.c_emit { emit_c }
 
 def c_compiler -> str {
-    if not os.environ.get('JAC_LLVM_CBE')
-        and not (shutil.which('llvm-config-22') and shutil.which('cmake')) {
-        testskip('LLVM C backend development toolchain is not installed');
+    import from jaclang.artifacts.router { artifact_named }
+    blocker = artifact_named('llvm-cbe').build_blocker();
+    if blocker {
+        testskip(blocker);
     }
     cc = shutil.which('cc');
     if not cc {

@@ -64,10 +64,10 @@ The four client entry points are `web.jac`, `mobile.jac`, `desktop.jac`, and
 | Feed and scoring services | 169 |
 | CLI | 115 |
 | Web, mobile, desktop entry points | 13 |
-| Tests | 66 |
-| `jac.toml` | 53 |
-| `arch.jac` | 32 |
-| **Total** | **980** |
+| Tests | 65 |
+| `jac.toml` | 51 |
+| `archwire.jac` | 33 |
+| **Total** | **978** |
 
 Reproduce the count with `wc -l jac.toml *.jac core/*.jac`.
 Documentation, dependencies, compiler/runtime code, and generated platform files
@@ -85,15 +85,16 @@ from the mobile browser preview on the installed runtime.
 
 ## Architecture
 
-This example uses `arch.jac` to define project-module imports and the
-rules that permit them. `[arch] closed = ["*"]` in `jac.toml` applies
-these boundaries to every module, including new ones.
+The root `archwire.jac` closes the wiring boundary for this example,
+including new modules. It injects project-module imports and defines the
+rules that restrict which names can flow between modules.
 
 To add a module:
 
 1. Create its `.jac` file.
-2. Add a wire in `arch.jac` for each required project-module import.
-3. Add or extend an edge rule to permit each new flow.
+2. Declare its project imports with `++>` wires in `archwire.jac`.
+3. Add or extend an edge rule for a new flow between top-level packages or
+   one restricted by an existing rule.
 4. Run `jac check .` to verify the architecture.
 
 ## Run

@@ -1,0 +1,9 @@
+[project]
+name = "decl_impl"
+
+[placement.pins]
+"pinned_component.Editor" = "client"
+"pinned_component.Field" = "client"
+"client_helper.view" = "client"
+"client_helper.helper" = "client"
+"client_helper.inline_helper" = "client"

@@ -318,7 +318,6 @@ impl ToolProvider.list_tools -> list[dict[str, any]] {
 
     ];
 
-    import from jaclang.cli.mcp.mode { get_mcp_mode, disabled_tools_for_mode }
     disabled = disabled_tools_for_mode(get_mcp_mode());
     if not disabled {
         return all_tools;
@@ -331,7 +330,6 @@ impl ToolProvider.list_tools -> list[dict[str, any]] {
 }
 
 impl ToolProvider.call_tool(name: str, arguments: dict[str, any]) -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     try {
         if name == "validate_jac" {
             code = arguments.get("code", "");
@@ -519,7 +517,6 @@ impl explain_error(error_message: str) -> dict[str, any] {
 }
 
 impl list_examples(category: str | None = None) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
     rp = get_resource_provider();
     rp.index_resources();
     examples: list[dict[str, str]] = [];
@@ -556,7 +553,6 @@ impl list_examples(category: str | None = None) -> dict[str, any] {
 }
 
 impl get_example(name: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
     rp = get_resource_provider();
     rp.index_resources();
     uri = f"jac://examples/{name}";
@@ -568,7 +564,6 @@ impl get_example(name: str) -> dict[str, any] {
 }
 
 impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
     rp = get_resource_provider();
     rp.index_resources();
     keywords = [
@@ -637,27 +632,22 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
 }
 
 impl get_ast(code: str, fmt: str = "tree") -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.get_ast_snippet(code, fmt);
 }
 
 impl lint_jac(code: str, auto_fix: bool = False) -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.lint_snippet(code, auto_fix);
 }
 
 impl jac_to_py(code: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.jac_to_py(code);
 }
 
 impl jac_to_js(code: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.jac_to_js(code);
 }
 
 impl run_jac(code: str, entrypoint: str = "", timeout: int = 10) -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.run_snippet(code, entrypoint, timeout);
 }
 
@@ -669,7 +659,6 @@ impl graph_visualize(
     edge_limit: int = 512,
     node_limit: int = 512
 ) -> dict[str, any] {
-    import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.graph_viz_snippet(
         code, format, depth, bfs, edge_limit, node_limit
     );
@@ -729,7 +718,6 @@ impl execute_command(
 }
 
 impl understand_jac_and_jaseci -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
     rp = get_resource_provider();
     rp.index_resources();
     content = rp.read_resource("jac://guide/understand");
@@ -740,7 +728,6 @@ impl understand_jac_and_jaseci -> dict[str, any] {
 }
 
 impl get_resource(uri: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
     rp = get_resource_provider();
     rp.index_resources();
     content = rp.read_resource(uri);
