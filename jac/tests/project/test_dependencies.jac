@@ -2259,14 +2259,24 @@ test "jac install refuses jaclang as a PyPI dependency and installs nothing" {
     import from contextlib { redirect_stderr }
     import from io { StringIO }
     import from jaclang.packages.commands { install_project }
+    import from tests.packages.fixture_registry { package_toml, write_tree }
     reset_config();
     (tmp, project_dir) = make_temp_project();
+    original_cwd = os.getcwd();
     try {
+        write_tree(
+            Path(tmp) / "left",
+            {
+                "jac.toml": package_toml("local/left", "1.0.0", ["mod"]),
+                "mod.jac": "def ok -> bool { return True; }\n"
+            }
+        );
         toml = project_dir / "jac.toml";
         toml.write_text(
             toml.read_text().replace(
                 'requests = ">=2.28.0"', 'requests = ">=2.28.0"\njaclang = ">=0.16.7"'
             )
+            + '\n[dependencies]\n"local/left" = { path = "../left" }\n'
         );
         config = JacConfig.load(toml);
         errors = StringIO();
@@ -2276,7 +2286,23 @@ test "jac install refuses jaclang as a PyPI dependency and installs nothing" {
         assert rc == 1;
         assert "'jaclang' is the Jac toolchain itself" in errors.getvalue() , errors.getvalue();
         assert not config.get_venv_dir().exists() , "nothing may be installed";
+        assert not config.get_build_dir().exists() , "no Jac package may be mounted either";
+        assert not (project_dir / "jac.lock").exists();
+
+        # A named install is refused the same way, before it touches anything.
+        os.chdir(project_dir);
+        reset_config();
+        before = toml.read_text();
+        errors = StringIO();
+        with redirect_stderr(errors) {
+            named_rc = proj_cmds.install(pypi=True, packages=["jaclang>=0.16.7"]);
+        }
+        assert named_rc == 1 , errors.getvalue();
+        assert "'jaclang' is the Jac toolchain itself" in errors.getvalue();
+        assert toml.read_text() == before , "jac.toml must not record it";
+        assert not config.get_venv_dir().exists();
     } finally {
+        os.chdir(original_cwd);
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
