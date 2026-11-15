@@ -555,9 +555,11 @@ RIGHT (immutable update -- creates new list):
 ```jac
 def:pub TodoApp() -> JsxElement {
     has todos: list[dict[str, any]] = [];
+    has next_id: int = 0;
 
     def add_todo() -> None {
-        todos = todos + [{"id": len(todos), "text": "new item"}];  # New list reference triggers re-render
+        todos = todos + [{"id": next_id, "text": "new item"}];  # New list reference triggers re-render
+        next_id = next_id + 1;
     }
 
     def remove_todo(id: int) -> None {
