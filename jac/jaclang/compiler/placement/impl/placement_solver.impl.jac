@@ -640,9 +640,7 @@ impl solve_module_placement(
             continue;
         }
         if stmt.code_context == CodeContext.CLIENT {
-            if sidx not in pinned_idx {
-                client_tops.append(stmt);
-            }
+            client_tops.append(stmt);
             continue;
         }
         if stmt.code_context == CodeContext.NATIVE {
