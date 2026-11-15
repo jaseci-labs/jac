@@ -3421,7 +3421,10 @@ walker NaIRGenPass(CompilerPass) {
     def _erased_field(type_name: str, fname: str) -> bool;
     def _erased_boxable(t: (ir.Type | None), want: (ir.Type | None) = None) -> bool;
     def _erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value;
-    def _erased_want(tv_names: list[str], owner: any) -> (ir.Type | None);
+    def _erased_want(
+        tv_names: list[str], owner: any, decl: (str | None) = None
+    ) -> (ir.Type | None);
+
     def _erased_slot(sp: uni.ParamVar, slot_type: ir.Type) -> bool;
     def _erased_arg_want(nd: uni.FuncCall, sp: uni.ParamVar) -> (ir.Type | None);
     def _box_erased_arg(

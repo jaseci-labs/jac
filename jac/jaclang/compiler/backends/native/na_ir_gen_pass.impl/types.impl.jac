@@ -1582,7 +1582,9 @@ impl NaIRGenPass._erased_decl_names(tb: any) -> list[str] {
     return out;
 }
 
-impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | None) {
+impl NaIRGenPass._erased_want(
+    tv_names: list[str], owner: any, decl: (str | None) = None
+) -> (ir.Type | None) {
     if not tv_names or not isinstance(owner, ClassType) or owner._shared is None {
         return None;
     }
@@ -1595,13 +1597,16 @@ impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | Non
         (_cls, _args) = _todo.pop(0);
         _key = class_type_native_name(_cls) or _cls.shared.class_name;
         _params: list[str] = self.arch_type_params.get(_key) or [];
-        for _tv in tv_names {
-            if _tv in _params {
-                _idx = _params.index(_tv);
-                if _idx < len(_args) {
-                    return self._lower_type(_args[_idx]);
+        if decl is None or _key == decl {
+            for _tv in tv_names {
+                if _tv in _params {
+                    _idx = _params.index(_tv);
+                    if _idx < len(_args) {
+                        return self._lower_type(_args[_idx]);
+                    }
                 }
             }
+            return None;
         }
         _bound = dict(zip(_params, _args));
         for _base in (_cls.shared.base_classes or []) {
@@ -1631,7 +1636,12 @@ impl NaIRGenPass._erased_arg_want(
     if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
         _owner_t = nd.target.target.type;
     }
-    return self._erased_want(self._erased_decl_names(sp.type), _owner_t);
+    _decl_arch = sp.find_parent_of_type(uni.Archetype);
+    return self._erased_want(
+        self._erased_decl_names(sp.type),
+        _owner_t,
+        self._arch_key(_decl_arch) if _decl_arch is not None else None
+    );
 }
 
 impl NaIRGenPass._box_erased_arg(
