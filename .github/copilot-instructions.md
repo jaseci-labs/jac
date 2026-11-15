@@ -41,6 +41,7 @@ jac precommit
 
 - Core logic: `byllm/lib.py`, `llm_connector.py`
 - Schema definitions: `schema.py`
+- Examples: `examples/agentic_ai/`
 
 ### Client & Desktop Runtimes
 
@@ -73,3 +74,4 @@ with entry { /* ... */ }
 - Jac examples: `jac/examples/reference/`, `jac/examples/*`
 - Type system details: `.github/agents/type-system-agent.md`
 - Compiler passes: `jac/jaclang/compiler/passes/`
+- LLM examples: `jac-byllm/examples/`
