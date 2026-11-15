@@ -1608,6 +1608,8 @@ def _iter_jac_files(
     paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool];
 
+def _build_dir_of(toml_path: Path) -> str;
+
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str];
 
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str];
@@ -2468,17 +2470,18 @@ impl _iter_jac_files(
                 explicit.add(os.path.realpath(path));
             }
         } elif path_obj.is_dir() {
-            config = get_config();
-            build_dir = os.path.realpath(str(config.get_build_dir()))
-                if config is not None
-                else "";
+            owner = find_project_root(path_obj.resolve());
+            build_dirs: set[str] = {_build_dir_of(owner[1])} if owner is not None else set();
             walked: list[str] = [];
             for (cur, dirnames, filenames) in os.walk(path) {
+                if "jac.toml" in filenames {
+                    build_dirs.add(_build_dir_of(Path(cur) / "jac.toml"));
+                }
                 kept = [
                     d
                     for d in sorted(dirnames)
                     if not is_pruned_source_dir(d)
-                        and os.path.realpath(os.path.join(cur, d)) != build_dir
+                        and os.path.realpath(os.path.join(cur, d)) not in build_dirs
                 ];
                 dirnames.clear();
                 dirnames.extend(kept);
@@ -2505,6 +2508,15 @@ impl _iter_jac_files(
         result = _drop_covered_annexes(result, explicit);
     }
     return (result, had_errors);
+}
+
+impl _build_dir_of(toml_path: Path) -> str {
+    import os;
+    try {
+        return os.path.realpath(str(JacConfig.load(toml_path).get_build_dir()));
+    } except Exception {
+        return "";
+    }
 }
 
 impl _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {

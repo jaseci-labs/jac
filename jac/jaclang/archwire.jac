@@ -1829,8 +1829,7 @@ graph import {
             | scale.plugin.scale_local_serve
             | server.endpoints.pages.register_diagnostics_endpoints.client_error
             | server.server.print_endpoint_docs { get_config },
-        cli.commands.analysis._iter_jac_files
-            | cli.commands.execution._load_cwd_config
+        cli.commands.execution._load_cwd_config
             | cli.commands.project.deps
             | cli.shadcn.cli.run_shadcn_remove { get_config },
         cli.commands.analysis.check
@@ -1879,6 +1878,8 @@ graph import {
             | scale.utils.vendor_wheels
             | server.server.JacAPIServer.build_app
             | testing.testing { JacConfig },
+        cli.commands.analysis._build_dir_of { JacConfig },
+        cli.commands.analysis._iter_jac_files { find_project_root },
         cli.commands.config._config_path { find_project_root, get_config },
         cli.commands.config._config_set
             | scale.injector.binary.deploy_generation_refusal {
