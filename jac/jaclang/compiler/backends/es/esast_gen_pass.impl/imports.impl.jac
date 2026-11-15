@@ -11,6 +11,14 @@ impl EsastGenPass._has_import(name: str) -> bool {
     return False;
 }
 
+impl EsastGenPass._new_import_binding(local: str, target: str) -> bool {
+    if self._import_bindings.get(local) == target {
+        return False;
+    }
+    self._import_bindings[local] = target;
+    return True;
+}
+
 impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
@@ -209,6 +217,29 @@ impl EsastGenPass.exit_import with uni.Import exit {
             }
         }
     }
+    kept:
+        list[
+            es.ImportSpecifier | es.ImportDefaultSpecifier | es.ImportNamespaceSpecifier
+        ] = [];
+    for spec in specifiers {
+        bound = "*";
+        if isinstance(spec, es.ImportSpecifier) and spec.imported is not None {
+            bound = spec.imported.name;
+        } elif isinstance(spec, es.ImportDefaultSpecifier) {
+            bound = "default";
+        }
+        if spec.local is None
+            or self._new_import_binding(
+                spec.local.name, js_import_path + ":" + bound
+            ) {
+            kept.append(spec);
+        }
+    }
+    if specifiers and not kept {
+        here.gen.es_ast = None;
+        return;
+    }
+    specifiers = kept;
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=specifiers, source=source), jac_node=here
     );
@@ -275,6 +306,14 @@ impl EsastGenPass._generate_sv_import_stubs(
 
         binding = manifest.bindings.get(local_name);
         if binding is not None and binding.kind != 'function' {
+            continue;
+        }
+        target_mod = binding.ast_node.loc.mod_path
+            if binding is not None and binding.ast_node is not None
+            else "";
+        if not self._new_import_binding(
+            local_name, "sv:" + target_mod + ":" + func_name
+        ) {
             continue;
         }
         boundary_types = manifest.boundary_types_for(

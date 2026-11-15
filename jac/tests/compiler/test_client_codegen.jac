@@ -124,13 +124,18 @@ test "client import local jac module gets relative path" {
         local_module.write_text("def helper() -> int { return 42; }");
         main_file = Path(tmpdir) / "main.jac";
         main_file.write_text(
-            "import from mymodule { helper }\n\ndef:pub app() -> int {\n    return helper();\n}\n"
+            "import from mymodule { helper }\n\ndef:pub app() -> int {\n    return helper();\n}\n\ndef:pub twice() -> int;\n"
+        );
+        # The annex repeats the import; one module in JS, so it must bind once (#10756).
+        (Path(tmpdir) / "main.impl.jac").write_text(
+            "import from mymodule { helper }\n\nimpl twice() -> int {\n    return helper() * 2;\n}\n"
         );
         prog = JacProgram();
         mod = prog.compile(str(main_file));
         js = mod.gen.js;
         assert "./mymodule.js" in js , f"Local Jac module import should use ./mymodule.js, got: {js}";
         assert 'from "mymodule"' not in js , "Should not have bare module name without ./ prefix";
+        assert js.count('from "./mymodule.js"') == 1 , f"helper is imported more than once: {js}";
     }
 }
 

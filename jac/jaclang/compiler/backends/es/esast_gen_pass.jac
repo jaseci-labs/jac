@@ -210,6 +210,7 @@ walker EsastGenPass(TreePass) {
         _match_break_labels: dict[(int, str)] = {},
         _match_break_seq: int = 0,
         sv_import_stubs: list[es.Statement] = [],
+        _import_bindings: dict[str, str] = {},
         na_import_stubs: list[es.Statement] = [],
         needs_jac_runtime: bool = False,
         needs_osp_kernel: bool = False,
@@ -443,6 +444,7 @@ walker EsastGenPass(TreePass) {
     def _setter_name_taken(has_var: uni.HasVar, setter_name: str) -> bool;
     can exit_has_var with uni.HasVar exit;
     def _has_import(name: str) -> bool;
+    def _new_import_binding(local: str, target: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode, src: str = "") -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
