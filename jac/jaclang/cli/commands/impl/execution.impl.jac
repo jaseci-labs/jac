@@ -966,7 +966,6 @@ impl _pin_run_scope(filename: str, takeover: (bool | None)) -> None {
     pin_project_scope(chosen);
     if chosen is not None {
         add_venv_to_path(chosen);
-        warn_unmet_jac_version(str(chosen.project.jac_version or "").strip());
     }
 }
 
@@ -1467,6 +1466,9 @@ impl _resolve_plan(
     (cfg, app, file, rc) = _resolve_target(target, takeover);
     if rc {
         return (None, cfg, None, file, rc);
+    }
+    if cfg is not None {
+        warn_unmet_jac_version(str(cfg.project.jac_version or "").strip());
     }
     if cfg is None or app is None {
         return (None, cfg, None, file, 0);

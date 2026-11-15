@@ -3963,7 +3963,7 @@ graph import cli {
         commands.execution { console, use_line_buffered_output },
     ]
     dispatch ++> [
-        commands.execution._pin_run_scope { warn_unmet_jac_version },
+        commands.execution._resolve_plan { warn_unmet_jac_version },
         manifest_route.handle_manifest_route { run_selected_command },
     ]
     errmap --> executor.CommandExecutor.execute { humanize_error, show_tracebacks }
