@@ -2315,7 +2315,9 @@ impl NaIRGenPass._codegen_instantiation(
                 val = self._erased_box(
                     val,
                     self._erased_want(
-                        self.struct_field_erased_tv[type_name][key_name], _ctor_t
+                        self.struct_field_erased_tv[type_name][key_name],
+                        _ctor_t,
+                        self._erased_field_owner(type_name, key_name)
                     )
                 );
             }
@@ -4671,7 +4673,8 @@ impl NaIRGenPass._emit_field_store(
             value,
             self._erased_want(
                 self.struct_field_erased_tv[type_name][field_name],
-                _receiver.type if _receiver is not None else None
+                _receiver.type if _receiver is not None else None,
+                self._erased_field_owner(type_name, field_name)
             )
         );
     }

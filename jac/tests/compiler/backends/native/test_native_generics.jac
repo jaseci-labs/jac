@@ -183,6 +183,7 @@ test "mono: generic method on an archetype stamps per call site" {
         ("holder_first_float", ctypes.c_double, 2, 2.5),
         ("sub_float_echo_int", ctypes.c_double, 3, 3.0),
         ("leaf_echo_float", ctypes.c_double, 2, 2.5),
+        ("child_float_field_from_int", ctypes.c_double, 3, 3.0),
         ("holder_echo_beside_spread", ctypes.c_int64, 7, 7),
         ("holder_echo_from_spread", ctypes.c_int64, 9, 9),
         ("holder_float_echo_from_int_spread", ctypes.c_double, 3, 3.0),

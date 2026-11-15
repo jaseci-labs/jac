@@ -61,6 +61,12 @@ def leaf_echo_float(v: int) -> float {
     return LeafHolder(val=1.5).echo("k", v + 0.5);
 }
 
+obj FloatHolder(Holder[float]) {}
+
+def child_float_field_from_int(v: int) -> float {
+    return FloatHolder(val=v).val;
+}
+
 def holder_echo_int(v: int) -> int {
     return Holder[int](val=5).echo("k", v);
 }

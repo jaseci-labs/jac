@@ -1533,6 +1533,14 @@ impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
     return fname in (self.struct_field_erased_tv.get(type_name) or {});
 }
 
+impl NaIRGenPass._erased_field_owner(type_name: str, fname: str) -> (str | None) {
+    _lay = self._arch_layout(type_name);
+    if _lay is None or fname not in _lay.field_index {
+        return None;
+    }
+    return _lay.fields[_lay.field_index[fname]].owner or None;
+}
+
 impl NaIRGenPass._erased_boxable(
     t: (ir.Type | None), want: (ir.Type | None) = None
 ) -> bool {

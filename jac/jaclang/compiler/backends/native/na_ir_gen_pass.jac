@@ -3419,6 +3419,7 @@ walker NaIRGenPass(CompilerPass) {
     def _erased_seq_type(tb: any) -> (ir.Type | None);
     def _erased_decl(tb: any) -> bool;
     def _erased_field(type_name: str, fname: str) -> bool;
+    def _erased_field_owner(type_name: str, fname: str) -> (str | None);
     def _erased_boxable(t: (ir.Type | None), want: (ir.Type | None) = None) -> bool;
     def _erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value;
     def _erased_want(
