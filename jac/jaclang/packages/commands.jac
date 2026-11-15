@@ -1,6 +1,7 @@
 import from pathlib { Path }
 
-glob PYPI_HINT: str = "Jac packages are scoped as org/name; install a Python package with 'jac install --pypi <name>'";
+glob PYPI_HINT: str = "Jac packages are scoped as org/name; install a Python package with 'jac install --pypi <name>'",
+     TOOLCHAIN_PYPI_PACKAGES: tuple[str, ...] = ("jaclang", );
 
 obj PackageSpec {
     has name: str,

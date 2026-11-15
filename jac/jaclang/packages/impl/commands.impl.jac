@@ -91,6 +91,20 @@ impl install_project(
         return 1;
     }
     python_deps = plan.for_ecosystem("python");
+    toolchain = [
+        d.name
+        for d in python_deps
+        if d.name.lower().replace("_", "-") in TOOLCHAIN_PYPI_PACKAGES
+    ];
+    if toolchain {
+        name = toolchain[0];
+        console.error(
+            f"'{name}' is the Jac toolchain itself and the jac binary provides it; "
+            "installing it into the project would shadow the running toolchain",
+            hint=f"remove {name} from [dependencies.pypi] in jac.toml"
+        );
+        return 1;
+    }
     ok = True;
     if python_deps {
         python = get_python_provider();
