@@ -597,14 +597,14 @@ impl solve_module_placement(
         }
     }
 
-    def _stamp(elem: uni.UniNode, ctx: CodeContext) {
+    def _stamp(elem: uni.UniNode, ctx: CodeContext, keep_server: bool = False) {
         already = isinstance(elem, uni.ContextAwareNode) and elem.code_context == ctx;
         _stamp_context_element(elem, ctx);
         if not already {
             stamp_count[0] += 1;
         }
         if (
-            dual
+            (dual or keep_server)
             and ctx == CodeContext.CLIENT
             and isinstance(elem, uni.ContextAwareNode)
         ) {
@@ -633,7 +633,7 @@ impl solve_module_placement(
         }
     }
     client_tops: list[uni.UniNode] = [];
-    pinned_client: list[uni.UniNode] = [];
+    anchored_client: list[uni.UniNode] = [];
     native_tops: list[uni.UniNode] = [];
     inferable: list[uni.UniNode] = [];
     for (sidx, stmt) in enumerate(module.body) {
@@ -641,8 +641,8 @@ impl solve_module_placement(
             continue;
         }
         if stmt.code_context == CodeContext.CLIENT {
-            if sidx in pinned_idx {
-                pinned_client.append(stmt);
+            if sidx in pinned_idx or stmt.codespace_dual {
+                anchored_client.append(stmt);
             } else {
                 client_tops.append(stmt);
             }
@@ -666,7 +666,7 @@ impl solve_module_placement(
         native_tops = [];
     }
     if (
-        (not client_tops and not native_tops and not pinned_client and not has_seeds)
+        (not client_tops and not native_tops and not anchored_client and not has_seeds)
         or not inferable
     ) {
         _invalidate_stale_codegen();
@@ -699,8 +699,9 @@ impl solve_module_placement(
         }
         na_ref_ids.update(body_refs[id(elem)]);
     }
-    for elem in pinned_client {
-        cl_ref_ids.update(body_refs[id(elem)]);
+    anchor_ref_ids: set[int] = set();
+    for elem in anchored_client {
+        anchor_ref_ids.update(body_refs[id(elem)]);
     }
     for elem in inferable {
         uses_map[id(elem)] = body_refs[id(elem)];
@@ -768,7 +769,11 @@ impl solve_module_placement(
                     not na_sources.isdisjoint(refs)
                     or (id(elem) in na_ref_ids and _pullable_native(elem))
                 );
-            if (want_cl and want_na) {
+            want_anchor = not want_cl
+                and id(elem) not in cl_refused
+                and id(elem) in anchor_ref_ids
+                and _pullable_by_client_reference(elem, module, body_refs);
+            if ((want_cl or want_anchor) and want_na) {
                 continue;
             }
             if want_na {
@@ -791,6 +796,14 @@ impl solve_module_placement(
                     cl_sources.add(id(elem));
                 }
                 cl_ref_ids.update(refs);
+                changed = True;
+            } elif want_anchor {
+                _stamp(elem, CodeContext.CLIENT, keep_server=not _is_sv_import(elem));
+                _note(
+                    elem,
+                    "pulled client (dual): referenced by a pinned or dual client element"
+                );
+                anchor_ref_ids.update(refs);
                 changed = True;
             } else {
                 remaining.append(elem);
