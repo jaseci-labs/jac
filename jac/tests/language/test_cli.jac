@@ -2286,6 +2286,19 @@ test "jac run warns when the running toolchain does not satisfy the project's ja
         );
         assert outside.returncode == 0 and "ran" in outside.stdout , outside.stderr;
         assert "this project targets jac <=0.0.1" in outside.stderr , outside.stderr;
+
+        # The default app and a named app are run without a file argument.
+        (project / "jac.toml").write_text(
+            '[project]\nname = "pinned"\nversion = "0.1.0"\njac-version = "<=0.0.1"\n'
+                + 'default-app = "tool"\n\n[apps.tool]\nkind = "cli"\nentry-point = "main"\n'
+        );
+        for args in [[], ["tool"]] {
+            routed = subprocess.run(
+                jac_command("run", *args), cwd=str(project), capture_output=True, text=True
+            );
+            assert routed.returncode == 0 and "ran" in routed.stdout , routed.stderr;
+            assert "this project targets jac <=0.0.1" in routed.stderr , routed.stderr;
+        }
     } finally {
         shutil.rmtree(project, ignore_errors=True);
     }
