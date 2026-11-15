@@ -9,7 +9,7 @@ glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',
      _schema_ready: set[str] = set(),
-     _schema_gate = threading.RLock(),
+     _schema_gate = threading.Lock(),
      __all__ = [
          'AnchorRow',
          'Store',

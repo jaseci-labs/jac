@@ -128,9 +128,7 @@ def _store_ns(info: ConnInfo) -> str;
 
 
 impl forget_schema(info: ConnInfo) -> None {
-    with _schema_gate {
-        _schema_ready.discard(_store_ns(info));
-    }
+    _schema_ready.discard(_store_ns(info));
 }
 
 
