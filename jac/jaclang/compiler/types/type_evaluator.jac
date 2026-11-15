@@ -165,7 +165,7 @@ walker TypeEvaluator {
         _modules_in_compile: set[str] postinit,
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
-        _sv_async_syms_cache: dict[int, set[int]] = {},
+        _sv_async_syms_cache: dict[int, set[tuple[int, str]]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _type_guard_probes: set[int] = set(),
         _loop_written_keys_cache: dict[int, set[str]] = {},
