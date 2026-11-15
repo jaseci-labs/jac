@@ -110,7 +110,14 @@ test "solid read seam lowers a reactive read to an accessor call" {
 
 test "solid aug-assign uses a functional updater (contract §5.3)" {
     backend = SolidBackend();
-    upd = StateUpdate(name="count", value=es.Literal(value=1, raw="1"), aug_op="+");
+    one = es.Literal(value=1, raw="1");
+    upd = StateUpdate(
+        name="count",
+        value=one,
+        combine=lambda (prev: es.Expression) -> es.Expression { return es.BinaryExpression(
+            operator="+", left=prev, right=one
+        ); }
+    );
     out = backend.lower_state_update(upd);
     js = es_to_js(out);
     assert js == "setCount(prev => (prev + 1))" , f"unexpected: {js}";
