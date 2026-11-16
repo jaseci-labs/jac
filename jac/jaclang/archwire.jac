@@ -14599,17 +14599,11 @@ graph import scale {
         },
         tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
     ]
-    websocket.websocket ++> [
-        server.websocket_ext {
-            ConnectionContext,
-            WebSocketConnectionManager,
-            _ws_stream_result
-        },
-        tests.server.test_ws_hardening {
-            ConnectionContext,
-            WebSocketConnectionManager
-        },
-    ]
+    websocket.websocket ++> server.websocket_ext | tests.server.test_ws_hardening {
+        ConnectionContext,
+        WebSocketConnectionManager,
+        _ws_stream_result
+    }
 }
 
 graph import scale._optdeps {

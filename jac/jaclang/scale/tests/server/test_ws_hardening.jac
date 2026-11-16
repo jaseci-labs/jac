@@ -3,6 +3,7 @@ auth handshake (query-token and first-frame, with tagged reject reasons), and
 the control-frame path (rate limiting, token expiry, refresh).
 """
 import asyncio;
+import contextvars;
 import json;
 import os;
 import shutil;
@@ -830,4 +831,40 @@ test "concurrent ws connections each forward their own caller" {
     } finally {
         _cleanup_user_manager(test_dir);
     }
+}
+
+
+test "a sync-generator stream closed early finishes its cleanup in the context it ran in" {
+    stream_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+        "_ws_test_stream_var", `default=""
+    );
+    cleanup: dict[str, bool] = {};
+    def chunks -> any {
+        token = stream_var.set("inside");
+        try {
+            yield 1;
+            yield 2;
+        } finally {
+            stream_var.reset(token);
+            cleanup['done'] = True;
+        }
+    }
+    async def body -> list[bool] {
+        abandoned: list[bool] = [];
+        async def send(payload: dict[str, any]) {
+            if payload.get('type') == 'chunk' {
+                raise WebSocketDisconnect();
+            }
+        }
+        def abandon {
+            abandoned.append(True);
+        }
+        try {
+            await _ws_stream_result(send, chunks(), abandon);
+        } except WebSocketDisconnect {}
+        return abandoned;
+    }
+    abandoned = asyncio.run(body());
+    assert cleanup.get('done') == True , f"got {cleanup}";
+    assert abandoned == [] , f"got {abandoned}";
 }
