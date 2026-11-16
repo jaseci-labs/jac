@@ -9,7 +9,6 @@ glob logger = logging.getLogger(__name__),
 
 obj ServiceProcessManager {
     has registry: ServiceRegistry,
-        deployer: (ServiceDeployer | None) = None,
         processes: dict[str, subprocess.Popen] = {},
         _own_sessions: dict[int, bool] = {},
         _health_check_timeout: int = 3,
@@ -38,6 +37,8 @@ obj ServiceProcessManager {
     def restart_service(name: str) -> bool;
     def check_health(name: str) -> bool;
     def check_all_health -> dict[str, bool];
+    def status -> dict[str, dict[str, any]];
+    def get_logs(name: str, lines: int = 50) -> str;
     def start_health_monitor(interval: float | None = None) -> None;
     def end_boot -> None;
     def stop_health_monitor -> None;

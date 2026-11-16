@@ -406,10 +406,8 @@ impl SolidBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expr
 
 impl SolidBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     setter_name = self._get_setter_name(u.name);
-    if u.aug_op {
-        updater_body = es.BinaryExpression(
-            operator=u.aug_op, left=es.Identifier(name='prev'), right=u.value
-        );
+    if u.combine {
+        updater_body = u.combine(es.Identifier(name='prev'));
         updater = es.ArrowFunctionExpression(
             params=[es.Identifier(name='prev')],
             body=updater_body,

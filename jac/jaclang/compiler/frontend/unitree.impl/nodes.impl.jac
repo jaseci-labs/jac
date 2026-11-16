@@ -3629,6 +3629,10 @@ impl UniNode.gen.setter(value: CodeGenTarget) {
     self._gen = value;
 }
 
+impl UniNode.has_gen -> bool {
+    return self._gen is not None;
+}
+
 impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {
     return self._type_sym_tab;
 }
