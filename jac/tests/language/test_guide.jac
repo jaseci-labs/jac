@@ -60,6 +60,16 @@ test "jac guide lists every bundled guide" {
     assert "jac-core-cheatsheet" in stdout;
 }
 
+test "the endpoint and auth guides teach how a served endpoint reads its request and sets its status" {
+    for topic in ["jac-sv-endpoints", "jac-sv-auth"] {
+        (stdout, _, code) = run_guide(topic=topic);
+        assert code == 0;
+        assert "jaclang.server.exchange" in stdout , topic;
+        assert "current_request()" in stdout , topic;
+        assert "respond(status=" in stdout , topic;
+    }
+}
+
 test "jac guide <topic> prints the guide body verbatim" {
     (stdout, _, code) = run_guide(topic="jac-types");
     assert code == 0;

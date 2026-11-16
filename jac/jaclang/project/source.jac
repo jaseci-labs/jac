@@ -78,6 +78,15 @@ def path_matches_exclude(
 
 def is_secret_file(name: str) -> bool;
 
+glob SOURCE_PRUNE_DIRS: tuple[str, ...] = (
+         "node_modules",
+         "__pycache__",
+         "venv",
+         "site-packages"
+     );
+
+def is_pruned_source_dir(name: str) -> bool;
+
 glob SECRET_FILE_NAMES: set[str] = {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"},
      SECRET_FILE_SUFFIXES: tuple[str, ...] = (
          ".pem",
