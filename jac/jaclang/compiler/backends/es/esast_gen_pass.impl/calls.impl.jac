@@ -31,9 +31,13 @@ impl EsastGenPass._prepare_dynamic_import(
     importer = self.module.loc.mod_path or nd.loc.mod_path;
     resolved: (str | None) = None;
     if raw is not None and valid {
-        for candidate in [raw, raw + ".jac"] {
+        for (candidate, as_string) in [
+            (raw, True),
+            (raw + ".jac", True),
+            (raw, False)
+        ] {
             (path, _lang) = active_host().resolve_module(
-                candidate, importer, string_spec=True
+                candidate, importer, string_spec=as_string
             );
             if path.endswith(".jac") and os.path.isfile(path) {
                 resolved = path;
@@ -50,6 +54,11 @@ impl EsastGenPass._prepare_dynamic_import(
     );
     if self.client_manifest {
         self.client_manifest.imports[raw] = resolved;
+        if export_name {
+            self.client_manifest.runtime_imports.setdefault(resolved, []).append(
+                export_name
+            );
+        }
     }
     self.module_import_paths[js_spec] = resolved;
     return (js_spec, export_name);
