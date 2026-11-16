@@ -201,8 +201,9 @@ test "deploy loads the cluster config, then resolves the pod arch and base image
         f'[project]\nname = "x"\nversion = "0.1.0"\n'
         f'jac-version = "=={major}.{minor}.99"\n'
     );
+    (Path(d) / "main.jac").write_text("def ping -> str {\n    return 'ok';\n}\n");
     order: list[str] = [];
-    target = KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
+    outcome: list[any] = [];
 
     def _note_config {
         order.append("config");
@@ -215,18 +216,50 @@ test "deploy loads the cluster config, then resolves the pod arch and base image
 
     def _note_image(project_dir: str, configured: str) -> str {
         order.append("image");
-        return "jaseci/jaclang:dev";
+        if isinstance(outcome[0], Exception) {
+            raise outcome[0];
+        }
+        return outcome[0];
     }
 
-    with unittest.mock.patch.object(target, "_load_cluster_config", _note_config), unittest.mock.patch.object(
-        binary_mod, "node_arch", _note_arch
-    ), unittest.mock.patch.object(
-        binary_mod, "preflight_pod_runtime", return_value="0.0.0"
-    ), unittest.mock.patch.object(binary_mod, "resolve_pod_base_image", _note_image), unittest.mock.patch.object(
-        KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
-    ) {
-        target.deploy(AppConfig(code_folder=d, file_name="main.jac", app_name="t"));
+    def _note_provision(*args: any, **kwargs: any) -> any {
+        order.append("provision");
+        raise RuntimeError("stop");
     }
-    assert order[:3] == ["config", "arch", "image"] , order;
-    assert target.k8s_config.python_image == "jaseci/jaclang:dev";
+
+    refused = "jaseci/jaclang:experimental-7 is not published on Docker Hub";
+    cases = [
+        # (label, image resolution, pod image, deploy message fragment, steps run)
+        (
+            "published",
+            "jaseci/jaclang:dev",
+            "jaseci/jaclang:dev",
+            "stop",
+            ["config", "arch", "image", "provision"]
+        ),
+        ("refused", RuntimeError(refused), "", refused, ["config", "arch", "image"])
+    ];
+    for (label, resolved, image, message, steps) in cases {
+        (order[:], outcome[:]) = ([], [resolved]);
+        target = KubernetesTarget(
+            config=KubernetesConfig(app_name="t", namespace="t-ns")
+        );
+        with unittest.mock.patch.object(target, "_load_cluster_config", _note_config), unittest.mock.patch.object(
+            binary_mod, "node_arch", _note_arch
+        ), unittest.mock.patch.object(
+            binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+        ), unittest.mock.patch.object(
+            binary_mod, "resolve_pod_base_image", _note_image
+        ), unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.database_provisioner.DatabaseProvisioner.provision",
+            _note_provision
+        ) {
+            result = target.deploy(
+                AppConfig(code_folder=d, file_name="main.jac", app_name="t")
+            );
+        }
+        assert order == steps , f"{label}: {order} {result.message}";
+        assert result.success is False and message in result.message , f"{label}: {result.message}";
+        assert target.k8s_config.python_image == image , f"{label}";
+    }
 }
