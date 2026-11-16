@@ -152,7 +152,7 @@ impl KubernetesTargetBase._deploy_databases(
     postgres_storage = get_scale_config().get_deploy_database_config().get(
         'postgres_storage'
     );
-    if postgres_storage is not None {
+    if postgres_storage {
         try {
             resize_pvc_if_needed(
                 core_v1, namespace, pg_pvc_name, str(postgres_storage)

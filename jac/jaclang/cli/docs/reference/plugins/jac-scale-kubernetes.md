@@ -617,7 +617,7 @@ postgres_storage = "10Gi"
 
 **Postgres PVC resize behaviour:**
 
-- **Unset**: Omitting `[scale.database] postgres_storage` preserves the current size of an existing PVC. A new PVC starts at `2Gi`.
+- **Unset**: Omitting `[scale.database] postgres_storage`, or setting it to `""`, preserves the current size of an existing PVC. A new PVC starts at `2Gi`.
 - **Increase**: Applying a larger `postgres_storage` on redeploy automatically patches the existing PVC. Your stored data is preserved - only the capacity request is updated.
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.

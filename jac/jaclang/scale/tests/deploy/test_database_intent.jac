@@ -383,7 +383,9 @@ test "an unset postgres size preserves a grown volume and explicit sizes still r
     for mode in ["image", "embedded"] {
         for (current, desired) in [
             ("20Gi", None),
+            ("20Gi", ""),
             (None, None),
+            (None, ""),
             (None, "10Gi"),
             ("20Gi", "20Gi"),
             ("20Gi", "30Gi"),
