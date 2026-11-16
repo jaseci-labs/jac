@@ -703,6 +703,20 @@ impl solve_module_placement(
     for elem in anchored_client {
         anchor_ref_ids.update(body_refs[id(elem)]);
     }
+    def _read_on_server(eid: int) -> bool {
+        for top in module.body {
+            if (
+                isinstance(top, uni.ContextAwareNode)
+                and top.top_element is top
+                and id(top) != eid
+                and (top.code_context != CodeContext.CLIENT or top.codespace_dual)
+                and eid in body_refs.get(id(top), set())
+            ) {
+                return True;
+            }
+        }
+        return False;
+    }
     for elem in inferable {
         uses_map[id(elem)] = body_refs[id(elem)];
     }
@@ -798,10 +812,13 @@ impl solve_module_placement(
                 cl_ref_ids.update(refs);
                 changed = True;
             } elif want_anchor {
-                _stamp(elem, CodeContext.CLIENT, keep_server=not _is_sv_import(elem));
-                _note(
+                _stamp(
                     elem,
-                    "pulled client (dual): referenced by a pinned or dual client element"
+                    CodeContext.CLIENT,
+                    keep_server=not _is_sv_import(elem) and _read_on_server(id(elem))
+                );
+                _note(
+                    elem, "pulled client: referenced by a pinned or dual client element"
                 );
                 anchor_ref_ids.update(refs);
                 changed = True;
