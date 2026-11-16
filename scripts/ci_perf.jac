@@ -264,13 +264,23 @@ def fetch_baseline(
         samples[phase.name] = [];
     }
     used: list[str] = [];
-    listing = json.loads(
-        client.get(
-            f"/repos/{client.repository}/actions/workflows/{policy.workflow}/runs"
-            f"?branch={policy.branch}&event=push&per_page={policy.runs * 3}"
-        )
-    );
-    for run in listing["workflow_runs"] {
+    runs: list[dict[str, any]] = [];
+    for event in ("schedule", "push") {
+        runs.extend(
+            json.loads(
+                client.get(
+                    f"/repos/{client.repository}/actions/workflows/{policy.workflow}/runs"
+                    f"?branch={policy.branch}&event={event}&per_page={policy.runs * 3}"
+                )
+            )["workflow_runs"]
+        );
+    }
+
+    def created(run: dict[str, any]) -> str {
+        return str(run.get("created_at", ""));
+    }
+
+    for run in sorted(runs, key=created, reverse=True) {
         short = [
             name
             for (name, values) in samples.items()
@@ -334,7 +344,7 @@ def fetch_baseline(
     counts = ", ".join(f"{name} {len(values)}" for (name, values) in samples.items());
     return Baseline(
         samples=samples,
-        note=f"median per phase over the last {len(used)} {policy.branch} pushes of "
+        note=f"median per phase over the last {len(used)} {policy.branch} runs of "
         f"{policy.workflow} (runs {used[-1]} to {used[0]}; samples: {counts})"
     );
 }

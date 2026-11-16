@@ -14,57 +14,17 @@ this file is the map of the tree and the rules that keep it organized.
 | `types/` | The type system and evaluator, compile-time values, the stub catalog, and the ambient `.pyi` surfaces | `frontend` |
 | `placement/` | The placement solver: which module runs where, pins, workspaces | `frontend`, `passes` |
 | `driver/` | `JacProgram`, `JacCompiler`, the schedules, module resolution, the caches (bytecode, interface, JIR), compile options | everything |
-| `backends/common/` | What the generators share: the primitive emitter interfaces and their dispatch tables, the kernel unit lists, the format kernel | `frontend`, `passes` |
+| `backends/common/` | What the generators share: the primitive emitter interfaces and their dispatch tables, the runtime unit lists, the format kernel | `frontend`, `passes` |
 | `backends/py/` | Jac to JCIR to CPython bytecode | `backends/common` |
 | `backends/es/` | Jac to ESTree to JavaScript, the client framework backends, view IR | `backends/common` |
 | `backends/native/` | Jac to LLVM IR, the linkers (ELF, Mach-O, PE, wasm), the wasm runtime, and the in-tree LLVM binding (`llvm/`, a translation of llvmlite, see `llvm/LICENSE.llvmlite`) | `backends/common` |
 | `tools/` | Formatter, linter, unparser, normalizer, doc IR, grammar extraction, code intelligence | `frontend`, `passes` |
 | `tests/` | Cross-backend equivalence fixtures that ship with the package | |
 
-The loose modules at this level are the compiler kernel (`jc_unit`,
-`native_compiler`, `native_scope`: analysis and code generation compiled
-natively and loaded as a shared library) and registries shared by analysis and
-codegen (`symbol_utils`, `expr_keys`, `type_registry`, `intrinsic_registry`).
-
-## The compiler kernel
-
-`native_scope.jac` lists the compiler modules the kernel links; each is an
-ordinary native unit, and `jc_unit.jac` is the root that exports the entry
-points. The kernel answers two requests, each a call and a take:
-
-- `jc_analyze` / `jc_take_analysis` run the analysis pipeline over a module and
-  return its diagnostics and per-module facts (`frontend/kernel_analyze.jac`).
-- `jc_compile` / `jc_take_compile` run the same session through code
-  generation and return each unit's compile products
-  (`driver/unit_products.jac`): the JCIR bytes, the MTIR graph, the interop
-  manifest, the client artifact, the placement summary and the comptime
-  dependencies.
-
-Nothing tree-shaped crosses. A session starts from a `KernelInputs` record
-holding the facts every compile needs (the request, project defaults, layout
-tables, the stub catalog's location) and the kernel's `KernelHost` answers
-`HostServices` from it. When the pipeline asks something the record does not
-hold yet (an import's resolution, a path's project, the interface of a Python
-or `jaclang` module), the kernel calls the host through the session's asker
-(`project/kernel_snapshot.jac`), merges the answer into its inputs and carries
-on. A compile is one kernel run: the host does not parse the program to guess
-at questions, and nothing is run again. A question the host cannot answer
-raises `HostOnlyError`, the request reports a miss, and the compile fails:
-with a kernel present the host never compiles a program module in its place.
-Results come back as JSON records; the host assembles JCIR into bytecode,
-restores the other products through the same path a JIR cache hit takes, and
-writes the module JIR. A session emits a unit for every module it analysed
-that has no cached products, so importing a program compiles its closure once
-(`kernel_compile_application` does the same for an application).
-`run_kernel_in_process()` (in `project/kernel_compile.jac`) runs the kernel's
-code under Python for tests.
-
-Keep pass and generator algorithms in `passes/` and `backends/`. To move a
-module into the kernel, add it to `native_scope.jac` and make it lower: a walker
-ability that fails to lower fails its unit and every importer, while a function
-that fails demotes to an abort stub the kernel must never reach. A new host
-question belongs on `HostServices`, with a `KernelInputs` field that holds
-its answer and a branch in the session's asker that produces it.
+The loose modules at this level are registries shared by analysis and codegen
+(`symbol_utils`, `expr_keys`, `type_registry`, `intrinsic_registry`) and the
+package path helpers (`pkg_paths`). The compiler itself always runs as Python
+bytecode; the native backend compiles user programs.
 
 ## Native hash containers
 

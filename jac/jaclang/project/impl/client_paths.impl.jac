@@ -31,6 +31,26 @@ impl client_assets_config(
     return effective.get_plugin_config('client').get('assets', {});
 }
 
+impl client_seo_config(
+    config: JacConfig | None, entry_path: str = ""
+) -> dict[str, any] {
+    if config is None {
+        return {};
+    }
+    app = client_workspace_app(config, entry_path);
+    if app is None and config.is_workspace and config.default_app {
+        app = config.app(config.default_app);
+    }
+    effective = config.effective_for_app(app.name) if app is not None else config;
+    seo = effective.get_plugin_config('client').get('seo', {});
+    import from jaclang.project.config { ServeConfigError, apply_table }
+    if not isinstance(seo, dict) {
+        raise ServeConfigError("[client.seo] must be a table");
+    }
+    apply_table(SeoConfig(), seo, "client.seo", {});
+    return seo;
+}
+
 impl client_input_dirs(
     config: JacConfig | None, project_dir: Path, entry_path: str = ""
 ) -> list[str] {

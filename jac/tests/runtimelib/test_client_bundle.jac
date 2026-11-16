@@ -137,6 +137,8 @@ test "dev index.html loads entry via dynamic import and tags load errors with ph
         # Load errors must carry the phase flag so the overlay is not triggered
         # for unrelated runtime errors that fire after the app has loaded
         assert 'phase: "load"' in content;
+        # Leaving the page cancels pending imports, which is not a load failure
+        assert 'if (leaving) return;' in content;
         assert '.catch(function() {})' in content;
     }
 }

@@ -32,8 +32,8 @@ glob PACKAGE = os.path.dirname(jaclang.__file__),
      );
 
 test "package modules outside the bound set scope their classes" {
-    bz2 = os.path.join(PACKAGE, "runtime", "python", "modules", "bz2.jac");
-    zstd = os.path.join(PACKAGE, "runtime", "python", "modules", "zstd.jac");
+    bz2 = os.path.join(PACKAGE, "runtime", "na_stdlib", "bz2.jac");
+    zstd = os.path.join(PACKAGE, "runtime", "na_stdlib", "zlib.jac");
     bz_name = native_arch_name(bz2, "CompressorState");
     zs_name = native_arch_name(zstd, "CompressorState");
     assert bz_name != zs_name , bz_name;

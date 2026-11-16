@@ -41,7 +41,6 @@ test "accounts own posts and likes; anonymous writes and impersonation fail" {
             assert not client.post("/function/join", json={"username": "alice"}).ok;
         } finally {
             client.close();
-            JacRuntime.set_shared_root_resolver(None);
         }
     }
 }

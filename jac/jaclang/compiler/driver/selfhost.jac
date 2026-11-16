@@ -15,11 +15,7 @@ obj SelfHostCache {
     def jaclang_root -> str;
     def owns(file_path: str) -> bool;
     def resolve(
-        file_path: str,
-        target_program: JacProgram,
-        force: bool = False,
-        native_unit: bool = False,
-        execution: bool = False
+        file_path: str, target_program: JacProgram, force: bool = False
     ) -> JacProgram;
 
     def evict_unit(

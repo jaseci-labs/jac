@@ -7,7 +7,7 @@ targets, called **codespaces**:
 
 | Codespace | Selector | Backend output | Runs on |
 |-----------|----------|----------------|---------|
-| **Server** | Inferred; the default, anchored by python imports, graph archetypes, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
+| **Server** | Inferred; the default, anchored by python imports, `root` access, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
 | **Client** | **Inferred** from client-only syntax (JSX, browser globals, string-path npm imports) and symbol references; `[placement.pins]` override or a `.jac` implementation-variant file | ESTree → JavaScript | Browsers / Node |
 | **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac build <file> --native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
@@ -201,14 +201,7 @@ light edge works on a view (`light_edge_view`).
 
 Every module parses through the staged front end: the lexer and parser in
 `compiler/frontend/parser/`, then the ir-gen schedule pass by pass. The
-native scope (`compiler/native_scope.jac`) names the compiler modules the
-kernel links; each is a native unit whose interface (`SEC_NIFACE`) and
-object (`SEC_NOBJ`, materialized on demand) live in its module JIR, and `libjac_compiler` is the
-link plan's artifact over them (`compiler/backends/native/link_plan.jac`),
-resolved by `kernel_resolve.jac`. The kernel analyzes (`jc_analyze`) and
-compiles (`jc_compile`) whole modules from a snapshot of the inputs the host
-sends, and returns diagnostics and compile products as records; see
-`compiler/README.md` for the boundary.
+compiler itself always runs as Python bytecode.
 
 ---
 
@@ -322,15 +315,8 @@ interfaces is checked (`E5116`). A refusal only the backend can see places
 the module on the server in place (`settle_native_module`): the tree was
 typed for no codespace, so the Python backend, which runs after the native
 one in the same schedule, emits it as it is. A backend exception is a
-compiler error (E9003, which blocks the module: neither its bytecode nor the
-JCIR the kernel hands the host survives it) and is never absorbed as a
-refusal, and so is a native unit the host fails to link after the kernel
-lowered it. Once the kernel is loaded its answer is final: the host compiles a
-program itself only when the program reaches something only the host can
-answer (`host_deferred`: another copy of the compiler, a native stdlib module
-the kernel has no interface for, third-party Python source). A kernel crash,
-or a kernel answer with no unit and no error, is an error, never a reason to
-compile the program again on the host. Nothing about a
+compiler error (E9003, which blocks the module) and is never absorbed as a
+refusal, and so is a native unit that fails to link. Nothing about a
 placement is stored between compiles beyond each module's summary.
 
 Between client and server code the same boundary rule judges what a request
@@ -400,8 +386,7 @@ on every compile's critical path, the ANALYSIS spec's `precheck` calls
 
 Every pass declares its contract on its own class:
 `static has contract: PassContract = PassContract(requires=..., provides=...)`,
-naming the `AnalysisFact`s it needs and supplies, and `kernel_safe=True` for
-the passes the native kernel runs while it parses. A scheduled pass with no
+naming the `AnalysisFact`s it needs and supplies. A scheduled pass with no
 contract is a scheduling error, and a schedule whose pass requires a fact no
 earlier pass or recorded fact provides is rejected before any pass runs.
 
@@ -410,8 +395,7 @@ One table, `PRODUCTS` in `pipeline.jac`, defines every schedule. Each
 the compiler can compile its own passes), its `bootstrap` variant, the
 modules it `loads`, the products whose tier it shares (`tier_with`), its
 import fallback, and whether a finished task is reused (`cached`). The
-facts a product guarantees are derived from its passes' contracts, and the
-kernel's early passes are the IR product's kernel-safe passes.
+facts a product guarantees are derived from its passes' contracts.
 
 There is one way to run passes: `require(program, module, product)`. It
 satisfies the product's needs first, resolves its schedule, and runs each
@@ -789,9 +773,8 @@ bootstrap tier imports it before any `.jac` module can be compiled.
 
 Every compiler digest (one per checkout) names a **generation** directory, so
 several checkouts sharing one binary keep disjoint slots; the live generation
-is held by identity, never by age. The stub catalog (`jir-stubcat`), the
-native kernel units (`jir-kernel-units`) and the per-checkout compiler digests
-(`jir-digests`) are further buckets under `jir/` with the same 14-day
+is held by identity, never by age. The stub catalog (`jir-stubcat`) and the
+per-checkout compiler digests (`jir-digests`) are further buckets under `jir/` with the same 14-day
 last-use policy. Sweeps run opportunistically from each bucket's write path,
 at most once per process and once per day; `jac cache gc` runs them on
 demand.

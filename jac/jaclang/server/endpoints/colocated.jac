@@ -17,6 +17,7 @@ def _fail(code: str, message: str, status: int) -> TransportResponse;
 
 
 def _unit_failed(result: any) -> bool;
+def _answer_is_final(result: any) -> bool;
 
 
 def _outcome(result: any, fallback: str) -> (TransportResponse | Response);

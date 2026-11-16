@@ -4258,9 +4258,18 @@ impl TypeEvaluator.get_type_of_expression(
                 node_.find_parent_of_type(SubTag) is not None
                 or node_.find_parent_of_type(FuncSignature) is not None
             );
+        import from jaclang.compiler.frontend.unitree { names_except_type }
+        bare: UniNode = node_;
+        while isinstance(bare, AtomUnit) {
+            bare = bare.value;
+        }
+        is_undefined_except_type = (
+            isinstance(bare, Name) and bare.sym is None and names_except_type(bare)
+        );
         if (mod is None or not mod.is_raised_from_py)
             and not is_pattern_wildcard
-            and not is_annotation_ellipsis {
+            and not is_annotation_ellipsis
+            and not is_undefined_except_type {
             self.emit_diag(W1051, node_);
         }
     }

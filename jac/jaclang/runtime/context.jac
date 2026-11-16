@@ -11,6 +11,7 @@ glob __all__ = ['ExecutionContext'],
 
 obj CallState {
     has reports: Queue = Queue(),
+        committed: bool = False,
         _sentinel: object = object();
 }
 

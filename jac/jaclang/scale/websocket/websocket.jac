@@ -3,6 +3,7 @@ import logging;
 import time;
 import uuid;
 import from asyncio { Lock }
+import from json { dumps }
 
 import from inspect { isgenerator }
 
@@ -54,7 +55,9 @@ obj WebSocketConnectionManager {
         target_kind: str, target_name: str, message: dict[str, any]
     ) -> None;
 
-    async def send_to(ctx: ConnectionContext, message: dict[str, any]) -> bool;
+    async def send_to(
+        ctx: ConnectionContext, message: dict[str, any], text: (str | None) = None
+    ) -> bool;
 }
 
 def consume_rate_token(

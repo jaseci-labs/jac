@@ -6,8 +6,14 @@ observe in-process and from what survives a restart. A successful
 walker's work still persists (positive control).
 """
 
+import asyncio;
+import json;
+import os;
+import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from jaclang.runtime.context { ExecutionContext }
+import from jaclang.server.session { RO_UNITS_ENV }
 import from jaclang.testing.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
@@ -97,5 +103,200 @@ test "successful walker still persists (positive control)" {
         assert reopened.login("abort_d", "pw12345_Secure1").ok;
         assert count_items(reopened) == 1 , "committed work must survive restart";
         reopened.close();
+    }
+}
+
+
+obj LateCase {
+    has label: str,
+        via: str = "walker",
+        body: dict[str, any] = {},
+        own_session: bool = False,
+        read_tier: bool = False,
+        status: int = 500,
+        code: str = "FAILED_AFTER_COMMIT",
+        runs: int = 1,
+        callbacks: int = 1,
+        saved: int = 1;
+}
+
+
+"""A failure after a request's first commit is its final answer: each row is sent
+twice with one key, the walker never re-runs and the retry replays the answer, while
+a callback's error from another database connection stays logged, as does one from
+the walker's own commit(), before that first commit. A failed first commit saved
+nothing, so its retry runs."""
+test "a failure after the first commit is answered once and replayed, never re-run" {
+    import from jaclang.server.endpoints.colocated {
+        _function_callback,
+        _walker_callback
+    }
+    import from jaclang.server.serving.app { transport_to_response }
+    import from jaclang.server.serving.datatypes { Headers, JSONResponse, Request }
+    import from jaclang.server.transport { TransportResponse }
+    bad = f"a{chr(0)}b";
+    refused = {"late": bad, "status": 429};
+    cases = [
+        LateCase("clean", status=200, code="", saved=2),
+        LateCase("bad late write, after respond(429)", body=refused),
+        LateCase("function", via="function", body=refused),
+        # Colocated callbacks run off this user's root, so its count stays put.
+        LateCase("colocated walker", via="colocated walker", body=refused, saved=0),
+        LateCase("colocated function", via="colocated function", body=refused, saved=0),
+        LateCase("late write loses to a rival", body={"fault": "rival"}),
+        LateCase("error on this connection", body={"fault": "own_db"}),
+        LateCase("wrapped error on this connection", body={"fault": "wrapped_db"}),
+        LateCase(
+            "error raised while handling one on this connection",
+            body={"fault": "raised_in_except"}
+        ),
+        LateCase(
+            "error on this connection from the walker's own commit()",
+            body={"fault": "own_db", "commit_first": True},
+            status=200,
+            code=""
+        ),
+        LateCase(
+            "conflict from the walker's own commit()",
+            body={"fault": "conflict", "commit_first": True},
+            status=200,
+            code=""
+        ),
+        LateCase(
+            "error on another connection",
+            body={"fault": "other_db"},
+            status=200,
+            code=""
+        ),
+        LateCase("conflict in the callback", body={"fault": "conflict"}),
+        LateCase(
+            "read tier retry in the callback",
+            body={"fault": "read_tier"},
+            status=200,
+            code=""
+        ),
+        LateCase(
+            "a callback's callback is dropped with the failed write",
+            body={"fault": "chain", "late": bad},
+            own_session=True
+        ),
+        LateCase("getter raises while serializing", via="peek", callbacks=0),
+        LateCase(
+            "late write on the read tier re-runs as a writer",
+            via="read tier",
+            read_tier=True,
+            status=200,
+            code="",
+            runs=2,
+            callbacks=2
+        ),
+        LateCase(
+            "first commit fails",
+            body={"first": bad},
+            own_session=True,
+            code="EXECUTION_ERROR",
+            runs=2,
+            callbacks=0,
+            saved=0
+        ),
+        LateCase(
+            "first commit fails, colocated",
+            via="colocated walker",
+            body={"first": bad},
+            code="EXECUTION_ERROR",
+            runs=2,
+            callbacks=0,
+            saved=0
+        )
+    ];
+    async def own_session_for(target: object, parent: any, user_root_id: str) -> any {
+        context = ExecutionContext(
+            _parent=parent, _own_session=True, full_target_path=parent.full_target_path
+        );
+        await context.aset_user_root(user_root_id);
+        return context;
+    }
+    prior = os.environ.get(RO_UNITS_ENV);
+    real_for_target = ExecutionContext.for_target;
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        try {
+            assert client.register_user("abort_e", "pw12345_Secure1").ok;
+            server = client.server;
+            intro = server.introspector;
+            mod = sys.modules[intro.target("LateWrite").__module__];
+            def by_route(path: str) -> Callable {
+                def send(body: dict[str, any], key: str) -> tuple[int, str] {
+                    got = client.post(
+                        path, json=body, headers={"X-Jac-Idempotency-Key": key}
+                    );
+                    return (got.status_code, json.dumps(got.json()));
+                }
+                return send;
+            }
+            def by_callback(callback: any) -> Callable {
+                def send(body: dict[str, any], key: str) -> tuple[int, str] {
+                    request = Request(
+                        method="POST",
+                        headers=Headers([("X-Jac-Idempotency-Key", key)]),
+                        body=json.dumps(body).encode()
+                    );
+                    async def scoped -> any {
+                        with server.request_scope() {
+                            return await callback(request);
+                        }
+                    }
+                    got = _as_any(asyncio.run(scoped()));
+                    if isinstance(got, TransportResponse) {
+                        got = transport_to_response(got);
+                    }
+                    assert isinstance(got, JSONResponse) , f"{got}";
+                    return (got.status_code, json.dumps(got.content));
+                }
+                return send;
+            }
+            senders = {
+                "walker": by_route("/walker/LateWrite"),
+                "function": by_route("/function/late_note"),
+                "peek": by_route("/walker/LatePeek"),
+                "read tier": by_route("/walker/LateFromReadTier"),
+                "colocated walker": by_callback(
+                    _walker_callback(server, "abort", "LateWrite", intro, False)
+                ),
+                "colocated function": by_callback(
+                    _function_callback(server, "abort", "late_note", intro, False)
+                )
+            };
+            for row in cases {
+                os.environ[RO_UNITS_ENV] = "1" if row.read_tier else "0";
+                before = count_items(client);
+                mod.runs.clear();
+                mod.late_runs.clear();
+                if row.own_session {
+                    _as_any(ExecutionContext).for_target = own_session_for;
+                }
+                try {
+                    answers = [senders[row.via](row.body, row.label) for _ in range(2)];
+                } finally {
+                    _as_any(ExecutionContext).for_target = real_for_target;
+                }
+                assert answers[0] == answers[1] , f"{row.label}: {answers}";
+                assert answers[0][0] == row.status , f"{row.label}: {answers[0]}";
+                assert row.code in answers[0][1] , f"{row.label}: {answers[0]}";
+                assert len(mod.runs) == row.runs , f"{row.label}: ran {len(mod.runs)}";
+                assert len(mod.late_runs) == row.callbacks , (
+                    f"{row.label}: callback ran {len(mod.late_runs)} times"
+                );
+                saved = count_items(client) - before;
+                assert saved == row.saved , f"{row.label}: saved {saved}";
+            }
+        } finally {
+            if prior is None {
+                os.environ.pop(RO_UNITS_ENV, None);
+            } else {
+                os.environ[RO_UNITS_ENV] = prior;
+            }
+            client.close();
+        }
     }
 }

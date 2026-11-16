@@ -26,7 +26,9 @@ class JacClientConfig(PluginConfigBase) {
     def get_assets_config(self: JacClientConfig) -> dict[str, any];
     def get_asset_extensions(self: JacClientConfig) -> set[str];
     def get_assets_dir(self: JacClientConfig, entry_path: str = "") -> Path;
+    def get_app_root(self: JacClientConfig, entry_path: str = "") -> Path;
     def get_public_dirs(self: JacClientConfig, entry_path: str = "") -> list[Path];
+    def get_seo_config(self: JacClientConfig, entry_path: str = "") -> dict[str, any];
     def is_pwa_enabled(self: JacClientConfig) -> bool;
     def get_react_native_config(self: JacClientConfig) -> dict[str, any];
 }

@@ -156,7 +156,8 @@ impl JacProgram.load_dependency_module(
     source_path: str,
     importer_path: (str | None) = None,
     use_str: (str | None) = None,
-    need_tree: bool = False
+    need_tree: bool = False,
+    need_bodies: bool = False
 ) -> uni.Module {
     resolved_path = os.path.realpath(source_path);
     import from jaclang.compiler.frontend.host { active_host }
@@ -187,13 +188,7 @@ impl JacProgram.load_dependency_module(
         and not (need_tree and isinstance(target_hub[resolved_path], CatModule)) {
         mod = target_hub[resolved_path];
     } else {
-        served: (uni.Module | None) = None;
-        if resolved_path.endswith('.pyi') and not need_tree {
-            served = active_host().stub_interface(self, resolved_path);
-        }
-        if served is not None {
-            mod = served;
-        } elif resolved_path.endswith('.pyi') {
+        if resolved_path.endswith('.pyi') {
             import from jaclang.compiler.driver.pass_driver { run_pass }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             src = use_str or active_host().read_source(source_path);
@@ -371,6 +366,11 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
         return;
     }
     ev.release_check_caches();
+    if self.mod is not None {
+        for mod in self.mod.hub.values() {
+            mod.import_bound_names = None;
+        }
+    }
 }
 
 impl JacProgram.release_compile_closure(
@@ -556,17 +556,11 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
         return True;
     }
     opts = self.options;
-    if opts is not None and opts.no_cgen {
+    if opts is not None and opts.no_cgen and not opts.native_import {
         return False;
     }
     if opts is not None and opts.native_unit {
-        import from jaclang.compiler.native_scope {
-            in_native_scope_path,
-            package_host_edge
-        }
-        if in_native_scope_path(file_path) {
-            return True;
-        }
+        import from jaclang.compiler.pkg_paths { package_host_edge }
         if package_host_edge(file_path) {
             return False;
         }
@@ -616,11 +610,7 @@ impl JacProgram.parse_source(
         }
         infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
-            source_str,
-            file_path,
-            self,
-            annex_sources(file_path),
-            early_context=codespace or ('' if infer_native else 'server')
+            source_str, file_path, self, annex_sources(file_path)
         );
         active_host().place_wired_imports(parsed);
         if codespace == 'client' {

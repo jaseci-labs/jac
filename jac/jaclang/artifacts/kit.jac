@@ -5,8 +5,6 @@ glob _KIT: list[tuple[str, (SealedImage | None)]] = [];
 
 def kit_image -> (tuple[str, SealedImage] | None);
 
-def pr_kit_omits(name: str) -> bool;
-
 def kit_path(rel: str) -> str;
 
 def _find_kit -> tuple[str, (SealedImage | None)];

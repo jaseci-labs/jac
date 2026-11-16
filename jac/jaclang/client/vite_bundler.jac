@@ -31,6 +31,9 @@ glob logger = logging.getLogger(__name__),
          '/assets'
      ];
 
+
+def client_build_env -> list[str];
+
 def client_deps_stale(build_dir: Path) -> bool;
 
 def _forward_vite_output(

@@ -1,7 +1,3 @@
-impl TargetSpec.kernel_file_name -> str {
-    return f"{self.shared_prefix}jac_compiler{self.shared_suffix}";
-}
-
 impl triple_osarch(triple: str) -> str {
     text = triple.lower();
     arch = "";

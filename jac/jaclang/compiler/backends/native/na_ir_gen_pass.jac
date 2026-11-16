@@ -855,6 +855,14 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _builtin_getattr_call(nd: uni.FuncCall) -> bool;
+    def _native_getattr_alias_for_symbol(sym: uni.Symbol) -> tuple[str, str] | None;
+    def _native_getattr_alias_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _native_module_member_ability(
+        module_name: str, member_name: str, nd: uni.FuncCall
+    ) -> (uni.Ability | None);
+
+    def _native_getattr_alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
     def _stdlib_intercept_covers(module_name: str, func_name: str) -> bool;
     def _emit_stdlib_intercept(
         module_name: str, func_name: str, nd: uni.FuncCall
@@ -1530,13 +1538,14 @@ walker NaIRGenPass(CompilerPass) {
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
+    def _typed_container_target(target_type: ir.Type) -> (tuple[str, str, str] | None);
     def _unbox_any_container(jv: ir.Value, target_type: ir.Type) -> (ir.Value | None);
     def _retype_boxed_tuple_fields(
         targets: list[uni.Expr], packed: ir.Value
     ) -> ir.Value;
 
     def _adopt_any_view(
-        view: ir.Value, payload: ir.Value, target_type: ir.Type
+        view: ir.Value, payload: ir.Value, target_type: ir.Type, message: str
     ) -> ir.Value;
 
     def _binding_function_active -> bool;
@@ -1924,6 +1933,14 @@ walker NaIRGenPass(CompilerPass) {
     def _quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _glob_native_use_exists(target: uni.UniNode) -> bool;
     def _register_entry_globals(module: uni.Module) -> None;
+    def _glob_storage_type(
+        assign: uni.Assignment, target: uni.UniNode
+    ) -> (ir.Type | None);
+
+    def _decl_storage_type(
+        type_tag: (uni.UniNode | None), value: (uni.UniNode | None)
+    ) -> ir.Type;
+
     def _codegen_global_vars(nd: uni.GlobalVars) -> None;
     def _infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None);
     def _codegen_const_expr(
@@ -2894,6 +2911,14 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
+    def _emit_hdr_tag_is(
+        b: ir.IRBuilder,
+        raw: ir.Value,
+        names: list[str],
+        exact: bool = True,
+        untagged: bool = False
+    ) -> ir.Value;
+
     def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
     def _emit_rc_release_fast(
         fn: ir.Function, release_fn: ir.Function, may_cycle: bool
@@ -2903,7 +2928,7 @@ walker NaIRGenPass(CompilerPass) {
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
     def _is_null_ptr_const(val: ir.Value) -> bool;
-    def _print_stream_name(value: uni.Expr) -> (str | None);
+    def _sys_stream_of(value: uni.Expr) -> (str | None);
     def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
@@ -3234,6 +3259,14 @@ walker NaIRGenPass(CompilerPass) {
         target_type: any = None,
         sized: bool = True
     ) -> (ir.Value | None);
+
+    def _compute_aug_value(
+        nd: uni.Assignment,
+        target_expr: uni.Expr,
+        current: ir.Value,
+        rhs: ir.Value,
+        inplace_slot: (ir.Value | None)
+    ) -> tuple[(ir.Value | None), bool, bool];
 
     def _try_flow_for_parallel(nd: uni.InForStmt) -> bool;
     def _na_chunks_shape(expr: object) -> (tuple[uni.Expr, uni.Expr] | None);

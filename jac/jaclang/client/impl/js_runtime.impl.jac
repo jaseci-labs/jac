@@ -90,196 +90,61 @@ impl BunArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
     fetch_bun(osarch(), os.path.dirname(self.checkout_path()));
 }
 
-impl _repo_root -> str {
-    return os.path.dirname(_pkg_dir());
-}
-
-impl js_engine_build_dir -> str {
-    return os.path.join(_repo_root(), "zig-out", "js");
-}
-
-impl js_engine_inputs_digest(repo_root: str) -> str {
-    import hashlib;
-    digest = hashlib.sha256();
-    base = os.path.join(repo_root, "js_engine");
-    for rel in ENGINE_SOURCES {
-        top = os.path.join(base, rel);
-        paths = [top]
-            if os.path.isfile(top)
-            else sorted(
-                os.path.join(d, f) for (d, _dirs, files) in os.walk(top) for f in files
-            );
-        for path in paths {
-            digest.update(os.path.relpath(path, base).encode("utf-8"));
-            with open(path, "rb") as f {
-                digest.update(hashlib.sha256(f.read()).digest());
-            }
-        }
-    }
-    return digest.hexdigest();
-}
-
-impl installed_engine_dir -> str {
-    return str(bucket("js-engine").path() / "current");
-}
-
-impl _installed_engine -> Probe {
-    engine = installed_engine_dir();
-    return Probe.hit(Source.CACHE, engine, {"inputs": _engine_record(engine)})
-        if os.path.isfile(os.path.join(engine, ENGINE_LIBRARY))
-        else Probe.missing("no engine is installed (jac native build js-engine)");
-}
-
-impl ensure_node_link(engine: str) -> str {
-    link = os.path.join(engine, "bin", "node");
-    exe = process_executable();
-    try {
-        current = os.readlink(link);
-    } except OSError {
-        current = "";
-    }
-    if current != exe {
-        os.makedirs(os.path.dirname(link), exist_ok=True);
-        staged = f"{link}.{os.getpid()}";
-        os.symlink(exe, staged);
-        os.replace(staged, link);
-    }
-    return link;
-}
-
-impl _install_engine(built: str) {
-    import shutil;
-    target = installed_engine_dir();
-    os.makedirs(os.path.dirname(target), exist_ok=True);
-    staging = f"{target}.{os.getpid()}";
-    retired = f"{target}.old.{os.getpid()}";
-    shutil.rmtree(staging, ignore_errors=True);
-    shutil.copytree(built, staging, symlinks=True);
-    if os.path.isdir(target) {
-        os.replace(target, retired);
-    }
-    os.replace(staging, target);
-    shutil.rmtree(retired, ignore_errors=True);
-}
-
-impl _engine_record(engine: str) -> str {
-    try {
-        with open(os.path.join(engine, RECORD_SUFFIX), encoding="utf-8") as f {
-            return str(json.load(f).get("inputs", ""));
-        }
-    } except (OSError, ValueError, AttributeError) {
-        return "";
-    }
-}
-
-impl JsEngineArtifact.probe_sealed -> (Probe | None) {
-    import sys;
-    if sealed._jaclang_image() is None {
-        return None;
-    }
-    engine = os.path.join(os.path.dirname(sys.prefix), "js");
-    if os.path.isfile(os.path.join(engine, ENGINE_LIBRARY)) {
-        return Probe.hit(Source.SEALED, engine, {});
-    }
-    installed = _installed_engine();
-    return installed if installed.found is not None else Probe.by_design();
-}
-
-impl JsEngineArtifact.probe_checkout -> Probe {
-    engine = js_engine_build_dir();
-    if not os.path.isfile(os.path.join(engine, ENGINE_LIBRARY)) {
-        return Probe.missing();
-    }
-    if _engine_record(engine) != js_engine_inputs_digest(_repo_root()) {
-        return Probe.stale(["js_engine/ changed since the engine was built"]);
-    }
-    return Probe.hit(Source.CHECKOUT, engine, {});
-}
-
-impl JsEngineArtifact.probe_kit -> Probe {
-    if os.path.isdir(os.path.join(_repo_root(), "js_engine")) {
-        return Probe.missing("a checkout with js_engine/ uses its own build");
-    }
-    return _installed_engine();
-}
-
-impl JsEngineArtifact.checkout_path -> str {
-    return js_engine_build_dir();
-}
-
-impl JsEngineArtifact.built -> Probe {
-    found = self.probe_checkout();
-    if found.found is None {
-        return found;
-    }
-    if _engine_record(installed_engine_dir()) != _engine_record(found.found.path) {
-        return Probe.stale(["the engine is built but not installed"]);
-    }
-    return found;
-}
-
-impl JsEngineArtifact.build_blocker -> str {
-    import shutil;
-    if not os.path.isdir(os.path.join(_repo_root(), "js_engine")) {
-        return "this tree has no js_engine/";
-    }
-    if shutil.which("zig") or self.probe_checkout().found is not None {
-        return "";
-    }
-    return "zig is not on PATH";
-}
-
-impl JsEngineArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
-    import subprocess;
-
-    if force or self.probe_checkout().found is None {
-        log("  zig build js-engine (about 18 minutes and 7 GB cold)");
-        subprocess.run(["zig", "build", "js-engine"], cwd=_repo_root(), check=True);
-        atomic_write(
-            os.path.join(js_engine_build_dir(), RECORD_SUFFIX),
-            json.dumps({"inputs": js_engine_inputs_digest(_repo_root())}).encode(
-                "utf-8"
-            )
-        );
-    }
-    ensure_node_link(js_engine_build_dir());
-    _install_engine(js_engine_build_dir());
-    log(f"  installed for every jac at {installed_engine_dir()}");
-}
-
-impl JsEngineArtifact.floor_present -> bool {
-    return resolve("bun").found is not None;
-}
-
-impl JsEngineArtifact.provide_floor(log: Callable[[str], None]) {
-    build(["bun"], log);
-}
-
-impl _engine -> (str | None) {
-    found = resolve("js-engine").found;
-    return found.path if found is not None else None;
-}
-
 impl js_runtime_path -> str {
-    if _engine() is not None {
-        import from jaclang.client.js_engine { node_executable }
-        return node_executable();
-    }
     bun = require("bun").found;
     assert bun is not None;
     return bun.path;
 }
 
-impl run_pm(args: list[str], cwd: str, capture: bool = False) -> tuple[int, str] {
+impl release_age_settings(npm: dict[str, any]) -> tuple[float, list[str]] {
+    excludes = npm.get("min_release_age_excludes", []);
+    return (
+        float(npm.get("min_release_age_days", MIN_RELEASE_AGE_DAYS)),
+        [excludes] if isinstance(excludes, str) else list(excludes)
+    );
+}
+
+impl _project_npm(cwd: str) -> dict[str, any] {
+    config = get_config_for_dir(cwd) or get_config_for_dir(os.getcwd());
+    return config.get_plugin_config("client").get("npm", {}) if config else {};
+}
+
+impl run_pm(
+    args: list[str],
+    cwd: str,
+    capture: bool = False,
+    release_age: (tuple[float, list[str]] | None) = None
+) -> tuple[int, str] {
     import subprocess;
     runtime = js_runtime_path();
-    env = dict(os.environ);
-    if _engine() is not None {
-        env["PATH"] = os.path.dirname(runtime) + os.pathsep + env.get("PATH", "");
+    bunfig = os.path.join(cwd, "bunfig.toml");
+    excludes: list[str] = [];
+    if args and args[0] in ("install", "add") {
+        (days, excludes) = release_age or release_age_settings(_project_npm(cwd));
+        args = [args[0], f"--minimum-release-age={int(days * 86400)}"] + list(args[1:]);
     }
-    result = subprocess.run(
-        [runtime] + list(args), cwd=cwd, env=env, text=True, capture_output=capture
-    );
+    owns_bunfig = False;
+    if excludes {
+        try {
+            with open(bunfig, "x", encoding="utf-8") as f {
+                f.write(
+                    f"[install]\nminimumReleaseAgeExcludes = {json.dumps(excludes)}\n"
+                );
+            }
+            owns_bunfig = True;
+        } except FileExistsError {
+            owns_bunfig = False;
+        }
+    }
+    try {
+        result = subprocess.run(
+            [runtime] + list(args), cwd=cwd, text=True, capture_output=capture
+        );
+    } finally {
+        if owns_bunfig {
+            os.remove(bunfig);
+        }
+    }
     if not capture {
         return (result.returncode, "");
     }

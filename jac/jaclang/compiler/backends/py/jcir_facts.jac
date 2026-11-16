@@ -40,6 +40,7 @@ glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
              "managed",
              "new",
              "on_commit",
+             "on_drain",
              "printgraph",
              "restspec",
              "revoke",

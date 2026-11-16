@@ -202,6 +202,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0055 = _err(
          "E0055", Category.SYNTAX, "'yield' is only valid inside a function body"
      ),
+     E0057 = _err(
+         "E0057",
+         Category.SYNTAX,
+         "'return' is only valid inside a function body",
+         help="A `with entry` block runs as module code, not as a function, so it has nothing to return from. Move the code into a `def` and call it from the entry block, or invert the condition so the rest of the block runs only when it should."
+     ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
      E0063 = _err(
          "E0063",
@@ -616,6 +622,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot use {type} as an exception cause (not an exception type or None)"
      ),
+     E1164 = _err(
+         "E1164",
+         Category.TYPE,
+         "Cannot catch {type} (not an exception class)",
+         help="An except clause names the exception classes it handles, alone or in a tuple; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`."
+     ),
      E1091 = _err(
          "E1091",
          Category.TYPE,
@@ -952,6 +964,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " requires that it actually has a runtime export.",
          blocks_codegen=True
      ),
+     E1163 = _err(
+         "E1163",
+         Category.TYPE,
+         "'{name}' is a type parameter and cannot be used as a value",
+         help="A type parameter names a type for the checker only: no backend"
+         " binds it at runtime to the class it stands for. The Python backend"
+         " drops a function's type parameters, so returning, assigning,"
+         " raising or passing '{name}' to `isinstance`/`issubclass` reaches a"
+         " name nothing binds; inside a class it is a bare `TypeVar`."
+         " Annotations, `as` casts, `has` field types, generic arguments and"
+         " `type` alias right-hand sides are type position and stay legal. To"
+         " use the class at runtime, pass it in as a value: `cls: type[{name}]`."
+     ),
      E1133 = _err(
          "E1133",
          Category.TYPE,
@@ -965,10 +990,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1134",
          Category.IMPORT,
          "Relative import '{module}' names no module",
-         help="A dotted relative import addresses a file inside this project, so"
-         " its target has to sit beside the importing module: '{module}'"
-         " resolves to no .jac, .py, .pyi or .js file and to no package"
-         " directory. Create the module, correct the spelling, or drop the"
+         help="A dotted relative import addresses a file inside this project,"
+         " counted from the importing module's folder: one dot is that folder"
+         " and each further dot climbs one level. Server code cannot climb above"
+         " the outermost folder holding a jac.toml, which the runtime cannot"
+         " import from. '{module}' climbs above it or resolves to no .jac, .py,"
+         " .pyi or .js file and to no package directory, and is not looked for"
+         " anywhere else, such as the project root. Create the"
+         " module, correct the spelling or the number of dots, or drop the"
          " import. Leaving it unresolved erases the binding from the emitted"
          " client bundle, where it fails as an undefined name at runtime. Two"
          " shapes are exempt: a bare specifier, which can name an npm package"
@@ -984,8 +1013,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot assign to '{name}': it is declared {kind}",
          help="A binding annotated with 'Final' (or a 'readonly' member of an"
          " imported TypeScript interface) can only be set at its declaration,"
-         " or in the 'init'/'postinit' of the object that declares it when the"
-         " declaration has no initializer."
+         " or once, in the 'init'/'postinit' of the object that declares it, when"
+         " the declaration has no initializer."
      ),
      E1138 = _err(
          "E1138",
@@ -1047,6 +1076,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " import if the module keeps one. A name that is part of the module's"
          " public surface belongs in its `__all__`; names are not re-exported"
          " otherwise, so other modules import them from where they are defined."
+     ),
+     E1148 = _err(
+         "E1148",
+         Category.IMPORT,
+         "'{module}' is a variant of '{base}', so it cannot be a wire's provider",
+         help="A platform or `.native.jac` variant is chosen for its target in place"
+         " of '{base}'; no import names it. Wire '{base}' as the provider. A variant"
+         " is a consumer in its own right: its imports are wired to '{module}'."
      ),
      E1145 = _err(
          "E1145",
@@ -1183,6 +1220,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " on its None case, so the operator would crash at runtime. Guard the"
          " value first, e.g. `if x is not None { ... }`. Equality (`==`, `!=`)"
          " and `is None` checks work on the optional directly and need no guard."
+     ),
+     E1162 = _err(
+         "E1162",
+         Category.TYPE,
+         "'Final' without a type needs a value to take its type from",
+         help="Name the type in brackets, as in `has x: Final[int];`, or give a"
+         " value and the type comes from it, as in `has x: Final = 5;`."
      ),
      E1301 = _err(
          "E1301",
@@ -1521,6 +1565,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.IMPORT,
          "String import '{name}' does not match any declared or installed npm package",
          help="A quoted bare import always means an npm package. Declare '{name}' under [dependencies.npm] in jac.toml and run 'jac install', or use a dotted module path (import from .{name}) for a local Jac module."
+     ),
+     E2001 = _err(
+         "E2001",
+         Category.SEMANTIC,
+         "Name '{name}' in an except clause is not defined",
+         help="An except clause names the exception classes it handles; the name after `as` binds the caught exception. To catch every exception, write `except Exception as e`. In client code, a JavaScript-only class such as `DOMException` or `Error` is not a name the checker knows: `except Exception as e` catches it, and `e.name` tells which one it is."
      ),
      W2001 = _warn("W2001", Category.SEMANTIC, "Name '{name}' may be undefined"),
      W2002 = _warn("W2002", Category.SEMANTIC, "Unreachable code detected"),

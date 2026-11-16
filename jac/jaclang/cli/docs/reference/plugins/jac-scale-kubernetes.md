@@ -55,6 +55,8 @@ The source copy honors the project's [`.jacignore`](../config/index.md#jacignore
 
 The seal stage is a valid, sanitized copy of the project: sanitized tomls are written into it before the seal runs, so `[placement.pins]` and nested-project scoping are visible at seal time. The seal compiles exactly the modules that emit server code -- client-only modules (pinned or inferred) produce JS, not pod bytecode, and are skipped via the placement facts API. The per-module placement verdict is recorded in the sealed `MANIFEST.json` (`placement` map, manifest format 5). The seal subprocess timeout defaults to 1800s and is configurable with `[scale] seal_timeout` in `jac.toml`.
 
+**Reusing seals.** A sealed bundle is kept in the project's `.jac/seal-cache/`, keyed by a digest of everything that shapes it: the seal binary, pod architecture, app name, fat/thin mode, the sanitized `jac.toml` and nested tomls, and each source file's relative path, mode and content. A deploy whose inputs match a kept bundle skips the seal. To reuse bundles across checkouts (CI runners, other machines, other deploy hosts), point `[scale] seal_cache` in `jac.toml` (relative to the project or absolute) or the `JAC_SEAL_CACHE` environment variable (which wins) at a directory the deploys share. A deploy then looks in the project cache, then the shared directory, and writes every fresh seal to both. The shared directory is never pruned; keep it outside the project tree (or in `.jacignore`) so its bundles do not become deploy inputs, and remove old bundles yourself. Bundles in the shared directory are written with the deploying user's umask, like any other file, so when deploys run as different users give them a shared group with a group-readable umask (or a setgid directory with a default ACL). Bundles in the project cache stay readable by their owner only.
+
 Sealing is **mandatory**: if the app cannot be sealed into a valid image, the deploy fails rather than shipping a bundle that cold-compiles on the pod's first boot. When a pod starts, the compiler auto-loads the sibling `_precompiled/` image, so services run from precompiled modules with no on-pod compile step - for both single-app and microservice deployments.
 
 If a module in your project cannot be sealed (for example, a file that fails to compile), the deploy aborts with the seal error. Fix the offending module, or park its tree in `.jacignore` if it is not part of the served app, and redeploy.
@@ -893,6 +895,31 @@ For partial teardown, pass `--component` with one of `application`, `database`, 
 ```bash
 jac scale destroy app.jac --component monitoring
 ```
+
+---
+
+## Shutdown Hooks
+
+jac owns `SIGTERM` while it serves, so a handler an app installs with `signal.signal` never runs. Register shutdown code with the `on_drain` builtin instead. It takes a function with no arguments and returns it, so it also works as a decorator:
+
+```jac
+import threading;
+
+glob stop_dispatcher: threading.Event = threading.Event();
+
+@on_drain
+def stop_background_work {
+    stop_dispatcher.set();
+}
+
+with entry {
+    on_drain(lambda { print("draining"); });
+}
+```
+
+Drain hooks start when the server starts draining. They run once per process, on their own thread, in the order they were registered, alongside the requests still in flight, and a coroutine function is awaited. The server waits for them up to what is left of `[serve.timeouts] drain`, so a hook slower than that is cut off at exit. A hook that raises is logged and the others still run. A hook registered after the drain started runs once the requests in flight have finished, within the same budget.
+
+With `[serve.workers] count` above one, hooks registered while the app loads run in the supervisor, where threads started at load time live, and forked workers do not inherit them. Requests run in the workers, so a load-time hook cannot see what they changed: one that flushes a buffer finds it empty in the supervisor, and the workers' copies are never flushed. To run a hook in a worker, call `on_drain` from code that runs there, such as a walker. Registering a function that is already registered does nothing, so pass a named function there, not a lambda. jac logs a warning once more than 100 hooks are registered.
 
 ---
 

@@ -1753,3 +1753,111 @@ test "jac fmt --lintfix keeps an unwired import the unsaved text reads" {
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "a platform variant is a consumer named after its base, ruled as its base" {
+    base = _standard();
+    try {
+        _write(base, "app/clock.jac", "glob TICK: str = \"\";\n");
+        _write(
+            base,
+            "app/clock.linux.jac",
+            "import from core.util { now }\nglob TICK: str = now();\n"
+        );
+        _write(
+            base,
+            "app/clock.native.jac",
+            "import from core.util { now }\nglob TICK: str = now();\n"
+        );
+        assert "E1144" in _errors(_compile(base, "app/clock.linux.jac"));
+        assert "E1144" in _errors(_compile(base, "app/clock.native.jac"));
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace(
+                "    core.util ++> app.main { now as when }\n",
+                "    core.util ++> app.clock.linux | app.clock.native { now }\n"
+                "    core.util ++> app.main { now as when }\n"
+            )
+        );
+        _write(base, "app/clock.linux.jac", "glob TICK: str = now();\n");
+        _write(base, "app/clock.native.jac", "glob TICK: str = now();\n");
+        for rel in ["archwire.jac", "app/clock.linux.jac", "app/clock.native.jac"] {
+            prog = _compile(base, rel);
+            assert _errors(prog) == [] , (rel, [str(e) for e in prog.errors_had]);
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a variant cannot be a wire's provider" {
+    base = _standard();
+    try {
+        _write(base, "core/clock.jac", "glob TICK: str = \"\";\n");
+        _write(base, "core/clock.linux.jac", "glob TICK: str = \"l\";\n");
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace(
+                "    core.svc ++> app.main { serve }\n",
+                "    core.clock.linux ++> app.main { TICK }\n"
+                "    core.svc ++> app.main { serve }\n"
+            )
+        );
+        prog = _compile(base, "archwire.jac");
+        found = [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code == "E1148"
+        ];
+        assert len(found) == 1 , [str(e) for e in prog.errors_had];
+        assert "variant of 'core.clock'" in found[0] , found;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a module whose file name no wire can name keeps written imports under the rules" {
+    base = _standard();
+    try {
+        _write(
+            base,
+            "app/tech-demo.jac",
+            "import from core.util { now }\nglob T: str = now();\n"
+        );
+        prog = _compile(base, "app/tech-demo.jac");
+        assert _errors(prog) == [] , [str(e) for e in prog.errors_had];
+        _write(
+            base,
+            "web/[...slug].jac",
+            "import from core.util { now }\nglob T: str = now();\n"
+        );
+        prog = _compile(base, "web/[...slug].jac");
+        unruled = [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code == "E2099"
+        ];
+        assert len(unruled) == 1 , [str(e) for e in prog.errors_had];
+        assert "core.util --> web.[...slug]" in unruled[0] , unruled;
+        assert "E1144" not in _errors(prog);
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace(
+                "    edge CoreInternal: core.* --> core.*;\n",
+                "    edge CoreInternal: core.* --> core.*;\n"
+                "    edge CoreOverWeb: core.* --> web.*;\n"
+            )
+        );
+        for rel in ["archwire.jac", "web/[...slug].jac"] {
+            prog = _compile(base, rel);
+            assert _errors(prog) == [] , (rel, [str(e) for e in prog.errors_had]);
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}

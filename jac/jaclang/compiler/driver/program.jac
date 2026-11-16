@@ -52,7 +52,8 @@ class JacProgram {
         source_path: str,
         importer_path: (str | None) = None,
         use_str: (str | None) = None,
-        need_tree: bool = False
+        need_tree: bool = False,
+        need_bodies: bool = False
     ) -> uni.Module;
 
     def toolchain_dependency(self: JacProgram, resolved_path: str) -> bool;

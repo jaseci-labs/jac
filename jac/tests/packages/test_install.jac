@@ -1,6 +1,7 @@
 import os;
 import shutil;
 import subprocess;
+import from tempfile { TemporaryDirectory }
 import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.packages.index { forget_registries }
@@ -86,6 +87,100 @@ def _world -> World {
 
 def _versions(lock: Lockfile) -> dict[str, str] {
     return {p.name: p.version for p in lock.packages};
+}
+
+def _publish_version(
+    registry: FixtureRegistry,
+    base: Path,
+    name: str,
+    version: str,
+    deps: dict[str, str] | None = None
+) {
+    package = base / f'{name.replace("/", "_")}-{version}';
+    write_tree(
+        package,
+        {
+            "jac.toml": package_toml(name, version, ["api"], deps),
+            "api.jac": f'def version -> str {{ return "{version}"; }}\n'
+        }
+    );
+    registry.publish(package);
+}
+
+def _resolver_world(
+    base: Path,
+    releases: dict[str, dict[str, dict[str, str]]],
+    app_dependencies: dict[str, str]
+) -> World {
+    registry = FixtureRegistry.create(base / "registry");
+    env = isolated_env(base, registry.base_dir);
+    app = base / "app";
+    for (name, versions) in releases.items() {
+        for (version, deps) in versions.items() {
+            _publish_version(registry, base, name, version, deps);
+        }
+    }
+    dependencies = "";
+    for (name, requirement) in app_dependencies.items() {
+        dependencies += f'"{name}" = "{requirement}"\n';
+    }
+    write_tree(
+        app,
+        {
+            "jac.toml": (
+                "[project]\nname = \"app\"\nversion = \"0.1.0\"\n\n"
+                + "[dependencies]\n"
+                + dependencies
+            ),
+            "main.jac": "with entry { print(\"ok\"); }\n"
+        }
+    );
+    return World(tmp=base, registry=registry, app=app, env=env);
+}
+
+test "an install picks a prerelease only while a selected requirement names one" {
+    lib = {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.5.0-beta.1": {}};
+    rows: list[tuple[str, dict[str, dict[str, dict[str, str]]], dict[str, str], str]] = [
+        (
+            "rejected",
+            {
+                "local/lib": lib,
+                "local/bridge": {
+                    "1.0.0": {},
+                    "2.0.0": {"local/lib": ">=1.5.0-beta.1", "local/missing": "^1"}
+                }
+            },
+            {"local/bridge": "*", "local/lib": "^1"},
+            "1.2.0"
+        ),
+        (
+            "removed",
+            {"local/lib": lib, "local/bridge": {"1.0.0": {}}},
+            {"local/bridge": "*", "local/lib": "^1"},
+            "1.2.0"
+        ),
+        (
+            "explicit",
+            {"local/lib": lib, "local/bridge": {"1.0.0": {}}},
+            {"local/bridge": "*", "local/lib": ">=1.5.0-beta.1"},
+            "1.5.0-beta.1"
+        )
+    ];
+    with TemporaryDirectory() as raw {
+        for (label, releases, deps, lib_version) in rows {
+            w = _resolver_world(Path(raw) / label, releases, deps);
+            with patch.dict(os.environ, w.env) {
+                cfg = _config(w.app);
+                write_lock(cfg, sync(cfg).lock);
+            }
+            lock = Lockfile.read(w.app / "jac.lock");
+            assert lock is not None , label;
+            assert _versions(lock)
+                == {"local/bridge": "1.0.0", "local/lib": lib_version} , label;
+            mount = w.app / ".jac" / "packages" / "local" / "lib" / "api.jac";
+            assert f'return "{lib_version}"' in mount.read_text() , label;
+        }
+    }
 }
 
 test "a registry package resolves, locks, mounts and imports" {
