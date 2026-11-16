@@ -13211,9 +13211,9 @@ graph import scale {
             AutoscalingV2Api,
             client
         },
-        deploy.autoscale.http_activation_config | tests.deploy.test_database_intent {
-            ApiException
-        },
+        deploy.autoscale.http_activation_config
+            | tests.deploy.test_database_intent
+            | tests.microservices.test_binary_injector { ApiException },
         deploy.autoscale.keda_autoscaler.KEDAAutoscaler.watch_scale_targets { watch },
         deploy.target.kubernetes.cluster_provider
             | deploy.target.kubernetes.database_provisioner { client },

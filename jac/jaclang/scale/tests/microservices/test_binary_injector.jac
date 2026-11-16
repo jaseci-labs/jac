@@ -87,7 +87,7 @@ test "LOCAL channel names a missing [dev] pod_binary loudly" {
     }
     assert "pod_binary" in caught , caught;
     try {
-        download_release_binary("local", node_arch());
+        download_release_binary("local", host_arch());
         caught = "";
     } except RuntimeError as e {
         caught = str(e);
@@ -273,25 +273,41 @@ test "node_arch uses the cluster's node arch, not the host arch" {
 }
 
 
-test "node_arch falls back to the host arch when the cluster is unreachable" {
+test "node_arch refuses, naming JAC_NODE_ARCH, when the cluster's nodes can't be read" {
     def check {
-        with unittest.mock.patch(
-            "kubernetes.client.CoreV1Api", side_effect=Exception("no cluster")
-        ) {
-            assert node_arch() in ("x86_64", "aarch64");
+        for (failure, detail) in [
+            (ApiException(status=403, reason="Forbidden"), "HTTP 403 Forbidden"),
+            (ConnectionError("no cluster"), "ConnectionError: no cluster")
+        ] {
+            api = unittest.mock.MagicMock();
+            api.list_node.side_effect = failure;
+            caught = "";
+            with unittest.mock.patch("kubernetes.client.CoreV1Api", return_value=api) {
+                try {
+                    node_arch();
+                } except RuntimeError as e {
+                    caught = str(e);
+                }
+            }
+            assert detail in caught , caught;
+            assert "JAC_NODE_ARCH" in caught , caught;
         }
     }
     _without_node_arch_env(check);
 }
 
 
-test "node_arch falls back to the host arch on a mixed-arch cluster" {
+test "node_arch falls back to the host arch, and names it, on a mixed-arch or empty cluster" {
     def check {
-        with unittest.mock.patch(
-            "kubernetes.client.CoreV1Api",
-            return_value=_core_api_with_nodes(["amd64", "arm64"])
-        ) {
-            assert node_arch() == host_arch();
+        for archs in [["amd64", "arm64"], []] {
+            with unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(archs)
+            ), unittest.mock.patch("jaclang.scale.injector.binary.logger") as log {
+                assert node_arch() == host_arch();
+            }
+            warned = log.warning.call_args.args[0];
+            assert f"({host_arch()})" in warned , warned;
+            assert "JAC_NODE_ARCH" in warned , warned;
         }
     }
     _without_node_arch_env(check);
@@ -302,11 +318,15 @@ test "JAC_NODE_ARCH overrides cluster detection and is normalized" {
     saved = os.environ.pop("JAC_NODE_ARCH", None);
     try {
         os.environ["JAC_NODE_ARCH"] = "arm64";
-        with unittest.mock.patch(
-            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["amd64"])
-        ) as api {
-            assert node_arch() == "aarch64";
-            api.assert_not_called();
+        forbidden = unittest.mock.MagicMock();
+        forbidden.list_node.side_effect = ApiException(status=403, reason="Forbidden");
+        for cluster in [_core_api_with_nodes(["amd64"]), forbidden] {
+            with unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", return_value=cluster
+            ) as api {
+                assert node_arch() == "aarch64";
+                api.assert_not_called();
+            }
         }
     } finally {
         os.environ.pop("JAC_NODE_ARCH", None);
