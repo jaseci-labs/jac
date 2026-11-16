@@ -1,6 +1,8 @@
 import hashlib;
 import logging;
 import os;
+import secrets;
+import stat;
 import tempfile;
 
 glob OSP_CORE_PARTS: tuple[str, ...] = (
@@ -10,7 +12,13 @@ glob OSP_CORE_PARTS: tuple[str, ...] = (
      _OSP_CORE_JS_MEMO: list[str] = [],
      logger = logging.getLogger(__name__);
 
-def _cache_dirs -> list[str];
+def _primary_dir -> str;
+
+def _trusted_dir(path: str) -> bool;
+
+def _fallback_dir(create: bool) -> (str | None);
+
+def _write_one(folder: str, name: str, text: str) -> (str | None);
 
 def _find_cached(name: str) -> (str | None);
 

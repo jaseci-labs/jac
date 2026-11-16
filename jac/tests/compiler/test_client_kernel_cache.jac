@@ -144,7 +144,8 @@ test "an unwritable jac cache stores the kernel in the temp fallback and reads i
         js1 = ckc.osp_core_js();
         (unit, digest) = ckc._unit_source_path();
         artifact = ckc._find_cached(ckc._artifact_name(digest));
-        fallback = ckc._cache_dirs()[1];
+        fallback = ckc._fallback_dir(False);
+        assert fallback is not None , "the private temp fallback was not created";
         assert js1 == expected , "the fallback lowered different kernel JS";
         assert unit.startswith(fallback) , f"unit not in the fallback: {unit}";
         assert artifact is not None and artifact.startswith(fallback) , (
@@ -174,7 +175,9 @@ test "kernel JS is still returned when no folder accepts the artifact" {
     try {
         (_, digest) = ckc._unit_source_path();
         name = ckc._artifact_name(digest);
-        os.makedirs(os.path.join(ckc._cache_dirs()[1], name));
+        fallback = ckc._fallback_dir(True);
+        assert fallback is not None , "the private temp fallback was not created";
+        os.makedirs(os.path.join(fallback, name));
         ckc._OSP_CORE_JS_MEMO.clear();
         assert ckc.osp_core_js() == expected;
         assert ckc._find_cached(name) is None , "an artifact was stored after all";
@@ -182,5 +185,69 @@ test "kernel JS is still returned when no folder accepts the artifact" {
         _restore_cache(saved);
         shutil.rmtree(scratch, ignore_errors=True);
         shutil.rmtree(fallback_root, ignore_errors=True);
+    }
+}
+
+
+def _no_tempdir -> str {
+    raise FileNotFoundError("no usable temporary directory");
+}
+
+test "a missing temp directory does not block a writable jac cache" {
+    ckc._OSP_CORE_JS_MEMO.clear();
+    expected = ckc.osp_core_js();
+    cache_home = tempfile.mkdtemp();
+    saved = _swap_cache(cache_home, tempfile.gettempdir());
+    original_gettempdir = tempfile.gettempdir;
+    tempfile.gettempdir = _no_tempdir;
+    try {
+        assert ckc.osp_core_js() == expected;
+        (_, digest) = ckc._unit_source_path();
+        artifact = ckc._find_cached(ckc._artifact_name(digest));
+        assert artifact is not None and artifact.startswith(cache_home) , (
+            f"artifact not in the jac cache: {artifact}"
+        );
+        assert ckc._fallback_dir(True) is None;
+    } finally {
+        tempfile.gettempdir = original_gettempdir;
+        _restore_cache(saved);
+        shutil.rmtree(cache_home, ignore_errors=True);
+    }
+}
+
+def _plant_artifact(folder: str, name: str) {
+    os.makedirs(folder, exist_ok=True);
+    with open(os.path.join(folder, name), "w", encoding="utf-8") as handle {
+        handle.write("PLANTED");
+    }
+}
+
+test "a temp fallback another user could write to is neither read nor used" {
+    ckc._OSP_CORE_JS_MEMO.clear();
+    expected = ckc.osp_core_js();
+    (_, digest) = ckc._unit_source_path();
+    name = ckc._artifact_name(digest);
+    user = str(os.getuid()) if os?.getuid else os.environ.get("USERNAME", "user");
+    for layout in ["others-writable", "symlink"] {
+        cache_home = tempfile.mkdtemp();
+        fallback_root = tempfile.mkdtemp();
+        base = os.path.join(fallback_root, f"jac-cache-{user}");
+        if layout == "others-writable" {
+            _plant_artifact(os.path.join(base, "jir", "client_kernel"), name);
+            os.chmod(base, 0o777);
+        } else {
+            elsewhere = os.path.join(fallback_root, "elsewhere");
+            _plant_artifact(os.path.join(elsewhere, "jir", "client_kernel"), name);
+            os.symlink(elsewhere, base);
+        }
+        saved = _swap_cache(cache_home, fallback_root);
+        try {
+            assert ckc._fallback_dir(True) is None , f"{layout}: fallback trusted";
+            assert ckc.osp_core_js() == expected , f"{layout}: planted JS was served";
+        } finally {
+            _restore_cache(saved);
+            shutil.rmtree(cache_home, ignore_errors=True);
+            shutil.rmtree(fallback_root, ignore_errors=True);
+        }
     }
 }

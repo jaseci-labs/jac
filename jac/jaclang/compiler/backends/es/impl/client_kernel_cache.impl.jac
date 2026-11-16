@@ -1,40 +1,85 @@
-impl _cache_dirs -> list[str] {
+impl _primary_dir -> str {
+    return os.path.join(str(get_jir_cache_dir()), "client_kernel");
+}
+
+impl _trusted_dir(path: str) -> bool {
+    try {
+        st = os.lstat(path);
+    } except OSError {
+        return False;
+    }
+    if not stat.S_ISDIR(st.st_mode) {
+        return False;
+    }
+    if not os?.getuid {
+        return True;
+    }
+    return st.st_uid == os.getuid() and not (st.st_mode & 0o022);
+}
+
+impl _fallback_dir(create: bool) -> (str | None) {
+    try {
+        temp_root = tempfile.gettempdir();
+    } except OSError {
+        return None;
+    }
     user = str(os.getuid()) if os?.getuid else os.environ.get("USERNAME", "user");
-    return [
-        os.path.join(str(get_jir_cache_dir()), "client_kernel"),
-        os.path.join(tempfile.gettempdir(), f"jac-cache-{user}", "jir", "client_kernel")
-    ];
+    folder = os.path.join(temp_root, f"jac-cache-{user}");
+    for part in ["", "jir", "client_kernel"] {
+        folder = os.path.join(folder, part) if part else folder;
+        if create and not os.path.lexists(folder) {
+            try {
+                os.mkdir(folder, 0o700);
+            } except FileExistsError {} except OSError {
+                return None;
+            }
+        }
+        if not _trusted_dir(folder) {
+            return None;
+        }
+    }
+    return folder;
 }
 
 impl _find_cached(name: str) -> (str | None) {
-    for folder in _cache_dirs() {
-        path = os.path.join(folder, name);
-        if os.path.isfile(path) {
-            return path;
+    for folder in [_primary_dir(), _fallback_dir(False)] {
+        if folder is not None and os.path.isfile(os.path.join(folder, name)) {
+            return os.path.join(folder, name);
         }
+    }
+    return None;
+}
+
+impl _write_one(folder: str, name: str, text: str) -> (str | None) {
+    path = os.path.join(folder, name);
+    tmp = f"{path}.{secrets.token_hex(8)}.tmp";
+    try {
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644);
+        with os.fdopen(fd, "w", encoding="utf-8") as f {
+            f.write(text);
+        }
+        os.replace(tmp, path);
+        return path;
+    } except OSError as e {
+        logger.debug(f"client kernel cache: cannot write {path}: {e}");
+        try {
+            os.unlink(tmp);
+        } except OSError {}
     }
     return None;
 }
 
 impl _write_cached(name: str, text: str) -> (str | None) {
-    for folder in _cache_dirs() {
-        path = os.path.join(folder, name);
-        tmp = f"{path}.{os.getpid()}.tmp";
-        try {
-            os.makedirs(folder, exist_ok=True);
-            with open(tmp, "w", encoding="utf-8") as f {
-                f.write(text);
-            }
-            os.replace(tmp, path);
-            return path;
-        } except OSError as e {
-            logger.debug(f"client kernel cache: cannot write {path}: {e}");
-            try {
-                os.unlink(tmp);
-            } except OSError {}
-        }
+    primary = _primary_dir();
+    try {
+        os.makedirs(primary, exist_ok=True);
+    } except OSError {}
+    written = _write_one(primary, name, text);
+    if written is not None {
+        return written;
     }
-    return None;
+    fallback = _fallback_dir(True);
+    return _write_one(fallback, name, text) if fallback is not None else None;
 }
 
 impl _es_backend_fingerprint -> str {
@@ -88,7 +133,7 @@ impl _unit_source_path -> tuple[str, str] {
     if path is None {
         raise OSError(
             f"no writable folder for the client kernel source {name}; tried "
-                + ", ".join(_cache_dirs())
+            f"{_primary_dir()} and a private folder under the temp directory"
         );
     }
     return (path, digest);
@@ -148,7 +193,8 @@ impl osp_core_js -> str {
     js = _lower(cl_copy);
     if _write_cached(name, js) is None {
         logger.warning(
-            f"client kernel JS could not be cached (tried {', '.join(_cache_dirs())}); "
+            f"client kernel JS could not be cached in {_primary_dir()} or a private "
+            "temp folder; "
             "this process keeps it in memory and the next one lowers it again"
         );
     }

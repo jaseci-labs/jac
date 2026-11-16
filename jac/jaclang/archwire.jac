@@ -1542,7 +1542,7 @@ graph import {
             | toolchains.cef
             | toolchains.desktop
             | toolchains.store { FileLock },
-        compiler.backends.es.client_kernel_cache._cache_dirs { get_jir_cache_dir },
+        compiler.backends.es.client_kernel_cache._primary_dir { get_jir_cache_dir },
         compiler.driver.jir { FileLock, atomic_write, stat_note },
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
         compiler.driver.jir.read_jir { file_identity },
