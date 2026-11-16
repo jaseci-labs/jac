@@ -815,11 +815,8 @@ impl solve_module_placement(
                 _stamp(
                     elem,
                     CodeContext.CLIENT,
-                    keep_server=not _is_sv_import(elem)
-                        and (
-                            not isinstance(elem, uni.Import)
-                            or _read_on_server(id(elem))
-                        )
+                    keep_server=not isinstance(elem, uni.Import)
+                        or _read_on_server(id(elem))
                 );
                 _note(
                     elem, "pulled client: referenced by a pinned or dual client element"
