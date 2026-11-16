@@ -109,6 +109,12 @@ test "a client-pinned function pulls the import it uses into the client" {
         );
         assert stamp_of(mod, "app") == 'client';
         assert stamp_of(mod, "Hello") == 'client' , "the import a client-pinned function uses must be pulled into the client";
+        hello_import = [
+            s
+            for s in mod.body
+            if isinstance(s, uni.Import)
+        ][0];
+        assert not hello_import.codespace_dual , "no server code reads the import, and its provider is client-only, so the server must not import it";
     }
 }
 
