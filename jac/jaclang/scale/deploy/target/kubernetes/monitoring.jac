@@ -28,7 +28,6 @@ obj MonitoringDeployer {
     def ensure_service(core_v1: any, name: str, namespace: str, body: dict[str, any]);
     def _scrape_config(app_name: str, namespace: str) -> str;
     def _deploy_prometheus(app_name: str, namespace: str, apps_v1: any, core_v1: any);
-
     def _kube_state_metrics_rbac(app_name: str, namespace: str) -> dict[str, any];
     def _deploy_kube_state_metrics(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
@@ -43,6 +42,5 @@ obj MonitoringDeployer {
     def _deploy_loki(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def deploy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
-
     def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
 }

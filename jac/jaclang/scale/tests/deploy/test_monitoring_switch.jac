@@ -80,10 +80,14 @@ test "kube-state-metrics reads no secrets or configmaps and watches only what it
 }
 
 
-def _relabel(rules: list[dict[str, any]], meta: dict[str, str]) -> (dict[str, str] | None) {
+def _relabel(
+    rules: list[dict[str, any]], meta: dict[str, str]
+) -> (dict[str, str] | None) {
     labels = dict(meta);
     for rule in rules {
-        value = ";".join([labels.get(src, "") for src in rule.get("source_labels", [])]);
+        value = ";".join(
+            [labels.get(src, "") for src in rule.get("source_labels", [])]
+        );
         matched = re.fullmatch(str(rule.get("regex", "(.*)")), value);
         if rule.get("action", "replace") == "keep" {
             if not matched {
@@ -100,9 +104,14 @@ def _relabel(rules: list[dict[str, any]], meta: dict[str, str]) -> (dict[str, st
 
 test "prometheus scrapes every fleet pod on the app port at the path its role serves" {
     config = KubernetesConfig(
-        app_name="t", namespace="t-ns", container_port=8000, metrics_endpoint="/app-metrics"
+        app_name="t",
+        namespace="t-ns",
+        container_port=8000,
+        metrics_endpoint="/app-metrics"
     );
-    scrape = yaml.safe_load(MonitoringDeployer(k8s_config=config)._scrape_config("t", "t-ns"));
+    scrape = yaml.safe_load(
+        MonitoringDeployer(k8s_config=config)._scrape_config("t", "t-ns")
+    );
     job = {j["job_name"]: j for j in scrape["scrape_configs"]}["t"];
     assert job["kubernetes_sd_configs"]
         == [
@@ -112,7 +121,8 @@ test "prometheus scrapes every fleet pod on the app port at the path its role se
                 "selectors": [{"role": "pod", "label": FLEET_SELECTOR}]
             }
         ];
-    assert job["basic_auth"]["password_file"] == "/etc/prometheus/scrape-secret/password";
+    assert job["basic_auth"]["password_file"]
+        == "/etc/prometheus/scrape-secret/password";
     for (role, port, want_path) in [
         ("gateway", "8000", "/metrics"),
         ("microservice", "8000", "/app-metrics"),
