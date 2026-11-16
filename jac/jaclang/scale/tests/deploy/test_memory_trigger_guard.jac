@@ -225,11 +225,14 @@ test "deploy loads the cluster config, then resolves the pod arch and base image
         binary_mod, "preflight_pod_runtime", return_value="0.0.0"
     ), unittest.mock.patch.object(binary_mod, "resolve_pod_base_image", _refuse_image), unittest.mock.patch.object(
         KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
-    ) {
+    ), unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.database_provisioner.DatabaseProvisioner.provision"
+    ) as provision {
         result = target.deploy(
             AppConfig(code_folder=d, file_name="main.jac", app_name="t")
         );
     }
     assert order == ["config", "arch", "image"] , order;
     assert result.message == refused , result.message;
+    provision.assert_not_called();
 }
