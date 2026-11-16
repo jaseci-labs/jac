@@ -10,6 +10,8 @@ it links from native units, whose reuse the link plan tests pin.
 """
 import hashlib;
 import os;
+import shutil;
+import tempfile;
 import jaclang.compiler.backends.es.client_kernel_cache as ckc;
 import from jaclang.compiler.frontend.codeinfo { kernel_unit_path }
 
@@ -89,8 +91,10 @@ test "client kernel JS is deterministic and the rebuild is a warm artifact read"
         assert name in js1 , f"kernel JS lost the driver-referenced name {name}";
     }
     (_, digest) = ckc._unit_source_path();
-    artifact = ckc._artifact_path(digest);
-    assert os.path.isfile(artifact) , "the lowered JS was not stored";
+    artifact = ckc._find_cached(ckc._artifact_name(digest));
+    assert artifact is not None and os.path.isfile(artifact) , (
+        "the lowered JS was not stored"
+    );
     back = os.path.getmtime(artifact) - 5.0;
     os.utime(artifact, (back, back));
     stamp = os.path.getmtime(artifact);
@@ -100,4 +104,83 @@ test "client kernel JS is deterministic and the rebuild is a warm artifact read"
     assert os.path.getmtime(artifact) == stamp , (
         "the rebuild rewrote the JS artifact: the warm read did not engage"
     );
+}
+
+
+def _unwritable_cache_home(scratch: str) -> str {
+    blocker = os.path.join(scratch, "not-a-dir");
+    with open(blocker, "w", encoding="utf-8") as handle {
+        handle.write("");
+    }
+    return os.path.join(blocker, "cache");
+}
+
+def _swap_cache(cache_home: str, temp_root: str) -> tuple[(str | None), (str | None)] {
+    saved = (os.environ.get("JAC_CACHE_HOME"), tempfile.tempdir);
+    os.environ["JAC_CACHE_HOME"] = cache_home;
+    tempfile.tempdir = temp_root;
+    ckc._OSP_CORE_JS_MEMO.clear();
+    return saved;
+}
+
+def _restore_cache(saved: tuple[(str | None), (str | None)]) {
+    (home, temp_root) = saved;
+    if home is None {
+        os.environ.pop("JAC_CACHE_HOME", None);
+    } else {
+        os.environ["JAC_CACHE_HOME"] = home;
+    }
+    tempfile.tempdir = temp_root;
+    ckc._OSP_CORE_JS_MEMO.clear();
+}
+
+test "an unwritable jac cache stores the kernel in the temp fallback and reads it back" {
+    ckc._OSP_CORE_JS_MEMO.clear();
+    expected = ckc.osp_core_js();
+    scratch = tempfile.mkdtemp();
+    fallback_root = tempfile.mkdtemp();
+    saved = _swap_cache(_unwritable_cache_home(scratch), fallback_root);
+    try {
+        js1 = ckc.osp_core_js();
+        (unit, digest) = ckc._unit_source_path();
+        artifact = ckc._find_cached(ckc._artifact_name(digest));
+        fallback = ckc._cache_dirs()[1];
+        assert js1 == expected , "the fallback lowered different kernel JS";
+        assert unit.startswith(fallback) , f"unit not in the fallback: {unit}";
+        assert artifact is not None and artifact.startswith(fallback) , (
+            f"artifact not in the fallback: {artifact}"
+        );
+        back = os.path.getmtime(artifact) - 5.0;
+        os.utime(artifact, (back, back));
+        stamp = os.path.getmtime(artifact);
+        ckc._OSP_CORE_JS_MEMO.clear();
+        assert ckc.osp_core_js() == expected;
+        assert os.path.getmtime(artifact) == stamp , (
+            "the second process lowered again instead of reading the fallback"
+        );
+    } finally {
+        _restore_cache(saved);
+        shutil.rmtree(scratch, ignore_errors=True);
+        shutil.rmtree(fallback_root, ignore_errors=True);
+    }
+}
+
+test "kernel JS is still returned when no folder accepts the artifact" {
+    ckc._OSP_CORE_JS_MEMO.clear();
+    expected = ckc.osp_core_js();
+    scratch = tempfile.mkdtemp();
+    fallback_root = tempfile.mkdtemp();
+    saved = _swap_cache(_unwritable_cache_home(scratch), fallback_root);
+    try {
+        (_, digest) = ckc._unit_source_path();
+        name = ckc._artifact_name(digest);
+        os.makedirs(os.path.join(ckc._cache_dirs()[1], name));
+        ckc._OSP_CORE_JS_MEMO.clear();
+        assert ckc.osp_core_js() == expected;
+        assert ckc._find_cached(name) is None , "an artifact was stored after all";
+    } finally {
+        _restore_cache(saved);
+        shutil.rmtree(scratch, ignore_errors=True);
+        shutil.rmtree(fallback_root, ignore_errors=True);
+    }
 }

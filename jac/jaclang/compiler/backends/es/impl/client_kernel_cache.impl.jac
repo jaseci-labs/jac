@@ -1,7 +1,40 @@
-impl _cache_dir -> str {
-    d = os.path.join(str(get_jir_cache_dir()), "client_kernel");
-    os.makedirs(d, exist_ok=True);
-    return d;
+impl _cache_dirs -> list[str] {
+    user = str(os.getuid()) if os?.getuid else os.environ.get("USERNAME", "user");
+    return [
+        os.path.join(str(get_jir_cache_dir()), "client_kernel"),
+        os.path.join(tempfile.gettempdir(), f"jac-cache-{user}", "jir", "client_kernel")
+    ];
+}
+
+impl _find_cached(name: str) -> (str | None) {
+    for folder in _cache_dirs() {
+        path = os.path.join(folder, name);
+        if os.path.isfile(path) {
+            return path;
+        }
+    }
+    return None;
+}
+
+impl _write_cached(name: str, text: str) -> (str | None) {
+    for folder in _cache_dirs() {
+        path = os.path.join(folder, name);
+        tmp = f"{path}.{os.getpid()}.tmp";
+        try {
+            os.makedirs(folder, exist_ok=True);
+            with open(tmp, "w", encoding="utf-8") as f {
+                f.write(text);
+            }
+            os.replace(tmp, path);
+            return path;
+        } except OSError as e {
+            logger.debug(f"client kernel cache: cannot write {path}: {e}");
+            try {
+                os.unlink(tmp);
+            } except OSError {}
+        }
+    }
+    return None;
 }
 
 impl _es_backend_fingerprint -> str {
@@ -50,23 +83,23 @@ impl _unit_source_path -> tuple[str, str] {
     }
     source = "\n\n".join(texts);
     digest = hashlib.sha256(source.encode()).hexdigest()[:16];
-    path = os.path.join(_cache_dir(), f"osp_core_cl.{digest}.jac");
-    if not os.path.exists(path) {
-        tmp = f"{path}.{os.getpid()}.tmp";
-        with open(tmp, "w", encoding="utf-8") as f {
-            f.write(source);
-        }
-        os.replace(tmp, path);
+    name = f"osp_core_cl.{digest}.jac";
+    path = _find_cached(name) or _write_cached(name, source);
+    if path is None {
+        raise OSError(
+            f"no writable folder for the client kernel source {name}; tried "
+                + ", ".join(_cache_dirs())
+        );
     }
     return (path, digest);
 }
 
-impl _artifact_path(source_digest: str) -> str {
+impl _artifact_name(source_digest: str) -> str {
     h = hashlib.sha256();
     h.update(running_compiler_digest().encode());
     h.update(source_digest.encode());
     h.update(_es_backend_fingerprint().encode());
-    return os.path.join(_cache_dir(), f"osp_core_cl.{h.hexdigest()[:16]}.mjs");
+    return f"osp_core_cl.{h.hexdigest()[:16]}.mjs";
 }
 
 impl _lower(cl_copy: str) -> str {
@@ -101,20 +134,24 @@ impl osp_core_js -> str {
         return _OSP_CORE_JS_MEMO[0];
     }
     (cl_copy, source_digest) = _unit_source_path();
-    artifact = _artifact_path(source_digest);
-    try {
-        with open(artifact, "r", encoding="utf-8") as f {
-            js = f.read();
-        }
-        _OSP_CORE_JS_MEMO.append(js);
-        return js;
-    } except Exception {}
-    js = _lower(cl_copy);
-    tmp = f"{artifact}.{os.getpid()}.tmp";
-    with open(tmp, "w", encoding="utf-8") as f {
-        f.write(js);
+    name = _artifact_name(source_digest);
+    artifact = _find_cached(name);
+    if artifact is not None {
+        try {
+            with open(artifact, "r", encoding="utf-8") as f {
+                js = f.read();
+            }
+            _OSP_CORE_JS_MEMO.append(js);
+            return js;
+        } except Exception {}
     }
-    os.replace(tmp, artifact);
+    js = _lower(cl_copy);
+    if _write_cached(name, js) is None {
+        logger.warning(
+            f"client kernel JS could not be cached (tried {', '.join(_cache_dirs())}); "
+            "this process keeps it in memory and the next one lowers it again"
+        );
+    }
     _OSP_CORE_JS_MEMO.append(js);
     return js;
 }
