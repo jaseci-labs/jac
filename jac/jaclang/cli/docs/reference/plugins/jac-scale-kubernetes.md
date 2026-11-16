@@ -1472,6 +1472,29 @@ kubectl get pvc                     # the bundle PVC must be Bound
 - `ImagePullBackOff` on the base image means the cluster cannot reach
   `jaseci/jaclang`; set `python_image` to a base it can pull.
 
+### Node Architecture
+
+The pod runtime and its wheels are built for the nodes' architecture, which the
+deploy reads by listing the cluster's nodes. That list is cluster-scoped, so a
+kubeconfig bound to a namespace-scoped Role cannot read it, and the deploy stops
+before building anything:
+
+```
+Could not read the cluster's node architectures (HTTP 403 Forbidden), ...
+```
+
+Either name the architecture when you deploy, or grant the deploy identity
+`list` on `nodes` through a ClusterRole:
+
+```bash
+JAC_NODE_ARCH=x86_64 jac scale deploy    # or aarch64; amd64 and arm64 also work
+```
+
+`JAC_NODE_ARCH` also decides when the nodes report several architectures or
+none; otherwise the deploy warns and uses the deploying machine's architecture.
+A `jac-bootstrap` log saying `shipped jac binary did not run` means the pods got
+the wrong architecture: set `JAC_NODE_ARCH` and redeploy.
+
 ### General Debugging
 
 ```bash
