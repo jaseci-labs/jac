@@ -219,6 +219,9 @@ impl install(
             );
             return 1;
         }
+        if refuse_toolchain_packages(list(packages)) {
+            return 1;
+        }
         save = not (no_save or install_global or dry_run);
         if extras {
             console.warning(
