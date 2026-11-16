@@ -157,6 +157,7 @@ target = KubernetesTarget(
         container_port=8000,
         bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
         python_image="${E2E_POD_BASE_IMAGE:-}",
+        monitoring_enabled=True,
     ),
     logger=StderrLogger(),
 )
