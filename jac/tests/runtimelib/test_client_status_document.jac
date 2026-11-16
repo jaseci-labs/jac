@@ -265,7 +265,6 @@ test "the core /__build_status route serves the status document shape" {
 }
 
 test "the /cl/__error__ endpoint logs a rendered diagnostic with a Jac location" {
-    import from jaclang.client.source_mapping { _error_rate_limiter }
     with TemporaryDirectory() as tmp {
         proj = Path(tmp);
         compiled = proj / ".jac" / "client" / "compiled";
@@ -302,8 +301,6 @@ test "the /cl/__error__ endpoint logs a rendered diagnostic with a Jac location"
         logger.setLevel(logging.ERROR);
         logger.addFilter(tap);
         attached_to = id(logger);
-        _error_rate_limiter._seen = {};
-        _error_rate_limiter._count = 0;
         client = JacTestClient.from_file(
             str((Path(FIXTURES) / "serve_api.jac").resolve()), base_path=str(proj)
         );
@@ -323,9 +320,7 @@ test "the /cl/__error__ endpoint logs a rendered diagnostic with a Jac location"
             # A throttled request is ok=True with nothing logged; failing on
             # it here names the actual suppression instead of a blank assert.
             assert not body.get("throttled") , (
-                f"rate limiter throttled the request: {body}; "
-                f"limiter seen={_error_rate_limiter._seen} "
-                f"count={_error_rate_limiter._count}"
+                f"rate limiter throttled the request: {body}"
             );
             sink.flush();
             logged = buf.getvalue();

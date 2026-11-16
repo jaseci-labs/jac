@@ -30,6 +30,7 @@ walker ImportWiringPass(CompilerPass) {
         declared: set[tuple[str, tuple[str, str, str, str]]]
     ) -> None;
 
+    def _check_import_edges(spec: WiringSpec, imp: Import, consumer: str) -> None;
     static def _written_import_fix(
         spec: WiringSpec,
         binding: WireBinding,

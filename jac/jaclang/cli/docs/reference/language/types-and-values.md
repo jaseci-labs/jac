@@ -298,6 +298,8 @@ with entry {
 }
 ```
 
+A type parameter names a type, not a value: `T` can appear in annotations, generic arguments and `as` casts, but `return T`, `raise T` or `isinstance(x, T)` is [`E1163`](../diagnostics.md#type-parameters). To use the class at runtime, take it as a `type[T]` parameter.
+
 One current limitation to be aware of:
 
 - **Type-parameter defaults don't apply at subscripted construction.** `Result(value=42)` and `Result[int, ValueError](value=42)` work, but `Result[int](value=42)` -- leaving `E` to its default -- passes `jac check` and raises a `TypeError` at runtime. When in doubt, construct without the subscript.

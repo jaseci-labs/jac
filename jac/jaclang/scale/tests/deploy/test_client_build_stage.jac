@@ -76,15 +76,17 @@ def _app(jacignore: (str | None) = None) -> str {
 
 
 """A jac stand-in that records the build's working tree instead of building:
-on `build` it writes the cwd, the sorted file listing, and the jac.toml it
-sees into `record_dir`, then fabricates a dist. Every other subcommand (the
-dependency install) exits clean without touching the network."""
+on `build` it counts the build in `builds`, writes the cwd, the sorted file
+listing, and the jac.toml it sees into `record_dir`, then fabricates a dist.
+Every other subcommand (the dependency install) exits clean without touching
+the network."""
 def _recording_jac(tmp: str, record_dir: str, build_exit: int = 0) -> str {
     script = os.path.join(tmp, "recording-jac.sh");
     with open(script, "w", encoding="utf-8") as f {
         f.write(
             "#!/bin/sh\n"
                 + 'if [ "$1" != "build" ]; then exit 0; fi\n'
+                + f'echo build >> "{record_dir}/builds"\n'
                 + f'pwd > "{record_dir}/cwd"\n'
                 + "find . -type f | sed 's|^\\./||' | sort > "
                 + f'"{record_dir}/files"\n'
@@ -253,6 +255,110 @@ test "the client build's stage leaves out what the deploy writes under .jac" {
 }
 
 
+test "the seal builds the client when the client entry is the sealed app's entry" {
+    project_dir = _app(_PARKED);
+    try {
+        assert _builder(project_dir)._seal_bakes_client(project_dir);
+        dry = _builder(project_dir);
+        dry.dry_run = True;
+        assert not dry._seal_bakes_client(project_dir) , "a dry run sealed nothing";
+        assert not _builder(project_dir, client_entry="svc.jac")._seal_bakes_client(
+            project_dir
+        ) , "a client entry other than the sealed app's entry was baked by the seal";
+        assert not _builder(project_dir, client_entry="")._seal_bakes_client(
+            project_dir
+        ) , "a deploy without a client asked the seal to build one";
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+    }
+}
+
+
+test "an unchanged project reuses its client build instead of building again" {
+    project_dir = _app(_PARKED);
+    rec = tempfile.mkdtemp(prefix="client-stage-rec-");
+    script = _recording_jac(rec, rec);
+    dist_page = Path(project_dir, ".jac", "client", "dist", "index.html");
+    def builds -> int {
+        path = os.path.join(rec, "builds");
+        return len(_read(path).splitlines()) if os.path.isfile(path) else 0;
+    }
+    _seam = patch(
+        "jaclang.scale.runtime.context.util.jac_executable", return_value=script
+    );
+    _seam.start();
+    try {
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 1 and dist_page.is_file();
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 1 , "a deploy of unchanged sources built the client again";
+        shutil.rmtree(Path(project_dir, ".jac", "client"));
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 1 and dist_page.is_file() , (
+            "the reused client build was not put back where the bundle ships it from"
+        );
+        Path(project_dir, ".env").write_text("VITE_API_KEY=rotated\n");
+        Path(project_dir, "docsite", "util.jac").write_text(
+            "def helper -> int { return 1; }\n"
+        );
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 1 , (
+            "a file the bundle never ships invalidated the client build"
+        );
+        os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 2 , (
+            "a new API base URL reused a client built for the old one"
+        );
+        Path(project_dir, "svc.jac").write_text(
+            "def:pub ping -> str { return \"pong!\"; }\n"
+        );
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 3 , "a source edit reused the previous client build";
+        Path(project_dir, "svc.jac").chmod(0o755);
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 4 , "a file mode change reused the previous client build";
+    } finally {
+        os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+        _seam.stop();
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+test "a client built from staged files that no longer match its key is not kept" {
+    project_dir = _app(_PARKED);
+    rec = tempfile.mkdtemp(prefix="client-stage-rec-");
+    script = Path(_recording_jac(rec, rec));
+    script.write_text(
+        script.read_text().replace(
+            'if [ "$1" != "build" ]; then exit 0; fi',
+            'if [ "$1" != "build" ]; then echo "# drift" >> svc.jac; exit 0; fi'
+        )
+    );
+    def builds -> int {
+        path = os.path.join(rec, "builds");
+        return len(_read(path).splitlines()) if os.path.isfile(path) else 0;
+    }
+    _seam = patch(
+        "jaclang.scale.runtime.context.util.jac_executable", return_value=str(script)
+    );
+    _seam.start();
+    try {
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert _run_build(_builder(project_dir), project_dir, rec) is None;
+        assert builds() == 2 , (
+            "a build whose staged sources changed under it was kept and reused"
+        );
+    } finally {
+        _seam.stop();
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
 test "the build reads the sanitized jac.toml, not the raw one" {
     project_dir = _app(_PARKED);
     (raised, rec) = _with_recording_build(project_dir);
@@ -304,6 +410,145 @@ test "the build runs in an ephemeral stage and the dist is copied back" {
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
         shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+"""A jac stand-in whose build takes `ticks` steps of `pause` seconds before it
+fabricates a dist, printing a line per step when `chatty`, and nothing at all
+otherwise. Every other subcommand exits clean."""
+def _paced_jac(tmp: str, ticks: int, pause: float, chatty: bool) -> str {
+    script = os.path.join(tmp, "paced-jac.sh");
+    step = f'echo "compiling step $i"; sleep {pause}' if chatty else f"sleep {pause}";
+    with open(script, "w", encoding="utf-8") as f {
+        f.write(
+            "#!/bin/sh\n"
+                + 'if [ "$1" != "build" ]; then exit 0; fi\n'
+                + f"for i in $(seq {ticks}); do {step}; done\n"
+                + "mkdir -p .jac/client/dist\n"
+                + 'echo "<html></html>" > .jac/client/dist/index.html\n'
+                + "exit 0\n"
+        );
+    }
+    os.chmod(script, 0o755);
+    return script;
+}
+
+
+def _with_paced_build(
+    project_dir: str, ticks: int, pause: float, chatty: bool
+) -> tuple[(Exception | None), str] {
+    tmp = tempfile.mkdtemp(prefix="client-stage-paced-");
+    script = _paced_jac(tmp, ticks, pause, chatty);
+    module = "jaclang.scale.deploy.target.kubernetes.manifest_builder";
+    seams = [
+        patch("jaclang.scale.runtime.context.util.jac_executable", return_value=script),
+        patch(f"{module}._CLIENT_BUILD_QUIET_S", 1),
+        patch(f"{module}._CLIENT_BUILD_RETRY_PAUSE_S", 0)
+    ];
+    for seam in seams {
+        seam.start();
+    }
+    try {
+        raised = _run_build(_builder(project_dir), project_dir, tmp);
+    } finally {
+        for seam in seams {
+            seam.stop();
+        }
+    }
+    return (raised, tmp);
+}
+
+
+"""A cold build of a large app can run longer than the limit while it keeps
+working. The limit is on silence, so a build that keeps printing is never cut
+off and restarted from scratch."""
+test "a client build that keeps printing outlives the time limit" {
+    project_dir = _app(_PARKED);
+    (raised, rec) = _with_paced_build(project_dir, 8, 0.4, True);
+    try {
+        assert raised is None , f"a working build was cut off: {raised}";
+        assert os.path.isfile(
+            os.path.join(project_dir, ".jac", "client", "dist", "index.html")
+        );
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+"""A build that stops printing is still stopped at the limit, retried, and
+reported, so a hung build cannot hang the deploy."""
+test "a client build that goes silent is stopped at the time limit" {
+    project_dir = _app(_PARKED);
+    (raised, rec) = _with_paced_build(project_dir, 1, 3, False);
+    try {
+        assert isinstance(raised, RuntimeError) , raised;
+        assert "timed out" in str(raised) , str(raised);
+        assert not os.path.isfile(
+            os.path.join(project_dir, ".jac", "client", "dist", "index.html")
+        );
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+"""A deploy interrupted while it waits on the client build (Ctrl-C, or any
+exception in the waiting thread) stops the build too, as `subprocess.run`
+does, instead of leaving it running against a staging tree about to be
+removed."""
+test "an interrupted client build does not keep running" {
+    tmp = tempfile.mkdtemp(prefix="client-stage-interrupt-");
+    pid_file = os.path.join(tmp, "pid");
+    script = os.path.join(tmp, "busy-jac.sh");
+    with open(script, "w", encoding="utf-8") as f {
+        f.write(
+            "#!/bin/sh\n"
+                + f'echo $$ > "{pid_file}"\n'
+                + 'for i in $(seq 100); do echo "step $i"; sleep 0.2; done\n'
+        );
+    }
+    os.chmod(script, 0o755);
+    real_sleep = time.sleep;
+    def interrupt(seconds: float) {
+        real_sleep(1.0);
+        raise KeyboardInterrupt();
+    }
+    interrupted = False;
+    pid = 0;
+    try {
+        with patch("time.sleep", side_effect=interrupt) {
+            try {
+                _run_until_quiet([script], tmp, None, 30);
+            } except KeyboardInterrupt {
+                interrupted = True;
+            }
+        }
+        assert interrupted;
+        with open(pid_file, encoding="utf-8") as f {
+            pid = int(f.read().strip());
+        }
+        alive = True;
+        for _ in range(20) {
+            try {
+                os.kill(pid, 0);
+            } except ProcessLookupError {
+                alive = False;
+                break;
+            }
+            real_sleep(0.1);
+        }
+        assert not alive , f"the interrupted build {pid} is still running";
+    } finally {
+        if pid {
+            try {
+                os.kill(pid, 9);
+            } except ProcessLookupError {}
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }
 

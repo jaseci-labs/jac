@@ -13,3 +13,5 @@ def _walk_schema(
 ) -> None;
 
 def _unknown_key_message(path: str, key: str, known: list[str]) -> str;
+
+def closest_key(key: str, known: list[str]) -> str | None;

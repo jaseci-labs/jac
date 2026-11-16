@@ -1,3 +1,4 @@
+import os;
 import unittest;
 
 obj JacTestResult(unittest.TextTestResult) {
@@ -25,7 +26,8 @@ obj JacTestCheck {
     obj TestSuite {
         has test_case: unittest.FunctionTestCase,
             func_name: str,
-            display_name: str;
+            display_name: str,
+            source: str = "";
     }
 
     with entry {

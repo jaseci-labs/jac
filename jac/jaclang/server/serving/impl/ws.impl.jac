@@ -7,6 +7,16 @@ impl compute_accept_key(key: str) -> str {
     return b64encode(digest).decode('ascii');
 }
 
+impl _xor_mask(payload: bytes, mask_key: bytes) -> bytes {
+    length = len(payload);
+    if not length {
+        return b'';
+    }
+    stream = (mask_key * ((length + 3) // 4))[:length];
+    mixed = int.from_bytes(payload, 'big') ^ int.from_bytes(stream, 'big');
+    return mixed.to_bytes(length, 'big');
+}
+
 impl encode_frame(opcode: int, payload: bytes, mask: bool = False) -> bytes {
     first = 0x80 | opcode;
     length = len(payload);
@@ -22,8 +32,7 @@ impl encode_frame(opcode: int, payload: bytes, mask: bool = False) -> bytes {
         return header + payload;
     }
     mask_key = os.urandom(4);
-    masked = bytes([b ^ mask_key[i % 4] for (i, b) in enumerate(payload)]);
-    return header + mask_key + masked;
+    return header + mask_key + _xor_mask(payload, mask_key);
 }
 
 impl read_frame(reader: any, require_mask: bool = True) -> WSFrame {
@@ -48,7 +57,7 @@ impl read_frame(reader: any, require_mask: bool = True) -> WSFrame {
     mask_key: bytes = await reader.readexactly(4) if masked else b'';
     payload: bytes = await reader.readexactly(length) if length else b'';
     if masked and payload {
-        payload = bytes([b ^ mask_key[i % 4] for (i, b) in enumerate(payload)]);
+        payload = _xor_mask(payload, mask_key);
     }
     return WSFrame(fin=fin, opcode=opcode, payload=payload);
 }

@@ -1568,7 +1568,7 @@ jac remove react --npm
 
 Re-resolve dependencies to their newest compatible versions. With no names, every Jac package is re-resolved within its range, the Python dependencies are re-installed and re-pinned in `jac.lock`, and each Python package declared with a compatible-release spec gets the installed version written back as `~=X.Y`. With `org/name` arguments only those Jac packages are unlocked. `--pypi` updates named Python packages only.
 
-With `--self`, the command skips dependencies entirely and updates the `jac` binary itself: it resolves the newest GitHub release (or the `--release` tag), downloads this platform's binary, verifies the published sha256, and atomically replaces the running launcher. Already-running `jac` processes keep their version; the next invocation uses the new binary. `--self` refuses to touch anything it should not: a plain interpreter session (e.g. `python -m jaclang`), a linked dev binary (`zig build -Ddev`), an unwritable install location, and a JacPython install (the release channel only ships the default CPython build, so an update would silently drop the JacPython compiler -- reinstall with `install.sh --jacpython` instead). A download that passes the sha256 check but is not a valid `jac` binary (missing the runtime trailer) is discarded and the installed version kept. On hosts no release ships (Windows), it says so and points at the releases page.
+With `--self`, the command skips dependencies entirely and updates the `jac` binary itself: it resolves the newest GitHub release (or the `--release` tag), downloads this platform's binary, verifies the published sha256, and atomically replaces the running launcher. Already-running `jac` processes keep their version; the next invocation uses the new binary. `--self` refuses to touch anything it should not: a plain interpreter session (e.g. `python -m jaclang`), a linked dev binary (`zig build -Ddev`), and an unwritable install location. A download that passes the sha256 check but is not a valid `jac` binary (missing the runtime trailer) is discarded and the installed version kept. On hosts no release ships (Windows), it says so and points at the releases page.
 
 ```bash
 jac update [-h] [--pypi] [-d] [--self] [--release TAG] [-v] [packages ...]
@@ -1700,7 +1700,7 @@ Every bucket has a **retention policy**:
 | `rt` | fused-binary runtimes, one per payload hash | unused 30 days |
 | `jir-modules` | compiled modules, one generation per compiler digest | unused 14 days (`JAC_CACHE_GENERATION_TTL_DAYS`) |
 | `jir-bootstrap` | bootstrap-tier bytecode | unused 14 days, at most 4000 entries |
-| `jir-stubcat`, `jir-kernel-units`, `jir-digests`, `jir-nativeglue` | stub catalogs, native kernel units, per-checkout compiler digests, glue-symbol scans of native unit bitcode | unused 14 days |
+| `jir-stubcat`, `jir-digests`, `jir-nativeglue` | stub catalogs, per-checkout compiler digests, glue-symbol scans of native unit bitcode | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
 | `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
@@ -1773,8 +1773,8 @@ jac build [-h] [--all] [--as {jab,sealed,binary,wheel,npm,source,native,client}]
 
 **Shipping an executable: `--as binary` vs `--native`.** These two projections solve different problems and are easy to confuse:
 
-- `--as binary` packages **any** app (walkers, Python imports, a full web client) into one executable by appending the sealed `.jab` onto a copy of the running `jac` launcher. The file carries the full runtime and boots through the same path as `jac run app.jab`, with zero live compilation. Because it embeds the runtime, the artifact is large but complete: hand it to a machine with no Jac, Python, or Node installed. The entry point resolves the same way `jac run` does (a `main.jac` or the `[project]` entry-point in `jac.toml`); an entry-less package is rejected at build time.
-- `jac build <file> --native` AOT-compiles the restricted `na` subset through LLVM into a **small, dependency-free** binary (no walkers, no async, no Python imports). Reach for it when your program fits the [native pathway](../language/native-pathway.md) and you want the smallest possible artifact.
+- `--as binary` packages **any** app (a persistent `root` graph, Python imports, a full web client) into one executable by appending the sealed `.jab` onto a copy of the running `jac` launcher. The file carries the full runtime and boots through the same path as `jac run app.jab`, with zero live compilation. Because it embeds the runtime, the artifact is large but complete: hand it to a machine with no Jac, Python, or Node installed. The entry point resolves the same way `jac run` does (a `main.jac` or the `[project]` entry-point in `jac.toml`); an entry-less package is rejected at build time.
+- `jac build <file> --native` AOT-compiles the restricted `na` subset through LLVM into a **small, dependency-free** binary (no persistent `root` graph, no async, no Python imports). Reach for it when your program fits the [native pathway](../language/native-pathway.md) and you want the smallest possible artifact.
 
 **Fat jab: vendoring the Python dependency closure (`--fat`).** A plain `.jab` bundles the sealed app, client dist, and native binaries, but its *Python* dependencies are only declared; they are pip-installed on the target at run or deploy time, so running a jab still assumes the target can reach PyPI. `jac build --fat` (on the `jab` and `binary` projections) resolves the app's runtime Python closure and packs the wheels into the bundle under `_vendor/wheels/`, the same way a Spring Boot fat jar nests every dependency jar:
 

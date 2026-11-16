@@ -53,7 +53,7 @@ impl scale_local_serve(
     gateway_cfg["app_serves_client"] = not no_client;
     _print_local_fleet_banner(spec);
     try {
-        LocalRealizer(fleet=spec, gateway_config=gateway_cfg).serve();
+        start_fleet_mode(spec, gateway_cfg);
     } except Exception as e {
         console.error(f"Fleet mode failed ({type(e).__name__}: {e}).", emoji=False);
         return 1;
@@ -71,6 +71,9 @@ impl scale_deploy(
 ) -> int {
     mark_scale_runtime();
     try {
+        if target in ('kubernetes', 'kubernetes-microservice') {
+            ensure_deploy_tooling(dry_run);
+        }
         import from jaclang.scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
         }
@@ -315,7 +318,10 @@ impl scale_cmd(
         }
         return deploy_destroy(service_name, target, component);
     }
+    return _fleet_cmd(action, service_name, lines);
+}
 
+impl _fleet_cmd(action: str, service_name: str, lines: int) -> int {
     scale_config = get_scale_config();
     gateway_cfg = scale_config.get_gateway_config();
 
@@ -361,10 +367,10 @@ impl scale_cmd(
     }
 
     svc_registry: ServiceRegistry = build_registry(fleet);
-    deployer = LocalDeployer(registry=svc_registry, target="local");
+    pm = ServiceProcessManager(registry=svc_registry);
 
     if action == "status" {
-        svc_status = deployer.status();
+        svc_status = pm.status();
         console.print();
         console.print("  Fleet Status", style="bold cyan");
         console.print();
@@ -391,7 +397,7 @@ impl scale_cmd(
             console.print("App name required: jac scale stop <name>", style="error");
             return 1;
         }
-        if deployer.stop_service(service_name) {
+        if pm.stop_service(service_name) {
             console.success(f"Stopped {service_name}", emoji=False);
         } else {
             console.error(f"Failed to stop {service_name}", emoji=False);
@@ -402,7 +408,7 @@ impl scale_cmd(
             console.print("App name required: jac scale restart <name>", style="error");
             return 1;
         }
-        if deployer.restart_service(service_name) {
+        if pm.restart_service(service_name) {
             console.success(f"Restarted {service_name}", emoji=False);
         } else {
             console.error(f"Failed to restart {service_name}", emoji=False);
@@ -413,10 +419,10 @@ impl scale_cmd(
             console.print("App name required: jac scale logs <name>", style="error");
             return 1;
         }
-        log_output = deployer.get_logs(service_name, lines);
+        log_output = pm.get_logs(service_name, lines);
         console.print(log_output);
     } elif action == "destroy" {
-        deployer.destroy_all();
+        pm.stop_all();
         console.success("All apps stopped", emoji=False);
     } else {
         console.error(f"Unknown action: '{action}'", emoji=False);

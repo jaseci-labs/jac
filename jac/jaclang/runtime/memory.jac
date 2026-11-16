@@ -58,6 +58,7 @@ obj Memory {
     async def acommit(anchor: (Anchor | None) = None);
     def on_commit(callback: Callable);
     def _fire_on_commit;
+    def note_effect_failure(e: Exception) -> None;
     def read_barrier;
     def seal_scan;
     def unseal_scan;

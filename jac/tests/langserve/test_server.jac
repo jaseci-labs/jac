@@ -1428,7 +1428,13 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
         data = bytearray(cache_path.read_bytes());
         # Header layout <4sHHIIIIII>: jaclang_version_hash is at offset 8.
         struct.pack_into("<I", data, 8, 0xDEADBEEF);
-        cache_path.write_bytes(bytes(data));
+        # Replace the file the way every JIR write does (scratch file, then
+        # os.replace), so it gets a new inode. An in-place write keeps the
+        # inode and size, and when it lands in the same timestamp tick as the
+        # compile's write, read_jir's memo still serves the pre-tamper bytes.
+        tampered = cache_path.with_name(cache_path.name + ".tamper");
+        tampered.write_bytes(bytes(data));
+        os.replace(tampered, cache_path);
 
         # The cache should now be rejected.
         with cache_scope(program.options) {

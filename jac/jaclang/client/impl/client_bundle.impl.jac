@@ -109,14 +109,7 @@ impl ClientBundleBuilder._compile_bundle(
 impl ClientBundleBuilder._compile_to_js(
     source_path: Path, source_root: Path | None = None
 ) -> ClientArtifact {
-    program = client_program(self.program);
-    if source_root is not None {
-        import copy;
-        import from jaclang.compiler.driver.compilation_context { context_program }
-        options = copy.copy(program.options);
-        options.client_source_root = str(source_root.resolve());
-        program = context_program(program, options);
-    }
+    program = client_context_program(client_program(self.program), source_root);
     compiler = program._get_compiler();
     diagnostic_program = compiler.product_program(str(source_path), program);
     prev_error_count = len(diagnostic_program.errors_had);
@@ -170,6 +163,25 @@ impl emitted_tree_digest(tree_root: Path) -> str {
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
     parts = [f"{path}:{ct_dep_digest(str(path), with_annexes=True)}" for path in paths];
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
+}
+
+impl client_source_root(project_dir: Path, entry_path: Path) -> Path {
+    project_root = project_dir.resolve();
+    entry_root = entry_path.resolve().parent;
+    return project_root if entry_root.is_relative_to(project_root) else entry_root;
+}
+
+impl client_context_program(
+    program: JacProgram, source_root: (Path | None)
+) -> JacProgram {
+    if source_root is None {
+        return program;
+    }
+    import copy;
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    options = copy.copy(program.options);
+    options.client_source_root = str(source_root.resolve());
+    return context_program(program, options);
 }
 
 impl client_program(program: JacProgram | None) -> JacProgram {

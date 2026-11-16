@@ -159,6 +159,8 @@ impl Memory.on_commit(callback: Callable) {
     self._on_commit.append(callback);
 }
 
+impl Memory.note_effect_failure(e: Exception) -> None {}
+
 impl Memory._fire_on_commit {
     fired = self._on_commit;
     self._on_commit = [];

@@ -4003,6 +4003,32 @@ test "native sys stream write returns count and hits the real fds" {
     assert got2 == b"err-7\n" , f"fd2 bytes wrong: {got2!r}";
 }
 
+test "native sys streams reached by a from-import or an alias hit the real fds" {
+    (eng, _) = compile_native("sys_streams_from_import.jac");
+    for (fn_name, fd, want_n, want_bytes) in [
+        ("write_out", 1, 10, b"out-bytes\n"),
+        ("write_err", 2, 6, b"err-7\n"),
+        ("print_err", 2, 1, b"p-err\n"),
+        ("print_module_alias_err", 2, 1, b"s-err\n")
+    ] {
+        func = get_func(eng, fn_name, ctypes.c_int64);
+        (r, w) = os.pipe();
+        saved = os.dup(fd);
+        os.dup2(w, fd);
+        os.close(w);
+        try {
+            n = func();
+        } finally {
+            os.dup2(saved, fd);
+            os.close(saved);
+        }
+        got = os.read(r, 64);
+        os.close(r);
+        assert n == want_n , f"{fn_name} returned {n}";
+        assert got == want_bytes , f"{fn_name} wrote {got!r} to fd {fd}";
+    }
+}
+
 test "sys stdout/stderr streams via nacompile" {
     import tempfile;
     fixture = str(os.path.join(FIXTURES, "sys_streams_bin.jac"));
@@ -6480,13 +6506,9 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
             bc2 = comp.get_bytecode(fx, prog2);
         }
         assert bc2 is not None;
-        # Without a kernel the host recompiles and builds the engine in the
-        # pass itself, so the loader sees only the failed restore.
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        rebuilds = 2 if ensure_loaded() is not None else 1;
-        assert len(loads) == rebuilds , (
-            f"expected {rebuilds} loader call(s), saw {len(loads)}"
-        );
+        # The recompile builds the engine in the pass itself, so the loader
+        # sees only the failed restore.
+        assert len(loads) == 1 , f"expected 1 loader call, saw {len(loads)}";
         (eng, _) = comp.get_native_interop_setup(fx, prog2);
         assert eng is not None , (
             "restore failure must trigger recompile for inferred modules"

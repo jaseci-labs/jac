@@ -3,7 +3,6 @@ import re;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from types { SimpleNamespace }
-import from unittest.mock { patch }
 import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.project.config { set_config }
@@ -43,9 +42,7 @@ def _assert_import(importer: Path, target: Path) {
 }
 
 test "external imports keep same-named modules and their dependencies on cold and warm builds" {
-    with TemporaryDirectory() as tmp, patch(
-        "jaclang.project.kernel_compile._IN_PROCESS", [True]
-    ) {
+    with TemporaryDirectory() as tmp {
         set_config(None);
         base = Path(tmp).resolve();
         project = base / "myapp";

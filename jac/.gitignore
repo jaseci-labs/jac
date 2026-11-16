@@ -106,13 +106,6 @@ libjacllvm.dylib
 libjacllvm.*.artifact.json
 jacllvm.dll.artifact.json
 jacllvm.dll
-# Kit-built native compiler kernel (#8824), staged in-tree by mkpayload.
-libjac_compiler.so
-libjac_compiler.dylib
-libjac_compiler.so.layout.json
-libjac_compiler.dylib.layout.json
-jaclang/compiler/kernels/
-jaclang/compiler/.kernel-build.*
 # Any other `nacompile --shared` unit that lands in-tree with its layout
 # sidecar (a stray libjac_npy.so was committed once).
 libjac_*.so
@@ -124,6 +117,4 @@ libjacpyembed.so
 libjacpyembed.dylib
 jacpyembed.dll
 
-# A kernel publication lock keeps its inode while a build holds it.
 libjac_*.lock
-jac_compiler.dll.lock

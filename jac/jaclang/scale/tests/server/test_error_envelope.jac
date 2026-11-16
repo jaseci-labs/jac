@@ -7,14 +7,20 @@ import logging;
 import time;
 import uuid;
 import from logging.handlers { MemoryHandler }
-import from typing { Callable }
+import from unittest.mock { AsyncMock, patch }
 
 glob WATCHED_LOGGERS: tuple[str, ...] = (
          "jaclang.serve",
-         "jaclang.scale.server.webhook_ext"
+         "jaclang.scale.server.webhook_ext",
+         "jaclang.server.serving.app"
      );
 
-def _with_capture(send: Callable[[any], any]) -> tuple[any, list[any]] {
+def _with_capture(
+    send: Callable[[any], any], client: any = None
+) -> tuple[any, list[any]] {
+    if client is None {
+        client = make_client("error_paths.jac");
+    }
     watched = [logging.getLogger(name) for name in WATCHED_LOGGERS];
     saved = [(lg, lg.level, lg.disabled) for lg in watched];
     capture = MemoryHandler(10000);
@@ -25,7 +31,6 @@ def _with_capture(send: Callable[[any], any]) -> tuple[any, list[any]] {
         lg.disabled = False;
         lg.addHandler(capture);
     }
-    client = make_client("error_paths.jac");
     try {
         resp = send(client);
         return (resp, list(capture.buffer));
@@ -126,6 +131,53 @@ test "function exception: message on the wire, stack in the server log" {
     _assert_stack_logged(records, "boom_fn");
 }
 
+test "a bad target node is the caller's error and leaves no stack in the log" {
+    invalid = ("INVALID_NODE_ID", "Invalid node id");
+    not_found = ("NOT_FOUND", "Target node not found");
+    def send(client: any) -> any {
+        token = client.register_and_login(
+            f"owner_{uuid.uuid4().hex[:8]}", "password123"
+        );
+        made = client.post(
+            "/walker/MakeNote", json={}, headers={"Authorization": f"Bearer {token}"}
+        );
+        private_note = extract_data(made.json())["reports"][0];
+        unknown = "00000000-0000-4000-8000-000000000001";
+        return [
+            (client.post(path, json={}), status, expected)
+            for (path, status, expected) in (
+                ("/walker/Boom/zzz", 400, invalid),
+                (f"/walker/Boom/{unknown}", 404, not_found),
+                (f"/walker/Boom/{private_note}", 404, not_found),
+                ("/walker/Pong/root", 200, (None, None))
+            )
+        ];
+    }
+    (answers, records) = _with_capture(send);
+    for (resp, status, expected) in answers {
+        assert resp.status_code == status , resp.text;
+        err = resp.json()["error"] or {};
+        assert (err.get("code"), err.get("message")) == expected , resp.text;
+    }
+    assert not _stacks(records) , _stacks(records);
+}
+
+test "an unhandled server failure stays in the log, off the wire" {
+    async def fail(request: any, call_next: any) -> any {
+        raise RuntimeError("secret detail");
+    }
+    app = ServingApp();
+    app.add_middleware(fail);
+    def send(client: any) -> any {
+        return client.get("/anything");
+    }
+    (resp, records) = _with_capture(send, ServingTestClient(app=app));
+    assert resp.status_code == 500 , resp.text;
+    assert resp.json() == {"error": "Internal Server Error"} , resp.text;
+    logged = [r.getMessage() for r in records];
+    assert any("Traceback" in m and "secret detail" in m for m in logged) , logged;
+}
+
 test "webhook exception: opaque failure on the wire, one ERROR record in the log" {
     (resp, records) = _hit_webhook_with_capture();
     assert resp.status_code == 500 , resp.text;
@@ -138,4 +190,45 @@ test "webhook exception: opaque failure on the wire, one ERROR record in the log
     assert len(records) == 1 , (
         f"expected the catch-site record alone, got {len(records)}: {rendered}"
     );
+}
+
+test "only a caller with no root answers 401, whatever a program's error says" {
+    client = make_client("error_paths.jac");
+    try {
+        member = client.register_and_login(
+            f"member_{uuid.uuid4().hex[:8]}", "password123"
+        );
+        server: any = client._server;
+        ghost = server.user_manager.create_jwt_token("ghost");
+        for (token, status, code, message) in (
+            (member, 500, "EXECUTION_ERROR", "User not found"),
+            (ghost, 401, "UNAUTHORIZED", "Unauthorized: unknown user")
+        ) {
+            for path in ("/walker/NamesMissingUser", "/function/names_missing_user") {
+                resp = client.post(
+                    path, json={}, headers={"Authorization": f"Bearer {token}"}
+                );
+                assert resp.status_code == status , f"{path}: {resp.text}";
+                err = resp.json()["error"];
+                assert (err["code"], err["message"]) == (code, message) , f"{path}: {err}";
+            }
+        }
+
+        users = server.user_manager;
+        with patch.object(
+            users,
+            "aget_root_id",
+            new=AsyncMock(return_value="00000000-0000-4000-8000-000000000001")
+        ) {
+            with patch.object(users, "reset_root", return_value=None) {
+                resp = client.post("/walker/Boom", json={});
+            }
+        }
+        assert resp.status_code == 401 , f"guest with no root: {resp.text}";
+        err = resp.json()["error"];
+        assert (err["code"], err["message"])
+            == ("UNAUTHORIZED", "Unauthorized: unknown user") , err;
+    } finally {
+        client.close();
+    }
 }

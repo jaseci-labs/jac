@@ -1,16 +1,13 @@
 """Object emission for a link runs on a pool and changes nothing but the time.
 
 A link in objects mode emits each unit's object from its bitcode. The units
-are independent, and emitting them one after another was most of the link
-step of a kernel build: about two minutes of a cold build on a laptop, five
-on a CI runner. Each emission now parses its bitcode into its own LLVM
-context, so a thread pool can run them side by side.
+are independent, so each emission parses its bitcode into its own LLVM
+context and a thread pool runs them side by side.
 """
 
 import os;
 import from pathlib { Path }
 import jaclang.compiler.driver.jir as jir;
-import from jaclang.compiler.backends.native.kernel_resolve { kernel_options }
 import from jaclang.compiler.backends.native.link_plan { build_link_plan }
 import from jaclang.compiler.backends.native.na_compile_pass {
     emit_unit_object,
@@ -22,19 +19,24 @@ import from jaclang.compiler.driver.program { JacProgram }
 
 glob PKG: Path = Path(str(jir.__file__)).resolve().parent.parent.parent,
      LEAVES: tuple[str, ...] = (
-         "compiler/types/ct_int.jac",
-         "compiler/types/stubcat/format.jac",
-         "project/app_kinds.jac",
+         "runtime/na_stdlib/colorsys.jac",
+         "runtime/na_stdlib/keyword.jac",
+         "runtime/na_stdlib/string.jac",
          "runtime/osp_tag.jac"
      ),
      JOB_ENV: tuple[str, ...] = ("JAC_NATIVE_EMIT_JOBS", "JAC_JOBS");
 
-"""Lower leaf units of the real compiler, whatever the cache holds, and leave
-their objects unemitted."""
+"""Lower leaf units of the bundled native runtime, whatever the cache holds,
+and leave their objects unemitted."""
 def lowered_plan -> tuple[JacProgram, CompileOptions, list[str]] {
     program = JacProgram();
-    options = kernel_options();
-    options.no_ir_cache = True;
+    options = CompileOptions(
+        aot_mode=True,
+        default_codespace="native",
+        native_unit=True,
+        skip_native_engine=True,
+        no_ir_cache=True
+    );
     plan = build_link_plan(
         program, [str(PKG / rel) for rel in LEAVES], options, native_unit=True
     );

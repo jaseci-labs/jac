@@ -13,6 +13,7 @@ obj CompileOptions {
         native_required: bool = False,
         native_require: (list[str] | None) = None,
         iface_ok: bool = False,
+        retain_interfaces: bool = False,
         need_full_ast: bool = False,
         native_tree_demand: bool = False,
         skip_analysis: bool = False,
@@ -20,8 +21,8 @@ obj CompileOptions {
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
         aot_mode: bool = False,
+        native_import: bool = False,
         native_unit: bool = False,
-        kernel_build: bool = False,
         native_link_mode: (str | None) = None,
         force_codespace: str = "",
         memory_profile: (str | None) = None,
@@ -83,9 +84,6 @@ glob NATIVE_LINK_MODE_OBJECTS: str = "objects",
      NATIVE_LINK_MODES: tuple[str, str] = ("objects", "bitcode");
 
 def effective_codegen_fingerprint -> str;
-
-
-def effective_analysis_fingerprint -> str;
 
 def link_fingerprint_mismatches(
     participants: list[tuple[str, str]], current_fp: str

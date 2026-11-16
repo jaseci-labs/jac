@@ -160,7 +160,9 @@ impl NativeAgentSession._forward(ev: any, gen: int) -> None {
         }
     } elif kind in ["steps_done", "stream_reset"] {
         self._thought = "";
-        if kind == "stream_reset" {
+        if kind == "stream_reset" and data.get("scope") == "answer" {
+            self._emit_if(gen, "message_reset", {});
+        } elif kind == "stream_reset" {
             self._emit_if(gen, "log", {"text": "the model restarted its reply"});
         }
     } elif kind == "tool_call" {

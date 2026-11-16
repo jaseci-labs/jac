@@ -35,17 +35,12 @@ graph import constraints {
         },
         solver {
             Constraint,
-            Expression,
-            LexWeight,
             Relation,
             StrengthTier,
-            Term,
             Variable,
             constraint_key,
             is_finite,
-            lex_compare,
             normalize_expression,
-            strength_weight,
             term
         },
         solver_dual {
@@ -141,7 +136,7 @@ graph import constraints {
 
 graph import ui {
     bindings ++> [
-        gates | runtime { is_empty },
+        gates { is_empty },
         inspect { Binding },
         runtime_core { BindingRegistry, clear_bindings, find_orphan_bindings },
         screen { subscribe },
@@ -193,8 +188,7 @@ graph import ui {
             MouseEvent,
             PasteEvent,
             ResizeEvent,
-            StreamChunkEvent,
-            TextEvent
+            StreamChunkEvent
         },
         input_sequences { ESC, HostEvent, KeyEvent, MouseEvent, TextEvent },
     ]
@@ -250,19 +244,7 @@ graph import ui {
     layout_scope ++> layout { _ScopedNode, _collect_scope }
     layout_types ++> [
         demo_live_shell_render { fill_axis, fixed_axis, grow_axis },
-        layout {
-            _copy_rect,
-            add_relation,
-            clear_node,
-            create_layout_state,
-            frame_entry_of,
-            rect_of,
-            remove_relation,
-            set_content,
-            set_scroll_offset,
-            set_spec,
-            validate_spec
-        },
+        layout { _copy_rect },
         renderer {
             clear_node,
             create_layout_state,
@@ -277,20 +259,14 @@ graph import ui {
         demo_live_shell_render { LayoutSpec },
         layout {
             Axis,
-            AxisSize,
             FrameEntry,
             LayoutDiagnostic,
             LayoutError,
             LayoutFrame,
-            LayoutRelation,
-            LayoutRelationKind,
             LayoutResult,
             LayoutSeverity,
-            LayoutSpec,
             LayoutState,
-            MutationResult,
             Rect,
-            RelationHandle,
             Size,
             SizeMode,
             Viewport
@@ -350,7 +326,7 @@ graph import ui {
             SizeMode,
             Viewport
         },
-        renderer { LayoutResult, LayoutSpec, LayoutState, Rect },
+        renderer { LayoutResult, LayoutSpec, Rect },
         renderer_damage { LayoutResult, Rect, Viewport, rect_union },
         renderer_paint { FrameEntry, LayoutState },
         renderer_types { LayoutState, Rect },
@@ -374,7 +350,6 @@ graph import ui {
             Layer,
             Overlay,
             Screen,
-            UiContainer,
             UiNode,
             find_node_by_jid,
             node_id,
@@ -424,21 +399,12 @@ graph import ui {
             Child,
             Feeds,
             FocusNext,
-            Header,
             Layer,
-            MainScreen,
             Owns,
-            Prompt,
-            Status,
-            TranscriptView,
             UiContainer,
             UiNode,
-            UiSessionRoot,
             child_parent,
-            child_rank,
             is_child_ancestor,
-            node_id,
-            ordered_child_keys,
             ordered_children
         },
         renderer_damage { Screen, UiContainer, UiNode, node_id, ordered_children },
@@ -452,7 +418,6 @@ graph import ui {
             ordered_children
         },
         runtime {
-            Feeds,
             FocusNext,
             Layer,
             Overlay,
@@ -529,41 +494,23 @@ graph import ui {
         renderer_damage { AnsiDiff, CursorPos, DamageRect, Renderer },
         renderer_paint { Renderer, _OverlayHit },
     ]
-    runtime ++> [
-        focus {
-            OverlayBounds,
-            OverlayCloseResult,
-            OverlayOpenResult,
-            advance_focus,
-            close_overlay,
-            focus_order,
-            layers_input_order,
-            layers_paint_order,
-            open_modal_overlay
-        },
-        screen {
-            OverlayBounds,
-            OverlayCloseResult,
-            OverlayOpenResult,
-            close_overlay,
-            open_modal_overlay
-        },
-    ]
+    runtime ++> screen {
+        OverlayBounds,
+        OverlayCloseResult,
+        OverlayOpenResult,
+        close_overlay,
+        open_modal_overlay
+    }
     runtime_core ++> [
         demo_live_shell | gates { create_session, dispose_session },
         demo_live_shell_model | events { UiSession },
         inspect { UiSession, validate_session },
         runtime {
             UiSession,
-            append_child_session,
-            create_session,
-            dispose_session,
             get_focus_node,
-            register_capability,
             release_capabilities,
             set_focus,
-            track_node,
-            validate_session
+            track_node
         },
         screen {
             SessionEventRecord,

@@ -167,7 +167,7 @@ def:pub app -> JsxElement {
             sessionRes = await fetch(brokerPrefix + "/session");
             session = await sessionRes.json();
             brokerError = "";
-        } except e {
+        } except Exception as e {
             brokerError = "broker probe failed: " + str(e);
         }
         tick = tick + 1;

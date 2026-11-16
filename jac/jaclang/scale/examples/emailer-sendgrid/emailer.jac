@@ -22,6 +22,7 @@ import from sendgrid.helpers.mail {
     FileContent,
     FileName,
     FileType,
+    Header,
     ReplyTo
 }
 
@@ -52,9 +53,16 @@ obj SendGridEmailer(Emailer) {
         body_html: (str | None) = None,
         from_addr: (str | None) = None,
         reply_to: (str | None) = None,
-        attachments: (list[EmailAttachment] | None) = None
+        attachments: (list[EmailAttachment] | None) = None,
+        headers: (dict[str, str] | None) = None
     ) -> bool {
         if self._client is None {
+            return False;
+        }
+        try {
+            extra_headers = self.checked_headers(headers);
+        } except ValueError as e {
+            _logger.error("SendGrid send refused: %s", e);
             return False;
         }
         sender = from_addr or self.from_address;
@@ -78,6 +86,9 @@ obj SendGridEmailer(Emailer) {
         }
         if reply_to {
             msg.reply_to = ReplyTo(reply_to);
+        }
+        for (name, value) in extra_headers.items() {
+            msg.add_header(Header(name, value));
         }
         for att in attachments or [] {
             cid = att.bare_content_id();
