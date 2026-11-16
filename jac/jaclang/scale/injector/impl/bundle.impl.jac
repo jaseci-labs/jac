@@ -956,7 +956,8 @@ impl seal_input_digest(
         app_name,
         "fat" if fat else "thin",
         os.environ.get("JAC_SEAL_SKIP_VENV", ""),
-        sanitized or ""
+        sanitized or "",
+        active_profile_name(None)
     ];
     if bake_client {
         parts.append("client");
@@ -977,7 +978,13 @@ impl client_input_digest(
         base,
         sources,
         jac_binary,
-        ["client", entry_rel, sanitized or "", *client_build_env()],
+        [
+            "client",
+            entry_rel,
+            sanitized or "",
+            active_profile_name(None),
+            *client_build_env()
+        ],
         tomls
     );
 }
