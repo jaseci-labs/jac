@@ -308,6 +308,46 @@ test "two aliases of one server function are typed by their own import's placeme
     }
 }
 
+test "a cross-app import shared by a client pin and server code keeps its server binding" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with tempfile.TemporaryDirectory(prefix="jac-shared-bridge-") as tmp {
+        base = Path(tmp);
+        (base / "jac.toml").write_text(
+            '[project]\nname = "notes"\ndefault-app = "notes"\n\n'
+                + '[placement.pins]\n"notes.helper.count_notes" = "client"\n\n'
+                + '[apps.notes]\nkind = "web-app"\nentry-point = "main"\n\n'
+                + '[apps.store]\nkind = "service"\nentry-point = "notes.store"\n'
+                + 'route = "/store"\n'
+        );
+        (base / "main.jac").write_text(
+            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
+        );
+        (base / "notes").mkdir();
+        (base / "notes" / "store.jac").write_text(
+            "node Note {\n    has title: str;\n}\n\n"
+                + "def:pub list_notes -> list[str] {\n"
+                + "    return [n.title for n in [root --> [?:Note]]];\n}\n"
+        );
+        (base / "notes" / "helper.jac").write_text(
+            "import from .store { list_notes }\n\n"
+                + "def count_notes -> None {\n    list_notes();\n}\n\n"
+                + "def:pub refresh -> None {\n    list_notes();\n}\n"
+        );
+        prog = JacProgram();
+        mod = prog.compile(
+            str(base / "notes" / "helper.jac"),
+            options=CompileOptions(no_cgen=True, skip_native_engine=True)
+        );
+        imp = import_of(mod, "store");
+        assert import_crosses_apps(imp) , "the fixture must exercise a cross-app import";
+        assert imp.codespace_dual , (
+            "server code still calls the import, so it must keep its server binding"
+        );
+    }
+}
+
 test "a generator-returning SERVICE_BRIDGE stub is a coroutine until awaited" {
     # The bridge stub is `async def` whatever the provider returns, so a
     # streaming provider is reached as `await narrate(...)`; iterating the
