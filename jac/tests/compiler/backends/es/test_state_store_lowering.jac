@@ -152,3 +152,33 @@ test "preact lowers a shorthand jsx attribute as a state read" {
     js = compile_with_backend("state_shorthand_attr.jac", PreactBackend());
     assert_shorthand_read(js, "preact");
 }
+
+test "every state rebinding goes through the setter and matches Python" {
+    import json;
+    import from tests.compiler.backends.es.codegen_helpers { run_js_module }
+    js = compile_with_backend("state_tuple_unpack.jac", ReactBackend());
+    js = re.sub(r'import \{[^}]*\} from "@jac/runtime";', "", js);
+    stubs = (
+        "const cells = []; const clicks = [];\n"
+        "const useJacState = (v) => { const c = {val: v, set(x) { c.val = x; }}; cells.push(c); return c; };\n"
+        "const __jacJsx = (t, p, k) => { if (p && p.onClick) clicks.push(p.onClick); return null; };\n"
+    );
+    probe = "\napp(); console.log(JSON.stringify(clicks.map((f) => { f(); return [cells[0].val, cells[1].val]; })));";
+    result = run_js_module(stubs + js + probe);
+    assert result.returncode == 0 , f"{result.stderr}\njs:\n{js}";
+    assert json.loads(result.stdout.strip())
+        == [
+            [1, 1],
+            [3, 3],
+            [5, 6],
+            [1, 2],
+            [3, 2],
+            [7, 7],
+            [1, 3],
+            [3, 4],
+            [6, 4],
+            [1, 4],
+            [9, 9],
+            [3, 2]
+        ] , result.stdout;
+}

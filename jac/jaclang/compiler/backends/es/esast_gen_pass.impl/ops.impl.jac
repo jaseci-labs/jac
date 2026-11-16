@@ -532,6 +532,29 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         }
         return;
     }
+    if (
+        op_name == Tok.WALRUS_EQ
+        and isinstance(here.left, uni.Name)
+        and here.left.sym_name in self.reactive_vars
+    ) {
+        written = es.Identifier(name="__jac_written");
+        update = StateUpdate(name=here.left.sym_name, value=written);
+        set_stmt = es.ExpressionStatement(
+            expression=self._ensure_backend().lower_state_update(update)
+        );
+        writer = es.ArrowFunctionExpression(
+            params=[written],
+            body=es.BlockStatement(
+                body=[set_stmt, es.ReturnStatement(argument=written)]
+            ),
+            async_=False,
+            expression=False
+        );
+        here.gen.es_ast = self.sync_loc(
+            es.CallExpression(callee=writer, arguments=[right]), jac_node=here
+        );
+        return;
+    }
     if ((op_name == Tok.WALRUS_EQ) and isinstance(left, es.Identifier)) {
         self._ensure_identifier_declared(left.name, here.left);
         assign_expr = self.sync_loc(
@@ -547,22 +570,31 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         return;
     }
 
+    here.gen.es_ast = self._lower_binop(op_name, here, here.left, left, right, here);
+}
+
+impl EsastGenPass._lower_binop(
+    op_name: (str | None),
+    fw_node: uni.Expr,
+    left_node: uni.UniNode,
+    left: es.Expression,
+    right: es.Expression,
+    here: uni.UniNode
+) -> es.Expression {
     if op_name and op_name in FW_BINARY_OPS {
-        _fw_result = self._fw_binary(here, FW_BINARY_OPS[op_name], left, right);
+        _fw_result = self._fw_binary(fw_node, FW_BINARY_OPS[op_name], left, right);
         if _fw_result is not None {
-            here.gen.es_ast = _fw_result;
-            return;
+            return _fw_result;
         }
     }
     if op_name {
         _op_emit_name = OP_EMIT_MAP.get(op_name);
         if _op_emit_name {
             _prim_result = self._try_primitive_op(
-                here.left, _op_emit_name, left, right, here
+                left_node, _op_emit_name, left, right, here
             );
             if _prim_result is not None {
-                here.gen.es_ast = _prim_result;
-                return;
+                return _prim_result;
             }
         }
     }
@@ -595,7 +627,7 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
             );
         }
     }
-    here.gen.es_ast = bin_expr;
+    return bin_expr;
 }
 
 impl EsastGenPass._fw_call(

@@ -1,19 +1,10 @@
 import gzip;
 import http.client;
-import json;
 import os;
 import sys;
 import urllib.error;
 import urllib.request;
 import zlib;
-
-impl HttpSource.get(url: str) -> bytes {
-    return http_get(url);
-}
-
-impl HttpSource.get_range(url: str, start: int, end: int) -> bytes {
-    return http_get_range(url, start, end);
-}
 
 def _open(url: str, headers: dict[str, str]) -> http.client.HTTPResponse;
 
@@ -32,30 +23,6 @@ impl http_get(url: str) -> bytes {
     }
     if status != 200 {
         die(f"http {status} for {url}");
-    }
-    return body;
-}
-
-impl http_get_range(url: str, start: int, end: int) -> bytes {
-    rng = f"bytes={start}-{end}";
-    status = 0;
-    body = b"";
-    try {
-        with _open(url, {"Range": rng}) as resp {
-            status = resp.status;
-            body = resp.read();
-        }
-    } except urllib.error.HTTPError as e {
-        die(
-            f"fetch-llvm: expected 206 for range {rng}, got {e.code} (server ignored Range)"
-        );
-    } except (OSError, ValueError) as e {
-        die(f"fetch-llvm: range fetch failed for {url}: {type(e).__name__}: {e}");
-    }
-    if status != 206 {
-        die(
-            f"fetch-llvm: expected 206 for range {rng}, got {status} (server ignored Range)"
-        );
     }
     return body;
 }
@@ -142,82 +109,12 @@ impl typeshed_sha(commit: str) {
     sys.stdout.flush();
 }
 
-impl fetch_llvm(dest: str) {
-    osarch = host_os_arch();
-    macos = osarch.startswith("macos");
-    rel = llvm_release(osarch);
-    if rel is None {
-        raise PayloadDie(
-            f"fetch-llvm: no pinned LLVM release for this host ({osarch}); add a row to bootstrap/pins.json llvm.slices."
-        );
-    }
-    marker_lib = "libLTO.dylib" if macos and rel.upstream else "libLLVMCore.a";
-    marker = os.path.join(dest, rel.dirname, "lib", marker_lib);
-    lld_marker = os.path.join(dest, rel.dirname, "lib", "liblldCommon.a");
-    if file_exists(marker) and file_exists(lld_marker) {
-        log(f"fetch-llvm: already present at {dest}/{rel.dirname}");
-        return;
-    }
-    make_dirs(dest);
-
-    fetch_llvm_slice(dest, rel, HttpSource(), macos);
-
-    if not file_exists(marker) {
-        die(f"fetch-llvm: fetch produced no {marker_lib}");
-    }
-    if not file_exists(lld_marker) {
-        die(
-            "fetch-llvm: the slice carries no LLD archives (liblldCommon.a); pin a slice built with LLD"
-        );
-    }
-    log(f"fetch-llvm: ready at {dest}/{rel.dirname}");
-}
-
-impl slice_wanted(name: str, macos: bool) -> bool {
-    if name.startswith("lib/libLLVM") and name.endswith(".a") {
-        return True;
-    }
-    if name.startswith("lib/liblld")
-        and not name.startswith("lib/liblldb")
-        and name.endswith(".a") {
-        return True;
-    }
-    if name.startswith("include/lld/") {
-        return True;
-    }
-    if name.startswith("include/llvm/") or name.startswith("include/llvm-c/") {
-        return True;
-    }
-    return macos and name == "lib/libLTO.dylib";
-}
-
 impl parse_eocd(tail: bytes, who: str) -> tuple[int, int] {
     eocd = tail.rfind(ZIP_EOCD_SIG);
     if eocd < 0 {
         die(f"{who}: no zip EOCD found");
     }
     return (rd_u32(tail, eocd + 12), rd_u32(tail, eocd + 16));
-}
-
-impl parse_central_directory(cd: bytes) -> list[ZipMember] {
-    members: list[ZipMember] = [];
-    p = 0;
-    while p + 46 <= len(cd) and cd[p:p + 4] == ZIP_CDH_SIG {
-        nlen = rd_u16(cd, p + 28);
-        elen = rd_u16(cd, p + 30);
-        clen = rd_u16(cd, p + 32);
-        members.append(
-            ZipMember(
-                name=cd[p + 46:p + 46 + nlen].decode("utf-8", errors="replace"),
-                method=rd_u16(cd, p + 10),
-                csize=rd_u32(cd, p + 20),
-                crc=rd_u32(cd, p + 16),
-                lho=rd_u32(cd, p + 42)
-            )
-        );
-        p += 46 + nlen + elen + clen;
-    }
-    return members;
 }
 
 impl inflate_member(method: int, data: bytes, who: str) -> bytes {
@@ -233,89 +130,6 @@ impl inflate_member(method: int, data: bytes, who: str) -> bytes {
     } except zlib.error as e {
         raise PayloadDie(f"{who}: inflate failed: {e}");
     }
-}
-
-impl member_data(run: bytes, run_start: int, m: ZipMember) -> bytes {
-    o = m.lho - run_start;
-    if o < 0 or run[o:o + 4] != ZIP_LFH_SIG {
-        die(f"fetch-llvm: bad local header for {m.name}");
-    }
-    data_off = o + 30 + rd_u16(run, o + 26) + rd_u16(run, o + 28);
-    return run[data_off:data_off + m.csize];
-}
-
-def _manifest_sha_map(manifest: bytes, rel: LlvmSlice) -> dict[str, str];
-
-def _run_end(members: list[ZipMember], i: int, cd_off: int) -> int;
-
-def _write_slice_member(slice_root: str, m: ZipMember, data: bytes);
-
-impl fetch_llvm_slice(dest: str, rel: LlvmSlice, src: HttpSource, macos: bool) {
-    llvm = pins().llvm;
-    slice_tag = "v" + llvm.version;
-    zip_url = f"{llvm.slice_base}/{slice_tag}/llvm-{llvm.version}-{rel.triple}-dev.zip";
-    man_url = f"{llvm.slice_base}/{slice_tag}/llvm-{llvm.version}-{rel.triple}-manifest.json";
-    log(
-        f"fetch-llvm: slice range-fetch (~84 MB) from llvm-slice {slice_tag} {rel.triple}"
-    );
-
-    sha_map = _manifest_sha_map(src.get(man_url), rel);
-
-    tail_len = min(rel.zip_size, 65536);
-    tail = src.get_range(zip_url, rel.zip_size - tail_len, rel.zip_size - 1);
-    (cd_size, cd_off) = parse_eocd(tail, "fetch-llvm");
-
-    cd = src.get_range(zip_url, cd_off, cd_off + cd_size - 1);
-    members = parse_central_directory(cd);
-    members.sort(key=lambda (m: ZipMember) { m.lho; });
-    count = len(members);
-
-    slice_root = os.path.join(dest, rel.dirname);
-    written = 0;
-    i = 0;
-    while i < count {
-        if not slice_wanted(members[i].name, macos) {
-            i += 1;
-            continue;
-        }
-        ra = i;
-        rb = i;
-        j = i + 1;
-        while j < count {
-            if slice_wanted(members[j].name, macos) {
-                if members[j].lho - _run_end(members, rb, cd_off) >= SLICE_RUN_GAP {
-                    break;
-                }
-                rb = j;
-            }
-            j += 1;
-        }
-        run_start = members[ra].lho;
-        run_end = _run_end(members, rb, cd_off);
-        run = src.get_range(zip_url, run_start, run_end - 1);
-        k = ra;
-        while k <= rb {
-            m = members[k];
-            k += 1;
-            if not slice_wanted(m.name, macos) {
-                continue;
-            }
-            data = inflate_member(
-                m.method, member_data(run, run_start, m), "fetch-llvm"
-            );
-            if zlib.crc32(data) & 0xFFFFFFFF != m.crc {
-                die(f"fetch-llvm: crc mismatch for {m.name}");
-            }
-            want_sha = sha_map.get(m.name);
-            if want_sha is not None and sha256_hex(data) != want_sha {
-                die(f"fetch-llvm: sha256 mismatch for {m.name}");
-            }
-            _write_slice_member(slice_root, m, data);
-            written += 1;
-        }
-        i = rb + 1;
-    }
-    log(f"fetch-llvm: slice extracted {written} members");
 }
 
 impl unzip_member_by_suffix(zip_bytes: bytes, suffix: str) -> bytes {
@@ -415,47 +229,4 @@ impl _gunzip(gz: bytes) -> bytes {
     } except (OSError, EOFError, zlib.error) as e {
         raise PayloadDie(f"gzip decompress failed: {type(e).__name__}: {e}");
     }
-}
-
-impl _manifest_sha_map(manifest: bytes, rel: LlvmSlice) -> dict[str, str] {
-    ms = sha256_hex(manifest);
-    if ms != rel.manifest_sha256 {
-        die(
-            f"fetch-llvm: manifest checksum mismatch\n  expected {rel.manifest_sha256}\n  actual   {ms}"
-        );
-    }
-    try {
-        parsed = json.loads(manifest);
-    } except ValueError as e {
-        die(f"fetch-llvm: manifest parse failed: {e}");
-    }
-    sha_map: dict[str, str] = {};
-    libs = parsed.get("libs") if isinstance(parsed, dict) else None;
-    if isinstance(libs, dict) {
-        for o in libs.values() {
-            if not isinstance(o, dict) {
-                continue;
-            }
-            fv = o.get("file");
-            sv = o.get("sha256");
-            if isinstance(fv, str) and isinstance(sv, str) {
-                sha_map[fv] = sv;
-            }
-        }
-    }
-    return sha_map;
-}
-
-impl _run_end(members: list[ZipMember], i: int, cd_off: int) -> int {
-    return members[i + 1].lho if i + 1 < len(members) else cd_off;
-}
-
-impl _write_slice_member(slice_root: str, m: ZipMember, data: bytes) {
-    rel_path = os.path.join(slice_root, m.name);
-    if m.name.endswith("/") {
-        make_dirs(rel_path);
-        return;
-    }
-    make_dirs(os.path.dirname(rel_path));
-    write_bytes(rel_path, data);
 }

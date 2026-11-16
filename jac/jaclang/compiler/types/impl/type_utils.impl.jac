@@ -369,7 +369,12 @@ impl collect_member_syms(
         return False;
     }
 
+    missed: set[int] = set();
+
     def descend(s: UniScopeNode) -> list[Symbol] {
+        if id(s) in missed {
+            return [];
+        }
         gathered: list[Symbol] = list(s.lookup_all(name, deep=False) or []);
         has_overload = any(is_overload_sym(sym) for sym in gathered);
         if gathered and not has_overload {
@@ -404,6 +409,9 @@ impl collect_member_syms(
                     }
                 }
             }
+        }
+        if not gathered {
+            missed.add(id(s));
         }
         return gathered;
     }
