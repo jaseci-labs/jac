@@ -234,20 +234,27 @@ impl find_destructure_index_path(target: UniNode, key: str) -> list[int] | None 
     }
     if isinstance(target, (TupleVal, ListVal)) and target.values {
         for (i, sub) in enumerate(target.values) {
-            if (
-                isinstance(sub, UnaryExpr)
-                and isinstance(sub.op, Token)
-                and sub.op.name == Tok.STAR_MUL
-            ) {
+            if is_star_target(sub) {
                 continue;
             }
             sub_path = find_destructure_index_path(sub, key);
             if sub_path is not None {
-                return [i] + sub_path;
+                return [unpack_index(target, i)] + sub_path;
             }
         }
     }
     return None;
+}
+
+impl is_star_target(nd: UniNode) -> bool {
+    return isinstance(nd, UnaryExpr)
+        and isinstance(nd.op, Token)
+        and nd.op.name == Tok.STAR_MUL;
+}
+
+impl unpack_index(targets: (TupleVal | ListVal), at: int) -> int {
+    values = targets.values or [];
+    return at - len(values) if any(is_star_target(v) for v in values[:at]) else at;
 }
 
 impl collect_assignment_target_keys(target: UniNode) -> set[str] {

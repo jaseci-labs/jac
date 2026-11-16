@@ -1,3 +1,70 @@
+impl EsastGenPass._literal_import_spec(
+    spec: (uni.Expr | uni.KWPair | None)
+) -> (str | None) {
+    if isinstance(spec, uni.MultiString)
+        and not all(isinstance(part, uni.String) for part in spec.strings) {
+        return None;
+    }
+    return uni.literal_string_value(spec) if spec else None;
+}
+
+
+impl EsastGenPass._prepare_dynamic_import(
+    nd: uni.FuncCall
+) -> (tuple[str, (str | None)] | None) {
+    import os;
+
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+    raw = self._literal_import_spec(params[0]) if params else None;
+    export_name: (str | None) = None;
+    valid = True;
+    for extra in params[1:] {
+        names = extra.value.values
+            if isinstance(extra, uni.KWPair)
+                and extra.key
+                and extra.key.sym_name == "fromlist"
+                and isinstance(extra.value, uni.ListVal)
+            else [];
+        export_name = self._literal_import_spec(names[0]) if len(names) == 1 else None;
+        valid = valid and export_name is not None and export_name.isidentifier();
+    }
+    importer = self.module.loc.mod_path or nd.loc.mod_path;
+    resolved: (str | None) = None;
+    if raw is not None and valid {
+        for (candidate, as_string) in [
+            (raw, True),
+            (raw + ".jac", True),
+            (raw, False)
+        ] {
+            (path, _lang) = active_host().resolve_module(
+                candidate, importer, string_spec=as_string
+            );
+            if path.endswith(".jac") and os.path.isfile(path) {
+                resolved = path;
+                break;
+            }
+        }
+    }
+    if raw is None or resolved is None {
+        self.ctx.emit(E5117, node_override=nd);
+        return None;
+    }
+    js_spec = relative_js_specifier(
+        resolved, importer, self.prog.options.client_source_root
+    );
+    if self.client_manifest {
+        self.client_manifest.imports[raw] = resolved;
+        if export_name {
+            self.client_manifest.runtime_imports.setdefault(resolved, []).append(
+                export_name
+            );
+        }
+    }
+    self.module_import_paths[js_spec] = resolved;
+    return (js_spec, export_name);
+}
+
+
 impl EsastGenPass._field_constructor_args(
     nd: uni.FuncCall,
     args: list[es.Expression | es.SpreadElement],
@@ -1123,14 +1190,16 @@ impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
             continue;
         }
         if (isinstance(param, uni.UnaryExpr) and param.op.name == Tok.STAR_MUL.value) {
-            spread_arg = cast(
+            positional_spread = cast(
                 es.Expression,
                 param.operand.gen.es_ast
                     if (param.operand and param.operand.gen.es_ast)
                     else self.sync_loc(es.Identifier(name='undefined'), jac_node=param)
             );
             args.append(
-                self.sync_loc(es.SpreadElement(argument=spread_arg), jac_node=param)
+                self.sync_loc(
+                    es.SpreadElement(argument=positional_spread), jac_node=param
+                )
             );
             continue;
         }
@@ -1318,6 +1387,21 @@ impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
                     if isinstance(_p.key, es.Identifier) {
                         _kwargs[_p.key.name] = _val_str;
                     }
+                }
+            }
+            if _builtin_name == "__import__" {
+                _dyn = self._prepare_dynamic_import(here);
+                if _dyn is None {
+                    here.gen.es_ast = self.sync_loc(
+                        es.RawCode(code="undefined"), jac_node=here
+                    );
+                    return;
+                }
+                (_dyn_spec, _dyn_export) = _dyn;
+                _args_strs = [json.dumps(_dyn_spec)];
+                _kwargs = {};
+                if _dyn_export is not None {
+                    _kwargs["fromlist"] = _dyn_export;
                 }
             }
             _ctx = ESEmitCtx(

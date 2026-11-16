@@ -47,53 +47,169 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
     if expr.sym is not None and expr.sym.decl is expr {
         return None;
     }
+    return self._get_type_of_unpack_target(expr);
+}
 
-    parent = expr.parent;
+impl TypeEvaluator._unpack_target_path(
+    expr: Name
+) -> tuple[
+    (Assignment | InForStmt | InnerCompr),
+    list[int],
+    (TupleVal | ListVal | None)
+]
+    | None {
     lhs_root: UniNode = expr;
+    star_targets: (TupleVal | ListVal | None) = None;
+    holder = expr.parent;
+    if holder is not None and is_star_target(holder) {
+        if not isinstance(holder.parent, (TupleVal, ListVal)) {
+            return None;
+        }
+        lhs_root = holder;
+        star_targets = holder.parent;
+    }
+    parent = lhs_root.parent;
+    path: list[int] = [];
     while isinstance(parent, (TupleVal, ListVal, AtomUnit)) {
+        if isinstance(parent, (TupleVal, ListVal)) {
+            values = parent.values or [];
+            at = [
+                i
+                for (i, v) in enumerate(values)
+                if v is lhs_root
+            ];
+            if not at {
+                return None;
+            }
+            path.insert(0, unpack_index(parent, at[0]));
+        }
         lhs_root = parent;
         parent = parent.parent;
     }
-    if not isinstance(parent, Assignment) or not isinstance(parent.value, Expr) {
+    if isinstance(parent, Assignment) {
+        if parent.aug_op is not None or not isinstance(parent.value, Expr) {
+            return None;
+        }
+        for t in parent.target {
+            if t is lhs_root {
+                return (parent, path, star_targets);
+            }
+        }
         return None;
     }
-    assignment = parent;
-    value = parent.value;
+    if isinstance(parent, (InForStmt, InnerCompr)) and parent.target is lhs_root {
+        return (parent, path, star_targets);
+    }
+    return None;
+}
 
-    if assignment.aug_op is not None {
+impl TypeEvaluator._get_type_of_unpack_target(expr: Name) -> TypeBase | None {
+    site = self._unpack_target_path(expr);
+    if site is None {
         return None;
     }
+    (binder, path, star_targets) = site;
+    source_type: (TypeBase | None) = None;
+    if not isinstance(binder, Assignment) {
+        source_type = self._get_iterable_element_type(
+            self.get_type_of_expression(binder.collection),
+            binder,
+            is_async=binder.is_async
+        );
+    } elif isinstance(binder.value, Expr) {
+        source_type = self.get_type_of_expression(binder.value);
+    }
+    if source_type is None {
+        return None;
+    }
+    if star_targets is not None {
+        container = self._extract_tuple_element_type_path(source_type, path[:-1]);
+        if container is None {
+            return None;
+        }
+        return self._starred_target_type(container, star_targets, path[-1], binder);
+    }
+    return self._extract_tuple_element_type_path(source_type, path);
+}
 
-    target_hit = False;
-    for t in assignment.target {
-        if t is lhs_root {
-            target_hit = True;
-            break;
+impl TypeEvaluator._get_source_of_unpack_target(expr: Name) -> Expr | None {
+    site = self._unpack_target_path(expr);
+    if site is None {
+        return None;
+    }
+    (binder, path, star_targets) = site;
+    if star_targets is not None or not isinstance(binder, Assignment) {
+        return None;
+    }
+    source: (UniNode | None) = binder.value;
+    for idx in path {
+        while isinstance(source, AtomUnit) {
+            source = source.value;
+        }
+        if not isinstance(source, (TupleVal, ListVal)) {
+            return None;
+        }
+        values = source.values or [];
+        if any(is_star_target(v) for v in values) {
+            return None;
+        }
+        if idx >= len(values) or idx < -len(values) {
+            return None;
+        }
+        source = values[idx];
+    }
+    return source if isinstance(source, Expr) else None;
+}
+
+impl TypeEvaluator._starred_target_type(
+    container: TypeBase,
+    star_targets: (TupleVal | ListVal),
+    star_at: int,
+    node_for_error: UniNode
+) -> TypeBase | None {
+    if self.prefetch.list_class is None {
+        return None;
+    }
+    values = star_targets.values or [];
+    element: TypeBase | None = None;
+    size: int | None = None;
+    if isinstance(container, ClassType) {
+        scope = container.shared.symbol_table;
+        if container.is_namedtuple() and isinstance(scope, Archetype) {
+            size = len(scope.get_has_vars());
+        } elif container.is_builtin("tuple")
+            and container.private.type_args
+            and not self._tuple_has_variadic_arg(container) {
+            size = len(container.private.type_args);
         }
     }
-    if not target_hit {
+    if size is not None {
+        captured: list[TypeBase] = [];
+        for i in range(star_at, size - (len(values) - star_at - 1)) {
+            field = self._extract_tuple_element_type(container, i);
+            if field is None {
+                return None;
+            }
+            self._collect_unique_types(field, captured);
+        }
+        if not captured {
+            return self.prefetch.list_class.clone_as_instance();
+        }
+        element = captured[0] if len(captured) == 1 else UnionType(types=captured);
+    } else {
+        element = self._get_iterable_element_type(container, node_for_error);
+    }
+    if element is None {
         return None;
     }
-
-    if lhs_root is expr {
-        return self.get_type_of_expression(value);
-    }
-
-    path = find_destructure_index_path(lhs_root, expr.value);
-    if path is None or len(path) == 0 {
-        return None;
-    }
-    return self._extract_tuple_element_type_path(
-        self.get_type_of_expression(value), path
-    );
+    star_type = self.prefetch.list_class.clone_as_instance();
+    star_type.private.type_args = [self._widen_literal_for_declaration(element)];
+    return star_type;
 }
 
 impl TypeEvaluator._extract_tuple_element_type(
     tuple_type: TypeBase, idx: int
 ) -> TypeBase | None {
-    if idx < 0 {
-        return None;
-    }
     if tuple_type.is_any_instance() {
         return tuple_type;
     }
@@ -130,7 +246,7 @@ impl TypeEvaluator._extract_tuple_element_type(
             return None;
         }
         has_vars = scope.get_has_vars();
-        if idx >= len(has_vars) {
+        if idx >= len(has_vars) or idx < -len(has_vars) {
             return None;
         }
         field = has_vars[idx];
@@ -148,10 +264,14 @@ impl TypeEvaluator._extract_tuple_element_type(
     ) {
         return self._convert_to_instance(cls.private.type_args[0]);
     }
-    if cls.private.type_args and idx < len(cls.private.type_args) {
-        return self._convert_to_instance(cls.private.type_args[idx]);
+    if cls.is_builtin("tuple") {
+        args = cls.private.type_args;
+        if args and idx >= -len(args) and idx < len(args) {
+            return self._convert_to_instance(args[idx]);
+        }
+        return None;
     }
-    return None;
+    return self._get_iterable_element_type(cls);
 }
 
 impl TypeEvaluator._tuple_has_variadic_arg(cls: ClassType) -> bool {
