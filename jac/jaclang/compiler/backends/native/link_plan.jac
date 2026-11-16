@@ -79,7 +79,7 @@ obj LinkPlan {
     def plan_digest -> str;
     def merged_layout -> dict[str, any];
     def layout_digest -> str;
-    def demoted_symbols -> list[str];
+    def lowering_failures -> list[str];
     def clib_paths -> list[str];
     def clib_symbol_lib -> dict[str, str];
     def pub_exports -> list[str];
