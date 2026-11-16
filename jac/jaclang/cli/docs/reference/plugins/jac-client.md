@@ -67,6 +67,54 @@ file whose path matches one the build writes, such as `manifest.json` in a PWA
 build, or a path that would need a folder where a file already is, fails the build
 before anything is copied.
 
+### robots.txt and sitemap.xml
+
+Set the site's public URL and `jac build` writes both files into `dist/`:
+
+```toml
+[client.seo]
+site_url = "https://example.org"   # required: nothing is generated without it
+site_hosts = ["www.example.org"]   # other hosts that serve production
+
+[client.seo.sitemap]
+exclude = ["/preview-auth"]        # paths to leave out
+extra = ["/blog/launch"]           # paths the route scanner can't see
+
+[client.seo.robots]
+disallow = ["/internal"]           # paths to block, on top of the (auth) routes
+```
+
+- The sitemap lists the routes under `pages/`, except routes in an `(auth)` group,
+  catch-all routes and routes with a dynamic segment (`[id].jac`), which can't be
+  listed. An app without `pages/` lists `/`. It has no `<lastmod>`.
+- `robots.txt` disallows the `(auth)` routes and everything in `disallow`, always
+  allows the client bundle and stylesheet so crawlers can render the app, and
+  points at the sitemap. An `(auth)` route `/admin` becomes `Disallow: /admin$` and
+  `Disallow: /admin/`, so a public `/administrators-guide` stays crawlable, and an
+  `(auth)` home page becomes `Disallow: /$`. A sitemap URL is never blocked: one that
+  an `(auth)` rule would cover gets its own `Allow:` line, and one that `disallow`
+  covers leaves the sitemap.
+- Paths are percent-encoded (`/café menu` becomes `/caf%C3%A9%20menu`).
+- Every list must be a list of strings, and an unknown key is an error.
+- A file of the same name in `public/` wins: the build uses it instead and says so.
+
+`jac run --serve` and the jac-scale gateways compare the host of a `/robots.txt`
+request with the host of `site_url` and the hosts in `site_hosts`, ignoring case,
+the port and a trailing dot. The host is the `Host` header, or `X-Forwarded-Host` when
+the request comes from a proxy listed in `[serve.proxy] trusted`. Behind a proxy
+that rewrites `Host`, list the proxy there, or the production host is not
+recognized either. On any other host, such as a preview or staging deployment, they
+answer `User-agent: *` / `Disallow: /` ahead of any route the app declares, whether
+the file was generated or hand-written, so previews are not indexed, and log a
+warning naming the host the first time. A CDN that sends its own origin name as
+`Host` is such a host: add that name to `site_hosts`. In a
+microservice deployment only the gateway checks: the apps behind it see the
+gateway's address, not the public host, so a `/robots.txt` it forwards to them is
+answered as is. Both files are served with `Cache-Control: no-cache`. In a
+workspace, `[client.seo]` applies to every app; `[apps.<name>.client.seo]`
+overrides it for one app. The build reads the settings of the app it builds, and a
+gateway those of the app it serves at `/`.
+
 ### Client Code Is Inferred
 
 A component file needs no marker at all -- JSX and npm imports are client-only syntax, so the compiler places these declarations (and any helpers they use) in the client bundle automatically:
@@ -1373,6 +1421,8 @@ The `[client.npm]` section configures custom npm registries and authentication f
 | `settings` | `dict` | Global `.npmrc` key-value settings (registry, always-auth, strict-ssl, proxy, etc.) |
 | `scoped_registries` | `dict` | Maps npm scopes to registry URLs |
 | `auth` | `dict` | Registry authentication tokens |
+| `min_release_age_days` | `float` | Skip package versions published fewer than this many days ago (default `1`) |
+| `min_release_age_excludes` | `list` | Package names the age limit does not apply to |
 
 **Global settings** emit arbitrary `.npmrc` key-value pairs:
 
@@ -1402,6 +1452,16 @@ _authToken = "${NODE_AUTH_TOKEN}"
 The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
 
 The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac run`, or `jac build`).
+
+**Minimum release age.** When Jac installs npm dependencies (client builds, global tools, desktop and mobile setup), it skips any package version published less than a day ago and installs an older version that still matches. Brand-new versions can fail to download for several minutes after they are published, and waiting a day also gives the npm community time to catch a bad release. Versions already in your lockfile are not affected.
+
+```toml
+[client.npm]
+min_release_age_days = 3               # 0 turns it off
+min_release_age_excludes = ["react"]   # package names only
+```
+
+If the only version that matches a dependency is too new, for example when you pin a version released today, the install fails with a `minimum-release-age` error. Add the package name to `min_release_age_excludes` to install it anyway. Both settings apply to every install in the project, including desktop and mobile setup, and `jac install --npm --global` uses the project it is run from. A client build also honours an app's own `[apps.<name>.client.npm]` values. If the install folder already has its own `bunfig.toml`, Jac leaves it alone and does not add the excludes to it.
 
 ### Import Path Aliases
 
@@ -2340,6 +2400,39 @@ browser's raw `stack` and the `resolved_stack` whose frames were mapped onto
 value, and the `/cl/__error__` endpoint logs it through the same renderer in
 production. See [Errors and Warnings](../diagnostics.md#dev-loop-and-client-runtime-errors-e7xxx)
 for the code catalog.
+
+The endpoint limits each client on its own, so one page reporting in a loop
+cannot hide other users' errors:
+
+- **Rate:** a client gets 20 reports a minute. Past that, every request is
+  answered `429` (`RATE_LIMITED`, the same envelope as the login and
+  registration limits) with `Retry-After` until its minute is up. The count is
+  kept in the shared database (the embedded one the server provisions, or the
+  one `[scale.database] url` names), so it holds across every worker of
+  `jac run --serve` and every replica of a deployment. If that database cannot
+  be reached, each worker process counts on its own, so a server with N workers
+  accepts up to N x 20 a minute from one client.
+- **Repeats:** the same message from the same client within 10 seconds is
+  accepted (`{"ok": true, "throttled": true}`) but not logged again. This check
+  is per worker process.
+- **Size:** a report over 64 KiB is refused with `413` before it is parsed.
+- **Browser extensions:** a report whose stack frames all point into a browser
+  extension (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`,
+  `safari-extension://`) is logged at INFO as a browser extension's error,
+  not at ERROR. The client runtime drops these itself; this covers pages still
+  running an older runtime.
+
+Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
+20) applies the same per-client limit before a report reaches any service, even
+when the gateway's general rate limit is off. Set it to `0` to turn it off.
+The gateway applies it only when it can see each browser's own address. In a
+cluster with nothing in `[serve.proxy] trusted` (`JAC_SERVE_PROXY_TRUSTED`),
+which is what `jac scale deploy` sets on the gateway, every browser arrives from
+the ingress address, so the gateway skips the limit and logs that at startup.
+The services behind it still limit each browser, because they trust the
+cluster's private ranges and read the address the gateway forwards. List the
+ingress controller's address in the gateway's `[serve.proxy] trusted` to refuse
+floods at the gateway too.
 
 Locations come from the per-file source maps the client compiler writes beside
 each `compiled/*.js`. They are segment-level -- generated line *and* column,

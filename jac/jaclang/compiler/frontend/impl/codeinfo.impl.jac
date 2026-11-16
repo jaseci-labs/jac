@@ -258,16 +258,11 @@ impl native_arch_scope(mod_path: str) -> str {
     if not mod_path {
         return "";
     }
-    gen = kernel_target_generation();
-    if _native_arch_scope_gen[0] != gen {
-        _native_arch_scope_memo.clear();
-        _native_arch_scope_gen[0] = gen;
-    }
     memo = _native_arch_scope_memo.get(mod_path);
     if memo is not None {
         return memo;
     }
-    import from jaclang.compiler.native_scope { binds_bare_arch_names }
+    import from jaclang.compiler.pkg_paths { binds_bare_arch_names }
     source = real_path(mod_path);
     out = "";
     if source.endswith(".jac") and not binds_bare_arch_names(source) {
@@ -487,24 +482,16 @@ impl is_compiler_source_path(source_path: str) -> bool {
 }
 
 impl kernel_unit_rels -> list[str] {
-    spec = active_kernel_target();
-    return list(spec.kernel_unit_rel) if spec is not None else list(KERNEL_UNIT_REL);
+    return list(KERNEL_UNIT_REL);
 }
 
 impl is_package_keyed_path(source_path: str) -> bool {
-    if is_compiler_source_path(source_path) {
-        return True;
-    }
-    return kernel_target_active() and is_target_package_path(source_path);
+    return is_compiler_source_path(source_path);
 }
 
 impl kernel_unit_path(rel: str) -> str {
     import os;
     return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
-}
-
-impl kernel_unit_paths -> list[str] {
-    return [kernel_unit_path(rel) for rel in kernel_unit_rels()];
 }
 
 impl real_path(path: str) -> str {
@@ -595,12 +582,6 @@ impl bundled_pkg_roots -> list[str] {
     pkg = jaclang_pkg_root();
     if pkg {
         roots.append(pkg);
-    }
-    if kernel_target_active() {
-        target = target_pkg_root();
-        if target and target not in roots {
-            roots.append(target);
-        }
     }
     return roots;
 }
@@ -834,14 +815,18 @@ impl is_selected_native_variant(path: str) -> bool {
 }
 
 impl is_native_variant_path(path: str) -> bool {
+    return native_variant_base(path) is not None;
+}
+
+impl native_variant_base(path: str) -> (str | None) {
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
-        return False;
+        return None;
     }
     parts = name[:-len(".jac")].split(".");
     if len(parts) < 2 {
-        return False;
+        return None;
     }
     tail = parts[-2:] if len(parts) >= 3 else parts[-1:];
     if len(tail) == 2
@@ -850,11 +835,12 @@ impl is_native_variant_path(path: str) -> bool {
     }
     for part in tail {
         if part not in NATIVE_VARIANT_OSES and part not in NATIVE_VARIANT_ARCHES {
-            return False;
+            return None;
         }
     }
     stem = ".".join(parts[:len(parts) - len(tail)]);
-    return os.path.isfile(os.path.join(os.path.dirname(path), stem + ".jac"));
+    base = os.path.join(os.path.dirname(path), stem + ".jac");
+    return base if os.path.isfile(base) else None;
 }
 
 impl native_variant_of(module_path: str) -> str {
@@ -868,7 +854,7 @@ impl _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if candidate is None {
         return None;
     }
-    import from jaclang.compiler.native_scope { scope_allows_inferred_path }
+    import from jaclang.compiler.pkg_paths { scope_allows_inferred_path }
     if not scope_allows_inferred_path(candidate) {
         return None;
     }
@@ -915,7 +901,6 @@ impl resolve_native_module(
 
     if clean.startswith('jaclang.') {
         import from jaclang.compiler.frontend.host { active_host }
-        import from jaclang.compiler.native_scope { in_native_scope_path }
         (candidate, language) = active_host().resolve_module(
             clean, os.path.join(base_dir, "")
         );
@@ -926,9 +911,7 @@ impl resolve_native_module(
         candidate = real_path(
             _native_variant_path(candidate[:-len('.jac')]) or candidate
         );
-        if (native_unit_compile_active() and in_native_scope_path(candidate))
-            or clean in SHARED_RUNTIME_MODULES
-            or clean.startswith("jaclang.osprey.") {
+        if clean in SHARED_RUNTIME_MODULES or clean.startswith("jaclang.osprey.") {
             return (candidate, candidate);
         }
         if allow_inferred {
@@ -999,15 +982,9 @@ impl resolve_native_module(
     }
 
     if clean.startswith('jaclang.') {
-        import from jaclang.compiler.native_scope { in_native_scope_path }
         _cand = os.path.join(
             target_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
         );
-        if native_unit_compile_active() {
-            if in_native_scope_path(_cand) and os.path.isfile(_cand) {
-                return (path_name, _cand);
-            }
-        }
         if clean in SHARED_RUNTIME_MODULES and os.path.isfile(_cand) {
             return (path_name, _cand);
         }

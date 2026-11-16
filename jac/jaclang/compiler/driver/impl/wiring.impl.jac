@@ -93,10 +93,42 @@ impl local_module_name(root_dir: str, path: str) -> (str | None) {
     if not parts {
         return None;
     }
+    if "." in parts[-1] {
+        if variant_base_file(path) is None {
+            return None;
+        }
+        parts = [*parts[:-1], *parts[-1].split(".")];
+    }
     for part in parts {
         if not part.isidentifier() {
             return None;
         }
+    }
+    return ".".join(parts);
+}
+
+impl variant_base_file(path: str) -> (str | None) {
+    if path.endswith(VARIANT_SUFFIX) {
+        base = path[:-len(VARIANT_SUFFIX)] + ".jac";
+        return base if os.path.isfile(base) else None;
+    }
+    return native_variant_base(path);
+}
+
+impl unnamed_module_label(root_dir: str, path: str) -> (str | None) {
+    name = os.path.basename(path);
+    if not name.endswith(".jac") or any([name.endswith(m) for m in ANNEX_MARKERS]) {
+        return None;
+    }
+    try {
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
+    } except ValueError {
+        return None;
+    }
+    parts = rel[:-len(".jac")].split(os.sep);
+    if rel.startswith("..")
+        or any([p == "impl" or p.endswith(".impl") for p in parts[:-1]]) {
+        return None;
     }
     return ".".join(parts);
 }
@@ -123,10 +155,32 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
         return None;
     }
     found = active_host().resolve_local_module(self.root_dir, parts);
-    if found is None or found[1] not in ("jac", "py") or not self.owns(found[0]) {
+    if found is None {
+        return self._variant_file(local, parts);
+    }
+    if found[1] not in ("jac", "py") or not self.owns(found[0]) {
         return None;
     }
     return found[0];
+}
+
+impl WiringSpec._variant_file(local: str, parts: list[str]) -> (str | None) {
+    for cut in (3, 2) {
+        if len(parts) < cut {
+            continue;
+        }
+        path = os.path.join(
+            self.root_dir,
+            os.sep.join(parts[:len(parts) - cut]),
+            ".".join(parts[-cut:]) + ".jac"
+        );
+        if os.path.isfile(path)
+            and self.owns(path)
+            and local_module_name(self.root_dir, path) == local {
+            return path;
+        }
+    }
+    return None;
 }
 
 impl WiringSpec.owns(path: str) -> bool {
@@ -256,6 +310,7 @@ impl WiringSpec.project_modules -> list[str] {
         )
     );
     found: list[str] = [];
+    unnamed: list[str] = [];
     for path in paths {
         if os.path.realpath(path) in ignored {
             continue;
@@ -263,10 +318,30 @@ impl WiringSpec.project_modules -> list[str] {
         name = self.module_name(path);
         if name is not None {
             found.append(name);
+        } else {
+            label = unnamed_module_label(self.root_dir, path);
+            if label is not None {
+                unnamed.append(self.package_prefix + label);
+            }
         }
     }
     self._project_modules = found;
+    self._unnamed_modules = unnamed;
     return found;
+}
+
+impl WiringSpec.ruled_modules -> list[str] {
+    return [*self.project_modules(), *(self._unnamed_modules or [])];
+}
+
+impl WiringSpec.ruled_as(consumer: str) -> list[str] {
+    if "." not in consumer {
+        return [consumer];
+    }
+    path = self.module_file(consumer);
+    base = variant_base_file(path) if path is not None else None;
+    name = self.module_name(base) if base is not None else None;
+    return [consumer, name] if name is not None else [consumer];
 }
 
 impl WiringSpec._scan_modules(
@@ -506,6 +581,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }
+    resolved = variant_base_file(resolved) or resolved;
     module = self.module_name(resolved) if self.owns(resolved) else None;
     if module is None
         or path_node.level != 0
@@ -547,10 +623,11 @@ impl WiringSpec.rules_governing(
 impl WiringSpec.rules_admitting(
     provider: str, consumer: str, local: bool
 ) -> list[RuleRec] {
+    subjects = self.ruled_as(consumer);
     return [
         rule
         for rule in self.rules_governing(provider, consumer, local)
-        if any([t.matches(consumer) for t in rule.targets])
+        if any([t.matches(subject) for t in rule.targets for subject in subjects])
     ];
 }
 
@@ -706,7 +783,7 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
 impl parse_records(
     source: str, path: str
 ) -> tuple[bool, list[WireRec], list[RuleRec]] {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     (wires, rules) = module_records(mod, source);
     return (bool(had_error), wires, rules);
 }
@@ -1518,7 +1595,7 @@ impl render_wiring(
 }
 
 impl canonical_wiring_source(source: str, path: str) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     if had_error
         or mod.doc is not None
         or mod.source.comments
@@ -1535,46 +1612,6 @@ impl canonical_wiring_source(source: str, path: str) -> str {
         rules=rules
     );
     return render_wiring(spec, wiring_facts(wires), rules);
-}
-
-impl prune_wiring_source(
-    source: str, path: str, dropped: Callable[[str], bool]
-) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
-    if had_error {
-        return source;
-    }
-    spec = WiringSpec(
-        root_dir=os.path.dirname(os.path.abspath(path)), path=path, wires=[], rules=[]
-    );
-    text = list(source);
-    def blank(span: UniNode) {
-        for at in range(span.loc.pos_start, span.loc.pos_end) {
-            if text[at] != "\n" {
-                text[at] = " ";
-            }
-        }
-    }
-    for stmt in mod.body {
-        if not isinstance(stmt, GraphImport) {
-            continue;
-        }
-        kept = 0;
-        for item in stmt.body {
-            found = spec.module_file(item.provider_path)
-                if isinstance(item, ImportWire)
-                else None;
-            if found is not None and dropped(found) {
-                blank(item);
-            } else {
-                kept += 1;
-            }
-        }
-        if stmt.body and not kept {
-            blank(stmt);
-        }
-    }
-    return "".join(text);
 }
 
 impl _package_prefix(root_dir: str) -> str {

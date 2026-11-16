@@ -1,143 +1,62 @@
-impl EsastGenPass._literal_import_spec(spec: uni.Expr | uni.KWPair) -> (str | None) {
-    if isinstance(spec, uni.String) {
-        return str(spec.lit_value);
-    }
-    if isinstance(spec, uni.MultiString) {
-        for part in spec.strings {
-            if not isinstance(part, uni.String) {
-                return None;
-            }
-        }
-        return str(spec.lit_value);
-    }
-    return None;
-}
-
-
-impl EsastGenPass._resolve_dynamic_import_spec(
-    raw: str, importer: str
+impl EsastGenPass._literal_import_spec(
+    spec: (uni.Expr | uni.KWPair | None)
 ) -> (str | None) {
-    import os;
-
-    candidates: list[str] = [raw];
-    if not raw.endswith(".jac") {
-        candidates.append(raw + ".jac");
+    if isinstance(spec, uni.MultiString)
+        and not all(isinstance(part, uni.String) for part in spec.strings) {
+        return None;
     }
-    for candidate in candidates {
-        (resolved, _lang) = active_host().resolve_module(
-            candidate, importer, string_spec=True
-        );
-        if resolved.endswith(".jac") and os.path.isfile(resolved) {
-            return resolved;
-        }
-    }
-    return None;
+    return uni.literal_string_value(spec) if spec else None;
 }
 
 
 impl EsastGenPass._prepare_dynamic_import(
     nd: uni.FuncCall
 ) -> (tuple[str, (str | None)] | None) {
+    import os;
+
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    positional = [
-        p
-        for p in params
-        if not isinstance(p, uni.KWPair)
-    ];
-    keywords = [
-        p
-        for p in params
-        if isinstance(p, uni.KWPair)
-    ];
-    if not positional {
-        self._reject_dynamic_import(nd, "no module path was given");
-        return None;
-    }
-    if len(positional) > 1 {
-        self._reject_dynamic_import(
-            nd,
-            "only a module path and an optional fromlist are supported here;"
-            " __import__'s other parameters describe Python's module system and"
-            " have no meaning in a browser"
-        );
-        return None;
-    }
+    raw = self._literal_import_spec(params[0]) if params else None;
     export_name: (str | None) = None;
-    for kw in keywords {
-        key = kw.key.sym_name if kw.key else "";
-        if key != "fromlist" {
-            self._reject_dynamic_import(
-                nd,
-                "'"
-                    + key
-                    + "' describes Python's module system and has no"
-                    " meaning in a browser"
-            );
-            return None;
-        }
-        export_name = self._single_export_name(kw.value);
-        if export_name is None {
-            self._reject_dynamic_import(
-                nd, "fromlist has to name exactly one export, as a plain string"
-            );
-            return None;
-        }
-        if not export_name.isidentifier() {
-            self._reject_dynamic_import(
-                nd,
-                "fromlist names '" + export_name + "', which is not a valid export name"
-            );
-            return None;
-        }
-    }
-    raw = self._literal_import_spec(positional[0]);
-    if raw is None {
-        self._reject_dynamic_import(
-            nd,
-            "the path is built at runtime, so the bundler cannot tell which"
-            " module to split out, and the import would quietly load nothing"
-        );
-        return None;
+    valid = True;
+    for extra in params[1:] {
+        names = extra.value.values
+            if isinstance(extra, uni.KWPair)
+                and extra.key
+                and extra.key.sym_name == "fromlist"
+                and isinstance(extra.value, uni.ListVal)
+            else [];
+        export_name = self._literal_import_spec(names[0]) if len(names) == 1 else None;
+        valid = valid and export_name is not None and export_name.isidentifier();
     }
     importer = self.module.loc.mod_path or nd.loc.mod_path;
-    if not importer {
-        return None;
+    resolved: (str | None) = None;
+    if raw is not None and valid {
+        for candidate in [raw, raw + ".jac"] {
+            (path, _lang) = active_host().resolve_module(
+                candidate, importer, string_spec=True
+            );
+            if path.endswith(".jac") and os.path.isfile(path) {
+                resolved = path;
+                break;
+            }
+        }
     }
-    resolved = self._resolve_dynamic_import_spec(raw, importer);
-    if resolved is None {
-        self._reject_dynamic_import(
-            nd, "'" + raw + "' does not name a Jac module next to this one"
-        );
+    if raw is None or resolved is None {
+        self.ctx.emit(E5117, node_override=nd);
         return None;
     }
     if export_name is None {
-        import os;
         stem = os.path.basename(resolved).split(".")[0];
         export_name = stem if stem.isidentifier() else None;
     }
-    js_spec = relative_js_specifier(resolved, importer);
+    js_spec = relative_js_specifier(
+        resolved, importer, self.prog.options.client_source_root
+    );
     if self.client_manifest {
         self.client_manifest.imports[raw] = resolved;
     }
     self.module_import_paths[js_spec] = resolved;
     return (js_spec, export_name);
-}
-
-
-impl EsastGenPass._single_export_name(expr: uni.Expr) -> (str | None) {
-    if not isinstance(expr, uni.ListVal) {
-        return None;
-    }
-    values = list(expr.values);
-    if len(values) != 1 {
-        return None;
-    }
-    return self._literal_import_spec(values[0]);
-}
-
-
-impl EsastGenPass._reject_dynamic_import(nd: uni.FuncCall, details: str) -> None {
-    self.ctx.emit(E5117, node_override=nd, details=details);
 }
 
 

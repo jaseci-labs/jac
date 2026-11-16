@@ -19,6 +19,9 @@ node UniNode {
 
     has parent: (UniNode | None) { getter; }
     has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
+
+    def has_gen -> bool;
+
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _link(kid: Sequence[UniNode], roles: dict[type, any]) -> None;
@@ -306,8 +309,11 @@ node UniCFGNode(UniNode) {
     has affected_symbols: set[str] postinit;
     has bb_in: list[UniCFGNode] { getter; }
     has bb_out: list[UniCFGNode] { getter; }
+    has bb_catch_in: list[UniCFGNode] { getter; }
+    has bb_catch_out: list[UniCFGNode] { getter; }
 
     def cfg_link(target: UniCFGNode) -> None;
+    def cfg_catch_link(target: UniCFGNode) -> None;
     def init(*, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
     def get_head -> UniCFGNode;
@@ -507,7 +513,8 @@ node Module(AstDocNode, UniScopeNode) {
         rc_scope_cleanup: dict[int, list[str]] postinit,
         rc_move_in: set[int] postinit,
         own_move_sites: set[int] postinit,
-        managed_borrow_binds: set[int] postinit;
+        managed_borrow_binds: set[int] postinit,
+        import_bound_names: (set[str] | None) = None;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
     has elements: list[UniNode] { getter; }
@@ -2586,5 +2593,9 @@ def is_client_destined(nd: UniNode) -> bool;
 def is_comptime_stmt(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
+
+def type_param_of(nd: NameAtom) -> (TypeParam | None);
+
+def names_except_type(nd: Name) -> bool;
 
 def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

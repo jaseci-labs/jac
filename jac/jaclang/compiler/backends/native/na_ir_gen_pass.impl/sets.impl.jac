@@ -138,6 +138,9 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
                 if nd.loc
                 else 0}"
         );
+        if first_val.type == ir.IntType(1) {
+            first_val = self._widen_list_int(first_val, True);
+        }
     }
 
     elem_size = 0;

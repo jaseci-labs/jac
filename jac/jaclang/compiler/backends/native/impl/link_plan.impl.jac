@@ -105,7 +105,7 @@ impl LinkPlan.plan_digest -> str {
     h.update(self.triple.encode());
     h.update(self.options.codegen_identity().encode());
 
-    h.update(native_producer_digest(self.options.kernel_build).encode());
+    h.update(running_compiler_digest().encode());
     if self.library_api {
         h.update(b"library-api");
     }
@@ -126,14 +126,29 @@ impl LinkPlan.layout_digest -> str {
     return layout_digest_of(self.merged_layout());
 }
 
-impl LinkPlan.demoted_symbols -> list[str] {
+impl LinkPlan.lowering_failures -> list[str] {
+    registry = self.prog.native_units();
     out: list[str] = [];
     for u in self.units {
-        for name in u.iface.demoted {
-            if "__jac_test_" in name {
-                continue;
+        names = [
+            name
+            for name in u.iface.demoted
+            if "__jac_test_" not in name
+        ];
+        if not names {
+            continue;
+        }
+        details: dict[str, str] = {};
+        bitcode = registry.bitcode_for(u.path, self.options);
+        if bitcode is not None {
+            for issue in native_lowering_issues(str(llvm.parse_bitcode(bitcode))) {
+                details.setdefault(issue.symbol, issue.detail);
             }
-            out.append(f"{os.path.basename(u.path)}:{name}");
+        }
+        base = os.path.basename(u.path);
+        for name in names {
+            detail = details.get(name, "");
+            out.append(f"{base}:{name}" + (f": {detail}" if detail else ""));
         }
     }
     return sorted(out);
@@ -1031,7 +1046,7 @@ impl _write_sidecar(
         "layout_digest": ldigest,
         "units": unit_paths,
         "unit_ids": [native_unit_identity(p) for p in unit_paths],
-        "compiler_digest": native_producer_digest(plan.options.kernel_build),
+        "compiler_digest": running_compiler_digest(),
         "codegen_identity": plan.options.base_codegen_identity(),
         "triple": plan.triple,
         "link_mode": plan.mode,

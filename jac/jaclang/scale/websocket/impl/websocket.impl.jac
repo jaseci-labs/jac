@@ -203,7 +203,13 @@ impl WebSocketConnectionManager._local_fanout(
     if not conns {
         return;
     }
-    tasks = [self.send_to(ctx, message) for ctx in conns];
+    text: (str | None) = None;
+    try {
+        text = dumps(message, `default=_ws_json_default);
+    } except Exception {
+        text = None;
+    }
+    tasks = [self.send_to(ctx, message, text) for ctx in conns];
     await asyncio.gather(*tasks, return_exceptions=True);
 }
 
@@ -221,15 +227,18 @@ impl WebSocketConnectionManager.broadcast_target(
 }
 
 impl WebSocketConnectionManager.send_to(
-    ctx: ConnectionContext, message: dict[str, any]
+    ctx: ConnectionContext, message: dict[str, any], text: (str | None) = None
 ) -> bool {
     if ctx.closed {
         return False;
     }
     try {
-        await asyncio.wait_for(
-            ctx.websocket.send_json(message), timeout=self.send_timeout
-        );
+        if text is None {
+            sending = ctx.websocket.send_json(message);
+        } else {
+            sending = ctx.websocket.send_text(text);
+        }
+        await asyncio.wait_for(sending, timeout=self.send_timeout);
         return True;
     } except asyncio.TimeoutError {
         logger.warning(

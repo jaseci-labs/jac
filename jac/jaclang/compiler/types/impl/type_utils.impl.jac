@@ -369,7 +369,12 @@ impl collect_member_syms(
         return False;
     }
 
+    missed: set[int] = set();
+
     def descend(s: UniScopeNode) -> list[Symbol] {
+        if id(s) in missed {
+            return [];
+        }
         gathered: list[Symbol] = list(s.lookup_all(name, deep=False) or []);
         has_overload = any(is_overload_sym(sym) for sym in gathered);
         if gathered and not has_overload {
@@ -404,6 +409,9 @@ impl collect_member_syms(
                     }
                 }
             }
+        }
+        if not gathered {
+            missed.add(id(s));
         }
         return gathered;
     }
@@ -543,24 +551,18 @@ impl linearize_mro(
     }
     _visiting.add(key);
     try {
-        for base in cls.shared.base_classes {
-            if isinstance(base, ClassType) {
-                ensure_mro_fresh(base, _visiting);
-            }
+        base_list: list[ClassType] = [
+            base
+            for base in cls.shared.base_classes
+            if isinstance(base, ClassType) and not base.is_class_instance()
+        ];
+        for base in base_list {
+            ensure_mro_fresh(base, _visiting);
         }
 
-        linearizations: list[list[ClassType]] = [];
-        for base in cls.shared.base_classes {
-            if isinstance(base, ClassType) {
-                linearizations.append(base.shared.mro[:]);
-            }
-        }
-        base_list: list[ClassType] = [];
-        for base in cls.shared.base_classes {
-            if isinstance(base, ClassType) {
-                base_list.append(base);
-            }
-        }
+        linearizations: list[list[ClassType]] = [
+            base.shared.mro[:] for base in base_list
+        ];
         if base_list {
             linearizations.append(base_list);
         }

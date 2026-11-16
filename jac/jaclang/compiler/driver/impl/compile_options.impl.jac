@@ -182,6 +182,7 @@ impl CompileOptions.dependency_projection(path: str) -> str {
             self.unit_codegen_identity(path),
             f"app_kind={self.app_kind}",
             f"aot={int(bool(self.aot_mode))}",
+            f"native_import={int(self.native_import)}",
             f"force_cs={self.force_codespace}",
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}"
@@ -198,6 +199,7 @@ impl CompileOptions.module_projection -> str {
             self.artifact_identity(),
             self.codegen_identity(),
             f"aot={int(bool(self.aot_mode))}",
+            f"native_import={int(self.native_import)}",
             f"force_cs={self.force_codespace}",
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}",
@@ -208,7 +210,9 @@ impl CompileOptions.module_projection -> str {
 
 impl CompileOptions.keeps_interfaces -> bool {
     return not (
-        self.aot_mode or bool(self.force_codespace) or bool(self.default_codespace)
+        self.aot_mode
+        or bool(self.force_codespace)
+        or self.default_codespace == 'native'
     );
 }
 
@@ -231,10 +235,10 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         no_ir_cache=self.no_ir_cache,
         native_required=self.native_required,
         native_require=list(self.native_require or []),
-        aot_mode=True,
+        aot_mode=self.aot_mode or bool(self.force_codespace),
+        native_import=True,
         default_codespace='native',
         native_unit=self.native_unit,
-        kernel_build=self.kernel_build,
         native_link_mode=self.native_link_mode,
         na_gc_mode=self.na_gc_mode,
         nogc_enforce_all=self.nogc_enforce_all,
@@ -301,10 +305,6 @@ impl CompileOptions.nogc_enforced_for(mod_name: str) -> bool {
 
 impl effective_codegen_fingerprint -> str {
     return CompileOptions().codegen_fingerprint();
-}
-
-impl effective_analysis_fingerprint -> str {
-    return CompileOptions().analysis_fingerprint();
 }
 
 impl link_fingerprint_mismatches(

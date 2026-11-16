@@ -1016,6 +1016,17 @@ test "merge simple sections" {
             assert "jac.local.toml: [serve] graph_enabled must be true or false"
                 in str(refused) , str(refused);
         }
+        local.write_text("[serve]\nport = \"x\"\n\n[serve.limits]\nbacklog = true\n");
+        try {
+            cfg.merge_from_toml_file(local);
+            assert False , "two bad values in jac.local.toml were accepted";
+        } except ServeConfigError as refused {
+            assert str(refused).splitlines()
+                == [
+                    "jac.local.toml: [serve] port must be an integer, got 'x'",
+                    "jac.local.toml: [serve.limits] backlog must be an integer, got True"
+                ];
+        }
     }
 }
 
@@ -1991,7 +2002,7 @@ test "interpolation applies to every parsed string" {
 }
 
 test "serve config carries no routing keys and refuses keys or values it does not know" {
-    import from jaclang.project.config { ServeConfigError }
+    import from jaclang.project.config { ServeConfigError, apply_table }
     cfg = JacConfig.from_toml_str(
         "[serve]\nport = 8080\nworkers = 4\ncors_origins = \"https://app.example\"\n\n"
         "[serve.timeouts]\ndrain = 30\n"
@@ -2013,6 +2024,13 @@ test "serve config carries no routing keys and refuses keys or values it does no
         (
             "[serve.proxy]\ntrusted = \"10.0.0.1\"",
             "[serve.proxy] trusted must be a list of strings"
+        ),
+        ("zzzz = 1", "[serve] has no key 'zzzz'; its keys are "),
+        ("timeouts = 5", "[serve.timeouts] must be a table"),
+        (
+            "grpah_enabled = false\n[serve.limits]\nmax_connections = true",
+            "[serve] has no key 'grpah_enabled'; did you mean 'graph_enabled'?\n"
+            "[serve.limits] max_connections must be an integer"
         )
     ] {
         try {
@@ -2021,6 +2039,17 @@ test "serve config carries no routing keys and refuses keys or values it does no
         } except ServeConfigError as refused {
             assert needle in str(refused) , str(refused);
         }
+    }
+    try {
+        apply_table(
+            cfg.serve,
+            {"port": 9100, "timeouts": {"drain": 3}, "limits": {"backlog": True}},
+            "serve",
+            {}
+        );
+        assert False , "a bad [serve.limits] value was accepted";
+    } except ServeConfigError {
+        assert (cfg.serve.port, cfg.serve.timeouts.drain) == (8080, 30.0);
     }
 }
 

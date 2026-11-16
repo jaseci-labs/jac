@@ -23,47 +23,6 @@ test "the errno unit is one file on every target" {
     }
 }
 
-test "native package imports use the same provider as semantic imports" {
-    import from tempfile { TemporaryDirectory }
-    import from jaclang.project.modresolver { resolve_module }
-    import from jaclang.compiler.frontend.codeinfo {
-        set_native_unit_compile,
-        reset_native_unit_compile
-    }
-    with TemporaryDirectory() as directory {
-        compiler = os.path.join(directory, "jaclang", "compiler");
-        os.makedirs(compiler);
-        os.mkdir(os.path.join(directory, "jaclang", "jac0core"));
-        checkout = os.path.join(compiler, "jc_materialize.jac");
-        with open(checkout, "w") as source {
-            source.write("def:pub local_provider -> int { return 42; }\n");
-        }
-        fixture = os.path.join(directory, "tests", "fixture.jac");
-        os.mkdir(os.path.dirname(fixture));
-        with open(fixture, "w") as source {
-            source.write("");
-        }
-        previous = set_native_unit_compile(True);
-        try {
-            for importer in [fixture, os.path.join(compiler, "entry.jac")] {
-                (expected, language) = resolve_module(
-                    "jaclang.compiler.jc_materialize", importer
-                );
-                assert language == "jac";
-                (_, actual) = resolve_native_module(
-                    "jaclang.compiler.jc_materialize", os.path.dirname(importer)
-                );
-                assert actual is not None;
-                assert os.path.realpath(actual) == os.path.realpath(expected);
-                assert (os.path.realpath(actual) == os.path.realpath(checkout))
-                    == (os.path.dirname(importer) == compiler);
-            }
-        } finally {
-            reset_native_unit_compile(previous);
-        }
-    }
-}
-
 test "explicit native relative imports retain their level and target variant" {
     import from tempfile { TemporaryDirectory }
     import from pathlib { Path }

@@ -3686,6 +3686,11 @@ impl handle_agent_event(app: Studio, ev: any) -> None {
         app.queued = [];
     } elif kind == "message_chunk" {
         append_stream(app, "agent", str(d.get("text", "")));
+    } elif kind == "message_reset" {
+        if app.msg_open == "agent" and app.chat and app.chat[-1].role == "agent" {
+            app.chat.pop();
+        }
+        close_message(app);
     } elif kind == "thought_chunk" {
         append_stream(app, "thought", str(d.get("text", "")));
     } elif kind in ["tool_call", "tool_call_update"] {

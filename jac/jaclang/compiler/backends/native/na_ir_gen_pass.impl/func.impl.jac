@@ -1601,10 +1601,7 @@ impl NaIRGenPass._apply_static_decorators -> None {
             }
             res = self.builder.call(d_fn, [d_arg], name=f"dec.{dec}.{fname}");
             if self?.jacval_type and res.type == self.jacval_type {
-                payload = self.builder.extract_value(res, 1, name="dec.res.payload");
-                cur = self.builder.inttoptr(
-                    payload, fnty.as_pointer(), name="dec.res.fn"
-                );
+                cur = self._unbox_from_jacval(res, fnty.as_pointer());
             } elif self._closure_struct_of(res.type) is not None {
                 _i32d = ir.IntType(32);
                 _denv_slot = self.builder.gep(

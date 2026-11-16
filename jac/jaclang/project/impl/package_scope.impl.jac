@@ -51,13 +51,3 @@ impl package_exports(project_root: str) -> list[str] {
     cfg = get_config_for_dir(project_root);
     return list(cfg.project.exports) if cfg is not None else [];
 }
-
-impl is_exported(module: str, exports: list[str]) -> bool {
-    import fnmatch;
-    for pattern in exports {
-        if module == pattern or fnmatch.fnmatchcase(module, pattern) {
-            return True;
-        }
-    }
-    return False;
-}

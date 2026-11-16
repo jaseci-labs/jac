@@ -111,6 +111,40 @@ test "build_jab seals the named app and its manifest names it" {
 }
 
 
+test "a build that bakes the client rebuilds it when the API base URL changes" {
+    tmp = tempfile.mkdtemp(prefix="jac_build_jab_client_");
+    try {
+        (Path(tmp) / "jac.toml").write_text(
+            '[project]\nname = "webby"\nkind = "web-app"\nentry-point = "main"\n\n'
+            '[dependencies.npm]\nreact = "^19.2.0"\nreact-dom = "^19.2.0"\n'
+        );
+        (Path(tmp) / "main.jac").write_text(
+            "def:pub ping -> str { return \"pong\"; }\n\n"
+            "def:pub app() -> JsxElement {\n    return <div>webby</div>;\n}\n"
+        );
+        config = JacConfig.load(Path(tmp) / "jac.toml");
+        stamp = Path(".jac") / "client" / "dist" / ".jac-build-inputs";
+        first = build_jab(config, Path(tmp) / "out" / "first.jab", bake_client=True);
+        before = (materialize_jab(str(first)) / stamp).read_text();
+        os.environ["JAC_CLIENT_API_BASE_URL"] = "https://api.example.test";
+        try {
+            moved = build_jab(
+                config, Path(tmp) / "out" / "moved.jab", bake_client=True
+            );
+        } finally {
+            os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+        }
+        after = (materialize_jab(str(moved)) / stamp).read_text();
+        assert after != before , (
+            "the sealed client kept the bundle built for the old API base URL"
+        );
+    } finally {
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
 test "build_jab seals the default app when no app is named" {
     ws = _workspace();
     try {

@@ -300,6 +300,81 @@ impl _get_map_signature(base_path: str) -> str {
     return "|".join(parts);
 }
 
+impl ClientErrorLimiter.admit(client: str) -> int {
+    retry = consume_limit(
+        "client-error", client, self.max_per_window, self.window_seconds
+    );
+    with self._lock {
+        if retry < 0 {
+            return self._admit_locked(client, time.time());
+        }
+        if retry == 0 {
+            self._window_locked(client, time.time());
+        }
+        return retry;
+    }
+}
+
+impl ClientErrorLimiter._admit_locked(client: str, now: float) -> int {
+    window = self._window_locked(client, now);
+    if window.count >= self.max_per_window {
+        return max(1, math.ceil(window.started + self.window_seconds - now));
+    }
+    window.count += 1;
+    return 0;
+}
+
+impl ClientErrorLimiter._window_locked(client: str, now: float) -> ClientErrorWindow {
+    window = self._clients.get(client);
+    if window is None or now - window.started >= self.window_seconds {
+        self._clients.pop(client, None);
+        while self._clients {
+            oldest = next(iter(self._clients));
+            if len(self._clients) < self.max_clients
+                and now - self._clients[oldest].started < self.window_seconds {
+                break;
+            }
+            del self._clients[oldest];
+        }
+        window = ClientErrorWindow(started=now);
+        self._clients[client] = window;
+    }
+    return window;
+}
+
+impl ClientErrorLimiter.is_repeat(client: str, message: str) -> bool {
+    digest = hashlib.sha256(message.encode()).digest();
+    with self._lock {
+        window = self._clients.get(client);
+        if window is None {
+            return False;
+        }
+        now = time.time();
+        last_seen = window.seen.get(digest);
+        window.seen[digest] = now;
+        return last_seen is not None and now - last_seen < self.dedup_seconds;
+    }
+}
+
+impl is_extension_report(stack: str, url: str = "") -> bool {
+    frame_urls: list[str] = [];
+    for line in stack.split("\n") {
+        frame = STACK_FRAME_RE.match(line);
+        if frame {
+            location = frame.group(1) or frame.group(2) or "";
+            if not ENGINE_FRAME_RE.match(location) {
+                frame_urls.append(location);
+            }
+        }
+    }
+    if not frame_urls {
+        return url.startswith(EXTENSION_URL_PREFIXES);
+    }
+    return all(
+        frame_url.startswith(EXTENSION_URL_PREFIXES) for frame_url in frame_urls
+    );
+}
+
 impl ErrorRateLimiter.should_log(message: str) -> bool {
     now: float = time.time();
 

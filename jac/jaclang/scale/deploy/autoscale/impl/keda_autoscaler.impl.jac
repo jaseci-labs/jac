@@ -1061,6 +1061,16 @@ impl KEDAAutoscaler._build_http_scaled_object {
         scaled_obj_spec["initialCooldownPeriod"] = spec.initial_cooldown_period;
     }
 
+    hpa_name = f"keda-hpa-{scaled_obj_name}";
+    if len(hpa_name) > 63 {
+        digest = hashlib.sha256(scaled_obj_name.encode()).hexdigest()[:10];
+        scaled_obj_spec["advanced"] = {
+            "horizontalPodAutoscalerConfig": {
+                "name": f"{hpa_name[:52].rstrip('-.')}-{digest}"
+            }
+        };
+    }
+
     return {
         "name": scaled_obj_name,
         "body": {

@@ -278,6 +278,60 @@ if [ "${POD_SECRET_ROTATED}" != "${SDK_DEPLOY_SECRET}" ]; then
 fi
 echo "  config-only redeploy rolled the fleet and the new value is live"
 _t "config redeploy OK"
+# #10095: with a history limit of 1, the third code change prunes the first bundle.
+echo "=== code redeploys prune the bundle PVC; a retained release still rolls back (#10095) ==="
+export SDK_DEPLOY_REVISION_HISTORY_LIMIT=1
+PRUNE_LOG="$(mktemp)"
+for change in 1 2 3; do
+    printf '\nglob _bundle_prune_e2e: int = %s;\n' "${change}" >> "${APP_DIR}/main.jac"
+    if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" deploy </dev/null 2>&1 | tee -a "${PRUNE_LOG}"); then
+        echo "FAIL: code redeploy ${change} errored" >&2
+        dump_state
+        exit 1
+    fi
+    if ! kubectl rollout status "deployment/${APP}-deployment" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
+        echo "FAIL: code redeploy ${change} did not complete its rollout" >&2
+        dump_state
+        exit 1
+    fi
+done
+if ! grep -q "pruned bundles/" "${PRUNE_LOG}"; then
+    echo "FAIL: three code redeploys never pruned a bundle from the PVC" >&2
+    exit 1
+fi
+grep "pruned " "${PRUNE_LOG}" | sed 's/^/  /'
+rm -f "${PRUNE_LOG}"
+
+release_field() {
+    (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" revisions </dev/null | grep '^\[' | tail -1) \
+        | python3 -c "import json, sys; r = json.load(sys.stdin); print(r[$1]['$2'] if len(r) > $1 else '')"
+}
+ROLLBACK_TO=$(release_field 1 revision)
+ROLLBACK_DIGEST=$(release_field 1 bundle_digest)
+if [ -z "${ROLLBACK_TO}" ]; then
+    echo "FAIL: no retained release to roll back to after the pruning redeploys" >&2
+    dump_state
+    exit 1
+fi
+ROLLBACK_OUT=$(cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" rollback "${ROLLBACK_TO}" </dev/null 2>&1) || true
+if ! printf '%s' "${ROLLBACK_OUT}" | grep -q "ROLLBACK_OK"; then
+    echo "FAIL: rollback to release ${ROLLBACK_TO} errored: ${ROLLBACK_OUT}" >&2
+    dump_state
+    exit 1
+fi
+if ! kubectl rollout status "deployment/${APP}-deployment" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
+    echo "FAIL: the rollback to release ${ROLLBACK_TO} did not start; its bundle may have been pruned" >&2
+    dump_state
+    exit 1
+fi
+LIVE_DIGEST=$(release_field 0 bundle_digest)
+if [ "${LIVE_DIGEST}" != "${ROLLBACK_DIGEST}" ]; then
+    echo "FAIL: after the rollback the live bundle is '${LIVE_DIGEST}', expected '${ROLLBACK_DIGEST}'" >&2
+    dump_state
+    exit 1
+fi
+echo "  pruning redeploys kept the retained release, and it rolled back"
+_t "prune + rollback OK"
 echo "=== status + url through the SDK ==="
 # grep '^{': first-run compiles print "Jac setup complete" lines around the payload.
 STATUS_JSON=$(cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" status </dev/null | grep '^{' | tail -1)

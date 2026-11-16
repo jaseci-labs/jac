@@ -144,7 +144,7 @@ impl native_build(
         if not (ir_module and ir_module.decided_codespace == 'native') {
             console.error(
                 "This .jac file is not compatible with native compilation.\n"
-                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+                "  It may use async, by llm(), the persistent root graph, or other\n"
                 "  constructs not supported by the native backend.\n"
                 "  Remove the incompatible constructs it names."
             );
@@ -181,18 +181,15 @@ impl native_build(
         f"  Link plan: {len(plan.units)} unit(s), mode={plan.mode}, target={plan.triple}"
     );
 
-    if not lib {
-        _demoted = plan.demoted_symbols();
-        if _demoted {
-            console.error(
-                f"{len(_demoted)} function(s) in the native closure were demoted to "
-                "Python-only: "
-                    + ", ".join(_demoted),
-                hint="A self-contained binary cannot run a demoted function. Run `jac explain placement` on the file to see why each one failed to lower."
-            );
-            _restore_target(_prev_target);
-            return 1;
-        }
+    _failures = plan.lowering_failures();
+    if _failures {
+        console.error(
+            f"{len(_failures)} function(s) in the native closure could not lower:\n  "
+                + "\n  ".join(_failures),
+            hint="A native binary or library cannot run a function that did not lower. Run `jac explain placement` on the file for the full report."
+        );
+        _restore_target(_prev_target);
+        return 1;
     }
 
     if assert_no_rc {

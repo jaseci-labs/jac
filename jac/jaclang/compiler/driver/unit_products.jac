@@ -26,6 +26,7 @@ obj UnitProducts {
         native_deps: list[str] = [],
         iface: str = "",
         iface_shape: str = "",
+        iface_jir: str = "",
         effects: str = "",
         jac_deps: list[str] = [];
 }
@@ -76,8 +77,14 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts;
 
 def native_products(module: uni.Module, products: UnitProducts);
 
-def products_record(products: UnitProducts) -> dict[str, any];
-
-def products_from_record(raw: dict[str, any]) -> UnitProducts;
-
 def definition_deps(products: UnitProducts) -> list[tuple[str, str]];
+
+def json_str_list(value: object) -> list[str];
+
+def json_str_map(value: object) -> dict[str, str];
+
+def json_map(value: object) -> dict[str, any];
+
+def json_maps(value: object) -> list[dict[str, any]];
+
+def json_opt_str(value: object) -> (str | None);

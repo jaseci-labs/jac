@@ -8,7 +8,7 @@ impl det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
 }
 
 impl open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, gzip.GzipFile] {
-    gz = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0);
+    gz = gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=6, mtime=0);
     return (tarfile.open(fileobj=gz, mode="w"), gz);
 }
 
