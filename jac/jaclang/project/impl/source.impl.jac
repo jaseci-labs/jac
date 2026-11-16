@@ -243,6 +243,10 @@ impl path_matches_exclude(
     return False;
 }
 
+impl is_pruned_source_dir(name: str) -> bool {
+    return name.startswith(".") or name in SOURCE_PRUNE_DIRS;
+}
+
 impl normalize_exclude_patterns(patterns: list[str]) -> list[str] {
     normalized: list[str] = [];
     for raw in (patterns or []) {
