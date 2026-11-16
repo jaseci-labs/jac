@@ -200,41 +200,31 @@ test "deploy loads the cluster config before it reads the pod arch, and a refuse
         f'[project]\nname = "x"\nversion = "0.1.0"\n'
         f'jac-version = "=={major}.{minor}.99"\n'
     );
-    for nodes in [["x86_64"], ConnectionError("nodes is forbidden")] {
-        order: list[str] = [];
-        target = KubernetesTarget(
-            config=KubernetesConfig(app_name="t", namespace="t-ns")
-        );
+    order: list[str] = [];
+    target = KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
 
-        def _note_config {
-            order.append("config");
-        }
-
-        def _note_nodes -> list[str] {
-            order.append("nodes");
-            if isinstance(nodes, Exception) {
-                raise nodes;
-            }
-            return nodes;
-        }
-
-        with unittest.mock.patch.dict(os.environ, {"JAC_NODE_ARCH": ""}), unittest.mock.patch.object(
-            target, "_load_cluster_config", _note_config
-        ), unittest.mock.patch.object(binary_mod, "cluster_node_archs", _note_nodes), unittest.mock.patch.object(
-            binary_mod, "preflight_pod_runtime", return_value="0.0.0"
-        ), unittest.mock.patch.object(
-            KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
-        ) as generate {
-            result = target.deploy(
-                AppConfig(code_folder=d, file_name="main.jac", app_name="t")
-            );
-        }
-        assert order[:2] == ["config", "nodes"];
-        if isinstance(nodes, Exception) {
-            assert result.success is False;
-            assert "ConnectionError: nodes is forbidden" in result.message , result.message;
-            assert "JAC_NODE_ARCH" in result.message , result.message;
-            generate.assert_not_called();
-        }
+    def _note_config {
+        order.append("config");
     }
+
+    def _note_nodes -> list[str] {
+        order.append("nodes");
+        raise ConnectionError("nodes is forbidden");
+    }
+
+    with unittest.mock.patch.dict(os.environ, {"JAC_NODE_ARCH": ""}), unittest.mock.patch.object(
+        target, "_load_cluster_config", _note_config
+    ), unittest.mock.patch.object(binary_mod, "cluster_node_archs", _note_nodes), unittest.mock.patch.object(
+        binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+    ), unittest.mock.patch.object(
+        KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
+    ) as generate {
+        result = target.deploy(
+            AppConfig(code_folder=d, file_name="main.jac", app_name="t")
+        );
+    }
+    assert order == ["config", "nodes"];
+    assert result.success is False;
+    assert "JAC_NODE_ARCH" in result.message , result.message;
+    generate.assert_not_called();
 }

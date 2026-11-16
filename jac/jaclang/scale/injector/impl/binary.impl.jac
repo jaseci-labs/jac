@@ -39,12 +39,9 @@ impl node_arch -> str {
         return archs[0];
     }
     arch = host_arch();
-    found = f"report multiple architectures ({', '.join(archs)})"
-        if archs
-        else "report no architecture";
     logger.warning(
-        f"Cluster nodes {found}; defaulting to the host arch ({arch}). "
-        "Set JAC_NODE_ARCH to pick one."
+        f"Cluster nodes report {', '.join(archs) or 'no'} architectures; "
+        f"defaulting to the host arch ({arch}). Set JAC_NODE_ARCH to pick one."
     );
     return arch;
 }
