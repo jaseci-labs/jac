@@ -1,3 +1,4 @@
+import itertools;
 import json;
 import logging;
 import os;
@@ -8,8 +9,9 @@ import from uuid { UUID }
 glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',
-     _schema_ready: set[str] = set(),
+     _schema_ready: dict[str, int] = {},
      _schema_forgets: dict[str, int] = {},
+     _forget_seq = itertools.count(1),
      _schema_gate = threading.Lock(),
      __all__ = [
          'AnchorRow',
