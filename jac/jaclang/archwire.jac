@@ -1675,7 +1675,7 @@ graph import {
         dist.seal.vendor_packages { stage_source_tree },
     ]
     packages.commands ++> [
-        cli.commands.project.install { install_project },
+        cli.commands.project.install { install_project, refuse_toolchain_packages },
         cli.commands.project.update { PYPI_HINT, install_project, split_package_specs },
     ]
     packages.commands --> [
@@ -5397,14 +5397,18 @@ graph import compiler {
         passes.cfg_build_pass.CFGBuildPass.exit_if_else_expr {
             collect_narrowing_symbols
         },
-        types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
-            find_destructure_index_path
+        types.type_evaluator.TypeEvaluator._get_source_of_unpack_target {
+            is_star_target
         },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },
         types.type_evaluator.TypeEvaluator._narrowed_type_for_expr {
             reference_key_deps
+        },
+        types.type_evaluator.TypeEvaluator._unpack_target_path {
+            is_star_target,
+            unpack_index
         },
     ]
     expr_keys --> [
@@ -6087,6 +6091,7 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._build_edge_ref { E5097 },
         backends.es.esast_gen_pass.EsastGenPass._build_osp_filter_pred { E5097 },
+        backends.es.esast_gen_pass.EsastGenPass._prepare_dynamic_import { E5117 },
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
