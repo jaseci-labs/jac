@@ -71,10 +71,11 @@ test "the component named after the file becomes the default export" {
 
 
 test "fromlist picks which export becomes the default" {
-    (js, codes, _, _) = _emit(
+    (js, codes, _, manifest) = _emit(
         'm = __import__("./MessageCard", fromlist=["CardBody"]);'
     );
     assert codes == [] , codes;
+    assert [["CardBody"]] == list(manifest.runtime_imports.values()) , manifest;
     assert 'import("./MessageCard.js").then((m) => ({...m, default: m.CardBody}))'
         in js , js;
 }
