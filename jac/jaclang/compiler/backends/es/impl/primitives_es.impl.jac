@@ -1951,7 +1951,9 @@ impl ESBuiltinEmitter.emit___import__(
     code = "import(" + args[0] + ")";
     export_name = (ctx.kwargs or {}).get("default_export", None);
     if export_name {
-        code += ".then((m) => ({...m, default: m." + export_name + "}))";
+        code += ".then((m) => Object.create(m, {default: {value: m."
+            + export_name
+            + "}}))";
     }
     return code;
 }

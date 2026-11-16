@@ -65,7 +65,7 @@ test "the component named after the file becomes the default export" {
     (js, codes, _, manifest) = _emit('m = __import__("./MessageCard");');
     assert codes == [] , codes;
     assert manifest.runtime_imports == {} , manifest;
-    assert 'import("./MessageCard.js").then((m) => ({...m, default: m.MessageCard}))'
+    assert 'import("./MessageCard.js").then((m) => Object.create(m, {default: {value: m.MessageCard}}))'
         in js , js;
 }
 
@@ -76,7 +76,7 @@ test "fromlist picks which export becomes the default" {
     );
     assert codes == [] , codes;
     assert [["CardBody"]] == list(manifest.runtime_imports.values()) , manifest;
-    assert 'import("./MessageCard.js").then((m) => ({...m, default: m.CardBody}))'
+    assert 'import("./MessageCard.js").then((m) => Object.create(m, {default: {value: m.CardBody}}))'
         in js , js;
 }
 
