@@ -1951,9 +1951,10 @@ impl ESBuiltinEmitter.emit___import__(
     code = "import(" + args[0] + ")";
     export_name = (ctx.kwargs or {}).get("default_export", None);
     if export_name {
-        code += ".then((m) => Object.create(m, {default: {value: m."
+        code += ".then((m) => Object.defineProperties({default: m."
             + export_name
-            + "}}))";
+            + "}, Object.fromEntries(Object.keys(m).filter((k) => k !== \"default\")"
+            + ".map((k) => [k, {get: () => m[k], enumerable: true}]))))";
     }
     return code;
 }
