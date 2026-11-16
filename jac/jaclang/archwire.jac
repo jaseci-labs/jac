@@ -12014,6 +12014,7 @@ graph import data {
     store ++> [
         dbcatalog { ConnInfo, SCHEMA_STAMP_KEY },
         pgembed { ConnInfo },
+        pgembed.PgRuntime._ensure_database { forget_schema },
         sqlcompile { Store },
     ]
     type_identity ++> [
