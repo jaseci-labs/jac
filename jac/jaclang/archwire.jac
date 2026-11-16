@@ -9172,7 +9172,8 @@ graph import compiler {
             get_complex_arith_result_type,
             get_numeric_promotion_type,
             get_pow_result_type,
-            none_unsafe_operand
+            none_unsafe_operand,
+            operand_carries_none
         },
     ]
     types.ownership ++> passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {

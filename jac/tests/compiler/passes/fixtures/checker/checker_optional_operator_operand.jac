@@ -168,3 +168,17 @@ def ok_str_format_optional_aug(x: str | None) -> str {
 def ok_any_member_receiver_format(fmt: str | any, value: str | None) -> str {
     return fmt % value;
 }
+
+class Tally {
+    has total: int = 0;
+
+    def __iadd__(self: Tally, value: int | None) -> Tally {
+        self.total += value if value is not None else 0;
+        return self;
+    }
+}
+
+def ok_inplace_accepts_optional(t: Tally, value: int | None) -> Tally {
+    t += value;
+    return t;
+}

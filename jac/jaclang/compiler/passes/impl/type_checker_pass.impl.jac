@@ -972,9 +972,18 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                 aug_magic = AUG_OPERATOR_MAP.get(aug_op.name);
                 aug_base_op = AUG_TO_BINARY_MAP.get(aug_op.name);
                 aug_read_type = self.evaluator.get_type_of_expression(target);
+                aug_inplace = self.evaluator.get_type_of_magic_method_call(
+                    left_type, aug_magic, [here.value], here.value
+                )
+                    if aug_magic is not None
+                    else None;
                 aug_unsafe: (TypeBase | None) = None;
                 if aug_magic is not None
-                    and aug_base_op in NONE_UNSAFE_BINARY_OPERATORS {
+                    and aug_base_op in NONE_UNSAFE_BINARY_OPERATORS
+                    and (
+                        aug_inplace is None
+                        or operand_carries_none(self.evaluator, aug_read_type)
+                    ) {
                     (aug_bin, aug_rbin) = BINARY_OPERATOR_MAP[aug_base_op];
                     aug_unsafe = none_unsafe_operand(
                         self.evaluator,
@@ -989,9 +998,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                         E1160, node_override=here, op=aug_op.value, type=str(aug_unsafe)
                     );
                 } elif aug_magic is not None {
-                    result = self.evaluator.get_type_of_magic_method_call(
-                        left_type, aug_magic, [here.value], here.value
-                    );
+                    result = aug_inplace;
                     if result is None {
                         base_op = AUG_TO_BINARY_MAP.get(aug_op.name);
                         if base_op is not None {
