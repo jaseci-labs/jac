@@ -148,6 +148,33 @@ test "a server copy is kept only when what it calls exists on the server" {
         assert not value.codespace_dual , (
             "the glob calls a client-only function, so a server copy could not run"
         );
+        later = _write(
+            tmpdir,
+            "later.jac",
+            "glob total: int = helper();\n\n"
+            "def helper -> int { return make_two(); }\n\n"
+            "def make_two -> int { return 2; }\n\n"
+            "def view -> int { return total; }\n\n"
+            "def:pub ping -> int { return 1; }\n"
+        );
+        _write(
+            tmpdir,
+            "jac.toml",
+            "[project]\nname = \"pins\"\n\n"
+            "[placement.pins]\n\"app.make\" = \"client\"\n\"app.show\" = \"client\"\n"
+            "\"later.make_two\" = \"client\"\n\"later.view\" = \"client\"\n"
+        );
+        prog = JacProgram();
+        mod = prog.compile(later, no_cgen=True);
+        assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+        total = [
+            s
+            for s in mod.body
+            if isinstance(s, uni.GlobalVars)
+        ][0];
+        assert str(total.code_context) == "client" and not total.codespace_dual , (
+            "the glob reaches a client-only function through a helper placed after it, so it cannot run on the server"
+        );
     }
 }
 
