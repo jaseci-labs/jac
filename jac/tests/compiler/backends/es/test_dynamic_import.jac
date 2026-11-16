@@ -72,6 +72,7 @@ test "an import the bundler cannot act on is rejected" {
         'm = __import__(f"./Message{1}");',
         'm = __import__("os.path");',
         'm = __import__("./MessageCard", fromlist=["my-card"]);',
+        'm = __import__("./MessageCard", None);',
         'm = __import__("./MessageCard", level=1);'
     ];
     accepted = [

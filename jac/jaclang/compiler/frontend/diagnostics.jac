@@ -2510,7 +2510,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5117 = _err(
          "E5117",
          Category.CODEGEN,
-         "Dynamic import needs a literal module path: {details}",
+         "A dynamic import needs a literal path to a Jac module and at most fromlist=[\"Name\"]",
          help="A dynamic import is resolved while the app is built, not while it"
          " runs: the bundler reads the path out of the source to decide which"
          " module to split into its own downloadable chunk. So the path has to be"
