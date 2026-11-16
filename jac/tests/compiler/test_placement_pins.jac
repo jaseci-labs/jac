@@ -78,13 +78,33 @@ test "what a client pin uses is shared with the server code that also uses it" {
             tmpdir,
             "app.jac",
             "enum Color: int { RED, GREEN }\n\n"
-            "def show -> int { return int(Color.GREEN); }\n\n"
+            "def twice(n: int) -> int { return n * 2; }\n\n"
+            "def show -> int { return twice(int(Color.GREEN)); }\n\n"
             "def:pub count -> int { return int(Color.RED); }\n"
+        );
+        api = _write(
+            tmpdir,
+            "api.jac",
+            "import from app { twice }\n\n"
+            "def:pub doubled -> int { return twice(3); }\n"
         );
         prog = JacProgram();
         mod = prog.compile(app, no_cgen=True);
         assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
         assert _stamp_of(mod, "show") == "client";
+        assert _stamp_of(mod, "twice") == "client" , (
+            "a helper a client pin calls must reach the client"
+        );
+        twice = [
+            s
+            for s in mod.body
+            if isinstance(s, uni.Ability)
+                and isinstance(s.name_ref, uni.Name)
+                and s.name_ref.value == "twice"
+        ][0];
+        assert twice.codespace_dual , (
+            f"{api} imports the helper on the server, so it must keep a server copy"
+        );
         assert _stamp_of(mod, "count") == "server" , (
             "a server function sharing what a client pin uses must stay on the server"
         );
