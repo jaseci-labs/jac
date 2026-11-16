@@ -66,6 +66,8 @@ curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile
 
 Identity types: `username`, `email` (max one of each; login works with either unless `login_with` narrows it). Which ones an account needs, and how strong the password must be, is the project's **auth policy** (below); a value that breaks it gets `400 POLICY_VIOLATION` with every broken rule in `error.details.violations`. Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
 
+A check that depends on a request header (a workspace or tenant named by the client, a token a provider sends in a header) reads it in the endpoint with `current_request().header(...)` from `jaclang.server.exchange`, and refuses with `respond(status=403)`; see `jac-sv-endpoints`. Credential headers are never in that view.
+
 ## Media and downloads: the session cookie
 
 A browser cannot attach `Authorization` to `<img src>`, `<video src>`, `<audio src>` or an `<a href download>` navigation. Opt in with `[serve.auth] session_cookie = true` in `jac.toml` (env `JAC_SERVE_AUTH_SESSION_COOKIE` overrides it either way) and `/user/register`, `/user/login`, `/user/refresh-token`, `PUT /user/username`, and the second-factor `POST /user/mfa/verify` and `/user/mfa/login` also set `jac_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` on HTTPS), which carries the same JWT:

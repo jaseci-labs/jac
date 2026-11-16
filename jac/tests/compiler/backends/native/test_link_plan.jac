@@ -787,6 +787,8 @@ test "a cycle unit lowered before its dependency demoted a name it calls lowers 
         assert events.get("native_dep_adopt_refused", 0) >= 1 , events;
         odd_unit = plan.unit(str(odd.resolve()));
         assert odd_unit is not None and "odd_probe" in odd_unit.iface.demoted;
+        failures = plan.lowering_failures();
+        assert any(f.startswith("even.jac:probe: ") for f in failures) , failures;
         for unit in plan.units {
             consumed = prog.native_units().entries[unit.path].dep_digests;
             for dep in unit.iface.deps {
@@ -960,6 +962,25 @@ test "native build CLI reuses warm artifacts under each memory profile" {
         }
         native_build(src, output, extra=["--link-mode", "bitcode"]);
         assert native_run(output).strip() == "7";
+    }
+}
+
+test "jac build --native --lib refuses a function that did not lower" {
+    import from tests.support { jac_command }
+    with tempfile.TemporaryDirectory(prefix="jac-native-lib-refuse-") as tmp {
+        src = Path(tmp) / "shared.jac";
+        src.write_text("def:pub probe(x: any) -> int { return x.bit_length(); }\n");
+        out = Path(tmp) / "libshared.so";
+        comp = subprocess.run(
+            jac_command("build", str(src), "--native", "--lib", "-o", str(out)),
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        combined = (comp.stdout or "") + (comp.stderr or "");
+        assert comp.returncode != 0 , combined;
+        assert "shared.jac:probe" in combined , combined;
+        assert not out.exists();
     }
 }
 

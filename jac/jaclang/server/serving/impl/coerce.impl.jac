@@ -344,15 +344,15 @@ impl _extract_raw(
 }
 
 impl _fresh_default(value: any) -> any {
-    if isinstance(value, (dict, list, set)) {
-        import copy;
-        try {
-            return copy.deepcopy(value);
-        } except Exception {
-            return value;
-        }
+    if not isinstance(value, (dict, list, set, tuple, bytearray, Archetype)) {
+        return value;
     }
-    return value;
+    import copy;
+    try {
+        return copy.deepcopy(value);
+    } except Exception {
+        return value;
+    }
 }
 
 impl bind_parameters(

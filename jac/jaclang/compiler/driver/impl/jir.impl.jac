@@ -333,65 +333,12 @@ impl compiler_source_files(pkg_dir: str) -> list[str] {
     return sorted(rels);
 }
 
-impl compiler_identity_path(pkg_dir: str) -> Path {
-    return Path(pkg_dir) / COMPILER_IDENTITY_NAME;
-}
-
-impl read_compiler_identity(pkg_dir: str) -> dict[str, str] {
-    import json;
-    try {
-        raw = json.loads(compiler_identity_path(pkg_dir).read_text());
-    } except Exception {
-        return {};
-    }
-    recorded = raw.get("inputs", {}) or {};
-    return {str(k): str(v) for (k, v) in recorded.items()};
-}
-
-impl declared_compiler_inputs(pkg_dir: str, recorded: dict[str, str]) -> list[str] {
-    base = str(pkg_dir);
-    declares = os.path.isfile(os.path.join(base, "compiler_inputs.txt"));
-    for prefix in (NATIVE_LOWERED_PATHS if declares else ()) {
-        if os.path.isdir(os.path.join(base, prefix.replace("/", os.sep))) {
-            continue;
-        }
-        if any(rel.startswith(prefix + "/") for rel in recorded) {
-            continue;
-        }
-        raise RuntimeError(
-            f"compiler identity is incomplete: {base!r} carries no sources under "
-            f"{prefix!r} and no recorded hashes for it in {COMPILER_IDENTITY_NAME}. A "
-            "staging that drops a natively lowered input must record what it dropped, "
-            "or its digest silently describes a smaller compiler than the one it was "
-            "built from."
-        );
-    }
-    rels: set = set(compiler_source_files(base));
-    rels.update(recorded.keys());
-    return sorted(rels);
-}
-
-impl resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) -> str {
+impl resolve_compiler_input(pkg_dir: str, rel: str) -> str {
     (_roots, roster) = compiler_input_rules(pkg_dir);
     if is_roster_input(rel, roster) {
         return COMPILER_DIGEST_ROSTER_MARK;
     }
-    if rel in recorded and is_staging_rewritten(rel) {
-        return recorded[rel];
-    }
-    full = os.path.join(str(pkg_dir), rel.replace("/", os.sep));
-    if os.path.isfile(full) {
-        return compute_content_sha256(full);
-    }
-    if is_native_lowered(rel) and rel in recorded {
-        return recorded[rel];
-    }
-    raise RuntimeError(
-        f"compiler identity is incomplete: declared input {rel!r} is absent from "
-        f"{pkg_dir!r} and carries no recorded hash in {COMPILER_IDENTITY_NAME}. A "
-        "staging may omit an input only when it is natively lowered "
-        f"({', '.join(NATIVE_LOWERED_PATHS)}) and records its hash."
-    );
+    return compute_content_sha256(os.path.join(str(pkg_dir), rel.replace("/", os.sep)));
 }
 
 impl fold_compiler_digest(rows: list[tuple[str, str]]) -> str {
@@ -405,57 +352,17 @@ impl fold_compiler_digest(rows: list[tuple[str, str]]) -> str {
 
 impl compiler_source_digest(pkg_dir: str) -> str {
     base = str(Path(pkg_dir));
-    recorded = read_compiler_identity(base);
     rows = [
-        (rel, resolve_compiler_input(base, rel, recorded))
-        for rel in declared_compiler_inputs(base, recorded)
+        (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
     ];
     return fold_compiler_digest(rows);
 }
 
-impl write_compiler_identity(pkg_dir: str, dest_dir: str) -> str {
-    import json;
-    base = str(Path(pkg_dir));
-    recorded = read_compiler_identity(base);
-    rels = declared_compiler_inputs(base, recorded);
-    rows = [(rel, resolve_compiler_input(base, rel, recorded)) for rel in rels];
-    digest = fold_compiler_digest(rows);
-    out = Path(dest_dir) / COMPILER_IDENTITY_NAME;
-    out.parent.mkdir(parents=True, exist_ok=True);
-    out.write_text(
-        json.dumps(
-            {
-                "format": 1,
-                "digest": digest,
-                "lowered": list(NATIVE_LOWERED_PATHS),
-                "inputs": dict(rows)
-            },
-            indent=1,
-            sort_keys=True
-        )
-    );
-    return digest;
-}
-
 impl _manifest_compiler_digest(pkg_dir: str) -> str {
     base = str(Path(pkg_dir));
-    recorded = read_compiler_identity(base);
-    rels = declared_compiler_inputs(base, recorded);
-    (_roots, roster) = compiler_input_rules(base);
-    rows: list[tuple[str, str]] = [];
-    for rel in rels {
-        if is_roster_input(rel, roster) {
-            rows.append((rel, COMPILER_DIGEST_ROSTER_MARK));
-            continue;
-        }
-        full = os.path.join(base, rel.replace("/", os.sep));
-        if os.path.isfile(full)
-            and not (rel in recorded and is_staging_rewritten(rel)) {
-            rows.append((rel, compute_content_sha256(full)));
-        } else {
-            rows.append((rel, resolve_compiler_input(base, rel, recorded)));
-        }
-    }
+    rows = [
+        (rel, resolve_compiler_input(base, rel)) for rel in compiler_source_files(base)
+    ];
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
     return digest;
@@ -524,10 +431,6 @@ impl dev_carry_enabled -> bool {
     } except OSError {
         return False;
     }
-}
-
-impl native_producer_digest -> str {
-    return running_compiler_digest();
 }
 
 impl compiler_generation -> str {

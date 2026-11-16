@@ -666,7 +666,9 @@ impl EsastGenPass.prepare with entry {
     self.loop_links = LoopLinks.of(self.module);
     self._native_links = {};
     for nd in self.module.flatten() {
-        nd.gen.es_ast = None;
+        if nd.has_gen() {
+            nd.gen.es_ast = None;
+        }
     }
 
     if not self.module.client_viols_reported {
