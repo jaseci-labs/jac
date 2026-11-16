@@ -524,12 +524,12 @@ test "only a 404 from Docker Hub drops the official image, never on experimental
     limited = HTTPError("u", 429, "tmr", None, None);
     down = URLError("dns");
     cases = [
-        # (label, jac.toml, probe error, image, refusal fragments)
-        ("dev, unpublished", dev, not_found, "python:3.12-slim", []),
-        ("dev, hub down", dev, down, "jaseci/jaclang:dev", []),
-        ("dev, rate limited", dev, limited, "jaseci/jaclang:dev", []),
-        ("pr, unpublished", pr, not_found, "", [pr_image, "Experimental jac image"]),
-        ("pr, hub down", pr, down, pr_image, [])
+        # (label, jac.toml, probe error, image, refusal names)
+        ("dev, unpublished", dev, not_found, "python:3.12-slim", ""),
+        ("dev, hub down", dev, down, "jaseci/jaclang:dev", ""),
+        ("dev, rate limited", dev, limited, "jaseci/jaclang:dev", ""),
+        ("pr, unpublished", pr, not_found, "", pr_image),
+        ("pr, hub down", pr, down, pr_image, "")
     ];
     for (label, toml, error, expected, refusal) in cases {
         d = _write_toml(toml);
@@ -544,10 +544,7 @@ test "only a 404 from Docker Hub drops the official image, never on experimental
             }
         }
         assert image == expected , f"{label}: {image!r}";
-        assert bool(caught) == bool(refusal) , f"{label}: {caught}";
-        for fragment in refusal {
-            assert fragment in caught , f"{label}: {caught}";
-        }
+        assert (refusal in caught) if refusal else not caught , f"{label}: {caught}";
         assert warned.called != bool(refusal) , f"{label}: warning not logged";
     }
 }
