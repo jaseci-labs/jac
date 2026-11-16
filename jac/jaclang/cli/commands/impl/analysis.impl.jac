@@ -180,6 +180,7 @@ impl check(
             units.append(file_unit);
         }
     }
+    warn_unmet_project_pins([str(unit['root_dir']) for unit in units]);
     sharded = _shard_units(units);
     if sharded is None {
         console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
@@ -1434,6 +1435,9 @@ impl `test(
             app_cfg = None;
         }
     }
+    warn_unmet_project_pins(
+        (list(paths) + ([directory] if directory else [])) or [os.getcwd()]
+    );
     re_root = explicit_app
         or (app_cfg is not None and cfg is not None and cfg.is_workspace);
     if app_cfg is not None and cfg is not None and app_cfg.name in cfg.apps {

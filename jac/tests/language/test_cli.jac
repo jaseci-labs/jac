@@ -2307,6 +2307,50 @@ test "jac run warns when the running toolchain does not satisfy the project's ja
     }
 }
 
+test "jac check and jac test warn with the pin of the project that owns each file" {
+    base = Path(tempfile.mkdtemp()).resolve();
+    try {
+        pinned = base / "pinned";
+        shell = base / "shell";
+        for (proj, pin) in [(pinned, "<=0.0.1"), (shell, ">=0.0.1")] {
+            proj.mkdir();
+            (proj / "jac.toml").write_text(
+                '[project]\nname = "'
+                    + proj.name
+                    + '"\nversion = "0.1.0"\njac-version = "'
+                    + pin
+                    + '"\n'
+            );
+            (proj / "main.jac").write_text('with entry {\n    print("ran");\n}\n');
+            (proj / "checks.jac").write_text('test "holds" {\n    assert 1 == 1;\n}\n');
+        }
+        # From a project whose pin is met, the pinned file's own project counts.
+        for args in [
+            ["check", str(pinned / "main.jac")],
+            ["test", str(pinned / "checks.jac")]
+        ] {
+            run = subprocess.run(
+                jac_command(*args), cwd=str(shell), capture_output=True, text=True
+            );
+            assert run.returncode == 0 , run.stdout + run.stderr;
+            assert "this project targets jac <=0.0.1" in run.stderr , run.stderr;
+        }
+        # From the pinned project, a file of a project whose pin is met gets no warning.
+        for args in [
+            ["check", str(shell / "main.jac")],
+            ["test", str(shell / "checks.jac")]
+        ] {
+            run = subprocess.run(
+                jac_command(*args), cwd=str(pinned), capture_output=True, text=True
+            );
+            assert run.returncode == 0 , run.stdout + run.stderr;
+            assert "this project targets jac" not in run.stderr , run.stderr;
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
 test "jac check shows warnings for files with warnings only" {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
