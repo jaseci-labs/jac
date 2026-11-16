@@ -36,28 +36,19 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
     if len(here.target) == 1 and isinstance(here.target[0], uni.Name) {
         target_name = here.target[0].sym_name;
         if target_name in self.reactive_vars {
-            setter_arg: es.Expression;
-            aug_op: (str | None) = None;
+            setter_arg = cast(
+                es.Expression, value_expr or es.Identifier(name='undefined')
+            );
+            combine: (Callable[[es.Expression], es.Expression] | None) = None;
             if here.aug_op {
-                aug_tok: str = here.aug_op.name;
-                aug_to_binary: dict[str, str] = {
-                    Tok.ADD_EQ: '+',
-                    Tok.SUB_EQ: '-',
-                    Tok.MUL_EQ: '*',
-                    Tok.DIV_EQ: '/',
-                    Tok.MOD_EQ: '%'
-                };
-                binary_op = aug_to_binary.get(aug_tok, '+');
-                aug_op = binary_op;
-
-                setter_arg = cast(es.Expression, value_expr or es.Literal(value=0));
-            } else {
-                setter_arg = cast(
-                    es.Expression, value_expr or es.Identifier(name='undefined')
-                );
+                base_op = AUG_TO_BINARY_MAP.get(here.aug_op.name);
+                target = here.target[0];
+                combine = lambda (current: es.Expression) -> es.Expression { return self._lower_binop(
+                    base_op, target, target, current, setter_arg, here
+                ); };
             }
             state_update = StateUpdate(
-                name=target_name, value=setter_arg, aug_op=aug_op
+                name=target_name, value=setter_arg, combine=combine
             );
             backend = self._ensure_backend();
             setter_call = self.sync_loc(
@@ -69,6 +60,15 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             here.gen.es_ast = expr_stmt;
             return;
         }
+    }
+    if (
+        not here.aug_op and any(self._needs_unpack(target) for target in here.target)
+    ) {
+        stmts = self._lower_unpack(
+            here.target, value_expr or es.Identifier(name='undefined'), here
+        );
+        here.gen.es_ast = stmts[0] if len(stmts) == 1 else stmts;
+        return;
     }
     if here.aug_op {
         (left, _, _) = self._convert_assignment_target(here.target[0]);
@@ -140,15 +140,21 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
         return;
     }
 
-    if len(here.target) == 1 {
-        _setitem = self._try_subscript_setitem(here.target[0], value_expr, here);
+    stmts = self._lower_plain_assignment(here.target, value_expr, here);
+    here.gen.es_ast = stmts[0] if len(stmts) == 1 else stmts;
+}
+
+impl EsastGenPass._lower_plain_assignment(
+    targets: Sequence[uni.Expr], value_expr: (es.Expression | None), here: uni.UniNode
+) -> list[es.Statement] {
+    if len(targets) == 1 {
+        _setitem = self._try_subscript_setitem(targets[0], value_expr, here);
         if _setitem is not None {
-            here.gen.es_ast = _setitem;
-            return;
+            return [_setitem];
         }
     }
     targets_info: list[AssignmentTargetInfo] = [];
-    for target_node in here.target {
+    for target_node in targets {
         (left, reference, decl_name) = self._convert_assignment_target(target_node);
         pattern_names = self._collect_pattern_names(target_node);
         targets_info.append(
@@ -162,16 +168,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
         );
     }
     statements: list[es.Statement] = [];
-    current_value: es.Expression = cast(
-        es.Expression,
-        (
-            value_expr
-            or self._get_ast_or_default(
-                here.value,
-                default_factory=lambda (_src: any) { es.Identifier(name='undefined'); }
-            )
-        )
-    );
+    current_value: es.Expression = value_expr or es.Identifier(name='undefined');
     for info in reversed(targets_info) {
         target_node = info.nd;
         left = info.left;
@@ -258,11 +255,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             current_value = info.reference or current_value;
         }
     }
-    if (len(statements) == 1) {
-        here.gen.es_ast = statements[0];
-    } else {
-        here.gen.es_ast = statements;
-    }
+    return statements;
 }
 
 impl EsastGenPass._collect_pattern_names(
@@ -471,4 +464,120 @@ impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Pa
         return target;
     }
     return self.sync_loc(es.Identifier(name='_item'), jac_node=loc);
+}
+
+impl EsastGenPass._needs_unpack(target: uni.UniNode) -> bool {
+    if isinstance(target, uni.Name) {
+        return target.sym_name in self.reactive_vars;
+    }
+    if isinstance(target, uni.UnaryExpr) and target.op.name == Tok.STAR_MUL.value {
+        return self._needs_unpack(target.operand);
+    }
+    if not isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        return False;
+    }
+    values = [
+        v
+        for v in target.values
+        if isinstance(v, uni.Expr)
+    ];
+    return any(
+        self._needs_unpack(v)
+            or (
+                i < len(values) - 1
+                and isinstance(v, uni.UnaryExpr)
+                and v.op.name == Tok.STAR_MUL.value
+            ) for (i, v) in enumerate(values)
+    );
+}
+
+impl EsastGenPass._lower_unpack(
+    targets: Sequence[uni.Expr], value: es.Expression, here: uni.UniNode
+) -> list[es.Statement] {
+    decls: list[es.VariableDeclarator] = [];
+    leaves: list[tuple[uni.Expr, es.Expression]] = [];
+    bound = self._unpack_temp(value, decls);
+    for target in targets {
+        self._unpack_leaves(target, es.Identifier(name=bound), decls, leaves);
+    }
+    stmts: list[es.Statement] = [
+        self.sync_loc(
+            es.VariableDeclaration(declarations=decls, kind='const'), jac_node=here
+        )
+    ];
+    for (leaf, item) in leaves {
+        if isinstance(leaf, uni.Name) and leaf.sym_name in self.reactive_vars {
+            update = StateUpdate(name=leaf.sym_name, value=item);
+            setter_call = self._ensure_backend().lower_state_update(update);
+            stmts.append(
+                self.sync_loc(
+                    es.ExpressionStatement(expression=setter_call), jac_node=leaf
+                )
+            );
+        } elif not (isinstance(leaf, uni.Name) and leaf.sym_name == '_') {
+            stmts.extend(self._lower_plain_assignment([leaf], item, here));
+        }
+    }
+    return stmts;
+}
+
+impl EsastGenPass._unpack_temp(
+    value: es.Expression, decls: list[es.VariableDeclarator]
+) -> str {
+    self._unpack_seq += 1;
+    name = f"__jac_unpack_{self._unpack_seq}";
+    decls.append(es.VariableDeclarator(id=es.Identifier(name=name), `init=value));
+    return name;
+}
+
+impl EsastGenPass._unpack_leaves(
+    target: uni.Expr,
+    item: es.Expression,
+    decls: list[es.VariableDeclarator],
+    leaves: list[tuple[uni.Expr, es.Expression]]
+) -> None {
+    if not isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        leaves.append((target, item));
+        return;
+    }
+    seq = self._unpack_temp(
+        es.ArrayExpression(elements=[es.SpreadElement(argument=item)]), decls
+    );
+    values = [
+        v
+        for v in target.values
+        if isinstance(v, uni.Expr)
+    ];
+    star = -1;
+    for (i, v) in enumerate(values) {
+        if isinstance(v, uni.UnaryExpr) and v.op.name == Tok.STAR_MUL.value {
+            star = i;
+        }
+    }
+    length = lambda (offset: int) -> es.Expression { return es.BinaryExpression(
+        operator="-",
+        left=es.MemberExpression(
+            object=es.Identifier(name=seq), property=es.Identifier(name="length")
+        ),
+        right=es.Literal(value=offset)
+    ); };
+    for (i, v) in enumerate(values) {
+        if i == star {
+            rest = es.CallExpression(
+                callee=es.MemberExpression(
+                    object=es.Identifier(name=seq), property=es.Identifier(name="slice")
+                ),
+                arguments=[es.Literal(value=i), length(len(values) - 1 - i)]
+            );
+            self._unpack_leaves(cast(uni.UnaryExpr, v).operand, rest, decls, leaves);
+            continue;
+        }
+        index = es.Literal(value=i)
+            if star < 0 or i < star
+            else length(len(values) - i);
+        part = es.MemberExpression(
+            object=es.Identifier(name=seq), property=index, computed=True
+        );
+        self._unpack_leaves(v, part, decls, leaves);
+    }
 }

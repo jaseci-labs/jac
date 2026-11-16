@@ -154,9 +154,6 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    if is_native_lowered(p) {
-        return True;
-    }
     return (
         "__pycache__" in p
         or "node_modules" in p

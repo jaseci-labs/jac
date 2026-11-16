@@ -19,6 +19,9 @@ node UniNode {
 
     has parent: (UniNode | None) { getter; }
     has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
+
+    def has_gen -> bool;
+
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _link(kid: Sequence[UniNode], roles: dict[type, any]) -> None;
@@ -510,7 +513,8 @@ node Module(AstDocNode, UniScopeNode) {
         rc_scope_cleanup: dict[int, list[str]] postinit,
         rc_move_in: set[int] postinit,
         own_move_sites: set[int] postinit,
-        managed_borrow_binds: set[int] postinit;
+        managed_borrow_binds: set[int] postinit,
+        import_bound_names: (set[str] | None) = None;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
     has elements: list[UniNode] { getter; }

@@ -179,6 +179,22 @@ impl _json_default(o: any) -> str {
     return str(o);
 }
 
+impl _json_safe(value: any) -> any {
+    if isinstance(value, float) {
+        return value if isfinite(value) else str(value);
+    }
+    if isinstance(value, dict) {
+        return {
+            (k if k is None or isinstance(k, (str, int)) else str(k)): _json_safe(v)
+            for (k, v) in value.items()
+        };
+    }
+    if isinstance(value, (list, tuple)) {
+        return [_json_safe(v) for v in value];
+    }
+    return value;
+}
+
 impl Response.init(
     self: Response,
     content: any = b'',
@@ -224,7 +240,14 @@ impl JSONResponse.init(
 }
 
 impl JSONResponse.body_bytes(self: JSONResponse) -> bytes {
-    return dumps(self.content, `default=_json_default).encode('utf-8');
+    try {
+        encoded = dumps(self.content, `default=_json_default, allow_nan=False);
+    } except (TypeError, ValueError) {
+        encoded = dumps(
+            _json_safe(self.content), `default=_json_default, allow_nan=False
+        );
+    }
+    return encoded.encode('utf-8');
 }
 
 impl HTMLResponse.init(

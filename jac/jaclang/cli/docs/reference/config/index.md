@@ -1015,6 +1015,8 @@ _authToken = "${NODE_AUTH_TOKEN}"
 
 This generates an `.npmrc` file during dependency installation for private/scoped npm packages. See [jac-client NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration) for details.
 
+`min_release_age_days` (default `1`, `0` turns it off) and `min_release_age_excludes` under `[client.npm]` make dependency installs skip package versions newer than that age. See [jac-client NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
+
 **Build-Time Constants (jac-client):**
 
 Define global variables that are replaced at compile time in client code via the `[client.vite.define]` section:
