@@ -965,6 +965,25 @@ test "native build CLI reuses warm artifacts under each memory profile" {
     }
 }
 
+test "jac build --native --lib refuses a function that did not lower" {
+    import from tests.support { jac_command }
+    with tempfile.TemporaryDirectory(prefix="jac-native-lib-refuse-") as tmp {
+        src = Path(tmp) / "shared.jac";
+        src.write_text("def:pub probe(x: any) -> int { return x.bit_length(); }\n");
+        out = Path(tmp) / "libshared.so";
+        comp = subprocess.run(
+            jac_command("build", str(src), "--native", "--lib", "-o", str(out)),
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        combined = (comp.stdout or "") + (comp.stderr or "");
+        assert comp.returncode != 0 , combined;
+        assert "shared.jac:probe" in combined , combined;
+        assert not out.exists();
+    }
+}
+
 test "unhandled errors in a qualified native entry fail the executable" {
     import from tests.support { native_build }
     with tempfile.TemporaryDirectory(prefix="jac-native-entry-error-") as tmp {
