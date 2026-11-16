@@ -519,10 +519,25 @@ impl resolve_pod_base_image(
         raw = _http_get_bytes(
             f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
         );
-    } except Exception {
-        logger.info(
-            f"Official base image {image} is not published or not reachable; "
-            f"pods use {fallback}."
+    } except Exception as e {
+        if not (isinstance(e, HTTPError) and e.code == 404) {
+            logger.warning(
+                f"Could not verify {image} against Docker Hub ({e}); pods use it "
+                "unpinned."
+            );
+            return image;
+        }
+        if channel == Channel.EXPERIMENTAL {
+            raise RuntimeError(
+                f"{image} is not published on Docker Hub, and the experimental "
+                "channel runs only that image's jac. Build it with the "
+                "'Experimental jac image' workflow (action=build), or remove "
+                "[experimental] from jac.toml to deploy on dev."
+            ) from e;
+        }
+        logger.warning(
+            f"{image} is not published on Docker Hub; pods use {fallback} and "
+            "install the jac toolchain at boot."
         );
         return fallback;
     }

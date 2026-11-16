@@ -182,8 +182,10 @@ test "malformed hpa.behavior warns and falls back to the empty fragment" {
 # The preflight reads the pod architecture from the cluster, and node_arch()
 # silently falls back to the HOST arch when no kubeconfig is loaded. Deploy must
 # therefore load the cluster config first, or a macOS host deploying to a linux
-# x86_64 cluster checks the wrong release asset and can refuse a valid pin.
-test "deploy loads the cluster config before it resolves the pod arch" {
+# x86_64 cluster checks the wrong release asset and can refuse a valid pin. The
+# base image is resolved in the same preflight, so a refused image stops the
+# deploy before any database is provisioned.
+test "deploy loads the cluster config, then resolves the pod arch and base image" {
     import unittest.mock;
     import tempfile;
     import from pathlib { Path }
@@ -211,14 +213,20 @@ test "deploy loads the cluster config before it resolves the pod arch" {
         return "x86_64";
     }
 
+    def _note_image(project_dir: str, configured: str) -> str {
+        order.append("image");
+        return "jaseci/jaclang:dev";
+    }
+
     with unittest.mock.patch.object(target, "_load_cluster_config", _note_config), unittest.mock.patch.object(
         binary_mod, "node_arch", _note_arch
     ), unittest.mock.patch.object(
         binary_mod, "preflight_pod_runtime", return_value="0.0.0"
-    ), unittest.mock.patch.object(
+    ), unittest.mock.patch.object(binary_mod, "resolve_pod_base_image", _note_image), unittest.mock.patch.object(
         KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
     ) {
         target.deploy(AppConfig(code_folder=d, file_name="main.jac", app_name="t"));
     }
-    assert order[:2] == ["config", "arch"];
+    assert order[:3] == ["config", "arch", "image"] , order;
+    assert target.k8s_config.python_image == "jaseci/jaclang:dev";
 }
