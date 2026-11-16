@@ -25,12 +25,20 @@ impl _ws_send_then_close(
     }
 }
 
+impl _validate_bearer(user_manager: any, token: any) -> dict[str, any] {
+    detail = user_manager.validate_jwt_token_detail(token);
+    if detail.get('status') != 'ok' {
+        return detail;
+    }
+    return {** detail, 'authorization': f"Bearer {token}"};
+}
+
 impl ws_pre_accept_auth(websocket: WebSocket, user_manager: any) -> any {
     query_token = websocket.query_params.get('token');
     if not query_token {
         return None;
     }
-    return user_manager.validate_jwt_token_detail(query_token);
+    return _validate_bearer(user_manager, query_token);
 }
 
 impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict[str, any]) {
@@ -64,7 +72,7 @@ impl ws_authenticate(
         return (_auth_fail('invalid', 'Handshake payload must be a JSON object'), None);
     }
     token = first_data.pop('token', None);
-    return (user_manager.validate_jwt_token_detail(token), first_data);
+    return (_validate_bearer(user_manager, token), first_data);
 }
 
 impl ws_heartbeat_loop(
@@ -230,7 +238,7 @@ impl ws_handle_control(
         if not requires_auth {
             return 'continue';
         }
-        detail = user_manager.validate_jwt_token_detail(data.get('token'));
+        detail = _validate_bearer(user_manager, data.get('token'));
         if detail['status'] != 'ok' {
             await websocket.send_json(
                 ws_error_frame(
@@ -259,6 +267,7 @@ impl ws_handle_control(
         ctx.exp = (
             float(refreshed_exp) if isinstance(refreshed_exp, (int, float)) else None
         );
+        ctx.authorization = detail['authorization'];
         await websocket.send_json({'type': 'refreshed', 'ok': True});
         return 'continue';
     }

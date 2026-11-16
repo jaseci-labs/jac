@@ -283,7 +283,11 @@ impl _ws_stream_next(gen: any) -> any {
 impl _ws_close_stream(result: any, abandon: Callable[[], None]) -> None {
     try {
         if isgenerator(result) {
-            await asyncio.get_running_loop().run_in_executor(None, result.close);
+            close_context = contextvars.copy_context();
+            def close_in_context {
+                close_context.run(result.close);
+            }
+            await asyncio.get_running_loop().run_in_executor(None, close_in_context);
         } else {
             await result.aclose();
         }
@@ -306,8 +310,12 @@ impl _ws_stream_result(send_result: any, result: any, abandon: Callable[[], None
     try {
         if isgenerator(result) {
             loop = asyncio.get_running_loop();
+            stream_context = contextvars.copy_context();
+            def next_in_context -> any {
+                return stream_context.run(_ws_stream_next, result);
+            }
             while True {
-                item = await loop.run_in_executor(None, _ws_stream_next, result);
+                item = await loop.run_in_executor(None, next_in_context);
                 if item is _WS_STREAM_STOP {
                     break;
                 }

@@ -22,6 +22,8 @@ async def _ws_send_then_close(
     websocket: WebSocket, frame: dict[str, any], close_code: int, close_reason: str
 ) -> None;
 
+def _validate_bearer(user_manager: any, token: any) -> dict[str, any];
+
 def ws_pre_accept_auth(websocket: WebSocket, user_manager: any) -> any;
 
 async def ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict[str, any]);
