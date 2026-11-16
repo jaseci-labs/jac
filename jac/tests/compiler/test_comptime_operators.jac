@@ -13,6 +13,7 @@ import from jaclang.compiler.types.ct_value {
     mk_str
 }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import jaclang.compiler.frontend.unitree as uni;
 
 def ints(*vals: int) -> list[CtValue] {
     return [mk_int(v) for v in vals];
@@ -62,4 +63,25 @@ test "shared compile-time binary operators preserve values and errors" {
     with testraises(CtError) {
         evaluator._binop_by_name("unsupported", mk_int(16), mk_int(2));
     }
+}
+
+test "a failure memo only blocks the node it was recorded for and is released with the check caches" {
+    program = JacProgram();
+    mod = program.compile("ct_memo.jac", use_str="glob x = 1 + 2;");
+    expr = mod.get_all_sub_nodes(uni.BinaryExpr)[0];
+    (one, two) = mod.get_all_sub_nodes(uni.Int)[:2];
+    evaluator = program.get_type_evaluator().ct_eval;
+    for nd in (expr, one, two) {
+        nd.ct_value = None;
+    }
+    evaluator._failed[id(one)] = two;
+    summed = evaluator.try_eval(expr);
+    assert summed is not None and ct_eq(summed, mk_int(3));
+    for nd in (expr, one, two) {
+        nd.ct_value = None;
+    }
+    evaluator._failed[id(one)] = one;
+    assert evaluator.try_eval(expr) is None;
+    program.release_check_caches();
+    assert not evaluator._failed;
 }

@@ -8,12 +8,7 @@ impl validate_native_application(module: Module, shared: bool, memory: str) -> s
         );
     }
     llvm_ir = native_linked_ir_text(module);
-    demoted = native_fallbacks_in_ir(llvm_ir).symbols;
-    if demoted and not shared {
-        raise ValueError(
-            'Declarations in the native closure could not lower: ' + ', '.join(demoted)
-        );
-    }
+    native_fallbacks_in_ir(llvm_ir).require();
     if memory == 'nogc' {
         (symbols, probes) = _scan_rc_machinery(llvm_ir);
         if symbols or probes {

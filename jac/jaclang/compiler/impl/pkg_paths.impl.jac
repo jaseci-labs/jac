@@ -43,12 +43,8 @@ impl package_host_edge(mod_path: str) -> bool {
     if not identity.startswith("jaclang/") or identity.startswith("jaclang/runtime/") {
         return False;
     }
-    import from jaclang.compiler.placement.placement_facts {
-        native_lowered,
-        native_unit
-    }
-    return not native_lowered(mod_path)
-        and not native_unit(mod_path, native_unit_compile=True);
+    import from jaclang.compiler.placement.placement_facts { native_unit }
+    return not native_unit(mod_path, native_unit_compile=True);
 }
 
 impl scope_allows_inferred_path(mod_path: str) -> bool {
@@ -71,5 +67,5 @@ impl binds_bare_arch_names(mod_path: str) -> bool {
     }
     import from jaclang.compiler.frontend.host { active_host }
     host = active_host();
-    return host.is_native_only_source(rel) or host.is_native_lowered_source(rel);
+    return host.is_native_only_source(rel);
 }

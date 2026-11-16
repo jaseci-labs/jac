@@ -2165,6 +2165,89 @@ test "jac cli check ignore with wildcards" {
     assert result_count == 3;
 }
 
+test "jac check of a directory skips the build directory and dependency trees" {
+    tree_root = Path(tempfile.mkdtemp()).resolve();
+    original_cwd = os.getcwd();
+    broken = 'def bad() -> int {\n    return "x";\n}\n';
+    try {
+        (tree_root / "jac.toml").write_text(
+            '[project]\nname = "walk"\nversion = "0.1.0"\n\n[build]\ndir = "out"\n'
+        );
+        (tree_root / "main.jac").write_text('with entry {\n    print("x");\n}\n');
+        (tree_root / "pkg").mkdir();
+        (tree_root / "pkg" / "ok.jac").write_text(
+            "def ok() -> int {\n    return 1;\n}\n"
+        );
+        for vendored in [
+            tree_root / ".jac" / "venv" / "lib" / "pkg" / "vendored.jac",
+            tree_root / "node_modules" / "dep" / "dep.jac",
+            tree_root / "out" / "gen" / "copy.jac"
+        ] {
+            vendored.parent.mkdir(parents=True);
+            vendored.write_text(broken);
+        }
+        os.chdir(tree_root);
+        _reset_config();
+        captured = io.StringIO();
+        old_stdout = sys.stdout;
+        old_stderr = sys.stderr;
+        sys.stdout = captured;
+        sys.stderr = captured;
+        try {
+            rc = analysis.check(["."]);
+        } finally {
+            sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
+        }
+        output = captured.getvalue();
+        assert rc == 0 , output;
+        assert re.search(r"\b2 passed", output) , output;
+        for name in ["vendored.jac", "dep.jac", "copy.jac"] {
+            assert name not in output , output;
+        }
+        # From the parent directory the build dir still comes from the project
+        # that owns the walked tree, not from the shell's directory.
+        os.chdir(tree_root.parent);
+        _reset_config();
+        captured = io.StringIO();
+        sys.stdout = captured;
+        sys.stderr = captured;
+        try {
+            rc = analysis.check([str(tree_root)]);
+        } finally {
+            sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
+        }
+        output = captured.getvalue();
+        assert rc == 0 and "copy.jac" not in output , output;
+
+        # An active profile that moves the build dir moves the exclusion with it.
+        (tree_root / "jac.prod.toml").write_text('[build]\ndir = "prod-out"\n');
+        (tree_root / "prod-out" / "gen").mkdir(parents=True);
+        (tree_root / "prod-out" / "gen" / "prod.jac").write_text(broken);
+        (tree_root / "out" / "gen" / "copy.jac").unlink();
+        os.environ["JAC_PROFILE"] = "prod";
+        os.chdir(tree_root);
+        _reset_config();
+        captured = io.StringIO();
+        sys.stdout = captured;
+        sys.stderr = captured;
+        try {
+            rc = analysis.check(["."]);
+        } finally {
+            sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
+        }
+        output = captured.getvalue();
+        assert rc == 0 and "prod.jac" not in output , output;
+    } finally {
+        os.environ.pop("JAC_PROFILE", None);
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(tree_root, ignore_errors=True);
+    }
+}
+
 test "jac check shows warnings for files with warnings only" {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
