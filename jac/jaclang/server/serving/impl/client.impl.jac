@@ -360,7 +360,11 @@ impl arequest(
             or verb not in _SAFE_METHODS {
             raise;
         }
-        conn = await _connect(origin, timeout);
+        try {
+            conn = await _connect(origin, timeout);
+        } except ClientRequestNotSent as reconnect {
+            raise e from reconnect;
+        }
         (version, status, reason, resp_headers) = await _exchange(
             conn, payload, timeout
         );
