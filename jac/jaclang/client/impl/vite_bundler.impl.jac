@@ -232,13 +232,24 @@ impl ViteBundler.install_packages(
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
         (returncode, error_output) = run_pm(
-            ['install'], str(build_dir), capture=capture_output
+            ['install'],
+            str(build_dir),
+            capture=capture_output,
+            release_age=release_age_settings(self.config_loader.get_npm_config())
         );
         elapsed = time.time() - start_time;
         if returncode != 0 {
             if capture_output {
+                hint = "";
+                if "minimum-release-age" in error_output {
+                    hint = (
+                        "\n\nThat version is newer than [client.npm] min_release_age_days in "
+                        "jac.toml. Add the package to min_release_age_excludes to "
+                        "install it anyway."
+                    );
+                }
                 raise ClientBundleError(
-                    f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}"
+                    f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}{hint}"
                 ) from None;
             }
             console.error(f"\n  ✖ Dependency installation failed after {elapsed:.1f}s");
