@@ -15,6 +15,31 @@ narrowing, equality against None, and `any` operands are all still fine.
 # fail_: an un-narrowed optional operand
 # ---------------------------------------------------------------------------
 
+class Tally {
+    has total: int = 0;
+
+    def __iadd__(self: Tally, value: int | None) -> Tally {
+        self.total += value if value is not None else 0;
+        return self;
+    }
+}
+
+class Counter {
+    has total: int = 0;
+
+    def __iadd__(self: Counter, value: int) -> Counter {
+        self.total += value;
+        return self;
+    }
+}
+
+def fail_union_receiver_inplace(
+    t: Tally | Counter, value: int | None
+) -> Tally | Counter {
+    t += value;
+    return t;
+}
+
 def fail_add_left(x: int | None) -> int {
     return x + 1;
 }
@@ -167,15 +192,6 @@ def ok_str_format_optional_aug(x: str | None) -> str {
 
 def ok_any_member_receiver_format(fmt: str | any, value: str | None) -> str {
     return fmt % value;
-}
-
-class Tally {
-    has total: int = 0;
-
-    def __iadd__(self: Tally, value: int | None) -> Tally {
-        self.total += value if value is not None else 0;
-        return self;
-    }
 }
 
 def ok_inplace_accepts_optional(t: Tally, value: int | None) -> Tally {

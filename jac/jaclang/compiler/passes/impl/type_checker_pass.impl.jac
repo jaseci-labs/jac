@@ -979,19 +979,30 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                     else None;
                 aug_unsafe: (TypeBase | None) = None;
                 if aug_magic is not None
-                    and aug_base_op in NONE_UNSAFE_BINARY_OPERATORS
-                    and (
-                        aug_inplace is None
-                        or operand_carries_none(self.evaluator, aug_read_type)
-                    ) {
+                    and aug_base_op in NONE_UNSAFE_BINARY_OPERATORS {
                     (aug_bin, aug_rbin) = BINARY_OPERATOR_MAP[aug_base_op];
-                    aug_unsafe = none_unsafe_operand(
-                        self.evaluator,
-                        aug_bin,
-                        aug_rbin,
-                        (aug_read_type, target),
-                        (right_type, here.value)
-                    );
+                    aug_none = operand_carries_none(self.evaluator, aug_read_type);
+                    aug_members = aug_read_type.types
+                        if isinstance(aug_read_type, UnionType) and not aug_none
+                        else [aug_read_type];
+                    for aug_member in aug_members {
+                        if aug_unsafe is None
+                            and (
+                                aug_none
+                                or self.evaluator.get_type_of_magic_method_call(
+                                    aug_member, aug_magic, [here.value], here.value
+                                )
+                                    is None
+                            ) {
+                            aug_unsafe = none_unsafe_operand(
+                                self.evaluator,
+                                aug_bin,
+                                aug_rbin,
+                                (aug_member, target),
+                                (right_type, here.value)
+                            );
+                        }
+                    }
                 }
                 if aug_unsafe is not None {
                     self.ctx.emit(
