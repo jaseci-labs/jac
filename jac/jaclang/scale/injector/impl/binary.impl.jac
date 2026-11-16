@@ -532,7 +532,7 @@ impl resolve_pod_base_image(
                 f"{image} is not published on Docker Hub, and the experimental "
                 "channel runs only that image's jac. Build it with the "
                 "'Experimental jac image' workflow (action=build), or remove "
-                "[experimental] from jac.toml to deploy on dev."
+                "[experimental] from jac.toml."
             ) from e;
         }
         logger.warning(
