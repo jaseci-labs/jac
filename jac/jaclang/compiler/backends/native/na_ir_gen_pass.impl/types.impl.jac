@@ -1649,7 +1649,7 @@ impl NaIRGenPass._erased_arg_want(
     if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
         _owner_t = nd.target.target.type;
     }
-    _decl_arch = sp.find_parent_of_type(uni.Archetype);
+    _decl_arch = sp.enclosing_decl(uni.Archetype);
     return self._erased_want(
         self._erased_decl_names(sp.type),
         _owner_t,

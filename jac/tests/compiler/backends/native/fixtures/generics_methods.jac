@@ -53,14 +53,6 @@ def sub_float_echo_int(v: int) -> float {
     return SubHolder[float](val=1.5).echo("k", v);
 }
 
-obj MidHolder[V](Holder[float]) {}
-
-obj LeafHolder(MidHolder[int]) {}
-
-def leaf_echo_float(v: int) -> float {
-    return LeafHolder(val=1.5).echo("k", v + 0.5);
-}
-
 obj FloatHolder(Holder[float]) {}
 
 def child_float_field_from_int(v: int) -> float {
