@@ -120,6 +120,38 @@ test "what a client pin uses is shared with the server code that also uses it" {
 }
 
 
+test "a server copy is kept only when what it calls exists on the server" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        _write(
+            tmpdir,
+            "jac.toml",
+            "[project]\nname = \"pins\"\n\n"
+            "[placement.pins]\n\"app.make\" = \"client\"\n\"app.show\" = \"client\"\n"
+        );
+        app = _write(
+            tmpdir,
+            "app.jac",
+            "def make -> int { return 3; }\n\n"
+            "glob value: int = make();\n\n"
+            "def show -> int { return value; }\n\n"
+            "def:pub ping -> int { return 1; }\n"
+        );
+        prog = JacProgram();
+        mod = prog.compile(app, no_cgen=True);
+        assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+        value = [
+            s
+            for s in mod.body
+            if isinstance(s, uni.GlobalVars)
+        ][0];
+        assert str(value.code_context) == "client" , "a glob a client pin reads must reach the client";
+        assert not value.codespace_dual , (
+            "the glob calls a client-only function, so a server copy could not run"
+        );
+    }
+}
+
+
 test "module-glob pin matches every element of the module" {
     with tempfile.TemporaryDirectory() as tmpdir {
         _write(

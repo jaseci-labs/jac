@@ -308,7 +308,7 @@ test "two aliases of one server function are typed by their own import's placeme
     }
 }
 
-test "a cross-app import shared by a client pin and server code keeps its server binding" {
+test "a cross-app import shared by a client pin and server code stays a service bridge" {
     import tempfile;
     import from pathlib { Path }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -342,8 +342,11 @@ test "a cross-app import shared by a client pin and server code keeps its server
         );
         imp = import_of(mod, "store");
         assert import_crosses_apps(imp) , "the fixture must exercise a cross-app import";
-        assert imp.codespace_dual , (
-            "server code still calls the import, so it must keep its server binding"
+        assert str(imp.code_context) == "server" and not imp.codespace_dual , (
+            "server code calls the import through its service, so it stays server-placed"
+        );
+        assert classify_cross_app_import(imp, None) == CrossAppKind.SERVICE_BRIDGE , (
+            "the server call must go through the owning service's stub"
         );
     }
 }
