@@ -461,9 +461,13 @@ jobs:
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
           WORK="$(mktemp -d)"
+          # From $WORK: the checkout's jac.toml would reroute the binary to
+          # this tree's compiler source.
+          cd "$WORK"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac")"
+          grep -q ok <<<"$out"
 
       - name: Verify the shipped Python is the pinned CPython 3.14
         working-directory: jac
