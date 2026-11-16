@@ -717,6 +717,19 @@ impl solve_module_placement(
         }
         return False;
     }
+    def _runs_on_server(refs: set[int]) -> bool {
+        for top in module.body {
+            if (
+                id(top) in refs
+                and isinstance(top, uni.ContextAwareNode)
+                and top.code_context == CodeContext.CLIENT
+                and not top.codespace_dual
+            ) {
+                return False;
+            }
+        }
+        return True;
+    }
     for elem in inferable {
         uses_map[id(elem)] = body_refs[id(elem)];
     }
@@ -786,7 +799,8 @@ impl solve_module_placement(
             want_anchor = not want_cl
                 and id(elem) not in cl_refused
                 and id(elem) in anchor_ref_ids
-                and _pullable_by_client_reference(elem, module, body_refs);
+                and _pullable_by_client_reference(elem, module, body_refs)
+                and not (_is_sv_import(elem) and _read_on_server(id(elem)));
             if ((want_cl or want_anchor) and want_na) {
                 continue;
             }
@@ -815,8 +829,9 @@ impl solve_module_placement(
                 _stamp(
                     elem,
                     CodeContext.CLIENT,
-                    keep_server=not isinstance(elem, uni.Import)
-                        or _read_on_server(id(elem))
+                    keep_server=_read_on_server(id(elem))
+                        if isinstance(elem, uni.Import)
+                        else _runs_on_server(refs)
                 );
                 _note(
                     elem, "pulled client: referenced by a pinned or dual client element"
