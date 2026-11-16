@@ -128,7 +128,9 @@ def _store_ns(info: ConnInfo) -> str;
 
 
 impl forget_schema(info: ConnInfo) -> None {
-    _schema_ready.discard(_store_ns(info));
+    ns = _store_ns(info);
+    _schema_forgets[ns] = _schema_forgets.get(ns, 0) + 1;
+    _schema_ready.discard(ns);
 }
 
 
@@ -462,8 +464,12 @@ impl PgStore.ensure_schema_once(promotions: dict[str, list[str]]) -> None {
         if ns in _schema_ready {
             return;
         }
+        forgets = _schema_forgets.get(ns, 0);
         self.ensure_schema(promotions);
         _schema_ready.add(ns);
+        if _schema_forgets.get(ns, 0) != forgets {
+            _schema_ready.discard(ns);
+        }
         if self.ensure_cb is None {
             self._warn_lock_headroom();
         }

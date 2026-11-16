@@ -292,3 +292,30 @@ test "a database recreated under the same name gets its schema again" {
         }
     }
 }
+
+
+test "a database recreated while its schema is set up is set up again" {
+    import from unittest.mock { patch }
+    import from jaclang.data.store { forget_schema }
+    with TemporaryDirectory() as td {
+        (rt, info) = _fresh_db(td);
+        real = PgStore.ensure_schema;
+        setups: list[int] = [];
+        def recreated_during(self: PgStore, promotions: dict[str, list[str]]) {
+            setups.append(1);
+            real(self, promotions);
+            if len(setups) == 1 {
+                forget_schema(info);
+            }
+        }
+        with patch.object(PgStore, "ensure_schema", recreated_during) {
+            for _ in range(2) {
+                store = PgStore(conninfo=info, ensure_cb=rt.ensure);
+                store.ensure_schema_once({});
+                store.close();
+            }
+        }
+        rt.drop_database(info.database, force=True);
+        assert len(setups) == 2 , 'a recreation during setup left the database marked ready';
+    }
+}
