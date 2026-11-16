@@ -1810,33 +1810,8 @@ graph import {
             | server.endpoints.pages
             | server.server.JacAPIServer._ensure_client_bundle
             | server.sv_client._read_cache_enabled { get_config },
-        cli.commands.analysis._is_project_wide_run
-            | cli.commands.execution._exec_file
-            | cli.commands.project.clean
-            | cli.shadcn.cli.run_shadcn_add
-            | data.pg_dist._database_config
-            | scale.plugin.scale_local_serve
-            | server.endpoints.pages.register_diagnostics_endpoints.client_error
-            | server.server.print_endpoint_docs { get_config },
-        cli.commands.analysis.check
-            | cli.commands.execution._load_cwd_config
-            | cli.commands.project.deps
-            | cli.shadcn.cli.run_shadcn_remove { get_config },
-        cli.commands.analysis.format
-            | cli.commands.execution._resolve_target
-            | cli.commands.project.install { get_config },
-        cli.commands.analysis.precommit
-            | cli.commands.execution._run_node_tool
-            | cli.commands.project.publish { get_config },
-        cli.commands.analysis.test
-            | cli.commands.execution._tool_tiers
-            | cli.commands.project.remove { get_config },
-        cli.commands.code
-            | cli.commands.project._create_app
-            | client.vite_bundler.ViteBundler.init
-            | scale.tests.server.test_examples
-            | server.settings.secret_home { find_project_root },
-        cli.commands.config
+        cli.commands.analysis._build_dir_of
+            | cli.commands.config
             | cli.commands.fix._ensure_workspace
             | client.cli
             | client.client_diagnostics.is_debug_mode
@@ -1865,6 +1840,32 @@ graph import {
             | scale.utils.vendor_wheels
             | server.server.JacAPIServer.build_app
             | testing.testing { JacConfig },
+        cli.commands.analysis._is_project_wide_run
+            | cli.commands.execution._exec_file
+            | cli.commands.project.clean
+            | cli.shadcn.cli.run_shadcn_add
+            | data.pg_dist._database_config
+            | scale.plugin.scale_local_serve
+            | server.endpoints.pages.register_diagnostics_endpoints.client_error
+            | server.server.print_endpoint_docs { get_config },
+        cli.commands.analysis.check
+            | cli.commands.execution._load_cwd_config
+            | cli.commands.project.deps
+            | cli.shadcn.cli.run_shadcn_remove { get_config },
+        cli.commands.analysis.format
+            | cli.commands.execution._resolve_target
+            | cli.commands.project.install { get_config },
+        cli.commands.analysis.precommit
+            | cli.commands.execution._run_node_tool
+            | cli.commands.project.publish { get_config },
+        cli.commands.analysis.test
+            | cli.commands.execution._tool_tiers
+            | cli.commands.project.remove { get_config },
+        cli.commands.code
+            | cli.commands.project._create_app
+            | client.vite_bundler.ViteBundler.init
+            | scale.tests.server.test_examples
+            | server.settings.secret_home { find_project_root },
         cli.commands.config._config_path { find_project_root, get_config },
         cli.commands.config._config_set
             | scale.injector.binary.deploy_generation_refusal {
@@ -2163,6 +2164,9 @@ graph import {
     ]
     project.pyvenv --> cli.dispatch._discover_project_config { add_venv_to_path }
     project.source ++> [
+        cli.commands.analysis._iter_jac_files | cli.commands.fix._iter_migration_files {
+            is_pruned_source_dir
+        },
         cli.commands.analysis._normalize_ignore_patterns { normalize_exclude_patterns },
         cli.commands.analysis._should_ignore
             | compiler.tools.jac_auto_lint_pass.JacAutoLintPass._is_file_excluded

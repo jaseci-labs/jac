@@ -34,17 +34,7 @@ glob _ELEMENT_KEYWORDS: tuple[str, ...] = (
          'let'
      ),
      _MARKER_SPACES: dict[str, str] = {'sv': 'server', 'cl': 'client', 'na': 'native'},
-     _PRUNE_DIRS: tuple[str, ...] = (
-         'node_modules',
-         '__pycache__',
-         'dist',
-         'build',
-         'venv',
-         '.venv',
-         '.git',
-         '.jac',
-         'site-packages'
-     );
+     _PRUNE_DIRS: tuple[str, ...] = ('dist', 'build');
 
 
 obj MarkerClaim {
@@ -664,7 +654,7 @@ impl _iter_migration_files(paths: list[str]) -> list[str] {
             kept = [
                 d
                 for d in sorted(dirnames)
-                if not d.startswith('.') and d not in _PRUNE_DIRS
+                if not is_pruned_source_dir(d) and d not in _PRUNE_DIRS
             ];
             dirnames.clear();
             dirnames.extend(kept);
