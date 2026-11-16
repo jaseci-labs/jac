@@ -242,6 +242,13 @@ def _core_api_with_nodes(archs: list[str]) -> unittest.mock.MagicMock {
 }
 
 
+def _core_api_failing(failure: Exception) -> unittest.mock.MagicMock {
+    api = unittest.mock.MagicMock();
+    api.list_node.side_effect = failure;
+    return api;
+}
+
+
 def _without_node_arch_env(check: any) {
     saved = os.environ.pop("JAC_NODE_ARCH", None);
     try {
@@ -279,10 +286,10 @@ test "node_arch refuses, naming JAC_NODE_ARCH, when the cluster's nodes can't be
             (ApiException(status=403, reason="Forbidden"), "HTTP 403 Forbidden"),
             (ConnectionError("no cluster"), "ConnectionError: no cluster")
         ] {
-            api = unittest.mock.MagicMock();
-            api.list_node.side_effect = failure;
             caught = "";
-            with unittest.mock.patch("kubernetes.client.CoreV1Api", return_value=api) {
+            with unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", return_value=_core_api_failing(failure)
+            ) {
                 try {
                     node_arch();
                 } except RuntimeError as e {
@@ -305,6 +312,7 @@ test "node_arch falls back to the host arch, and names it, on a mixed-arch or em
             ), unittest.mock.patch("jaclang.scale.injector.binary.logger") as log {
                 assert node_arch() == host_arch();
             }
+            log.warning.assert_called_once();
             warned = log.warning.call_args.args[0];
             assert f"({host_arch()})" in warned , warned;
             assert "JAC_NODE_ARCH" in warned , warned;
@@ -318,9 +326,10 @@ test "JAC_NODE_ARCH overrides cluster detection and is normalized" {
     saved = os.environ.pop("JAC_NODE_ARCH", None);
     try {
         os.environ["JAC_NODE_ARCH"] = "arm64";
-        forbidden = unittest.mock.MagicMock();
-        forbidden.list_node.side_effect = ApiException(status=403, reason="Forbidden");
-        for cluster in [_core_api_with_nodes(["amd64"]), forbidden] {
+        for cluster in [
+            _core_api_with_nodes(["amd64"]),
+            _core_api_failing(ApiException(status=403, reason="Forbidden"))
+        ] {
             with unittest.mock.patch(
                 "kubernetes.client.CoreV1Api", return_value=cluster
             ) as api {

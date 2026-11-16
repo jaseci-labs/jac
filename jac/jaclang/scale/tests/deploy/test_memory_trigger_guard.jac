@@ -179,11 +179,12 @@ test "malformed hpa.behavior warns and falls back to the empty fragment" {
 }
 
 
-# The preflight reads the pod architecture from the cluster, and node_arch()
-# silently falls back to the HOST arch when no kubeconfig is loaded. Deploy must
-# therefore load the cluster config first, or a macOS host deploying to a linux
-# x86_64 cluster checks the wrong release asset and can refuse a valid pin.
-test "deploy loads the cluster config before it resolves the pod arch" {
+# The preflight reads the pod architecture from the cluster's nodes, and
+# node_arch() refuses when it cannot read them. Deploy must therefore load the
+# cluster config first, or a deploy with a working kubeconfig is refused anyway;
+# and a refused read must stop the deploy there, before anything is generated.
+test "deploy loads the cluster config before it reads the pod arch, and a refused read stops it there" {
+    import os;
     import unittest.mock;
     import tempfile;
     import from pathlib { Path }
@@ -199,26 +200,41 @@ test "deploy loads the cluster config before it resolves the pod arch" {
         f'[project]\nname = "x"\nversion = "0.1.0"\n'
         f'jac-version = "=={major}.{minor}.99"\n'
     );
-    order: list[str] = [];
-    target = KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
+    for nodes in [["x86_64"], ConnectionError("nodes is forbidden")] {
+        order: list[str] = [];
+        target = KubernetesTarget(
+            config=KubernetesConfig(app_name="t", namespace="t-ns")
+        );
 
-    def _note_config {
-        order.append("config");
-    }
+        def _note_config {
+            order.append("config");
+        }
 
-    def _note_arch -> str {
-        order.append("arch");
-        return "x86_64";
-    }
+        def _note_nodes -> list[str] {
+            order.append("nodes");
+            if isinstance(nodes, Exception) {
+                raise nodes;
+            }
+            return nodes;
+        }
 
-    with unittest.mock.patch.object(target, "_load_cluster_config", _note_config), unittest.mock.patch.object(
-        binary_mod, "node_arch", _note_arch
-    ), unittest.mock.patch.object(
-        binary_mod, "preflight_pod_runtime", return_value="0.0.0"
-    ), unittest.mock.patch.object(
-        KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
-    ) {
-        target.deploy(AppConfig(code_folder=d, file_name="main.jac", app_name="t"));
+        with unittest.mock.patch.dict(os.environ, {"JAC_NODE_ARCH": ""}), unittest.mock.patch.object(
+            target, "_load_cluster_config", _note_config
+        ), unittest.mock.patch.object(binary_mod, "cluster_node_archs", _note_nodes), unittest.mock.patch.object(
+            binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+        ), unittest.mock.patch.object(
+            KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
+        ) as generate {
+            result = target.deploy(
+                AppConfig(code_folder=d, file_name="main.jac", app_name="t")
+            );
+        }
+        assert order[:2] == ["config", "nodes"];
+        if isinstance(nodes, Exception) {
+            assert result.success is False;
+            assert "ConnectionError: nodes is forbidden" in result.message , result.message;
+            assert "JAC_NODE_ARCH" in result.message , result.message;
+            generate.assert_not_called();
+        }
     }
-    assert order[:2] == ["config", "arch"];
 }
