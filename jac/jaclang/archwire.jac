@@ -13917,6 +13917,8 @@ graph import scale {
             DEFAULT_SEAL_TIMEOUT_S,
             _precompile_app,
             _stage_app,
+            bundle_source_files,
+            client_input_digest,
             nested_sanitized_tomls,
             pack_jab,
             seal_cache_setting,
