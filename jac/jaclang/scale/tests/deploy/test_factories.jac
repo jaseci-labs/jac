@@ -587,21 +587,48 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
     }
 }
 
-test "kubernetes_target falls back to in-cluster config when kubeconfig is unavailable" {
-    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
-    target = DeploymentTargetFactory.create("kubernetes", config);
-
-    fake_cfg = unittest.mock.MagicMock();
-    # Simulate running in a pod: no ~/.kube/config, so load_kube_config raises.
-    fake_cfg.load_kube_config.side_effect = ConfigException("no kubeconfig");
-    # Halt after the fallback; get_status folds the error into an UNKNOWN status.
-    fake_cfg.load_incluster_config.side_effect = RuntimeError("stop after fallback");
-
-    with unittest.mock.patch.object(kt_module, "k8s_cluster_config", fake_cfg) {
-        target.get_status("test-app");
+test "kubernetes_target falls back to in-cluster config only when no cluster is configured" {
+    # (kube_context, kubeconfig, falls back). A configured cluster that fails to
+    # load must raise, not deploy to the pod's own cluster (#10776).
+    rows: list[tuple[str, str, bool]] = [
+        ("", "", True),
+        ("prod-eks", "", False),
+        ("", "/etc/jac/kubeconfig", False),
+        ("prod-eks", "/etc/jac/kubeconfig", False)
+    ];
+    for (kube_context, kubeconfig, falls_back) in rows {
+        label = f"kube_context={kube_context!r} kubeconfig={kubeconfig!r}";
+        target = DeploymentTargetFactory.create(
+            "kubernetes",
+            {
+                "app_name": "test-app",
+                "namespace": "default",
+                "container_port": 8000,
+                "kube_context": kube_context,
+                "kubeconfig": kubeconfig
+            }
+        );
+        fake_cfg = unittest.mock.MagicMock();
+        fake_cfg.load_kube_config.side_effect = ConfigException(
+            "Expected object with name prod-eks in contexts list"
+        );
+        fake_cfg.load_incluster_config.side_effect = ConfigException(
+            "Service host/port is not set."
+        );
+        raised = "";
+        with unittest.mock.patch.object(kt_module, "k8s_cluster_config", fake_cfg) {
+            try {
+                _as_any(target)._load_cluster_config();
+            } except ConfigException as e {
+                raised = str(e);
+            }
+        }
+        assert fake_cfg.load_incluster_config.call_count
+            == (1 if falls_back else 0) , label;
+        # Either way the error names the kubeconfig failure, not only the in-cluster one.
+        assert "Expected object with name prod-eks" in raised , f"{label}: {raised}";
+        for value in (kube_context, kubeconfig) {
+            assert value in raised , f"{label}: {raised}";
+        }
     }
-
-    # The except ConfigException clause must catch and reach the in-cluster fallback.
-    fake_cfg.load_kube_config.assert_called_once();
-    fake_cfg.load_incluster_config.assert_called_once();
 }
