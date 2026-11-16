@@ -50,7 +50,7 @@ Keywords: node, edge, walker, visit, report, here, visitor, disengage, root, spa
 ### [C] Data Persistence & Multi-User Auth
 
 Nodes connected to `root` auto-persist (no DB, no SQL, no ORM). Each user gets their own
-isolated root automatically. `walker:priv` enforces auth. `walker:pub` = public. `def:pub` = public function endpoint.
+isolated root automatically. `walker:protect` / `def:protect` require auth. `walker:pub` / `def:pub` = public. A plain or `:priv` walker or def is private: not an endpoint.
 
   jac://guide/jac-sv-persistence   modeling relationships, querying the graph from endpoints
   jac://guide/jac-sv-multi-user    cross-user permission grants and shared data
