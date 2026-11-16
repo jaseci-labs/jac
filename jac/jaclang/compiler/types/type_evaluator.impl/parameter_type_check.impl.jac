@@ -669,6 +669,16 @@ impl TypeEvaluator._validate_call_type(
             return caller_type.clone_as_instance();
         }
 
+        if self._declared_metaclass_member(caller_type, "__call__") is not None {
+            meta_ret = self.get_type_of_magic_method_call(
+                caller_type, "__call__", expr.params, expr
+            );
+            if meta_ret is not None
+                and not self._metaclass_call_constructs(meta_ret, caller_type) {
+                return meta_ret;
+            }
+        }
+
         if caller_type.is_namedtuple() {
             expr.callee_signature = self._validate_constructor_method(
                 expr, self._create_namedtuple_new_method(caller_type)
@@ -1345,6 +1355,24 @@ impl TypeEvaluator.class_constructor_callables(
     cls_type: ClassType
 ) -> list[FunctionType] {
     out: list[FunctionType] = [];
+    if meta_call := self._declared_metaclass_member(cls_type, "__call__") {
+        meta_fn = self.get_type_of_symbol(meta_call.symbol);
+        if isinstance(meta_fn, FunctionType)
+            and meta_fn.return_type is not None
+            and not self._metaclass_call_constructs(meta_fn.return_type, cls_type) {
+            out.append(
+                create_callable_type(
+                    [
+                        p.param_type if p.param_type is not None else UnknownType()
+                        for p in (meta_fn.parameters or [])
+                        if not p.is_self and not p.is_cls
+                    ],
+                    meta_fn.return_type
+                )
+            );
+            return out;
+        }
+    }
     instance = cls_type.clone_as_instance();
     for name in ['init', '__init__', '__new__'] {
         member = self._lookup_class_member(cls_type, name);

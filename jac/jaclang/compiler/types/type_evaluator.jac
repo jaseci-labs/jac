@@ -300,6 +300,7 @@ walker TypeEvaluator {
         cls_type: ClassType, name: str
     ) -> (ClassMember | None);
 
+    def _metaclass_call_constructs(result: TypeBase, cls_type: ClassType) -> bool;
     def _report_rejected_method_call(
         receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
     ) -> None;

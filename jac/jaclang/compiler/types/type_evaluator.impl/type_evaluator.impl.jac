@@ -3478,7 +3478,9 @@ impl TypeEvaluator.slice_assignment_is_valid(target: Expr, value_node: Expr) -> 
         if self.is_none_type(member) {
             return False;
         }
-        if isinstance(member, ClassType) and not member.is_class_instance() {
+        if isinstance(member, ClassType)
+            and not member.is_class_instance()
+            and self._declared_metaclass_member(member, "__setitem__") is None {
             return False;
         }
         if self.get_type_of_magic_method_call(
@@ -4018,14 +4020,18 @@ impl TypeEvaluator.assign_type(
 
     if (
         isinstance(src_type, ClassType)
-        and src_type.is_enum_class()
-        and src_type.is_instantiable()
         and isinstance(dest_type, ClassType)
-        and dest_type.is_builtin()
-        and dest_type.shared.class_name
-            in ("Sized", "Iterable", "Container", "Reversible", "Hashable")
+        and src_type.is_instantiable_class()
+        and dest_type.is_class_instance()
+        and self.prefetch
+        and self.prefetch.type_class
     ) {
-        return True;
+        meta_inst = self._convert_to_instance(
+            self._metaclass_of(src_type) or self.prefetch.type_class
+        );
+        if isinstance(meta_inst, ClassType) and meta_inst.is_class_instance() {
+            return self.assign_type(meta_inst, dest_type, strict);
+        }
     }
 
     if (

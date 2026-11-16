@@ -802,6 +802,17 @@ impl TypeEvaluator._declared_metaclass_member(
     return member;
 }
 
+impl TypeEvaluator._metaclass_call_constructs(
+    result: TypeBase, cls_type: ClassType
+) -> bool {
+    if isinstance(result, UnknownType) or self.is_any_type(result) {
+        return True;
+    }
+    return isinstance(result, ClassType)
+        and result.is_class_instance()
+        and self.is_sub_class(cls_type, result);
+}
+
 impl TypeEvaluator._report_rejected_method_call(
     receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
 ) -> None {
