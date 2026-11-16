@@ -717,18 +717,28 @@ impl solve_module_placement(
         }
         return False;
     }
-    def _runs_on_server(refs: set[int]) -> bool {
-        for top in module.body {
-            if (
-                id(top) in refs
-                and isinstance(top, uni.ContextAwareNode)
-                and top.code_context == CodeContext.CLIENT
-                and not top.codespace_dual
-            ) {
-                return False;
+    client_bound: set[int] = set();
+    tops = [
+        top
+        for top in module.body
+        if isinstance(top, uni.ContextAwareNode) and top.top_element is top
+    ];
+    for top in tops {
+        if top.code_context == CodeContext.CLIENT and not top.codespace_dual {
+            client_bound.add(id(top));
+        }
+    }
+    grew_bound = True;
+    while grew_bound {
+        grew_bound = False;
+        for top in tops {
+            if id(top) not in client_bound
+                and not isinstance(top, uni.Import)
+                and not client_bound.isdisjoint(body_refs.get(id(top), set())) {
+                client_bound.add(id(top));
+                grew_bound = True;
             }
         }
-        return True;
     }
     for elem in inferable {
         uses_map[id(elem)] = body_refs[id(elem)];
@@ -831,7 +841,7 @@ impl solve_module_placement(
                     CodeContext.CLIENT,
                     keep_server=_read_on_server(id(elem))
                         if isinstance(elem, uni.Import)
-                        else _runs_on_server(refs)
+                        else id(elem) not in client_bound
                 );
                 _note(
                     elem, "pulled client: referenced by a pinned or dual client element"
