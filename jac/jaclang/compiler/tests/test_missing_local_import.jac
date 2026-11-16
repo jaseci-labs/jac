@@ -417,14 +417,18 @@ test "an absolute import in an annex keeps resolving from the annex, past a sibl
 }
 
 
-"""Lay out a project with `other/x.jac` and `top.jac` at its root, plus the
-given modules; return the temp dir."""
-def _rooted_project(modules: dict[str, str]) -> str {
+"""Lay out a project with `other/x.jac` and `top.jac` at its root, which is
+the `under` folder of a fresh temp dir, plus the given modules, placed relative
+to the temp dir; return the temp dir."""
+def _rooted_project(modules: dict[str, str], under: str = "") -> str {
     base = tempfile.mkdtemp(prefix="jac_rel_root_");
-    files = {
+    project = {
         "jac.toml": "[project]\nname = \"relroot\"\nkind = \"web-app\"\n",
         "other/x.jac": "def:pub helper -> str {\n    return \"from other/x.jac\";\n}\n",
-        "top.jac": "def:pub t -> int {\n    return 1;\n}\n",
+        "top.jac": "def:pub t -> int {\n    return 1;\n}\n"
+    };
+    files = {
+        ** {os.path.join(under, rel): text for (rel, text) in project.items()},
         ** modules
     };
     for (rel, text) in files.items() {
@@ -440,12 +444,30 @@ def _rooted_project(modules: dict[str, str]) -> str {
 
 test "a relative import with the wrong number of dots does not find a file at the project root" {
     cases = [
-        ("feat/mid.jac", "import from .other.x { helper }\n", ".other.x"),
-        ("feat/many.jac", "import from ....other.x { helper }\n", "....other.x"),
-        ("feat/top_user.jac", "import from .top { t }\n", ".top"),
-        ("feat/deep/mid.jac", "import from ..other.x { helper }\n", "..other.x")
+        ("proj/feat/mid.jac", "import from .other.x { helper }\n", ".other.x"),
+        ("proj/feat/many.jac", "import from ....other.x { helper }\n", "....other.x"),
+        ("proj/feat/top_user.jac", "import from .top { t }\n", ".top"),
+        ("proj/feat/deep/mid.jac", "import from ..other.x { helper }\n", "..other.x"),
+        ("proj/feat/above.jac", "import from ...outside { of }\n", "...outside"),
+        ("proj/feat/above_pkg.jac", "import from ...outpkg { of }\n", "...outpkg"),
+        ("proj/feat/above_py.jac", "import from ...outpy { of }\n", "...outpy"),
+        ("proj/feat/deep/back.jac", "import from ....proj.top { t }\n", "....proj.top"),
+        ("proj/feat/bare.jac", "import from ... { outside }\n", "'...'"),
+        ("proj/annexed.jac", "def:pub m -> int;\n", "..outside")
     ];
-    base = _rooted_project({rel: src for (rel, src, _) in cases});
+    outside = "def:pub of -> int {\n    return 7;\n}\n";
+    base = _rooted_project(
+        {
+            "outside.jac": outside,
+            "outpkg/__init__.jac": outside,
+            "outpy.py": "def of() -> int:\n    return 7\n",
+            "proj/impl/annexed.impl.jac": (
+                "import from ..outside { of }\nimpl m -> int {\n    return of();\n}\n"
+            ),
+            ** {rel: src for (rel, src, _) in cases}
+        },
+        under="proj"
+    );
     try {
         for (rel, _, spec) in cases {
             prog = JacProgram();
@@ -471,15 +493,43 @@ test "the right number of dots still reaches the file at the project root" {
         {
             "feat/mid.jac": "import from ..other.x { helper }\n",
             "feat/deep/mid.jac": "import from ...other.x { helper }\n",
-            "feat/top_user.jac": "import from ..top { t }\n"
+            "feat/top_user.jac": "import from ..top { t }\n",
+            "sub/jac.toml": "[project]\nname = \"relsub\"\n",
+            "sub/feat/x.jac": "import from ...top { t }\n"
         }
     );
     try {
-        for rel in ["feat/mid.jac", "feat/deep/mid.jac", "feat/top_user.jac"] {
+        for rel in [
+            "feat/mid.jac",
+            "feat/deep/mid.jac",
+            "feat/top_user.jac",
+            "sub/feat/x.jac"
+        ] {
             prog = JacProgram();
             prog.compile(os.path.join(base, rel));
             assert "E1134" not in _codes(prog) , f"{rel}: {_codes(prog)}";
         }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "outside any project a relative import is not bounded, since the entry sets the root" {
+    base = tempfile.mkdtemp(prefix="jac_rel_noproj_");
+    try {
+        for (rel, text) in [
+            ("outside.jac", "def:pub of -> int {\n    return 7;\n}\n"),
+            ("loose/feat/x.jac", "import from ...outside { of }\n")
+        ] {
+            os.makedirs(os.path.dirname(os.path.join(base, rel)), exist_ok=True);
+            with open(os.path.join(base, rel), "w") as f {
+                f.write(text);
+            }
+        }
+        prog = JacProgram();
+        prog.compile(os.path.join(base, "loose", "feat", "x.jac"));
+        assert "E1134" not in _codes(prog) , _codes(prog);
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

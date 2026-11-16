@@ -161,6 +161,13 @@ curl -X POST http://localhost:8000/walker/search \
   -d '{"query": "hello", "limit": 20}'
 ```
 
+Each value is checked against the type declared for it, and a mismatch answers `422` with an entry naming the field. Nothing is reshaped to fit. How strict the check is depends on where the value came from:
+
+- **A JSON body** already carries types, so a value must be the declared type. `"12"` is refused for an `int`, and `19.99` is refused rather than truncated. The conversions that lose nothing are allowed: `3.0` for an `int`, and `3` for a `float`.
+- **Query, path, header and form values** are always text, so they are parsed into the declared type. `?limit=20` binds `limit` as the integer `20`, and a lone value fills a `list[T]`.
+
+Browser input values are strings, so convert them before sending them to a numeric field: `int(e.target.value)`.
+
 ### Response Format
 
 Responses are wrapped in a JSON envelope. Walker `report` values arrive in

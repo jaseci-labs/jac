@@ -29,8 +29,7 @@ impl FleetOrchestrator.start_local -> None {
     registry = self._build_registry();
     logger.info(f"Registry: {len(registry.entries)} apps");
 
-    deployer = LocalDeployer(registry=registry, dev_mode=self._dev_mode());
-    pm = deployer._ensure_pm();
+    pm = ServiceProcessManager(registry=registry, dev_mode=self._dev_mode());
     pm.app_boot_timeout = float(
         self.gateway_config.get("app_boot_timeout", pm.app_boot_timeout)
     );
@@ -40,32 +39,31 @@ impl FleetOrchestrator.start_local -> None {
     pm._health_monitor_interval = float(
         self.gateway_config.get("health_monitor_interval", pm._health_monitor_interval)
     );
-    deployer.deploy_all();
+    pm.start_all();
     max_wait: int = int(
         max(
             float(self.gateway_config.get("boot_max_wait", 90)), pm._boot_health_timeout
         )
     );
 
-    atexit.register(deployer.destroy_all);
+    atexit.register(pm.stop_all);
 
     self._wait_for_health(pm, registry, max_wait);
 
     pm.start_health_monitor(interval=_BOOT_RECHECK_INTERVAL);
 
-    gateway = ProcessGateway(
+    gateway = MicroserviceGateway(
         registry=registry,
         port=self._gateway_port(),
         host=self._gateway_host(),
         port_pinned=self._port_pinned()
     );
-
     import from functools { partial }
-    gateway.serve(
+    gateway.start(
         on_ready=partial(self._print_startup_banner, registry, self._gateway_host())
     );
 
-    deployer.destroy_all();
+    pm.stop_all();
 }
 
 impl FleetOrchestrator.start_gateway_only -> None {
@@ -83,14 +81,14 @@ impl FleetOrchestrator.start_gateway_only -> None {
     health_monitor = ServiceProcessManager(registry=registry);
     health_monitor.start_health_monitor(interval=_BOOT_RECHECK_INTERVAL);
 
-    gateway = ProcessGateway(
+    gateway = MicroserviceGateway(
         registry=registry,
         port=self._gateway_port(),
         host=self._gateway_host(),
         port_pinned=self._port_pinned()
     );
     import from functools { partial }
-    gateway.serve(on_ready=partial(_log_gateway_only_ready, self._gateway_host()));
+    gateway.start(on_ready=partial(_log_gateway_only_ready, self._gateway_host()));
 }
 
 impl FleetOrchestrator._dev_mode -> bool {

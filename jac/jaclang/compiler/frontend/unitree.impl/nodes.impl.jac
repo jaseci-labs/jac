@@ -3629,6 +3629,10 @@ impl UniNode.gen.setter(value: CodeGenTarget) {
     self._gen = value;
 }
 
+impl UniNode.has_gen -> bool {
+    return self._gen is not None;
+}
+
 impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {
     return self._type_sym_tab;
 }
@@ -3977,6 +3981,20 @@ impl type_param_of(nd: NameAtom) -> (TypeParam | None) {
     }
     owner = sym.decl.name_of;
     return owner if isinstance(owner, TypeParam) else None;
+}
+
+impl names_except_type(nd: Name) -> bool {
+    site: UniNode = nd;
+    while isinstance(site.parent, AtomUnit) {
+        site = site.parent;
+    }
+    if isinstance(site.parent, TupleVal) {
+        site = site.parent;
+        while isinstance(site.parent, AtomUnit) {
+            site = site.parent;
+        }
+    }
+    return isinstance(site.parent, Except) and site.parent.ex_type is site;
 }
 
 impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {

@@ -546,6 +546,29 @@ test "serve get function signature" {
         assert "b" in sig["parameters"];
         assert sig["parameters"]["a"]["required"] is True;
         assert sig["parameters"]["b"]["required"] is True;
+        # Every reader of a signature sees the declared default, not its text.
+        params = client.get("/function/echo_defaults").data["signature"]["parameters"];
+        spec = client.get("/openapi.json").json();
+        body_ref = spec["paths"]["/function/echo_defaults"]["post"]["requestBody"][
+            "content"
+        ]["application/json"]["schema"]["$ref"];
+        props = spec["components"]["schemas"][body_ref.rsplit("/", 1)[1]]["properties"];
+        for (name, declared) in [
+            ("count", 5),
+            ("ratio", 0.5),
+            ("flag", False),
+            ("title", "seed"),
+            ("tags", []),
+            ("limit", "inf"),
+            ("grid", {"(1, 2)": "x"})
+        ] {
+            for shown in [params[name]["default"], props[name]["default"]] {
+                assert shown == declared and type(shown) is type(declared) , (
+                    f"{name}: {shown!r}"
+                );
+            }
+        }
+        assert params["note"]["default"] is None and not params["note"]["required"];
         client.close();
     }
 }
@@ -579,6 +602,35 @@ test "serve call function with defaults" {
         data = response.data;
         assert "result" in data;
         assert data["result"] == "Hello, World!";
+        # The binder used to pass str(default): flag arrived as the truthy "False",
+        # and appending to tags failed on the string "[]".
+        declared = {
+            "count": 5,
+            "ratio": 0.5,
+            "flag": False,
+            "title": "seed",
+            "tags": ["seen"],
+            "note": None,
+            "hits": 1,
+            "limit": "inf",
+            "grid": {"(1, 2)": "x"},
+            "pairs": [["seen"]],
+            "unset": True
+        };
+        # The empty body runs twice: no call may see what another did to a default.
+        for (body, changed) in [
+            ({}, {}),
+            ({}, {}),
+            ({"flag": True, "count": 7}, {"flag": True, "count": 7}),
+            ({"tags": ["sent"]}, {"tags": ["sent", "seen"]})
+        ] {
+            response = client.post("/function/echo_defaults", json=body);
+            assert response.ok , f"{body}: {response.status_code}";
+            want = {** declared, ** changed};
+            got = response.data["result"];
+            assert got == want , f"{body}: {got}";
+            assert type(got["flag"]) is bool and type(got["count"]) is int , f"{got}";
+        }
         client.close();
     }
 }
