@@ -6335,6 +6335,7 @@ graph import compiler {
             E1157,
             E1158,
             E1159,
+            E1160,
             E1161,
             E1162,
             E1163,
@@ -6402,7 +6403,8 @@ graph import compiler {
             E1098,
             E1114,
             E1115,
-            E1118
+            E1118,
+            E1160
         },
         types.type_evaluator {
             DiagnosticInfo,
@@ -9165,10 +9167,13 @@ graph import compiler {
             BINARY_OPERATOR_MAP,
             BITWISE_OPERATORS,
             COMPLEX_ARITH_OPS,
+            NONE_UNSAFE_BINARY_OPERATORS,
             SHIFT_OPERATORS,
             get_complex_arith_result_type,
             get_numeric_promotion_type,
-            get_pow_result_type
+            get_pow_result_type,
+            none_unsafe_operand,
+            operand_carries_none
         },
     ]
     types.ownership ++> passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {
