@@ -135,6 +135,16 @@ All three block code generation for the module that reports them.
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
 | `E0052` | Parameter '{name}' is missing a type annotation |
 
+### Statement Context Errors
+
+| Code | Message |
+|------|---------|
+| `E0055` | 'yield' is only valid inside a function body |
+| `E0057` | 'return' is only valid inside a function body |
+| `E0058` | '{keyword}' is only valid inside a loop |
+
+A `with entry` block runs as module code, not as a function, so `return` and `yield` there have nothing to leave (`E0055`, `E0057`). For `return`, a `def`, method, `impl` body, ability, block lambda or `test` body is a function body. `yield` is stricter: it needs an enclosing `def`, method, `impl` body or ability, so a `yield` in a `test` body, or in a block lambda outside any of those, is still `E0055`. A `with entry` block inside an archetype is not a function body for either. To stop an entry block early, move its code into a `def` and call that, or invert the condition.
+
 ### Property Declaration Errors
 
 | Code | Message |
@@ -328,6 +338,7 @@ A `Final` field with no value is set exactly once, by the first write in its obj
 |------|---------|
 | `E1090` | Cannot raise {type} (not an exception type) |
 | `E1161` | Cannot use {type} as an exception cause (not an exception type or None) |
+| `E1164` | Cannot catch {type} (not an exception class) |
 | `E1091` | Type {type} cannot be used in 'with' statement (no \_\_enter\_\_ method) |
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |
@@ -519,6 +530,7 @@ Emitted by static analysis and declaration-implementation matching passes.
 
 | Code | Message |
 |------|---------|
+| `E2001` | Name '{name}' in an except clause is not defined |
 | `W2001` | Name '{name}' may be undefined |
 | `W2002` | Unreachable code detected |
 | `W2003` | '{name}' is defined but never used |

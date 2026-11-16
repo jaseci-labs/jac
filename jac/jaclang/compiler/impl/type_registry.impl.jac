@@ -250,6 +250,7 @@ impl _builtin_name_set -> frozenset[str] {
         "hash",
         "jid",
         "new",
+        "__import__",
         "unsafe_html",
         "managed",
         "take",

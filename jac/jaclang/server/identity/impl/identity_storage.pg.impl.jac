@@ -64,36 +64,46 @@ impl PgIdentityStorage.ensure_indexes -> None {
 }
 
 impl PgIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
-    user_id = str(user_doc['user_id']);
-    self.store.rows(
-        """
-        INSERT INTO identity_users (user_id, doc)
-        VALUES (:u, CAST(:d AS jsonb))
-        """,
-        {'u': user_id, 'd': json.dumps(user_doc, `default=_pg_json_default)}
-    );
+    values: list[str] = [];
+    providers: list[str] = [];
+    external_ids: list[str] = [];
     for identity in user_doc.get('identities', []) {
         if identity.get('type') == 'sso' and identity.get('provider') {
-            self.store.rows(
-                """
-                INSERT INTO sso_lookups (provider, external_id, user_id)
-                VALUES (:p, :e, :u) ON CONFLICT DO NOTHING
-                """,
-                {
-                    'p': identity['provider'],
-                    'e': identity.get('external_id', ''),
-                    'u': user_id
-                }
-            );
+            providers.append(identity['provider']);
+            external_ids.append(identity.get('external_id', ''));
         } elif identity.get('value_normalized') {
-            self.store.rows(
-                """
-                INSERT INTO identity_lookups (value_normalized, user_id)
-                VALUES (:v, :u) ON CONFLICT DO NOTHING
-                """,
-                {'v': identity['value_normalized'], 'u': user_id}
-            );
+            values.append(identity['value_normalized']);
         }
+    }
+    try {
+        self.store.rows(
+            """
+            WITH u AS (
+                INSERT INTO identity_users (user_id, doc)
+                VALUES (:u, CAST(:d AS jsonb))
+                RETURNING user_id
+            ), lookups AS (
+                INSERT INTO identity_lookups (value_normalized, user_id)
+                SELECT DISTINCT t.v, u.user_id
+                FROM u, unnest(CAST(:v AS text[])) AS t(v)
+            )
+            INSERT INTO sso_lookups (provider, external_id, user_id)
+            SELECT s.p, s.e, u.user_id
+            FROM u, unnest(CAST(:p AS text[]), CAST(:e AS text[])) AS s(p, e)
+            """,
+            {
+                'u': str(user_doc['user_id']),
+                'd': json.dumps(user_doc, `default=_pg_json_default),
+                'v': values,
+                'p': providers,
+                'e': external_ids
+            }
+        );
+    } except Exception as e {
+        if _pg_unique_violation(e) {
+            raise IdentityTakenError();
+        }
+        raise;
     }
 }
 
@@ -121,13 +131,7 @@ impl PgIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | Non
 impl PgIdentityStorage.identity_taken(value: str) -> bool {
     normalized = value.lower().strip();
     rows = self.store.rows(
-        """
-        SELECT 1 FROM identity_lookups lk
-        JOIN identity_users t ON lk.user_id = t.user_id
-        WHERE lk.value_normalized = :v
-          AND COALESCE(t.doc->>'status', 'active') <> 'disabled'
-        """,
-        {'v': normalized}
+        'SELECT 1 FROM identity_lookups WHERE value_normalized = :v', {'v': normalized}
     );
     return bool(rows);
 }

@@ -110,6 +110,12 @@ test "the served workspace app is mounted under its own route" {
         assert spawned.status_code == 200 , spawned.text;
         assert "hello route" in spawned.text , spawned.text;
 
+        for body in ({"_jac_spawn_node": 123}, {"_jac_spawn_node": "zzz"}) {
+            bad_node = client.post("/api/web/walker/Hello", json=body);
+            assert bad_node.status_code == 400 , bad_node.text;
+            assert bad_node.json()["error"]["code"] == "INVALID_NODE_ID" , bad_node.text;
+        }
+
         called = client.post("/api/web/function/shout", json={"text": "hi"});
         assert called.status_code == 200 , called.text;
         assert "HI" in called.text , called.text;

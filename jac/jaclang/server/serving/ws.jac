@@ -23,6 +23,8 @@ def _ws_json_default(o: any) -> str;
 
 def compute_accept_key(key: str) -> str;
 
+def _xor_mask(payload: bytes, mask_key: bytes) -> bytes;
+
 def encode_frame(opcode: int, payload: bytes, mask: bool = False) -> bytes;
 
 obj WSFrame {

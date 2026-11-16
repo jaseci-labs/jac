@@ -39,6 +39,10 @@ async def _abegin_user_request_context(
 
 def _unknown_user_failure -> dict[str, JsonValue];
 
+async def _spawn_target(
+    target_node_id: any, ctx: ExecutionContext
+) -> NodeArchetype | dict[str, JsonValue];
+
 def _deserialize_wire_args(args: dict[(str, any)]);
 
 impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
@@ -187,13 +191,9 @@ impl ExecutionManager.spawn_walker_sync(
         call_state: CallState, ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
-            }
-        } else {
-            target_node = ctx.get_root();
+        target_node = await _spawn_target(target_node_id, ctx);
+        if isinstance(target_node, dict) {
+            return target_node;
         }
         result = await asyncio.to_thread(Jac.`spawn, `walker, target_node);
 
@@ -223,13 +223,9 @@ impl ExecutionManager.spawn_walker_async(
         call_state: CallState, ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
-            }
-        } else {
-            target_node = ctx.get_root();
+        target_node = await _spawn_target(target_node_id, ctx);
+        if isinstance(target_node, dict) {
+            return target_node;
         }
         spawn_result = Jac.`spawn(`walker, target_node);
         if iscoroutine(spawn_result) {
@@ -621,7 +617,7 @@ impl ModuleIntrospector.introspect_callable(
             'required': (param.`default == inspect.Parameter.empty),
             'default': None
                 if (param.`default == inspect.Parameter.empty)
-                else str(param.`default)
+                else param.`default
         } for (name, param) in sig.parameters.items()
     };
     return_type = type_hints.get('return', any);
@@ -1026,11 +1022,14 @@ impl JacAPIServer.build_app -> ServingApp {
     for ext in (self.extensions or []) {
         ext.register(self);
     }
+    if os.environ.get('JAC_SV_SIBLING') != '1' {
+        self.add_middleware(robots_middleware(self));
+    }
     self.add_middleware(drain_middleware(self.drain, self.module_name));
     self.add_middleware(
         cors_middleware(
             allow_origins=list(settings.cors_origins),
-            allow_credentials=True,
+            allow_credentials=settings.cors_credentials,
             allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
             allow_headers=['Content-Type', 'Authorization', 'X-Request-Id']
         )
@@ -1115,6 +1114,8 @@ impl JacAPIServer._refresh_dev_endpoints -> None {
             self.introspector.load(force_reload=True);
         } except SourcesChanged {
             self._hmr_pending = True;
+            return;
+        } except (BuildFailed, ClientBundleError) {
             return;
         }
     }
@@ -1530,7 +1531,8 @@ impl JacAPIServer.start(
             settings=settings,
             worker_main=self._worker_main,
             on_ready=_announce,
-            on_worker_exit=self._on_worker_exit
+            on_worker_exit=self._on_worker_exit,
+            drain=self.drain
         );
         return supervisor.run(port_retries=port_retries);
     }
@@ -1615,7 +1617,9 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
 
     def format_param(name: str, info: dict[(str, any)]) -> str {
         req = 'required' if info['required'] else 'optional';
-        `default = f", default: {info['default']}" if info.get('default') else '';
+        `default = f", default: {info['default']!r}"
+            if info.get('default') is not None
+            else '';
         return f"{name}: {info['type']} ({req}{`default})";
     }
     console.print(('\n' + ('=' * 80)));
@@ -1784,6 +1788,35 @@ impl _unknown_user_failure -> dict[str, JsonValue] {
         'error_code': 'unauthorized',
         'http_status': 401
     };
+}
+
+impl _spawn_target(
+    target_node_id: any, ctx: ExecutionContext
+) -> NodeArchetype | dict[str, JsonValue] {
+    if not target_node_id {
+        return ctx.get_root();
+    }
+    node_id = str(target_node_id);
+    if node_id != 'root' {
+        try {
+            UUID(node_id);
+        } except ValueError {
+            return {
+                'error': 'Invalid node id',
+                'error_code': 'invalid_node_id',
+                'http_status': 400
+            };
+        }
+    }
+    target_node = await Jac.aget_object(node_id);
+    if not isinstance(target_node, NodeArchetype) {
+        return {
+            'error': 'Target node not found',
+            'error_code': 'not_found',
+            'http_status': 404
+        };
+    }
+    return target_node;
 }
 
 impl _deserialize_wire_args(args: dict[(str, any)]) {

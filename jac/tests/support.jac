@@ -22,7 +22,7 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
 
-"""The JavaScript runtime this process runs (js_engine or bun), or None when
+"""The JavaScript runtime this process runs (bun), or None when
 neither is built: suites that need one skip on None, and strict lanes, which
 ship a kit with bun, never see it."""
 def js_runtime_or_none -> (str | None) {

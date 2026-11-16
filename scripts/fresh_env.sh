@@ -51,8 +51,7 @@ export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 # Native artifacts are built only on request; `jac native status` shows what
 # is in place. The quick ones: the stub catalog the type checker reads and the
-# static musl / wasm runtimes native targets link against. `jac native build
-# kernel` adds the native compiler kernel (much faster compiles; a long build).
+# static musl / wasm runtimes native targets link against.
 jac native build stubcat musl wasm-libc
 
 # byLLM's `llm` capability deps (global so they're importable from anywhere).

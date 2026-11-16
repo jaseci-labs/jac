@@ -1,6 +1,5 @@
 """Standalone client builds finish compilation before starting the bundler."""
 
-import os;
 import tempfile;
 import weakref;
 import from pathlib { Path }
@@ -8,7 +7,6 @@ import from unittest.mock { patch }
 import from jaclang.client.targets.web_target { WebTarget }
 import from jaclang.client.vite_bundler { ViteBundler }
 import from jaclang.compiler.driver.compiler { JacCompiler }
-import from jaclang.project.compiler_host { ProjectHost }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 test "standalone client build releases application trees before bundling" {
@@ -61,9 +59,7 @@ test "standalone client build releases application trees before bundling" {
 
 """A standalone client build compiles its entry once. The export lookup and
 the bundle compile the entry under the same client source root, so the bundle
-reuses the first compile instead of analysing the whole application again.
-A compile is counted on either route: a fresh module from the compiler, or a
-kernel compile report for the entry."""
+reuses the first compile instead of analysing the whole application again."""
 test "standalone client build compiles its entry once" {
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp).resolve();
@@ -75,7 +71,6 @@ test "standalone client build compiles its entry once" {
         (project_dir / "package.json").write_text('{"name":"once","version":"0.0.0"}');
         Jac.set_full_target_path(str(entry_path));
         compiled: dict[int, bool] = {};
-        kernel_compiles: list[str] = [];
         original_compile = JacCompiler.compile;
         def compile(self: JacCompiler, *args: any, **kwargs: any) -> any {
             mod = original_compile(self, *args, **kwargs);
@@ -84,16 +79,6 @@ test "standalone client build compiles its entry once" {
             }
             return mod;
         }
-        original_kernel_compile = ProjectHost.kernel_compile;
-        def kernel_compile(
-            self: ProjectHost, program: any, path: str, options: any
-        ) -> any {
-            outcome = original_kernel_compile(self, program, path, options);
-            if outcome is not None and os.path.realpath(path) == str(entry_path) {
-                kernel_compiles.append(path);
-            }
-            return outcome;
-        }
         def bundle(self: ViteBundler, *args: any, **kwargs: any) {
             self.output_dir.mkdir(parents=True, exist_ok=True);
             (self.output_dir / "client.test.js").write_text(
@@ -101,15 +86,11 @@ test "standalone client build compiles its entry once" {
             );
         }
         with patch.object(JacCompiler, "compile", compile), patch.object(
-            ProjectHost, "kernel_compile", kernel_compile
-        ), patch.object(ViteBundler, "build", bundle) {
+            ViteBundler, "build", bundle
+        ) {
             WebTarget().build(entry_path, project_dir);
         }
-        total = len(compiled) + len(kernel_compiles);
-        assert total == 1 , (
-            f"the entry was compiled {total} times "
-            f"({len(compiled)} by the compiler, {len(kernel_compiles)} by the kernel)"
-        );
+        assert len(compiled) == 1 , f"the entry was compiled {len(compiled)} times";
         index = next(project_dir.rglob("index.html")).read_text();
         assert '"function": "launch"' in index;
     }

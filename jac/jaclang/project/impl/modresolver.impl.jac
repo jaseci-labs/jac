@@ -120,6 +120,20 @@ impl find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
+impl project_root_chain(start: str) -> list[str] {
+    chain: list[str] = [];
+    cur = find_jac_project_root(start);
+    while cur and cur not in chain {
+        chain.append(cur);
+        parent = os.path.dirname(cur);
+        if parent == cur {
+            break;
+        }
+        cur = find_jac_project_root(parent);
+    }
+    return chain;
+}
+
 impl is_scoped_package_name(name: str) -> bool {
     parts = (name or '').split('/');
     if len(parts) != 2 {
@@ -199,38 +213,6 @@ impl project_mounts(project_root: str) -> (str | None) {
         }
     }
     return mounts if os.path.isdir(mounts) else None;
-}
-
-impl module_name_in(root_dir: str, path: str) -> (str | None) {
-    try {
-        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
-    } except ValueError {
-        return None;
-    }
-    if rel.startswith('..') {
-        return None;
-    }
-    stem = '';
-    if rel.endswith('.jac') {
-        stem = rel[:-4];
-    } elif rel.endswith('.py') {
-        stem = rel[:-3];
-    } else {
-        return None;
-    }
-    parts = stem.split(os.sep);
-    if parts and parts[-1] == '__init__' {
-        parts = parts[:-1];
-    }
-    if not parts {
-        return None;
-    }
-    for part in parts {
-        if not part.isidentifier() {
-            return None;
-        }
-    }
-    return '.'.join(parts);
 }
 
 impl get_jac_search_paths(base_path: (str | None) = None) -> list[str] {

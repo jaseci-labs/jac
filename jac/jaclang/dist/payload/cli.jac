@@ -1,6 +1,5 @@
 glob SUBCOMMANDS: tuple[str, ...] = (
          "fetch-typeshed",
-         "fetch-llvm",
          "fetch-bun",
          "build-musl",
          "build-wasm-libc",

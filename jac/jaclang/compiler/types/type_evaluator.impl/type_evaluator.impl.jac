@@ -2700,119 +2700,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 return enum_member_type;
             }
 
-            if (
-                isinstance(node_.parent, UnaryExpr)
-                and isinstance(node_.parent.op, Token)
-                and node_.parent.op.name == Tok.STAR_MUL
-                and isinstance(node_.parent.parent, (TupleVal, ListVal))
-            ) {
-                star_container = node_.parent.parent;
-                while isinstance(star_container.parent, (TupleVal, ListVal)) {
-                    star_container = star_container.parent;
-                }
-                star_assignment = star_container.parent;
-                if (
-                    isinstance(star_assignment, Assignment)
-                    and star_assignment.value is not None
-                ) {
-                    rhs_type = self.get_type_of_expression(star_assignment.value);
-                    if elem
-                        := self._get_iterable_element_type(
-                            rhs_type, star_assignment.value
-                        ) {
-                        if self.prefetch.list_class is None {
-                            return UnknownType();
-                        }
-                        star_type = self.prefetch.list_class.clone_as_instance();
-                        star_type.private.type_args = [elem];
-                        return star_type;
-                    }
-                }
-            }
-
-            if isinstance(node_.parent, (TupleVal, ListVal)) {
-                unpack_container = node_.parent;
-                while isinstance(unpack_container.parent, (TupleVal, ListVal)) {
-                    unpack_container = unpack_container.parent;
-                }
-                unpack_assignment = unpack_container.parent;
-                if (
-                    isinstance(unpack_assignment, Assignment)
-                    and unpack_assignment.value is not None
-                ) {
-                    idx = -1;
-                    for (vi, v) in enumerate(unpack_container.values) {
-                        if v is node_ {
-                            idx = vi;
-                            break;
-                        }
-                    }
-                    if idx >= 0 {
-                        rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                        extracted = self._extract_tuple_element_type(rhs_type, idx);
-                        if (
-                            extracted is not None
-                            and not isinstance(extracted, UnknownType)
-                        ) {
-                            return extracted;
-                        }
-
-                        if elem
-                            := self._get_iterable_element_type(
-                                rhs_type, unpack_assignment.value
-                            ) {
-                            return elem;
-                        }
-                        if extracted is not None {
-                            return extracted;
-                        }
-                    }
-                } elif isinstance(unpack_assignment, (InForStmt, InnerCompr)) {
-                    collection_type = self.get_type_of_expression(
-                        unpack_assignment.collection
-                    );
-                    elem_type = self._get_iterable_element_type(
-                        collection_type,
-                        unpack_assignment,
-                        is_async=unpack_assignment.is_async
-                    );
-                    if elem_type is not None {
-                        unpack_path: list[int] = [];
-                        path_cur: UniNode = node_;
-                        path_parent = path_cur.parent;
-                        path_ok = True;
-                        while path_parent is not None {
-                            if not isinstance(path_parent, (TupleVal, ListVal)) {
-                                path_ok = False;
-                                break;
-                            }
-                            found = -1;
-                            for (vi, v) in enumerate(path_parent.values) {
-                                if v is path_cur {
-                                    found = vi;
-                                    break;
-                                }
-                            }
-                            if found < 0 {
-                                path_ok = False;
-                                break;
-                            }
-                            unpack_path.insert(0, found);
-                            if path_parent is unpack_container {
-                                break;
-                            }
-                            path_cur = path_parent;
-                            path_parent = path_cur.parent;
-                        }
-                        if path_ok and unpack_path {
-                            if elem
-                                := self._extract_tuple_element_type_path(
-                                    elem_type, unpack_path
-                                ) {
-                                return elem;
-                            }
-                        }
-                    }
+            if isinstance(node_.parent, (TupleVal, ListVal, UnaryExpr)) {
+                if unpacked := self._get_type_of_unpack_target(node_) {
+                    return unpacked;
                 }
             }
 
@@ -4258,9 +4148,18 @@ impl TypeEvaluator.get_type_of_expression(
                 node_.find_parent_of_type(SubTag) is not None
                 or node_.find_parent_of_type(FuncSignature) is not None
             );
+        import from jaclang.compiler.frontend.unitree { names_except_type }
+        bare: UniNode = node_;
+        while isinstance(bare, AtomUnit) {
+            bare = bare.value;
+        }
+        is_undefined_except_type = (
+            isinstance(bare, Name) and bare.sym is None and names_except_type(bare)
+        );
         if (mod is None or not mod.is_raised_from_py)
             and not is_pattern_wildcard
-            and not is_annotation_ellipsis {
+            and not is_annotation_ellipsis
+            and not is_undefined_except_type {
             self.emit_diag(W1051, node_);
         }
     }

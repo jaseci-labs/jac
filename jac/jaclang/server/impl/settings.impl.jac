@@ -353,6 +353,7 @@ impl ServeSettings.load(
         docs_enabled=env_bool('DOCS', cfg.docs_enabled),
         graph_enabled=env_bool('GRAPH', cfg.graph_enabled),
         cors_origins=env_list('CORS_ORIGINS', list(cfg.cors_origins)),
+        cors_credentials=env_bool('CORS_CREDENTIALS', cfg.cors_credentials),
         public_origin=(env_value('PUBLIC_ORIGIN') or cfg.public_origin).rstrip('/'),
         workers=WorkerSettings(
             count=worker_count,
@@ -448,6 +449,15 @@ impl ServeSettings.validate -> list[str] {
                 f"https://app.example.com, got {self.public_origin!r}"
             );
         }
+    }
+    cors_problem = cors_pair_problem(
+        self.cors_origins,
+        self.cors_credentials,
+        '[serve] cors_origins',
+        '[serve] cors_credentials'
+    );
+    if cors_problem {
+        problems.append(cors_problem);
     }
     if self.timeouts.drain < 0 or self.timeouts.close < 0 {
         problems.append("[serve.timeouts] drain and close must not be negative");

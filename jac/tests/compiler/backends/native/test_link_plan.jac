@@ -211,9 +211,9 @@ test "a no-op build lowers no units and preserves the linked artifact" {
     }
 }
 
-test "the layout sidecar records the inputs a kernel is accepted by" {
+test "the layout sidecar records the inputs the artifact was linked from" {
     if _can_link_host() {
-        import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
+        import json;
         import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
         import from jaclang.compiler.driver.jir { running_compiler_digest }
         import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
@@ -221,8 +221,9 @@ test "the layout sidecar records the inputs a kernel is accepted by" {
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         link_artifact(plan, output, ArtifactKind.EXECUTABLE);
-        sidecar = read_sidecar(output);
-        assert sidecar is not None;
+        with open(output + ".layout.json", encoding="utf-8") as f {
+            sidecar = json.load(f);
+        }
         assert sidecar["compiler_digest"] == running_compiler_digest();
         assert sidecar["codegen_identity"] == _opts().base_codegen_identity();
         assert sidecar["triple"] == plan.triple;
@@ -786,6 +787,8 @@ test "a cycle unit lowered before its dependency demoted a name it calls lowers 
         assert events.get("native_dep_adopt_refused", 0) >= 1 , events;
         odd_unit = plan.unit(str(odd.resolve()));
         assert odd_unit is not None and "odd_probe" in odd_unit.iface.demoted;
+        failures = plan.lowering_failures();
+        assert any(f.startswith("even.jac:probe: ") for f in failures) , failures;
         for unit in plan.units {
             consumed = prog.native_units().entries[unit.path].dep_digests;
             for dep in unit.iface.deps {
@@ -959,6 +962,25 @@ test "native build CLI reuses warm artifacts under each memory profile" {
         }
         native_build(src, output, extra=["--link-mode", "bitcode"]);
         assert native_run(output).strip() == "7";
+    }
+}
+
+test "jac build --native --lib refuses a function that did not lower" {
+    import from tests.support { jac_command }
+    with tempfile.TemporaryDirectory(prefix="jac-native-lib-refuse-") as tmp {
+        src = Path(tmp) / "shared.jac";
+        src.write_text("def:pub probe(x: any) -> int { return x.bit_length(); }\n");
+        out = Path(tmp) / "libshared.so";
+        comp = subprocess.run(
+            jac_command("build", str(src), "--native", "--lib", "-o", str(out)),
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        combined = (comp.stdout or "") + (comp.stderr or "");
+        assert comp.returncode != 0 , combined;
+        assert "shared.jac:probe" in combined , combined;
+        assert not out.exists();
     }
 }
 
@@ -1361,10 +1383,11 @@ glob CASCADE_SOURCES: dict[str, str] = {
 import json, os, sys
 import jaclang
 from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.backends.native.kernel_resolve import kernel_options
+from jaclang.compiler.driver.compile_options import CompileOptions
 from jaclang.compiler.backends.native.link_plan import build_link_plan
 prog = JacProgram()
-plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], kernel_options(), native_unit=True)
+options = CompileOptions(aot_mode=True, default_codespace="native", native_unit=True, skip_native_engine=True)
+plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], options, native_unit=True)
 assert os.path.realpath(jaclang.__file__).startswith(os.path.realpath(sys.argv[2])), jaclang.__file__
 print(json.dumps({
     'digests': {os.path.basename(u.path): u.digest for u in plan.units},

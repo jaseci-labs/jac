@@ -60,6 +60,9 @@ def _membership_diagnosis(output: str, base: any, excluded: any) -> str;
 def _vite_env_keys(base: any) -> dict[str, list[str]];
 
 
+def _install_client_dist(dist: str, project_dir: str);
+
+
 def pdb_spec(
     replica_floor: int, max_unavailable: int, min_available: (int | None) = None
 ) -> dict[str, any] | None;
@@ -89,7 +92,9 @@ obj ManifestBuilder {
         client_entry: (str | None) = None,
         dry_run: bool = False,
         _bundle_files_cache: (dict[str, str] | None) = None,
-        _serve_config_cache: (ServeConfig | None) = None;
+        _serve_config_cache: (ServeConfig | None) = None,
+        _client_checked: bool = False,
+        _client_check: any = None;
 
     def _gateway_cfg -> dict[str, any];
     def _project_config -> any;
@@ -101,6 +106,8 @@ obj ManifestBuilder {
         project_dir: str, jac_bin: str, env: (dict[str, str] | None)
     ) -> str;
 
+    def _client_entry_rel(project_dir: str) -> (tuple[str, any, any] | None);
+    def _seal_bakes_client(project_dir: str) -> bool;
     def _build_client_bundle(project_dir: str);
     def _start_client_build(project_dir: str) -> tuple[any, any];
     def _client_dist_candidates(stage: str, entry_rel: any) -> list[str];

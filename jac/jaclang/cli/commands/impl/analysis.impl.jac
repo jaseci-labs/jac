@@ -53,8 +53,7 @@ impl check(
     native_coverage: bool = False,
     placements: bool = False,
     jobs: str = "",
-    app: str = "",
-    kernel_parity: bool = False
+    app: str = ""
 ) -> int {
     import from time { time }
     if lint_only {
@@ -181,6 +180,12 @@ impl check(
             units.append(file_unit);
         }
     }
+    sharded = _shard_units(units);
+    if sharded is None {
+        console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
+        return 2;
+    }
+    units = sharded;
     cfg = get_config();
     raw_jobs = jobs_setting("check", jobs, cfg.dev if cfg else None);
 
@@ -193,7 +198,6 @@ impl check(
         'parse_only': parse_only,
         'native_coverage': native_coverage,
         'placements': placements,
-        'kernel_parity': kernel_parity,
         'suppress_codes': list(suppressed_codes),
         'ignore': list(ignore_list)
     };
@@ -1604,6 +1608,8 @@ def _iter_jac_files(
     paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool];
 
+def _build_dir_of(project_dir: Path) -> str;
+
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str];
 
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str];
@@ -1611,6 +1617,8 @@ def _normalize_ignore_patterns(ignore: list[str]) -> list[str];
 def _configured_check_excludes -> list[str];
 
 def _is_project_wide_run(paths: list[str]) -> bool;
+
+def _shard_units(units: list[dict[(str, any)]]) -> (list[dict[(str, any)]] | None);
 
 def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool;
 
@@ -1839,7 +1847,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     }
     try {
         (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-        parity_view: any = None;
         if opts.get("parse_only") {
             import from jaclang.compiler.frontend.parser.frontend {
                 parse_diags,
@@ -1878,23 +1885,7 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 }
                 compile_application(prog, file_path, compile_options);
             } else {
-                kernel_view: any = None;
-                if not opts.get("placements") and not opts.get("native_coverage") {
-                    import from jaclang.project.kernel_check { kernel_check }
-                    kernel_view = kernel_check(
-                        prog,
-                        file_path,
-                        compile_options,
-                        parity=bool(opts.get("kernel_parity"))
-                    );
-                }
-                adopted = kernel_view is not None and kernel_view.adopted;
-                if not adopted {
-                    prog.compile(file_path, options=compile_options);
-                    if kernel_view is not None and kernel_view.parity {
-                        parity_view = kernel_view;
-                    }
-                }
+                prog.compile(file_path, options=compile_options);
                 if opts.get("named") {
                     project_dir = os.path.realpath(
                         str(opts["project_root"])
@@ -1903,10 +1894,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                     );
                     checked = os.path.realpath(file_path);
                     reached_keys: list[str] = [str(key) for key in prog.mod.hub];
-                    if adopted {
-                        import from jaclang.project.kernel_check { reached_modules }
-                        reached_keys = reached_modules(kernel_view.outcome);
-                    }
                     result['reached'] = sorted(
                         {
                             real
@@ -1947,24 +1934,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                         annex_filter_path is None
                         or issue.loc.mod_path == annex_filter_path
                     )
-            );
-        }
-        if parity_view is not None {
-            import from jaclang.project.kernel_check { report_parity }
-            report_parity(
-                parity_view,
-                file_path,
-                [
-                    e
-                    for e in new_errors
-                    if keep(e)
-                ],
-                [
-                    w
-                    for w in new_warnings
-                    if keep(w)
-                ],
-                keep
             );
         }
         result['errors'] = [
@@ -2501,13 +2470,27 @@ impl _iter_jac_files(
                 explicit.add(os.path.realpath(path));
             }
         } elif path_obj.is_dir() {
+            build_dirs: set[str] = {_build_dir_of(path_obj.resolve())};
             walked: list[str] = [];
-            for jac_file in path_obj.`glob('**/*.jac') {
-                if not jac_file.is_file() {
-                    continue;
+            for (cur, dirnames, filenames) in os.walk(path) {
+                if "jac.toml" in filenames {
+                    build_dirs.add(_build_dir_of(Path(cur)));
                 }
-                if not _should_ignore(str(jac_file), ignore_list) {
-                    walked.append(str(jac_file));
+                kept = [
+                    d
+                    for d in sorted(dirnames)
+                    if not is_pruned_source_dir(d)
+                        and os.path.realpath(os.path.join(cur, d)) not in build_dirs
+                ];
+                dirnames.clear();
+                dirnames.extend(kept);
+                for fn in sorted(filenames) {
+                    jac_file = os.path.join(cur, fn);
+                    if fn.endswith('.jac')
+                        and os.path.isfile(jac_file)
+                        and not _should_ignore(jac_file, ignore_list) {
+                        walked.append(jac_file);
+                    }
                 }
             }
             if drop_git_ignored([str(path_obj)]) {
@@ -2524,6 +2507,16 @@ impl _iter_jac_files(
         result = _drop_covered_annexes(result, explicit);
     }
     return (result, had_errors);
+}
+
+impl _build_dir_of(project_dir: Path) -> str {
+    import os;
+    try {
+        config = JacConfig.resolve(start_path=project_dir);
+    } except Exception {
+        return "";
+    }
+    return os.path.realpath(str(config.get_build_dir())) if config is not None else "";
 }
 
 impl _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
@@ -2554,6 +2547,30 @@ impl _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
 impl _configured_check_excludes -> list[str] {
     config = get_config();
     return list(config.check.exclude) if config is not None else [];
+}
+
+impl _shard_units(units: list[dict[(str, any)]]) -> (list[dict[(str, any)]] | None) {
+    import os;
+
+    spec = os.environ.get("JAC_CHECK_SHARD", "").strip();
+    if not spec {
+        return units;
+    }
+    (k, _, n) = spec.partition("/");
+    if not (k.isdigit() and n.isdigit()) or not (1 <= int(k) <= int(n)) {
+        return None;
+    }
+
+    def heaviest_first(unit: dict[(str, any)]) -> tuple[int, str] {
+        return (-_unit_weight(unit), str(unit['path']));
+    }
+
+    ordered = sorted(units, key=heaviest_first);
+    return [
+        unit
+        for (idx, unit) in enumerate(ordered)
+        if idx % int(n) == int(k) - 1
+    ];
 }
 
 impl _is_project_wide_run(paths: list[str]) -> bool {

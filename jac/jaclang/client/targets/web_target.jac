@@ -12,6 +12,7 @@ obj WebTarget(ClientTarget) {
         entry_file: Path, project_dir: Path, platform: Optional[str] = None
     ) -> Path;
 
+    def finish_dist(entry_file: Path, project_dir: Path, exports: list[str]) -> Path;
     override def dev(
         entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
     ) -> None;

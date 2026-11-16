@@ -1533,9 +1533,28 @@ impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
     return fname in (self.struct_field_erased_tv.get(type_name) or {});
 }
 
-impl NaIRGenPass._erased_boxable(t: (ir.Type | None)) -> bool {
+impl NaIRGenPass._erased_field_owner(type_name: str, fname: str) -> (str | None) {
+    _lay = self._arch_layout(type_name);
+    if _lay is None {
+        return None;
+    }
+    for _f in _lay.fields {
+        if _f.name == fname {
+            return _f.owner or None;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._erased_boxable(
+    t: (ir.Type | None), want: (ir.Type | None) = None
+) -> bool {
     if t is None {
         return False;
+    }
+    if want is not None and self._is_jacval_ty(t) {
+        _want_num = self._opt_payload_of(want) or want;
+        return isinstance(_want_num, (ir.IntType, ir.DoubleType, ir.FloatType));
     }
     if isinstance(t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         return True;
@@ -1576,23 +1595,75 @@ impl NaIRGenPass._erased_decl_names(tb: any) -> list[str] {
     return out;
 }
 
-impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | None) {
+impl NaIRGenPass._erased_want(
+    tv_names: list[str], owner: any, decl: (str | None) = None
+) -> (ir.Type | None) {
     if not tv_names or not isinstance(owner, ClassType) or owner._shared is None {
         return None;
     }
 
-    _owner_key = class_type_native_name(owner) or owner.shared.class_name;
-    _params: list[str] = self.arch_type_params.get(_owner_key) or [];
-    _args: list[TypeBase] = owner.private.type_args or [];
-    for _tv in tv_names {
-        if _tv in _params {
-            _idx = _params.index(_tv);
-            if _idx < len(_args) {
-                return self._lower_type(_args[_idx]);
+    import from jaclang.compiler.types.types { TypeVarType as _EwTypeVarType }
+    _todo: list[tuple[ClassType, list[TypeBase]]] = [
+        (owner, list(owner.private.type_args or []))
+    ];
+    while _todo {
+        (_cls, _args) = _todo.pop(0);
+        _key = class_type_native_name(_cls) or _cls.shared.class_name;
+        _params: list[str] = self.arch_type_params.get(_key) or [];
+        if decl is None or _key == decl {
+            for _tv in tv_names {
+                if _tv in _params {
+                    _idx = _params.index(_tv);
+                    if _idx < len(_args) {
+                        return self._lower_type(_args[_idx]);
+                    }
+                }
             }
+            return None;
+        }
+        _bound = dict(zip(_params, _args));
+        for _base in (_cls.shared.base_classes or []) {
+            if not isinstance(_base, ClassType) or _base._shared is None {
+                continue;
+            }
+            _bargs: list[TypeBase] = [];
+            for _a in (_base.private.type_args or []) {
+                _bargs.append(
+                    _bound.get(_a.name, _a) if isinstance(_a, _EwTypeVarType) else _a
+                );
+            }
+            _todo.append((_base, _bargs));
         }
     }
     return None;
+}
+
+impl NaIRGenPass._erased_slot(sp: uni.ParamVar, slot_type: ir.Type) -> bool {
+    return isinstance(slot_type, ir.PointerType) and self._erased_decl(sp.type);
+}
+
+impl NaIRGenPass._erased_arg_want(
+    nd: uni.FuncCall, sp: uni.ParamVar
+) -> (ir.Type | None) {
+    _owner_t = nd.type;
+    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        _owner_t = nd.target.target.type;
+    }
+    _decl_arch = sp.enclosing_decl(uni.Archetype);
+    return self._erased_want(
+        self._erased_decl_names(sp.type),
+        _owner_t,
+        self._arch_key(_decl_arch) if _decl_arch is not None else None
+    );
+}
+
+impl NaIRGenPass._box_erased_arg(
+    nd: uni.FuncCall, sp: uni.ParamVar, val: ir.Value, slot_type: ir.Type
+) -> ir.Value {
+    if isinstance(val.type, ir.PointerType) or not self._erased_slot(sp, slot_type) {
+        return val;
+    }
+    return self._erased_box(val, self._erased_arg_want(nd, sp));
 }
 
 impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value {
@@ -1604,9 +1675,11 @@ impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir
     if _want_num is None {
         _want_num = want;
     }
-    if isinstance(_want_num, _num) {
+    if want is not None and isinstance(_want_num, _num) {
         _val_num = self._opt_payload_of(val.type);
-        if isinstance(val.type, _num) and val.type != _want_num {
+        if self._is_jacval_ty(val.type) {
+            val = self._coerce_type(val, want);
+        } elif isinstance(val.type, _num) and val.type != _want_num {
             val = self._coerce_type(val, _want_num);
         } elif isinstance(_val_num, _num) and _val_num != _want_num {
             val = self._coerce_type(val, self._jac_optional_type(_want_num));
@@ -2751,12 +2824,9 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         }
     }
 
-    if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.DoubleType) {
-        return self.builder.sitofp(val, target_type, name="cast");
-    }
-
-    if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.FloatType) {
-        return self.builder.sitofp(val, target_type, name="cast.f32");
+    if isinstance(val.type, ir.IntType)
+        and isinstance(target_type, (ir.DoubleType, ir.FloatType)) {
+        return self._to_float_type(val, target_type, False);
     }
 
     if isinstance(val.type, ir.DoubleType) and isinstance(target_type, ir.IntType) {
@@ -3537,6 +3607,11 @@ impl NaIRGenPass._emit_binary_op(
     }
     if right_payload is not None {
         right = self._coerce_type(right, right_payload);
+    }
+    if left.type == ir.IntType(1) and isinstance(right.type, ir.PointerType) {
+        left = self._coerce_type(left, ir.IntType(64));
+    } elif right.type == ir.IntType(1) and isinstance(left.type, ir.PointerType) {
+        right = self._coerce_type(right, ir.IntType(64));
     }
     i8p_type = ir.IntType(8).as_pointer();
     if op == Tok.PLUS and left.type == i8p_type and right.type == i8p_type {
@@ -5220,10 +5295,10 @@ impl NaIRGenPass._emit_comparison(
                     );
                     self.builder.cbranch(lcmp_lend, lcmp_lex_after, lcmp_lex_body);
                     self.builder.position_at_start(lcmp_lex_body);
-                    lcmp_lea = self.builder.call(
+                    lcmp_lea: ir.Value = self.builder.call(
                         lcmp_h["get"], [left, lcmp_li], name="lcmp.lex.ea"
                     );
-                    lcmp_leb = self.builder.call(
+                    lcmp_leb: ir.Value = self.builder.call(
                         lcmp_h["get"], [right, lcmp_li], name="lcmp.lex.eb"
                     );
                     _largs: list[TypeBase] = self._agg_key_args(key_ret, "list") or [];

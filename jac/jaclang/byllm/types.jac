@@ -48,7 +48,11 @@ obj Tool {
     def __call__(*args: any, **kwargs: any) -> any;
     def get_name -> str;
     static def get_func_description(func: Callable) -> str;
-    static def make_finish_tool(resp_type: type) -> Tool;
+    static def make_finish_tool(
+        resp_type: type,
+        output_info: (ClassInfo | EnumInfo | TypeForm | str | None) = None
+    ) -> Tool;
+
     def is_finish_tool -> bool;
     def get_json_schema -> dict[str, object];
     def parse_arguments(args_json: dict[str, any] | str) -> dict[str, any];

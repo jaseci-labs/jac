@@ -10,8 +10,6 @@ obj TargetSpec {
         object_format: str,
         shared_prefix: str,
         shared_suffix: str;
-
-    def kernel_file_name -> str;
 }
 
 class UnknownTarget(ValueError) {}

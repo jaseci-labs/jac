@@ -12,7 +12,7 @@ obj RefField {
 obj StateUpdate {
     has name: str,
         value: es.Expression,
-        aug_op: (str | None) = None;
+        combine: (Callable[[es.Expression], es.Expression] | None) = None;
 }
 
 obj Effect {

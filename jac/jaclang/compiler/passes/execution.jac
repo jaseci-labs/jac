@@ -21,6 +21,5 @@ def run_walker[W: CompilerPass](
     cancel_requested: bool = False,
     policy: (DiagnosticPolicy | None) = None,
     errors_had: (list[Alert] | None) = None,
-    warnings_had: (list[Alert] | None) = None,
-    completed: (PassResult | None) = None
+    warnings_had: (list[Alert] | None) = None
 ) -> W;

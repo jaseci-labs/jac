@@ -74,7 +74,8 @@ test "valid config produces no findings" {
         "server": {"structured_logs": False},
         "kubernetes": {"namespace": "prod", "cpu_limit": "1000m"},
         "fat_bundle": True,
-        "seal_timeout": 120
+        "seal_timeout": 120,
+        "seal_cache": "../seal-cache"
     };
     assert validate_scale_config(cfg) == [];
 }

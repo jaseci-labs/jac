@@ -6,7 +6,67 @@ impl DrainState.start(reason: str = 'shutdown') -> bool {
     self.started_at = time.monotonic();
     self.reason = reason;
     logger.warning(f"drain: started ({reason}, budget {self.timeout:.1f}s)");
+    self.hooks_thread = _start_drain_hooks();
     return True;
+}
+
+impl _start_drain_hooks -> threading.Thread {
+    thread = threading.Thread(
+        target=_run_drain_hooks, name='jac-drain-hooks', daemon=True
+    );
+    thread.start();
+    return thread;
+}
+
+impl _run_drain_hooks {
+    hooks = [
+        hook
+        for hook in DRAIN_HOOKS
+        if id(hook) not in DRAIN_TAKEN
+    ];
+    DRAIN_TAKEN.update(id(hook) for hook in hooks);
+    for hook in hooks {
+        try {
+            result = hook();
+            if inspect.iscoroutine(result) {
+                asyncio.run(result);
+            }
+        } except (Exception, SystemExit) {
+            logger.exception("drain hook failed");
+        }
+    }
+}
+
+impl run_hooks(hooks: list[Callable[..., any]], what: str) {
+    for hook in hooks {
+        try {
+            result = hook();
+            if inspect.isawaitable(result) {
+                await result;
+            }
+        } except (Exception, SystemExit) {
+            logger.exception(f"{what} failed");
+        }
+    }
+}
+
+impl DrainState.wait_for_hooks {
+    if self.hooks_thread is not None {
+        self.hooks_thread.join(timeout=self.remaining());
+    }
+    if len(DRAIN_TAKEN) < len(DRAIN_HOOKS) {
+        _start_drain_hooks().join(timeout=self.remaining());
+    }
+}
+
+impl DrainState.await_hooks {
+    waiter = threading.Thread(
+        target=self.wait_for_hooks, name='jac-drain-wait', daemon=True
+    );
+    waiter.start();
+    while waiter.is_alive() {
+        await asyncio.sleep(0.05);
+    }
 }
 
 impl DrainState.remaining -> float {

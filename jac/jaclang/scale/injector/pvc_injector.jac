@@ -13,6 +13,7 @@ glob RUNTIME_UID: int = 1000,
 
 
 def bundle_pvc_name(app_name: str) -> str;
+def bundle_loader_pod_name(app_name: str) -> str;
 
 
 def bundle_pvc_path(object_key: str) -> str;
@@ -78,7 +79,8 @@ obj PvcInjector(Injector) {
         _object_key: str = "",
         _bundle_bytes: bytes = b"",
         _fleet: any = None,
-        _client_ready: any = None;
+        _client_ready: any = None,
+        _bake_client: bool = False;
 
     def _seed_artifacts -> list[tuple[str, bytes]];
     def _unpack_bundle_paths -> list[str];

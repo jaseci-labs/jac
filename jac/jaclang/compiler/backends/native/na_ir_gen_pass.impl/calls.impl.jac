@@ -518,19 +518,7 @@ impl NaIRGenPass._codegen_bound_args(
                     else None;
             }
             if val is not None {
-                if isinstance(expected_type, ir.PointerType)
-                    and not isinstance(val.type, ir.PointerType)
-                    and self._erased_decl(sp.type) {
-                    _owner_t = nd.type;
-                    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
-                        _owner_t = nd.target.target.type;
-                    }
-                    val = self._erased_box(
-                        val,
-                        self._erased_want(self._erased_decl_names(sp.type), _owner_t)
-                    );
-                }
-                args.append(val);
+                args.append(self._box_erased_arg(nd, sp, val, expected_type));
             } else {
                 args.append(self._default_arg_fallback(expected_type));
             }
@@ -597,7 +585,7 @@ impl NaIRGenPass._codegen_bound_args(
                     else None;
             }
             if val is not None {
-                args.append(val);
+                args.append(self._box_erased_arg(nd, sp, val, expected_type));
             } else {
                 args.append(self._default_arg_fallback(expected_type));
             }
@@ -609,7 +597,9 @@ impl NaIRGenPass._codegen_bound_args(
                         len(args) - 1,
                         args[-1],
                         "pos" if _from_pos else ("kw" if _from_kw else None),
-                        "positional" if sp.value is None else None
+                        "positional" if sp.value is None else None,
+                        erased=self._erased_slot(sp, expected_type),
+                        erased_want=self._erased_arg_want(nd, sp)
                     )
                 );
             }
@@ -659,7 +649,7 @@ impl NaIRGenPass._codegen_bound_args(
                     else None;
             }
             if val is not None {
-                args.append(val);
+                args.append(self._box_erased_arg(nd, sp, val, expected_type));
             } else {
                 args.append(self._default_arg_fallback(expected_type));
             }
@@ -671,7 +661,9 @@ impl NaIRGenPass._codegen_bound_args(
                         len(args) - 1,
                         args[-1],
                         "kw" if _from_kw else None,
-                        "keyword-only" if sp.value is None else None
+                        "keyword-only" if sp.value is None else None,
+                        erased=self._erased_slot(sp, expected_type),
+                        erased_want=self._erased_arg_want(nd, sp)
                     )
                 );
             }
@@ -3621,67 +3613,22 @@ impl NaIRGenPass._emit_isinstance_ptr_tags(
     operand: ir.Value, tags: list[int]
 ) -> ir.Value {
     i1 = ir.IntType(1);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    i8p = ir.IntType(8).as_pointer();
-
     _prefixes: dict[int, str] = {3: "list_", 4: "dict_", 5: "set_"};
     if 6 in tags {
         return ir.Constant(i1, 1);
     }
     _want = [
-        t
+        _prefixes[t]
         for t in sorted(tags)
         if t in _prefixes
     ];
     if not _want {
         return ir.Constant(i1, 0);
     }
-    b = self.builder;
-    raw = b.bitcast(operand, i8p, name="isinst.hdr.raw");
-    fn = b.block.function;
-    pre_bb = b.block;
-    tag_bb = fn.append_basic_block("isinst.hdr.tag");
-    cmp_bb = fn.append_basic_block("isinst.hdr.cmp");
-    done_bb = fn.append_basic_block("isinst.hdr.done");
-    magic_ok = self._emit_magic_check(b, raw, name_prefix="isinst.mc");
-    b.cbranch(magic_ok, tag_bb, done_bb);
-
-    b.position_at_end(tag_bb);
-    tag_slot = b.gep(raw, [ir.Constant(i64, HDR_TAG_OFF)], name="isinst.tag.slot");
-    tag_pp = b.bitcast(tag_slot, i8p.as_pointer(), name="isinst.tag.pp");
-    tag_ptr = b.load(tag_pp, name="isinst.tag.name");
-    tag_nn = b.icmp_unsigned(
-        "!=", tag_ptr, ir.Constant(i8p, None), name="isinst.tag.nn"
+    raw = self.builder.bitcast(
+        operand, ir.IntType(8).as_pointer(), name="isinst.hdr.raw"
     );
-    b.cbranch(tag_nn, cmp_bb, done_bb);
-
-    b.position_at_end(cmp_bb);
-    memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
-    matched: (ir.Value | None) = None;
-    for t in _want {
-        pfx = _prefixes[t];
-        pfx_gv = self._get_snprintf_fmt(pfx);
-        pfx_ptr = b.gep(
-            pfx_gv, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="isinst.pfx"
-        );
-        cmp_res = b.call(
-            memcmp_fn,
-            [tag_ptr, pfx_ptr, ir.Constant(i64, len(pfx))],
-            name="isinst.memcmp"
-        );
-        eq = b.icmp_signed("==", cmp_res, ir.Constant(i32, 0), name="isinst.pfx.eq");
-        matched = eq if matched is None else b.or_(matched, eq, name="isinst.pfx.or");
-    }
-    cmp_end_bb = b.block;
-    b.branch(done_bb);
-
-    b.position_at_end(done_bb);
-    res = b.phi(i1, name="isinst.hdr.res");
-    res.add_incoming(ir.Constant(i1, 0), pre_bb);
-    res.add_incoming(ir.Constant(i1, 0), tag_bb);
-    res.add_incoming(matched, cmp_end_bb);
-    return res;
+    return self._emit_hdr_tag_is(self.builder, raw, _want, exact=False);
 }
 
 impl NaIRGenPass._emit_isinstance_mixed(
@@ -4230,11 +4177,15 @@ impl NaIRGenPass._prep_kwbind_record(
     args_idx: int,
     stored: ir.Value,
     bound_kind: (str | None),
-    required_kind: (str | None)
+    required_kind: (str | None),
+    erased: bool = False,
+    erased_want: (ir.Type | None) = None
 ) -> dict[str, any] {
     rec: dict[str, any] = {};
     rec["name"] = name;
     rec["slot_type"] = slot_type;
+    rec["erased"] = erased;
+    rec["erased_want"] = erased_want;
     rec["args_idx"] = args_idx;
     rec["alloca"] = None;
     rec["flag"] = None;
@@ -4301,7 +4252,15 @@ impl NaIRGenPass._bind_kw_spread(
             self._emit_runtime_raise(present, "TypeError", rec["dup_msg"]);
             continue;
         }
-        if not self._kw_spread_value_fits(helpers["val_type"], rec["slot_type"]) {
+        _want = rec["erased_want"];
+        _box = rec["erased"]
+            and not isinstance(helpers["val_type"], ir.PointerType)
+            and self._erased_boxable(helpers["val_type"], _want);
+        _fit_type = (self._opt_payload_of(_want) or _want)
+            if rec["erased"] and _want is not None
+            else rec["slot_type"];
+        if not (_box and _want is None)
+            and not self._kw_spread_value_fits(helpers["val_type"], _fit_type) {
             self._emit_runtime_raise(
                 present,
                 "TypeError",
@@ -4328,8 +4287,13 @@ impl NaIRGenPass._bind_kw_spread(
         value: ir.Value = self.builder.call(
             helpers["get_ph"], [spread, key, key_hash], name="kwbind.get"
         );
+        if _box {
+            value = self._erased_box(value, _want);
+        }
         value = self._coerce_type(value, rec["slot_type"]);
-        self._emit_elem_retain(self.builder, rec["slot_type"], value);
+        if not _box {
+            self._emit_elem_retain(self.builder, rec["slot_type"], value);
+        }
         self._emit_elem_release(
             self.builder,
             rec["slot_type"],

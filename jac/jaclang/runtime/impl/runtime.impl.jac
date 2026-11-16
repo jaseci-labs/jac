@@ -2005,6 +2005,7 @@ impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> Non
         cls.exec_ctx.mem.close();
     }
     cls.exec_ctx = None;
+    cls.set_shared_root_resolver(None);
     if clear_modules {
         for mod in list(cls.loaded_modules.values()) {
             if (
@@ -2163,6 +2164,7 @@ impl JacRuntime.after_fork_in_child -> None {
     }
     _shared_root_resolver[1] = None;
     JacRuntime.pool = ThreadPoolExecutor();
+    DRAIN_HOOKS.clear();
 }
 
 impl _scale_provider -> any {

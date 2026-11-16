@@ -75,6 +75,67 @@ impl build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     return rate_limit_middleware;
 }
 
+impl build_client_error_limit_middleware(cfg: dict[str, any]) -> any {
+    rpm: int = int(cfg.get("client_error_rpm", 20));
+    if rpm <= 0 {
+        return None;
+    }
+    try {
+        backend: StateBackend = get_state_backend(
+            shared=bool(cfg.get("shared", False))
+        );
+    } except RuntimeError as e {
+        logger.warning(f"Error-report limit counts per gateway process: {e}");
+        backend = InProcessStateBackend();
+    }
+    limiter = StateBackendRateLimiter(
+        backend=backend, rate_per_sec=rpm / 60.0, capacity=float(rpm)
+    );
+    storage: dict[str, bool] = {"failing": False};
+
+    async def client_error_limit(request: any, call_next: any) -> any {
+        if request.method != "POST" or request.url.path != CLIENT_ERROR_PATH {
+            return await call_next(request);
+        }
+        key = f"{NAMESPACE}:client_error:{request.client_host or 'unknown'}";
+        try {
+            (ok, retry_in) = await asyncio.to_thread(limiter.consume, key);
+        } except Exception as e {
+            if not storage["failing"] {
+                logger.warning(
+                    f"Error-report limit storage failed, so the gateway passes reports through and each service limits them per client: {e}"
+                );
+            }
+            storage["failing"] = True;
+            return await call_next(request);
+        }
+        storage["failing"] = False;
+        if ok {
+            return await call_next(request);
+        }
+        return transport_to_response(throttled(int(retry_in) + 1, "Error reporting"));
+    }
+
+    return client_error_limit;
+}
+
+impl client_error_limit_skipped(
+    cfg: dict[str, any], trusted: list[str], clustered: bool
+) -> str {
+    rpm: int = int(cfg.get("client_error_rpm", 20));
+    if rpm <= 0 or trusted or not clustered {
+        return "";
+    }
+    return (
+        "[scale.gateway.rate_limit] client_error_rpm is not applied at the "
+        "gateway: [serve.proxy] trusted is empty in a cluster, so every browser "
+        "arrives from the ingress address and they would all share one budget. "
+        "Each service still limits error reports per client. List the ingress "
+        "in [serve.proxy] trusted (JAC_SERVE_PROXY_TRUSTED) to limit them at "
+        "the gateway too."
+    );
+}
+
 impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
     now: float = time.time();
     with _rl_lock {
@@ -106,7 +167,6 @@ impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
 
 
 impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
-    now: float = time.time();
     state_key: str = f"rl:{key}";
     lock_key: str = f"rl:lock:{key}";
 
@@ -118,6 +178,10 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
         }
         time.sleep(0.001);
     }
+    if not acquired {
+        return (True, 0.0);
+    }
+    now: float = time.time();
     try {
         raw = self.backend.get(state_key);
         if raw is None {
@@ -146,8 +210,6 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
         );
         return (allowed, retry);
     } finally {
-        if acquired {
-            self.backend.release_lock(lock_key);
-        }
+        self.backend.release_lock(lock_key);
     }
 }

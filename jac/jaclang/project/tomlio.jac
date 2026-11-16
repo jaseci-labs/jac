@@ -11,5 +11,3 @@ class MalformedJacTomlError(tomllib.TOMLDecodeError) {
 
 
 def read_toml_with_encoding(file_path: str) -> dict[str, any];
-
-def _warn_malformed_jac_toml(exc: MalformedJacTomlError);

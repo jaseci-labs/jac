@@ -106,6 +106,38 @@ walker:pub get_user_orders {
 
 Parameters are classified: **path** (name matches `{...}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods). `@restspec` works on `def :pub` functions too. `protocol=APIProtocol.WEBHOOK` / `WEBSOCKET` variants: see `jac-sv-deploy`.
 
+## Choosing the status and reading the request
+
+A walker or function can read the request it is serving and choose its HTTP status. Both come from one import:
+
+```jac
+import from http { HTTPMethod }
+import from jaclang.server.exchange { current_request, respond }
+
+@restspec(method=HTTPMethod.GET, path="/api/orders/{order_id}")
+walker:protect get_order {
+    has order_id: str;
+
+    can fetch with Root entry {
+        request = current_request();
+        if request is None or request.header("x-workspace") != "main" {
+            respond(status=403);
+            report {"error": "Forbidden"};
+        } else {
+            report {"id": self.order_id, "path": request.path};
+        }
+    }
+}
+```
+
+- `current_request()` returns a read-only view with `method`, `path`, `query`, `query_string`, `headers`, `header(name)`, `origin` and `link(path)`. It is `None` outside a request (a scheduled walker, `jac run`), so check it.
+- `Authorization`, `Cookie` and `Proxy-Authorization` are not in the view; identity reaches the program through the framework, not through headers.
+- `respond(status=..., headers=...)` records the answer's status (200 to 599) and extra headers; the report envelope stays the body and its `ok` follows the status. The server owns `Content-Type`, `Content-Length`, `Transfer-Encoding` and `Connection`. Outside a request it returns `False`.
+- A refusal chosen with `respond` and then raised keeps that status and rolls the writes back; a crash after choosing a 2xx is still a 500.
+- `respond` does not apply in webhook walkers or streaming responses yet.
+
+Without `respond`, every finished walker answers 200, so a refusal reported as `{"error": ...}` reaches the client as a success.
+
 ## File uploads
 
 ```jac

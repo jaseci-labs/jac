@@ -34,6 +34,23 @@ impl InProcessStateBackend._purge_if_expired(key: str, now: float) {
     }
 }
 
+impl InProcessStateBackend._sweep_expired(now: float) {
+    if now < self._next_sweep {
+        return;
+    }
+    self._next_sweep = now + self.sweep_seconds;
+    for (key, (_, expiry)) in list(self._values.items()) {
+        if expiry != 0.0 and now >= expiry {
+            del self._values[key];
+        }
+    }
+    for (key, held_until) in list(self._locks.items()) {
+        if now >= held_until {
+            del self._locks[key];
+        }
+    }
+}
+
 impl InProcessStateBackend.get(key: str) -> (str | None) {
     now = time.time();
     with _state_lock {
@@ -48,8 +65,10 @@ impl InProcessStateBackend.get(key: str) -> (str | None) {
 }
 
 impl InProcessStateBackend.set(key: str, value: str, ttl_seconds: (int | None) = None) {
-    expiry = (time.time() + ttl_seconds) if ttl_seconds is not None else 0.0;
+    now = time.time();
+    expiry = (now + ttl_seconds) if ttl_seconds is not None else 0.0;
     with _state_lock {
+        self._sweep_expired(now);
         self._values[key] = (value, expiry);
     }
 }
@@ -65,6 +84,7 @@ impl InProcessStateBackend.increment(
 ) -> float {
     now = time.time();
     with _state_lock {
+        self._sweep_expired(now);
         self._purge_if_expired(key, now);
         `entry = self._values.get(key);
         if `entry is not None {

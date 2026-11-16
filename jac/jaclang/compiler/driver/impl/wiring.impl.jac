@@ -783,7 +783,7 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
 impl parse_records(
     source: str, path: str
 ) -> tuple[bool, list[WireRec], list[RuleRec]] {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     (wires, rules) = module_records(mod, source);
     return (bool(had_error), wires, rules);
 }
@@ -1595,7 +1595,7 @@ impl render_wiring(
 }
 
 impl canonical_wiring_source(source: str, path: str) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     if had_error
         or mod.doc is not None
         or mod.source.comments
@@ -1612,46 +1612,6 @@ impl canonical_wiring_source(source: str, path: str) -> str {
         rules=rules
     );
     return render_wiring(spec, wiring_facts(wires), rules);
-}
-
-impl prune_wiring_source(
-    source: str, path: str, dropped: Callable[[str], bool]
-) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
-    if had_error {
-        return source;
-    }
-    spec = WiringSpec(
-        root_dir=os.path.dirname(os.path.abspath(path)), path=path, wires=[], rules=[]
-    );
-    text = list(source);
-    def blank(span: UniNode) {
-        for at in range(span.loc.pos_start, span.loc.pos_end) {
-            if text[at] != "\n" {
-                text[at] = " ";
-            }
-        }
-    }
-    for stmt in mod.body {
-        if not isinstance(stmt, GraphImport) {
-            continue;
-        }
-        kept = 0;
-        for item in stmt.body {
-            found = spec.module_file(item.provider_path)
-                if isinstance(item, ImportWire)
-                else None;
-            if found is not None and dropped(found) {
-                blank(item);
-            } else {
-                kept += 1;
-            }
-        }
-        if stmt.body and not kept {
-            blank(stmt);
-        }
-    }
-    return "".join(text);
 }
 
 impl _package_prefix(root_dir: str) -> str {

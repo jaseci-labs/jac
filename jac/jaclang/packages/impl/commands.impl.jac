@@ -70,6 +70,10 @@ impl install_project(
     ctx: InstallContext | None = None
 ) -> int {
     ctx = ctx or InstallContext();
+    declared = get_python_provider().resolve(config, include_dev);
+    if refuse_toolchain_packages([d.name for d in declared]) {
+        return 1;
+    }
     lock = load_lock(config) or Lockfile();
     if has_packages(config) or lock.packages {
         try {
@@ -91,6 +95,9 @@ impl install_project(
         return 1;
     }
     python_deps = plan.for_ecosystem("python");
+    if refuse_toolchain_packages([d.name for d in python_deps]) {
+        return 1;
+    }
     ok = True;
     if python_deps {
         python = get_python_provider();
@@ -156,6 +163,22 @@ impl install_project(
     }
     console.success("All dependencies installed");
     return 0;
+}
+
+impl refuse_toolchain_packages(names: list[str]) -> bool {
+    import re;
+    for raw in names {
+        name = re.split(r"[\[<>=!~;@ ]", raw.strip(), maxsplit=1)[0];
+        if name.lower().replace("_", "-") in TOOLCHAIN_PYPI_PACKAGES {
+            console.error(
+                f"'{name}' is the Jac toolchain itself and the jac binary provides it; "
+                "installing it into the project would shadow the running toolchain",
+                hint=f"remove {name} from [dependencies.pypi] in jac.toml"
+            );
+            return True;
+        }
+    }
+    return False;
 }
 
 impl _org_collisions(config: JacConfig, lock: Lockfile) -> list[str] {

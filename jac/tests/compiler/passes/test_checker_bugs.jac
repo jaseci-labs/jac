@@ -2338,6 +2338,25 @@ test "bug_genproto_1_subscripted_protocol_base_is_a_protocol" {
     assert "Cannot assign list[int] to list[str]" in by_line[58] , by_line[58];
 }
 
+# Bug #SPECIALFORM-1: a `Protocol` base is a typing value, not a class, so its
+# members must not leak into `str`, `tuple` or any other protocol subclass.
+test "bug_specialform_1_protocol_base_adds_no_members" {
+    program = compile_and_check("checker_protocol_base_members.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert sorted(by_line) == [27, 28, 29, 30, 31, 32, 38] , (
+        "Bug #SPECIALFORM-1: only the deliberate misuses may fire. Got: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+    assert "no attribute \"__ror__\"" in by_line[27] , by_line[27];
+    assert "no attribute \"__or__\"" in by_line[28] , by_line[28];
+    assert all("__or__" in by_line[line] for line in [29, 30, 31, 32]) , by_line;
+    assert "SupportsInt" in by_line[38] , by_line[38];
+}
+
 # Bug #UNBOUND-1: `Cls.method` read as a value is a function taking the
 # receiver first. The type now carries that (FunctionTypeFlags.UnboundMethod
 # with an explicit self), so a call through a name, a list element or a

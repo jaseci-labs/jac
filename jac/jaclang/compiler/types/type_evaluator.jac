@@ -215,6 +215,8 @@ walker TypeEvaluator {
     def _resolve_from_path(from_mod: ModulePath) -> Path;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
+    def _climbs_above_project(node_: ModulePath) -> bool;
+    def _report_climb(node_: ModulePath, at: UniNode) -> None;
     def _declared_missing_dependency(node_: ModulePath) -> (str | None);
     def _imports_own_module(node_: ModulePath, mod_path: str) -> bool;
     def _import_error_is_handled(imp: Import) -> bool;
@@ -473,6 +475,24 @@ walker TypeEvaluator {
     def _super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType;
     def _get_type_of_root(node_: SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: Name) -> TypeBase | None;
+    def _unpack_target_path(
+        expr: Name
+    ) -> tuple[
+        (Assignment | InForStmt | InnerCompr),
+        list[int],
+        (TupleVal | ListVal | None)
+    ]
+        | None;
+
+    def _get_type_of_unpack_target(expr: Name) -> TypeBase | None;
+    def _get_source_of_unpack_target(expr: Name) -> Expr | None;
+    def _starred_target_type(
+        container: TypeBase,
+        star_targets: (TupleVal | ListVal),
+        star_at: int,
+        node_for_error: UniNode
+    ) -> TypeBase | None;
+
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
     def _tuple_has_variadic_arg(cls: ClassType) -> bool;
     def _tuple_literal_index_type(
