@@ -1020,6 +1020,7 @@ graph import {
     ]
     compiler.frontend.codeinfo --> [
         cli.check_report.print_native_coverage { native_display_text },
+        dist.precompile_bytecode.run_precompile { is_foreign_native_variant },
         project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     type compiler.frontend.codeinfo ++> client.client_bundle
