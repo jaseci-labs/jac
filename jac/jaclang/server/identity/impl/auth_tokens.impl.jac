@@ -34,7 +34,11 @@ impl AuthTokenStore.hash_token(token: str) -> str {
 }
 
 impl AuthTokenStore.create_token(
-    user_id: str, purpose: str, ttl_seconds: int, identity_value: (str | None) = None
+    user_id: str,
+    purpose: str,
+    ttl_seconds: int,
+    identity_value: (str | None) = None,
+    extra: (dict[str, any] | None) = None
 ) -> str {
     raw = secrets.token_urlsafe(32);
     expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds);
@@ -47,6 +51,11 @@ impl AuthTokenStore.create_token(
         'expires_at': expires_at,
         'created_at': datetime.now(UTC)
     };
+    for (key, value) in (extra or {}).items() {
+        if key not in record {
+            record[key] = value;
+        }
+    }
     self._persist(record);
     return raw;
 }

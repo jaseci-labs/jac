@@ -1,4 +1,5 @@
 import json;
+import asyncio;
 import logging;
 import mimetypes;
 import re;
@@ -99,4 +100,20 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def _install_admin_api -> None;
     def serve_admin_asset(asset_path: str) -> Response | None;
     def start(on_ready: any = None) -> None;
+}
+
+
+obj GatewaySessionGuard {
+    has manager: any,
+        token: str = '',
+        user_id: str = '',
+        expires_at: float = 0.0,
+        checked_at: float = 0.0,
+        first_frame: bool = True,
+        refused: bool = False,
+        lock: asyncio.Lock = asyncio.Lock();
+
+    async def allow(
+        frame: (dict[str, any] | None) = None, force: bool = False
+    ) -> bool;
 }

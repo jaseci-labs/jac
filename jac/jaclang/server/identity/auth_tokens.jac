@@ -19,7 +19,8 @@ obj AuthTokenStore {
         user_id: str,
         purpose: str,
         ttl_seconds: int,
-        identity_value: (str | None) = None
+        identity_value: (str | None) = None,
+        extra: (dict[str, any] | None) = None
     ) -> str;
 
     def peek_token(token: str, purpose: str) -> (dict[str, any] | None);
