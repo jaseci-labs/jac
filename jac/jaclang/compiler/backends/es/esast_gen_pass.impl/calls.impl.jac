@@ -49,10 +49,6 @@ impl EsastGenPass._prepare_dynamic_import(
         self.ctx.emit(E5117, node_override=nd);
         return None;
     }
-    if export_name is None {
-        stem = os.path.basename(resolved).split(".")[0];
-        export_name = stem if stem.isidentifier() else None;
-    }
     js_spec = relative_js_specifier(
         resolved, importer, self.prog.options.client_source_root
     );
@@ -65,6 +61,10 @@ impl EsastGenPass._prepare_dynamic_import(
         }
     }
     self.module_import_paths[js_spec] = resolved;
+    if export_name is None {
+        stem = os.path.basename(resolved).split(".")[0];
+        export_name = stem if stem.isidentifier() else None;
+    }
     return (js_spec, export_name);
 }
 

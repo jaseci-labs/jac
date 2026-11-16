@@ -64,7 +64,7 @@ test "a jac module path resolves to its compiled location" {
 test "the component named after the file becomes the default export" {
     (js, codes, _, manifest) = _emit('m = __import__("./MessageCard");');
     assert codes == [] , codes;
-    assert [["MessageCard"]] == list(manifest.runtime_imports.values()) , manifest;
+    assert manifest.runtime_imports == {} , manifest;
     assert 'import("./MessageCard.js").then((m) => ({...m, default: m.MessageCard}))'
         in js , js;
 }
