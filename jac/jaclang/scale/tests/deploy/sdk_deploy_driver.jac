@@ -21,6 +21,7 @@ SDK_DEPLOY_REVISION_HISTORY_LIMIT, E2E_POD_BASE_IMAGE.
 import json;
 import os;
 import sys;
+import from pathlib { Path }
 
 glob SOURCE: str = os.environ.get("SDK_DEPLOY_SOURCE", ""),
      APP_NAME: str = os.environ.get("SDK_DEPLOY_APP_NAME", "sdk-todo"),
@@ -71,6 +72,9 @@ with entry {
             print("SDK_DEPLOY_SOURCE must point at the app folder to deploy");
             sys.`exit(2);
         }
+        # The driver lives in the checkout; deploy settings belong to the staged app.
+        reset_scale_config();
+        get_scale_config(Path(SOURCE));
         result = deploy(SOURCE, build_config(), on_event=print_event);
         if not result.success {
             print(f"DEPLOY_FAILED: {result.message}");

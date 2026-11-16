@@ -106,6 +106,7 @@ with open(sys.argv[1]) as f:
         out.append(line)
 with open(sys.argv[2], "w") as f:
     f.writelines(out)
+    f.write('\n[scale.database]\npostgres_storage = "3Gi"\n')
 PYEOF
 ship_checkout_binary "${APP_DIR}" \
     || echo "WARN: pods will bootstrap from a published release binary instead of the code under test."
@@ -171,6 +172,17 @@ for dep in "deployment/${APP}-deployment" "deployment/gateway-deployment"; do
 done
 
 _t "pods Ready"
+echo "=== record the provisioned 3Gi Postgres PVC (#10722) ==="
+PG_PVC="${APP}-postgres-data-${APP}-postgres-0"
+PG_UID_BEFORE=$(kubectl get pvc "${PG_PVC}" -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}')
+PG_SIZE_BEFORE=$(kubectl get pvc "${PG_PVC}" -n "${NAMESPACE}" -o jsonpath='{.spec.resources.requests.storage}')
+if [ -z "${PG_UID_BEFORE}" ] || [ "${PG_SIZE_BEFORE}" != "3Gi" ]; then
+    echo "FAIL: expected a provisioned 3Gi PVC, got uid='${PG_UID_BEFORE}' size='${PG_SIZE_BEFORE}'" >&2
+    dump_state
+    exit 1
+fi
+echo "  initial Postgres PVC uid=${PG_UID_BEFORE} storage=${PG_SIZE_BEFORE}"
+
 echo "=== assert DeploySpec.labels stamped on the app manifests ==="
 for res in "deployment/${APP}-deployment" "service/${APP}-service"; do
     LABEL=$(kubectl get "${res}" -n "${NAMESPACE}" -o jsonpath='{.metadata.labels.jac-scale\.example}')
@@ -250,11 +262,22 @@ _t "journey OK"
 # the bundle, so before the config marker the pod template came out byte
 # identical, the patch was a no-op, and the old value kept serving while the
 # deploy reported success.
-echo "=== redeploy with only the configuration changed (#8115) ==="
+echo "=== redeploy with storage unset (#10722) and only the configuration changed (#8115) ==="
+python3 - "${APP_DIR}/jac.toml" <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text, removed = re.subn(r'(?m)^postgres_storage\s*=.*\n', '', text)
+assert removed == 1, "expected the initial postgres_storage setting"
+path.write_text(text)
+PYEOF
 REV_PATH='{.spec.template.metadata.annotations.jac-scale\.config-revision}'
 REV_BEFORE=$(kubectl get deploy "${APP}-deployment" -n "${NAMESPACE}" -o jsonpath="${REV_PATH}")
 export SDK_DEPLOY_SECRET="${SDK_DEPLOY_SECRET}-rotated"
-if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" deploy </dev/null >/dev/null 2>&1); then
+if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" deploy </dev/null 2>&1); then
     echo "FAIL: config-only redeploy errored" >&2
     dump_state
     exit 1
@@ -276,6 +299,14 @@ if [ "${POD_SECRET_ROTATED}" != "${SDK_DEPLOY_SECRET}" ]; then
     dump_state
     exit 1
 fi
+PG_UID_AFTER=$(kubectl get pvc "${PG_PVC}" -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}')
+PG_SIZE_AFTER=$(kubectl get pvc "${PG_PVC}" -n "${NAMESPACE}" -o jsonpath='{.spec.resources.requests.storage}')
+if [ "${PG_UID_AFTER}" != "${PG_UID_BEFORE}" ] || [ "${PG_SIZE_AFTER}" != "3Gi" ]; then
+    echo "FAIL: redeploy with storage unset replaced or resized Postgres: uid='${PG_UID_AFTER}' size='${PG_SIZE_AFTER}'" >&2
+    dump_state
+    exit 1
+fi
+echo "  Postgres PVC preserved after storage was unset: uid=${PG_UID_AFTER} storage=${PG_SIZE_AFTER}"
 echo "  config-only redeploy rolled the fleet and the new value is live"
 _t "config redeploy OK"
 # #10095: with a history limit of 1, the third code change prunes the first bundle.
