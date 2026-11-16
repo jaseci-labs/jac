@@ -1269,7 +1269,8 @@ jobs:
     # paths; pushes leave it to the schedule. Was:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.native == 'true') }}
-    runs-on: ubuntu-latest
+    # ubuntu-latest (26.04) no longer ships qemu-user-static as an installable package.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
