@@ -190,13 +190,16 @@ def _recv_request(conn: any, pending: bytearray) -> (str | None) {
 }
 
 
-def _keep_alive(reply: bytes, drop_reused: bool = False) -> any {
+def _keep_alive(reply: bytes, drop: str, listener: list[any]) -> any {
     def handle(conn: any) {
         pending = bytearray();
         served = 0;
         while True {
             head = _recv_request(conn, pending);
-            if head is None or (drop_reused and served == 1) {
+            if head is None or (drop and served == 1) {
+                if drop == "refuse" {
+                    listener[0].close();
+                }
                 conn.close();
                 return;
             }
@@ -249,12 +252,12 @@ glob _OK: bytes = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
 
 
 test "connection reuse follows the response framing" {
-    cases: list[tuple[str, bytes, bool, list[str], str, list[any], int]] = [
-        ("content-length", _OK, False, ["GET", "GET", "GET"], "body", [b"ok"] * 3, 1),
+    cases: list[tuple[str, bytes, str, list[str], str, list[any], int]] = [
+        ("content-length", _OK, "", ["GET", "GET", "GET"], "body", [b"ok"] * 3, 1),
         (
             "chunked",
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
-            False,
+            "",
             ["GET", "GET", "GET"],
             "body",
             [b"ok"] * 3,
@@ -263,7 +266,7 @@ test "connection reuse follows the response framing" {
         (
             "bodiless 204",
             b"HTTP/1.1 204 No Content\r\n\r\n",
-            False,
+            "",
             ["GET", "GET", "GET"],
             "body",
             [b""] * 3,
@@ -272,7 +275,7 @@ test "connection reuse follows the response framing" {
         (
             "interim 100 continue",
             b"HTTP/1.1 100 Continue\r\n\r\n" + _OK,
-            False,
+            "",
             ["GET", "GET", "GET"],
             "body",
             [b"ok"] * 3,
@@ -281,7 +284,7 @@ test "connection reuse follows the response framing" {
         (
             "streamed to the end",
             _OK,
-            False,
+            "",
             ["GET", "GET", "GET"],
             "stream",
             [b"ok"] * 3,
@@ -290,7 +293,7 @@ test "connection reuse follows the response framing" {
         (
             "stream closed after one block",
             b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n" + b"x" * 100000,
-            False,
+            "",
             ["GET", "GET"],
             "partial",
             ["partial"] * 2,
@@ -299,7 +302,7 @@ test "connection reuse follows the response framing" {
         (
             "connection close",
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
-            False,
+            "",
             ["GET", "GET"],
             "body",
             [b"ok"] * 2,
@@ -309,17 +312,17 @@ test "connection reuse follows the response framing" {
             "connection close after keep-alive",
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
                 + b"Connection: keep-alive\r\nConnection: close\r\n\r\nok",
-            False,
+            "",
             ["GET", "GET"],
             "body",
             [b"ok"] * 2,
             2
         ),
-        ("request asked to close", _OK, False, ["GET", "GET"], "close", [b"ok"] * 2, 2),
+        ("request asked to close", _OK, "", ["GET", "GET"], "close", [b"ok"] * 2, 2),
         (
             "content-length overrun",
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokEXTRA",
-            False,
+            "",
             ["GET", "GET"],
             "body",
             [b"ok"] * 2,
@@ -328,7 +331,7 @@ test "connection reuse follows the response framing" {
         (
             "dead pooled GET is retried",
             _OK,
-            True,
+            "close",
             ["GET", "GET"],
             "body",
             [b"ok"] * 2,
@@ -337,7 +340,7 @@ test "connection reuse follows the response framing" {
         (
             "dead pooled POST is not replayed",
             _OK,
-            True,
+            "close",
             ["GET", "POST"],
             "body",
             [b"ok", ClientRequestSent],
@@ -346,7 +349,7 @@ test "connection reuse follows the response framing" {
         (
             "dead pooled PUT is not replayed",
             _OK,
-            True,
+            "close",
             ["GET", "PUT"],
             "body",
             [b"ok", ClientRequestSent],
@@ -355,16 +358,27 @@ test "connection reuse follows the response framing" {
         (
             "dead pooled DELETE is not replayed",
             _OK,
-            True,
+            "close",
             ["GET", "DELETE"],
+            "body",
+            [b"ok", ClientRequestSent],
+            1
+        ),
+        (
+            "dead pooled GET whose retry cannot reconnect",
+            _OK,
+            "refuse",
+            ["GET", "GET"],
             "body",
             [b"ok", ClientRequestSent],
             1
         )
     ];
     failures: list[str] = [];
-    for (name, reply, drop_reused, methods, mode, expected, connections) in cases {
-        (srv, held, port) = _start_server(_keep_alive(reply, drop_reused));
+    for (name, reply, drop, methods, mode, expected, connections) in cases {
+        listener: list[any] = [];
+        (srv, held, port) = _start_server(_keep_alive(reply, drop, listener));
+        listener.append(srv);
         try {
             outcomes = asyncio.run(_send_each(port, methods, mode));
             if outcomes != expected or len(held) != connections {
