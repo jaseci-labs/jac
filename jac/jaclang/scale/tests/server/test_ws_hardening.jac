@@ -552,3 +552,31 @@ test "ws first-frame auth rejects an invalid token with a tagged reason" {
         client.close();
     }
 }
+
+
+test "ws an open connection refuses its next message once the session has ended" {
+    client = _ws_client();
+    try {
+        token = client.register_and_login("wsended", "Secret123!");
+        tc = client.raw_client;
+        with tc.websocket_connect(
+            f"/ws/function/ws_private_echo?token={token}"
+        ) as ws {
+            ws.send_json({"message": "before"});
+            assert ws.receive_json()["ok"] == True;
+            ended = tc.post(
+                "/user/logout-all", headers={"Authorization": f"Bearer {token}"}
+            );
+            assert ended.status_code == 200 , f"got {ended.status_code}";
+            # A message reuses a session check for a few seconds; wait past it.
+            time.sleep(SESSION_RECHECK_SECONDS + 0.5);
+            ws.send_json({"message": "after"});
+            resp = ws.receive_json();
+            assert resp["ok"] == False , f"got {resp}";
+            assert resp["error"]["code"] == "UNAUTHORIZED";
+            assert resp["error"]["message"] == "Session has ended";
+        }
+    } finally {
+        client.close();
+    }
+}

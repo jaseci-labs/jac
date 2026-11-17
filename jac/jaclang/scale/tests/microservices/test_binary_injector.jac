@@ -531,18 +531,38 @@ test "dev channel picks the official dev image when the tag is published" {
 }
 
 
-test "unpublished official image falls back to the plain python base" {
+test "only a 404 from Docker Hub drops the official image, never on experimental" {
     import jaclang.scale.injector.binary as binary;
-    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
-    saved = binary._http_get_bytes;
-    def _raise(url: str) -> bytes {
-        raise RuntimeError("404");
-    }
-    try {
-        binary._http_get_bytes = _raise;
-        assert binary.resolve_pod_base_image(d, "") == "python:3.12-slim";
-    } finally {
-        binary._http_get_bytes = saved;
+    import from urllib.error { HTTPError, URLError }
+    dev = "[dev]\ntest_jobs = \"auto\"\n";
+    pr = "[experimental]\npr = 7494\n";
+    pr_image = "jaseci/jaclang:experimental-7494";
+    not_found = HTTPError("u", 404, "nf", None, None);
+    limited = HTTPError("u", 429, "tmr", None, None);
+    down = URLError("dns");
+    cases = [
+        # (label, jac.toml, probe error, image, refusal names)
+        ("dev, unpublished", dev, not_found, "python:3.12-slim", ""),
+        ("dev, hub down", dev, down, "jaseci/jaclang:dev", ""),
+        ("dev, rate limited", dev, limited, "jaseci/jaclang:dev", ""),
+        ("pr, unpublished", pr, not_found, "", pr_image),
+        ("pr, hub down", pr, down, pr_image, "")
+    ];
+    for (label, toml, error, expected, refusal) in cases {
+        d = _write_toml(toml);
+        (image, caught) = ("", "");
+        with unittest.mock.patch.object(binary, "_http_get_bytes", side_effect=error), unittest.mock.patch.object(
+            binary.logger, "warning"
+        ) as warned {
+            try {
+                image = binary.resolve_pod_base_image(d, "");
+            } except RuntimeError as e {
+                caught = str(e);
+            }
+        }
+        assert image == expected , f"{label}: {image!r}";
+        assert (refusal in caught) if refusal else not caught , f"{label}: {caught}";
+        assert warned.called != bool(refusal) , f"{label}: warning not logged";
     }
 }
 

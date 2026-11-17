@@ -18,18 +18,25 @@ import tempfile;
 import from jaclang.compiler.frontend.codeinfo {
     native_target_os,
     set_native_target_override,
+    is_foreign_native_variant,
     _native_variant_path
 }
 import from tests.support { native_build, native_run }
 
-test "the most specific platform variant of a native module wins" {
+test "the most specific platform variant of a native module wins, and the rest are foreign" {
     with tempfile.TemporaryDirectory() as scratch {
         base = os.path.join(scratch, "records");
-        for suffix in ["", ".linux", ".x86_64", ".linux.x86_64"] {
+        suffixes = ["", ".linux", ".x86_64", ".linux.x86_64"];
+        for suffix in suffixes {
             with open(base + suffix + ".jac", "w") as handle {
                 handle.write("");
             }
         }
+        linux_only = os.path.join(scratch, "spawn.linux.jac");
+        with open(linux_only, "w") as handle {
+            handle.write("");
+        }
+        variants = [f"records{suffix}.jac" for suffix in suffixes[1:]];
         for (target, variant) in [
             ("x86_64-unknown-linux-gnu", "records.linux.x86_64.jac"),
             ("aarch64-unknown-linux-gnu", "records.linux.jac"),
@@ -39,12 +46,20 @@ test "the most specific platform variant of a native module wins" {
             prev = set_native_target_override(target);
             try {
                 chosen = _native_variant_path(base);
+                foreign = {
+                    name
+                    for name in variants
+                    if is_foreign_native_variant(os.path.join(scratch, name))
+                };
+                linux_only_foreign = is_foreign_native_variant(linux_only);
             } finally {
                 set_native_target_override(prev);
             }
             assert chosen is not None and os.path.basename(chosen) == variant , (
                 f"{target}: {chosen}"
             );
+            assert foreign == set(variants) - {variant} , f"{target}: {foreign}";
+            assert linux_only_foreign == ("darwin" in target) , target;
         }
     }
 }

@@ -1020,6 +1020,7 @@ graph import {
     ]
     compiler.frontend.codeinfo --> [
         cli.check_report.print_native_coverage { native_display_text },
+        dist.precompile_bytecode.run_precompile { is_foreign_native_variant },
         project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     type compiler.frontend.codeinfo ++> client.client_bundle
@@ -2774,6 +2775,7 @@ graph import {
         scale.admin.admin_portal { METHOD_PASSWORD, second_factor_claims },
         scale.sso.grants { caller_user_id },
         scale.sso.oauth_session { METHOD_FEDERATED },
+        scale.tests.data.test_session_epoch { second_factor_claims },
         scale.tests.server.test_sso_grants { bind_caller_user, release_caller_user },
     ]
     server.identity.assurance --> scale.tests.data.test_gateway_owned_identity {
@@ -2790,6 +2792,7 @@ graph import {
     server.identity.auth_tokens ++> [
         scale.sso.oauth_session
             | scale.sso.sso_auth
+            | scale.tests.data.test_session_epoch
             | scale.tests.server.test_oauth_session
             | scale.tests.server.test_registration_challenge
             | scale.tests.server.test_sso
@@ -2810,11 +2813,12 @@ graph import {
             signing_algorithm as jwt_algorithm,
             signing_secret as jwt_secret
         },
-        scale.tests.server.test_serve { signing_secret as jwt_secret },
-        scale.webhook.webhook.WebhookUtils.create_api_key_token {
+        scale.tests.data.test_session_epoch
+            | scale.webhook.webhook.WebhookUtils.create_api_key_token {
             signing_algorithm,
             signing_secret
         },
+        scale.tests.server.test_serve { signing_secret as jwt_secret },
         scale.webhook.webhook.WebhookUtils.validate_api_key {
             signing_algorithm,
             signing_secret
@@ -2837,8 +2841,11 @@ graph import {
         PgIdentityStorage
     }
     server.identity.identity_storage as storage_mod --> scale.tests.data.test_identity_fail_loud;
-    server.identity.mail ++> scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
-        | scale.tests.server.test_auth_policy_startup { verification_problems }
+    server.identity.mail ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.server.test_auth_policy_startup { verification_problems },
+        scale.tests.data.test_session_epoch { RESET_PURPOSE },
+    ]
     server.identity.policy ++> [
         scale.deploy.target.kubernetes.target { minted_password },
         scale.server.extensions { check_password },
@@ -2854,8 +2861,12 @@ graph import {
         consume_challenge,
         issue_challenge
     }
-    server.identity.second_factor ++> scale.admin.admin_portal {
-        SecondFactorUnavailable
+    server.identity.second_factor ++> [
+        scale.admin.admin_portal { SecondFactorUnavailable },
+        scale.tests.data.test_session_epoch { LOGIN_CHALLENGE_PURPOSE },
+    ]
+    server.identity.session_cookie ++> scale.runtime.gateway.microservice_gateway {
+        SESSION_COOKIE
     }
     server.identity.user_manager ++> [
         runtime.runtime.JacPersistence.get_user_manager
@@ -2865,11 +2876,13 @@ graph import {
             | scale.sso.sso_auth
             | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_identity_fail_loud
+            | scale.tests.data.test_session_epoch
             | scale.tests.misc.test_shared_store_failure
             | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_sso
             | scale.tests.server.test_sso_grants
+            | scale.tests.server.test_stream_ws
             | scale.tests.server.test_ws_hardening { UserManager },
         scale.server.jobs_ext { SYSTEM_USER, UserRole },
         scale.server.webhook_ext { SYSTEM_USER },
@@ -2883,9 +2896,8 @@ graph import {
     ]
     type server.identity.user_manager ++> runtime.runtime { UserManager }
     server.middleware ++> [
-        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api {
-            jwt_middleware
-        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.data.test_session_epoch { jwt_middleware },
         scale.server.jobs_ext | scale.server.sso_ext { require_user },
     ]
     server.middleware --> scale.tests.data.test_gateway_owned_identity {
@@ -3051,7 +3063,8 @@ graph import {
             project_data_dir,
             project_signing_secret
         },
-        scale.tests.data.test_gateway_owned_identity { jwt_encode },
+        scale.tests.data.test_gateway_owned_identity
+            | scale.tests.data.test_session_epoch { jwt_encode },
         scale.tests.server.test_admin { jwt_decode },
         scale.tests.server.test_serve {
             jwt_decode as _jwt_decode,
@@ -3163,10 +3176,9 @@ graph import {
             Response
         },
         scale.server.websocket_ext | scale.websocket.websocket { WebSocketDisconnect },
-        scale.sso.firebase | scale.tests.server.test_stream_ws._spawn_upstream {
-            Request,
-            Response
-        },
+        scale.sso.firebase
+            | scale.tests.data.test_session_epoch
+            | scale.tests.server.test_stream_ws._spawn_upstream { Request, Response },
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
@@ -13849,7 +13861,8 @@ graph import scale {
     injector.binary --> [
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             node_arch,
-            preflight_pod_runtime
+            preflight_pod_runtime,
+            resolve_pod_base_image
         },
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
             deploy_generation_refusal
@@ -14301,13 +14314,17 @@ graph import scale {
             classify_route
         },
     ]
-    runtime.gateway.microservice_gateway ++> tests.apps.test_fleet_from_apps
-        | tests.microservices.test_app_routes
-        | tests.microservices.test_gateway
-        | tests.microservices.test_gateway_docs_precedence
-        | tests.microservices.test_gateway_webapp
-        | tests.microservices.test_k8s_health_probe
-        | tests.server.test_static_fallback { MicroserviceGateway }
+    runtime.gateway.microservice_gateway ++> [
+        tests.apps.test_fleet_from_apps
+            | tests.microservices.test_app_routes
+            | tests.microservices.test_gateway
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.microservices.test_gateway_webapp
+            | tests.microservices.test_k8s_health_probe
+            | tests.server.test_static_fallback { MicroserviceGateway },
+        tests.data.test_session_epoch { GatewaySessionGuard, MicroserviceGateway },
+        tests.server.test_stream_ws { GatewaySessionGuard },
+    ]
     runtime.gateway.microservice_gateway --> tests.server.test_stream_ws {
         MicroserviceGateway
     }
@@ -14335,12 +14352,13 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.server.test_static_fallback { ServiceRegistry },
         tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
             ServiceEntry,
             ServiceRegistry
         },
-        tests.microservices.test_gateway_docs_precedence
-            | tests.server.test_static_fallback { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -14584,6 +14602,10 @@ graph import scale {
     ]
     websocket.backplane --> tests.server.test_ws_hardening { PgBackplane }
     websocket.protocol ++> [
+        runtime.gateway.microservice_gateway | runtime.middleware.ws_forward {
+            SESSION_RECHECK_SECONDS,
+            WS_CLOSE_UNAUTHORIZED
+        },
         server.websocket_ext {
             AUTH_HANDSHAKE_TIMEOUT_SECONDS,
             HEARTBEAT_MISSED_ALLOWED,
@@ -14598,9 +14620,15 @@ graph import scale {
             ws_receive_frame,
             ws_reject_auth,
             ws_reject_pre_accept,
-            ws_reject_registration
+            ws_reject_registration,
+            ws_session_still_current
         },
-        tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
+        tests.data.test_session_epoch { ws_heartbeat_loop, ws_session_still_current },
+        tests.server.test_ws_hardening {
+            SESSION_RECHECK_SECONDS,
+            ws_handle_control,
+            ws_heartbeat_loop
+        },
     ]
     websocket.websocket ++> [
         server.websocket_ext {
@@ -14608,6 +14636,7 @@ graph import scale {
             WebSocketConnectionManager,
             _ws_stream_result
         },
+        tests.data.test_session_epoch { ConnectionContext },
         tests.server.test_ws_hardening {
             ConnectionContext,
             WebSocketConnectionManager
@@ -15193,6 +15222,7 @@ graph import scale.tests {
         support { apply_fixture_policy },
     ]
     scale_test_client ++> [
+        data.test_session_epoch { fresh_totp_code },
         microservices.test_app_routes { ScaleTestClient, make_client },
         server.test_admin {
             ADMIN_BOOTSTRAP_PASSWORD,
@@ -15650,7 +15680,7 @@ graph import server.endpoints {
         second_factor { fail, ok, throttled },
     ]
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { _failure, idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller, unknown_caller }
 }
 
 graph import server.identity {
@@ -15678,8 +15708,13 @@ graph import server.identity {
         },
     ]
     identity_storage ++> [
-        second_factor { IdentityStorage },
-        user_manager { IdentityStorage, IdentityTakenError, PgIdentityStorage },
+        second_factor { IdentityStorage, session_epoch_value },
+        user_manager {
+            IdentityStorage,
+            IdentityTakenError,
+            PgIdentityStorage,
+            session_epoch_value
+        },
     ]
     mail ++> user_manager { RESET_PURPOSE }
     policy ++> [
