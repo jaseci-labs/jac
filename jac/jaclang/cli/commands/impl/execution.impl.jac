@@ -1467,6 +1467,9 @@ impl _resolve_plan(
     if rc {
         return (None, cfg, None, file, rc);
     }
+    if cfg is not None {
+        warn_unmet_jac_version(str(cfg.project.jac_version or "").strip());
+    }
     if cfg is None or app is None {
         return (None, cfg, None, file, 0);
     }

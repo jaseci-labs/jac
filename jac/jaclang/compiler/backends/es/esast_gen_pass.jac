@@ -738,6 +738,8 @@ walker EsastGenPass(TreePass) {
         pre_awaited: bool
     ) -> es.Expression;
 
+    def _literal_import_spec(spec: (uni.Expr | uni.KWPair | None)) -> (str | None);
+    def _prepare_dynamic_import(nd: uni.FuncCall) -> (tuple[str, (str | None)] | None);
     def _field_constructor_args(
         nd: uni.FuncCall,
         args: list[es.Expression | es.SpreadElement],

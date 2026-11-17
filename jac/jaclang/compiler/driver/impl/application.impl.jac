@@ -801,9 +801,9 @@ impl _prepare_revision(
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
             bundler = revision.client_compiler.vite_bundler;
-            bundler.build(
-                entry_file=(revision.client_compiler.compiled_dir / '_entry.js')
-            );
+            compiled_dir = revision.client_compiler.compiled_dir;
+            assert compiled_dir is not None;
+            bundler.build(entry_file=(compiled_dir / '_entry.js'));
         }
         revision.client_compiler._emit_na_wasm(Path(`entry));
         _check(program, before);
