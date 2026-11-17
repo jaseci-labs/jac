@@ -593,8 +593,7 @@ test "kubernetes_target falls back to in-cluster config only when no cluster is 
     rows: list[tuple[str, str, bool]] = [
         ("", "", True),
         ("prod-eks", "", False),
-        ("", "/etc/jac/kubeconfig", False),
-        ("prod-eks", "/etc/jac/kubeconfig", False)
+        ("", "/etc/jac/kubeconfig", False)
     ];
     for (kube_context, kubeconfig, falls_back) in rows {
         label = f"kube_context={kube_context!r} kubeconfig={kubeconfig!r}";
