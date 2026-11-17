@@ -130,13 +130,42 @@ walker:protect get_order {
 }
 ```
 
-- `current_request()` returns a read-only view with `method`, `path`, `query`, `query_string`, `headers`, `header(name)`, `origin` and `link(path)`. It is `None` outside a request (a scheduled walker, `jac run`), so check it.
+- `current_request()` returns a read-only view with `method`, `path`, `query`, `query_string`, `headers`, `header(name)`, `origin`, `link(path)` and `body`. It is `None` outside a request (a scheduled walker, `jac run`), so check it.
+- `body` is the raw bytes the client sent, exactly as received, so a provider's signature can be checked over them (below). A `multipart/form-data` upload is not kept as bytes: its `body` is empty and its parts arrive as `UploadFile` parameters.
 - `Authorization`, `Cookie` and `Proxy-Authorization` are not in the view; identity reaches the program through the framework, not through headers.
 - `respond(status=..., headers=...)` records the answer's status (200 to 599) and extra headers; the report envelope stays the body and its `ok` follows the status. The server owns `Content-Type`, `Content-Length`, `Transfer-Encoding` and `Connection`. Outside a request it returns `False`.
 - A refusal chosen with `respond` and then raised keeps that status and rolls the writes back; a crash after choosing a 2xx is still a 500.
 - `respond` does not apply in webhook walkers or streaming responses yet.
 
 Without `respond`, every finished walker answers 200, so a refusal reported as `{"error": ...}` reaches the client as a success.
+
+A webhook from a provider that signs its own way (Shopify's base64 `X-Shopify-Hmac-Sha256`, a per-store secret) is verified in the endpoint over `body`:
+
+```jac
+import base64;
+import hashlib;
+import hmac;
+import from http { HTTPMethod }
+import from jaclang.server.exchange { current_request, respond }
+
+@restspec(method=HTTPMethod.POST, path="/hooks/shopify/orders", envelope=False)
+def:pub shopify_orders_hook -> str {
+    request = current_request();
+    secret = shop_secret(request.header("x-shopify-shop-domain") or "");
+    expected = base64.b64encode(
+        hmac.new(secret.encode(), request.body, hashlib.sha256).digest()
+    ).decode();
+    if not secret
+        or not hmac.compare_digest(
+            (request.header("x-shopify-hmac-sha256") or "").encode(),
+            expected.encode()
+        ) {
+        respond(status=401);
+        return "unverified";
+    }
+    return "ok";
+}
+```
 
 ## File uploads
 
