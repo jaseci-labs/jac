@@ -48,14 +48,16 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
     import from jaclang.dist.precompile_bytecode { precompile_unit_context }
     import from jaclang.runtime.prepared { forget }
-    for served in (False, True) {
+    for (kind, sealed_under) in (("", ""), ("service", "server"), ("cli", "native")) {
         with TemporaryDirectory() as directory {
             package = _package(Path(directory));
             source = package / "api.jac";
             source.write_text("def answer() -> int { return 42; }\n");
-            with (contextlib.chdir(package) if served else contextlib.nullcontext()) {
-                if served {
-                    (package / "jac.toml").write_text('[project]\nname = "library"\n');
+            with (contextlib.chdir(package) if kind else contextlib.nullcontext()) {
+                if kind {
+                    (package / "jac.toml").write_text(
+                        f'[project]\nname = "library"\nkind = "{kind}"\n'
+                    );
                     app_main = package / "main.jac";
                     app_main.write_text(
                         "import from api { answer }\n"
@@ -73,10 +75,10 @@ test "precompiled modules carry their type interface on cold and cached builds" 
                         codespace = effective_default_codespace();
                         looked = str(get_module_cache_path(str(source)));
                     }
-                    assert codespace == "server" , (
-                        f"a served app's seal compiles under {codespace!r}, its prepare under server"
+                    assert codespace == sealed_under , (
+                        f"a {kind} app's seal compiles under {codespace!r}, expected {sealed_under!r}"
                     );
-                    assert looked in prepared , (
+                    assert (looked in prepared) == (sealed_under == "server") , (
                         f"the seal looks up {looked}; the prepare wrote {sorted(
                             prepared
                         )}"
