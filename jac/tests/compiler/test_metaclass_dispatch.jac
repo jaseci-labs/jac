@@ -77,7 +77,23 @@ test "a metaclass __call__ returning any still checks the class init" {
             + "}\n"
             + "def probe -> Foo {\n    return Foo(\"x\");\n}\n"
     );
-    assert errors , "a wrong init argument was accepted";
+    assert has_code(errors, "E1053") , errors;
+}
+
+test "a generic singleton metaclass __call__ still checks the class init" {
+    errors = check_src(
+        "glob T = TypeVar(\"T\");\n"
+            + "class Single(type) {\n"
+            + "    def __call__(cls: type[T], *args: any, **kwargs: any) -> T {\n"
+            + "        return super().__call__(*args, **kwargs);\n    }\n"
+            + "}\n"
+            + "class Svc(metaclass=Single) {\n"
+            + "    def init(self: Svc, n: int) -> None {}\n"
+            + "}\n"
+            + "def ok -> Svc {\n    return Svc(1);\n}\n"
+            + "def bad -> Svc {\n    return Svc(\"x\");\n}\n"
+    );
+    assert len(errors) == 1 and has_code(errors, "E1053") , errors;
 }
 
 test "calling a class returns what the metaclass __call__ returns" {

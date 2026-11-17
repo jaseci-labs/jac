@@ -1359,15 +1359,6 @@ impl TypeEvaluator._substitute_type_vars(
 impl TypeEvaluator.class_constructor_callables(
     cls_type: ClassType
 ) -> list[FunctionType] {
-    def as_callable(fn: FunctionType, ret: TypeBase) -> FunctionType {
-        return create_callable_type(
-            [
-                p.param_type if p.param_type is not None else UnknownType()
-                for p in _visible_params(fn)
-            ],
-            ret
-        );
-    }
     out: list[FunctionType] = [];
     if meta_call := self._declared_metaclass_member(cls_type, "__call__") {
         sigs = self._member_signatures(meta_call);
@@ -1396,7 +1387,15 @@ impl TypeEvaluator.class_constructor_callables(
             continue;
         }
         for cand in self._member_signatures(member) {
-            out.append(as_callable(cand, instance));
+            out.append(
+                create_callable_type(
+                    [
+                        p.param_type if p.param_type is not None else UnknownType()
+                        for p in _visible_params(cand)
+                    ],
+                    instance
+                )
+            );
         }
         if out {
             return out;
