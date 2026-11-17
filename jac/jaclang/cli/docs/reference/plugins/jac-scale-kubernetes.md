@@ -1475,26 +1475,18 @@ kubectl get pvc                     # the bundle PVC must be Bound
 
 ### Node Architecture
 
-The pod runtime and its wheels are built for the nodes' architecture, which the
-deploy reads by listing the cluster's nodes. That list is cluster-scoped, so a
-kubeconfig bound to a namespace-scoped Role cannot read it, and the deploy stops
-before building anything:
-
-```
-Could not read the cluster's node architectures (HTTP 403 Forbidden), ...
-```
-
-Either name the architecture when you deploy, or grant the deploy identity
-`list` on `nodes` through a ClusterRole:
+The pod runtime is built for the nodes' architecture, which the deploy reads by
+listing the cluster's nodes. A kubeconfig bound to a namespace-scoped Role
+cannot list them, so the deploy stops with `Could not read the cluster's node
+architectures (HTTP 403 Forbidden)`. Grant the deploy identity `list` on `nodes`
+through a ClusterRole, or name the architecture:
 
 ```bash
 JAC_NODE_ARCH=x86_64 jac scale deploy    # or aarch64; amd64 and arm64 also work
 ```
 
-`JAC_NODE_ARCH` also decides when the nodes report several architectures or
-none; otherwise the deploy warns and uses the deploying machine's architecture.
-A `jac-bootstrap` log with `jac: cannot execute binary file: Exec format error`
-means the pods got the wrong architecture: set `JAC_NODE_ARCH` and redeploy.
+Set it too when the nodes report several architectures or none, or when a
+`jac-bootstrap` log shows `Exec format error` (the pods got the wrong one).
 
 ### General Debugging
 

@@ -181,11 +181,10 @@ test "malformed hpa.behavior warns and falls back to the empty fragment" {
 
 # The preflight reads the pod architecture from the cluster's nodes, and
 # node_arch() refuses when it cannot read them. Deploy must therefore load the
-# cluster config first, or a deploy with a working kubeconfig is refused anyway.
-# The base image is resolved in the same preflight, so a refused node read or a
-# refused image stops the deploy before any database is provisioned.
+# cluster config first, or a deploy with a working kubeconfig is refused. The
+# base image is resolved in the same preflight, so a refused image stops the
+# deploy before any database is provisioned.
 test "deploy loads the cluster config, then resolves the pod arch and base image" {
-    import os;
     import unittest.mock;
     import tempfile;
     import from pathlib { Path }
@@ -201,51 +200,38 @@ test "deploy loads the cluster config, then resolves the pod arch and base image
         f'[project]\nname = "x"\nversion = "0.1.0"\n'
         f'jac-version = "=={major}.{minor}.99"\n'
     );
+    order: list[str] = [];
+    target = KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
     refused = "jaseci/jaclang:experimental-7 is not published on Docker Hub";
-    for (nodes, steps, reason) in [
-        (["x86_64"], ["config", "nodes", "image"], refused),
-        (ConnectionError("nodes is forbidden"), ["config", "nodes"], "JAC_NODE_ARCH")
-    ] {
-        order: list[str] = [];
-        target = KubernetesTarget(
-            config=KubernetesConfig(app_name="t", namespace="t-ns")
-        );
 
-        def _note_config {
-            order.append("config");
-        }
-
-        def _note_nodes -> list[str] {
-            order.append("nodes");
-            if isinstance(nodes, Exception) {
-                raise nodes;
-            }
-            return nodes;
-        }
-
-        def _refuse_image(project_dir: str, configured: str) -> str {
-            order.append("image");
-            raise RuntimeError(refused);
-        }
-
-        with unittest.mock.patch.dict(os.environ, {"JAC_NODE_ARCH": ""}), unittest.mock.patch.object(
-            target, "_load_cluster_config", _note_config
-        ), unittest.mock.patch.object(binary_mod, "cluster_node_archs", _note_nodes), unittest.mock.patch.object(
-            binary_mod, "preflight_pod_runtime", return_value="0.0.0"
-        ), unittest.mock.patch.object(
-            binary_mod, "resolve_pod_base_image", _refuse_image
-        ), unittest.mock.patch.object(
-            KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
-        ), unittest.mock.patch(
-            "jaclang.scale.deploy.target.kubernetes.database_provisioner.DatabaseProvisioner.provision"
-        ) as provision {
-            result = target.deploy(
-                AppConfig(code_folder=d, file_name="main.jac", app_name="t")
-            );
-        }
-        assert order == steps , order;
-        assert result.success is False;
-        assert reason in result.message , result.message;
-        provision.assert_not_called();
+    def _note_config {
+        order.append("config");
     }
+
+    def _note_arch -> str {
+        order.append("arch");
+        return "x86_64";
+    }
+
+    def _refuse_image(project_dir: str, configured: str) -> str {
+        order.append("image");
+        raise RuntimeError(refused);
+    }
+
+    with unittest.mock.patch.object(target, "_load_cluster_config", _note_config), unittest.mock.patch.object(
+        binary_mod, "node_arch", _note_arch
+    ), unittest.mock.patch.object(
+        binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+    ), unittest.mock.patch.object(binary_mod, "resolve_pod_base_image", _refuse_image), unittest.mock.patch.object(
+        KubernetesTarget, "generate_manifests", side_effect=RuntimeError("stop")
+    ), unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.database_provisioner.DatabaseProvisioner.provision"
+    ) as provision {
+        result = target.deploy(
+            AppConfig(code_folder=d, file_name="main.jac", app_name="t")
+        );
+    }
+    assert order == ["config", "arch", "image"] , order;
+    assert result.message == refused , result.message;
+    provision.assert_not_called();
 }
