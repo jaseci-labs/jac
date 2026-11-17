@@ -1596,8 +1596,11 @@ impl run_precompile(
     native_only_units: list[str] = [];
     if exclude_seed {
         import from jaclang.compiler.placement.placement_facts { native_only }
+        import from jaclang.compiler.frontend.codeinfo { is_foreign_native_variant }
         for unit in package_native_units(package_dir) {
-            native_units_set.add(unit);
+            if not is_foreign_native_variant(unit) {
+                native_units_set.add(unit);
+            }
             if native_only(unit) {
                 native_only_units.append(unit);
             }

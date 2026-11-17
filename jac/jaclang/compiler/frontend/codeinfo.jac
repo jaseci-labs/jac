@@ -300,6 +300,8 @@ glob NATIVE_VARIANT_OSES: frozenset[str] = frozenset(
 
 def is_selected_native_variant(path: str) -> bool;
 
+def is_foreign_native_variant(path: str) -> bool;
+
 def is_native_variant_path(path: str) -> bool;
 
 def native_variant_base(path: str) -> (str | None);
