@@ -37,6 +37,7 @@ obj MonitoringDeployer {
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     );
 
+    def _app_dashboard_json -> str;
     def _deploy_grafana(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_tempo(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_loki(app_name: str, namespace: str, apps_v1: any, core_v1: any);
