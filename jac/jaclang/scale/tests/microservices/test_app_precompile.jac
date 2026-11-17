@@ -251,6 +251,24 @@ test "a precompile report left in the project does not block reusing the seal" {
 }
 
 
+test "a bundle whose dependency vendoring failed is not reused by the next deploy" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    (base / "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n\n"
+            + "[dependencies.pypi]\njac-nonexistent-package-10782 = \">=1.0\"\n"
+    );
+    (thin, thin_log) = _pack_logged(base, binary);
+    assert "_vendor/VENDOR.json" not in _names(thin) , thin_log;
+    assert any("Fat bundle vendoring failed" in m for m in thin_log) , thin_log;
+    (again, again_log) = _pack_logged(base, binary);
+    assert not any("Reusing the sealed bundle" in m for m in again_log) , (
+        "a deploy reused the thin bundle a failed vendoring left behind"
+    );
+    assert any("Fat bundle vendoring failed" in m for m in again_log) , again_log;
+}
+
+
 def _set_seal_cache_env(value: (str | None)) -> (str | None) {
     prior = os.environ.pop("JAC_SEAL_CACHE", None);
     if value is not None {
