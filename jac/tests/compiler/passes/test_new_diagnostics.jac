@@ -468,7 +468,8 @@ test "E2036: an impl, overloads, a self-import and a glob assignment are not dup
 test "E2036: a Python module may redefine a name" {
     prog = JacProgram();
     prog.compile(
-        use_str="def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
+        use_str="from os.path import join\nfrom shlex import join\n\n\n"
+            + "def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
         file_path="redefine.py"
     );
     assert not has_diagnostic_code(prog, "E2036");
@@ -505,6 +506,129 @@ test "E2036: a module import and an enum or type alias collide too" {
             + "def os -> int {\n    return 0;\n}\n"
     );
     assert count_diagnostic_code(prog, "E2036") == 3;
+}
+
+test "E2036: an import binds a name once per scope" {
+    # Python runs the last import and the checker reads the first, so two
+    # imports of one name from different places disagree; repeating the same
+    # import is harmless. `with entry` and `if` bind in the enclosing scope.
+    cases = [
+        (
+            "same import twice",
+            "import from os.path { join }\nimport from os.path { join }\n",
+            0
+        ),
+        (
+            "two modules",
+            "import from os.path { join }\nimport from shlex { join }\n",
+            1
+        ),
+        (
+            "one alias, two modules",
+            "import from b { A as X }\nimport from c { A as X }\n",
+            1
+        ),
+        (
+            "two names, one module",
+            "import from b { A as X }\nimport from b { C as X }\n",
+            1
+        ),
+        (
+            "relative and absolute path",
+            "import from .b { A }\nimport from pkg.b { A }\n",
+            0
+        ),
+        ("two relative modules", "import from .b { A }\nimport from .c { A }\n", 1),
+        ("a package and its submodule", "import os;\nimport os.path;\n", 0),
+        ("one module alias twice", "import os.path as p;\nimport os.path as p;\n", 0),
+        ("two modules, one alias", "import os.path as p;\nimport shlex as p;\n", 1),
+        (
+            "same string source",
+            'import from "@jac/runtime" { useParams }\nimport from "@jac/runtime" { useParams }\n',
+            0
+        ),
+        (
+            "two string sources",
+            'import from "lib-a" { x }\nimport from "lib-b" { x }\n',
+            1
+        ),
+        (
+            "with entry and the module",
+            "import from os.path { join }\nwith entry {\n    import from shlex { join }\n}\n",
+            1
+        ),
+        (
+            "one function",
+            "def f -> None {\n    import from b { A }\n    import from c { A }\n}\n",
+            1
+        ),
+        (
+            "if inside a function",
+            "def f(x: bool) -> None {\n    import from b { A }\n    if x {\n        import from c { A }\n    }\n}\n",
+            1
+        ),
+        (
+            "a test block",
+            'test "t" {\n    import from b { A }\n    import from c { A }\n}\n',
+            1
+        ),
+        (
+            "an impl body",
+            "impl Foo.run -> None {\n    import from b { A }\n    import from c { A }\n}\n",
+            1
+        ),
+        (
+            "if and else arms",
+            "def f(x: bool) -> None {\n    if x {\n        import from b { A }\n    } else {\n        import from c { A }\n    }\n}\n",
+            0
+        ),
+        (
+            "try and except fallback",
+            "with entry {\n    try {\n        import from b { A }\n    } except ImportError {\n        import from c { A }\n    }\n}\n",
+            0
+        ),
+        (
+            "except and finally",
+            "with entry {\n    try {\n        x = 1;\n    } except ImportError {\n        import from b { A }\n    } finally {\n        import from c { A }\n    }\n}\n",
+            1
+        ),
+        (
+            "two functions",
+            "def f -> None {\n    import from b { A }\n}\ndef g -> None {\n    import from c { A }\n}\n",
+            0
+        ),
+        (
+            "module and function",
+            "import from b { A }\ndef f -> None {\n    import from c { A }\n}\n",
+            0
+        )
+    ];
+    for (label, source, expected) in cases {
+        (_, prog) = parse_and_validate(source);
+        assert prog is not None , label;
+        got = count_diagnostic_code(prog, "E2036");
+        assert got == expected , f"{label}: expected {expected} E2036, got {got}";
+    }
+}
+
+test "E2036: an import in with entry collides with a local definition" {
+    (_, prog) = parse_and_validate(
+        "def join -> int {\n    return 1;\n}\n\nwith entry {\n    import from shlex { join }\n}\n"
+    );
+    assert count_diagnostic_code(prog, "E2036") == 1;
+}
+
+test "E2036: an impl file may repeat its module's import, not rebind it" {
+    (prog, _) = compile_only("scope_E2036_annex_import.jac");
+    messages = [
+        e.msg
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E2036"
+    ];
+    assert messages
+        == [
+            "Duplicate definition of 'join': the import on line 2 of scope_E2036_annex_import.jac binds it too."
+        ] , messages;
 }
 
 test "E2036: an include does not collide with a local definition" {

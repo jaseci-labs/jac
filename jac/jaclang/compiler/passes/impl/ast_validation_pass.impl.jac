@@ -6,26 +6,12 @@ impl ASTValidationPass.enter_match_stmt with MatchStmt entry {
 
 impl ASTValidationPass.enter_module with Module entry {
     if here.is_raised_from_py or here.stub_only {
+        self._import_scopes = None;
         return;
     }
-    imported = self._import_bindings(here);
+    self._import_scopes = {};
     first_line: dict[str, int] = {};
     for item in here.body {
-        if isinstance(item, ContextAwareNode) {
-            for declared in self._declared_names(item) {
-                binding = imported.get(declared.value);
-                if binding is not None
-                    and binding[0].code_context == item.code_context
-                    and not self._imports_itself(here, binding[0]) {
-                    self.ctx.emit(
-                        E2036,
-                        node_override=declared,
-                        name=declared.value,
-                        prior=self._binding_origin(here, binding[1])
-                    );
-                }
-            }
-        }
         name_node: (UniNode | None) = None;
         if isinstance(item, Ability) {
             name_node = item.name_ref;
@@ -51,25 +37,100 @@ impl ASTValidationPass.enter_module with Module entry {
     }
 }
 
-impl ASTValidationPass._import_bindings(mod: Module) -> dict[str, tuple[Import, Name]] {
-    bound: dict[str, tuple[Import, Name]] = {};
-    for stmt in mod.body {
-        if not isinstance(stmt, Import) or stmt.is_absorb {
+impl ASTValidationPass.exit_module with Module exit {
+    if self._import_scopes is None {
+        return;
+    }
+    imported = self._import_scopes.get(id(here), {});
+    for item in here.body {
+        if not isinstance(item, ContextAwareNode) {
             continue;
         }
-        for item in stmt.items {
-            name: (UniNode | None) = item.alias;
-            if name is None and isinstance(item, ModuleItem) {
-                name = item.name;
-            } elif name is None and isinstance(item, ModulePath) and item.path {
-                name = item.path[0];
-            }
-            if isinstance(name, Name) and name.value not in bound {
-                bound[name.value] = (stmt, name);
+        for declared in self._declared_names(item) {
+            binding = imported.get(declared.value);
+            if binding is not None
+                and binding[0].code_context == item.code_context
+                and not self._imports_itself(here, binding[0]) {
+                self.ctx.emit(
+                    E2036,
+                    node_override=declared,
+                    name=declared.value,
+                    prior=self._binding_origin(declared, binding[2])
+                );
             }
         }
     }
-    return bound;
+}
+
+impl ASTValidationPass._bound_name(item: (ModuleItem | ModulePath)) -> (Name | None) {
+    name: (UniNode | None) = item.alias;
+    if name is None and isinstance(item, ModuleItem) {
+        name = item.name;
+    } elif name is None and isinstance(item, ModulePath) and item.path {
+        name = item.path[0];
+    }
+    return name if isinstance(name, Name) else None;
+}
+
+impl ASTValidationPass._binding_scope(nd: UniNode) -> UniNode {
+    scope: UniNode = nd;
+    while scope.parent is not None and not UniScopeNode.is_python_scoping(scope) {
+        scope = scope.parent;
+    }
+    return scope;
+}
+
+impl ASTValidationPass._same_target(
+    first: ImportBinding, second: ImportBinding
+) -> bool {
+    (a_mod, a_name) = self._import_target(first);
+    (b_mod, b_name) = self._import_target(second);
+    if a_name != b_name {
+        return False;
+    }
+    return a_mod == b_mod or a_mod.startswith(".") != b_mod.startswith(".");
+}
+
+impl ASTValidationPass._import_target(binding: ImportBinding) -> tuple[str, str] {
+    (stmt, item, _) = binding;
+    if isinstance(item, ModulePath) {
+        if item.alias is None or not item.path {
+            return (item.base_module_name.split(".")[0], "");
+        }
+        parts = item.dot_path_str.rsplit(".", 1);
+        return (parts[0] if len(parts) > 1 else "", parts[-1]);
+    }
+    source = stmt.from_loc;
+    return (source.dot_path_str if source is not None else "", item.name.value);
+}
+
+impl ASTValidationPass._alternatives(first: UniNode, second: UniNode) -> bool {
+    arm_of: dict[int, UniNode] = {};
+    child: UniNode = first;
+    nd = first.parent;
+    while nd is not None {
+        arm_of[id(nd)] = child;
+        child = nd;
+        nd = nd.parent;
+    }
+    child = second;
+    nd = second.parent;
+    while nd is not None and id(nd) not in arm_of {
+        child = nd;
+        nd = nd.parent;
+    }
+    if nd is None {
+        return False;
+    }
+    arms = [arm_of[id(nd)], child];
+    if isinstance(nd, IfStmt) {
+        return any(arm is nd.else_body for arm in arms);
+    }
+    if isinstance(nd, TryStmt) {
+        return any(isinstance(arm, Except) for arm in arms)
+            and not any(isinstance(arm, FinallyStmt) for arm in arms);
+    }
+    return isinstance(nd, (MatchStmt, SwitchStmt));
 }
 
 impl ASTValidationPass._declared_names(item: ContextAwareNode) -> list[Name] {
@@ -109,9 +170,9 @@ impl ASTValidationPass._imports_itself(mod: Module, stmt: Import) -> bool {
         and os.path.realpath(resolved) == os.path.realpath(mod.loc.mod_path);
 }
 
-impl ASTValidationPass._binding_origin(mod: Module, name: Name) -> str {
+impl ASTValidationPass._binding_origin(at: UniNode, name: Name) -> str {
     line = name.loc.first_line;
-    if name.loc.mod_path == mod.loc.mod_path {
+    if name.loc.mod_path == at.loc.mod_path {
         return f"import on line {line}";
     }
     source = os.path.basename(name.loc.mod_path);
@@ -403,6 +464,29 @@ impl ASTValidationPass.enter_import with Import entry {
         and len(here.items) == 0
         and (here.clib_decls is None or len(here.clib_decls) == 0) {
         self.ctx.emit(E0044, node_override=here);
+    }
+    if self._import_scopes is None or here.is_absorb or not here.items {
+        return;
+    }
+    bound = self._import_scopes.setdefault(id(self._binding_scope(here)), {});
+    for item in here.items {
+        name = self._bound_name(item);
+        if name is None {
+            continue;
+        }
+        binding: ImportBinding = (here, item, name);
+        prior = bound.get(name.value);
+        if prior is None {
+            bound[name.value] = binding;
+        } elif not self._same_target(prior, binding)
+            and not self._alternatives(prior[0], here) {
+            self.ctx.emit(
+                E2036,
+                node_override=name,
+                name=name.value,
+                prior=self._binding_origin(name, prior[2])
+            );
+        }
     }
 }
 

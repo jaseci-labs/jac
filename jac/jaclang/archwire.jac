@@ -7119,8 +7119,10 @@ graph import compiler {
             ElseStmt,
             Enum,
             EventSignature,
+            Except,
             ExprAsItem,
             ExprStmt,
+            FinallyStmt,
             ForeverStmt,
             FuncCall,
             FuncSignature,
@@ -7155,6 +7157,7 @@ graph import compiler {
             TypeAlias,
             UnaryExpr,
             UniNode,
+            UniScopeNode,
             WhileStmt,
             WithStmt,
             YieldExpr
