@@ -44,6 +44,8 @@ def coerce_value(
 
 def _param_target(param: APIParameter) -> any;
 
+def _takes_upload(param: APIParameter) -> bool;
+
 def _header_lookup(request: Request, name: str) -> (str | None);
 
 def _extract_raw(

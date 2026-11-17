@@ -67,9 +67,7 @@ impl _without_none(target: any) -> any {
 impl coerce_value(
     value: any, target: any = None, mode: ConvertMode = ConvertMode.STRICT
 ) -> any {
-    if isinstance(value, UploadFile)
-        or target is inspect.Parameter.empty
-        or is_upload_type(target) {
+    if isinstance(value, UploadFile) or target is inspect.Parameter.empty {
         return value;
     }
     if isinstance(target, str) {
@@ -84,6 +82,13 @@ impl _param_target(param: APIParameter) -> any {
         return param.type_obj;
     }
     return param.data_type;
+}
+
+impl _takes_upload(param: APIParameter) -> bool {
+    if param.takes_upload is None {
+        param.takes_upload = is_upload_type(_param_target(param));
+    }
+    return param.takes_upload;
 }
 
 impl _header_lookup(request: Request, name: str) -> (str | None) {
@@ -196,6 +201,10 @@ impl bind_parameters(
             } elif param.default_value is not None {
                 kwargs[param.name] = _fresh_default(param.default_value);
             }
+            continue;
+        }
+        if _takes_upload(param) {
+            kwargs[param.name] = raw;
             continue;
         }
         try {
