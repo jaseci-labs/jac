@@ -1020,6 +1020,7 @@ graph import {
     ]
     compiler.frontend.codeinfo --> [
         cli.check_report.print_native_coverage { native_display_text },
+        dist.precompile_bytecode.run_precompile { is_foreign_native_variant },
         project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     type compiler.frontend.codeinfo ++> client.client_bundle
@@ -13860,7 +13861,8 @@ graph import scale {
     injector.binary --> [
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             node_arch,
-            preflight_pod_runtime
+            preflight_pod_runtime,
+            resolve_pod_base_image
         },
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
             deploy_generation_refusal
