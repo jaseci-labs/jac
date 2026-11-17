@@ -73,6 +73,7 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 (256, U8, REFUSED),
                 (3.5, U8, REFUSED),
                 ("3", U8, REFUSED),
+                ("abc", U8, REFUSED),
                 (1, F32, 1.0),
                 ("18446744073709551615", U64, 18446744073709551615),
                 ("9", U64, REFUSED)
@@ -116,6 +117,15 @@ test "coercion and schemas follow the declared type and the public constructor" 
         }
     }
 
+    # A string that is not a wide integer's JSON form is refused with one message.
+    for value in ["9", "abc", "300"] {
+        try {
+            coerce_value(value, U8);
+            assert False , f"{value!r} bound to u8";
+        } except ValueError as e {
+            assert str(e) == "expected integer, got str" , f"{value!r}: {e}";
+        }
+    }
     value = coerce_value({"args": 7}, Payload);
     assert value.args == 7;
     assert value.kwargs == "default";

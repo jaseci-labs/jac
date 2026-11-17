@@ -189,8 +189,12 @@ impl _to_number(value: any, kind: type, mode: ConvertMode) -> any {
 
 impl _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any {
     if mode == ConvertMode.STRICT and isinstance(value, str) {
-        wide = json_wire_read(name, value);
-        if json_wire_form(name, wide) == value {
+        try {
+            wide = json_wire_read(name, value);
+        } except (ValueError, OverflowError) {
+            wide = None;
+        }
+        if wide is not None and json_wire_form(name, wide) == value {
             return wide;
         }
     }
