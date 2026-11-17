@@ -230,15 +230,14 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
     assert not any("Reusing the sealed bundle" in m for m in mode_log) , (
         "a file mode change reused the previous seal"
     );
-    (base / "jac.preview.toml").write_text("[project]\nversion = \"0.0.2\"\n");
     prior = os.environ.pop("JAC_PROFILE", None);
     try {
-        _pack_logged(base, binary);
         client_key = _client_key(base, binary);
         os.environ["JAC_PROFILE"] = "preview";
         (_, preview_log) = _pack_logged(base, binary);
         (_, preview_again_log) = _pack_logged(base, binary);
         preview_client_key = _client_key(base, binary);
+        preview_client_again = _client_key(base, binary);
     } finally {
         os.environ.pop("JAC_PROFILE", None);
         if prior is not None {
@@ -254,13 +253,16 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
     assert preview_client_key != client_key , (
         "a deploy under JAC_PROFILE=preview reused the client built without it"
     );
+    assert preview_client_again == preview_client_key , (
+        "the same profile gave the client build two different cache keys"
+    );
 }
 
 
 def _client_key(base: Path, binary: bytes) -> str {
     return client_input_digest(
         base,
-        bundle_source_files(base),
+        client_build_sources(base),
         binary,
         "svc.jac",
         sanitized_jac_toml(base),
