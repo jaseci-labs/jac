@@ -180,7 +180,7 @@ impl check(
             units.append(file_unit);
         }
     }
-    warn_unmet_project_pins([str(unit['root_dir']) for unit in units]);
+    warn_unmet_project_pins(sorted({str(unit['root_dir']) for unit in units}));
     sharded = _shard_units(units);
     if sharded is None {
         console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
