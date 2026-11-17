@@ -55,6 +55,10 @@ impl _walker_callback(
     async def callback(
         request: Request, /, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | Response) {
+        refused = unknown_caller(request);
+        if refused is not None {
+            return refused;
+        }
         username = request_caller(server, request);
         if requires_auth and not username {
             return _fail('UNAUTHORIZED', 'Unauthorized', 401);
@@ -101,6 +105,10 @@ impl _function_callback(
     async def callback(
         request: Request, /, **kwargs: JsonValue
     ) -> (TransportResponse | Response) {
+        refused = unknown_caller(request);
+        if refused is not None {
+            return refused;
+        }
         username = request_caller(server, request);
         if requires_auth and not username {
             return _fail('UNAUTHORIZED', 'Unauthorized', 401);

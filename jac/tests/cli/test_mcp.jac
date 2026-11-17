@@ -256,6 +256,37 @@ test "guide resource content" {
     assert len(content) > 100;
 }
 
+test "the pitfalls guide teaches only endpoint forms and annotations the toolchain accepts" {
+    import re;
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    rp = ResourceProvider();
+    rp.index_resources();
+    content = rp.read_resource("jac://guide/pitfalls");
+    blocks = re.findall(r"^```jac\n(.*?)^```", content, re.M | re.S);
+    assert len(blocks) > 20;
+    found: list[str] = [];
+    with tempfile.TemporaryDirectory() as scratch {
+        for (index, block) in enumerate(blocks) {
+            if re.search(r"\b(walker|def):priv\b", block) {
+                found.append(f"block {index} teaches a :priv endpoint");
+            }
+            source = Path(scratch) / f"block_{index}.jac";
+            source.write_text(block);
+            prog = JacProgram();
+            prog.compile(file_path=str(source), options=CompileOptions(no_cgen=True));
+            for alert in list(prog.errors_had) {
+                if alert.code is not None and alert.code.code == "E1036" {
+                    found.append(f"block {index}: {alert.msg}");
+                }
+            }
+        }
+    }
+    assert not found , "\n".join(found);
+}
+
 test "examples index exists" {
     rp = ResourceProvider();
     rp.index_resources();

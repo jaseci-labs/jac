@@ -502,8 +502,20 @@ impl NaIRGenPass._codegen_closure_call(
         );
         self.builder.store(clos_val, held_slot);
     }
+    passed = list(nd.params or []);
+    if any(isinstance(p, uni.KWPair) for p in passed) or len(passed) > len(declared) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="call through a value",
+            name=self._get_name(nd.target) or "callable",
+            help_text="A `Callable` value is called natively with its declared "
+            "positional arguments only; keywords or extra arguments would be lost."
+        );
+        return None;
+    }
     raw_args: list[ir.Value] = [];
-    for p in (nd.params or []) {
+    for p in passed {
         v = self._codegen_expr(p);
         if v is not None {
             raw_args.append(v);

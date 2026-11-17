@@ -107,6 +107,10 @@ impl CtEvaluator._note_definition(nd: UniNode) {
     } except OSError {}
 }
 
+impl CtEvaluator.release_memos {
+    self._failed.clear();
+}
+
 impl CtEvaluator.try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
     self.last_error = None;
     key = ("node", id(nd));
@@ -128,11 +132,11 @@ impl CtEvaluator.try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
     } except CtDeferredSignal {
         return CT_DEFERRED;
     } except CtNotComptime {
-        self._failed.add(id(nd));
+        self._failed[id(nd)] = nd;
         return None;
     } except CtError as e {
         self.last_error = str(e);
-        self._failed.add(id(nd));
+        self._failed[id(nd)] = nd;
         return None;
     } except CtRaise as e {
         if e.user {
@@ -140,15 +144,15 @@ impl CtEvaluator.try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
         } else {
             self.last_error = f"{e.exc.kind}: {ct_str(e.exc)}";
         }
-        self._failed.add(id(nd));
+        self._failed[id(nd)] = nd;
         return None;
     } except RecursionError {
         self.last_error = "comptime evaluation recursed too deeply";
-        self._failed.add(id(nd));
+        self._failed[id(nd)] = nd;
         return None;
     } except Exception as e {
         self.last_error = f"{type(e).__name__}: {e}";
-        self._failed.add(id(nd));
+        self._failed[id(nd)] = nd;
         return None;
     } finally {
         self._active.discard(key);
@@ -249,7 +253,7 @@ impl CtEvaluator.eval(nd: UniNode) -> CtValue {
             if cv is not None {
                 raise CtDeferredSignal();
             }
-            if id(nd) in self._failed and not self.demand {
+            if self._failed.get(id(nd)) is nd and not self.demand {
                 raise CtNotComptime();
             }
         }

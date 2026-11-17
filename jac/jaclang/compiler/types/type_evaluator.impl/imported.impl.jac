@@ -10,6 +10,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
     import from jaclang.compiler.frontend.host { active_host }
     import_node = node_.parent_of_type(Import);
     assert import_node.from_loc is not None;
+    if self._climbs_above_project(import_node.from_loc) {
+        binding.type = UnknownType(is_diagnosed=True);
+        if not import_node.from_loc.path {
+            self._report_climb(import_node.from_loc, node_.name);
+        }
+        return binding.type;
+    }
 
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
@@ -317,6 +324,14 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 isinstance(last_type, UnknownType) and not last_type.is_diagnosed
             ) {
             return last_type;
+        }
+        if self._climbs_above_project(node_) {
+            escaped = UnknownType(is_diagnosed=True);
+            for npath in path_parts {
+                npath.type = escaped;
+            }
+            self._report_climb(node_, path_parts[-1]);
+            return escaped;
         }
         path_list = node_.resolve_relative_path_list();
 
@@ -656,6 +671,29 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
     return not self._import_error_is_handled(imp);
 }
 
+
+impl TypeEvaluator._climbs_above_project(node_: ModulePath) -> bool {
+    if node_.level <= 1 or not node_.loc or is_client_destined(node_) {
+        return False;
+    }
+    roots = project_root_chain(node_.importer_path);
+    if not roots {
+        return False;
+    }
+    parents = Path(node_.importer_path).resolve().parents;
+    if node_.level - 1 >= len(parents) {
+        return True;
+    }
+    return not parents[node_.level - 1].is_relative_to(Path(roots[-1]).resolve());
+}
+
+impl TypeEvaluator._report_climb(node_: ModulePath, at: UniNode) -> None {
+    if self._relative_import_must_resolve(node_) {
+        self.emit_diag(E1134, at, module=node_.dot_path_str);
+    } else {
+        self.emit_diag(W1100, at);
+    }
+}
 
 impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | None) {
     if node_.level > 0 or node_.string_path_value is not None or not node_.path {

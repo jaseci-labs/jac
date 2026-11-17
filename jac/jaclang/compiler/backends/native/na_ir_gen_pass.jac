@@ -965,7 +965,9 @@ walker NaIRGenPass(CompilerPass) {
         args_idx: int,
         stored: ir.Value,
         bound_kind: (str | None),
-        required_kind: (str | None)
+        required_kind: (str | None),
+        erased: bool = False,
+        erased_want: (ir.Type | None) = None
     ) -> dict[str, any];
 
     def _emit_kw_spread_refusal(nd: uni.FuncCall) -> None;
@@ -2911,6 +2913,14 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
+    def _emit_hdr_tag_is(
+        b: ir.IRBuilder,
+        raw: ir.Value,
+        names: list[str],
+        exact: bool = True,
+        untagged: bool = False
+    ) -> ir.Value;
+
     def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
     def _emit_rc_release_fast(
         fn: ir.Function, release_fn: ir.Function, may_cycle: bool
@@ -2920,7 +2930,7 @@ walker NaIRGenPass(CompilerPass) {
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
     def _is_null_ptr_const(val: ir.Value) -> bool;
-    def _print_stream_name(value: uni.Expr) -> (str | None);
+    def _sys_stream_of(value: uni.Expr) -> (str | None);
     def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
@@ -3252,6 +3262,14 @@ walker NaIRGenPass(CompilerPass) {
         sized: bool = True
     ) -> (ir.Value | None);
 
+    def _compute_aug_value(
+        nd: uni.Assignment,
+        target_expr: uni.Expr,
+        current: ir.Value,
+        rhs: ir.Value,
+        inplace_slot: (ir.Value | None)
+    ) -> tuple[(ir.Value | None), bool, bool];
+
     def _try_flow_for_parallel(nd: uni.InForStmt) -> bool;
     def _na_chunks_shape(expr: object) -> (tuple[uni.Expr, uni.Expr] | None);
     def _try_chunked_for(nd: uni.InForStmt) -> bool;
@@ -3417,9 +3435,19 @@ walker NaIRGenPass(CompilerPass) {
     def _erased_seq_type(tb: any) -> (ir.Type | None);
     def _erased_decl(tb: any) -> bool;
     def _erased_field(type_name: str, fname: str) -> bool;
-    def _erased_boxable(t: (ir.Type | None)) -> bool;
+    def _erased_field_owner(type_name: str, fname: str) -> (str | None);
+    def _erased_boxable(t: (ir.Type | None), want: (ir.Type | None) = None) -> bool;
     def _erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value;
-    def _erased_want(tv_names: list[str], owner: any) -> (ir.Type | None);
+    def _erased_want(
+        tv_names: list[str], owner: any, decl: (str | None) = None
+    ) -> (ir.Type | None);
+
+    def _erased_slot(sp: uni.ParamVar, slot_type: ir.Type) -> bool;
+    def _erased_arg_want(nd: uni.FuncCall, sp: uni.ParamVar) -> (ir.Type | None);
+    def _box_erased_arg(
+        nd: uni.FuncCall, sp: uni.ParamVar, val: ir.Value, slot_type: ir.Type
+    ) -> ir.Value;
+
     def _erased_decl_names(tb: any) -> list[str];
     def _erased_unbox(
         ptr: ir.Value, want: (ir.Type | None), owned: bool = False

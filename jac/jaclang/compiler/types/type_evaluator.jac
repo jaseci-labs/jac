@@ -12,8 +12,6 @@ obj PrefetchedTypes {
         base_exception_class: ClassType | None = None,
         coroutine_class: ClassType | None = None,
         generator_class: ClassType | None = None,
-        sequence_class: ClassType | None = None,
-        mapping_class: ClassType | None = None,
         function_class: ClassType | None = None,
         tuple_class: ClassType | None = None,
         bool_class: ClassType | None = None,
@@ -217,6 +215,8 @@ walker TypeEvaluator {
     def _resolve_from_path(from_mod: ModulePath) -> Path;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
+    def _climbs_above_project(node_: ModulePath) -> bool;
+    def _report_climb(node_: ModulePath, at: UniNode) -> None;
     def _declared_missing_dependency(node_: ModulePath) -> (str | None);
     def _imports_own_module(node_: ModulePath, mod_path: str) -> bool;
     def _import_error_is_handled(imp: Import) -> bool;
@@ -475,6 +475,24 @@ walker TypeEvaluator {
     def _super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType;
     def _get_type_of_root(node_: SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: Name) -> TypeBase | None;
+    def _unpack_target_path(
+        expr: Name
+    ) -> tuple[
+        (Assignment | InForStmt | InnerCompr),
+        list[int],
+        (TupleVal | ListVal | None)
+    ]
+        | None;
+
+    def _get_type_of_unpack_target(expr: Name) -> TypeBase | None;
+    def _get_source_of_unpack_target(expr: Name) -> Expr | None;
+    def _starred_target_type(
+        container: TypeBase,
+        star_targets: (TupleVal | ListVal),
+        star_at: int,
+        node_for_error: UniNode
+    ) -> TypeBase | None;
+
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
     def _tuple_has_variadic_arg(cls: ClassType) -> bool;
     def _tuple_literal_index_type(
@@ -797,10 +815,6 @@ walker TypeEvaluator {
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
     def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
-    def get_type_of_match_capture(capture: MatchAs) -> TypeBase | None;
-    def _pattern_covers_class(pattern: MatchPattern) -> bool;
-    def _pattern_is_structural(pattern: MatchPattern) -> bool;
-    def _may_match_structural(member: TypeBase) -> bool;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _isinstance_classinfo_is_exact(expr: Expr) -> bool;

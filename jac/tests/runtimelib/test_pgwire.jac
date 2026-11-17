@@ -11,6 +11,7 @@ backend. SCRAM-over-TCP is covered by the k8s path.
 """
 
 import select;
+import socket;
 import threading;
 import time;
 import from pathlib { Path }
@@ -19,6 +20,7 @@ import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.pgload { connect as pg_connect }
 import from jaclang.server.session { shared_pg_data_dir, project_db_name }
 import from jaclang.data.pgwire {
+    PgWireConnection,
     PgWireError,
     STATEMENT_CACHE_SIZE,
     _array_literal,
@@ -151,6 +153,34 @@ test "error fields parse into the sqlstate dict shape" {
     payload = b'SERROR\x00C40001\x00Mdeadlock\x00\x00';
     fields = _parse_error_fields(payload);
     assert fields == {'S': 'ERROR', 'C': '40001', 'M': 'deadlock'};
+}
+
+
+test "a failed connect names the database it tried to reach" {
+    probe = socket.socket();
+    probe.bind(('127.0.0.1', 0));
+    free_port = probe.getsockname()[1];
+    probe.close();
+    for (host, port, unix_sock, expected) in [
+        ('127.0.0.1', free_port, None, ConnectionRefusedError),
+        ('no-such-db.invalid', 5432, None, socket.gaierror),
+        (None, 5432, '/nonexistent/jac-test/.s.PGSQL.5432', FileNotFoundError),
+
+    ] {
+        target = unix_sock or f"{host}:{port}";
+        err: any = None;
+        try {
+            PgWireConnection(
+                user='jac', host=host, port=port, unix_sock=unix_sock, timeout=5.0
+            );
+        } except OSError as e {
+            err = e;
+        }
+        assert err is not None , f"connecting to {target} did not fail";
+        assert f"cannot connect to the database at {target}" in str(err) , str(err);
+        assert type(err) is expected , f"{target}: {type(err).__name__}";
+        assert err.errno == err.__cause__.errno , f"{target}: {err}";
+    }
 }
 
 

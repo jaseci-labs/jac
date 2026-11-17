@@ -2700,119 +2700,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 return enum_member_type;
             }
 
-            if (
-                isinstance(node_.parent, UnaryExpr)
-                and isinstance(node_.parent.op, Token)
-                and node_.parent.op.name == Tok.STAR_MUL
-                and isinstance(node_.parent.parent, (TupleVal, ListVal))
-            ) {
-                star_container = node_.parent.parent;
-                while isinstance(star_container.parent, (TupleVal, ListVal)) {
-                    star_container = star_container.parent;
-                }
-                star_assignment = star_container.parent;
-                if (
-                    isinstance(star_assignment, Assignment)
-                    and star_assignment.value is not None
-                ) {
-                    rhs_type = self.get_type_of_expression(star_assignment.value);
-                    if elem
-                        := self._get_iterable_element_type(
-                            rhs_type, star_assignment.value
-                        ) {
-                        if self.prefetch.list_class is None {
-                            return UnknownType();
-                        }
-                        star_type = self.prefetch.list_class.clone_as_instance();
-                        star_type.private.type_args = [elem];
-                        return star_type;
-                    }
-                }
-            }
-
-            if isinstance(node_.parent, (TupleVal, ListVal)) {
-                unpack_container = node_.parent;
-                while isinstance(unpack_container.parent, (TupleVal, ListVal)) {
-                    unpack_container = unpack_container.parent;
-                }
-                unpack_assignment = unpack_container.parent;
-                if (
-                    isinstance(unpack_assignment, Assignment)
-                    and unpack_assignment.value is not None
-                ) {
-                    idx = -1;
-                    for (vi, v) in enumerate(unpack_container.values) {
-                        if v is node_ {
-                            idx = vi;
-                            break;
-                        }
-                    }
-                    if idx >= 0 {
-                        rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                        extracted = self._extract_tuple_element_type(rhs_type, idx);
-                        if (
-                            extracted is not None
-                            and not isinstance(extracted, UnknownType)
-                        ) {
-                            return extracted;
-                        }
-
-                        if elem
-                            := self._get_iterable_element_type(
-                                rhs_type, unpack_assignment.value
-                            ) {
-                            return elem;
-                        }
-                        if extracted is not None {
-                            return extracted;
-                        }
-                    }
-                } elif isinstance(unpack_assignment, (InForStmt, InnerCompr)) {
-                    collection_type = self.get_type_of_expression(
-                        unpack_assignment.collection
-                    );
-                    elem_type = self._get_iterable_element_type(
-                        collection_type,
-                        unpack_assignment,
-                        is_async=unpack_assignment.is_async
-                    );
-                    if elem_type is not None {
-                        unpack_path: list[int] = [];
-                        path_cur: UniNode = node_;
-                        path_parent = path_cur.parent;
-                        path_ok = True;
-                        while path_parent is not None {
-                            if not isinstance(path_parent, (TupleVal, ListVal)) {
-                                path_ok = False;
-                                break;
-                            }
-                            found = -1;
-                            for (vi, v) in enumerate(path_parent.values) {
-                                if v is path_cur {
-                                    found = vi;
-                                    break;
-                                }
-                            }
-                            if found < 0 {
-                                path_ok = False;
-                                break;
-                            }
-                            unpack_path.insert(0, found);
-                            if path_parent is unpack_container {
-                                break;
-                            }
-                            path_cur = path_parent;
-                            path_parent = path_cur.parent;
-                        }
-                        if path_ok and unpack_path {
-                            if elem
-                                := self._extract_tuple_element_type_path(
-                                    elem_type, unpack_path
-                                ) {
-                                return elem;
-                            }
-                        }
-                    }
+            if isinstance(node_.parent, (TupleVal, ListVal, UnaryExpr)) {
+                if unpacked := self._get_type_of_unpack_target(node_) {
+                    return unpacked;
                 }
             }
 
@@ -4258,9 +4148,18 @@ impl TypeEvaluator.get_type_of_expression(
                 node_.find_parent_of_type(SubTag) is not None
                 or node_.find_parent_of_type(FuncSignature) is not None
             );
+        import from jaclang.compiler.frontend.unitree { names_except_type }
+        bare: UniNode = node_;
+        while isinstance(bare, AtomUnit) {
+            bare = bare.value;
+        }
+        is_undefined_except_type = (
+            isinstance(bare, Name) and bare.sym is None and names_except_type(bare)
+        );
         if (mod is None or not mod.is_raised_from_py)
             and not is_pattern_wildcard
-            and not is_annotation_ellipsis {
+            and not is_annotation_ellipsis
+            and not is_undefined_except_type {
             self.emit_diag(W1051, node_);
         }
     }
@@ -4520,8 +4419,6 @@ impl TypeEvaluator._prefetch_types {
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.generator_class = get_typing_class("Generator");
-    self.prefetch.sequence_class = get_typing_class("Sequence");
-    self.prefetch.mapping_class = get_typing_class("Mapping");
     self.prefetch.function_class = get_types_class("FunctionType");
     self.prefetch.mappingproxy_class = get_types_class("MappingProxyType");
 
@@ -6228,12 +6125,13 @@ impl TypeEvaluator._get_type_from_match_pattern(
         pattern_types: list[TypeBase] = [];
         for sub_pattern in pattern.patterns {
             sub_type = self._get_type_from_match_pattern(sub_pattern);
-            if sub_type is None {
-                return None;
+            if sub_type is not None {
+                pattern_types.append(sub_type);
             }
-            pattern_types.append(sub_type);
         }
-        if len(pattern_types) == 1 {
+        if len(pattern_types) == 0 {
+            return None;
+        } elif len(pattern_types) == 1 {
             return pattern_types[0];
         } else {
             return UnionType(types=pattern_types);
@@ -6248,115 +6146,7 @@ impl TypeEvaluator._get_type_from_match_pattern(
         return None;
     }
 
-    if isinstance(pattern, MatchSingleton) and isinstance(pattern.value, Null) {
-        return self._literal_type_from_expr(pattern.value);
-    }
-
     return None;
-}
-
-impl TypeEvaluator.get_type_of_match_capture(capture: MatchAs) -> TypeBase | None {
-    case_node: (UniNode | None) = capture.parent;
-    while isinstance(case_node, (MatchOr, MatchAs)) {
-        case_node = case_node.parent;
-    }
-    stmt = case_node.parent if isinstance(case_node, MatchCase) else None;
-    if not isinstance(stmt, MatchStmt) {
-        return None;
-    }
-    subject = self.get_type_of_expression(stmt.target);
-    after_structural = False;
-    for earlier in stmt.cases {
-        if earlier is case_node {
-            break;
-        }
-        if earlier.guard is not None {
-            continue;
-        }
-        top = earlier.pattern;
-        if isinstance(top, MatchAs) and top.pattern is not None {
-            top = top.pattern;
-        }
-        for alt in (top.patterns if isinstance(top, MatchOr) else [top]) {
-            if self._pattern_is_structural(alt) {
-                after_structural = True;
-            } elif self._pattern_covers_class(alt) {
-                matched = self._get_type_from_match_pattern(alt);
-                if matched is not None {
-                    subject = self.exclude_type_from_union(subject, matched);
-                }
-            }
-        }
-    }
-    bound: (TypeBase | None) = subject;
-    if capture.pattern is not None {
-        pattern_type = self._get_type_from_match_pattern(capture.pattern);
-        if pattern_type is None {
-            return None;
-        }
-        bound = self._narrow_type_to(subject, pattern_type);
-    }
-    if bound is None or not after_structural {
-        return bound;
-    }
-    members = bound.types if isinstance(bound, UnionType) and bound.types else [bound];
-    kept = [
-        m
-        for m in members
-        if not self._may_match_structural(m)
-    ];
-    if not kept {
-        return None;
-    }
-    return self._union_narrowed_types(kept);
-}
-
-impl TypeEvaluator._may_match_structural(member: TypeBase) -> bool {
-    if not isinstance(member, ClassType) {
-        return True;
-    }
-    sequence_cls = self.prefetch.sequence_class;
-    if sequence_cls is not None
-        and not member.is_builtin(["str", "bytes", "bytearray"])
-        and self.is_sub_class(sequence_cls, member, ignore_unknown=True) {
-        return True;
-    }
-    mapping_cls = self.prefetch.mapping_class;
-    return mapping_cls is not None
-        and self.is_sub_class(mapping_cls, member, ignore_unknown=True);
-}
-
-impl TypeEvaluator._pattern_is_structural(pattern: MatchPattern) -> bool {
-    if isinstance(pattern, MatchAs) and pattern.pattern is not None {
-        return self._pattern_is_structural(pattern.pattern);
-    }
-    if isinstance(pattern, MatchOr) {
-        return any(self._pattern_is_structural(p) for p in pattern.patterns);
-    }
-    return isinstance(pattern, (MatchSequence, MatchMapping));
-}
-
-impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {
-    if isinstance(pattern, MatchAs) {
-        return pattern.pattern is not None
-            and self._pattern_covers_class(pattern.pattern);
-    }
-    if isinstance(pattern, MatchOr) {
-        return bool(pattern.patterns)
-            and all(self._pattern_covers_class(p) for p in pattern.patterns);
-    }
-    if isinstance(pattern, MatchSingleton) {
-        return isinstance(pattern.value, Null);
-    }
-    if isinstance(pattern, MatchArch) {
-        subs: list[MatchPattern] = list(pattern.arg_patterns or [])
-            + [kv.value for kv in (pattern.kw_patterns or [])];
-        return all(
-            isinstance(p, MatchWild) or (isinstance(p, MatchAs) and p.pattern is None)
-            for p in subs
-        );
-    }
-    return False;
 }
 
 impl TypeEvaluator._union_contains_none(union_type: TypeBase) -> bool {

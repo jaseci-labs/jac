@@ -502,11 +502,6 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                         "default": [],
                         "description": "(KEDA only) Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). For per-app triggers use [[apps.NAME.scale.triggers]] instead."
                     },
-                    "postgres_storage_size": {
-                        "type": "string",
-                        "default": "2Gi",
-                        "description": "PVC size for the provisioned Postgres StatefulSet (k8s target)"
-                    },
                     "cpu_request": {
                         "type": "string",
                         "default": None,

@@ -89,17 +89,8 @@ graph import {
         compiler.driver.jir {
             COMPILER_DIGEST_ROOTS,
             COMPILER_DIGEST_ROSTER,
-            COMPILER_IDENTITY_NAME,
-            NATIVE_LOWERED_PATHS,
-            is_native_lowered,
             is_roster_input,
-            is_staging_rewritten,
             read_input_rules
-        },
-        dist.payload.fsutil.skip_jaclang
-            | dist.precompile_bytecode.find_jac_files
-            | project.compiler_host.ProjectHost.is_native_lowered_source {
-            is_native_lowered
         },
         dist.precompile_bytecode.seal_bootstrap { is_native_only, seed_abs_entries },
         dist.precompile_bytecode.sealable_sources
@@ -835,7 +826,6 @@ graph import {
     compiler.driver.jir --> [
         cli.commands.cache._live_keys { compiler_generation },
         cli.commands.execution._exec_file { scrub_cache_dirs },
-        dist.payload.assemble.assemble_site { write_compiler_identity },
         dist.precompile_bytecode._native_extra { rebase_placement_section },
         dist.precompile_bytecode._precompile_unit { cache_mode },
     ]
@@ -986,7 +976,6 @@ graph import {
             wiring_facts,
             wiring_for_path
         },
-        dist.payload.assemble.ship_wiring { ARCH_FILE_NAME, prune_wiring_source },
         dist.precompile_bytecode.find_jac_files { is_arch_file },
         project.compiler_host.ProjectHost.place_wired_imports { place_wired_imports },
         project.compiler_host.ProjectHost.session { wiring_scope },
@@ -1031,6 +1020,7 @@ graph import {
     ]
     compiler.frontend.codeinfo --> [
         cli.check_report.print_native_coverage { native_display_text },
+        dist.precompile_bytecode.run_precompile { is_foreign_native_variant },
         project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     type compiler.frontend.codeinfo ++> client.client_bundle
@@ -1686,7 +1676,7 @@ graph import {
         dist.seal.vendor_packages { stage_source_tree },
     ]
     packages.commands ++> [
-        cli.commands.project.install { install_project },
+        cli.commands.project.install { install_project, refuse_toolchain_packages },
         cli.commands.project.update { PYPI_HINT, install_project, split_package_specs },
     ]
     packages.commands --> [
@@ -1821,33 +1811,8 @@ graph import {
             | server.endpoints.pages
             | server.server.JacAPIServer._ensure_client_bundle
             | server.sv_client._read_cache_enabled { get_config },
-        cli.commands.analysis._is_project_wide_run
-            | cli.commands.execution._exec_file
-            | cli.commands.project.clean
-            | cli.shadcn.cli.run_shadcn_add
-            | data.pg_dist._database_config
-            | scale.plugin.scale_local_serve
-            | server.endpoints.pages.register_diagnostics_endpoints.client_error
-            | server.server.print_endpoint_docs { get_config },
-        cli.commands.analysis.check
-            | cli.commands.execution._load_cwd_config
-            | cli.commands.project.deps
-            | cli.shadcn.cli.run_shadcn_remove { get_config },
-        cli.commands.analysis.format
-            | cli.commands.execution._resolve_target
-            | cli.commands.project.install { get_config },
-        cli.commands.analysis.precommit
-            | cli.commands.execution._run_node_tool
-            | cli.commands.project.publish { get_config },
-        cli.commands.analysis.test
-            | cli.commands.execution._tool_tiers
-            | cli.commands.project.remove { get_config },
-        cli.commands.code
-            | cli.commands.project._create_app
-            | client.vite_bundler.ViteBundler.init
-            | scale.tests.server.test_examples
-            | server.settings.secret_home { find_project_root },
-        cli.commands.config
+        cli.commands.analysis._build_dir_of
+            | cli.commands.config
             | cli.commands.fix._ensure_workspace
             | client.cli
             | client.client_diagnostics.is_debug_mode
@@ -1876,6 +1841,32 @@ graph import {
             | scale.utils.vendor_wheels
             | server.server.JacAPIServer.build_app
             | testing.testing { JacConfig },
+        cli.commands.analysis._is_project_wide_run
+            | cli.commands.execution._exec_file
+            | cli.commands.project.clean
+            | cli.shadcn.cli.run_shadcn_add
+            | data.pg_dist._database_config
+            | scale.plugin.scale_local_serve
+            | server.endpoints.pages.register_diagnostics_endpoints.client_error
+            | server.server.print_endpoint_docs { get_config },
+        cli.commands.analysis.check
+            | cli.commands.execution._load_cwd_config
+            | cli.commands.project.deps
+            | cli.shadcn.cli.run_shadcn_remove { get_config },
+        cli.commands.analysis.format
+            | cli.commands.execution._resolve_target
+            | cli.commands.project.install { get_config },
+        cli.commands.analysis.precommit
+            | cli.commands.execution._run_node_tool
+            | cli.commands.project.publish { get_config },
+        cli.commands.analysis.test
+            | cli.commands.execution._tool_tiers
+            | cli.commands.project.remove { get_config },
+        cli.commands.code
+            | cli.commands.project._create_app
+            | client.vite_bundler.ViteBundler.init
+            | scale.tests.server.test_examples
+            | server.settings.secret_home { find_project_root },
         cli.commands.config._config_path { find_project_root, get_config },
         cli.commands.config._config_set
             | scale.injector.binary.deploy_generation_refusal {
@@ -1927,7 +1918,8 @@ graph import {
         cli.commands.project._create_body { find_project_root },
         cli.mcp.mode { JacConfig, get_config, set_config },
         client.cli.get_config { get_config as _get_config },
-        client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
+        client.js_runtime._project_npm
+            | client.targets.desktop.desktop_target.DesktopTarget.out_dir_for
             | client.targets.react_native.scaffold._project_native_deps
             | scale.config.app_config
             | scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer._resolve_fleet
@@ -2016,6 +2008,7 @@ graph import {
         packages.migrate { migrate_dependency_table },
     ]
     project.jac_version ++> [
+        cli.dispatch.warn_unmet_jac_version { satisfies },
         packages.resolve | packages.templates { satisfies as jac_satisfies },
         scale.injector.binary {
             exact_pin,
@@ -2062,6 +2055,9 @@ graph import {
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
         compiler.tests.test_missing_local_import | dist.publish.py_imports {
             resolve_module
+        },
+        compiler.types.type_evaluator.TypeEvaluator._climbs_above_project {
+            project_root_chain
         },
         compiler.types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             named_exactly_any
@@ -2170,6 +2166,9 @@ graph import {
     ]
     project.pyvenv --> cli.dispatch._discover_project_config { add_venv_to_path }
     project.source ++> [
+        cli.commands.analysis._iter_jac_files | cli.commands.fix._iter_migration_files {
+            is_pruned_source_dir
+        },
         cli.commands.analysis._normalize_ignore_patterns { normalize_exclude_patterns },
         cli.commands.analysis._should_ignore
             | compiler.tools.jac_auto_lint_pass.JacAutoLintPass._is_file_excluded
@@ -2268,7 +2267,7 @@ graph import {
         compiler.frontend.host { AppSpec, WorkspaceSpec },
     ]
     runtime.archetype ++> [
-        byllm.llm._mock_jsonable { Archetype },
+        byllm.llm._mock_jsonable | server.serving.coerce._fresh_default { Archetype },
         byllm.visit_routing { Anchor, Archetype, ObjectSpatialFunction },
         byllm.visit_routing._candidate_for { EdgeAnchor, EdgeArchetype, NodeAnchor },
         byllm.visit_routing._route_context {
@@ -2776,6 +2775,7 @@ graph import {
         scale.admin.admin_portal { METHOD_PASSWORD, second_factor_claims },
         scale.sso.grants { caller_user_id },
         scale.sso.oauth_session { METHOD_FEDERATED },
+        scale.tests.data.test_session_epoch { second_factor_claims },
         scale.tests.server.test_sso_grants { bind_caller_user, release_caller_user },
     ]
     server.identity.assurance --> scale.tests.data.test_gateway_owned_identity {
@@ -2792,6 +2792,7 @@ graph import {
     server.identity.auth_tokens ++> [
         scale.sso.oauth_session
             | scale.sso.sso_auth
+            | scale.tests.data.test_session_epoch
             | scale.tests.server.test_oauth_session
             | scale.tests.server.test_registration_challenge
             | scale.tests.server.test_sso
@@ -2812,11 +2813,12 @@ graph import {
             signing_algorithm as jwt_algorithm,
             signing_secret as jwt_secret
         },
-        scale.tests.server.test_serve { signing_secret as jwt_secret },
-        scale.webhook.webhook.WebhookUtils.create_api_key_token {
+        scale.tests.data.test_session_epoch
+            | scale.webhook.webhook.WebhookUtils.create_api_key_token {
             signing_algorithm,
             signing_secret
         },
+        scale.tests.server.test_serve { signing_secret as jwt_secret },
         scale.webhook.webhook.WebhookUtils.validate_api_key {
             signing_algorithm,
             signing_secret
@@ -2839,8 +2841,11 @@ graph import {
         PgIdentityStorage
     }
     server.identity.identity_storage as storage_mod --> scale.tests.data.test_identity_fail_loud;
-    server.identity.mail ++> scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
-        | scale.tests.server.test_auth_policy_startup { verification_problems }
+    server.identity.mail ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.server.test_auth_policy_startup { verification_problems },
+        scale.tests.data.test_session_epoch { RESET_PURPOSE },
+    ]
     server.identity.policy ++> [
         scale.deploy.target.kubernetes.target { minted_password },
         scale.server.extensions { check_password },
@@ -2856,8 +2861,12 @@ graph import {
         consume_challenge,
         issue_challenge
     }
-    server.identity.second_factor ++> scale.admin.admin_portal {
-        SecondFactorUnavailable
+    server.identity.second_factor ++> [
+        scale.admin.admin_portal { SecondFactorUnavailable },
+        scale.tests.data.test_session_epoch { LOGIN_CHALLENGE_PURPOSE },
+    ]
+    server.identity.session_cookie ++> scale.runtime.gateway.microservice_gateway {
+        SESSION_COOKIE
     }
     server.identity.user_manager ++> [
         runtime.runtime.JacPersistence.get_user_manager
@@ -2867,11 +2876,13 @@ graph import {
             | scale.sso.sso_auth
             | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_identity_fail_loud
+            | scale.tests.data.test_session_epoch
             | scale.tests.misc.test_shared_store_failure
             | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_sso
             | scale.tests.server.test_sso_grants
+            | scale.tests.server.test_stream_ws
             | scale.tests.server.test_ws_hardening { UserManager },
         scale.server.jobs_ext { SYSTEM_USER, UserRole },
         scale.server.webhook_ext { SYSTEM_USER },
@@ -2885,9 +2896,8 @@ graph import {
     ]
     type server.identity.user_manager ++> runtime.runtime { UserManager }
     server.middleware ++> [
-        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api {
-            jwt_middleware
-        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.data.test_session_epoch { jwt_middleware },
         scale.server.jobs_ext | scale.server.sso_ext { require_user },
     ]
     server.middleware --> scale.tests.data.test_gateway_owned_identity {
@@ -3017,8 +3027,7 @@ graph import {
         configure_access_logging
     }
     server.serving.app ++> [
-        scale.runtime.gateway.embedded_gateway
-            | scale.runtime.gateway.microservice_gateway
+        scale.runtime.gateway.microservice_gateway
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
@@ -3054,7 +3063,8 @@ graph import {
             project_data_dir,
             project_signing_secret
         },
-        scale.tests.data.test_gateway_owned_identity { jwt_encode },
+        scale.tests.data.test_gateway_owned_identity
+            | scale.tests.data.test_session_epoch { jwt_encode },
         scale.tests.server.test_admin { jwt_decode },
         scale.tests.server.test_serve {
             jwt_decode as _jwt_decode,
@@ -3148,13 +3158,6 @@ graph import {
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
             | scale.tests.microservices.test_rate_limit.next_handler { JSONResponse },
-        scale.runtime.gateway.embedded_gateway
-            | scale.server.extensions
-            | scale.tests.microservices.test_gateway_webapp {
-            JSONResponse,
-            Request,
-            Response
-        },
         scale.runtime.gateway.microservice_gateway {
             HTMLResponse,
             JSONResponse,
@@ -3162,16 +3165,20 @@ graph import {
             Response
         },
         scale.runtime.transport.http_forward { StreamingResponse },
+        scale.server.extensions | scale.tests.microservices.test_gateway_webapp {
+            JSONResponse,
+            Request,
+            Response
+        },
         scale.server.sso_ext | scale.sso.provider | scale.sso.sso_auth {
             RedirectResponse,
             Request,
             Response
         },
         scale.server.websocket_ext | scale.websocket.websocket { WebSocketDisconnect },
-        scale.sso.firebase | scale.tests.server.test_stream_ws._spawn_upstream {
-            Request,
-            Response
-        },
+        scale.sso.firebase
+            | scale.tests.data.test_session_epoch
+            | scale.tests.server.test_stream_ws._spawn_upstream { Request, Response },
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
@@ -3293,10 +3300,6 @@ graph import {
         logger as _proxy_logger
     }
     server.serving.server ++> [
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.serve {
-            PORT_RETRY_LIMIT,
-            ServingServer
-        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start
             | scale.tests.microservices.test_app_routes._expose_backend
             | scale.tests.microservices.test_gateway_webapp
@@ -3453,12 +3456,6 @@ graph import {
         client.targets.seo_build.clear_seo_files { ROBOTS_PATH, SITEMAP_PATH },
         client.targets.seo_build.render_robots { SITEMAP_PATH },
         client.targets.web_target._copy_public_dirs { ROOT_ASSET_EXTENSIONS },
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
-            SEO_ROOT_FILES
-        },
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.dispatch {
-            robots_response
-        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
             SEO_ROOT_FILES,
             robots_response
@@ -3532,7 +3529,6 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.server.test_error_envelope { ServingTestClient },
         scale.tests.data.test_eager_spawn
-            | scale.tests.microservices.test_embedded_gateway
             | scale.tests.microservices.test_microservice
             | scale.tests.server.test_served_app_route
             | scale.tests.server.test_sv_outbox_endpoints {
@@ -3970,13 +3966,18 @@ graph import cli {
         check_report.print_final_summary
             | dispatch.run_selected_command
             | shadcn.cli.run_shadcn_add { console },
-        check_report.print_guide_hint | shadcn.cli.run_shadcn_remove { console },
+        check_report.print_guide_hint
+            | dispatch.warn_unmet_jac_version
+            | shadcn.cli.run_shadcn_remove { console },
         check_report.print_native_coverage { console },
         check_report.print_placement_report { console },
         check_report.print_section { console },
         commands.execution { console, use_line_buffered_output },
     ]
-    dispatch ++> manifest_route.handle_manifest_route { run_selected_command }
+    dispatch ++> [
+        commands.execution._resolve_plan { warn_unmet_jac_version },
+        manifest_route.handle_manifest_route { run_selected_command },
+    ]
     errmap --> executor.CommandExecutor.execute { humanize_error, show_tracebacks }
     executor ++> dispatch.run_selected_command { get_executor }
     format_cache --> [
@@ -4040,7 +4041,7 @@ graph import cli {
     ]
     manifest_parse ++> dispatch.run_selected_command { build_command_parser }
     manifest_route ++> [
-        cli.jac_version { resolve_cli_version },
+        cli.jac_version | dispatch.warn_unmet_jac_version { resolve_cli_version },
         cli.start_cli { handle_manifest_route },
     ]
     manifest_route --> commands.project.update { resolve_cli_version }
@@ -4304,11 +4305,12 @@ graph import client {
     jac_client_compiler ++> compiler { JacClientCompiler }
     jac_to_js ++> jac_client_compiler { JacToJSCompiler }
     js_runtime ++> [
-        cli.run_npm_add_global | targets.node_tooling_common | vite_bundler {
+        cli.run_npm_add_global | targets.node_tooling_common {
             js_runtime_path,
             run_pm
         },
         npm_provider.regenerate_and_install { js_runtime_path },
+        vite_bundler { js_runtime_path, release_age_settings, run_pm },
     ]
     npm_provider ++> [
         client_deps._default_client_deps {
@@ -5116,9 +5118,11 @@ graph import compiler {
     }
     type driver.ifacecache ++> frontend.host { IfaceRegistry }
     driver.jir ++> [
-        backends.es.client_kernel_cache._artifact_path { running_compiler_digest },
+        backends.es.client_kernel_cache._artifact_path
+            | backends.native.link_plan.LinkPlan.plan_digest {
+            running_compiler_digest
+        },
         backends.native.link_plan { unit_source_digest },
-        backends.native.link_plan.LinkPlan.plan_digest { native_producer_digest },
         backends.native.link_plan._build_link_plan.walk_unit { module_cache_key },
         backends.native.link_plan._glue_symbols_store {
             cache_mode,
@@ -5127,7 +5131,7 @@ graph import compiler {
         },
         backends.native.link_plan._jit_image_path { cache_mode, get_jir_cache_dir },
         backends.native.link_plan._reuse_artifact { cache_mode },
-        backends.native.link_plan._write_sidecar { native_producer_digest },
+        backends.native.link_plan._write_sidecar { running_compiler_digest },
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
@@ -5405,14 +5409,18 @@ graph import compiler {
         passes.cfg_build_pass.CFGBuildPass.exit_if_else_expr {
             collect_narrowing_symbols
         },
-        types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
-            find_destructure_index_path
+        types.type_evaluator.TypeEvaluator._get_source_of_unpack_target {
+            is_star_target
         },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },
         types.type_evaluator.TypeEvaluator._narrowed_type_for_expr {
             reference_key_deps
+        },
+        types.type_evaluator.TypeEvaluator._unpack_target_path {
+            is_star_target,
+            unpack_index
         },
     ]
     expr_keys --> [
@@ -5603,6 +5611,9 @@ graph import compiler {
             native_symbol_name,
             native_unit_identity,
             native_unit_spelling
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {
+            bundled_stdlib_module_of
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._vtable_symbol {
             native_symbol_name,
@@ -6092,6 +6103,7 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._build_edge_ref { E5097 },
         backends.es.esast_gen_pass.EsastGenPass._build_osp_filter_pred { E5097 },
+        backends.es.esast_gen_pass.EsastGenPass._prepare_dynamic_import { E5117 },
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
@@ -6277,6 +6289,7 @@ graph import compiler {
             E1122,
             E1123,
             E1125,
+            E2001,
             E2018,
             E2027,
             E2055,
@@ -6340,9 +6353,11 @@ graph import compiler {
             E1157,
             E1158,
             E1159,
+            E1160,
             E1161,
             E1162,
             E1163,
+            E1164,
             E2015,
             W1036,
             W1037,
@@ -6406,7 +6421,8 @@ graph import compiler {
             E1098,
             E1114,
             E1115,
-            E1118
+            E1118,
+            E1160
         },
         types.type_evaluator {
             DiagnosticInfo,
@@ -6668,7 +6684,6 @@ graph import compiler {
             | driver.wiring.WiringSpec.wire_import { parse_woven },
         driver.wiring.canonical_wiring_source { parse_woven },
         driver.wiring.parse_records { parse_woven },
-        driver.wiring.prune_wiring_source { parse_woven },
         passes.variant_agreement_pass.VariantAgreementPass._parse_sibling
             | tests.test_module_exports { parse },
         placement.placement_solver._native_dep_scan
@@ -7131,6 +7146,7 @@ graph import compiler {
             TryStmt,
             TupleVal,
             TypeAlias,
+            UnaryExpr,
             UniNode,
             WhileStmt,
             WithStmt,
@@ -7754,7 +7770,8 @@ graph import compiler {
             UniNode,
             UniScopeNode,
             WhileStmt,
-            in_type_position
+            in_type_position,
+            names_except_type
         },
         passes.static_analysis_pass.StaticAnalysisPass._check_undefined_names {
             JsxElementName
@@ -8192,11 +8209,8 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
-            MatchMapping,
             MatchOr,
             MatchPattern,
-            MatchSequence,
-            MatchSingleton,
             MatchStmt,
             MatchWild,
             Module,
@@ -8272,9 +8286,12 @@ graph import compiler {
             ParamVar
         },
     ]
-    frontend.unitree --> types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
-        in_type_position
-    }
+    frontend.unitree --> [
+        types.type_evaluator.TypeEvaluator._get_type_of_expression_core {
+            in_type_position
+        },
+        types.type_evaluator.TypeEvaluator.get_type_of_expression { names_except_type },
+    ]
     frontend.unitree as uni ++> backends.es.backends.react
         | backends.es.backends.solid
         | backends.es.esast_gen_pass
@@ -8812,8 +8829,8 @@ graph import compiler {
             native_unit as _typed_native_unit
         },
         driver.module_analysis.run_analysis { settle_server },
-        driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
-        pkg_paths.package_host_edge { native_lowered, native_unit },
+        driver.nativecache.NativeUnitRegistry.known_native_deps
+            | pkg_paths.package_host_edge { native_unit },
     ]
     placement.placement_pins ++> [
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
@@ -9168,10 +9185,13 @@ graph import compiler {
             BINARY_OPERATOR_MAP,
             BITWISE_OPERATORS,
             COMPLEX_ARITH_OPS,
+            NONE_UNSAFE_BINARY_OPERATORS,
             SHIFT_OPERATORS,
             get_complex_arith_result_type,
             get_numeric_promotion_type,
-            get_pow_result_type
+            get_pow_result_type,
+            none_unsafe_operand,
+            operand_carries_none
         },
     ]
     types.ownership ++> passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {
@@ -9381,9 +9401,11 @@ graph import compiler {
         passes.type_checker_pass {
             AnyType,
             ClassType,
+            EnumMemberType,
             FunctionType,
             ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -9434,6 +9456,9 @@ graph import compiler {
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._erased_typevar_names {
             TypeVarType as _EtvTypeVarType
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._erased_want {
+            TypeVarType as _EwTypeVarType
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._foreign_optional_field {
             ClassType as _FofClassType,
@@ -9819,6 +9844,7 @@ graph import compiler.backends.native {
         entry_points.validate_native_application | na_compile_pass.unit_fallbacks {
             native_fallbacks_in_ir
         },
+        link_plan.LinkPlan.lowering_failures { native_lowering_issues },
         na_ir_gen_pass {
             DEMOTED_SUFFIX,
             NativeLoweringIssue,
@@ -10322,11 +10348,11 @@ graph import compiler.driver {
             module_cache_invalid_reason,
             module_cache_key,
             module_ct_deps_section,
-            native_producer_digest,
             native_section_payload,
             read_jir,
             read_native_dep_hashes,
             read_section_bytes,
+            running_compiler_digest,
             stale_ct_dep_rows,
             write_module_cache
         },
@@ -11733,7 +11759,9 @@ graph import compiler.types {
             AnyType,
             ClassType,
             FunctionType,
+            ModuleType,
             NeverType,
+            OverloadedType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -12021,6 +12049,7 @@ graph import data {
     store ++> [
         dbcatalog { ConnInfo, SCHEMA_STAMP_KEY },
         pgembed { ConnInfo },
+        pgembed.PgRuntime._ensure_database { forget_schema },
         sqlcompile { Store },
     ]
     type_identity ++> [
@@ -12089,7 +12118,7 @@ graph import dist.payload {
     assemble --> cli.dispatch { resolve_python, run_stubcat }
     fetch ++> [
         assemble { TYPESHED_VENDOR },
-        cli { fetch_bun, fetch_llvm, fetch_typeshed, typeshed_sha },
+        cli { fetch_bun, fetch_typeshed, typeshed_sha },
     ]
     fsutil ++> [
         assemble {
@@ -12129,7 +12158,6 @@ graph import dist.payload {
             extract_tar,
             file_exists,
             find_sum_line,
-            host_os_arch,
             log,
             make_dirs,
             rd_u16,
@@ -12163,7 +12191,6 @@ graph import dist.payload {
     pins ++> [
         assemble { py_ver },
         cli { host_py_minor, py_ver },
-        fetch { LlvmSlice, llvm_release, pins },
     ]
     vendor ++> [
         assemble { MUSL_ARTIFACTS },
@@ -12475,6 +12502,7 @@ graph import project {
         compiler_host.package_name_of { is_scoped_package_name },
         config.find_project_root { find_project_root as _find_project_root },
         package_scope { MOUNTS_DIR_NAME, is_scoped_package_name },
+        workspace._chain_stamp { project_root_chain },
     ]
     package_scope ++> dependencies { is_package_name }
     persistence ++> [
@@ -13688,11 +13716,7 @@ graph import scale {
         tests.microservices.test_pvc_injector { build_bootstrap_init_container },
     ]
     deploy.target.kubernetes.runtime_resolver ++> [
-        tests.deploy.test_pod_env {
-            K8sRuntimeServiceResolver,
-            build_k8s_registry,
-            resolve_peer_route
-        },
+        tests.deploy.test_pod_env { build_k8s_registry, resolve_peer_route },
         tests.deploy.test_service_routing { build_k8s_registry_routes },
     ]
     deploy.target.kubernetes.runtime_resolver --> runtime.provider.JacScaleRuntime.get_sv_service_routes {
@@ -13753,8 +13777,6 @@ graph import scale {
     deploy.target.registry --> tests.misc.test_config_validation {
         BUILTIN_TARGET_TYPES
     }
-    deploy.target.service_deployer ++> runtime.orchestrator.local_deployer
-        | runtime.orchestrator.process_manager { ServiceDeployer }
     emailer.emailer ++> [
         server.extensions { Emailer },
         tests.server.test_emailer_factory { EmailAttachment, Emailer },
@@ -14291,16 +14313,17 @@ graph import scale {
             classify_route
         },
     ]
-    runtime.gateway.embedded_gateway ++> tests.microservices.test_embedded_gateway {
-        EmbeddedGateway
-    }
-    runtime.gateway.microservice_gateway ++> tests.apps.test_fleet_from_apps
-        | tests.microservices.test_app_routes
-        | tests.microservices.test_gateway
-        | tests.microservices.test_gateway_docs_precedence
-        | tests.microservices.test_gateway_webapp
-        | tests.microservices.test_k8s_health_probe
-        | tests.server.test_static_fallback { MicroserviceGateway }
+    runtime.gateway.microservice_gateway ++> [
+        tests.apps.test_fleet_from_apps
+            | tests.microservices.test_app_routes
+            | tests.microservices.test_gateway
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.microservices.test_gateway_webapp
+            | tests.microservices.test_k8s_health_probe
+            | tests.server.test_static_fallback { MicroserviceGateway },
+        tests.data.test_session_epoch { GatewaySessionGuard, MicroserviceGateway },
+        tests.server.test_stream_ws { GatewaySessionGuard },
+    ]
     runtime.gateway.microservice_gateway --> tests.server.test_stream_ws {
         MicroserviceGateway
     }
@@ -14315,14 +14338,6 @@ graph import scale {
             | tests.microservices.test_route_learning { ServiceRouteTable },
     ]
     runtime.gateway.service_registry ++> [
-        deploy.target.kubernetes.runtime_resolver
-            | tests.deploy.test_deployer
-            | tests.deploy.test_pod_env
-            | tests.microservices.test_embedded_gateway
-            | tests.microservices.test_stop_signal_scope {
-            ServiceEntry,
-            ServiceRegistry
-        },
         tests.apps.test_fleet_from_apps
             | tests.microservices.test_app_routes
             | tests.microservices.test_boot_grace
@@ -14336,8 +14351,13 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
-        tests.microservices.test_gateway_docs_precedence
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
             | tests.server.test_static_fallback { ServiceRegistry },
+        tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
+            ServiceEntry,
+            ServiceRegistry
+        },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -14349,10 +14369,10 @@ graph import scale {
         build_gateway_metrics,
         classify_outcome
     }
-    runtime.middleware.middleware ++> [
-        tests.microservices.test_embedded_gateway { Middleware },
-        tests.microservices.test_middleware { Middleware, MiddlewareRegistry },
-    ]
+    runtime.middleware.middleware ++> tests.microservices.test_middleware {
+        Middleware,
+        MiddlewareRegistry
+    }
     runtime.middleware.rate_limit ++> tests.microservices.test_rate_limit {
         InProcessRateLimiter,
         StateBackendRateLimiter,
@@ -14363,15 +14383,16 @@ graph import scale {
         _to_ws_scheme,
         websocket_forward
     }
-    runtime.orchestrator.local_deployer ++> plugin._fleet_cmd
-        | tests.deploy.test_deployer { LocalDeployer }
     runtime.orchestrator.orchestrator ++> [
         plugin._fleet_cmd { ServiceRegistry, build_registry },
+        plugin.scale_local_serve { start_fleet_mode },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
     runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
-        tests.microservices.test_boot_grace
+        plugin._fleet_cmd
+            | tests.deploy.test_deployer
+            | tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
             | tests.microservices.test_k8s_health_probe { ServiceProcessManager },
         tests.microservices.test_stop_signal_scope {
@@ -14381,7 +14402,6 @@ graph import scale {
         },
         tests.support.stop_server { _signal_group },
     ]
-    runtime.planner.planner ++> tests.microservices.test_planner { plan_realization }
     runtime.provider ++> [
         plugin | server.inprocess.prepare_inprocess_runtime { mark_scale_runtime },
         tests.server.test_sv_auth_forward | tests.server.test_sv_streaming {
@@ -14402,7 +14422,6 @@ graph import scale {
     runtime.realizer.kubernetes_realizer --> plugin.scale_deploy { KubernetesRealizer }
     runtime.realizer.kubernetes_realizer as realizer_mod ++> tests.deploy.test_deploy_banner
         | tests.deploy.test_dry_run_purity;
-    runtime.realizer.local_realizer ++> plugin.scale_local_serve { LocalRealizer }
     runtime.routing ++> [
         admin.admin_portal._classify_path { GATEWAY_WELLKNOWN_SEGMENTS },
         tests.microservices.test_routing_guard {
@@ -14436,9 +14455,6 @@ graph import scale {
     runtime.transport.http_forward ++> tests.server.test_stream_ws {
         raw_forward,
         stream_forward
-    }
-    runtime.transport.transport ++> tests.microservices.test_embedded_gateway {
-        InProcessTransport
     }
     scheduler.scheduler ++> [
         server.jobs_ext { JacScaleScheduler, TriggerSpec },
@@ -14585,6 +14601,10 @@ graph import scale {
     ]
     websocket.backplane --> tests.server.test_ws_hardening { PgBackplane }
     websocket.protocol ++> [
+        runtime.gateway.microservice_gateway | runtime.middleware.ws_forward {
+            SESSION_RECHECK_SECONDS,
+            WS_CLOSE_UNAUTHORIZED
+        },
         server.websocket_ext {
             AUTH_HANDSHAKE_TIMEOUT_SECONDS,
             HEARTBEAT_MISSED_ALLOWED,
@@ -14599,9 +14619,15 @@ graph import scale {
             ws_receive_frame,
             ws_reject_auth,
             ws_reject_pre_accept,
-            ws_reject_registration
+            ws_reject_registration,
+            ws_session_still_current
         },
-        tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
+        tests.data.test_session_epoch { ws_heartbeat_loop, ws_session_still_current },
+        tests.server.test_ws_hardening {
+            SESSION_RECHECK_SECONDS,
+            ws_handle_control,
+            ws_heartbeat_loop
+        },
     ]
     websocket.websocket ++> [
         server.websocket_ext {
@@ -14609,6 +14635,7 @@ graph import scale {
             WebSocketConnectionManager,
             _ws_stream_result
         },
+        tests.data.test_session_epoch { ConnectionContext },
         tests.server.test_ws_hardening {
             ConnectionContext,
             WebSocketConnectionManager
@@ -14769,7 +14796,6 @@ graph import scale.deploy.target {
     }
     kubernetes.target --> factory.DeploymentTargetFactory.create { KubernetesTarget }
     registry ++> factory { DeploymentTargetRegistry }
-    service_deployer ++> kubernetes.runtime_resolver { ServiceDeployer }
 }
 
 graph import scale.deploy.target.kubernetes {
@@ -14973,9 +14999,7 @@ graph import scale.runtime {
     ]
     context.util ++> [
         cli.diagnostics | cli.plan { GATEWAY_NAME },
-        gateway.embedded_gateway
-            | gateway.microservice_gateway
-            | gateway.process_gateway {
+        gateway.microservice_gateway {
             DEFAULT_CLIENT_DIST_DIR,
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
@@ -15007,7 +15031,7 @@ graph import scale.runtime {
         },
     ]
     fleet ++> [
-        cli.plan | realizer.local_realizer { FleetSpec },
+        cli.plan { FleetSpec },
         orchestrator.orchestrator { FleetSpec, ROOT_PREFIX },
         realizer.kubernetes_realizer {
             FleetSpec,
@@ -15016,9 +15040,8 @@ graph import scale.runtime {
         },
     ]
     fleet --> provider.JacScaleRuntime.get_sv_service_routes { fleet_from_env }
-    gateway.process_gateway ++> orchestrator.orchestrator { ProcessGateway }
-    gateway.service_registry ++> orchestrator.local_deployer
-        | orchestrator.orchestrator
+    gateway.microservice_gateway ++> orchestrator.orchestrator { MicroserviceGateway }
+    gateway.service_registry ++> orchestrator.orchestrator
         | orchestrator.process_manager { ServiceEntry, ServiceRegistry, ServiceStatus }
     middleware.metrics ++> [
         gateway.microservice_gateway.MicroserviceGateway.handle_metrics {
@@ -15031,13 +15054,10 @@ graph import scale.runtime {
     middleware.metrics --> gateway.microservice_gateway.MicroserviceGateway.setup.dispatcher {
         classify_outcome
     }
-    middleware.middleware ++> [
-        gateway.gateway { MiddlewareRegistry },
-        gateway.microservice_gateway.MicroserviceGateway.setup {
-            Middleware,
-            MiddlewareRegistry
-        },
-    ]
+    middleware.middleware ++> gateway.microservice_gateway.MicroserviceGateway.setup {
+        Middleware,
+        MiddlewareRegistry
+    }
     middleware.rate_limit ++> gateway.microservice_gateway.MicroserviceGateway.setup {
         build_client_error_limit_middleware,
         build_rate_limit_middleware,
@@ -15045,11 +15065,6 @@ graph import scale.runtime {
     }
     middleware.ws_forward ++> gateway.microservice_gateway._install_ws_catchall {
         websocket_forward
-    }
-    orchestrator.orchestrator ++> realizer.local_realizer { start_fleet_mode }
-    planner.planner ++> realizer.local_realizer {
-        TOPOLOGY_MICROSERVICE,
-        plan_realization
     }
     provider ++> rpc.rpc._resolve_call_target { JacScaleRuntime }
     provider --> orchestrator.orchestrator._populate_k8s_urls { JacScaleRuntime }
@@ -15082,7 +15097,6 @@ graph import scale.runtime {
         },
     ]
     transport.transport ++> [
-        gateway.embedded_gateway { ServiceTransport },
         provider.JacScaleRuntime.sv_service_call { http_transport },
         provider.JacScaleRuntime.sv_walker_call { http_transport },
     ]
@@ -15107,7 +15121,6 @@ graph import scale.runtime.context {
 }
 
 graph import scale.runtime.gateway {
-    dispatch ++> embedded_gateway { ROUTE_PROXY, classify_route }
     dispatch --> microservice_gateway.MicroserviceGateway.setup.dispatcher {
         ROUTE_ADMIN,
         ROUTE_BUILTIN,
@@ -15116,8 +15129,6 @@ graph import scale.runtime.gateway {
         ROUTE_PROXY,
         classify_route
     }
-    gateway ++> embedded_gateway | process_gateway { Gateway }
-    microservice_gateway ++> process_gateway { MicroserviceGateway }
     openapi_agg ++> [
         microservice_gateway.MicroserviceGateway.handle_openapi { aggregate_openapi },
         route_table.learn_service_routes { SpecFetch, fetch_service_spec },
@@ -15129,7 +15140,6 @@ graph import scale.runtime.gateway {
         },
     ]
     service_registry ++> [
-        embedded_gateway | process_gateway { ServiceRegistry },
         microservice_gateway | route_table {
             ServiceEntry,
             ServiceRegistry,
@@ -15141,15 +15151,7 @@ graph import scale.runtime.gateway {
 }
 
 graph import scale.runtime.orchestrator {
-    local_deployer ++> orchestrator { LocalDeployer }
-    process_manager ++> [
-        local_deployer | orchestrator { ServiceProcessManager },
-        local_deployer.LocalDeployer.status {
-            _pid_alive,
-            _read_pidfile,
-            _read_portfile
-        },
-    ]
+    process_manager ++> orchestrator { ServiceProcessManager }
 }
 
 graph import scale.runtime.rpc {
@@ -15219,6 +15221,7 @@ graph import scale.tests {
         support { apply_fixture_policy },
     ]
     scale_test_client ++> [
+        data.test_session_epoch { fresh_totp_code },
         microservices.test_app_routes { ScaleTestClient, make_client },
         server.test_admin {
             ADMIN_BOOTSTRAP_PASSWORD,
@@ -15676,7 +15679,7 @@ graph import server.endpoints {
         second_factor { fail, ok, throttled },
     ]
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { _failure, idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller, unknown_caller }
 }
 
 graph import server.identity {
@@ -15704,8 +15707,13 @@ graph import server.identity {
         },
     ]
     identity_storage ++> [
-        second_factor { IdentityStorage },
-        user_manager { IdentityStorage, IdentityTakenError, PgIdentityStorage },
+        second_factor { IdentityStorage, session_epoch_value },
+        user_manager {
+            IdentityStorage,
+            IdentityTakenError,
+            PgIdentityStorage,
+            session_epoch_value
+        },
     ]
     mail ++> user_manager { RESET_PURPOSE }
     policy ++> [

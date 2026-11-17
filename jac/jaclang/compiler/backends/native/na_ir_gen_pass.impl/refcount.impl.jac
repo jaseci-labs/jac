@@ -1168,6 +1168,52 @@ impl NaIRGenPass._emit_magic_check(
     );
 }
 
+impl NaIRGenPass._emit_hdr_tag_is(
+    b: ir.IRBuilder,
+    raw: ir.Value,
+    names: list[str],
+    exact: bool = True,
+    untagged: bool = False
+) -> ir.Value {
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    pre_bb = b.block;
+    mc_bb = b.append_basic_block("hdrtag.mc");
+    tag_bb = b.append_basic_block("hdrtag.load");
+    cmp_bb = b.append_basic_block("hdrtag.cmp");
+    done_bb = b.append_basic_block("hdrtag.done");
+    b.cbranch(b.icmp_unsigned("!=", raw, ir.Constant(i8p, None)), mc_bb, done_bb);
+    b.position_at_end(mc_bb);
+    b.cbranch(self._emit_magic_check(b, raw, name_prefix="hdrtag.mc"), tag_bb, done_bb);
+    b.position_at_end(tag_bb);
+    tag = b.load(
+        b.bitcast(b.gep(raw, [ir.Constant(i64, HDR_TAG_OFF)]), i8p.as_pointer()),
+        name="hdrtag.name"
+    );
+    b.cbranch(b.icmp_unsigned("!=", tag, ir.Constant(i8p, None)), cmp_bb, done_bb);
+    b.position_at_end(cmp_bb);
+    strncmp = self._get_or_declare_extern("strncmp", i32, [i8p, i8p, i64]);
+    matched: (ir.Value | None) = None;
+    for text in names {
+        lit = b.gep(
+            self._get_snprintf_fmt(text), [ir.Constant(i32, 0), ir.Constant(i32, 0)]
+        );
+        n = ir.Constant(i64, len(text) + int(exact));
+        eq = b.icmp_signed("==", b.call(strncmp, [tag, lit, n]), ir.Constant(i32, 0));
+        matched = eq if matched is None else b.or_(matched, eq);
+    }
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    res = b.phi(i1, name="hdrtag.is");
+    for bb in (pre_bb, mc_bb, tag_bb) {
+        res.add_incoming(ir.Constant(i1, int(untagged)), bb);
+    }
+    res.add_incoming(matched, cmp_bb);
+    return res;
+}
+
 impl NaIRGenPass._emit_rc_retain_fast(retain_fn: ir.Function) -> None {
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();

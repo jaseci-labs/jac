@@ -553,6 +553,7 @@ impl prepare_application(
                                 default_codespace='server',
                                 force_codespace=force_codespace,
                                 skip_native_engine=program.options.skip_native_engine,
+                                retain_interfaces=program.options.retain_interfaces,
                                 entry_point=path,
                                 project_root=`root,
                                 client_source_root=source_root if client else ''
@@ -662,7 +663,10 @@ impl _prepare_revision(
     inventory_root = `root
         if client
         else os.path.join(os.path.dirname(`entry), 'pages');
-    slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
+    retain = bool(program.options.retain_interfaces);
+    slot = hashlib.sha256(
+        repr((`entry, entries, client, dev) + (("retain", ) if retain else ())).encode()
+    ).hexdigest()[:20];
     cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
     candidate: any = None;
     try {
@@ -696,7 +700,8 @@ impl _prepare_revision(
         client,
         dev
     )
-        + ((tuple(client_build_env()), ) if client else ());
+        + ((tuple(client_build_env()), ) if client else ())
+        + (("retain", ) if retain else ());
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev
@@ -796,9 +801,9 @@ impl _prepare_revision(
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
             bundler = revision.client_compiler.vite_bundler;
-            bundler.build(
-                entry_file=(revision.client_compiler.compiled_dir / '_entry.js')
-            );
+            compiled_dir = revision.client_compiler.compiled_dir;
+            assert compiled_dir is not None;
+            bundler.build(entry_file=(compiled_dir / '_entry.js'));
         }
         revision.client_compiler._emit_na_wasm(Path(`entry));
         _check(program, before);

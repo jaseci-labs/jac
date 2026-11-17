@@ -477,11 +477,14 @@ impl _with_bootstrap(init_source: str, shim: str) -> str {
         is_future = (
             isinstance(stmt, py_ast.ImportFrom) and (stmt.module == "__future__")
         );
-        if is_docstring or is_future {
-            insert_at = stmt.end_lineno + 1;
-        } else {
+        if not (is_docstring or is_future) {
             break;
         }
+        stmt_end = stmt.end_lineno;
+        if stmt_end is None {
+            break;
+        }
+        insert_at = stmt_end + 1;
     }
     lines = init_source.splitlines();
     lines[insert_at - 1:insert_at - 1] = shim.splitlines();

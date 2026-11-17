@@ -40,6 +40,26 @@ def empty_input -> int {
     return values[0].value;
 }
 
+def dict_merge_temporary -> int {
+    values: dict[str, Item] = {"a": Item(1)};
+    values |= {"a": Item(2), "b": Item(3)};
+    return values["a"].value + values["b"].value;
+}
+
+def list_repeat_alias -> int {
+    values = [Item(1)];
+    alias = values;
+    values *= 2;
+    return len(alias) * 10 + alias[1].value;
+}
+
+def list_extend_alias -> int {
+    values = [Item(1)];
+    alias = values;
+    values += [Item(2)];
+    return len(alias) * 10 + alias[1].value;
+}
+
 def copied_receiver -> int {
     values = [Item(10)].copy();
     return values[0].value;

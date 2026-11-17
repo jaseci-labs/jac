@@ -687,6 +687,14 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]]
                 _targs[0] if _targs else None
             );
         }
+        _rt = stmt.signature.return_type;
+        _rtt = _rt.type if isinstance(_rt, uni.Expr) else None;
+        if isinstance(_rtt, ClassType) and self._erased_seq_type(_rtt) is not None {
+            _rargs = _rtt.private.type_args;
+            out[f"{_mname}(return)"] = self._erased_typevar_names(
+                _rargs[0] if _rargs else None
+            );
+        }
     }
     return out;
 }
@@ -1268,10 +1276,19 @@ impl NaIRGenPass._place_unit_python(
         import from jaclang.compiler.frontend.host { active_host }
         import from jaclang.compiler.frontend.codeinfo { native_display_text }
         _why = "; ".join(_r.located() for _r in refusals);
+        _help = next(
+            iter(
+                _r.help
+                for _r in refusals
+                if _r.help
+            ),
+            None
+        );
         active_host().note(
             native_display_text(
                 f"native seam -- demoting {full_name} to Python-only "
                 f"(un-lowerable): {_why}"
+                    + (f"\nhelp: {_help}" if _help else "")
             ),
             style="warning"
         );
@@ -2307,7 +2324,9 @@ impl NaIRGenPass._codegen_instantiation(
                 val = self._erased_box(
                     val,
                     self._erased_want(
-                        self.struct_field_erased_tv[type_name][key_name], _ctor_t
+                        self.struct_field_erased_tv[type_name][key_name],
+                        _ctor_t,
+                        self._erased_field_owner(type_name, key_name)
                     )
                 );
             }
@@ -4663,7 +4682,8 @@ impl NaIRGenPass._emit_field_store(
             value,
             self._erased_want(
                 self.struct_field_erased_tv[type_name][field_name],
-                _receiver.type if _receiver is not None else None
+                _receiver.type if _receiver is not None else None,
+                self._erased_field_owner(type_name, field_name)
             )
         );
     }
