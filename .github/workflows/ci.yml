@@ -2087,9 +2087,10 @@ jobs:
 
   # Red on main while the latest finished release rehearsal
   # (release-rehearsal.yml, daily 03:00 Asia/Colombo) is failing, and on every
-  # later main run until a rehearsal passes. Pull requests skip it.
+  # later main run until a rehearsal passes. release-rehearsal-verdict.yml
+  # re-runs it when a rehearsal finishes. Pull requests skip it.
   release-rehearsal:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
