@@ -3220,6 +3220,10 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
     }
 
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) and nd.right.slices {
+        _sub_enum = self._enum_class_target(nd.target);
+        if _sub_enum is not None {
+            return self._codegen_enum_subscript(nd, _sub_enum);
+        }
         target_name = self._get_name(nd.target);
 
         _idx_list_spec = self._list_spec_of(nd.target)
