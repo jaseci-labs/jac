@@ -96,11 +96,55 @@ impl js_runtime_path -> str {
     return bun.path;
 }
 
-impl run_pm(args: list[str], cwd: str, capture: bool = False) -> tuple[int, str] {
-    import subprocess;
-    result = subprocess.run(
-        [js_runtime_path()] + list(args), cwd=cwd, text=True, capture_output=capture
+impl release_age_settings(npm: dict[str, any]) -> tuple[float, list[str]] {
+    excludes = npm.get("min_release_age_excludes", []);
+    return (
+        float(npm.get("min_release_age_days", MIN_RELEASE_AGE_DAYS)),
+        [excludes] if isinstance(excludes, str) else list(excludes)
     );
+}
+
+impl _project_npm(cwd: str) -> dict[str, any] {
+    config = get_config_for_dir(cwd) or get_config_for_dir(os.getcwd());
+    return config.get_plugin_config("client").get("npm", {}) if config else {};
+}
+
+impl run_pm(
+    args: list[str],
+    cwd: str,
+    capture: bool = False,
+    release_age: (tuple[float, list[str]] | None) = None
+) -> tuple[int, str] {
+    import subprocess;
+    runtime = js_runtime_path();
+    bunfig = os.path.join(cwd, "bunfig.toml");
+    excludes: list[str] = [];
+    if args and args[0] in ("install", "add") {
+        (days, excludes) = release_age or release_age_settings(_project_npm(cwd));
+        args = [args[0], f"--minimum-release-age={int(days * 86400)}"] + list(args[1:]);
+    }
+    owns_bunfig = False;
+    if excludes {
+        try {
+            with open(bunfig, "x", encoding="utf-8") as f {
+                f.write(
+                    f"[install]\nminimumReleaseAgeExcludes = {json.dumps(excludes)}\n"
+                );
+            }
+            owns_bunfig = True;
+        } except FileExistsError {
+            owns_bunfig = False;
+        }
+    }
+    try {
+        result = subprocess.run(
+            [runtime] + list(args), cwd=cwd, text=True, capture_output=capture
+        );
+    } finally {
+        if owns_bunfig {
+            os.remove(bunfig);
+        }
+    }
     if not capture {
         return (result.returncode, "");
     }

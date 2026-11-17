@@ -75,7 +75,6 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
-def ship_wiring(package_root: str, site_package: str);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
 def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
@@ -86,6 +85,7 @@ def precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool)
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];
 def stage_python_bin(python_dir: str, stage: str);
+def interpreter_runs(python: str, home: str) -> bool;
 def stage_tree(
     python_dir: str,
     site: str,

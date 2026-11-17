@@ -2409,3 +2409,43 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
         f"Line 24 reported: {by_line.get(24)}"
     );
 }
+
+# Bug #OPT-OPERATOR: `x + 1` on `int | None` passed the checker and crashed at
+# runtime; an operator now rejects an un-narrowed optional operand with E1160.
+test "bug_opt_operator_optional_operand_rejected" {
+    program = compile_and_check("checker_optional_operator_operand.jac");
+
+    codes = [
+        e.code.code
+        for e in program.errors_had
+        if e.code
+    ];
+
+    # Each of the 18 fail_ functions raises one E1160, with no E1055/E1002 cascade.
+    assert len(codes) == 18 and set(codes) == {"E1160"} , (
+        "Bug #OPT-OPERATOR: each fail_ function must raise exactly one "
+        f"E1160 and no cascade. Got: {codes}"
+    );
+
+    # ok_ functions stay clean.
+    with open(
+        os.path.join(CHECKER_FIXTURES, "checker_optional_operator_operand.jac")
+    ) as f {
+        lines = f.read().splitlines();
+    }
+    first_ok = 1
+        + next(
+            i
+            for (i, line) in enumerate(lines)
+            if line.startswith("def ok_")
+        );
+    ok_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and e.loc.first_line >= first_ok
+    ];
+    assert ok_errors == [] , (
+        "Bug #OPT-OPERATOR: ok_ functions must produce no errors. "
+        f"Got: {[str(e) for e in ok_errors]}"
+    );
+}

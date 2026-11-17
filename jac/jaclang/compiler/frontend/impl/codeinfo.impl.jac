@@ -814,6 +814,30 @@ impl is_selected_native_variant(path: str) -> bool {
     return False;
 }
 
+impl is_foreign_native_variant(path: str) -> bool {
+    import os;
+    name = os.path.basename(path);
+    if not name.endswith(".jac") {
+        return False;
+    }
+    parts = name[:-len(".jac")].split(".");
+    tail = 0;
+    if len(parts) >= 3
+        and parts[-2] in NATIVE_VARIANT_OSES
+        and parts[-1] in NATIVE_VARIANT_ARCHES {
+        tail = 2;
+    } elif len(parts) >= 2
+        and (parts[-1] in NATIVE_VARIANT_OSES or parts[-1] in NATIVE_VARIANT_ARCHES) {
+        tail = 1;
+    }
+    if tail == 0 {
+        return False;
+    }
+    stem = os.path.join(os.path.dirname(path), ".".join(parts[:len(parts) - tail]));
+    chosen = _native_variant_path(stem);
+    return chosen is None or real_path(chosen) != real_path(path);
+}
+
 impl is_native_variant_path(path: str) -> bool {
     return native_variant_base(path) is not None;
 }

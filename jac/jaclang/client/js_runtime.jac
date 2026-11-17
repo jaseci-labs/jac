@@ -3,7 +3,8 @@ import os;
 import platform;
 
 glob BUN_VERSION: str = "1.3.11",
-     RECORD_SUFFIX: str = ".artifact.json";
+     RECORD_SUFFIX: str = ".artifact.json",
+     MIN_RELEASE_AGE_DAYS: float = 1;
 
 def bun_name -> str;
 
@@ -34,4 +35,13 @@ obj BunArtifact(Artifact) {
 
 def js_runtime_path -> str;
 
-def run_pm(args: list[str], cwd: str, capture: bool = False) -> tuple[int, str];
+def release_age_settings(npm: dict[str, any]) -> tuple[float, list[str]];
+
+def _project_npm(cwd: str) -> dict[str, any];
+
+def run_pm(
+    args: list[str],
+    cwd: str,
+    capture: bool = False,
+    release_age: (tuple[float, list[str]] | None) = None
+) -> tuple[int, str];

@@ -178,11 +178,6 @@ def _child_tree_script(
 ) -> Path;
 
 
-def _legacy_sealer_script_for(
-    jac_path: Path, stage_root: Path, timeout_s: int
-) -> Path;
-
-
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
 
 

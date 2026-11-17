@@ -18,16 +18,16 @@ These patterns apply in any client code - plain `.jac` components inferred clien
 
 The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`SignupResult`** record. Check `signup_result.success` and read `signup_result.error` for a failure message; the record itself is truthy even when signup fails.
 
-## ⚠ Read first - signup + first `def:priv` call must be 3 awaited steps
+## ⚠ Read first - signup + first `def:protect` call must be 3 awaited steps
 
-When the same form that signs a user up also calls a `def:priv` endpoint (saving the new user's profile, preferences, default workspace), the call order is **fixed and each step MUST be awaited**:
+When the same form that signs a user up also calls a `def:protect` endpoint (saving the new user's profile, preferences, default workspace), the call order is **fixed and each step MUST be awaited**:
 
 1. `await jacSignup(email, password)` - creates the account; **no session yet**
 2. `await jacLogin(email, password)` - establishes the session cookie
-3. `await save_profile(...)` - only NOW does the `def:priv` call have an authenticated session
+3. `await save_profile(...)` - only NOW does the `def:protect` call have an authenticated session
 
 ```
-# `save_profile` here is YOUR server function (def:priv) - imported from a server module.
+# `save_profile` here is YOUR server function (def:protect) - imported from a server module.
 async def handle_register(name: str, email: str, password: str) -> str {
     # Pre-declare every var that holds an `await` result. `let` scoping in the
     # generated JS can otherwise leave them undefined at the if-check.

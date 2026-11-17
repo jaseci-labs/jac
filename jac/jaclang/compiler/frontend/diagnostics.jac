@@ -1212,6 +1212,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
      ),
+     E1160 = _err(
+         "E1160",
+         Category.TYPE,
+         "Operator \"{op}\" has a possibly-None operand of type \"{type}\"",
+         help="A `T | None` value has no arithmetic, bitwise, or shift behavior"
+         " on its None case, so the operator would crash at runtime. Guard the"
+         " value first, e.g. `if x is not None { ... }`. Equality (`==`, `!=`)"
+         " and `is None` checks work on the optional directly and need no guard."
+     ),
      E1162 = _err(
          "E1162",
          Category.TYPE,
@@ -2506,6 +2515,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Constructing '{cls}' would run '{owner}.postinit' on a Python shadow the native object cannot see",
          help="A native class over a Python-side base owns two halves: its own slots live in the native struct, the base's live on a Python shadow instance the bridge keeps beside it. Construction runs the base's `__post_init__` on that shadow, where the subclass's native slots do not exist and its method overrides are not on the shadow's class -- so a store the base initializer makes is invisible natively, and a call it dispatches reaches the base's body rather than the override. The object comes out with its declared defaults and nothing says so. Give '{cls}' a `postinit` of its own -- it suppresses the base's and can chain into it with `super.postinit()`, which does bridge -- or bring the base into the native unit so the whole chain lowers."
+     ),
+     E5117 = _err(
+         "E5117",
+         Category.CODEGEN,
+         "A dynamic import needs a literal path to a Jac module and at most fromlist=[\"Name\"]",
+         help="A dynamic import is resolved while the app is built, not while it"
+         " runs: the bundler reads the path out of the source to decide which"
+         " module to split into its own downloadable chunk. So the path has to be"
+         " a plain string written at the call site, naming a Jac module the"
+         " compiler can find, and nothing else about the call can vary.",
+         blocks_codegen=True
      ),
      E5116 = _err(
          "E5116",

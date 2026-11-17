@@ -461,9 +461,22 @@ jobs:
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
           WORK="$(mktemp -d)"
+          # From $WORK: the checkout's jac.toml would reroute the binary to
+          # this tree's compiler source.
+          cd "$WORK"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NA_DEBUG=1 "$BIN" run "$WORK/h.jac" 2>&1)"
+          echo "$out"
+          grep -qx ok <<<"$out"
+          grep -q '^\[jit\]' <<<"$out"
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run -b python "$WORK/h.jac")"
+          grep -qx ok <<<"$out"
+          # `jac install` and the Docker image run the bundled interpreter directly.
+          PY="$(find "$WORK" -path '*/rt/*/python/bin/python3*' -type f | head -1)"
+          [ -n "$PY" ]
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$PY" -c 'print("ok")')"
+          grep -qx ok <<<"$out"
 
       - name: Verify the shipped Python is the pinned CPython 3.14
         working-directory: jac
