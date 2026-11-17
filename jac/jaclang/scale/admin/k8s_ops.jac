@@ -4,7 +4,8 @@ import logging;
 glob logger = logging.getLogger(__name__);
 
 glob _config_loaded: bool = False,
-     _config_ok: bool = False;
+     _config_ok: bool = False,
+     FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
 
 
 def k8s_available -> bool;
