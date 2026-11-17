@@ -209,6 +209,7 @@ obj Session(Memory) {
     def delete(id: UUID) -> None;
     def close -> None;
     override def park_idle -> None;
+    override async def apark_idle -> None;
     def `has(id: UUID) -> bool;
     def get_roots -> Generator[Root, None, None];
     def commit(anchor: (Anchor | None) = None) -> None;

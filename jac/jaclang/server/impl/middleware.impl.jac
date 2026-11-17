@@ -133,6 +133,7 @@ impl request_context_middleware(
             }
             response = await next_fn(request);
             if response.stream is not None {
+                await scope.apark_idle();
                 response.stream = scope.lease(response.stream);
                 leased = True;
             }

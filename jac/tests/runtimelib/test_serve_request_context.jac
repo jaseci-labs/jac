@@ -805,6 +805,7 @@ test "a leased scope holds no database connection while idle, and a stream that 
             assert held_before , (
                 f"the read never checked out a connection on {type(store).__name__}"
             );
+            asyncio.run(scope.apark_idle());
             stream = scope.lease(chunks());
             held_after = store?._conn is not None;
             assert not held_after , (

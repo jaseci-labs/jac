@@ -76,5 +76,6 @@ obj Memory {
     def run_request(body: Callable) -> any;
     def close;
     def park_idle;
+    async def apark_idle;
     async def aclose;
 }

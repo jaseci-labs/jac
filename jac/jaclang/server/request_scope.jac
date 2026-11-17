@@ -19,6 +19,7 @@ obj RequestScope {
     def _discard;
     def close;
     async def aclose;
+    async def apark_idle;
     def lease(body: any) -> ScopedStream;
     def __enter__ -> ExecutionContext;
     def __exit__(

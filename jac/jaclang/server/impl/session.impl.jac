@@ -1423,6 +1423,11 @@ impl Session.run_request(body: Callable) -> any {
 }
 
 
+impl Session.apark_idle -> None {
+    await _settled_off_loop(self.park_idle);
+}
+
+
 impl Session.park_idle -> None {
     with self._lock {
         if self._store is not None {

@@ -64,12 +64,15 @@ impl RequestScope.aclose {
     }
 }
 
+impl RequestScope.apark_idle {
+    await self.context.mem.apark_idle();
+}
+
 impl RequestScope.lease(body: any) -> ScopedStream {
     if self._token is not None {
         JacRuntime.reset_request_context(self._token);
         self._token = None;
     }
-    self.context.mem.park_idle();
     return ScopedStream(scope=self, body=body);
 }
 
