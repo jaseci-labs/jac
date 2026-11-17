@@ -81,8 +81,12 @@ test "a stored anchor carries a version that advances on write" {
 by `mode`: "commit" or "rollback" name how A's transaction ended; "assign" and
 "in place" also have A write over its stale copy, which must report a conflict.
 Either way A then holds B's value, and an in-place edit on top of it is stored.
-In "deleted" and "in place deleted" (A still inside a read snapshot) B removes the counter instead, A's write over
-it (an assignment, or an in-place edit) must report a conflict, and the row stays gone after A's commit, retry and close (jac#10419)."""
+In "deleted", "in place deleted" (A still inside a read snapshot) and "open txn
+deleted" (A keeps its serializable transaction open across B's delete, so its
+first attempt fails with a serialization error and the replay is what reports
+the conflict) B removes the counter instead, A's write over it (an assignment, or
+an in-place edit) must report a conflict, and the row stays gone after A's commit,
+retry and close (jac#10419)."""
 def _after_other_commit(td: str, mode: str) {
     old = JacRuntime.exec_ctx;
     ctx1 = _ctx(td);
@@ -114,7 +118,7 @@ def _after_other_commit(td: str, mode: str) {
         );
         if mode == "rollback" {
             _as_any(ctxa.mem)._rollback_txn();
-        } elif mode != "in place deleted" {
+        } elif mode not in ["in place deleted", "open txn deleted"] {
             ctxa.mem.commit();
         }
 
@@ -137,8 +141,15 @@ def _after_other_commit(td: str, mode: str) {
         }
 
         JacRuntime.exec_ctx = ctxa;
-        if mode in ["assign", "in place", "deleted", "in place deleted"] {
-            if mode in ["assign", "deleted"] {
+        if mode
+            in [
+                "assign",
+                "in place",
+                "deleted",
+                "in place deleted",
+                "open txn deleted"
+            ] {
+            if mode in ["assign", "deleted", "open txn deleted"] {
                 _as_any(a).archetype.n = seen + 1;
                 ctxa.mem.mark_dirty(a);
             } else {
@@ -206,7 +217,8 @@ test "a write over a stale read reports instead of vanishing" {
         "assign",
         "in place",
         "deleted",
-        "in place deleted"
+        "in place deleted",
+        "open txn deleted"
     ] {
         with TemporaryDirectory() as td {
             _after_other_commit(td, mode);
