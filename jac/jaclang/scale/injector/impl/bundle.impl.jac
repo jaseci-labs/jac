@@ -1260,7 +1260,9 @@ impl pack_jab(
                 logger.warning(
                     f"Fat bundle vendoring failed; shipping a thin bundle "
                     f"(pods will install python deps from PyPI at boot). "
-                    f"Set [scale] fat_bundle = true to make this fatal. {exc}"
+                    f"Set [scale] fat_bundle = true to make this fatal, or "
+                    f"fat_bundle = false to ship thin bundles that later "
+                    f"deploys reuse. {exc}"
                 );
             }
         }
