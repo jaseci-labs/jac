@@ -1493,8 +1493,8 @@ JAC_NODE_ARCH=x86_64 jac scale deploy    # or aarch64; amd64 and arm64 also work
 
 `JAC_NODE_ARCH` also decides when the nodes report several architectures or
 none; otherwise the deploy warns and uses the deploying machine's architecture.
-A `jac-bootstrap` log saying `shipped jac binary did not run` means the pods got
-the wrong architecture: set `JAC_NODE_ARCH` and redeploy.
+A `jac-bootstrap` log with `jac: cannot execute binary file: Exec format error`
+means the pods got the wrong architecture: set `JAC_NODE_ARCH` and redeploy.
 
 ### General Debugging
 
