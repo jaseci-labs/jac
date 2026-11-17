@@ -1107,9 +1107,10 @@ impl _bundle_ships(raw: bytes, member: str) -> bool {
     }
 }
 
-impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool {
+impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool, fat: bool) -> bool {
     return _bundle_ships(raw, manifest)
-        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX));
+        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX))
+        and (not fat or _bundle_ships(raw, VENDORED_MANIFEST));
 }
 
 impl _remember_seal(
@@ -1202,8 +1203,10 @@ impl pack_jab(
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
     shared = seal_cache_setting(project_dir);
+    fat = fat_bundle_setting(project_dir)[0];
     cached = _cached_seal(_seal_cache_dir(base), key);
-    if cached is not None and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+    if cached is not None
+        and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client, fat) {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
@@ -1213,7 +1216,7 @@ impl pack_jab(
     } elif shared is not None {
         cached = _cached_seal(shared, key);
         if cached is not None
-            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client, fat) {
             logger.info(
                 f"Reusing the sealed bundle for unchanged inputs ({key[:12]}) from "
                 f"the shared seal cache {shared}; skipping the seal."
