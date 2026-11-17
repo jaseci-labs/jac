@@ -2854,7 +2854,8 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     pattern_root = pattern_root.parent;
                 }
                 mcase = pattern_root.parent;
-                if isinstance(mcase, MatchCase) and isinstance(mcase.parent, MatchStmt) {
+                if isinstance(mcase, MatchCase)
+                    and isinstance(mcase.parent, MatchStmt) {
                     bound = self._match_case_type(
                         self.get_type_of_expression(mcase.parent.target),
                         mcase,
@@ -6239,7 +6240,8 @@ impl TypeEvaluator._pattern_is_structural(pattern: MatchPattern) -> bool {
 
 impl TypeEvaluator._pattern_covers_class(pattern: MatchPattern) -> bool {
     if isinstance(pattern, MatchAs) {
-        return pattern.pattern is not None and self._pattern_covers_class(pattern.pattern);
+        return pattern.pattern is not None
+            and self._pattern_covers_class(pattern.pattern);
     }
     if isinstance(pattern, MatchOr) {
         return bool(pattern.patterns)

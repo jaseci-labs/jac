@@ -818,6 +818,7 @@ walker TypeEvaluator {
     def _match_case_type(
         subject: TypeBase, mcase: MatchCase, pattern: (MatchPattern | None)
     ) -> TypeBase | None;
+
     def _has_untyped_alternative(pattern: MatchPattern) -> bool;
     def _pattern_is_structural(pattern: MatchPattern) -> bool;
     def _pattern_covers_class(pattern: MatchPattern) -> bool;
