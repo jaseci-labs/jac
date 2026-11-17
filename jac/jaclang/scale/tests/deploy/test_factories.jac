@@ -591,15 +591,16 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
 
 test "kubernetes_target falls back to in-cluster config only when no cluster is configured" {
     # A configured cluster that fails to load must raise, not deploy to the pod's
-    # own cluster (#10776). Real client; only the machine's own config is hidden.
+    # own cluster (#10776). Real client; the machine's kubeconfig is swapped for
+    # one with only a prod context, and its in-cluster env is hidden.
     only_prod = os.path.join(tempfile.mkdtemp(), "config");
     with open(only_prod, "w") as f {
         f.write("contexts: [{name: prod}]\n");
     }
     # (kube_context, kubeconfig, the client's own error)
     rows: list[tuple[str, str, str]] = [
-        ("", "", "No configuration found"),
-        ("prod-eks", only_prod, "Expected object with name prod-eks"),
+        ("", "", "Expected key current-context"),
+        ("prod-eks", "", "Expected object with name prod-eks"),
         ("", "/nonexistent/kubeconfig", "No configuration found")
     ];
     for (kube_context, kubeconfig, client_error) in rows {
@@ -609,8 +610,7 @@ test "kubernetes_target falls back to in-cluster config only when no cluster is 
         );
         raised = "";
         with unittest.mock.patch(
-            "kubernetes.config.kube_config.KUBE_CONFIG_DEFAULT_LOCATION",
-            "/nonexistent/kubeconfig"
+            "kubernetes.config.kube_config.KUBE_CONFIG_DEFAULT_LOCATION", only_prod
         ), unittest.mock.patch.dict(os.environ, {"KUBERNETES_SERVICE_HOST": ""}) {
             del os.environ["KUBERNETES_SERVICE_HOST"];
             try {
