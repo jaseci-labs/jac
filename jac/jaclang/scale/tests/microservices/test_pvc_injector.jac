@@ -391,18 +391,20 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
 """Stands in for the loader pod: kubectl runs against a local directory."""
 obj _LoaderVolume {
     has volume_dir: str,
-        fail_prune: bool = False;
+        fail_prune: bool = False,
+        fail_copy: bool = False,
+        pods: set[str] = set();
 
     def CoreV1Api -> any {
         return self;
     }
 
-    def create_namespaced_pod(namespace: str, body: any) -> None {
-        return;
+    def create_namespaced_pod(namespace: str, body: any) {
+        self.pods.add(body["metadata"]["name"]);
     }
 
-    def delete_namespaced_pod(name: str, namespace: str) -> None {
-        return;
+    def delete_namespaced_pod(name: str, namespace: str) {
+        self.pods.discard(name);
     }
 
     def kubectl(args: list[str], kubectl: any = None, cwd: any = None) -> None {
@@ -411,6 +413,9 @@ obj _LoaderVolume {
                 BUNDLE_MOUNT_PATH, self.volume_dir
             );
             shutil.copy(Path(cwd) / args[-2], dest);
+            if self.fail_copy {
+                raise RuntimeError("kubectl command failed: cp interrupted");
+            }
             return;
         }
         script = args[-1].replace(BUNDLE_MOUNT_PATH, self.volume_dir);
@@ -474,5 +479,70 @@ test "seeding prunes the bundles no retained revision references (#10095)" {
                 f"{label}: {on_volume}"
             );
         }
+    }
+}
+
+
+def _seed_into(volume: _LoaderVolume, phase_wait: any, cluster: any) {
+    injector = PvcInjector();
+    injector._object_key = "bundles/orders/new.jab";
+    injector._bundle_bytes = b"jab";
+    with unittest.mock.patch("jaclang.scale._optdeps.kubernetes.client", volume), unittest.mock.patch.multiple(
+        "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils",
+        run_kubectl_command=volume.kubectl,
+        wait_for_pod_phase=phase_wait,
+        wait_for_pod_deletion=unittest.mock.DEFAULT
+    ) {
+        injector.seed("orders", "prod", cluster);
+    }
+}
+
+test "a loader that never runs, or a Ctrl-C while waiting, is deleted (#10785)" {
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        KubectlCluster
+    }
+    for raised in [
+        TimeoutError("pod orders-bundle-loader not Running after 180s"),
+        RuntimeError("pod orders-bundle-loader failed"),
+        KeyboardInterrupt()
+    ] {
+        with tempfile.TemporaryDirectory() as volume_dir {
+            volume = _LoaderVolume(volume_dir=volume_dir);
+            surfaced: (BaseException | None) = None;
+            try {
+                _seed_into(
+                    volume, unittest.mock.Mock(side_effect=raised), KubectlCluster()
+                );
+            } except (TimeoutError, RuntimeError, KeyboardInterrupt) as err {
+                surfaced = err;
+            }
+            assert surfaced is raised , f"{raised!r} did not reach the caller";
+            assert not volume.pods , (
+                f"{type(raised).__name__}: {sorted(volume.pods)} left behind"
+            );
+        }
+    }
+}
+
+test "a failed upload removes its own staging file and the loader (#10785)" {
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        KubectlCluster
+    }
+    with tempfile.TemporaryDirectory() as volume_dir {
+        volume = _LoaderVolume(volume_dir=volume_dir, fail_copy=True);
+        surfaced = False;
+        try {
+            _seed_into(volume, unittest.mock.DEFAULT, KubectlCluster());
+        } except RuntimeError {
+            surfaced = True;
+        }
+        assert surfaced , "the failed upload did not fail the seed";
+        left = sorted(
+            str(p.relative_to(volume_dir))
+            for p in Path(volume_dir).rglob("*")
+            if p.is_file()
+        );
+        assert left == [] , f"the failed upload left {left} on the volume";
+        assert not volume.pods , f"{sorted(volume.pods)} left behind";
     }
 }

@@ -293,9 +293,8 @@ impl PvcInjector.seed(
         }
     }
 
-    wait_for_pod_phase(core_v1, namespace, loader_pod, {"Running"});
-
     try {
+        wait_for_pod_phase(core_v1, namespace, loader_pod, {"Running"});
         retained = keep_set() if keep_set else set();
         if not retained {
             logger.info("pvc-injector: no retained bundle keys; skipping the prune.");
@@ -397,6 +396,25 @@ impl PvcInjector.seed(
                     f"pvc-injector: seeded {len(raw)} bytes to "
                     f"{pvc_name} at {bundle_path}"
                 );
+            } except RuntimeError {
+                try {
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            f"rm -f '{staging_path}'"
+                        ],
+                        kubectl=kubectl
+                    );
+                } except RuntimeError as cleanup_err {
+                    logger.debug(f"pvc-injector: staging cleanup: {cleanup_err}");
+                }
+                raise;
             } finally {
                 tmp_path.unlink(missing_ok=True);
             }
