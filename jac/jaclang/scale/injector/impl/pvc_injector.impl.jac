@@ -396,7 +396,7 @@ impl PvcInjector.seed(
                     f"pvc-injector: seeded {len(raw)} bytes to "
                     f"{pvc_name} at {bundle_path}"
                 );
-            } except RuntimeError {
+            } except (RuntimeError, KeyboardInterrupt) {
                 try {
                     run_kubectl_command(
                         [

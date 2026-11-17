@@ -392,7 +392,7 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
 obj _LoaderVolume {
     has volume_dir: str,
         fail_prune: bool = False,
-        fail_copy: bool = False,
+        copy_error: (BaseException | None) = None,
         pods: set[str] = set();
 
     def CoreV1Api -> any {
@@ -413,8 +413,8 @@ obj _LoaderVolume {
                 BUNDLE_MOUNT_PATH, self.volume_dir
             );
             shutil.copy(Path(cwd) / args[-2], dest);
-            if self.fail_copy {
-                raise RuntimeError("kubectl command failed: cp interrupted");
+            if self.copy_error is not None {
+                raise self.copy_error;
             }
             return;
         }
@@ -524,25 +524,28 @@ test "a loader that never runs, or a Ctrl-C while waiting, is deleted (#10785)" 
     }
 }
 
-test "a failed upload removes its own staging file and the loader (#10785)" {
+test "a failed or interrupted upload removes its own staging file and the loader (#10785)" {
     import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
         KubectlCluster
     }
-    with tempfile.TemporaryDirectory() as volume_dir {
-        volume = _LoaderVolume(volume_dir=volume_dir, fail_copy=True);
-        surfaced = False;
-        try {
-            _seed_into(volume, unittest.mock.DEFAULT, KubectlCluster());
-        } except RuntimeError {
-            surfaced = True;
+    for raised in [RuntimeError("kubectl command failed: cp"), KeyboardInterrupt()] {
+        with tempfile.TemporaryDirectory() as volume_dir {
+            volume = _LoaderVolume(volume_dir=volume_dir, copy_error=raised);
+            surfaced: (BaseException | None) = None;
+            try {
+                _seed_into(volume, unittest.mock.DEFAULT, KubectlCluster());
+            } except (RuntimeError, KeyboardInterrupt) as err {
+                surfaced = err;
+            }
+            label = type(raised).__name__;
+            assert surfaced is raised , f"{label} did not reach the caller";
+            left = sorted(
+                str(p.relative_to(volume_dir))
+                for p in Path(volume_dir).rglob("*")
+                if p.is_file()
+            );
+            assert left == [] , f"{label}: the upload left {left} on the volume";
+            assert not volume.pods , f"{label}: {sorted(volume.pods)} left behind";
         }
-        assert surfaced , "the failed upload did not fail the seed";
-        left = sorted(
-            str(p.relative_to(volume_dir))
-            for p in Path(volume_dir).rglob("*")
-            if p.is_file()
-        );
-        assert left == [] , f"the failed upload left {left} on the volume";
-        assert not volume.pods , f"{sorted(volume.pods)} left behind";
     }
 }
