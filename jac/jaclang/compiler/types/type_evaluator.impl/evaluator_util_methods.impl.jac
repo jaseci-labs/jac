@@ -814,7 +814,10 @@ impl TypeEvaluator._metaclass_call_constructs(
 }
 
 impl TypeEvaluator._report_rejected_method_call(
-    receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+    receiver: ClassType,
+    member: ClassMember,
+    args: (Sequence[Expr | KWPair] | None),
+    site: UniNode
 ) -> None {
     method = self.get_type_of_symbol(member.symbol);
     if member.overloads or not isinstance(method, FunctionType) {

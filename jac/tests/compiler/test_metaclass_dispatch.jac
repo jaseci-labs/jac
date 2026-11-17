@@ -92,6 +92,43 @@ test "a class is a callable with the metaclass __call__ signature" {
     assert errors == [] , errors;
 }
 
+test "every overload of a metaclass __call__ shapes the class as a callable" {
+    errors = check_src(
+        "import from typing { overload }\n"
+            + "class Meta(type) {\n"
+            + "    @overload\n    def __call__(cls: Meta, n: int) -> str;\n"
+            + "    @overload\n    def __call__(cls: Meta, s: str) -> int;\n"
+            + "    def __call__(cls: Meta, x: int | str) -> (int | str) {\n"
+            + "        return x;\n    }\n"
+            + "}\n"
+            + "class Foo(metaclass=Meta) {}\n"
+            + "def first -> Callable[[int], str] {\n    return Foo;\n}\n"
+            + "def second -> Callable[[str], int] {\n    return Foo;\n}\n"
+    );
+    assert errors == [] , errors;
+}
+
+test "arguments the metaclass __call__ rejects are an error, whatever init takes" {
+    errors = check_src(
+        "class Meta(type) {\n"
+            + "    def __call__(cls: Meta, n: int) -> str {\n        return \"s\";\n    }\n"
+            + "}\n"
+            + "class Foo(metaclass=Meta) {\n"
+            + "    def init(self: Foo, s: str) -> None {}\n"
+            + "}\n"
+            + "def probe -> None {\n    Foo(\"bad\");\n}\n"
+    );
+    assert has_code(errors, "E1053") , errors;
+}
+
+test "an enum class is still a callable that gives its members" {
+    errors = check_src(
+        "enum Color { RED = \"r\" }\n"
+            + "def probe -> Callable[[str], Color] {\n    return Color;\n}\n"
+    );
+    assert errors == [] , errors;
+}
+
 test "calling an enum class still gives an enum member" {
     errors = check_src(
         "import from enum { Enum }\n"

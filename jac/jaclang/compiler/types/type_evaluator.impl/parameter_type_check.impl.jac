@@ -669,12 +669,17 @@ impl TypeEvaluator._validate_call_type(
             return caller_type.clone_as_instance();
         }
 
-        if self._declared_metaclass_member(caller_type, "__call__") is not None {
+        if meta_call := self._declared_metaclass_member(caller_type, "__call__") {
             meta_ret = self.get_type_of_magic_method_call(
                 caller_type, "__call__", expr.params, expr
             );
-            if meta_ret is not None
-                and not self._metaclass_call_constructs(meta_ret, caller_type) {
+            if meta_ret is None {
+                self._report_rejected_method_call(
+                    caller_type, meta_call, expr.params, expr
+                );
+                return UnknownType(is_diagnosed=True);
+            }
+            if not self._metaclass_call_constructs(meta_ret, caller_type) {
                 return meta_ret;
             }
         }
@@ -1354,23 +1359,31 @@ impl TypeEvaluator._substitute_type_vars(
 impl TypeEvaluator.class_constructor_callables(
     cls_type: ClassType
 ) -> list[FunctionType] {
+    def as_callable(fn: FunctionType, ret: TypeBase) -> FunctionType {
+        return create_callable_type(
+            [
+                p.param_type if p.param_type is not None else UnknownType()
+                for p in _visible_params(fn)
+            ],
+            ret
+        );
+    }
     out: list[FunctionType] = [];
     if meta_call := self._declared_metaclass_member(cls_type, "__call__") {
-        meta_fn = self.get_type_of_symbol(meta_call.symbol);
-        if isinstance(meta_fn, FunctionType)
-            and meta_fn.return_type is not None
-            and not self._metaclass_call_constructs(meta_fn.return_type, cls_type) {
-            out.append(
-                create_callable_type(
-                    [
-                        p.param_type if p.param_type is not None else UnknownType()
-                        for p in (meta_fn.parameters or [])
-                        if not p.is_self and not p.is_cls
-                    ],
-                    meta_fn.return_type
-                )
-            );
-            return out;
+        sigs = self._member_signatures(meta_call);
+        if any(
+            s.return_type is not None
+                and not self._metaclass_call_constructs(s.return_type, cls_type)
+            for s in sigs
+        ) {
+            bound: list[FunctionType] = [];
+            for s in sigs {
+                solved = apply_solved_type_vars(
+                    s, self._receiver_type_var_bindings(s, cls_type)
+                );
+                bound.append(solved if isinstance(solved, FunctionType) else s);
+            }
+            return bound;
         }
     }
     instance = cls_type.clone_as_instance();
@@ -1382,43 +1395,33 @@ impl TypeEvaluator.class_constructor_callables(
         if member.class_type.shared.class_name == "object" {
             continue;
         }
-        raw_type = self.get_type_of_symbol(member.symbol);
-        candidates: list[TypeBase] = [];
-        if isinstance(raw_type, OverloadedType) and raw_type.overloads {
-            candidates = list(raw_type.overloads);
-        } else {
-            candidates = [raw_type];
-        }
-        for overload_sym in (member.overloads or []) {
-            overload_type = self.get_type_of_symbol(overload_sym);
-            if overload_type not in candidates {
-                candidates.append(overload_type);
-            }
-        }
-        for cand in candidates {
-            if not isinstance(cand, FunctionType) {
-                continue;
-            }
-            params = [
-                p
-                for p in (cand.parameters or [])
-                if not p.is_self and not p.is_cls
-            ];
-            out.append(
-                create_callable_type(
-                    [
-                        p.param_type if p.param_type is not None else UnknownType()
-                        for p in params
-                    ],
-                    instance
-                )
-            );
+        for cand in self._member_signatures(member) {
+            out.append(as_callable(cand, instance));
         }
         if out {
             return out;
         }
     }
     return out;
+}
+
+impl TypeEvaluator._member_signatures(member: ClassMember) -> list[FunctionType] {
+    raw_type = self.get_type_of_symbol(member.symbol);
+    candidates: list[TypeBase] = [raw_type];
+    if isinstance(raw_type, OverloadedType) and raw_type.overloads {
+        candidates = list(raw_type.overloads);
+    }
+    for overload_sym in (member.overloads or []) {
+        overload_type = self.get_type_of_symbol(overload_sym);
+        if overload_type not in candidates {
+            candidates.append(overload_type);
+        }
+    }
+    return [
+        c
+        for c in candidates
+        if isinstance(c, FunctionType)
+    ];
 }
 
 impl TypeEvaluator._find_matching_raw_constructor(
