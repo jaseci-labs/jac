@@ -13864,7 +13864,8 @@ graph import scale {
     injector.binary --> [
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             node_arch,
-            preflight_pod_runtime
+            preflight_pod_runtime,
+            resolve_pod_base_image
         },
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
             deploy_generation_refusal

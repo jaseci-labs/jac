@@ -694,6 +694,8 @@ test "a shipped jac.toml value the pods cannot resolve stops the deploy before p
                 binary_mod, "deploy_generation_refusal", return_value=""
             ), mock.patch.object(
                 binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+            ), mock.patch.object(
+                binary_mod, "resolve_pod_base_image", return_value="img"
             ), mock.patch.object(binary_mod, "node_arch", return_value="x86_64"), mock.patch.object(
                 DatabaseProvisioner,
                 "provision",
