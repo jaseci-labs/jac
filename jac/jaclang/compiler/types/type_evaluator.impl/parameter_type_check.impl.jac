@@ -1249,22 +1249,7 @@ impl TypeEvaluator._type_args_from_init_overload(
     if init_member is None {
         return [];
     }
-    overloads: list[FunctionType] = [];
-    raw_type = self.get_type_of_symbol(init_member.symbol);
-    if isinstance(raw_type, OverloadedType) {
-        for raw_overload in raw_type.overloads {
-            overloads.append(raw_overload);
-        }
-    } elif isinstance(raw_type, FunctionType) {
-        overloads.append(raw_type);
-    }
-    for overload_sym in (init_member.overloads or []) {
-        overload_type = self.get_type_of_symbol(overload_sym);
-        if isinstance(overload_type, FunctionType) and overload_type not in overloads {
-            overloads.append(overload_type);
-        }
-    }
-    for overload in overloads {
+    for overload in self._member_signatures(init_member) {
         ctor_overload = self._strip_implicit_self_cls(overload);
         arg_param_match = self.match_args_to_params(
             expr.params, expr, ctor_overload, checking_overload=True
