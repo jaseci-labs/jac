@@ -1615,13 +1615,6 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     for (symbol, address) in symbols.items() {
         engine.add_global_mapping(merged.get_function(symbol), address);
     }
-    if _platform_of(plan.triple) == "macho" and _has_global(merged, "__dso_handle") {
-        image_header = ctypes.CDLL(None)._dyld_get_image_header;
-        image_header.restype = ctypes.c_void_p;
-        engine.add_global_mapping(
-            merged.get_global_variable("__dso_handle"), image_header(0)
-        );
-    }
     if has_rc_flag {
         _mark_host_rc_threaded(engine);
     }
