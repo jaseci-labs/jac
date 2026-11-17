@@ -116,6 +116,10 @@ def test_error_wrong_type_in_case(
             c: Cat = animal;  # <-- Error: Dog cannot assign to Cat
             return c.meow();
 
+        case Cat() as cat:
+            d: Dog = cat;  # <-- Error: Cat cannot assign to Dog
+            return d.bark();
+
         case _:
             return "";
 

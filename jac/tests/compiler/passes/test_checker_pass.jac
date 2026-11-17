@@ -1104,13 +1104,19 @@ Cannot return int, expected bool
              "union_subclass_to_base_assignment",
              "checker",
              "checker_match_narrowing.jac",
-             1,
+             2,
              True,
              [
                  (
                      0,
                      """
         c: Cat = animal;  # <-- Error: Dog cannot assign to Cat
+    """
+                 ),
+                 (
+                     1,
+                     """
+        d: Dog = cat;  # <-- Error: Cat cannot assign to Dog
     """
                  )
              ]
@@ -2578,7 +2584,7 @@ test "inferred_local_type_frozen" {
     # An unannotated local is frozen to the type inferred at its first
     # binding; reassigning an incompatible type is an error, and so is a
     # `for` target that reuses the name, unannotated or annotated (#9972),
-    # or any other binder that writes it (#10405).
+    # or any other binder that writes it, match captures included (#10405).
     # The `None`-sentinel pattern is the one exception (the type evolves).
     # Every `# <-- Error` line in the fixture carries one E1001, in line order.
     path = os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac");
@@ -2606,6 +2612,7 @@ test "inferred_local_type_frozen" {
             'Literal["x"] to Label',
             "TextIOWrapper to Label",
             "ValueError to Label",
+            "str to Label",
             "list[",
             'Literal["x"] to Label',
             'Literal["x"] to Label',
