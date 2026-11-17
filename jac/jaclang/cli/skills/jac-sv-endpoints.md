@@ -148,18 +148,20 @@ import hmac;
 import from http { HTTPMethod }
 import from jaclang.server.exchange { current_request, respond }
 
+glob SHOP_SECRETS: dict[str, str] = {};
+
 @restspec(method=HTTPMethod.POST, path="/hooks/shopify/orders", envelope=False)
 def:pub shopify_orders_hook -> str {
     request = current_request();
-    secret = shop_secret(request.header("x-shopify-shop-domain") or "");
+    if request is None {
+        return "no request";
+    }
+    secret = SHOP_SECRETS.get(request.header("x-shopify-shop-domain") or "", "");
     expected = base64.b64encode(
         hmac.new(secret.encode(), request.body, hashlib.sha256).digest()
     ).decode();
-    if not secret
-        or not hmac.compare_digest(
-            (request.header("x-shopify-hmac-sha256") or "").encode(),
-            expected.encode()
-        ) {
+    provided = request.header("x-shopify-hmac-sha256") or "";
+    if not secret or not hmac.compare_digest(provided.encode(), expected.encode()) {
         respond(status=401);
         return "unverified";
     }
