@@ -1231,6 +1231,17 @@ test "a listing stays on this worker's runs while its record is failing" {
     )
         == 1 , (records.messages);
     assert any("succeeding again" in m for m in records.messages) , records.messages;
+
+    newer = '{"tick": "new", "worker": "pod-b:2", "status": "ok", "error": "", "finished_at": "9999-01-01T00:00:00+00:00"}';
+    def newer_recall(key: str) -> (str | None) {
+        return newer;
+    }
+    sched.recall = newer_recall;
+    taken = sched.last_run_of("mailer");
+    assert taken is not None and taken["worker"] == "pod-b:2" , (
+        "a shared record newer than this worker's own run must be listed even "
+        f"while this worker's writes are failing: {taken}"
+    );
 }
 
 

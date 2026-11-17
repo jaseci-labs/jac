@@ -758,7 +758,7 @@ impl Scheduler._remember(outcome: RunOutcome) -> None {
 
 impl Scheduler.last_run_of(name: str) -> (dict[str, any] | None) {
     key = self._last_key(name);
-    if self.recall is not None and key not in self._failing_claims {
+    if self.recall is not None {
         recall_fn: any = self.recall;
         read_key = f"{key}#read";
         try {
@@ -767,6 +767,13 @@ impl Scheduler.last_run_of(name: str) -> (dict[str, any] | None) {
             if read_key in self._failing_claims {
                 self._failing_claims.discard(read_key);
                 logger.info(f"last-run reads for '{name}' are succeeding again");
+            }
+            local = self._last.get(name);
+            if key in self._failing_claims and local is not None {
+                shared_at = (answer or {}).get("finished_at") or "";
+                if shared_at <= local["finished_at"] {
+                    return local;
+                }
             }
             return answer;
         } except Exception as e {
