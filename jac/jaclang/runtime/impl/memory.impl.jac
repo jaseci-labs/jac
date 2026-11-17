@@ -225,6 +225,9 @@ impl Memory.run_request(body: Callable) -> any {
     return result;
 }
 
+impl Memory.park_idle {}
+
+
 impl Memory.close {
     self.commit();
     self.__mem__.clear();

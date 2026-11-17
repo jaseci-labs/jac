@@ -99,6 +99,7 @@ obj Store {
     def in_txn -> bool abst;
     def txn_isolation -> (TxnIsolation | None) abst;
     def txn_serial -> int;
+    def park_idle -> None;
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] abst;
     def adjacency(
         node_id: UUID, after: (tuple[int, UUID] | None), limit: int
@@ -171,6 +172,7 @@ obj PgStore(Store) {
     def in_txn -> bool;
     def txn_isolation -> (TxnIsolation | None);
     def txn_serial -> int;
+    def park_idle -> None;
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow];
     def adjacency(
         node_id: UUID, after: (tuple[int, UUID] | None), limit: int

@@ -782,6 +782,53 @@ test "a stream delivered to its end has its write committed when its scope close
 }
 
 
+test "a leased scope holds no database connection while idle, and a stream that writes reacquires one and commits" {
+    with TemporaryDirectory() as project {
+        seed: UUID;
+        with _open_scope(project) {
+            seed = _write_note("seed");
+        }
+        for writes in [False, True] {
+            written: list[UUID] = [];
+            def chunks -> Generator[str, None, None] {
+                if writes {
+                    written.append(_write_note("late"));
+                }
+                yield 'only';
+            }
+            scope = _open_scope(project);
+            session: any = scope.context.mem;
+            session.get(seed);
+            session.commit();
+            store: any = session._store;
+            held_before = store?._conn is not None;
+            assert held_before , (
+                f"the read never checked out a connection on {type(store).__name__}"
+            );
+            stream = scope.lease(chunks());
+            held_after = store?._conn is not None;
+            assert not held_after , (
+                f"a leased scope kept its connection (held before lease: {held_before})"
+            );
+            async def drain {
+                token = Jac.push_request_context(scope.context);
+                try {
+                    async for _ in stream {}
+                } finally {
+                    Jac.reset_request_context(token);
+                }
+            }
+            asyncio.run(drain());
+            if writes {
+                assert _committed(project, written[0]) , (
+                    "a stream that wrote after its connection was parked lost the write"
+                );
+            }
+        }
+    }
+}
+
+
 test "a stream inside another open unit leaves that unit's work to the unit, however the stream ends" {
     nested: list[UUID] = [];
 

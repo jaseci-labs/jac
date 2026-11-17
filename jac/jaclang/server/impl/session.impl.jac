@@ -1423,6 +1423,15 @@ impl Session.run_request(body: Callable) -> any {
 }
 
 
+impl Session.park_idle -> None {
+    with self._lock {
+        if self._store is not None {
+            self._store.park_idle();
+        }
+    }
+}
+
+
 impl Session.close -> None {
     try {
         self.commit();
