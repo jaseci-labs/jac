@@ -85,6 +85,7 @@ def precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool)
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];
 def stage_python_bin(python_dir: str, stage: str);
+def interpreter_runs(python: str, home: str) -> bool;
 def stage_tree(
     python_dir: str,
     site: str,
