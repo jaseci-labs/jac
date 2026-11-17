@@ -3521,7 +3521,7 @@ graph import {
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
     testing.test_runner ++> [
-        cli.commands.analysis.test { run_tests },
+        cli.commands.analysis.test { discover, run_tests },
         scale.tests.support { STRICT_ENV, strict_mode },
     ]
     testing.testkit ++> [
@@ -3977,6 +3977,7 @@ graph import cli {
     ]
     dispatch ++> [
         commands.analysis.check { warn_unmet_project_pins },
+        commands.analysis.lint { warn_unmet_project_pins },
         commands.analysis.test { warn_unmet_project_pins },
         commands.execution._resolve_plan { warn_unmet_jac_version },
         manifest_route.handle_manifest_route { run_selected_command },

@@ -2322,12 +2322,16 @@ test "jac check and jac test warn with the pin of the project that owns each fil
                     + '"\n'
             );
             (proj / "main.jac").write_text('with entry {\n    print("ran");\n}\n');
-            (proj / "checks.jac").write_text('test "holds" {\n    assert 1 == 1;\n}\n');
+            (proj / "test_checks.jac").write_text(
+                'test "holds" {\n    assert 1 == 1;\n}\n'
+            );
         }
         # From a project whose pin is met, the pinned file's own project counts.
         for args in [
             ["check", str(pinned / "main.jac")],
-            ["test", str(pinned / "checks.jac")]
+            ["check", str(pinned / "main.jac"), "--lint"],
+            ["test", str(pinned / "test_checks.jac")],
+            ["test", str(base)]
         ] {
             run = subprocess.run(
                 jac_command(*args), cwd=str(shell), capture_output=True, text=True
@@ -2338,7 +2342,7 @@ test "jac check and jac test warn with the pin of the project that owns each fil
         # From the pinned project, a file of a project whose pin is met gets no warning.
         for args in [
             ["check", str(shell / "main.jac")],
-            ["test", str(shell / "checks.jac")]
+            ["test", str(shell / "test_checks.jac")]
         ] {
             run = subprocess.run(
                 jac_command(*args), cwd=str(pinned), capture_output=True, text=True
