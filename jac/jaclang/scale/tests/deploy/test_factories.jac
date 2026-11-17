@@ -1,7 +1,9 @@
 import importlib;
+import os;
 import sys;
+import tempfile;
 import unittest.mock;
-import from contextlib { contextmanager }
+import from contextlib { contextmanager, nullcontext }
 import from kubernetes.client.exceptions { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
 import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
@@ -588,15 +590,27 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
 }
 
 test "kubernetes_target falls back to in-cluster config only when no cluster is configured" {
-    # (kube_context, kubeconfig, falls back). A configured cluster that fails to
-    # load must raise, not deploy to the pod's own cluster (#10776).
-    rows: list[tuple[str, str, bool]] = [
-        ("", "", True),
-        ("prod-eks", "", False),
-        ("", "/etc/jac/kubeconfig", False)
+    # A configured cluster that fails to load must raise, not deploy to the pod's
+    # own cluster (#10776). Configured rows use the real client; the nothing-set
+    # row fakes it, since the client reads the ambient KUBECONFIG at import time.
+    only_prod = os.path.join(tempfile.mkdtemp(), "config");
+    with open(only_prod, "w") as f {
+        f.write(
+            "apiVersion: v1\nkind: Config\ncurrent-context: prod\n"
+            "clusters: [{name: prod, cluster: {server: 'https://127.0.0.1:1'}}]\n"
+            "users: [{name: prod, user: {token: x}}]\n"
+            "contexts: [{name: prod, context: {cluster: prod, user: prod}}]\n"
+        );
+    }
+    # (kube_context, kubeconfig, the client's own error)
+    rows: list[tuple[str, str, str]] = [
+        ("", "", "Expected object with name prod-eks"),
+        ("prod-eks", only_prod, "Expected object with name prod-eks"),
+        ("", "/nonexistent/kubeconfig", "No configuration found")
     ];
-    for (kube_context, kubeconfig, falls_back) in rows {
+    for (kube_context, kubeconfig, client_error) in rows {
         label = f"kube_context={kube_context!r} kubeconfig={kubeconfig!r}";
+        configured = bool(kube_context or kubeconfig);
         target = DeploymentTargetFactory.create(
             "kubernetes",
             {
@@ -614,18 +628,28 @@ test "kubernetes_target falls back to in-cluster config only when no cluster is 
         fake_cfg.load_incluster_config.side_effect = ConfigException(
             "Service host/port is not set."
         );
+        patcher = (
+            nullcontext()
+                if configured
+                else unittest.mock.patch.object(
+                    kt_module, "k8s_cluster_config", fake_cfg
+                )
+        );
         raised = "";
-        with unittest.mock.patch.object(kt_module, "k8s_cluster_config", fake_cfg) {
+        with patcher {
             try {
                 _as_any(target)._load_cluster_config();
             } except ConfigException as e {
                 raised = str(e);
             }
         }
-        assert fake_cfg.load_incluster_config.call_count
-            == (1 if falls_back else 0) , label;
+        if configured {
+            assert "Could not load the configured" in raised , f"{label}: {raised}";
+        } else {
+            assert fake_cfg.load_incluster_config.call_count == 1 , label;
+        }
         # Either way the error names the kubeconfig failure, not only the in-cluster one.
-        assert "Expected object with name prod-eks" in raised , f"{label}: {raised}";
+        assert client_error in raised , f"{label}: {raised}";
         for value in (kube_context, kubeconfig) {
             assert value in raised , f"{label}: {raised}";
         }
