@@ -43,15 +43,19 @@ def _serve(project: Path, topology: str) -> tuple[any, str] {
     server = start_server(project, project / "consumer.jac", port);
     base = f"http://127.0.0.1:{port}";
     if topology == "fleet" {
-        deadline = time.monotonic() + 300.0;
-        health = requests.get(f"{base}/healthz", timeout=5).json();
-        while health.get("status") != "healthy" and time.monotonic() < deadline {
-            time.sleep(1);
+        try {
+            deadline = time.monotonic() + 300.0;
             health = requests.get(f"{base}/healthz", timeout=5).json();
-        }
-        if health.get("status") != "healthy" {
+            while health.get("status") != "healthy" and time.monotonic() < deadline {
+                time.sleep(1);
+                health = requests.get(f"{base}/healthz", timeout=5).json();
+            }
+            if health.get("status") != "healthy" {
+                raise RuntimeError(f"fleet served with apps still booting: {health}");
+            }
+        } except BaseException {
             stop_server(server);
-            raise RuntimeError(f"fleet served with apps still booting: {health}");
+            raise;
         }
     }
     return (server, base);
