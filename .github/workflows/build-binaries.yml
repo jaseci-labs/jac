@@ -472,6 +472,11 @@ jobs:
           grep -q '^\[jit\]' <<<"$out"
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run -b python "$WORK/h.jac")"
           grep -qx ok <<<"$out"
+          # `jac install` and the Docker image run the bundled interpreter directly.
+          PY="$(find "$WORK" -path '*/rt/*/python/bin/python3*' -type f | head -1)"
+          [ -n "$PY" ]
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$PY" -c 'print("ok")')"
+          grep -qx ok <<<"$out"
 
       - name: Verify the shipped Python is the pinned CPython 3.14
         working-directory: jac
