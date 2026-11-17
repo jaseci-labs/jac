@@ -233,7 +233,7 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
         discovery.options = precompile_context(
             os.path.join(package_dir, '__init__.jac'), package_dir, discovery, app
         ).options;
-        with served_codespace(package_dir) {
+        with served_codespace(package_dir, app) {
             facts = discover_spaces(candidates, discovery);
         }
         _placement_cache[key] = facts;
@@ -469,8 +469,18 @@ impl precompile_native_unit(jac_path: str, collect: bool = True) -> str {
     return ent.digest if ent is not None else "";
 }
 
-impl _served_codespace(pkg_root: str) -> str {
-    return 'server' if (Path(pkg_root) / SERVE_MANIFEST_REL).is_file() else '';
+impl _served_codespace(pkg_root: str, app: str = "") -> str {
+    pkg_path = Path(pkg_root);
+    if not (pkg_path / SERVE_MANIFEST_REL).is_file() {
+        return '';
+    }
+    key = (os.path.realpath(pkg_root), app);
+    if key not in _served_kinds {
+        _served_kinds[key] = str(
+            app_metadata(pkg_path, pkg_path.name, app).get("kind") or "cli"
+        );
+    }
+    return 'server' if jab_serves(_served_kinds[key]) else '';
 }
 
 impl _served_client_root(pkg_root: str) -> str {
@@ -505,12 +515,15 @@ impl precompile_context(
     if compiler.selfhost.is_selfhost(selected) {
         return selected;
     }
+    source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
+        os.path.realpath(jac_path), app
+    );
     entry_path = os.path.join(pkg_root, '__init__.jac');
     if os.path.isfile(os.path.join(pkg_root, 'jac.toml')) {
         import from jaclang.project.config { get_config_for_path }
         config = get_config_for_path(Path(pkg_root));
         if config is not None {
-            entry_path = config.resolve_app(app).entry_path(pkg_root);
+            entry_path = config.resolve_app(source_app).entry_path(pkg_root);
         }
     }
     options = bind_options(
@@ -520,7 +533,7 @@ impl precompile_context(
             entry_point=entry_path,
             project_root=pkg_root,
             skip_native_engine=True,
-            default_codespace=_served_codespace(pkg_root),
+            default_codespace=_served_codespace(pkg_root, app),
             client_source_root=_served_client_root(pkg_root)
         )
     );
@@ -537,11 +550,8 @@ impl precompile_unit_context(
     program = _unit_program[0];
     compiler = program._get_compiler();
     compiler.ensure_stub_catalog();
-    source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
-        os.path.realpath(jac_path), app
-    );
-    with served_codespace(pkg_root) {
-        selected = precompile_context(jac_path, pkg_root, program, source_app);
+    with served_codespace(pkg_root, app) {
+        selected = precompile_context(jac_path, pkg_root, program, app);
         compiler.unit_collect = collect;
         owner_options = owner_scope_options(selected);
         with cache_scope(owner_options) {
@@ -561,9 +571,9 @@ impl precompile_unit_context(
     }
 }
 
-impl served_codespace(pkg_root: str) -> Iterator[None] {
+impl served_codespace(pkg_root: str, app: str = "") -> Iterator[None] {
     previous = get_effective_default_codespace_override();
-    codespace = _served_codespace(pkg_root);
+    codespace = _served_codespace(pkg_root, app);
     if codespace {
         set_effective_default_codespace(codespace);
     }
@@ -1089,7 +1099,7 @@ impl seal_finalize(
     identity = compiler_identity();
     _phase("completeness check");
     foreign: list[str] = [];
-    with served_codespace(str(pkg_path)) {
+    with served_codespace(str(pkg_path), app) {
         for p in sealable_sources(str(pkg_path), app) {
             rel = Path(p).relative_to(pkg_path);
             jir = precompiled_dir / pyver / rel.with_suffix(".jir");
@@ -1657,7 +1667,7 @@ impl run_precompile(
         source = pkg_path / rel_jir.with_suffix(".jac");
         if keep_seeded and source.is_file() {
             existing = old_jir.read_bytes();
-            with served_codespace(package_dir) {
+            with served_codespace(package_dir, app) {
                 seeded = precompiled_jir_matches_source(
                     existing, str(source), package_root=package_dir
                 );
@@ -1694,7 +1704,7 @@ impl run_precompile(
     }
 
     def unit_job(request: dict[(str, any)]) -> dict[(str, any)] {
-        with served_codespace(package_dir) {
+        with served_codespace(package_dir, app) {
             jac_path = str(request["path"]);
             rel = Path(jac_path).relative_to(pkg_path);
             jir_path = out_dir / rel.with_suffix(".jir");

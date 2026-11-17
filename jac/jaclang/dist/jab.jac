@@ -20,3 +20,5 @@ def _materialize_jab_data(
 ) -> Path;
 
 def jab_app_meta(img_root: Path) -> dict[str, any];
+
+def jab_serves(kind: str) -> bool;

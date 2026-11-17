@@ -110,7 +110,7 @@ impl run_jab_image(
         console.error(f"{label}: sealed entry '{entry_rel}' missing from image.");
         return 1;
     }
-    servable = kind in ["service", "service-mesh", "web-app", "web-static"];
+    servable = jab_serves(kind);
     if serve_only or servable {
         (arg_port, accepted) = _bundle_serve_args(args, label);
         if not accepted {
