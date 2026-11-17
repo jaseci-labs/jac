@@ -632,7 +632,7 @@ Controls the base images used for the application pod and init containers. Overr
 
 | TOML Key  | Default | Description |
 |----------|---------|-------------|
-| `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). Falls back to `python:3.12-slim` when the registry is unreachable and always on the local-binary channel |
+| `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). When Docker Hub cannot be reached, the image is used unpinned. When Docker Hub reports the tag unpublished, pods fall back to `python:3.12-slim`, except on the experimental channel, where the deploy stops. Always `python:3.12-slim` on the local-binary channel |
 | `wait_image` | `busybox:1.36` | Init container image used for dependency wait checks (Postgres readiness) |
 
 **To change in `jac.toml`:**
@@ -1170,8 +1170,9 @@ Instead, a deploy:
 3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or the
    tag matching the channel/version pin: `:dev`, `:experimental-<PR#>`,
    `:<x.y.z>`), pinned to an immutable `@sha256:` digest when Docker Hub is
-   reachable (experimental builds excepted) and falling back to
-   `python:3.12-slim` when it is not.
+   reachable (experimental builds excepted) and used unpinned when it is not.
+   A tag Docker Hub reports as unpublished falls back to `python:3.12-slim`;
+   on the experimental channel the deploy stops instead.
 
 Override the base image with `python_image` if you need your own:
 
