@@ -2248,6 +2248,65 @@ test "jac check of a directory skips the build directory and dependency trees" {
     }
 }
 
+test "jac run warns when the running toolchain does not satisfy the project's jac-version" {
+    project = Path(tempfile.mkdtemp()).resolve();
+    try {
+        (project / "main.jac").write_text('with entry {\n    print("ran");\n}\n');
+        outcomes: dict[str, any] = {};
+        for pin in ["<=0.0.1", ">=0.0.1"] {
+            (project / "jac.toml").write_text(
+                '[project]\nname = "pinned"\nversion = "0.1.0"\njac-version = "'
+                    + pin
+                    + '"\n'
+            );
+            outcomes[pin] = subprocess.run(
+                jac_command("run", "main.jac"),
+                cwd=str(project),
+                capture_output=True,
+                text=True
+            );
+        }
+        unmet = outcomes["<=0.0.1"];
+        assert unmet.returncode == 0 and "ran" in unmet.stdout , unmet.stderr;
+        assert "this project targets jac <=0.0.1" in unmet.stderr , unmet.stderr;
+        met = outcomes[">=0.0.1"];
+        assert met.returncode == 0 and "ran" in met.stdout , met.stderr;
+        assert "this project targets jac" not in met.stderr , met.stderr;
+
+        # Run from outside the project: the pin that counts is the one of the
+        # project that owns the file, not the shell's.
+        (project / "jac.toml").write_text(
+            '[project]\nname = "pinned"\nversion = "0.1.0"\njac-version = "<=0.0.1"\n'
+        );
+        outside = subprocess.run(
+            jac_command("run", str(project / "main.jac")),
+            cwd=str(project.parent),
+            capture_output=True,
+            text=True
+        );
+        assert outside.returncode == 0 and "ran" in outside.stdout , outside.stderr;
+        assert "this project targets jac <=0.0.1" in outside.stderr , outside.stderr;
+
+        # The default app and a named app are run without a file argument.
+        (project / "jac.toml").write_text(
+            '[project]\nname = "pinned"\nversion = "0.1.0"\njac-version = "<=0.0.1"\n'
+                + 'default-app = "tool"\n\n[apps.tool]\nkind = "cli"\nentry-point = "main"\n'
+        );
+        for args in [[], ["tool"]] {
+            routed = subprocess.run(
+                jac_command("run", *args),
+                cwd=str(project),
+                capture_output=True,
+                text=True
+            );
+            assert routed.returncode == 0 and "ran" in routed.stdout , routed.stderr;
+            assert "this project targets jac <=0.0.1" in routed.stderr , routed.stderr;
+        }
+    } finally {
+        shutil.rmtree(project, ignore_errors=True);
+    }
+}
+
 test "jac check shows warnings for files with warnings only" {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
