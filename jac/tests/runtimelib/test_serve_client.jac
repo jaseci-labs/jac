@@ -589,6 +589,28 @@ test "serve call function" {
         data2 = response2.data;
         assert "result" in data2;
         assert data2["result"] == "Hello, World!";
+        # A JSON body binds a datetime from its ISO string and range-checks a u8.
+        for (body, want) in [
+            (
+                {"when": "2026-01-02T10:00:00", "seats": 3},
+                {
+                    "when": "2026-01-02T10:00:00",
+                    "seats": 3,
+                    "kinds": ["datetime", "int"]
+                }
+            ),
+            ({"when": "2026-01-02T10:00:00", "seats": 300}, None),
+            ({"when": "2026-01-02T10:00:00", "seats": "abc"}, None),
+            ({"when": "next tuesday", "seats": 3}, None)
+        ] {
+            response = client.post("/function/book_slot", json=body);
+            if want is None {
+                assert response.status_code == 422 , f"{body}: {response.status_code}";
+            } else {
+                assert response.ok , f"{body}: {response.status_code} {response.json()}";
+                assert response.data["result"] == want , f"{body}: {response.data}";
+            }
+        }
         client.close();
     }
 }
