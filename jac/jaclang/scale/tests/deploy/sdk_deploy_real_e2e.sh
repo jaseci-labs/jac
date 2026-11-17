@@ -28,6 +28,7 @@ export SDK_DEPLOY_NAMESPACE="${SDK_DEPLOY_NAMESPACE:-jac-sdk-e2e}"
 export SDK_DEPLOY_APP_NAME="${SDK_DEPLOY_APP_NAME:-sdk-todo}"
 export SDK_DEPLOY_GREETING="${SDK_DEPLOY_GREETING:-howdy}"
 export SDK_DEPLOY_SECRET="${SDK_DEPLOY_SECRET:-sdk-e2e-secret}"
+export JAC_SCALE_ADMIN_PASSWORD="${JAC_SCALE_ADMIN_PASSWORD:-SdkE2eAdmin-pw-9673}"
 NAMESPACE="${SDK_DEPLOY_NAMESPACE}"
 APP="${SDK_DEPLOY_APP_NAME}"
 
@@ -245,6 +246,34 @@ fi
 echo "  walker journey OK"
 
 _t "journey OK"
+# #9673: with logs off the admin Logs page reads the pods instead of Loki.
+admin_login() {
+    ADMIN_TOKEN=$(curl -fsS -X POST "${APP_URL}/admin/login" -H 'content-type: application/json' \
+        -d "{\"username\":\"admin\",\"password\":\"${JAC_SCALE_ADMIN_PASSWORD}\"}" \
+        | python3 -c "import json, sys; print((json.load(sys.stdin).get('data') or {}).get('token', ''))")
+    if [ -z "${ADMIN_TOKEN}" ]; then echo "FAIL: /admin/login returned no token" >&2; exit 1; fi
+}
+admin_logs() {
+    curl -s --max-time 60 -o "$1" -w "%{http_code}" -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+        "${APP_URL}/admin/logs?since=30m&limit=50"
+}
+expect_logs_502() {
+    local body code
+    body="$(mktemp)"
+    code=$(admin_logs "${body}" || true)
+    if [ "${code}" != "502" ] || ! grep -qF "$1" "${body}"; then
+        echo "FAIL: /admin/logs returned ${code}, expected a 502 naming '$1':" >&2
+        head -c 400 "${body}" >&2
+        rm -f "${body}"
+        dump_state
+        exit 1
+    fi
+    rm -f "${body}"
+}
+echo "=== admin Logs page with logs off and no kubernetes client (#9673) ==="
+admin_login
+expect_logs_502 "deploy.k8s"
+echo "  the page names the missing capability instead of an absent Loki"
 # The #8115 repro end to end: change only configuration and deploy again. The
 # Secret is referenced by a constant name and its sections are stripped from
 # the bundle, so before the config marker the pod template came out byte
@@ -278,6 +307,51 @@ if [ "${POD_SECRET_ROTATED}" != "${SDK_DEPLOY_SECRET}" ]; then
 fi
 echo "  config-only redeploy rolled the fleet and the new value is live"
 _t "config redeploy OK"
+echo "=== admin Logs page reads the pods with the client and ops_console on (#9673) ==="
+printf '\n[dependencies.pypi]\nkubernetes = ">=34.1.0,<35.0.0"\n' >> "${APP_DIR}/jac.toml"
+export SDK_DEPLOY_OPS_CONSOLE=1
+if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" deploy </dev/null >/dev/null 2>&1); then
+    echo "FAIL: ops_console redeploy errored" >&2
+    dump_state
+    exit 1
+fi
+for dep in "deployment/${APP}-deployment" "deployment/gateway-deployment"; do
+    if ! kubectl rollout status "${dep}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
+        echo "FAIL: ${dep} did not complete the ops_console rollout" >&2
+        dump_state
+        exit 1
+    fi
+done
+kill "${PORT_FORWARD_PID}" 2>/dev/null || true
+kubectl port-forward -n "${NAMESPACE}" "svc/gateway-service" "${APP_LOCAL_PORT}:8000" >/dev/null 2>&1 &
+PORT_FORWARD_PID=$!
+for attempt in $(seq 1 10); do
+    curl -fs -o /dev/null --max-time 5 "${APP_URL}/healthz/live" && break
+    sleep 3
+done
+admin_login
+LOGS_BODY="$(mktemp)"
+LOGS_CODE=$(admin_logs "${LOGS_BODY}" || true)
+if [ "${LOGS_CODE}" != "200" ] || ! python3 - "${LOGS_BODY}" <<'PYEOF'
+import json
+import sys
+
+lines = json.load(open(sys.argv[1]))["data"]["lines"]
+sys.exit(0 if any(line["pod"].startswith("gateway-") for line in lines) else 1)
+PYEOF
+then
+    echo "FAIL: /admin/logs returned ${LOGS_CODE} without gateway pod lines:" >&2
+    head -c 400 "${LOGS_BODY}" >&2
+    rm -f "${LOGS_BODY}"
+    dump_state
+    exit 1
+fi
+rm -f "${LOGS_BODY}"
+echo "  /admin/logs served the gateway pod's lines from the Kubernetes API"
+kubectl delete rolebinding "${APP}-ops-console" -n "${NAMESPACE}"
+expect_logs_502 "ops_console = true"
+echo "  without the ops RoleBinding the page names ops_console"
+_t "admin logs from pods OK"
 # #10095: with a history limit of 1, the third code change prunes the first bundle.
 echo "=== code redeploys prune the bundle PVC; a retained release still rolls back (#10095) ==="
 export SDK_DEPLOY_REVISION_HISTORY_LIMIT=1
