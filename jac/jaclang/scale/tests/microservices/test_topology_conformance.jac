@@ -9,6 +9,7 @@ moved to the conformant set) the day the two topologies agree.
 """
 
 import shutil;
+import time;
 import requests;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -22,7 +23,8 @@ schema before the fleet's services start side by side (#10680: the identity
 tables are created outside the store's schema election, so services booting
 together against a fresh database can lose one to a catalog race). A fleet
 whose gateway is up while an app is still booting is a boot failure, not a
-set of divergent rows, so it is refused here. Returns the server and its base
+set of divergent rows, so it is refused here, after waiting as long as
+`start_server` does for a slow boot to finish. Returns the server and its base
 URL."""
 def _serve(project: Path, topology: str) -> tuple[any, str] {
     import jaclang;
@@ -41,7 +43,12 @@ def _serve(project: Path, topology: str) -> tuple[any, str] {
     server = start_server(project, project / "consumer.jac", port);
     base = f"http://127.0.0.1:{port}";
     if topology == "fleet" {
+        deadline = time.monotonic() + 300.0;
         health = requests.get(f"{base}/healthz", timeout=5).json();
+        while health.get("status") != "healthy" and time.monotonic() < deadline {
+            time.sleep(1);
+            health = requests.get(f"{base}/healthz", timeout=5).json();
+        }
         if health.get("status") != "healthy" {
             stop_server(server);
             raise RuntimeError(f"fleet served with apps still booting: {health}");
