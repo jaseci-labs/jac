@@ -2,7 +2,7 @@
 
 import json;
 import from jaclang.byllm.types { IterationAction, IterationContext, StreamEvent }
-import from jaclang.byllm.lib { MockLLM, MockRawResponse }
+import from jaclang.byllm.lib { EmptyReplyError, MockLLM, MockRawResponse }
 import from support { call, finish, prompt_text, say, tool_names }
 
 
@@ -58,6 +58,19 @@ test "plain text instead of finish_tool is re-prompted, not accepted" {
             f"{where}: the typed answer must be saved as JSON, got {history[-1]}"
         );
     }
+
+    # Streamed to a handler there is no typed retry, so an empty recovery raises.
+    silent = MockLLM(outputs=[say(""), say("")]);
+    def silent_npc(player_name: str) -> Chat by silent(
+        tools=[get_mood], stream=True, stream_handler=[].append
+    );
+    raised: any = None;
+    try {
+        silent_npc("Elara");
+    } except EmptyReplyError as e {
+        raised = e;
+    }
+    assert raised is not None , "an empty typed answer streamed to a handler must raise";
 }
 
 

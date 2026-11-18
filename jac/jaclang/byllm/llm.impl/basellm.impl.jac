@@ -1853,6 +1853,9 @@ impl BaseLLM._yield_recovery_result(
     recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
     output = _recovered_answer(mt_run, recovery_resp);
+    if not mt_run._has_final_output and not str(output or "").strip() {
+        raise _empty_reply_error(mt_run);
+    }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
     if not mt_run._has_final_output and output {
         yield StreamEvent(event_type="chunk", data={"content": str(output)});
