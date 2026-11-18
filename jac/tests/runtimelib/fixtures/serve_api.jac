@@ -98,13 +98,9 @@ def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
-"""Echo a datetime and a u8 with the types they arrived as."""
-def:pub book_slot(when: datetime, seats: u8) -> dict[str, any] {
-    return {
-        "when": when.isoformat(),
-        "seats": seats,
-        "kinds": [type(when).__name__, type(seats).__name__]
-    };
+"""Report the type `when` arrived as, and the bound `seats`."""
+def:pub book_slot(when: datetime, seats: u8) -> list[any] {
+    return [type(when).__name__, seats];
 }
 
 glob _UNSET: object = object();

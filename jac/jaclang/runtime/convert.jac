@@ -50,6 +50,4 @@ def _to_number(value: any, kind: type, mode: ConvertMode) -> any;
 
 def _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any;
 
-def _to_enum(value: any, target: type[Enum], mode: ConvertMode) -> any;
-
 def _construct(value: any, target: any, mode: ConvertMode) -> any;

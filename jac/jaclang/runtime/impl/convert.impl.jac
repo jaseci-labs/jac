@@ -140,26 +140,27 @@ impl _convert_class(value: any, target: type, mode: ConvertMode) -> any {
     if target is int or target is float {
         return _to_number(value, target, mode);
     }
-    if target is str {
-        if isinstance(value, str) {
+    if target is str or target is bytes {
+        if isinstance(value, target) {
             return value;
         }
-        if mode == ConvertMode.LENIENT {
+        if target is bytes and isinstance(value, str) {
+            return value.encode();
+        }
+        if target is str and mode == ConvertMode.LENIENT {
             return str(value);
         }
         raise _mismatch('string', value);
     }
-    if target is bytes {
-        if isinstance(value, bytes) {
-            return value;
-        }
-        if isinstance(value, str) {
-            return value.encode();
-        }
-        raise _mismatch('string', value);
-    }
     if issubclass(target, Enum) {
-        return _to_enum(value, target, mode);
+        try {
+            return target(value);
+        } except (ValueError, KeyError) {
+            if mode == ConvertMode.LENIENT and isinstance(value, str) {
+                return target[value];
+            }
+            raise;
+        }
     }
     if target in STRING_FORMATS {
         if isinstance(value, target) {
@@ -187,11 +188,8 @@ impl _to_bool(value: any, mode: ConvertMode) -> bool {
     }
     if isinstance(value, str) and mode != ConvertMode.STRICT {
         word = value.strip().lower();
-        if word in _TRUE_WORDS {
-            return True;
-        }
-        if word in _FALSE_WORDS {
-            return False;
+        if word in _TRUE_WORDS or word in _FALSE_WORDS {
+            return word in _TRUE_WORDS;
         }
         raise ValueError(f"invalid boolean: {value!r}");
     }
@@ -225,20 +223,6 @@ impl _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any {
     }
     core = _to_number(value, float if issubclass(target, float) else int, mode);
     return json_wire_read(name, core);
-}
-
-impl _to_enum(value: any, target: type[Enum], mode: ConvertMode) -> any {
-    if isinstance(value, target) {
-        return value;
-    }
-    try {
-        return target(value);
-    } except (ValueError, KeyError) {
-        if mode == ConvertMode.LENIENT and isinstance(value, str) {
-            return target[value];
-        }
-        raise;
-    }
 }
 
 impl _construct(value: any, target: any, mode: ConvertMode) -> any {

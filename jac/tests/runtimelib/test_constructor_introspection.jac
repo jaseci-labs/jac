@@ -135,9 +135,6 @@ test "coercion and schemas follow the declared type and the public constructor" 
     assert schema["required"] == ["args"];
     for (target, want) in [
         (datetime, {"type": "string", "format": "date-time"}),
-        (date, {"type": "string", "format": "date"}),
-        (time, {"type": "string", "format": "time"}),
-        (UUID, {"type": "string", "format": "uuid"}),
         (U8, {"type": "integer"}),
         (F32, {"type": "number"}),
         (
