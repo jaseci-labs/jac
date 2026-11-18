@@ -162,7 +162,8 @@ async def:pub probe_raise -> dict[str, any] {
     try {
         await score_boom();
     } except Exception as e {
-        return {"type": type(e).__name__, "message": str(e), "status": e?.status};
+        is_own = str(e).split(" failed: ", 1)[-1] == "score failed";
+        return {"type": type(e).__name__, "status": e?.status, "own_message": is_own};
     }
     return {"type": None};
 }
@@ -172,6 +173,6 @@ def:pub stream_write -> Generator[str, None, None] {
     yield "wrote";
 }
 
-def:pub count_marks -> int {
+def:pub probe_marks -> int {
     return len([root-->[?:Mark]]);
 }

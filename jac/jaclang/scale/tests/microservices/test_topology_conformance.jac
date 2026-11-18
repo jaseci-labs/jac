@@ -1,11 +1,7 @@
-"""One app, two topologies, one meaning (#8173).
+"""One app served colocated and as a fleet must answer the same (#8173).
 
-The `typed_boundary` workspace is served twice, colocated (the default) and as
-a fleet (`[scale.gateway] colocate = false`), and every row below is asked of
-both. A row's normalized outcome must be the same in both topologies. Rows
-whose divergence is known are pinned at their current values instead, each
-naming the #8173 contract clause it breaks, so the row fails (and must be
-moved to the conformant set) the day the two topologies agree.
+Rows that diverge today are pinned in `_KNOWN_DIVERGENT`, so a fix that makes
+the two agree fails the row until it moves to the conformant set.
 """
 
 import shutil;
@@ -16,25 +12,15 @@ import from tempfile { TemporaryDirectory }
 
 glob _FIXTURE: Path = Path(__file__).parent.parent / "fixtures" / "typed_boundary";
 
-
-"""Serve `project` in `topology`. Both topologies run from the same project,
-so they share its database and the colocated boot provisions the identity
-schema before the fleet's services start side by side (#10680: the identity
-tables are created outside the store's schema election, so services booting
-together against a fresh database can lose one to a catalog race). A fleet
-whose gateway is up while an app is still booting is a boot failure, not a
-set of divergent rows, so it is refused here, after waiting as long as
-`start_server` does for a slow boot to finish. Returns the server and its base
-URL."""
+"""Serve the copied project in `topology`. Both share one project, so one
+database (#10680), and a fleet must be healthy before its rows are asked."""
 def _serve(project: Path, topology: str) -> tuple[any, str] {
     import jaclang;
     manifest = (_FIXTURE / "jac.toml").read_text(encoding="utf-8");
-    # Keep subprocesses on the same compiler source as the test runner.
-    manifest += (
-        "\n[dev]\njaclang_source = "
-        + repr(str(Path(jaclang.__file__).parent.parent))
-        + "\n\n[serve.workers]\ncount = 1\n"
-    );
+    manifest += f"\n[dev]\njaclang_source = {repr(
+        str(Path(jaclang.__file__).parent.parent)
+    )}\n";
+    manifest += "\n[serve.workers]\ncount = 1\n";
     if topology == "fleet" {
         manifest += "\n[scale.gateway]\ncolocate = false\n";
     }
@@ -42,137 +28,76 @@ def _serve(project: Path, topology: str) -> tuple[any, str] {
     port = get_free_port();
     server = start_server(project, project / "consumer.jac", port);
     base = f"http://127.0.0.1:{port}";
-    if topology == "fleet" {
-        try {
-            deadline = time.monotonic() + 300.0;
+    deadline = time.monotonic() + 300.0;
+    try {
+        while topology == "fleet" {
             health = requests.get(f"{base}/healthz", timeout=5).json();
-            while health.get("status") != "healthy" and time.monotonic() < deadline {
-                time.sleep(1);
-                health = requests.get(f"{base}/healthz", timeout=5).json();
+            if health.get("status") == "healthy" {
+                break;
             }
-            if health.get("status") != "healthy" {
-                raise RuntimeError(f"fleet served with apps still booting: {health}");
+            if time.monotonic() > deadline {
+                raise RuntimeError(f"fleet never became healthy: {health}");
             }
-        } except BaseException {
-            stop_server(server);
-            raise;
+            time.sleep(1);
         }
+    } except BaseException {
+        stop_server(server);
+        raise;
     }
     return (server, base);
 }
 
-
-def _post(base: str, path: str) -> requests.Response {
-    return requests.post(f"{base}{path}", json={}, timeout=60);
-}
-
-
-"""What a JSON function call answered: its status and, on success, its
-result."""
-def _result(base: str, path: str) -> dict[str, any] {
-    response = _post(base, path);
-    if response.status_code != 200 {
+"""Call a function: a `probe_*` returns plain facts, compared in full; any
+other function is compared by status only."""
+def _call(base: str, fn: str) -> dict[str, any] {
+    response = requests.post(f"{base}/function/{fn}", json={}, timeout=60);
+    if response.status_code != 200 or not fn.startswith("probe_") {
         return {"status": response.status_code};
     }
-    return {"status": 200, "result": response.json()["data"]["result"]};
+    return {"status": 200, "result": extract(response.json())["result"]};
 }
 
-
-def _count_marks(base: str) -> int {
-    return int(_result(base, "/function/count_marks")["result"]);
-}
-
-
-"""Stream a function that writes and then yields, and report whether the
-write is visible afterwards."""
+"""Stream a function that writes and then yields; report whether the write
+is visible afterwards."""
 def _stream_write(base: str) -> dict[str, any] {
-    before = _count_marks(base);
-    response = _post(base, "/function/stream_write");
+    before = _call(base, "probe_marks")["result"];
+    response = requests.post(f"{base}/function/stream_write", json={}, timeout=60);
+    events = [
+        line
+        for line in response.text.splitlines()
+        if line.startswith(("data:", "event:"))
+    ];
+    after = _call(base, "probe_marks")["result"];
     return {
         "status": response.status_code,
-        "events": [
-            line
-            for line in response.text.splitlines()
-            if line.startswith(("data:", "event:"))
-        ],
-        "committed": _count_marks(base) - before
+        "events": events,
+        "committed": after - before
     };
 }
 
-
-def _typed_return(base: str) -> dict[str, any] {
-    return _result(base, "/function/probe_typed");
-}
-
-
-def _bridged_generator(base: str) -> dict[str, any] {
-    return _result(base, "/function/probe_stream");
-}
-
-
-def _bridged_walker_generator(base: str) -> dict[str, any] {
-    return _result(base, "/function/probe_walker_stream");
-}
-
-
-"""A bridged call that raises: the exception the caller sees, and whether its
-detail is the provider's own message rather than a transport wrapping of it."""
-def _bridged_raise(base: str) -> dict[str, any] {
-    outcome = _result(base, "/function/probe_raise");
-    if "result" not in outcome {
-        return outcome;
-    }
-    caught = outcome["result"];
-    detail = str(caught["message"]).split(" failed: ", 1)[-1];
-    return {
-        "status": outcome["status"],
-        "type": caught["type"],
-        "error_status": caught["status"],
-        "detail_is_provider_message": detail == "score failed"
-    };
-}
-
-
-def _canonical_provider_path(base: str) -> dict[str, any] {
-    return {"status": _post(base, "/function/fetch_score").status_code};
-}
-
-
-def _unknown_name(base: str) -> dict[str, any] {
-    return {"status": _post(base, "/function/no_such_fn").status_code};
-}
-
-
-glob _ROWS: list[tuple[str, Callable[[str], dict[str, any]]]] = [
-         ("typed return across the boundary", _typed_return),
-         ("bridged generator function", _bridged_generator),
-         ("bridged walker reporting a generator", _bridged_walker_generator),
-         ("bridged function that raises", _bridged_raise),
-         ("write inside an SSE stream", _stream_write),
-         ("provider function at the canonical path", _canonical_provider_path),
-         ("unknown function name", _unknown_name),
-
+glob _ROWS: list[tuple[str, str]] = [
+         ("typed return across the boundary", "probe_typed"),
+         ("bridged generator function", "probe_stream"),
+         ("bridged walker reporting a generator", "probe_walker_stream"),
+         ("bridged function that raises", "probe_raise"),
+         ("write inside an SSE stream", "stream_write"),
+         ("provider function at the canonical path", "fetch_score"),
+         ("unknown function name", "no_such_fn")
      ];
 
-"""What a conformant row must also answer in each topology, so a regression
-both topologies share cannot pass as agreement. The stream's write count is
-held to equality only: both topologies lose it on main, and #10313 fixes it
-in both."""
+"""What a conformant row must also answer, so a shared regression cannot pass
+as agreement. The stream's write count is held to equality only (#10313)."""
 glob _EXPECTED: dict[str, dict[str, any]] = {
          "bridged generator function": {"status": 200, "result": {"items": [0, 1, 2]}},
          "write inside an SSE stream": {
              "status": 200,
              "events": ['data: "wrote"', "event: end", "data: {}"]
-         },
-
+         }
      };
 
-"""Rows that diverge today, pinned at what each topology answers on main.
-When a row's outcomes stop matching these, the divergence moved: if the
-topologies now agree, delete the row from here so it is held to equality."""
+"""Rows that diverge today, pinned per topology, each with its #8173 clause."""
 glob _KNOWN_DIVERGENT: dict[str, dict[str, dict[str, any]]] = {
-         # #8173 clause 5 (types): colocated hands back the provider's own
-         # class, which is not the consumer's boundary type.
+         # clause 5 (types): colocated hands back the provider's own class.
          "typed return across the boundary": {
              "colocated": {
                  "status": 200,
@@ -183,43 +108,34 @@ glob _KNOWN_DIVERGENT: dict[str, dict[str, dict[str, any]]] = {
                  "result": {"is_payload": True, "owner": "jaseci-labs"}
              }
          },
-         # #8173 clause 3 (streaming): colocated returns the generator object
-         # as a report, the fleet fails to decode the streamed reply.
+         # clause 3 (streaming): colocated reports the generator object, the
+         # fleet fails to decode the streamed reply.
          "bridged walker reporting a generator": {
              "colocated": {"status": 200, "result": {"reports": ["generator"]}},
              "fleet": {"status": 500}
          },
-         # #8173 clause 6 (failure): the fleet wraps the provider's message in
-         # the RPC transport's error text.
+         # clause 6 (failure): the fleet wraps the provider's message.
          "bridged function that raises": {
              "colocated": {
                  "status": 200,
-                 "type": "BridgeError",
-                 "error_status": 0,
-                 "detail_is_provider_message": True
+                 "result": {"type": "BridgeError", "status": 0, "own_message": True}
              },
              "fleet": {
                  "status": 200,
-                 "type": "BridgeError",
-                 "error_status": 0,
-                 "detail_is_provider_message": False
+                 "result": {"type": "BridgeError", "status": 0, "own_message": False}
              }
          },
-         # #8173 clause 2 (addressing): only the fleet serves a provider's
-         # function at the canonical path.
+         # clause 2 (addressing): only the fleet serves the canonical path.
          "provider function at the canonical path": {
              "colocated": {"status": 405},
              "fleet": {"status": 200}
          },
-         # #8173 clauses 2 and 6: an unknown name is 405 colocated, 404 behind
-         # the gateway.
+         # clauses 2 and 6: an unknown name is 405 colocated, 404 behind the gateway.
          "unknown function name": {
              "colocated": {"status": 405},
              "fleet": {"status": 404}
-         },
-
+         }
      };
-
 
 test "every conformance row means the same thing colocated and as a fleet" {
     with TemporaryDirectory() as tmp {
@@ -227,40 +143,35 @@ test "every conformance row means the same thing colocated and as a fleet" {
         shutil.copytree(
             _FIXTURE, project, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".jac")
         );
-        outcomes: dict[str, dict[str, dict[str, any]]] = {};
+        seen: dict[str, dict[str, any]] = {name: {} for (name, _) in _ROWS};
         for topology in ["colocated", "fleet"] {
             (server, base) = _serve(project, topology);
             try {
-                for (name, probe) in _ROWS {
-                    outcomes.setdefault(name, {})[topology] = probe(base);
+                for (name, fn) in _ROWS {
+                    seen[name][topology] = _stream_write(base)
+                        if fn == "stream_write"
+                        else _call(base, fn);
                 }
             } finally {
                 stop_server(server);
             }
         }
         failures: list[str] = [];
-        for (name, _probe) in _ROWS {
-            seen = outcomes[name];
+        for (name, both) in seen.items() {
             if name in _KNOWN_DIVERGENT {
-                if seen != _KNOWN_DIVERGENT[name] {
-                    failures.append(
-                        f"{name}: known divergence changed, now {seen}; if the "
-                        "topologies agree, move the row out of _KNOWN_DIVERGENT"
-                    );
+                if both != _KNOWN_DIVERGENT[name] {
+                    failures.append(f"{name}: divergence changed, now {both}");
                 }
-                continue;
-            }
-            if seen["colocated"] != seen["fleet"] {
+            } elif both["colocated"] != both["fleet"] {
                 failures.append(
-                    f"{name}: colocated {seen['colocated']} != fleet {seen['fleet']}"
+                    f"{name}: colocated {both['colocated']} != fleet {both['fleet']}"
                 );
             }
-            for (key, value) in _EXPECTED.get(name, {}).items() {
-                for (topology, outcome) in seen.items() {
-                    if outcome.get(key) != value {
+            for (key, want) in _EXPECTED.get(name, {}).items() {
+                for (topology, got) in both.items() {
+                    if got.get(key) != want {
                         failures.append(
-                            f"{name}: {topology} answered {key}={outcome.get(key)!r}, "
-                            f"expected {value!r}"
+                            f"{name}: {topology} {key}={got.get(key)!r}, expected {want!r}"
                         );
                     }
                 }
