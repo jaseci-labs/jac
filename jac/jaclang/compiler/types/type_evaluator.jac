@@ -814,14 +814,16 @@ walker TypeEvaluator {
     ) -> (TypeBase | None);
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
-    def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
+    def _pattern_alternatives(pattern: MatchPattern) -> list[MatchPattern];
+    def _get_type_from_match_pattern(
+        pattern: MatchPattern, strict: bool = False
+    ) -> TypeBase | None;
+
     def _match_case_type(
         subject: TypeBase, mcase: MatchCase, pattern: (MatchPattern | None)
     ) -> TypeBase | None;
 
-    def _has_untyped_alternative(pattern: MatchPattern) -> bool;
-    def _pattern_is_structural(pattern: MatchPattern) -> bool;
-    def _pattern_covers_class(pattern: MatchPattern) -> bool;
+    def _pattern_covers_class(alt: MatchPattern) -> bool;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _isinstance_classinfo_is_exact(expr: Expr) -> bool;

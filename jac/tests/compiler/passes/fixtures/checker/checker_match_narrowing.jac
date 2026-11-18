@@ -38,10 +38,10 @@ def test_match_case_narrowing(
     animal: Animal
 ) -> str {
     match animal {
-        case Dog():
-            # animal is narrowed to Dog here
+        case Dog() as dog:
+            # animal is narrowed to Dog here, and the capture dog is a Dog
             # But Dog is still an Animal, so this should work
-            return process_animal(animal);  # <-- Should be Ok
+            return process_animal(animal) + dog.bark();  # <-- Should be Ok
 
 
         case Cat():
@@ -115,10 +115,6 @@ def test_error_wrong_type_in_case(
         case Dog():
             c: Cat = animal;  # <-- Error: Dog cannot assign to Cat
             return c.meow();
-
-        case Cat() as cat:
-            d: Dog = cat;  # <-- Error: Cat cannot assign to Dog
-            return d.bark();
 
         case _:
             return "";

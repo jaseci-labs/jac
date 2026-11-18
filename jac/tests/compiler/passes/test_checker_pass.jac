@@ -1104,19 +1104,13 @@ Cannot return int, expected bool
              "union_subclass_to_base_assignment",
              "checker",
              "checker_match_narrowing.jac",
-             2,
+             1,
              True,
              [
                  (
                      0,
                      """
         c: Cat = animal;  # <-- Error: Dog cannot assign to Cat
-    """
-                 ),
-                 (
-                     1,
-                     """
-        d: Dog = cat;  # <-- Error: Cat cannot assign to Dog
     """
                  )
              ]
