@@ -2390,7 +2390,7 @@ graph import {
     runtime.convert ++> [
         data.serializer { ConvertMode, convert, type_shape },
         server.serving.coerce { ConvertMode, convert },
-        server.serving.openapi { STRING_FORMATS },
+        server.serving.openapi { STRING_FORMATS, constructor_params },
     ]
     runtime.debugger ++> cli.commands.execution.debug { debugger as db }
     runtime.exceptions ++> [

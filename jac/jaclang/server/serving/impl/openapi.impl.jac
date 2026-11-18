@@ -65,19 +65,13 @@ impl _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str,
     props: dict[str, any] = {};
     required: list[str] = [];
     try {
-        init_fn = getattr(target, '__init__');
-        hints = get_type_hints(init_fn);
-        sig = inspect.signature(target);
+        params = constructor_params(target);
     } except Exception {
         return ref;
     }
-    for (pname, param) in sig.parameters.items() {
-        if param.kind
-            in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) {
-            continue;
-        }
-        props[pname] = _schema_for_type(hints.get(pname), schemas);
-        if param.`default is inspect.Parameter.empty {
+    for (pname, hint, is_required) in params {
+        props[pname] = _schema_for_type(hint, schemas);
+        if is_required {
             required.append(pname);
         }
     }

@@ -12,6 +12,28 @@ impl type_shape(target: object) -> tuple[object, tuple[object, ...]] {
     return (origin, args);
 }
 
+impl constructor_params(target: type) -> tuple[tuple[str, object, bool], ...] {
+    hit = _PARAMS.get(id(target));
+    if hit is not None and hit[0] is target {
+        return hit[1];
+    }
+    hints: dict[str, object] = {};
+    try {
+        hints = get_type_hints(target.__init__);
+    } except Exception {}
+    params = tuple(
+        (pname, hints.get(pname), param.`default is inspect.Parameter.empty)
+        for (pname, param) in inspect.signature(target).parameters.items()
+        if param.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    );
+    if len(_PARAMS) >= _SHAPES_LIMIT {
+        _PARAMS.clear();
+    }
+    _PARAMS[id(target)] = (target, params);
+    return params;
+}
+
 impl convert(value: any, target: any, mode: ConvertMode = ConvertMode.STRICT) -> any {
     if target is None or target is typing.Any or type(value) is target {
         return value;
@@ -226,19 +248,11 @@ impl _construct(value: any, target: any, mode: ConvertMode) -> any {
     if not isinstance(value, dict) {
         raise ValueError(f"expected object for {target.__name__}");
     }
-    hints: dict[str, any] = {};
-    try {
-        hints = get_type_hints(target.__init__);
-    } except Exception {}
     kwargs: dict[str, any] = {};
-    for (pname, param) in inspect.signature(target).parameters.items() {
-        if param.kind
-            in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) {
-            continue;
-        }
+    for (pname, hint, required) in constructor_params(target) {
         if pname in value {
-            kwargs[pname] = convert(value[pname], hints.get(pname), mode);
-        } elif param.`default is inspect.Parameter.empty {
+            kwargs[pname] = convert(value[pname], hint, mode);
+        } elif required {
             raise ValueError(f"missing required field '{pname}'");
         }
     }

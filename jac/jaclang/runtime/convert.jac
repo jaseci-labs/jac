@@ -19,9 +19,12 @@ glob _TRUE_WORDS: frozenset[str] = frozenset({'1', 'true', 'yes', 'on', 'y'}),
      },
      _CONTAINERS: tuple[type, ...] = (list, tuple, set, dict),
      _SHAPES: dict[int, tuple[any, any, tuple[any, ...]]] = {},
+     _PARAMS: dict[int, tuple[type, tuple[tuple[str, object, bool], ...]]] = {},
      _SHAPES_LIMIT: int = 4096;
 
 def type_shape(target: object) -> tuple[object, tuple[object, ...]];
+
+def constructor_params(target: type) -> tuple[tuple[str, object, bool], ...];
 
 def convert(value: any, target: any, mode: ConvertMode = ConvertMode.STRICT) -> any;
 
