@@ -1560,41 +1560,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return self.get_type_of_expression(expr.target);
                 }
                 if isinstance(base_type, TypeVarType) {
-                    if base_type.constraints {
-                        any_subscriptable = False;
-                        for constraint_type in base_type.constraints {
-                            if isinstance(constraint_type, ClassType) {
-                                result = self.get_type_of_magic_method_call(
-                                    constraint_type, "__getitem__", [expr.right], None
-                                );
-                                if result {
-                                    any_subscriptable = True;
-                                } else {
-                                    self.emit_diag(
-                                        E1040, expr, type=str(constraint_type)
-                                    );
-                                }
-                            }
-                        }
-                        return UnknownType();
-                    }
-                    if base_type.bound {
-                        bound_type = base_type.bound;
-                        if isinstance(bound_type, ClassType) {
-                            result = self.get_type_of_magic_method_call(
-                                bound_type, "__getitem__", [expr.right], expr
-                            );
-                            if result {
-                                return result;
-                            }
-
-                            self.emit_diag(E1040, expr, type=str(bound_type));
-                            return UnknownType();
-                        }
-                    }
-
-                    self.emit_diag(E1040, expr, type=base_type.name);
-                    return UnknownType();
+                    return self._typevar_magic_call(
+                        base_type, "__getitem__", [expr.right], expr, E1040
+                    );
                 }
                 subscript_arg: Expr = self._subscript_index_expr(expr.right);
                 if isinstance(base_type, AnyType) {
@@ -1690,33 +1658,9 @@ impl TypeEvaluator._get_type_of_expression_core(
             target_type = self.get_type_of_expression(expr.target);
 
             if isinstance(target_type, TypeVarType) {
-                if target_type.constraints {
-                    for constraint_type in target_type.constraints {
-                        if isinstance(constraint_type, ClassType) {
-                            result = self.get_type_of_magic_method_call(
-                                constraint_type, "__await__", [], None
-                            );
-                            if not result {
-                                self.emit_diag(E1041, expr, type=str(constraint_type));
-                            }
-                        }
-                    }
-                    return UnknownType();
-                }
-                if target_type.bound and isinstance(target_type.bound, ClassType) {
-                    result = self.get_type_of_magic_method_call(
-                        target_type.bound, "__await__", [], None
-                    );
-                    if result {
-                        return result;
-                    }
-
-                    self.emit_diag(E1041, expr, type=str(target_type.bound));
-                    return UnknownType();
-                }
-
-                self.emit_diag(E1041, expr, type=target_type.name);
-                return UnknownType();
+                return self._typevar_magic_call(
+                    target_type, "__await__", [], expr, E1041
+                );
             }
 
             return self._unwrap_awaitable_type(target_type, expr);
@@ -1956,41 +1900,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         else ("__pos__" if expr.op.name == Tok.PLUS else "__invert__");
 
                     if isinstance(operand_type, TypeVarType) {
-                        if operand_type.constraints {
-                            for constraint_type in operand_type.constraints {
-                                if isinstance(constraint_type, ClassType) {
-                                    result = self.get_type_of_magic_method_call(
-                                        constraint_type, op_name, [], None
-                                    );
-                                    if not result {
-                                        self.emit_diag(
-                                            E1010,
-                                            expr,
-                                            op=op_name,
-                                            type=str(constraint_type)
-                                        );
-                                    }
-                                }
-                            }
-                            return UnknownType();
-                        }
-                        if operand_type.bound
-                            and isinstance(operand_type.bound, ClassType) {
-                            result = self.get_type_of_magic_method_call(
-                                operand_type.bound, op_name, [], None
-                            );
-                            if result {
-                                return result;
-                            }
-
-                            self.emit_diag(
-                                E1010, expr, op=op_name, type=str(operand_type.bound)
-                            );
-                            return UnknownType();
-                        }
-
-                        self.emit_diag(E1010, expr, op=op_name, type=operand_type.name);
-                        return UnknownType();
+                        return self._typevar_magic_call(
+                            operand_type, op_name, [], expr, E1010, op=op_name
+                        );
                     }
                     if isinstance(operand_type, UnknownType)
                         and not operand_type.is_diagnosed

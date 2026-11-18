@@ -880,52 +880,15 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
         }
 
         if here.aug_op and isinstance(left_type, TypeVarType) {
-            op_name = AUG_OPERATOR_MAP.get(here.aug_op.name);
-
-            if left_type.constraints {
-                for constraint_type in left_type.constraints {
-                    if isinstance(constraint_type, ClassType) {
-                        if op_name {
-                            result = self.evaluator.get_type_of_magic_method_call(
-                                constraint_type, op_name, [here.value], None
-                            );
-                            if result is None {
-                                self.ctx.emit(
-                                    E1010,
-                                    node_override=here,
-                                    op=here.aug_op.name,
-                                    type=str(constraint_type)
-                                );
-                            }
-                        }
-                    }
-                }
-            } elif left_type.bound and isinstance(left_type.bound, ClassType) {
-                if op_name {
-                    result = self.evaluator.get_type_of_magic_method_call(
-                        left_type.bound, op_name, [here.value], here.value
-                    );
-                    if result is None {
-                        self.ctx.emit(
-                            E1010,
-                            node_override=here,
-                            op=here.aug_op.name,
-                            type=str(left_type.bound)
-                        );
-                    }
-                } else {
-                    self.ctx.emit(
-                        E1010,
-                        node_override=here,
-                        op=here.aug_op.name,
-                        type=str(left_type.bound)
-                    );
-                }
-            } else {
-                self.ctx.emit(
-                    E1010, node_override=here, op=here.aug_op.name, type=left_type.name
-                );
-            }
+            self.evaluator._typevar_magic_call(
+                left_type,
+                AUG_OPERATOR_MAP[here.aug_op.name],
+                [here.value],
+                here,
+                E1010,
+                via=self.ctx,
+                op=here.aug_op.name
+            );
         } else {
             is_rebind = isinstance(target, Name)
                 and target.sym is not None
@@ -1920,31 +1883,9 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
 
     iter_method = "__aiter__" if here.is_async else "__iter__";
     if isinstance(collection_type, TypeVarType) {
-        if collection_type.constraints {
-            for constraint_type in collection_type.constraints {
-                if isinstance(constraint_type, ClassType) {
-                    iter_result = self.evaluator.get_type_of_magic_method_call(
-                        constraint_type, iter_method, [], None
-                    );
-                    if iter_result is None {
-                        self.ctx.emit(
-                            E1021, node_override=here, type=str(constraint_type)
-                        );
-                    }
-                }
-            }
-        } elif collection_type.bound and isinstance(collection_type.bound, ClassType) {
-            iter_result = self.evaluator.get_type_of_magic_method_call(
-                collection_type.bound, iter_method, [], here.collection
-            );
-            if iter_result is None {
-                self.ctx.emit(
-                    E1021, node_override=here, type=str(collection_type.bound)
-                );
-            }
-        } else {
-            self.ctx.emit(E1021, node_override=here, type=collection_type.name);
-        }
+        self.evaluator._typevar_magic_call(
+            collection_type, iter_method, [], here, E1021, via=self.ctx
+        );
     } elif not isinstance(collection_type, UnknownType)
         and not self.evaluator.is_any_type(collection_type) {
         is_enum = (

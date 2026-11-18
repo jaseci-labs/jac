@@ -381,6 +381,16 @@ walker TypeEvaluator {
         node_for_error: UniNode | None = None
     ) -> TypeBase | None;
 
+    def _typevar_magic_call(
+        tv: TypeVarType,
+        method_name: str,
+        arg_nodes: Sequence[Expr | KWPair],
+        site: UniNode,
+        diag: DiagnosticInfo,
+        via: CompileContext | None = None,
+        **diag_args: object
+    ) -> TypeBase;
+
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
     def is_sub_class(
         super_cls: ClassType, sub_cls: ClassType, ignore_unknown: bool = False
