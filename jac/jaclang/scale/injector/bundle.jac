@@ -46,6 +46,8 @@ glob _CLIENT_DIST: tuple[str, ...] = (".jac", "client", "dist");
 
 glob BAKED_CLIENT_INDEX: str = ".jac/client/dist/index.html";
 
+glob VENDORED_MANIFEST: str = "_vendor/VENDOR.json";
+
 glob _BUNDLE_REQUIRED: tuple[tuple[str, ...], ...] = (
          _CLIENT_DIST,
          (".jac", "admin")
@@ -292,7 +294,7 @@ def _cached_seal(cache: Path, key: str) -> (bytes | None);
 def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
-def _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool;
+def _seal_reusable(raw: bytes, manifest: str, bake_client: bool, fat: bool) -> bool;
 
 
 def _remember_seal(
