@@ -67,8 +67,8 @@ def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
 def:pub __jacTokenExpired(token: str) -> bool;
 def:pub __jacDropRejectedToken(sent: str) -> bool;
-def:pub __jacResetRejectedSession(sent: str, server: str) -> None;
-def:pub __jacSessionAccepted(server: str) -> None;
+def:pub __jacHostRestoredSession -> str;
+def:pub __jacResetRejectedSession(sent: str) -> None;
 
 async def:pub jacSsoLogin(
     platform: str, api_base: str = "", operation: str = "login"

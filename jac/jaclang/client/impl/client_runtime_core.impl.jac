@@ -100,7 +100,6 @@ impl __doWalkerFetch(
     app = opts["app"] if opts and opts["app"] else "";
     token = __getLocalStorage("jac_token");
     base_url = __bridgeApiBase(opts);
-    server = f"{app}@{base_url}";
     url = f"{base_url}/walker/{`walker}";
     if nodeId != "" {
         url = f"{base_url}/walker/{`walker}/{nodeId}";
@@ -120,7 +119,7 @@ impl __doWalkerFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            __jacResetRejectedSession(str(token or ""), server);
+            __jacResetRejectedSession(str(token or ""));
             if not app {
                 return {};
             }
@@ -134,9 +133,6 @@ impl __doWalkerFetch(
             `walker
         );
     }
-    if token {
-        __jacSessionAccepted(server);
-    }
     payload = await response.json();
     return payload["data"] if payload["data"] else {};
 }
@@ -147,7 +143,6 @@ impl __doFuncFetch(
     app = opts["app"] if opts and opts["app"] else "";
     token = __getLocalStorage("jac_token");
     base_url = __bridgeApiBase(opts);
-    server = f"{app}@{base_url}";
     headers = {"Content-Type": "application/json"};
     if opts and opts["contract"] {
         headers["X-Jac-Endpoint"] = opts["contract"];
@@ -163,7 +158,7 @@ impl __doFuncFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            __jacResetRejectedSession(str(token or ""), server);
+            __jacResetRejectedSession(str(token or ""));
             if not app {
                 return {};
             }
@@ -175,9 +170,6 @@ impl __doFuncFetch(
             app,
             function_name
         );
-    }
-    if token {
-        __jacSessionAccepted(server);
     }
     payload = await response.json();
     if not payload["ok"] {
@@ -459,24 +451,24 @@ impl __jacDropRejectedToken(sent: str) -> bool {
     return True;
 }
 
-impl __jacResetRejectedSession(sent: str, server: str) -> None {
-    store: any = globalThis.sessionStorage;
-    key = f"jac_session_reset:{server}";
-    if store and store.getItem(key) {
+impl __jacHostRestoredSession -> str {
+    profiles: any = globalThis.__JAC_PROFILES__;
+    return str(profiles["active"] or "") if profiles else "";
+}
+
+impl __jacResetRejectedSession(sent: str) -> None {
+    restored = __jacHostRestoredSession();
+    store: any = globalThis.sessionStorage if restored else None;
+    if store
+        and store.getItem("jac_session_reset") == restored
+        and not __jacTokenExpired(sent) {
         return;
     }
     if __jacDropRejectedToken(sent) {
         if store {
-            store.setItem(key, "1");
+            store.setItem("jac_session_reset", restored);
         }
         window.location.reload();
-    }
-}
-
-impl __jacSessionAccepted(server: str) -> None {
-    store: any = globalThis.sessionStorage;
-    if store {
-        store.removeItem(f"jac_session_reset:{server}");
     }
 }
 
@@ -597,11 +589,10 @@ impl __jacAuthedJson(
         response = await fetch(url, init);
         if not response.ok {
             if response.status == 401 {
-                __jacResetRejectedSession(token, url);
+                __jacResetRejectedSession(token);
             }
             return None;
         }
-        __jacSessionAccepted(url);
         payload: any = JSON.parse(await response.text());
         return payload["data"] if payload else None;
     } except Exception as e {
