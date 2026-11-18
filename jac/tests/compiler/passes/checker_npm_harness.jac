@@ -6,9 +6,7 @@ TypeCheckPass so declaration-ingestion tests stay DRY across modules.
 
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 
 """Return ``proj_dir/.jac/client/node_modules``."""
 def client_node_modules(proj_dir: Path) -> Path {
@@ -58,8 +56,7 @@ def write_client_jac_project(
 """Compile and type-check a client ``.jac`` file; return program + codes."""
 def check_npm_file(path: Path) -> tuple[JacProgram, list[str], list[str]] {
     program = JacProgram();
-    mod = program.compile(str(path));
-    run_pass(TypeCheckPass, mod, program);
+    program.compile(str(path));
     err_codes = [
         e.code.code
         for e in program.errors_had
