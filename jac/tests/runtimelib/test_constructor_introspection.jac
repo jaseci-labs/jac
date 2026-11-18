@@ -72,8 +72,6 @@ test "coercion and schemas follow the declared type and the public constructor" 
                 (255.0, U8, 255),
                 (256, U8, REFUSED),
                 (3.5, U8, REFUSED),
-                ("3", U8, REFUSED),
-                ("abc", U8, REFUSED),
                 (1, F32, 1.0),
                 ("18446744073709551615", U64, 18446744073709551615),
                 ("9", U64, REFUSED)

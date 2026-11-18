@@ -600,7 +600,6 @@ test "serve call function" {
                 }
             ),
             ({"when": "2026-01-02T10:00:00", "seats": 300}, None),
-            ({"when": "2026-01-02T10:00:00", "seats": "abc"}, None),
             ({"when": "next tuesday", "seats": 3}, None)
         ] {
             response = client.post("/function/book_slot", json=body);

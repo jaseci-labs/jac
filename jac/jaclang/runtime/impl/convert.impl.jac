@@ -218,12 +218,10 @@ impl _to_sized(value: any, target: type, name: str, mode: ConvertMode) -> any {
     if mode == ConvertMode.STRICT and isinstance(value, str) {
         try {
             wide = json_wire_read(name, value);
-        } except (ValueError, OverflowError) {
-            wide = None;
-        }
-        if wide is not None and json_wire_form(name, wide) == value {
-            return wide;
-        }
+            if json_wire_form(name, wide) == value {
+                return wide;
+            }
+        } except (ValueError, OverflowError) {}
     }
     core = _to_number(value, float if issubclass(target, float) else int, mode);
     return json_wire_read(name, core);
