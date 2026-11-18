@@ -234,7 +234,11 @@ test "a from-imported os function lowers to its native implementation in both le
                 );
                 ir_text = str(mod.gen.llvm_ir) if mod.gen.llvm_ir is not None else "";
                 callees[lens] = sorted(
-                    set(re.findall(r'call [^@\n]*@"?([^"(\s]*replace[^"(\s]*)"?\(', ir_text))
+                    set(
+                        re.findall(
+                            r'call [^@\n]*@"?([^"(\s]*replace[^"(\s]*)"?\(', ir_text
+                        )
+                    )
                 );
             }
         } finally {
