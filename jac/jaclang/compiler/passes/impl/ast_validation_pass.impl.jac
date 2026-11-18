@@ -85,14 +85,8 @@ impl ASTValidationPass._same_target(
 ) -> bool {
     (a_mod, a_name) = self._import_target(first);
     (b_mod, b_name) = self._import_target(second);
-    if a_name != b_name {
-        return False;
-    }
-    if a_mod == b_mod {
-        return True;
-    }
-    if a_mod.startswith(".") == b_mod.startswith(".") {
-        return False;
+    if a_name != b_name or a_mod.startswith(".") == b_mod.startswith(".") {
+        return a_name == b_name and a_mod == b_mod;
     }
     (rel, absolute) = (a_mod, b_mod) if a_mod.startswith(".") else (b_mod, a_mod);
     rel = rel.lstrip(".");
@@ -112,24 +106,22 @@ impl ASTValidationPass._import_target(binding: ImportBinding) -> tuple[str, str]
 }
 
 impl ASTValidationPass._alternatives(first: UniNode, second: UniNode) -> bool {
-    arm_of: dict[int, UniNode] = {};
-    child: UniNode = first;
-    nd = first.parent;
-    while nd is not None {
-        arm_of[id(nd)] = child;
-        child = nd;
-        nd = nd.parent;
+    chain: list[UniNode] = [];
+    up: (UniNode | None) = first;
+    while up is not None {
+        chain.append(up);
+        up = up.parent;
     }
-    child = second;
-    nd = second.parent;
-    while nd is not None and id(nd) not in arm_of {
-        child = nd;
-        nd = nd.parent;
+    ids = [id(n) for n in chain];
+    child: UniNode = second;
+    while child.parent is not None and id(child.parent) not in ids {
+        child = child.parent;
     }
+    nd = child.parent;
     if nd is None {
         return False;
     }
-    arms = [arm_of[id(nd)], child];
+    arms = [chain[ids.index(id(nd)) - 1], child];
     if isinstance(nd, IfStmt) {
         return any(arm is nd.else_body for arm in arms);
     }
