@@ -13740,6 +13740,7 @@ graph import scale {
         tests.deploy.test_cluster_provider { get_cluster_provider },
         tests.deploy.test_deploy_k8s { wait_for_pod_phase },
         tests.deploy.test_k8s_utils { parse_storage_quantity, resize_pvc_if_needed },
+        tests.deploy.test_monitoring_switch { FLEET_SELECTOR },
         tests.deploy.test_pod_env { create_k8s_secret, resolve_minted_secret },
         tests.deploy.test_pss_labels {
             PSS_ENFORCE_LABEL,
@@ -14797,7 +14798,7 @@ graph import scale.deploy.target {
 
 graph import scale.deploy.target.kubernetes {
     cluster_provider ++> [
-        ingress | monitoring { ClusterProvider },
+        ingress { ClusterProvider },
         utils.kubernetes_utils { AWSProvider, ClusterProvider, LocalProvider },
     ]
     database_provisioner ++> target { DatabaseProvisioner }
@@ -14843,8 +14844,9 @@ graph import scale.deploy.target.kubernetes {
             in_cluster_kubectl,
             kubectl_cluster
         },
-        monitoring { delete_if_exists, delete_k8s_secret },
+        monitoring { FLEET_SELECTOR, delete_if_exists, delete_k8s_secret },
         target {
+            FLEET_SELECTOR,
             PSS_ENFORCE_LABEL,
             _refresh_rs_hashes,
             _resolve_current_rs_hashes,
