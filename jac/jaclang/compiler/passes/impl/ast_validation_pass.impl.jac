@@ -47,7 +47,7 @@ impl ASTValidationPass.exit_module with Module exit {
             continue;
         }
         for declared in self._declared_names(item) {
-            binding = imported.get(declared.value);
+            binding = next(iter(imported.get(declared.value, [])), None);
             if binding is not None
                 and binding[0].code_context == item.code_context
                 and not self._imports_itself(here, binding[0]) {
@@ -88,14 +88,22 @@ impl ASTValidationPass._same_target(
     if a_name != b_name {
         return False;
     }
-    return a_mod == b_mod or a_mod.startswith(".") != b_mod.startswith(".");
+    if a_mod == b_mod {
+        return True;
+    }
+    if a_mod.startswith(".") == b_mod.startswith(".") {
+        return False;
+    }
+    (rel, absolute) = (a_mod, b_mod) if a_mod.startswith(".") else (b_mod, a_mod);
+    rel = rel.lstrip(".");
+    return not rel or absolute == rel or absolute.endswith("." + rel);
 }
 
 impl ASTValidationPass._import_target(binding: ImportBinding) -> tuple[str, str] {
     (stmt, item, _) = binding;
     if isinstance(item, ModulePath) {
         if item.alias is None or not item.path {
-            return (item.base_module_name.split(".")[0], "");
+            return ("", item.base_module_name.split(".")[0]);
         }
         parts = item.dot_path_str.rsplit(".", 1);
         return (parts[0] if len(parts) > 1 else "", parts[-1]);
@@ -130,7 +138,18 @@ impl ASTValidationPass._alternatives(first: UniNode, second: UniNode) -> bool {
         return any(isinstance(arm, Except) for arm in arms)
             and not any(isinstance(arm, FinallyStmt) for arm in arms);
     }
-    return isinstance(nd, (MatchStmt, SwitchStmt));
+    if isinstance(nd, SwitchStmt) {
+        at = [
+            i
+            for (i, cs) in enumerate(nd.cases)
+            if cs in arms
+        ];
+        return any(
+            cs.body and isinstance(cs.body[-1], (CtrlStmt, ReturnStmt, RaiseStmt))
+            for cs in nd.cases[at[0]:at[-1]]
+        );
+    }
+    return isinstance(nd, MatchStmt);
 }
 
 impl ASTValidationPass._declared_names(item: ContextAwareNode) -> list[Name] {
@@ -475,18 +494,20 @@ impl ASTValidationPass.enter_import with Import entry {
             continue;
         }
         binding: ImportBinding = (here, item, name);
-        prior = bound.get(name.value);
-        if prior is None {
-            bound[name.value] = binding;
-        } elif not self._same_target(prior, binding)
-            and not self._alternatives(prior[0], here) {
-            self.ctx.emit(
-                E2036,
-                node_override=name,
-                name=name.value,
-                prior=self._binding_origin(name, prior[2])
-            );
+        earlier = bound.setdefault(name.value, []);
+        for prior in earlier {
+            if not self._same_target(prior, binding)
+                and not self._alternatives(prior[0], here) {
+                self.ctx.emit(
+                    E2036,
+                    node_override=name,
+                    name=name.value,
+                    prior=self._binding_origin(name, prior[2])
+                );
+                break;
+            }
         }
+        earlier.append(binding);
     }
 }
 

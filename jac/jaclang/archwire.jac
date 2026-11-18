@@ -7147,6 +7147,7 @@ graph import compiler {
             ModulePath,
             Name,
             ParamVar,
+            RaiseStmt,
             ReturnStmt,
             SpecialVarRef,
             SwitchStmt,

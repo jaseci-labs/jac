@@ -6,7 +6,7 @@ type ImportBinding = tuple[Import, (ModuleItem | ModulePath), Name];
 
 walker ASTValidationPass(TreePass) {
     static has contract: PassContract = PassContract();
-    has _import_scopes: (dict[int, dict[str, ImportBinding]] | None) = None;
+    has _import_scopes: (dict[int, dict[str, list[ImportBinding]]] | None) = None;
 
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;

@@ -539,8 +539,23 @@ test "E2036: an import binds a name once per scope" {
             0
         ),
         ("two relative modules", "import from .b { A }\nimport from .c { A }\n", 1),
+        (
+            "relative and another module",
+            "import from .b { A }\nimport from c { A }\n",
+            1
+        ),
+        (
+            "current package and absolute",
+            "import from . { A }\nimport from pkg { A }\n",
+            0
+        ),
         ("a package and its submodule", "import os;\nimport os.path;\n", 0),
         ("one module alias twice", "import os.path as p;\nimport os.path as p;\n", 0),
+        (
+            "a module aliased to itself",
+            "import os as os;\nimport os;\nimport os as os;\n",
+            0
+        ),
         ("two modules, one alias", "import os.path as p;\nimport shlex as p;\n", 1),
         (
             "same string source",
@@ -550,6 +565,11 @@ test "E2036: an import binds a name once per scope" {
         (
             "two string sources",
             'import from "lib-a" { x }\nimport from "lib-b" { x }\n',
+            1
+        ),
+        (
+            "local file and package",
+            'import from "./button" { Button }\nimport from "@mui/material" { Button }\n',
             1
         ),
         (
@@ -583,9 +603,34 @@ test "E2036: an import binds a name once per scope" {
             0
         ),
         (
+            "two modules in one else arm",
+            "def f(x: bool) -> None {\n    if x {\n        import from b { A }\n    } else {\n        import from c { A }\n        import from d { A }\n    }\n}\n",
+            1
+        ),
+        (
             "try and except fallback",
             "with entry {\n    try {\n        import from b { A }\n    } except ImportError {\n        import from c { A }\n    }\n}\n",
             0
+        ),
+        (
+            "try and else",
+            "with entry {\n    try {\n        import from b { A }\n    } except ImportError {\n        x = 1;\n    } else {\n        import from c { A }\n    }\n}\n",
+            1
+        ),
+        (
+            "switch cases ending in break",
+            "def f(y: int) -> None {\n    switch y {\n        case 1:\n            import from b { A }\n            break;\n        case 2:\n            import from c { A }\n    }\n}\n",
+            0
+        ),
+        (
+            "switch cases ending in return or raise",
+            "def f(y: int) -> None {\n    switch y {\n        case 1:\n            import from b { A }\n            return;\n        case 2:\n            import from c { A }\n            raise ValueError();\n        case 3:\n            import from d { A }\n    }\n}\n",
+            0
+        ),
+        (
+            "switch case falling through",
+            "def f(y: int) -> None {\n    switch y {\n        case 1:\n            import from b { A }\n        case 2:\n            import from c { A }\n    }\n}\n",
+            1
         ),
         (
             "except and finally",
