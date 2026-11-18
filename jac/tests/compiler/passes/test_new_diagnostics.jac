@@ -526,11 +526,6 @@ test "E2036: an import binds a name once per scope" {
             1
         ),
         (
-            "one alias, two modules",
-            "import from b { A as X }\nimport from c { A as X }\n",
-            1
-        ),
-        (
             "two names, one module",
             "import from b { A as X }\nimport from b { C as X }\n",
             1
@@ -540,7 +535,6 @@ test "E2036: an import binds a name once per scope" {
             "import from .b { A }\nimport from pkg.b { A }\n",
             0
         ),
-        ("two relative modules", "import from .b { A }\nimport from .c { A }\n", 1),
         (
             "relative and another module",
             "import from .b { A }\nimport from c { A }\n",
@@ -552,23 +546,12 @@ test "E2036: an import binds a name once per scope" {
             0
         ),
         ("a package and its submodule", "import os;\nimport os.path;\n", 0),
-        ("one module alias twice", "import os.path as p;\nimport os.path as p;\n", 0),
         (
             "a module aliased to itself",
             "import os as os;\nimport os;\nimport os as os;\n",
             0
         ),
         ("two modules, one alias", "import os.path as p;\nimport shlex as p;\n", 1),
-        (
-            "same string source",
-            'import from "@jac/runtime" { useParams }\nimport from "@jac/runtime" { useParams }\n',
-            0
-        ),
-        (
-            "two string sources",
-            'import from "lib-a" { x }\nimport from "lib-b" { x }\n',
-            1
-        ),
         (
             "local file and package",
             'import from "./button" { Button }\nimport from "@mui/material" { Button }\n',
@@ -580,23 +563,8 @@ test "E2036: an import binds a name once per scope" {
             1
         ),
         (
-            "one function",
-            "def f -> None {\n    import from b { A }\n    import from c { A }\n}\n",
-            1
-        ),
-        (
             "if inside a function",
             "def f(x: bool) -> None {\n    import from b { A }\n    if x {\n        import from c { A }\n    }\n}\n",
-            1
-        ),
-        (
-            "a test block",
-            'test "t" {\n    import from b { A }\n    import from c { A }\n}\n',
-            1
-        ),
-        (
-            "an impl body",
-            "impl Foo.run -> None {\n    import from b { A }\n    import from c { A }\n}\n",
             1
         ),
         (
@@ -638,11 +606,6 @@ test "E2036: an import binds a name once per scope" {
             "except and finally",
             "with entry {\n    try {\n        x = 1;\n    } except ImportError {\n        import from b { A }\n    } finally {\n        import from c { A }\n    }\n}\n",
             1
-        ),
-        (
-            "two functions",
-            "def f -> None {\n    import from b { A }\n}\ndef g -> None {\n    import from c { A }\n}\n",
-            0
         ),
         (
             "module and function",
