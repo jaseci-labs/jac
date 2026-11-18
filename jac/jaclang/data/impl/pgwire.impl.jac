@@ -233,8 +233,84 @@ impl PgWireConnection.postinit -> None {
     self._stmts = OrderedDict();
     self._stmt_seq = 0;
     self._evicted = [];
+    if self.sslmode and self.sslmode not in SSL_MODES {
+        raise ValueError(
+            f"invalid sslmode {self.sslmode!r}: expected one of {', '.join(SSL_MODES)}"
+        );
+    }
     self._connect_socket();
+    self._negotiate_tls();
     self._startup();
+}
+
+
+impl PgWireConnection._negotiate_tls -> None {
+    mode = self.sslmode or 'disable';
+    if mode == 'disable' or self.unix_sock {
+        return;
+    }
+    host = self.host or '127.0.0.1';
+    target = f"{host}:{self.port}";
+    sock: any = self._sock;
+    try {
+        ctx = _tls_context(mode, self.sslrootcert);
+        sock.sendall(struct.pack('!ii', 8, SSL_REQUEST_CODE));
+
+        answer = sock.recv(1);
+        if answer == b'N' and mode in ('allow', 'prefer') {
+            return;
+        }
+        if answer == b'N' {
+            raise PgWireError(
+                {
+                    'S': 'FATAL',
+                    'C': '08001',
+                    'M': f"the server at {target} does not accept TLS, but sslmode={mode} requires it"
+                }
+            );
+        }
+        if answer != b'S' {
+            raise PgWireError(
+                {
+                    'S': 'FATAL',
+                    'C': '08001',
+                    'M': f"the server at {target} answered the TLS request with {answer!r}"
+                }
+            );
+        }
+        self._sock = ctx.wrap_socket(sock, server_hostname=host);
+    } except Exception {
+        self._closed = True;
+        try {
+            sock.close();
+        } except Exception {}
+        raise;
+    }
+}
+
+
+impl _tls_context(sslmode: str, sslrootcert: str) -> ssl.SSLContext {
+    if sslrootcert == 'system' and sslmode != 'verify-full' {
+        raise ValueError(
+            f"sslrootcert=system needs sslmode=verify-full, not sslmode={sslmode}"
+        );
+    }
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2;
+    verify = sslmode in ('verify-ca', 'verify-full')
+        or (sslmode == 'require' and bool(sslrootcert));
+    if not verify {
+        ctx.check_hostname = False;
+        ctx.verify_mode = ssl.CERT_NONE;
+        return ctx;
+    }
+    if sslrootcert and sslrootcert != 'system' {
+        ctx.load_verify_locations(cafile=sslrootcert);
+    } else {
+        ctx.load_default_certs();
+    }
+    ctx.check_hostname = sslmode == 'verify-full';
+    return ctx;
 }
 
 
