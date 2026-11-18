@@ -2146,3 +2146,28 @@ jobs:
           exit 1
       - name: All required jobs passed (or were skipped)
         run: echo "Everything passed. ✅"
+
+  demo-10805:
+    needs: [changes, dev-kit, dev-precompile]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: ./.github/actions/jac-kit
+        with:
+          dev: "true"
+      - name: Install scale deps
+        run: |
+          jac install \
+            "python-dotenv>=1.2.1,<2.0.0" \
+            "prometheus-client>=0.21.0,<1.0.0" \
+            "apscheduler>=3.11.2,<4.0.0" requests \
+            --global
+      - name: Serve a one-worker app and screenshot /metrics
+        run: bash scripts/demo_10805.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demo-10805-screenshots
+          path: demo_10805_out
