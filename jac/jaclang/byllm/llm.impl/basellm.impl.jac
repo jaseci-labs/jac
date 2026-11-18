@@ -1873,10 +1873,6 @@ impl BaseLLM._stream_steps(
         shown = "";
         done_sent = False;
         while True {
-            if shown {
-                yield from _drop_answer(retractable);
-                shown = "";
-            }
             iter_count += 1;
             _usage_base = len(mt_run._usage_history);
             _compactions_base = len(mt_run._compactions);
@@ -2040,6 +2036,13 @@ impl BaseLLM._stream_steps(
                 break;
             }
             _llm_ms = int((_time.time() - _llm_t0) * 1000);
+            (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
+                resp.tool_calls
+            );
+            if shown and finish_tc is None {
+                yield from _drop_answer(retractable);
+                shown = "";
+            }
 
             usage: dict[str, any] = resp.usage or {};
             total_tokens += int(
@@ -2059,10 +2062,6 @@ impl BaseLLM._stream_steps(
             _usage_base = len(mt_run._usage_history);
 
             if resp.tool_calls {
-                (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
-                    resp.tool_calls
-                );
-
                 if non_finish_calls {
                     max_result_len = int(
                         mt_run.call_params.get("max_tool_result_length")
@@ -2142,6 +2141,10 @@ impl BaseLLM._stream_steps(
                         mt_run.add_message(
                             _error_tool_call(finish_tc.call_id, "finish_tool", str(e))()
                         );
+                        if shown {
+                            yield from _drop_answer(retractable);
+                            shown = "";
+                        }
                         continue;
                     }
                     mt_run.add_message(finish_msg);

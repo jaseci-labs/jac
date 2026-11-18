@@ -123,7 +123,7 @@ build a `FunctionInfo` and call `lower()` on an `MTRuntime` carrying it, as
 | which tools were offered | `tool_names(params)` |
 | the routing candidates offered | `routing_candidates(params)` |
 | the events of a `logging=True` stream | `stream_events(stream)`, `events_of(events, kind)`, `event_types(events)` |
-| the answer text of a stream | `chunk_text(events)` |
+| the answer text a chat UI is left with (a tool event seals the text before it) | `chunk_text(events)` |
 | what byLLM logged through loguru: `llm.jac` and its impls, `visit_routing.jac` | `with capture_loguru() as logs`, then `logs.text()` |
 | what it logged through `logging`: `types`, `mcp`, `parallel`, `telemetry`, `model_cache` | `with capture_logs(name=) as logs`, then `logs.text()` |
 | every queued reply was used | `llm.exhausted()` |

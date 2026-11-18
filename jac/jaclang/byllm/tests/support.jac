@@ -461,15 +461,21 @@ def event_types(events: list[StreamEvent]) -> list[str] {
 }
 
 
-"""The text the chunk channel leaves the caller with: a stream_reset drops what came before."""
+"""The text the chunk channel leaves a chat UI with. A stream_reset drops the open
+text, and a tool event seals it first, as Studio and JacHammer do: a reset that
+arrives after a tool event no longer reaches the text it was meant to take back."""
 def chunk_text(events: list[StreamEvent]) -> str {
-    text = "";
+    (sealed, text) = ("", "");
     for e in events {
-        text = ""
-            if e.event_type == "stream_reset"
-            else text + (e.data.get("content", "") if e.event_type == "chunk" else "");
+        if e.event_type == "stream_reset" {
+            text = "";
+        } elif e.event_type in ["tool_call", "tool_result"] {
+            (sealed, text) = (sealed + text, "");
+        } elif e.event_type == "chunk" {
+            text += e.data.get("content", "");
+        }
     }
-    return text;
+    return sealed + text;
 }
 
 """The candidate handles offered in a routing prompt, with the line each sits on.
