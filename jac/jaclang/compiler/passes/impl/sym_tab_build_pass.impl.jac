@@ -569,6 +569,17 @@ impl SymTabBuildPass.exit_inner_compr with InnerCompr exit {
 
 impl SymTabBuildPass.enter_match_case with MatchCase entry {
     self.push_scope_and_link(here);
+    pattern = here.pattern;
+    captures: list[(MatchAs | MatchStar)] = pattern.get_all_sub_nodes(MatchAs)
+        + pattern.get_all_sub_nodes(MatchStar);
+    if isinstance(pattern, MatchAs) {
+        captures.append(pattern);
+    }
+    for capture in captures {
+        if capture.name.sym_name != "_" {
+            here.sym_tab.def_insert(capture.name, single_decl='local var');
+        }
+    }
 }
 
 impl SymTabBuildPass.exit_match_case with MatchCase exit {

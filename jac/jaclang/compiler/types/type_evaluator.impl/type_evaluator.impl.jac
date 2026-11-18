@@ -2848,6 +2848,26 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 return UnknownType();
             }
 
+            if isinstance(node_.parent, MatchAs) and node_.parent.name is node_ {
+                pattern_root: UniNode = node_.parent;
+                while isinstance(pattern_root.parent, (MatchOr, MatchAs)) {
+                    pattern_root = pattern_root.parent;
+                }
+                mcase = pattern_root.parent;
+                if isinstance(mcase, MatchCase)
+                    and isinstance(mcase.parent, MatchStmt) {
+                    bound = self._match_case_type(
+                        self.get_type_of_expression(mcase.parent.target),
+                        mcase,
+                        node_.parent.pattern
+                    );
+                    if bound is not None {
+                        return bound;
+                    }
+                }
+                return UnknownType();
+            }
+
             if isinstance(node_.parent, Except) and node_.parent.ex_type {
                 ex_type = self.get_type_of_expression(node_.parent.ex_type);
                 if caught := self._isinstance_class_alternatives(ex_type) {
@@ -5049,9 +5069,13 @@ impl TypeEvaluator._get_type_from_flow_node(
                     match_case = flow_node.find_parent_of_type(MatchCase);
                 }
                 if match_case is not None and match_case.pattern {
-                    pattern_type = self._get_type_from_match_pattern(
-                        match_case.pattern
-                    );
+                    subject = pred_narrowed
+                        if pred_narrowed is not None
+                        else target.declared_type;
+                    pattern_type = self._match_case_type(
+                        subject, match_case, match_case.pattern
+                    )
+                        or self._get_type_from_match_pattern(match_case.pattern);
                     if pattern_type is not None {
                         incoming_types.append(pattern_type);
                         continue;
@@ -6113,40 +6137,98 @@ impl TypeEvaluator.exclude_type_from_union(
     return self._union_narrowed_types(remaining);
 }
 
+impl TypeEvaluator._pattern_alternatives(pattern: MatchPattern) -> list[MatchPattern] {
+    if isinstance(pattern, MatchAs) and pattern.pattern is not None {
+        return self._pattern_alternatives(pattern.pattern);
+    }
+    if isinstance(pattern, MatchOr) {
+        return [alt for p in pattern.patterns for alt in self._pattern_alternatives(p)];
+    }
+    return [pattern];
+}
+
 impl TypeEvaluator._get_type_from_match_pattern(
-    pattern: MatchPattern
+    pattern: MatchPattern, strict: bool = False
 ) -> TypeBase | None {
-    if isinstance(pattern, MatchArch) {
-        class_type = self.get_type_of_expression(pattern.name);
-        return self._convert_to_instance(class_type);
-    }
-
-    if isinstance(pattern, MatchOr) and pattern.patterns {
-        pattern_types: list[TypeBase] = [];
-        for sub_pattern in pattern.patterns {
-            sub_type = self._get_type_from_match_pattern(sub_pattern);
-            if sub_type is not None {
-                pattern_types.append(sub_type);
-            }
+    pattern_types: list[TypeBase] = [];
+    for alt in self._pattern_alternatives(pattern) {
+        alt_type: (TypeBase | None) = None;
+        if isinstance(alt, MatchArch) {
+            alt_type = self._convert_to_instance(self.get_type_of_expression(alt.name));
+        } elif isinstance(alt, MatchSingleton) and isinstance(alt.value, Null) {
+            alt_type = self._literal_type_from_expr(alt.value);
         }
-        if len(pattern_types) == 0 {
+        if alt_type is not None {
+            pattern_types.append(alt_type);
+        } elif strict {
             return None;
-        } elif len(pattern_types) == 1 {
-            return pattern_types[0];
-        } else {
-            return UnionType(types=pattern_types);
         }
     }
-
-    if isinstance(pattern, MatchAs) and pattern.pattern {
-        return self._get_type_from_match_pattern(pattern.pattern);
-    }
-
-    if isinstance(pattern, MatchWild) {
+    if len(pattern_types) == 0 {
         return None;
     }
+    if len(pattern_types) == 1 {
+        return pattern_types[0];
+    }
+    return UnionType(types=pattern_types);
+}
 
-    return None;
+impl TypeEvaluator._match_case_type(
+    subject: TypeBase, mcase: MatchCase, pattern: (MatchPattern | None)
+) -> TypeBase | None {
+    pattern_type: (TypeBase | None) = None;
+    if pattern is not None {
+        pattern_type = self._get_type_from_match_pattern(pattern, strict=True);
+        if pattern_type is None {
+            return None;
+        }
+    }
+    if isinstance(subject, UnknownType) or self.is_any_type(subject) {
+        return pattern_type;
+    }
+    stmt = mcase.parent;
+    if not isinstance(stmt, MatchStmt) {
+        return None;
+    }
+    after_structural = False;
+    for earlier in stmt.cases {
+        if earlier is mcase {
+            break;
+        }
+        if earlier.guard is not None {
+            continue;
+        }
+        for alt in self._pattern_alternatives(earlier.pattern) {
+            if isinstance(alt, (MatchSequence, MatchMapping)) {
+                after_structural = True;
+            } elif self._pattern_covers_class(alt)
+                and (matched := self._get_type_from_match_pattern(alt)) {
+                subject = self.exclude_type_from_union(subject, matched);
+            }
+        }
+    }
+    if isinstance(subject, NeverType) or (after_structural and pattern_type is None) {
+        return None;
+    }
+    if pattern_type is None {
+        return subject;
+    }
+    return self._narrow_type_to(subject, pattern_type);
+}
+
+impl TypeEvaluator._pattern_covers_class(alt: MatchPattern) -> bool {
+    if isinstance(alt, MatchSingleton) {
+        return isinstance(alt.value, Null);
+    }
+    if not isinstance(alt, MatchArch) {
+        return False;
+    }
+    subs: list[MatchPattern] = list(alt.arg_patterns or [])
+        + [kv.value for kv in (alt.kw_patterns or [])];
+    return all(
+        isinstance(p, MatchWild) or (isinstance(p, MatchAs) and p.pattern is None)
+        for p in subs
+    );
 }
 
 impl TypeEvaluator._union_contains_none(union_type: TypeBase) -> bool {

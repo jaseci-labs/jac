@@ -76,7 +76,7 @@ class Row(NamedTuple) {
         count: int;
 }
 
-def binder_rebinds(row: Row) {
+def binder_rebinds(row: Row, v: str | Label) {
     title = Label(text="a");
     [kind, title] = ["k", "x"];  # <-- Error
     other = title="x";  # <-- Error
@@ -90,6 +90,12 @@ def binder_rebinds(row: Row) {
         print(1);
     } except ValueError as title {  # <-- Error
         print(2);
+    }
+    match v {
+        case str() as title:  # <-- Error
+            print(1);
+        case title:  # <-- Ok: str was matched above, only Label is left
+            print(2);
     }
     (kind, *title) = ("k", "x", "y");  # <-- Error
     (kind, *middle, title) = ("k", Label(), Label(), "x");  # <-- Error: the last element
