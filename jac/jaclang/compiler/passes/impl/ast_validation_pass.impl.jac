@@ -100,7 +100,7 @@ impl ASTValidationPass._same_target(
 }
 
 impl ASTValidationPass._import_target(binding: ImportBinding) -> tuple[str, str] {
-    (stmt, item, _) = binding;
+    item = binding[1];
     if isinstance(item, ModulePath) {
         if item.alias is None or not item.path {
             return ("", item.base_module_name.split(".")[0]);
@@ -108,8 +108,7 @@ impl ASTValidationPass._import_target(binding: ImportBinding) -> tuple[str, str]
         parts = item.dot_path_str.rsplit(".", 1);
         return (parts[0] if len(parts) > 1 else "", parts[-1]);
     }
-    source = stmt.from_loc;
-    return (source.dot_path_str if source is not None else "", item.name.value);
+    return (item.from_mod_path.dot_path_str, item.name.value);
 }
 
 impl ASTValidationPass._alternatives(first: UniNode, second: UniNode) -> bool {
@@ -484,7 +483,7 @@ impl ASTValidationPass.enter_import with Import entry {
         and (here.clib_decls is None or len(here.clib_decls) == 0) {
         self.ctx.emit(E0044, node_override=here);
     }
-    if self._import_scopes is None or here.is_absorb or not here.items {
+    if self._import_scopes is None or here.is_absorb {
         return;
     }
     bound = self._import_scopes.setdefault(id(self._binding_scope(here)), {});
