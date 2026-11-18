@@ -337,6 +337,19 @@ impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
 }
 
 impl NaIRGenPass._enum_class_target(target: (uni.Expr | None)) -> (str | None) {
+    ref: (uni.UniNode | None) = target;
+    while isinstance(ref, uni.AtomUnit) {
+        ref = ref.value;
+    }
+    while isinstance(ref, uni.AtomTrailer)
+        and ref.is_attr
+        and isinstance(ref.target, uni.Expr)
+        and isinstance(ref.target.type, ModuleType) {
+        ref = ref.target;
+    }
+    if not isinstance(ref, uni.Name) {
+        return None;
+    }
     _key = self._type_key_of(target);
     if _key is None {
         return None;
@@ -520,10 +533,20 @@ impl NaIRGenPass._codegen_enum_subscript(
                 result = self.builder.select(hit, value, result);
                 found = self.builder.or_(found, hit);
             }
-            if self._is_owned(name) {
+            miss_bb = self.builder.function.append_basic_block("enum.name.miss");
+            ok_bb = self.builder.function.append_basic_block("enum.name.ok");
+            owned = self._is_owned(name);
+            self.builder.cbranch(found, ok_bb, miss_bb);
+            self.builder.position_at_end(miss_bb);
+            msg = self.builder.call(self._repr_str_fn(), [name], name="enum.name.repr");
+            if owned {
                 self._emit_rc_release_simple(name, op="enum_subscript", loc="");
             }
-            self._emit_runtime_raise(self.builder.not_(found), "KeyError", enum_name);
+            self._emit_raise_value("KeyError", msg);
+            self.builder.position_at_end(ok_bb);
+            if owned {
+                self._emit_rc_release_simple(name, op="enum_subscript", loc="");
+            }
             return result;
         }
     }

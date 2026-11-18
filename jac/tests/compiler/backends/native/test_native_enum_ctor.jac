@@ -174,10 +174,13 @@ test "a same-named local function is not read as the enum" {
 }
 
 
-test "a non-integer argument refuses instead of being coerced" {
+test "a non-integer argument or a computed enum target refuses" {
     seams = seam_report("enum_ctor_bad_arg.jac");
     assert "enum constructor 'Level'" in seams , (
         f"a float argument was coerced into the member table:\n{seams}"
+    );
+    assert "demoting picked" in seams , (
+        f"the member lookup skipped evaluating its target:\n{seams}"
     );
 }
 

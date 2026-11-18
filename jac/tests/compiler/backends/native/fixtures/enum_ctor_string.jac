@@ -27,8 +27,8 @@ def by_name(which: int) -> int {
             return 1 if Tokens[name].value == "b" and Tokens["A"].value == "a" else 0;
         }
         return 1 if Hue[name] == Hue.GREEN and Hue["RED"] == Hue.RED else 0;
-    } except KeyError {
-        return -1;
+    } except KeyError as err {
+        return -1 if str(err) == "'red'" else -2;
     }
 }
 
