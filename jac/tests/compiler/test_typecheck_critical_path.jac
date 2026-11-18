@@ -6,9 +6,9 @@ option-shaped fragments. A plain server module therefore reached code
 generation with no inference and none of the checker passes, so a type error
 became a runtime crash instead of a compile failure.
 
-These tests pin the properties that replace that arrangement: the analysis
-stage runs without being asked, and a module-scoped error stops code generation
-for every codespace rather than only for native modules.
+These tests pin the properties that replace that arrangement: the option is
+gone, the analysis stage runs without being asked, and a module-scoped error
+stops code generation for every codespace rather than only for native modules.
 """
 
 import os;
@@ -16,6 +16,7 @@ import shutil;
 import tempfile;
 
 import from pathlib { Path }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob _BAD_SRC: str = "def widen(a: int, b: int) -> int {\n    return a * b;\n}\n\nwith entry {\n    total: int = widen(\"alpha\", \"beta\");\n}\n",
@@ -38,6 +39,13 @@ def _compile_src(src: str) -> tuple[any, list[any]] {
     } finally {
         shutil.rmtree(proj, ignore_errors=True);
     }
+}
+
+
+test "the type_check option no longer exists" {
+    opts = CompileOptions();
+    assert not hasattr(opts, "type_check") , "CompileOptions still carries a type_check switch";
+    assert not hasattr(opts, "emit_diagnostics") , "CompileOptions still carries an emit_diagnostics switch";
 }
 
 

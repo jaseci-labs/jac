@@ -1269,6 +1269,22 @@ Cannot return int, expected bool
          ),
          ("function_type_attrs", "checker", "checker_function_attrs.jac", 0, True, []),
          (
+             "anchor_edges_iteration_type",
+             "checker",
+             "checker_bug_jir_list_iter_type.jac",
+             1,
+             True,
+             [
+                 (
+                     0,
+                     """
+        bad: int = anchor.id;  # <-- Error: only raised when anchor is typed
+        ^^^^^^^^^^^^^^^^^^^^^
+    """
+                 )
+             ]
+         ),
+         (
              "any_vs_object_attr_access",
              "checker",
              "checker_bug_typing_any_attr.jac",
