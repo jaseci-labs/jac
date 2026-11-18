@@ -1184,6 +1184,30 @@ test "a walker and a function read the request they serve (#9619)" {
     }
 }
 
+test "a raw function verifies a provider signature over the exact body it was sent" {
+    import base64;
+    import hashlib;
+    import hmac;
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # Spacing and an escaped character that a re-serialized payload would lose.
+        raw = b'{"id": 7,   "note": "caf\\u00e9", "line_items": [{"sku": "A"}]}';
+        signature = base64.b64encode(
+            hmac.new(b"shpss_test", raw, hashlib.sha256).digest()
+        ).decode();
+        signed = {
+            "Content-Type": "application/json",
+            "X-Shopify-Hmac-Sha256": signature
+        };
+        r = client.post("/raw/signed", content=raw, headers=signed);
+        assert r.status_code == 200 and r.text == "verified" , r.text;
+        r = client.post("/raw/signed", content=raw.replace(b"7", b"8"), headers=signed);
+        assert r.status_code == 200 and r.text == "refused" , r.text;
+    } finally {
+        client.close();
+    }
+}
+
 test "a configured public origin is what links are built from (#9619)" {
     import os;
     os.environ["JAC_SERVE_PUBLIC_ORIGIN"] = "https://app.example.com/";

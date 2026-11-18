@@ -8,6 +8,9 @@ import from jaclang.server.serving.datatypes {
     Response
 }
 import from http { HTTPMethod }
+import base64;
+import hashlib;
+import hmac;
 
 # ============================================================================
 # RestSpec Decorator Tests
@@ -642,6 +645,23 @@ def:pub raw_origin -> str {
         return "none";
     }
     return seen.origin;
+}
+
+"""A webhook-style raw function verifies a provider's base64 HMAC over the exact
+bytes it was sent, the way Shopify signs X-Shopify-Hmac-Sha256."""
+@restspec(method=HTTPMethod.POST, path="/raw/signed", envelope=False)
+def:pub raw_signed -> str {
+    seen = current_request();
+    if seen is None {
+        return "none";
+    }
+    expected = base64.b64encode(
+        hmac.new(b"shpss_test", seen.body, hashlib.sha256).digest()
+    ).decode();
+    provided = seen.header("X-Shopify-Hmac-Sha256") or "";
+    return "verified"
+        if hmac.compare_digest(provided.encode(), expected.encode())
+        else "refused";
 }
 
 """A raw-body function shapes its own status and headers with respond()."""

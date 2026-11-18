@@ -182,22 +182,24 @@ impl ServingApp._wrap_middleware(
 
 impl ServingApp._route_and_call(request: Request) -> Response {
     (ep, path_params, allowed) = self.router.resolve(request.method, request.url.path);
-    if ep is None {
-        if allowed {
-            resp = JSONResponse(
-                content={'detail': 'Method Not Allowed'}, status_code=405
-            );
-            resp.headers.set('Allow', ', '.join(sorted(allowed)));
-            return resp;
-        }
+    if ep is None and allowed {
+        resp = JSONResponse(content={'detail': 'Method Not Allowed'}, status_code=405);
+        resp.headers.set('Allow', ', '.join(sorted(allowed)));
+        return resp;
+    }
+    if ep is None or self.router.is_catchall(ep) {
         alt = _slash_alternate(request.url.path);
+        declared_only = ep is not None;
         if alt is not None
-            and self.router.resolve(request.method, alt)[0] is not None {
+            and self.router.resolve(request.method, alt, declared_only)[0]
+                is not None {
             query = request.url.query;
             return RedirectResponse(
                 url=alt + (f"?{query}" if query else ''), status_code=307
             );
         }
+    }
+    if ep is None {
         return JSONResponse(content={'detail': 'Not Found'}, status_code=404);
     }
     request.path_params = path_params;
