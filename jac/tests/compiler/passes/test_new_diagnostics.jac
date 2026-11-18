@@ -511,24 +511,26 @@ test "E2036: a module import and an enum or type alias collide too" {
 }
 
 test "E2036: an import binds a name once per scope" {
-    # Python runs the last import and the checker reads the first, so two
-    # imports of one name from different places disagree; repeating the same
-    # import is harmless. `with entry` and `if` bind in the enclosing scope.
+    # Python runs the last import and the checker reads the first, so imports of one
+    # name in one scope must agree; only alternative branches may differ.
     allowed = [
         "import from os.path { join } import from os.path { join }",
         "import from .b { A } import from pkg.b { A }",
         "import from . { A } import from pkg { A }",
         "import os; import os.path;",
+        "include b; import from c { b }",
         "import os as os; import os; import os as os;",
         "import from b { A } def f -> None { import from c { A } }",
         "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } } }",
         "with entry { try { import from b { A } } except ImportError { import from c { A } } }",
+        "def f(x: int) -> None { match x { case 1: import from b { A } case _: import from c { A } } }",
         "def f(y: int) -> None { switch y { case 1: import from b { A } break; case 2: import from c { A } } }",
         "def f(y: int) -> None { switch y { case 1: import from b { A } return; case 2: import from c { A } raise ValueError(); case 3: import from d { A } } }"
     ];
     clashes = [
         "import from os.path { join } import from shlex { join }",
         "import from b { A as X } import from b { C as X }",
+        "import from .b { A as X } import from pkg.b { C as X }",
         "import from .b { A } import from c { A }",
         "import os.path as p; import shlex as p;",
         'import from "./button" { Button } import from "@mui/material" { Button }',
