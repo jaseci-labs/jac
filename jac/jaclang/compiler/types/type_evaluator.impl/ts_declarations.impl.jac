@@ -196,7 +196,7 @@ impl TypeEvaluator._map_ts_type(
             elem = self._map_ts_type(ts.args[0], decls, seen, shells);
         } elif (k == TsTypeKind.TUPLE and ts.args) {
             mapped = [self._map_ts_type(a, decls, seen, shells) for a in ts.args];
-            elem = mapped[0] if len(mapped) == 1 else UnionType(types=mapped);
+            elem = self._union_of(mapped);
         }
         lst = self.prefetch.list_class.clone_as_instance();
         lst.private.type_args = [elem];
