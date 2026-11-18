@@ -82,7 +82,7 @@ def _collect_pod_logs(
     trace_id: str,
     start_ns: int,
     end_ns: int
-) -> list[dict[str, any]];
+) -> tuple[list[dict[str, any]], list[str]];
 
 
 async def _fetch_log_lines(
@@ -94,7 +94,7 @@ async def _fetch_log_lines(
     end_ns: int,
     limit: int,
     ascending: bool
-) -> tuple[list[dict[str, any]], str];
+) -> tuple[list[dict[str, any]], str, list[str]];
 
 
 impl JacAPIServerLogs.register_logs_endpoints -> None {
@@ -176,7 +176,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         namespace = _app_namespace();
 
         try {
-            (lines, logql) = await _fetch_log_lines(
+            (lines, logql, capped) = await _fetch_log_lines(
                 service, level, search, trace, start_ns, end_ns, limit, False
             );
         } except ConnectionError as e {
@@ -202,7 +202,8 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     "count": len(lines),
                     "query": logql,
                     "namespace": namespace,
-                    "next_before": next_before
+                    "next_before": next_before,
+                    "capped_containers": capped
                 }
             }
         );
@@ -236,7 +237,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         start_ns = now_ns - (24 * 3600 * 1_000_000_000);
 
         try {
-            (lines, _) = await _fetch_log_lines(
+            (lines, _, capped) = await _fetch_log_lines(
                 "", "", "", trace_id, start_ns, now_ns, 500, True
             );
         } except ConnectionError as e {
@@ -269,7 +270,8 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     "trace_id": trace_id,
                     "services_touched": services_touched,
                     "first_ts": first_ts,
-                    "last_ts": last_ts
+                    "last_ts": last_ts,
+                    "capped_containers": capped
                 }
             }
         );
@@ -556,7 +558,7 @@ impl _collect_pod_logs(
     trace_id: str,
     start_ns: int,
     end_ns: int
-) -> list[dict[str, any]] {
+) -> tuple[list[dict[str, any]], list[str]] {
     pod_re = re.compile(_service_to_pod_regex(service)) if service else None;
     since_s = max(1, (time.time_ns() - start_ns) // 1_000_000_000 + 1);
     try {
@@ -567,6 +569,7 @@ impl _collect_pod_logs(
         raise ConnectionError(api_error_detail(e));
     }
     out: list[dict[str, any]] = [];
+    capped: list[str] = [];
     failures: list[str] = [];
     read_ok = False;
     for pod in (pods or []) {
@@ -593,9 +596,13 @@ impl _collect_pod_logs(
                 continue;
             }
             read_ok = True;
+            text = text or "";
+            if len(text.splitlines()) >= _POD_LOG_TAIL_LINES {
+                capped.append(f"{name}/{container.name}");
+            }
             out.extend(
                 _pod_log_lines(
-                    text or "",
+                    text,
                     {"pod": name, "container": container.name},
                     start_ns,
                     end_ns,
@@ -613,7 +620,7 @@ impl _collect_pod_logs(
             raise ConnectionError(summary);
         }
     }
-    return out;
+    return (out, capped);
 }
 
 
@@ -626,7 +633,7 @@ impl _fetch_log_lines(
     end_ns: int,
     limit: int,
     ascending: bool
-) -> tuple[list[dict[str, any]], str] {
+) -> tuple[list[dict[str, any]], str, list[str]] {
     try {
         logs_cfg = get_scale_config().get_gateway_config().get("logs") or {};
     } except Exception {
@@ -637,7 +644,7 @@ impl _fetch_log_lines(
         if core is None {
             raise ConnectionError(unavailable_detail());
         }
-        lines = await asyncio.to_thread(
+        (lines, capped) = await asyncio.to_thread(
             _collect_pod_logs,
             core,
             ops_namespace(),
@@ -649,7 +656,7 @@ impl _fetch_log_lines(
             end_ns
         );
         lines.sort(key=lambda (line) { int(line["ts_ns"]); }, reverse=not ascending);
-        return (lines[:limit], "");
+        return (lines[:limit], "", capped);
     }
     logql = _build_logql(_app_namespace(), service, level, search, trace_id);
     payload = await _loki_request(
@@ -662,5 +669,5 @@ impl _fetch_log_lines(
             "direction": "forward" if ascending else "backward"
         }
     );
-    return (_flatten_loki_response(payload, ascending=ascending), logql);
+    return (_flatten_loki_response(payload, ascending=ascending), logql, []);
 }

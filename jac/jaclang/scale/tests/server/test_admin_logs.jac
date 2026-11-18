@@ -204,7 +204,7 @@ test "pod regex drops -deployment- infix in monolith mode" {
 }
 
 
-test "logs read the pods only in a cluster with Loki off" {
+test "logs read the pods only in a cluster with Loki off and flag capped reads" {
     import os;
     import from unittest.mock { patch }
     import from jaclang.scale.admin.logs { _use_pod_logs }
@@ -223,5 +223,34 @@ test "logs read the pods only in a cluster with Loki off" {
                 f"LOKI_URL={loki_url!r} host={cluster_host!r} logs={logs_cfg}"
             );
         }
+    }
+
+    import from types { SimpleNamespace }
+    import from jaclang.scale.admin.logs { _collect_pod_logs, _POD_LOG_TAIL_LINES }
+
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(name="p1"),
+        spec=SimpleNamespace(containers=[SimpleNamespace(name="app")])
+    );
+    text = "";
+    def list_pods(**kw: any) -> any {
+        return SimpleNamespace(items=[pod]);
+    }
+    def read_log(**kw: any) -> str {
+        return text;
+    }
+    core = SimpleNamespace(
+        list_namespaced_pod=list_pods, read_namespaced_pod_log=read_log
+    );
+    for (count, expected) in (
+        (_POD_LOG_TAIL_LINES - 1, []),
+        (_POD_LOG_TAIL_LINES, ["p1/app"])
+    ) {
+        text = "2024-05-22T21:12:25Z line\n" * count;
+        (lines, capped) = _collect_pod_logs(
+            core, "ns", "", "", "", "", 0, 2_000_000_000_000_000_000
+        );
+        assert len(lines) == count , f"{count} lines read as {len(lines)}";
+        assert capped == expected , f"{count} lines reported capped={capped}";
     }
 }
