@@ -2093,6 +2093,39 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Red on main while the latest finished release rehearsal
+  # (release-rehearsal.yml, daily 03:00 Asia/Colombo) is failing, and on every
+  # later main run until a rehearsal passes. release-rehearsal-verdict.yml
+  # re-runs it when a rehearsal finishes. Pull requests skip it.
+  release-rehearsal:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: The latest release rehearsal passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! latest="$(gh api "repos/$GH_REPO/actions/workflows/release-rehearsal.yml/runs?branch=main&status=completed&per_page=20" \
+            --jq '[.workflow_runs[] | select(.conclusion != "cancelled" and .conclusion != "skipped")][0] // empty | "\(.conclusion) \(.html_url)"')"; then
+            echo "::warning::Could not read the release rehearsal runs."
+            exit 0
+          fi
+          if [ -z "$latest" ]; then
+            echo "No finished release rehearsal yet."
+            exit 0
+          fi
+          read -r conclusion url <<<"$latest"
+          if [ "$conclusion" != success ]; then
+            echo "::error::The latest release rehearsal failed: $url. main stays red until a rehearsal passes; after the fix, dispatch release-rehearsal.yml."
+            exit 1
+          fi
+          echo "The latest release rehearsal passed: $url"
+
   # Aggregate gate: branch protection requires only this context. A NEW job
   # must be added to needs below by hand; always() so failures upstream fail
   # the gate instead of skipping it (skipped required checks count as passing).
@@ -2101,6 +2134,7 @@ jobs:
     if: always()
     needs:
       - changes
+      - release-rehearsal
       - build-kit
       - dev-kit
       - dev-precompile
