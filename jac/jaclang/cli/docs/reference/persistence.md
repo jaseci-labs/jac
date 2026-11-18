@@ -136,6 +136,21 @@ walker me {
 | `conflict_max_attempts` | `5` | Max attempts under `"retry"` before giving up with a `409` |
 | `conflict_backoff_ms` | `0` | Linear backoff (ms x attempt) between replay attempts |
 
+### Request timeout and cancellation
+
+A positive `[serve.workers] request_timeout` (or `JAC_SERVE_REQUEST_TIMEOUT`)
+requests cancellation when the budget expires; `0` disables the timeout.
+It is not a hard response deadline. A synchronous walker or function already
+running in a worker thread cannot be interrupted. The server waits for that
+thread to finish and settles the request before answering, so the response
+can arrive after the configured budget.
+
+If cancellation reaches the request dispatcher, it returns HTTP 504. If the
+request already committed or may have made work durable, the response is
+instead a final HTTP 500 with error code `FAILED_AFTER_COMMIT`. The server
+does not automatically replay that request.
+Do not assume that a timeout or a client disconnect means no work was saved.
+
 ---
 
 ## The schema fingerprint

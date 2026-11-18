@@ -347,7 +347,7 @@ count = ""               # Worker processes; unset = as many as fit (see below),
 threads = "auto"         # Sync-handler threads per worker; "auto" sizes from the quota. JAC_SERVE_THREADS
 max_requests = 0         # Recycle a worker after this many requests (0 = never). JAC_SERVE_MAX_REQUESTS
 max_requests_jitter = 0  # Random extra requests so workers do not recycle together
-request_timeout = 0.0    # Seconds before a request is answered 504 (0 = no limit). JAC_SERVE_REQUEST_TIMEOUT
+request_timeout = 0.0    # Seconds before requesting cancellation (0 = disabled). Sync work can delay the response. JAC_SERVE_REQUEST_TIMEOUT
 boot_timeout = 120.0     # Seconds a worker may take to start accepting before it is replaced
 hang_timeout = 30.0      # Seconds without a worker heartbeat before it is killed and replaced
 

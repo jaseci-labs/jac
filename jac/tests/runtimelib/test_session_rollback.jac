@@ -21,21 +21,36 @@ Every conflict here is deterministic: either a real second connection commits
 first, or COMMIT is made to fail the way Postgres fails a serializable
 transaction (the transaction is rolled back and the client gets SQLSTATE
 40001). Nothing depends on timing.
+
+The unit-entry, nested-commit and callback sections also pin which work can
+be retried across a session boundary.
 """
 
 import asyncio;
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from uuid { UUID }
+import from unittest.mock { patch }
+import from uuid { UUID, uuid4 }
 import from jaclang.data.pgwire { PgWireError }
+import from jaclang.data.store { TxnIsolation }
 import from jaclang.data.type_identity { storage_type }
 import from jaclang.runtime.archetype { NodeAnchor }
 import from jaclang.runtime.context { ExecutionContext }
-import from jaclang.runtime.exceptions { WriteConflict }
-import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.runtime.exceptions {
+    PartialCommitError,
+    ReadOnlyRetry,
+    WriteConflict
+}
+import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface as Jac }
 import from jaclang.server.request_scope { RequestScope }
-import from jaclang.server.session { MAX_RETRIES, RO_UNITS_ENV, Session }
+import from jaclang.server.session {
+    MAX_RETRIES,
+    RO_UNITS_ENV,
+    Session,
+    unit_writes_recorded
+}
+import from .test_read_path_isolation { _mk_session, _store }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -1473,5 +1488,533 @@ test "request loop: ten concurrent writers to one node all land" {
         assert landed == 10 , (
             f"10 accepted writes moved the counter by {landed} (busy={busy})"
         );
+    }
+}
+
+
+# Failed unit entry
+
+test "failed run_request entry preserves the outer read-tier retry" {
+    with TemporaryDirectory() as td, patch.dict(os.environ, {RO_UNITS_ENV: "1"}) {
+        sess = _mk_session(td);
+        key = "tests.failed_request_entry." + uuid4().hex;
+        calls: list[int] = [];
+        def body -> int {
+            calls.append(1);
+            return 7;
+        }
+        try {
+            sess.unit_enter(key);
+            sess.read_barrier();
+            assert _store(sess).txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY;
+            raised = False;
+            try {
+                sess.run_request(body);
+            } except ReadOnlyRetry as retry {
+                raised = True;
+                assert retry.unit_key == key;
+            }
+            assert raised , "entry must request a replay of the outer snapshot reads";
+            assert not calls , "the nested body must not run on the old snapshot";
+            assert sess.unit_depth() == 1 , "failed entry leaked a nested unit";
+            assert sess._unit_stack == [(key, False)];
+            assert sess._ro_units == 0 , "writer demotion must survive failed entry";
+            assert unit_writes_recorded(key);
+            assert not _store(sess).in_txn();
+
+            resurfaced = False;
+            try {
+                sess.unit_exit();
+            } except ReadOnlyRetry as retry {
+                resurfaced = True;
+                assert retry.unit_key == key;
+            }
+            assert resurfaced , "a caught nested retry must still replay the outer unit";
+            assert sess.unit_depth() == 0;
+            assert sess._unit_stack == [];
+
+            sess.unit_enter(key);
+            try {
+                sess.read_barrier();
+                assert _store(sess).txn_isolation() is TxnIsolation.SERIALIZABLE;
+                assert sess.run_request(body) == 7;
+                assert calls == [1];
+                assert sess.unit_depth() == 1;
+            } finally {
+                sess.unit_exit();
+            }
+            assert sess.unit_depth() == 0;
+        } finally {
+            sess.close();
+        }
+    }
+}
+
+
+test "failed keyed or keyless entry restores counters at any depth" {
+    with TemporaryDirectory() as td, patch.dict(os.environ, {RO_UNITS_ENV: "1"}) {
+        sess = _mk_session(td);
+        try {
+            sess.read_scope_enter();
+            sess.read_barrier();
+            for nested in [False, True] {
+                outer = "tests.failed_entry_outer." + uuid4().hex;
+                if nested {
+                    sess.unit_enter(outer);
+                }
+                for key in [None, "tests.failed_entry_inner." + uuid4().hex] {
+                    for failure in [
+                        RuntimeError("entry failed"),
+                        KeyboardInterrupt()
+                    ] {
+                        stack = list(sess._unit_stack);
+                        depth = sess.unit_depth();
+                        ro_units = sess._ro_units;
+                        raised = False;
+                        with patch.object(sess, "_ensure_txn", side_effect=failure) {
+                            try {
+                                sess.unit_enter(key);
+                            } except BaseException as error {
+                                assert error is failure;
+                                raised = True;
+                            }
+                        }
+                        assert raised;
+                        assert sess.unit_depth() == depth;
+                        assert sess._unit_stack == stack;
+                        assert sess._ro_units == ro_units;
+                        assert _store(sess).txn_isolation()
+                            is TxnIsolation.SNAPSHOT_READ_ONLY;
+                    }
+                }
+                if nested {
+                    sess.unit_exit();
+                }
+            }
+            sess.read_scope_exit();
+            assert not _store(sess).in_txn();
+        } finally {
+            sess.close();
+        }
+    }
+}
+
+
+test "failed nested entry leaves the outer writes for its final commit" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            anchor = _loose(ctx, 1);
+            sess.commit();
+            sess.unit_enter();
+            _as_any(anchor.archetype).n = 2;
+            sess.mark_dirty(anchor);
+            sess.read_barrier();
+            raised = False;
+            with patch.object(
+                sess, "_ensure_txn", side_effect=RuntimeError("entry failed")
+            ) {
+                try {
+                    sess.run_request(lambda() { return 0; });
+                } except RuntimeError {
+                    raised = True;
+                }
+            }
+            assert raised;
+            assert sess.unit_depth() == 1;
+            assert sess._unit_stack == [(None, False)];
+            assert _store(sess).in_txn() , "failed entry must not abort the outer unit";
+            assert _stored(ctx, anchor.ensure_id(), "n") == "1" , (
+                "failed entry must not commit the outer unit"
+            );
+            sess.unit_exit();
+            assert sess.unit_depth() == 0;
+            assert _stored(ctx, anchor.ensure_id(), "n") == "2";
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
+# Nested commit and rollback
+
+test "a nested commit does not disable the outer unit's read replay" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            anchor = _loose(ctx, 1);
+            sess.commit();
+            sess.unit_enter();
+            assert sess.run_request(lambda() { return 1; }) == 1;
+            assert sess.unit_depth() == 1;
+            current = sess.get(anchor.ensure_id());
+            assert current is not None;
+            _as_any(current.archetype).n += 1;
+            left = _fail_commits(sess);
+            raised = False;
+            try {
+                sess.commit();
+            } except WriteConflict {
+                raised = True;
+            }
+            assert left == [0];
+            assert raised , "the outer unit must replay its reads after a conflict";
+            assert _stored(ctx, anchor.ensure_id(), "n") == "1";
+            sess.abort();
+            sess.unit_exit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+test "nested retries preserve the outer commit boundary and abort reopens replay" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            anchor = _loose(ctx, 1);
+            sess.commit();
+            sess.unit_enter();
+            sess.unit_committed();
+            calls: list[int] = [];
+            def nested -> int {
+                calls.append(1);
+                current = sess.get(anchor.ensure_id());
+                assert current is not None;
+                _as_any(current.archetype).n += 1;
+                return _as_any(current.archetype).n;
+            }
+            left = _fail_commits(sess);
+            assert sess.run_request(nested) == 2;
+            assert left == [0];
+            assert calls == [1, 1];
+            assert sess.unit_depth() == 1;
+            current = sess.get(anchor.ensure_id());
+            assert current is not None;
+            _as_any(current.archetype).n = 3;
+            left = _fail_commits(sess);
+            sess.commit();
+            assert left == [0];
+            assert _stored(ctx, anchor.ensure_id(), "n") == "3";
+            sess.abort();
+            current = sess.get(anchor.ensure_id());
+            assert current is not None;
+            _as_any(current.archetype).n = 4;
+            left = _fail_commits(sess);
+            raised = False;
+            try {
+                sess.commit();
+            } except WriteConflict {
+                raised = True;
+            }
+            assert raised , "an aborted unit must replay its next read decisions";
+            assert left == [0];
+            assert _stored(ctx, anchor.ensure_id(), "n") == "3";
+            sess.abort();
+            sess.unit_exit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
+# Post-commit callback writes and retries
+
+test "staged nested callback writes persist before returning to the outer unit" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            ids: list[any] = [];
+            calls: list[int] = [];
+            callbacks: list[int] = [];
+            def outer {
+                calls.append(1);
+                def inner {
+                    ids.append(_loose(ctx, 7).ensure_id());
+                    def effect {
+                        callbacks.append(1);
+                        ids.append(_loose(ctx, 42).ensure_id());
+                    }
+                    sess.on_commit(effect);
+                }
+                sess.run_request(inner);
+                assert [_stored(ctx, id, "n") for id in ids] == ["7", "42"];
+                raise ValueError("outer body failed after the nested call");
+            }
+            partial = False;
+            try {
+                sess.run_request(outer);
+            } except PartialCommitError {
+                partial = True;
+            }
+            assert partial and calls == [1] and callbacks == [1];
+            assert [_stored(ctx, id, "n") for id in ids] == ["7", "42"];
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+test "raw callback writes never disappear behind a successful write-set retry" {
+    for failure in ["commit", "flush"] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            try {
+                sess = _sess(ctx);
+                store = _as_any(sess.store);
+                key = uuid4().hex;
+                ids: list[any] = [];
+                calls: list[int] = [];
+                callbacks: list[int] = [];
+                left = [1];
+                real_upsert = store.upsert;
+                def fail_upsert(rows: any) -> any {
+                    if left[0] {
+                        left[0] -= 1;
+                        store.rollback();
+                        raise PgWireError({"C": "40001", "M": "raw callback conflict"});
+                    }
+                    return real_upsert(rows);
+                }
+                def body {
+                    calls.append(1);
+                    ids.append(_loose(ctx, 7).ensure_id());
+                    def effect {
+                        callbacks.append(1);
+                        store.rows(
+                            "INSERT INTO kv_state (key, value) VALUES (:k, 'v')",
+                            {"k": key}
+                        );
+                        if failure == "commit" {
+                            _fail_commits(sess);
+                        } else {
+                            _loose(ctx, 42);
+                            store.upsert = fail_upsert;
+                            sess.read_barrier();
+                        }
+                    }
+                    sess.on_commit(effect);
+                }
+                partial = False;
+                try {
+                    sess.run_request(body);
+                } except PartialCommitError {
+                    partial = True;
+                } finally {
+                    store.upsert = real_upsert;
+                }
+                assert partial , "opaque callback SQL must fail closed after rollback";
+                assert calls == [1] and callbacks == [1];
+                assert _stored(ctx, ids[0], "n") == "7";
+                probe = store.new_session();
+                try {
+                    rows = probe.rows(
+                        "SELECT count(*) FROM kv_state WHERE key = :k", {"k": key}
+                    );
+                    assert int(rows[0][0]) == 0;
+                } finally {
+                    probe.close();
+                }
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+        }
+    }
+}
+
+def check_callback(variant: str, failures: int = 1, outer_conflict: bool = False) {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        child = ExecutionContext(_parent=ctx, _own_session=True)
+            if variant == "child"
+            else ctx;
+        try {
+            sess = _sess(ctx);
+            worker = _sess(child);
+            parent = _loose(ctx, 0);
+            sess.commit();
+            outer_calls: list[int] = [];
+            body_calls: list[int] = [];
+            callback_calls: list[int] = [];
+            ids: list[any] = [];
+            left = [failures];
+            def body -> int {
+                body_calls.append(1);
+                ids.append(_loose(child, 7).ensure_id());
+                def callback {
+                    callback_calls.append(1);
+                    ids.append(_loose(child, 42).ensure_id());
+                    store = _as_any(worker.store);
+                    real_upsert = store.upsert;
+                    def failing_upsert(rows: any) -> any {
+                        if left[0] > 0 {
+                            left[0] -= 1;
+                            store.rollback();
+                            raise PgWireError(
+                                {"C": "40001", "M": "injected callback flush conflict"}
+                            );
+                        }
+                        return real_upsert(rows);
+                    }
+                    store.upsert = failing_upsert;
+                    try {
+                        worker.read_barrier();
+                    } finally {
+                        store.upsert = real_upsert;
+                    }
+                }
+                worker.on_commit(callback);
+                return 7;
+            }
+            def outer -> int {
+                outer_calls.append(1);
+                result = worker.run_request(body)
+                    if variant in ["shared", "child"]
+                    else body();
+                if variant == "explicit" {
+                    Jac.commit();
+                }
+                if outer_conflict {
+                    current = sess.get(parent.ensure_id());
+                    assert current is not None;
+                    _as_any(current.archetype).n = 1;
+                    _fail_commits(sess);
+                }
+                return result;
+            }
+            partial = False;
+            result: any = None;
+            try {
+                result = sess.run_request(outer);
+            } except PartialCommitError {
+                partial = True;
+            }
+            assert outer_calls == [1] and body_calls == [1] and callback_calls == [1];
+            assert left == [0] and len(ids) == 2;
+            persisted = [_stored(child, id, "n") for id in ids];
+            if failures > 1 {
+                assert partial , "exhausted callback writes must not report success";
+                assert persisted == ["7", None];
+            } elif outer_conflict {
+                assert partial , "outer replay must not repeat committed nested work";
+                assert persisted == ["7", "42"];
+            } else {
+                assert not partial and result == 7;
+                assert persisted == ["7", "42"];
+            }
+            assert _stored(ctx, parent.ensure_id(), "n") == "0";
+        } finally {
+            if child is not ctx {
+                child.close();
+            }
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+test "callback boundary request writes survive serialization" {
+    check_callback("request");
+}
+
+test "callback boundary explicit commits retain write retries" {
+    check_callback("explicit");
+}
+
+test "callback boundary shared nested commits retain write retries" {
+    check_callback("shared");
+}
+
+test "callback boundary independent child commits retain write retries" {
+    check_callback("child");
+}
+
+test "callback boundary exhausted writes fail without repeating work" {
+    check_callback("request", failures=2);
+}
+
+test "callback boundary exhausted nested writes fail without repeating work" {
+    check_callback("shared", failures=2);
+}
+
+test "callback boundary completed nested writes survive an outer conflict" {
+    check_callback("shared", failures=0, outer_conflict=True);
+}
+
+test "callback boundary child partial failure reaches its parent" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        child = ExecutionContext(_parent=ctx, _own_session=True);
+        try {
+            sess = _sess(ctx);
+            other = _sess(child);
+            parent = _loose(child, 0);
+            other.commit();
+            body_calls: list[int] = [];
+            callback_calls: list[int] = [];
+            child_calls: list[int] = [];
+            ids: list[any] = [];
+            faults: list[list[int]] = [];
+            def body {
+                body_calls.append(1);
+                ids.append(_loose(ctx, 7).ensure_id());
+                def callback {
+                    callback_calls.append(1);
+                    def nested {
+                        def inner {
+                            child_calls.append(1);
+                            ids.append(_loose(child, 42).ensure_id());
+                        }
+                        other.run_request(inner);
+                        current = other.get(parent.ensure_id());
+                        assert current is not None;
+                        _as_any(current.archetype).n = 1;
+                        faults.append(_fail_commits(other));
+                    }
+                    other.run_request(nested);
+                }
+                sess.on_commit(callback);
+            }
+            partial = False;
+            try {
+                sess.run_request(body);
+            } except PartialCommitError {
+                partial = True;
+            }
+            assert partial , "a failed child callback must not report parent success";
+            assert body_calls == [1] and callback_calls == [1] and child_calls == [1];
+            assert faults == [[0]] and len(ids) == 2;
+            assert [_stored(child, id, "n") for id in ids] == ["7", "42"];
+            assert _stored(child, parent.ensure_id(), "n") == "0";
+        } finally {
+            child.close();
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
     }
 }
