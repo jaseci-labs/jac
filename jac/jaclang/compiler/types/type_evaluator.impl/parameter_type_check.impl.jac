@@ -1038,9 +1038,7 @@ impl TypeEvaluator.assign_type_to_type_var(
                 ),
                 None
             );
-            bindings[name] = opaque
-                if opaque is not None
-                else (values[0] if len(values) == 1 else UnionType(types=values));
+            bindings[name] = opaque if opaque is not None else (self._union_of(values));
         }
         return True;
     }

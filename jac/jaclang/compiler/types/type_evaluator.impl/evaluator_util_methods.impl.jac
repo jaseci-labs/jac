@@ -268,10 +268,7 @@ impl TypeEvaluator._typeddict_value_union(base_type: ClassType) -> TypeBase {
     if not field_types {
         return UnknownType();
     }
-    if len(field_types) == 1 {
-        return field_types[0];
-    }
-    return UnionType(types=field_types);
+    return self._union_of(field_types);
 }
 
 impl TypeEvaluator._get_typeddict_indexed_type(
@@ -2524,11 +2521,7 @@ impl TypeEvaluator._infer_lambda_block_return_type(
         }
     }
 
-    if len(seen) == 1 {
-        return seen[0];
-    }
-
-    return UnionType(types=seen);
+    return self._union_of(seen);
 }
 
 impl TypeEvaluator._collect_return_types(
