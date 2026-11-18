@@ -7,18 +7,28 @@ Live, against the embedded server: how many socket reads a result costs
 and that NOTIFY traffic survives the read buffer. The socket is wrapped
 in a pass-through that counts reads (and, to stand in for a starved
 thread, can delay them); every byte still comes from a real Postgres
-backend. SCRAM-over-TCP is covered by the k8s path.
+backend. SCRAM-over-TCP is covered by the k8s path. TLS runs against a
+second embedded cluster on TCP with ssl turned on.
 """
 
+import os;
 import select;
+import shutil;
 import socket;
+import ssl;
+import subprocess;
 import threading;
 import time;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.pgload { connect as pg_connect }
-import from jaclang.server.session { shared_pg_data_dir, project_db_name }
+import from jaclang.data.pgpool { pool_key }
+import from jaclang.server.session {
+    conninfo_from_url,
+    shared_pg_data_dir,
+    project_db_name
+}
 import from jaclang.data.pgwire {
     PgWireConnection,
     PgWireError,
@@ -606,6 +616,129 @@ test "an unquoted deallocation with a trailing semicolon forgets that statement"
             }
         } finally {
             conn.close();
+        }
+    }
+}
+
+
+test "a database url's TLS settings reach the conninfo and the pool key" {
+    plain = conninfo_from_url('postgresql://u:p@db.example/app');
+    tls = conninfo_from_url(
+        'postgresql://u:p@db.example/app?sslmode=verify-full&sslrootcert=/ca.pem&channel_binding=prefer'
+    );
+    assert (plain.sslmode, plain.sslrootcert) == ('', '');
+    assert (tls.sslmode, tls.sslrootcert) == ('verify-full', '/ca.pem');
+    assert pool_key(plain) != pool_key(tls);
+    refused = False;
+    try {
+        conninfo_from_url('postgresql://u:p@db.example/app?channel_binding=require');
+    } except ValueError {
+        refused = True;
+    }
+    assert refused , 'channel_binding=require must not be silently dropped';
+}
+
+
+test "an unknown sslmode is refused before connecting" {
+    refused = False;
+    try {
+        PgWireConnection(user='jac', host='127.0.0.1', port=1, sslmode='always');
+    } except ValueError {
+        refused = True;
+    }
+    assert refused;
+}
+
+
+test "sslmode negotiates TLS with Postgres and verify-full checks the certificate" {
+    if not shutil.which('openssl') {
+        testskip('the openssl CLI is needed to make a server certificate');
+    }
+    with TemporaryDirectory() as td {
+        with socket.socket() as probe {
+            probe.bind(('127.0.0.1', 0));
+            port = int(probe.getsockname()[1]);
+        }
+        rt = PgRuntime(
+            data_dir=str(Path(td) / 'pg'), tcp=True, port=port, database='jac_tls'
+        );
+        info = rt.ensure();
+        cert = str(Path(rt.data_dir) / 'server.crt');
+        def open_conn(host: str = '127.0.0.1', **tls: any) -> any {
+            return pg_connect(
+                info.user, host=host, port=port, database='jac_tls', timeout=10.0, **tls
+            );
+        }
+        def encrypted(conn: any) -> bool {
+            try {
+                return conn.run(
+                    'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()'
+                )[0][0];
+            } finally {
+                conn.close();
+            }
+        }
+        def refusal(**tls: any) -> (Exception | None) {
+            try {
+                open_conn(**tls).close();
+            } except Exception as e {
+                return e;
+            }
+            return None;
+        }
+        try {
+            assert 'does not accept TLS' in str(refusal(sslmode='require'));
+            assert not encrypted(open_conn(sslmode='prefer'));
+            subprocess.run(
+                [
+                    'openssl',
+                    'req',
+                    '-x509',
+                    '-newkey',
+                    'rsa:2048',
+                    '-nodes',
+                    '-days',
+                    '2',
+                    '-subj',
+                    '/CN=localhost',
+                    '-addext',
+                    'subjectAltName=DNS:localhost',
+                    '-keyout',
+                    str(Path(rt.data_dir) / 'server.key'),
+                    '-out',
+                    cert
+                ],
+                capture_output=True,
+                check=True
+            );
+            os.chmod(Path(rt.data_dir) / 'server.key', 0o600);
+            admin = open_conn();
+            admin.run('ALTER SYSTEM SET ssl = on');
+            admin.run('SELECT pg_reload_conf()');
+            admin.close();
+            deadline = time.monotonic() + 10.0;
+            while refusal(sslmode='require') is not None
+                and time.monotonic() < deadline {
+                time.sleep(0.1);
+            }
+            assert encrypted(open_conn(sslmode='require'));
+            assert not encrypted(open_conn());
+            assert encrypted(
+                open_conn(host='localhost', sslmode='verify-full', sslrootcert=cert)
+            );
+            assert isinstance(
+                refusal(sslmode='verify-full', sslrootcert=cert),
+                ssl.SSLCertVerificationError
+            ) , 'verify-full accepted a certificate for another host';
+            assert isinstance(
+                refusal(host='localhost', sslmode='verify-full'),
+                ssl.SSLCertVerificationError
+            ) , 'verify-full trusted a self-signed certificate';
+            assert isinstance(
+                refusal(sslmode='require', sslrootcert='system'), ValueError
+            );
+        } finally {
+            rt.stop();
         }
     }
 }
