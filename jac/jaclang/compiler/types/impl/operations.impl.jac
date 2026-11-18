@@ -270,71 +270,16 @@ impl get_type_of_binary_operation(
                 return UnknownType(is_diagnosed=True);
             }
         }
+        (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
         if isinstance(left_type, TypeVarType) {
-            (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
-
-            if left_type.constraints {
-                for constraint_type in left_type.constraints {
-                    if isinstance(constraint_type, ClassType) {
-                        result = evaluator.get_type_of_magic_method_call(
-                            constraint_type, magic, [expr.right], None
-                        );
-                        if not result {
-                            evaluator.emit_diag(
-                                E1010, expr, op=magic, type=str(constraint_type)
-                            );
-                        }
-                    }
-                }
-                return UnknownType();
-            }
-            if left_type.bound and isinstance(left_type.bound, ClassType) {
-                result = evaluator.get_type_of_magic_method_call(
-                    left_type.bound, magic, [expr.right], None
-                );
-                if result {
-                    return result;
-                }
-
-                evaluator.emit_diag(E1010, expr, op=magic, type=str(left_type.bound));
-                return UnknownType();
-            }
-
-            evaluator.emit_diag(E1010, expr, op=magic, type=left_type.name);
-            return UnknownType();
+            return evaluator._typevar_magic_call(
+                left_type, magic, [expr.right], expr, E1010, op=magic
+            );
         }
         if isinstance(right_type, TypeVarType) {
-            (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
-
-            if right_type.constraints {
-                for constraint_type in right_type.constraints {
-                    if isinstance(constraint_type, ClassType) {
-                        result = evaluator.get_type_of_magic_method_call(
-                            constraint_type, rmagic, [expr.left], None
-                        );
-                        if not result {
-                            evaluator.emit_diag(
-                                E1010, expr, op=rmagic, type=str(constraint_type)
-                            );
-                        }
-                    }
-                }
-                return UnknownType();
-            }
-            if right_type.bound and isinstance(right_type.bound, ClassType) {
-                result = evaluator.get_type_of_magic_method_call(
-                    right_type.bound, rmagic, [expr.left], None
-                );
-                if result {
-                    return result;
-                }
-
-                evaluator.emit_diag(E1010, expr, op=rmagic, type=str(right_type.bound));
-                return UnknownType();
-            }
-
-            evaluator.emit_diag(E1010, expr, op=rmagic, type=right_type.name);
-            return UnknownType();
+            return evaluator._typevar_magic_call(
+                right_type, rmagic, [expr.left], expr, E1010, op=rmagic
+            );
         }
     }
 
