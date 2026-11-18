@@ -6,24 +6,19 @@ import contextlib;
 import from unittest { mock }
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { EmptyReplyError, Model, OutputTruncatedError }
-import from support { call, chunk_text, finish, say, scripted, stream_events }
+import from support {
+    blank_replies,
+    call,
+    chunk_text,
+    finish,
+    say,
+    scripted,
+    stream_events
+}
 
 
 def save_data(name: str, payload: str) -> str {
     return f"saved {name} ({len(payload)} bytes)";
-}
-
-
-"""Assistant turns in `msgs` with blank text, which Anthropic is sent as placeholder text."""
-def _blank_replies(msgs: list[any]) -> list[any] {
-    return [
-        m
-        for m in msgs
-        if isinstance(m, dict)
-            and m.get("role") == "assistant"
-            and isinstance(m.get("content"), str)
-            and not m["content"].strip()
-    ];
 }
 
 
@@ -74,7 +69,7 @@ def _turn(
             answer = e;
         }
         for sent in fake.sent("messages") {
-            assert not _blank_replies(sent) , f"{mode}: a blank reply was sent: {sent}";
+            assert not blank_replies(sent) , f"{mode}: a blank reply was sent: {sent}";
         }
         return (answer, conv);
     }
@@ -203,7 +198,7 @@ test "a reply cut off at max_tokens, or empty, never passes as a finished answer
                 if isinstance(by_mode, dict)
                 else by_mode;
             assert conv , f"{where}: conversation was not written back";
-            assert not _blank_replies(conv) , f"{where}: a blank reply was saved: {conv}";
+            assert not blank_replies(conv) , f"{where}: a blank reply was saved: {conv}";
             if expected is OutputTruncatedError {
                 assert isinstance(answer, OutputTruncatedError)
                     and "max_tokens" in str(answer) , f"{where}: got {answer!r}";
