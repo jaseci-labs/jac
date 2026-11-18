@@ -69,6 +69,7 @@ def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
 def:pub __jacTokenExpired(token: str) -> bool;
 def:pub __jacDropRejectedToken(sent: str) -> bool;
+def __jacResetRejectedSession(sent: str) -> None;
 def:pub jacSetToken(token: str) -> None;
 def:pub useJacState(initial: any) -> any;
 

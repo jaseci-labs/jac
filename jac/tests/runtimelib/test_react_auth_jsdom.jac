@@ -264,13 +264,13 @@ const CASES = [
   { name: "another app, no token", app: "svc", calls: 1, sent: null, landed: null, left: null, resets: 0 },
   { name: "own app, current token", app: "", calls: 1, sent: "tok", landed: "tok", left: null, resets: 1 },
   { name: "own app, newer login", app: "", calls: 1, sent: "old", landed: "new", left: "new", resets: 0 },
-  { name: "own app, no token", app: "", calls: 1, sent: null, landed: null, left: null, resets: 0 },
+  { name: "own app, no token", app: "", calls: 1, sent: null, landed: null, left: null, resets: 1 },
 ];
 
 const route = (app) => (app ? { app, route: "/" + app } : {});
 for (const [fn, send] of Object.entries(senders)) {
   for (const c of CASES) {
-    if (c.app && fn === "__jacAuthedJson") continue;
+    if (fn === "__jacAuthedJson" && (c.app || c.sent === null)) continue;
     const tag = `${target} ${fn}: ${c.name}`;
     resets = 0;
     seed(c.sent);
@@ -356,11 +356,13 @@ def _write_native_core(work: Path) {
 """A 401 clears only the token the failing request sent, and clearing it resets
 the page once, whichever app answered: the web core reloads and the native core
 runs the unauthorized handler. A slow request that went out before the user
-signed in again must not erase the new login, and a call that sent no token has
-no session to lose, so it resets nothing. Desktop profiles put a fresh token
-back on every load, so a profile gets one reset: after it, a rejection leaves
-the session alone until the token has expired or the profile changes, or a
-server that keeps rejecting it would reload forever. Before #10800 a 401 from
+signed in again must not erase the new login. A call to another app that sent
+no token resets nothing, or a signed-out visitor would reload forever. A call
+to the page's own app resets as it always has, token or not, which is what
+brings a page back in sync once its token is gone. Desktop profiles put a fresh
+token back on every load, so a profile gets one reset: after it, a rejection
+leaves the session alone until the token has expired or the profile changes, or
+a server that keeps rejecting it would reload forever. Before #10800 a 401 from
 another app removed the token without the reset and left the page half signed
 in."""
 test "a 401 drops only the token it was sent with and resets the page once" {

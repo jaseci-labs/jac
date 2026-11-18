@@ -119,7 +119,9 @@ impl __doWalkerFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            __jacResetRejectedSession(str(token or ""));
+            if token or not app {
+                __jacResetRejectedSession(str(token or ""));
+            }
             if not app {
                 return {};
             }
@@ -158,7 +160,9 @@ impl __doFuncFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            __jacResetRejectedSession(str(token or ""));
+            if token or not app {
+                __jacResetRejectedSession(str(token or ""));
+            }
             if not app {
                 return {};
             }
@@ -444,29 +448,25 @@ impl jacIsLoggedIn -> bool {
 }
 
 impl __jacDropRejectedToken(sent: str) -> bool {
-    if not sent or str(__getLocalStorage("jac_token") or "") != sent {
+    if str(__getLocalStorage("jac_token") or "") != sent {
         return False;
     }
     __removeLocalStorage("jac_token");
     return True;
 }
 
-impl __jacHostRestoredSession -> str {
-    profiles: any = globalThis.__JAC_PROFILES__;
-    return str(profiles["active"] or "") if profiles else "";
-}
-
 impl __jacResetRejectedSession(sent: str) -> None {
-    restored = __jacHostRestoredSession();
-    store: any = globalThis.sessionStorage if restored else None;
+    profiles: any = globalThis.__JAC_PROFILES__;
+    profile = str(profiles["active"] or "") if profiles else "";
+    store: any = globalThis.sessionStorage if profile else None;
     if store
-        and store.getItem("jac_session_reset") == restored
+        and store.getItem("jac_session_reset") == profile
         and not __jacTokenExpired(sent) {
         return;
     }
     if __jacDropRejectedToken(sent) {
         if store {
-            store.setItem("jac_session_reset", restored);
+            store.setItem("jac_session_reset", profile);
         }
         window.location.reload();
     }
