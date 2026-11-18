@@ -1107,9 +1107,7 @@ def _nudge_after_empty_reply(
 ) -> bool;
 
 
-def _empty_reply_error(
-    mt_run: MTRuntime, when: str = "when it was asked for its final answer"
-) -> EmptyReplyError;
+def _empty_reply_error(mt_run: MTRuntime) -> EmptyReplyError;
 
 
 def _truncated_call_ids(message: dict[str, any], finish_reason: str) -> set[str];
@@ -3108,9 +3106,7 @@ impl _nudge_after_empty_reply(
         return False;
     }
     if nudged or resp.finish_reason == "content_filter" {
-        raise _empty_reply_error(
-            mt_run, "after it was asked to continue" if nudged else "in a tool loop"
-        );
+        raise _empty_reply_error(mt_run);
     }
     logger.warning(
         "byLLM: the model replied with nothing (finish_reason "
@@ -3127,13 +3123,10 @@ impl _nudge_after_empty_reply(
 }
 
 
-impl _empty_reply_error(
-    mt_run: MTRuntime, when: str = "when it was asked for its final answer"
-) -> EmptyReplyError {
+impl _empty_reply_error(mt_run: MTRuntime) -> EmptyReplyError {
     last = mt_run._usage_history[-1] if mt_run._usage_history else {};
     return EmptyReplyError(
-        f"The model gave no answer (finish_reason '{last.get('finish_reason', '')}') "
-        f"{when}."
+        f"The model gave no answer (finish_reason '{last.get('finish_reason', '')}')."
     );
 }
 

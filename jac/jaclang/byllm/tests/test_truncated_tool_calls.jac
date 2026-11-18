@@ -49,30 +49,35 @@ def _turn(
         if mode == "events, no builder"
         else contextlib.nullcontext();
     with scripted(llm, replies) as fake, builder {
-        answer: any = None;
         try {
             if mode == "async" {
-                answer = asyncio.run(arun("save a big payload"));
-            } else {
-                out = run("save a big payload");
-                if mode == "streamed" {
-                    out = "".join(out);
-                } elif mode.startswith("events") {
-                    evs = stream_events(out);
-                    kinds = [ev.event_type for ev in evs];
-                    assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
-                    out = chunk_text(evs);
-                }
-                answer = out;
+                return (asyncio.run(arun("save a big payload")), conv);
             }
+            out = run("save a big payload");
+            if mode == "streamed" {
+                out = "".join(out);
+            } elif mode.startswith("events") {
+                evs = stream_events(out);
+                kinds = [ev.event_type for ev in evs];
+                assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
+                out = chunk_text(evs);
+            }
+            return (out, conv);
         } except (OutputTruncatedError, EmptyReplyError) as e {
-            answer = e;
+            return (e, conv);
+        } finally {
+            for sent in fake.sent("messages") {
+                assert not blank_replies(sent) , f"{mode}: a blank reply was sent: {sent}";
+            }
         }
-        for sent in fake.sent("messages") {
-            assert not blank_replies(sent) , f"{mode}: a blank reply was sent: {sent}";
-        }
-        return (answer, conv);
     }
+}
+
+
+"""`expected` in every mode with tools; the async call has none, so an empty reply
+is its answer."""
+def _with_tools(expected: any) -> dict[str, any] {
+    return {"plain": expected, "streamed": expected, "events": expected, "async": ""};
 }
 
 
@@ -117,26 +122,11 @@ test "a reply cut off at max_tokens, or empty, never passes as a finished answer
             "partial answer",
             0
         ),
-        (
-            "empty stop, twice",
-            [say(""), say("")],
-            {
-                "plain": EmptyReplyError,
-                "streamed": EmptyReplyError,
-                "events": EmptyReplyError,
-                "async": ""
-            },
-            0
-        ),
+        ("empty stop, twice", [say(""), say("")], _with_tools(EmptyReplyError), 0),
         (
             "empty refusal, never asked again",
             [say("", finish_reason="content_filter"), say("saved it")],
-            {
-                "plain": EmptyReplyError,
-                "streamed": EmptyReplyError,
-                "events": EmptyReplyError,
-                "async": ""
-            },
+            _with_tools(EmptyReplyError),
             0
         ),
         (
@@ -144,17 +134,6 @@ test "a reply cut off at max_tokens, or empty, never passes as a finished answer
             [call("save_data", {"name": "x", "payload": "y"}), say("")],
             EmptyReplyError,
             1
-        ),
-        (
-            "empty stop, then an answer",
-            [say(""), say("saved it")],
-            {
-                "plain": "saved it",
-                "streamed": "saved it",
-                "events": "saved it",
-                "async": ""
-            },
-            0
         ),
         (
             "an empty stop after each round of tool work",

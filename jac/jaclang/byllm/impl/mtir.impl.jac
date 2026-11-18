@@ -248,16 +248,11 @@ impl MTRuntime.add_scaffolding_message(message: MessageType) -> None {
 }
 
 impl MTRuntime.get_msg_list -> list[dict[str, object] | LiteLLMMessage] {
-    out: list[dict[str, object] | LiteLLMMessage] = [];
-    for msg in self.messages {
-        sendable = _without_blank_text(msg);
-        if sendable is not None {
-            out.append(
-                sendable.to_dict() if isinstance(sendable, Message) else sendable
-            );
-        }
-    }
-    return out;
+    return [
+        msg.to_dict() if isinstance(msg, Message) else msg
+        for msg in map(_without_blank_text, self.messages)
+        if msg is not None
+    ];
 }
 
 
