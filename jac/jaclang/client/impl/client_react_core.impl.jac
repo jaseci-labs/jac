@@ -124,14 +124,13 @@ impl __doWalkerFetch(
     }
     if not response.ok {
         if response.status == 401 {
-            dropped = __jacDropRejectedToken(str(token or ""));
-            if not app {
-                if dropped {
-                    handler = globalThis.__jacHandleWalkerUnauthorized__;
-                    if handler {
-                        handler();
-                    }
+            if __jacDropRejectedToken(str(token or "")) {
+                handler = globalThis.__jacHandleWalkerUnauthorized__;
+                if handler {
+                    handler();
                 }
+            }
+            if not app {
                 return {};
             }
         }
@@ -176,14 +175,13 @@ impl __doFuncFetch(
     }
     if not response.ok {
         if response.status == 401 {
-            dropped = __jacDropRejectedToken(str(token or ""));
-            if not app {
-                if dropped {
-                    handler = globalThis.__jacHandleWalkerUnauthorized__;
-                    if handler {
-                        handler();
-                    }
+            if __jacDropRejectedToken(str(token or "")) {
+                handler = globalThis.__jacHandleWalkerUnauthorized__;
+                if handler {
+                    handler();
                 }
+            }
+            if not app {
                 return {};
             }
         }
@@ -447,7 +445,7 @@ impl jacIsLoggedIn -> bool {
 }
 
 impl __jacDropRejectedToken(sent: str) -> bool {
-    if str(globalThis.__jacGetLocalStorage__("jac_token") or "") != sent {
+    if not sent or str(globalThis.__jacGetLocalStorage__("jac_token") or "") != sent {
         return False;
     }
     globalThis.__jacRemoveLocalStorage__("jac_token");
