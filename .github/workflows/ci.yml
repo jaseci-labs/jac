@@ -703,10 +703,10 @@ jobs:
           echo "::error::jac fmt --check --lintfix failed for this commit (an autofix was pushed to the branch if this is a same-repo PR; fork PRs: apply the 'Show formatting diff' patch above)."
           exit 1
 
-      # Manifest freshness, the seed-manifest bootstrap invariants, and the
-      # CLI startup regressions all live in the suite now
-      # (tests/cli/test_manifest_parity.jac, tests/compiler/
-      # test_seed_manifest_bootstrap.jac, tests/cli/test_*_isolation.jac),
+      # The seed-manifest bootstrap invariants and the CLI startup
+      # regressions live in the suite now
+      # (tests/compiler/test_seed_manifest_bootstrap.jac,
+      # tests/cli/test_*_isolation.jac),
       # which test-compiler / test-runtime run on the same filter as this job.
 
       # The targets ARE jaclang's source, and jaclang.* belongs to the running
