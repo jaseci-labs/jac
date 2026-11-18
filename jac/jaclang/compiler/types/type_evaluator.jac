@@ -296,6 +296,7 @@ walker TypeEvaluator {
     ) -> Symbol | None;
 
     def _metaclass_of(cls_type: ClassType) -> (ClassType | None);
+    def _metaclass_instance(cls_type: ClassType) -> (ClassType | None);
     def _declared_metaclass_member(
         cls_type: ClassType, name: str
     ) -> (ClassMember | None);

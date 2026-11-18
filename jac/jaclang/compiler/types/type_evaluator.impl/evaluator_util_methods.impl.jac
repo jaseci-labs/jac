@@ -785,6 +785,21 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
     return None;
 }
 
+impl TypeEvaluator._metaclass_instance(cls_type: ClassType) -> (ClassType | None) {
+    if not cls_type.is_instantiable_class() {
+        return None;
+    }
+    meta_cls = self._metaclass_of(cls_type)
+        or (self.prefetch.type_class if self.prefetch else None);
+    if meta_cls is None {
+        return None;
+    }
+    meta_inst = self._convert_to_instance(meta_cls);
+    return meta_inst
+        if isinstance(meta_inst, ClassType) and meta_inst.is_class_instance()
+        else None;
+}
+
 impl TypeEvaluator._declared_metaclass_member(
     cls_type: ClassType, name: str
 ) -> (ClassMember | None) {

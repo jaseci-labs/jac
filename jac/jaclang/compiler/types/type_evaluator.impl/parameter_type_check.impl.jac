@@ -1690,12 +1690,8 @@ impl TypeEvaluator._member_is_metaclass_only(
         return False;
     }
 
-    meta_cls = self._metaclass_of(cls_type) or self.prefetch.type_class;
-    if meta_cls is None {
-        return False;
-    }
-    meta_inst = self._convert_to_instance(meta_cls);
-    return isinstance(meta_inst, ClassType)
+    meta_inst = self._metaclass_instance(cls_type);
+    return meta_inst is not None
         and self._lookup_object_member(meta_inst, member_name) is not None;
 }
 
