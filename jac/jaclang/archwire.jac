@@ -1895,6 +1895,7 @@ graph import {
             project_scope_is_pinned
         },
         cli.commands.execution._load_executable
+            | cli.dispatch.warn_unmet_project_pins
             | client.artifact.client_output_dir
             | client.serving
             | dist.precompile_bytecode.app_metadata
@@ -3529,7 +3530,7 @@ graph import {
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
     testing.test_runner ++> [
-        cli.commands.analysis.test { run_tests },
+        cli.commands.analysis.test { discover, run_tests },
         scale.tests.support { STRICT_ENV, strict_mode },
     ]
     testing.testkit ++> [
@@ -3984,6 +3985,9 @@ graph import cli {
         commands.execution { console, use_line_buffered_output },
     ]
     dispatch ++> [
+        commands.analysis.check { warn_unmet_project_pins },
+        commands.analysis.lint { warn_unmet_project_pins },
+        commands.analysis.test { warn_unmet_project_pins },
         commands.execution._resolve_plan { warn_unmet_jac_version },
         manifest_route.handle_manifest_route { run_selected_command },
     ]
