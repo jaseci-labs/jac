@@ -450,8 +450,9 @@ impl _build_logql(
     }
     if trace_id {
         escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
+        short = escaped_tid.split("-")[0];
         pipeline.append(
-            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
+            f'|~ "trace_id\\":\\\\s*\\"{escaped_tid}|\\\\[trace={short}\\\\]"'
         );
     }
     if search {
@@ -523,6 +524,7 @@ impl _pod_log_lines(
     trace_id: str
 ) -> list[dict[str, any]] {
     out: list[dict[str, any]] = [];
+    trace_short = trace_id.split("-")[0];
     for raw in text.splitlines() {
         (stamp, _, body) = raw.partition(" ");
         (head, _, frac) = stamp.rstrip("Z").partition(".");
@@ -535,15 +537,14 @@ impl _pod_log_lines(
         }
         if not (start_ns <= ts_ns <= end_ns)
             or (level and level.upper() not in body)
-            or (
-                trace_id
-                and f'trace_id":"{trace_id}' not in body
-                and f"[trace={trace_id[:8]}]" not in body
-            )
             or (search and search not in body) {
             continue;
         }
-        out.append(_parse_log_body(body, labels, str(ts_ns)));
+        line = _parse_log_body(body, labels, str(ts_ns));
+        if trace_short and (line["trace_id"] or "").split("-")[0] != trace_short {
+            continue;
+        }
+        out.append(line);
     }
     return out;
 }
