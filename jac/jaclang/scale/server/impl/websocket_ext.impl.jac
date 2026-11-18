@@ -17,6 +17,7 @@ impl serve_ws_connection(
     user_id: (str | None) = None;
     token_exp: (float | None) = None;
     authorization: str = "";
+    token_epoch: (int | None) = None;
     first_data: (dict[str, any] | None) = None;
     pre_auth: (dict[str, any] | None) = None;
     if requires_auth {
@@ -32,6 +33,7 @@ impl serve_ws_connection(
             user_id = pre_auth.get('user_id');
             token_exp = pre_auth.get('exp');
             authorization = pre_auth.get('authorization', '');
+            token_epoch = pre_auth.get('session_epoch');
         } else {
             (auth_detail, first_data) = await ws_authenticate(
                 websocket, user_manager, AUTH_HANDSHAKE_TIMEOUT_SECONDS, max_bytes
@@ -43,6 +45,7 @@ impl serve_ws_connection(
             user_id = auth_detail.get('user_id');
             token_exp = auth_detail.get('exp');
             authorization = auth_detail.get('authorization', '');
+            token_epoch = auth_detail.get('session_epoch');
         }
     }
     ctx = ConnectionContext(
@@ -52,6 +55,7 @@ impl serve_ws_connection(
         user_id=user_id,
         exp=token_exp,
         authorization=authorization,
+        session_epoch=token_epoch,
         rate_tokens=rate_capacity
     );
     rejection = await ws_manager.register(ctx);
@@ -60,7 +64,12 @@ impl serve_ws_connection(
         return;
     }
     heartbeat_task = asyncio.create_task(
-        ws_heartbeat_loop(ctx, HEARTBEAT_SECONDS, HEARTBEAT_MISSED_ALLOWED)
+        ws_heartbeat_loop(
+            ctx,
+            HEARTBEAT_SECONDS,
+            HEARTBEAT_MISSED_ALLOWED,
+            user_manager.session_current if requires_auth else None
+        )
     );
     async def send_result(payload: dict[str, any]) {
         if is_broadcast {
@@ -99,6 +108,16 @@ impl serve_ws_connection(
             }
             if control == 'continue' {
                 continue;
+            }
+            if requires_auth
+                and ctx.user_id
+                and not await ws_session_still_current(
+                    user_manager.session_current, ctx, reuse_recent=True
+                ) {
+                await ws_reject_auth(
+                    websocket, {'status': 'revoked', 'reason': 'Session has ended'}
+                );
+                break;
             }
             data.pop('token', None);
             try {

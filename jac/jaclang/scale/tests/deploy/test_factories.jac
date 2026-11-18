@@ -1,5 +1,7 @@
 import importlib;
+import os;
 import sys;
+import tempfile;
 import unittest.mock;
 import from contextlib { contextmanager }
 import from kubernetes.client.exceptions { ApiException }
@@ -587,21 +589,44 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
     }
 }
 
-test "kubernetes_target falls back to in-cluster config when kubeconfig is unavailable" {
-    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
-    target = DeploymentTargetFactory.create("kubernetes", config);
-
-    fake_cfg = unittest.mock.MagicMock();
-    # Simulate running in a pod: no ~/.kube/config, so load_kube_config raises.
-    fake_cfg.load_kube_config.side_effect = ConfigException("no kubeconfig");
-    # Halt after the fallback; get_status folds the error into an UNKNOWN status.
-    fake_cfg.load_incluster_config.side_effect = RuntimeError("stop after fallback");
-
-    with unittest.mock.patch.object(kt_module, "k8s_cluster_config", fake_cfg) {
-        target.get_status("test-app");
+test "kubernetes_target falls back to in-cluster config only when no cluster is configured" {
+    # A configured cluster that fails to load must raise, not deploy to the pod's
+    # own cluster (#10776). Real client; the machine's kubeconfig is swapped for
+    # one with only a prod context, and its in-cluster env is hidden.
+    only_prod = os.path.join(tempfile.mkdtemp(), "config");
+    with open(only_prod, "w") as f {
+        f.write("contexts: [{name: prod}]\n");
     }
-
-    # The except ConfigException clause must catch and reach the in-cluster fallback.
-    fake_cfg.load_kube_config.assert_called_once();
-    fake_cfg.load_incluster_config.assert_called_once();
+    # (kube_context, kubeconfig, the client's own error)
+    rows: list[tuple[str, str, str]] = [
+        ("", "", "Expected key current-context"),
+        ("prod-eks", "", "Expected object with name prod-eks"),
+        ("", "/nonexistent/kubeconfig", "No configuration found")
+    ];
+    for (kube_context, kubeconfig, client_error) in rows {
+        target = DeploymentTargetFactory.create(
+            "kubernetes",
+            {"app_name": "a", "kube_context": kube_context, "kubeconfig": kubeconfig}
+        );
+        raised = "";
+        with unittest.mock.patch(
+            "kubernetes.config.kube_config.KUBE_CONFIG_DEFAULT_LOCATION", only_prod
+        ), unittest.mock.patch.dict(os.environ, {"KUBERNETES_SERVICE_HOST": ""}) {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+            try {
+                _as_any(target)._load_cluster_config();
+            } except ConfigException as e {
+                raised = str(e);
+            }
+        }
+        # Configured: refused. Nothing set: tried in-cluster. Both name the client's error.
+        expected = (
+            "Could not load the configured"
+                if (kube_context or kubeconfig)
+                else "Error from in-cluster load"
+        );
+        for part in (expected, client_error, kube_context, kubeconfig) {
+            assert part in raised , f"{kube_context!r} {kubeconfig!r}: {raised}";
+        }
+    }
 }

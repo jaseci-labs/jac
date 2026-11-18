@@ -1020,6 +1020,7 @@ graph import {
     ]
     compiler.frontend.codeinfo --> [
         cli.check_report.print_native_coverage { native_display_text },
+        dist.precompile_bytecode.run_precompile { is_foreign_native_variant },
         project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     type compiler.frontend.codeinfo ++> client.client_bundle
@@ -2007,6 +2008,7 @@ graph import {
         packages.migrate { migrate_dependency_table },
     ]
     project.jac_version ++> [
+        cli.dispatch.warn_unmet_jac_version { satisfies },
         packages.resolve | packages.templates { satisfies as jac_satisfies },
         scale.injector.binary {
             exact_pin,
@@ -2773,6 +2775,7 @@ graph import {
         scale.admin.admin_portal { METHOD_PASSWORD, second_factor_claims },
         scale.sso.grants { caller_user_id },
         scale.sso.oauth_session { METHOD_FEDERATED },
+        scale.tests.data.test_session_epoch { second_factor_claims },
         scale.tests.server.test_sso_grants { bind_caller_user, release_caller_user },
     ]
     server.identity.assurance --> scale.tests.data.test_gateway_owned_identity {
@@ -2789,6 +2792,7 @@ graph import {
     server.identity.auth_tokens ++> [
         scale.sso.oauth_session
             | scale.sso.sso_auth
+            | scale.tests.data.test_session_epoch
             | scale.tests.server.test_oauth_session
             | scale.tests.server.test_registration_challenge
             | scale.tests.server.test_sso
@@ -2809,11 +2813,12 @@ graph import {
             signing_algorithm as jwt_algorithm,
             signing_secret as jwt_secret
         },
-        scale.tests.server.test_serve { signing_secret as jwt_secret },
-        scale.webhook.webhook.WebhookUtils.create_api_key_token {
+        scale.tests.data.test_session_epoch
+            | scale.webhook.webhook.WebhookUtils.create_api_key_token {
             signing_algorithm,
             signing_secret
         },
+        scale.tests.server.test_serve { signing_secret as jwt_secret },
         scale.webhook.webhook.WebhookUtils.validate_api_key {
             signing_algorithm,
             signing_secret
@@ -2836,8 +2841,11 @@ graph import {
         PgIdentityStorage
     }
     server.identity.identity_storage as storage_mod --> scale.tests.data.test_identity_fail_loud;
-    server.identity.mail ++> scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
-        | scale.tests.server.test_auth_policy_startup { verification_problems }
+    server.identity.mail ++> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.server.test_auth_policy_startup { verification_problems },
+        scale.tests.data.test_session_epoch { RESET_PURPOSE },
+    ]
     server.identity.policy ++> [
         scale.deploy.target.kubernetes.target { minted_password },
         scale.server.extensions { check_password },
@@ -2853,8 +2861,12 @@ graph import {
         consume_challenge,
         issue_challenge
     }
-    server.identity.second_factor ++> scale.admin.admin_portal {
-        SecondFactorUnavailable
+    server.identity.second_factor ++> [
+        scale.admin.admin_portal { SecondFactorUnavailable },
+        scale.tests.data.test_session_epoch { LOGIN_CHALLENGE_PURPOSE },
+    ]
+    server.identity.session_cookie ++> scale.runtime.gateway.microservice_gateway {
+        SESSION_COOKIE
     }
     server.identity.user_manager ++> [
         runtime.runtime.JacPersistence.get_user_manager
@@ -2864,11 +2876,13 @@ graph import {
             | scale.sso.sso_auth
             | scale.tests.data.test_gateway_owned_identity
             | scale.tests.data.test_identity_fail_loud
+            | scale.tests.data.test_session_epoch
             | scale.tests.misc.test_shared_store_failure
             | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_sso
             | scale.tests.server.test_sso_grants
+            | scale.tests.server.test_stream_ws
             | scale.tests.server.test_ws_hardening { UserManager },
         scale.server.jobs_ext { SYSTEM_USER, UserRole },
         scale.server.webhook_ext { SYSTEM_USER },
@@ -2882,9 +2896,8 @@ graph import {
     ]
     type server.identity.user_manager ++> runtime.runtime { UserManager }
     server.middleware ++> [
-        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api {
-            jwt_middleware
-        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
+            | scale.tests.data.test_session_epoch { jwt_middleware },
         scale.server.jobs_ext | scale.server.sso_ext { require_user },
     ]
     server.middleware --> scale.tests.data.test_gateway_owned_identity {
@@ -3030,7 +3043,8 @@ graph import {
             ServingApp
         },
     ]
-    server.serving.app --> scale.tests.microservices.test_drain { ServingApp }
+    server.serving.app --> scale.tests.microservices.test_drain
+        | scale.tests.microservices.test_gateway { ServingApp }
     server.serving.authcrypt ++> [
         scale.deploy.target.kubernetes.manifest_builder
             | scale.deploy.target.kubernetes.utils.kubernetes_utils.resolve_minted_secret
@@ -3050,7 +3064,8 @@ graph import {
             project_data_dir,
             project_signing_secret
         },
-        scale.tests.data.test_gateway_owned_identity { jwt_encode },
+        scale.tests.data.test_gateway_owned_identity
+            | scale.tests.data.test_session_epoch { jwt_encode },
         scale.tests.server.test_admin { jwt_decode },
         scale.tests.server.test_serve {
             jwt_decode as _jwt_decode,
@@ -3162,10 +3177,9 @@ graph import {
             Response
         },
         scale.server.websocket_ext | scale.websocket.websocket { WebSocketDisconnect },
-        scale.sso.firebase | scale.tests.server.test_stream_ws._spawn_upstream {
-            Request,
-            Response
-        },
+        scale.sso.firebase
+            | scale.tests.data.test_session_epoch
+            | scale.tests.server.test_stream_ws._spawn_upstream { Request, Response },
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
@@ -3250,7 +3264,13 @@ graph import {
         scale.tests.server.test_auth_policy_startup | scale.tests.server.test_sso {
             JEndPoint
         },
-        scale.tests.server.test_serving_tail { HTTPMethod, JEndPoint, WSEndPoint },
+        scale.tests.server.test_serving_tail {
+            APIParameter,
+            HTTPMethod,
+            JEndPoint,
+            ParameterType,
+            WSEndPoint
+        },
         scale.tests.server.test_stream_ws._spawn_ws_upstream { WSEndPoint },
         scale.tests.server.test_stream_ws._spawn_ws_upstream_with_protocol {
             WSEndPoint
@@ -3953,13 +3973,18 @@ graph import cli {
         check_report.print_final_summary
             | dispatch.run_selected_command
             | shadcn.cli.run_shadcn_add { console },
-        check_report.print_guide_hint | shadcn.cli.run_shadcn_remove { console },
+        check_report.print_guide_hint
+            | dispatch.warn_unmet_jac_version
+            | shadcn.cli.run_shadcn_remove { console },
         check_report.print_native_coverage { console },
         check_report.print_placement_report { console },
         check_report.print_section { console },
         commands.execution { console, use_line_buffered_output },
     ]
-    dispatch ++> manifest_route.handle_manifest_route { run_selected_command }
+    dispatch ++> [
+        commands.execution._resolve_plan { warn_unmet_jac_version },
+        manifest_route.handle_manifest_route { run_selected_command },
+    ]
     errmap --> executor.CommandExecutor.execute { humanize_error, show_tracebacks }
     executor ++> dispatch.run_selected_command { get_executor }
     format_cache --> [
@@ -4023,7 +4048,7 @@ graph import cli {
     ]
     manifest_parse ++> dispatch.run_selected_command { build_command_parser }
     manifest_route ++> [
-        cli.jac_version { resolve_cli_version },
+        cli.jac_version | dispatch.warn_unmet_jac_version { resolve_cli_version },
         cli.start_cli { handle_manifest_route },
     ]
     manifest_route --> commands.project.update { resolve_cli_version }
@@ -13247,13 +13272,11 @@ graph import scale {
     admin --> tests.server.test_admin;
     admin as admin_pkg ++> tests.misc.test_ops_signals;
     admin.admin_portal ++> [
-        runtime.gateway.microservice_gateway
-            | server.extensions
-            | tests.server.test_auth_policy_startup { JacAPIServerAdmin },
         tests.misc.test_metrics._distribution_for {
             _calculate_metrics_summary,
             _parse_prometheus_text
         },
+        tests.server.test_auth_policy_startup { JacAPIServerAdmin },
     ]
     admin.admin_portal --> tests.misc.test_metrics {
         _calculate_metrics_summary,
@@ -13261,81 +13284,52 @@ graph import scale {
         _parse_prometheus_text,
         _percentile_from_buckets
     }
-    admin.console_build ++> runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
-        resolve_console
-    }
     admin.console_build --> tests.server.test_admin { AdminConsole, ConsoleState }
-    admin.deploy_health ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerDeployHealth
-        },
-        tests.deploy.test_ops_deploy {
-            JacAPIServerDeployHealth,
-            summarize_deployment,
-            summarize_pod
-        },
-    ]
-    admin.llm_telemetry ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerLLMTelemetry
-        },
-        tests.misc.test_llm_telemetry { TelemetryStore },
-    ]
-    admin.logs ++> runtime.gateway.microservice_gateway
-        | server.extensions
-        | tests.server.test_admin_logs { JacAPIServerLogs }
+    admin.deploy_health ++> tests.deploy.test_ops_deploy {
+        JacAPIServerDeployHealth,
+        summarize_deployment,
+        summarize_pod
+    }
+    admin.llm_telemetry ++> tests.misc.test_llm_telemetry { TelemetryStore }
+    admin.logs ++> tests.server.test_admin_logs { JacAPIServerLogs }
     admin.logs --> tests.server.test_admin_logs {
         _build_logql,
         _flatten_loki_response,
         _service_to_pod_regex_for_mode,
         _services_for_mode
     }
-    admin.network ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerNetwork
-        },
-        tests.deploy.test_ops_network {
-            JacAPIServerNetwork,
-            pvc_claimants,
-            summarize_ingress,
-            summarize_pvc,
-            summarize_service
-        },
-    ]
-    admin.ops ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerOps },
-        tests.deploy.test_ops_health {
-            JacAPIServerOps,
-            _traces_chain,
-            short_circuit_chain
-        },
-    ]
-    admin.podenv ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerPodEnv },
-        tests.misc.test_ops_podenv {
-            JacAPIServerPodEnv,
-            pod_env_entries,
-            redact_entry
-        },
-    ]
+    admin.network ++> tests.deploy.test_ops_network {
+        JacAPIServerNetwork,
+        pvc_claimants,
+        summarize_ingress,
+        summarize_pvc,
+        summarize_service
+    }
+    admin.ops ++> tests.deploy.test_ops_health {
+        JacAPIServerOps,
+        _traces_chain,
+        short_circuit_chain
+    }
+    admin.podenv ++> tests.misc.test_ops_podenv {
+        JacAPIServerPodEnv,
+        pod_env_entries,
+        redact_entry
+    }
     admin.service_urls ++> tests.misc.test_service_urls { service_base_url }
-    admin.traces ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerTraces },
-        tests.server.test_traces_admin {
-            _build_traceql,
-            _flatten_tempo_trace,
-            _normalize_trace_id,
-            _otlp_attrs,
-            _otlp_value
-        },
-    ]
+    admin.surface ++> runtime.gateway.microservice_gateway | server.extensions {
+        JacAPIServerAdminSurface
+    }
+    admin.traces ++> tests.server.test_traces_admin {
+        _build_traceql,
+        _flatten_tempo_trace,
+        _normalize_trace_id,
+        _otlp_attrs,
+        _otlp_value
+    }
     admin.workload_helpers ++> tests.server.test_admin_workloads {
         match_owner,
         owner_name_from_pod,
         phase_to_status
-    }
-    admin.workloads ++> runtime.gateway.microservice_gateway | server.extensions {
-        JacAPIServerWorkloads
     }
     config.app_config ++> [
         deploy.target.deployment_target
@@ -13843,7 +13837,8 @@ graph import scale {
     injector.binary --> [
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             node_arch,
-            preflight_pod_runtime
+            preflight_pod_runtime,
+            resolve_pod_base_image
         },
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
             deploy_generation_refusal
@@ -14110,6 +14105,9 @@ graph import scale {
             set_current_auth
         },
     ]
+    runtime.context.errors ++> admin.admin_portal.JacAPIServerAdmin.serve_admin_asset {
+        not_found
+    }
     runtime.context.log_emit ++> [
         server.extensions.ObservabilityExtension.register {
             install_structured_logging
@@ -14295,13 +14293,17 @@ graph import scale {
             classify_route
         },
     ]
-    runtime.gateway.microservice_gateway ++> tests.apps.test_fleet_from_apps
-        | tests.microservices.test_app_routes
-        | tests.microservices.test_gateway
-        | tests.microservices.test_gateway_docs_precedence
-        | tests.microservices.test_gateway_webapp
-        | tests.microservices.test_k8s_health_probe
-        | tests.server.test_static_fallback { MicroserviceGateway }
+    runtime.gateway.microservice_gateway ++> [
+        tests.apps.test_fleet_from_apps
+            | tests.microservices.test_app_routes
+            | tests.microservices.test_gateway
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.microservices.test_gateway_webapp
+            | tests.microservices.test_k8s_health_probe
+            | tests.server.test_static_fallback { MicroserviceGateway },
+        tests.data.test_session_epoch { GatewaySessionGuard, MicroserviceGateway },
+        tests.server.test_stream_ws { GatewaySessionGuard },
+    ]
     runtime.gateway.microservice_gateway --> tests.server.test_stream_ws {
         MicroserviceGateway
     }
@@ -14329,12 +14331,13 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.server.test_static_fallback { ServiceRegistry },
         tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
             ServiceEntry,
             ServiceRegistry
         },
-        tests.microservices.test_gateway_docs_precedence
-            | tests.server.test_static_fallback { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -14470,7 +14473,7 @@ graph import scale {
         tests.server.test_auth_policy_startup { AdminExtension, MailExtension },
     ]
     server.extensions --> [
-        tests.server.test_admin { AdminExtension },
+        tests.microservices.test_gateway | tests.server.test_admin { AdminExtension },
         tests.server.test_scheduler_multipod {
             validate_events_url as _validate_events_url
         },
@@ -14578,6 +14581,10 @@ graph import scale {
     ]
     websocket.backplane --> tests.server.test_ws_hardening { PgBackplane }
     websocket.protocol ++> [
+        runtime.gateway.microservice_gateway | runtime.middleware.ws_forward {
+            SESSION_RECHECK_SECONDS,
+            WS_CLOSE_UNAUTHORIZED
+        },
         server.websocket_ext {
             AUTH_HANDSHAKE_TIMEOUT_SECONDS,
             HEARTBEAT_MISSED_ALLOWED,
@@ -14592,9 +14599,15 @@ graph import scale {
             ws_receive_frame,
             ws_reject_auth,
             ws_reject_pre_accept,
-            ws_reject_registration
+            ws_reject_registration,
+            ws_session_still_current
         },
-        tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
+        tests.data.test_session_epoch { ws_heartbeat_loop, ws_session_still_current },
+        tests.server.test_ws_hardening {
+            SESSION_RECHECK_SECONDS,
+            ws_handle_control,
+            ws_heartbeat_loop
+        },
     ]
     websocket.websocket ++> [
         server.websocket_ext {
@@ -14602,6 +14615,7 @@ graph import scale {
             WebSocketConnectionManager,
             _ws_stream_result
         },
+        tests.data.test_session_epoch { ConnectionContext },
         tests.server.test_ws_hardening {
             ConnectionContext,
             WebSocketConnectionManager
@@ -14617,7 +14631,9 @@ graph import scale._optdeps {
 }
 
 graph import scale.admin {
+    admin_portal ++> surface { JacAPIServerAdmin }
     console_build ++> admin_portal { AdminConsole, resolve_console }
+    deploy_health ++> surface { JacAPIServerDeployHealth }
     k8s_ops ++> [
         deploy_health {
             api_error_detail,
@@ -14643,10 +14659,21 @@ graph import scale.admin {
             unavailable_detail
         },
     ]
-    logs ++> ops { _app_namespace, _loki_base_url }
+    llm_telemetry ++> surface { JacAPIServerLLMTelemetry }
+    logs ++> [
+        ops { _app_namespace, _loki_base_url },
+        surface { JacAPIServerLogs },
+    ]
+    network ++> surface { JacAPIServerNetwork }
+    ops ++> surface { JacAPIServerOps }
+    podenv ++> surface { JacAPIServerPodEnv }
     service_urls ++> logs | ops | traces { service_base_url }
-    traces ++> ops { _tempo_base_url }
+    traces ++> [
+        ops { _tempo_base_url },
+        surface { JacAPIServerTraces },
+    ]
     workload_helpers ++> workloads { match_owner, owner_name_from_pod, phase_to_status }
+    workloads ++> surface { JacAPIServerWorkloads }
 }
 
 graph import scale.config {
@@ -15187,6 +15214,7 @@ graph import scale.tests {
         support { apply_fixture_policy },
     ]
     scale_test_client ++> [
+        data.test_session_epoch { fresh_totp_code },
         microservices.test_app_routes { ScaleTestClient, make_client },
         server.test_admin {
             ADMIN_BOOTSTRAP_PASSWORD,
@@ -15644,7 +15672,7 @@ graph import server.endpoints {
         second_factor { fail, ok, throttled },
     ]
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { _failure, idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller, unknown_caller }
 }
 
 graph import server.identity {
@@ -15672,8 +15700,13 @@ graph import server.identity {
         },
     ]
     identity_storage ++> [
-        second_factor { IdentityStorage },
-        user_manager { IdentityStorage, IdentityTakenError, PgIdentityStorage },
+        second_factor { IdentityStorage, session_epoch_value },
+        user_manager {
+            IdentityStorage,
+            IdentityTakenError,
+            PgIdentityStorage,
+            session_epoch_value
+        },
     ]
     mail ++> user_manager { RESET_PURPOSE }
     policy ++> [

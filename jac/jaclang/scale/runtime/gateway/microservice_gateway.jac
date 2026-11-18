@@ -1,4 +1,5 @@
 import json;
+import asyncio;
 import logging;
 import mimetypes;
 import re;
@@ -20,7 +21,7 @@ glob logger = logging.getLogger(__name__),
 
 def _built_hashed_files(dist: Path) -> (frozenset[str] | None);
 
-obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
+obj MicroserviceGateway(EndpointHost, JacAPIServerAdminSurface) {
     has registry: ServiceRegistry,
         app: any = None,
         port: int = DEFAULT_GATEWAY_PORT,
@@ -68,7 +69,7 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
         request: Request, path: str, candidates: list[tuple[str, ServiceEntry]]
     ) -> Response;
 
-    def handle_admin(path: str) -> Response | None;
+    def handle_admin(request: Request, path: str) -> Response | None;
     async def handle_proxy(request: Request, path: str) -> Response | None;
     async def handle_app_route(request: Request, path: str) -> Response | None;
     async def refresh_app_routes -> bool;
@@ -97,6 +98,22 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def serve_spa_fallback(request: Request) -> Response | None;
     def bootstrap_admin_ui -> None;
     def _install_admin_api -> None;
-    def serve_admin_asset(asset_path: str) -> Response | None;
+    def get_admin_dist_dir -> Path;
     def start(on_ready: any = None) -> None;
+}
+
+
+obj GatewaySessionGuard {
+    has manager: any,
+        token: str = '',
+        user_id: str = '',
+        expires_at: float = 0.0,
+        checked_at: float = 0.0,
+        first_frame: bool = True,
+        refused: bool = False,
+        lock: asyncio.Lock = asyncio.Lock();
+
+    async def allow(
+        frame: (dict[str, any] | None) = None, force: bool = False
+    ) -> bool;
 }
