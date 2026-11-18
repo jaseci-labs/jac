@@ -13294,7 +13294,9 @@ graph import scale {
     admin.llm_telemetry ++> tests.misc.test_llm_telemetry { TelemetryStore }
     admin.logs ++> tests.server.test_admin_logs { JacAPIServerLogs }
     admin.logs --> tests.server.test_admin_logs {
+        _POD_LOG_TAIL_LINES,
         _build_logql,
+        _collect_pod_logs,
         _flatten_loki_response,
         _pod_log_lines,
         _service_to_pod_regex_for_mode,
