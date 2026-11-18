@@ -3,27 +3,11 @@ impl ModuleType.symbol_table.getter -> (SymbolTable | None) {
     if (c is not None) and ("symbol_table" in c) {
         return c["symbol_table"];
     }
-    found = [self->:DeclScopeOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["symbol_table"] = val;
-    return val;
+    return _edge_one(self, "symbol_table", DeclScopeOf);
 }
 
 impl ModuleType.symbol_table.setter(symbol_table: (SymbolTable | None)) -> None {
-    del [edge self->:DeclScopeOf:->];
-    if symbol_table is not None {
-        self +>:DeclScopeOf:+> symbol_table;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["symbol_table"] = symbol_table;
+    _edge_set_one(self, "symbol_table", DeclScopeOf, symbol_table);
 }
 
 impl TypeVarType.bound.getter -> (TypeBase | None) {
@@ -31,27 +15,11 @@ impl TypeVarType.bound.getter -> (TypeBase | None) {
     if (c is not None) and ("bound" in c) {
         return c["bound"];
     }
-    found = [self->:BoundOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["bound"] = val;
-    return val;
+    return _edge_one(self, "bound", BoundOf);
 }
 
 impl TypeVarType.bound.setter(bound: (TypeBase | None)) -> None {
-    del [edge self->:BoundOf:->];
-    if bound is not None {
-        self +>:BoundOf:+> bound;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["bound"] = bound;
+    _edge_set_one(self, "bound", BoundOf, bound);
 }
 
 impl TypeVarType.constraints.getter -> list[TypeBase] {
@@ -59,26 +27,11 @@ impl TypeVarType.constraints.getter -> list[TypeBase] {
     if (c is not None) and ("constraints" in c) {
         return c["constraints"];
     }
-    val = [self->:ConstraintOf:->][?:TypeBase];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["constraints"] = val;
-    return val;
+    return _edge_list(self, "constraints", ConstraintOf, TypeBase);
 }
 
 impl TypeVarType.constraints.setter(constraints: (list[TypeBase] | None)) -> None {
-    del [edge self->:ConstraintOf:->];
-    for t in (constraints or []) {
-        self +>:ConstraintOf:+> t;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["constraints"] = `list(constraints or []);
+    _edge_set_list(self, "constraints", ConstraintOf, constraints);
 }
 
 impl ClassDetailsShared.symbol_table.getter -> SymbolTable {
@@ -86,27 +39,11 @@ impl ClassDetailsShared.symbol_table.getter -> SymbolTable {
     if (c is not None) and ("symbol_table" in c) {
         return c["symbol_table"];
     }
-    val = [self->:DeclScopeOf:->][0];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["symbol_table"] = val;
-    return val;
+    return _edge_first(self, "symbol_table", DeclScopeOf);
 }
 
 impl ClassDetailsShared.symbol_table.setter(symbol_table: SymbolTable) -> None {
-    del [edge self->:DeclScopeOf:->];
-
-    if symbol_table is not None {
-        self +>:DeclScopeOf:+> symbol_table;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["symbol_table"] = symbol_table;
+    _edge_set_one(self, "symbol_table", DeclScopeOf, symbol_table);
 }
 
 impl ClassDetailsShared.mro.getter -> list[ClassType] {
@@ -130,28 +67,13 @@ impl ClassDetailsShared.type_params.getter -> list[TypeVarType] {
     if (c is not None) and ("type_params" in c) {
         return c["type_params"];
     }
-    val = [self->:TypeParamOf:->][?:TypeVarType];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["type_params"] = val;
-    return val;
+    return _edge_list(self, "type_params", TypeParamOf, TypeVarType);
 }
 
 impl ClassDetailsShared.type_params.setter(
     type_params: (list[TypeVarType] | None)
 ) -> None {
-    del [edge self->:TypeParamOf:->];
-    for t in (type_params or []) {
-        self +>:TypeParamOf:+> t;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["type_params"] = `list(type_params or []);
+    _edge_set_list(self, "type_params", TypeParamOf, type_params);
 }
 
 impl ClassDetailsShared.base_classes.getter -> list[TypeBase] {
@@ -159,29 +81,14 @@ impl ClassDetailsShared.base_classes.getter -> list[TypeBase] {
     if (c is not None) and ("base_classes" in c) {
         return c["base_classes"];
     }
-    val = [self->:BaseOf:->][?:TypeBase];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["base_classes"] = val;
-    return val;
+    return _edge_list(self, "base_classes", BaseOf, TypeBase);
 }
 
 impl ClassDetailsShared.base_classes.setter(
     base_classes: (list[TypeBase] | None)
 ) -> None {
-    del [edge self->:BaseOf:->];
-    for t in (base_classes or []) {
-        self +>:BaseOf:+> t;
-    }
+    _edge_set_list(self, "base_classes", BaseOf, base_classes);
     CLASS_GRAPH_EPOCH[0] += 1;
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["base_classes"] = `list(base_classes or []);
 }
 
 impl ClassDetailsShared.enum_value_type.getter -> (TypeBase | None) {
@@ -189,29 +96,13 @@ impl ClassDetailsShared.enum_value_type.getter -> (TypeBase | None) {
     if (c is not None) and ("enum_value_type" in c) {
         return c["enum_value_type"];
     }
-    found = [self->:ValueTypeOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["enum_value_type"] = val;
-    return val;
+    return _edge_one(self, "enum_value_type", ValueTypeOf);
 }
 
 impl ClassDetailsShared.enum_value_type.setter(
     enum_value_type: (TypeBase | None)
 ) -> None {
-    del [edge self->:ValueTypeOf:->];
-    if enum_value_type is not None {
-        self +>:ValueTypeOf:+> enum_value_type;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["enum_value_type"] = enum_value_type;
+    _edge_set_one(self, "enum_value_type", ValueTypeOf, enum_value_type);
 }
 
 impl ClassDetailsShared.typeddict_fields.getter -> dict[str, TypeBase] {
@@ -331,27 +222,11 @@ impl ClassType._shared.getter -> (ClassDetailsShared | None) {
     if (c is not None) and ("_shared" in c) {
         return c["_shared"];
     }
-    found = [self->:SharedOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["_shared"] = val;
-    return val;
+    return _edge_one(self, "_shared", SharedOf);
 }
 
 impl ClassType._shared.setter(_shared: (ClassDetailsShared | None)) -> None {
-    del [edge self->:SharedOf:->];
-    if _shared is not None {
-        self +>:SharedOf:+> _shared;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["_shared"] = _shared;
+    _edge_set_one(self, "_shared", SharedOf, _shared);
 }
 
 impl ClassType.private.getter -> ClassDetailsPrivate {
@@ -359,24 +234,13 @@ impl ClassType.private.getter -> ClassDetailsPrivate {
     if (c is not None) and ("private" in c) {
         return c["private"];
     }
-    val = [self->:PrivOf:->][0];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["private"] = val;
-    return val;
+    return _edge_first(self, "private", PrivOf);
 }
 
 impl ClassType.private.setter(private: ClassDetailsPrivate) -> None {
     del [edge self->:PrivOf:->];
     self +>:PrivOf:+> private;
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["private"] = private;
+    _acc_put(self, "private", private);
 }
 
 impl ClassType.init(
@@ -465,27 +329,11 @@ impl Parameter.param_type.getter -> (TypeBase | None) {
     if (c is not None) and ("param_type" in c) {
         return c["param_type"];
     }
-    found = [self->:ParamTypeOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["param_type"] = val;
-    return val;
+    return _edge_one(self, "param_type", ParamTypeOf);
 }
 
 impl Parameter.param_type.setter(param_type: (TypeBase | None)) -> None {
-    del [edge self->:ParamTypeOf:->];
-    if param_type is not None {
-        self +>:ParamTypeOf:+> param_type;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["param_type"] = param_type;
+    _edge_set_one(self, "param_type", ParamTypeOf, param_type);
 }
 
 impl Parameter.default_value.getter -> (Expr | None) {
@@ -493,27 +341,11 @@ impl Parameter.default_value.getter -> (Expr | None) {
     if (c is not None) and ("default_value" in c) {
         return c["default_value"];
     }
-    found = [self->:ParamDefaultOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["default_value"] = val;
-    return val;
+    return _edge_one(self, "default_value", ParamDefaultOf);
 }
 
 impl Parameter.default_value.setter(default_value: (Expr | None)) -> None {
-    del [edge self->:ParamDefaultOf:->];
-    if default_value is not None {
-        self +>:ParamDefaultOf:+> default_value;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["default_value"] = default_value;
+    _edge_set_one(self, "default_value", ParamDefaultOf, default_value);
 }
 
 impl FunctionType.init(
@@ -544,27 +376,11 @@ impl FunctionType.return_type.getter -> (TypeBase | None) {
     if (c is not None) and ("return_type" in c) {
         return c["return_type"];
     }
-    found = [self->:ReturnsOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["return_type"] = val;
-    return val;
+    return _edge_one(self, "return_type", ReturnsOf);
 }
 
 impl FunctionType.return_type.setter(return_type: (TypeBase | None)) -> None {
-    del [edge self->:ReturnsOf:->];
-    if return_type is not None {
-        self +>:ReturnsOf:+> return_type;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["return_type"] = return_type;
+    _edge_set_one(self, "return_type", ReturnsOf, return_type);
 }
 
 impl FunctionType.parameters.getter -> list[Parameter] {
@@ -587,26 +403,11 @@ impl FunctionType.type_params.getter -> list[TypeVarType] {
     if (c is not None) and ("type_params" in c) {
         return c["type_params"];
     }
-    val = [self->:TypeParamOf:->][?:TypeVarType];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["type_params"] = val;
-    return val;
+    return _edge_list(self, "type_params", TypeParamOf, TypeVarType);
 }
 
 impl FunctionType.type_params.setter(type_params: (list[TypeVarType] | None)) -> None {
-    del [edge self->:TypeParamOf:->];
-    for t in (type_params or []) {
-        self +>:TypeParamOf:+> t;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["type_params"] = `list(type_params or []);
+    _edge_set_list(self, "type_params", TypeParamOf, type_params);
 }
 
 impl FunctionType.type_guard.getter -> (TypeBase | None) {
@@ -614,27 +415,11 @@ impl FunctionType.type_guard.getter -> (TypeBase | None) {
     if (c is not None) and ("type_guard" in c) {
         return c["type_guard"];
     }
-    found = [self->:GuardOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["type_guard"] = val;
-    return val;
+    return _edge_one(self, "type_guard", GuardOf);
 }
 
 impl FunctionType.type_guard.setter(type_guard: (TypeBase | None)) -> None {
-    del [edge self->:GuardOf:->];
-    if type_guard is not None {
-        self +>:GuardOf:+> type_guard;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["type_guard"] = type_guard;
+    _edge_set_one(self, "type_guard", GuardOf, type_guard);
 }
 
 impl OverloadedType.overloads.getter -> list[FunctionType] {
@@ -642,26 +427,11 @@ impl OverloadedType.overloads.getter -> list[FunctionType] {
     if (c is not None) and ("overloads" in c) {
         return c["overloads"];
     }
-    val = [self->:OverloadOf:->][?:FunctionType];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["overloads"] = val;
-    return val;
+    return _edge_list(self, "overloads", OverloadOf, FunctionType);
 }
 
 impl OverloadedType.overloads.setter(overloads: (list[FunctionType] | None)) -> None {
-    del [edge self->:OverloadOf:->];
-    for t in (overloads or []) {
-        self +>:OverloadOf:+> t;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["overloads"] = `list(overloads or []);
+    _edge_set_list(self, "overloads", OverloadOf, overloads);
 }
 
 impl OverloadedType.init(
@@ -676,26 +446,11 @@ impl UnionType.types.getter -> list[TypeBase] {
     if (c is not None) and ("types" in c) {
         return c["types"];
     }
-    val = [self->:UnionMemberOf:->][?:TypeBase];
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["types"] = val;
-    return val;
+    return _edge_list(self, "types", UnionMemberOf, TypeBase);
 }
 
 impl UnionType.types.setter(types: (list[TypeBase] | None)) -> None {
-    del [edge self->:UnionMemberOf:->];
-    for t in (types or []) {
-        self +>:UnionMemberOf:+> t;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["types"] = `list(types or []);
+    _edge_set_list(self, "types", UnionMemberOf, types);
 }
 
 impl UnionType.init(
@@ -718,27 +473,11 @@ impl EnumMemberInfo.value_type.getter -> (TypeBase | None) {
     if (c is not None) and ("value_type" in c) {
         return c["value_type"];
     }
-    found = [self->:ValueTypeOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["value_type"] = val;
-    return val;
+    return _edge_one(self, "value_type", ValueTypeOf);
 }
 
 impl EnumMemberInfo.value_type.setter(value_type: (TypeBase | None)) -> None {
-    del [edge self->:ValueTypeOf:->];
-    if value_type is not None {
-        self +>:ValueTypeOf:+> value_type;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["value_type"] = value_type;
+    _edge_set_one(self, "value_type", ValueTypeOf, value_type);
 }
 
 impl EnumMemberInfo.init(
@@ -757,27 +496,11 @@ impl EnumMemberType.enum_class.getter -> (ClassType | None) {
     if (c is not None) and ("enum_class" in c) {
         return c["enum_class"];
     }
-    found = [self->:EnumClassOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["enum_class"] = val;
-    return val;
+    return _edge_one(self, "enum_class", EnumClassOf);
 }
 
 impl EnumMemberType.enum_class.setter(enum_class: (ClassType | None)) -> None {
-    del [edge self->:EnumClassOf:->];
-    if enum_class is not None {
-        self +>:EnumClassOf:+> enum_class;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["enum_class"] = enum_class;
+    _edge_set_one(self, "enum_class", EnumClassOf, enum_class);
 }
 
 impl EnumMemberType.member_info.getter -> (EnumMemberInfo | None) {
@@ -785,27 +508,11 @@ impl EnumMemberType.member_info.getter -> (EnumMemberInfo | None) {
     if (c is not None) and ("member_info" in c) {
         return c["member_info"];
     }
-    found = [self->:MemberInfoOf:->];
-    val = found[0] if found else None;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["member_info"] = val;
-    return val;
+    return _edge_one(self, "member_info", MemberInfoOf);
 }
 
 impl EnumMemberType.member_info.setter(member_info: (EnumMemberInfo | None)) -> None {
-    del [edge self->:MemberInfoOf:->];
-    if member_info is not None {
-        self +>:MemberInfoOf:+> member_info;
-    }
-    c = self._acc_cache;
-    if c is None {
-        c = {};
-        self._acc_cache = c;
-    }
-    c["member_info"] = member_info;
+    _edge_set_one(self, "member_info", MemberInfoOf, member_info);
 }
 
 impl EnumMemberType.init(
@@ -1428,4 +1135,49 @@ impl create_callable_type(
         parameters=parameters,
         function_flags=flags
     );
+}
+
+impl _acc_put(owner: any, key: str, val: any) -> any {
+    if owner._acc_cache is None {
+        owner._acc_cache = {};
+    }
+    owner._acc_cache[key] = val;
+    return val;
+}
+
+impl _edge_one(owner: any, key: str, role: any) -> any {
+    found = [owner->:role:->];
+    return _acc_put(owner, key, found[0] if found else None);
+}
+
+impl _edge_first(owner: any, key: str, role: any) -> any {
+    return _acc_put(owner, key, [owner->:role:->][0]);
+}
+
+impl _edge_list(owner: any, key: str, role: any, of: type) -> list[any] {
+    return _acc_put(
+        owner,
+        key,
+        [
+            n
+            for n in [owner->:role:->]
+            if isinstance(n, of)
+        ]
+    );
+}
+
+impl _edge_set_one(owner: any, key: str, role: any, val: any) -> None {
+    del [edge owner->:role:->];
+    if val is not None {
+        owner +>:(role):+> val;
+    }
+    _acc_put(owner, key, val);
+}
+
+impl _edge_set_list(owner: any, key: str, role: any, vals: any) -> None {
+    del [edge owner->:role:->];
+    for t in (vals or []) {
+        owner +>:(role):+> t;
+    }
+    _acc_put(owner, key, `list(vals or []));
 }

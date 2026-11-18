@@ -435,3 +435,10 @@ node EnumMemberType(TypeBase) {
 }
 
 glob CLASS_GRAPH_EPOCH: list[int] = [0];
+
+def _acc_put(owner: any, key: str, val: any) -> any;
+def _edge_one(owner: any, key: str, role: any) -> any;
+def _edge_first(owner: any, key: str, role: any) -> any;
+def _edge_list(owner: any, key: str, role: any, of: type) -> list[any];
+def _edge_set_one(owner: any, key: str, role: any, val: any) -> None;
+def _edge_set_list(owner: any, key: str, role: any, vals: any) -> None;
