@@ -1196,3 +1196,24 @@ test "a fresh check process can serve its first unit from the cache" {
         f"the first unit ran before the interface codec was ready:\n{done.stdout}\n{done.stderr}"
     );
 }
+
+glob CYCLE_A: str = "import from b { Base }\n\nclass A(Base) {}\n",
+     CYCLE_B: str = (
+         "import from a { A }\n\n"
+         "class Meta(type) {\n    def hi(cls: Meta) -> int { return 1; }\n}\n\n"
+         "class Base(metaclass=Meta) {\n    def f(self: Base) -> int { return 2; }\n}\n\n"
+         "class C(A) {}\n"
+     );
+
+test "classes in an import cycle keep their ancestry through the cache" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "a.jac").write_text(CYCLE_A);
+    (tmp / "b.jac").write_text(CYCLE_B);
+    (tmp / "main.jac").write_text("import from a { A }\nimport from b { C }\n");
+    _check(str(tmp / "main.jac"));
+    (tmp / "user.jac").write_text(
+        "import from b { C }\n\nglob n: int = C().f() + C.hi();\nglob s: str = C().f();\n"
+    );
+    (_prog, diags) = _check(str(tmp / "user.jac"));
+    assert len(diags) == 1 and "Cannot assign int to str" in diags[0] , diags;
+}
