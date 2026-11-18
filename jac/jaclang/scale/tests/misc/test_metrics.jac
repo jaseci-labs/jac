@@ -534,10 +534,21 @@ test "a fleet whose values were fixed before the directory was set is reported" 
 }
 
 
-"""A single-worker app is the ordinary case and must stay quiet."""
-test "a single worker collector reports nothing" {
-    (_collector, records) = _collector_for_fleet(1, "");
-    assert records == [] , [r.getMessage() for r in records];
+"""A single-worker app is the ordinary case: it must stay quiet and serve the
+metrics the app records on prometheus_client's default registry, once each."""
+test "a single worker collector reports nothing and serves the app's metrics" {
+    import from prometheus_client { Counter, REGISTRY }
+    app_events = Counter("single_worker_app_events_total", "Events the app records");
+    try {
+        (collector, records) = _collector_for_fleet(1, "");
+        assert records == [] , [r.getMessage() for r in records];
+        app_events.inc(3);
+        body = collector.expose().decode("utf-8");
+        assert "single_worker_app_events_total 3.0" in body , body;
+        assert body.count("# TYPE python_info gauge") == 1 , body;
+    } finally {
+        REGISTRY.unregister(app_events);
+    }
 }
 
 
