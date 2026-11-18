@@ -134,6 +134,23 @@ test "a reply cut off at max_tokens, or empty, never passes as a finished answer
             0
         ),
         (
+            "empty refusal, never asked again",
+            [say("", finish_reason="content_filter"), say("saved it")],
+            {
+                "plain": EmptyReplyError,
+                "streamed": EmptyReplyError,
+                "events": EmptyReplyError,
+                "async": ""
+            },
+            0
+        ),
+        (
+            "empty forced final answer",
+            [call("save_data", {"name": "x", "payload": "y"}), say("")],
+            EmptyReplyError,
+            1
+        ),
+        (
             "empty stop, then an answer",
             [say(""), say("saved it")],
             {

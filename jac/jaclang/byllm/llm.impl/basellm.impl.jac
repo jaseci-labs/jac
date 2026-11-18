@@ -1107,6 +1107,11 @@ def _nudge_after_empty_reply(
 ) -> bool;
 
 
+def _empty_reply_error(
+    mt_run: MTRuntime, when: str = "when it was asked for its final answer"
+) -> EmptyReplyError;
+
+
 def _truncated_call_ids(message: dict[str, any], finish_reason: str) -> set[str];
 
 
@@ -1733,7 +1738,14 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     mt_run._call_kind = "final_answer_restream";
     try {
         output = _recovered_answer(mt_run, self.dispatch_no_streaming(mt_run));
-        return output if mt_run._has_final_output else str(output or "");
+        if mt_run._has_final_output {
+            return output;
+        }
+        if (mt_run.resp_type is None or mt_run.resp_type is str)
+            and not str(output or "").strip() {
+            raise _empty_reply_error(mt_run);
+        }
+        return str(output or "");
     } finally {
         mt_run._call_kind = original_call_kind;
         mt_run.call_params.pop("tool_choice", None);
@@ -1768,6 +1780,9 @@ impl BaseLLM._stream_final_answer(
                 accumulated += token;
             }
             yield token;
+        }
+        if not accumulated.strip() {
+            raise _empty_reply_error(mt_run);
         }
     } except Exception {
         accumulated = "";
@@ -3092,13 +3107,15 @@ impl _nudge_after_empty_reply(
     if not mt_run.tools or str(resp.output or "").strip() {
         return False;
     }
-    if nudged {
-        raise EmptyReplyError(
-            "The model ended its turn with no text and no tool call "
-            f"(finish_reason '{resp.finish_reason}'), again after it was asked "
-            "to continue."
+    if nudged or resp.finish_reason == "content_filter" {
+        raise _empty_reply_error(
+            mt_run, "after it was asked to continue" if nudged else "in a tool loop"
         );
     }
+    logger.warning(
+        "byLLM: the model replied with nothing (finish_reason "
+        f"'{resp.finish_reason}'); asking it to continue"
+    );
     mt_run.add_scaffolding_message(
         Message(
             role=MessageRole.USER,
@@ -3107,6 +3124,17 @@ impl _nudge_after_empty_reply(
         )
     );
     return True;
+}
+
+
+impl _empty_reply_error(
+    mt_run: MTRuntime, when: str = "when it was asked for its final answer"
+) -> EmptyReplyError {
+    last = mt_run._usage_history[-1] if mt_run._usage_history else {};
+    return EmptyReplyError(
+        f"The model gave no answer (finish_reason '{last.get('finish_reason', '')}') "
+        f"{when}."
+    );
 }
 
 
