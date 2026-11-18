@@ -12,3 +12,13 @@ enum Level { LOW = 2, MID = 25, HIGH = 40 }
 def widen(v: float) -> int {
     return int(Level(v));
 }
+
+
+def flag -> bool {
+    return True;
+}
+
+
+def picked -> int {
+    return (Level if flag() else Level)["MID"].value;
+}
