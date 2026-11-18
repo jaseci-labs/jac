@@ -1049,12 +1049,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     self.create_package_json();
     build_dir = self._get_client_dir();
 
-    import from jaclang.client.build_stages { stage }
-    with stage("Packages installed") {
-        self.install_packages(
-            install_dir=build_dir, capture_output=True, clean_stale=True
-        );
-    }
+    self.install_packages(install_dir=build_dir, capture_output=True, clean_stale=True);
     if self.config_path {
         try {
             config_arg = str(self.config_path.relative_to(build_dir));

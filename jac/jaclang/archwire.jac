@@ -4178,8 +4178,7 @@ graph import client {
     build_stages --> [
         cli.run_client_build { record_stages },
         jac_client_compiler.JacClientCompiler.compile
-            | targets.web_target.WebTarget.build
-            | vite_bundler.ViteBundler.build { stage },
+            | targets.web_target.WebTarget.build { stage },
     ]
     client_bundle ++> [
         compiler { ClientBuildInputs, ClientBundle, ClientBundleError },
