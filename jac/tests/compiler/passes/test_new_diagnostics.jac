@@ -514,115 +514,39 @@ test "E2036: an import binds a name once per scope" {
     # Python runs the last import and the checker reads the first, so two
     # imports of one name from different places disagree; repeating the same
     # import is harmless. `with entry` and `if` bind in the enclosing scope.
-    cases = [
-        (
-            "same import twice",
-            "import from os.path { join }\nimport from os.path { join }\n",
-            0
-        ),
-        (
-            "two modules",
-            "import from os.path { join }\nimport from shlex { join }\n",
-            1
-        ),
-        (
-            "two names, one module",
-            "import from b { A as X }\nimport from b { C as X }\n",
-            1
-        ),
-        (
-            "relative and absolute path",
-            "import from .b { A }\nimport from pkg.b { A }\n",
-            0
-        ),
-        (
-            "relative and another module",
-            "import from .b { A }\nimport from c { A }\n",
-            1
-        ),
-        (
-            "current package and absolute",
-            "import from . { A }\nimport from pkg { A }\n",
-            0
-        ),
-        ("a package and its submodule", "import os;\nimport os.path;\n", 0),
-        (
-            "a module aliased to itself",
-            "import os as os;\nimport os;\nimport os as os;\n",
-            0
-        ),
-        ("two modules, one alias", "import os.path as p;\nimport shlex as p;\n", 1),
-        (
-            "local file and package",
-            'import from "./button" { Button }\nimport from "@mui/material" { Button }\n',
-            1
-        ),
-        (
-            "with entry and the module",
-            "import from os.path { join }\nwith entry {\n    import from shlex { join }\n}\n",
-            1
-        ),
-        (
-            "if inside a function",
-            "def f(x: bool) -> None {\n    import from b { A }\n    if x {\n        import from c { A }\n    }\n}\n",
-            1
-        ),
-        (
-            "if and else arms",
-            "def f(x: bool) -> None {\n    if x {\n        import from b { A }\n    } else {\n        import from c { A }\n    }\n}\n",
-            0
-        ),
-        (
-            "two modules in one else arm",
-            "def f(x: bool) -> None {\n    if x {\n        import from b { A }\n    } else {\n        import from c { A }\n        import from d { A }\n    }\n}\n",
-            1
-        ),
-        (
-            "try and except fallback",
-            "with entry {\n    try {\n        import from b { A }\n    } except ImportError {\n        import from c { A }\n    }\n}\n",
-            0
-        ),
-        (
-            "try and else",
-            "with entry {\n    try {\n        import from b { A }\n    } except ImportError {\n        x = 1;\n    } else {\n        import from c { A }\n    }\n}\n",
-            1
-        ),
-        (
-            "switch cases ending in break",
-            "def f(y: int) -> None {\n    switch y {\n        case 1:\n            import from b { A }\n            break;\n        case 2:\n            import from c { A }\n    }\n}\n",
-            0
-        ),
-        (
-            "switch cases ending in return or raise",
-            "def f(y: int) -> None {\n    switch y {\n        case 1:\n            import from b { A }\n            return;\n        case 2:\n            import from c { A }\n            raise ValueError();\n        case 3:\n            import from d { A }\n    }\n}\n",
-            0
-        ),
-        (
-            "switch case falling through",
-            "def f(y: int) -> None {\n    switch y {\n        case 1:\n            import from b { A }\n        case 2:\n            import from c { A }\n    }\n}\n",
-            1
-        ),
-        (
-            "except and finally",
-            "with entry {\n    try {\n        x = 1;\n    } except ImportError {\n        import from b { A }\n    } finally {\n        import from c { A }\n    }\n}\n",
-            1
-        ),
-        (
-            "module and function",
-            "import from b { A }\ndef f -> None {\n    import from c { A }\n}\n",
-            0
-        ),
-        (
-            "with entry import and a local def",
-            "def join -> int {\n    return 1;\n}\n\nwith entry {\n    import from shlex { join }\n}\n",
-            1
-        )
+    allowed = [
+        "import from os.path { join } import from os.path { join }",
+        "import from .b { A } import from pkg.b { A }",
+        "import from . { A } import from pkg { A }",
+        "import os; import os.path;",
+        "import os as os; import os; import os as os;",
+        "import from b { A } def f -> None { import from c { A } }",
+        "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } } }",
+        "with entry { try { import from b { A } } except ImportError { import from c { A } } }",
+        "def f(y: int) -> None { switch y { case 1: import from b { A } break; case 2: import from c { A } } }",
+        "def f(y: int) -> None { switch y { case 1: import from b { A } return; case 2: import from c { A } raise ValueError(); case 3: import from d { A } } }"
     ];
-    for (label, source, expected) in cases {
-        (_, prog) = parse_and_validate(source);
-        assert prog is not None , label;
-        got = count_diagnostic_code(prog, "E2036");
-        assert got == expected , f"{label}: expected {expected} E2036, got {got}";
+    clashes = [
+        "import from os.path { join } import from shlex { join }",
+        "import from b { A as X } import from b { C as X }",
+        "import from .b { A } import from c { A }",
+        "import os.path as p; import shlex as p;",
+        'import from "./button" { Button } import from "@mui/material" { Button }',
+        "import from os.path { join } with entry { import from shlex { join } }",
+        "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
+        "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } import from d { A } } }",
+        "with entry { try { import from b { A } } except ImportError { x = 1; } else { import from c { A } } }",
+        "with entry { try { x = 1; } except ImportError { import from b { A } } finally { import from c { A } } }",
+        "def f(y: int) -> None { switch y { case 1: import from b { A } case 2: import from c { A } } }",
+        "def join -> int { return 1; } with entry { import from shlex { join } }"
+    ];
+    for (expected, sources) in [(0, allowed), (1, clashes)] {
+        for source in sources {
+            (_, prog) = parse_and_validate(source);
+            assert prog is not None , source;
+            got = count_diagnostic_code(prog, "E2036");
+            assert got == expected , f"{source}: expected {expected} E2036, got {got}";
+        }
     }
 }
 
