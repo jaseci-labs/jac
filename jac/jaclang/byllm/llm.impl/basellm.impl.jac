@@ -1107,7 +1107,7 @@ def _nudge_after_empty_reply(
 ) -> bool;
 
 
-def _empty_reply_error(mt_run: MTRuntime) -> EmptyReplyError;
+def _raise_if_no_answer(mt_run: MTRuntime, output: object);
 
 
 def _truncated_call_ids(message: dict[str, any], finish_reason: str) -> set[str];
@@ -1739,9 +1739,8 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         if mt_run._has_final_output {
             return output;
         }
-        if (mt_run.resp_type is None or mt_run.resp_type is str)
-            and not str(output or "").strip() {
-            raise _empty_reply_error(mt_run);
+        if mt_run.resp_type is None or mt_run.resp_type is str {
+            _raise_if_no_answer(mt_run, output);
         }
         return str(output or "");
     } finally {
@@ -1779,9 +1778,7 @@ impl BaseLLM._stream_final_answer(
             }
             yield token;
         }
-        if not accumulated.strip() {
-            raise _empty_reply_error(mt_run);
-        }
+        _raise_if_no_answer(mt_run, accumulated);
     } except Exception {
         accumulated = "";
         raise;
@@ -1853,8 +1850,8 @@ impl BaseLLM._yield_recovery_result(
     recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
     output = _recovered_answer(mt_run, recovery_resp);
-    if not mt_run._has_final_output and not str(output or "").strip() {
-        raise _empty_reply_error(mt_run);
+    if not mt_run._has_final_output {
+        _raise_if_no_answer(mt_run, output);
     }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
     if not mt_run._has_final_output and output {
@@ -3109,7 +3106,7 @@ impl _nudge_after_empty_reply(
         return False;
     }
     if nudged or resp.finish_reason == "content_filter" {
-        raise _empty_reply_error(mt_run);
+        _raise_if_no_answer(mt_run, resp.output);
     }
     logger.warning(
         "byLLM: the model replied with nothing (finish_reason "
@@ -3126,11 +3123,15 @@ impl _nudge_after_empty_reply(
 }
 
 
-impl _empty_reply_error(mt_run: MTRuntime) -> EmptyReplyError {
-    last = mt_run._usage_history[-1] if mt_run._usage_history else {};
-    return EmptyReplyError(
-        f"The model gave no answer (finish_reason '{last.get('finish_reason', '')}')."
-    );
+impl _raise_if_no_answer(mt_run: MTRuntime, output: object) {
+    if not str(output or "").strip() {
+        last = mt_run._usage_history[-1] if mt_run._usage_history else {};
+        raise EmptyReplyError(
+            f"The model gave no answer (finish_reason '{last.get(
+                'finish_reason', ''
+            )}')."
+        );
+    }
 }
 
 
