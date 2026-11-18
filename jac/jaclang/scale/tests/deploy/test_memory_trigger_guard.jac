@@ -179,10 +179,9 @@ test "malformed hpa.behavior warns and falls back to the empty fragment" {
 }
 
 
-# The preflight reads the pod architecture from the cluster, and node_arch()
-# silently falls back to the HOST arch when no kubeconfig is loaded. Deploy must
-# therefore load the cluster config first, or a macOS host deploying to a linux
-# x86_64 cluster checks the wrong release asset and can refuse a valid pin. The
+# The preflight reads the pod architecture from the cluster's nodes, and
+# node_arch() refuses when it cannot read them. Deploy must therefore load the
+# cluster config first, or a deploy with a working kubeconfig is refused. The
 # base image is resolved in the same preflight, so a refused image stops the
 # deploy before any database is provisioned.
 test "deploy loads the cluster config, then resolves the pod arch and base image" {

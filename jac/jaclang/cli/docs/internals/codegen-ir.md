@@ -665,11 +665,9 @@ are the default lane, and CI's ordinary chunks collect all nineteen --
 `tests/compiler/test_*.jac` and the `tests/compiler/passes` trees in the
 compiler lane, `tests/` minus `tests/compiler` in the runtime lane.
 
-`tests/compiler/test_jcir_canary_manifest.jac` holds the list and pins
-what prose cannot: that every named suite still exists, that every one
-still falls inside a CI collection glob, and that the lane they measure
-is the container. A canary that is renamed out of the matrix fails there
-rather than going quiet.
+`tests/compiler/test_jcir_gen_pass.jac` pins that the lane they measure
+is the container: the codegen schedule emits JCIR and carries no second
+Python emitter.
 
 - tests/compiler/test_compilation.jac
 - tests/compiler/test_codegen_ir.jac
