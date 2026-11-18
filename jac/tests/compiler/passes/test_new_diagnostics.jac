@@ -478,15 +478,17 @@ test "E2036: a Python module may redefine a name" {
 test "E2036: a local def, obj or glob that reuses an imported name is rejected" {
     # `def Thing -> int;` used to lose to the imported record: the checker typed
     # `Thing()` as the record and the program constructed it instead of
-    # calling the def.
+    # calling the def. The impl file may repeat the module's import, not rebind it.
     (prog, _) = compile_and_check("scope_E2036_import_shadow.jac");
     messages = [
         e.msg
         for e in prog.errors_had
         if e.code is not None and e.code.code == "E2036"
     ];
-    assert len(messages) == 3 , messages;
+    assert len(messages) == 4 , messages;
     assert "Duplicate definition of 'Thing': the import on line 2 binds it too."
+        in messages , messages;
+    assert "Duplicate definition of 'Other': the import on line 2 of scope_E2036_import_shadow.jac binds it too."
         in messages , messages;
     assert any("'Other'" in m for m in messages) , messages;
     assert any("'Knob'" in m for m in messages) , messages;
@@ -646,6 +648,11 @@ test "E2036: an import binds a name once per scope" {
             "module and function",
             "import from b { A }\ndef f -> None {\n    import from c { A }\n}\n",
             0
+        ),
+        (
+            "with entry import and a local def",
+            "def join -> int {\n    return 1;\n}\n\nwith entry {\n    import from shlex { join }\n}\n",
+            1
         )
     ];
     for (label, source, expected) in cases {
@@ -654,26 +661,6 @@ test "E2036: an import binds a name once per scope" {
         got = count_diagnostic_code(prog, "E2036");
         assert got == expected , f"{label}: expected {expected} E2036, got {got}";
     }
-}
-
-test "E2036: an import in with entry collides with a local definition" {
-    (_, prog) = parse_and_validate(
-        "def join -> int {\n    return 1;\n}\n\nwith entry {\n    import from shlex { join }\n}\n"
-    );
-    assert count_diagnostic_code(prog, "E2036") == 1;
-}
-
-test "E2036: an impl file may repeat its module's import, not rebind it" {
-    (prog, _) = compile_only("scope_E2036_annex_import.jac");
-    messages = [
-        e.msg
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E2036"
-    ];
-    assert messages
-        == [
-            "Duplicate definition of 'join': the import on line 2 of scope_E2036_annex_import.jac binds it too."
-        ] , messages;
 }
 
 test "E2036: an include does not collide with a local definition" {
