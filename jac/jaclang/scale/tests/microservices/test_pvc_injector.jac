@@ -307,8 +307,8 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
     def _loads(*args: any, **kwargs: any) {
         return;
     }
-    def _no_such_context(*args: any, **kwargs: any) {
-        raise ConfigException("context 'prod-eks' not found");
+    def _no_kubeconfig(*args: any, **kwargs: any) {
+        raise ConfigException("Invalid kube-config file. No configuration found.");
     }
     ambient = "/home/dev/.kube/config";
     to_prod = ["--context", "prod-eks"];
@@ -317,9 +317,9 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
     # resolves relative paths against the deploy's cwd (the bundle cp runs
     # elsewhere), and merges a path list, whether the files come from the
     # config or the environment, so kubectl must be handed the same files.
-    # In the last row a builder pod's jac.toml names a laptop context: the
-    # client falls back to the in-cluster ServiceAccount, so kubectl must
-    # name no context and ignore the pod's own kubeconfig.
+    # In the last row a pod configures no cluster and its ambient kubeconfig
+    # does not load: the client falls back to the in-cluster ServiceAccount,
+    # so kubectl must name no context and ignore the pod's ambient KUBECONFIG.
     rows: list[tuple[str, str, any, list[str], str]] = [
         ("/etc/jac/kubeconfig", ambient, _loads, to_prod, "/etc/jac/kubeconfig"),
         ("", ambient, _loads, to_prod, ambient),
@@ -339,7 +339,7 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
             to_prod,
             f"/etc/jac/a.yaml{os.pathsep}{os.path.abspath('kube/b.yaml')}"
         ),
-        ("/etc/jac/kubeconfig", ambient, _no_such_context, [], os.devnull),
+        ("", ambient, _no_kubeconfig, [], os.devnull),
 
     ];
     for (kubeconfig, ambient_kubeconfig, load_kube_config, flags, files) in rows {
@@ -350,7 +350,9 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
             kubectl.write_text(_FAKE_KUBECTL);
             kubectl.chmod(0o755);
             target = KubernetesTargetBase(
-                config=KubernetesConfig(kube_context="prod-eks", kubeconfig=kubeconfig)
+                config=KubernetesConfig(
+                    kube_context=("prod-eks" if flags else ""), kubeconfig=kubeconfig
+                )
             );
             cluster = _OneClusterPods();
             injector = PvcInjector(_object_key="orders/abc.jab", _bundle_bytes=b"jab");
