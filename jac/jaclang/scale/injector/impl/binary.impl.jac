@@ -5,18 +5,8 @@ impl _node_architecture(k8s_node: object) -> str {
 }
 
 impl cluster_node_archs -> list[str] {
-    try {
-        import from kubernetes { client }
-    } except ImportError {
-        return [];
-    }
-    nodes: list[any] = [];
-    try {
-        nodes = list(client.CoreV1Api().list_node(_request_timeout=10).items);
-    } except Exception as e {
-        logger.warning(f"Could not read the cluster's node architectures ({e}).");
-        return [];
-    }
+    import from kubernetes { client }
+    nodes = client.CoreV1Api().list_node(_request_timeout=10).items;
     archs: set[str] = set();
     for node in nodes {
         arch = release_arch(_node_architecture(node));
@@ -32,17 +22,28 @@ impl node_arch -> str {
     if `override {
         return release_arch(`override);
     }
-    archs = cluster_node_archs();
+    try {
+        archs = cluster_node_archs();
+    } except Exception as e {
+        status = e?.status;
+        detail = f"HTTP {status} {e?.reason or ''}".strip()
+            if status
+            else f"{type(e).__name__}: {e}";
+        raise RuntimeError(
+            f"Could not read the cluster's node architectures ({detail}), so the "
+            "pod binary's architecture is unknown. Set JAC_NODE_ARCH to x86_64 or "
+            "aarch64, or grant the deploy credentials `list` on `nodes`, and redeploy."
+        ) from e;
+    }
     if len(archs) == 1 {
         return archs[0];
     }
-    if archs {
-        logger.warning(
-            f"Cluster nodes report multiple architectures ({', '.join(archs)}); "
-            f"defaulting to the host arch. Set JAC_NODE_ARCH to pick one."
-        );
-    }
-    return host_arch();
+    arch = host_arch();
+    logger.warning(
+        f"Cluster nodes report {', '.join(archs) or 'no'} architectures; "
+        f"defaulting to the host arch ({arch}). Set JAC_NODE_ARCH to pick one."
+    );
+    return arch;
 }
 
 impl _github_token -> str {
