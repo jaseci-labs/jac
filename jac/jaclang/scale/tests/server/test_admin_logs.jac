@@ -118,20 +118,44 @@ test "trace filter renders bracket escapes Loki's parser accepts" {
     # And no bare `\[` (which would re-introduce the parser error).
     assert "\\[" not in q.replace("\\\\[", "") , f"bare `\\[` found in {q}";
 
+    import json;
+    import re;
     import from jaclang.scale.admin.logs { _pod_log_lines }
 
     tid = "abc12345-dead-beef-cafe-000000000001";
+    hex_tid = "0123456789abcdef0123456789abcdef";
+    json_line = json.dumps({"level": "ERROR", "trace_id": tid, "msg": "json"});
+    for (trace_id, body, expected) in (
+        (tid, json_line, True),
+        (tid, "[trace=abc12345] plain", True),
+        (hex_tid, f"[trace={hex_tid}] undashed", True),
+        (tid, "[trace=ffffffff] other", False)
+    ) {
+        pattern = _build_logql("ns", "", "", "", trace_id).split('|~ "', 1)[1][:-1];
+        matched = bool(re.search(json.loads('"' + pattern + '"'), body));
+        assert matched == expected , f"LogQL for {trace_id!r} on {body!r}: {matched}";
+    }
+
     text = (
         "2024-05-22T21:12:25Z [trace=abc12345] plain\n"
-        + '2024-05-22T21:12:26Z {"level":"ERROR","trace_id":"'
-        + tid
-        + '","msg":"json"}\n'
-        + "2024-05-22T21:12:27Z [trace=ffffffff] other\n"
+        + f"2024-05-22T21:12:26Z {json_line}\n"
+        + f"2024-05-22T21:12:27Z [trace={hex_tid}] undashed\n"
+        + "2024-05-22T21:12:28Z [trace=ffffffff] other\n"
     );
     for (level, trace_id, expected) in (
         ("", tid, ["[trace=abc12345] plain", "json"]),
         ("error", tid, ["json"]),
-        ("", "", ["[trace=abc12345] plain", "json", "[trace=ffffffff] other"])
+        ("", hex_tid, [f"[trace={hex_tid}] undashed"]),
+        (
+            "",
+            "",
+            [
+                "[trace=abc12345] plain",
+                "json",
+                f"[trace={hex_tid}] undashed",
+                "[trace=ffffffff] other"
+            ]
+        )
     ) {
         msgs = [
             line["msg"]
