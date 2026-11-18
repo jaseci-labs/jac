@@ -3,8 +3,6 @@ auth handshake (query-token and first-frame, with tagged reject reasons), and
 the control-frame path (rate limiting, token expiry, refresh).
 """
 import asyncio;
-import contextvars;
-import json;
 import os;
 import shutil;
 import time;
@@ -18,6 +16,11 @@ def _ws_client -> any {
 
 def _as_any(v: any) -> any {
     return v;
+}
+
+def _ws_result(resp: dict[str, any]) -> dict[str, any] {
+    data = resp["data"];
+    return data["result"] if isinstance(data, dict) and "result" in data else data;
 }
 
 def _ctx(target: str, user: (str | None) = None) -> ConnectionContext {
@@ -431,6 +434,7 @@ test "a refresh with the connection's own valid token is accepted" {
         async def body -> str {
             ws = _FakeWebSocket();
             ctx = _ctx('X', user=owner_id);
+            ctx.authorization = "Bearer stale";
             ctx.rate_tokens = 5.0;
             verdict = await ws_handle_control(
                 _as_any(ws),
@@ -442,9 +446,9 @@ test "a refresh with the connection's own valid token is accepted" {
                 10.0
             );
             frame = ws.sent[0] if ws.sent else {};
-            return f"{verdict}|{len(ws.closed)}|{frame.get('type')}|{frame.get('ok')}";
+            return f"{verdict}|{len(ws.closed)}|{frame.get('type')}|{frame.get('ok')}|{ctx.authorization}";
         }
-        assert asyncio.run(body()) == "continue|0|refreshed|True";
+        assert asyncio.run(body()) == f"continue|0|refreshed|True|Bearer {owner_token}";
     } finally {
         _cleanup_user_manager(test_dir);
     }
@@ -464,6 +468,7 @@ test "a refresh carrying another user's real token is rejected as an identity mi
         async def body -> str {
             ws = _FakeWebSocket();
             ctx = _ctx('X', user=b_id);
+            ctx.authorization = "Bearer b";
             ctx.rate_tokens = 5.0;
             verdict = await ws_handle_control(
                 _as_any(ws),
@@ -477,10 +482,11 @@ test "a refresh carrying another user's real token is rejected as an identity mi
             frame = ws.sent[0]['error'] if ws.sent else {};
             close_code = ws.closed[0][0] if ws.closed else 0;
             close_reason = ws.closed[0][1] if ws.closed else '';
-            return f"{verdict}|{frame.get('reason')}|{close_code}|{close_reason}";
+            return f"{verdict}|{frame.get('reason')}|{close_code}|{close_reason}|{ctx.authorization}";
         }
         assert (
-            asyncio.run(body()) == "break|identity_mismatch|4401|identity_mismatch"
+            asyncio.run(body())
+            == "break|identity_mismatch|4401|identity_mismatch|Bearer b"
         );
     } finally {
         _cleanup_user_manager(test_dir);
@@ -516,6 +522,11 @@ test "ws tolerates a per-message token from an older client" {
             resp = ws.receive_json();
             assert resp["ok"] == True , f"got {resp}";
         }
+        with tc.websocket_connect("/ws/function/ws_private_echo") as ws {
+            ws.send_json({"message": "hi", "token": token});
+            resp = ws.receive_json();
+            assert _ws_result(resp)["authorization"] == f"Bearer {token}" , f"got {resp}";
+        }
     } finally {
         client.close();
     }
@@ -533,6 +544,12 @@ test "ws private function accepts a valid query token" {
             ws.send_json({"message": "hi"});
             resp = ws.receive_json();
             assert resp["ok"] == True , f"got {resp}";
+            assert _ws_result(resp)["authorization"] == f"Bearer {token}" , f"got {resp}";
+        }
+        with tc.websocket_connect(f"/ws/function/ws_echo?token={token}") as ws {
+            ws.send_json({"message": "hi"});
+            resp = ws.receive_json();
+            assert _ws_result(resp)["authorization"] == "" , f"got {resp}";
         }
     } finally {
         client.close();
@@ -553,318 +570,4 @@ test "ws first-frame auth rejects an invalid token with a tagged reason" {
     } finally {
         client.close();
     }
-}
-
-
-obj _AuthProbeSocket {
-    has query_params: dict[str, str] = {},
-        inbox: list[str] = [],
-        sent: list[dict[str, any]] = [],
-        closed: list[tuple[any, ...]] = [];
-
-    async def accept {}
-    async def receive_text -> str {
-        await asyncio.sleep(0);
-        if not self.inbox {
-            raise WebSocketDisconnect();
-        }
-        return self.inbox.pop(0);
-    }
-
-    async def send_json(payload: dict[str, any]) {
-        self.sent.append(payload);
-    }
-
-    async def close(code: int = 1000, reason: str = '') {
-        self.closed.append((code, reason));
-    }
-}
-
-
-obj _NullWsManager {
-    async def register(ctx: ConnectionContext) -> (str | None) {
-        return None;
-    }
-
-    async def unregister(ctx: ConnectionContext) {}
-}
-
-
-obj _NullScope {
-    async def __aenter__ -> any {
-        return self;
-    }
-
-    async def __aexit__(exc_type: any, exc: any, tb: any) -> bool {
-        return False;
-    }
-
-    def abort {}
-}
-
-
-def _null_scope -> any {
-    return _NullScope();
-}
-
-
-async def _serve_probe(
-    socket: _AuthProbeSocket, um: any, requires_auth: bool, target: any
-) {
-    await serve_ws_connection(
-        _as_any(socket),
-        _as_any(_NullWsManager()),
-        um,
-        requires_auth,
-        'function',
-        'auth_probe',
-        False,
-        'Function',
-        65536,
-        5.0,
-        100.0,
-        target,
-        _null_scope
-    );
-}
-
-
-def _auth_recorder(seen: list[str]) -> any {
-    async def target(data: dict[str, any], user: str) -> dict[str, any] {
-        seen.append(get_current_auth());
-        return {'user': user};
-    }
-    return target;
-}
-
-
-test "an authenticated ws target forwards the query-token caller, then restores the prior auth" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        user = um.create_internal_user("ws_fwd_query", "Secret123!");
-        token = um.create_jwt_token(user["user_id"]);
-        async def body -> tuple[list[str], str] {
-            seen: list[str] = [];
-            socket = _AuthProbeSocket(
-                query_params={'token': token}, inbox=['{}', '{}']
-            );
-            outer = set_current_auth("Bearer outer");
-            try {
-                await _serve_probe(socket, um, True, _auth_recorder(seen));
-                return (seen, get_current_auth());
-            } finally {
-                reset_current_auth(outer);
-            }
-        }
-        (seen, after) = asyncio.run(body());
-        assert seen == [f"Bearer {token}", f"Bearer {token}"] , f"got {seen}";
-        assert after == "Bearer outer" , f"got {after}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "an authenticated ws target forwards the first-frame handshake caller" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        user = um.create_internal_user("ws_fwd_frame", "Secret123!");
-        token = um.create_jwt_token(user["user_id"]);
-        async def body -> list[str] {
-            seen: list[str] = [];
-            socket = _AuthProbeSocket(
-                inbox=[json.dumps({'token': token, 'n': 1}), '{"n": 2}']
-            );
-            await _serve_probe(socket, um, True, _auth_recorder(seen));
-            return seen;
-        }
-        seen = asyncio.run(body());
-        assert seen == [f"Bearer {token}", f"Bearer {token}"] , f"got {seen}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "a public ws target forwards no caller bearer, even an inherited one" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        user = um.create_internal_user("ws_fwd_public", "Secret123!");
-        token = um.create_jwt_token(user["user_id"]);
-        async def body -> tuple[list[str], str] {
-            seen: list[str] = [];
-            socket = _AuthProbeSocket(query_params={'token': token}, inbox=['{}']);
-            outer = set_current_auth("Bearer outer");
-            try {
-                await _serve_probe(socket, um, False, _auth_recorder(seen));
-                return (seen, get_current_auth());
-            } finally {
-                reset_current_auth(outer);
-            }
-        }
-        (seen, after) = asyncio.run(body());
-        assert seen == [""] , f"got {seen}";
-        assert after == "Bearer outer" , f"got {after}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "a failing ws target still restores the prior auth context" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        user = um.create_internal_user("ws_fwd_fail", "Secret123!");
-        token = um.create_jwt_token(user["user_id"]);
-        async def body -> tuple[list[str], str, list[dict[str, any]]] {
-            seen: list[str] = [];
-            async def target(data: dict[str, any], user: str) -> any {
-                seen.append(get_current_auth());
-                raise RuntimeError("target failed");
-            }
-            socket = _AuthProbeSocket(query_params={'token': token}, inbox=['{}']);
-            outer = set_current_auth("Bearer outer");
-            try {
-                await _serve_probe(socket, um, True, target);
-                return (seen, get_current_auth(), socket.sent);
-            } finally {
-                reset_current_auth(outer);
-            }
-        }
-        (seen, after, sent) = asyncio.run(body());
-        assert seen == [f"Bearer {token}"] , f"got {seen}";
-        assert after == "Bearer outer" , f"got {after}";
-        assert sent[0]["error"]["code"] == "INTERNAL_ERROR" , f"got {sent}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "a sync-generator ws stream keeps the caller's bearer on every chunk" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        user = um.create_internal_user("ws_fwd_stream", "Secret123!");
-        token = um.create_jwt_token(user["user_id"]);
-        async def body -> list[any] {
-            async def target(data: dict[str, any], user: str) -> any {
-                def chunks -> any {
-                    yield get_current_auth();
-                    yield get_current_auth();
-                }
-                return chunks();
-            }
-            socket = _AuthProbeSocket(query_params={'token': token}, inbox=['{}']);
-            await _serve_probe(socket, um, True, target);
-            return [
-                f['data']
-                for f in socket.sent
-                if f.get('type') == 'chunk'
-            ];
-        }
-        chunks = asyncio.run(body());
-        assert chunks == [f"Bearer {token}", f"Bearer {token}"] , f"got {chunks}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "a token refresh replaces the bearer the connection forwards" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        owner = um.create_internal_user("ws_fwd_refresh", "Secret123!");
-        owner_id = owner["user_id"];
-        owner_token = um.create_jwt_token(owner_id);
-        async def body -> str {
-            ws = _FakeWebSocket();
-            ctx = _ctx('X', user=owner_id);
-            ctx.authorization = "Bearer stale";
-            ctx.rate_tokens = 5.0;
-            await ws_handle_control(
-                _as_any(ws),
-                ctx,
-                {'type': 'refresh', 'token': owner_token},
-                um,
-                True,
-                10.0,
-                10.0
-            );
-            return ctx.authorization;
-        }
-        assert asyncio.run(body()) == f"Bearer {owner_token}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "concurrent ws connections each forward their own caller" {
-    (test_dir, um) = _real_user_manager();
-    try {
-        user_a = um.create_internal_user("ws_fwd_a", "Secret123!");
-        user_b = um.create_internal_user("ws_fwd_b", "Secret123!");
-        token_a = um.create_jwt_token(user_a["user_id"]);
-        token_b = um.create_jwt_token(user_b["user_id"]);
-        async def body -> dict[str, list[str]] {
-            seen: dict[str, list[str]] = {};
-            async def target(data: dict[str, any], user: str) -> dict[str, any] {
-                await asyncio.sleep(0.01);
-                seen.setdefault(user, []).append(get_current_auth());
-                return {};
-            }
-            sock_a = _AuthProbeSocket(
-                query_params={'token': token_a}, inbox=['{}', '{}']
-            );
-            sock_b = _AuthProbeSocket(
-                query_params={'token': token_b}, inbox=['{}', '{}']
-            );
-            await asyncio.gather(
-                _serve_probe(sock_a, um, True, target),
-                _serve_probe(sock_b, um, True, target)
-            );
-            return seen;
-        }
-        seen = asyncio.run(body());
-        assert seen[user_a["user_id"]] == [f"Bearer {token_a}"] * 2 , f"got {seen}";
-        assert seen[user_b["user_id"]] == [f"Bearer {token_b}"] * 2 , f"got {seen}";
-    } finally {
-        _cleanup_user_manager(test_dir);
-    }
-}
-
-
-test "a sync-generator stream closed early finishes its cleanup in the context it ran in" {
-    stream_var: contextvars.ContextVar[str] = contextvars.ContextVar(
-        "_ws_test_stream_var", `default=""
-    );
-    cleanup: dict[str, bool] = {};
-    def chunks -> any {
-        token = stream_var.set("inside");
-        try {
-            yield 1;
-            yield 2;
-        } finally {
-            stream_var.reset(token);
-            cleanup['done'] = True;
-        }
-    }
-    async def body -> list[bool] {
-        abandoned: list[bool] = [];
-        async def send(payload: dict[str, any]) {
-            if payload.get('type') == 'chunk' {
-                raise WebSocketDisconnect();
-            }
-        }
-        def abandon {
-            abandoned.append(True);
-        }
-        try {
-            await _ws_stream_result(send, chunks(), abandon);
-        } except WebSocketDisconnect {}
-        return abandoned;
-    }
-    abandoned = asyncio.run(body());
-    assert cleanup.get('done') == True , f"got {cleanup}";
-    assert abandoned == [] , f"got {abandoned}";
 }

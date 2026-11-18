@@ -3161,9 +3161,7 @@ graph import {
             Request,
             Response
         },
-        scale.server.websocket_ext
-            | scale.tests.server.test_ws_hardening
-            | scale.websocket.websocket { WebSocketDisconnect },
+        scale.server.websocket_ext | scale.websocket.websocket { WebSocketDisconnect },
         scale.sso.firebase | scale.tests.server.test_stream_ws._spawn_upstream {
             Request,
             Response
@@ -14106,7 +14104,7 @@ graph import scale {
             reset_current_auth,
             set_current_auth
         },
-        tests.server.test_sv_auth_forward | tests.server.test_ws_hardening {
+        tests.server.test_sv_auth_forward {
             get_current_auth,
             reset_current_auth,
             set_current_auth
@@ -14486,7 +14484,6 @@ graph import scale {
         tests.server.test_firebase_auth_sso { SSOExtension },
         tests.server.test_sso { SSOExtension, resolve_sso_client_redirect },
     ]
-    server.websocket_ext ++> tests.server.test_ws_hardening { serve_ws_connection }
     shared.enums ++> sso.sso_auth | tests.server.test_firebase_auth_sso {
         Operations,
         Platforms
@@ -14599,11 +14596,17 @@ graph import scale {
         },
         tests.server.test_ws_hardening { ws_handle_control, ws_heartbeat_loop },
     ]
-    websocket.websocket ++> server.websocket_ext | tests.server.test_ws_hardening {
-        ConnectionContext,
-        WebSocketConnectionManager,
-        _ws_stream_result
-    }
+    websocket.websocket ++> [
+        server.websocket_ext {
+            ConnectionContext,
+            WebSocketConnectionManager,
+            _ws_stream_result
+        },
+        tests.server.test_ws_hardening {
+            ConnectionContext,
+            WebSocketConnectionManager
+        },
+    ]
 }
 
 graph import scale._optdeps {
