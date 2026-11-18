@@ -55,6 +55,7 @@ walker TypeCheckPass(TreePass) {
     def _c_plain_data(t: (TypeBase | None), allow_callable: bool = False) -> bool;
     def _opaque_member(t: (TypeBase | None)) -> (Archetype | None);
     def _check_c_type_use(ann_node: (UniNode | None)) -> None;
+    def _c_tag_type(nd: (HasVar | ParamVar | Assignment)) -> (TypeBase | None);
     def _check_c_global_use(nd: Name) -> None;
     def _check_c_variadic_def(nd: Ability) -> None;
     def _check_c_function_def(nd: Ability) -> None;
@@ -89,14 +90,12 @@ walker TypeCheckPass(TreePass) {
     can enter_with_stmt with WithStmt entry;
     can exit_with_stmt with WithStmt exit;
     can enter_if_stmt with IfStmt entry;
-    can enter_else_if with ElseIf entry;
     def _resolve_comptime_if(nd: IfStmt) -> None;
     def _in_comptime_context(nd: UniNode) -> bool;
     def _check_comptime_only_use(nd: Name) -> None;
     def _check_type_only_value_use(nd: Name) -> None;
     def _check_type_param_value_use(nd: Name) -> None;
     can exit_if_stmt with IfStmt exit;
-    can exit_else_if with ElseIf exit;
     can exit_while_stmt with WhileStmt exit;
     can exit_assert_stmt with AssertStmt exit;
     can exit_yield_expr with YieldExpr exit;
@@ -150,6 +149,8 @@ walker TypeCheckPass(TreePass) {
     def _union_leaves(shape: (UniNode | None)) -> list[UniNode];
     def _names_union_form(target: Expr) -> bool;
     def _check_explicit_any(ann_node: UniNode) -> None;
+    def _check_annotation(ann_node: UniNode, ann_type: object) -> None;
+    def _walk_foreign_impl(body: object) -> None;
     def _check_walker_reports_shape(nd: HasVar, declared_type: object) -> None;
     def _enclosing_walker_report_elem_type(nd: UniNode) -> (TypeBase | None);
     def _jsx_component_params(nd: Ability) -> (list[ParamVar] | None);

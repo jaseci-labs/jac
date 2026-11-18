@@ -269,7 +269,6 @@ test "the flow-narrowing caches do not survive the compile" {
             "_flow_node_type_cache": len(ev._flow_node_type_cache),
             "_flow_key_type_cache": len(ev._flow_key_type_cache),
             "_and_narrowing_overrides": len(ev._and_narrowing_overrides),
-            "_strict_site_cache": len(ev._strict_site_cache),
             "_loop_written_keys_cache": len(ev._loop_written_keys_cache),
             "_sv_async_syms_cache": len(ev._sv_async_syms_cache),
             "_type_guard_probes": len(ev._type_guard_probes)

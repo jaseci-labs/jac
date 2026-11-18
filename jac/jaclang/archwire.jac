@@ -7860,7 +7860,6 @@ graph import compiler {
             CompareExpr,
             DeleteStmt,
             EdgeRefTrailer,
-            ElseIf,
             Enum,
             EventSignature,
             Except,

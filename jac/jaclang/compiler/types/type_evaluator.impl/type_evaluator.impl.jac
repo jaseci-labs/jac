@@ -3445,16 +3445,7 @@ impl TypeEvaluator._diag_unnarrowed_optional(
 
 impl TypeEvaluator._is_strict_site(nd: UniNode) -> bool {
     mod = nd.find_parent_of_type(Module);
-    if mod is None {
-        return False;
-    }
-    cached = self._strict_site_cache.get(id(mod));
-    if cached is not None {
-        return cached;
-    }
-    result = not mod.is_raised_from_py;
-    self._strict_site_cache[id(mod)] = result;
-    return result;
+    return mod is not None and not mod.is_raised_from_py;
 }
 
 impl TypeEvaluator.neutral_site(nd: UniNode) -> bool {
