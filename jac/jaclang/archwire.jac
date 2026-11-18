@@ -13337,7 +13337,6 @@ graph import scale {
         pod_env_entries,
         redact_entry
     }
-    admin.schedules ++> server.extensions { JacAPIServerSchedules }
     admin.service_urls ++> tests.misc.test_service_urls { service_base_url }
     admin.surface ++> runtime.gateway.microservice_gateway | server.extensions {
         JacAPIServerAdminSurface
@@ -14695,6 +14694,7 @@ graph import scale.admin {
     network ++> surface { JacAPIServerNetwork }
     ops ++> surface { JacAPIServerOps }
     podenv ++> surface { JacAPIServerPodEnv }
+    schedules ++> surface { JacAPIServerSchedules }
     service_urls ++> logs | ops | traces { service_base_url }
     traces ++> [
         ops { _tempo_base_url },

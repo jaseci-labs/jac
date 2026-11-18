@@ -1537,7 +1537,8 @@ test "the gateway and the server register the same admin routes (#9877)" {
     obj AdminHost {
         has app: any = None,
             user_manager: any = None,
-            metrics: any = None;
+            metrics: any = None,
+            scheduler: any = None;
 
         def add_endpoint(ep: any) {
             self.app.add_endpoint(ep);
