@@ -586,7 +586,7 @@ impl _collect_pod_logs(
                     _request_timeout=_K8S_TIMEOUT
                 );
             } except Exception as e {
-                if getattr(e, "status", None) == 403 {
+                if e?.status == 403 {
                     raise ConnectionError(api_error_detail(e));
                 }
                 failures.append(f"{name}/{container.name}: {api_error_detail(e)}");
