@@ -1,7 +1,9 @@
-"""One app served colocated and as a fleet must answer the same (#8173).
+"""The one test for the `typed_boundary` fixture.
 
-Rows that diverge today are pinned in `_KNOWN_DIVERGENT`, so a fix that makes
-the two agree fails the row until it moves to the conformant set.
+One app served colocated and as a fleet must answer the same (#8173). Rows
+that diverge today are pinned in `_KNOWN_DIVERGENT`, so a fix that makes the
+two agree fails the row until it moves to the conformant set. The fleet must
+also carry typed values across its process boundary (#9101).
 """
 
 import shutil;
@@ -75,6 +77,53 @@ def _stream_write(base: str) -> dict[str, any] {
     };
 }
 
+"""What a typed value keeps across a real process boundary (#9101), asked of
+the fleet only: colocated fails the typed checks, which is the clause 5 row.
+The gateway's `/healthz` names each service's process, and one worker per
+service means the service answers in that process."""
+def _typed_boundary(base: str) -> list[str] {
+    def ask(fn: str) -> any {
+        response = requests.post(f"{base}/function/{fn}", json={}, timeout=60);
+        return extract(response.json())["result"]
+            if response.status_code == 200
+            else response.text;
+    }
+    services = requests.get(f"{base}/healthz", timeout=5).json()["services"];
+    pids = {name: service["pid"] for (name, service) in services.items()};
+    want: dict[str, any] = {
+        "check_score": {
+            "owner": "jaseci-labs",
+            "provider_pid": pids["scoring"],
+            "consumer_pid": pids["consumer"],
+            "provider_loaded": False
+        },
+        "check_collections": True,
+        "check_walker": True,
+        "check_provider_alias": True,
+        "check_inherited": True,
+        "check_distinct_types": True
+    };
+    got = {fn: ask(fn) for fn in want};
+    forwarded = ask("forward_score");
+    want["forward_score"] = ["ScoredPayload", "RepoMeta", "RepoMeta"];
+    got["forward_score"] = [
+        forwarded["_jac_type"],
+        forwarded["meta"]["_jac_type"],
+        forwarded["analysis"]["meta"]["_jac_type"]
+    ]
+        if isinstance(forwarded, dict)
+        else forwarded;
+    failures = [
+        f"{fn}: fleet answered {got[fn]!r}, expected {answer!r}"
+        for (fn, answer) in want.items()
+        if got[fn] != answer
+    ];
+    if pids["scoring"] == pids["consumer"] {
+        failures.append(f"scoring and consumer share process {pids['scoring']}");
+    }
+    return failures;
+}
+
 glob _ROWS: list[tuple[str, str]] = [
          ("typed return across the boundary", "probe_typed"),
          ("bridged generator function", "probe_stream"),
@@ -137,13 +186,14 @@ glob _KNOWN_DIVERGENT: dict[str, dict[str, dict[str, any]]] = {
          }
      };
 
-test "every conformance row means the same thing colocated and as a fleet" {
+test "one app answers the same colocated and as a fleet, and the fleet keeps typed values across its process boundary" {
     with TemporaryDirectory() as tmp {
         project = Path(tmp);
         shutil.copytree(
             _FIXTURE, project, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".jac")
         );
         seen: dict[str, dict[str, any]] = {name: {} for (name, _) in _ROWS};
+        failures: list[str] = [];
         for topology in ["colocated", "fleet"] {
             (server, base) = _serve(project, topology);
             try {
@@ -152,11 +202,13 @@ test "every conformance row means the same thing colocated and as a fleet" {
                         if fn == "stream_write"
                         else _call(base, fn);
                 }
+                if topology == "fleet" {
+                    failures.extend(_typed_boundary(base));
+                }
             } finally {
                 stop_server(server);
             }
         }
-        failures: list[str] = [];
         for (name, both) in seen.items() {
             if name in _KNOWN_DIVERGENT {
                 if both != _KNOWN_DIVERGENT[name] {
