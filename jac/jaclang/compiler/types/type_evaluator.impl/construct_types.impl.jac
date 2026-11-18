@@ -44,6 +44,9 @@ impl TypeEvaluator._get_type_of_super(node_: Name) -> TypeBase {
 }
 
 impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
+    if isinstance(expr.parent, MatchAs) and expr.sym is not None {
+        return self.get_type_of_symbol(expr.sym);
+    }
     if expr.sym is not None and expr.sym.decl is expr {
         return None;
     }

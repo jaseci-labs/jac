@@ -1895,6 +1895,7 @@ graph import {
             project_scope_is_pinned
         },
         cli.commands.execution._load_executable
+            | cli.dispatch.warn_unmet_project_pins
             | client.artifact.client_output_dir
             | client.serving
             | dist.precompile_bytecode.app_metadata
@@ -1946,6 +1947,8 @@ graph import {
             report_env_findings
         },
         scale.injector.binary.resolve_pinned_version { JacConfig, find_project_root },
+        scale.injector.bundle.client_input_digest { active_profile_name },
+        scale.injector.bundle.seal_input_digest { active_profile_name },
         scale.injector.bundle.unresolved_toml_references { resolve_env_refs },
         scale.tests.server.test_host_serving
             | scale.tests.server.test_served_app_route { set_config },
@@ -3527,7 +3530,7 @@ graph import {
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
     testing.test_runner ++> [
-        cli.commands.analysis.test { run_tests },
+        cli.commands.analysis.test { discover, run_tests },
         scale.tests.support { STRICT_ENV, strict_mode },
     ]
     testing.testkit ++> [
@@ -3982,6 +3985,9 @@ graph import cli {
         commands.execution { console, use_line_buffered_output },
     ]
     dispatch ++> [
+        commands.analysis.check { warn_unmet_project_pins },
+        commands.analysis.lint { warn_unmet_project_pins },
+        commands.analysis.test { warn_unmet_project_pins },
         commands.execution._resolve_plan { warn_unmet_jac_version },
         manifest_route.handle_manifest_route { run_selected_command },
     ]
@@ -7814,7 +7820,9 @@ graph import compiler {
             IterForStmt,
             LambdaExpr,
             ListCompr,
+            MatchAs,
             MatchCase,
+            MatchStar,
             Module,
             ModuleItem,
             ModulePath,
@@ -8220,8 +8228,11 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
+            MatchMapping,
             MatchOr,
             MatchPattern,
+            MatchSequence,
+            MatchSingleton,
             MatchStmt,
             MatchWild,
             Module,
@@ -13742,6 +13753,7 @@ graph import scale {
         tests.deploy.test_cluster_provider { get_cluster_provider },
         tests.deploy.test_deploy_k8s { wait_for_pod_phase },
         tests.deploy.test_k8s_utils { parse_storage_quantity, resize_pvc_if_needed },
+        tests.deploy.test_monitoring_switch { FLEET_SELECTOR },
         tests.deploy.test_pod_env { create_k8s_secret, resolve_minted_secret },
         tests.deploy.test_pss_labels {
             PSS_ENFORCE_LABEL,
@@ -13910,6 +13922,8 @@ graph import scale {
             DEFAULT_SEAL_TIMEOUT_S,
             _precompile_app,
             _stage_app,
+            client_build_sources,
+            client_input_digest,
             nested_sanitized_tomls,
             pack_jab,
             seal_cache_setting,
@@ -14797,7 +14811,7 @@ graph import scale.deploy.target {
 
 graph import scale.deploy.target.kubernetes {
     cluster_provider ++> [
-        ingress | monitoring { ClusterProvider },
+        ingress { ClusterProvider },
         utils.kubernetes_utils { AWSProvider, ClusterProvider, LocalProvider },
     ]
     database_provisioner ++> target { DatabaseProvisioner }
@@ -14843,8 +14857,9 @@ graph import scale.deploy.target.kubernetes {
             in_cluster_kubectl,
             kubectl_cluster
         },
-        monitoring { delete_if_exists, delete_k8s_secret },
+        monitoring { FLEET_SELECTOR, delete_if_exists, delete_k8s_secret },
         target {
+            FLEET_SELECTOR,
             PSS_ENFORCE_LABEL,
             _refresh_rs_hashes,
             _resolve_current_rs_hashes,

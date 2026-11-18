@@ -336,8 +336,21 @@ impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
     return None;
 }
 
-impl NaIRGenPass._enum_ctor_target(nd: uni.FuncCall) -> (str | None) {
-    _key = self._type_key_of(nd.target);
+impl NaIRGenPass._enum_class_target(target: (uni.Expr | None)) -> (str | None) {
+    ref: (uni.UniNode | None) = target;
+    while isinstance(ref, uni.AtomUnit) {
+        ref = ref.value;
+    }
+    while isinstance(ref, uni.AtomTrailer)
+        and ref.is_attr
+        and isinstance(ref.target, uni.Expr)
+        and isinstance(ref.target.type, ModuleType) {
+        ref = ref.target;
+    }
+    if not isinstance(ref, uni.Name) {
+        return None;
+    }
+    _key = self._type_key_of(target);
     if _key is None {
         return None;
     }
@@ -461,4 +474,92 @@ impl NaIRGenPass._codegen_enum_ctor(
     _bad = b.not_(_ok, name=f"ec.{enum_name}.bad");
     self._emit_runtime_raise(_bad, "ValueError", f"is not a valid {enum_name}");
     return _val;
+}
+
+impl NaIRGenPass._enum_member_value(
+    enum_name: str, lay: EnumLayout, idx: int
+) -> (ir.Value | None) {
+    member = lay.members[idx];
+    if not lay.is_class_form {
+        return self.enum_values.get(f"{enum_name}.{member.name}");
+    }
+    if lay.is_string_enum {
+        return self._make_global_string(member.str_value or "", name_prefix=".cfenum");
+    }
+    return ir.Constant(ir.IntType(64), member.int_value);
+}
+
+impl NaIRGenPass._codegen_enum_subscript(
+    nd: uni.AtomTrailer, enum_name: str
+) -> (ir.Value | None) {
+    lay = self._enum_ctor_layout(enum_name);
+    slices: list[uni.Slice] = nd.right.slices
+        if isinstance(nd.right, uni.IndexSlice)
+        else [];
+    key_node = slices[0].start if len(slices) == 1 else None;
+    (folded, key) = fold_const(key_node);
+    literal = folded and isinstance(key, str);
+    why = "Its key must be a single string.";
+    if lay is None or not lay.all_values_known {
+        why = "At least one member's value is not compile-time known.";
+    } elif literal or self._type_key_of(key_node) == "str" {
+        self._codegen_enum_layout(enum_name, None);
+        for (idx, member) in enumerate(lay.members) {
+            if literal and member.name == key {
+                return self._enum_member_value(enum_name, lay, idx);
+            }
+        }
+        why = "Its members or key did not lower.";
+        key_val = self._codegen_expr(key_node);
+        values: list[ir.Value] = [];
+        for idx in range(len(lay.members)) {
+            value = self._enum_member_value(enum_name, lay, idx);
+            if value is not None {
+                values.append(value);
+            }
+        }
+        if key_val is not None and len(values) == len(lay.members) {
+            name = self._str_norm(key_val);
+            found: ir.Value = ir.Constant(ir.IntType(1), 0);
+            result: ir.Value = values[0];
+            for (member, value) in zip(lay.members, values) {
+                text = self._make_global_string(member.name, name_prefix=".enum.name");
+                cmp = self._call_str_cmp(
+                    self.builder, name, text, name="enum.name.cmp"
+                );
+                hit = self.builder.icmp_signed(
+                    "==", cmp, ir.Constant(ir.IntType(32), 0)
+                );
+                result = self.builder.select(hit, value, result);
+                found = self.builder.or_(found, hit);
+            }
+            miss_bb = self.builder.function.append_basic_block("enum.name.miss");
+            ok_bb = self.builder.function.append_basic_block("enum.name.ok");
+            owned = self._is_owned(name);
+            self.builder.cbranch(found, ok_bb, miss_bb);
+            self.builder.position_at_end(miss_bb);
+            msg = self.builder.call(self._repr_str_fn(), [name], name="enum.name.repr");
+            if owned {
+                self._emit_rc_release_simple(name, op="enum_subscript", loc="");
+            }
+            self._emit_raise_value("KeyError", msg);
+            self.builder.position_at_end(ok_bb);
+            if owned {
+                self._emit_rc_release_simple(name, op="enum_subscript", loc="");
+            }
+            return result;
+        }
+    }
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind="enum subscript",
+        name=enum_name,
+        help_text=(
+            f"'{enum_name}[key]' looks a member up by name and raises KeyError "
+            f"when none matches. {why} Read the member off the class, or move "
+            f"this code to a @sv/Python context."
+        )
+    );
+    return None;
 }

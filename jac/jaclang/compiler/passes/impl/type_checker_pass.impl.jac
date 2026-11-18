@@ -2287,7 +2287,7 @@ impl TypeCheckPass._is_exception_class_operand(
 }
 
 impl TypeCheckPass.exit_match_as with MatchAs exit {
-    self._check_binder_write(here.name, rebind_scope=here);
+    self._check_binder_write(here.name, rebind_scope=here, binder=here);
 }
 
 impl TypeCheckPass.exit_match_arch with MatchArch exit {
