@@ -1270,16 +1270,11 @@ impl frozen_fields(anchor: Anchor) -> bool {
 
 
 impl _class_fields(cls: type) -> tuple[any, ...] {
-    hit = _CLASS_FIELDS.get(id(cls));
-    if hit is not None and hit[0] is cls {
-        return hit[1];
+    hit = cached_for(_CLASS_FIELDS, cls);
+    if hit is not None {
+        return hit;
     }
-    found = tuple(fields(cls));
-    if len(_CLASS_FIELDS) >= _TYPE_SHAPES_LIMIT {
-        _CLASS_FIELDS.clear();
-    }
-    _CLASS_FIELDS[id(cls)] = (cls, found);
-    return found;
+    return cache_for(_CLASS_FIELDS, cls, tuple(fields(cls)));
 }
 
 

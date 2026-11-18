@@ -1,21 +1,30 @@
+impl cached_for(cache: dict[int, tuple[object, object]], target: object) -> any {
+    hit = cache.get(id(target));
+    return hit[1] if hit is not None and hit[0] is target else None;
+}
+
+impl cache_for(
+    cache: dict[int, tuple[object, object]], target: object, value: any
+) -> any {
+    if len(cache) >= _CACHE_LIMIT {
+        cache.clear();
+    }
+    cache[id(target)] = (target, value);
+    return value;
+}
+
 impl type_shape(target: object) -> tuple[object, tuple[object, ...]] {
-    hit = _SHAPES.get(id(target));
-    if hit is not None and hit[0] is target {
-        return (hit[1], hit[2]);
+    hit = cached_for(_SHAPES, target);
+    if hit is not None {
+        return hit;
     }
-    origin = get_origin(target);
-    args = get_args(target);
-    if len(_SHAPES) >= _SHAPES_LIMIT {
-        _SHAPES.clear();
-    }
-    _SHAPES[id(target)] = (target, origin, args);
-    return (origin, args);
+    return cache_for(_SHAPES, target, (get_origin(target), get_args(target)));
 }
 
 impl constructor_params(target: type) -> tuple[tuple[str, object, bool], ...] {
-    hit = _PARAMS.get(id(target));
-    if hit is not None and hit[0] is target {
-        return hit[1];
+    hit = cached_for(_PARAMS, target);
+    if hit is not None {
+        return hit;
     }
     hints: dict[str, object] = {};
     try {
@@ -27,11 +36,7 @@ impl constructor_params(target: type) -> tuple[tuple[str, object, bool], ...] {
         if param.kind
             not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     );
-    if len(_PARAMS) >= _SHAPES_LIMIT {
-        _PARAMS.clear();
-    }
-    _PARAMS[id(target)] = (target, params);
-    return params;
+    return cache_for(_PARAMS, target, params);
 }
 
 impl convert(value: any, target: any, mode: ConvertMode = ConvertMode.STRICT) -> any {

@@ -2388,7 +2388,7 @@ graph import {
         | scale.runtime.provider
         | scale.server.inprocess { ExecutionContext }
     runtime.convert ++> [
-        data.serializer { ConvertMode, convert, type_shape },
+        data.serializer { ConvertMode, cache_for, cached_for, convert, type_shape },
         server.serving.coerce { ConvertMode, convert },
         server.serving.openapi { STRING_FORMATS, constructor_params },
     ]

@@ -18,9 +18,15 @@ glob _TRUE_WORDS: frozenset[str] = frozenset({'1', 'true', 'yes', 'on', 'y'}),
          UUID: 'uuid'
      },
      _CONTAINERS: tuple[type, ...] = (list, tuple, set, dict),
-     _SHAPES: dict[int, tuple[any, any, tuple[any, ...]]] = {},
-     _PARAMS: dict[int, tuple[type, tuple[tuple[str, object, bool], ...]]] = {},
-     _SHAPES_LIMIT: int = 4096;
+     _SHAPES: dict[int, tuple[object, object]] = {},
+     _PARAMS: dict[int, tuple[object, object]] = {},
+     _CACHE_LIMIT: int = 4096;
+
+def cached_for(cache: dict[int, tuple[object, object]], target: object) -> any;
+
+def cache_for(
+    cache: dict[int, tuple[object, object]], target: object, value: any
+) -> any;
 
 def type_shape(target: object) -> tuple[object, tuple[object, ...]];
 
