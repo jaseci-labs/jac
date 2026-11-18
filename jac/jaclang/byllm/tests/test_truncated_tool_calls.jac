@@ -1,10 +1,11 @@
-"""A reply cut off at max_tokens never passes as a finished answer."""
+"""A reply cut off at max_tokens, or one with nothing in it, never passes as a finished
+answer, and a blank reply is never sent back to the model or saved."""
 
 import asyncio;
 import contextlib;
 import from unittest { mock }
 import jaclang.byllm.llm as _byllm_llm_mod;
-import from jaclang.byllm.lib { Model, OutputTruncatedError }
+import from jaclang.byllm.lib { EmptyReplyError, Model, OutputTruncatedError }
 import from support { call, chunk_text, finish, say, scripted, stream_events }
 
 
@@ -13,7 +14,21 @@ def save_data(name: str, payload: str) -> str {
 }
 
 
-"""One scripted turn in `mode`: (answer or raised error, conversation)."""
+"""Assistant turns in `msgs` with blank text, which Anthropic is sent as placeholder text."""
+def _blank_replies(msgs: list[any]) -> list[any] {
+    return [
+        m
+        for m in msgs
+        if isinstance(m, dict)
+            and m.get("role") == "assistant"
+            and isinstance(m.get("content"), str)
+            and not m["content"].strip()
+    ];
+}
+
+
+"""One scripted turn in `mode`: (answer or raised error, conversation). No request
+in it may carry a blank assistant reply."""
 def _turn(
     replies: list[any], mode: str, iters: int
 ) -> tuple[any, list[dict[str, any]]] {
@@ -38,29 +53,35 @@ def _turn(
     )
         if mode == "events, no builder"
         else contextlib.nullcontext();
-    with scripted(llm, replies), builder {
+    with scripted(llm, replies) as fake, builder {
+        answer: any = None;
         try {
             if mode == "async" {
-                return (asyncio.run(arun("save a big payload")), conv);
+                answer = asyncio.run(arun("save a big payload"));
+            } else {
+                out = run("save a big payload");
+                if mode == "streamed" {
+                    out = "".join(out);
+                } elif mode.startswith("events") {
+                    evs = stream_events(out);
+                    kinds = [ev.event_type for ev in evs];
+                    assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
+                    out = chunk_text(evs);
+                }
+                answer = out;
             }
-            out = run("save a big payload");
-            if mode == "streamed" {
-                out = "".join(out);
-            } elif mode.startswith("events") {
-                evs = stream_events(out);
-                kinds = [ev.event_type for ev in evs];
-                assert kinds.count("steps_done") <= 1 , f"steps_done sent again: {kinds}";
-                out = chunk_text(evs);
-            }
-            return (out, conv);
-        } except OutputTruncatedError as e {
-            return (e, conv);
+        } except (OutputTruncatedError, EmptyReplyError) as e {
+            answer = e;
         }
+        for sent in fake.sent("messages") {
+            assert not _blank_replies(sent) , f"{mode}: a blank reply was sent: {sent}";
+        }
+        return (answer, conv);
     }
 }
 
 
-test "a reply cut off at max_tokens never passes as a finished answer" {
+test "a reply cut off at max_tokens, or empty, never passes as a finished answer" {
     rows: list[tuple[str, list[any], any, int]] = [
         (
             "cut-off tool call",
@@ -101,7 +122,40 @@ test "a reply cut off at max_tokens never passes as a finished answer" {
             "partial answer",
             0
         ),
-        ("empty stop", [say("", finish_reason="stop")], "", 0),
+        (
+            "empty stop, twice",
+            [say(""), say("")],
+            {
+                "plain": EmptyReplyError,
+                "streamed": EmptyReplyError,
+                "events": EmptyReplyError,
+                "async": ""
+            },
+            0
+        ),
+        (
+            "empty stop, then an answer",
+            [say(""), say("saved it")],
+            {
+                "plain": "saved it",
+                "streamed": "saved it",
+                "events": "saved it",
+                "async": ""
+            },
+            0
+        ),
+        (
+            "an empty stop after each round of tool work",
+            [
+                call("save_data", {"name": "x", "payload": "y"}),
+                say(""),
+                call("save_data", {"name": "z", "payload": "w"}),
+                say(""),
+                finish("saved it")
+            ],
+            "saved it",
+            0
+        ),
         (
             "cut-off finish_tool answer, after part of it streamed",
             [
@@ -132,9 +186,12 @@ test "a reply cut off at max_tokens never passes as a finished answer" {
                 if isinstance(by_mode, dict)
                 else by_mode;
             assert conv , f"{where}: conversation was not written back";
+            assert not _blank_replies(conv) , f"{where}: a blank reply was saved: {conv}";
             if expected is OutputTruncatedError {
                 assert isinstance(answer, OutputTruncatedError)
                     and "max_tokens" in str(answer) , f"{where}: got {answer!r}";
+            } elif expected is EmptyReplyError {
+                assert isinstance(answer, EmptyReplyError) , f"{where}: got {answer!r}";
             } else {
                 assert answer == expected , f"{where}: got {answer!r}";
             }

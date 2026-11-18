@@ -798,6 +798,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
     last_result = "";
     total_tokens = 0;
     just_compacted = False;
+    nudged = False;
     while True {
         iter_count += 1;
         if on_iteration and iter_count > 1 {
@@ -842,6 +843,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
 
         just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
         if resp.tool_calls {
+            nudged = False;
             (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
                 resp.tool_calls
             );
@@ -889,6 +891,10 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         } else {
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
+                if _nudge_after_empty_reply(mt_run, resp, nudged) {
+                    nudged = True;
+                    continue;
+                }
                 break;
             }
             return _recovered_answer(mt_run, recovery_resp);
@@ -1094,6 +1100,11 @@ def _sanitize_tool_calls(message: dict[str, any]) -> set[str];
 
 
 def _raise_if_empty_truncation(finish_reason: str, content: any, tool_calls: any);
+
+
+def _nudge_after_empty_reply(
+    mt_run: MTRuntime, resp: CompletionResult, nudged: bool
+) -> bool;
 
 
 def _truncated_call_ids(message: dict[str, any], finish_reason: str) -> set[str];
@@ -1872,6 +1883,7 @@ impl BaseLLM._stream_steps(
         just_compacted = False;
         shown = "";
         done_sent = False;
+        nudged = False;
         while True {
             if shown {
                 yield from _drop_answer(retractable);
@@ -2059,6 +2071,7 @@ impl BaseLLM._stream_steps(
             _usage_base = len(mt_run._usage_history);
 
             if resp.tool_calls {
+                nudged = False;
                 (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
                     resp.tool_calls
                 );
@@ -2168,6 +2181,10 @@ impl BaseLLM._stream_steps(
                 );
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
+                    if _nudge_after_empty_reply(mt_run, resp, nudged) {
+                        nudged = True;
+                        continue;
+                    }
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
@@ -3066,6 +3083,30 @@ impl _raise_if_empty_truncation(finish_reason: str, content: any, tool_calls: an
             "reasoning effort."
         );
     }
+}
+
+
+impl _nudge_after_empty_reply(
+    mt_run: MTRuntime, resp: CompletionResult, nudged: bool
+) -> bool {
+    if not mt_run.tools or str(resp.output or "").strip() {
+        return False;
+    }
+    if nudged {
+        raise EmptyReplyError(
+            "The model ended its turn with no text and no tool call "
+            f"(finish_reason '{resp.finish_reason}'), again after it was asked "
+            "to continue."
+        );
+    }
+    mt_run.add_scaffolding_message(
+        Message(
+            role=MessageRole.USER,
+            content="Your last reply was empty. Continue the task: call the next "
+            "tool, or call finish_tool with your final answer.",
+        )
+    );
+    return True;
 }
 
 

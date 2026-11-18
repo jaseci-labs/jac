@@ -140,6 +140,14 @@ test "the model is sent a tool call from conversation= as a dict" {
         assert calls[0][0]["function"]["name"] == "lookup" , (
             f"{shape}: the tool call must survive the round trip: {calls}"
         );
+        blank = [
+            m
+            for m in sent
+            if m.get("role") == "assistant"
+                and isinstance(m.get("content"), str)
+                and not m["content"].strip()
+        ];
+        assert not blank , f"{shape}: blank assistant text was sent: {blank}";
     }
 }
 

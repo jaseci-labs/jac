@@ -248,9 +248,16 @@ impl MTRuntime.add_scaffolding_message(message: MessageType) -> None {
 }
 
 impl MTRuntime.get_msg_list -> list[dict[str, object] | LiteLLMMessage] {
-    return [
-        msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
-    ];
+    out: list[dict[str, object] | LiteLLMMessage] = [];
+    for msg in self.messages {
+        sendable = _without_blank_text(msg);
+        if sendable is not None {
+            out.append(
+                sendable.to_dict() if isinstance(sendable, Message) else sendable
+            );
+        }
+    }
+    return out;
 }
 
 
@@ -291,6 +298,8 @@ def _tool_calls_of(msg: any) -> list[any];
 
 def _with_tool_calls(msg: any, tool_calls: list[any]) -> any;
 
+def _without_blank_text(msg: any) -> any;
+
 def _drop_unanswered_calls(msgs: list[any]) -> list[any];
 
 def _results_after(msgs: list[any], start: int) -> set[str];
@@ -298,8 +307,12 @@ def _results_after(msgs: list[any], start: int) -> set[str];
 impl MTRuntime.get_history_for_persist -> list[MessageType] {
     scaff_ids = set(self._scaffolding_ids);
     out: list[any] = [];
-    for msg in self.messages {
-        if id(msg) in scaff_ids or _is_system_message(msg) {
+    for stored in self.messages {
+        if id(stored) in scaff_ids or _is_system_message(stored) {
+            continue;
+        }
+        msg = _without_blank_text(stored);
+        if msg is None {
             continue;
         }
 
@@ -425,6 +438,27 @@ impl _with_tool_calls(msg: any, tool_calls: list[any]) -> any {
     }
     edited = copy.copy(msg);
     setattr(edited, "tool_calls", tool_calls or None);
+    return edited;
+}
+
+impl _without_blank_text(msg: any) -> any {
+    role: any = msg.get("role") if isinstance(msg, dict) else msg?.role;
+    content: any = msg.get("content") if isinstance(msg, dict) else msg?.content;
+    if role != MessageRole.ASSISTANT
+        or not isinstance(content, str)
+        or content.strip() {
+        return msg;
+    }
+    if not _tool_calls_of(msg) {
+        return None;
+    }
+    if isinstance(msg, dict) {
+        edited = dict(msg);
+        edited["content"] = None;
+        return edited;
+    }
+    edited = copy.copy(msg);
+    setattr(edited, "content", None);
     return edited;
 }
 

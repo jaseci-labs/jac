@@ -1165,6 +1165,12 @@ def agent_task(question: str) -> str by llm(
 
 The callback fires **between iterations**, not between individual tool calls. If the LLM batches multiple tool calls in one iteration, all execute before the callback fires. No callback = old behavior.
 
+### Empty Replies
+
+A model can end its turn with no text and no tool call. In a call with tools, byLLM does not take that as the answer: it asks the model once to continue (call the next tool, or `finish_tool`), as one more iteration. If the next reply is empty too, the call raises `EmptyReplyError`. A reply that calls a tool resets this, so a later empty reply is asked again. A call without tools can still return `""` for a `str` result.
+
+An assistant message with blank text is never sent to the model or written back to `conversation=`: a reply with nothing in it is left out, and a reply that only calls tools keeps `content` as `None`. Some providers reject blank text, and litellm replaces it with a placeholder the model then reads as its own words.
+
 ---
 
 ## Parallel Tool Calling
@@ -2191,7 +2197,8 @@ ByLLMError (base)
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
 ├── LLMTimeout                   - A by llm() call outlived its timeout
-└── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
+├── CompactionNotEffectiveError  - The provider rejected the request as too long and compaction could not reduce the context
+└── EmptyReplyError              - The model replied with nothing in a call with tools, again after it was asked to continue
 ```
 
 All exceptions are importable from `byllm.lib`.
@@ -2208,6 +2215,7 @@ All exceptions are importable from `byllm.lib`.
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
 | `LLMTimeout` | A `by llm()` call outlived its `timeout`. Also a `litellm.Timeout`. See [Request Timeout](#request-timeout) |
 | `CompactionNotEffectiveError` | The provider rejected a request as too long and auto-compaction could not reduce the context, or the request was rejected again after a compaction. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
+| `EmptyReplyError` | In a call with tools, the model ended its turn with no text and no tool call, and did so again after byLLM asked it to continue. See [Empty Replies](#empty-replies) |
 
 ### Importing Exceptions
 
