@@ -119,11 +119,10 @@ impl __doWalkerFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            dropped = __jacDropRejectedToken(str(token or ""));
+            if __jacDropRejectedToken(str(token or "")) {
+                window.location.reload();
+            }
             if not app {
-                if dropped {
-                    window.location.reload();
-                }
                 return {};
             }
         }
@@ -161,11 +160,10 @@ impl __doFuncFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            dropped = __jacDropRejectedToken(str(token or ""));
+            if __jacDropRejectedToken(str(token or "")) {
+                window.location.reload();
+            }
             if not app {
-                if dropped {
-                    window.location.reload();
-                }
                 return {};
             }
         }
@@ -450,7 +448,7 @@ impl jacIsLoggedIn -> bool {
 }
 
 impl __jacDropRejectedToken(sent: str) -> bool {
-    if str(__getLocalStorage("jac_token") or "") != sent {
+    if not sent or str(__getLocalStorage("jac_token") or "") != sent {
         return False;
     }
     __removeLocalStorage("jac_token");
@@ -573,8 +571,8 @@ impl __jacAuthedJson(
     try {
         response = await fetch(url, init);
         if not response.ok {
-            if response.status == 401 {
-                __jacDropRejectedToken(token);
+            if response.status == 401 and __jacDropRejectedToken(token) {
+                window.location.reload();
             }
             return None;
         }
