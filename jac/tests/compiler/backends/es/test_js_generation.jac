@@ -1025,6 +1025,9 @@ test "bridged call kwargs preserve names in jac call function" {
         "Bug regression: kwargs were dropped, emitting empty args object."
     );
 
+    # call_other_greet imports greet from another service in its own scope;
+    # both stubs hoist to one module, so the second is renamed (#10756).
+    assert "function greet(" in js_code and "function greet$1(" in js_code , js_code;
     assert_balanced_syntax(js_code, fixture);
 }
 
@@ -1164,18 +1167,6 @@ test "plain client kwargs lower to ordered js arguments" {
     );
 }
 
-test "an annex repeating a bridged import emits one stub" {
-    # A repeat binds once (two `function greet` is a browser SyntaxError, #10756);
-    # the same name from a different service is a conflict and stays visible.
-    for (fixture, stubs) in [
-        ("svc_kwargs/sv_import_annex_client.jac", 1),
-        ("svc_kwargs/sv_import_annex_conflict_client.jac", 2)
-    ] {
-        js_code = compile_fixture_to_js(fixture, FIXTURES);
-        assert js_code.count("function greet(") == stubs , f"{fixture}: {js_code}";
-    }
-}
-
 test "bridged call duplicate kwarg is a compile error" {
     # Calling ``greet(input_text, name=other)`` gives the ``name`` parameter
     # twice — once positionally and once by keyword.  This mirrors Python's
@@ -1235,6 +1226,10 @@ test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
     assert import_count == 1 , (
         f"Expected exactly 1 __jacCallFunction import, found {import_count}"
     );
+    # The annex repeats the import; a second stub is a browser SyntaxError (#10756).
+    for stub in ["function create_item(", "function list_items("] {
+        assert js_code.count(stub) == 1 , f"{stub}: {js_code}";
+    }
 
     assert_balanced_syntax(js_code, fixture);
 }

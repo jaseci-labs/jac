@@ -244,7 +244,9 @@ impl EsJsxProcessor.element_name(nd: uni.JsxElementName) -> Expression {
         );
     } else {
         parts = [part.value for part in nd.parts];
-        first = parts[0];
+        first = self.pass_ref._import_js_name(nd.parts[0])
+            if isinstance(nd.parts[0], uni.Name)
+            else parts[0];
         if (len(parts) > 1) {
             expr = self.pass_ref.sync_loc(
                 es.Identifier(name=first), jac_node=nd.parts[0]
