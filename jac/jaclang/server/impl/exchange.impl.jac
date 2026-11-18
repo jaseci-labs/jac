@@ -49,7 +49,8 @@ impl current_request -> (RequestView | None) {
         query=dict(request.query_params.items()),
         headers=headers,
         origin=request_origin(request),
-        public_origin=exchange.public_origin
+        public_origin=exchange.public_origin,
+        body=request.body
     );
 }
 

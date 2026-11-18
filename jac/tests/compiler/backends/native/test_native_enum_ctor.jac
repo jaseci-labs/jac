@@ -147,13 +147,15 @@ test "a noninteger input to an integer enum refuses by name" {
     );
 }
 
-test "string enum constructors resolve values and reject missing members" {
+test "string enum constructors and subscripts resolve members and reject misses" {
     import ctypes;
     import from tests.support { get_func }
     (prog, ir) = compile_native("enum_ctor_string.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     probe = get_func(ir.gen.native_engine, "probe", ctypes.c_int64, ctypes.c_int64);
     assert [probe(i) for i in range(4)] == [1, 1, 1, -1];
+    by_name = get_func(ir.gen.native_engine, "by_name", ctypes.c_int64, ctypes.c_int64);
+    assert [by_name(i) for i in range(3)] == [1, 1, -1];
 }
 
 
@@ -172,10 +174,13 @@ test "a same-named local function is not read as the enum" {
 }
 
 
-test "a non-integer argument refuses instead of being coerced" {
+test "a non-integer argument or a computed enum target refuses" {
     seams = seam_report("enum_ctor_bad_arg.jac");
     assert "enum constructor 'Level'" in seams , (
         f"a float argument was coerced into the member table:\n{seams}"
+    );
+    assert "demoting picked" in seams , (
+        f"the member lookup skipped evaluating its target:\n{seams}"
     );
 }
 

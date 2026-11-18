@@ -12,7 +12,8 @@ glob _LOCAL_FALLBACK_NOTE: str = (
 glob PSS_ENFORCE_LABEL: str = "pod-security.kubernetes.io/enforce",
      PSS_WARN_LABEL: str = "pod-security.kubernetes.io/warn",
      PSS_SOURCE_LABEL: str = "jac-scale.jaseci.org/pss-enforce-source",
-     NAMESPACE_OWNER_LABEL: str = "jac-scale.jaseci.org/owned-by";
+     NAMESPACE_OWNER_LABEL: str = "jac-scale.jaseci.org/owned-by",
+     FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
 
 def default_pss_labels -> dict[str, str];
 

@@ -123,6 +123,7 @@ obj CatalogWriter {
     def encode_scope(idx: int) -> bytes;
     def encode_symbol(idx: int) -> bytes;
     def encode_type(idx: int) -> bytes;
+    def _settle_ancestry(cls: ClassType) -> None;
     def note_orphan(sh: ClassDetailsShared);
     def encode_shared(idx: int) -> bytes;
     def drain;

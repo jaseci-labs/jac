@@ -180,6 +180,7 @@ impl check(
             units.append(file_unit);
         }
     }
+    warn_unmet_project_pins(sorted({str(unit['root_dir']) for unit in units}));
     sharded = _shard_units(units);
     if sharded is None {
         console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
@@ -572,6 +573,7 @@ impl lint(
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    warn_unmet_project_pins(sorted({str(Path(f).parent) for f in all_files}));
     if fix {
         all_files = _with_annex_owners(all_files, ignore_list);
     }
@@ -1514,6 +1516,22 @@ impl `test(
     jobs = jobs_setting("test", jobs, cfg.dev if cfg else None);
     rc = 0;
     try {
+        warn_unmet_project_pins(
+            sorted(
+                {
+                    str(Path(f).parent)
+                    for f in discover(
+                        paths,
+                        roots,
+                        [
+                            p
+                            for p in (ignore or [])
+                            if p
+                        ]
+                    ).files
+                }
+            )
+        );
         rc = run_tests(
             paths=paths,
             directory=roots,

@@ -1588,7 +1588,15 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
-    def _enum_ctor_target(nd: uni.FuncCall) -> (str | None);
+    def _enum_class_target(target: (uni.Expr | None)) -> (str | None);
+    def _enum_member_value(
+        enum_name: str, lay: EnumLayout, idx: int
+    ) -> (ir.Value | None);
+
+    def _codegen_enum_subscript(
+        nd: uni.AtomTrailer, enum_name: str
+    ) -> (ir.Value | None);
+
     def _emit_enum_ctor_refusal(nd: uni.FuncCall, enum_name: str, why: str) -> None;
     def _codegen_enum_ctor(nd: uni.FuncCall, enum_name: str) -> (ir.Value | None);
     def _build_enum_string_table(
