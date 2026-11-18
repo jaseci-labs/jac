@@ -429,7 +429,7 @@ obj _LoaderVolume {
 }
 
 
-test "seeding prunes the bundles no retained revision references (#10095)" {
+test "seeding prunes unreferenced bundles, and a failed seed removes its loader and staging file (#10095, #10785)" {
     import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
         KubectlCluster
     }
@@ -440,112 +440,59 @@ test "seeding prunes the bundles no retained revision references (#10095)" {
         "bundles/orders/new.jab.41.part"
     ];
     untouched = live + [".cache/pip/wheel", "bundles/billing/old.jab"];
+    kept = untouched + stale;
     utils = "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils";
-    for (label, retained, fail_prune, survivors) in [
-        ("retained revisions", set(live), False, untouched),
-        ("no retained revisions", set(), False, untouched + stale),
-        ("failed prune", set(live), True, untouched + stale)
+    for (label, retained, fail_prune, survivors, wait_error, copy_error) in [
+        ("retained revisions", set(live), False, untouched, None, None),
+        ("no retained revisions", set(), False, kept, None, None),
+        ("failed prune", set(live), True, kept, None, None),
+        ("loader timeout", set(), False, kept, TimeoutError("not Running"), None),
+        ("loader failed", set(), False, kept, RuntimeError("pod failed"), None),
+        ("Ctrl-C while waiting", set(), False, kept, KeyboardInterrupt(), None),
+        ("failed upload", set(), False, kept, None, RuntimeError("cp failed")),
+        ("Ctrl-C during upload", set(), False, kept, None, KeyboardInterrupt())
     ] {
         with tempfile.TemporaryDirectory() as volume_dir {
-            for key in untouched + stale {
+            for key in kept {
                 Path(volume_dir, key).parent.mkdir(parents=True, exist_ok=True);
                 Path(volume_dir, key).write_bytes(b"x");
             }
-            volume = _LoaderVolume(volume_dir=volume_dir, fail_prune=fail_prune);
+            volume = _LoaderVolume(
+                volume_dir=volume_dir, fail_prune=fail_prune, copy_error=copy_error
+            );
             injector = PvcInjector();
             injector._object_key = "bundles/orders/new.jab";
             injector._bundle_bytes = b"jab";
-            with unittest.mock.patch(
-                "jaclang.scale._optdeps.kubernetes.client", volume
-            ), unittest.mock.patch.multiple(
-                utils,
-                run_kubectl_command=volume.kubectl,
-                wait_for_pod_phase=unittest.mock.DEFAULT,
-                wait_for_pod_deletion=unittest.mock.DEFAULT
-            ) {
-                injector.seed(
-                    "orders",
-                    "prod",
-                    KubectlCluster(),
-                    lambda -> set[str] { return retained; }
-                );
+            raised = wait_error or copy_error;
+            surfaced: (BaseException | None) = None;
+            try {
+                with unittest.mock.patch(
+                    "jaclang.scale._optdeps.kubernetes.client", volume
+                ), unittest.mock.patch.multiple(
+                    utils,
+                    run_kubectl_command=volume.kubectl,
+                    wait_for_pod_phase=unittest.mock.Mock(side_effect=wait_error),
+                    wait_for_pod_deletion=unittest.mock.DEFAULT
+                ) {
+                    injector.seed(
+                        "orders",
+                        "prod",
+                        KubectlCluster(),
+                        lambda -> set[str] { return retained; }
+                    );
+                }
+            } except (TimeoutError, RuntimeError, KeyboardInterrupt) as err {
+                surfaced = err;
             }
+            assert surfaced is raised , f"{label}: {surfaced!r} reached the caller";
+            assert not volume.pods , f"{label}: {sorted(volume.pods)} left behind";
             on_volume = sorted(
                 str(p.relative_to(volume_dir))
                 for p in Path(volume_dir).rglob("*")
                 if p.is_file()
             );
-            assert on_volume == sorted(survivors + ["bundles/orders/new.jab"]) , (
-                f"{label}: {on_volume}"
-            );
-        }
-    }
-}
-
-
-def _seed_into(volume: _LoaderVolume, phase_wait: any, cluster: any) {
-    injector = PvcInjector();
-    injector._object_key = "bundles/orders/new.jab";
-    injector._bundle_bytes = b"jab";
-    with unittest.mock.patch("jaclang.scale._optdeps.kubernetes.client", volume), unittest.mock.patch.multiple(
-        "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils",
-        run_kubectl_command=volume.kubectl,
-        wait_for_pod_phase=phase_wait,
-        wait_for_pod_deletion=unittest.mock.DEFAULT
-    ) {
-        injector.seed("orders", "prod", cluster);
-    }
-}
-
-test "a loader that never runs, or a Ctrl-C while waiting, is deleted (#10785)" {
-    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-        KubectlCluster
-    }
-    for raised in [
-        TimeoutError("pod orders-bundle-loader not Running after 180s"),
-        RuntimeError("pod orders-bundle-loader failed"),
-        KeyboardInterrupt()
-    ] {
-        with tempfile.TemporaryDirectory() as volume_dir {
-            volume = _LoaderVolume(volume_dir=volume_dir);
-            surfaced: (BaseException | None) = None;
-            try {
-                _seed_into(
-                    volume, unittest.mock.Mock(side_effect=raised), KubectlCluster()
-                );
-            } except (TimeoutError, RuntimeError, KeyboardInterrupt) as err {
-                surfaced = err;
-            }
-            assert surfaced is raised , f"{raised!r} did not reach the caller";
-            assert not volume.pods , (
-                f"{type(raised).__name__}: {sorted(volume.pods)} left behind"
-            );
-        }
-    }
-}
-
-test "a failed or interrupted upload removes its own staging file and the loader (#10785)" {
-    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-        KubectlCluster
-    }
-    for raised in [RuntimeError("kubectl command failed: cp"), KeyboardInterrupt()] {
-        with tempfile.TemporaryDirectory() as volume_dir {
-            volume = _LoaderVolume(volume_dir=volume_dir, copy_error=raised);
-            surfaced: (BaseException | None) = None;
-            try {
-                _seed_into(volume, unittest.mock.DEFAULT, KubectlCluster());
-            } except (RuntimeError, KeyboardInterrupt) as err {
-                surfaced = err;
-            }
-            label = type(raised).__name__;
-            assert surfaced is raised , f"{label} did not reach the caller";
-            left = sorted(
-                str(p.relative_to(volume_dir))
-                for p in Path(volume_dir).rglob("*")
-                if p.is_file()
-            );
-            assert left == [] , f"{label}: the upload left {left} on the volume";
-            assert not volume.pods , f"{label}: {sorted(volume.pods)} left behind";
+            written = [] if raised else ["bundles/orders/new.jab"];
+            assert on_volume == sorted(survivors + written) , f"{label}: {on_volume}";
         }
     }
 }
