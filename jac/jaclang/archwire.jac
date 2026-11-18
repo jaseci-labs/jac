@@ -1946,6 +1946,8 @@ graph import {
             report_env_findings
         },
         scale.injector.binary.resolve_pinned_version { JacConfig, find_project_root },
+        scale.injector.bundle.client_input_digest { active_profile_name },
+        scale.injector.bundle.seal_input_digest { active_profile_name },
         scale.injector.bundle.unresolved_toml_references { resolve_env_refs },
         scale.tests.server.test_host_serving
             | scale.tests.server.test_served_app_route { set_config },
@@ -13906,6 +13908,8 @@ graph import scale {
             DEFAULT_SEAL_TIMEOUT_S,
             _precompile_app,
             _stage_app,
+            client_build_sources,
+            client_input_digest,
             nested_sanitized_tomls,
             pack_jab,
             seal_cache_setting,
