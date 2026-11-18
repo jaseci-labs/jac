@@ -1216,4 +1216,11 @@ test "classes in an import cycle keep their ancestry through the cache" {
     );
     (_prog, diags) = _check(str(tmp / "user.jac"));
     assert len(diags) == 1 and "Cannot assign int to str" in diags[0] , diags;
+    (tmp / "again.jac").write_text("import from b { C }\n\nglob s: str = C().f();\n");
+    (settled, diags) = _check(str(tmp / "again.jac"));
+    events = settled.analysis.cache_events;
+    assert len(diags) == 1 and "Cannot assign int to str" in diags[0] , diags;
+    assert events.get("dep_hydrate", 0) >= 2 and not events.get("iface_encode", 0) , (
+        f"the cycle never settled into the cache (events: {events})"
+    );
 }
