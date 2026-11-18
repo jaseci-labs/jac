@@ -302,11 +302,11 @@ def _results_after(msgs: list[any], start: int) -> set[str];
 impl MTRuntime.get_history_for_persist -> list[MessageType] {
     scaff_ids = set(self._scaffolding_ids);
     out: list[any] = [];
-    for stored in self.messages {
-        if id(stored) in scaff_ids or _is_system_message(stored) {
+    for msg in self.messages {
+        if id(msg) in scaff_ids or _is_system_message(msg) {
             continue;
         }
-        msg = _without_blank_text(stored);
+        msg = _without_blank_text(msg);
         if msg is None {
             continue;
         }

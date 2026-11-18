@@ -1736,13 +1736,10 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     mt_run._call_kind = "final_answer_restream";
     try {
         output = _recovered_answer(mt_run, self.dispatch_no_streaming(mt_run));
-        if mt_run._has_final_output {
-            return output;
-        }
-        if mt_run.resp_type is None or mt_run.resp_type is str {
+        if not mt_run._has_final_output and mt_run.resp_type in (None, str) {
             _raise_if_no_answer(mt_run, output);
         }
-        return str(output or "");
+        return output if mt_run._has_final_output else str(output or "");
     } finally {
         mt_run._call_kind = original_call_kind;
         mt_run.call_params.pop("tool_choice", None);
@@ -3115,8 +3112,7 @@ impl _nudge_after_empty_reply(
     mt_run.add_scaffolding_message(
         Message(
             role=MessageRole.USER,
-            content="Your last reply was empty. Continue the task: call the next "
-            "tool, or call finish_tool with your final answer.",
+            content="Your last reply was empty. Call the next tool, or finish_tool with your answer.",
         )
     );
     return True;

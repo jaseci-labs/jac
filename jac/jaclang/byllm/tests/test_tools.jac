@@ -64,13 +64,10 @@ test "plain text instead of finish_tool is re-prompted, not accepted" {
     def silent_npc(player_name: str) -> Chat by silent(
         tools=[get_mood], stream=True, stream_handler=[].append
     );
-    raised: any = None;
     try {
         silent_npc("Elara");
-    } except EmptyReplyError as e {
-        raised = e;
-    }
-    assert raised is not None , "an empty typed answer streamed to a handler must raise";
+        assert False , "an empty typed answer streamed to a handler must raise";
+    } except EmptyReplyError {}
 }
 
 
