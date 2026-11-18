@@ -212,6 +212,7 @@ const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", { url: "http:
 const storage = dom.window.localStorage;
 globalThis.document = dom.window.document;
 globalThis.localStorage = storage;
+globalThis.sessionStorage = dom.window.sessionStorage;
 
 // The page reset: web reloads, native runs the unauthorized handler.
 let resets = 0;
@@ -235,8 +236,12 @@ const core = await import(
 );
 const answers = [];
 globalThis.fetch = () => new Promise((resolve) => {
-  answers.push(() => resolve(new Response("unauthorized", { status: 401 })));
+  answers.push((status) => resolve(status === 200
+    ? new Response(JSON.stringify({ ok: true, data: {} }), { status: 200 })
+    : new Response("unauthorized", { status: 401 })));
 });
+const settle = (status) => answers.splice(0).forEach((answer) => answer(status));
+const tick = () => new Promise((r) => setTimeout(r, 0));
 const seed = (token) => {
   if (token === null) storage.removeItem("jac_token");
   else storage.setItem("jac_token", token);
@@ -262,23 +267,57 @@ const CASES = [
   { name: "own app, no token", app: "", calls: 1, sent: null, landed: null, left: null, resets: 0 },
 ];
 
+const route = (app) => (app ? { app, route: "/" + app } : {});
 for (const [fn, send] of Object.entries(senders)) {
   for (const c of CASES) {
     if (c.app && fn === "__jacAuthedJson") continue;
     const tag = `${target} ${fn}: ${c.name}`;
     resets = 0;
+    sessionStorage.clear();
     seed(c.sent);
     const pending = Array.from({ length: c.calls }, () =>
-      send(c.app ? { app: c.app } : {}).then(() => null, (e) => e));
-    await new Promise((r) => setTimeout(r, 0));
+      send(route(c.app)).then(() => null, (e) => e));
+    await tick();
     seed(c.landed);
-    answers.splice(0).forEach((answer) => answer());
+    settle(401);
     const errors = await Promise.all(pending);
     check(`${tag} leaves jac_token=${c.left}`, storage.getItem("jac_token") === c.left,
       `jac_token=${storage.getItem("jac_token")}`);
     check(`${tag} resets the page ${c.resets} time(s)`, resets === c.resets, `resets=${resets}`);
     check(`${tag} ${c.app ? "raises a 401 BridgeRejected" : "resolves"}`,
       errors.every((e) => (c.app ? !!e && e.status === 401 : e === null)), String(errors));
+  }
+}
+
+// A reload only ends the session if the token stays gone. Desktop profiles put
+// a fresh one back on every load, so a server that keeps rejecting it must get
+// one reset, not one per load. Each round stands for a page load: the token is
+// back, then the server answers.
+if (target === "web") {
+  const round = async (send, opts, token, status) => {
+    seed(token);
+    const pending = send(opts).then(() => null, (e) => e);
+    await tick();
+    settle(status);
+    await pending;
+  };
+  for (const [fn, send] of Object.entries(senders)) {
+    const tag = `web ${fn}: restored token`;
+    const opts = route("svc");
+    resets = 0;
+    sessionStorage.clear();
+    await round(send, opts, "tok-1", 401);
+    check(`${tag} resets the page on the first rejection`,
+      resets === 1 && storage.getItem("jac_token") === null, `resets=${resets}`);
+    await round(senders.__doWalkerFetch, {}, "tok-2", 200);
+    await round(send, opts, "tok-2", 401);
+    check(`${tag} rejected again does not reset again`, resets === 1, `resets=${resets}`);
+    check(`${tag} rejected again stays stored`, storage.getItem("jac_token") === "tok-2",
+      `jac_token=${storage.getItem("jac_token")}`);
+    await round(send, opts, "tok-3", 200);
+    await round(send, opts, "tok-4", 401);
+    check(`${tag} resets again once the server has accepted one`,
+      resets === 2 && storage.getItem("jac_token") === null, `resets=${resets}`);
   }
 }
 
@@ -308,7 +347,9 @@ def _write_native_core(work: Path) {
 the page once, whichever app answered: the web core reloads and the native core
 runs the unauthorized handler. A slow request that went out before the user
 signed in again must not erase the new login, and a call that sent no token has
-no session to lose, so it resets nothing. Before #10800 a 401 from another app
+no session to lose, so it resets nothing. A server that rejects again before
+it has accepted a token gets no second reset, so a token put back on every load
+(desktop profiles) cannot reload forever. Before #10800 a 401 from another app
 removed the token without the reset and left the page half signed in."""
 test "a 401 drops only the token it was sent with and resets the page once" {
     require_client_integration("rejected token");
