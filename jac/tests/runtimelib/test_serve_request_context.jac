@@ -144,6 +144,17 @@ glob _APP: str = (
          '    return chunks();\n'
          '}\n'
          '\n'
+         'def:protect sse_conn_probe(text: str = "") -> any {\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        session: any = JacRuntime.get_context().mem;\n'
+         '        store: any = session._store;\n'
+         '        yield "held" if store._conn is not None else "parked";\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
          'walker:protect notes {\n'
          '    can go with Root entry {\n'
          '        report sorted([n.text for n in [here -->[?:Note]]]);\n'
@@ -457,6 +468,18 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
             False,
             "event: error"
         ),
+        # The middleware parks the session's connection before the body is
+        # pulled, so a stream holds none until it touches the graph, and its
+        # later write still commits.
+        (
+            "idle connection parked before the first pull",
+            "sse_conn_probe",
+            None,
+            False,
+            False,
+            True,
+            "event: end"
+        ),
 
     ];
     prior = os.environ.get("JAC_SCALE_RUNTIME");
@@ -495,6 +518,11 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
                     assert frames and frames[-1].startswith(last) , (
                         f"{label}: unexpected body {body!r}"
                     );
+                    if fn == "sse_conn_probe" {
+                        assert frames[0] == 'data: "parked"' , (
+                            f"{label}: the stream began with {frames[0]!r}"
+                        );
+                    }
                     assert (label in notes) == committed , (
                         f"{label}: the stream's write was "
                         f"{'lost' if committed else 'committed'}"
