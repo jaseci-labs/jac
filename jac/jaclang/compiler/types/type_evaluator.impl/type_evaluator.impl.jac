@@ -911,24 +911,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                     if isinstance(lookup_type, ClassType)
-                        and lookup_type.is_instantiable_class()
-                        and self.prefetch is not None
-                        and self.prefetch.type_class is not None {
-                        meta_cls = self._metaclass_of(lookup_type)
-                            or self.prefetch.type_class;
-                        meta_inst = self._convert_to_instance(meta_cls);
-                        if isinstance(meta_inst, ClassType) {
-                            if meta_member
-                                := self._lookup_object_member(
-                                    meta_inst, expr.right.value
-                                ) {
-                                meta_member.symbol.add_use(expr.right);
-                                expr.right.type = self.get_type_of_symbol(
-                                    meta_member.symbol
-                                );
-                                return expr.right.type;
-                            }
-                        }
+                        and (meta_inst := self._metaclass_instance(lookup_type))
+                        and (
+                            meta_member
+                            := self._lookup_object_member(meta_inst, expr.right.value)
+                        ) {
+                        meta_member.symbol.add_use(expr.right);
+                        expr.right.type = self.get_type_of_symbol(meta_member.symbol);
+                        return expr.right.type;
                     }
                     if not self.is_any_type(lookup_type) {
                         _has_tvars = (
@@ -1163,13 +1153,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             member = self._lookup_class_member(
                                 lookup_type, expr.right.value
                             );
-                            if member is None
-                                and lookup_type.is_instantiable_class()
-                                and self.prefetch is not None {
-                                union_meta_cls = self._metaclass_of(lookup_type)
-                                    or self.prefetch.type_class;
-                                if union_meta_cls is not None {
-                                    lookup_type = union_meta_cls.clone_as_instance();
+                            if member is None {
+                                if union_meta
+                                    := self._metaclass_instance(lookup_type) {
+                                    lookup_type = union_meta;
                                     member = self._lookup_object_member(
                                         lookup_type, expr.right.value
                                     );
@@ -1777,19 +1764,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
 
                 if op.name in (Tok.KW_IN, Tok.KW_NIN) {
-                    is_enum = (
-                        isinstance(right_type, ClassType) and right_type.is_enum_class()
+                    _in_item = expr.left if i == 0 else expr.rights[i - 1];
+                    result = self.get_type_of_magic_method_call(
+                        right_type, "__contains__", [_in_item], None
                     );
-                    if not is_enum {
-                        _in_item = expr.left if i == 0 else expr.rights[i - 1];
-                        result = self.get_type_of_magic_method_call(
-                            right_type, "__contains__", [_in_item], None
-                        );
-                        if result is None {
-                            self.emit_diag(
-                                E1111, expr, op=op.value, type=str(right_type)
-                            );
-                        }
+                    if result is None {
+                        self.emit_diag(E1111, expr, op=op.value, type=str(right_type));
                     }
                     continue;
                 }
@@ -2830,14 +2810,6 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     return elem_unknown;
                 }
 
-                if isinstance(collection_type, ClassType)
-                    and collection_type.is_instantiable_class()
-                    and collection_type.is_enum_class() {
-                    instance_type = collection_type.clone_as_instance();
-                    node_.type = instance_type;
-                    return instance_type;
-                }
-
                 element_type = self._get_iterable_element_type(
                     collection_type, node_.parent, is_async=node_.parent.is_async
                 );
@@ -3223,27 +3195,18 @@ impl TypeEvaluator._solve_protocol_members(
 impl TypeEvaluator._protocol_member_impl(
     proto_func: FunctionType, member: ClassMember, src_type: ClassType
 ) -> (FunctionType | None) {
-    first = self.get_type_of_symbol(member.symbol);
-    if not isinstance(first, FunctionType) {
+    if not isinstance(self.get_type_of_symbol(member.symbol), FunctionType) {
         return None;
     }
-    first = first.specialize(src_type);
-    if not member.overloads {
-        return first;
-    }
-    candidates: list[FunctionType] = [first];
-    for overload in member.overloads {
-        overload_ty = self.get_type_of_symbol(overload);
-        if isinstance(overload_ty, FunctionType) {
-            candidates.append(overload_ty.specialize(src_type));
+    candidates = [fn.specialize(src_type) for fn in self._member_signatures(member)];
+    if len(candidates) > 1 {
+        for candidate in candidates {
+            if self._protocol_signature_fits(proto_func, candidate) {
+                return candidate;
+            }
         }
     }
-    for candidate in candidates {
-        if self._protocol_signature_fits(proto_func, candidate) {
-            return candidate;
-        }
-    }
-    return first;
+    return candidates[0];
 }
 
 impl TypeEvaluator._protocol_signature_fits(
@@ -3415,20 +3378,10 @@ impl TypeEvaluator.get_type_of_magic_method_call(
             member = self._lookup_class_member(obj_type, method_name);
         }
         if member is not None {
-            member_ty = self.get_type_of_symbol(member.symbol);
-
-            overloaded_fns: list[FunctionType] = [];
-            if isinstance(member_ty, FunctionType) {
-                member_ty = member_ty.specialize(obj_type);
-                overloaded_fns.append(member_ty);
-                for overload in member.overloads {
-                    overload_member_ty = self.get_type_of_symbol(overload);
-                    if isinstance(overload_member_ty, FunctionType) {
-                        overload_member_ty = overload_member_ty.specialize(obj_type);
-                        overloaded_fns.append(overload_member_ty);
-                    }
-                }
-
+            if isinstance(self.get_type_of_symbol(member.symbol), FunctionType) {
+                overloaded_fns = [
+                    fn.specialize(obj_type) for fn in self._member_signatures(member)
+                ];
                 _fallback_result: TypeBase | None = None;
                 _fallback_notes: list[tuple[UniNode, str, str, bool]] = [];
                 for fn in overloaded_fns {
@@ -3498,7 +3451,9 @@ impl TypeEvaluator.slice_assignment_is_valid(target: Expr, value_node: Expr) -> 
         if self.is_none_type(member) {
             return False;
         }
-        if isinstance(member, ClassType) and not member.is_class_instance() {
+        if isinstance(member, ClassType)
+            and not member.is_class_instance()
+            and self._declared_metaclass_member(member, "__setitem__") is None {
             return False;
         }
         if self.get_type_of_magic_method_call(
@@ -4036,16 +3991,11 @@ impl TypeEvaluator.assign_type(
         }
     }
 
-    if (
-        isinstance(src_type, ClassType)
-        and src_type.is_enum_class()
-        and src_type.is_instantiable()
+    if isinstance(src_type, ClassType)
         and isinstance(dest_type, ClassType)
-        and dest_type.is_builtin()
-        and dest_type.shared.class_name
-            in ("Sized", "Iterable", "Container", "Reversible", "Hashable")
-    ) {
-        return True;
+        and dest_type.is_class_instance()
+        and (meta_inst := self._metaclass_instance(src_type)) {
+        return self.assign_type(meta_inst, dest_type, strict);
     }
 
     if (

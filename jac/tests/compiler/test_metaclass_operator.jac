@@ -133,3 +133,73 @@ test "a metaclass operator wins over one on the class itself" {
     errs = check_src(src);
     assert not errs , f"class __mul__ shadowed the metaclass one: {errs}";
 }
+
+
+glob META_CLASSES: str = "import from typing { Hashable, Sized, overload }\n"
+         + "glob T = TypeVar(\"T\");\n"
+         + "class Meta(type) {\n"
+         + "    def __len__(cls: Meta) -> int {\n        return 3;\n    }\n"
+         + "    def __setitem__(cls: Meta, key: str, val: int) -> None {}\n"
+         + "    @overload\n    def __call__(cls: Meta, n: int) -> str;\n"
+         + "    @overload\n    def __call__(cls: Meta, s: str) -> int;\n"
+         + "    def __call__(cls: Meta, x: int | str) -> (int | str) {\n"
+         + "        return x;\n    }\n"
+         + "}\n"
+         + "class Foo(metaclass=Meta) {}\n"
+         + "class Plain {}\n"
+         + "class OnlyInt(type) {\n"
+         + "    def __call__(cls: OnlyInt, n: int) -> str {\n        return \"s\";\n    }\n"
+         + "}\n"
+         + "class Takes(metaclass=OnlyInt) {\n"
+         + "    def init(self: Takes, s: str) -> None {}\n"
+         + "}\n"
+         + "class Lazy(type) {\n"
+         + "    def __call__(cls: Lazy, *args: any, **kwargs: any) -> any {\n"
+         + "        return super().__call__(*args, **kwargs);\n    }\n"
+         + "}\n"
+         + "class Box(metaclass=Lazy) {\n    def init(self: Box, n: int) -> None {}\n}\n"
+         + "class Single(type) {\n"
+         + "    def __call__(cls: type[T], *args: any, **kwargs: any) -> T {\n"
+         + "        return super().__call__(*args, **kwargs);\n    }\n"
+         + "}\n"
+         + "class Svc(metaclass=Single) {\n    def init(self: Svc, n: int) -> None {}\n}\n"
+         + "enum Color { RED = \"r\" }\n";
+
+test "a class object is an instance of its metaclass" {
+    errs = check_src(
+        META_CLASSES
+            + "def probe -> None {\n"
+            + "    n: int = len(Foo);\n"
+            + "    s: Sized = Foo;\n"
+            + "    m: Meta = Foo;\n"
+            + "    h: Hashable = Plain;\n"
+            + "    a: str = Foo(1);\n"
+            + "    b: int = Foo(\"a\");\n"
+            + "    f: Callable[[int], str] = Foo;\n"
+            + "    g: Callable[[str], int] = Foo;\n"
+            + "    t: str = Takes(1);\n"
+            + "    Foo[\"a\"] = 1;\n"
+            + "    c: Color = Color(\"r\");\n"
+            + "    k: Callable[[str], Color] = Color;\n"
+            + "    v: Svc = Svc(1);\n"
+            + "    w: Box = Box(1);\n"
+            + "}\n"
+    );
+    assert not errs , errs;
+}
+
+test "metaclass dispatch still reports real errors" {
+    cases = [
+        ("len(Plain)", "of type Sized"),
+        ("x: str = Foo", "Cannot assign Foo to str"),
+        ("Foo[\"a\"] = \"x\"", "Literal[\"x\"]"),
+        ("Plain[\"a\"] = 1", "Cannot assign int to Plain"),
+        ("Takes(\"bad\")", "parameter 'n'"),
+        ("Box(\"x\")", "parameter 'n'"),
+        ("Svc(\"x\")", "parameter 'n'")
+    ];
+    for (stmt, expected) in cases {
+        errs = check_src(META_CLASSES + "def probe -> None {\n    " + stmt + ";\n}\n");
+        assert len(errs) == 1 and expected in errs[0] , (stmt, errs);
+    }
+}

@@ -296,12 +296,17 @@ walker TypeEvaluator {
     ) -> Symbol | None;
 
     def _metaclass_of(cls_type: ClassType) -> (ClassType | None);
+    def _metaclass_instance(cls_type: ClassType) -> (ClassType | None);
     def _declared_metaclass_member(
         cls_type: ClassType, name: str
     ) -> (ClassMember | None);
 
+    def _metaclass_call_constructs(result: TypeBase, cls_type: ClassType) -> bool;
     def _report_rejected_method_call(
-        receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+        receiver: ClassType,
+        member: ClassMember,
+        args: (Sequence[Expr | KWPair] | None),
+        site: UniNode
     ) -> None;
 
     def _extract_type_params(node_: Archetype) -> list[TypeVarType];
@@ -696,6 +701,7 @@ walker TypeEvaluator {
     ) -> list[TypeBase];
 
     def class_constructor_callables(cls_type: ClassType) -> list[FunctionType];
+    def _member_signatures(member: ClassMember) -> list[FunctionType];
     def _infer_type_args_from_method(
         caller_type: ClassType, expr: FuncCall, matched_method: FunctionType | None
     ) -> list[TypeBase];
