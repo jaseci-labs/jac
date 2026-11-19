@@ -645,12 +645,6 @@ test "publishing builds into one --out keeps exactly one complete build" {
         if sealed {
             problems.append(f"the bundle sealed an earlier build: {sealed}");
         }
-        _bundles(out)[0].write_bytes(b"damaged");
-        third = _apply_target().build(app, out);
-        if hashlib.sha256(_bundles(out)[0].read_bytes()).hexdigest()
-            != third["bundle_sha256"] {
-            problems.append("a rebuild kept a damaged bundle");
-        }
         injector._bundle_bytes = injector._bundle_bytes + gzip.compress(b"");
         injector.write_build(out, "shop");
         if len(_bundles(out)) != 1 {
@@ -660,6 +654,13 @@ test "publishing builds into one --out keeps exactly one complete build" {
         shutil.rmtree(out, ignore_errors=True);
     }
     parent = tempfile.mkdtemp(prefix="scale-publish-");
+    again = os.path.join(parent, "again");
+    injector.write_build(again, "shop");
+    _bundles(again)[0].write_bytes(b"damaged");
+    injector.write_build(again, "shop");
+    if _bundles(again)[0].read_bytes() != injector._bundle_bytes {
+        problems.append("a rebuild kept a damaged bundle");
+    }
     owned = os.path.join(parent, ".mine.keep");
     os.mkdir(owned);
     Path(owned, "keep.txt").write_text("not a build");
