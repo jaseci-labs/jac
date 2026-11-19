@@ -4901,6 +4901,12 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     for kw_pair in keyword {
         pairs.append(kw_pair);
     }
+    given = {pair[0] for pair in pairs};
+    for (fname, default_expr) in self.struct_field_defaults.get(anc, {}).items() {
+        if fname not in given {
+            pairs.append((fname, default_expr));
+        }
+    }
     covered: set[str] = set();
     inline_fields = self.struct_field_inline.get(owner, set());
     for (fname, _expr) in pairs {
@@ -4914,11 +4920,6 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
         }
         covered.add(fname);
     }
-    for fname in self.struct_field_defaults.get(anc, {}) {
-        if fname not in covered {
-            return None;
-        }
-    }
     self_slot = self.local_vars.get("self");
     if self_slot is None {
         return None;
@@ -4929,6 +4930,11 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     borrow_fields = self.struct_field_borrow.get(owner, set());
     for (fname, expr) in pairs {
         val = self._codegen_expr(expr);
+        if val is None and fname not in given {
+            val = self._empty_container_for_field(
+                field_types.get(fname), f"dflt.{fname}"
+            );
+        }
         if val is None {
             return None;
         }
