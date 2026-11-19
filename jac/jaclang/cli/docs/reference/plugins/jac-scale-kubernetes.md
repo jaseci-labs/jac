@@ -1360,7 +1360,7 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 
 <!-- -->
 
-> **Multi-tenant note.** Each app's Loki holds only the logs of its own namespace, so its Grafana does not show other apps on the cluster. Apps deployed into the same namespace share that namespace's logs; give each tenant its own `[scale.kubernetes] namespace` to keep them apart.
+> **Multi-tenant note.** Each app's Alloy collects only the logs of its own namespace, so its Loki and Grafana do not show other apps on the cluster. Apps deployed into the same namespace share that namespace's logs; give each tenant its own `[scale.kubernetes] namespace` to keep them apart. An app deployed before this scoping keeps the other namespaces' logs its Loki already stored until the Loki pod restarts; `kubectl rollout restart deployment/<app>-loki -n <namespace>` clears them, along with the app's own earlier logs.
 
 ---
 
