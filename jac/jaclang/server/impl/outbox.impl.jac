@@ -314,13 +314,12 @@ impl SqliteOutboxStore.close -> None {
 
 impl _current_memory -> any {
     import from jaclang { JacRuntime }
-    ctx = JacRuntime.peek_context();
-    return ctx.mem if ctx is not None else None;
+    return JacRuntime.get_context().mem;
 }
 
 
 impl _primary_pg_store -> (PgStore | None) {
-    store = _current_memory()?.store;
+    store = _current_memory().store;
     return store if isinstance(store, PgStore) else None;
 }
 
