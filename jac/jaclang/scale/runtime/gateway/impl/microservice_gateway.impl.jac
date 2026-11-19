@@ -439,9 +439,9 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response {
     unanswered: list[dict[str, any]] = [];
     refused: Response | None = None;
 
-    for (svc_name, result) in await self.ask_services(
-        "/admin/schedules", fwd_headers
-    ) {
+    answers = dict(await self.ask_services("/admin/schedules", fwd_headers));
+    for svc_name in self.registry.entries {
+        result = answers.get(svc_name);
         if result is None {
             unanswered.append({"service": svc_name, "status": None});
             continue;

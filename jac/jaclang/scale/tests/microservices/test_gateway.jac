@@ -510,7 +510,8 @@ test "graph reads reach every service that can read the node, compressed or not"
 
 """Two services answer only once both have been asked, so a gateway that asks
 them in turn never gets the first answer. A service that keeps its own user
-store refuses the gateway admin's token and answers the fleet's bridge secret."""
+store refuses the gateway admin's token and answers the fleet's bridge secret.
+A member registered with no port is stopped, so it is never asked."""
 test "GET /admin/schedules through the gateway route is admin-only and merges the fleet" {
     names = {"orders": "nightly", "billing": "dunning"};
     def listing(service: str) -> dict[str, any] {
@@ -591,13 +592,14 @@ test "GET /admin/schedules through the gateway route is admin-only and merges th
                     "orders": orders,
                     "billing": billing,
                     "ledger": ledger,
-                    "search": gone
+                    "search": gone,
+                    "archive": 0
                 },
                 "",
                 [],
                 200,
                 ["orders", "billing"],
-                {"ledger": 500, "search": None}
+                {"ledger": 500, "search": None, "archive": None}
             ),
             (admin, {"orders": locked}, "", [admin], 403, [], {}),
             (
@@ -614,6 +616,9 @@ test "GET /admin/schedules through the gateway route is admin-only and merges th
             reg.entries.clear();
             for (name, port) in fleet.items() {
                 reg.register(_entry(name, f"/{name}", port));
+                if not port {
+                    reg.entries[name].status = ServiceStatus.STOPPED;
+                }
             }
             if bridge {
                 os.environ[BRIDGE_TOKEN_ENV] = bridge;
