@@ -54,6 +54,7 @@ def _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None);
 
+def _resolve_stdjac_module(target: str) -> (tuple[(str, str)] | None);
 def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None);
 
 def resolve_jac_virtual_module_path(target: str) -> (str | None);

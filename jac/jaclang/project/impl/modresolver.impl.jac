@@ -369,6 +369,22 @@ impl _self_tree_candidate(
     }
 }
 
+impl _resolve_stdjac_module(target: str) -> (tuple[(str, str)] | None) {
+    if target != "stdjac" and not target.startswith("stdjac.") {
+        return None;
+    }
+    import jaclang as _jaclang_pkg;
+    base = os.path.join(os.path.dirname(_jaclang_pkg.__file__), "stdjac");
+    rest = target[len("stdjac"):].lstrip(".");
+    path = os.path.join(base, *rest.split(".")) + ".jac"
+        if rest
+        else os.path.join(base, "__init__.jac");
+    if os.path.isfile(path) {
+        return (path, "jac");
+    }
+    return None;
+}
+
 impl _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     if not target.startswith('@jac/') {
         return None;
@@ -504,6 +520,11 @@ impl resolve_module(
         return ('', 'other');
     }
     base_dir = os.path.dirname(base_path);
+
+    stdjac_module = _resolve_stdjac_module(target);
+    if stdjac_module {
+        return stdjac_module;
+    }
 
     jac_virtual = _resolve_jac_virtual_module(target);
     if jac_virtual {
