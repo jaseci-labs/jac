@@ -129,6 +129,19 @@ impl route_exports(program: JacProgram, path: str) -> tuple[str | None, str | No
     return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }
 
+impl route_params(program: JacProgram, path: str) -> list[str] {
+    real = os.path.realpath(path);
+    builder = program._get_compiler();
+    artifact = builder.get_client_artifact(real, program);
+    if artifact is None {
+        artifact = builder.last_client_artifact(real, program);
+    }
+    if artifact is None or artifact.manifest.page_export is None {
+        return [];
+    }
+    return list(artifact.manifest.params.get(artifact.manifest.page_export, []));
+}
+
 impl compile_application(
     program: JacProgram, entry_path: str, options: CompileOptions
 ) -> uni.Module {

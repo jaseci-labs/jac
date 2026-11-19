@@ -95,10 +95,23 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         merged_npm_deps.setdefault(dep_name, dep_version);
     }
 
+    vite_settings: dict[str, any] = dict(client_config.get('vite', {}));
+    for (key, value) in eco_vite_settings(jac_config, self.entry_path).items() {
+        held = vite_settings.get(key);
+        if isinstance(value, list) {
+            vite_settings[key] = list(held or []) + [v for v in value if v not in (held or [])];
+        } elif isinstance(value, dict) {
+            merged_value = dict(value);
+            merged_value.update(held or {});
+            vite_settings[key] = merged_value;
+        } elif key not in vite_settings {
+            vite_settings[key] = value;
+        }
+    }
     user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
         'base_path': client_config.get('base_path', '/'),
-        'vite': client_config.get('vite', {}),
+        'vite': vite_settings,
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
         'paths': client_config.get('paths', {}),
@@ -332,4 +345,113 @@ impl _migrate_legacy_meta_packages(
         jac_config.save();
     }
     return (npm_deps, npm_dev_deps, migrated);
+}
+
+glob _JAC_SUPPLIED_VITE_PACKAGES: set[str] = {
+         "vite",
+         "@vitejs/plugin-react",
+         "@vitejs/plugin-react-swc",
+         "@jac/vite"
+     };
+
+"""What a project written for neojac keeps in `eco/<tree>/vite.config.ts`, as jac's
+own Vite configuration carries it: the plugins it adds (with their imports), the
+package aliases and the dedupe list of its `resolve`. jac supplies Vite, the
+framework plugin and `@jac/vite` itself, so those are left out."""
+impl eco_vite_settings(jac_config: any, entry_path: str) -> dict[str, any] {
+    import re;
+    if jac_config is None or jac_config.project_root is None {
+        return {};
+    }
+    raw = jac_config._raw_data if isinstance(jac_config._raw_data, dict) else {};
+    app = jac_config.app_for_target(entry_path) if entry_path else None;
+    if app is None {
+        try {
+            app = jac_config.resolve_app("");
+        } except Exception {
+            app = None;
+        }
+    }
+    tree = app_npm_tree(raw, app) if app is not None else "";
+    if not tree {
+        for candidate in jac_config.apps.values() {
+            tree = app_npm_tree(raw, candidate);
+            if tree {
+                break;
+            }
+        }
+    }
+    if not tree {
+        return {};
+    }
+    config_path = Path(str(jac_config.project_root)) / "eco" / tree / "vite.config.ts";
+    if not config_path.is_file() {
+        config_path = Path(str(jac_config.project_root)) / "eco" / tree / "vite.config.js";
+    }
+    if not config_path.is_file() {
+        return {};
+    }
+    try {
+        text = config_path.read_text(encoding="utf-8");
+    } except OSError {
+        return {};
+    }
+    return _parse_vite_config(text);
+}
+
+impl _parse_vite_config(text: str) -> dict[str, any] {
+    import re;
+    out: dict[str, any] = {};
+    imported: dict[str, str] = {};
+    lib_imports: list[str] = [];
+    for hit in re.finditer(r'import\s+(\w+)\s+from\s+[\x22\x27]([^\x22\x27]+)[\x22\x27];?', text) {
+        (name, package) = (hit.group(1), hit.group(2));
+        imported[name] = package;
+        if package not in _JAC_SUPPLIED_VITE_PACKAGES {
+            lib_imports.append(f'import {name} from "{package}";');
+        }
+    }
+    plugins: list[str] = [];
+    plugins_hit = re.search(r'plugins:\s*\[([^\]]*)\]', text);
+    if plugins_hit {
+        for part in plugins_hit.group(1).split(",") {
+            call = part.strip();
+            if not call {
+                continue;
+            }
+            name = call.split("(")[0].strip();
+            if imported.get(name, "") in _JAC_SUPPLIED_VITE_PACKAGES {
+                continue;
+            }
+            plugins.append(call);
+        }
+    }
+    if lib_imports {
+        out["lib_imports"] = lib_imports;
+    }
+    if plugins {
+        out["plugins"] = plugins;
+    }
+    aliases: dict[str, str] = {};
+    for hit in re.finditer(
+        r'find:\s*(?:/\^?([^/$]+)\$?/|[\x22\x27]([^\x22\x27]+)[\x22\x27])\s*,\s*replacement:\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]',
+        text
+    ) {
+        aliases[hit.group(1) or hit.group(2)] = hit.group(3);
+    }
+    if aliases {
+        out["alias_packages"] = aliases;
+    }
+    dedupe_hit = re.search(r'dedupe:\s*\[([^\]]*)\]', text);
+    if dedupe_hit {
+        names = [
+            n.strip().strip('"').strip("'")
+            for n in dedupe_hit.group(1).split(",")
+            if n.strip()
+        ];
+        if names {
+            out["resolve"] = {"dedupe": names};
+        }
+    }
+    return out;
 }

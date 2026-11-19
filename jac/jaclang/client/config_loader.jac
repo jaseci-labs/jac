@@ -32,3 +32,7 @@ class JacClientConfig(PluginConfigBase) {
     def is_pwa_enabled(self: JacClientConfig) -> bool;
     def get_react_native_config(self: JacClientConfig) -> dict[str, any];
 }
+
+def eco_vite_settings(jac_config: any, entry_path: str) -> dict[str, any];
+
+def _parse_vite_config(text: str) -> dict[str, any];

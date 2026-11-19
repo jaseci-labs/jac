@@ -1,6 +1,5 @@
 impl archwire_apps(root_dir: str) -> dict[str, DerivedApp] {
     import os;
-    import from jaclang.compiler.driver.wiring { wiring_for_path }
     arch = os.path.join(root_dir, "archwire.jac");
     if not os.path.isfile(arch) {
         return {};
@@ -10,6 +9,11 @@ impl archwire_apps(root_dir: str) -> dict[str, DerivedApp] {
         return {};
     }
     spaces = {s.name: s for s in spec.spaces};
+    hosts = {s.name: s.host for s in spec.spaces};
+    arrangements: dict[str, dict[str, list[str]]] = {};
+    for app in spec.apps {
+        arrangements.setdefault(app.name, {})[app.profile or "default"] = list(app.runs);
+    }
     out: dict[str, DerivedApp] = {};
     for app in spec.apps {
         if app.profile {
@@ -63,7 +67,9 @@ impl archwire_apps(root_dir: str) -> dict[str, DerivedApp] {
             pins=pins,
             runs=list(app.runs),
             serves=list(app.serves),
-            remote=[s.name for s in spec.spaces if s.name not in held]
+            remote=[s.name for s in spec.spaces if s.name not in held],
+            arrangements=arrangements.get(app.name, {}),
+            hosts=hosts
         );
     }
     return out;

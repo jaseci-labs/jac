@@ -865,6 +865,7 @@ graph import {
     compiler.driver.pipeline_runner ++> [
         client.compiler.ViteCompiler._compile_wasm_module { wasm_artifact_inputs },
         client.route_scanner.resolve_route_exports { route_exports },
+        client.route_scanner.resolve_route_params { route_params },
         dist.precompile_bytecode._application_sources { compile_application },
         dist.source.client.write_client { wasm_ir },
     ]
@@ -987,6 +988,7 @@ graph import {
         project.compiler_host.ProjectHost.place_wired_imports { place_wired_imports },
         project.compiler_host.ProjectHost.session { wiring_scope },
         project.compiler_host.ProjectHost.wiring_file { arch_file_for, is_arch_file },
+        project.spaces.archwire_apps { wiring_for_path },
         studio.gate {
             WireRec,
             WiringSpec,
@@ -999,7 +1001,6 @@ graph import {
         },
         studio.model { ARCH_FILE_NAME, WiringSpec, wiring_for_path },
     ]
-    compiler.driver.wiring --> project.spaces.archwire_apps { wiring_for_path }
     compiler.driver.wiring as wiring_mod ++> studio.gate;
     type compiler.driver.wiring ++> project.spaces { SpaceRec }
     compiler.frontend.codeinfo ++> [
@@ -1741,6 +1742,7 @@ graph import {
         runtime.source_app.main { kind_has_server },
     ]
     project.apps ++> [
+        client.config_loader | client.npm_provider { app_npm_tree },
         scale.injector.bundle._entry_module_spec { resolve_entry_path },
         scale.injector.bundle.sealed_entry_module { resolve_entry_path },
     ]
@@ -2604,6 +2606,7 @@ graph import {
             | server.static_files { JacRuntime as Jac },
         cli.commands.execution._exec_file
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
+            | client.route_scanner.resolve_route_params
             | server.hmr.HotReloader._recompile_client_unified
             | server.server.ModuleIntrospector._resolve_declared { JacRuntime as Jac },
         cli.commands.execution._invoke_entrypoint
@@ -4214,57 +4217,125 @@ graph import client {
         jacIsLoggedIn,
         useJacForm
     }
-    client_runtime_core ++> client_runtime | solid_runtime {
-        BridgeError as _BridgeError,
-        BridgeRejected as _BridgeRejected,
-        BridgeTimeout as _BridgeTimeout,
-        BridgeUnavailable as _BridgeUnavailable,
-        ErrorFallback as ___ErrorFallback,
-        __bridgeApiBase as ___bridgeApiBase,
-        __bridgeErrorFor as ___bridgeErrorFor,
-        __bridgeErrorFromFetch as ___bridgeErrorFromFetch,
-        __cacheGet as ___cacheGet,
-        __cacheSet as ___cacheSet,
-        __cachedEndpointCall as ___cachedEndpointCall,
-        __createJacSchema as ___createJacSchema,
-        __doFuncFetch as ___doFuncFetch,
-        __doWalkerFetch as ___doWalkerFetch,
-        __evictOldest as ___evictOldest,
-        __getApiBaseUrl as ___getApiBaseUrl,
-        __getCacheState as ___getCacheState,
-        __getEndpointEffects as ___getEndpointEffects,
-        __getLocalStorage as ___getLocalStorage,
-        __invalidateEndpoint as ___invalidateEndpoint,
-        __isFresh as ___isFresh,
-        __jacCallFunction as ___jacCallFunction,
-        __jacClearCache as ___jacClearCache,
-        __jacDesktopBroker as ___jacDesktopBroker,
-        __jacInstallErrorHandlers as ___jacInstallErrorHandlers,
-        __jacPollBrokerSession as ___jacPollBrokerSession,
-        __jacReactErrorHandler as ___jacReactErrorHandler,
-        __jacReportError as ___jacReportError,
-        __jacSleep as ___jacSleep,
-        __jacSpawn as ___jacSpawn,
-        __normalizeCredential as ___normalizeCredential,
-        __normalizeIdentity as ___normalizeIdentity,
-        __overlaps as ___overlaps,
-        __removeLocalStorage as ___removeLocalStorage,
-        __setLocalStorage as ___setLocalStorage,
-        __unwrapFormSchema as ___unwrapFormSchema,
-        errorOverlay as ___errorOverlay,
-        jacIsLoggedIn as _jacIsLoggedIn,
-        jacLogin as _jacLogin,
-        jacLogout as _jacLogout,
-        jacSetToken as _jacSetToken,
-        jacSignup as _jacSignup,
-        jacSpawn as _jacSpawn,
-        jacSsoConnect as _jacSsoConnect,
-        jacSsoConnections as _jacSsoConnections,
-        jacSsoDisconnect as _jacSsoDisconnect,
-        jacSsoFinish as _jacSsoFinish,
-        jacSsoLogin as _jacSsoLogin,
-        navigate as _navigate
-    }
+    client_runtime_core ++> [
+        client_runtime {
+            BridgeError as _BridgeError,
+            BridgeRejected as _BridgeRejected,
+            BridgeTimeout as _BridgeTimeout,
+            BridgeUnavailable as _BridgeUnavailable,
+            ErrorFallback as ___ErrorFallback,
+            JacArrangement as _JacArrangement,
+            JacLocalUsers as _JacLocalUsers,
+            RemoteDecodeError as _RemoteDecodeError,
+            RemoteError as _RemoteError,
+            RemoteFailed as _RemoteFailed,
+            RemoteRejected as _RemoteRejected,
+            RemoteTimeout as _RemoteTimeout,
+            RemoteUnavailable as _RemoteUnavailable,
+            __bridgeApiBase as ___bridgeApiBase,
+            __bridgeErrorFor as ___bridgeErrorFor,
+            __bridgeErrorFromFetch as ___bridgeErrorFromFetch,
+            __cacheGet as ___cacheGet,
+            __cacheSet as ___cacheSet,
+            __cachedEndpointCall as ___cachedEndpointCall,
+            __createJacSchema as ___createJacSchema,
+            __doFuncFetch as ___doFuncFetch,
+            __doWalkerFetch as ___doWalkerFetch,
+            __evictOldest as ___evictOldest,
+            __getApiBaseUrl as ___getApiBaseUrl,
+            __getCacheState as ___getCacheState,
+            __getEndpointEffects as ___getEndpointEffects,
+            __getLocalStorage as ___getLocalStorage,
+            __invalidateEndpoint as ___invalidateEndpoint,
+            __isFresh as ___isFresh,
+            __jacCallFunction as ___jacCallFunction,
+            __jacCallStream as ___jacCallStream,
+            __jacClearCache as ___jacClearCache,
+            __jacDesktopBroker as ___jacDesktopBroker,
+            __jacInstallErrorHandlers as ___jacInstallErrorHandlers,
+            __jacPollBrokerSession as ___jacPollBrokerSession,
+            __jacReactErrorHandler as ___jacReactErrorHandler,
+            __jacReportError as ___jacReportError,
+            __jacSleep as ___jacSleep,
+            __jacSpawn as ___jacSpawn,
+            __jacUnsafeHtml as ___jacUnsafeHtml,
+            __normalizeCredential as ___normalizeCredential,
+            __normalizeIdentity as ___normalizeIdentity,
+            __overlaps as ___overlaps,
+            __removeLocalStorage as ___removeLocalStorage,
+            __setLocalStorage as ___setLocalStorage,
+            __unwrapFormSchema as ___unwrapFormSchema,
+            errorOverlay as ___errorOverlay,
+            jacArrangement as _jacArrangement,
+            jacIsLoggedIn as _jacIsLoggedIn,
+            jacLeaveLocalUser as _jacLeaveLocalUser,
+            jacLocalUsers as _jacLocalUsers,
+            jacLogin as _jacLogin,
+            jacLogout as _jacLogout,
+            jacSetToken as _jacSetToken,
+            jacSignup as _jacSignup,
+            jacSpawn as _jacSpawn,
+            jacSsoConnect as _jacSsoConnect,
+            jacSsoConnections as _jacSsoConnections,
+            jacSsoDisconnect as _jacSsoDisconnect,
+            jacSsoFinish as _jacSsoFinish,
+            jacSsoLogin as _jacSsoLogin,
+            jacUseArrangement as _jacUseArrangement,
+            jacUseLocalUser as _jacUseLocalUser,
+            navigate as _navigate
+        },
+        solid_runtime {
+            BridgeError as _BridgeError,
+            BridgeRejected as _BridgeRejected,
+            BridgeTimeout as _BridgeTimeout,
+            BridgeUnavailable as _BridgeUnavailable,
+            ErrorFallback as ___ErrorFallback,
+            __bridgeApiBase as ___bridgeApiBase,
+            __bridgeErrorFor as ___bridgeErrorFor,
+            __bridgeErrorFromFetch as ___bridgeErrorFromFetch,
+            __cacheGet as ___cacheGet,
+            __cacheSet as ___cacheSet,
+            __cachedEndpointCall as ___cachedEndpointCall,
+            __createJacSchema as ___createJacSchema,
+            __doFuncFetch as ___doFuncFetch,
+            __doWalkerFetch as ___doWalkerFetch,
+            __evictOldest as ___evictOldest,
+            __getApiBaseUrl as ___getApiBaseUrl,
+            __getCacheState as ___getCacheState,
+            __getEndpointEffects as ___getEndpointEffects,
+            __getLocalStorage as ___getLocalStorage,
+            __invalidateEndpoint as ___invalidateEndpoint,
+            __isFresh as ___isFresh,
+            __jacCallFunction as ___jacCallFunction,
+            __jacClearCache as ___jacClearCache,
+            __jacDesktopBroker as ___jacDesktopBroker,
+            __jacInstallErrorHandlers as ___jacInstallErrorHandlers,
+            __jacPollBrokerSession as ___jacPollBrokerSession,
+            __jacReactErrorHandler as ___jacReactErrorHandler,
+            __jacReportError as ___jacReportError,
+            __jacSleep as ___jacSleep,
+            __jacSpawn as ___jacSpawn,
+            __normalizeCredential as ___normalizeCredential,
+            __normalizeIdentity as ___normalizeIdentity,
+            __overlaps as ___overlaps,
+            __removeLocalStorage as ___removeLocalStorage,
+            __setLocalStorage as ___setLocalStorage,
+            __unwrapFormSchema as ___unwrapFormSchema,
+            errorOverlay as ___errorOverlay,
+            jacIsLoggedIn as _jacIsLoggedIn,
+            jacLogin as _jacLogin,
+            jacLogout as _jacLogout,
+            jacSetToken as _jacSetToken,
+            jacSignup as _jacSignup,
+            jacSpawn as _jacSpawn,
+            jacSsoConnect as _jacSsoConnect,
+            jacSsoConnections as _jacSsoConnections,
+            jacSsoDisconnect as _jacSsoDisconnect,
+            jacSsoFinish as _jacSsoFinish,
+            jacSsoLogin as _jacSsoLogin,
+            navigate as _navigate
+        },
+    ]
     client_surface ++> jac_to_js.JacToJSCompiler.add_runtime_imports {
         prepend_active_runtime_globals
     }
@@ -4354,7 +4425,11 @@ graph import client {
     ]
     plugin_config ++> desktop_plugin_config._load_desktop_template { _load_template }
     route_scanner ++> [
-        jac_client_compiler { RouteScanner, resolve_route_exports },
+        jac_client_compiler {
+            RouteScanner,
+            resolve_route_exports,
+            resolve_route_params
+        },
         jac_client_compiler.JacClientCompiler._check_entry_renders_routes {
             entry_drops_route_children
         },
@@ -6512,6 +6587,7 @@ graph import compiler {
             W1050,
             W1051,
             W1053,
+            W1099,
             W1100,
             W1101,
             W1102,
@@ -10487,7 +10563,7 @@ graph import compiler.driver {
     ]
     pipeline_runner --> [
         application._prepare_revision { compile_application },
-        application.prepare_route_metadata { route_exports },
+        application.prepare_route_metadata { route_exports, route_params },
     ]
     pipeline_types ++> [
         compiler { AnalysisFact, CompilationProduct },

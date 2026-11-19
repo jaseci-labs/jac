@@ -786,6 +786,15 @@ walker EsastGenPass(TreePass) {
     ) -> None;
 
     def _forwarder_ret_label(ability_node: uni.Ability) -> str;
+    def _stream_item_type(ret_type: str) -> (str | None);
+    def _stream_call(
+        func_name: str,
+        args_obj: es.Expression,
+        opts: es.Expression,
+        ret_type: str,
+        boundary_types: dict[str, BoundaryTypeInfo],
+        jac_node: uni.UniNode
+    ) -> es.Expression;
     def _build_server_forwarder(
         ability_node: uni.Ability, func_name: str, jac_node: uni.UniNode
     ) -> es.FunctionDeclaration;

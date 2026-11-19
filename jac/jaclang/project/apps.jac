@@ -32,6 +32,7 @@ obj AppConfig {
         version: str = "",
         profiles: list[str] = [],
         local_users: bool = False,
+        spaces: list[str] = [],
         overlays: dict[str, any] = {},
         implicit: bool = False;
 
@@ -44,6 +45,10 @@ obj AppConfig {
 def validate_app_name(name: str) -> None;
 
 def has_spaces_block(root_dir: str) -> bool;
+
+def app_npm_tree(raw_config: dict[str, any], app: AppConfig) -> str;
+
+def _desktop_overlay(fields: dict[str, any], overlays: dict[str, any], arch_app: any) -> None;
 
 def validate_entry_point(module: str) -> str;
 

@@ -27,6 +27,8 @@ def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes;
 
 def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None];
 
+def route_params(program: JacProgram, path: str) -> list[str];
+
 def compile_application(
     program: JacProgram, entry_path: str, options: CompileOptions
 ) -> uni.Module;

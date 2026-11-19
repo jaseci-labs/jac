@@ -58,9 +58,9 @@ impl __bridgeErrorFor(
     status: int, message: str, app: str = "", name: str = ""
 ) -> BridgeError {
     if status == 401 or status == 403 or status == 404 {
-        return BridgeRejected(app=app, name=name, detail=message, status=status);
+        return RemoteRejected(app=app, name=name, detail=message, status=status);
     }
-    return BridgeError(app=app, name=name, detail=message, status=status);
+    return RemoteFailed(app=app, name=name, detail=message, status=status);
 }
 
 impl __fetchOrRaise(url: str, init: dict[str, any], app: str, name: str) -> Response {
@@ -77,9 +77,9 @@ impl __bridgeErrorFromFetch(err: any, app: str = "", name: str = "") -> BridgeEr
     }
     message = __errorMessage(err);
     if err and (err.name == "AbortError" or err.name == "TimeoutError") {
-        return BridgeTimeout(app=app, name=name, detail=message);
+        return RemoteTimeout(app=app, name=name, detail=message);
     }
-    return BridgeUnavailable(app=app, name=name, detail=message);
+    return RemoteUnavailable(app=app, name=name, detail=message);
 }
 
 impl __bridgeApiBase(opts: (dict[str, any] | None) = None) -> str {
@@ -248,6 +248,87 @@ impl __jacCallFunction(
         args_key,
         lambda -> any { return __doFuncFetch(function_name, args, opts); }
     );
+}
+
+"""A server function that gives an iterator is a stream: its items arrive one by
+one as server-sent events, and the caller reads them with `async for`. The request
+is made when the first item is asked for, each item is decoded as the function's
+item type, and a failure is raised where the item would have come."""
+impl __jacCallStream(
+    function_name: str,
+    args: dict[str, any] = {},
+    opts: (dict[str, any] | None) = None,
+    decode: any = None
+) -> any {
+    return __jacStreamItems(function_name, args, opts, decode);
+}
+
+impl __jacStreamItems(
+    function_name: str, args: dict[str, any], opts: (dict[str, any] | None), decode: any
+) -> any {
+    app = opts["app"] if opts and opts["app"] else "";
+    token = __getLocalStorage("jac_token");
+    base_url = __bridgeApiBase(opts);
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"};
+    if opts and opts["contract"] {
+        headers["X-Jac-Endpoint"] = opts["contract"];
+    }
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
+    response = await __fetchOrRaise(
+        f"{base_url}/function/{function_name}",
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)},
+        app,
+        function_name
+    );
+    if not response.ok {
+        error_text = await response.text();
+        raise __bridgeErrorFor(
+            int(response.status),
+            f"Function {function_name} failed: {error_text}",
+            app,
+            function_name
+        );
+    }
+    reader = response.body.getReader();
+    decoder = new(TextDecoder);
+    nl = chr(10);
+    buffered = "";
+    while True {
+        part = await reader.read();
+        if part.done {
+            break;
+        }
+        buffered = buffered + decoder.decode(part.value, {"stream": True});
+        frames = buffered.split(nl + nl);
+        buffered = frames.pop();
+        for frame in frames {
+            event = "message";
+            data_lines: list[str] = [];
+            for line in frame.split(nl) {
+                if line.startswith("event:") {
+                    event = line[6:].strip();
+                } elif line.startswith("data:") {
+                    data_lines.append(line[5:].strip());
+                }
+            }
+            if not data_lines {
+                continue;
+            }
+            payload = JSON.parse(nl.join(data_lines));
+            if event == "end" {
+                return;
+            }
+            if event == "error" {
+                detail = str(payload["message"] if payload and payload["message"] else "the stream failed");
+                raise RemoteFailed(
+                    app=app, name=function_name, detail=f"Function {function_name} failed: {detail}"
+                );
+            }
+            yield decode(payload) if decode else payload;
+        }
+    }
 }
 
 impl __authPolicy -> any {
@@ -1028,6 +1109,135 @@ impl __unwrapFormSchema(schema: any) -> any {
     return actualSchema;
 }
 
+impl RemoteError.postinit {
+    self.message = self.detail;
+}
+
 impl BridgeError.postinit {
     self.message = self.detail;
+    if not self.space {
+        self.space = self.app;
+    }
+    if not self.endpoint {
+        self.endpoint = self.name;
+    }
+}
+
+"""A desktop app's broker answers these; a page served by a plain server has no
+broker, and sees one arrangement and no local users."""
+impl __jacBrokerJson(
+    method: str, url: str, body: (dict[str, any] | None) = None, must: bool = False
+) -> any {
+    init: dict[str, any] = {
+        "method": method, "headers": {"Content-Type": "application/json"}
+    };
+    if body is not None {
+        init["body"] = JSON.stringify(body);
+    }
+    response = await __fetchOrRaise(url, init, "", url);
+    if response.ok {
+        return JSON.parse(await response.text());
+    }
+    if must {
+        raise RemoteRejected(
+            name=url, endpoint=url, detail=await response.text(), status=int(response.status)
+        );
+    }
+    return None;
+}
+
+impl jacArrangement -> JacArrangement {
+    broker = __jacDesktopBroker();
+    if not broker {
+        return JacArrangement();
+    }
+    reply: any = await __jacBrokerJson("GET", f"{broker}/backend");
+    if not reply {
+        return JacArrangement();
+    }
+    names: list[str] = [];
+    for option in (reply["backends"] or []) {
+        names.append(str(option["name"]));
+    }
+    active = str(reply["active"] or "");
+    return JacArrangement(
+        names=names, current=active or str(reply["default"] or ""), chosen=bool(active)
+    );
+}
+
+impl jacUseArrangement(name: str) -> None {
+    broker = __jacDesktopBroker();
+    if not broker {
+        raise RemoteRejected(detail="this app has one arrangement");
+    }
+    await __jacBrokerJson("POST", f"{broker}/backend", {"name": name}, True);
+    __jacClearCache();
+    __removeLocalStorage("jac_token");
+}
+
+impl jacLocalUsers -> JacLocalUsers {
+    broker = __jacDesktopBroker();
+    if not broker {
+        return JacLocalUsers();
+    }
+    reply: any = await __jacBrokerJson("GET", f"{broker}/profiles");
+    if not reply or not reply["enabled"] {
+        return JacLocalUsers();
+    }
+    users: list[str] = [];
+    current = "";
+    active_id = str(reply["active"] or "");
+    for profile in (reply["profiles"] or []) {
+        users.append(str(profile["name"]));
+        if str(profile["id"]) == active_id {
+            current = str(profile["name"]);
+        }
+    }
+    if current {
+        session: any = await __jacBrokerJson("POST", f"{broker}/profiles/session");
+        if session and session["token"] {
+            jacSetToken(str(session["token"]));
+        }
+    }
+    return JacLocalUsers(enabled=True, users=users, current=current);
+}
+
+impl jacUseLocalUser(name: str) -> bool {
+    broker = __jacDesktopBroker();
+    if not broker {
+        raise RemoteRejected(detail="this app has no local users");
+    }
+    listing: any = await __jacBrokerJson("GET", f"{broker}/profiles");
+    if not listing or not listing["enabled"] {
+        raise RemoteRejected(detail="this app has no local users");
+    }
+    found: any = None;
+    for profile in (listing["profiles"] or []) {
+        if str(profile["name"]) == name {
+            found = profile;
+        }
+    }
+    if found is None {
+        made: any = await __jacBrokerJson(
+            "POST", f"{broker}/profiles", {"name": name}, True
+        );
+        found = made["profile"] if made else None;
+    }
+    if found is None {
+        raise RemoteRejected(detail=f"no local user '{name}'");
+    }
+    await __jacBrokerJson("POST", f"{broker}/profiles/active", {"id": found["id"]}, True);
+    session: any = await __jacBrokerJson("POST", f"{broker}/profiles/session");
+    if session and session["token"] {
+        jacSetToken(str(session["token"]));
+    }
+    return True;
+}
+
+impl jacLeaveLocalUser -> None {
+    jacLogout();
+}
+
+impl __jacUnsafeHtml(html: str) -> any {
+    return unsafe_html(html);
 }

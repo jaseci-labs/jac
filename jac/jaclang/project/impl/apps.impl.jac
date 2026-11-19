@@ -43,6 +43,76 @@ impl AppConfig.contains(project_root: str, abs_path: str) -> bool {
     return _norm_path(abs_path) == _norm_path(self.entry_path(project_root));
 }
 
+"""A desktop app's arrangements, as jac's desktop host runs them: each profile the
+app holds is a backend, embedded when the arrangement runs a native space and the
+remote space's URL when it does not; local users are jac's local profiles; the
+window and the identity are the app's own keys."""
+impl _desktop_overlay(fields: dict[str, any], overlays: dict[str, any], arch_app: any) -> None {
+    desktop: dict[str, any] = dict(overlays.get("desktop") or {});
+    raw_profiles = fields.get("profiles");
+    profiles = [str(p) for p in raw_profiles] if isinstance(raw_profiles, list) and raw_profiles else ["default"];
+    remote = overlays.get("remote") if isinstance(overlays.get("remote"), dict) else {};
+    remote_url = str(next(iter(remote.values()), "") or "") if remote else "";
+    backends: dict[str, str] = {};
+    for profile in profiles {
+        runs = arch_app.arrangements.get(profile);
+        if runs is None {
+            continue;
+        }
+        embedded = any(
+            [arch_app.hosts.get(space, "") in ("native", "cpython", "node") for space in runs]
+        );
+        if embedded {
+            backends[profile] = "embedded";
+        } elif remote_url {
+            backends[profile] = remote_url;
+        }
+    }
+    if len(backends) > 1 {
+        desktop.setdefault("backends", backends);
+        desktop.setdefault("default_backend", profiles[0]);
+    } elif backends {
+        desktop.setdefault("backend", next(iter(backends.values())));
+    }
+    if fields.get("local_users") is True {
+        desktop.setdefault("profiles", True);
+    }
+    for key in ("name", "identifier", "version") {
+        value = fields.get(key);
+        if isinstance(value, str) and value and key not in desktop {
+            desktop[key] = value;
+        }
+    }
+    window = overlays.get("window");
+    if isinstance(window, dict) and "window" not in desktop {
+        desktop["window"] = dict(window);
+    }
+    if desktop {
+        overlays["desktop"] = desktop;
+    }
+}
+
+"""The npm tree (`[npm.<tree>]`) a client app's packages come from: the one a space
+of the app names with `[spaces.<space>] npm`, else the project's only tree."""
+impl app_npm_tree(raw_config: dict[str, any], app: AppConfig) -> str {
+    trees = raw_config.get("npm");
+    if not isinstance(trees, dict) or not trees {
+        return "";
+    }
+    spaces_raw = raw_config.get("spaces");
+    for space in app.spaces {
+        table = spaces_raw.get(space) if isinstance(spaces_raw, dict) else None;
+        tree = table.get("npm") if isinstance(table, dict) else None;
+        if isinstance(tree, str) and tree in trees {
+            return tree;
+        }
+    }
+    if len(trees) == 1 {
+        return str(next(iter(trees.keys())));
+    }
+    return "";
+}
+
 impl has_spaces_block(root_dir: str) -> bool {
     arch = os.path.join(root_dir, "archwire.jac");
     if not os.path.isfile(arch) {
@@ -121,6 +191,9 @@ impl parse_apps(
             pins = dict(arch_app.pins);
             pins.update(placement.get("pins", {}));
             placement["pins"] = pins;
+            if arch_app.kind == "desktop" {
+                _desktop_overlay(fields, overlays, arch_app);
+            }
         }
         kind = str(fields.get("kind", "")).strip();
         if not kind and arch_app is not None {
@@ -160,6 +233,7 @@ impl parse_apps(
             version=str(fields.get("version", "")).strip(),
             profiles=[str(x) for x in raw_profiles] if isinstance(raw_profiles, list) else [],
             local_users=fields.get("local_users") is True,
+            spaces=list(arch_app.runs) + list(arch_app.serves) if arch_app is not None else [],
             overlays=overlays
         );
     }
@@ -171,8 +245,23 @@ impl parse_apps(
             name=name,
             kind=arch_app.kind,
             entry_point=arch_app.entry_point,
+            spaces=list(arch_app.runs) + list(arch_app.serves),
             overlays={"placement": {"pins": dict(arch_app.pins)}}
         );
+    }
+    if from_arch {
+        # The archwire's order is the apps' order: the first app that shares an
+        # entry with another is the one a path resolves to.
+        ordered: dict[str, AppConfig] = {};
+        for name in from_arch.keys() {
+            if name in apps {
+                ordered[name] = apps[name];
+            }
+        }
+        for (name, app) in apps.items() {
+            ordered.setdefault(name, app);
+        }
+        apps = ordered;
     }
     entries: dict[str, str] = {};
     for app in apps.values() {

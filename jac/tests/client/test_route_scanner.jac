@@ -60,6 +60,31 @@ def _route_exports_from_source(path: Path) -> tuple[((str | None), (str | None))
 }
 
 
+"""Stand-in for the manifest's `params` of the page export: the parameter names
+written in the page function's signature, a vararg as `*name`."""
+def _route_params_from_source(path: Path) -> list[str] {
+    try {
+        text = path.read_text(encoding='utf-8');
+    } except OSError {
+        return [];
+    }
+    hit = re.search(r'def(?::\w+)?\s+\w+\s*\(([^)]*)\)\s*->\s*JsxPage\b', text);
+    if not hit or not hit.group(1).strip() {
+        return [];
+    }
+    names: list[str] = [];
+    for part in hit.group(1).split(',') {
+        piece = part.strip();
+        star = piece.startswith('*');
+        name = piece.lstrip('*').split(':')[0].strip();
+        if name {
+            names.append(('*' if star else '') + name);
+        }
+    }
+    return names;
+}
+
+
 """Return the non-layout route paths a scan produced."""
 def _route_paths(scanner: RouteScanner) -> set[str] {
     routes = scanner.scan();
@@ -202,6 +227,45 @@ test "dynamic index and catch-all urls still derive from the filename" {
         assert paths == {"/", "/users", "/users/:id", "/*"} , (
             f"file-derived route paths regressed; got {paths}"
         );
+    }
+}
+
+
+"""The page function's parameters are the URL's segments after the file's, as
+neojac routes them: `page(id: str)` in reviews.jac is /reviews/:id beside
+reviews/index.jac at /reviews, and `*rest: str` is the rest of the path."""
+test "page parameters are path parameters" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(proj, "pages/index.jac", "def:pub page() -> JsxPage { return <div/>; }");
+        _write(
+            proj, "pages/reviews.jac", "def:pub page(id: str) -> JsxPage { return <div/>; }"
+        );
+        _write(
+            proj, "pages/reviews/index.jac", "def:pub page() -> JsxPage { return <div/>; }"
+        );
+        _write(
+            proj,
+            "pages/sum.jac",
+            "def:pub page(a: str, b: str) -> JsxPage { return <div/>; }"
+        );
+        _write(
+            proj,
+            "pages/docs/index.jac",
+            "def:pub page(*rest: str) -> JsxPage { return <div/>; }"
+        );
+        scanner = RouteScanner(
+            proj,
+            route_exports_of=_route_exports_from_source,
+            route_params_of=_route_params_from_source
+        );
+        routes = {r.path: r for r in scanner.scan() if not r.is_layout};
+        assert set(routes.keys()) == {"/", "/reviews/:id", "/reviews", "/sum/:a/:b", "/docs/*"} , (
+            f"got {sorted(routes.keys())}"
+        );
+        assert routes["/reviews/:id"].params == ["id"];
+        assert routes["/docs/*"].is_catch_all and routes["/docs/*"].rest_param == "rest";
+        assert routes["/docs/*"].params == ["rest"];
     }
 }
 

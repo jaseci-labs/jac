@@ -989,11 +989,16 @@ impl prepare_route_metadata(`root: str, program: any) -> (list[str] | None) {
         return None;
     }
     import from jaclang.client.route_scanner { RouteScanner }
-    import from jaclang.compiler.driver.pipeline_runner { route_exports }
+    import from jaclang.compiler.driver.pipeline_runner { route_exports, route_params }
     def exports(path: Path) -> tuple[str | None, str | None] {
         return route_exports(program, str(path));
     }
-    scanner = RouteScanner(project_root=Path(`root), route_exports_of=exports);
+    def params(path: Path) -> list[str] {
+        return route_params(program, str(path));
+    }
+    scanner = RouteScanner(
+        project_root=Path(`root), route_exports_of=exports, route_params_of=params
+    );
     return [
         route.path
         for route in scanner.scan()

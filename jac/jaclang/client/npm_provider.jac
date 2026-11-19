@@ -28,6 +28,10 @@ def _app_wants_client(config: JacConfig, app: any) -> bool;
 
 def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]];
 
+def npm_tree_for(config: JacConfig, app: any) -> str;
+
+def npm_tree_deps(config: JacConfig, tree: str, dev: bool) -> dict[str, str];
+
 
 def regenerate_and_install(project_dir: Path);
 

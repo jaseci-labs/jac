@@ -13,7 +13,9 @@ obj DerivedApp {
         pins: dict[str, str] = {},
         runs: list[str] = [],
         serves: list[str] = [],
-        remote: list[str] = [];
+        remote: list[str] = [],
+        arrangements: dict[str, list[str]] = {},
+        hosts: dict[str, str] = {};
 }
 
 glob HOST_PLACEMENT: dict[str, str] = {

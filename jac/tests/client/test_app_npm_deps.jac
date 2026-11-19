@@ -43,3 +43,23 @@ test "agreeing pins and disjoint apps are silent" {
     names = [name for (name, _, _, _) in deps];
     assert names.count("lucide-react") == 1 , names;
 }
+
+"""A project written for neojac lists a space's packages as an npm tree,
+`[npm.<tree>]`, whose `dependencies` and `devDependencies` are the tree's
+package.json. The tree a client app's space names with `[spaces.<space>] npm`
+joins that app's packages; a project with one tree gives it to every client app."""
+test "an npm tree's packages are a client app's packages" {
+    toml = (
+        '[project]\nname = "acme"\ndefault-app = "web"\n\n'
+        '[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n'
+        '[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n\n'
+        '[npm.web]\nname = "acme"\nprivate = true\n\n'
+        '[npm.web.dependencies]\nmermaid = "^11"\nreact = "^19.1.0"\n\n'
+        '[npm.web.devDependencies]\n"@tailwindcss/vite" = "^4.1.17"\n'
+    );
+    (deps, err) = _resolve(toml);
+    by_name = {(name, dev): (version, origin) for (name, version, origin, dev) in deps};
+    assert by_name[("mermaid", False)] == ("^11", "npm.web") , by_name;
+    assert by_name[("@tailwindcss/vite", True)] == ("^4.1.17", "npm.web") , by_name;
+    assert err == "" , err;
+}

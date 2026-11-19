@@ -21,6 +21,8 @@ obj RouteEntry {
         auth_required: bool = False,
         is_layout: bool = False,
         is_catch_all: bool = False,
+        params: list[str] = [],
+        rest_param: str = "",
         children: list[RouteEntry] = [];
 }
 
@@ -35,6 +37,7 @@ obj RouteScanner {
 
     has project_root: Path,
         route_exports_of: Callable[([Path], tuple[((str | None), (str | None))])],
+        route_params_of: (Callable[([Path], list[str])] | None) = None,
         pages_dir: Path postinit,
         _routes: list[RouteEntry] = [],
         _layouts: dict[(str, RouteEntry)] = {},
@@ -57,4 +60,5 @@ obj RouteScanner {
 }
 
 def resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))];
+def resolve_route_params(module_path: Path) -> list[str];
 def entry_drops_route_children(manifest: any) -> bool;
