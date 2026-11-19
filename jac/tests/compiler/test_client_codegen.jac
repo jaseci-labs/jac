@@ -2,6 +2,7 @@
 
 import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
+import re;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
@@ -121,16 +122,45 @@ test "client import local jac module gets relative path" {
     with TemporaryDirectory() as tmpdir {
         (Path(tmpdir) / "jac.toml").write_text('[project]\nkind = "js-package"\n');
         local_module = Path(tmpdir) / "mymodule.jac";
-        local_module.write_text("def helper() -> int { return 42; }");
+        local_module.write_text("def Helper() -> int { return 42; }");
+        (Path(tmpdir) / "other.jac").write_text(
+            "def Helper() -> JsxElement { return <p />; }"
+        );
+        # main.impl/ has its own mymodule, so its import is a different file.
+        (Path(tmpdir) / "main.impl").mkdir();
+        (Path(tmpdir) / "main.impl" / "mymodule.jac").write_text(
+            "def Helper() -> int { return 1; }"
+        );
+        (Path(tmpdir) / "main.impl" / "fourth.impl.jac").write_text(
+            "impl fourth() -> int {\n    import from mymodule { Helper }\n    return Helper();\n}\n"
+        );
         main_file = Path(tmpdir) / "main.jac";
+        # third's import comes first, but the module-level Helper keeps its name.
         main_file.write_text(
-            "import from mymodule { helper }\n\ndef:pub app() -> int {\n    return helper();\n}\n"
+            "def:pub third() -> JsxElement {\n    import from other { Helper }\n    return <div>{Helper()}<Helper /></div>;\n}\n\nimport from mymodule { Helper }\n\ndef:pub app() -> int {\n    return Helper();\n}\n\ndef:pub twice() -> int;\n\ndef:pub fourth() -> int;\n"
+        );
+        # The annex repeats the import; one module in JS, so it must bind once (#10756).
+        (Path(tmpdir) / "main.impl.jac").write_text(
+            "import from mymodule { Helper }\n\nimpl twice() -> int {\n    return Helper() * 2;\n}\n"
         );
         prog = JacProgram();
         mod = prog.compile(str(main_file));
         js = mod.gen.js;
         assert "./mymodule.js" in js , f"Local Jac module import should use ./mymodule.js, got: {js}";
         assert 'from "mymodule"' not in js , "Should not have bare module name without ./ prefix";
+        assert js.count('from "./mymodule.js"') == 1 , f"helper is imported more than once: {js}";
+        names = dict(
+            re.findall(
+                r'import \{ Helper as (Helper\$\d) \} from "\./([\w./]+)\.js"', js
+            )
+        );
+        assert sorted(names.values()) == ["main.impl/mymodule", "other"] , js;
+        other = [
+            n
+            for (n, src) in names.items()
+            if src == "other"
+        ][0];
+        assert f"{other}()" in js and f"__jacJsx({other}," in js , js;
     }
 }
 
