@@ -194,32 +194,29 @@ test "GET /admin/schedules lists the static tasks, to admins and the fleet bridg
     try {
         server._register_scheduled_tasks();
         user = client.register_and_login("schedules-user", "password123");
-        os.environ[BRIDGE_TOKEN_ENV] = "fleet-secret";
-        for (bearer, allowed) in [
-            (user, False),
-            ("not-the-secret", False),
-            ("fleet-secret", True)
+        admin = client.admin_login();
+        answers: dict[str, any] = {};
+        for (who, bridge, bearer, allowed) in [
+            ("a user", "fleet-secret", user, False),
+            ("a wrong secret", "fleet-secret", "not-the-secret", False),
+            ("the fleet secret", "fleet-secret", "fleet-secret", True),
+            ("the secret with none set", "", "fleet-secret", False),
+            ("an admin", "", admin, True)
         ] {
-            answer = client.get(
+            if bridge {
+                os.environ[BRIDGE_TOKEN_ENV] = bridge;
+            } else {
+                os.environ.pop(BRIDGE_TOKEN_ENV, None);
+            }
+            answers[who] = client.get(
                 "/admin/schedules", headers={"Authorization": f"Bearer {bearer}"}
             );
-            if allowed {
-                assert answer.status_code == 200 , answer.text;
-            } else {
-                assert answer.status_code in (401, 403) , answer.text;
-            }
+            assert answers[who].status_code in ((200, ) if allowed else (401, 403)) , (
+                who,
+                answers[who].text
+            );
         }
-        os.environ.pop(BRIDGE_TOKEN_ENV, None);
-        refused = client.get(
-            "/admin/schedules", headers={"Authorization": "Bearer fleet-secret"}
-        );
-        assert refused.status_code in (401, 403) , refused.text;
-
-        admin = client.admin_login();
-        listed = client.get(
-            "/admin/schedules", headers={"Authorization": f"Bearer {admin}"}
-        );
-        assert listed.status_code == 200 , listed.text;
+        listed = answers["an admin"];
         rows = {r["name"]: r for r in listed.json()["data"]["schedules"]};
         for (name, kind, interval, cron) in [
             ("StaticIntervalWalker", "walker", 0.3, None),
