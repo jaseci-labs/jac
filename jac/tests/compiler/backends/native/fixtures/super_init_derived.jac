@@ -67,34 +67,19 @@ obj NamedChild(Named) {
     }
 }
 
-obj Opts {
-    has level: int = 1,
-        names: list[str] = [];
-}
-
-obj OptsChild(Opts) {
-    def init(full: bool) {
-        self.names = ["stale"];
-        if full {
-            super.init();
-        } else {
-            super.init(7);
-        }
-    }
-}
-
 glob seed: int = 1;
 
 def base_level -> int {
     return 2;
 }
 
-obj Seeded {
+obj Opts {
     has level: int = seed,
-        bonus: int = base_level();
+        bonus: int = base_level(),
+        names: list[str] = (saved := ["w"]);
 }
 
-obj SeededChild(Seeded) {
+obj OptsChild(Opts) {
     def init(seed: int) {
         def base_level -> int {
             return seed;
@@ -103,33 +88,16 @@ obj SeededChild(Seeded) {
     }
 }
 
-def make_seeded(seed: int) -> Seeded {
-    return Seeded();
-}
-
-obj Walrused {
-    has items: list[str] = (saved := ["w"]);
-}
-
-obj WalrusedChild(Walrused) {
-    def init {
-        super.init();
-    }
+def make_opts(seed: int) -> Opts {
+    return Opts();
 }
 
 with entry {
-    sc = SeededChild(7);
-    ms = make_seeded(7);
-    print(sc.level, sc.bonus, ms.level, ms.bonus);
     for i in range(2) {
-        wd = Walrused();
-        wc = WalrusedChild();
-        wd.items.append(f"d{i}");
-        print(wd.items, wc.items);
-    }
-    for full in [True, False] {
-        oc = OptsChild(full);
-        print(oc.level, oc.names);
+        oc = OptsChild(7);
+        mo = make_opts(7);
+        mo.names.append(f"d{i}");
+        print(oc.level, oc.bonus, oc.names, mo.level, mo.bonus, mo.names);
     }
     sq = Square(3.0);
     print(sq.kind.value, sq.side, sq.area());
