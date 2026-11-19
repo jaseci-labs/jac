@@ -4160,12 +4160,13 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                         continue;
                     }
                 }
-                syms.add(id(item.name.sym));
+                bound = item.alias or item.name;
+                syms.add((id(item.name.sym), bound.value));
             }
         }
         self._sv_async_syms_cache[mod_key] = syms;
     }
-    return id(tgt.sym) in syms;
+    return (id(tgt.sym), tgt.value) in syms;
 }
 
 impl TypeEvaluator._prefetch_types {
