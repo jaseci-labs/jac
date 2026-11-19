@@ -251,6 +251,10 @@ class JacMetaImporter(MetaPathFinder, Loader):
         if sealed_spec is not None:
             return sealed_spec
 
+        stdjac_spec = self._stdjac_spec(fullname)
+        if stdjac_spec is not None:
+            return stdjac_spec
+
         if path is None:
             # Top-level import
             paths_to_search = get_jac_search_paths()
@@ -307,6 +311,29 @@ class JacMetaImporter(MetaPathFinder, Loader):
                     "(or forced by 'jac build --native')."
                 )
 
+        return None
+
+    def _stdjac_spec(self, fullname: str) -> importlib.machinery.ModuleSpec | None:
+        """`stdjac` and `stdjac.<module>`: neojac's app runtime library, which
+        ships as jaclang/stdjac. A program imports it by the short name, as
+        the compiler resolves it, so the loader serves the bundled package
+        under that name (sealed image first, then the source tree)."""
+        if fullname != "stdjac" and not fullname.startswith("stdjac."):
+            return None
+        sealed = self._sealed_spec("jaclang." + fullname)
+        if sealed is not None:
+            return sealed
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stdjac")
+        if fullname == "stdjac":
+            if not os.path.isdir(base):
+                return None
+            spec = importlib.machinery.ModuleSpec(fullname, None, is_package=True)
+            spec.submodule_search_locations = [base]
+            return spec
+        rest = fullname[len("stdjac.") :].split(".")
+        candidate = os.path.join(base, *rest) + ".jac"
+        if os.path.isfile(candidate):
+            return importlib.util.spec_from_file_location(fullname, candidate, loader=self)
         return None
 
     def _sealed_spec(self, fullname: str) -> importlib.machinery.ModuleSpec | None:

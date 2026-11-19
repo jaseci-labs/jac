@@ -32,7 +32,7 @@ def encode(value: any) -> any {
     fields = _fields_of(value);
     if fields is not None {
         out = {name: encode(v) for (name, v) in fields};
-        if isinstance(value, Node) or isinstance(value, Edge) {
+        if isinstance(value, (NodeArchetype, EdgeArchetype)) {
             out["__jid"] = str(jid(value));
         }
         return out;

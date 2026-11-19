@@ -5,9 +5,9 @@
 
 obj ByTool {
     has name: str,
+        call: Callable[[dict[str, any]], any],
         doc: str = "",
-        schema: dict[str, any] = {},
-        call: Callable[[dict[str, any]], any];
+        schema: dict[str, any] = {};
 }
 
 obj ByCall {
