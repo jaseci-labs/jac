@@ -10,7 +10,9 @@ import os;
 import time;
 import unittest.mock;
 import from tempfile { TemporaryDirectory }
+import from types { SimpleNamespace }
 import from jaclang.data.store { ConnInfo, PgStore, TxnIsolation }
+import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface }
 import from jaclang.server { sv_client }
 import from jaclang.server.bridge { BridgeRejected, BridgeUnavailable }
 import jaclang.server.outbox as outbox_mod;
@@ -633,36 +635,48 @@ test "remember runs on the worker connection, enqueue in the request transaction
 }
 
 
-test "a request never derives the worker's side store; the worker does, once" {
+test "a request never derives the worker's side store; a forked worker does, once" {
     primary = _RecordingPg(conninfo=ConnInfo(host="primary.invalid"));
     side = _RecordingPg(conninfo=ConnInfo(host="side.invalid"));
-    mem = _FakeMemory(store=primary);
+    ctx = SimpleNamespace(mem=_FakeMemory(store=primary));
     use_store(None);
     derived: list[any] = [];
 
-    def _mem -> any {
-        return mem;
+    def _fresh_context(user_root: any) -> any {
+        return ctx;
     }
 
     def _side(primary_store: any) -> any {
         derived.append(primary_store);
         return PgOutboxStore(store=side);
     }
-    mem_patch: any = unittest.mock.patch.object(outbox_mod, "_current_memory", _mem);
+    context_patch: any = unittest.mock.patch.object(
+        JacRuntimeInterface, "create_j_context", _fresh_context
+    );
+    # A forked worker starts with no process context: after_fork_in_child clears it.
+    fork_patch: any = unittest.mock.patch.object(JacRuntime, "exec_ctx", None);
     derive_patch: any = unittest.mock.patch.object(
         outbox_mod, "_derive_worker_store", _side
     );
     try {
-        with mem_patch, derive_patch {
-            enqueue("scoring", "Greet", {"name": "ada"});
+        with context_patch, fork_patch, derive_patch {
+            token = JacRuntime.push_request_context(ctx);
+            try {
+                enqueue("scoring", "Greet", {"name": "ada"});
+            } finally {
+                JacRuntime.reset_request_context(token);
+            }
             assert derived == [] , (
                 "a request derived the worker's side store: the request path"
                 " must only touch the caller's own connection"
             );
             assert outbox_mod._state.worker_store is None;
             worker = outbox_mod._store_for_worker();
+            assert isinstance(worker, PgOutboxStore) , (
+                "a worker with no process context fell back to SQLite while"
+                " requests enqueue into Postgres"
+            );
             assert derived == [primary];
-            assert isinstance(worker, PgOutboxStore);
             assert worker.store is side;
             assert outbox_mod._store_for_worker() is worker;
             assert derived == [primary] , (
