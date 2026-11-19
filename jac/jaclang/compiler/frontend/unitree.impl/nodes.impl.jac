@@ -1738,6 +1738,9 @@ impl Import.postinit -> None {
     self.jac_detected = None;
     self.boundary_facts = None;
     self.native_only_drop = False;
+    self.native_mirror_target = None;
+    self.native_mirror_import_name = None;
+    self.native_mirror_names = [];
     UniNode.postinit(self);
     CodeBlockStmt.postinit(self);
     ContextAwareNode.postinit(self);
