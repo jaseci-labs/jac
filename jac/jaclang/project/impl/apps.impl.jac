@@ -43,14 +43,14 @@ impl AppConfig.contains(project_root: str, abs_path: str) -> bool {
     return _norm_path(abs_path) == _norm_path(self.entry_path(project_root));
 }
 
-"""A desktop app's arrangements, as jac's desktop host runs them: each profile the
-app holds is a backend, embedded when the arrangement runs a native space and the
-remote space's URL when it does not; local users are jac's local profiles; the
-window and the identity are the app's own keys."""
-impl _desktop_overlay(fields: dict[str, any], overlays: dict[str, any], arch_app: any) -> None {
+impl _desktop_overlay(
+    fields: dict[str, any], overlays: dict[str, any], arch_app: any
+) -> None {
     desktop: dict[str, any] = dict(overlays.get("desktop") or {});
     raw_profiles = fields.get("profiles");
-    profiles = [str(p) for p in raw_profiles] if isinstance(raw_profiles, list) and raw_profiles else ["default"];
+    profiles = [str(p) for p in raw_profiles]
+        if isinstance(raw_profiles, list) and raw_profiles
+        else ["default"];
     remote = overlays.get("remote") if isinstance(overlays.get("remote"), dict) else {};
     remote_url = str(next(iter(remote.values()), "") or "") if remote else "";
     backends: dict[str, str] = {};
@@ -60,7 +60,10 @@ impl _desktop_overlay(fields: dict[str, any], overlays: dict[str, any], arch_app
             continue;
         }
         embedded = any(
-            [arch_app.hosts.get(space, "") in ("native", "cpython", "node") for space in runs]
+            [
+                arch_app.hosts.get(space, "") in ("native", "cpython", "node")
+                for space in runs
+            ]
         );
         if embedded {
             backends[profile] = "embedded";
@@ -92,8 +95,6 @@ impl _desktop_overlay(fields: dict[str, any], overlays: dict[str, any], arch_app
     }
 }
 
-"""The npm tree (`[npm.<tree>]`) a client app's packages come from: the one a space
-of the app names with `[spaces.<space>] npm`, else the project's only tree."""
 impl app_npm_tree(raw_config: dict[str, any], app: AppConfig) -> str {
     trees = raw_config.get("npm");
     if not isinstance(trees, dict) or not trees {
@@ -231,9 +232,13 @@ impl parse_apps(
             title=str(fields.get("name", "")).strip(),
             identifier=str(fields.get("identifier", "")).strip(),
             version=str(fields.get("version", "")).strip(),
-            profiles=[str(x) for x in raw_profiles] if isinstance(raw_profiles, list) else [],
+            profiles=[str(x) for x in raw_profiles]
+                if isinstance(raw_profiles, list)
+                else [],
             local_users=fields.get("local_users") is True,
-            spaces=list(arch_app.runs) + list(arch_app.serves) if arch_app is not None else [],
+            spaces=list(arch_app.runs) + list(arch_app.serves)
+                if arch_app is not None
+                else [],
             overlays=overlays
         );
     }
@@ -250,8 +255,6 @@ impl parse_apps(
         );
     }
     if from_arch {
-        # The archwire's order is the apps' order: the first app that shares an
-        # entry with another is the one a path resolves to.
         ordered: dict[str, AppConfig] = {};
         for name in from_arch.keys() {
             if name in apps {
@@ -266,7 +269,9 @@ impl parse_apps(
     entries: dict[str, str] = {};
     for app in apps.values() {
         identity = app.entry_point;
-        if identity in entries and app.name in from_arch and entries[identity] in from_arch {
+        if identity in entries
+            and app.name in from_arch
+            and entries[identity] in from_arch {
             continue;
         }
         if identity in entries {

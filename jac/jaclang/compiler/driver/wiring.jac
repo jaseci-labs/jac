@@ -166,7 +166,10 @@ def pattern_record(pattern: ModulePattern, scope: str = "") -> PatternRec;
 def rule_record(rule: ImportRule) -> RuleRec;
 def wire_records(wire: ImportWire, source: str = "") -> list[WireRec];
 def module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleRec]];
-def space_records(mod: Module, source: str) -> tuple[list[SpaceRec], list[AppRec], str];
+def space_records(
+    mod: Module, source: str
+) -> tuple[list[SpaceRec], list[AppRec], str];
+
 def parse_records(source: str, path: str) -> tuple[bool, list[WireRec], list[RuleRec]];
 def parse_arch_records(source: str, path: str) -> ArchRecords;
 def wire_block(provider: str, consumer: str) -> str;

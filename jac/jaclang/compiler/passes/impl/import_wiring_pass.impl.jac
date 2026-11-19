@@ -82,14 +82,19 @@ impl ImportWiringPass._check_spaces(blocks: list[GraphSpaces]) -> None {
         for stmt in block.body {
             if isinstance(stmt, SpaceDecl) {
                 if profile {
-                    self.ctx.emit(E1271, node_override=stmt.name, space=stmt.name.value);
+                    self.ctx.emit(
+                        E1271, node_override=stmt.name, space=stmt.name.value
+                    );
                 }
                 if stmt.host.value not in hosts {
                     self.ctx.emit(E1226, node_override=stmt.host, host=stmt.host.value);
                 }
                 if stmt.name.value in space_hosts {
                     self.ctx.emit(
-                        E0077, node_override=stmt.name, name=stmt.name.value, kind="space"
+                        E0077,
+                        node_override=stmt.name,
+                        name=stmt.name.value,
+                        kind="space"
                     );
                 } else {
                     space_hosts[stmt.name.value] = stmt.host.value;
@@ -127,7 +132,10 @@ impl ImportWiringPass._check_spaces(blocks: list[GraphSpaces]) -> None {
             for space in list(stmt.runs) + list(stmt.serves) {
                 if space.value not in space_hosts {
                     self.ctx.emit(
-                        E1273, node_override=space, app=stmt.name.value, space=space.value
+                        E1273,
+                        node_override=space,
+                        app=stmt.name.value,
+                        space=space.value
                     );
                 }
             }

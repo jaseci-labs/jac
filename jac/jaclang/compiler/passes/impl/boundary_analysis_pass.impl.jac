@@ -592,7 +592,6 @@ impl BoundaryAnalysisPass._register_type_import(
     type_name: str = ""
 ) -> bool {
     if nd.from_loc is not None and nd.from_loc.dot_path_str == "stdjac.remote" {
-        # The browser runtime defines this family itself; a wire copy would shadow it.
         return True;
     }
     type_name = type_name or item.name.value;

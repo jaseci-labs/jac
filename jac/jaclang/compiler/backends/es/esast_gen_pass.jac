@@ -446,6 +446,7 @@ walker EsastGenPass(TreePass) {
     def _inject_runtime_import(
         name: str, nd: uni.UniNode, src: str = "", local: str = ""
     ) -> None;
+
     def _is_stdjac_remote_import(nd: uni.Import) -> bool;
     def _import_runtime_names(nd: uni.Import) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
@@ -799,6 +800,7 @@ walker EsastGenPass(TreePass) {
         boundary_types: dict[str, BoundaryTypeInfo],
         jac_node: uni.UniNode
     ) -> es.Expression;
+
     def _build_server_forwarder(
         ability_node: uni.Ability, func_name: str, jac_node: uni.UniNode
     ) -> es.FunctionDeclaration;

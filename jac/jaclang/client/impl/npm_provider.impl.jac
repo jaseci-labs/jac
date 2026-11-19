@@ -100,7 +100,11 @@ impl npm_tree_deps(config: JacConfig, tree: str, dev: bool) -> dict[str, str] {
     if not isinstance(section, dict) {
         return {};
     }
-    return {str(k): str(v) for (k, v) in section.items() if isinstance(v, str)};
+    return {
+        str(k): str(v)
+        for (k, v) in section.items()
+        if isinstance(v, str)
+    };
 }
 
 impl regenerate_and_install(project_dir: Path) {

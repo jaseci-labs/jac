@@ -1150,14 +1150,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         return self._null_ok_attr_type(expr, base_type);
                     }
-                    # An operation on a union value that has not been narrowed is
-                    # checked when it runs (neojac): a `None` member alone warns.
-                    only_none = member_types and all(
-                        [m == "NoneType" or m == "None" for m in missing_types]
-                    );
+                    only_none = member_types
+                        and all(
+                            [m == "NoneType" or m == "None" for m in missing_types]
+                        );
                     if only_none {
                         self.emit_diag(
-                            W1099, expr.right, attr=expr.right.value, type=str(base_type)
+                            W1099,
+                            expr.right,
+                            attr=expr.right.value,
+                            type=str(base_type)
                         );
                     } else {
                         self.emit_diag(
@@ -4079,8 +4081,6 @@ impl TypeEvaluator._is_async_iterator_type(t: TypeBase) -> bool {
 }
 
 impl TypeEvaluator._make_async_iterator_type(inner: TypeBase) -> TypeBase {
-    # A stream endpoint called from another space: its items arrive one by one,
-    # so the caller reads them with `async for`, never with `await`.
     async_iter = self._get_class_from_module(self.typing_module, "AsyncIterator");
     if async_iter is None or not isinstance(inner, ClassType) {
         return self._make_coroutine_type(inner);
@@ -4160,6 +4160,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
     syms = self._sv_async_syms_cache.get(mod_key);
     if syms is None {
         syms = set();
+        client_syms: set[int] = set();
         import from jaclang.compiler.driver.boundary_classify {
             CrossAppKind,
             classify_cross_app_import,
@@ -4227,11 +4228,26 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                     }
                 }
                 syms.add(id(item.name.sym));
+                if is_boundary {
+                    client_syms.add(id(item.name.sym));
+                }
             }
         }
         self._sv_async_syms_cache[mod_key] = syms;
+        self._client_bridge_syms_cache[mod_key] = client_syms;
     }
     return id(tgt.sym) in syms;
+}
+
+impl TypeEvaluator._is_client_bridge_call(expr: FuncCall) -> bool {
+    if not self._is_sv_async_call(expr) {
+        return False;
+    }
+    mod = expr.find_parent_of_type(Module);
+    tgt = expr.target;
+    return mod is not None
+        and isinstance(tgt, Name)
+        and id(tgt.sym) in self._client_bridge_syms_cache.get(id(mod), set());
 }
 
 impl TypeEvaluator._prefetch_types {

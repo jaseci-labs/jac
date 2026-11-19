@@ -99,7 +99,12 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     for (key, value) in eco_vite_settings(jac_config, self.entry_path).items() {
         held = vite_settings.get(key);
         if isinstance(value, list) {
-            vite_settings[key] = list(held or []) + [v for v in value if v not in (held or [])];
+            vite_settings[key] = list(held or [])
+                + [
+                    v
+                    for v in value
+                    if v not in (held or [])
+                ];
         } elif isinstance(value, dict) {
             merged_value = dict(value);
             merged_value.update(held or {});
@@ -354,10 +359,6 @@ glob _JAC_SUPPLIED_VITE_PACKAGES: set[str] = {
          "@jac/vite"
      };
 
-"""What a project written for neojac keeps in `eco/<tree>/vite.config.ts`, as jac's
-own Vite configuration carries it: the plugins it adds (with their imports), the
-package aliases and the dedupe list of its `resolve`. jac supplies Vite, the
-framework plugin and `@jac/vite` itself, so those are left out."""
 impl eco_vite_settings(jac_config: any, entry_path: str) -> dict[str, any] {
     import re;
     if jac_config is None or jac_config.project_root is None {
@@ -386,7 +387,10 @@ impl eco_vite_settings(jac_config: any, entry_path: str) -> dict[str, any] {
     }
     config_path = Path(str(jac_config.project_root)) / "eco" / tree / "vite.config.ts";
     if not config_path.is_file() {
-        config_path = Path(str(jac_config.project_root)) / "eco" / tree / "vite.config.js";
+        config_path = Path(str(jac_config.project_root))
+            / "eco"
+            / tree
+            / "vite.config.js";
     }
     if not config_path.is_file() {
         return {};
@@ -455,8 +459,6 @@ impl _parse_vite_config(text: str) -> dict[str, any] {
     return out;
 }
 
-"""The local names an import clause binds: `x`, `{ a, b as c }`, `* as ns`, or a
-default beside a braced list."""
 impl _imported_names(clause: str) -> list[str] {
     import re;
     names: list[str] = [];
@@ -479,7 +481,6 @@ impl _imported_names(clause: str) -> list[str] {
     return names;
 }
 
-"""The text inside the bracket at `open_at`, matched by depth over (), [] and {}."""
 impl _bracketed(text: str, open_at: int) -> str {
     depth = 0;
     for i in range(open_at, len(text)) {
@@ -496,7 +497,6 @@ impl _bracketed(text: str, open_at: int) -> str {
     return text[open_at + 1:];
 }
 
-"""The comma-separated items of a list's text, commas inside brackets kept."""
 impl _split_top_level(text: str) -> list[str] {
     items: list[str] = [];
     depth = 0;

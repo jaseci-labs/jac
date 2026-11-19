@@ -61,9 +61,9 @@ def doubled(n: int) -> int {
 }
 
 def tasks -> int {
-    p = Pending(task=flow doubled(2));
-    v: int = wait p.task;
-    s = flow str(v);
-    w: str = wait s;
+    p = Pending(task=flow doubled(2) );
+    v: int = wait p.task ;
+    s = flow str(v) ;
+    w: str = wait s ;
     return v + len(w);
 }

@@ -202,7 +202,8 @@ edge StringsRole(Role): MultiString --> FString | String {}
 
 edge TargetRole(Role): UniNode --> Expr {}
 
-edge TargetsRole(Role): ImportRule | ImportWire | SpaceDecl --> ModulePattern | WireTarget {}
+edge TargetsRole(Role): ImportRule | ImportWire | SpaceDecl --> ModulePattern
+    | WireTarget {}
 
 edge TgtEndpointRole(Role): Archetype --> Expr {}
 

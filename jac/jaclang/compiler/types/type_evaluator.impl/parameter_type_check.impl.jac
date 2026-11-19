@@ -443,9 +443,10 @@ impl TypeEvaluator._validate_call_type(
         }
 
         if self._is_sv_async_call(expr) {
-            if self._is_sync_iterator_type(ret) {
+            in_page = self._is_client_bridge_call(expr);
+            if in_page and self._is_sync_iterator_type(ret) {
                 ret = self._make_async_iterator_type(ret);
-            } elif not self._is_async_iterator_type(ret) {
+            } elif not (in_page and self._is_async_iterator_type(ret)) {
                 ret = self._make_coroutine_type(ret);
             }
         } elif caller_type.is_async

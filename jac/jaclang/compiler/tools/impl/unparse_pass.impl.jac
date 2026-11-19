@@ -1303,7 +1303,13 @@ impl UnparsePass.exit_space_decl with uni.SpaceDecl exit {
         lines.append(" | ".join([p.gen.jac for p in here.patterns]) + ";");
     }
     here.gen.jac = (
-        "space " + here.name.gen.jac + ": " + here.host.gen.jac + " { " + " ".join(lines) + " }"
+        "space "
+        + here.name.gen.jac
+        + ": "
+        + here.host.gen.jac
+        + " { "
+        + " ".join(lines)
+        + " }"
     );
 }
 

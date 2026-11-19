@@ -1046,7 +1046,9 @@ impl _parse_toml_data(
         derived = archwire_apps(str(config.project_root));
     }
     if "apps" in data or derived {
-        config.apps = parse_apps(data.get("project", {}), data.get("apps", {}), derived);
+        config.apps = parse_apps(
+            data.get("project", {}), data.get("apps", {}), derived
+        );
         config.is_workspace = True;
     } else {
         if config.project.default_app {

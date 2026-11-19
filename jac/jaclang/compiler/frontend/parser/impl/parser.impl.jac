@@ -1484,10 +1484,8 @@ impl Parser.parse_call_arg -> Expr | KWPair {
             name = SpecialVarRef(
                 var=self.make_special_name(self.advance()), is_enum_stmt=False
             );
-        } elif self.is_keyword_token() {
-            name = self.make_name(self.advance());
         } else {
-            name = self.make_name(self.expect_name("keyword argument"));
+            name = self.make_name(self._name_or_keyword_token("keyword argument"));
         }
         eq_uni = self.consume_uni(TokenKind.EQ);
         value = self.parse_expression();
@@ -7711,12 +7709,23 @@ impl Parser._check_word(word: str) -> bool {
     return self.check(TokenKind.NAME) and self.current().value == word;
 }
 
+impl Parser._skip_token -> None {
+    self.advance();
+}
+
+impl Parser._name_or_keyword_token(what: str) -> LexToken {
+    if self.check_name() or self.is_keyword_token() {
+        return self.advance();
+    }
+    return self.expect_name(what);
+}
+
 impl Parser.parse_graph_spaces -> GraphSpaces {
     kid: list[UniNode] = [self.consume_uni(TokenKind.KW_GRAPH)];
     kid.append(self.make_uni_token(self.expect(TokenKind.NAME)));
     profile: Name | None = None;
     if self.check_name() {
-        profile = self.make_name(self.advance());
+        profile = self.make_name(self.expect_name("profile"));
         kid.append(profile);
     }
     kid.append(self.consume_uni(TokenKind.LBRACE));
@@ -7741,7 +7750,7 @@ impl Parser.parse_graph_spaces -> GraphSpaces {
             kid.append(stmt);
         }
         if self.pos == start {
-            self.advance();
+            self._skip_token();
         }
     }
     kid.append(self.consume_uni(TokenKind.RBRACE));
@@ -7753,9 +7762,9 @@ impl Parser.parse_space_decl -> SpaceDecl {
     name = self.make_name(self.expect_name("space"));
     kid.append(name);
     kid.append(self.consume_uni(TokenKind.COLON));
-    host_tok = self.advance()
-        if self.check_name() or self.is_keyword_token()
-        else self.expect_name("host");
+    host_tok = self.expect_name("host")
+        if self.check_name()
+        else self._name_or_keyword_token("host");
     host = self.make_name(host_tok);
     kid.append(host);
     kid.append(self.consume_uni(TokenKind.LBRACE));
@@ -7798,11 +7807,13 @@ impl Parser.parse_space_decl -> SpaceDecl {
             kid.append(self.make_semi());
         }
         if self.pos == start {
-            self.advance();
+            self._skip_token();
         }
     }
     kid.append(self.consume_uni(TokenKind.RBRACE));
-    return SpaceDecl(name=name, host=host, entry_module=entry_module, patterns=patterns, kid=kid);
+    return SpaceDecl(
+        name=name, host=host, entry_module=entry_module, patterns=patterns, kid=kid
+    );
 }
 
 impl Parser.parse_app_decl -> AppDecl {
@@ -7816,7 +7827,7 @@ impl Parser.parse_app_decl -> AppDecl {
         start = self.pos;
         if self._check_word("run") or self._check_word("serve") {
             is_run = self.current().value == "run";
-            kid.append(self.make_uni_token(self.advance()));
+            kid.append(self.make_uni_token(self.expect(TokenKind.NAME)));
             while True {
                 space = self.make_name(self.expect_name("space"));
                 if is_run {
@@ -7839,7 +7850,7 @@ impl Parser.parse_app_decl -> AppDecl {
             self._skip_wiring_stmt();
         }
         if self.pos == start {
-            self.advance();
+            self._skip_token();
         }
     }
     kid.append(self.consume_uni(TokenKind.RBRACE));

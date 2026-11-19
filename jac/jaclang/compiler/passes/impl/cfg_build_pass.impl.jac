@@ -48,7 +48,9 @@ impl CFGBuildPass._link_sequential(body: Sequence[CodeBlockStmt]) -> None {
             }
         } elif has_bool_sc {
             self._connect_tails(prev, next);
-        } elif isinstance(prev, WithStmt) and prev.body and not self._may_suppress(prev) {
+        } elif isinstance(prev, WithStmt)
+            and prev.body
+            and not self._may_suppress(prev) {
             self._connect_tails(prev, next);
         } else {
             self.link_bbs(prev, next);
@@ -57,8 +59,6 @@ impl CFGBuildPass._link_sequential(body: Sequence[CodeBlockStmt]) -> None {
     }
 }
 
-"""A `with suppress(...)` body may be left at any raise, so the block's end is not
-the only way out: what the body narrows does not hold after it."""
 impl CFGBuildPass._may_suppress(nd: WithStmt) -> bool {
     for item in nd.exprs {
         call = item.expr;
@@ -363,7 +363,11 @@ impl CFGBuildPass._find_next_cfg_stmt_after_branch(nd: UniNode) -> (UniCFGNode |
         if (nxt := self._find_next_cfg_stmt_after(cur.parent, cur)) is not None {
             return nxt;
         }
-        if not isinstance(cur.parent, (IfStmt, ElseStmt)) {
+        runs_through = isinstance(cur.parent, (IfStmt, ElseStmt))
+            or (
+                isinstance(cur.parent, WithStmt) and not self._may_suppress(cur.parent)
+            );
+        if not runs_through {
             return None;
         }
         cur = cur.parent;

@@ -152,14 +152,20 @@ test "def pub and endpoint effects" {
     stream_dir = os.path.join(_test_tmp_dir, "stream_app");
     os.makedirs(stream_dir, exist_ok=True);
     with open(os.path.join(stream_dir, "jac.toml"), "w") as toml {
-        toml.write('[project]\nname = "stream_app"\n\n[apps.web]\nkind = "web-app"\nentry-point = "page"\n\n[placement.pins]\n"stream_svc" = "server"\n');
+        toml.write(
+            '[project]\nname = "stream_app"\n\n[apps.web]\nkind = "web-app"\nentry-point = "page"\n\n[placement.pins]\n"stream_svc" = "server"\n'
+        );
     }
     with open(os.path.join(stream_dir, "stream_svc.jac"), "w") as svc {
-        svc.write('def:pub ticks(n: int) -> Iterator[int] {\n    for i in range(n) {\n        yield i;\n    }\n}\n\ndef:pub batch(n: int) -> Iterable[int] {\n    return [i for i in range(n)];\n}\n');
+        svc.write(
+            'def:pub ticks(n: int) -> Iterator[int] {\n    for i in range(n) {\n        yield i;\n    }\n}\n\ndef:pub batch(n: int) -> Iterable[int] {\n    return [i for i in range(n)];\n}\n'
+        );
     }
     page_path = os.path.join(stream_dir, "page.jac");
     with open(page_path, "w") as page {
-        page.write('"""A page reading a stream endpoint."""\n\nimport from stream_svc { ticks, batch }\nimport from stdjac.remote { RemoteError }\n\nasync def:pub app() -> Any {\n    seen: list[int] = [];\n    try {\n        async for t in ticks(3) {\n            seen = seen + [t];\n        }\n        seen = seen + list(await batch(2));\n    } except RemoteError as e {\n        seen = [];\n    }\n    return <div>{seen}</div>;\n}\n');
+        page.write(
+            '"""A page reading a stream endpoint."""\n\nimport from stream_svc { ticks, batch }\nimport from stdjac.remote { RemoteError }\n\nasync def:pub app() -> Any {\n    seen: list[int] = [];\n    try {\n        async for t in ticks(3) {\n            seen = seen + [t];\n        }\n        seen = seen + list(await batch(2));\n    } except RemoteError as e {\n        seen = [];\n    }\n    return <div>{seen}</div>;\n}\n'
+        );
     }
     stream_prog = JacProgram();
     mod = stream_prog.compile(page_path);

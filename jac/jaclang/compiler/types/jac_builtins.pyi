@@ -16,6 +16,7 @@
 
 from collections.abc import Callable
 from typing import Any, ClassVar, Generic, NoReturn, Protocol, TypeVar, overload
+from concurrent.futures._base import Future
 
 _NewT = TypeVar("_NewT")
 
@@ -242,7 +243,7 @@ def pin(value: _PinT) -> Pinned[_PinT]: ...
 _TaskT = TypeVar("_TaskT", covariant=True)
 
 # What `flow f(...)` gives: a task whose outcome, a `_TaskT`, `wait` delivers.
-class Task(Generic[_TaskT]): ...
+class Task(Future[_TaskT]): ...
 
 # A C `va_list`. `def f(fmt: ptr[u8], *args: VaList)` is a C variadic
 # function, and a `VaList` parameter receives a C `va_list`; `args.arg(T)`

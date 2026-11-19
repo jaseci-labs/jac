@@ -27,12 +27,12 @@ def tag(func: str, n: int) -> str {
 }
 
 with entry {
-    t1 = flow A() spawn B("Hi");
-    t3 = flow tag(func="ab", n=2);
+    t1 = flow A() spawn B("Hi") ;
+    t3 = flow tag(func="ab", n=2) ;
     print(wait t3 );
 
-    task1 = flow add(1, 10);
-    task2 = flow add(2, 11);
+    task1 = flow add(1, 10) ;
+    task2 = flow add(2, 11) ;
     print("All are started");
     res1 = wait task1 ;
     res2 = wait task2 ;

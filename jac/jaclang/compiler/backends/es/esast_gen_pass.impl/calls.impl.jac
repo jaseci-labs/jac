@@ -980,7 +980,12 @@ impl EsastGenPass._try_lower_server_rpc_call(
     if self._stream_item_type(inline_ret_type) is not None {
         self._inject_runtime_import('__jacCallStream', nd);
         return self._stream_call(
-            ability_node.sym_name, args_obj, rpc_options, inline_ret_type, inline_boundary, nd
+            ability_node.sym_name,
+            args_obj,
+            rpc_options,
+            inline_ret_type,
+            inline_boundary,
+            nd
         );
     }
     result_expr: es.Expression = self.sync_loc(
@@ -1020,8 +1025,6 @@ impl EsastGenPass._warn_rpc_callable_params(
     }
 }
 
-"""The item type of a stream endpoint's result (`Iterator[T]`, `Generator[T, ...]`,
-`AsyncIterator[T]`), or None for a result that is not a stream."""
 impl EsastGenPass._stream_item_type(ret_type: str) -> (str | None) {
     label = ret_type.strip();
     for head in ("Iterator[", "Generator[", "AsyncIterator[", "AsyncGenerator[") {
@@ -1043,8 +1046,6 @@ impl EsastGenPass._stream_item_type(ret_type: str) -> (str | None) {
     return None;
 }
 
-"""`__jacCallStream(name, args, opts[, decode])`: the stream of a server function's
-items, each decoded as the item type when that type crosses the boundary."""
 impl EsastGenPass._stream_call(
     func_name: str,
     args_obj: es.Expression,
@@ -1063,18 +1064,24 @@ impl EsastGenPass._stream_call(
         decoded = self.sync_loc(
             es.CallExpression(
                 callee=es.MemberExpression(
-                    object=es.Identifier(name=self._boundary_type_name(boundary_types[item])),
+                    object=es.Identifier(
+                        name=self._boundary_type_name(boundary_types[item])
+                    ),
                     property=es.Identifier(name='__from_wire'),
                     computed=False
                 ),
-                arguments=[self.sync_loc(es.Identifier(name='__item'), jac_node=jac_node)]
+                arguments=[
+                    self.sync_loc(es.Identifier(name='__item'), jac_node=jac_node)
+                ]
             ),
             jac_node=jac_node
         );
         arguments.append(
             self.sync_loc(
                 es.ArrowFunctionExpression(
-                    params=[self.sync_loc(es.Identifier(name='__item'), jac_node=jac_node)],
+                    params=[
+                        self.sync_loc(es.Identifier(name='__item'), jac_node=jac_node)
+                    ],
                     body=decoded,
                     expression=True
                 ),
@@ -1084,7 +1091,9 @@ impl EsastGenPass._stream_call(
     }
     return self.sync_loc(
         es.CallExpression(
-            callee=self.sync_loc(es.Identifier(name='__jacCallStream'), jac_node=jac_node),
+            callee=self.sync_loc(
+                es.Identifier(name='__jacCallStream'), jac_node=jac_node
+            ),
             arguments=arguments
         ),
         jac_node=jac_node
@@ -1159,7 +1168,9 @@ impl EsastGenPass._build_server_forwarder(
                 ),
                 arguments=[
                     self.sync_loc(es.Literal(value=func_name), jac_node=jac_node),
-                    self.sync_loc(es.ObjectExpression(properties=props), jac_node=jac_node)
+                    self.sync_loc(
+                        es.ObjectExpression(properties=props), jac_node=jac_node
+                    )
                 ]
             ),
             jac_node=jac_node

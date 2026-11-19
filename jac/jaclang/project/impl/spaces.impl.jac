@@ -12,19 +12,45 @@ impl archwire_apps(root_dir: str) -> dict[str, DerivedApp] {
     hosts = {s.name: s.host for s in spec.spaces};
     arrangements: dict[str, dict[str, list[str]]] = {};
     for app in spec.apps {
-        arrangements.setdefault(app.name, {})[app.profile or "default"] = list(app.runs);
+        arrangements.setdefault(app.name, {})[app.profile or "default"] = list(
+            app.runs
+        );
     }
     out: dict[str, DerivedApp] = {};
     for app in spec.apps {
         if app.profile {
             continue;
         }
-        run_spaces = [spaces[n] for n in app.runs if n in spaces];
-        serve_spaces = [spaces[n] for n in app.serves if n in spaces];
-        browser = [s for s in run_spaces + serve_spaces if s.host == "browser"];
-        hermes = [s for s in run_spaces if s.host == "hermes"];
-        native = [s for s in run_spaces if s.host in ("native", "cpython", "node")];
-        started = [s for s in native if s.entry_module];
+        run_spaces = [
+            spaces[n]
+            for n in app.runs
+            if n in spaces
+        ];
+        serve_spaces = [
+            spaces[n]
+            for n in app.serves
+            if n in spaces
+        ];
+        browser = [
+            s
+            for s in run_spaces + serve_spaces
+            if s.host == "browser"
+        ];
+        hermes = [
+            s
+            for s in run_spaces
+            if s.host == "hermes"
+        ];
+        native = [
+            s
+            for s in run_spaces
+            if s.host in ("native", "cpython", "node")
+        ];
+        started = [
+            s
+            for s in native
+            if s.entry_module
+        ];
         kind = "";
         entry_point = "";
         if serve_spaces and native {
@@ -67,7 +93,11 @@ impl archwire_apps(root_dir: str) -> dict[str, DerivedApp] {
             pins=pins,
             runs=list(app.runs),
             serves=list(app.serves),
-            remote=[s.name for s in spec.spaces if s.name not in held],
+            remote=[
+                s.name
+                for s in spec.spaces
+                if s.name not in held
+            ],
             arrangements=arrangements.get(app.name, {}),
             hosts=hosts
         );

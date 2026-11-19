@@ -43,3 +43,15 @@ def guarded(key: str) -> str {
     }
     return f.id;  # Warn: a raise inside suppress leaves the block before the guard
 }
+
+def checked(key: str, total: int, destination: Finding | None = None) -> Finding {
+    if destination is None {
+        destination = Finding(id=key);
+    }
+    with _lock {
+        if total and len(key) != total {
+            raise OSError("short");
+        }
+    }
+    return destination;  # Ok: the block's last `if` falls through to here
+}

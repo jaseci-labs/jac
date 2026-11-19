@@ -1,6 +1,3 @@
-"""What a failed call of another space raises, as neojac's stdjac.remote names it:
-`space`, `endpoint` and a `detail` it prints as. A bridge error is one, with the
-app and endpoint name jac's client has always carried."""
 obj:pub RemoteError(Exception) {
     has space: str = "",
         endpoint: str = "",
@@ -34,16 +31,12 @@ obj:pub RemoteDecodeError(BridgeError) {}
 
 obj:pub RemoteFailed(BridgeError) {}
 
-"""Which arrangement of its app a page is in: the arrangements the artifact holds,
-the one this run is, and whether it was chosen."""
 obj:pub JacArrangement {
     has names: list[str] = [],
         current: str = "",
         chosen: bool = True;
 }
 
-"""A desktop app's local users: whether the app has them, their names, and who is
-using it now."""
 obj:pub JacLocalUsers {
     has enabled: bool = False,
         users: list[str] = [],
@@ -140,6 +133,7 @@ def:pub jacSetToken(token: str) -> None;
 async def:pub __jacBrokerJson(
     method: str, url: str, body: (dict[str, any] | None) = None, must: bool = False
 ) -> any;
+
 async def:pub jacArrangement -> JacArrangement;
 async def:pub jacUseArrangement(name: str) -> None;
 async def:pub jacLocalUsers -> JacLocalUsers;

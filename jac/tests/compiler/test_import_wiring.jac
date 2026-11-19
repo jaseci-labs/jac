@@ -1897,17 +1897,20 @@ glob _SPACES_ARCH: str = (
 test "graph spaces declares the apps: their kinds, entries and where their modules run" {
     import from jaclang.project.workspace { workspace_for_path }
     files = dict(_SPACES_FILES);
-    files["archwire.jac"] = _SPACES_ARCH.replace("graph spaces {", "graph  spaces {", 1);
+    files["archwire.jac"] = _SPACES_ARCH.replace(
+        "graph spaces {", "graph  spaces {", 1
+    );
     base = _project(files);
     ws = workspace_for_path(os.path.join(base, "web.jac"));
     assert ws is not None;
     kinds = {name: app.kind for (name, app) in ws.apps.items()};
-    assert kinds == {
-        "web": "web-app",
-        "desktop": "desktop",
-        "mobile": "mobile",
-        "cli": "cli"
-    } , kinds;
+    assert kinds
+        == {
+            "web": "web-app",
+            "desktop": "desktop",
+            "mobile": "mobile",
+            "cli": "cli"
+        } , kinds;
     assert ws.apps["web"].`entry.endswith("web.jac");
     assert ws.apps["desktop"].`entry.endswith("web.jac");
     assert ws.apps["mobile"].`entry.endswith(os.path.join("mobile", "main.jac"));

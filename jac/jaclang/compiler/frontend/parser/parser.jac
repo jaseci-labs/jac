@@ -413,6 +413,8 @@ obj Parser {
     def parse_space_decl -> SpaceDecl;
     def parse_app_decl -> AppDecl;
     def _check_word(word: str) -> bool;
+    def _skip_token -> None;
+    def _name_or_keyword_token(what: str) -> LexToken;
     def parse_import_rule -> ImportRule | None;
     def parse_import_wire -> ImportWire | None;
     def parse_module_pattern -> ModulePattern;

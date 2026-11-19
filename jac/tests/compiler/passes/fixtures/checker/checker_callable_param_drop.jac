@@ -6,7 +6,6 @@ site. This is the canonical pattern for React/JSX event handlers — a handler
 written `def click() { ... }` should satisfy `Callable[[MouseEvent], None]`.
 """
 
-
 class MouseEvent {
     button: int = 0;
 }
@@ -18,8 +17,12 @@ def two_ints(x: int, y: int) -> None {}
 
 
 async def fetch_it {}
-async def fetch_one(x: int) -> int { return x; }
-async def source() -> AsyncIterator[int] { yield 1; }
+async def fetch_one(x: int) -> int {
+    return x;
+}
+async def source() -> AsyncIterator[int] {
+    yield 1;
+}
 
 
 def takes_mouse_handler(cb: Callable[[MouseEvent], None]) -> None {
@@ -31,7 +34,6 @@ class Widget {
     label: str = "";
 
     def click {}
-
     def click_one(x: int) {}
 }
 
@@ -49,7 +51,7 @@ with entry {
     f3: Callable[[int, int], None] = one_int;  # Ok
 
     # Zero-arg lambda -> Callable expecting an event
-    f4: Callable[[MouseEvent], None] = lambda { };  # Ok
+    f4: Callable[[MouseEvent], None] = lambda {};  # Ok
 
     # Pass shorter callable through a higher-order call site
     takes_mouse_handler(no_args);  # Ok

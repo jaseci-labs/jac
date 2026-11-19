@@ -1,5 +1,3 @@
-"""A stream's item crosses as a call's result does: an object of its fields,
-with the type tags the client's decoder reads, not its repr."""
 impl _sse_json_default(o: any) -> any {
     try {
         encoded = Serializer.serialize(o, api_mode=True);

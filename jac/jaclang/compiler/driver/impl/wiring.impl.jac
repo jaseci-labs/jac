@@ -780,7 +780,9 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
     return (wires, rules);
 }
 
-impl space_records(mod: Module, source: str) -> tuple[list[SpaceRec], list[AppRec], str] {
+impl space_records(
+    mod: Module, source: str
+) -> tuple[list[SpaceRec], list[AppRec], str] {
     spaces: list[SpaceRec] = [];
     apps: list[AppRec] = [];
     texts: list[str] = [];
@@ -903,7 +905,13 @@ impl encode_records(records: ArchRecords) -> str {
     for app in records.apps {
         lines.append(
             "\x1f".join(
-                ["A", app.name, app.profile, "\x1e".join(app.runs), "\x1e".join(app.serves)]
+                [
+                    "A",
+                    app.name,
+                    app.profile,
+                    "\x1e".join(app.runs),
+                    "\x1e".join(app.serves)
+                ]
             )
         );
     }
@@ -974,13 +982,20 @@ impl decode_records(text: str) -> (ArchRecords | None) {
             }
             spaces.append(
                 SpaceRec(
-                    name=f[1], host=f[2], entry_module=f[3], patterns=patterns, line=int(f[5])
+                    name=f[1],
+                    host=f[2],
+                    entry_module=f[3],
+                    patterns=patterns,
+                    line=int(f[5])
                 )
             );
         } elif f[0] == "A" and len(f) == 5 {
             apps.append(
                 AppRec(
-                    name=f[1], profile=f[2], runs=_split_list(f[3]), serves=_split_list(f[4])
+                    name=f[1],
+                    profile=f[2],
+                    runs=_split_list(f[3]),
+                    serves=_split_list(f[4])
                 )
             );
         } elif f[0] == "T" and len(f) == 2 {

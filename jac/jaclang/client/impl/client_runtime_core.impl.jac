@@ -250,10 +250,6 @@ impl __jacCallFunction(
     );
 }
 
-"""A server function that gives an iterator is a stream: its items arrive one by
-one as server-sent events, and the caller reads them with `async for`. The request
-is made when the first item is asked for, each item is decoded as the function's
-item type, and a failure is raised where the item would have come."""
 impl __jacCallStream(
     function_name: str,
     args: dict[str, any] = {},
@@ -322,9 +318,15 @@ impl __jacStreamItems(
                     return;
                 }
                 if event == "error" {
-                    detail = str(payload["message"] if payload and payload["message"] else "the stream failed");
+                    detail = str(
+                        payload["message"]
+                            if payload and payload["message"]
+                            else "the stream failed"
+                    );
                     raise RemoteFailed(
-                        app=app, name=function_name, detail=f"Function {function_name} failed: {detail}"
+                        app=app,
+                        name=function_name,
+                        detail=f"Function {function_name} failed: {detail}"
                     );
                 }
                 yield decode(payload) if decode else payload;
@@ -1127,13 +1129,12 @@ impl BridgeError.postinit {
     }
 }
 
-"""A desktop app's broker answers these; a page served by a plain server has no
-broker, and sees one arrangement and no local users."""
 impl __jacBrokerJson(
     method: str, url: str, body: (dict[str, any] | None) = None, must: bool = False
 ) -> any {
     init: dict[str, any] = {
-        "method": method, "headers": {"Content-Type": "application/json"}
+        "method": method,
+        "headers": {"Content-Type": "application/json"}
     };
     if body is not None {
         init["body"] = JSON.stringify(body);
@@ -1144,7 +1145,10 @@ impl __jacBrokerJson(
     }
     if must {
         raise RemoteRejected(
-            name=url, endpoint=url, detail=await response.text(), status=int(response.status)
+            name=url,
+            endpoint=url,
+            detail=await response.text(),
+            status=int(response.status)
         );
     }
     return None;
@@ -1230,7 +1234,9 @@ impl jacUseLocalUser(name: str) -> bool {
     if found is None {
         raise RemoteRejected(detail=f"no local user '{name}'");
     }
-    await __jacBrokerJson("POST", f"{broker}/profiles/active", {"id": found["id"]}, True);
+    await __jacBrokerJson(
+        "POST", f"{broker}/profiles/active", {"id": found["id"]}, True
+    );
     session: any = await __jacBrokerJson("POST", f"{broker}/profiles/session");
     if session and session["token"] {
         jacSetToken(str(session["token"]));

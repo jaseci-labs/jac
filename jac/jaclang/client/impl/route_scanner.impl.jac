@@ -99,8 +99,6 @@ impl RouteScanner._scan_directory(
             } else {
                 route_path = f"{url_prefix}/{route_segment}";
             }
-            # The page function's parameters are the segments after the file's:
-            # `page(id: str)` in reviews.jac is /reviews/:id, `*rest: str` the rest.
             params = list(self.route_params_of(`entry)) if self.route_params_of else [];
             rest_param = "";
             segments = route_path.split("/");

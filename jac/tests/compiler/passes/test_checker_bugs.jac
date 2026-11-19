@@ -959,12 +959,14 @@ test "bug_comprehension_block_tail_narrowing" {
 # =========================================================================
 test "bug_comprehension_block_tail_narrowing_negative" {
     program = compile_and_check("checker_bug_compr_block_tail_narrowing_negative.jac");
-    found = [str(e) for e in program.errors_had] + [str(w) for w in program.warnings_had];
+    found = [str(e) for e in program.errors_had]
+        + [str(w) for w in program.warnings_had];
     none_lines = [
         e.loc.first_line
         for e in program.errors_had
         if "NoneType" in str(e)
-    ] + optional_read_lines(program);
+    ]
+        + optional_read_lines(program);
 
     assert 21 in none_lines , (
         "After the `if`, with no guard, the name may still be None: the "
@@ -2050,11 +2052,12 @@ test "bug_isect1_isinstance_narrows_each_union_member" {
 # =========================================================================
 test "bug_isect1_per_member_narrow_keeps_precision" {
     program = compile_and_check("checker_bug_isinstance_intersection_negative.jac");
-    error_lines = optional_read_lines(program) + [
-        e.loc.first_line
-        for e in program.errors_had
-        if e.loc and e.code is not None and e.code.code != "E1099"
-    ];
+    error_lines = optional_read_lines(program)
+        + [
+            e.loc.first_line
+            for e in program.errors_had
+            if e.loc and e.code is not None and e.code.code != "E1099"
+        ];
     assert len(error_lines) == 2 , (
         "Bug #ISECT-1: the fallback to the filter class and the false edge "
         "must both survive. "

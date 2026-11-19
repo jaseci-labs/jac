@@ -81,14 +81,16 @@ test "a tree's vite config keeps named imports and nested plugin options" {
         '});\n'
     );
     got = _parse_vite_config(text);
-    assert got["lib_imports"] == [
-        'import tailwindcss from "@tailwindcss/vite";',
-        'import { visualizer } from "rollup-plugin-visualizer";',
-        'import * as path from "node:path";'
-    ] , got;
-    assert got["plugins"] == [
-        "tailwindcss()",
-        'visualizer({ include: ["src/**", "lib/**"], gzipSize: true })'
-    ] , got;
+    assert got["lib_imports"]
+        == [
+            'import tailwindcss from "@tailwindcss/vite";',
+            'import { visualizer } from "rollup-plugin-visualizer";',
+            'import * as path from "node:path";'
+        ] , got;
+    assert got["plugins"]
+        == [
+            "tailwindcss()",
+            'visualizer({ include: ["src/**", "lib/**"], gzipSize: true })'
+        ] , got;
     assert got["resolve"] == {"dedupe": ["react", "react-dom"]} , got;
 }

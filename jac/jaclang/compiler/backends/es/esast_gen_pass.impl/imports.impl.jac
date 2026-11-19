@@ -50,8 +50,6 @@ impl EsastGenPass._inject_runtime_import(
     }
 }
 
-"""`stdjac.remote` in the browser is the runtime's own error family, so a page's
-`except RemoteError` catches what a crossing raises."""
 impl EsastGenPass._is_stdjac_remote_import(nd: uni.Import) -> bool {
     return nd.from_loc is not None
         and nd.from_loc.dot_path_str == "stdjac.remote"
@@ -419,14 +417,17 @@ impl EsastGenPass._generate_sv_import_stubs(
         func_id = self.sync_loc(es.Identifier(name=local_name), jac_node=nd);
         func_decl = self.sync_loc(
             es.FunctionDeclaration(
-                id=func_id, params=js_params, body=body, generator=False, async_=not streams
+                id=func_id,
+                params=js_params,
+                body=body,
+                generator=False,
+                async_=not streams
             ),
             jac_node=nd
         );
         stubs.append(func_decl);
     }
     if stubs {
-
         self.sv_import_stubs.extend(stubs);
     }
 }

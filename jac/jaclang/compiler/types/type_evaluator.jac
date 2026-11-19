@@ -165,6 +165,7 @@ walker TypeEvaluator {
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
+        _client_bridge_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _type_guard_probes: set[int] = set(),
         _loop_written_keys_cache: dict[int, set[str]] = {},
@@ -639,6 +640,7 @@ walker TypeEvaluator {
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
     def _is_sv_async_call(expr: FuncCall) -> bool;
+    def _is_client_bridge_call(expr: FuncCall) -> bool;
     def _c_lent_args(args: MatchArgsToParamsResult) -> set[Expr | KWPair];
     def validate_arg_types(
         args: MatchArgsToParamsResult,

@@ -39,7 +39,8 @@ impl build_pages_react_entry_script(
     lines: list[str] = [
         'import React from "react";',
         'import { createRoot } from "react-dom/client";',
-        'import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";',
+        'import { BrowserRouter, Routes, Route } from "react-router-dom";',
+        'import { useParams } from "react-router-dom";',
         'import { JacClientErrorBoundary, ErrorFallback, AuthGuard, __jacInstallErrorHandlers, __jacReactErrorHandler } from "@jac/runtime";',
         'import { routes, layouts } from "./_routes.js";'
     ];

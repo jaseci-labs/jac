@@ -11,15 +11,9 @@ import from jaclang.byllm.lib { MTIR }
 import from stdjac.codec { encode }
 import from stdjac.llm { Message, Part, PartKind, _the_model, llm }
 
-enum Shade: str {
-    LIGHT = "light",
-    DARK = "dark",
-}
+enum Shade: str { LIGHT = "light", DARK = "dark", }
 
-enum Rank: int {
-    LOW = 1,
-    HIGH = 2,
-}
+enum Rank: int { LOW = 1, HIGH = 2, }
 
 obj Base {
     has id: str = "b";
@@ -58,7 +52,9 @@ test "llm configures each call apart from the shared model and from other calls"
 test "the conversation a call continues is kept out of the model's inputs" {
     os.environ["JAC_LLM_MODEL"] = "mockllm";
     try {
-        conv = [Message(role="user", parts=[Part(kind=PartKind.TEXT, text="earlier turn")])];
+        conv = [
+            Message(role="user", parts=[Part(kind=PartKind.TEXT, text="earlier turn")])
+        ];
         call = llm(conversation=conv);
         assert call.plugin_args == [conv];
         run = MTIR(ask, {0: "now", 1: conv}, call.call_params, None).runtime;
