@@ -2996,6 +2996,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces
             | scale.admin.workloads
             | scale.runtime.gateway.microservice_gateway
@@ -3158,6 +3159,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces { JSONResponse, Request },
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
@@ -3253,6 +3255,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.server.extensions
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_stream_ws._spawn_upstream {
@@ -3473,15 +3476,22 @@ graph import {
     ]
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
+        scale.admin.schedules { bridge_identity },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+            auth_headers
+        },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
             app_start_args,
             headless_start_args,
             peer_url_env_key
         },
         scale.tests.deploy.test_pod_env { peer_url_env_key },
+        scale.tests.microservices.test_gateway
+            | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
     server.task_scheduler ++> [
         runtime.builtin.schedule { ScheduleSpec },
+        scale.admin.schedules { Scheduler },
         scale.scheduler.scheduler { Scheduler, schedule_namespace, tick_of },
         scale.server.extensions { RunOutcome },
         scale.tests.server.test_scheduler_multipod { ScheduleSpec, Scheduler, tick_of },
@@ -14686,6 +14696,7 @@ graph import scale.admin {
     network ++> surface { JacAPIServerNetwork }
     ops ++> surface { JacAPIServerOps }
     podenv ++> surface { JacAPIServerPodEnv }
+    schedules ++> surface { JacAPIServerSchedules }
     service_urls ++> logs | ops | traces { service_base_url }
     traces ++> [
         ops { _tempo_base_url },
@@ -15017,10 +15028,10 @@ graph import scale.runtime {
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
         },
-        gateway.microservice_gateway.MicroserviceGateway.forward_to {
+        gateway.microservice_gateway.MicroserviceGateway.ask_services {
             http_forward_timeout
         },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
+        gateway.microservice_gateway.MicroserviceGateway.forward_to {
             http_forward_timeout
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
@@ -15106,9 +15117,9 @@ graph import scale.runtime {
         transport.transport.HttpTransport.call_walker { walker_call },
     ]
     transport.http_forward ++> [
-        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
+        gateway.microservice_gateway.MicroserviceGateway.ask_services
             | gateway.openapi_agg.fetch_service_spec { raw_forward },
+        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },
