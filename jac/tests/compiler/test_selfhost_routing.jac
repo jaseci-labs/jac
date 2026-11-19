@@ -38,10 +38,17 @@ test "a compiler module still resolves into the self-host program" {
 test "shared construction runtime resolves into its consumer program" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;
-    fragment = _pkg_path("runtime/graph_fragment.jac");
-    assert cache.owns(fragment);
-    assert cache.resolve(fragment, prog) is prog;
-    assert cache.resolve(fragment, cache.program) is cache.program;
+    for rel in [
+        "runtime/archetype.jac",
+        "runtime/constructs.jac",
+        "runtime/graph_fragment.jac"
+    ] {
+        shared = _pkg_path(rel);
+        assert os.path.isfile(shared) , shared;
+        assert cache.owns(shared) , rel;
+        assert cache.resolve(shared, prog) is prog , rel;
+        assert cache.resolve(shared, cache.program) is cache.program , rel;
+    }
 }
 
 
