@@ -20,6 +20,8 @@ A `class` deriving an `obj` inherits the `obj`'s generated constructor.
 """
 
 import from tests.support { assert_native_identity, jac_command }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.program { JacProgram }
 
 import os;
 import subprocess;
@@ -58,4 +60,47 @@ test "a class with no initializer refuses constructor arguments" {
     combined = (comp.stdout or "") + (comp.stderr or "");
     assert comp.returncode != 0 , f"lowered instead of refused: {combined[-600:]}";
     assert "'Plain' is a `class` archetype with no initializer" in combined , combined[-800:];
+}
+
+test "a := field default leaves nothing alive" {
+    out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
+    comp = subprocess.run(
+        jac_command(
+            "build",
+            "--native",
+            os.path.join(FIXTURES, "field_default_walrus_leaks.jac"),
+            "-o",
+            out_bin,
+            "--debug"
+        ),
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    assert comp.returncode == 0 , f"build failed: {(comp.stdout or '')
+        + (comp.stderr or '')}"[-800:];
+    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
+    assert proc.returncode == 0 , f"binary failed: {proc.stderr[-400:]}";
+    lines = proc.stdout.split("\n");
+    assert lines[0] == "150" , proc.stdout[:200];
+    assert "RC LIVE OBJECTS at exit" in proc.stdout , proc.stdout[-400:];
+    leaks = [
+        line
+        for line in lines
+        if "<- LEAK" in line
+    ];
+    assert not leaks , f"field default leaked: {len(leaks)} e.g. {leaks[:3]}";
+}
+
+test "a := field default is refused under headerless nogc" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=os.path.join(FIXTURES, "nogc", "field_default_walrus_nogc.jac"),
+        options=CompileOptions(force_codespace="native", memory_profile="nogc")
+    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    layout = ir.gen.native_layout;
+    assert layout is not None , "whole-module native compile aborted";
+    assert "plain_len" in layout.functions , "a default without := must stay native";
+    assert "walrus_len" not in layout.functions , "a := default must demote under nogc";
 }
