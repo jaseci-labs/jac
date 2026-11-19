@@ -1336,10 +1336,30 @@ impl ViteBundler._attach_dev_commands(self: ViteBundler, process: any) -> None {
     if replaced is not None {
         replaced.set();
     }
-    threading.Thread(
+    self._dev_writer = threading.Thread(
         target=self._write_dev_commands, args=(process.stdin, wake), daemon=True
-    ).start();
+    );
+    self._dev_writer.start();
     wake.set();
+}
+
+impl ViteBundler._detach_dev_commands(self: ViteBundler, stream: any) -> None {
+    if stream is None {
+        return;
+    }
+    with self._dev_lock {
+        if self._dev_stdin is stream {
+            self._dev_stdin = None;
+            self._dev_pending = [];
+        }
+        wake = self._dev_wake;
+    }
+    if wake is not None {
+        wake.set();
+    }
+    try {
+        stream.close();
+    } except (OSError, ValueError) {}
 }
 
 impl ViteBundler._write_dev_commands(
@@ -1749,18 +1769,21 @@ impl ViteBundler._start_vite_with_output_capture(
     ready_event = threading.Event();
     closed_event = threading.Event();
     output_buffer: list[str] = [];
-    output_thread = threading.Thread(
-        target=_forward_vite_output,
-        args=(
-            process,
-            ready_event,
-            sys_module,
-            output_buffer,
-            self._dispatch_client_event,
-            closed_event
-        ),
-        daemon=True
-    );
+    def forward_output {
+        try {
+            _forward_vite_output(
+                process,
+                ready_event,
+                sys_module,
+                output_buffer,
+                self._dispatch_client_event,
+                closed_event
+            );
+        } finally {
+            self._detach_dev_commands(process.stdin);
+        }
+    }
+    output_thread = threading.Thread(target=forward_output, daemon=True);
     output_thread.start();
 
     deadline = time.monotonic() + VITE_READY_TIMEOUT_SECONDS;

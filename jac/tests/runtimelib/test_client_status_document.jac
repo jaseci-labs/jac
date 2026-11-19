@@ -836,5 +836,10 @@ test "a vite that exits before it is ready raises at once with its exit code and
         assert "exited with code 3" in raised , raised;
         assert "vite: bad config" in raised , raised;
         assert time.monotonic() - started < 20 , "waited out the ready timeout";
+        # The dev server is gone: its command pipe and the thread that writes
+        # to it are released, not held until the jac process exits.
+        _wait_for(lambda -> bool { return not bundler._dev_writer.is_alive(); });
+        assert not bundler._dev_writer.is_alive();
+        assert bundler._dev_stdin is None;
     }
 }
