@@ -39,7 +39,7 @@ impl build_pages_solid_entry_script(
 ) -> str {
     lines: list[str] = [
         'import { render } from "solid-js/web";',
-        'import { createComponent } from "solid-js";',
+        'import { createComponent, Show } from "solid-js";',
         'import { Router, Route, AuthGuard, __jacMakeLayoutRoot, JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers, __jacReactErrorHandler, useParams } from "@jac/runtime";',
         'import { routes, layouts } from "./_routes.js";'
     ];
@@ -59,10 +59,14 @@ impl build_pages_solid_entry_script(
             '// its props: `page(id: str)` sees `id`, and `*rest: str` the rest, split.',
             'function JacRouteParams(props) {',
             '\tconst found = useParams();',
-            '\tconst given = {};',
-            '\tfor (const name of props.names) { if (name !== props.rest) given[name] = found[name]; }',
-            '\tif (props.rest) given[props.rest] = (found["*"] || "").split("/").filter(Boolean);',
-            '\treturn createComponent(props.C, { ...given, children: props.children });',
+            '\tconst given = () => {',
+            '\t\tconst out = {};',
+            '\t\tfor (const name of props.names) { if (name !== props.rest) out[name] = found[name]; }',
+            '\t\tif (props.rest) out[props.rest] = (found["*"] || "").split("/").filter(Boolean);',
+            '\t\treturn out;',
+            '\t};',
+            '\t// The page reads its arguments once, so a new URL recreates it.',
+            '\treturn <Show when={JSON.stringify(given())} keyed>{() => createComponent(props.C, { ...given(), children: props.children })}</Show>;',
             '}',
             'function routeComponent(r) {',
             '\tif (r.params && r.params.length) {',
