@@ -1669,6 +1669,9 @@ impl MonitoringDeployer._alloy_config(app_name: str, namespace: str) -> str {
     alloy_logs_lane = (
         "discovery.kubernetes \"pods\" {\n"
         "  role = \"pod\"\n"
+        "  namespaces {\n"
+        f"    names = [\"{namespace}\"]\n"
+        "  }\n"
         "}\n"
         "\n"
         "discovery.relabel \"pods\" {\n"
@@ -1808,6 +1811,7 @@ impl MonitoringDeployer._deploy_alloy(
     cluster_role_binding_name = f"{namespace}-{alloy_name}";
     rbac_v1 = client.RbacAuthorizationV1Api();
     alloy_config_river = self._alloy_config(app_name, namespace);
+    config_hash = hashlib.md5(alloy_config_river.encode()).hexdigest()[:12];
     alloy_configmap = {
         'apiVersion': 'v1',
         'kind': 'ConfigMap',
@@ -1933,7 +1937,10 @@ impl MonitoringDeployer._deploy_alloy(
         'spec': {
             'selector': {'matchLabels': {'app': alloy_name}},
             'template': {
-                'metadata': {'labels': {'app': alloy_name, 'managed': 'jac-scale'}},
+                'metadata': {
+                    'labels': {'app': alloy_name, 'managed': 'jac-scale'},
+                    'annotations': {'checksum/config': config_hash}
+                },
                 'spec': {
                     'automountServiceAccountToken': True,
                     'serviceAccountName': alloy_sa_name,
@@ -1986,7 +1993,9 @@ impl MonitoringDeployer._deploy_alloy(
         }
     };
     try {
-        apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+        apps_v1.patch_namespaced_daemon_set(
+            name=alloy_name, namespace=namespace, body=alloy_daemonset
+        );
     } except ApiException as e {
         if e.status == 404 {
             apps_v1.create_namespaced_daemon_set(
