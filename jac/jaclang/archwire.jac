@@ -5292,6 +5292,7 @@ graph import compiler {
             ProductTask,
             TaskState
         },
+        types.type_evaluator.TypeEvaluator._report_missing_import_name { AnalysisFact },
     ]
     driver.pipeline_types --> [
         placement.placement_solver.invalidate_importers_es
@@ -6491,6 +6492,7 @@ graph import compiler {
             E1137,
             E1138,
             E1139,
+            E1145,
             E5094,
             W1050,
             W1051,
@@ -11732,6 +11734,7 @@ graph import compiler.types {
             convert_to_instance,
             get_declared_generator_return_type,
             lookup_symtab,
+            module_names_closed,
             shadowed_type_var_names,
             specialize_for_base_class,
             synthesize_self_type_var

@@ -25,6 +25,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
         is_dir = from_path.is_dir() or (from_path.stem == "__init__");
         if is_dir {
             mod_dir = from_path.parent if not from_path.is_dir() else from_path;
+            searched_init: (Module | None) = None;
             for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
                 candidate_paths = [
                     mod_dir / f"{item_name}{ext}",
@@ -108,6 +109,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                                 node_, star_symbol
                             );
                         }
+                        searched_init = mod;
                         continue;
                     }
                     mod_type = ModuleType(
@@ -138,7 +140,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     E1134, binding, module=f"{from_mod_name}{sep}{item_name}"
                 );
             } else {
-                self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+                self._report_missing_import_name(
+                    binding, import_node, searched_init, item_name, from_mod_name
+                );
             }
             return binding.type;
         } else {
@@ -208,7 +212,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
             binding.type = UnknownType(is_diagnosed=True);
-            self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            self._report_missing_import_name(
+                binding,
+                import_node,
+                from_mod_type.symbol_table,
+                item_name,
+                from_mod_name
+            );
             return binding.type;
         }
     }
@@ -665,10 +675,24 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
         return False;
     }
     imp = node_.find_parent_of_type(Import);
-    if imp is None or imp.is_typed or imp.is_comptime {
-        return False;
-    }
-    return not self._import_error_is_handled(imp);
+    return imp is not None and self._import_must_bind(imp);
+}
+
+impl TypeEvaluator._import_must_bind(imp: Import) -> bool {
+    return not (imp.is_typed or imp.is_comptime or self._import_error_is_handled(imp));
+}
+
+impl TypeEvaluator._report_missing_import_name(
+    binding: Name, imp: Import, source: (UniScopeNode | None), name: str, module: str
+) -> None {
+    certain = isinstance(source, Module)
+        and module_names_closed(source)
+        and (
+            not self._module_in_flight(source.loc.mod_path)
+            or self.program.analysis.provides(source, AnalysisFact.DEFINES)
+        )
+        and self._import_must_bind(imp);
+    self.emit_diag(E1145 if certain else W1101, binding, name=name, module=module);
 }
 
 

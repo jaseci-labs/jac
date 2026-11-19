@@ -205,6 +205,26 @@ impl lookup_symtab(
     return symbol;
 }
 
+impl module_names_closed(mod: Module) -> bool {
+    if mod.stub_only or mod.parse_failed or not mod.loc.mod_path.endswith(".jac") {
+        return False;
+    }
+    if mod.lookup("__getattr__", deep=False) is not None {
+        return False;
+    }
+    for imp in mod.get_all_sub_nodes(Import) {
+        if imp.is_absorb {
+            return False;
+        }
+        for item in imp.items or [] {
+            if isinstance(item, ModuleItem) and item.name.value == "*" {
+                return False;
+            }
+        }
+    }
+    return True;
+}
+
 impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
     if a is b {
         return True;
