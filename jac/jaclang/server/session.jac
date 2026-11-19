@@ -245,7 +245,7 @@ obj Session(Memory) {
     def _leave_queue -> None;
     def _commit_txn -> None;
     def _rollback_txn -> None;
-    def _replay_txn(cause: Exception, exhausted: bool = False) -> None;
+    def _lose_on_conflict(cause: (Exception | None)) -> None;
     def _reclaim_dead_txn -> None;
     def _ensure_txn -> None;
     def _txn_isolation -> TxnIsolation;
