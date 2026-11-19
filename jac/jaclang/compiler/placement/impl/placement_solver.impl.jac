@@ -711,12 +711,13 @@ impl solve_module_placement(
     def _read_on_server(eid: int) -> bool {
         return any(
             id(top) != eid
-            and (top.code_context != CodeContext.CLIENT or top.codespace_dual)
-            and eid in body_refs.get(id(top), set())
-            for top in tops
+                and (top.code_context != CodeContext.CLIENT or top.codespace_dual)
+                and eid in body_refs.get(id(top), set()) for top in tops
         );
     }
-    def _closure(seed_ids: set[int], elems: list[uni.UniNode], excluded: any) -> set[int] {
+    def _closure(
+        seed_ids: set[int], elems: list[uni.UniNode], excluded: any
+    ) -> set[int] {
         result: set[int] = set(seed_ids);
         grew = True;
         while grew {

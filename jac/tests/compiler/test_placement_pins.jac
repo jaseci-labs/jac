@@ -37,7 +37,11 @@ def _element(mod: uni.Module, name: str) -> (uni.ContextAwareNode | None) {
             names = [stmt.name.value];
         } elif isinstance(stmt, uni.GlobalVars) {
             for assign in stmt.assignments {
-                names += [t.value for t in assign.target if isinstance(t, uni.Name)];
+                names += [
+                    t.value
+                    for t in assign.target
+                    if isinstance(t, uni.Name)
+                ];
             }
         } elif isinstance(stmt, uni.Import) {
             names = [
@@ -51,12 +55,6 @@ def _element(mod: uni.Module, name: str) -> (uni.ContextAwareNode | None) {
         }
     }
     return None;
-}
-
-
-def _stamp_of(mod: uni.Module, name: str) -> str {
-    elem = _element(mod, name);
-    return str(elem.code_context) if elem is not None else "missing";
 }
 
 
@@ -152,7 +150,9 @@ test "a client pin lands where it is pinned and pulls what it uses" {
             }
             prog = JacProgram();
             mod = prog.compile(os.path.join(tmpdir, target), no_cgen=True);
-            assert not prog.errors_had , f"{label}: {[str(e) for e in prog.errors_had]}";
+            assert not prog.errors_had , f"{label}: {[
+                str(e) for e in prog.errors_had
+            ]}";
             placed = {name: _placed(mod, name) for name in expected};
             assert placed == expected , f"{label}: {placed}";
         }
