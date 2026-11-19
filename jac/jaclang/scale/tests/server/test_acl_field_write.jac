@@ -184,3 +184,56 @@ test "owner writes are unaffected by the gate" {
         _cleanup();
     }
 }
+
+test "a folder share, its removal and the member's own list work over HTTP" {
+    _cleanup();
+    port = get_free_port();
+    base = f"http://localhost:{port}";
+    _prewarm();
+    server = start_server(FIXTURES_DIR, FIXTURES_DIR / "app.jac", port);
+    try {
+        run = uuid.uuid4().hex[:8];
+        tok_owner = register_user(base, f"acl_folder_owner_{run}");
+        tok_member = register_user(base, f"acl_folder_member_{run}");
+        member_root = _result(_call(base, "whoami", tok_member, {}))["root"];
+        folder = _result(_call(base, "make_doc", tok_owner, {}))["id"];
+        before = _result(_call(base, "add_child", tok_owner, {"parent_id": folder}))[
+            "id"
+        ];
+
+        def reads(doc: str) -> bool {
+            return _result(_call(base, "read_doc", tok_member, {"id": doc}))["found"];
+        }
+        def shared -> list[str] {
+            return _result(_call(base, "shared_with_me", tok_member, {}))["ids"];
+        }
+
+        assert not reads(before) , "the member read the folder before any share";
+        _call(
+            base,
+            "share",
+            tok_owner,
+            {"id": folder, "to_root": member_root, "level": "READ"}
+        );
+        after = _result(_call(base, "add_child", tok_owner, {"parent_id": folder}))[
+            "id"
+        ];
+        # The share covers the folder, what was under it, and what is added later.
+        for doc in (folder, before, after) {
+            assert reads(doc) , f"folder share missed {doc}";
+        }
+        assert shared() == [folder] , f"member's own list: {shared()!r}";
+
+        _call(base, "unshare", tok_owner, {"id": folder, "who": member_root});
+        for doc in (folder, before, after) {
+            assert not reads(doc) , f"clear_access left {doc} readable";
+        }
+        assert shared() == [] , f"member still lists the folder: {shared()!r}";
+    } finally {
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.`wait(timeout=10);
+        }
+        _cleanup();
+    }
+}

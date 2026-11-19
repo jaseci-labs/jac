@@ -307,7 +307,8 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
                 continue;
             }
             nid = node_of.get(anchor_key(ea));
-            if nid is not None {
+            by_edge = not q.from_visit and is_membership(ea.archetype);
+            if nid is not None and not by_edge {
                 ends = _materialize_ids(mem, [nid], local);
                 if not ends or not acl_read_ok(ends[0]) {
                     continue;
@@ -681,7 +682,9 @@ impl _trusted_names(
         }
         seen.add(cls);
         pending.extend(cls.__subclasses__());
-        if issubclass(cls, Root) or cls?.__jac_access__ is not base_access {
+        if issubclass(cls, Root)
+            or is_membership(cls)
+            or cls?.__jac_access__ is not base_access {
             continue;
         }
         tname = storage_type(cls);
@@ -980,7 +983,9 @@ impl _scan(
                 if tail and not _tail_ok(a, tail) {
                     continue;
                 }
-                if node_unknown(r) and not acl_read_ok(a) {
+                hidden = node_unknown(r) and not acl_read_ok(a);
+                listing = unique == 'edge' and want_edges and eid is not None;
+                if hidden and (not listing or q.from_visit) {
                     continue;
                 }
                 if want_edges and eid is not None {
@@ -995,6 +1000,9 @@ impl _scan(
                         continue;
                     }
                     if edge_unknown(r) and not acl_read_ok(ea) {
+                        continue;
+                    }
+                    if hidden and not is_membership(ea.archetype) {
                         continue;
                     }
                 }

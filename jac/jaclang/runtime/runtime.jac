@@ -43,6 +43,7 @@ def scale_provider_error -> Exception | None;
 
 def _all_grant(anchor: Anchor) -> AccessLevel;
 
+
 def _light_disconnect_between(
     a: NodeAnchor, b: NodeAnchor, dirv: int, filter: (Callable | None)
 ) -> bool;
@@ -99,6 +100,7 @@ class JacPersistence {
     static def owner_of(`obj: (Archetype | Anchor)) -> (UUID | None);
     static def destroy(objs: any, strict: bool = False) -> None;
     static def _destroy_anchors(objs: any, strict: bool) -> list[Anchor];
+    static def drop_anchor(anchor: Anchor) -> None;
     static def peek_attr(`obj: any, name: str) -> any;
     static def peek_item(container: any, key: any) -> any;
     static def get_user_manager(base_path: str) -> UserManager;
@@ -117,31 +119,17 @@ class JacAccessValidation {
     ) -> bool;
 
     static def _is_shared_root(to: Anchor) -> bool;
-    static def allow_root(
-        archetype: Archetype,
-        root_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    static def allow_group(
-        archetype: Archetype,
-        group_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    static def disallow_group(archetype: Archetype, group_id: UUID) -> None;
-    static def _groups_of(jroot: NodeAnchor) -> list[str];
-    static def disallow_root(
-        archetype: Archetype,
-        root_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
+    static def _require_admin(anchor: Anchor) -> None;
     static def perm_grant(
         archetype: Archetype, level: (AccessLevel | int | str | None) = None
     ) -> None;
 
     static def perm_revoke(archetype: Archetype) -> None;
+    static def set_access(
+        target: (Archetype | Anchor), who: any, level: (AccessLevel | int | str)
+    ) -> None;
+
+    static def clear_access(target: (Archetype | Anchor), who: any) -> None;
     static def check_read_access(to: Anchor) -> bool;
     static def check_connect_access(to: Anchor, op_hint: str = "connect") -> bool;
     static def check_write_access(to: Anchor, op_hint: str = "write") -> bool;

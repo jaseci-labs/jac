@@ -476,28 +476,58 @@ impl _pred_cond(
 
 
 impl _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
-    mu = f"{pfx}mu";
-    mt = f"{pfx}mt";
-    params[mu] = root_id;
-    params[mt] = root_id;
+    held = principals();
+
+    def as_set(lo: int, hi: int, fallback: list[str]) -> str {
+        keys = [
+            pid
+            for (pid, lvl) in held.items()
+            if lo <= lvl.value <= hi
+        ]
+            or fallback;
+        return "{" + ",".join([f'"{k}":0' for k in keys]) + "}";
+    }
+    (me, ids, blk, adm) = (f"{pfx}me", f"{pfx}ids", f"{pfx}blk", f"{pfx}adm");
+    params[me] = root_id;
+    params[ids] = as_set(0, 3, [root_id]);
+    params[blk] = as_set(-1, -1, []);
+    params[adm] = as_set(3, 3, [root_id]);
+    owner = f"CAST({alias}.root_id AS text)";
     own_all = f"COALESCE(({alias}.props->'access'->>'all')::int, -1)";
+
+    def in_set(key_set: str, key: str) -> str {
+        return f"COALESCE(CAST(:{key_set} AS jsonb) ? {key}, FALSE)";
+    }
+    def named(m: str, key_set: str, op: str) -> str {
+        return (
+            f"EXISTS (SELECT 1 FROM jsonb_each_text(CASE WHEN jsonb_typeof({m}) = "
+            f"'object' THEN {m} END) AS e(k, v) WHERE {in_set(key_set, 'e.k')}"
+            f" AND e.v::int {op})"
+        );
+    }
+    def on_doc(op: str) -> str {
+        doc = f"{alias}.props->'access'";
+        return (
+            named(f"{doc}->'roots'->'anchors'", ids, op)
+            + " OR "
+            + named(f"{doc}->'groups'->'anchors'", ids, op)
+            + " OR EXISTS (SELECT 1 FROM anchors ro WHERE ro.id = "
+            + f"{alias}.root_id AND "
+            + named("ro.props->'access'->'roots'->'anchors'", ids, op)
+            + ")"
+        );
+    }
+    labels = f"{alias}.props->'access'->'groups'->'anchors'";
     return (
-        f"({alias}.root_id = CAST(:{mu} AS uuid)"
-        f" OR COALESCE("
-        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" (SELECT COALESCE("
-        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" GREATEST({own_all}, COALESCE((ro.props->'access'->>'all')::int, -1))"
-        f") FROM anchors ro WHERE ro.id = {alias}.root_id),"
-        f" {own_all}"
-        f") > -1"
-        f" OR EXISTS ("
-        f"SELECT 1 FROM anchors ge"
-        f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
-        f" AND ({alias}.props->'access'->'groups'->'anchors'->>CAST(ge.dst AS text))::int"
-        f" > -1"
-        f")"
-        f")"
+        f"({alias}.root_id = CAST(:{me} AS uuid)"
+        f" OR (NOT {in_set(blk, owner)}"
+        f" AND NOT (NOT {in_set(adm, owner)} AND ({on_doc('= -1')}))"
+        f" AND NOT (NOT {in_set(adm, owner)} AND {named(labels, blk, '> -2')})"
+        f" AND ({own_all} > -1"
+        f" OR EXISTS (SELECT 1 FROM anchors ro WHERE ro.id = {alias}.root_id"
+        f" AND COALESCE((ro.props->'access'->>'all')::int, -1) > -1)"
+        f" OR {in_set(ids, owner)}"
+        f" OR {on_doc('> -1')})))"
     );
 }
 

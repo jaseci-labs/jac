@@ -17,6 +17,7 @@ import from jaclang.runtime.archetype { AccessLevel, EdgeAnchor, GenericEdge, Ro
 import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.data.serializer { Serializer }
+import from jaclang.runtime.membership { Member }
 
 node Item {
     has label: str = "";
@@ -25,8 +26,6 @@ node Item {
 node Team {
     has name: str = "";
 }
-
-edge MemberOf: any --> any {}
 
 def _as_any(v: any) -> any {
     return v;
@@ -87,9 +86,8 @@ test "a group join and leave rewrite no content rows, and visibility flips" {
                 setattr(it, "root", owner.id);
                 ctx.mem.put(it);
                 _link(ctx, owner, it, GenericEdge());
-                JacRuntimeInterface.allow_group(
-                    it.archetype, team.id, AccessLevel.READ
-                );
+                it.own_access().groups.anchors[str(team.id)] = AccessLevel.READ;
+                ctx.mem.put(it);
                 ids.append(it.id);
             }
             ctx.mem.commit();
@@ -104,7 +102,7 @@ test "a group join and leave rewrite no content rows, and visibility flips" {
             }
 
             # Join: one edge. No content row may change.
-            _link(ctx, member, team, MemberOf());
+            _link(ctx, member, team, Member(level=AccessLevel.READ.value));
             ctx.mem.commit();
             joined = _fingerprints(ctx, ids);
             assert joined == before , (
@@ -130,7 +128,7 @@ test "a group join and leave rewrite no content rows, and visibility flips" {
             ctx.set_user_root(str(owner.id));
             member_anchor: any = ctx.mem.get(member.id);
             for e in list(member_anchor.edges) {
-                if isinstance(e.archetype, MemberOf) {
+                if isinstance(e.archetype, Member) {
                     e.detach();
                     ctx.mem.delete(e.id);
                 }
