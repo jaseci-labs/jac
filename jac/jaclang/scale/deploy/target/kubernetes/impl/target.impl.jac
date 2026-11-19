@@ -1195,14 +1195,6 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
         )
     );
 
-    for svc_name in lift_parked_deployments_for_bundle(bundle, namespace, apps_v1) {
-        if self.logger {
-            self.logger.info(
-                f"Scaled '{svc_name}' up from zero: it no longer scales to zero"
-            );
-        }
-    }
-
     for svc_name in scaling.keys() {
         plan: dict[str, any] = dict(scaling.get(svc_name, {}));
         if plan.get("mode") != ScalingMode.METRIC {
@@ -1217,6 +1209,15 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
         if self.logger and autoscaler_applied {
             self.logger.info(
                 f"Applied autoscaler for '{svc_name}'", {"name": spec.autoscaler_name}
+            );
+        }
+    }
+
+    # After the autoscalers, so a replaced KEDA ScaledObject can't scale it back to 0.
+    for svc_name in lift_parked_deployments_for_bundle(bundle, namespace, apps_v1) {
+        if self.logger {
+            self.logger.info(
+                f"Scaled '{svc_name}' up from zero: it no longer scales to zero"
             );
         }
     }
