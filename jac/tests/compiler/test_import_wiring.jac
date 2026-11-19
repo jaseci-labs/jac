@@ -1921,6 +1921,14 @@ test "graph spaces declares the apps: their kinds, entries and where their modul
     assert web_pins.get("core.site.*") == "client" , web_pins;
     assert web_pins.get("web") == "client" , web_pins;
     assert "core.api" not in ws.apps["cli"].pins , ws.apps["cli"].pins;
+    arch_path = os.path.join(base, "archwire.jac");
+    with open(arch_path, "w", encoding="utf-8") as fh {
+        fh.write(_SPACES_ARCH.replace("    app cli { run cli; }\n", ""));
+    }
+    later = os.path.getmtime(arch_path) + 2;
+    os.utime(arch_path, (later, later));
+    ws2 = workspace_for_path(os.path.join(base, "web.jac"));
+    assert ws2 is not None and "cli" not in ws2.apps , sorted(ws2.apps);
     shutil.rmtree(base, ignore_errors=True);
 }
 

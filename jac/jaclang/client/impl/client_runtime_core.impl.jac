@@ -1245,6 +1245,10 @@ impl jacUseLocalUser(name: str) -> bool {
 }
 
 impl jacLeaveLocalUser -> None {
+    broker = __jacDesktopBroker();
+    if broker {
+        await __jacBrokerJson("POST", f"{broker}/profiles/active", {"id": ""});
+    }
     jacLogout();
 }
 

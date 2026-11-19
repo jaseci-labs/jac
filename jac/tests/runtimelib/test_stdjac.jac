@@ -27,6 +27,14 @@ def ask(question: str, conversation: list[Message]) -> str {
     return "";
 }
 
+test "stdjac's short name and jaclang.stdjac are one module" {
+    import importlib;
+    short = importlib.import_module("stdjac.codec");
+    long = importlib.import_module("jaclang.stdjac.codec");
+    assert short is long , (short, long);
+    assert importlib.import_module("stdjac.codec") is short;
+}
+
 test "codec encodes enum members by name and fields across the hierarchy" {
     assert encode(Shade.DARK) == "DARK" , encode(Shade.DARK);
     assert encode(Rank.HIGH) == "HIGH" , encode(Rank.HIGH);

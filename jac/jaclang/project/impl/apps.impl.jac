@@ -71,11 +71,13 @@ impl _desktop_overlay(
             backends[profile] = remote_url;
         }
     }
-    if len(backends) > 1 {
-        desktop.setdefault("backends", backends);
-        desktop.setdefault("default_backend", profiles[0]);
-    } elif backends {
-        desktop.setdefault("backend", next(iter(backends.values())));
+    if "backend" not in desktop and "backends" not in desktop {
+        if len(backends) > 1 {
+            desktop["backends"] = backends;
+            desktop.setdefault("default_backend", profiles[0]);
+        } elif backends {
+            desktop["backend"] = next(iter(backends.values()));
+        }
     }
     if fields.get("local_users") is True {
         desktop.setdefault("profiles", True);

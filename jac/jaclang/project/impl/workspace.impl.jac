@@ -68,10 +68,12 @@ impl _npm_names_of(raw: any) -> set[str] {
 impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
     stamps: list[float] = [];
     for proj_dir in project_root_chain(root_dir) {
-        try {
-            stamps.append(os.path.getmtime(os.path.join(proj_dir, 'jac.toml')));
-        } except OSError {
-            stamps.append(-1.0);
+        for name in ('jac.toml', 'archwire.jac') {
+            try {
+                stamps.append(os.path.getmtime(os.path.join(proj_dir, name)));
+            } except OSError {
+                stamps.append(-1.0);
+            }
         }
     }
     return tuple(stamps);
