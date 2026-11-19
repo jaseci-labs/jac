@@ -22,7 +22,7 @@ glob _SV_ENV: str = "JAC_SV_NAME",
          / "fixtures"
          / "gateway_owned_fleet",
      _FLEET_SECRET: str = "gateway-owned-fleet-fixture-signing-secret-0123456789",
-     _FLEET_ADMIN_PASSWORD: str = "Fleet-fixture-admin-9";
+     _FLEET_ADMIN_PASSWORD: str = "Fleet-fixture-Passw0rd-9";
 
 
 """A session token of the shape the gateway mints, for a user no service knows."""

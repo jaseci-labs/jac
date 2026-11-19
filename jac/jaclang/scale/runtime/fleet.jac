@@ -48,13 +48,6 @@ obj FleetSpec {
 def fleet_from_env -> FleetSpec | None;
 
 
-"""True when an app's own env points it at a database of its own.
-
-Every launcher starts an app with the fleet's environment, so an app shares the
-gateway's identity store unless its own env sets `JAC_DB_URL`. That is the only
-case a launcher can see, and the only case in which the app provisions the users
-of gateway tokens (`OWN_STORE_ENV`).
-"""
 def owns_identity_store(app_env: dict[str, any]) -> bool;
 
 

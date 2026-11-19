@@ -21,7 +21,7 @@ route = "/orders"
 colocate = false
 
 [scale.admin]
-default_password = "Fleet-fixture-admin-9"
+default_password = "Fleet-fixture-Passw0rd-9"
 
 [serve.auth]
 secret = "gateway-owned-fleet-fixture-signing-secret-0123456789"

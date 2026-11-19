@@ -9,12 +9,6 @@ glob logger: logging.Logger = logging.getLogger(__name__);
 def validate_events_url(url: (str | None));
 
 
-"""Whether a fleet app provisions the users of gateway tokens it does not know.
-
-Only an app the launcher marked as holding its own identity store does
-(`own_store`). An app on the gateway's store finds every real account there, so
-an unknown subject is a deleted or invented one and is refused, never recreated.
-"""
 def fleet_provisions_unknown_users(sv_name: str, own_store: bool = False) -> bool;
 
 
