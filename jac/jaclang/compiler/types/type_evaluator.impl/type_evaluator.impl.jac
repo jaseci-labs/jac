@@ -4160,7 +4160,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
     syms = self._sv_async_syms_cache.get(mod_key);
     if syms is None {
         syms = set();
-        client_syms: set[int] = set();
+        client_syms: set[tuple[int, str]] = set();
         import from jaclang.compiler.driver.boundary_classify {
             CrossAppKind,
             classify_cross_app_import,
@@ -4227,16 +4227,17 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                         continue;
                     }
                 }
-                syms.add(id(item.name.sym));
+                bound = item.alias or item.name;
+                syms.add((id(item.name.sym), bound.value));
                 if is_boundary {
-                    client_syms.add(id(item.name.sym));
+                    client_syms.add((id(item.name.sym), bound.value));
                 }
             }
         }
         self._sv_async_syms_cache[mod_key] = syms;
         self._client_bridge_syms_cache[mod_key] = client_syms;
     }
-    return id(tgt.sym) in syms;
+    return (id(tgt.sym), tgt.value) in syms;
 }
 
 impl TypeEvaluator._is_client_bridge_call(expr: FuncCall) -> bool {
@@ -4247,7 +4248,7 @@ impl TypeEvaluator._is_client_bridge_call(expr: FuncCall) -> bool {
     tgt = expr.target;
     return mod is not None
         and isinstance(tgt, Name)
-        and id(tgt.sym) in self._client_bridge_syms_cache.get(id(mod), set());
+        and (id(tgt.sym), tgt.value) in self._client_bridge_syms_cache.get(id(mod), set());
 }
 
 impl TypeEvaluator._prefetch_types {
