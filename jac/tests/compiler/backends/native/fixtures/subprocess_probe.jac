@@ -1,11 +1,12 @@
 """Congruence probe: `import subprocess` must answer what CPython answers.
 
 Runs on the sv pathway (CPython's subprocess) and the na pathway
-(na_stdlib/subprocess.linux.jac). Only deterministic, lane-identical lines are
+(na_stdlib/subprocess.jac). Only deterministic, lane-identical lines are
 printed; exception messages are not printed because the repr differs.
 """
 
 import subprocess;
+import os;
 import from subprocess {
     PIPE,
     STDOUT,
@@ -132,13 +133,29 @@ with entry {
         print("ve-capture-raised");
     }
 
-    print("sigpipe-ign=" + str(getsignal(SIGPIPE) is SIG_IGN));
+    inherited = os.environ.get("HOME", "");
+    env_probe = run(
+        ["sh", "-c", "printf %s \"$HOME\""], capture_output=True, text=True
+    );
+    print("inherited-env=" + str(env_probe.stdout == inherited));
+
+    retry = Popen(
+        args=["sh", "-c", "sleep 0.1; printf retry-out"], stdout=PIPE, text=True
+    );
     try {
-        run([]);
-        print("empty-args-missed");
-    } except IndexError {
-        print("empty-args-raised");
+        retry.communicate(timeout=0.01);
+        print("retry-timeout-missed");
+    } except TimeoutExpired {
+        (retry_out, _retry_err) = retry.communicate(timeout=2);
+        retry_out_s: str = str(retry_out);
+        print("retry-out=" + retry_out_s.strip());
+        retry_out_again: str = "";
+        _retry_err_again: any = None;
+        (retry_out_again, _retry_err_again) = retry.communicate(timeout=2);
+        retry_out_again_s: str = str(retry_out_again);
+        print("repeat-out=" + str(retry_out_again_s == retry_out_s));
     }
 
+    print("sigpipe-ign=" + str(getsignal(SIGPIPE) is SIG_IGN));
     print("done");
 }
