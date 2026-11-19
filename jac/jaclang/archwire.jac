@@ -5292,7 +5292,6 @@ graph import compiler {
             ProductTask,
             TaskState
         },
-        types.type_evaluator.TypeEvaluator._report_missing_import_name { AnalysisFact },
     ]
     driver.pipeline_types --> [
         placement.placement_solver.invalidate_importers_es

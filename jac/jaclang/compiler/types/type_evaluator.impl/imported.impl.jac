@@ -685,12 +685,13 @@ impl TypeEvaluator._import_must_bind(imp: Import) -> bool {
 impl TypeEvaluator._report_missing_import_name(
     binding: Name, imp: Import, source: (UniScopeNode | None), name: str, module: str
 ) -> None {
+    if isinstance(source, Module)
+        and source.stub_only
+        and source.loc.mod_path.endswith(".jac") {
+        source = self._import_module_from_path(source.loc.mod_path, need_tree=True);
+    }
     certain = isinstance(source, Module)
         and module_names_closed(source)
-        and (
-            not self._module_in_flight(source.loc.mod_path)
-            or self.program.analysis.provides(source, AnalysisFact.DEFINES)
-        )
         and self._import_must_bind(imp);
     self.emit_diag(E1145 if certain else W1101, binding, name=name, module=module);
 }

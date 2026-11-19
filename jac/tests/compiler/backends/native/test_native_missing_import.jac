@@ -24,17 +24,10 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures";
 
-"""The diagnostic codes a check-only compile of `main_rel` reports, in a fresh
-project holding `files`."""
-def check_codes(files: dict[str, str], main_rel: str) -> list[str] {
-    base = Path(tempfile.mkdtemp(prefix="jac_missing_name_"));
-    (base / "jac.toml").write_text("[project]\nname = \"missingname\"\n");
-    for (rel, text) in files.items() {
-        (base / rel).parent.mkdir(parents=True, exist_ok=True);
-        (base / rel).write_text(text);
-    }
+"""The diagnostic codes a check-only compile of `path` reports."""
+def check_codes(path: Path) -> list[str] {
     prog = JacProgram();
-    prog.compile(file_path=str(base / main_rel), options=CompileOptions(no_cgen=True));
+    prog.compile(file_path=str(path), options=CompileOptions(no_cgen=True));
     codes: list[str] = [];
     for alert in list(prog.errors_had) + list(prog.warnings_had) {
         if alert.code is not None {
@@ -58,18 +51,17 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
     );
     cases = [
         (
-            "E1145",
-            {"lib.jac": lib, "main.jac": "import from lib { present_fn, missing_fn }\n"}
-        ),
-        (
+            "relative module",
             "E1145",
             {"feat/lib.jac": lib, "feat/main.jac": "import from .lib { missing_fn }\n"}
         ),
         (
+            "package __init__.jac",
             "E1145",
             {"pkg/__init__.jac": lib, "main.jac": "import from pkg { missing_fn }\n"}
         ),
         (
+            "import cycle",
             "E1145",
             {
                 "lib.jac": "import from main { main_val }\nglob lib_val: int = 1;\n",
@@ -77,6 +69,7 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
             }
         ),
         (
+            "python module",
             "W1101",
             {
                 "lib.py": "globals()['missing_fn'] = 1\n",
@@ -84,6 +77,7 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
             }
         ),
         (
+            "package __init__.py",
             "W1101",
             {
                 "pkg/__init__.py": "X = 1\n",
@@ -91,6 +85,7 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
             }
         ),
         (
+            "module __getattr__",
             "W1101",
             {
                 "lib.jac": "def __getattr__(name: str) -> int {\n    return 42;\n}\n",
@@ -98,6 +93,7 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
             }
         ),
         (
+            "include",
             "W1101",
             {
                 "base.jac": lib,
@@ -105,25 +101,51 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
                 "main.jac": "import from lib { missing_fn }\n"
             }
         ),
-        ("W1101", {"lib.jac": lib, "main.jac": guarded}),
+        ("try/except ImportError", "W1101", {"lib.jac": lib, "main.jac": guarded}),
         (
+            "import type",
             "W1101",
             {"lib.jac": lib, "main.jac": "import type from lib { MissingType }\n"}
         ),
+        (
+            "comptime import",
+            "W1101",
+            {"lib.jac": lib, "main.jac": "comptime import from lib { missing_fn }\n"}
+        ),
 
     ];
-    for (expected, files) in cases {
-        main_rel = [
-            rel
-            for rel in files
-            if rel.endswith("main.jac")
-        ][0];
-        codes = check_codes(files, main_rel);
-        other = "W1101" if expected == "E1145" else "E1145";
-        assert expected in codes and other not in codes , (
-            f"{files[main_rel]!r}: expected {expected}, got {codes}"
-        );
+    failures: list[str] = [];
+    with tempfile.TemporaryDirectory() as tmp {
+        checks = [("absolute module", "E1145", FIXTURES / "missing_import_main.jac")];
+        for (idx, row) in enumerate(cases) {
+            (label, expected, files) = row;
+            base = Path(tmp) / str(idx);
+            for (rel, text) in (
+                {"jac.toml": "[project]\nname = \"missingname\"\n"} | files
+            ).items() {
+                (base / rel).parent.mkdir(parents=True, exist_ok=True);
+                (base / rel).write_text(text);
+            }
+            main_rel = [
+                rel
+                for rel in files
+                if rel.endswith("main.jac")
+            ][0];
+            checks.append((label, expected, base / main_rel));
+        }
+        for run in ("cold", "warm") {
+            for (label, expected, path) in checks {
+                codes = check_codes(path);
+                other = "W1101" if expected == "E1145" else "E1145";
+                if expected not in codes or other in codes {
+                    failures.append(
+                        f"{label} ({run}): expected {expected}, got {codes}"
+                    );
+                }
+            }
+        }
     }
+    assert not failures , failures;
 }
 
 test "a native build importing a missing name fails with the name and module" {
