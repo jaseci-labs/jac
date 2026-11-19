@@ -136,26 +136,12 @@ impl principals -> dict[str, AccessLevel] {
         known: dict[str, AccessLevel] = cached[1];
         return known;
     }
-    held: dict[str, AccessLevel] = {str(jroot.id): AccessLevel.ADMIN};
+
     blocked: set[str] = set();
-    frontier: dict[UUID, AccessLevel] = {jroot.ensure_id(): AccessLevel.ADMIN};
-    while frontier {
-        reached: dict[UUID, AccessLevel] = {};
-        for (src, dst, raw) in _member_links(list(frontier.keys())) {
-            key = str(dst);
-            level = access_level_cast(raw);
-            if level == AccessLevel.NO_ACCESS {
-                blocked.add(key);
-                continue;
-            }
-            reach = frontier[src];
-            capped = level if level.value < reach.value else reach;
-            if capped.value > held.get(key, AccessLevel.NO_ACCESS).value {
-                held[key] = capped;
-                reached[dst] = capped;
-            }
-        }
-        frontier = reached;
+    (held, found) = _walk_members(jroot.ensure_id(), blocked);
+    while not found <= blocked {
+        blocked = blocked | found;
+        (held, found) = _walk_members(jroot.ensure_id(), blocked);
     }
     for key in blocked {
         if held.get(key) != AccessLevel.ADMIN {
@@ -164,6 +150,36 @@ impl principals -> dict[str, AccessLevel] {
     }
     jctx._principals = (jroot.ensure_id(), held);
     return held;
+}
+
+impl _walk_members(
+    me: UUID, blocked: set[str]
+) -> tuple[dict[str, AccessLevel], set[str]] {
+    held: dict[str, AccessLevel] = {str(me): AccessLevel.ADMIN};
+    found: set[str] = set();
+    frontier: dict[UUID, AccessLevel] = {me: AccessLevel.ADMIN};
+    while frontier {
+        reached: dict[UUID, AccessLevel] = {};
+        for (src, dst, raw) in _member_links(list(frontier.keys())) {
+            key = str(dst);
+            level = access_level_cast(raw);
+            if level == AccessLevel.NO_ACCESS {
+                found.add(key);
+                continue;
+            }
+            reach = frontier[src];
+            capped = level if level.value < reach.value else reach;
+            if key in blocked and capped != AccessLevel.ADMIN {
+                continue;
+            }
+            if capped.value > held.get(key, AccessLevel.NO_ACCESS).value {
+                held[key] = capped;
+                reached[dst] = capped;
+            }
+        }
+        frontier = reached;
+    }
+    return (held, found);
 }
 
 impl _saved_and_pending(
@@ -225,11 +241,12 @@ impl inherit_access(source: NodeAnchor, link: EdgeAnchor, target: NodeAnchor) ->
     if jroot is None {
         return;
     }
-    fresh = target.hash == 0 and target.`root == jroot.id;
+    me = jroot.ensure_id();
+    fresh = target.hash == 0 and target.`root == me;
+    attached = [link, *(_fresh_part(target, me) if fresh else [])];
     labels = _labels_of(source);
-    _add_labels(link, labels);
-    if fresh {
-        _add_labels(target, labels);
+    for a in attached {
+        _add_labels(a, labels);
     }
     if source.`root is None or source.`root == jroot.id {
         return;
@@ -244,12 +261,35 @@ impl inherit_access(source: NodeAnchor, link: EdgeAnchor, target: NodeAnchor) ->
     if best < AccessLevel.WRITE.value {
         return;
     }
-    link.`root = source.`root;
-    jctx.mem.put(link);
-    if fresh {
-        target.`root = source.`root;
-        jctx.mem.put(target);
+    for a in attached {
+        a.`root = source.`root;
+        jctx.mem.put(a);
     }
+}
+
+impl _fresh_part(start: NodeAnchor, me: UUID) -> list[Anchor] {
+    part: list[Anchor] = [start];
+    stack: list[NodeAnchor] = [start];
+    seen: set[UUID] = {start.ensure_id()};
+    while stack {
+        cur = stack.pop();
+        for e in list(cur.edges) {
+            if e.source.id != cur.id or e.hash != 0 or e.`root != me {
+                continue;
+            }
+            part.append(e);
+            nxt = e.target;
+            if isinstance(nxt, NodeAnchor)
+                and nxt.ensure_id() not in seen
+                and nxt.hash == 0
+                and nxt.`root == me {
+                seen.add(nxt.ensure_id());
+                part.append(nxt);
+                stack.append(nxt);
+            }
+        }
+    }
+    return part;
 }
 
 impl owned_by(owner: UUID, limit: int = 20) -> list[UUID] {
@@ -269,10 +309,8 @@ impl owned_by(owner: UUID, limit: int = 20) -> list[UUID] {
 impl member_edge_level(
     edge_anchor: EdgeAnchor, held: dict[str, AccessLevel]
 ) -> AccessLevel {
-    if held.get(str(edge_anchor.target.id)) == AccessLevel.ADMIN {
-        return AccessLevel.ADMIN;
-    }
-    if str(edge_anchor.source.id) in held {
+    admin = held.get(str(edge_anchor.target.id)) == AccessLevel.ADMIN;
+    if admin or str(edge_anchor.source.id) in held {
         return AccessLevel.READ;
     }
     return AccessLevel.NO_ACCESS;
@@ -315,10 +353,9 @@ impl set_access(
                 if wanted != AccessLevel.ADMIN {
                     _keep_an_admin(anchor, e);
                 }
-                arch: any = e.archetype;
-                arch.level = wanted.value;
+                JacRuntimeInterface.drop_anchor(e);
+                _add_member_edge(member, anchor, wanted);
             }
-            forget_principals();
             return;
         }
     }
@@ -349,6 +386,9 @@ impl clear_access(
     if isinstance(anchor, NodeAnchor) and _is_group(anchor) {
         for e in _members_in(anchor) {
             if e.source.id == who_id {
+                if leaving and _level_of(e) == AccessLevel.NO_ACCESS {
+                    JacAccessValidation._require_admin(anchor);
+                }
                 _keep_an_admin(anchor, e);
                 JacRuntimeInterface.drop_anchor(e);
             }

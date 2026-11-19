@@ -983,7 +983,9 @@ impl _scan(
                 if tail and not _tail_ok(a, tail) {
                     continue;
                 }
-                if node_unknown(r) and not acl_read_ok(a) {
+                hidden = node_unknown(r) and not acl_read_ok(a);
+                listing = unique == 'edge' and want_edges and eid is not None;
+                if hidden and (not listing or q.from_visit) {
                     continue;
                 }
                 if want_edges and eid is not None {
@@ -998,6 +1000,9 @@ impl _scan(
                         continue;
                     }
                     if edge_unknown(r) and not acl_read_ok(ea) {
+                        continue;
+                    }
+                    if hidden and not is_membership(ea.archetype) {
                         continue;
                     }
                 }

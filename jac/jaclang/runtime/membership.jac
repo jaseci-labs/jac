@@ -36,6 +36,12 @@ def _members_in(of: NodeAnchor) -> list[EdgeAnchor];
 
 def _member_links(src_ids: list[UUID]) -> list[tuple[UUID, UUID, int]];
 
+def _walk_members(
+    me: UUID, blocked: set[str]
+) -> tuple[dict[str, AccessLevel], set[str]];
+
+def _fresh_part(start: NodeAnchor, me: UUID) -> list[Anchor];
+
 def _saved_and_pending(
     sql: str, params: dict[str, any], keep: Callable[[Anchor], bool]
 ) -> tuple[list[tuple[any, ...]], list[Anchor]];

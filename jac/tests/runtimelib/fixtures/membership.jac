@@ -26,6 +26,8 @@ def _say(key: str, fn: any) {
         print(key + ":INVALID " + str(e));
     } except RuntimeError as e {
         print(key + ":REFUSED " + str(e));
+    } except Exception as e {
+        print(key + ":ERROR " + type(e).__name__ + " " + str(e));
     }
 }
 
@@ -262,5 +264,75 @@ walker share_in_one_request {
         clear_access(target, self.who_id);
         set_access(target, self.who_id, "CONNECT");
         print("EDGES:" + str(len([edge target<-:Member:<-])));
+    }
+}
+
+"""Set a Member edge's level by hand, bypassing set_access."""
+walker edit_member_level {
+    has group_id: str,
+        who_id: str,
+        level: int;
+
+    can enter with Root entry {
+        group = _node(self.group_id);
+        for m in [edge group<-:Member:<-] {
+            if m.who().replace("-", "") == self.who_id.replace("-", "") {
+                m.level = self.level;
+            }
+        }
+        Jac.commit();
+        print("EDITED");
+    }
+}
+
+"""Build parent -> child first, then attach the pair under `under` in one go."""
+walker add_tree {
+    has under_id: str,
+        title: str;
+
+    can enter with Root entry {
+        under = _node(self.under_id);
+        top = Doc(title=self.title);
+        child = Doc(title=self.title + "-child");
+        top ++> child;
+        under ++> top;
+        print("TOP:" + str(top.__jac__.id));
+        print("CHILD:" + str(child.__jac__.id));
+    }
+}
+
+"""The member list read whole and as one page."""
+walker members_paged {
+    has group_id: str;
+
+    can enter with Root entry {
+        group = _node(self.group_id);
+        print("ALL:" + str(len([edge group<-:Member:<-])));
+        print("PAGE:" + str(len([edge group<-:Member:<-][0:10])));
+        import from jaclang.runtime.graph_query { GraphQuery, QHop }
+        import from jaclang.data.query_planner { resolve_query_edges }
+        q = GraphQuery(
+            group, hops=[QHop(dir=1, `edge=Member)], edges_only=True, limit=10
+        );
+        mem: any = Jac.get_context().mem;
+        print("LIMITED:" + str(len(resolve_query_edges(mem, q))));
+    }
+}
+
+"""Read a node, delete a group, read the node again, all in one request."""
+walker level_around_delete {
+    has group_id: str,
+        node_id: str;
+
+    can enter with Root entry {
+        target: any = Jac.get_context().mem.get(UUID(self.node_id));
+        print("BEFORE:" + Jac.check_access_level(target).name);
+        group: any = _node(self.group_id);
+        def drop -> str {
+            Jac.destroy(group);
+            return "ok";
+        }
+        _say("DEL", drop);
+        print("AFTER:" + Jac.check_access_level(target).name);
     }
 }

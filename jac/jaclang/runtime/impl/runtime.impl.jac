@@ -1411,6 +1411,14 @@ impl JacPersistence.drop_anchor(anchor: Anchor) -> None {
     }
     import from jaclang.runtime.osp_kernel { osp_forget }
     import from jaclang.runtime.region { run_drop }
+    jctx = JacRuntimeInterface.get_context();
+    if is_membership(anchor.archetype)
+        or (
+            isinstance(anchor, NodeAnchor)
+            and any(is_membership(e.archetype) for e in anchor.edges)
+        ) {
+        jctx._principals = None;
+    }
     match anchor {
         case NodeAnchor():
             anchor.detach_light();

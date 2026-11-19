@@ -480,3 +480,105 @@ test "an org is deleted only by its admin, and only when empty" {
         _done(state);
     }
 }
+
+test "a member can leave but cannot clear their own block" {
+    state = _fresh();
+    try {
+        w = _acme();
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        _as(w, "alice", "share", "budget", "bob", "NO_ACCESS");
+        out = _as(w, "bob", "unshare", "budget", "bob");
+        assert ":DENIED" in out , f"bob cleared his own block: {out!r}";
+        assert _level(w, "bob", "budget") == "NO_ACCESS";
+        assert _line(_as(w, "bob", "unshare", "acme", "bob"), "CLEAR:") == "None";
+        assert _level(w, "bob", "plan") == "NO_ACCESS";
+    } finally {
+        _done(state);
+    }
+}
+
+test "a block also stops what is reached through the blocked group" {
+    state = _fresh();
+    try {
+        w = _acme();
+        for name in ("Team", "Hub") {
+            w[name] = _line(_as(w, "alice", "new_org", name), "ID:");
+        }
+        w["HubDoc"] = _line(_as(w, "alice", "add_doc", "Hub", "HubDoc"), "DOC:");
+        # bob -> Team -> Acme -> Hub
+        for (target, who, lvl) in [
+            ("Team", "bob", "WRITE"),
+            ("acme", "Team", "WRITE"),
+            ("Hub", "acme", "WRITE")
+        ] {
+            _as(w, "alice", "share", target, who, lvl);
+        }
+        assert _level(w, "bob", "HubDoc") == "WRITE";
+        _as(w, "alice", "share", "acme", "bob", "NO_ACCESS");
+        for target in ("plan", "HubDoc") {
+            assert _level(w, "bob", target) == "NO_ACCESS" , f"bob still reaches {target}";
+        }
+    } finally {
+        _done(state);
+    }
+}
+
+test "a Member level changes only through set_access, even for an admin" {
+    state = _fresh();
+    try {
+        w = _acme();
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        _as(w, "alice", "edit_member_level", "acme", "alice", "0");
+        _as(w, "alice", "edit_member_level", "acme", "bob", "3");
+        assert _level(w, "alice", "acme") == "ADMIN" , "the sole admin demoted herself by hand";
+        assert _level(w, "bob", "plan") == "WRITE" , "an edge edit promoted bob";
+    } finally {
+        _done(state);
+    }
+}
+
+test "a subtree built before it is attached gets the share and the owner" {
+    state = _fresh();
+    try {
+        w = _acme();
+        w["Doc1"] = _line(_as(w, "alice", "add_doc", "acme", "Doc1"), "DOC:");
+        _as(w, "alice", "share", "Doc1", "shane", "WRITE");
+        w["child"] = _line(_as(w, "alice", "add_tree", "Doc1", "T"), "CHILD:");
+        assert _level(w, "shane", "child") == "WRITE" , "the prebuilt child missed the share";
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        w["child2"] = _line(_as(w, "bob", "add_tree", "acme", "U"), "CHILD:");
+        assert _line(_as(w, "alice", "owner_of", "child2"), "OWNER:") == w["acme"] , "the prebuilt child kept the member as owner";
+    } finally {
+        _done(state);
+    }
+}
+
+test "a paged member list shows an admin every member" {
+    state = _fresh();
+    try {
+        w = _acme();
+        _as(w, "alice", "share", "acme", "bob", "WRITE");
+        _as(w, "alice", "share", "acme", "carol", "READ");
+        out = _as(w, "alice", "members_paged", "acme");
+        assert (_line(out, "ALL:"), _line(out, "PAGE:"), _line(out, "LIMITED:"))
+            == ("3", "3", "3") , repr(out);
+    } finally {
+        _done(state);
+    }
+}
+
+test "deleting a group ends its members' access within the same request" {
+    state = _fresh();
+    try {
+        w = _acme();
+        w["Team"] = _line(_as(w, "bob", "new_org", "Team"), "ID:");
+        _as(w, "alice", "share", "acme", "Team", "WRITE");
+        assert _level(w, "bob", "plan") == "WRITE";
+        out = _as(w, "bob", "level_around_delete", "Team", "plan");
+        assert _line(out, "DEL:") == "ok" , out;
+        assert (_line(out, "BEFORE:"), _line(out, "AFTER:"))
+            == ("WRITE", "NO_ACCESS") , repr(out);
+    } finally {
+        _done(state);
+    }
+}
