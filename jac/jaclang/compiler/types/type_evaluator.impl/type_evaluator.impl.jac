@@ -199,31 +199,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                             elem_types.append(elem_type);
                         }
                     }
-                    if expected_elem is not None and elem_types {
-                        all_compatible = True;
-                        for et in elem_types {
-                            if not self.assign_type(et, expected_elem) {
-                                all_compatible = False;
-                                break;
-                            }
-                        }
-                        if all_compatible {
-                            list_inst.private.type_args = [expected_elem];
-                        } else {
-                            if len(elem_types) == 1 {
-                                list_inst.private.type_args = [elem_types[0]];
-                            } elif len(elem_types) > 1 {
-                                list_inst.private.type_args = [
-                                    UnionType(types=elem_types)
-                                ];
-                            }
-                        }
-                    } else {
-                        if len(elem_types) == 1 {
-                            list_inst.private.type_args = [elem_types[0]];
-                        } elif len(elem_types) > 1 {
-                            list_inst.private.type_args = [UnionType(types=elem_types)];
-                        }
+                    if expected_elem is not None
+                        and elem_types
+                        and all(
+                            self.assign_type(et, expected_elem) for et in elem_types
+                        ) {
+                        list_inst.private.type_args = [expected_elem];
+                    } elif joined := self._join_types(elem_types) {
+                        list_inst.private.type_args = [joined];
                     }
                 }
                 return list_inst;
@@ -296,49 +279,20 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
 
-                    if expected_kv is not None and (key_types or val_types) {
-                        all_ok = True;
-                        for kt in key_types {
-                            if not self.assign_type(kt, expected_kv[0]) {
-                                all_ok = False;
-                                break;
-                            }
-                        }
-                        if all_ok {
-                            for vt in val_types {
-                                if not self.assign_type(vt, expected_kv[1]) {
-                                    all_ok = False;
-                                    break;
-                                }
-                            }
-                        }
-                        if all_ok {
-                            dict_inst.private.type_args = list(expected_kv);
-                        } elif key_types or val_types {
-                            k_arg = key_types[0]
-                                if len(key_types) == 1
-                                else UnionType(types=key_types)
-                                    if key_types
-                                    else UnknownType();
-                            v_arg = val_types[0]
-                                if len(val_types) == 1
-                                else UnionType(types=val_types)
-                                    if val_types
-                                    else UnknownType();
-                            dict_inst.private.type_args = [k_arg, v_arg];
-                        }
+                    if expected_kv is not None
+                        and (key_types or val_types)
+                        and all(
+                            self.assign_type(kt, expected_kv[0]) for kt in key_types
+                        )
+                        and all(
+                            self.assign_type(vt, expected_kv[1]) for vt in val_types
+                        ) {
+                        dict_inst.private.type_args = list(expected_kv);
                     } elif key_types or val_types {
-                        k_arg = key_types[0]
-                            if len(key_types) == 1
-                            else UnionType(types=key_types)
-                                if key_types
-                                else UnknownType();
-                        v_arg = val_types[0]
-                            if len(val_types) == 1
-                            else UnionType(types=val_types)
-                                if val_types
-                                else UnknownType();
-                        dict_inst.private.type_args = [k_arg, v_arg];
+                        dict_inst.private.type_args = [
+                            self._join_types(key_types) or UnknownType(),
+                            self._join_types(val_types) or UnknownType()
+                        ];
                     }
                 }
                 return dict_inst;
@@ -423,36 +377,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
 
-                    expected_elem_s = self._get_expected_element_type(
-                        expected_type, self.prefetch.set_class
-                    );
-                    if expected_elem_s is not None and set_elem_types {
-                        all_ok = True;
-                        for et in set_elem_types {
-                            if not self.assign_type(et, expected_elem_s) {
-                                all_ok = False;
-                                break;
-                            }
-                        }
-                        if all_ok {
-                            set_inst.private.type_args = [expected_elem_s];
-                        } else {
-                            if len(set_elem_types) == 1 {
-                                set_inst.private.type_args = [set_elem_types[0]];
-                            } elif len(set_elem_types) > 1 {
-                                set_inst.private.type_args = [
-                                    UnionType(types=set_elem_types)
-                                ];
-                            }
-                        }
-                    } else {
-                        if len(set_elem_types) == 1 {
-                            set_inst.private.type_args = [set_elem_types[0]];
-                        } elif len(set_elem_types) > 1 {
-                            set_inst.private.type_args = [
-                                UnionType(types=set_elem_types)
-                            ];
-                        }
+                    if expected_elem_sv is not None
+                        and set_elem_types
+                        and all(
+                            self.assign_type(et, expected_elem_sv)
+                            for et in set_elem_types
+                        ) {
+                        set_inst.private.type_args = [expected_elem_sv];
+                    } elif joined := self._join_types(set_elem_types) {
+                        set_inst.private.type_args = [joined];
                     }
                 }
                 return set_inst;
@@ -1200,11 +1133,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                             decl_for_ide.sym.add_use(expr.right);
                         }
 
-                        unique_types = list({str(t): t for t in member_types}.values());
-                        all_same_type = len(unique_types) == 1;
-                        expr.right.type = unique_types[0]
-                            if all_same_type
-                            else UnionType(types=unique_types);
+                        expr.right.type = self._union_of(
+                            list({str(t): t for t in member_types}.values())
+                        );
                         return expr.right.type;
                     }
                     if expr.is_null_ok {
@@ -1214,9 +1145,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 self._convert_to_instance(self.prefetch.none_type_class)
                             );
                             uniq = list({str(t): t for t in with_none}.values());
-                            expr.right.type = uniq[0]
-                                if len(uniq) == 1
-                                else UnionType(types=uniq);
+                            expr.right.type = self._union_of(uniq);
                             return expr.right.type;
                         }
                         return self._null_ok_attr_type(expr, base_type);
@@ -1232,11 +1161,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         if decl_for_ide and decl_for_ide.sym {
                             decl_for_ide.sym.add_use(expr.right);
                         }
-                        unique_types = list({str(t): t for t in member_types}.values());
-                        all_same_type = len(unique_types) == 1;
-                        expr.right.type = unique_types[0]
-                            if all_same_type
-                            else UnionType(types=unique_types);
+                        expr.right.type = self._union_of(
+                            list({str(t): t for t in member_types}.values())
+                        );
                         return expr.right.type;
                     }
                     return UnknownType();
@@ -1458,11 +1385,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 self._convert_to_instance(self.prefetch.none_type_class)
                             );
                         }
-                        if len(union_args) == 1 {
-                            return union_args[0];
-                        }
-                        if len(union_args) > 1 {
-                            return UnionType(types=union_args);
+                        if joined := self._join_types(union_args) {
+                            return joined;
                         }
                     }
 
@@ -1504,13 +1428,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 }
                             }
                         }
-                        if len(lit_types) == 1 {
-                            return lit_types[0];
-                        }
-                        if len(lit_types) > 1 {
-                            return UnionType(types=lit_types);
-                        }
-                        return UnknownType();
+                        return self._join_types(lit_types) or UnknownType();
                     }
                 }
                 if base_type.is_any_instance()
@@ -1772,13 +1690,7 @@ impl TypeEvaluator._get_type_of_expression_core(
             for branch_type in [true_type, false_type] {
                 self._collect_unique_types(branch_type, unique_types);
             }
-            if len(unique_types) == 1 {
-                return unique_types[0];
-            }
-            if len(unique_types) > 1 {
-                return UnionType(types=unique_types);
-            }
-            return true_type;
+            return self._join_types(unique_types) or true_type;
 
         case BoolExpr():
             is_and = isinstance(expr.op, Token) and expr.op.name == Tok.KW_AND;
@@ -1854,12 +1766,7 @@ impl TypeEvaluator._get_type_of_expression_core(
             for key in and_override_keys {
                 self._and_narrowing_overrides.pop(key, None);
             }
-            if len(operand_types) == 1 {
-                return operand_types[0];
-            } elif len(operand_types) > 1 {
-                return UnionType(types=operand_types);
-            }
-            return UnknownType();
+            return self._join_types(operand_types) or UnknownType();
 
         case UnaryExpr():
             if isinstance(expr.op, Token) {
@@ -1956,11 +1863,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                                             )
                                         );
                                     }
-                                    if len(member_insts) == 1 {
-                                        return member_insts[0];
-                                    }
-                                    if member_insts {
-                                        return UnionType(types=member_insts);
+                                    if joined := self._join_types(member_insts) {
+                                        return joined;
                                     }
                                 }
                                 type_arch_cls = self.get_type_of_expression(arch);
@@ -2197,9 +2101,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return intrinsic;
                 }
             }
-
-        case AwaitExpr():
-            return self.get_type_of_expression(expr.target);
 
         case ConcurrentExpr():
             return self.get_type_of_expression(expr.target);
@@ -3276,12 +3177,7 @@ impl TypeEvaluator.get_type_of_magic_method_call(
                 result_types.append(result);
             }
         }
-        if len(result_types) == 1 {
-            return result_types[0];
-        } elif len(result_types) > 1 {
-            return UnionType(types=result_types);
-        }
-        return None;
+        return self._join_types(result_types);
     }
     if obj_type.category == TypeCategory.Class {
         assert isinstance(obj_type, ClassType);
@@ -3796,10 +3692,6 @@ impl TypeEvaluator.assign_type(
     }
 
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
-        return True;
-    }
-
-    if isinstance(dest_type, ClassType) and dest_type.is_builtin("object") {
         return True;
     }
 
@@ -5292,11 +5184,7 @@ impl TypeEvaluator.classify_condition(condition: Expr) -> ConditionInfo | None {
                             else NarrowingKind.MEMBERSHIP_NOT_IN
                     ),
                     key=left_key,
-                    narrow_type=(
-                        elem_types[0]
-                            if len(elem_types) == 1
-                            else UnionType(types=elem_types)
-                    )
+                    narrow_type=self._union_of(elem_types)
                 );
             }
         }
@@ -5439,11 +5327,7 @@ impl TypeEvaluator._find_predicate_for(
                 ];
                 if len(positive) == len(matched) {
                     narrowed_types: list[TypeBase] = [p.narrow_type for p in positive];
-                    if len(narrowed_types) == 1 {
-                        union_type = narrowed_types[0];
-                    } else {
-                        union_type = UnionType(types=narrowed_types);
-                    }
+                    union_type = self._union_of(narrowed_types);
                     return NarrowingPredicate(
                         key=key,
                         narrow_type=union_type,
@@ -5947,13 +5831,15 @@ impl TypeEvaluator._filter_union_for_hasattr(
             matching.append(base_type);
         }
     }
-    if len(matching) == 0 {
-        return None;
-    } elif len(matching) == 1 {
-        return matching[0];
-    } else {
-        return UnionType(types=matching);
-    }
+    return self._join_types(matching);
+}
+
+impl TypeEvaluator._union_of(types_list: list[TypeBase]) -> TypeBase {
+    return types_list[0] if len(types_list) == 1 else UnionType(types=types_list);
+}
+
+impl TypeEvaluator._join_types(types_list: list[TypeBase]) -> TypeBase | None {
+    return self._union_of(types_list) if types_list else None;
 }
 
 impl TypeEvaluator._union_narrowed_types(types_list: list[TypeBase]) -> TypeBase {
@@ -5979,10 +5865,7 @@ impl TypeEvaluator._union_narrowed_types(types_list: list[TypeBase]) -> TypeBase
             unique.append(t);
         }
     }
-    if len(unique) == 1 {
-        return unique[0];
-    }
-    return UnionType(types=unique);
+    return self._union_of(unique);
 }
 
 impl TypeEvaluator.exclude_type_from_union(
@@ -6027,13 +5910,7 @@ impl TypeEvaluator._get_type_from_match_pattern(
             return None;
         }
     }
-    if len(pattern_types) == 0 {
-        return None;
-    }
-    if len(pattern_types) == 1 {
-        return pattern_types[0];
-    }
-    return UnionType(types=pattern_types);
+    return self._join_types(pattern_types);
 }
 
 impl TypeEvaluator._match_case_type(
@@ -6095,19 +5972,8 @@ impl TypeEvaluator._pattern_covers_class(alt: MatchPattern) -> bool {
 }
 
 impl TypeEvaluator._union_contains_none(union_type: TypeBase) -> bool {
-    if not isinstance(union_type, UnionType) or not union_type.types {
-        return False;
-    }
-    if not self.prefetch or not self.prefetch.none_type_class {
-        return False;
-    }
-    none_shared = self.prefetch.none_type_class.shared;
-    for t in union_type.types {
-        if isinstance(t, ClassType) and t.shared.same_class(none_shared) {
-            return True;
-        }
-    }
-    return False;
+    return isinstance(union_type, UnionType)
+        and any(self.is_none_type(t) for t in (union_type.types or []));
 }
 
 impl TypeEvaluator._extract_isinstance_info(
@@ -6158,7 +6024,7 @@ impl TypeEvaluator._extract_isinstance_info(
     }
     return (
         narrowing_key,
-        alternatives[0] if len(alternatives) == 1 else UnionType(types=alternatives),
+        self._union_of(alternatives),
         self._isinstance_classinfo_is_exact(type_arg)
     );
 }
@@ -6404,13 +6270,7 @@ impl TypeEvaluator._filter_union_to_callables(union_type: TypeBase) -> TypeBase 
             for t in union_type.types
             if self._is_callable_type(t)
         ];
-        if len(callables) == 0 {
-            return NeverType();
-        } elif len(callables) == 1 {
-            return callables[0];
-        } else {
-            return UnionType(types=callables);
-        }
+        return self._join_types(callables) or NeverType();
     }
     if self._is_callable_type(union_type) {
         return union_type;

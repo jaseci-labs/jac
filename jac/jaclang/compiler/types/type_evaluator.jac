@@ -3,8 +3,6 @@ import from pathlib { Path }
 
 import from typing { cast }
 
-import from typing { cast }
-
 obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
@@ -822,6 +820,8 @@ walker TypeEvaluator {
 
     def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list[TypeBase]) -> TypeBase;
+    def _union_of(types_list: list[TypeBase]) -> TypeBase;
+    def _join_types(types_list: list[TypeBase]) -> TypeBase | None;
     def _if_exit_type(
         target: NarrowingTarget,
         stmt: IfStmt,
