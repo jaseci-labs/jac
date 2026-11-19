@@ -207,6 +207,13 @@ def _data(resp: any) -> any {
 }
 
 
+"""What a called function returned. POST runs it; GET only describes it."""
+def _result(resp: any) -> any {
+    data = _data(resp);
+    return data.get("result", data) if isinstance(data, dict) else data;
+}
+
+
 """Start the fixture fleet (`jac run main --fleet`) and wait until `orders` answers.
 
 The gateway and `orders` are separate processes on the fixture project's one
@@ -230,8 +237,8 @@ def _start_fleet -> tuple[subprocess.Popen, str] {
             raise RuntimeError(f"fleet exited before serving:\n{out}");
         }
         try {
-            # 401 means the request reached `orders` and its auth check ran.
-            if requests.get(f"{base}/orders/function/whoami", timeout=2).status_code
+            # 401 means the call reached `orders` and its auth check ran.
+            if requests.post(f"{base}/orders/function/whoami", timeout=2).status_code
                 == 401 {
                 return (proc, base);
             }
@@ -261,11 +268,13 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
         user_id = _data(made)["user_id"];
         bearer = {"Authorization": f"Bearer {token}"};
 
-        # A real account works on the app without any provisioning.
-        mine = requests.get(
+        # A real account runs a function on the app, on its own root, without
+        # any provisioning.
+        mine = requests.post(
             f"{base}/orders/function/whoami", headers=bearer, timeout=30
         );
         assert mine.status_code == 200 , mine.text;
+        assert _result(mine) == "orders" , mine.text;
 
         # A signed token for an id the store never held is refused, not created.
         ghost = jwt_encode(
@@ -274,7 +283,7 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
             algorithm="HS256"
         );
         ghost_bearer = {"Authorization": f"Bearer {ghost}"};
-        refused = requests.get(
+        refused = requests.post(
             f"{base}/orders/function/whoami", headers=ghost_bearer, timeout=30
         );
         assert refused.status_code == 401 , refused.text;
@@ -293,7 +302,7 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
             f"{base}/admin/users/{name}", headers=admin_bearer, timeout=30
         );
         assert gone.status_code == 200 , gone.text;
-        after = requests.get(
+        after = requests.post(
             f"{base}/orders/function/whoami", headers=bearer, timeout=30
         );
         assert after.status_code == 401 , f"a deleted account reached the app: {after.text}";
