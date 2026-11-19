@@ -703,56 +703,29 @@ impl solve_module_placement(
     for elem in anchored_client {
         anchor_ref_ids.update(body_refs[id(elem)]);
     }
-    def _read_on_server(eid: int) -> bool {
-        for top in module.body {
-            if (
-                isinstance(top, uni.ContextAwareNode)
-                and top.top_element is top
-                and id(top) != eid
-                and (top.code_context != CodeContext.CLIENT or top.codespace_dual)
-                and eid in body_refs.get(id(top), set())
-            ) {
-                return True;
-            }
-        }
-        return False;
-    }
-    client_bound: set[int] = set();
     tops = [
         top
         for top in module.body
         if isinstance(top, uni.ContextAwareNode) and top.top_element is top
     ];
-    for top in tops {
-        if top.code_context == CodeContext.CLIENT and not top.codespace_dual {
-            client_bound.add(id(top));
-        }
+    def _read_on_server(eid: int) -> bool {
+        return any(
+            id(top) != eid
+            and (top.code_context != CodeContext.CLIENT or top.codespace_dual)
+            and eid in body_refs.get(id(top), set())
+            for top in tops
+        );
     }
-    grew_bound = True;
-    while grew_bound {
-        grew_bound = False;
-        for top in tops {
-            if id(top) not in client_bound
-                and not isinstance(top, uni.Import)
-                and not client_bound.isdisjoint(body_refs.get(id(top), set())) {
-                client_bound.add(id(top));
-                grew_bound = True;
-            }
-        }
-    }
-    for elem in inferable {
-        uses_map[id(elem)] = body_refs[id(elem)];
-    }
-    def _hard_closure(hc_seed_ids: set[int]) -> set[int] {
-        result: set[int] = set(hc_seed_ids);
+    def _closure(seed_ids: set[int], elems: list[uni.UniNode], excluded: any) -> set[int] {
+        result: set[int] = set(seed_ids);
         grew = True;
         while grew {
             grew = False;
-            for elem in inferable {
-                if (id(elem) in result or _is_sv_import(elem)) {
+            for elem in elems {
+                if id(elem) in result or excluded(elem) {
                     continue;
                 }
-                if not result.isdisjoint(uses_map[id(elem)]) {
+                if not result.isdisjoint(body_refs.get(id(elem), set())) {
                     result.add(id(elem));
                     grew = True;
                 }
@@ -760,11 +733,26 @@ impl solve_module_placement(
         }
         return result;
     }
+    def _is_import(elem: uni.UniNode) -> bool {
+        return isinstance(elem, uni.Import);
+    }
+    client_bound = _closure(
+        {
+            id(top)
+            for top in tops
+            if top.code_context == CodeContext.CLIENT and not top.codespace_dual
+        },
+        tops,
+        _is_import
+    );
+    for elem in inferable {
+        uses_map[id(elem)] = body_refs[id(elem)];
+    }
     refusals = prog.analysis.placement_refusals.get(os.path.realpath(mod_path), {});
     cl_refused: set[int] = refusals.get('client', set());
     na_refused: set[int] = refusals.get('native', set());
-    cl_star = _hard_closure(cl_seed_ids) - cl_refused;
-    na_star = _hard_closure(na_seed_ids) - na_refused;
+    cl_star = _closure(cl_seed_ids, inferable, _is_sv_import) - cl_refused;
+    na_star = _closure(na_seed_ids, inferable, _is_sv_import) - na_refused;
     hard_remaining: list[uni.UniNode] = [];
     for elem in inferable {
         in_cl = id(elem) in cl_star;

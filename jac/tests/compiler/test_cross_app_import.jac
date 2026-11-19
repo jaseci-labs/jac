@@ -264,35 +264,44 @@ test "missing await on a SERVICE_BRIDGE stub is E1042" {
     );
 }
 
-test "two aliases of one server function are typed by their own import's placement" {
-    import tempfile;
+"""Write a notes project (a web app plus `notes/store.jac`) with this jac.toml
+and `notes/helper.jac`, and compile the helper."""
+def _compile_notes_helper(
+    tmp: str, toml: str, helper: str
+) -> tuple[JacProgram, uni.Module] {
     import from pathlib { Path }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
+    base = Path(tmp);
+    (base / "jac.toml").write_text(toml);
+    (base / "main.jac").write_text(
+        "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
+    );
+    (base / "notes").mkdir();
+    (base / "notes" / "store.jac").write_text(
+        "node Note {\n    has title: str;\n}\n\n"
+            + "def:pub list_notes -> list[str] {\n"
+            + "    return [n.title for n in [root --> [?:Note]]];\n}\n"
+    );
+    (base / "notes" / "helper.jac").write_text(helper);
+    prog = JacProgram();
+    mod = prog.compile(
+        str(base / "notes" / "helper.jac"),
+        options=CompileOptions(no_cgen=True, skip_native_engine=True)
+    );
+    return (prog, mod);
+}
+
+test "two aliases of one server function are typed by their own import's placement" {
+    import tempfile;
     with tempfile.TemporaryDirectory(prefix="jac-alias-bridge-") as tmp {
-        base = Path(tmp);
-        (base / "jac.toml").write_text(
+        (prog, _) = _compile_notes_helper(
+            tmp,
             '[project]\nname = "notes"\nkind = "web-app"\nentry-point = "main"\n\n'
-                + '[placement.pins]\n"notes.helper.count_notes" = "client"\n'
-        );
-        (base / "main.jac").write_text(
-            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
-        );
-        (base / "notes").mkdir();
-        (base / "notes" / "store.jac").write_text(
-            "node Note {\n    has title: str;\n}\n\n"
-                + "def:pub list_notes -> list[str] {\n"
-                + "    return [n.title for n in [root --> [?:Note]]];\n}\n"
-        );
-        (base / "notes" / "helper.jac").write_text(
+                + '[placement.pins]\n"notes.helper.count_notes" = "client"\n',
             "import from .store { list_notes as client_list }\n"
                 + "import from .store { list_notes as server_list }\n\n"
                 + "def count_notes -> int {\n    return len(client_list());\n}\n\n"
                 + "def:pub note_total -> int {\n    return len(server_list());\n}\n"
-        );
-        prog = JacProgram();
-        prog.compile(
-            str(base / "notes" / "helper.jac"),
-            options=CompileOptions(no_cgen=True, skip_native_engine=True)
         );
         lines = sorted(
             [
@@ -310,35 +319,17 @@ test "two aliases of one server function are typed by their own import's placeme
 
 test "a cross-app import shared by a client pin and server code stays a service bridge" {
     import tempfile;
-    import from pathlib { Path }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
     with tempfile.TemporaryDirectory(prefix="jac-shared-bridge-") as tmp {
-        base = Path(tmp);
-        (base / "jac.toml").write_text(
+        (_, mod) = _compile_notes_helper(
+            tmp,
             '[project]\nname = "notes"\ndefault-app = "notes"\n\n'
                 + '[placement.pins]\n"notes.helper.count_notes" = "client"\n\n'
                 + '[apps.notes]\nkind = "web-app"\nentry-point = "main"\n\n'
                 + '[apps.store]\nkind = "service"\nentry-point = "notes.store"\n'
-                + 'route = "/store"\n'
-        );
-        (base / "main.jac").write_text(
-            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
-        );
-        (base / "notes").mkdir();
-        (base / "notes" / "store.jac").write_text(
-            "node Note {\n    has title: str;\n}\n\n"
-                + "def:pub list_notes -> list[str] {\n"
-                + "    return [n.title for n in [root --> [?:Note]]];\n}\n"
-        );
-        (base / "notes" / "helper.jac").write_text(
+                + 'route = "/store"\n',
             "import from .store { list_notes }\n\n"
                 + "def count_notes -> None {\n    list_notes();\n}\n\n"
                 + "def:pub refresh -> None {\n    list_notes();\n}\n"
-        );
-        prog = JacProgram();
-        mod = prog.compile(
-            str(base / "notes" / "helper.jac"),
-            options=CompileOptions(no_cgen=True, skip_native_engine=True)
         );
         imp = import_of(mod, "store");
         assert import_crosses_apps(imp) , "the fixture must exercise a cross-app import";

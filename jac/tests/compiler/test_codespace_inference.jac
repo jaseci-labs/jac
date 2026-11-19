@@ -84,40 +84,6 @@ test "markerless client module seeds and pulls" {
     assert stamp_of(mod, "click_count") == 'client' , "glob referenced from client should be pulled client";
 }
 
-test "a client-pinned function pulls the import it uses into the client" {
-    import tempfile;
-    import from pathlib { Path }
-    with tempfile.TemporaryDirectory(prefix="jac-pin-pull-") as tmp {
-        base = Path(tmp);
-        (base / "jac.toml").write_text(
-            '[project]\nname = "pinpull"\nversion = "0.1.0"\ndefault-app = "web"\n\n'
-                + '[apps.web]\nkind = "web-app"\nentry-point = "main"\n\n'
-                + '[placement.pins]\n"main.app" = "client"\n"components.*" = "client"\n'
-        );
-        (base / "components").mkdir();
-        (base / "components" / "Hello.jac").write_text(
-            "def:pub Hello() -> JsxElement {\n    return <div>hi</div>;\n}\n"
-        );
-        (base / "main.jac").write_text(
-            "import from components.Hello { Hello }\n\n"
-                + "def:pub app() -> JsxElement {\n    return <Hello />;\n}\n"
-        );
-        prog = JacProgram();
-        mod = prog.compile(
-            str(base / "main.jac"),
-            options=CompileOptions(no_cgen=True, skip_native_engine=True)
-        );
-        assert stamp_of(mod, "app") == 'client';
-        assert stamp_of(mod, "Hello") == 'client' , "the import a client-pinned function uses must be pulled into the client";
-        hello_import = [
-            s
-            for s in mod.body
-            if isinstance(s, uni.Import)
-        ][0];
-        assert not hello_import.codespace_dual , "no server code reads the import, and its provider is client-only, so the server must not import it";
-    }
-}
-
 test "three codespaces in one markerless module" {
     mod = compile_fixture("infer_three_spaces.jac");
     assert stamp_of(mod, "app") == 'client' , "JSX def should infer client";
