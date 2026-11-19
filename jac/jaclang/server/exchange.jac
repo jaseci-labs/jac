@@ -21,7 +21,8 @@ obj RequestView {
         query: dict[str, str] = {},
         headers: dict[str, str] = {},
         origin: str = '',
-        public_origin: str = '';
+        public_origin: str = '',
+        body: bytes = b'';
 
     def header(name: str, fallback: (str | None) = None) -> (str | None);
     def link(path: str = '') -> str;

@@ -1,5 +1,6 @@
 import io;
 import os;
+import subprocess;
 import sys;
 import tarfile;
 
@@ -365,7 +366,31 @@ impl stage_python_bin(python_dir: str, stage: str) {
     copy_file(py, dst);
     os.chmod(dst, 0o755);
     strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else ["--strip-debug"]);
+    home = os.path.dirname(os.path.dirname(py));
+    if interpreter_runs(py, home) and not interpreter_runs(dst, home) {
+        copy_file(py, dst);
+        os.chmod(dst, 0o755);
+        log(f"   stripped {bare} does not run; shipping it unstripped");
+    }
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
+}
+
+impl interpreter_runs(python: str, home: str) -> bool {
+    env = dict(os.environ);
+    env["PYTHONHOME"] = home;
+    try {
+        done = subprocess.run(
+            [python, "-I", "-c", "import encodings"],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=60
+        );
+    } except (OSError, subprocess.TimeoutExpired) {
+        return False;
+    }
+    return done.returncode == 0;
 }
 
 impl stage_tree(

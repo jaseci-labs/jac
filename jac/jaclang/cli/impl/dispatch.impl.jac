@@ -5,7 +5,7 @@ def _discover_project_config(
     profile: str | None = None, tolerate_invalid: bool = False, command_name: str = ""
 ) -> bool;
 
-glob _PIN_CHECKED_COMMANDS: tuple[str, ...] = ("build", "check", "test");
+glob _PIN_CHECKED_COMMANDS: tuple[str, ...] = ("build", );
 
 
 def _exit_on_invalid_jac_toml(exc: any);
@@ -179,6 +179,27 @@ impl warn_unmet_jac_version(pin: str) {
         f"this project targets jac {pin} ([project] jac-version) but this is jac "
         f"{running}; a deploy builds with the pinned toolchain, so this result may not hold there"
     );
+}
+
+impl warn_unmet_project_pins(paths: list[str]) {
+    import from pathlib { Path }
+
+    seen: set[str] = set();
+    for path in paths {
+        if not path {
+            continue;
+        }
+        try {
+            config = get_config_for_path(Path(path));
+        } except Exception {
+            continue;
+        }
+        if config is None or str(config.project_root) in seen {
+            continue;
+        }
+        seen.add(str(config.project_root));
+        warn_unmet_jac_version(str(config.project.jac_version or "").strip());
+    }
 }
 
 impl _exit_on_invalid_jac_toml(exc: any) {

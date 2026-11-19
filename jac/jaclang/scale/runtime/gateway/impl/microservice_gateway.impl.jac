@@ -14,7 +14,7 @@ def _without_refused_credentials(
 
 
 async def _forwarded_headers(
-    gw: MicroserviceGateway, request: Request
+    gw: MicroserviceGateway, request: Request, identity: bool = False
 ) -> dict[str, str];
 
 
@@ -196,48 +196,8 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
     );
 }
 
-impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
-    admin_dist = resolve_console(Path(self.admin_dist_dir), self.admin_console);
-    if isinstance(admin_dist, Response) {
-        return admin_dist;
-    }
-
-    if not asset_path or asset_path == "/" {
-        target = admin_dist / "index.html";
-    } else {
-        target = admin_dist / asset_path;
-    }
-
-    try {
-        resolved = target.resolve();
-        dist_resolved = admin_dist.resolve();
-        if not resolved.is_relative_to(dist_resolved) {
-            return None;
-        }
-    } except OSError {
-        return None;
-    }
-
-    if not target.is_file() {
-        index = admin_dist / "index.html";
-        if index.is_file() {
-            return HTMLResponse(content=index.read_text(encoding="utf-8"));
-        }
-        return None;
-    }
-
-    (content_type, _) = mimetypes.guess_type(str(target));
-    if content_type is None {
-        content_type = "application/octet-stream";
-    }
-
-    if content_type.startswith("text/")
-        or content_type in ("application/javascript", "application/json") {
-        return Response(
-            content=target.read_text(encoding="utf-8"), media_type=content_type
-        );
-    }
-    return Response(content=target.read_bytes(), media_type=content_type);
+impl MicroserviceGateway.get_admin_dist_dir -> Path {
+    return Path(self.admin_dist_dir);
 }
 
 glob _BUILTIN_PREFIXES: tuple[str, ...] = GATEWAY_BUILTIN_PREFIXES,
@@ -245,12 +205,22 @@ glob _BUILTIN_PREFIXES: tuple[str, ...] = GATEWAY_BUILTIN_PREFIXES,
      _DISCOVERY_SEGMENTS: set[str] = set(GATEWAY_DISCOVERY_SEGMENTS),
      _REPLICATED_SEGMENTS: set[str] = set(GATEWAY_REPLICATED_SEGMENTS);
 
-impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {
+impl MicroserviceGateway.build_forward_headers(
+    request: Request, identity: bool = False
+) -> dict[str, str] {
     fwd: dict[str, str] = {};
     for (key, value) in request.headers.items() {
-        if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "x-forwarded-for" {
-            fwd[key] = value;
+        lowered = key.lower();
+        if lowered in HOP_BY_HOP_HEADERS or lowered == "x-forwarded-for" {
+            continue;
         }
+        if identity and lowered == "accept-encoding" {
+            continue;
+        }
+        fwd[key] = value;
+    }
+    if identity {
+        fwd["Accept-Encoding"] = "identity";
     }
 
     peer: str = request.client_host or "unknown";
@@ -301,39 +271,39 @@ impl MicroserviceGateway.handle_health_ready -> Response {
     return JSONResponse(status_code=200, content={"status": "ready"});
 }
 
+impl MicroserviceGateway.ask_services(
+    path: str, headers: dict[str, str]
+) -> list[tuple[str, any]] {
+    async def ask(svc_name: str, svc_entry: ServiceEntry) -> any {
+        per_svc_headers = dict(headers);
+        if svc_entry.host_override {
+            per_svc_headers["Host"] = svc_entry.host_override;
+        }
+        return await raw_forward(
+            "GET",
+            f"{self.service_base_url(svc_entry)}{path}",
+            per_svc_headers,
+            b"",
+            timeout=int(http_forward_timeout(svc_name))
+        );
+    }
+    eligible = self.eligible_services();
+    answers: any = await asyncio.gather(*[ask(name, svc) for (name, svc) in eligible]);
+    return [(name, answer) for ((name, _svc), answer) in zip(eligible, answers)];
+}
+
 impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
-    import asyncio;
     import json;
 
-    fwd_headers = {
-        k: v
-        for (k, v) in (await _forwarded_headers(self, request)).items()
-        if k.lower() != "accept-encoding"
-    };
-    fwd_headers["Accept-Encoding"] = "identity";
+    fwd_headers = await _forwarded_headers(self, request, identity=True);
     query: str = str(request.url.query);
     try {
         limit = max(1, min(int(request.query_params.get("limit") or 50), 200));
     } except ValueError {
         limit = 50;
     }
-
-    async def ask(svc_name: str, svc_entry: ServiceEntry) -> any {
-        headers = dict(fwd_headers);
-        if svc_entry.host_override {
-            headers["Host"] = svc_entry.host_override;
-        }
-        target = f"{self.service_base_url(svc_entry)}/graph/neighbors";
-        if query {
-            target = f"{target}?{query}";
-        }
-        return await raw_forward(
-            "GET", target, headers, b"", timeout=int(http_forward_timeout(svc_name))
-        );
-    }
-    answers: any = await asyncio.gather(
-        *[ask(name, svc) for (name, svc) in self.eligible_services()]
-    );
+    target = f"/graph/neighbors?{query}" if query else "/graph/neighbors";
+    answers = await self.ask_services(target, fwd_headers);
     pages: list[dict[str, any]] = [];
     refused: list[tuple[int, bytes]] = [];
     unknown: list[tuple[int, bytes]] = [];
@@ -346,7 +316,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
         }
         return isinstance(answer, dict) and answer.get("code") == "unknown_type";
     }
-    for result in answers {
+    for (_svc_name, result) in answers {
         if result is None {
             refused.append(
                 (503, b'{"error": "a service did not answer; retry this page"}')
@@ -451,6 +421,82 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     );
 }
 
+impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response {
+    import json;
+
+    fwd_headers = await _forwarded_headers(self, request, identity=True);
+    service_auth = auth_headers();
+    if service_auth {
+        fwd_headers = {
+            key: value
+            for (key, value) in fwd_headers.items()
+            if key.lower() != "authorization"
+        };
+        fwd_headers.update(service_auth);
+    }
+    rows: list[dict[str, any]] = [];
+    services: list[str] = [];
+    unanswered: list[dict[str, any]] = [];
+    refused: Response | None = None;
+
+    answers = dict(await self.ask_services("/admin/schedules", fwd_headers));
+    for svc_name in self.registry.entries {
+        result = answers.get(svc_name);
+        if result is None {
+            unanswered.append({"service": svc_name, "status": None});
+            continue;
+        }
+        (status, _headers, body) = result;
+        try {
+            frag = json.loads(body);
+        } except ValueError {
+            frag = None;
+        }
+        if status in (401, 403) {
+            if refused is None {
+                refused = JSONResponse(
+                    status_code=status,
+                    content=frag if isinstance(frag, dict) else {"ok": False}
+                );
+            }
+            unanswered.append({"service": svc_name, "status": status});
+            continue;
+        }
+        if status != 200 or not isinstance(frag, dict) {
+            unanswered.append({"service": svc_name, "status": status});
+            continue;
+        }
+        data = frag.get("data") or {};
+        namespace = str(data.get("namespace", ""));
+        services.append(svc_name);
+        for row in (data.get("schedules") or []) {
+            row["service"] = svc_name;
+            row["namespace"] = namespace;
+            rows.append(row);
+        }
+    }
+
+    if not services {
+        if refused is not None {
+            return refused;
+        }
+        return JSONResponse(
+            status_code=502,
+            content={
+                "ok": False,
+                "error": {"message": "no service answered /admin/schedules"},
+                "data": {"unanswered": unanswered}
+            }
+        );
+    }
+    return JSONResponse(
+        status_code=200,
+        content={
+            "ok": True,
+            "data": {"services": services, "unanswered": unanswered, "schedules": rows}
+        }
+    );
+}
 
 impl MicroserviceGateway.handle_builtin_passthrough(
     request: Request, path: str
@@ -678,14 +724,13 @@ impl MicroserviceGateway.probe_services(
     return not_found(path, message="Not found on any service");
 }
 
-impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
+impl MicroserviceGateway.handle_admin(request: Request, path: str) -> Response | None {
     if path == "/admin" {
         import from jaclang.server.serving.datatypes { RedirectResponse }
         return RedirectResponse(url="/admin/", status_code=302);
     }
     if path.startswith("/admin/") {
-        asset_path: str = path[7:];
-        return self.serve_admin_asset(asset_path);
+        return self.serve_admin_asset(path[7:], request);
     }
     return None;
 }
@@ -968,9 +1013,22 @@ impl MicroserviceGateway.setup -> ServingApp {
                 svc_label = "__admin__";
                 admin_resp: Response | None = None;
                 if gw.server is not None {
-                    admin_resp = await next_fn(request);
+                    if request.method == "GET"
+                        and path.rstrip("/") == "/admin/schedules" {
+                        guard = gw.require_admin_json(
+                            request.headers.get("Authorization")
+                        );
+                        if guard is not None {
+                            admin_resp = guard;
+                        } else {
+                            admin_resp = await gw.aggregate_schedules(request);
+                        }
+                    }
+                    if admin_resp is None {
+                        admin_resp = await next_fn(request);
+                    }
                 } else {
-                    admin_resp = gw.handle_admin(path);
+                    admin_resp = gw.handle_admin(request, path);
                 }
                 if admin_resp is None {
                     import from jaclang.scale.runtime.context.errors { not_found }
@@ -1179,23 +1237,17 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.user_manager = self.identity();
     self.app.add_middleware(jwt_middleware(self.user_manager));
 
-    self.register_admin_endpoints();
-    self.register_logs_endpoints();
-    self.register_llm_telemetry_endpoints();
-    self.register_workloads_endpoints();
-
-    self.register_traces_endpoints();
-    self.register_ops_endpoints();
-    self.register_deploy_health_endpoints();
-    self.register_network_endpoints();
-    self.register_podenv_endpoints();
-
+    self.register_admin_surface();
     register_auth_endpoints(self);
 
-    logger.info(
-        "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
+    admin_routes = len(
+        [
+            ep
+            for ep in self.app.router.all_endpoints()
+            if ep.path.startswith("/admin")
+        ]
     );
+    logger.info(f"Admin JSON API installed on gateway ({admin_routes} /admin routes)");
     logger.info(
         "Gateway-owned identity installed "
         "(/user/register, /user/login, /user/me served by the gateway)"
@@ -1414,13 +1466,15 @@ impl GatewaySessionGuard.allow(
 }
 
 
-impl _forwarded_headers(gw: MicroserviceGateway, request: Request) -> dict[str, str] {
+impl _forwarded_headers(
+    gw: MicroserviceGateway, request: Request, identity: bool = False
+) -> dict[str, str] {
     if gw.user_manager is None
         or not (
             request.headers.get('Authorization')
             or SESSION_COOKIE in (request.headers.get('Cookie') or '')
         ) {
-        return gw.build_forward_headers(request);
+        return gw.build_forward_headers(request, identity=identity);
     }
-    return await asyncio.to_thread(gw.build_forward_headers, request);
+    return await asyncio.to_thread(gw.build_forward_headers, request, identity);
 }

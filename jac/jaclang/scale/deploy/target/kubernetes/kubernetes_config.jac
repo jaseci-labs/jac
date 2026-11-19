@@ -51,6 +51,7 @@ obj KubernetesConfig(BaseConfig) {
         loki_enabled: bool = False,
         tracing_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',
+        metrics_endpoint: str = '/metrics',
         admin_username: str = 'admin',
         ingress_node_port: int = 30080,
         shared_ingress: bool = False,

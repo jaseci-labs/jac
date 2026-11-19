@@ -181,13 +181,17 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
             import from jaclang.scale.config.dev_config { resolve_dev_channel }
             import from jaclang.scale.injector.binary {
                 node_arch,
-                preflight_pod_runtime
+                preflight_pod_runtime,
+                resolve_pod_base_image
             }
             self._load_cluster_config();
             pinned = preflight_pod_runtime(
                 app_config.code_folder,
                 resolve_dev_channel(app_config.code_folder).value,
                 node_arch()
+            );
+            self.k8s_config.python_image = resolve_pod_base_image(
+                app_config.code_folder, self.k8s_config.python_image
             );
         } except Exception as e {
             self._emit("runtime", "error", str(e));
@@ -750,14 +754,7 @@ impl KubernetesTarget._deploy_observability(app_name: str) -> None {
         );
     }
     monitoring = MonitoringDeployer(obs_config, self.logger);
-    monitoring.deploy(
-        app_name,
-        obs_config.namespace,
-        apps_v1,
-        core_v1,
-        provider,
-        scrape_target_service="gateway-service"
-    );
+    monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1);
 }
 
 impl KubernetesTarget.ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None {

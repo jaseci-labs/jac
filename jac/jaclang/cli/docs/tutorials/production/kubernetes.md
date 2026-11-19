@@ -295,7 +295,7 @@ pr = 7494
 
 A maintainer publishes and deletes that image on demand via the **Experimental
 jac image** workflow (dispatched with the PR number and a `build`/`delete`
-action). If it is not published yet, the deploy falls back to `:dev`. An explicit
+action). If it is not published yet, the deploy stops and says so. An explicit
 `python_image` still overrides all of this.
 
 ---

@@ -21,9 +21,7 @@ type environment's.
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
@@ -35,7 +33,6 @@ def compile_and_check(fixture_name: str) -> JacProgram {
     mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
     assert mod is not None , f"fixture '{fixture_name}' failed to parse:\n"
         + "\n".join(str(e) for e in program.errors_had);
-    run_pass(TypeCheckPass, mod, program);
     return program;
 }
 

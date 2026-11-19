@@ -1020,6 +1020,7 @@ graph import {
     ]
     compiler.frontend.codeinfo --> [
         cli.check_report.print_native_coverage { native_display_text },
+        dist.precompile_bytecode.run_precompile { is_foreign_native_variant },
         project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     type compiler.frontend.codeinfo ++> client.client_bundle
@@ -1894,6 +1895,7 @@ graph import {
             project_scope_is_pinned
         },
         cli.commands.execution._load_executable
+            | cli.dispatch.warn_unmet_project_pins
             | client.artifact.client_output_dir
             | client.serving
             | dist.precompile_bytecode.app_metadata
@@ -1945,6 +1947,8 @@ graph import {
             report_env_findings
         },
         scale.injector.binary.resolve_pinned_version { JacConfig, find_project_root },
+        scale.injector.bundle.client_input_digest { active_profile_name },
+        scale.injector.bundle.seal_input_digest { active_profile_name },
         scale.injector.bundle.unresolved_toml_references { resolve_env_refs },
         scale.tests.server.test_host_serving
             | scale.tests.server.test_served_app_route { set_config },
@@ -2992,6 +2996,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces
             | scale.admin.workloads
             | scale.runtime.gateway.microservice_gateway
@@ -3042,7 +3047,8 @@ graph import {
             ServingApp
         },
     ]
-    server.serving.app --> scale.tests.microservices.test_drain { ServingApp }
+    server.serving.app --> scale.tests.microservices.test_drain
+        | scale.tests.microservices.test_gateway { ServingApp }
     server.serving.authcrypt ++> [
         scale.deploy.target.kubernetes.manifest_builder
             | scale.deploy.target.kubernetes.utils.kubernetes_utils.resolve_minted_secret
@@ -3153,6 +3159,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces { JSONResponse, Request },
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
@@ -3248,6 +3255,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.server.extensions
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_stream_ws._spawn_upstream {
@@ -3262,7 +3270,13 @@ graph import {
         scale.tests.server.test_auth_policy_startup | scale.tests.server.test_sso {
             JEndPoint
         },
-        scale.tests.server.test_serving_tail { HTTPMethod, JEndPoint, WSEndPoint },
+        scale.tests.server.test_serving_tail {
+            APIParameter,
+            HTTPMethod,
+            JEndPoint,
+            ParameterType,
+            WSEndPoint
+        },
         scale.tests.server.test_stream_ws._spawn_ws_upstream { WSEndPoint },
         scale.tests.server.test_stream_ws._spawn_ws_upstream_with_protocol {
             WSEndPoint
@@ -3462,15 +3476,22 @@ graph import {
     ]
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
+        scale.admin.schedules { bridge_identity },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+            auth_headers
+        },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
             app_start_args,
             headless_start_args,
             peer_url_env_key
         },
         scale.tests.deploy.test_pod_env { peer_url_env_key },
+        scale.tests.microservices.test_gateway
+            | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
     server.task_scheduler ++> [
         runtime.builtin.schedule { ScheduleSpec },
+        scale.admin.schedules { Scheduler },
         scale.scheduler.scheduler { Scheduler, schedule_namespace, tick_of },
         scale.server.extensions { RunOutcome },
         scale.tests.server.test_scheduler_multipod { ScheduleSpec, Scheduler, tick_of },
@@ -3519,7 +3540,7 @@ graph import {
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
     testing.test_runner ++> [
-        cli.commands.analysis.test { run_tests },
+        cli.commands.analysis.test { discover, run_tests },
         scale.tests.support { STRICT_ENV, strict_mode },
     ]
     testing.testkit ++> [
@@ -3974,6 +3995,9 @@ graph import cli {
         commands.execution { console, use_line_buffered_output },
     ]
     dispatch ++> [
+        commands.analysis.check { warn_unmet_project_pins },
+        commands.analysis.lint { warn_unmet_project_pins },
+        commands.analysis.test { warn_unmet_project_pins },
         commands.execution._resolve_plan { warn_unmet_jac_version },
         manifest_route.handle_manifest_route { run_selected_command },
     ]
@@ -7802,7 +7826,9 @@ graph import compiler {
             IterForStmt,
             LambdaExpr,
             ListCompr,
+            MatchAs,
             MatchCase,
+            MatchStar,
             Module,
             ModuleItem,
             ModulePath,
@@ -8208,8 +8234,11 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
+            MatchMapping,
             MatchOr,
             MatchPattern,
+            MatchSequence,
+            MatchSingleton,
             MatchStmt,
             MatchWild,
             Module,
@@ -13222,9 +13251,9 @@ graph import scale {
             AutoscalingV2Api,
             client
         },
-        deploy.autoscale.http_activation_config | tests.deploy.test_database_intent {
-            ApiException
-        },
+        deploy.autoscale.http_activation_config
+            | tests.deploy.test_database_intent
+            | tests.microservices.test_binary_injector { ApiException },
         deploy.autoscale.keda_autoscaler.KEDAAutoscaler.watch_scale_targets { watch },
         deploy.target.kubernetes.cluster_provider
             | deploy.target.kubernetes.database_provisioner { client },
@@ -13264,13 +13293,11 @@ graph import scale {
     admin --> tests.server.test_admin;
     admin as admin_pkg ++> tests.misc.test_ops_signals;
     admin.admin_portal ++> [
-        runtime.gateway.microservice_gateway
-            | server.extensions
-            | tests.server.test_auth_policy_startup { JacAPIServerAdmin },
         tests.misc.test_metrics._distribution_for {
             _calculate_metrics_summary,
             _parse_prometheus_text
         },
+        tests.server.test_auth_policy_startup { JacAPIServerAdmin },
     ]
     admin.admin_portal --> tests.misc.test_metrics {
         _calculate_metrics_summary,
@@ -13278,81 +13305,52 @@ graph import scale {
         _parse_prometheus_text,
         _percentile_from_buckets
     }
-    admin.console_build ++> runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
-        resolve_console
-    }
     admin.console_build --> tests.server.test_admin { AdminConsole, ConsoleState }
-    admin.deploy_health ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerDeployHealth
-        },
-        tests.deploy.test_ops_deploy {
-            JacAPIServerDeployHealth,
-            summarize_deployment,
-            summarize_pod
-        },
-    ]
-    admin.llm_telemetry ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerLLMTelemetry
-        },
-        tests.misc.test_llm_telemetry { TelemetryStore },
-    ]
-    admin.logs ++> runtime.gateway.microservice_gateway
-        | server.extensions
-        | tests.server.test_admin_logs { JacAPIServerLogs }
+    admin.deploy_health ++> tests.deploy.test_ops_deploy {
+        JacAPIServerDeployHealth,
+        summarize_deployment,
+        summarize_pod
+    }
+    admin.llm_telemetry ++> tests.misc.test_llm_telemetry { TelemetryStore }
+    admin.logs ++> tests.server.test_admin_logs { JacAPIServerLogs }
     admin.logs --> tests.server.test_admin_logs {
         _build_logql,
         _flatten_loki_response,
         _service_to_pod_regex_for_mode,
         _services_for_mode
     }
-    admin.network ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerNetwork
-        },
-        tests.deploy.test_ops_network {
-            JacAPIServerNetwork,
-            pvc_claimants,
-            summarize_ingress,
-            summarize_pvc,
-            summarize_service
-        },
-    ]
-    admin.ops ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerOps },
-        tests.deploy.test_ops_health {
-            JacAPIServerOps,
-            _traces_chain,
-            short_circuit_chain
-        },
-    ]
-    admin.podenv ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerPodEnv },
-        tests.misc.test_ops_podenv {
-            JacAPIServerPodEnv,
-            pod_env_entries,
-            redact_entry
-        },
-    ]
+    admin.network ++> tests.deploy.test_ops_network {
+        JacAPIServerNetwork,
+        pvc_claimants,
+        summarize_ingress,
+        summarize_pvc,
+        summarize_service
+    }
+    admin.ops ++> tests.deploy.test_ops_health {
+        JacAPIServerOps,
+        _traces_chain,
+        short_circuit_chain
+    }
+    admin.podenv ++> tests.misc.test_ops_podenv {
+        JacAPIServerPodEnv,
+        pod_env_entries,
+        redact_entry
+    }
     admin.service_urls ++> tests.misc.test_service_urls { service_base_url }
-    admin.traces ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerTraces },
-        tests.server.test_traces_admin {
-            _build_traceql,
-            _flatten_tempo_trace,
-            _normalize_trace_id,
-            _otlp_attrs,
-            _otlp_value
-        },
-    ]
+    admin.surface ++> runtime.gateway.microservice_gateway | server.extensions {
+        JacAPIServerAdminSurface
+    }
+    admin.traces ++> tests.server.test_traces_admin {
+        _build_traceql,
+        _flatten_tempo_trace,
+        _normalize_trace_id,
+        _otlp_attrs,
+        _otlp_value
+    }
     admin.workload_helpers ++> tests.server.test_admin_workloads {
         match_owner,
         owner_name_from_pod,
         phase_to_status
-    }
-    admin.workloads ++> runtime.gateway.microservice_gateway | server.extensions {
-        JacAPIServerWorkloads
     }
     config.app_config ++> [
         deploy.target.deployment_target
@@ -13762,6 +13760,7 @@ graph import scale {
         tests.deploy.test_cluster_provider { get_cluster_provider },
         tests.deploy.test_deploy_k8s { wait_for_pod_phase },
         tests.deploy.test_k8s_utils { parse_storage_quantity, resize_pvc_if_needed },
+        tests.deploy.test_monitoring_switch { FLEET_SELECTOR },
         tests.deploy.test_pod_env { create_k8s_secret, resolve_minted_secret },
         tests.deploy.test_pss_labels {
             PSS_ENFORCE_LABEL,
@@ -13861,7 +13860,8 @@ graph import scale {
     injector.binary --> [
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             node_arch,
-            preflight_pod_runtime
+            preflight_pod_runtime,
+            resolve_pod_base_image
         },
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
             deploy_generation_refusal
@@ -13929,6 +13929,8 @@ graph import scale {
             DEFAULT_SEAL_TIMEOUT_S,
             _precompile_app,
             _stage_app,
+            client_build_sources,
+            client_input_digest,
             nested_sanitized_tomls,
             pack_jab,
             seal_cache_setting,
@@ -14128,6 +14130,9 @@ graph import scale {
             set_current_auth
         },
     ]
+    runtime.context.errors ++> admin.admin_portal.JacAPIServerAdmin.serve_admin_asset {
+        not_found
+    }
     runtime.context.log_emit ++> [
         server.extensions.ObservabilityExtension.register {
             install_structured_logging
@@ -14493,7 +14498,7 @@ graph import scale {
         tests.server.test_auth_policy_startup { AdminExtension, MailExtension },
     ]
     server.extensions --> [
-        tests.server.test_admin { AdminExtension },
+        tests.microservices.test_gateway | tests.server.test_admin { AdminExtension },
         tests.server.test_scheduler_multipod {
             validate_events_url as _validate_events_url
         },
@@ -14651,7 +14656,9 @@ graph import scale._optdeps {
 }
 
 graph import scale.admin {
+    admin_portal ++> surface { JacAPIServerAdmin }
     console_build ++> admin_portal { AdminConsole, resolve_console }
+    deploy_health ++> surface { JacAPIServerDeployHealth }
     k8s_ops ++> [
         deploy_health {
             api_error_detail,
@@ -14677,10 +14684,22 @@ graph import scale.admin {
             unavailable_detail
         },
     ]
-    logs ++> ops { _app_namespace, _loki_base_url }
+    llm_telemetry ++> surface { JacAPIServerLLMTelemetry }
+    logs ++> [
+        ops { _app_namespace, _loki_base_url },
+        surface { JacAPIServerLogs },
+    ]
+    network ++> surface { JacAPIServerNetwork }
+    ops ++> surface { JacAPIServerOps }
+    podenv ++> surface { JacAPIServerPodEnv }
+    schedules ++> surface { JacAPIServerSchedules }
     service_urls ++> logs | ops | traces { service_base_url }
-    traces ++> ops { _tempo_base_url }
+    traces ++> [
+        ops { _tempo_base_url },
+        surface { JacAPIServerTraces },
+    ]
     workload_helpers ++> workloads { match_owner, owner_name_from_pod, phase_to_status }
+    workloads ++> surface { JacAPIServerWorkloads }
 }
 
 graph import scale.config {
@@ -14800,7 +14819,7 @@ graph import scale.deploy.target {
 
 graph import scale.deploy.target.kubernetes {
     cluster_provider ++> [
-        ingress | monitoring { ClusterProvider },
+        ingress { ClusterProvider },
         utils.kubernetes_utils { AWSProvider, ClusterProvider, LocalProvider },
     ]
     database_provisioner ++> target { DatabaseProvisioner }
@@ -14846,8 +14865,9 @@ graph import scale.deploy.target.kubernetes {
             in_cluster_kubectl,
             kubectl_cluster
         },
-        monitoring { delete_if_exists, delete_k8s_secret },
+        monitoring { FLEET_SELECTOR, delete_if_exists, delete_k8s_secret },
         target {
+            FLEET_SELECTOR,
             PSS_ENFORCE_LABEL,
             _refresh_rs_hashes,
             _resolve_current_rs_hashes,
@@ -15004,10 +15024,10 @@ graph import scale.runtime {
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
         },
-        gateway.microservice_gateway.MicroserviceGateway.forward_to {
+        gateway.microservice_gateway.MicroserviceGateway.ask_services {
             http_forward_timeout
         },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
+        gateway.microservice_gateway.MicroserviceGateway.forward_to {
             http_forward_timeout
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
@@ -15089,9 +15109,9 @@ graph import scale.runtime {
         transport.transport.HttpTransport.call_walker { walker_call },
     ]
     transport.http_forward ++> [
-        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
+        gateway.microservice_gateway.MicroserviceGateway.ask_services
             | gateway.openapi_agg.fetch_service_spec { raw_forward },
+        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },
@@ -15285,11 +15305,13 @@ graph import scale.tests {
             | microservices.test_k8s_health_probe
             | server.test_examples { get_free_port },
         microservices.test_stop_signal_scope { stop_server },
-        microservices.test_typed_boundary | server.test_drain_hooks {
+        microservices.test_topology_conformance {
+            extract,
             get_free_port,
             start_server,
             stop_server
         },
+        server.test_drain_hooks { get_free_port, start_server, stop_server },
         server.test_metrics_workers | server.test_serve {
             cleanup_db_files,
             get_free_port,

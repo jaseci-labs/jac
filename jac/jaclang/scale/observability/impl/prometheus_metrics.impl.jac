@@ -22,19 +22,10 @@ impl PrometheusMetricsCollector.postinit {
     }
 
     if self._registry is None {
+        import from prometheus_client { REGISTRY }
         self._registry = CollectorRegistry();
+        self._registry.register(REGISTRY);
     }
-
-    try {
-        import from prometheus_client {
-            ProcessCollector,
-            PlatformCollector,
-            GCCollector
-        }
-        ProcessCollector(registry=self._registry);
-        PlatformCollector(registry=self._registry);
-        GCCollector(registry=self._registry);
-    } except Exception {}
 
     try {
         import from jaclang.cli.manifest_route { resolve_cli_version }

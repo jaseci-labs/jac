@@ -44,6 +44,9 @@ impl TypeEvaluator._get_type_of_super(node_: Name) -> TypeBase {
 }
 
 impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
+    if isinstance(expr.parent, MatchAs) and expr.sym is not None {
+        return self.get_type_of_symbol(expr.sym);
+    }
     if expr.sym is not None and expr.sym.decl is expr {
         return None;
     }
@@ -195,7 +198,7 @@ impl TypeEvaluator._starred_target_type(
         if not captured {
             return self.prefetch.list_class.clone_as_instance();
         }
-        element = captured[0] if len(captured) == 1 else UnionType(types=captured);
+        element = self._union_of(captured);
     } else {
         element = self._get_iterable_element_type(container, node_for_error);
     }
@@ -234,7 +237,7 @@ impl TypeEvaluator._extract_tuple_element_type(
         if not elements {
             return None;
         }
-        return elements[0] if len(elements) == 1 else UnionType(types=elements);
+        return self._union_of(elements);
     }
     if not isinstance(tuple_type, ClassType) {
         return None;
@@ -400,7 +403,7 @@ impl TypeEvaluator._get_iterable_element_type(
             ];
         }
         if members {
-            return members[0] if len(members) == 1 else UnionType(types=members);
+            return self._union_of(members);
         }
     }
     iter_type = self.get_type_of_magic_method_call(

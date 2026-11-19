@@ -268,10 +268,7 @@ impl TypeEvaluator._typeddict_value_union(base_type: ClassType) -> TypeBase {
     if not field_types {
         return UnknownType();
     }
-    if len(field_types) == 1 {
-        return field_types[0];
-    }
-    return UnionType(types=field_types);
+    return self._union_of(field_types);
 }
 
 impl TypeEvaluator._get_typeddict_indexed_type(
@@ -785,6 +782,21 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
     return None;
 }
 
+impl TypeEvaluator._metaclass_instance(cls_type: ClassType) -> (ClassType | None) {
+    if not cls_type.is_instantiable_class() {
+        return None;
+    }
+    meta_cls = self._metaclass_of(cls_type)
+        or (self.prefetch.type_class if self.prefetch else None);
+    if meta_cls is None {
+        return None;
+    }
+    meta_inst = self._convert_to_instance(meta_cls);
+    return meta_inst
+        if isinstance(meta_inst, ClassType) and meta_inst.is_class_instance()
+        else None;
+}
+
 impl TypeEvaluator._declared_metaclass_member(
     cls_type: ClassType, name: str
 ) -> (ClassMember | None) {
@@ -802,8 +814,22 @@ impl TypeEvaluator._declared_metaclass_member(
     return member;
 }
 
+impl TypeEvaluator._metaclass_call_constructs(
+    result: TypeBase, cls_type: ClassType
+) -> bool {
+    if isinstance(result, UnknownType) or self.is_any_type(result) {
+        return True;
+    }
+    return isinstance(result, ClassType)
+        and result.is_class_instance()
+        and self.is_sub_class(cls_type, result);
+}
+
 impl TypeEvaluator._report_rejected_method_call(
-    receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+    receiver: ClassType,
+    member: ClassMember,
+    args: (Sequence[Expr | KWPair] | None),
+    site: UniNode
 ) -> None {
     method = self.get_type_of_symbol(member.symbol);
     if member.overloads or not isinstance(method, FunctionType) {
@@ -1677,6 +1703,48 @@ impl TypeEvaluator.emit_diag(
     }
 }
 
+impl TypeEvaluator._typevar_magic_call(
+    tv: TypeVarType,
+    method_name: str,
+    arg_nodes: Sequence[Expr | KWPair],
+    site: UniNode,
+    diag: DiagnosticInfo,
+    via: CompileContext | None = None,
+    **diag_args: object
+) -> TypeBase {
+    def miss(type_name: str) {
+        if via is not None {
+            via.emit(diag, node_override=site, type=type_name, **diag_args);
+        } else {
+            self.emit_diag(diag, site, type=type_name, **diag_args);
+        }
+    }
+
+    if tv.constraints {
+        for constraint in tv.constraints {
+            if isinstance(constraint, ClassType)
+                and not self.get_type_of_magic_method_call(
+                    constraint, method_name, arg_nodes, None
+                ) {
+                miss(str(constraint));
+            }
+        }
+        return UnknownType();
+    }
+    if isinstance(tv.bound, ClassType) {
+        if result
+            := self.get_type_of_magic_method_call(
+                tv.bound, method_name, arg_nodes, None
+            ) {
+            return result;
+        }
+        miss(str(tv.bound));
+    } else {
+        miss(tv.name);
+    }
+    return UnknownType();
+}
+
 impl TypeEvaluator._invalidate_expr_type_cache(node_: UniNode) -> None {
     if isinstance(node_, Expr) {
         node_.type = None;
@@ -2453,11 +2521,7 @@ impl TypeEvaluator._infer_lambda_block_return_type(
         }
     }
 
-    if len(seen) == 1 {
-        return seen[0];
-    }
-
-    return UnionType(types=seen);
+    return self._union_of(seen);
 }
 
 impl TypeEvaluator._collect_return_types(
