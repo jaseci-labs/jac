@@ -18,8 +18,14 @@ def connect(
     password=None,
     timeout=None,
     startup_params=None,
+    sslmode=None,
+    sslrootcert=None,
 ):
-    """Open a wire connection from ConnInfo-style fields."""
+    """Open a wire connection from ConnInfo-style fields.
+
+    ``sslmode`` and ``sslrootcert`` take libpq's values; see
+    ``PgWireConnection._negotiate_tls``.
+    """
     from jaclang.data.pgwire import PgWireConnection
 
     unix_sock = None
@@ -37,4 +43,6 @@ def connect(
         password=password,
         timeout=timeout,
         application_name=app_name,
+        sslmode=sslmode or "",
+        sslrootcert=sslrootcert or "",
     )

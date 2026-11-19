@@ -7,14 +7,25 @@ impl promotions_for(base_path: (str | None)) -> dict[str, list[str]] {
 
 
 impl conninfo_from_url(url: str) -> ConnInfo {
-    import from urllib.parse { urlparse, unquote }
+    import from urllib.parse { urlparse, unquote, parse_qs }
     parsed = urlparse(url);
+    query = parse_qs(parsed.query);
+
+    if (query.get('channel_binding') or [''])[-1] == 'require' {
+        raise ValueError(
+            "the database url sets channel_binding=require, which jac's Postgres "
+            "client does not support yet; remove it or use channel_binding=prefer "
+            "(sslmode still encrypts the connection)"
+        );
+    }
     return ConnInfo(
         host=(parsed.hostname or '127.0.0.1'),
         port=(parsed.port or 5432),
         user=unquote(parsed.username or 'jac'),
         password=unquote(parsed.password or ''),
-        database=(parsed.path or '/jac').lstrip('/') or 'jac'
+        database=(parsed.path or '/jac').lstrip('/') or 'jac',
+        sslmode=(query.get('sslmode') or [''])[-1],
+        sslrootcert=(query.get('sslrootcert') or [''])[-1]
     );
 }
 

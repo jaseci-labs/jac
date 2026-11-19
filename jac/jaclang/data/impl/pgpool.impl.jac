@@ -32,7 +32,8 @@ impl pool_key(info: any) -> str {
     where = info.unix_socket_dir or info.host or '';
     raw: str = str(info.password or '');
     secret = hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16];
-    return f"{where}:{info.port}:{info.user}:{info.database}:{secret}";
+    tls = f"{getattr(info, 'sslmode', '')}:{getattr(info, 'sslrootcert', '')}";
+    return f"{where}:{info.port}:{info.user}:{info.database}:{secret}:{tls}";
 }
 
 impl _sock_gone(conn: any) -> bool {
