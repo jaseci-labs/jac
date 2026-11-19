@@ -614,7 +614,7 @@ test "publishing builds into one --out keeps exactly one complete build" {
     project = built["project"];
     app = AppConfig(code_folder=project, file_name="main.jac");
     injector = _apply_target(built["out"])._manifest_builder(app)._injector_from_build(
-        app, "x86_64"
+        app
     );
     parent = tempfile.mkdtemp(prefix="scale-publish-");
     out = os.path.join(parent, "build");
