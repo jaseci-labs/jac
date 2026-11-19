@@ -1,3 +1,4 @@
+import importlib;
 import os;
 import re;
 
@@ -46,6 +47,7 @@ obj AppConfig {
 def validate_app_name(name: str) -> None;
 
 def has_spaces_block(root_dir: str) -> bool;
+def derived_apps(root_dir: str) -> dict[str, any];
 
 def app_npm_tree(raw_config: dict[str, any], app: AppConfig) -> str;
 

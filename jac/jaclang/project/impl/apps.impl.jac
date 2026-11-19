@@ -130,6 +130,14 @@ impl has_spaces_block(root_dir: str) -> bool {
     }
 }
 
+impl derived_apps(root_dir: str) -> dict[str, any] {
+    if not has_spaces_block(root_dir) {
+        return {};
+    }
+    spaces: any = importlib.import_module("jaclang.project.spaces");
+    return spaces.archwire_apps(root_dir);
+}
+
 impl validate_app_name(name: str) -> None {
     if not name or not name.strip() {
         raise ValueError("[apps] has an app with an empty name");

@@ -12488,7 +12488,7 @@ graph import project {
     ]
     apps ++> [
         config { AppConfig, implicit_app, parse_apps },
-        config._parse_toml_data | workspace._build_workspace { has_spaces_block },
+        config._parse_toml_data | workspace._build_workspace { derived_apps },
         kinds { AppConfig, implicit_app },
         template_loader.scaffold_app { APP_TABLE_KEYS, parse_apps, validate_app_name },
     ]
@@ -12609,7 +12609,6 @@ graph import project {
         tool_paths { get_venv_site_packages },
     ]
     source ++> textio { JACIGNORE_FILENAME, normalize_exclude_patterns }
-    spaces --> config._parse_toml_data | workspace._build_workspace { archwire_apps }
     type spaces ++> apps { DerivedApp }
     template_registry ++> template_loader { ProjectTemplate, template_kind_for }
     textio ++> [

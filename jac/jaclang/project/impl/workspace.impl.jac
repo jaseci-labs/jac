@@ -101,11 +101,7 @@ impl _build_workspace(
 ) -> WorkspaceSpec {
     project = _table(doc, 'project');
     apps_raw = doc.get('apps', {});
-    derived: dict[str, any] = {};
-    if has_spaces_block(root_dir) {
-        import from jaclang.project.spaces { archwire_apps }
-        derived = archwire_apps(root_dir);
-    }
+    derived: dict[str, any] = derived_apps(root_dir);
     explicit = (isinstance(apps_raw, dict) and len(apps_raw) > 0) or bool(derived);
     base_pins = _pins_of(_table(doc, 'placement', 'pins'));
     base_npm = _npm_names_of(_table(doc, 'dependencies', 'npm'));
