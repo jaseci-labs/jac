@@ -1484,6 +1484,8 @@ impl Parser.parse_call_arg -> Expr | KWPair {
             name = SpecialVarRef(
                 var=self.make_special_name(self.advance()), is_enum_stmt=False
             );
+        } elif self.is_keyword_token() {
+            name = self.make_name(self.advance());
         } else {
             name = self.make_name(self.expect_name("keyword argument"));
         }
