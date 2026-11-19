@@ -64,6 +64,9 @@ impl HotReloader.attach_client_bundler(bundler: any) -> None {
         return;
     }
     bundler.on_client_event = self.record_client_event;
+    self._dev_bundler = bundler;
+    self._published_status = "";
+    self._publish_status();
 }
 
 impl HotReloader.record_client_event(
@@ -84,6 +87,7 @@ impl HotReloader.record_client_event(
     }
     with HotReloader._build_lock {
         if slot == 'ready' {
+            self._vite_diagnostics = [];
             self._client_diagnostics = [];
             self._runtime_diagnostics = [];
         } elif slot == 'vite' {
@@ -99,7 +103,7 @@ impl HotReloader.record_client_event(
             console.error(diag.render());
         }
     }
-    self._sync_status_file();
+    self._publish_status();
 }
 
 impl HotReloader.record_ok -> None {
@@ -107,7 +111,7 @@ impl HotReloader.record_ok -> None {
         self._build_status = BuildStatus.OK;
         self._diagnostics = [];
     }
-    self._sync_status_file();
+    self._publish_status();
 }
 
 impl HotReloader.record_error(
@@ -127,40 +131,23 @@ impl HotReloader.record_error(
         self._build_status = BuildStatus.ERROR;
         self._diagnostics = diags;
     }
-    self._sync_status_file();
+    self._publish_status();
 }
 
-impl HotReloader._status_file_path -> Path {
-    if self.client_compiler {
-        try {
-            return Path(self.client_compiler.vite_bundler._get_client_dir())
-                / '.jac-status.json';
-        } except Exception {}
-        try {
-            compiled = Path(str(self.client_compiler.jac_client_compiler.compiled_dir));
-            return compiled.parent / '.jac-status.json';
-        } except Exception {}
+impl HotReloader._publish_status -> None {
+    bundler = self._dev_bundler;
+    if bundler is None {
+        return;
     }
-    return Path(self.base_path) / '.jac' / 'client' / '.jac-status.json';
-}
-
-impl HotReloader._sync_status_file -> None {
-    try {
+    with self._publish_lock {
         payload = self.build_status();
-        status_file = self._status_file_path();
-        if payload["status"] == BuildStatus.ERROR.value {
-            content = json.dumps(payload);
-            try {
-                if status_file.read_text(encoding='utf-8') == content {
-                    return;
-                }
-            } except OSError {}
-            status_file.parent.mkdir(parents=True, exist_ok=True);
-            status_file.write_text(content, encoding='utf-8');
-        } elif status_file.exists() {
-            status_file.unlink();
+        content = json.dumps(payload);
+        if content == self._published_status {
+            return;
         }
-    } except OSError {}
+        self._published_status = content;
+        bundler.publish_dev_status(payload);
+    }
 }
 
 impl HotReloader.on_file_change(event: any) -> None {
@@ -582,12 +569,10 @@ impl HotReloader._extract_js_exports(js_path: Path) -> set[str] {
 
 impl HotReloader._signal_full_reload -> None {
     self._reload_nonce += 1;
-    signal_file = self._status_file_path().parent / '.jac-force-reload';
-    try {
-        if signal_file.parent.is_dir() {
-            signal_file.write_text(str(self._reload_nonce), encoding='utf-8');
-        }
-    } except OSError {}
+    bundler = self._dev_bundler;
+    if bundler is not None {
+        bundler.request_dev_reload();
+    }
 }
 
 impl HotReloader._recompile_client_code(

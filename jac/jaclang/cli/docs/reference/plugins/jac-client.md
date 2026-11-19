@@ -2348,19 +2348,34 @@ already reads: the dev server's stdout. Each event is one tagged JSON line --
 
 -- in slot `vite`, `client` (a module-load failure), `runtime` (anything thrown
 after the app came up) or `ready` (the browser's clean-load beacon). A `null`
-payload clears its slot, and `ready` clears both browser slots. The jac process
-consumes those lines (they are never echoed to the terminal), classifies each
-one on arrival, renders it, and keeps the result in memory. The only file
-involved is the status document it writes:
+payload clears its slot, and `ready` clears the `vite` slot and both browser
+slots: the app came up, so whatever failed before no longer blocks it. The jac
+process consumes those lines (they are never echoed to the terminal),
+classifies each one on arrival, renders it, and keeps the result in memory.
 
-| File | Written by | Contents |
-|------|-----------|----------|
-| `.jac/client/.jac-status.json` | the jac dev server | the status document (below); absent when the build is healthy |
+The `vite` slot is cleared on proof, not on a reload. When Vite announces an
+update or a reload, the plugin asks it to transform the modules that failed
+again, and reports the slot clear only if they all transform.
+
+The jac process answers on the dev server's stdin, again one tagged JSON line
+per command:
+
+```text
+@@jac-dev-command {"type": "status", "status": { ... }}
+@@jac-dev-command {"type": "reload"}
+```
+
+`status` carries the status document (below) whenever it changes: an error
+shows the rendered diagnostic in the overlay, and a change back to healthy
+reloads the page. `reload` asks for a full reload when an edit changes what a
+module exports, or the route table. No file is involved in either direction.
+Anything written into `.jac/client/` is a project file to Vite, whose watcher
+retries failed imports and reloads the page when a file appears there.
 
 A `runtime` event is reported to the terminal but does not mark the build
 broken, so it does not appear in the status document.
 
-The status document is also what `GET /__build_status` returns, on both the core
+The status document is what `GET /__build_status` returns, on both the core
 server and the scale gateway:
 
 ```json

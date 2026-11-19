@@ -15,7 +15,10 @@ obj HotReloader {
         _vite_diagnostics: list[ClientDiagnostic] = [],
         _client_diagnostics: list[ClientDiagnostic] = [],
         _runtime_diagnostics: list[ClientDiagnostic] = [],
-        _reload_nonce: int = 0;
+        _reload_nonce: int = 0,
+        _dev_bundler: any = None,
+        _published_status: str = "",
+        _publish_lock: threading.Lock = threading.Lock();
 
     static has _build_lock: threading.Lock = threading.Lock();
 
@@ -53,8 +56,7 @@ obj HotReloader {
     def _tracked_wasm_module(file_path: str) -> bool;
     def _reemit_native_wasm(file_path: str) -> None;
     def _entry_module_path -> Path;
-    def _status_file_path -> Path;
-    def _sync_status_file -> None;
+    def _publish_status -> None;
     def _classify_declarations(file_path: str) -> tuple[bool, bool, bool];
     def _path_to_module(file_path: str) -> str;
     def _get_js_filename(file_path: str) -> str;
