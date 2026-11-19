@@ -48,6 +48,11 @@ def reap_stale_scaling_resources_for_bundle(
 );
 
 
+def lift_parked_deployments_for_bundle(
+    bundle: dict[str, any], namespace: str, apps_v1: any
+) -> list[str];
+
+
 obj KubernetesTarget(KubernetesTargetBase) {
     has _deploy_context: DeployContext = DeployContext(),
         fleet: (FleetSpec | None) = None,

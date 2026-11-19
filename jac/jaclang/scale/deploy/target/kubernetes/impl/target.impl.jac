@@ -147,6 +147,32 @@ impl reap_stale_scaling_resources_for_bundle(
     }
 }
 
+# Redeploys leave spec.replicas to the autoscaler, but an HPA never scales a
+# target up from 0, so a service that left scale-to-zero while idle needs its
+# floor set once here.
+impl lift_parked_deployments_for_bundle(
+    bundle: dict[str, any], namespace: str, apps_v1: any
+) -> list[str] {
+    lifted: list[str] = [];
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        floor = int(plan.get("replica_floor", 0));
+        if plan.get("mode") != ScalingMode.METRIC or floor <= 0 {
+            continue;
+        }
+        name = str(plan.get("scale_target_name", ""));
+        live = apps_v1.read_namespaced_deployment(name=name, namespace=namespace);
+        if live.spec.replicas == 0 {
+            apps_v1.patch_namespaced_deployment(
+                name=name, namespace=namespace, body={"spec": {"replicas": floor}}
+            );
+            lifted.append(svc_name);
+        }
+    }
+    return lifted;
+}
+
 impl KubernetesTarget._gateway_cfg -> dict[str, any] {
     if self.gateway_config is not None {
         return normalize_gateway_config(self.gateway_config);
@@ -1168,6 +1194,14 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
             )
         )
     );
+
+    for svc_name in lift_parked_deployments_for_bundle(bundle, namespace, apps_v1) {
+        if self.logger {
+            self.logger.info(
+                f"Scaled '{svc_name}' up from zero: it no longer scales to zero"
+            );
+        }
+    }
 
     for svc_name in scaling.keys() {
         plan: dict[str, any] = dict(scaling.get(svc_name, {}));

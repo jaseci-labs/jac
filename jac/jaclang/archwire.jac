@@ -13725,6 +13725,7 @@ graph import scale {
         tests.deploy.test_http_activation_microservices {
             KubernetesTarget,
             apply_http_activations_for_bundle,
+            lift_parked_deployments_for_bundle,
             reap_stale_scaling_resources_for_bundle,
             replacing_init_containers
         },
