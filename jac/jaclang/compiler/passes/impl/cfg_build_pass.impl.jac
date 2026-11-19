@@ -48,6 +48,8 @@ impl CFGBuildPass._link_sequential(body: Sequence[CodeBlockStmt]) -> None {
             }
         } elif has_bool_sc {
             self._connect_tails(prev, next);
+        } elif isinstance(prev, WithStmt) and prev.body {
+            self._connect_tails(prev, next);
         } else {
             self.link_bbs(prev, next);
             self._connect_tails(prev, next);

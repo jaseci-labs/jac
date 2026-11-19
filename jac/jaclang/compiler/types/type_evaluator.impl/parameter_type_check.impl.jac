@@ -442,7 +442,9 @@ impl TypeEvaluator._validate_call_type(
             ret = specialized.return_type or UnknownType();
         }
 
-        if self._is_sv_async_call(expr)
+        if self._is_sv_async_call(expr) and self._is_sync_iterator_type(ret) {
+            ret = self._make_async_iterator_type(ret);
+        } elif self._is_sv_async_call(expr)
             or (
                 caller_type.is_async
                 and not (caller_type.function_flags & FunctionTypeFlags.Generator)

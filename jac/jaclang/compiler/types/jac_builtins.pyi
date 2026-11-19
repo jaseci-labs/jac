@@ -49,6 +49,7 @@ __all__ = [
     "PtrView",
     "Pinned",
     "pin",
+    "Task",
     "addressof",
     "VaList",
     # Fixed-width numeric types
@@ -237,6 +238,11 @@ class Pinned(Generic[_PinT]):
     value: _PinT
 
 def pin(value: _PinT) -> Pinned[_PinT]: ...
+
+_TaskT = TypeVar("_TaskT", covariant=True)
+
+# What `flow f(...)` gives: a task whose outcome, a `_TaskT`, `wait` delivers.
+class Task(Generic[_TaskT]): ...
 
 # A C `va_list`. `def f(fmt: ptr[u8], *args: VaList)` is a C variadic
 # function, and a `VaList` parameter receives a C `va_list`; `args.arg(T)`

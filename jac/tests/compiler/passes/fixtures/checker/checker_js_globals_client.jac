@@ -93,3 +93,21 @@ def typing_into(e: KeyboardEvent) -> bool {
     tag = str(e.target.tagName).lower();
     return tag == "input" or e.target.isContentEditable;
 }
+
+# JS numbers that are always integral are ints: Math's rounding, Date's
+# fields and times. Math.max/min keep int for ints and give float for a mix.
+def integral_numbers(values: list[int], stamp: str) -> int {
+    n: int = Math.max(1, len(values));
+    every: int = Math.max(1, Math.ceil(n / 8));
+    k: int = Math.floor(n / 2) + Math.round(1.5) + Math.trunc(2.5) + Math.sign(-3.0);
+    bw: float = Math.max(2, n * 0.7);
+    d = new(Date, stamp);
+    day: int = d.getDay() + d.getMonth() + d.getFullYear() + d.getUTCHours();
+    ms: int = d.getTime() + Date.now() - d.getTimezoneOffset();
+    return n + every + k + day + ms + int(bw);
+}
+
+# A method read by its key is called on the object: `re[Symbol.replace](s, r)`.
+def rx(s: str, pattern: str, repl: str) -> str {
+    return new(RegExp, pattern, "g")[Symbol.replace](s, repl);
+}

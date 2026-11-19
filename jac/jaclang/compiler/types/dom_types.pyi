@@ -10,7 +10,7 @@ clientX, innerHTML) — this is intentional, not a Python naming violation.
 """
 
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 _RefT = TypeVar("_RefT")
 
@@ -32,7 +32,10 @@ class Ref(Generic[_RefT]):
     attaches the node) or `Ref(initial)` (a value ref seeded with `initial`).
     """
 
-    current: _RefT | None
+    # What a ref holds is dynamic: `current` is an `any`, as neojac types it, so
+    # `Ref(0).current + 1` and `inputRef.current.focus()` both read without a
+    # null check. The type argument documents what the ref is meant to hold.
+    current: Any
     def __init__(self, initial: _RefT | None = ...) -> None: ...
 
 # ---------------------------------------------------------------------------

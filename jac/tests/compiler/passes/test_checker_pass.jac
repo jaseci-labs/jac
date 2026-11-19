@@ -1124,6 +1124,14 @@ Cannot return int, expected bool
              []
          ),
          (
+             "with_block_narrowing",
+             "checker",
+             "checker_with_block_narrowing.jac",
+             0,
+             False,
+             []
+         ),
+         (
              "assignment_narrowing",
              "checker",
              "checker_assignment_narrowing.jac",

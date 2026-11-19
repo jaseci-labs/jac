@@ -17,6 +17,10 @@ def one_int(x: int) -> None {}
 def two_ints(x: int, y: int) -> None {}
 
 
+async def fetch_it {}
+async def fetch_one(x: int) -> int { return x; }
+
+
 def takes_mouse_handler(cb: Callable[[MouseEvent], None]) -> None {
     cb(MouseEvent());
 }
@@ -56,6 +60,11 @@ with entry {
 
     # Bound one-arg method -> two-arg Callable.
     f6: Callable[[int, int], None] = w.click_one;  # Ok
+
+    # An async function is a callable giving a coroutine: its declared result
+    # is what the coroutine delivers, so it satisfies a Coroutine-returning type.
+    f7: Callable[[], Coroutine[any, any, None]] = fetch_it;  # Ok
+    f8: Callable[[int], Coroutine[any, any, int]] = fetch_one;  # Ok
 
     # --- Invalid: longer source NOT assignable to shorter destination ---
 
