@@ -314,12 +314,13 @@ impl SqliteOutboxStore.close -> None {
 
 impl _current_memory -> any {
     import from jaclang { JacRuntime }
-    return JacRuntime.get_context().mem;
+    ctx = JacRuntime.peek_context();
+    return ctx.mem if ctx is not None else None;
 }
 
 
 impl _primary_pg_store -> (PgStore | None) {
-    store = _current_memory().store;
+    store = _current_memory()?.store;
     return store if isinstance(store, PgStore) else None;
 }
 
@@ -554,7 +555,6 @@ impl start_worker(interval_s: float = 1.0) -> None {
         if current is not None and current.is_alive() {
             return;
         }
-        _store_for_worker();
         stop = threading.Event();
         thread = threading.Thread(
             target=_worker_loop, args=(interval_s, stop), daemon=True, name="jac-outbox"

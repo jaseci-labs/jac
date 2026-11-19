@@ -16,6 +16,7 @@ import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface }
 import from jaclang.server { sv_client }
 import from jaclang.server.bridge { BridgeRejected, BridgeUnavailable }
 import jaclang.server.outbox as outbox_mod;
+import jaclang.server.server as server_mod;
 import from jaclang.server.outbox {
     LEASE_S,
     OutboxEntry,
@@ -636,20 +637,40 @@ test "remember runs on the worker connection, enqueue in the request transaction
 
 
 test "a request never derives the worker's side store; a forked worker does, once" {
-    primary = _RecordingPg(conninfo=ConnInfo(host="primary.invalid"));
+    request_primary = _RecordingPg(conninfo=ConnInfo(host="request.invalid"));
+    worker_primary = _RecordingPg(conninfo=ConnInfo(host="worker.invalid"));
     side = _RecordingPg(conninfo=ConnInfo(host="side.invalid"));
-    ctx: any = SimpleNamespace(mem=_FakeMemory(store=primary));
+    request_ctx: any = SimpleNamespace(mem=_FakeMemory(store=request_primary));
+    worker_ctx: any = SimpleNamespace(mem=_FakeMemory(store=worker_primary));
     use_store(None);
     derived: list[any] = [];
+    created: list[any] = [];
+    at_scheduler_start: list[any] = [];
+    served_with: list[any] = [];
 
     def _fresh_context(user_root: any) -> any {
-        return ctx;
+        created.append(user_root);
+        return worker_ctx;
     }
 
     def _side(primary_store: any) -> any {
         derived.append(primary_store);
         return PgOutboxStore(store=side);
     }
+
+    def _scheduler_start {
+        at_scheduler_start.append(JacRuntime.peek_context());
+    }
+
+    def _serve(on_ready: any = None, port_retries: int = 0) -> int {
+        served_with.append(outbox_mod._store_for_worker());
+        return 0;
+    }
+    worker_server: any = unittest.mock.MagicMock(extensions=[]);
+    worker_server.scheduler.start_if_pending.side_effect = _scheduler_start;
+    serving_cls: any = unittest.mock.MagicMock();
+    serving_cls.return_value.run.side_effect = _serve;
+    worker_main: any = server_mod.JacAPIServer._worker_main;
     context_patch: any = unittest.mock.patch.object(
         JacRuntimeInterface, "create_j_context", _fresh_context
     );
@@ -658,9 +679,12 @@ test "a request never derives the worker's side store; a forked worker does, onc
     derive_patch: any = unittest.mock.patch.object(
         outbox_mod, "_derive_worker_store", _side
     );
+    serving_patch: any = unittest.mock.patch.object(
+        server_mod, "ServingServer", serving_cls
+    );
     try {
-        with context_patch, fork_patch, derive_patch {
-            token = JacRuntime.push_request_context(ctx);
+        with context_patch, fork_patch, derive_patch, serving_patch {
+            token = JacRuntime.push_request_context(request_ctx);
             try {
                 enqueue("scoring", "Greet", {"name": "ada"});
             } finally {
@@ -671,15 +695,22 @@ test "a request never derives the worker's side store; a forked worker does, onc
                 " must only touch the caller's own connection"
             );
             assert outbox_mod._state.worker_store is None;
-            worker = outbox_mod._store_for_worker();
+            worker_main(worker_server, None);
+            assert created == [None] , (
+                "the forked worker never built its own process context"
+            );
+            assert at_scheduler_start == [worker_ctx] , (
+                "the scheduler started before the worker had a process context"
+            );
+            worker = served_with[0];
             assert isinstance(worker, PgOutboxStore) , (
                 "a worker with no process context fell back to SQLite while"
                 " requests enqueue into Postgres"
             );
-            assert derived == [primary];
+            assert derived == [worker_primary];
             assert worker.store is side;
             assert outbox_mod._store_for_worker() is worker;
-            assert derived == [primary] , (
+            assert derived == [worker_primary] , (
                 "the worker's side store must be derived once and cached"
             );
         }
@@ -689,24 +720,34 @@ test "a request never derives the worker's side store; a forked worker does, onc
 }
 
 
-test "start_worker_if_bridging arms the worker only for a bridging consumer" {
-    with TemporaryDirectory() as tmp {
-        store = SqliteOutboxStore(path=os.path.join(tmp, "outbox.sqlite"));
-        use_store(store);
-        saved = dict(sv_client._consumer_providers);
-        sv_client.clear_consumer_providers();
-        try {
+test "start_worker_if_bridging arms the worker only for a bridging consumer, even with Postgres down" {
+    down = _RecordingPg(conninfo=ConnInfo(host="down.invalid"));
+    ctx: any = SimpleNamespace(mem=_FakeMemory(store=down));
+    use_store(None);
+    saved = dict(sv_client._consumer_providers);
+    sv_client.clear_consumer_providers();
+
+    def _unreachable(primary_store: any) -> any {
+        raise ConnectionError("postgres unreachable");
+    }
+    process_patch: any = unittest.mock.patch.object(JacRuntime, "exec_ctx", ctx);
+    derive_patch: any = unittest.mock.patch.object(
+        outbox_mod, "_derive_worker_store", _unreachable
+    );
+    try {
+        with process_patch, derive_patch {
             assert not start_worker_if_bridging(interval_s=0.05);
             assert not worker_running();
             sv_client._declare_consumer_provider("web", "scoring", "/api/scoring");
             assert start_worker_if_bridging(interval_s=0.05);
             assert worker_running();
-        } finally {
             stop_worker();
-            sv_client.clear_consumer_providers();
-            sv_client._consumer_providers.update(saved);
-            use_store(None);
         }
+    } finally {
+        stop_worker();
+        sv_client.clear_consumer_providers();
+        sv_client._consumer_providers.update(saved);
+        use_store(None);
     }
 }
 
