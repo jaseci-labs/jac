@@ -221,7 +221,7 @@ test "a `type` alias right-hand side is a type position, not a run-time use" {
 
 
 test "a base the native lane keeps still refuses" {
-    assert _rejected_imports("type_position_retained_base.jac") == ["threading"] , (
+    assert _rejected_imports("type_position_retained_base.jac") == ["queue"] , (
         "an ordinary Python base is a run-time dependency: the archetype "
         "cannot mean what it says without it, and a native unit cannot "
         "supply it. Only an erased base is free"
@@ -230,7 +230,7 @@ test "a base the native lane keeps still refuses" {
 
 
 test "a run-time use of a Python module still refuses" {
-    assert _rejected_imports("type_position_runtime_use.jac") == ["threading"] , (
+    assert _rejected_imports("type_position_runtime_use.jac") == ["queue"] , (
         "widening the gate to compile-time positions must not accept a name "
         "the native unit would have to call"
     );
