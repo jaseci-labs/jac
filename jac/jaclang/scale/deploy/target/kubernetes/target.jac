@@ -55,11 +55,13 @@ obj KubernetesTarget(KubernetesTargetBase) {
         app_overrides: dict[str, dict[str, any]] = {},
         from_build: str = "",
         pod_arch: str = "",
-        plan_out: str = "";
+        plan_out: str = "",
+        _verified_injector: (BinaryInjector | None) = None;
 
     def _gateway_cfg -> dict[str, any];
     def build(app_config: AppConfig, out_dir: str) -> dict[str, any];
     def write_plan(bundle: dict[str, any]);
+    def _verify_build(app_config: AppConfig) -> str;
     def deploy(app_config: AppConfig) -> DeploymentResult;
     def _scan_for_crash_loop(
         core_v1: any,

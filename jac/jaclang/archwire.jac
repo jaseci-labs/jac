@@ -13819,7 +13819,8 @@ graph import scale {
             | runtime.realizer.kubernetes_realizer.KubernetesRealizer._pinned_jac {
             host_toolchain_path
         },
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build {
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build
+            | deploy.target.kubernetes.target.KubernetesTarget._verify_build {
             node_arch
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
@@ -13880,14 +13881,11 @@ graph import scale {
     injector.binary as binary_mod --> tests.deploy.test_memory_trigger_guard;
     injector.binary as binmod --> tests.microservices.test_binary_cache;
     injector.binary_injector ++> [
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_pod_spec
+        deploy.target.kubernetes.manifest_builder
+            | deploy.target.kubernetes.target
             | tests.deploy.test_dry_run_purity
             | tests.microservices.test_binary_injector { BinaryInjector },
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build {
-            BinaryInjector
-        },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
-            BinaryInjector,
             select_injector
         },
     ]

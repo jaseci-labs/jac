@@ -93,6 +93,7 @@ obj ManifestBuilder {
         dry_run: bool = False,
         from_build: str = "",
         pod_arch: str = "",
+        injector: (BinaryInjector | None) = None,
         _bundle_files_cache: (dict[str, str] | None) = None,
         _serve_config_cache: (ServeConfig | None) = None,
         _client_checked: bool = False,
@@ -104,7 +105,10 @@ obj ManifestBuilder {
     def _fleet(app_config: AppConfig) -> FleetSpec;
     def _injector_object_key -> str;
     def _prepare_injector(app_config: AppConfig) -> BinaryInjector;
-    def _injector_from_build(app_config: AppConfig) -> BinaryInjector;
+    def _injector_from_build(
+        app_config: AppConfig, pod_arch: (str | None) = None
+    ) -> BinaryInjector;
+
     def _install_app_deps(
         project_dir: str, jac_bin: str, env: (dict[str, str] | None)
     ) -> str;

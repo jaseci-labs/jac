@@ -394,7 +394,10 @@ def _built_app -> dict[str, str] {
 
 
 def _apply_target(
-    from_build: str = "", app_name: str = "shop", pod_arch: str = "x86_64"
+    from_build: str = "",
+    app_name: str = "shop",
+    pod_arch: str = "x86_64",
+    kubeconfig: str = ""
 ) -> KubernetesTarget {
     return KubernetesTarget(
         config=KubernetesConfig.from_dict(
@@ -403,7 +406,8 @@ def _apply_target(
                 "app_name": app_name,
                 "namespace": "shop",
                 "bundle_storage_class": "standard",
-                "python_image": "python:3.12-slim"
+                "python_image": "python:3.12-slim",
+                "kubeconfig": kubeconfig
             }
         ),
         from_build=from_build,
@@ -583,3 +587,24 @@ test "a deploy from a build refuses a build that does not match it" {
         assert expected in refusal , f"{label}: {refusal!r}";
     }
 }
+
+
+test "a deploy refuses a mismatched build before it contacts the cluster" {
+    built = _built_app();
+    project = built["project"];
+    copy = tempfile.mkdtemp(prefix="scale-build-copy-");
+    shutil.rmtree(copy);
+    shutil.copytree(built["out"], copy);
+    record_file = Path(copy, "build.json");
+    record = json.loads(record_file.read_text());
+    record["jac_version"] = "0.0.1";
+    record_file.write_text(json.dumps(record));
+    # Any cluster contact (provisioning, namespace, nodes) fails on this kubeconfig
+    # with a different error than the refusal.
+    target = _apply_target(copy, kubeconfig=project + "-kubeconfig");
+    result = target.deploy(AppConfig(code_folder=project, file_name="main.jac"));
+    shutil.rmtree(copy, ignore_errors=True);
+    assert not result.success;
+    assert "built by jac 0.0.1" in str(result.message) , result.message;
+}
+

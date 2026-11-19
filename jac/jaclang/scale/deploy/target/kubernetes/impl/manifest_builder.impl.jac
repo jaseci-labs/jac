@@ -329,18 +329,22 @@ impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> BinaryInjector 
     return selection[0];
 }
 
-impl ManifestBuilder._injector_from_build(app_config: AppConfig) -> BinaryInjector {
+impl ManifestBuilder._injector_from_build(
+    app_config: AppConfig, pod_arch: (str | None) = None
+) -> BinaryInjector {
     import os;
-    pod_arch = self.pod_arch;
-    if not pod_arch and (not self.dry_run or os.environ.get("JAC_NODE_ARCH")) {
-        pod_arch = node_arch();
+    arch = pod_arch if pod_arch is not None else self.pod_arch;
+    if pod_arch is None
+        and not arch
+        and (not self.dry_run or os.environ.get("JAC_NODE_ARCH")) {
+        arch = node_arch();
     }
     return BinaryInjector.from_build(
         self.from_build,
         k8s_safe_name(self.k8s_config.app_name),
         self.project_dir,
         shipped_tomls(self.project_dir, self._fleet(app_config)),
-        pod_arch=pod_arch,
+        pod_arch=arch,
         storage_class=self.k8s_config.bundle_storage_class,
         access_mode=self.k8s_config.bundle_access_mode,
         dry_run=self.dry_run
@@ -712,9 +716,13 @@ impl ManifestBuilder.generate_manifests(
     self.project_dir = self.project_dir or app_config.code_folder;
     fleet = self._fleet(app_config);
     self._bundle_files();
-    injector = self._injector_from_build(app_config)
-        if self.from_build
-        else self._prepare_injector(app_config);
+    if self.injector is not None {
+        injector = self.injector;
+    } elif self.from_build {
+        injector = self._injector_from_build(app_config);
+    } else {
+        injector = self._prepare_injector(app_config);
+    }
     self._bundle_object_key = injector._object_key;
     self._toolchain_object_key = injector._toolchain_object_key;
     self._pod_binary_sha256 = injector._pod_binary_sha256;

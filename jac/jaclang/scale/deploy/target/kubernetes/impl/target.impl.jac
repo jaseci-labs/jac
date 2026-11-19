@@ -169,6 +169,22 @@ impl KubernetesTarget.build(app_config: AppConfig, out_dir: str) -> dict[str, an
     return injector.write_build(out_dir, k8s_safe_name(self.k8s_config.app_name));
 }
 
+impl KubernetesTarget._verify_build(app_config: AppConfig) -> str {
+    import os;
+    pod_arch = self.pod_arch
+        or (node_arch() if os.environ.get("JAC_NODE_ARCH") else "");
+    try {
+        self._verified_injector = self._manifest_builder(
+            app_config
+        )._injector_from_build(
+            app_config, pod_arch
+        );
+    } except Exception as e {
+        return str(e);
+    }
+    return "";
+}
+
 impl KubernetesTarget.write_plan(bundle: dict[str, any]) {
     if not self.plan_out {
         return;
@@ -212,6 +228,15 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     if refusal {
         return DeploymentResult(success=False, message=refusal);
     }
+    if self.from_build {
+        self._emit("build", "start", "Checking the saved build");
+        problem = self._verify_build(app_config);
+        if problem {
+            self._emit("build", "error", problem);
+            return DeploymentResult(success=False, message=problem);
+        }
+        self._emit("build", "ok", "The saved build matches this deploy");
+    }
     if self.logger {
         self.logger.info(
             f"Deploying app '{app_name}' to Kubernetes",
@@ -229,10 +254,18 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
                 resolve_pod_base_image
             }
             self._load_cluster_config();
+            arch = node_arch();
+            verified = self._verified_injector;
+            if verified is not None and verified._pod_arch != arch {
+                raise ValueError(
+                    f"Refusing to deploy from {self.from_build}: it was built for "
+                    f"{verified._pod_arch} nodes and the cluster runs {arch}."
+                );
+            }
             pinned = preflight_pod_runtime(
                 app_config.code_folder,
                 resolve_dev_channel(app_config.code_folder).value,
-                node_arch()
+                arch
             );
             self.k8s_config.python_image = resolve_pod_base_image(
                 app_config.code_folder, self.k8s_config.python_image
@@ -924,7 +957,8 @@ impl KubernetesTarget._manifest_builder(app_config: AppConfig) -> ManifestBuilde
         app_overrides=dict(self.app_overrides),
         dry_run=self.dry_run,
         from_build=self.from_build,
-        pod_arch=self.pod_arch
+        pod_arch=self.pod_arch,
+        injector=self._verified_injector
     );
 }
 
