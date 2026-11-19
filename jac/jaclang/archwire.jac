@@ -14238,7 +14238,8 @@ graph import scale {
             | tests.deploy.test_http_activation_microservices
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_ops_rbac
-            | tests.deploy.test_pod_env { GATEWAY_NAME },
+            | tests.deploy.test_pod_env
+            | tests.deploy.test_superseded_deployment_reap { GATEWAY_NAME },
     ]
     runtime.context.util --> [
         tests.apps.test_app_scale_overrides {

@@ -1,4 +1,5 @@
 import from types { SimpleNamespace }
+import from kubernetes.client.exceptions { ApiException }
 
 # A Deployment as a pre-0.34.9 toolchain wrote it: bare app name, no role label,
 # and the same pod selector the current one uses.
@@ -51,10 +52,26 @@ def _hand_rolled_canary(app: str) -> any {
 obj FakeAppsV1 {
     has items: list[any],
         deleted: list[str] = [],
-        stateful_sets: list[any] = [];
+        stateful_sets: list[any] = [],
+        patched: list[tuple[str, any]] = [];
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
         return SimpleNamespace(items=list(self.items));
+    }
+
+    def read_namespaced_deployment(name: str, namespace: str, **kwargs: any) -> any {
+        for item in self.items {
+            if item.metadata.name == name {
+                return item;
+            }
+        }
+        raise ApiException(status=404, reason="Not Found");
+    }
+
+    def patch_namespaced_deployment(
+        name: str, namespace: str, body: any, **kwargs: any
+    ) {
+        self.patched.append((name, body));
     }
 
     def list_namespaced_stateful_set(namespace: str, **kwargs: any) -> any {
@@ -431,6 +448,15 @@ test "the same code and config stays one release across services" {
 }
 
 
+def _as_emitted(deployment: any, svc: str, app: str = "standup") -> any {
+    builder = ManifestBuilder(k8s_config=KubernetesConfig(app_name=app, namespace=app));
+    emitted = builder._build_deployment_manifest(svc, {})["metadata"];
+    deployment.metadata.name = emitted["name"];
+    deployment.metadata.labels = emitted["labels"];
+    return deployment;
+}
+
+
 def _rollout(
     generation: int,
     observed: int,
@@ -776,8 +802,10 @@ test "status reads a container's current state, not its lifetime restart count" 
             "activating"
         )
     ];
-    deployment = _rollout(generation=2, observed=2, replicas=2, updated=1, available=1);
-    deployment.metadata.name = "standup";
+    deployment = _as_emitted(
+        _rollout(generation=2, observed=2, replicas=2, updated=1, available=1),
+        "standup"
+    );
     core = FakeCoreV1(pods=[]);
     wrong: list[str] = [];
     with unittest.mock.patch(
@@ -811,6 +839,92 @@ test "status reads a container's current state, not its lifetime restart count" 
     assert container_crashlooping(_container(False, 3, waiting="CrashLoopBackOff"), 3);
     assert container_crashlooping(_container(False, 3), 3);
     assert not container_crashlooping(_container(True, 9), 3);
+}
+
+
+test "status and scale address the Deployments the builder emitted" {
+    import unittest.mock;
+    def member(svc: str, available: int = 1) -> any {
+        return _as_emitted(
+            _rollout(
+                generation=1, observed=1, replicas=1, updated=1, available=available
+            ),
+            svc,
+            "shop"
+        );
+    }
+    # (label, fleet, service passed to scale, expected status, Deployment scaled)
+    cases: list[tuple[str, list[any], str, str, str]] = [
+        (
+            "a solo app and its gateway",
+            [member("shop"), member(GATEWAY_NAME)],
+            "",
+            "active",
+            "shop-deployment"
+        ),
+        (
+            "a workspace service named by its [apps] key",
+            [member("web"), member("products_app"), member(GATEWAY_NAME)],
+            "products_app",
+            "active",
+            "products-app-deployment"
+        ),
+        (
+            "a fleet with one service still starting",
+            [member("web", available=0), member(GATEWAY_NAME)],
+            "web",
+            "activating",
+            "web-deployment"
+        )
+    ];
+    wrong: list[str] = [];
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        for (label, fleet, service, status, scaled) in cases {
+            apps = FakeAppsV1(items=fleet);
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+                return_value=apps
+            ) {
+                got = _target("shop", "shop").get_status("shop").status.value;
+                if got != status {
+                    wrong.append(f"{label}: status {got}, expected {status}");
+                }
+                try {
+                    _target("shop", "shop").scale("shop", 3, service);
+                } except Exception as e {
+                    wrong.append(f"{label}: scale raised {e}");
+                }
+                if [name for (name, _) in apps.patched] != [scaled] {
+                    wrong.append(f"{label}: scaled {apps.patched}, expected {scaled}");
+                }
+            }
+        }
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+            return_value=FakeAppsV1(items=[])
+        ) {
+            got = _target("shop", "shop").get_status("shop").status.value;
+            if got != "unknown" {
+                wrong.append(f"an undeployed fleet: status {got}, expected unknown");
+            }
+        }
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+            return_value=FakeAppsV1(items=[member("web"), member(GATEWAY_NAME)])
+        ) {
+            try {
+                _target("shop", "shop").scale("shop", 3);
+                wrong.append("a workspace scaled with no service named no member");
+            } except ValueError as e {
+                if "web" not in str(e) {
+                    wrong.append(f"the refusal does not name the members: {e}");
+                }
+            }
+        }
+    }
+    assert wrong == [] , "\n".join(wrong);
 }
 
 
