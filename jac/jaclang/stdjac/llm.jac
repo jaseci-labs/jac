@@ -266,6 +266,10 @@ obj NeoModel(Model) {
         return super.invoke(mt_run);
     }
 
+    override async def ainvoke(mt_run: any) -> any {
+        return await super.ainvoke(self._prepared(mt_run));
+    }
+
     def _prepared(mt_run: any) -> any {
         # jac hands `invoke` the runtime, whose prompt already holds every argument;
         # a call given one of the plugin's own parameters is rebuilt without it.
@@ -355,7 +359,7 @@ def llm(
         "max_react_iterations": max_react_iterations,
         "max_output_retries": max_output_retries,
         "timeout": timeout,
-        "num_retries": num_retries,
+        "stream_num_retries": num_retries,
         "parallelize": parallelize,
         "select": select,
         "intent": intent

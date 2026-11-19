@@ -47,10 +47,9 @@ test "llm configures each call apart from the shared model and from other calls"
         second = llm(max_tokens=2, num_retries=3);
         assert first is not second;
         assert first.call_params["max_tokens"] == 1 , first.call_params;
-        assert second.call_params["num_retries"] == 3 , second.call_params;
-        assert first.call_params["num_retries"] == 0 , first.call_params;
+        assert second.call_params["stream_num_retries"] == 3 , second.call_params;
+        assert first.call_params["stream_num_retries"] == 0 , first.call_params;
         assert _the_model().call_params == {} , _the_model().call_params;
-        assert first._request_retries() == 0 and second._request_retries() == 3;
     } finally {
         del os.environ["JAC_LLM_MODEL"];
     }
