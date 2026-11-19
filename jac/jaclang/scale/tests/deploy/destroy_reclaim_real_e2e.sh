@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Real-cluster e2e for destroy reclamation (#7968).
 #
-# Six properties, each one a bug this change fixes:
+# Seven properties, each one a bug a change fixed:
 #
 #   A  owned namespace     the namespace jac-scale created is reclaimed whole
 #   B  adopted namespace   a namespace it did not create survives, foreign
@@ -17,6 +17,8 @@
 #                          and its Service in place, still clears the Service
 #                          and PDB of an app deployed before roles, and never
 #                          touches an object jac-scale does not manage
+#   G  database disk       status reports how full the database volume is,
+#                          and warns past 80% before writes fail
 #
 # Requires a reachable cluster (kind/minikube/microk8s/EKS) on the current
 # kubeconfig context and the scale deploy deps installed for `jac`.
@@ -281,6 +283,44 @@ PVC_BEFORE=$(kubectl get pvc -n "${OWNED_NS}" --no-headers 2>/dev/null | wc -l |
 echo "  postgres + ${PVC_BEFORE} PVC(s) present, namespace owned by '${OWNER}'"
 
 _t "A deployed"
+echo "=== G: status reports the database volume usage and warns before it fills ==="
+disk_status() {
+    export SDK_DEPLOY_APP_NAME="${APP}" SDK_DEPLOY_NAMESPACE="${OWNED_NS}"
+    (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" status </dev/null 2>/dev/null) | tail -1 | python3 -c '
+import json, sys
+status = json.load(sys.stdin)
+pg = [c for c in status["components"] if c["name"] == "PostgreSQL"][0]
+disk = pg.get("disk")
+if not disk:
+    sys.exit("the PostgreSQL row reports no disk usage: " + json.dumps(pg))
+warned = any("database volume" in w for w in status.get("warnings", []))
+print(int(disk["percent"]), "warned" if warned else "quiet")
+'
+}
+fill_db() {
+    kubectl exec -n "${OWNED_NS}" "${APP}-postgres-0" -c postgres -- \
+        psql -U jac -d jac -q -v ON_ERROR_STOP=1 \
+        -c "CREATE UNLOGGED TABLE IF NOT EXISTS disk_fill (pad text)" \
+        -c "INSERT INTO disk_fill SELECT repeat(md5(i::text), 32) FROM generate_series(1, 200000) i" \
+        || fail "${OWNED_NS}" "could not write rows into the database"
+}
+DISK="$(disk_status)" || fail "${OWNED_NS}" "status did not report database disk usage"
+read -r PCT WARNED <<<"${DISK}"
+[ "${PCT}" -lt 80 ] && [ "${WARNED}" = "quiet" ] \
+    || fail "${OWNED_NS}" "a fresh database reports ${PCT}% (${WARNED}), expected under 80% and no warning"
+echo "  fresh database: ${PCT}% used, no warning"
+for _ in $(seq 1 15); do
+    fill_db
+    DISK="$(disk_status)" || fail "${OWNED_NS}" "status stopped reporting database disk usage"
+    read -r PCT WARNED <<<"${DISK}"
+    echo "  after a fill: ${PCT}% used (${WARNED})"
+    [ "${PCT}" -ge 80 ] && break
+done
+[ "${PCT}" -ge 80 ] || fail "${OWNED_NS}" "the database never passed 80% (last ${PCT}%)"
+[ "${WARNED}" = "warned" ] \
+    || fail "${OWNED_NS}" "the database volume is ${PCT}% full but status gave no warning"
+echo "  filled database: ${PCT}% used, status warns"
+_t "G PASSED"
 destroy_app "${APP}" "${OWNED_NS}"
 
 if destroy_said "Another app has resources"; then
@@ -464,4 +504,4 @@ echo "  '${COTENANT}' database and volumes survived the owner's destroy"
 _t "C PASSED"
 
 print_timing_report
-echo "=== destroy reclamation REAL e2e PASSED (A B C D E F) ==="
+echo "=== destroy reclamation REAL e2e PASSED (A B C D E F G) ==="
