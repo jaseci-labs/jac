@@ -1910,7 +1910,7 @@ impl NaIRGenPass._stack_only_bound(sym: uni.Symbol, type_name: str) -> bool {
 }
 
 impl NaIRGenPass._codegen_field_default(
-    expr: uni.Expr, ftype: (ir.Type | None), label: str
+    expr: uni.Expr, ftype: (ir.Type | None), fname: str
 ) -> (ir.Value | None) {
     bindings = self._enter_bindings();
     scope = self.scope;
@@ -1924,7 +1924,13 @@ impl NaIRGenPass._codegen_field_default(
             and self._is_reference_type(val.type)
             and not self._is_owned(val) {
             if self._nogc_headerless() {
-                self.emit(E5092, node_override=expr, kind="field default", name=label);
+                self.emit(
+                    E5092,
+                    node_override=expr,
+                    kind="field default",
+                    name=fname,
+                    help_text="A headerless build cannot keep a value bound with `:=` in a field default alive after the default runs. Write the default without `:=`."
+                );
                 return None;
             }
             self._emit_take_ref(val, op="field_default");
@@ -1935,7 +1941,7 @@ impl NaIRGenPass._codegen_field_default(
         self._leave_bindings(bindings, release=True);
     }
     if val is None {
-        return self._empty_container_for_field(ftype, label);
+        return self._empty_container_for_field(ftype, f"dflt.{fname}");
     }
     return val;
 }
@@ -2397,7 +2403,7 @@ impl NaIRGenPass._codegen_instantiation(
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
             val = self._codegen_field_default(
-                default_expr, field_types.get(fname), f"dflt.{fname}"
+                default_expr, field_types.get(fname), fname
             );
             if val is not None
                 and fname in self.struct_field_inline.get(type_name, set()) {
@@ -4958,9 +4964,7 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     for (fname, expr) in pairs {
         val = self._codegen_expr(expr)
             if fname in given
-            else self._codegen_field_default(
-                expr, field_types.get(fname), f"dflt.{fname}"
-            );
+            else self._codegen_field_default(expr, field_types.get(fname), fname);
         if val is None {
             return None;
         }

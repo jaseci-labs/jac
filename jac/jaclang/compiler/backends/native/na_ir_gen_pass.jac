@@ -2174,7 +2174,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _codegen_field_default(
-        expr: uni.Expr, ftype: (ir.Type | None), label: str
+        expr: uni.Expr, ftype: (ir.Type | None), fname: str
     ) -> (ir.Value | None);
 
     def _opt_unwrap_attr(obj_val: ir.Value) -> ir.Value;

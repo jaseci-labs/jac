@@ -76,7 +76,8 @@ def base_level -> int {
 obj Opts {
     has level: int = seed,
         bonus: int = base_level(),
-        names: list[str] = (saved := ["w"]);
+        names: list[str] = (saved := ["w"]),
+        tags: list[str] = [];
 }
 
 obj OptsChild(Opts) {
@@ -84,7 +85,14 @@ obj OptsChild(Opts) {
         def base_level -> int {
             return seed;
         }
+        self.names = ["stale"];
         super.init();
+    }
+}
+
+obj OptsPart(Opts) {
+    def init {
+        super.init(7);
     }
 }
 
@@ -97,7 +105,9 @@ with entry {
         oc = OptsChild(7);
         mo = make_opts(7);
         mo.names.append(f"d{i}");
-        print(oc.level, oc.bonus, oc.names, mo.level, mo.bonus, mo.names);
+        print(oc.level, oc.bonus, oc.names, oc.tags, mo.level, mo.bonus, mo.names);
+        op = OptsPart();
+        print(op.level, op.bonus, op.names, op.tags);
     }
     sq = Square(3.0);
     print(sq.kind.value, sq.side, sq.area());
