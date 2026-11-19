@@ -49,10 +49,14 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdminSurface) {
     def handle_health -> Response;
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
-    async def aggregate_schedules(request: Request) -> Response | None;
+    async def aggregate_schedules(request: Request) -> Response;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;
+
+    async def ask_services(
+        path: str, headers: dict[str, str]
+    ) -> list[tuple[str, any]];
 
     async def merge_graph_pages(request: Request) -> Response;
     def eligible_services -> list[tuple[str, ServiceEntry]];

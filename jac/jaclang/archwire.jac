@@ -3188,7 +3188,6 @@ graph import {
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
-            | scale.tests.microservices.test_schedules_agg
             | scale.tests.server.test_serve { Headers, Request, URL },
         scale.tests.microservices.test_sse_framing { Headers, Request, Response },
         scale.tests.server.test_bodiless_status { Response, StreamingResponse },
@@ -3487,7 +3486,7 @@ graph import {
             peer_url_env_key
         },
         scale.tests.deploy.test_pod_env { peer_url_env_key },
-        scale.tests.microservices.test_schedules_agg
+        scale.tests.microservices.test_gateway
             | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
     server.task_scheduler ++> [
@@ -14325,7 +14324,6 @@ graph import scale {
             | tests.microservices.test_gateway_docs_precedence
             | tests.microservices.test_gateway_webapp
             | tests.microservices.test_k8s_health_probe
-            | tests.microservices.test_schedules_agg
             | tests.server.test_static_fallback { MicroserviceGateway },
         tests.data.test_session_epoch { GatewaySessionGuard, MicroserviceGateway },
         tests.server.test_stream_ws { GatewaySessionGuard },
@@ -14352,8 +14350,7 @@ graph import scale {
             | tests.microservices.test_gateway_webapp
             | tests.microservices.test_k8s_health_probe
             | tests.microservices.test_microservices_registry
-            | tests.microservices.test_openapi_agg
-            | tests.microservices.test_schedules_agg {
+            | tests.microservices.test_openapi_agg {
             ServiceEntry,
             ServiceRegistry,
             ServiceStatus
@@ -15026,13 +15023,10 @@ graph import scale.runtime {
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
         },
-        gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+        gateway.microservice_gateway.MicroserviceGateway.ask_services {
             http_forward_timeout
         },
         gateway.microservice_gateway.MicroserviceGateway.forward_to {
-            http_forward_timeout
-        },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
             http_forward_timeout
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
@@ -15114,12 +15108,9 @@ graph import scale.runtime {
         transport.transport.HttpTransport.call_walker { walker_call },
     ]
     transport.http_forward ++> [
-        gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules
+        gateway.microservice_gateway.MicroserviceGateway.ask_services
             | gateway.openapi_agg.fetch_service_spec { raw_forward },
         gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
-            raw_forward
-        },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },

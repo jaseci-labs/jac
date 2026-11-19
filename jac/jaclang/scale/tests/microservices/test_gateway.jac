@@ -298,7 +298,8 @@ test "browser navigation to a client route gets the SPA index (history fallback)
 
 """Serve the JSON payload `answers` holds for each `path?query` and 404 anything
 else, gzipping the body whenever the request accepts it, the way a real
-service's compression middleware does; returns (server, port)."""
+service's compression middleware does; returns (server, port). An answer that
+is callable is called with the request's headers and what it returns is served."""
 def _serve_owned(answers: dict[str, any]) -> tuple[any, ...] {
     import gzip;
     import http.server;
@@ -307,6 +308,9 @@ def _serve_owned(answers: dict[str, any]) -> tuple[any, ...] {
 
     def _do_get(handler_self: any) {
         payload = answers.get(handler_self.path);
+        if callable(payload) {
+            payload = payload(handler_self.headers);
+        }
         status = 200 if payload is not None else 404;
         if isinstance(payload, dict) and "__status__" in payload {
             status = payload["__status__"];
@@ -504,73 +508,147 @@ test "graph reads reach every service that can read the node, compressed or not"
     }
 }
 
+"""Two services answer only once both have been asked, so a gateway that asks
+them in turn never gets the first answer. A service that keeps its own user
+store refuses the gateway admin's token and answers the fleet's bridge secret."""
 test "GET /admin/schedules through the gateway route is admin-only and merges the fleet" {
-    listing = {
-        "ok": True,
-        "data": {
-            "namespace": "orders",
-            "schedules": [{"name": "nightly", "kind": "function", "last_run": None}]
+    names = {"orders": "nightly", "billing": "dunning"};
+    def listing(service: str) -> dict[str, any] {
+        return {
+            "ok": True,
+            "data": {
+                "namespace": f"{service}.app",
+                "schedules": [{"name": names[service], "last_run": None}]
+            }
+        };
+    }
+    both_asked = threading.Barrier(2);
+    def once_both_asked(service: str) -> any {
+        def answer(headers: any) -> any {
+            both_asked.`wait(timeout=5.0);
+            return listing(service);
         }
-    };
-    (srv, port) = _serve_owned({"/admin/schedules": listing});
-    tmp = tempfile.mkdtemp(prefix="jac-gw-schedules-");
-    reg = ServiceRegistry();
-    reg.register(
-        ServiceEntry(
-            name="orders",
-            file="orders.jac",
-            prefix="/orders",
-            port=port,
-            url=f"http://127.0.0.1:{port}",
-            status=ServiceStatus.HEALTHY
-        )
+        return answer;
+    }
+    presented: list[str] = [];
+    def to_the_fleet_only(headers: any) -> any {
+        presented.append(str(headers.get("Authorization") or ""));
+        if presented[-1] == "Bearer fleet-secret" {
+            return listing("orders");
+        }
+        return {"__status__": 403, "ok": False, "error": {"code": "FORBIDDEN"}};
+    }
+    (srv_orders, orders) = _serve_owned(
+        {"/admin/schedules": once_both_asked("orders")}
     );
-    gw = MicroserviceGateway(registry=reg, base_path=tmp);
+    (srv_billing, billing) = _serve_owned(
+        {"/admin/schedules": once_both_asked("billing")}
+    );
+    (srv_ledger, ledger) = _serve_owned(
+        {"/admin/schedules": {"__status__": 500, "ok": False}}
+    );
+    (srv_locked, locked) = _serve_owned({"/admin/schedules": to_the_fleet_only});
+    (srv_bare, bare) = _serve_owned({});
+    (srv_gone, gone) = _serve_owned({});
+    srv_gone.shutdown();
+    srv_gone.server_close();
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(
+        registry=reg, base_path=tempfile.mkdtemp(prefix="jac-gw-schedules-")
+    );
     gw.setup();
     assert gw.server is not None , "the admin API must be installed for the route";
     users = gw.user_manager;
     tag = os.urandom(4).hex();
-    admin_id = str(
-        users.create_internal_user("root" + tag, "correct horse battery", "admin")[
-            "user_id"
-        ]
-    );
-    member_id = str(
-        users.create_internal_user("member" + tag, "correct horse battery")["user_id"]
-    );
+    admin = "Bearer "
+        + users.create_jwt_token(
+            str(
+                users.create_internal_user(
+                    "root" + tag, "correct horse battery", "admin"
+                )["user_id"]
+            )
+        );
+    member = "Bearer "
+        + users.create_jwt_token(
+            str(
+                users.create_internal_user("member" + tag, "correct horse battery")[
+                    "user_id"
+                ]
+            )
+        );
 
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
+    saved = os.environ.get(BRIDGE_TOKEN_ENV);
     try {
-        for (who, headers, status) in [
-            ("anonymous", {}, 403),
+        for (who, fleet, bridge, asked_with, status, services, unanswered) in [
+            ("", {"orders": locked}, "", [], 403, [], {}),
+            (member, {"orders": locked}, "", [], 403, [], {}),
             (
-                "member",
-                {"Authorization": "Bearer " + users.create_jwt_token(member_id)},
-                403
+                admin,
+                {
+                    "orders": orders,
+                    "billing": billing,
+                    "ledger": ledger,
+                    "search": gone
+                },
+                "",
+                [],
+                200,
+                ["orders", "billing"],
+                {"ledger": 500, "search": None}
             ),
+            (admin, {"orders": locked}, "", [admin], 403, [], {}),
             (
-                "admin",
-                {"Authorization": "Bearer " + users.create_jwt_token(admin_id)},
-                200
-            )
+                admin,
+                {"orders": locked},
+                "fleet-secret",
+                ["Bearer fleet-secret"],
+                200,
+                ["orders"],
+                {}
+            ),
+            (admin, {"orders": bare}, "", [], 502, [], {"orders": 404})
         ] {
-            resp = client.get(
-                "/admin/schedules", headers={** headers, "Accept-Encoding": "gzip"}
-            );
-            assert resp.status_code == status , (who, resp.status_code, resp.text);
-            body = _json_body(resp);
-            if status == 200 {
-                rows = body["data"]["schedules"];
-                assert [(r["name"], r["service"], r["namespace"]) for r in rows]
-                    == [("nightly", "orders", "orders")] , body;
-                assert body["data"]["unanswered"] == [] , body;
-            } else {
-                assert body["ok"] is False , (who, body);
+            reg.entries.clear();
+            for (name, port) in fleet.items() {
+                reg.register(_entry(name, f"/{name}", port));
             }
+            if bridge {
+                os.environ[BRIDGE_TOKEN_ENV] = bridge;
+            } else {
+                os.environ.pop(BRIDGE_TOKEN_ENV, None);
+            }
+            presented.clear();
+            headers = {"Accept-Encoding": "gzip"};
+            if who {
+                headers["Authorization"] = who;
+            }
+            resp = client.get("/admin/schedules", headers=headers);
+            body = _json_body(resp);
+            data = body.get("data") or {};
+            asked = (who == admin, sorted(fleet), bridge, resp.status_code, body);
+            assert resp.status_code == status and body["ok"] is (status == 200) , asked;
+            assert presented == asked_with , (asked, presented);
+            assert data.get("services", []) == services , asked;
+            assert {m["service"]: m["status"] for m in data.get("unanswered", [])}
+                == unanswered , asked;
+            assert [
+                (r["name"], r["service"], r["namespace"])
+                for r in data.get("schedules", [])
+            ]
+                == [(names[svc], svc, f"{svc}.app") for svc in services] , asked;
         }
     } finally {
-        srv.shutdown();
+        if saved is None {
+            os.environ.pop(BRIDGE_TOKEN_ENV, None);
+        } else {
+            os.environ[BRIDGE_TOKEN_ENV] = saved;
+        }
+        for srv in [srv_orders, srv_billing, srv_ledger, srv_locked, srv_bare] {
+            srv.shutdown();
+        }
     }
 }
 

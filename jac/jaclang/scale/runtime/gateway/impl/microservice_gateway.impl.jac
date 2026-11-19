@@ -271,8 +271,28 @@ impl MicroserviceGateway.handle_health_ready -> Response {
     return JSONResponse(status_code=200, content={"status": "ready"});
 }
 
+impl MicroserviceGateway.ask_services(
+    path: str, headers: dict[str, str]
+) -> list[tuple[str, any]] {
+    async def ask(svc_name: str, svc_entry: ServiceEntry) -> any {
+        per_svc_headers = dict(headers);
+        if svc_entry.host_override {
+            per_svc_headers["Host"] = svc_entry.host_override;
+        }
+        return await raw_forward(
+            "GET",
+            f"{self.service_base_url(svc_entry)}{path}",
+            per_svc_headers,
+            b"",
+            timeout=int(http_forward_timeout(svc_name))
+        );
+    }
+    eligible = self.eligible_services();
+    answers: any = await asyncio.gather(*[ask(name, svc) for (name, svc) in eligible]);
+    return [(name, answer) for ((name, _svc), answer) in zip(eligible, answers)];
+}
+
 impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
-    import asyncio;
     import json;
 
     fwd_headers = await _forwarded_headers(self, request, identity=True);
@@ -282,23 +302,8 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     } except ValueError {
         limit = 50;
     }
-
-    async def ask(svc_name: str, svc_entry: ServiceEntry) -> any {
-        headers = dict(fwd_headers);
-        if svc_entry.host_override {
-            headers["Host"] = svc_entry.host_override;
-        }
-        target = f"{self.service_base_url(svc_entry)}/graph/neighbors";
-        if query {
-            target = f"{target}?{query}";
-        }
-        return await raw_forward(
-            "GET", target, headers, b"", timeout=int(http_forward_timeout(svc_name))
-        );
-    }
-    answers: any = await asyncio.gather(
-        *[ask(name, svc) for (name, svc) in self.eligible_services()]
-    );
+    target = f"/graph/neighbors?{query}" if query else "/graph/neighbors";
+    answers = await self.ask_services(target, fwd_headers);
     pages: list[dict[str, any]] = [];
     refused: list[tuple[int, bytes]] = [];
     unknown: list[tuple[int, bytes]] = [];
@@ -311,7 +316,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
         }
         return isinstance(answer, dict) and answer.get("code") == "unknown_type";
     }
-    for result in answers {
+    for (_svc_name, result) in answers {
         if result is None {
             refused.append(
                 (503, b'{"error": "a service did not answer; retry this page"}')
@@ -416,7 +421,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     );
 }
 
-impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | None {
+impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response {
     import json;
 
     fwd_headers = await _forwarded_headers(self, request, identity=True);
@@ -434,18 +439,9 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
     unanswered: list[dict[str, any]] = [];
     refused: Response | None = None;
 
-    for (svc_name, svc_entry) in self.eligible_services() {
-        per_svc_headers = dict(fwd_headers);
-        if svc_entry.host_override {
-            per_svc_headers["Host"] = svc_entry.host_override;
-        }
-        result = await raw_forward(
-            "GET",
-            f"{self.service_base_url(svc_entry)}/admin/schedules",
-            per_svc_headers,
-            b"",
-            timeout=int(http_forward_timeout(svc_name))
-        );
+    for (svc_name, result) in await self.ask_services(
+        "/admin/schedules", fwd_headers
+    ) {
         if result is None {
             unanswered.append({"service": svc_name, "status": None});
             continue;
