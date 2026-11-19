@@ -7891,14 +7891,17 @@ graph import compiler {
             ModuleCode,
             ModuleItem,
             ModulePath,
+            MultiString,
             Name,
             Null,
             ParamVar,
             RaiseStmt,
             ReportStmt,
             ReturnStmt,
+            Semi,
             Slice,
             SpecialVarRef,
+            String,
             SubTag,
             Symbol,
             Token,
@@ -11123,7 +11126,9 @@ graph import compiler.frontend.parser {
             is_builtin_type_kind,
             is_name_usable_kind,
             is_reserved_kind,
-            is_special_var_kind
+            is_special_var_kind,
+            is_string_prefix,
+            starts_new_statement
         },
     ]
 }

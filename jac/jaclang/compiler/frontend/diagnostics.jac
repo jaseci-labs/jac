@@ -415,6 +415,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Unsupported escape sequence '\\N{{...}}'",
          help="Resolving a Unicode character name needs the name database, which the compiler does not carry. Write the code point as \\uXXXX or \\UXXXXXXXX, or prefix the string with r to keep the backslash."
      ),
+     E0111 = _err(
+         "E0111",
+         Category.SYNTAX,
+         "A docstring goes before the declaration, not inside the body",
+         help="This string has no ';', so it would be read together with the next line. Move it above the declaration, or write the note as a # comment."
+     ),
      W0100 = _warn(
          "W0100",
          Category.SYNTAX,

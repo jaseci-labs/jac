@@ -411,3 +411,65 @@ glob SPECIAL_VAR_KINDS: set[TokenKind] = {
 def is_special_var_kind(kind: TokenKind) -> bool;
 
 def is_name_usable_kind(kind: TokenKind) -> bool;
+
+glob NEW_STATEMENT_KINDS: set[TokenKind] = {
+         TokenKind.INT,
+         TokenKind.HEX,
+         TokenKind.BIN,
+         TokenKind.OCT,
+         TokenKind.FLOAT,
+         TokenKind.BOOL,
+         TokenKind.NULL,
+         TokenKind.ELLIPSIS,
+         TokenKind.NAME,
+         TokenKind.KWESC_NAME,
+         TokenKind.LPAREN,
+         TokenKind.LSQUARE,
+         TokenKind.MINUS,
+         TokenKind.BW_NOT,
+         TokenKind.KW_NOT,
+         TokenKind.KW_IF,
+         TokenKind.KW_FOR,
+         TokenKind.KW_WHILE,
+         TokenKind.KW_MATCH,
+         TokenKind.KW_SWITCH,
+         TokenKind.KW_TRY,
+         TokenKind.KW_WITH,
+         TokenKind.KW_RETURN,
+         TokenKind.KW_YIELD,
+         TokenKind.KW_BREAK,
+         TokenKind.KW_CONTINUE,
+         TokenKind.KW_RAISE,
+         TokenKind.KW_DELETE,
+         TokenKind.KW_ASSERT,
+         TokenKind.KW_SKIP,
+         TokenKind.KW_REPORT,
+         TokenKind.KW_VISIT,
+         TokenKind.KW_DISENGAGE,
+         TokenKind.KW_AWAIT,
+         TokenKind.KW_LAMBDA,
+         TokenKind.KW_FLOW,
+         TokenKind.KW_WAIT,
+         TokenKind.KW_FOREVER,
+         TokenKind.KW_COMPTIME,
+         TokenKind.KW_IMPORT,
+         TokenKind.KW_INCLUDE
+     },
+     STRING_PREFIXES: set[str] = {
+         "r",
+         "b",
+         "rb",
+         "br",
+         "R",
+         "B",
+         "rB",
+         "Rb",
+         "bR",
+         "Br",
+         "BR",
+         "RB"
+     };
+
+def starts_new_statement(kind: TokenKind) -> bool;
+
+def is_string_prefix(text: str) -> bool;
