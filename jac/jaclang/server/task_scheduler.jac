@@ -110,6 +110,7 @@ obj Scheduler {
     def _tick(task: ScheduledTask, due: datetime.datetime) -> None;
     def _claim_key(task: ScheduledTask) -> str;
     def _may_fire(task: ScheduledTask, due: datetime.datetime) -> bool;
+    def _mark_failing(key: str, failing: bool, message: str) -> None;
     def _run_key(task: ScheduledTask) -> str;
     def _hold_owner -> str;
     def _take_hold(task: ScheduledTask) -> bool;

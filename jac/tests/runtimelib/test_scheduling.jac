@@ -1156,92 +1156,73 @@ test "each tick reports one outcome naming its task, tick and worker" {
 }
 
 
-test "a listing stays on this worker's runs while its record is failing" {
-    # The warning _remember logs is only true if the read stops using the row
-    # the write could not update, and a read that fails warns once too.
-    writes: list[str] = [];
-    def broken_record(key: str, value: str) {
-        writes.append(key);
-        raise ConnectionError("standby is read only");
-    }
-    def shared_recall(key: str) -> (str | None) {
-        return '{"tick": "old", "worker": "pod-b:2", "status": "ok", "error": ""}';
-    }
-    sched = fresh_scheduler();
-    sched.namespace = "orders";
-    sched.record = broken_record;
-    sched.recall = shared_recall;
-    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
-    records = _Records();
-    log = logging.getLogger("jaclang.server.task_scheduler");
-    log.addHandler(records);
-    try {
-        for n in [0, 60] {
-            sched._report(
-                RunOutcome(
-                    task="mailer",
-                    tick=tick + datetime.timedelta(seconds=n),
-                    worker="pod-a:1",
-                    status="ok"
-                )
-            );
+test "a listing shows the newer of the shared record and this worker's own run, and warns once while the store fails" {
+    state: dict[str, any] = {"down": True, "shared": None};
+    def record(key: str, value: str) {
+        if state["down"] {
+            raise ConnectionError("standby is read only");
         }
-        mine = sched.last_run_of("mailer");
-    } finally {
-        log.removeHandler(records);
+        state["shared"] = value;
     }
-    assert len(writes) == 2 , writes;
-    assert mine is not None and mine["worker"] == "pod-a:1" , mine;
-    assert len(
-        [
-            m
-            for m in records.messages
-            if m.startswith("WARNING")
-        ]
-    )
-        == 1 , (records.messages);
-
-    attempts: list[str] = [];
-    def flaky_recall(key: str) -> (str | None) {
-        attempts.append(key);
-        if len(attempts) <= 2 {
+    def recall(key: str) -> (str | None) {
+        if state["down"] {
             raise ConnectionError("database is restarting");
         }
-        return '{"tick": "old", "worker": "pod-b:2", "status": "ok", "error": ""}';
+        return state["shared"];
     }
-    reader = fresh_scheduler();
-    reader.namespace = "orders";
-    reader.recall = flaky_recall;
-    records.messages.clear();
+    def shared(finished_at: str) -> str {
+        return json.dumps({"worker": "pod-b:2", "finished_at": finished_at});
+    }
+    sched = fresh_scheduler();
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    def run {
+        sched._report(
+            RunOutcome(task="mailer", tick=tick, worker="pod-a:1", status="ok")
+        );
+    }
+    sched.namespace = "orders";
+    sched.record = record;
+    sched.recall = recall;
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    (level, disabled) = (log.level, log.disabled);
+    log.setLevel(logging.INFO);
+    log.disabled = False;
     log.addHandler(records);
     try {
-        assert reader.last_run_of("mailer") is None;
-        assert reader.last_run_of("mailer") is None;
-        healed = reader.last_run_of("mailer");
+        assert sched.last_run_of("mailer") is None;
+        run();
+        run();
+        assert sched.last_run_of("mailer")["worker"] == "pod-a:1";
+        state["down"] = False;
+        for (stored, worker) in [
+            (None, "pod-a:1"),
+            (shared("2000-01-01T00:00:00+00:00"), "pod-a:1"),
+            (shared("9999-01-01T00:00:00+00:00"), "pod-b:2")
+        ] {
+            state["shared"] = stored;
+            shown = sched.last_run_of("mailer");
+            assert shown is not None and shown["worker"] == worker , (stored, shown);
+        }
+        run();
     } finally {
         log.removeHandler(records);
+        log.setLevel(level);
+        log.disabled = disabled;
     }
-    assert healed is not None and healed["worker"] == "pod-b:2" , healed;
-    assert len(
-        [
-            m
-            for m in records.messages
-            if m.startswith("WARNING")
-        ]
-    )
-        == 1 , (records.messages);
-    assert any("succeeding again" in m for m in records.messages) , records.messages;
-
-    newer = '{"tick": "new", "worker": "pod-b:2", "status": "ok", "error": "", "finished_at": "9999-01-01T00:00:00+00:00"}';
-    def newer_recall(key: str) -> (str | None) {
-        return newer;
-    }
-    sched.recall = newer_recall;
-    taken = sched.last_run_of("mailer");
-    assert taken is not None and taken["worker"] == "pod-b:2" , (
-        "a shared record newer than this worker's own run must be listed even "
-        f"while this worker's writes are failing: {taken}"
-    );
+    assert json.loads(state["shared"])["worker"] == "pod-a:1" , state;
+    notes = [
+        m.split("'mailer'")[0]
+        for m in records.messages
+        if "last run" in m or "last-run" in m
+    ];
+    assert notes
+        == [
+            "WARNING could not read the last run of ",
+            "WARNING could not record the last run of ",
+            "INFO last-run reads for ",
+            "INFO last-run records for "
+        ] , records.messages;
 }
 
 
