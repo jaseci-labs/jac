@@ -1412,17 +1412,13 @@ impl JacPersistence.drop_anchor(anchor: Anchor) -> None {
     import from jaclang.runtime.osp_kernel { osp_forget }
     import from jaclang.runtime.region { run_drop }
     jctx = JacRuntimeInterface.get_context();
-    if is_membership(anchor.archetype)
-        or (
-            isinstance(anchor, NodeAnchor)
-            and any(is_membership(e.archetype) for e in anchor.edges)
-        ) {
-        jctx._principals = None;
-    }
+    membership_changed = is_membership(anchor.archetype);
     match anchor {
         case NodeAnchor():
             anchor.detach_light();
             for `edge in anchor.edges[:] {
+                membership_changed = membership_changed
+                    or is_membership(`edge.archetype);
                 eid = `edge.id;
                 `edge.detach();
                 `edge.destroyed = True;
@@ -1440,6 +1436,9 @@ impl JacPersistence.drop_anchor(anchor: Anchor) -> None {
         case _:
             ;
 
+    }
+    if membership_changed {
+        jctx._principals = None;
     }
     aid = anchor.id;
     if aid is not None {

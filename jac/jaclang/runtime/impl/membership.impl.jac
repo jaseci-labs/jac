@@ -273,8 +273,8 @@ impl _fresh_part(start: NodeAnchor, me: UUID) -> list[Anchor] {
     seen: set[UUID] = {start.ensure_id()};
     while stack {
         cur = stack.pop();
-        for e in list(cur.edges) {
-            if e.source.id != cur.id or e.hash != 0 or e.`root != me {
+        for e in sv_live_edges(cur, EdgeDir.OUT.value, None, True) {
+            if not isinstance(e, EdgeAnchor) or e.hash != 0 or e.`root != me {
                 continue;
             }
             part.append(e);
