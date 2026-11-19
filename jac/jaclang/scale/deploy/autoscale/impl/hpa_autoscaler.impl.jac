@@ -85,7 +85,9 @@ impl HPAAutoscaler.apply {
             version="v1alpha1",
             namespace=namespace,
             plural="scaledobjects",
-            name=f"{spec.app_name or spec.scale_target_name}-scaledobject"
+            name=KEDAAutoscaler().resource_name_for(
+                spec.app_name or spec.scale_target_name
+            )
         );
     } except ApiException as e {
         if e.status not in [404, 422] {

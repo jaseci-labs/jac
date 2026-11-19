@@ -105,8 +105,8 @@ impl KEDAAutoscaler._build_trigger {
     return keda_trigger;
 }
 
-impl KEDAAutoscaler._owner_label_value {
-    if len(name) <= 63 {
+impl KEDAAutoscaler._fit_name {
+    if len(name) <= limit {
         return name;
     }
     return f"so-{hashlib.sha256(name.encode()).hexdigest()[:16]}";
@@ -166,7 +166,10 @@ impl KEDAAutoscaler._build_manifests {
         "metadata": {
             "name": scaled_obj_name,
             "namespace": spec.namespace,
-            "labels": {"app": spec.scale_target_name, ** Autoscaler._managed_labels()}
+            "labels": {
+                "app": self._fit_name(spec.scale_target_name),
+                ** Autoscaler._managed_labels()
+            }
         },
         "spec": scaled_obj_spec
     };
@@ -211,8 +214,8 @@ impl KEDAAutoscaler._build_trigger_auth_manifest {
             "name": auth_name,
             "namespace": namespace,
             "labels": {
-                "app": app_name,
-                "jac-scale/owner": self._owner_label_value(owner),
+                "app": self._fit_name(app_name),
+                "jac-scale/owner": self._fit_name(owner),
                 ** Autoscaler._managed_labels()
             }
         },
@@ -312,7 +315,7 @@ impl KEDAAutoscaler.apply {
 }
 
 impl KEDAAutoscaler._prune_orphan_trigger_auths {
-    selector = f"jac-scale/owner={self._owner_label_value(owner)},managed=jac-scale";
+    selector = f"jac-scale/owner={self._fit_name(owner)},managed=jac-scale";
     try {
         existing = api.list_namespaced_custom_object(
             group="keda.sh",
@@ -351,7 +354,7 @@ impl KEDAAutoscaler._prune_orphan_trigger_auths {
 impl KEDAAutoscaler.destroy {
     api = self._custom_api or client.CustomObjectsApi();
     scaled_object_name = self.resource_name_for(app_name);
-    selector = f"jac-scale/owner={self._owner_label_value(
+    selector = f"jac-scale/owner={self._fit_name(
         scaled_object_name
     )},managed=jac-scale";
     try {
@@ -460,7 +463,7 @@ impl KEDAAutoscaler.destroy_collection {
 }
 
 impl KEDAAutoscaler.resource_name_for {
-    return f"{target}-scaledobject";
+    return self._fit_name(f"{target}-scaledobject", 63 - len("keda-hpa-"));
 }
 
 impl KEDAAutoscaler._read_scaled_object {
@@ -711,7 +714,7 @@ impl KEDAAutoscaler.interceptor_route_name_for {
 }
 
 impl KEDAAutoscaler.http_scaled_object_name_for {
-    return f"{target}-http-scaledobject";
+    return self._fit_name(f"{target}-http-scaledobject");
 }
 
 impl KEDAAutoscaler.apply_http_activation {
@@ -1021,7 +1024,7 @@ impl KEDAAutoscaler._build_interceptor_route {
                 "name": route_name,
                 "namespace": spec.namespace,
                 "labels": {
-                    "app": spec.scale_target_name,
+                    "app": self._fit_name(spec.scale_target_name),
                     ** Autoscaler._managed_labels()
                 }
             },
@@ -1080,7 +1083,7 @@ impl KEDAAutoscaler._build_http_scaled_object {
                 "name": scaled_obj_name,
                 "namespace": spec.namespace,
                 "labels": {
-                    "app": spec.scale_target_name,
+                    "app": self._fit_name(spec.scale_target_name),
                     ** Autoscaler._managed_labels()
                 }
             },
