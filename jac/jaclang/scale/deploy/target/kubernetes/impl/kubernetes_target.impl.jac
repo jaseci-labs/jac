@@ -216,16 +216,44 @@ impl KubernetesTargetBase._apply_provider_service_account(
     }
 }
 
+impl KubernetesTargetBase._fleet_deployments(apps_v1: any, namespace: str) -> list[any] {
+    listed = apps_v1.list_namespaced_deployment(
+        namespace=namespace, label_selector=FLEET_SELECTOR
+    );
+    return list(listed.items or []);
+}
+
+impl KubernetesTargetBase._fleet_health(
+    deployments: list[any], crashlooping_apps: set[str]
+) -> (ResourceStatusInfo | None) {
+    members = [
+        assess_workload(
+            d, crashlooping=(d.metadata.labels or {}).get("app") in crashlooping_apps
+        )
+        for d in deployments
+    ];
+    if not members {
+        return None;
+    }
+    worst = min(members, key=lambda (m) { _FLEET_SEVERITY.index(m.status); });
+    return ResourceStatusInfo(
+        status=worst.status,
+        reason=worst.reason,
+        message=worst.message,
+        replicas=sum(m.replicas for m in members),
+        current_replicas=sum(m.current_replicas for m in members),
+        ready_replicas=sum(m.ready_replicas for m in members),
+        available_replicas=sum(m.available_replicas for m in members),
+        updated_replicas=sum(m.updated_replicas for m in members),
+        replica_floor=sum(m.replica_floor for m in members)
+    );
+}
+
 impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     try {
         self._load_cluster_config();
-        apps_v1 = client.AppsV1Api();
-        core_v1 = client.CoreV1Api();
-        namespace = self.k8s_config.namespace;
-
-        return assess_workload(
-            apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace)
-        );
+        fleet = self._fleet_deployments(client.AppsV1Api(), self.k8s_config.namespace);
+        return self._fleet_health(fleet, set()) or assess_workload(None);
     } except Exception as e {
         if self.logger {
             self.logger.error(f"Failed to get status for '{app_name}': {e}");
@@ -234,9 +262,10 @@ impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     }
 }
 
-impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
+impl KubernetesTargetBase.scale(app_name: str, replicas: int, service: str = "") {
+    member: str = k8s_safe_name(service or app_name);
     if self.logger {
-        self.logger.info(f"Scaling application '{app_name}' to {replicas} replicas");
+        self.logger.info(f"Scaling '{member}' to {replicas} replicas");
     }
 
     try {
@@ -244,19 +273,25 @@ impl KubernetesTargetBase.scale(app_name: str, replicas: int) {
         apps_v1 = client.AppsV1Api();
         namespace = self.k8s_config.namespace;
 
-        deployment = apps_v1.read_namespaced_deployment(
-            name=app_name, namespace=namespace
-        );
-        deployment.spec.replicas = replicas;
-
+        fleet = self._fleet_deployments(apps_v1, namespace);
+        labels: list[str] = [
+            str((d.metadata.labels or {}).get("app", ""))
+            for d in fleet
+        ];
+        if member not in labels {
+            raise ValueError(
+                f"'{app_name}' has no fleet member '{member}' in namespace "
+                f"'{namespace}'; pass service as one of {sorted(labels)}"
+            );
+        }
         apps_v1.patch_namespaced_deployment(
-            name=app_name, namespace=namespace, body=deployment
+            name=fleet[labels.index(member)].metadata.name,
+            namespace=namespace,
+            body={"spec": {"replicas": replicas}}
         );
 
         if self.logger {
-            self.logger.info(
-                f"Successfully scaled '{app_name}' to {replicas} replicas"
-            );
+            self.logger.info(f"Successfully scaled '{member}' to {replicas} replicas");
         }
     } except Exception as e {
         if self.logger {
@@ -479,6 +514,15 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
         }
     }
 
+    fleet: list[any] = [];
+    try {
+        fleet = self._fleet_deployments(apps_v1, namespace);
+    } except Exception as e {
+        if self.logger {
+            self.logger.warning(f"Failed to list the fleet in '{namespace}': {e}");
+        }
+    }
+
     sts_map = {};
     try {
         sts_items: list[any] = apps_v1.list_namespaced_stateful_set(
@@ -518,6 +562,16 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
             self.logger.warning(f"Failed to list Pods in '{namespace}': {e}");
         }
     }
+
+    app_health = self._fleet_health(fleet, set(restarting_apps));
+    components.append(
+        {
+            'name': 'Jaseci App',
+            'status': app_health.status.value if app_health else 'not_deployed',
+            'ready': app_health.ready_replicas if app_health else 0,
+            'total': app_health.replicas if app_health else 0
+        }
+    );
 
     component_defs: list[dict[str, any]] = [
         {'k8s_name': app_name + d[0], 'display': d[1], 'is_sts': d[2]}
