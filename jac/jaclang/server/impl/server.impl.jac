@@ -1372,6 +1372,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         self.scheduler.claim = _claim;
         self.scheduler.hold = _hold;
         self.scheduler.release = _release;
+        self.scheduler.record = _store.kv_put_record;
+        self.scheduler.recall = _store.kv_get_record;
         self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
