@@ -447,6 +447,12 @@ Each `by llm()` call is routed to a randomly selected deployment - ideal for dis
 | `num_retries` | int | `1` | Number of retries per deployment before moving to the next |
 | `timeout` | float | `60.0` | Per-request timeout in seconds |
 
+Each member keeps its own `temperature` and `max_tokens` defaults. The
+precedence is `by pool(...)` or pool-level values, then `[byllm.call_params]`
+project defaults, then the selected member's values, then provider defaults.
+Other byLLM control parameters remain pool-level and are not forwarded to the
+provider as deployment settings.
+
 **Routing Strategies:**
 
 | Strategy | Behavior |

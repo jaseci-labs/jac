@@ -2,6 +2,11 @@ import from typing { Generator }
 import concurrent.futures;
 import asyncio;
 
+glob _MODEL_POOL_MEMBER_CALL_PARAMS: tuple[str, ...] = (
+         "temperature",
+         "max_tokens"
+     );
+
 impl ModelPool.postinit -> None {
     import from litellm { Router }
     if not self.models {
@@ -36,6 +41,12 @@ impl ModelPool.postinit -> None {
             "api_key": model.api_key or model.config.get("api_key", "") or None,
 
         };
+        for key in _MODEL_POOL_MEMBER_CALL_PARAMS {
+            value = model.call_params.get(key);
+            if value is not None {
+                litellm_params[key] = value;
+            }
+        }
         base_url = (
             model.config.get("base_url")
             or model.config.get("host")
@@ -79,6 +90,19 @@ impl ModelPool.postinit -> None {
     logger.info(
         f"ModelPool initialized with {len(self.models)} models, strategy='{self.strategy}'"
     );
+}
+
+impl ModelPool.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
+    params = super.make_model_params(mt_run);
+    for key in ["api_key", "api_base"] {
+        if not params.get(key) {
+            params.pop(key, None);
+        }
+    }
+    if params.get("max_tokens") is None {
+        params.pop("max_tokens", None);
+    }
+    return params;
 }
 
 impl ModelPool._get_ctx_window(call_params: dict[str, any]) -> int {
