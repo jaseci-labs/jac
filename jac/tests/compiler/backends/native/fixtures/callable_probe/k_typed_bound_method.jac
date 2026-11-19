@@ -4,11 +4,15 @@ obj T {
     def bump(n: int) -> None {
         self.v = self.v + n;
     }
+
+    def reset -> None {
+        self.v = 0;
+    }
 }
 
 with entry {
     t = T();
-    f: Callable = t.bump;
-    f(4);
+    f: Callable[[int], None] = t.bump;
+    f(2);
     print(t.v);
 }

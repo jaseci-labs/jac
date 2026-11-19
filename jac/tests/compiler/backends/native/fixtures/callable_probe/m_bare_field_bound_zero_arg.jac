@@ -4,20 +4,22 @@ obj T {
     def bump(n: int) -> None {
         self.v = self.v + n;
     }
+
+    def reset -> None {
+        self.v = 0;
+    }
 }
 
-obj Holder {
+obj Hook {
     has fn: Callable;
-    has args: list[any] = [];
 
     def run -> None {
-        self.fn(*self.args);
+        self.fn();
     }
 }
 
 with entry {
-    t = T();
-    h = Holder(fn=t.bump, args=[3]);
-    h.run();
+    t = T(v=5);
+    Hook(fn=t.reset).run();
     print(t.v);
 }
