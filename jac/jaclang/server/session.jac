@@ -176,6 +176,7 @@ obj Session(Memory) {
         _hop_groups_token: (tuple[int, int] | None) postinit,
         _queued: list[UUID] postinit,
         _last_conflict: set[UUID] postinit,
+        _txn_open: bool postinit,
         _scan_clean: bool postinit,
         _scan_sealed: bool postinit,
         _scan_safe: bool postinit;

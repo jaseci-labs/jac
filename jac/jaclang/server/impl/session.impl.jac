@@ -367,6 +367,7 @@ impl Session.postinit -> None {
     self._hop_groups_token = None;
     self._queued = [];
     self._last_conflict = set();
+    self._txn_open = False;
     self._scan_clean = False;
     self._scan_sealed = False;
     self._scan_safe = True;
@@ -855,6 +856,7 @@ impl Session._commit_txn -> None {
         self._store.commit();
         self._rows.promote();
     }
+    self._txn_open = False;
     self._txn_gen += 1;
 }
 
@@ -867,6 +869,7 @@ impl Session._rollback_txn -> None {
             logger.debug(f"rollback failed: {type(e).__name__}: {e}");
         }
     }
+    self._txn_open = False;
     self._txn_gen += 1;
     lost = self._rows.discard();
     if lost.joined {
@@ -896,7 +899,7 @@ impl Session._lose_on_conflict(cause: (Exception | None)) -> None {
     self._rollback_txn();
     self._last_conflict = {
         id
-        for id in set(self._dirty) | self._deleted
+        for id in self._last_conflict | set(self._dirty) | self._deleted
         if self._rows.current(id) is not None
     };
     self._lost = True;
@@ -906,7 +909,9 @@ impl Session._lose_on_conflict(cause: (Exception | None)) -> None {
 
 
 impl Session._reclaim_dead_txn -> None {
-    if not self._rows.in_flight() or self._store is None or self._store.in_txn() {
+    if self._store is None
+        or self._store.in_txn()
+        or not (self._txn_open or self._rows.in_flight()) {
         return;
     }
     self._lose_on_conflict(self._store.last_error);
@@ -1008,10 +1013,13 @@ impl Session._flush_locked(full: bool) -> None {
             self._last_conflict = {wc.anchor_id};
             raise;
         } except Exception as e {
-            if self._queued or not _is_lock_timeout(e) {
+            if not _is_serialization_conflict(e) {
                 raise;
             }
             self._last_conflict = {row.id for row in rows};
+            if self._queued or not _is_lock_timeout(e) {
+                raise;
+            }
             raise WriteConflict(anchor_id=rows[0].id) from e;
         }
         for (row, u) in zip(rows, unflushed) {
@@ -1288,6 +1296,7 @@ impl Session._begin_txn(isolation: TxnIsolation) -> None {
         return;
     }
     backing.begin(isolation);
+    self._txn_open = True;
     if not self._queued and isolation is TxnIsolation.SERIALIZABLE {
         backing.lock_wait(FIRST_LOCK_WAIT);
     }
@@ -1321,6 +1330,7 @@ impl Session.wait_turn -> None {
             backing.begin(TxnIsolation.SERIALIZABLE);
             try {
                 backing.lock_rows(pinned);
+                self._txn_open = True;
                 return;
             } except Exception as e {
                 if not _is_serialization_conflict(e) {
@@ -1423,6 +1433,7 @@ impl Session.close -> None {
     self._deleted.clear();
     self._rows.clear();
     self._lost = False;
+    self._txn_open = False;
     self._drop_hop_state();
 
     sv_store_closed(self);
