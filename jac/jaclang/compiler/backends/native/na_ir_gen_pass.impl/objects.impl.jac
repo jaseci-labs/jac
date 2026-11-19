@@ -1918,6 +1918,23 @@ impl NaIRGenPass._codegen_field_default(
     val: (ir.Value | None) = None;
     try {
         val = self._codegen_expr(expr);
+        if val is not None
+            and self.local_vars
+            and self._is_reference_type(val.type)
+            and not self._is_owned(val) {
+            if self._nogc_headerless() {
+                self.emit(
+                    E5092,
+                    node_override=expr,
+                    kind="expression",
+                    name="`:=` in a field default",
+                    help_text="A name bound with `:=` in a field default is freed once the default is evaluated, and a headerless build cannot keep the value alive past it. Write the default without `:=`."
+                );
+                return None;
+            }
+            self._emit_take_ref(val, op="field_default");
+            self._mark_owned(val);
+        }
     } finally {
         self.scope = scope;
         self._leave_bindings(bindings, release=True);

@@ -107,10 +107,26 @@ def make_seeded(seed: int) -> Seeded {
     return Seeded();
 }
 
+obj Walrused {
+    has items: list[str] = (saved := ["w"]);
+}
+
+obj WalrusedChild(Walrused) {
+    def init {
+        super.init();
+    }
+}
+
 with entry {
     sc = SeededChild(7);
     ms = make_seeded(7);
     print(sc.level, sc.bonus, ms.level, ms.bonus);
+    for i in range(2) {
+        wd = Walrused();
+        wc = WalrusedChild();
+        wd.items.append(f"d{i}");
+        print(wd.items, wc.items);
+    }
     for full in [True, False] {
         oc = OptsChild(full);
         print(oc.level, oc.names);
