@@ -619,6 +619,11 @@ postgres_storage = "10Gi"  # under [scale.database]
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.
 
+**Postgres disk usage:**
+
+- `jac scale status` shows how much of the Postgres data PVC is in use and warns once it passes 80%. Raise `postgres_storage` and redeploy before it fills: a full volume stops every write.
+- Not all of `postgres_storage` holds your data. Postgres keeps its write-ahead log on the same volume and lets it grow toward 2GB between checkpoints, plus some space for the empty database itself. On the `2Gi` default, your data gets much less than 2Gi.
+
 > **Note:** Postgres PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
 > **Note:** The application bundle PVC has a fixed size (1Gi) and is created once, never resized. Bundle contents are content-addressed, so an unchanged app is not re-uploaded on redeploy.
 
