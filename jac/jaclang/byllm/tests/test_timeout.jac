@@ -27,7 +27,7 @@ def _outcome(work: Callable) -> str {
 
 test "the bound resolves through its precedence chain" {
     via_call_params = Model(model_name="gpt-4o-mini", timeout=45.0);
-    via_call_params(timeout=30.0);
+    via_call_params = via_call_params(timeout=30.0);
 
     # (label, model, call-site params, expected budget) -- None means no bound at all.
     cases: list[any] = [
