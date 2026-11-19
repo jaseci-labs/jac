@@ -1556,7 +1556,6 @@ impl JacAPIServer._worker_main(
         heartbeat=handle.heartbeat if handle is not None else None
     );
     self.server = serving;
-    # A forked worker builds its own process context before any thread starts.
     Jac.get_context();
     self.scheduler.start_if_pending();
     start_worker_if_bridging();
