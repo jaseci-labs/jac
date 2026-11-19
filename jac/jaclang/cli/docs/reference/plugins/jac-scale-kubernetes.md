@@ -1489,10 +1489,14 @@ jac scale deploy app.jac --from-build build --plan-out plan.json
 
 `jac scale build` never loads cluster config, so it takes the node architecture
 from `--arch` or `JAC_NODE_ARCH` and refuses when neither is set. It writes
-`build/bundle.jab` and `build/build.json`, which records the jac version,
+the sealed bundle as `build/bundle-<sha256 prefix>.jab` and then
+`build/build.json`, which names that file and records the jac version,
 channel, node architecture, app name, the bundle's object key, sha256 and size,
 the pod runtime's sha256 and one sha256 over every `jac.toml` sealed into the
-bundle (the root one and each nested one).
+bundle (the root one and each nested one). `build.json` is replaced last, so a
+deploy reading the directory always finds the bundle it names; older bundle
+files are removed afterwards. The output directory holds only these files: the
+build refuses a directory with anything else in it, or a symlink.
 
 `--from-build` never builds. It refuses a build whose bundle does not match its
 recorded sha256, or that was made by another jac version, for another app,

@@ -187,7 +187,7 @@ impl KubernetesRealizer.build(
     }
     if not out_dir {
         console.error(
-            "jac scale build needs --out <dir> to write bundle.jab and build.json into.",
+            "jac scale build needs --out <dir> to write build.json and its bundle into.",
             emoji=False
         );
         return 2;

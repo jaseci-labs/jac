@@ -100,7 +100,7 @@ comptime SPEC_SCALE_CMD: CommandSpec = CommandSpec(
                  "from-build",
                  typ=str,
                  `default="",
-                 help="Platform deploy: apply the bundle.jab and build.json that `jac scale build --out` wrote there; never builds, refuses a build that does not match this deploy",
+                 help="Platform deploy: apply the build.json and bundle that `jac scale build --out` wrote there; never builds, refuses a build that does not match this deploy",
                  short=""
              ),
              Arg.create(
@@ -114,7 +114,7 @@ comptime SPEC_SCALE_CMD: CommandSpec = CommandSpec(
                  "out",
                  typ=str,
                  `default="",
-                 help="Build: the directory to write bundle.jab and build.json into",
+                 help="Build: the directory to write build.json and its bundle into",
                  short=""
              ),
              Arg.create(

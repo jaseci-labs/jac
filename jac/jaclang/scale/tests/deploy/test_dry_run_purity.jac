@@ -1,3 +1,4 @@
+import gzip;
 import hashlib;
 import io;
 import json;
@@ -393,6 +394,16 @@ def _built_app -> dict[str, str] {
 }
 
 
+"""The bundle files a build directory holds."""
+def _bundles(out: str) -> list[Path] {
+    return sorted(
+        path
+        for path in Path(out).iterdir()
+        if path.suffix == ".jab"
+    );
+}
+
+
 def _apply_target(
     from_build: str = "",
     app_name: str = "shop",
@@ -435,8 +446,8 @@ test "jac scale build refuses to guess the node architecture" {
 
 test "jac scale build writes a bundle and a record that agree, with no cluster" {
     built = _built_app();
-    raw = Path(built["out"], "bundle.jab").read_bytes();
     record = json.loads(Path(built["out"], "build.json").read_text());
+    raw = Path(built["out"], record["bundle_file"]).read_bytes();
     digest = hashlib.sha256(raw).hexdigest();
     assert record["bundle_sha256"] == digest , record;
     assert record["bundle_object_key"].endswith(f"/{digest}.jab") , record;
@@ -558,7 +569,7 @@ test "a deploy from a build refuses a build that does not match it" {
         shutil.rmtree(copy);
         shutil.copytree(built["out"], copy);
         if tamper {
-            with open(os.path.join(copy, "bundle.jab"), "ab") as f {
+            with open(_bundles(copy)[0], "ab") as f {
                 f.write(b"\0");
             }
         }
@@ -616,26 +627,63 @@ test "publishing builds into one --out keeps exactly one complete build" {
     injector = _apply_target(built["out"])._manifest_builder(app)._injector_from_build(
         app
     );
-    parent = tempfile.mkdtemp(prefix="scale-publish-");
-    out = os.path.join(parent, "build");
-    injector.write_build(out, "shop");
-    injector.write_build(out, "shop");
-    injector._toolchain_object_key = "toolchain/shop/other.tar.gz";
-    injector.write_build(out, "shop");
-    assert os.path.islink(out);
-    assert sorted(os.listdir(parent)) == sorted(["build", os.readlink(out)]);
-    record = json.loads(Path(out, "build.json").read_text());
-    assert record["toolchain_object_key"] == "toolchain/shop/other.tar.gz";
-    assert Path(out, "bundle.jab").read_bytes() == injector._bundle_bytes;
-    foreign = os.path.join(parent, "mine");
-    os.mkdir(foreign);
-    Path(foreign, "keep.txt").write_text("not a build");
-    refusal = "";
+    out = os.path.join(project, "build");
+    problems: list[str] = [];
     try {
-        injector.write_build(foreign, "shop");
-    } except ValueError as e {
-        refusal = str(e);
+        first = _apply_target().build(app, out);
+        second = _apply_target().build(app, out);
+        if second["bundle_sha256"] != first["bundle_sha256"] {
+            problems.append("an unchanged rebuild sealed a different bundle");
+        }
+        with tarfile.open(_bundles(out)[0], mode="r:gz") as tar {
+            sealed = [
+                name
+                for name in tar.getnames()
+                if name.endswith(".jab") or name.endswith("build.json")
+            ];
+        }
+        if sealed {
+            problems.append(f"the bundle sealed an earlier build: {sealed}");
+        }
+        _bundles(out)[0].write_bytes(b"damaged");
+        third = _apply_target().build(app, out);
+        if hashlib.sha256(_bundles(out)[0].read_bytes()).hexdigest()
+            != third["bundle_sha256"] {
+            problems.append("a rebuild kept a damaged bundle");
+        }
+        injector._bundle_bytes = injector._bundle_bytes + gzip.compress(b"");
+        injector.write_build(out, "shop");
+        if len(_bundles(out)) != 1 {
+            problems.append(f"a changed rebuild left {len(_bundles(out))} bundles");
+        }
+    } finally {
+        shutil.rmtree(out, ignore_errors=True);
     }
-    assert "is not a build" in refusal , refusal;
-    assert os.listdir(foreign) == ["keep.txt"];
+    parent = tempfile.mkdtemp(prefix="scale-publish-");
+    owned = os.path.join(parent, ".mine.keep");
+    os.mkdir(owned);
+    Path(owned, "keep.txt").write_text("not a build");
+    linked = os.path.join(parent, "mine");
+    os.symlink(".mine.keep", linked);
+    foreign = os.path.join(parent, "notes");
+    os.mkdir(foreign);
+    Path(foreign, "notes.txt").write_text("not a build");
+    for candidate in (linked, foreign) {
+        refused = False;
+        try {
+            injector.write_build(candidate, "shop");
+        } except ValueError {
+            refused = True;
+        }
+        if not refused {
+            problems.append(f"{candidate} was published over");
+        }
+    }
+    if not Path(owned, "keep.txt").is_file() {
+        problems.append("a symlinked --out had its target deleted");
+    }
+    if os.listdir(foreign) != ["notes.txt"] {
+        problems.append("a foreign --out was changed");
+    }
+    assert not problems , problems;
 }

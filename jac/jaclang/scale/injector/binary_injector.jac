@@ -2,7 +2,7 @@ import hashlib;
 import json;
 import logging;
 import os;
-import shutil;
+import re;
 import tempfile;
 import tomllib;
 
@@ -10,7 +10,8 @@ glob logger = logging.getLogger(__name__),
      DRY_RUN_DIGEST: str = "sha256-computed-at-deploy",
      BUILD_SCHEMA: int = 1,
      BUILD_RECORD: str = "build.json",
-     BUILD_BUNDLE: str = "bundle.jab",
+     BUILD_BUNDLE_PATTERN: re.Pattern = re.compile(r"bundle-[0-9a-f]{16}\.jab"),
+     _BUILD_TEMP_PREFIX: str = ".jac-build-tmp-",
      _DRIFT_SHOWN: int = 10;
 
 
