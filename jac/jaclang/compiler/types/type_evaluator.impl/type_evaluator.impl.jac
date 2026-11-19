@@ -4248,7 +4248,8 @@ impl TypeEvaluator._is_client_bridge_call(expr: FuncCall) -> bool {
     tgt = expr.target;
     return mod is not None
         and isinstance(tgt, Name)
-        and (id(tgt.sym), tgt.value) in self._client_bridge_syms_cache.get(id(mod), set());
+        and (id(tgt.sym), tgt.value)
+            in self._client_bridge_syms_cache.get(id(mod), set());
 }
 
 impl TypeEvaluator._prefetch_types {
