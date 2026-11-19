@@ -161,6 +161,20 @@ impl KubernetesTarget.build(app_config: AppConfig, out_dir: str) -> dict[str, an
             "with --arch amd64|arm64 or JAC_NODE_ARCH."
         );
     }
+    import from pathlib { Path }
+    base = Path(app_config.code_folder).resolve();
+    out = Path(out_dir).resolve();
+    if out.is_relative_to(base)
+        and not source_filter_for(base).excludes(
+            out.relative_to(base) / BUILD_RECORD
+        ) {
+        raise ValueError(
+            f"--out {out} is inside the project and its files would ship, so the "
+            "next build would seal this one. Write the build outside the project, "
+            "into a directory the bundle excludes such as build/ or dist/, or add "
+            "it to .jacignore."
+        );
+    }
     refusal = deploy_generation_refusal(app_config.code_folder);
     if refusal {
         raise ValueError(refusal);

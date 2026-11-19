@@ -650,8 +650,18 @@ test "publishing builds into one --out keeps exactly one complete build" {
         if len(_bundles(out)) != 1 {
             problems.append(f"a changed rebuild left {len(_bundles(out))} bundles");
         }
+        refused = False;
+        try {
+            _apply_target().build(app, os.path.join(project, "artifacts"));
+        } except ValueError {
+            refused = True;
+        }
+        if not refused or os.path.exists(os.path.join(project, "artifacts")) {
+            problems.append("an --out the bundle would ship was written");
+        }
     } finally {
         shutil.rmtree(out, ignore_errors=True);
+        shutil.rmtree(os.path.join(project, "artifacts"), ignore_errors=True);
     }
     parent = tempfile.mkdtemp(prefix="scale-publish-");
     again = os.path.join(parent, "again");

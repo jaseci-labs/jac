@@ -13888,6 +13888,7 @@ graph import scale {
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
             select_injector
         },
+        deploy.target.kubernetes.target.KubernetesTarget.build { BUILD_RECORD },
     ]
     injector.binary_injector as bi_mod --> tests.microservices.test_binary_injector;
     injector.binary_injector as binary_injector_mod ++> tests.deploy.test_dry_run_purity;
@@ -13909,7 +13910,8 @@ graph import scale {
             source_filter_for,
             unresolved_toml_references
         },
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
+            | deploy.target.kubernetes.target.KubernetesTarget.build {
             source_filter_for
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build {
