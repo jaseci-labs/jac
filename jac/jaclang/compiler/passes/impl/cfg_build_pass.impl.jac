@@ -360,17 +360,17 @@ impl CFGBuildPass._find_next_cfg_stmt_after(
 impl CFGBuildPass._find_next_cfg_stmt_after_branch(nd: UniNode) -> (UniCFGNode | None) {
     cur: UniNode = nd;
     while cur.parent is not None {
-        if (nxt := self._find_next_cfg_stmt_after(cur.parent, cur)) is not None {
+        parent = cur.parent;
+        if (nxt := self._find_next_cfg_stmt_after(parent, cur)) is not None {
             return nxt;
         }
-        runs_through = isinstance(cur.parent, (IfStmt, ElseStmt))
-            or (
-                isinstance(cur.parent, WithStmt) and not self._may_suppress(cur.parent)
-            );
-        if not runs_through {
+        if not (
+            isinstance(parent, (IfStmt, ElseStmt))
+            or (isinstance(parent, WithStmt) and not self._may_suppress(parent))
+        ) {
             return None;
         }
-        cur = cur.parent;
+        cur = parent;
     }
     return None;
 }

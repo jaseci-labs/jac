@@ -14,10 +14,10 @@ impl allroots -> list[Root] {
     return list(JacRuntime.get_all_root());
 }
 
-impl grant(n: Node, level: AccessLevel = AccessLevel.READ) {
+impl grant(n: Archetype, level: AccessLevel = AccessLevel.READ) {
     JacRuntime.perm_grant(n, level);
 }
 
-impl remove(n: Node) {
+impl remove(n: Archetype) {
     JacRuntime.destroy(n);
 }

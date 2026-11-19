@@ -2311,6 +2311,7 @@ graph import {
         lib.jaclib { GenericEdge, ObjectSpatialFunction as DSFunc, Root },
         server.session { Anchor, EdgeAnchor, NodeAnchor, Root },
         stdjac.codec { EdgeArchetype, NodeArchetype },
+        stdjac.graph { AccessLevel, Archetype, Root },
     ]
     runtime.build_services ++> [
         client.runtime_source.client_runtime_cl_basename

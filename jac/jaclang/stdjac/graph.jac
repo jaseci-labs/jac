@@ -11,6 +11,6 @@ def jobj(name: str) -> any;
 
 def allroots -> list[Root];
 
-def grant(n: Node, level: AccessLevel = AccessLevel.READ);
+def grant(n: Archetype, level: AccessLevel = AccessLevel.READ);
 
-def remove(n: Node);
+def remove(n: Archetype);
