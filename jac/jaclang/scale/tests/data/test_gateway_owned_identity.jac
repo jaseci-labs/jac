@@ -21,8 +21,7 @@ glob _SV_ENV: str = "JAC_SV_NAME",
      _FLEET_DIR: Path = Path(__file__).parent.parent
          / "fixtures"
          / "gateway_owned_fleet",
-     _FLEET_SECRET: str = "gateway-owned-fleet-fixture-signing-secret-0123456789",
-     _FLEET_ADMIN_PASSWORD: str = "Fleet-fixture-Passw0rd-9";
+     _FLEET_SECRET: str = "gateway-owned-fleet-fixture-signing-secret-0123456789";
 
 
 """A session token of the shape the gateway mints, for a user no service knows."""
@@ -221,9 +220,14 @@ database, as every local fleet is. Returns the process and the gateway's URL.
 """
 def _start_fleet -> tuple[subprocess.Popen, str] {
     port = get_free_port();
+    # The suite's fixture policy names the bootstrap admin's password and
+    # relaxes the password floor; the fleet gets it the way start_server does.
+    proc_env = dict(os.environ);
+    apply_fixture_policy(proc_env);
     proc = subprocess.Popen(
         [jac_executable(), "run", "--fleet", "--port", str(port), "main"],
         cwd=str(_FLEET_DIR),
+        env=proc_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -293,7 +297,7 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
         # Delete the real account at the gateway; its token must stay dead.
         admin = requests.post(
             f"{base}/admin/login",
-            json={"username": "admin", "password": _FLEET_ADMIN_PASSWORD},
+            json={"username": "admin", "password": ADMIN_BOOTSTRAP_PASSWORD},
             timeout=30
         );
         assert admin.status_code == 200 , admin.text;

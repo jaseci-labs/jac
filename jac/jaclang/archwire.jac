@@ -15247,6 +15247,7 @@ graph import scale.tests {
     fixture_policy ++> [
         scale_test_client { ADMIN_BOOTSTRAP_PASSWORD, apply_fixture_policy },
         support { apply_fixture_policy },
+        data.test_gateway_owned_identity { ADMIN_BOOTSTRAP_PASSWORD, apply_fixture_policy },
     ]
     scale_test_client ++> [
         data.test_session_epoch { fresh_totp_code },

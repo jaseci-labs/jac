@@ -1411,7 +1411,11 @@ test "build_env marks an app whose own env sets JAC_DB_URL as holding its own id
     separate = builder._build_env(
         "orders_app", {"env": {"JAC_DB_URL": "postgresql://db.ns/orders"}}
     );
-    marks = [e for e in separate if e["name"] == OWN_STORE_ENV];
+    marks = [
+        e
+        for e in separate
+        if e["name"] == OWN_STORE_ENV
+    ];
     assert len(marks) == 1 and marks[0]["value"] == "1" , separate;
 }
 

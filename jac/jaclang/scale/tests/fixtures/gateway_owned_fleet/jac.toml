@@ -6,7 +6,7 @@ default-app = "main"
 # has: an app receiving a gateway token for a subject the store lacks is
 # looking at a deleted or invented account, so it must refuse it, never
 # provision it. The fixed secret lets the test sign a token for an id that
-# never existed.
+# never existed. The admin password comes from the suite's fixture policy.
 
 [apps.main]
 kind = "service"
@@ -19,9 +19,6 @@ route = "/orders"
 
 [scale.gateway]
 colocate = false
-
-[scale.admin]
-default_password = "Fleet-fixture-Passw0rd-9"
 
 [serve.auth]
 secret = "gateway-owned-fleet-fixture-signing-secret-0123456789"
