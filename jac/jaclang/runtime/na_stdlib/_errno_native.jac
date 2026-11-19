@@ -4,6 +4,7 @@ glob EPERM: int = 1,
      ENOENT: int = 2,
      EINTR: int = 4,
      EACCES: int = 13,
+     EEXIST: int = 17,
      ENOTDIR: int = 20,
      EISDIR: int = 21;
 
