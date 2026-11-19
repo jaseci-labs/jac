@@ -75,6 +75,30 @@ impl ServiceProcessManager._prepare_ports(service_entry: ServiceEntry) -> None {
     service_entry.url = self._url_for(service_entry);
 }
 
+impl ServiceProcessManager.child_env(
+    name: str, parent_env: dict[str, str]
+) -> dict[str, str] {
+    `entry = self.registry.entries[name];
+    env: dict[str, str] = dict(parent_env);
+    env["JAC_SV_SIBLING"] = "1";
+    env["JAC_SV_NAME"] = name;
+    for (env_key, env_value) in `entry.env.items() {
+        env[str(env_key)] = str(env_value);
+    }
+    if owns_identity_store(`entry.env) {
+        env[OWN_STORE_ENV] = "1";
+    } else {
+        env.pop(OWN_STORE_ENV, None);
+    }
+    for (peer_name, peer_entry) in self.registry.entries.items() {
+        if peer_name != name and peer_entry.port > 0 {
+            peer_url: str = peer_entry.url or self._url_for(peer_entry);
+            env[peer_url_env_key(peer_name)] = peer_url;
+        }
+    }
+    return env;
+}
+
 impl ServiceProcessManager.start_service(name: str) -> bool {
     if name not in self.registry.entries {
         logger.error(f"Service '{name}' not found in registry");
@@ -99,25 +123,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     try {
         import os;
         import from pathlib { Path }
-        child_env: dict[str, str] = dict(os.environ);
-
-        child_env["JAC_SV_SIBLING"] = "1";
-        child_env["JAC_SV_NAME"] = name;
-        for (env_key, env_value) in `entry.env.items() {
-            child_env[str(env_key)] = str(env_value);
-        }
-        if owns_identity_store(`entry.env) {
-            child_env[OWN_STORE_ENV] = "1";
-        } else {
-            child_env.pop(OWN_STORE_ENV, None);
-        }
-
-        for (peer_name, peer_entry) in self.registry.entries.items() {
-            if peer_name != name and peer_entry.port > 0 {
-                peer_url: str = peer_entry.url or self._url_for(peer_entry);
-                child_env[peer_url_env_key(peer_name)] = peer_url;
-            }
-        }
+        child_env: dict[str, str] = self.child_env(name, dict(os.environ));
 
         log_dir = Path(".jac/logs");
         log_dir.mkdir(parents=True, exist_ok=True);

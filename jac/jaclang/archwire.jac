@@ -3480,12 +3480,12 @@ graph import {
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
             auth_headers
         },
+        scale.runtime.orchestrator.process_manager.ServiceProcessManager.child_env
+            | scale.tests.deploy.test_pod_env { peer_url_env_key },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
             app_start_args,
-            headless_start_args,
-            peer_url_env_key
+            headless_start_args
         },
-        scale.tests.deploy.test_pod_env { peer_url_env_key },
         scale.tests.microservices.test_gateway
             | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
@@ -14289,7 +14289,7 @@ graph import scale {
             order_by_edges,
             solo_fleet
         },
-        tests.data.test_gateway_owned_identity { owns_identity_store },
+        tests.data.test_gateway_owned_identity { OWN_STORE_ENV, owns_identity_store },
         tests.deploy.test_access_hint
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deployment_overlay
@@ -14360,13 +14360,15 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
-        tests.data.test_session_epoch
-            | tests.microservices.test_gateway_docs_precedence
-            | tests.server.test_static_fallback { ServiceRegistry },
-        tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
+        tests.data.test_gateway_owned_identity
+            | tests.deploy.test_deployer
+            | tests.microservices.test_stop_signal_scope {
             ServiceEntry,
             ServiceRegistry
         },
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.server.test_static_fallback { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -14400,6 +14402,7 @@ graph import scale {
     runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         plugin._fleet_cmd
+            | tests.data.test_gateway_owned_identity
             | tests.deploy.test_deployer
             | tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -15057,7 +15060,7 @@ graph import scale.runtime {
     fleet ++> [
         cli.plan { FleetSpec },
         orchestrator.orchestrator { FleetSpec, ROOT_PREFIX },
-        orchestrator.process_manager.ServiceProcessManager.start_service {
+        orchestrator.process_manager.ServiceProcessManager.child_env {
             OWN_STORE_ENV,
             owns_identity_store
         },

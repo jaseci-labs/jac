@@ -127,6 +127,38 @@ test "an app owns its identity store only when its own env sets JAC_DB_URL" {
 }
 
 
+test "the local launcher marks only an app whose own env sets JAC_DB_URL" {
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/orders",
+            env={"JAC_SV_NAME": "orders"}
+        )
+    );
+    reg.register(
+        ServiceEntry(
+            name="billing",
+            file="billing.jac",
+            prefix="/billing",
+            env={"JAC_SV_NAME": "billing", "JAC_DB_URL": "postgresql://db/billing"}
+        )
+    );
+    launcher = ServiceProcessManager(registry=reg);
+    fleet_env = {"JAC_DB_URL": "postgresql://db/fleet", OWN_STORE_ENV: "1"};
+
+    shared = launcher.child_env("orders", fleet_env);
+    assert OWN_STORE_ENV not in shared , "a mark in the launcher's own env must not reach the app";
+    assert shared["JAC_DB_URL"] == "postgresql://db/fleet";
+    assert shared["JAC_SV_SIBLING"] == "1" and shared["JAC_SV_NAME"] == "orders";
+
+    separate = launcher.child_env("billing", fleet_env);
+    assert separate[OWN_STORE_ENV] == "1";
+    assert separate["JAC_DB_URL"] == "postgresql://db/billing";
+}
+
+
 test "a single-process server rejects a subject it does not know" {
     manager = _manager("");
     if manager is None {
@@ -250,7 +282,10 @@ def _start_fleet -> tuple[subprocess.Popen, str] {
         time.sleep(1);
     }
     stop_server(proc);
-    raise RuntimeError("fleet never served /orders within 600s");
+    (out, _) = proc.communicate();
+    raise RuntimeError(
+        f"fleet never served /orders within 600s; last output:\n{str(out)[-4000:]}"
+    );
 }
 
 
@@ -316,6 +351,36 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
             f"{base}/user/refresh-token", json={"token": token}, timeout=30
         );
         assert renewed.status_code != 200 , f"a deleted account renewed: {renewed.text}";
+
+        # An app on the shared store holds the account's epoch, so it renews
+        # sessions and ends them itself (a provisioning app refuses both).
+        other = requests.post(
+            f"{base}/user/register",
+            json={
+                "identities": [{"type": "username", "value": f"{name}_b"}],
+                "credential": {"type": "password", "password": password}
+            },
+            timeout=30
+        );
+        assert other.status_code == 201 , other.text;
+        other_token = _data(other)["token"];
+        renewed_here = requests.post(
+            f"{base}/orders/user/refresh-token", json={"token": other_token}, timeout=30
+        );
+        assert renewed_here.status_code == 200 , renewed_here.text;
+        fresh = _data(renewed_here)["token"];
+        ended = requests.post(
+            f"{base}/orders/user/logout-all",
+            headers={"Authorization": f"Bearer {fresh}"},
+            timeout=30
+        );
+        assert ended.status_code == 200 , ended.text;
+        stale = requests.post(
+            f"{base}/orders/function/whoami",
+            headers={"Authorization": f"Bearer {fresh}"},
+            timeout=30
+        );
+        assert stale.status_code == 401 , f"an ended session reached the app: {stale.text}";
     } finally {
         stop_server(proc);
     }
