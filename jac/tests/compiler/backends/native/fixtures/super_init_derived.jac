@@ -67,7 +67,27 @@ obj NamedChild(Named) {
     }
 }
 
+obj Opts {
+    has level: int = 1,
+        names: list[str] = [];
+}
+
+obj OptsChild(Opts) {
+    def init(full: bool) {
+        self.names = ["stale"];
+        if full {
+            super.init();
+        } else {
+            super.init(7);
+        }
+    }
+}
+
 with entry {
+    for full in [True, False] {
+        oc = OptsChild(full);
+        print(oc.level, oc.names);
+    }
     sq = Square(3.0);
     print(sq.kind.value, sq.side, sq.area());
     for i in range(3) {
