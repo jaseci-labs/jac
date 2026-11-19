@@ -34,7 +34,7 @@ walker new_user {
         user = Root().__jac__;
         Jac.save(user);
         Jac.commit();
-        print(user.id);
+        print("ID:" + str(user.id));
     }
 }
 
@@ -44,7 +44,7 @@ walker new_org {
     can enter with Root entry {
         org = Workspace(name=self.name);
         save(org);
-        print(org.__jac__.id);
+        print("ID:" + str(org.__jac__.id));
     }
 }
 

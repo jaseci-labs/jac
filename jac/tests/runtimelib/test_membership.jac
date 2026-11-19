@@ -59,9 +59,9 @@ def _done(state: tuple[str, str]) {
 def _acme -> dict[str, str] {
     w: dict[str, str] = {};
     for name in ("alice", "bob", "carol", "dave", "shane") {
-        w[name] = _run("new_user");
+        w[name] = _line(_run("new_user"), "ID:");
     }
-    w["acme"] = _run("new_org", args=["Acme"], root_id=w["alice"]);
+    w["acme"] = _line(_run("new_org", args=["Acme"], root_id=w["alice"]), "ID:");
     w["plan"] = _line(
         _run("add_doc", args=[w["acme"], "Plan"], root_id=w["alice"]), "DOC:"
     );
@@ -264,7 +264,7 @@ test "a group can be a member, and its members are capped by both levels" {
     state = _fresh();
     try {
         w = _acme();
-        w["team"] = _run("new_org", args=["Team"], root_id=w["alice"]);
+        w["team"] = _line(_run("new_org", args=["Team"], root_id=w["alice"]), "ID:");
         _run("share", args=[w["team"], w["carol"], "WRITE"], root_id=w["alice"]);
         _run("share", args=[w["team"], w["dave"], "READ"], root_id=w["alice"]);
         _run("share", args=[w["plan"], w["team"], "WRITE"], root_id=w["alice"]);
@@ -340,7 +340,7 @@ test "nested groups cap along a chain, take the best path, and a cycle ends" {
     try {
         w = _acme();
         for name in ("Eng", "Backend") {
-            w[name] = _as(w, "alice", "new_org", name);
+            w[name] = _line(_as(w, "alice", "new_org", name), "ID:");
         }
         for (target, who, lvl) in [
             ("acme", "Eng", "WRITE"),
