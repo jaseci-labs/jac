@@ -409,15 +409,17 @@ test "consequence 3: a conflict after an abort does not delete rows the aborted 
 
 """A swallowed failed statement ends the transaction under the session. The
 flushed write is sent again, unless the statement failed on a serialization
-conflict: then what the transaction read is gone too, and the unit is lost."""
+conflict: then what the transaction read is gone too, and the unit is lost,
+whether or not it had flushed anything yet."""
 test "a transaction Postgres rolled back on a failed statement does not lose its flushed writes" {
-    for (probe, conflict) in [
-        ("SELECT 1 / 0", False),
-        (
-            "DO $$ BEGIN RAISE EXCEPTION 'could not serialize access' "
-            "USING ERRCODE = '40001'; END $$",
-            True
-        )
+    serialization_failure = (
+        "DO $$ BEGIN RAISE EXCEPTION 'could not serialize access' "
+        "USING ERRCODE = '40001'; END $$"
+    );
+    for (probe, conflict, flushed) in [
+        ("SELECT 1 / 0", False, True),
+        (serialization_failure, True, True),
+        (serialization_failure, True, False)
     ] {
         with TemporaryDirectory() as td {
             old = JacRuntime.exec_ctx;
@@ -429,14 +431,22 @@ test "a transaction Postgres rolled back on a failed statement does not lose its
                 ctx.mem.commit();
                 tid: UUID = _as_any(t).__jac__.id;
 
-                t.n = 2;
-                ctx.mem.mark_dirty(_as_any(t).__jac__);
-                ctx.mem.flush();
+                if flushed {
+                    t.n = 2;
+                    ctx.mem.mark_dirty(_as_any(t).__jac__);
+                    ctx.mem.flush();
+                } else {
+                    _sess(ctx).read_barrier();
+                }
                 failed = False;
                 try {
                     _as_any(ctx.mem.store).rows(probe, {});
                 } except PgWireError {
                     failed = True;
+                }
+                if not flushed {
+                    t.n = 2;
+                    ctx.mem.mark_dirty(_as_any(t).__jac__);
                 }
                 assert failed , f"the probe statement must fail: {probe}";
                 assert not _as_any(ctx.mem.store).in_txn() , (
@@ -450,7 +460,8 @@ test "a transaction Postgres rolled back on a failed statement does not lose its
                     raised = True;
                 }
                 assert raised == conflict , (
-                    f"after {probe} the commit raised={raised}, expected {conflict}"
+                    f"after {probe} (flushed={flushed}) the commit raised={raised}, "
+                    f"expected {conflict}"
                 );
                 assert _stored(ctx, tid, "n") == ("1" if conflict else "2") , (
                     f"after {probe} the database holds n={_stored(ctx, tid, 'n')}: "
@@ -1431,9 +1442,13 @@ def _burst(
 
 
 test "request loop: ten concurrent writers to one node all land" {
-    for busy in (False, True) {
+    for (writer, read, busy) in [
+        ("Bump", "ReadCounter", False),
+        ("Bump", "ReadCounter", True),
+        ("Mark", "ReadMarks", False)
+    ] {
         (results, landed) = _burst(
-            "Bump", {"hold": 0.05, "busy": busy}, "ReadCounter", 10, seed="SeedCounter"
+            writer, {"hold": 0.05, "busy": busy}, read, 10, seed="SeedCounter"
         );
         refused = [
             r
@@ -1442,11 +1457,11 @@ test "request loop: ten concurrent writers to one node all land" {
         ];
         assert not refused , (
             f"{len(refused)} of 10 writers to one counter were refused "
-            f"(busy={busy}): losers raced again instead of waiting their turn. "
+            f"({writer}, busy={busy}): losers raced again instead of waiting their turn. "
             f"First: {refused[0]}"
         );
         assert landed == 10 , (
-            f"10 accepted writes moved the counter by {landed} (busy={busy})"
+            f"10 accepted writes moved the counter by {landed} ({writer}, busy={busy})"
         );
     }
 }

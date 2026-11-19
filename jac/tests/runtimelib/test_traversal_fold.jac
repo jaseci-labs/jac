@@ -548,6 +548,7 @@ test "an edge write takes its endpoint type from the stored node, not a stale co
             notes = [edge b2->:FNote:->];
             assert len(items) == 1 and len(notes) == 1;
             iid = str(_as_any(items[0]).__jac__.id);
+            ctx2.mem.commit();
             other = _ctx(td);
             try {
                 ostore = other.mem.store;
