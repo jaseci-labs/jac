@@ -11,6 +11,8 @@
 | **Deploy** | `jac scale deploy app.jac` | Ship the project source into the cluster and deploy |
 | **Preview** | `jac scale deploy app.jac --dry-run` | Print the manifests that would be applied; change nothing |
 | **Enable HTTPS** | `jac scale deploy app.jac --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
+| **Build only** | `jac scale build app.jac --out build --arch amd64` | Seal the app into `build/` without contacting the cluster |
+| **Deploy a build** | `jac scale deploy app.jac --from-build build` | Apply a build without building anything |
 
 There is no image-build step. `jac-scale` does not build, tag, or push a Docker
 image, and it needs no registry and no registry credentials: pods run a stock
@@ -1472,6 +1474,36 @@ kubectl get pvc                     # the bundle PVC must be Bound
   identity.
 - `ImagePullBackOff` on the base image means the cluster cannot reach
   `jaseci/jaclang`; set `python_image` to a base it can pull.
+
+### Building and Deploying Separately
+
+`jac scale deploy` builds the app (the client build, `jac install`, the seal)
+and applies it in one process. To run the two halves in different places, for
+example an unprivileged CI runner that builds and a trusted step that holds the
+kubeconfig and applies, split them:
+
+```bash
+jac scale build app.jac --out build --arch amd64     # no cluster access
+jac scale deploy app.jac --from-build build --plan-out plan.json
+```
+
+`jac scale build` never loads cluster config, so it takes the node architecture
+from `--arch` or `JAC_NODE_ARCH` and refuses when neither is set. It writes
+`build/bundle.jab` and `build/build.json`, which records the jac version,
+channel, node architecture, app name, the bundle's object key, sha256 and size,
+the pod runtime's sha256 and one sha256 over every `jac.toml` sealed into the
+bundle (the root one and each nested one).
+
+`--from-build` never builds. It refuses a build whose bundle does not match its
+recorded sha256, or that was made by another jac version, for another app,
+node architecture or jac channel, or whose sealed `jac.toml` files differ from
+the ones this deploy would ship (the refusal names each file and key that
+differs, never the values). It fetches the
+pod runtime the usual way and refuses when its sha256 differs from the one the
+build recorded. `--plan-out` writes the rendered Deployments as JSON
+(`{expect, parked, deployments}`, where `parked` lists the ones that may sit at
+zero replicas) before anything is applied; with `--dry-run` it writes the plan
+and applies nothing.
 
 ### Node Architecture
 

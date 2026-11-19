@@ -52,9 +52,14 @@ obj KubernetesTarget(KubernetesTargetBase) {
     has _deploy_context: DeployContext = DeployContext(),
         fleet: (FleetSpec | None) = None,
         gateway_config: (dict[str, any] | None) = None,
-        app_overrides: dict[str, dict[str, any]] = {};
+        app_overrides: dict[str, dict[str, any]] = {},
+        from_build: str = "",
+        pod_arch: str = "",
+        plan_out: str = "";
 
     def _gateway_cfg -> dict[str, any];
+    def build(app_config: AppConfig, out_dir: str) -> dict[str, any];
+    def write_plan(bundle: dict[str, any]);
     def deploy(app_config: AppConfig) -> DeploymentResult;
     def _scan_for_crash_loop(
         core_v1: any,

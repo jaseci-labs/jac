@@ -6,18 +6,29 @@ impl BinaryInjector.prepare(app_name: str, namespace: str, project_dir: str) {
         resolve_console_version(project_dir, self.channel.value, version)
     );
 
-    pod_arch = node_arch();
-    payload = read_local_binary(project_dir)
-        if self.channel == Channel.LOCAL
-        else download_release_binary(self.channel.value, pod_arch, version);
-    self._pod_binary_bytes = payload;
-    self._pod_binary_sha256 = hashlib.sha256(payload).hexdigest();
-    self._pod_arch = pod_arch;
+    pod_arch = self._pod_arch or node_arch();
+    payload = self._fetch_pod_binary(project_dir, pod_arch, version);
+    self._adopt_pod_binary(app_name, pod_arch, payload);
     self._seal_binary_bytes = self._resolve_seal_binary(payload, pod_arch, version);
     super.prepare(app_name, namespace, project_dir);
-    raw = pack_binary_bytes(payload);
-    self._toolchain_object_key = toolchain_object_key(app_name, content_address(raw));
-    self._toolchain_bytes = raw;
+}
+
+impl BinaryInjector._fetch_pod_binary(
+    project_dir: str, pod_arch: str, version: str
+) -> bytes {
+    if self.channel == Channel.LOCAL {
+        return read_local_binary(project_dir);
+    }
+    return download_release_binary(self.channel.value, pod_arch, version);
+}
+
+impl BinaryInjector._adopt_pod_binary(app_name: str, pod_arch: str, payload: bytes) {
+    self._pod_arch = pod_arch;
+    self._pod_binary_sha256 = hashlib.sha256(payload).hexdigest();
+    self._toolchain_bytes = pack_binary_bytes(payload);
+    self._toolchain_object_key = toolchain_object_key(
+        app_name, content_address(self._toolchain_bytes)
+    );
 }
 
 impl BinaryInjector._resolve_seal_binary(
@@ -53,6 +64,200 @@ impl BinaryInjector._skip_when_image_binary -> dict[str, str] {
     return {bundle_pvc_path(self._toolchain_object_key): self._pod_binary_sha256};
 }
 
+impl BinaryInjector.write_build(out_dir: str, app_name: str) -> dict[str, any] {
+    if not self._bundle_bytes or not self._pod_binary_sha256 {
+        raise ValueError(
+            "write_build() needs a prepared injector; there is no bundle or pod "
+            "runtime to record."
+        );
+    }
+    record: dict[str, any] = {
+        "schema": BUILD_SCHEMA,
+        "jac_version": resolve_cli_version().strip(),
+        "channel": self.channel.value,
+        "pod_arch": self._pod_arch,
+        "app_name": app_name,
+        "bundle_object_key": self._object_key,
+        "bundle_sha256": content_address(self._bundle_bytes),
+        "bundle_size": len(self._bundle_bytes),
+        "pod_binary_sha256": self._pod_binary_sha256,
+        "toolchain_object_key": self._toolchain_object_key,
+        "config_sha256": config_digest(sealed_tomls(self._bundle_bytes))
+    };
+    target = os.path.abspath(out_dir);
+    parent = os.path.dirname(target);
+    os.makedirs(parent, exist_ok=True);
+    staging = tempfile.mkdtemp(prefix=f".{os.path.basename(target)}.", dir=parent);
+    outgoing = f"{staging}.outgoing";
+    try {
+        os.chmod(staging, 0o755);
+        with open(os.path.join(staging, BUILD_BUNDLE), "wb") as f {
+            f.write(self._bundle_bytes);
+        }
+        with open(os.path.join(staging, BUILD_RECORD), "w", encoding="utf-8") as f {
+            json.dump(record, f, indent=2, sort_keys=True);
+            f.write("\n");
+        }
+        if os.path.isdir(target) {
+            os.replace(target, outgoing);
+        }
+        os.replace(staging, target);
+    } finally {
+        shutil.rmtree(staging, ignore_errors=True);
+    }
+    shutil.rmtree(outgoing, ignore_errors=True);
+    return record;
+}
+
+impl BinaryInjector.from_build(
+    build_dir: str,
+    app_name: str,
+    project_dir: str,
+    config_tomls: dict[str, str],
+    pod_arch: str = "",
+    storage_class: str = "",
+    access_mode: str = "ReadWriteMany",
+    dry_run: bool = False
+) -> BinaryInjector {
+    record_path = os.path.join(build_dir, BUILD_RECORD);
+    bundle_path = os.path.join(build_dir, BUILD_BUNDLE);
+    if not os.path.isfile(record_path) or not os.path.isfile(bundle_path) {
+        raise ValueError(
+            f"{build_dir} holds no {BUILD_RECORD} and {BUILD_BUNDLE}; write them "
+            f"with `jac scale build --out {build_dir}`."
+        );
+    }
+    with open(record_path, encoding="utf-8") as f {
+        record = json.load(f);
+    }
+    if not isinstance(record, dict) or record.get("schema") != BUILD_SCHEMA {
+        raise ValueError(
+            f"{record_path} is not a schema {BUILD_SCHEMA} build record; rebuild "
+            "it with this jac."
+        );
+    }
+    def field(name: str) -> str {
+        return str(record.get(name) or "");
+    }
+    with open(bundle_path, "rb") as f {
+        raw = f.read();
+    }
+    digest = content_address(raw);
+    if digest != field("bundle_sha256")
+        or field("bundle_object_key") != bundle_object_key(field("app_name"), digest)
+        or record.get("bundle_size") != len(raw) {
+        raise ValueError(
+            f"{bundle_path} (sha256 {digest}) is not the bundle {BUILD_RECORD} "
+            f"records ({field('bundle_object_key')}); it changed after the build. "
+            "Rebuild it with `jac scale build`."
+        );
+    }
+    channel = resolve_dev_channel(project_dir);
+    running = resolve_cli_version().strip();
+    problems: list[str] = [];
+    if field("jac_version") != running {
+        problems.append(
+            f"it was built by jac {field('jac_version')} and this is jac {running}"
+        );
+    }
+    if field("app_name") != app_name {
+        problems.append(
+            f"it was built for app '{field('app_name')}' and this deploy is "
+            f"'{app_name}'"
+        );
+    }
+    if pod_arch and field("pod_arch") != pod_arch {
+        problems.append(
+            f"it was built for {field('pod_arch')} nodes and this deploy targets "
+            f"{pod_arch}"
+        );
+    }
+    if field("channel") != channel.value {
+        problems.append(
+            f"it was built on the '{field('channel')}' jac channel and this deploy "
+            f"resolves '{channel.value}'"
+        );
+    }
+    if field("config_sha256") != config_digest(config_tomls) {
+        drift = config_drift(sealed_tomls(raw), config_tomls);
+        problems.append(
+            "the jac.toml files this deploy would ship differ from the ones sealed "
+            "into the build "
+                + (f"at {', '.join(drift)}" if drift else "in comments or layout only")
+        );
+    }
+    if problems {
+        raise ValueError(
+            f"Refusing to deploy from {build_dir}: "
+                + "; ".join(problems)
+                + ". A deploy from a build never rebuilds; run `jac scale build` "
+                "again for this deploy."
+        );
+    }
+    injector = BinaryInjector(
+        channel=channel, storage_class=storage_class, access_mode=access_mode
+    );
+    injector._object_key = field("bundle_object_key");
+    injector._bundle_bytes = raw;
+    if dry_run {
+        injector._pod_arch = field("pod_arch");
+        injector._pod_binary_sha256 = field("pod_binary_sha256");
+        injector._toolchain_object_key = field("toolchain_object_key");
+        return injector;
+    }
+    payload = injector._fetch_pod_binary(
+        project_dir,
+        field("pod_arch"),
+        resolve_deploy_version(project_dir, channel.value)
+    );
+    injector._adopt_pod_binary(app_name, field("pod_arch"), payload);
+    if injector._pod_binary_sha256 != field("pod_binary_sha256") {
+        raise ValueError(
+            f"The pod jac runtime this deploy fetched (sha256 "
+            f"{injector._pod_binary_sha256}) is not the one {build_dir} was built "
+            f"with ({field('pod_binary_sha256')}). Rebuild with `jac scale build`."
+        );
+    }
+    return injector;
+}
+
+impl config_digest(tomls: dict[str, str]) -> str {
+    return hashlib.sha256(
+        json.dumps(tomls, sort_keys=True).encode("utf-8")
+    ).hexdigest();
+}
+
+impl config_drift(sealed: dict[str, str], applying: dict[str, str]) -> list[str] {
+    def flat(tomls: dict[str, str]) -> dict[str, any] {
+        out: dict[str, any] = {};
+        def walk(rel: str, prefix: str, value: any) {
+            if isinstance(value, dict) {
+                for (key, item) in value.items() {
+                    walk(rel, f"{prefix}.{key}" if prefix else str(key), item);
+                }
+            } else {
+                out[f"{rel}: {prefix}"] = value;
+            }
+        }
+        for (rel, text) in tomls.items() {
+            walk(rel, "", tomllib.loads(text));
+        }
+        return out;
+    }
+    before = flat(sealed);
+    after = flat(applying);
+    absent = object();
+    keys = sorted(
+        key
+        for key in set(before) | set(after)
+        if before.get(key, absent) != after.get(key, absent)
+    );
+    if len(keys) > _DRIFT_SHOWN {
+        return keys[:_DRIFT_SHOWN] + [f"{len(keys) - _DRIFT_SHOWN} more"];
+    }
+    return keys;
+}
+
 impl select_injector(
     storage_class: str,
     app_name: str,
@@ -62,8 +267,9 @@ impl select_injector(
     access_mode: str = "ReadWriteMany",
     fleet: any = None,
     client_ready: any = None,
-    bake_client: bool = False
-) -> tuple[PvcInjector, str] {
+    bake_client: bool = False,
+    pod_arch: str = ""
+) -> tuple[BinaryInjector, str] {
     channel = resolve_dev_channel(project_dir);
     blurbs = {
         Channel.LOCAL: "shipping the local jac binary",
@@ -94,7 +300,8 @@ impl select_injector(
             access_mode=access_mode,
             _fleet=fleet,
             _client_ready=client_ready,
-            _bake_client=bake_client
+            _bake_client=bake_client,
+            _pod_arch=pod_arch
         );
         injector.prepare(app_name, namespace, project_dir);
         console.print(f"Ready: {blurbs[channel]}.");

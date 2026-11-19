@@ -23,7 +23,13 @@ def scale_deploy(
     enable_tls: bool,
     dry_run: bool,
     show_yaml: bool,
-    served_app: str = ""
+    served_app: str = "",
+    from_build: str = "",
+    plan_out: str = ""
+) -> int;
+
+def scale_build(
+    filename: str, target: str, out: str, arch: str, served_app: str = ""
 ) -> int;
 
 def _resolve_deploy_target(target: str) -> tuple[str, str, str];
@@ -43,13 +49,13 @@ comptime SPEC_SCALE_CMD: CommandSpec = CommandSpec(
              Arg.create(
                  "action",
                  kind=ArgKind.POSITIONAL,
-                 help="Action: deploy, status, stop, restart, logs, destroy, gateway"
+                 help="Action: deploy, build, status, stop, restart, logs, destroy, gateway"
              ),
              Arg.create(
                  "service_name",
                  kind=ArgKind.POSITIONAL,
                  `default="",
-                 help="App name (stop/restart/logs), the workspace app or .jac file to deploy, or a .jac app file for platform status/destroy"
+                 help="App name (stop/restart/logs), the workspace app or .jac file to deploy or build, or a .jac app file for platform status/destroy"
              ),
              Arg.create(
                  "lines",
@@ -90,6 +96,34 @@ comptime SPEC_SCALE_CMD: CommandSpec = CommandSpec(
                  help="Platform deploy, with --dry-run: dump the raw YAML stream",
                  short=""
              ),
+             Arg.create(
+                 "from-build",
+                 typ=str,
+                 `default="",
+                 help="Platform deploy: apply the bundle.jab and build.json that `jac scale build --out` wrote there; never builds, refuses a build that does not match this deploy",
+                 short=""
+             ),
+             Arg.create(
+                 "plan-out",
+                 typ=str,
+                 `default="",
+                 help="Platform deploy: write the rendered Deployments as JSON ({expect, parked, deployments}) to this file before applying",
+                 short=""
+             ),
+             Arg.create(
+                 "out",
+                 typ=str,
+                 `default="",
+                 help="Build: the directory to write bundle.jab and build.json into",
+                 short=""
+             ),
+             Arg.create(
+                 "arch",
+                 typ=str,
+                 `default="",
+                 help="Build: the pods' node architecture (amd64 or arm64); defaults to JAC_NODE_ARCH, never read from the cluster",
+                 short=""
+             ),
 
          ],
          examples=[
@@ -109,6 +143,14 @@ comptime SPEC_SCALE_CMD: CommandSpec = CommandSpec(
              (
                  "jac scale deploy --dry-run --show-yaml",
                  "Print the manifests that would be applied, touching nothing"
+             ),
+             (
+                 "jac scale build app.jac --out build --arch amd64",
+                 "Build the app's bundle without contacting the cluster"
+             ),
+             (
+                 "jac scale deploy app.jac --from-build build",
+                 "Apply a bundle `jac scale build` wrote, without building"
              ),
              ("jac scale status", "Show status of the local fleet"),
              ("jac scale stop orders", "Stop the orders app"),
@@ -137,5 +179,9 @@ def scale_cmd(
     component: str = "",
     enable_tls: bool = False,
     dry_run: bool = False,
-    show_yaml: bool = False
+    show_yaml: bool = False,
+    from_build: str = "",
+    plan_out: str = "",
+    out: str = "",
+    arch: str = ""
 ) -> int;

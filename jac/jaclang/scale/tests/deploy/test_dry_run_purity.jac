@@ -1,6 +1,13 @@
+import hashlib;
+import io;
+import json;
 import os;
+import shutil;
+import subprocess;
+import tarfile;
 import tempfile;
 import unittest.mock;
+import from pathlib { Path }
 import from jaclang.scale.deploy.target.kubernetes { ingress as ingress_mod }
 
 # What an operator machine is missing when the 'deploy.k8s' capability is unsynced.
@@ -328,5 +335,251 @@ test "--dry-run refuses a cross-generation pin instead of planning it" {
             assert rc == 2 , f"a plan for the wrong generation was printed (rc={rc})";
             mock_http.assert_not_called();
         }
+    }
+}
+
+
+glob _BUILT: dict[str, str] = {};
+
+
+"""Runs `jac scale <args>` in `project` the way a CI build step or a platform's
+apply step would: no in-cluster env, no JAC_NODE_ARCH, and a kubeconfig that
+cannot load, so any contact with a cluster fails the command."""
+def _scale_cli(project: str, args: list[str]) -> any {
+    blocked = ("JAC_NODE_ARCH", "KUBERNETES_SERVICE_HOST", "KUBERNETES_SERVICE_PORT");
+    env = {
+        k: v
+        for (k, v) in os.environ.items()
+        if k not in blocked
+    };
+    env["KUBECONFIG"] = project + "-kubeconfig";
+    Path(env["KUBECONFIG"]).write_text("clusters: [not a kubeconfig\n");
+    return subprocess.run(
+        [jac_executable(), "scale", *args],
+        cwd=project,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=1500
+    );
+}
+
+
+"""One real `jac scale build` of a small app, shared by the build and deploy
+tests below. The project ships the zig-out binary as its [dev] pod_binary,
+so the build downloads nothing and seals with that binary."""
+def _built_app -> dict[str, str] {
+    if _BUILT {
+        return _BUILT;
+    }
+    binary = require_pod_binary();
+    project = tempfile.mkdtemp(prefix="scale-build-");
+    _write_app(project);
+    Path(project, "jac.toml").write_text(
+        '[project]\nname = "shop"\n\n[scale.kubernetes]\napp_name = "shop"\n'
+            + 'namespace = "shop"\nbundle_storage_class = "standard"\n'
+            + 'python_image = "python:3.12-slim"\n\n'
+            + f'[dev]\npod_binary = "{binary}"\n'
+    );
+    os.mkdir(os.path.join(project, "tools"));
+    Path(project, "tools", "jac.toml").write_text('[project]\nname = "tools"\n');
+    out = project + "-build";
+    result = _scale_cli(
+        project, ["build", "main.jac", "--out", out, "--arch", "amd64"]
+    );
+    assert result.returncode == 0 , result.stdout + result.stderr;
+    _BUILT.update({"project": project, "out": out});
+    return _BUILT;
+}
+
+
+def _apply_target(
+    from_build: str = "", app_name: str = "shop", pod_arch: str = "x86_64"
+) -> KubernetesTarget {
+    return KubernetesTarget(
+        config=KubernetesConfig.from_dict(
+            KubernetesConfig,
+            {
+                "app_name": app_name,
+                "namespace": "shop",
+                "bundle_storage_class": "standard",
+                "python_image": "python:3.12-slim"
+            }
+        ),
+        from_build=from_build,
+        pod_arch=pod_arch
+    );
+}
+
+
+test "jac scale build refuses to guess the node architecture" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        app = _write_app(tmpdir);
+        out = os.path.join(tmpdir, "build");
+        prior = os.environ.pop("JAC_NODE_ARCH", None);
+        try {
+            assert KubernetesRealizer().build(app, out_dir=out) == 2;
+        } finally {
+            if prior is not None {
+                os.environ["JAC_NODE_ARCH"] = prior;
+            }
+        }
+        assert not os.path.exists(out);
+    }
+}
+
+
+test "jac scale build writes a bundle and a record that agree, with no cluster" {
+    built = _built_app();
+    raw = Path(built["out"], "bundle.jab").read_bytes();
+    record = json.loads(Path(built["out"], "build.json").read_text());
+    digest = hashlib.sha256(raw).hexdigest();
+    assert record["bundle_sha256"] == digest , record;
+    assert record["bundle_object_key"].endswith(f"/{digest}.jab") , record;
+    assert record["bundle_size"] == len(raw) , record;
+    assert (record["pod_arch"], record["channel"]) == ("x86_64", "local") , record;
+    pod = hashlib.sha256(require_pod_binary().read_bytes()).hexdigest();
+    assert record["pod_binary_sha256"] == pod , record;
+    tomls: dict[str, str] = {};
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+        for name in ("jac.toml", "tools/jac.toml") {
+            member = tar.extractfile(name);
+            assert member is not None , name;
+            tomls[name] = member.read().decode("utf-8");
+        }
+    }
+    canonical = json.dumps(tomls, sort_keys=True).encode("utf-8");
+    assert record["config_sha256"] == hashlib.sha256(canonical).hexdigest() , record;
+}
+
+
+test "a deploy from a build renders the monolithic Deployments and builds nothing" {
+    built = _built_app();
+    project = built["project"];
+    app = AppConfig(code_folder=project, file_name="main.jac");
+    monolithic = _apply_target().generate_manifests(app)["deployments"];
+    main = Path(project, "main.jac");
+    source = main.read_text();
+    # Any seal, install or client build of this tree now fails.
+    main.write_text("this is not jac\n");
+    plan_file = project + "-plan.json";
+    try {
+        applied = _apply_target(built["out"]).generate_manifests(app)["deployments"];
+        result = _scale_cli(
+            project,
+            [
+                "deploy",
+                "main.jac",
+                "--from-build",
+                built["out"],
+                "--dry-run",
+                "--plan-out",
+                plan_file
+            ]
+        );
+    } finally {
+        main.write_text(source);
+    }
+    assert applied == monolithic;
+    assert result.returncode == 0 , result.stdout + result.stderr;
+    plan = json.loads(Path(plan_file).read_text());
+    by_name = {m["metadata"]["name"]: m for m in monolithic.values()};
+    assert plan["expect"] == sorted(by_name) , plan["expect"];
+    for (name, manifest) in by_name.items() {
+        assert bundle_keys_from_pod_spec(
+            plan["deployments"][name]["spec"]["template"]["spec"]
+        )
+            == bundle_keys_from_pod_spec(manifest["spec"]["template"]["spec"]) , name;
+    }
+}
+
+
+test "a deploy from a build refuses a build that does not match it" {
+    built = _built_app();
+    project = built["project"];
+    app = AppConfig(code_folder=project, file_name="main.jac");
+    # (label, build.json edits, tamper the .jab, app, arch, jac.toml stamped, refusal)
+    rows: list[tuple[str, dict[str, str], bool, str, str, str, str]] = [
+        ("tampered bundle", {}, True, "shop", "x86_64", "", "is not the bundle"),
+        (
+            "other jac",
+            {"jac_version": "0.0.1"},
+            False,
+            "shop",
+            "x86_64",
+            "",
+            "built by jac 0.0.1"
+        ),
+        (
+            "other app",
+            {},
+            False,
+            "storefront",
+            "x86_64",
+            "",
+            "and this deploy is 'storefront'"
+        ),
+        ("other arch", {}, False, "shop", "aarch64", "", "built for x86_64 nodes"),
+        (
+            "other runtime",
+            {"pod_binary_sha256": "0" * 64},
+            False,
+            "shop",
+            "x86_64",
+            "",
+            "pod jac runtime"
+        ),
+        (
+            "stamped config",
+            {},
+            False,
+            "shop",
+            "x86_64",
+            "jac.toml",
+            "sealed into the build at jac.toml: scale.database.enabled"
+        ),
+        (
+            "stamped nested config",
+            {},
+            False,
+            "shop",
+            "x86_64",
+            "tools/jac.toml",
+            "sealed into the build at tools/jac.toml: scale.database.enabled"
+        ),
+
+    ];
+    for (label, edits, tamper, app_name, pod_arch, stamped, expected) in rows {
+        copy = tempfile.mkdtemp(prefix="scale-build-copy-");
+        shutil.rmtree(copy);
+        shutil.copytree(built["out"], copy);
+        if tamper {
+            with open(os.path.join(copy, "bundle.jab"), "ab") as f {
+                f.write(b"\0");
+            }
+        }
+        record_file = Path(copy, "build.json");
+        record = json.loads(record_file.read_text());
+        record.update(edits);
+        record_file.write_text(json.dumps(record));
+        toml = Path(project, stamped or "jac.toml");
+        config = toml.read_text();
+        if stamped {
+            toml.write_text(config + "\n[scale.database]\nenabled = false\n");
+        }
+        refusal = "";
+        try {
+            _apply_target(
+                copy, app_name=app_name, pod_arch=pod_arch
+            ).generate_manifests(
+                app
+            );
+        } except ValueError as e {
+            refusal = str(e);
+        } finally {
+            toml.write_text(config);
+            shutil.rmtree(copy, ignore_errors=True);
+        }
+        assert expected in refusal , f"{label}: {refusal!r}";
     }
 }

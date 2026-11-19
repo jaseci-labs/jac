@@ -154,6 +154,50 @@ impl KubernetesTarget._gateway_cfg -> dict[str, any] {
     return get_scale_config().get_gateway_config();
 }
 
+impl KubernetesTarget.build(app_config: AppConfig, out_dir: str) -> dict[str, any] {
+    if not self.pod_arch {
+        raise ValueError(
+            "A build never asks the cluster for its node architecture; name it "
+            "with --arch amd64|arm64 or JAC_NODE_ARCH."
+        );
+    }
+    refusal = deploy_generation_refusal(app_config.code_folder);
+    if refusal {
+        raise ValueError(refusal);
+    }
+    injector = self._manifest_builder(app_config)._prepare_injector(app_config);
+    return injector.write_build(out_dir, k8s_safe_name(self.k8s_config.app_name));
+}
+
+impl KubernetesTarget.write_plan(bundle: dict[str, any]) {
+    if not self.plan_out {
+        return;
+    }
+    import json;
+    import from pathlib { Path }
+    deployments: dict[str, any] = {};
+    parked: list[str] = [];
+    for manifest in dict(bundle.get("deployments", {})).values() {
+        name = str(manifest["metadata"]["name"]);
+        deployments[name] = manifest;
+        if manifest.get("spec", {}).get("replicas") == 0
+            or replica_floor_of(manifest) == 0 {
+            parked.append(name);
+        }
+    }
+    plan = {
+        "expect": sorted(deployments),
+        "parked": sorted(parked),
+        "deployments": deployments
+    };
+    atomic_write(
+        Path(self.plan_out),
+        (json.dumps(plan, indent=2, sort_keys=True, `default=str) + "\n").encode(
+            "utf-8"
+        )
+    );
+}
+
 impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     app_name = app_config.app_name or self.k8s_config.app_name;
     if self.k8s_config.shared_ingress and not self.k8s_config.domain {
@@ -233,6 +277,7 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     self._emit("bundle", "start", "Generating manifests");
     try {
         bundle = self.generate_manifests(app_config);
+        self.write_plan(bundle);
     } except Exception as e {
         self._emit("bundle", "error", f"manifest generation failed: {e}");
         return DeploymentResult(
@@ -877,7 +922,9 @@ impl KubernetesTarget._manifest_builder(app_config: AppConfig) -> ManifestBuilde
         fleet=self.fleet,
         gateway_config=self.gateway_config,
         app_overrides=dict(self.app_overrides),
-        dry_run=self.dry_run
+        dry_run=self.dry_run,
+        from_build=self.from_build,
+        pod_arch=self.pod_arch
     );
 }
 
