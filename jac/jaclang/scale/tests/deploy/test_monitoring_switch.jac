@@ -147,3 +147,15 @@ test "prometheus scrapes every fleet pod on the app port at the path its role se
         assert (target["role"], target["app"], target["pod"]) == (role, "svc", "svc-0");
     }
 }
+
+
+test "Alloy discovers pods only in the namespace it was deployed for" {
+    obs = _target(monitoring=False, logs=True)._build_observability_config();
+    for ns in ["t-ns", "other-ns"] {
+        config = MonitoringDeployer(k8s_config=obs)._alloy_config("t", ns);
+        discovery = config.split('discovery.kubernetes "pods" {', 1)[1].split(
+            "\n}\n", 1
+        )[0];
+        assert f'names = ["{ns}"]' in discovery , discovery;
+    }
+}

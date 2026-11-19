@@ -1656,15 +1656,8 @@ impl MonitoringDeployer._deploy_loki(
     }
 }
 
-impl MonitoringDeployer._deploy_alloy(
-    app_name: str, namespace: str, apps_v1: any, core_v1: any
-) {
+impl MonitoringDeployer._alloy_config(app_name: str, namespace: str) -> str {
     loki_name = f"{app_name}-loki";
-    alloy_name = f"{app_name}-alloy";
-    alloy_sa_name = f"{alloy_name}-sa";
-    cluster_role_name = f"{namespace}-{alloy_name}";
-    cluster_role_binding_name = f"{namespace}-{alloy_name}";
-    rbac_v1 = client.RbacAuthorizationV1Api();
     loki_push_url = f"http://{loki_name}-service:3100/loki/api/v1/push";
     tempo_name = f"{app_name}-tempo";
     tempo_otlp_endpoint = f"{tempo_name}-service:4317";
@@ -1803,7 +1796,18 @@ impl MonitoringDeployer._deploy_alloy(
         );
     }
 
-    alloy_config_river = alloy_header + alloy_logs_lane + alloy_otel_lane;
+    return alloy_header + alloy_logs_lane + alloy_otel_lane;
+}
+
+impl MonitoringDeployer._deploy_alloy(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) {
+    alloy_name = f"{app_name}-alloy";
+    alloy_sa_name = f"{alloy_name}-sa";
+    cluster_role_name = f"{namespace}-{alloy_name}";
+    cluster_role_binding_name = f"{namespace}-{alloy_name}";
+    rbac_v1 = client.RbacAuthorizationV1Api();
+    alloy_config_river = self._alloy_config(app_name, namespace);
     alloy_configmap = {
         'apiVersion': 'v1',
         'kind': 'ConfigMap',
