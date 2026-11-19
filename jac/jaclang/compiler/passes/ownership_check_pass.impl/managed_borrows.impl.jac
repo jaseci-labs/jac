@@ -64,7 +64,14 @@ impl OwnershipCheckPass._call_writes(call: FuncCall) -> set[str] {
         return {"*"};
     }
     if self._is_builtin_mutator(callee) {
-        return {"[]"};
+        mname = callee.name_ref.sym_name if callee.name_ref is not None else "";
+        params = self._call_params(call);
+        if any(not isinstance(a, Expr) for a in params) {
+            return {"*"};
+        }
+        return self._infer_mutator_effects(
+            mname, call, [a for a in params if isinstance(a, Expr)]
+        );
     }
     if str(callee.loc.mod_path).endswith(".pyi") {
         name = callee.name_ref.sym_name if callee.name_ref is not None else "";
