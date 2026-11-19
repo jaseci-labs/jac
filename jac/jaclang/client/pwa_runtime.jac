@@ -41,7 +41,7 @@ obj:pub PwaInstallState {
         shouldShowBanner: bool,
         appName: str,
         appIcon: str,
-        install: Callable[[], bool],
+        install: Callable[[], Awaitable[bool]],
         showIosGuide: Callable[[], None],
         closeIosGuide: Callable[[], None],
         iosGuideOpen: bool,
