@@ -30,6 +30,11 @@ well as for the row, the way a saturated server does.
 
 `Deliver` reports a status dict that its own `on_commit` callback marks as
 sent, the shape of a send-then-confirm handler.
+
+`Enroll` is a find-or-create of one `Profile` under the caller's root that
+holds its transaction open for `hold` seconds after creating it, so callers
+that arrive together all read an empty root first; `CountProfiles` reports
+how many exist.
 """
 
 import from jaclang.data.pgwire { PgWireError }
@@ -218,5 +223,27 @@ walker:pub Deliver {
         }
         Jac.on_commit(mark_sent);
         report status;
+    }
+}
+
+
+node Profile {}
+
+
+walker:pub Enroll {
+    has hold: float = 0.05;
+
+    can enroll with Root entry {
+        if not [here-->[?:Profile]] {
+            here ++> Profile();
+            sleep(self.hold);
+        }
+    }
+}
+
+
+walker:pub CountProfiles {
+    can count with Root entry {
+        report len([here-->[?:Profile]]);
     }
 }

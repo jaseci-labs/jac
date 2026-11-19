@@ -35,7 +35,7 @@ import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.runtime.exceptions { WriteConflict }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.server.request_scope { RequestScope }
-import from jaclang.server.session { MAX_RETRIES, RO_UNITS_ENV, Session }
+import from jaclang.server.session { RO_UNITS_ENV, Session }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -163,37 +163,7 @@ def _fail_commits(sess: Session, times: int = 1) -> list[int] {
 }
 
 
-test "consequence 1: a serialization failure at COMMIT is retried and the write lands" {
-    with TemporaryDirectory() as td {
-        old = JacRuntime.exec_ctx;
-        ctx = _ctx(td);
-        JacRuntime.exec_ctx = ctx;
-        try {
-            t = RTally(n=1);
-            root ++> t;
-            ctx.mem.commit();
-            tid: UUID = _as_any(t).__jac__.id;
-
-            t.n = 2;
-            ctx.mem.mark_dirty(_as_any(t).__jac__);
-            left = _fail_commits(_sess(ctx));
-            ctx.mem.commit();
-
-            assert left[0] == 0 , "the injected COMMIT failure never fired";
-            assert _stored(ctx, tid, "n") == "2" , (
-                "the retry inside commit must land the write: the failed COMMIT "
-                "rolled the upsert back, so the row is still at the version the "
-                f"session read; the database holds n={_stored(ctx, tid, 'n')}"
-            );
-        } finally {
-            JacRuntime.exec_ctx = old;
-            ctx.close();
-        }
-    }
-}
-
-
-test "consequence 1: after a real serialization failure the conflict names the row that moved" {
+test "consequence 1: after a real serialization failure neither write lands until the re-run" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
@@ -236,25 +206,24 @@ test "consequence 1: after a real serialization failure the conflict names the r
                 rival.close();
             }
 
-            # Writing y now fails serialization in Postgres; the retry runs in
-            # a new transaction, where x is unchanged and y is one version on.
+            # Writing y now fails serialization in Postgres. The transaction
+            # that read x and y is gone, so neither write may land without a
+            # re-run that reads them again.
             JacRuntime.exec_ctx = ctx;
             _as_any(y).archetype.n = 20;
             ctx.mem.mark_dirty(y);
-            conflict: (WriteConflict | None) = None;
+            raised = False;
             try {
                 ctx.mem.commit();
-            } except WriteConflict as wc {
-                conflict = wc;
+            } except WriteConflict {
+                raised = True;
             }
-            assert conflict is not None , "a write over the rival's commit must conflict";
-            blamed = "x" if conflict.anchor_id == xid else str(conflict.anchor_id);
-            assert conflict.anchor_id == yid , (
-                "the rival moved y and nobody moved x, so y is the conflict; the "
-                f"session blamed {blamed} "
-                f"(expected v{conflict.expected_version}, found v{conflict.actual_version})"
+            assert raised , "a write over the rival's commit must conflict";
+            assert _stored(ctx, xid, "n") == "1" , (
+                "x was written from a read the failed transaction made; it landed "
+                "without the re-run"
             );
-            assert conflict.actual_version == conflict.expected_version + 1;
+            assert _stored(ctx, yid, "n") == "99";
 
             # The re-run reads both again and commits on top of the rival.
             ctx.mem.abort();
@@ -277,39 +246,7 @@ test "consequence 1: after a real serialization failure the conflict names the r
 }
 
 
-test "consequence 1: the retry replays updates, inserts and deletes together" {
-    with TemporaryDirectory() as td {
-        old = JacRuntime.exec_ctx;
-        ctx = _ctx(td);
-        JacRuntime.exec_ctx = ctx;
-        try {
-            kept = _loose(ctx, 1);
-            doomed = _loose(ctx, 2);
-            ctx.mem.commit();
-
-            _as_any(kept).archetype.n = 10;
-            ctx.mem.mark_dirty(kept);
-            ctx.mem.delete(doomed.ensure_id());
-            fresh = _loose(ctx, 3);
-            left = _fail_commits(_sess(ctx));
-            ctx.mem.commit();
-
-            assert left[0] == 0 , "the injected COMMIT failure never fired";
-            assert _stored(ctx, kept.ensure_id(), "n") == "10" , "the update was lost";
-            assert _stored(ctx, doomed.ensure_id(), "n") is None , (
-                "the delete was lost: a delete the rolled-back transaction "
-                "carried must be replayed with it"
-            );
-            assert _stored(ctx, fresh.ensure_id(), "n") == "3" , "the insert was lost";
-        } finally {
-            JacRuntime.exec_ctx = old;
-            ctx.close();
-        }
-    }
-}
-
-
-test "consequence 1: a COMMIT that keeps failing gives up as a conflict and loses nothing" {
+test "consequence 1: a serialization failure at COMMIT is a conflict for the caller to re-run, never a replay" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         ctx = _ctx(td);
@@ -322,26 +259,26 @@ test "consequence 1: a COMMIT that keeps failing gives up as a conflict and lose
 
             t.n = 2;
             ctx.mem.mark_dirty(_as_any(t).__jac__);
-            left = _fail_commits(_sess(ctx), MAX_RETRIES + 1);
+            left = _fail_commits(_sess(ctx));
             raised = False;
             try {
                 ctx.mem.commit();
             } except WriteConflict {
                 raised = True;
             }
-            assert left[0] == 0 , (
-                f"commit must try {MAX_RETRIES + 1} times (one attempt and "
-                f"{MAX_RETRIES} retries) before giving up; {left[0]} of the "
-                "injected failures were never reached"
-            );
+            assert left[0] == 0 , "the injected COMMIT failure never fired";
             assert raised , (
-                "once the retries are spent the failure must reach the caller as "
-                "a conflict the request loop re-runs"
+                "the failure must reach the caller as a conflict the request loop "
+                "re-runs from fresh reads"
             );
             assert not _as_any(ctx.mem.store).in_txn() , (
                 "a commit that gave up must not leave its transaction open"
             );
-            assert _stored(ctx, tid, "n") == "1";
+            assert _stored(ctx, tid, "n") == "1" , (
+                "the write set was sent again in a new transaction after the "
+                "failed COMMIT, although it was computed from reads that "
+                "transaction lost"
+            );
 
             # The unit is lost until it is aborted: whoever swallowed that
             # conflict (the walk's own end-of-walk commit does) must not be
@@ -444,12 +381,19 @@ test "consequence 3: a conflict after an abort does not delete rows the aborted 
             ctx.mem.flush();
             ctx.mem.abort();
 
-            # Attempt two never loads it, and its COMMIT hits a conflict.
+            # Attempt two never loads it, and its COMMIT hits a conflict; the
+            # attempt after that commits.
             assert ctx.mem.get(uid) is not None;
             left = _fail_commits(_sess(ctx));
+            try {
+                ctx.mem.commit();
+            } except WriteConflict {
+                ctx.mem.abort();
+            }
+            assert left[0] == 0 , "the injected COMMIT failure never fired";
+            assert ctx.mem.get(uid) is not None;
             ctx.mem.commit();
 
-            assert left[0] == 0 , "the injected COMMIT failure never fired";
             assert _stored(ctx, tid, "n") == "1" , (
                 "a row the aborted attempt changed is not in memory because abort "
                 "evicted it, not because anyone deleted it; the database holds "
@@ -463,39 +407,60 @@ test "consequence 3: a conflict after an abort does not delete rows the aborted 
 }
 
 
+"""A swallowed failed statement ends the transaction under the session. The
+flushed write is sent again, unless the statement failed on a serialization
+conflict: then what the transaction read is gone too, and the unit is lost."""
 test "a transaction Postgres rolled back on a failed statement does not lose its flushed writes" {
-    with TemporaryDirectory() as td {
-        old = JacRuntime.exec_ctx;
-        ctx = _ctx(td);
-        JacRuntime.exec_ctx = ctx;
-        try {
-            t = RTally(n=1);
-            root ++> t;
-            ctx.mem.commit();
-            tid: UUID = _as_any(t).__jac__.id;
-
-            t.n = 2;
-            ctx.mem.mark_dirty(_as_any(t).__jac__);
-            ctx.mem.flush();
-            failed = False;
+    for (probe, conflict) in [
+        ("SELECT 1 / 0", False),
+        (
+            "DO $$ BEGIN RAISE EXCEPTION 'could not serialize access' "
+            "USING ERRCODE = '40001'; END $$",
+            True
+        )
+    ] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
             try {
-                _as_any(ctx.mem.store).rows("SELECT 1 / 0", {});
-            } except PgWireError {
-                failed = True;
-            }
-            assert failed , "the probe statement must fail";
-            assert not _as_any(ctx.mem.store).in_txn() , (
-                "a failed statement ends the transaction it ran in"
-            );
+                t = RTally(n=1);
+                root ++> t;
+                ctx.mem.commit();
+                tid: UUID = _as_any(t).__jac__.id;
 
-            ctx.mem.commit();
-            assert _stored(ctx, tid, "n") == "2" , (
-                "the flushed write died with the transaction; the session must "
-                "send it again instead of believing it is already stored"
-            );
-        } finally {
-            JacRuntime.exec_ctx = old;
-            ctx.close();
+                t.n = 2;
+                ctx.mem.mark_dirty(_as_any(t).__jac__);
+                ctx.mem.flush();
+                failed = False;
+                try {
+                    _as_any(ctx.mem.store).rows(probe, {});
+                } except PgWireError {
+                    failed = True;
+                }
+                assert failed , f"the probe statement must fail: {probe}";
+                assert not _as_any(ctx.mem.store).in_txn() , (
+                    "a failed statement ends the transaction it ran in"
+                );
+
+                raised = False;
+                try {
+                    ctx.mem.commit();
+                } except WriteConflict {
+                    raised = True;
+                }
+                assert raised == conflict , (
+                    f"after {probe} the commit raised={raised}, expected {conflict}"
+                );
+                assert _stored(ctx, tid, "n") == ("1" if conflict else "2") , (
+                    f"after {probe} the database holds n={_stored(ctx, tid, 'n')}: "
+                    "a write is sent again only when its transaction died for a "
+                    "reason that leaves its reads valid"
+                );
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
         }
     }
 }
@@ -1094,14 +1059,20 @@ test "a write the session was not told about survives a retried flush" {
                 if left[0] > 0 {
                     left[0] -= 1;
                     raise PgWireError(
-                        {"C": "40001", "M": "could not serialize access"}
+                        {
+                            "C": "57014",
+                            "M": "canceling statement due to statement timeout"
+                        }
                     );
                 }
                 real_upsert(rows);
             }
             store.upsert = failing_upsert;
-            other.commit();
+            try {
+                other.commit();
+            } except PgWireError {}
             assert left == [0] , "the first upsert was never attempted";
+            other.commit();
             assert _stored(ctx, id, "n") == "70" , (
                 "a field write whose first upsert failed was dropped by the retry"
             );
@@ -1332,7 +1303,7 @@ test "request loop: the response shows what on_commit callbacks changed" {
 }
 
 
-test "request loop: a COMMIT conflict the session retries does not cost a re-run" {
+test "request loop: a COMMIT conflict re-runs the walker, which counts the vote once" {
     prior = _without_read_tier();
     try {
         with TemporaryDirectory() as td {
@@ -1343,9 +1314,9 @@ test "request loop: a COMMIT conflict the session retries does not cost a re-run
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert mod.commit_faults == [] , "the COMMIT failure was never armed";
             assert "error" not in voted , f"the vote failed: {voted}";
-            assert len(mod.runs) == 1 , (
-                "the session retried the COMMIT itself, so the request loop has "
-                f"nothing to re-run; the walker ran {len(mod.runs)} times"
+            assert len(mod.runs) == 2 , (
+                "the failed COMMIT lost the reads the vote was computed from, so "
+                f"the walker must run again; it ran {len(mod.runs)} times"
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);
             assert tally.get("reports") == [{"cast": True, "total": 1}] , f"{tally}";
@@ -1390,8 +1361,7 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
             assert "error" not in seeded , f"seeding failed: {seeded}";
             (mode, max_attempts, _backoff) = _occ_policy();
             attempts = 1 if mode == "fail" else max(1, max_attempts);
-            # Every run spends the session's whole retry budget on its COMMIT.
-            mod.commit_faults.extend([MAX_RETRIES + 1] * attempts);
+            mod.commit_faults.extend([1] * attempts);
             voted = _spawn(exec_mgr, walkers["Vote"]);
             assert voted.get("error_code") == "write_conflict" , f"{voted}";
             assert voted.get("http_status") == 409 , f"{voted}";
@@ -1399,10 +1369,10 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
                 f"the request loop owns the re-runs: {attempts} attempts allowed, "
                 f"the walker ran {len(mod.runs)} times"
             );
-            assert len(mod.failed_commits) == attempts * (MAX_RETRIES + 1) , (
-                f"each attempt retries its COMMIT {MAX_RETRIES} times before the "
-                f"session hands the conflict to the request loop; "
-                f"{len(mod.failed_commits)} COMMITs failed in {attempts} attempts"
+            assert len(mod.failed_commits) == attempts , (
+                "each attempt hands its failed COMMIT to the request loop without "
+                f"sending it again; {len(mod.failed_commits)} COMMITs failed in "
+                f"{attempts} attempts"
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);
             assert tally.get("reports") == [{"cast": False, "total": 0}] , (
@@ -1431,25 +1401,30 @@ test "request loop: a plain answer leaves the scan sealed for the session's clos
 }
 
 
-def _bump_burst(busy: bool) -> tuple[list[any], int] {
+"""Run `n` copies of the fixture walker `name` at once, each in a request
+scope of its own, after spawning `seed` (when given). Returns their responses
+and how far the number `read` reports moved across the burst."""
+def _burst(
+    name: str, args: dict[str, any], read: str, n: int, seed: str = ""
+) -> tuple[list[any], int] {
     with TemporaryDirectory() as td {
         (exec_mgr, walkers, mod) = _vote_app(td);
-        seeded = _spawn(exec_mgr, walkers["SeedCounter"]);
-        assert "error" not in seeded , f"seeding failed: {seeded}";
-        start = _spawn(exec_mgr, walkers["ReadCounter"])["reports"][0];
+        if seed {
+            seeded = _spawn(exec_mgr, walkers[seed]);
+            assert "error" not in seeded , f"seeding failed: {seeded}";
+        }
+        start = _spawn(exec_mgr, walkers[read])["reports"][0];
         ambient = JacRuntime.get_context();
         async def one -> any {
             with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
-                return await exec_mgr.spawn_walker(
-                    walkers["Bump"], {"hold": 0.05, "busy": busy}, "voter"
-                );
+                return await exec_mgr.spawn_walker(walkers[name], args, "voter");
             }
         }
         async def burst -> any {
-            return await asyncio.gather(*[one() for _ in range(10)]);
+            return await asyncio.gather(*[one() for _ in range(n)]);
         }
         results = _as_any(asyncio.run(burst()));
-        final = _spawn(exec_mgr, walkers["ReadCounter"])["reports"][0];
+        final = _spawn(exec_mgr, walkers[read])["reports"][0];
         return (list(results), final - start);
     }
 }
@@ -1457,7 +1432,9 @@ def _bump_burst(busy: bool) -> tuple[list[any], int] {
 
 test "request loop: ten concurrent writers to one node all land" {
     for busy in (False, True) {
-        (results, landed) = _bump_burst(busy);
+        (results, landed) = _burst(
+            "Bump", {"hold": 0.05, "busy": busy}, "ReadCounter", 10, seed="SeedCounter"
+        );
         refused = [
             r
             for r in results
@@ -1472,4 +1449,20 @@ test "request loop: ten concurrent writers to one node all land" {
             f"10 accepted writes moved the counter by {landed} (busy={busy})"
         );
     }
+}
+
+
+test "request loop: concurrent find-or-create on one root creates the node once" {
+    (results, created) = _burst("Enroll", {"hold": 0.05}, "CountProfiles", 3);
+    refused = [
+        r
+        for r in results
+        if "error" in r
+    ];
+    assert not refused , f"{len(refused)} of 3 callers were refused: {refused[0]}";
+    assert created == 1 , (
+        f"3 callers that found no profile created {created}: a caller whose "
+        "COMMIT lost a serialization conflict must re-run and find the winner's "
+        "profile, not send its own write again"
+    );
 }
