@@ -1918,8 +1918,9 @@ impl NaIRGenPass._codegen_field_default(
     val: (ir.Value | None) = None;
     try {
         val = self._codegen_expr(expr);
+        bound_by_walrus = bool(self.local_vars);
         if val is not None
-            and self.local_vars
+            and bound_by_walrus
             and self._is_reference_type(val.type)
             and not self._is_owned(val) {
             if self._nogc_headerless() {
