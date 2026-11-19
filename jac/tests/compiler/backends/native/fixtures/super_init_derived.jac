@@ -83,7 +83,34 @@ obj OptsChild(Opts) {
     }
 }
 
+glob seed: int = 1;
+
+def base_level -> int {
+    return 2;
+}
+
+obj Seeded {
+    has level: int = seed,
+        bonus: int = base_level();
+}
+
+obj SeededChild(Seeded) {
+    def init(seed: int) {
+        def base_level -> int {
+            return seed;
+        }
+        super.init();
+    }
+}
+
+def make_seeded(seed: int) -> Seeded {
+    return Seeded();
+}
+
 with entry {
+    sc = SeededChild(7);
+    ms = make_seeded(7);
+    print(sc.level, sc.bonus, ms.level, ms.bonus);
     for full in [True, False] {
         oc = OptsChild(full);
         print(oc.level, oc.names);
