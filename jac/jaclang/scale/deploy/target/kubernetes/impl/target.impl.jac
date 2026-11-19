@@ -147,9 +147,6 @@ impl reap_stale_scaling_resources_for_bundle(
     }
 }
 
-# Redeploys leave spec.replicas to the autoscaler, but an HPA never scales a
-# target up from 0, so a service that left scale-to-zero while idle needs its
-# floor set once here.
 impl lift_parked_deployments_for_bundle(
     bundle: dict[str, any], namespace: str, apps_v1: any
 ) -> list[str] {
@@ -1213,7 +1210,6 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
         }
     }
 
-    # After the autoscalers, so a replaced KEDA ScaledObject can't scale it back to 0.
     for svc_name in lift_parked_deployments_for_bundle(bundle, namespace, apps_v1) {
         if self.logger {
             self.logger.info(
