@@ -1170,8 +1170,8 @@ test "a listing shows the newer of the shared record and this worker's own run, 
         }
         return state["shared"];
     }
-    def shared(finished_at: str) -> str {
-        return json.dumps({"worker": "pod-b:2", "finished_at": finished_at});
+    def shared(tick: str) -> str {
+        return json.dumps({"worker": "pod-b:2", "tick": tick});
     }
     sched = fresh_scheduler();
     tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);

@@ -784,7 +784,7 @@ impl Scheduler.last_run_of(name: str) -> (dict[str, any] | None) {
     if shared is None {
         return local;
     }
-    if local is not None and (shared.get("finished_at") or "") < local["finished_at"] {
+    if local is not None and (shared.get("tick") or "") < local["tick"] {
         return local;
     }
     return shared;

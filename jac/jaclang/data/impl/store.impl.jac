@@ -1286,6 +1286,10 @@ impl PgStore.kv_put_record(key: str, value: str) -> None {
         INSERT INTO kv_state (key, value, expires_at, updated_at)
         VALUES (:k, :v, NULL, now())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        WHERE (
+            (kv_state.value::jsonb ->> 'tick')::timestamptz
+            > (EXCLUDED.value::jsonb ->> 'tick')::timestamptz
+        ) IS NOT TRUE
         """,
         {'k': f"record:{key}", 'v': value}
     );
