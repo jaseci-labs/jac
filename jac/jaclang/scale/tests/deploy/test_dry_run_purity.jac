@@ -659,9 +659,21 @@ test "publishing builds into one --out keeps exactly one complete build" {
         if not refused or os.path.exists(os.path.join(project, "artifacts")) {
             problems.append("an --out the bundle would ship was written");
         }
+        Path(project, ".jacignore").write_text("build.json\n");
+        refused = False;
+        try {
+            _apply_target().build(app, os.path.join(project, "out"));
+        } except ValueError {
+            refused = True;
+        }
+        if not refused or os.path.exists(os.path.join(project, "out")) {
+            problems.append("an --out whose bundle would ship was written");
+        }
     } finally {
         shutil.rmtree(out, ignore_errors=True);
         shutil.rmtree(os.path.join(project, "artifacts"), ignore_errors=True);
+        shutil.rmtree(os.path.join(project, "out"), ignore_errors=True);
+        Path(project, ".jacignore").unlink(missing_ok=True);
     }
     parent = tempfile.mkdtemp(prefix="scale-publish-");
     again = os.path.join(parent, "again");

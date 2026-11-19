@@ -44,6 +44,9 @@ obj BinaryInjector(PvcInjector) {
 }
 
 
+def build_output_names -> list[str];
+
+
 def config_digest(tomls: dict[str, str]) -> str;
 
 

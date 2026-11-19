@@ -13888,7 +13888,7 @@ graph import scale {
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
             select_injector
         },
-        deploy.target.kubernetes.target.KubernetesTarget.build { BUILD_RECORD },
+        deploy.target.kubernetes.target.KubernetesTarget.build { build_output_names },
     ]
     injector.binary_injector as bi_mod --> tests.microservices.test_binary_injector;
     injector.binary_injector as binary_injector_mod ++> tests.deploy.test_dry_run_purity;

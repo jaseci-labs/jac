@@ -267,6 +267,10 @@ impl BinaryInjector.from_build(
     return injector;
 }
 
+impl build_output_names -> list[str] {
+    return [BUILD_RECORD, "bundle-0000000000000000.jab", f"{_BUILD_TEMP_PREFIX}0"];
+}
+
 impl config_digest(tomls: dict[str, str]) -> str {
     return hashlib.sha256(
         json.dumps(tomls, sort_keys=True).encode("utf-8")

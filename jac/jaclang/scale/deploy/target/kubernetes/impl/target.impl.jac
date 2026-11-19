@@ -164,9 +164,11 @@ impl KubernetesTarget.build(app_config: AppConfig, out_dir: str) -> dict[str, an
     import from pathlib { Path }
     base = Path(app_config.code_folder).resolve();
     out = Path(out_dir).resolve();
+    excluded = source_filter_for(base);
     if out.is_relative_to(base)
-        and not source_filter_for(base).excludes(
-            out.relative_to(base) / BUILD_RECORD
+        and not all(
+            excluded.excludes(out.relative_to(base) / name)
+            for name in build_output_names()
         ) {
         raise ValueError(
             f"--out {out} is inside the project and its files would ship, so the "
