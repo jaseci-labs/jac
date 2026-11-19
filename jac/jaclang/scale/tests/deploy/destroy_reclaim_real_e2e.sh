@@ -177,6 +177,23 @@ require_absent() {
     fail "${ns}" "${kind}/${name} still present in '${ns}' after destroy, with no deletion timestamp"
 }
 
+# A destroy request is asynchronous. Before recreating the same app, wait for
+# its old PVC to be fully removed; applying a PVC with the same name while the
+# previous claim is Terminating can leave the bundle loader without a claim.
+wait_until_gone() {
+    ns="$1"; kind="$2"; name="$3"
+    waited=0
+    while [ "${waited}" -lt "${RECLAIM_WAIT:-180}" ]; do
+        if ! kubectl get "${kind}" "${name}" -n "${ns}" >/dev/null 2>&1; then
+            echo "  ${kind}/${name} fully removed"
+            return 0
+        fi
+        sleep 5
+        waited=$(( waited + 5 ))
+    done
+    fail "${ns}" "timed out waiting for ${kind}/${name} to be fully removed before redeploy"
+}
+
 # Surviving means untouched: an object already marked for deletion has been
 # reclaimed by something, which for a foreign object is the bug under test.
 require_present() {
@@ -428,6 +445,7 @@ seed_user_ops_account "${COTENANT_NS}" "${COTENANT}"
 _t "C deployed"
 # Destroying the co-tenant must take the adopted path and spare the namespace.
 destroy_app "${COTENANT}" "${COTENANT_NS}"
+wait_until_gone "${COTENANT_NS}" pvc "${COTENANT}-bundles"
 
 destroy_said "Another app has resources" \
     || fail "${COTENANT_NS}" "destroying '${COTENANT}' removed '${APP}' workloads from the namespace without naming '${APP}', so nobody knows to redeploy it"
