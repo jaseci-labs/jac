@@ -619,11 +619,7 @@ impl KubernetesTargetBase._database_disk(
             tty=False
         );
         used = int(str(out).split()[0]) * 1024;
-        return {
-            'used': used,
-            'total': total,
-            'percent': round(100 * used / total, 1)
-        };
+        return {'used': used, 'total': total, 'percent': round(100 * used / total, 1)};
     } except Exception as e {
         if self.logger {
             self.logger.warning(f"Could not read the database disk usage: {e}");
