@@ -638,7 +638,7 @@ test "remember runs on the worker connection, enqueue in the request transaction
 test "a request never derives the worker's side store; a forked worker does, once" {
     primary = _RecordingPg(conninfo=ConnInfo(host="primary.invalid"));
     side = _RecordingPg(conninfo=ConnInfo(host="side.invalid"));
-    ctx = SimpleNamespace(mem=_FakeMemory(store=primary));
+    ctx: any = SimpleNamespace(mem=_FakeMemory(store=primary));
     use_store(None);
     derived: list[any] = [];
 
