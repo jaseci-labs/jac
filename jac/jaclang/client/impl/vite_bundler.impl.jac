@@ -1141,7 +1141,6 @@ impl ViteBundler.init(
     config_path: Optional[Path] = None,
     entry_path: str = ""
 ) {
-    import threading;
     project_root = find_project_root(project_dir);
     self.project_dir = project_root[0] if project_root else project_dir;
     self.minify = minify;
@@ -1151,8 +1150,7 @@ impl ViteBundler.init(
     self.output_dir = output_dir or (self._client_app_dir() / 'dist');
 
     self.dev_server_port = 0;
-    self._dev_lock = threading.Lock();
-    self._dev_pending = [];
+    self.dev_commands = DevCommandPipe();
 }
 
 impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
@@ -1303,56 +1301,52 @@ impl ViteBundler._dispatch_client_event(self: ViteBundler, line: str) -> None {
 }
 
 impl ViteBundler.publish_dev_status(self: ViteBundler, status: dict[str, any]) -> None {
-    self._send_dev_command({"type": "status", "status": status});
+    self.dev_commands.send({"type": "status", "status": status});
 }
 
 impl ViteBundler.request_dev_reload(self: ViteBundler) -> None {
-    self._send_dev_command({"type": "reload"});
+    self.dev_commands.send({"type": "reload"});
 }
 
-impl ViteBundler._send_dev_command(self: ViteBundler, command: dict[str, any]) -> None {
-    with self._dev_lock {
+impl DevCommandPipe.send(command: dict[str, any]) -> None {
+    with self._lock {
         if command["type"] == "status" {
-            self._dev_status = command;
+            self._status = command;
         }
-        if self._dev_stdin is None {
+        if self._stream is None {
             return;
         }
-        self._dev_pending.append(command);
-        wake = self._dev_wake;
+        self._pending.append(command);
+        wake = self._wake;
     }
     wake.set();
 }
 
-impl ViteBundler._attach_dev_commands(self: ViteBundler, process: any) -> None {
-    import threading;
+impl DevCommandPipe.attach(stream: any) -> None {
     wake = threading.Event();
-    with self._dev_lock {
-        replaced = self._dev_wake;
-        self._dev_stdin = process.stdin;
-        self._dev_wake = wake;
-        self._dev_pending = [] if self._dev_status is None else [self._dev_status];
+    with self._lock {
+        replaced = self._wake;
+        self._stream = stream;
+        self._wake = wake;
+        self._pending = [] if self._status is None else [self._status];
+        self._writer = threading.Thread(
+            target=self._write, args=(stream, wake), daemon=True
+        );
     }
     if replaced is not None {
         replaced.set();
     }
-    self._dev_writer = threading.Thread(
-        target=self._write_dev_commands, args=(process.stdin, wake), daemon=True
-    );
-    self._dev_writer.start();
+    self._writer.start();
     wake.set();
 }
 
-impl ViteBundler._detach_dev_commands(self: ViteBundler, stream: any) -> None {
-    if stream is None {
-        return;
-    }
-    with self._dev_lock {
-        if self._dev_stdin is stream {
-            self._dev_stdin = None;
-            self._dev_pending = [];
+impl DevCommandPipe.detach(stream: any) -> None {
+    with self._lock {
+        if self._stream is stream {
+            self._stream = None;
+            self._pending = [];
         }
-        wake = self._dev_wake;
+        wake = self._wake;
     }
     if wake is not None {
         wake.set();
@@ -1362,18 +1356,16 @@ impl ViteBundler._detach_dev_commands(self: ViteBundler, stream: any) -> None {
     } except (OSError, ValueError) {}
 }
 
-impl ViteBundler._write_dev_commands(
-    self: ViteBundler, stream: any, wake: any
-) -> None {
+impl DevCommandPipe._write(stream: any, wake: any) -> None {
     while True {
         wake.`wait();
         wake.clear();
-        with self._dev_lock {
-            if self._dev_stdin is not stream {
+        with self._lock {
+            if self._stream is not stream {
                 return;
             }
-            batch = self._dev_pending;
-            self._dev_pending = [];
+            batch = self._pending;
+            self._pending = [];
         }
         try {
             for command in batch {
@@ -1381,11 +1373,7 @@ impl ViteBundler._write_dev_commands(
             }
             stream.flush();
         } except (OSError, ValueError) {
-            with self._dev_lock {
-                if self._dev_stdin is stream {
-                    self._dev_stdin = None;
-                }
-            }
+            self.detach(stream);
             return;
         }
     }
@@ -1765,7 +1753,7 @@ impl ViteBundler._start_vite_with_output_capture(
         stderr=subprocess.STDOUT,
         text=True
     );
-    self._attach_dev_commands(process);
+    self.dev_commands.attach(process.stdin);
     ready_event = threading.Event();
     closed_event = threading.Event();
     output_buffer: list[str] = [];
@@ -1780,7 +1768,7 @@ impl ViteBundler._start_vite_with_output_capture(
                 closed_event
             );
         } finally {
-            self._detach_dev_commands(process.stdin);
+            self.dev_commands.detach(process.stdin);
         }
     }
     output_thread = threading.Thread(target=forward_output, daemon=True);

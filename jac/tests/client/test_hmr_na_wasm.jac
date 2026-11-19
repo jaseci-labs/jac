@@ -17,6 +17,7 @@ import from tempfile { TemporaryDirectory }
 
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
+import from tests.support { RecordingDevServer }
 
 
 obj _FakeJacClientCompiler {
@@ -56,7 +57,7 @@ obj _FakeViteCompiler {
 
 """How many full reloads the reloader has asked the dev server for."""
 def _reloads(reloader: any) -> int {
-    return reloader._reload_nonce;
+    return reloader._dev_bundler.reloads;
 }
 
 
@@ -98,6 +99,7 @@ def _make_reloader(tmp: str, succeeds: bool = True) -> tuple[any, ...] {
         client_compiler=compiler
     );
     reloader._running = True;
+    reloader.attach_client_bundler(RecordingDevServer());
     return (na_file, reloader, compiler);
 }
 

@@ -15,7 +15,6 @@ obj HotReloader {
         _vite_diagnostics: list[ClientDiagnostic] = [],
         _client_diagnostics: list[ClientDiagnostic] = [],
         _runtime_diagnostics: list[ClientDiagnostic] = [],
-        _reload_nonce: int = 0,
         _dev_bundler: any = None,
         _published_status: str = "",
         _publish_lock: threading.Lock = threading.Lock();

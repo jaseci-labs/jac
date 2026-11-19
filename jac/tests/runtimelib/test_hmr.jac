@@ -13,6 +13,7 @@ import from unittest.mock { MagicMock, patch }
 import watchdog;
 
 import from jaclang.server.hmr { HotReloader }
+import from tests.support { RecordingDevServer }
 import from jaclang.server.build_status { get_build_status }
 import from jaclang.server.watcher {
     ChangeType,
@@ -891,17 +892,6 @@ test "extract js exports reads the compiled export list" {
     }
 }
 
-"""Stands in for the bundler that owns the dev server."""
-obj _ReloadCounter {
-    has on_client_event: any = None,
-        reloads: int = 0;
-
-    def publish_dev_status(status: dict[str, any]) {}
-    def request_dev_reload {
-        self.reloads += 1;
-    }
-}
-
 test "signal full reload asks the dev server for a reload" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
@@ -913,7 +903,7 @@ test "signal full reload asks the dev server for a reload" {
         );
         # With no dev server attached there is nobody to ask
         reloader._signal_full_reload();
-        dev = _ReloadCounter();
+        dev = RecordingDevServer();
         reloader.attach_client_bundler(dev);
         reloader._signal_full_reload();
         reloader._signal_full_reload();
@@ -963,7 +953,7 @@ test "recompile signals a full reload only when the export set changes" {
             watcher=watcher,
             client_compiler=_FakeCompiler(jac_client_compiler=jcc)
         );
-        dev = _ReloadCounter();
+        dev = RecordingDevServer();
         reloader.attach_client_bundler(dev);
         # An edit that leaves the export set alone stays hot-swappable
         reloader._recompile_client_unified(str(src));

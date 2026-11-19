@@ -568,7 +568,6 @@ impl HotReloader._extract_js_exports(js_path: Path) -> set[str] {
 }
 
 impl HotReloader._signal_full_reload -> None {
-    self._reload_nonce += 1;
     bundler = self._dev_bundler;
     if bundler is not None {
         bundler.request_dev_reload();

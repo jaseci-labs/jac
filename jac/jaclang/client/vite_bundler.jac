@@ -4,6 +4,7 @@ import logging;
 import os;
 import shutil;
 import subprocess;
+import threading;
 import from pathlib { Path }
 import from typing { Optional }
 
@@ -46,24 +47,29 @@ def _forward_vite_output(
     closed_event: any = None
 ) -> None;
 
+obj DevCommandPipe {
+    has _stream: any = None,
+        _status: (dict[str, any] | None) = None,
+        _pending: list[dict[str, any]] = [],
+        _wake: any = None,
+        _writer: any = None,
+        _lock: threading.Lock = threading.Lock();
+
+    def send(command: dict[str, any]) -> None;
+    def attach(stream: any) -> None;
+    def detach(stream: any) -> None;
+    def _write(stream: any, wake: any) -> None;
+}
+
 class ViteBundler {
     has dev_server_port: int = 0,
         on_client_event: any = None,
         build_dir: Path | None = None,
-        _dev_stdin: any = None,
-        _dev_status: (dict[str, any] | None) = None,
-        _dev_pending: list[dict[str, any]] = [],
-        _dev_wake: any = None,
-        _dev_writer: any = None,
-        _dev_lock: any = None;
+        dev_commands: any = None;
 
     def _dispatch_client_event(self: ViteBundler, line: str) -> None;
     def publish_dev_status(self: ViteBundler, status: dict[str, any]) -> None;
     def request_dev_reload(self: ViteBundler) -> None;
-    def _send_dev_command(self: ViteBundler, command: dict[str, any]) -> None;
-    def _attach_dev_commands(self: ViteBundler, process: any) -> None;
-    def _write_dev_commands(self: ViteBundler, stream: any, wake: any) -> None;
-    def _detach_dev_commands(self: ViteBundler, stream: any) -> None;
     def init(
         self: ViteBundler,
         project_dir: Path,

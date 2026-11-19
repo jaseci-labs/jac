@@ -20,6 +20,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
+import from tests.support { RecordingDevServer }
 
 
 def _write(path: str, body: str) {
@@ -56,6 +57,7 @@ def _booted_project -> tuple[(str, any, str)] {
         client_compiler=compiler
     );
     reloader._running = True;
+    reloader.attach_client_bundler(RecordingDevServer());
     routes_file = os.path.join(str(jcc.compiled_dir), "_routes.js");
     return (proj, reloader, routes_file);
 }
@@ -63,7 +65,7 @@ def _booted_project -> tuple[(str, any, str)] {
 
 """How many full reloads the reloader has asked the dev server for."""
 def _reloads(reloader: any) -> int {
-    return reloader._reload_nonce;
+    return reloader._dev_bundler.reloads;
 }
 
 
