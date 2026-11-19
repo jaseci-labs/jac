@@ -120,7 +120,7 @@ impl has_spaces_block(root_dir: str) -> bool {
     }
     try {
         with open(arch, encoding="utf-8") as fh {
-            return "graph spaces" in fh.read();
+            return re.search(r"\bgraph\s+spaces\b", fh.read()) is not None;
         }
     } except OSError {
         return False;

@@ -404,21 +404,21 @@ impl _parse_vite_config(text: str) -> dict[str, any] {
     out: dict[str, any] = {};
     imported: dict[str, str] = {};
     lib_imports: list[str] = [];
-    for hit in re.finditer(r'import\s+(\w+)\s+from\s+[\x22\x27]([^\x22\x27]+)[\x22\x27];?', text) {
-        (name, package) = (hit.group(1), hit.group(2));
-        imported[name] = package;
+    for hit in re.finditer(
+        r'import\s+(.+?)\s+from\s+[\x22\x27]([^\x22\x27]+)[\x22\x27];?', text, re.DOTALL
+    ) {
+        (clause, package) = (hit.group(1).strip(), hit.group(2));
+        for name in _imported_names(clause) {
+            imported[name] = package;
+        }
         if package not in _JAC_SUPPLIED_VITE_PACKAGES {
-            lib_imports.append(f'import {name} from "{package}";');
+            lib_imports.append(f'import {clause} from "{package}";');
         }
     }
     plugins: list[str] = [];
-    plugins_hit = re.search(r'plugins:\s*\[([^\]]*)\]', text);
+    plugins_hit = re.search(r'plugins:\s*\[', text);
     if plugins_hit {
-        for part in plugins_hit.group(1).split(",") {
-            call = part.strip();
-            if not call {
-                continue;
-            }
+        for call in _split_top_level(_bracketed(text, plugins_hit.end() - 1)) {
             name = call.split("(")[0].strip();
             if imported.get(name, "") in _JAC_SUPPLIED_VITE_PACKAGES {
                 continue;
@@ -442,16 +442,82 @@ impl _parse_vite_config(text: str) -> dict[str, any] {
     if aliases {
         out["alias_packages"] = aliases;
     }
-    dedupe_hit = re.search(r'dedupe:\s*\[([^\]]*)\]', text);
+    dedupe_hit = re.search(r'dedupe:\s*\[', text);
     if dedupe_hit {
         names = [
             n.strip().strip('"').strip("'")
-            for n in dedupe_hit.group(1).split(",")
-            if n.strip()
+            for n in _split_top_level(_bracketed(text, dedupe_hit.end() - 1))
         ];
         if names {
             out["resolve"] = {"dedupe": names};
         }
     }
     return out;
+}
+
+"""The local names an import clause binds: `x`, `{ a, b as c }`, `* as ns`, or a
+default beside a braced list."""
+impl _imported_names(clause: str) -> list[str] {
+    import re;
+    names: list[str] = [];
+    braced = re.search(r'\{(.*)\}', clause, re.DOTALL);
+    if braced {
+        for part in braced.group(1).split(",") {
+            piece = part.strip();
+            if piece {
+                names.append(piece.split(" as ")[-1].strip());
+            }
+        }
+        clause = clause[:braced.start()] + clause[braced.end():];
+    }
+    for piece in clause.replace("* as ", "").split(",") {
+        name = piece.strip();
+        if name {
+            names.append(name);
+        }
+    }
+    return names;
+}
+
+"""The text inside the bracket at `open_at`, matched by depth over (), [] and {}."""
+impl _bracketed(text: str, open_at: int) -> str {
+    depth = 0;
+    for i in range(open_at, len(text)) {
+        ch = text[i];
+        if ch in "([{" {
+            depth += 1;
+        } elif ch in ")]}" {
+            depth -= 1;
+            if depth == 0 {
+                return text[open_at + 1:i];
+            }
+        }
+    }
+    return text[open_at + 1:];
+}
+
+"""The comma-separated items of a list's text, commas inside brackets kept."""
+impl _split_top_level(text: str) -> list[str] {
+    items: list[str] = [];
+    depth = 0;
+    held = "";
+    for ch in text {
+        if ch in "([{" {
+            depth += 1;
+        } elif ch in ")]}" {
+            depth -= 1;
+        }
+        if ch == "," and depth == 0 {
+            if held.strip() {
+                items.append(held.strip());
+            }
+            held = "";
+        } else {
+            held += ch;
+        }
+    }
+    if held.strip() {
+        items.append(held.strip());
+    }
+    return items;
 }

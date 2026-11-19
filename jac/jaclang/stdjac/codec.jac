@@ -8,11 +8,11 @@ dict with str keys and a list of pairs for any other dict, an enum member's name
 import enum;
 
 def encode(value: any) -> any {
-    if value is None or isinstance(value, (bool, int, float, str)) {
-        return value;
-    }
     if isinstance(value, enum.Enum) {
         return value.name;
+    }
+    if value is None or isinstance(value, (bool, int, float, str)) {
+        return value;
     }
     if isinstance(value, (bytes, bytearray)) {
         return bytes(value).hex();
@@ -42,9 +42,11 @@ def encode(value: any) -> any {
 
 def _fields_of(value: any) -> list[tuple[str, any]] | None {
     names: list[str] = [];
-    annotations = getattr(type(value), "__annotations__", None);
-    if isinstance(annotations, dict) {
-        names = [n for n in annotations.keys() if not n.startswith("_")];
+    for cls in reversed(getattr(type(value), "__mro__", (type(value),))) {
+        annotations = cls.__dict__.get("__annotations__");
+        if isinstance(annotations, dict) {
+            names.extend([n for n in annotations.keys() if not n.startswith("_") and n not in names]);
+        }
     }
     if not names {
         held = getattr(value, "__dict__", None);

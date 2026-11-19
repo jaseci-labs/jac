@@ -103,12 +103,15 @@ impl RouteScanner._scan_directory(
             # `page(id: str)` in reviews.jac is /reviews/:id, `*rest: str` the rest.
             params = list(self.route_params_of(`entry)) if self.route_params_of else [];
             rest_param = "";
+            segments = route_path.split("/");
             for param in params {
                 if param.startswith("*") {
                     rest_param = param[1:];
-                    route_path = route_path.rstrip("/") + "/*";
+                    if not is_catch_all {
+                        route_path = route_path.rstrip("/") + "/*";
+                    }
                     is_catch_all = True;
-                } else {
+                } elif f":{param}" not in segments {
                     route_path = route_path.rstrip("/") + f"/:{param}";
                 }
             }

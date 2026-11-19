@@ -22,8 +22,14 @@ def add(x: int, y: int) -> int {
     return z;
 }
 
+def tag(func: str, n: int) -> str {
+    return func * n;
+}
+
 with entry {
     t1 = flow A() spawn B("Hi");
+    t3 = flow tag(func="ab", n=2);
+    print(wait t3 );
 
     task1 = flow add(1, 10);
     task2 = flow add(2, 11);

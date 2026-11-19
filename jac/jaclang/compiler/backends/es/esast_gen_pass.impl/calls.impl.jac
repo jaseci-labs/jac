@@ -1024,7 +1024,7 @@ impl EsastGenPass._warn_rpc_callable_params(
 `AsyncIterator[T]`), or None for a result that is not a stream."""
 impl EsastGenPass._stream_item_type(ret_type: str) -> (str | None) {
     label = ret_type.strip();
-    for head in ("Iterator[", "Iterable[", "Generator[", "AsyncIterator[", "AsyncGenerator[") {
+    for head in ("Iterator[", "Generator[", "AsyncIterator[", "AsyncGenerator[") {
         if label.startswith(head) and label.endswith("]") {
             inner = label[len(head):-1];
             depth = 0;

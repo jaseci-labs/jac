@@ -3,6 +3,11 @@ def _apply_litellm_config(module: any);
 def _configure_litellm;
 
 
+"""How many times a request is retried: the call's `num_retries`, none by default."""
+impl Model._request_retries -> int {
+    return max(0, int(self.call_params.get("num_retries", 0) or 0));
+}
+
 impl Model.postinit -> None {
     so1_key = self.api_key;
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
@@ -278,7 +283,7 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
         } elif self.proxy {
             require_optional("openai", "llm");
             client: any = OpenAI(
-                base_url=self.api_base, api_key=self.api_key or None, max_retries=0
+                base_url=self.api_base, api_key=self.api_key or None, max_retries=self._request_retries()
             );
             response = client.chat.completions.create(**params);
         } else {
@@ -289,7 +294,7 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
                 response = litellm.completion(
                     api_key=self.api_key or None,
                     api_base=self.api_base or None,
-                    num_retries=0,
+                    num_retries=self._request_retries(),
                     **sent
                 );
             } except Exception as rejected {
@@ -300,7 +305,7 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
                 response = litellm.completion(
                     api_key=self.api_key or None,
                     api_base=self.api_base or None,
-                    num_retries=0,
+                    num_retries=self._request_retries(),
                     **_fallback_params(params, started)
                 );
             }
@@ -318,7 +323,7 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
         if self.proxy {
             require_optional("openai", "llm");
             client: any = OpenAI(
-                base_url=self.api_base, api_key=self.api_key or None, max_retries=0
+                base_url=self.api_base, api_key=self.api_key or None, max_retries=self._request_retries()
             );
             response = client.chat.completions.create(stream=True, **params);
         } else {
@@ -327,7 +332,7 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
                 stream=True,
                 api_key=self.api_key or None,
                 api_base=self.api_base or None,
-                num_retries=0,
+                num_retries=self._request_retries(),
                 **params
             );
         }
@@ -369,7 +374,7 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
             require_optional("openai", "llm");
             if not self._async_proxy_client {
                 self._async_proxy_client = AsyncOpenAI(
-                    base_url=self.api_base, api_key=self.api_key or None, max_retries=0
+                    base_url=self.api_base, api_key=self.api_key or None, max_retries=self._request_retries()
                 );
             }
             async_client = self._async_proxy_client;
@@ -383,7 +388,7 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
                 response = await litellm.acompletion(
                     api_key=self.api_key or None,
                     api_base=self.api_base or None,
-                    num_retries=0,
+                    num_retries=self._request_retries(),
                     **sent
                 );
             } except Exception as rejected {
@@ -394,7 +399,7 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
                 response = await litellm.acompletion(
                     api_key=self.api_key or None,
                     api_base=self.api_base or None,
-                    num_retries=0,
+                    num_retries=self._request_retries(),
                     **_fallback_params(params, started)
                 );
             }
@@ -423,7 +428,7 @@ impl Model.model_call_with_stream_async(
             require_optional("openai", "llm");
             if not self._async_proxy_client {
                 self._async_proxy_client = AsyncOpenAI(
-                    base_url=self.api_base, api_key=self.api_key or None, max_retries=0
+                    base_url=self.api_base, api_key=self.api_key or None, max_retries=self._request_retries()
                 );
             }
             async_client = self._async_proxy_client;
@@ -437,7 +442,7 @@ impl Model.model_call_with_stream_async(
                 stream=True,
                 api_key=self.api_key or None,
                 api_base=self.api_base or None,
-                num_retries=0,
+                num_retries=self._request_retries(),
                 **params
             );
         }

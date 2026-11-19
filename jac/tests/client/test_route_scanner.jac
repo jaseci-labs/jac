@@ -254,15 +254,39 @@ test "page parameters are path parameters" {
             "pages/docs/index.jac",
             "def:pub page(*rest: str) -> JsxPage { return <div/>; }"
         );
+        _write(
+            proj,
+            "pages/users/[id].jac",
+            "def:pub page(id: str) -> JsxPage { return <div/>; }"
+        );
+        _write(
+            proj,
+            "pages/users/[id]/posts.jac",
+            "def:pub page(id: str, post: str) -> JsxPage { return <div/>; }"
+        );
+        _write(
+            proj,
+            "pages/files/[...path].jac",
+            "def:pub page(*path: str) -> JsxPage { return <div/>; }"
+        );
         scanner = RouteScanner(
             proj,
             route_exports_of=_route_exports_from_source,
             route_params_of=_route_params_from_source
         );
         routes = {r.path: r for r in scanner.scan() if not r.is_layout};
-        assert set(routes.keys()) == {"/", "/reviews/:id", "/reviews", "/sum/:a/:b", "/docs/*"} , (
-            f"got {sorted(routes.keys())}"
-        );
+        assert set(routes.keys()) == {
+            "/",
+            "/reviews/:id",
+            "/reviews",
+            "/sum/:a/:b",
+            "/docs/*",
+            "/users/:id",
+            "/users/:id/posts/:post",
+            "/files/*"
+        } , f"got {sorted(routes.keys())}";
+        assert routes["/users/:id"].params == ["id"];
+        assert routes["/files/*"].rest_param == "path";
         assert routes["/reviews/:id"].params == ["id"];
         assert routes["/docs/*"].is_catch_all and routes["/docs/*"].rest_param == "rest";
         assert routes["/docs/*"].params == ["rest"];

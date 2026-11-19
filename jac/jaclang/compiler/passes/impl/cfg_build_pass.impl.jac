@@ -48,13 +48,30 @@ impl CFGBuildPass._link_sequential(body: Sequence[CodeBlockStmt]) -> None {
             }
         } elif has_bool_sc {
             self._connect_tails(prev, next);
-        } elif isinstance(prev, WithStmt) and prev.body {
+        } elif isinstance(prev, WithStmt) and prev.body and not self._may_suppress(prev) {
             self._connect_tails(prev, next);
         } else {
             self.link_bbs(prev, next);
             self._connect_tails(prev, next);
         }
     }
+}
+
+"""A `with suppress(...)` body may be left at any raise, so the block's end is not
+the only way out: what the body narrows does not hold after it."""
+impl CFGBuildPass._may_suppress(nd: WithStmt) -> bool {
+    for item in nd.exprs {
+        call = item.expr;
+        if not isinstance(call, FuncCall) {
+            continue;
+        }
+        target = call.target;
+        name = target.right if isinstance(target, AtomTrailer) else target;
+        if isinstance(name, Name) and name.sym_name == "suppress" {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl CFGBuildPass._exit_wired(nd: UniCFGNode) -> bool {

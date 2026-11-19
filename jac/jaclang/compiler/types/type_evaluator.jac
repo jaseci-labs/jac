@@ -597,6 +597,7 @@ walker TypeEvaluator {
     def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
     def _get_type_of_concurrent_expr(expr: ConcurrentExpr) -> TypeBase;
     def _is_sync_iterator_type(t: TypeBase) -> bool;
+    def _is_async_iterator_type(t: TypeBase) -> bool;
     def _make_async_iterator_type(inner: TypeBase) -> TypeBase;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;

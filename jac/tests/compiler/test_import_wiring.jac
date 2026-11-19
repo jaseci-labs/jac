@@ -1897,7 +1897,7 @@ glob _SPACES_ARCH: str = (
 test "graph spaces declares the apps: their kinds, entries and where their modules run" {
     import from jaclang.project.workspace { workspace_for_path }
     files = dict(_SPACES_FILES);
-    files["archwire.jac"] = _SPACES_ARCH;
+    files["archwire.jac"] = _SPACES_ARCH.replace("graph spaces {", "graph  spaces {", 1);
     base = _project(files);
     ws = workspace_for_path(os.path.join(base, "web.jac"));
     assert ws is not None;
@@ -1951,5 +1951,11 @@ test "graph spaces belongs in archwire.jac, and jac fmt keeps its layout" {
     base = _project(files);
     assert "E2088" in _errors(_compile(base, "core/other.jac"));
     assert _formatted(base, "archwire.jac") == _SPACES_ARCH;
+    shared_line = _SPACES_ARCH.replace("}\n\ngraph import {", "} graph import {", 1);
+    assert shared_line != _SPACES_ARCH;
+    files["archwire.jac"] = shared_line;
+    base2 = _project(files);
+    assert _formatted(base2, "archwire.jac") == _SPACES_ARCH;
     shutil.rmtree(base, ignore_errors=True);
+    shutil.rmtree(base2, ignore_errors=True);
 }

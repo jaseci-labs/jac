@@ -211,6 +211,7 @@ obj Model(BaseLLM) {
         _async_proxy_client: any = None;
 
     def postinit -> None;
+    def _request_retries -> int;
     override def invoke(mt_run: MTRuntime) -> any;
     override async def ainvoke(mt_run: MTRuntime) -> object;
     def _raise_mapped_provider_error(e: Exception) -> None;

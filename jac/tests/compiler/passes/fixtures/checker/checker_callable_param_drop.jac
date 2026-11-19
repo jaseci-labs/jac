@@ -19,6 +19,7 @@ def two_ints(x: int, y: int) -> None {}
 
 async def fetch_it {}
 async def fetch_one(x: int) -> int { return x; }
+async def source() -> AsyncIterator[int] { yield 1; }
 
 
 def takes_mouse_handler(cb: Callable[[MouseEvent], None]) -> None {
@@ -65,6 +66,7 @@ with entry {
     # is what the coroutine delivers, so it satisfies a Coroutine-returning type.
     f7: Callable[[], Coroutine[any, any, None]] = fetch_it;  # Ok
     f8: Callable[[int], Coroutine[any, any, int]] = fetch_one;  # Ok
+    f9: Callable[[], AsyncIterator[int]] = source;  # Ok: an async generator's call is its iterator, not a coroutine
 
     # --- Invalid: longer source NOT assignable to shorter destination ---
 

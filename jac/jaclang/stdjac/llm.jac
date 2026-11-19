@@ -8,6 +8,7 @@ take, and whether a round's tool calls run at once. A function declared to give
 call and its result, what each request used, and `DONE` with the whole answer.
 `on_usage` tells a program what every request used.
 """
+import copy;
 import functools;
 import json;
 import os;
@@ -249,14 +250,34 @@ events, and a parameter the plugin was given whole kept out of the model's input
 obj NeoModel(Model) {
     has plugin_args: list[any] = [];
 
+    override def __call__(**kwargs: object) -> NeoModel {
+        call = copy.copy(self);
+        call.call_params = kwargs;
+        call.plugin_args = [];
+        return call;
+    }
+
     override def invoke(mt_run: any) -> any {
-        if isinstance(mt_run, MTIR) {
-            self._drop_plugin_args(mt_run);
-            if _streams_events(mt_run.caller) {
-                return self._events(mt_run);
-            }
+        mt_run = self._prepared(mt_run);
+        mtir = getattr(mt_run, "mtir", None);
+        if mtir is not None and _streams_events(mtir.caller) {
+            return self._events(mtir);
         }
         return super.invoke(mt_run);
+    }
+
+    def _prepared(mt_run: any) -> any {
+        # jac hands `invoke` the runtime, whose prompt already holds every argument;
+        # a call given one of the plugin's own parameters is rebuilt without it.
+        mtir = getattr(mt_run, "mtir", None);
+        if mtir is None or not self.plugin_args {
+            return mt_run;
+        }
+        if not any([a is given for a in mtir.args.values() for given in self.plugin_args]) {
+            return mt_run;
+        }
+        self._drop_plugin_args(mtir);
+        return mtir.runtime;
     }
 
     def _drop_plugin_args(mtir: MTIR) -> None {
@@ -334,6 +355,7 @@ def llm(
         "max_react_iterations": max_react_iterations,
         "max_output_retries": max_output_retries,
         "timeout": timeout,
+        "num_retries": num_retries,
         "parallelize": parallelize,
         "select": select,
         "intent": intent
@@ -350,11 +372,12 @@ def llm(
     if on_iteration is not None {
         params["on_iteration"] = _guard(on_iteration);
     }
-    model = _the_model();
-    model.plugin_args = [];
     if conversation is not None {
         params["conversation"] = ConversationView(conversation);
-        model.plugin_args = [conversation];
     }
-    return model(**params);
+    call = _the_model()(**params);
+    if conversation is not None {
+        call.plugin_args = [conversation];
+    }
+    return call;
 }

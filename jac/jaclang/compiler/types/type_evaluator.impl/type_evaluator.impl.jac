@@ -2816,7 +2816,8 @@ impl TypeEvaluator._callable_mismatch(
 
     if dest_func.return_type and src_func.return_type {
         dest_ret = self._convert_to_instance(dest_func.return_type);
-        if dest_func.is_async {
+        if dest_func.is_async
+            and not (dest_func.function_flags & FunctionTypeFlags.Generator) {
             dest_ret = self._make_coroutine_type(dest_ret);
         }
 
@@ -2824,7 +2825,8 @@ impl TypeEvaluator._callable_mismatch(
             return None;
         }
         src_ret = self._convert_to_instance(src_func.return_type);
-        if src_func.is_async {
+        if src_func.is_async
+            and not (src_func.function_flags & FunctionTypeFlags.Generator) {
             src_ret = self._make_coroutine_type(src_ret);
         }
         if not self.assign_type(src_ret, dest_ret, strict) {
@@ -4066,7 +4068,13 @@ impl TypeEvaluator._make_coroutine_type(inner: TypeBase) -> TypeBase {
 
 impl TypeEvaluator._is_sync_iterator_type(t: TypeBase) -> bool {
     return isinstance(t, ClassType)
-        and t.is_builtin(["Iterator", "Generator", "Iterable"])
+        and t.is_builtin(["Iterator", "Generator"])
+        and bool(t.private.type_args);
+}
+
+impl TypeEvaluator._is_async_iterator_type(t: TypeBase) -> bool {
+    return isinstance(t, ClassType)
+        and t.is_builtin(["AsyncIterator", "AsyncGenerator"])
         and bool(t.private.type_args);
 }
 

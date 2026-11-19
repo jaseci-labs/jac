@@ -295,39 +295,43 @@ impl __jacStreamItems(
     decoder = new(TextDecoder);
     nl = chr(10);
     buffered = "";
-    while True {
-        part = await reader.read();
-        if part.done {
-            break;
-        }
-        buffered = buffered + decoder.decode(part.value, {"stream": True});
-        frames = buffered.split(nl + nl);
-        buffered = frames.pop();
-        for frame in frames {
-            event = "message";
-            data_lines: list[str] = [];
-            for line in frame.split(nl) {
-                if line.startswith("event:") {
-                    event = line[6:].strip();
-                } elif line.startswith("data:") {
-                    data_lines.append(line[5:].strip());
+    try {
+        while True {
+            part = await reader.read();
+            if part.done {
+                break;
+            }
+            buffered = buffered + decoder.decode(part.value, {"stream": True});
+            frames = buffered.split(nl + nl);
+            buffered = frames.pop();
+            for frame in frames {
+                event = "message";
+                data_lines: list[str] = [];
+                for line in frame.split(nl) {
+                    if line.startswith("event:") {
+                        event = line[6:].strip();
+                    } elif line.startswith("data:") {
+                        data_lines.append(line[5:].strip());
+                    }
                 }
+                if not data_lines {
+                    continue;
+                }
+                payload = JSON.parse(nl.join(data_lines));
+                if event == "end" {
+                    return;
+                }
+                if event == "error" {
+                    detail = str(payload["message"] if payload and payload["message"] else "the stream failed");
+                    raise RemoteFailed(
+                        app=app, name=function_name, detail=f"Function {function_name} failed: {detail}"
+                    );
+                }
+                yield decode(payload) if decode else payload;
             }
-            if not data_lines {
-                continue;
-            }
-            payload = JSON.parse(nl.join(data_lines));
-            if event == "end" {
-                return;
-            }
-            if event == "error" {
-                detail = str(payload["message"] if payload and payload["message"] else "the stream failed");
-                raise RemoteFailed(
-                    app=app, name=function_name, detail=f"Function {function_name} failed: {detail}"
-                );
-            }
-            yield decode(payload) if decode else payload;
         }
+    } finally {
+        await reader.cancel();
     }
 }
 

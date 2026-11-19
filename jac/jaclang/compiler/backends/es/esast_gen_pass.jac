@@ -443,7 +443,11 @@ walker EsastGenPass(TreePass) {
     def _setter_name_taken(has_var: uni.HasVar, setter_name: str) -> bool;
     can exit_has_var with uni.HasVar exit;
     def _has_import(name: str) -> bool;
-    def _inject_runtime_import(name: str, nd: uni.UniNode, src: str = "") -> None;
+    def _inject_runtime_import(
+        name: str, nd: uni.UniNode, src: str = "", local: str = ""
+    ) -> None;
+    def _is_stdjac_remote_import(nd: uni.Import) -> bool;
+    def _import_runtime_names(nd: uni.Import) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_virtual_import(module_id: str) -> None;

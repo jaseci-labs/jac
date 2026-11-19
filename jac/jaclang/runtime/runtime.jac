@@ -84,7 +84,7 @@ class JacContext {
     ) -> ExecutionContext;
 
     static def attach_program(jac_program: JacProgram) -> None;
-    static def thread_run(func: Callable, *args: object, **kwargs: object) -> Future;
+    static def thread_run(func: Callable, /, *args: object, **kwargs: object) -> Future;
     static def thread_wait(future: any) -> None;
 }
 

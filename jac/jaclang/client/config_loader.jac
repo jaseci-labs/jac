@@ -36,3 +36,6 @@ class JacClientConfig(PluginConfigBase) {
 def eco_vite_settings(jac_config: any, entry_path: str) -> dict[str, any];
 
 def _parse_vite_config(text: str) -> dict[str, any];
+def _imported_names(clause: str) -> list[str];
+def _bracketed(text: str, open_at: int) -> str;
+def _split_top_level(text: str) -> list[str];

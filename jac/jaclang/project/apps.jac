@@ -1,4 +1,5 @@
 import os;
+import re;
 
 glob APP_TABLE_KEYS: tuple[str, ...] = (
          "kind",

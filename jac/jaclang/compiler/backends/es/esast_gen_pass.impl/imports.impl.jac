@@ -26,15 +26,16 @@ impl EsastGenPass._register_jac_runtime_import -> None {
 }
 
 impl EsastGenPass._inject_runtime_import(
-    name: str, nd: uni.UniNode, src: str = ""
+    name: str, nd: uni.UniNode, src: str = "", local: str = ""
 ) -> None {
-    if name in self.injected_imports or self._has_import(name) {
+    local = local or name;
+    if local in self.injected_imports or self._has_import(local) {
         return;
     }
     src = src or runtime_import_source(name, self.resolved_backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
-            imported=es.Identifier(name=name), local=es.Identifier(name=name)
+            imported=es.Identifier(name=name), local=es.Identifier(name=local)
         ),
         jac_node=nd
     );
@@ -43,14 +44,38 @@ impl EsastGenPass._inject_runtime_import(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
     );
     self.imports.append(import_decl);
-    self.injected_imports.add(name);
+    self.injected_imports.add(local);
     if src.startswith('@jac/') and (src != JAC_PRELUDE_MODULE) {
         self._register_jac_runtime_import();
     }
 }
 
+"""`stdjac.remote` in the browser is the runtime's own error family, so a page's
+`except RemoteError` catches what a crossing raises."""
+impl EsastGenPass._is_stdjac_remote_import(nd: uni.Import) -> bool {
+    return nd.from_loc is not None
+        and nd.from_loc.dot_path_str == "stdjac.remote"
+        and bool(nd.items);
+}
+
+impl EsastGenPass._import_runtime_names(nd: uni.Import) -> None {
+    for item in nd.items {
+        if isinstance(item, uni.ModuleItem) {
+            self._inject_runtime_import(
+                item.name.value, nd, local=item.alias.sym_name if item.alias else ""
+            );
+        }
+    }
+}
+
 impl EsastGenPass.exit_import with uni.Import exit {
     if here.is_typed or here.is_comptime {
+        here.gen.es_ast = None;
+        return;
+    }
+
+    if self._is_stdjac_remote_import(here) {
+        self._import_runtime_names(here);
         here.gen.es_ast = None;
         return;
     }

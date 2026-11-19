@@ -784,12 +784,11 @@ impl space_records(mod: Module, source: str) -> tuple[list[SpaceRec], list[AppRe
     spaces: list[SpaceRec] = [];
     apps: list[AppRec] = [];
     texts: list[str] = [];
-    lines = source.split("\n");
     for stmt in mod.body {
         if not isinstance(stmt, GraphSpaces) {
             continue;
         }
-        texts.append("\n".join(lines[stmt.loc.first_line - 1:stmt.loc.last_line]));
+        texts.append(source[stmt.loc.pos_start:stmt.loc.pos_end]);
         profile = stmt.profile_name;
         for item in stmt.body {
             if isinstance(item, SpaceDecl) {

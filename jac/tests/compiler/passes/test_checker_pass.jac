@@ -1568,6 +1568,20 @@ with entry {
     );
 }
 
+test "with_suppress_does_not_narrow_past_the_block" {
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_with_block_narrowing.jac"), options=None
+    );
+    assert len(program.errors_had) == 0 , [str(e) for e in program.errors_had];
+    lines = sorted(
+        w.loc.first_line
+        for w in program.warnings_had
+        if w.loc and w.code and w.code.code == "W1099"
+    );
+    assert lines == [44] , f"only the read after `with suppress(...)` may be None, got {lines}";
+}
+
 test "return_value_in_ability_warns" {
     program = JacProgram();
     mod = program.compile(
