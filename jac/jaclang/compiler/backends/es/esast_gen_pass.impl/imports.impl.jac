@@ -50,7 +50,9 @@ impl EsastGenPass._import_js_name(nd: uni.Name) -> str {
     names = self._import_names
         if self._import_names is not None
         else self._plan_import_names();
-    return names.get((id(nd.sym), nd.sym_name), nd.sym_name);
+
+    sym = nd.sym.decl.sym if nd.sym and nd.sym.decl.sym else nd.sym;
+    return names.get((id(sym), nd.sym_name), nd.sym_name);
 }
 
 impl EsastGenPass._emit_import_name(nd: uni.Name) -> (str | None) {

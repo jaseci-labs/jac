@@ -132,7 +132,7 @@ test "client import local jac module gets relative path" {
             "def Helper() -> int { return 1; }"
         );
         (Path(tmpdir) / "main.impl" / "fourth.impl.jac").write_text(
-            "impl fourth() -> int {\n    import from mymodule { Helper }\n    return Helper();\n}\n"
+            "impl fourth() -> int {\n    import from mymodule { Helper }\n    Helper = Helper;\n    return Helper();\n}\n"
         );
         main_file = Path(tmpdir) / "main.jac";
         # third's import comes first, but the module-level Helper keeps its name.
@@ -161,6 +161,7 @@ test "client import local jac module gets relative path" {
             if src == "other"
         ][0];
         assert f"{other}()" in js and f"__jacJsx({other}," in js , js;
+        assert "let Helper =" not in js , js;
     }
 }
 
