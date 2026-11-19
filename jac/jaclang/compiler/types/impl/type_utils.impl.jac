@@ -216,11 +216,6 @@ impl module_names_closed(mod: Module) -> bool {
         if imp.is_absorb {
             return False;
         }
-        for item in imp.items or [] {
-            if isinstance(item, ModuleItem) and item.name.value == "*" {
-                return False;
-            }
-        }
     }
     return True;
 }
