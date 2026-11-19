@@ -1909,6 +1909,25 @@ impl NaIRGenPass._stack_only_bound(sym: uni.Symbol, type_name: str) -> bool {
     return True;
 }
 
+impl NaIRGenPass._codegen_field_default(
+    expr: uni.Expr, ftype: (ir.Type | None), label: str
+) -> (ir.Value | None) {
+    bindings = self._enter_bindings();
+    scope = self.scope;
+    self.scope = scope.outermost();
+    val: (ir.Value | None) = None;
+    try {
+        val = self._codegen_expr(expr);
+    } finally {
+        self.scope = scope;
+        self._leave_bindings(bindings, release=True);
+    }
+    if val is None {
+        return self._empty_container_for_field(ftype, label);
+    }
+    return val;
+}
+
 impl NaIRGenPass._empty_container_for_field(
     ftype: (ir.Type | None), label: str
 ) -> (ir.Value | None) {
@@ -2365,13 +2384,9 @@ impl NaIRGenPass._codegen_instantiation(
 
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
-            val = self._codegen_expr(default_expr);
-
-            if val is None {
-                val = self._empty_container_for_field(
-                    field_types.get(fname), f"dflt.{fname}"
-                );
-            }
+            val = self._codegen_field_default(
+                default_expr, field_types.get(fname), f"dflt.{fname}"
+            );
             if val is not None
                 and fname in self.struct_field_inline.get(type_name, set()) {
                 _inl_fp = self.builder.gep(
@@ -4929,12 +4944,11 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     field_types = self.struct_field_types.get(owner, {});
     borrow_fields = self.struct_field_borrow.get(owner, set());
     for (fname, expr) in pairs {
-        val = self._codegen_expr(expr);
-        if val is None and fname not in given {
-            val = self._empty_container_for_field(
-                field_types.get(fname), f"dflt.{fname}"
+        val = self._codegen_expr(expr)
+            if fname in given
+            else self._codegen_field_default(
+                expr, field_types.get(fname), f"dflt.{fname}"
             );
-        }
         if val is None {
             return None;
         }
