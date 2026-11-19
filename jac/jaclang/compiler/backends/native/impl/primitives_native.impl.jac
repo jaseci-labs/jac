@@ -5831,7 +5831,126 @@ impl NativeBuiltinEmitter.emit_setattr(
 impl NativeBuiltinEmitter.emit_hasattr(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 2 or len(ctx.arg_nodes) != 2 {
+        return None;
+    }
+    p = ctx.pass_ref;
+    type_name = p._type_key_of(ctx.arg_nodes[0]);
+    if type_name is None or type_name not in p.struct_field_indices {
+        return None;
+    }
+
+    if p._program_has_subclasses(type_name) {
+        return None;
+    }
+    fields = p.struct_field_indices[type_name];
+    methods: dict[str, int] = dict(p.vtable_method_indices.get(type_name, {}));
+    for cls in p._mro_of(type_name) {
+        layout = p._arch_layout(cls);
+        if layout is None {
+            continue;
+        }
+        for method_name in layout.method_index {
+            if method_name.endswith(".__get__") {
+                return None;
+            } elif method_name == "__getattr__" or method_name == "__getattribute__" {
+                return None;
+            } elif not method_name.endswith(".setter") {
+                methods[method_name] = 0;
+            }
+        }
+    }
+
+    for method_name in [
+        "__str__",
+        "__repr__",
+        "__hash__",
+        "__eq__",
+        "__ne__",
+        "__lt__",
+        "__le__",
+        "__gt__",
+        "__ge__",
+        "__init__",
+        "__new__",
+        "__getattribute__",
+        "__setattr__",
+        "__delattr__",
+        "__dir__",
+        "__format__",
+        "__sizeof__",
+        "__reduce__",
+        "__reduce_ex__",
+        "__getstate__",
+        "__subclasshook__",
+        "__init_subclass__",
+        "__doc__",
+        "__module__"
+    ] {
+        methods[method_name] = 0;
+    }
+    i1 = ir.IntType(1);
+
+    i8p = ir.IntType(8).as_pointer();
+    if args[1].type != i8p {
+        return None;
+    }
+    b = get_builder(p);
+    class_cmp = p._call_str_cmp(
+        b,
+        args[1],
+        p._make_global_string("__class__", name_prefix=".hasattr"),
+        name="hasattr.class.cmp"
+    );
+    result: ir.Value = b.icmp_signed(
+        "==", class_cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.class.match"
+    );
+    for field_name in fields.keys() {
+        cmp = p._call_str_cmp(
+            b,
+            args[1],
+            p._make_global_string(field_name, name_prefix=".hasattr"),
+            name="hasattr.cmp"
+        );
+        matches = b.icmp_signed(
+            "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.match"
+        );
+        result = b.or_(result, matches, name="hasattr.or");
+    }
+    for method_name in methods.keys() {
+        cmp = p._call_str_cmp(
+            b,
+            args[1],
+            p._make_global_string(method_name, name_prefix=".hasattr"),
+            name="hasattr.method.cmp"
+        );
+        matches = b.icmp_signed(
+            "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.method.match"
+        );
+        result = b.or_(result, matches, name="hasattr.method.or");
+    }
+    for cls in p._mro_of(type_name) {
+        inherited_static_prefix = cls + ".";
+        for static_name in p.static_fields {
+            if static_name.startswith(inherited_static_prefix) {
+                member_name = static_name[len(inherited_static_prefix):];
+                cmp = p._call_str_cmp(
+                    b,
+                    args[1],
+                    p._make_global_string(member_name, name_prefix=".hasattr"),
+                    name="hasattr.static.cmp"
+                );
+                matches = b.icmp_signed(
+                    "==",
+                    cmp,
+                    ir.Constant(ir.IntType(32), 0),
+                    name="hasattr.static.match"
+                );
+                result = b.or_(result, matches, name="hasattr.static.or");
+            }
+        }
+    }
+    return result;
 }
 
 impl NativeBuiltinEmitter.emit_delattr(

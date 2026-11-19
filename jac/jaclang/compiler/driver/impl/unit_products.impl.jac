@@ -184,10 +184,15 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
     manifest = InteropManifest();
     bindings: dict[str, dict[str, any]] = record.get('bindings', {});
     for (name, data) in bindings.items() {
+        caller_contexts: set[InteropContext] = set();
+        raw_callers: list[str] = data.get('callers', []);
+        for caller in raw_callers {
+            caller_contexts.add(_interop_context_of(caller));
+        }
         manifest.bindings[name] = InteropBinding(
             name=data['name'],
-            source_context=InteropContext(data['source_context']),
-            callers={InteropContext(c) for c in data.get('callers', [])},
+            source_context=_interop_context_of(data['source_context']),
+            callers=caller_contexts,
             ret_type=data.get('ret_type', 'int'),
             param_types=data.get('param_types', []),
             param_names=data.get('param_names', []),
@@ -203,13 +208,35 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
     for (name, rec) in surface.items() {
         manifest.surface[str(name)] = SurfaceEntry.from_dict(str(name), dict(rec));
     }
-    manifest.endpoint_effects.update(record.get('endpoint_effects', {}));
-    manifest.native_host_imports.update(record['native_host_imports']);
+    endpoint_effects: dict[str, any] = record.get('endpoint_effects', {});
+    for (key, value) in endpoint_effects.items() {
+        manifest.endpoint_effects[key] = value;
+    }
+    native_host_imports: dict[str, any] = record.get('native_host_imports', {});
+    for (key, value) in native_host_imports.items() {
+        manifest.native_host_imports[key] = value;
+    }
     for edge in record['app_edges'] {
         manifest.app_edges.append((str(edge[0]), str(edge[1])));
     }
-    manifest.provider_routes.update(record['provider_routes']);
+    provider_routes: dict[str, any] = record.get('provider_routes', {});
+    for (key, value) in provider_routes.items() {
+        manifest.provider_routes[key] = value;
+    }
     return manifest;
+}
+
+impl _interop_context_of(value: str) -> InteropContext {
+    if value == 'native' {
+        return InteropContext.NATIVE;
+    }
+    if value == 'client' {
+        return InteropContext.CLIENT;
+    }
+    if value == 'server' {
+        return InteropContext.SERVER;
+    }
+    raise ValueError(f"unknown interop context: {value}");
 }
 
 impl literal_to_json(value: any) -> dict[str, any] {
@@ -249,12 +276,18 @@ impl literal_from_json(raw: any) -> any {
         return base64.b64decode(str(record["b"]).encode("ascii"));
     }
     if "l" in record {
-        return [literal_from_json(item) for item in list(record["l"])];
+        values: list[any] = record["l"];
+        items: list[any] = [];
+        for item in values {
+            items.append(literal_from_json(item));
+        }
+        return items;
     }
     if "d" in record {
         out: dict[str, any] = {};
-        for pair in list(record["d"]) {
-            parts = list(pair);
+        pairs: list[any] = record["d"];
+        for pair in pairs {
+            parts: list[any] = pair;
             if len(parts) == 2 {
                 out[str(parts[0])] = literal_from_json(parts[1]);
             }
