@@ -1861,3 +1861,95 @@ test "a module whose file name no wire can name keeps written imports under the 
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+glob _SPACES_ARCH: str = (
+         "graph spaces {\n"
+         "    space site: browser { entry web; pages.* | core.site.*; }\n"
+         "    space phone: hermes { entry mobile.main; }\n"
+         "    space api: native { core.api; }\n"
+         "    space cli: native { entry cli.main; }\n"
+         "\n"
+         "    app web { run api; serve site; }\n"
+         "    app desktop { run site; }\n"
+         "    app mobile { run phone; }\n"
+         "    app cli { run cli; }\n"
+         "}\n"
+         "\n"
+         "graph spaces local {\n"
+         "    app desktop { run site, api; }\n"
+         "}\n"
+         "\n"
+         "graph import {\n"
+         "    edge Core: core.* --> cli.* | mobile.* | pages.* | web;\n"
+         "\n"
+         "    core.api ++> cli.main | pages.index { greet }\n"
+         "}\n"
+     ),
+     _SPACES_FILES: dict[str, str] = {
+         "web.jac": "def:pub app(children: any) -> JsxElement {\n    return <main>{children}</main>;\n}\n",
+         "pages/index.jac": "def:pub page -> JsxPage {\n    return <p>{greet()}</p>;\n}\n",
+         "core/api.jac": "def:pub greet -> str {\n    return \"hi\";\n}\n",
+         "core/site/ui.jac": "def Badge -> JsxElement {\n    return <b>x</b>;\n}\n",
+         "mobile/main.jac": "def:pub app -> JsxElement {\n    return <p>m</p>;\n}\n",
+         "cli/main.jac": "with entry {\n    print(greet());\n}\n"
+     };
+
+test "graph spaces declares the apps: their kinds, entries and where their modules run" {
+    import from jaclang.project.workspace { workspace_for_path }
+    files = dict(_SPACES_FILES);
+    files["archwire.jac"] = _SPACES_ARCH;
+    base = _project(files);
+    ws = workspace_for_path(os.path.join(base, "web.jac"));
+    assert ws is not None;
+    kinds = {name: app.kind for (name, app) in ws.apps.items()};
+    assert kinds == {
+        "web": "web-app",
+        "desktop": "desktop",
+        "mobile": "mobile",
+        "cli": "cli"
+    } , kinds;
+    assert ws.apps["web"].`entry.endswith("web.jac");
+    assert ws.apps["desktop"].`entry.endswith("web.jac");
+    assert ws.apps["mobile"].`entry.endswith(os.path.join("mobile", "main.jac"));
+    assert ws.apps["cli"].`entry.endswith(os.path.join("cli", "main.jac"));
+    web_pins = ws.apps["web"].pins;
+    assert web_pins.get("core.api") == "server" , web_pins;
+    assert web_pins.get("pages.*") == "client" , web_pins;
+    assert web_pins.get("core.site.*") == "client" , web_pins;
+    assert web_pins.get("web") == "client" , web_pins;
+    assert "core.api" not in ws.apps["cli"].pins , ws.apps["cli"].pins;
+    shutil.rmtree(base, ignore_errors=True);
+}
+
+test "a graph spaces block is checked: hosts, entries, the spaces an app names" {
+    bad = (
+        "graph spaces {\n"
+        "    space site: webby { entry web; entry pages.index; pages.*; }\n"
+        "    space api: native { core.api | pages.*; }\n"
+        "\n"
+        "    app web { run api, store; serve api; }\n"
+        "}\n"
+        "\n"
+        "graph spaces local {\n"
+        "    space extra: native { core.api; }\n"
+        "}\n"
+    );
+    files = dict(_SPACES_FILES);
+    files["archwire.jac"] = bad;
+    base = _project(files);
+    codes = sorted(_errors(_compile(base, "archwire.jac")));
+    for code in ("E1226", "E1270", "E1271", "E1272", "E1273", "E1275") {
+        assert code in codes , (code, codes);
+    }
+    shutil.rmtree(base, ignore_errors=True);
+}
+
+test "graph spaces belongs in archwire.jac, and jac fmt keeps its layout" {
+    files = dict(_SPACES_FILES);
+    files["archwire.jac"] = _SPACES_ARCH;
+    files["core/other.jac"] = "graph spaces {\n    space x: native { core.other; }\n}\n";
+    base = _project(files);
+    assert "E2088" in _errors(_compile(base, "core/other.jac"));
+    assert _formatted(base, "archwire.jac") == _SPACES_ARCH;
+    shutil.rmtree(base, ignore_errors=True);
+}

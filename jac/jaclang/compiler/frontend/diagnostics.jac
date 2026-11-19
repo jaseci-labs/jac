@@ -1914,6 +1914,52 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " write that way: inject it with '++>' if the module needs it, or remove the"
          " wire."
      ),
+     E0115 = _err(
+         "E0115",
+         Category.SYNTAX,
+         "Expected a space ('space name: host {{ ... }}') or an app ('app name {{ ... }}') here",
+         help="A `graph spaces` block declares spaces and apps only."
+     ),
+     E0116 = _err(
+         "E0116",
+         Category.SYNTAX,
+         "A space holds 'entry <module>;' and module patterns only"
+     ),
+     E0117 = _err(
+         "E0117",
+         Category.SYNTAX,
+         "An app holds 'run <spaces>;' and 'serve <spaces>;' only"
+     ),
+     E1226 = _err(
+         "E1226",
+         Category.SEMANTIC,
+         "'{host}' is not a host: a space runs on native, browser, wasm, node, hermes or cpython"
+     ),
+     E1270 = _err(
+         "E1270",
+         Category.SEMANTIC,
+         "Space '{space}' has a second entry; a space starts at one module"
+     ),
+     E1271 = _err(
+         "E1271",
+         Category.SEMANTIC,
+         "A profile holds apps only; declare space '{space}' in the unnamed 'graph spaces' block"
+     ),
+     E1272 = _err(
+         "E1272",
+         Category.SEMANTIC,
+         "App '{app}' serves '{space}', a {host} space; an app serves browser and wasm spaces and runs the others"
+     ),
+     E1273 = _err(
+         "E1273",
+         Category.SEMANTIC,
+         "App '{app}' names space '{space}', which no 'graph spaces' block declares"
+     ),
+     E1275 = _err(
+         "E1275",
+         Category.SEMANTIC,
+         "Pattern '{pattern}' is held by both space '{space}' and space '{other}'"
+     ),
      E2088 = _err(
          "E2088",
          Category.SEMANTIC,

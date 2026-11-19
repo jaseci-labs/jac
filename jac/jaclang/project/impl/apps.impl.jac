@@ -43,6 +43,20 @@ impl AppConfig.contains(project_root: str, abs_path: str) -> bool {
     return _norm_path(abs_path) == _norm_path(self.entry_path(project_root));
 }
 
+impl has_spaces_block(root_dir: str) -> bool {
+    arch = os.path.join(root_dir, "archwire.jac");
+    if not os.path.isfile(arch) {
+        return False;
+    }
+    try {
+        with open(arch, encoding="utf-8") as fh {
+            return "graph spaces" in fh.read();
+        }
+    } except OSError {
+        return False;
+    }
+}
+
 impl validate_app_name(name: str) -> None {
     if not name or not name.strip() {
         raise ValueError("[apps] has an app with an empty name");
@@ -56,8 +70,11 @@ impl validate_app_name(name: str) -> None {
 }
 
 impl parse_apps(
-    project_data: dict[str, any], apps_data: dict[str, any]
+    project_data: dict[str, any],
+    apps_data: dict[str, any],
+    derived: dict[str, DerivedApp] | None = None
 ) -> dict[str, AppConfig] {
+    from_arch = derived or {};
     if not isinstance(apps_data, dict) {
         raise ValueError("[apps] must be a table of [apps.<name>] tables");
     }
@@ -98,7 +115,17 @@ impl parse_apps(
             }
             fields[attr] = value;
         }
+        arch_app = from_arch.get(name);
+        if arch_app is not None {
+            placement = overlays.setdefault("placement", {});
+            pins = dict(arch_app.pins);
+            pins.update(placement.get("pins", {}));
+            placement["pins"] = pins;
+        }
         kind = str(fields.get("kind", "")).strip();
+        if not kind and arch_app is not None {
+            kind = arch_app.kind;
+        }
         if not kind {
             raise ValueError(f"[apps.{name}] is missing the required key 'kind'");
         }
@@ -109,6 +136,9 @@ impl parse_apps(
             );
         }
         entry_point = str(fields.get("entry_point", "")).strip();
+        if not entry_point and arch_app is not None {
+            entry_point = arch_app.entry_point;
+        }
         if not entry_point {
             raise ValueError(f"[apps.{name}] requires an explicit entry-point module");
         }
@@ -118,18 +148,38 @@ impl parse_apps(
         if route and not route.startswith("/") {
             raise ValueError(f"[apps.{name}] route='{route}' must start with '/'");
         }
+        raw_profiles = fields.get("profiles", []);
         apps[name] = AppConfig(
             name=name,
             kind=kind,
             entry_point=entry_point,
             platform=platform,
             route=route,
+            title=str(fields.get("name", "")).strip(),
+            identifier=str(fields.get("identifier", "")).strip(),
+            version=str(fields.get("version", "")).strip(),
+            profiles=[str(x) for x in raw_profiles] if isinstance(raw_profiles, list) else [],
+            local_users=fields.get("local_users") is True,
             overlays=overlays
+        );
+    }
+    for (name, arch_app) in from_arch.items() {
+        if name in apps {
+            continue;
+        }
+        apps[name] = AppConfig(
+            name=name,
+            kind=arch_app.kind,
+            entry_point=arch_app.entry_point,
+            overlays={"placement": {"pins": dict(arch_app.pins)}}
         );
     }
     entries: dict[str, str] = {};
     for app in apps.values() {
         identity = app.entry_point;
+        if identity in entries and app.name in from_arch and entries[identity] in from_arch {
+            continue;
+        }
         if identity in entries {
             raise ValueError(
                 f"[apps.{app.name}] entry-point already declared by '{entries[

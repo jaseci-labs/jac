@@ -6,7 +6,7 @@ import from contextvars { ContextVar }
 
 glob ARCH_FILE_NAME: str = "archwire.jac",
      SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__"),
-     RECORDS_FORMAT: int = 4;
+     RECORDS_FORMAT: int = 5;
 
 obj WireBinding {
     has provider: str,
@@ -57,12 +57,39 @@ obj WireRec {
     def bindings -> list[WireBinding];
 }
 
+obj SpaceRec {
+    has name: str,
+        host: str,
+        entry_module: str = "",
+        patterns: list[PatternRec] = [],
+        line: int = 0;
+}
+
+obj AppRec {
+    has name: str,
+        profile: str = "",
+        runs: list[str] = [],
+        serves: list[str] = [];
+}
+
+obj ArchRecords {
+    has parse_failed: bool = False,
+        wires: list[WireRec] = [],
+        rules: list[RuleRec] = [],
+        spaces: list[SpaceRec] = [],
+        apps: list[AppRec] = [],
+        spaces_text: str = "";
+}
+
 obj WiringSpec {
     has root_dir: str,
         path: str,
         parse_failed: bool = False,
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
+        spaces: list[SpaceRec] = [],
+        apps: list[AppRec] = [],
+        spaces_text: str = "",
         _raw: dict[str, list[WireRec]] = {},
         _raw_by_prefix: dict[str, list[str]] = {},
         _by_consumer: dict[str, list[WireRec]] = {},
@@ -139,7 +166,9 @@ def pattern_record(pattern: ModulePattern, scope: str = "") -> PatternRec;
 def rule_record(rule: ImportRule) -> RuleRec;
 def wire_records(wire: ImportWire, source: str = "") -> list[WireRec];
 def module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleRec]];
+def space_records(mod: Module, source: str) -> tuple[list[SpaceRec], list[AppRec], str];
 def parse_records(source: str, path: str) -> tuple[bool, list[WireRec], list[RuleRec]];
+def parse_arch_records(source: str, path: str) -> ArchRecords;
 def wire_block(provider: str, consumer: str) -> str;
 def block_relative(block: str, name: str) -> str;
 def wire_text(
@@ -169,11 +198,9 @@ def _entry_order(
 def _block_text(block: str, body: list[str]) -> str;
 def canonical_wiring_source(source: str, path: str) -> str;
 
-def encode_records(
-    parse_failed: bool, wires: list[WireRec], rules: list[RuleRec]
-) -> str;
+def encode_records(records: ArchRecords) -> str;
 
-def decode_records(text: str) -> (tuple[bool, list[WireRec], list[RuleRec]] | None);
+def decode_records(text: str) -> (ArchRecords | None);
 def _split_list(text: str) -> list[str];
 def _encode_patterns(patterns: list[PatternRec]) -> str;
 def _decode_patterns(text: str) -> (list[PatternRec] | None);

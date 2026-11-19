@@ -2987,3 +2987,90 @@ impl MatchArch.init(
     );
     self.postinit();
 }
+
+impl GraphSpaces.init(
+    *,
+    doc: (String | None) = None,
+    profile: (Name | None),
+    body: Sequence[SpaceDecl | AppDecl],
+    kid: Sequence[UniNode] = []
+) -> None {
+    self._link(kid, {DocRole: doc, NameRole: profile, BodyRole: body});
+    self.postinit();
+}
+
+impl GraphSpaces.profile.getter -> (Name | None) {
+    found = [self->:NameRole:->];
+    return (found[0] as Name) if found else None;
+}
+
+impl GraphSpaces.body.getter -> Sequence[SpaceDecl | AppDecl] {
+    return ([self->:BodyRole:->]) as Sequence[SpaceDecl | AppDecl];
+}
+
+impl GraphSpaces.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl SpaceDecl.init(
+    *,
+    name: Name,
+    host: Name,
+    entry_module: (ModulePath | None),
+    patterns: Sequence[ModulePattern],
+    kid: Sequence[UniNode] = []
+) -> None {
+    self._link(
+        kid,
+        {NameRole: name, HostRole: host, EntryRole: entry_module, TargetsRole: patterns}
+    );
+    self.postinit();
+}
+
+impl SpaceDecl.name.getter -> Name {
+    return ([self->:NameRole:->][0]) as Name;
+}
+
+impl SpaceDecl.host.getter -> Name {
+    return ([self->:HostRole:->][0]) as Name;
+}
+
+impl SpaceDecl.entry_module.getter -> (ModulePath | None) {
+    found = [self->:EntryRole:->];
+    return (found[0] as ModulePath) if found else None;
+}
+
+impl SpaceDecl.patterns.getter -> Sequence[ModulePattern] {
+    return ([self->:TargetsRole:->]) as Sequence[ModulePattern];
+}
+
+impl SpaceDecl.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl AppDecl.init(
+    *,
+    name: Name,
+    runs: Sequence[Name],
+    serves: Sequence[Name],
+    kid: Sequence[UniNode] = []
+) -> None {
+    self._link(kid, {NameRole: name, RunRole: runs, ServeRole: serves});
+    self.postinit();
+}
+
+impl AppDecl.name.getter -> Name {
+    return ([self->:NameRole:->][0]) as Name;
+}
+
+impl AppDecl.runs.getter -> Sequence[Name] {
+    return ([self->:RunRole:->]) as Sequence[Name];
+}
+
+impl AppDecl.serves.getter -> Sequence[Name] {
+    return ([self->:ServeRole:->]) as Sequence[Name];
+}
+
+impl AppDecl.__repr__ -> str {
+    return f"{type(self).__name__}";
+}

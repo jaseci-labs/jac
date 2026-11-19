@@ -10,6 +10,9 @@ impl TypeCheckPass.exit_name with Name exit {
     if here.__class__ is not Name {
         return;
     }
+    if here.find_parent_of_type(GraphSpaces) is not None {
+        return;
+    }
     if here.sym is None {
         if isinstance(here.parent, AtomTrailer) and here.parent.right is here {
             return;
