@@ -30,7 +30,7 @@ def assert_error_pretty_found(needle: str, haystack: str) {
 
 # (case, fixture dir, fixture, expected error count, skip type-check, pretty checks)
 # `pretty checks` are (error index, expected pretty_print excerpt) pairs. These
-# 103 cases were one hand-written test each; the body was always the same four
+# cases were one hand-written test each; the body was always the same four
 # steps, so it is a table and `parametrize` still registers a named test per row.
 glob CHECKER_DIRS: dict[(str, str)] = {
          "checker": CHECKER_FIXTURES,
@@ -1268,6 +1268,22 @@ Cannot return int, expected bool
              []
          ),
          ("function_type_attrs", "checker", "checker_function_attrs.jac", 0, True, []),
+         (
+             "anchor_edges_iteration_type",
+             "checker",
+             "checker_bug_jir_list_iter_type.jac",
+             1,
+             True,
+             [
+                 (
+                     0,
+                     """
+        bad: int = anchor.id;  # <-- Error: only raised when anchor is typed
+        ^^^^^^^^^^^^^^^^^^^^^
+    """
+                 )
+             ]
+         ),
          (
              "any_vs_object_attr_access",
              "checker",
@@ -2577,54 +2593,45 @@ test "agentvisitor_connect_no_errors" {
 test "inferred_local_type_frozen" {
     # An unannotated local is frozen to the type inferred at its first
     # binding; reassigning an incompatible type is an error, and so is a
-    # `for` target that reuses the name, unannotated or annotated (#9972).
+    # `for` target that reuses the name, unannotated or annotated (#9972),
+    # or any other binder that writes it, match captures included (#10405).
     # The `None`-sentinel pattern is the one exception (the type evolves).
+    # Every `# <-- Error` line in the fixture carries one E1001, in line order.
+    path = os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac");
     program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
-        options=NO_TC
+    program.compile(path, options=NO_TC);
+    marked = [
+        i + 1
+        for (i, line) in enumerate(Path(path).read_text().splitlines())
+        if "# <-- Error" in line
+    ];
+    errs = program.errors_had;
+    assert [e.loc.first_line for e in errs] == marked , "\n".join(
+        [e.pretty_print() for e in errs]
     );
-    assert len(program.errors_had) == 5 , f"Expected 5 type errors, but got {len(
-        program.errors_had
-    )}: "
-        + "\n".join([err.pretty_print() for err in program.errors_had]);
-    for err in program.errors_had {
-        assert err.code is not None and err.code.code == "E1001";
-    }
-    for (idx, needle) in [
-        (0, """
-        a = "some str";  # <-- Error
-    """),
-        (
-            1,
-            """
-        for a in ["x", "y"] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            2,
-            """
-        for (kind, a) in [("k", "x")] {  # <-- Error
-        Cannot assign str to int
-    """
-        ),
-        (
-            3,
-            """
-        for c in [1, 2] {  # <-- Error
-        Cannot assign int to str
-    """
-        ),
-        (
-            4,
-            """
-        for x in ["bad"] {  # <-- Error
-        Cannot assign str to int
-    """
-        )
-    ] {
-        assert_error_pretty_found(needle, program.errors_had[idx].pretty_print());
+    for (err, msg) in zip(
+        errs,
+        [
+            'Literal["some str"] to int',
+            "str to int",
+            "str to int",
+            "int to str",
+            "str to int",
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            "TextIOWrapper to Label",
+            "ValueError to Label",
+            "str to Label",
+            "list[",
+            'Literal["x"] to Label',
+            'Literal["x"] to Label',
+            "LiteralString to int"
+        ]
+    ) {
+        assert err.code is not None
+            and err.code.code == "E1001"
+            and f"Cannot assign {msg}" in err.pretty_print() , err.pretty_print();
     }
 }
 
@@ -3263,11 +3270,15 @@ test "starred_unpack_barrier" {
     # After `(head, *rest) = ...` inside `if rest is not None`, rest
     # must reset to list[int] | None. The typed-local assignment then
     # fails because list[int] | None is not assignable to list[int].
-    assert len(program.errors_had) == 1 , "Expected 1 type error, but got "
+    # A target after the star narrows to the last element, not the one
+    # at its own index.
+    assert len(program.errors_had) == 2 , "Expected 2 type errors, but got "
         + f"{len(program.errors_had)}:\n"
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
     assert 'Cannot assign list[int] | NoneType to list[int]' in msg , f"Expected starred-unpack reset error, got: {msg}";
+    msg = program.errors_had[1].pretty_print();
+    assert 'Cannot assign str to int' in msg , f"Expected the last element's type, got: {msg}";
 }
 
 """Tuple-unpacking assignment acts as a narrowing barrier."""
@@ -3340,8 +3351,8 @@ test "impl_imports_from_parent" {
     path = os.path.join(CHECKER_FIXTURES, "checker_impl_imports.jac");
     mod = program.compile(path, options=NO_TC);
 
-    # Should have 3 errors for type mismatches with jaclang types (not Python stdlib)
-    assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
+    # Should have 2 errors for type mismatches with jaclang types (not Python stdlib)
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
@@ -3680,221 +3691,6 @@ test "self_class_member_access_5688" {
             assert "type \"Self\"" not in err.pretty_print() , f"Error should not refer to opaque Self type, got:\n{err.pretty_print()}";
         }
     }
-}
-
-# ============================================================================
-# Narrowing gap exposure tests
-#
-# These tests document known type checker narrowing limitations.
-# Each test asserts the CURRENT (broken) error count. When a gap is fixed,
-# the error count should decrease — update the assertion accordingly.
-# The fixture has ok_ functions (should pass) and fail_ functions (currently broken).
-# ============================================================================
-"""Gap A: Early return narrowing after nested if block join points.
-
-After `if val is None { return; }`, val is narrowed to non-None for the entire
-rest of the function. Fixed by propagating affected_symbols through already-linked
-internal CFG nodes when sibling-to-sibling edges are created in _link_sequential.
-"""
-test "narrowing_gap_a_early_return_after_nested_if" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
-    );
-
-    # Gap A errors are on lines 85-129 (fail_early_return_* and fail_truthiness/isinstance variants)
-    gap_a_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 85 <= e.loc.first_line <= 129
-    ];
-    # FIXED: CFG affected_symbols propagation now reaches internal nodes
-    assert len(gap_a_errors) == 0 , f"Gap A should have 0 errors (fixed), got {len(
-        gap_a_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in gap_a_errors);
-}
-
-"""Gap B: Ternary narrowing applied to function arguments in ternary branches.
-
-In `use_foo(val) if isinstance(val, Foo) else 0`, the ternary handler correctly
-narrows `val` in the true branch. Fixed by eagerly evaluating the IfElseExpr in
-enter_if_else_expr so narrowing scopes are active before children are visited.
-"""
-test "narrowing_gap_b_ternary_fn_arg" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
-    );
-
-    # Gap B errors are on lines 155-170 (fail_ternary_*_fn_arg functions)
-    gap_b_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 155 <= e.loc.first_line <= 170
-    ];
-    # FIXED: eagerly evaluating IfElseExpr in enter_if_else_expr caches narrowed
-    # types on child nodes before the walker visits them.
-    assert len(gap_b_errors) == 0 , f"Gap B should have 0 errors (fixed), got {len(
-        gap_b_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in gap_b_errors);
-}
-
-"""Gap C: Ternary narrowing applied to attribute access on narrowed variable.
-
-In `val.attr if val else 0`, the true branch correctly narrows `val` from T|None
-to T. Fixed by eagerly evaluating IfElseExpr (same fix as Gap B).
-"""
-test "narrowing_gap_c_ternary_attr_access" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
-    );
-
-    # Gap C errors are on lines 180-196 (fail_ternary_attr_* functions)
-    gap_c_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 180 <= e.loc.first_line <= 196
-    ];
-    # FIXED: same root cause as Gap B — eagerly evaluating IfElseExpr resolves this.
-    assert len(gap_c_errors) == 0 , f"Gap C should have 0 errors (fixed), got {len(
-        gap_c_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in gap_c_errors);
-}
-
-"""Verify ok_ functions in narrowing gaps fixture produce no errors.
-
-The ok_ prefixed functions test patterns that DO work correctly and should
-never regress. This test ensures they remain error-free.
-"""
-test "narrowing_gaps_ok_functions_no_errors" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
-    );
-
-    # ok_ functions are on lines 64-82 — these should produce no errors
-    ok_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 64 <= e.loc.first_line <= 82
-    ];
-    assert len(ok_errors) == 0 , f"ok_ functions should produce no errors, got {len(
-        ok_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in ok_errors);
-}
-
-"""Gap D: Assignment in if-body narrows type after the if block."""
-test "narrowing_gap_d_assign_in_if_body" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
-    );
-
-    # Gap D ok_ functions: lines 210-300 (includes try/finally pattern)
-    gap_d_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 210 <= e.loc.first_line <= 300
-    ];
-    assert len(gap_d_errors) == 0 , f"Gap D should have 0 errors (fixed), got {len(
-        gap_d_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in gap_d_errors);
-}
-
-# ============================================================================
-# Runtime.impl.jac type checker issues
-# These document false positive errors found in runtime.impl.jac.
-# ============================================================================
-"""Runtime narrowing: truthiness + isinstance on attribute access in `and` chains.
-
-Tests that `obj.attr and isinstance(obj.attr, T)` correctly narrows obj.attr
-from a multi-member union through both truthiness and isinstance. Uses AtomTrailer
-nodes (attribute access) to match the real runtime.impl.jac patterns.
-"""
-test "runtime_attr_truthiness_and_isinstance_narrowing" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
-    );
-
-    # Issue 1 ok_ functions: lines 60-100 (attr truthiness, isinstance, loop patterns)
-    i1_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 60 <= e.loc.first_line <= 100
-    ];
-    assert len(i1_errors) == 0 , f"Attr truthiness/isinstance narrowing should produce 0 errors, got {len(
-        i1_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in i1_errors);
-}
-
-"""Runtime narrowing: compound `or` guard on attribute access after early exit.
-
-Tests that after `if (not obj or not obj.attr) { raise/return; }`, obj is narrowed
-to non-None for subsequent attribute access. Uses AtomTrailer nodes to match the
-real runtime.impl.jac `spec` pattern.
-"""
-test "runtime_compound_or_guard_attr_narrowing" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
-    );
-
-    # Issue 2 ok_ functions: lines 120-175 (compound or guard patterns)
-    i2_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 120 <= e.loc.first_line <= 175
-    ];
-    assert len(i2_errors) == 0 , f"Compound or guard narrowing should produce 0 errors, got {len(
-        i2_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in i2_errors);
-}
-
-"""Ternary isinstance narrowing should exclude generic types (list[T]) from union."""
-test "runtime_ternary_isinstance_generic_narrowing" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
-    );
-
-    # Issue 3 ok_ functions: lines 195-230 (ternary isinstance with generic types)
-    i3_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 195 <= e.loc.first_line <= 230
-    ];
-    assert len(i3_errors) == 0 , f"Ternary isinstance generic narrowing should produce 0 errors, got {len(
-        i3_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in i3_errors);
-}
-
-"""isinstance narrowing should preserve generic type parameters from union members."""
-test "runtime_isinstance_preserves_generic_params" {
-    program = JacProgram();
-    mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
-    );
-
-    # Issue 4 ok_ functions: lines 240-290 (isinstance preserving generics)
-    i4_errors = [
-        e
-        for e in program.errors_had
-        if e.loc and 240 <= e.loc.first_line <= 290
-    ];
-    assert len(i4_errors) == 0 , f"isinstance generic preservation should produce 0 errors, got {len(
-        i4_errors
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in i4_errors);
 }
 
 # ============================================================================

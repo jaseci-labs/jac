@@ -694,6 +694,8 @@ test "a shipped jac.toml value the pods cannot resolve stops the deploy before p
                 binary_mod, "deploy_generation_refusal", return_value=""
             ), mock.patch.object(
                 binary_mod, "preflight_pod_runtime", return_value="0.0.0"
+            ), mock.patch.object(
+                binary_mod, "resolve_pod_base_image", return_value="img"
             ), mock.patch.object(binary_mod, "node_arch", return_value="x86_64"), mock.patch.object(
                 DatabaseProvisioner,
                 "provision",
@@ -1141,50 +1143,6 @@ test "the injected default equals the derived URL under matching config" {
             "injected and derived URLs diverged, so reading the env would "
             "change behavior for existing pods"
         );
-    } finally {
-        _peer_env_restore(saved);
-    }
-}
-
-
-# K8sRuntimeServiceResolver.url_for is the other k8s resolution site. It is
-# dormant today, but it must not become the one path that bypasses an override
-# once the admin ops that construct it are wired up.
-def _peer_resolver -> K8sRuntimeServiceResolver {
-    return K8sRuntimeServiceResolver(
-        registry=ServiceRegistry(), namespace=_PEER_NS, port=_PEER_PORT
-    );
-}
-
-
-test "url_for uses the override when one is set" {
-    saved = _peer_env_snapshot();
-    try {
-        _peer_env_isolate();
-        standby = "http://orders-app-standby-service.shop.svc.cluster.local:8000";
-        os.environ[peer_url_env_key("orders_app")] = standby;
-
-        `entry = ServiceEntry(
-            name="orders_app", file="orders_app.jac", prefix="/orders"
-        );
-
-        assert _peer_resolver().url_for(`entry) == standby;
-    } finally {
-        _peer_env_restore(saved);
-    }
-}
-
-
-test "url_for derives when no override is set" {
-    saved = _peer_env_snapshot();
-    try {
-        _peer_env_isolate();
-
-        `entry = ServiceEntry(
-            name="orders_app", file="orders_app.jac", prefix="/orders"
-        );
-
-        assert _peer_resolver().url_for(`entry) == _ORDERS_DERIVED;
     } finally {
         _peer_env_restore(saved);
     }

@@ -106,17 +106,21 @@ impl UserManager.unverified_email(user_id: str) -> dict[str, any] | None {
 }
 
 impl UserManager.open_session(
-    user_id: str, method: str = METHOD_PASSWORD
+    user_id: str, method: str = METHOD_PASSWORD, session_epoch: (int | None) = None
 ) -> SessionGrant {
     unverified = self.unverified_email(user_id);
     if unverified is not None {
         return SessionGrant(unverified=unverified);
     }
+    epoch = session_epoch if session_epoch is not None else self.current_epoch(user_id);
+    if epoch is None {
+        raise ValueError(f"user {user_id} has no usable session epoch");
+    }
     factors = self.second_factors();
     if factors.required_for(user_id) {
-        return SessionGrant(challenge=factors.begin_login(user_id, method));
+        return SessionGrant(challenge=factors.begin_login(user_id, method, epoch));
     }
-    return SessionGrant(token=self.create_jwt_token(user_id));
+    return SessionGrant(token=self.create_jwt_token(user_id, session_epoch=epoch));
 }
 
 impl UserManager.find_user_by_identity(value: str) -> dict[str, any] | None {
@@ -333,14 +337,24 @@ impl UserManager.second_factors -> SecondFactorManager {
 }
 
 impl UserManager.create_jwt_token(
-    user_id: str, include_role: bool = True, assurance: (dict[str, any] | None) = None
+    user_id: str,
+    include_role: bool = True,
+    assurance: (dict[str, any] | None) = None,
+    session_epoch: (int | None) = None
 ) -> str {
+    epoch = self.current_epoch(user_id)
+        if session_epoch is None
+        else session_epoch_value(session_epoch);
+    if epoch is None {
+        raise ValueError(f"user {user_id} has a malformed session epoch");
+    }
     now = datetime.now(UTC);
     payload: dict[(str, any)] = {
         'sub': user_id,
         'user_id': user_id,
         'exp': (now + timedelta(days=token_ttl_days())),
-        'iat': now.timestamp()
+        'iat': now.timestamp(),
+        SESSION_EPOCH_CLAIM: epoch
     };
     username = self.get_username(user_id);
     if username {
@@ -372,7 +386,7 @@ impl UserManager.get_jwt_claims(token: str) -> dict[str, any] | None {
 }
 
 impl UserManager.validate_jwt_token(token: str) -> str | None {
-    user_id = self.validate_jwt_token_detail(token, check_existence=False)['user_id'];
+    user_id = self.validate_jwt_token_detail(token)['user_id'];
     return str(user_id) if user_id is not None else None;
 }
 
@@ -424,44 +438,146 @@ impl UserManager.validate_jwt_token_detail(
             'reason': 'Token has no subject'
         };
     }
-    if check_existence and not self.user_exists(user_id) {
-        provisioned = self.ensure_user_root(user_id)
-            if self.provision_unknown_users
-            else None;
-        if not provisioned {
-            return {
-                'status': 'unknown_user',
-                'user_id': None,
-                'exp': decoded.get('exp'),
-                'reason': 'User associated with token no longer exists'
-            };
+    token_epoch = session_epoch_value(decoded[SESSION_EPOCH_CLAIM])
+        if SESSION_EPOCH_CLAIM in decoded
+        else 0;
+    if token_epoch is None {
+        return {
+            'status': 'invalid',
+            'user_id': None,
+            'exp': decoded.get('exp'),
+            'reason': 'Token has a malformed session epoch'
+        };
+    }
+    if self.provision_unknown_users {
+        if check_existence and not self.user_exists(user_id) {
+            if not self.ensure_user_root(user_id) {
+                return {
+                    'status': 'unknown_user',
+                    'user_id': None,
+                    'exp': decoded.get('exp'),
+                    'reason': 'User associated with token no longer exists'
+                };
+            }
+            logger.info(
+                f"Provisioned a local root for gateway-issued user {user_id} "
+                f"on this service"
+            );
         }
-        logger.info(
-            f"Provisioned a local root for gateway-issued user {user_id} "
-            f"on this service"
-        );
+        return {
+            'status': 'ok',
+            'user_id': user_id,
+            'exp': decoded.get('exp'),
+            'reason': None,
+            'root_id': None,
+            'session_epoch': token_epoch,
+            'claims': decoded
+        };
+    }
+    return self.session_detail(str(user_id), token_epoch, decoded);
+}
+
+impl UserManager.session_detail(
+    user_id: str, token_epoch: int, claims: dict[str, any]
+) -> dict[str, any] {
+    state = self._identity_storage.session_state(user_id);
+    if state is None {
+        found = self._identity_storage.find_user_by_identity(user_id);
+        if found and found.get('user_id') {
+            state = self._identity_storage.session_state(str(found['user_id']));
+        }
+    }
+    if state is None {
+        return {
+            'status': 'unknown_user',
+            'user_id': None,
+            'subject': user_id,
+            'exp': claims.get('exp'),
+            'reason': 'User associated with token no longer exists'
+        };
+    }
+    stored = session_epoch_value(state.get('session_epoch'));
+    if stored is None {
+        logger.error(f"user {user_id} has a malformed session epoch; refusing");
+    }
+    if stored is None
+        or stored != token_epoch
+        or str(state.get('status') or 'active') == 'disabled' {
+        return {
+            'status': 'revoked',
+            'user_id': None,
+            'exp': claims.get('exp'),
+            'reason': 'Session has ended'
+        };
+    }
+    root_id = state.get('root_id');
+    if root_id {
+        cache = _root_id_request_cache.get();
+        seeded = dict(cache) if cache is not None else {};
+        seeded[user_id] = root_id;
+        _root_id_request_cache.set(seeded);
     }
     return {
         'status': 'ok',
         'user_id': user_id,
-        'exp': decoded.get('exp'),
-        'reason': None
+        'exp': claims.get('exp'),
+        'reason': None,
+        'root_id': root_id,
+        'session_epoch': stored,
+        'claims': claims
     };
 }
 
-impl UserManager.refresh_jwt_token(token: str) -> str | None {
+impl UserManager.session_current(user_id: str, session_epoch: (int | None)) -> bool {
+    if self.provision_unknown_users or session_epoch is None {
+        return True;
+    }
+    detail = self.session_detail(user_id, session_epoch, {});
+    return detail['status'] == 'ok';
+}
+
+impl UserManager.end_sessions(user_id: str) -> int | None {
+    if self.provision_unknown_users {
+        return None;
+    }
+    return self._identity_storage.end_sessions(user_id);
+}
+
+impl UserManager.current_epoch(user_id: str) -> int | None {
+    state = self._identity_storage.session_state(user_id);
+    return session_epoch_value(state.get('session_epoch')) if state else 0;
+}
+
+impl UserManager.replacement_token(
+    user_id: str, claims: (dict[str, any] | None), session_epoch: (int | None)
+) -> str | None {
+    if session_epoch is None {
+        return None;
+    }
     try {
-        decoded = jwt_decode(
-            token, signing_secret(), algorithms=[signing_algorithm()], verify_exp=True
+        return self.create_jwt_token(
+            user_id, assurance=carried_claims(claims), session_epoch=session_epoch
         );
-        if decoded.get('type') == 'api_key' {
+    } except Exception as e {
+        logger.info(f"no replacement session for {user_id}: {e}");
+        return None;
+    }
+}
+
+impl UserManager.refresh_jwt_token(token: str) -> str | None {
+    if self.provision_unknown_users {
+        return None;
+    }
+    try {
+        detail = self.validate_jwt_token_detail(token);
+        if detail['status'] != 'ok' {
             return None;
         }
-        user_id = decoded.get('sub') or decoded.get('user_id');
-        if not user_id {
-            return None;
-        }
-        return self.create_jwt_token(user_id, assurance=carried_claims(decoded));
+        return self.create_jwt_token(
+            str(detail['user_id']),
+            assurance=carried_claims(detail['claims']),
+            session_epoch=detail['session_epoch']
+        );
     } except Exception as e {
         logger.debug(f"Failed to refresh JWT token: {str(e)}");
         return None;

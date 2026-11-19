@@ -1,3 +1,4 @@
+import itertools;
 import json;
 import logging;
 import os;
@@ -8,7 +9,9 @@ import from uuid { UUID }
 glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',
-     _schema_ready: set[str] = set(),
+     _schema_ready: dict[str, int] = {},
+     _schema_forgets: dict[str, int] = {},
+     _forget_seq = itertools.count(1),
      _schema_gate = threading.Lock(),
      __all__ = [
          'AnchorRow',
@@ -119,6 +122,8 @@ obj Store {
     def kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool abst;
     def kv_release_lease(key: str, owner: str) -> bool abst;
     def kv_claim_tick(key: str, tick: int) -> bool abst;
+    def kv_put_record(key: str, value: str) -> None abst;
+    def kv_get_record(key: str) -> (str | None) abst;
     def quarantine(
         missing_id: UUID, referrer_id: (UUID | None), kind: str
     ) -> None abst;
@@ -191,6 +196,8 @@ obj PgStore(Store) {
     def kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool;
     def kv_release_lease(key: str, owner: str) -> bool;
     def kv_claim_tick(key: str, tick: int) -> bool;
+    def kv_put_record(key: str, value: str) -> None;
+    def kv_get_record(key: str) -> (str | None);
     def quarantine(missing_id: UUID, referrer_id: (UUID | None), kind: str) -> None;
     def notify(channel: str, payload: str) -> None;
     def listen(channel: str, callback: any) -> None;
@@ -222,3 +229,6 @@ obj PgStore(Store) {
     def _reap_dead_sessions -> int;
     def _live_blockers -> list[dict[str, any]];
 }
+
+
+def forget_schema(info: ConnInfo) -> None;

@@ -276,9 +276,37 @@ def add_project_venv_to_path() -> None:
             added = [p for p in sys.path if p not in before]
             if added:
                 sys.path[:] = added + [p for p in sys.path if p not in added]
+        if site_packages and os.path.isdir(os.path.join(site_packages, "jaclang")):
+            _keep_toolchain_first(site_packages)
     except Exception:
         # Discovery falls back to the binary's own site; never fatal.
         pass
+
+
+def _keep_toolchain_first(site_packages: str) -> None:
+    """Keep the running toolchain's own ``jaclang`` ahead of a venv copy.
+
+    A ``jaclang`` installed into the project venv (the PyPI package, pulled in
+    directly or by a dependency) would otherwise shadow the toolchain itself and
+    every command would die importing modules that copy does not have.
+    """
+    own = os.path.dirname(os.path.abspath(__file__))
+    if not os.path.isdir(os.path.join(own, "jaclang")):
+        return
+    if own in sys.path:
+        sys.path.remove(own)
+    sys.path.insert(0, own)
+    if not _SHADOW_WARNED:
+        _SHADOW_WARNED.append(site_packages)
+        sys.stderr.write(
+            "jac: ignoring the 'jaclang' package in "
+            + site_packages
+            + "; the toolchain provides jaclang. Remove it from the project's"
+            " dependencies.\n"
+        )
+
+
+_SHADOW_WARNED: list[str] = []
 
 
 # The canonical extension registry lives in jaclang/jac0core/ext_registry.py.

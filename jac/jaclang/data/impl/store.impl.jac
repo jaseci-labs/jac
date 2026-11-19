@@ -127,6 +127,11 @@ def _sanitize_ident(name: str) -> str;
 def _store_ns(info: ConnInfo) -> str;
 
 
+impl forget_schema(info: ConnInfo) -> None {
+    _schema_forgets[_store_ns(info)] = next(_forget_seq);
+}
+
+
 glob _PG_CHANNEL_LIMIT = 63,
      _CHANNEL_DIGEST_LEN = 16,
      _CHANNEL_ENVELOPE_KEY = '__jac_channel',
@@ -450,15 +455,16 @@ impl PgStore.ensure_schema(promotions: dict[str, list[str]]) -> None {
 impl PgStore.ensure_schema_once(promotions: dict[str, list[str]]) -> None {
     self._ensure_ready();
     ns = _store_ns(self.conninfo);
-    if ns in _schema_ready {
+    if _schema_ready.get(ns) == _schema_forgets.get(ns, 0) {
         return;
     }
     with _schema_gate {
-        if ns in _schema_ready {
+        forgets = _schema_forgets.get(ns, 0);
+        if _schema_ready.get(ns) == forgets {
             return;
         }
         self.ensure_schema(promotions);
-        _schema_ready.add(ns);
+        _schema_ready[ns] = forgets;
         if self.ensure_cb is None {
             self._warn_lock_headroom();
         }
@@ -1271,6 +1277,30 @@ impl PgStore.kv_claim_tick(key: str, tick: int) -> bool {
         {'k': f"tick:{key}", 't': int(tick)}
     );
     return bool(rows);
+}
+
+
+impl PgStore.kv_put_record(key: str, value: str) -> None {
+    self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, :v, NULL, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        WHERE (
+            (kv_state.value::jsonb ->> 'tick')::timestamptz
+            > (EXCLUDED.value::jsonb ->> 'tick')::timestamptz
+        ) IS NOT TRUE
+        """,
+        {'k': f"record:{key}", 'v': value}
+    );
+}
+
+
+impl PgStore.kv_get_record(key: str) -> (str | None) {
+    rows = self._side_run(
+        "SELECT value FROM kv_state WHERE key = :k", {'k': f"record:{key}"}
+    );
+    return str(rows[0][0]) if rows else None;
 }
 
 

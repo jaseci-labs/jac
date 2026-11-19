@@ -807,7 +807,44 @@ impl EsastGenPass.exit_in_for_stmt with uni.InForStmt exit {
     }
     body = self._build_pass_block(here);
     decl: es.VariableDeclaration | es.Pattern;
-    if isinstance(left, es.VariableDeclaration) {
+    if self._needs_unpack(here.target) {
+        bound = [
+            (name, nm)
+            for (name, nm) in self._collect_pattern_names(here.target)
+            if name not in self.reactive_vars
+        ];
+        per_iteration: list[es.Statement] = [];
+        if self._target_confined(here) {
+            if bound {
+                per_iteration = [
+                    es.VariableDeclaration(
+                        declarations=[
+                            es.VariableDeclarator(id=es.Identifier(name=name))
+                            for name in dict.fromkeys(name for (name, _) in bound)
+                        ],
+                        kind='let'
+                    )
+                ];
+            }
+        } else {
+            frame = self._frame_scope_of(here);
+            for (name, nm) in bound {
+                if frame is not None {
+                    self._hoist_into(frame, name, nm);
+                }
+            }
+        }
+        self._unpack_seq += 1;
+        item = f"__jac_item_{self._unpack_seq}";
+        body.body = per_iteration
+            + self._lower_unpack([here.target], es.Identifier(name=item), here)
+            + body.body;
+        declarator = es.VariableDeclarator(id=es.Identifier(name=item), `init=None);
+        decl = self.sync_loc(
+            es.VariableDeclaration(declarations=[declarator], kind='const'),
+            jac_node=here.target
+        );
+    } elif isinstance(left, es.VariableDeclaration) {
         decl = left;
     } elif self._target_confined(here) {
         pattern = self._target_to_pattern(left, here.target);

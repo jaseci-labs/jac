@@ -23,11 +23,7 @@ This module is therefore **plain Python with no jaclang dependencies** (like the
 sibling ``cache_paths.py`` / ``ext_registry.py``).
 
 Manifest layout (``_precompiled/MANIFEST.json``, format ``MANIFEST_FORMAT``
-below; every version in ``MANIFEST_FORMATS_ACCEPTED`` remains loadable --
-format 9 records the package's native units and linked artifact, format 8
-carried no native record, formats 6 and 7 carried the earlier native seal,
-format 3 lacked native_artifacts, format 2 also lacked
-kind/capabilities/entry/payloads)::
+below, the only format a runtime loads)::
 
     {
       "format": 9,
@@ -61,7 +57,7 @@ kind/capabilities/entry/payloads)::
         ".jac/serve_manifest.json": "...",   # bundle time; key: pkg-relative
         ".jac/client/dist/client.abc.js": "..."  # posix path, value: sha256
       },
-      "native": {                       # optional (format 9): the package's
+      "native": {                       # optional: the package's
         "units": {                      # native units, by pkg-relative source
           "mypkg/core.jac": {"jir": "mypkg/core.jir",
                              "iface_digest": "..."}
@@ -97,18 +93,9 @@ from jaclang.jac0core.cache_paths import file_sha256
 
 MANIFEST_NAME = "MANIFEST.json"
 MANIFEST_FORMAT = 9
-# Format 3 adds optional app metadata (kind / capabilities / entry) and
-# payloads on top of format 2's module map; format 4 added a per-fullname
-# ``native_artifacts`` map; format 5 adds the optional ``placement`` map
-# (pkg-relative source path -> list of codespaces the module emits into,
-# persisted by the seal so downstream tools read placement instead of
-# re-deriving it). Formats 6 and 7 carried a native seal record for the
-# jaclang image; format 8 dropped it (#8732); format 9 records the native
-# units of any package and the one artifact the link plan produced from
-# them (#8943). Older APP images stay loadable; a jaclang image must be
-# current format -- the image ships with the very code that loads it, so
-# skew means a stale or partial install.
-MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, 8, MANIFEST_FORMAT)
+# The image ships with the code that wrote it (a jaclang image) or is rebuilt
+# with the runtime that loads it (an app image, whose JIR format is pinned
+# below anyway), so only the format this runtime writes is loadable.
 # Must match jaclang.compiler.driver.jir.* ; kept literal here because this module
 # must import before any .jac module (including jir.jac) can. This is the whole
 # point of the bootstrap tier: jac0core modules are loaded from their JIR by the
@@ -190,16 +177,16 @@ class SealedImage:
         # Optional non-module payloads baked into the image (prebuilt client
         # dist, serve manifest, ...): pkg-relative posix path -> sha256.
         self.payloads: dict[str, str] = manifest.get("payloads") or {}
-        # Optional app metadata (format 3): what this artifact IS, so a
+        # Optional app metadata: what this artifact IS, so a
         # downloaded bundle dispatches with no project config present.
         self.kind: str = manifest.get("kind", "")
         self.capabilities: list[str] = manifest.get("capabilities") or []
         self.entry: dict = manifest.get("entry") or {}
-        # Optional placement facts (format 5): pkg-relative posix source path
+        # Optional placement facts: pkg-relative posix source path
         # -> codespaces the module emits into (["server"], ["client"], ...).
         # The compiler's verdict, persisted; consumers must not re-derive it.
         self.placement: dict[str, list[str]] = manifest.get("placement") or {}
-        # Optional native record (format 9): the package's native units and
+        # Optional native record: the package's native units and
         # the one linked artifact the link plan produced from them.
         self.native: dict = manifest.get("native") or {}
         # Optional: the artifacts this image leaves out by design; each runs on
@@ -374,9 +361,9 @@ class SealedImage:
 def load_image(precompiled_dir: str | Path) -> SealedImage | None:
     """Load and validate a sealed image; None when no manifest is present.
 
-    Raises RuntimeError (fail-closed) when a manifest exists but targets a
-    different interpreter or JIR format, or -- for a jaclang image -- is not
-    the current manifest format. Silently ignoring any of these would
+    Raises RuntimeError (fail-closed) when a manifest exists but is not the
+    current manifest format or targets a different interpreter or JIR format.
+    Silently ignoring any of these would
     degrade to live compilation, which a sealed build does not have.
     """
     pdir = Path(precompiled_dir)
@@ -398,11 +385,11 @@ def load_image(precompiled_dir: str | Path) -> SealedImage | None:
                 "a seal from a source tree)."
             )
     manifest = json.loads(raw)
-    if manifest.get("format") not in MANIFEST_FORMATS_ACCEPTED:
+    if manifest.get("format") != MANIFEST_FORMAT:
         raise RuntimeError(
-            f"sealed image {manifest_path}: unsupported manifest format "
-            f"{manifest.get('format')!r} (runtime supports "
-            f"{MANIFEST_FORMATS_ACCEPTED})"
+            f"sealed image {manifest_path}: manifest format "
+            f"{manifest.get('format')!r} is not the current {MANIFEST_FORMAT}; "
+            "rebuild it with this jac."
         )
     tag = manifest.get("python_tag")
     if tag != python_tag():
@@ -413,14 +400,6 @@ def load_image(precompiled_dir: str | Path) -> SealedImage | None:
         raise RuntimeError(
             f"sealed image {manifest_path}: JIR format "
             f"{manifest.get('jir_format_version')} != {JIR_FORMAT_VERSION}"
-        )
-    if manifest.get("package") == "jaclang" and manifest.get("format") != MANIFEST_FORMAT:
-        raise RuntimeError(
-            f"sealed jaclang image {manifest_path}: manifest format "
-            f"{manifest.get('format')!r} is not the current {MANIFEST_FORMAT}. "
-            "The image ships with the code that loads it, so a format behind "
-            "the runtime means a stale or partially updated install; rebuild "
-            "the payload."
         )
     return SealedImage(pdir, manifest)
 

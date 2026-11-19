@@ -87,7 +87,7 @@ test "LOCAL channel names a missing [dev] pod_binary loudly" {
     }
     assert "pod_binary" in caught , caught;
     try {
-        download_release_binary("local", node_arch());
+        download_release_binary("local", host_arch());
         caught = "";
     } except RuntimeError as e {
         caught = str(e);
@@ -273,25 +273,42 @@ test "node_arch uses the cluster's node arch, not the host arch" {
 }
 
 
-test "node_arch falls back to the host arch when the cluster is unreachable" {
+test "node_arch refuses, naming JAC_NODE_ARCH, when the cluster's nodes can't be read" {
     def check {
-        with unittest.mock.patch(
-            "kubernetes.client.CoreV1Api", side_effect=Exception("no cluster")
-        ) {
-            assert node_arch() in ("x86_64", "aarch64");
+        for (failure, detail) in [
+            (ApiException(status=403, reason="Forbidden"), "HTTP 403 Forbidden"),
+            (ConnectionError("no cluster"), "ConnectionError: no cluster")
+        ] {
+            caught = "";
+            with unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", side_effect=failure
+            ) {
+                try {
+                    node_arch();
+                } except RuntimeError as e {
+                    caught = str(e);
+                }
+            }
+            assert detail in caught , caught;
+            assert "JAC_NODE_ARCH" in caught , caught;
         }
     }
     _without_node_arch_env(check);
 }
 
 
-test "node_arch falls back to the host arch on a mixed-arch cluster" {
+test "node_arch falls back to the host arch, and names it, on a mixed-arch or empty cluster" {
     def check {
-        with unittest.mock.patch(
-            "kubernetes.client.CoreV1Api",
-            return_value=_core_api_with_nodes(["amd64", "arm64"])
-        ) {
-            assert node_arch() == host_arch();
+        for archs in [["amd64", "arm64"], []] {
+            with unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(archs)
+            ), unittest.mock.patch("jaclang.scale.injector.binary.logger") as log {
+                assert node_arch() == host_arch();
+            }
+            log.warning.assert_called_once();
+            warned = log.warning.call_args.args[0];
+            assert f"({host_arch()})" in warned , warned;
+            assert "JAC_NODE_ARCH" in warned , warned;
         }
     }
     _without_node_arch_env(check);
@@ -514,18 +531,38 @@ test "dev channel picks the official dev image when the tag is published" {
 }
 
 
-test "unpublished official image falls back to the plain python base" {
+test "only a 404 from Docker Hub drops the official image, never on experimental" {
     import jaclang.scale.injector.binary as binary;
-    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
-    saved = binary._http_get_bytes;
-    def _raise(url: str) -> bytes {
-        raise RuntimeError("404");
-    }
-    try {
-        binary._http_get_bytes = _raise;
-        assert binary.resolve_pod_base_image(d, "") == "python:3.12-slim";
-    } finally {
-        binary._http_get_bytes = saved;
+    import from urllib.error { HTTPError, URLError }
+    dev = "[dev]\ntest_jobs = \"auto\"\n";
+    pr = "[experimental]\npr = 7494\n";
+    pr_image = "jaseci/jaclang:experimental-7494";
+    not_found = HTTPError("u", 404, "nf", None, None);
+    limited = HTTPError("u", 429, "tmr", None, None);
+    down = URLError("dns");
+    cases = [
+        # (label, jac.toml, probe error, image, refusal names)
+        ("dev, unpublished", dev, not_found, "python:3.12-slim", ""),
+        ("dev, hub down", dev, down, "jaseci/jaclang:dev", ""),
+        ("dev, rate limited", dev, limited, "jaseci/jaclang:dev", ""),
+        ("pr, unpublished", pr, not_found, "", pr_image),
+        ("pr, hub down", pr, down, pr_image, "")
+    ];
+    for (label, toml, error, expected, refusal) in cases {
+        d = _write_toml(toml);
+        (image, caught) = ("", "");
+        with unittest.mock.patch.object(binary, "_http_get_bytes", side_effect=error), unittest.mock.patch.object(
+            binary.logger, "warning"
+        ) as warned {
+            try {
+                image = binary.resolve_pod_base_image(d, "");
+            } except RuntimeError as e {
+                caught = str(e);
+            }
+        }
+        assert image == expected , f"{label}: {image!r}";
+        assert (refusal in caught) if refusal else not caught , f"{label}: {caught}";
+        assert warned.called != bool(refusal) , f"{label}: warning not logged";
     }
 }
 

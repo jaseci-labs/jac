@@ -165,7 +165,6 @@ obj HostServices {
     def has_active_stub_catalog -> bool;
     def typeshed_unavailable_reason -> str;
     def is_native_only_source(rel: str) -> bool;
-    def is_native_lowered_source(rel: str) -> bool;
     def default_target_triple -> str;
 }
 

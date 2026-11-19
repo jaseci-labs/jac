@@ -965,7 +965,9 @@ walker NaIRGenPass(CompilerPass) {
         args_idx: int,
         stored: ir.Value,
         bound_kind: (str | None),
-        required_kind: (str | None)
+        required_kind: (str | None),
+        erased: bool = False,
+        erased_want: (ir.Type | None) = None
     ) -> dict[str, any];
 
     def _emit_kw_spread_refusal(nd: uni.FuncCall) -> None;
@@ -1586,7 +1588,15 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
-    def _enum_ctor_target(nd: uni.FuncCall) -> (str | None);
+    def _enum_class_target(target: (uni.Expr | None)) -> (str | None);
+    def _enum_member_value(
+        enum_name: str, lay: EnumLayout, idx: int
+    ) -> (ir.Value | None);
+
+    def _codegen_enum_subscript(
+        nd: uni.AtomTrailer, enum_name: str
+    ) -> (ir.Value | None);
+
     def _emit_enum_ctor_refusal(nd: uni.FuncCall, enum_name: str, why: str) -> None;
     def _codegen_enum_ctor(nd: uni.FuncCall, enum_name: str) -> (ir.Value | None);
     def _build_enum_string_table(
@@ -3433,9 +3443,19 @@ walker NaIRGenPass(CompilerPass) {
     def _erased_seq_type(tb: any) -> (ir.Type | None);
     def _erased_decl(tb: any) -> bool;
     def _erased_field(type_name: str, fname: str) -> bool;
-    def _erased_boxable(t: (ir.Type | None)) -> bool;
+    def _erased_field_owner(type_name: str, fname: str) -> (str | None);
+    def _erased_boxable(t: (ir.Type | None), want: (ir.Type | None) = None) -> bool;
     def _erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value;
-    def _erased_want(tv_names: list[str], owner: any) -> (ir.Type | None);
+    def _erased_want(
+        tv_names: list[str], owner: any, decl: (str | None) = None
+    ) -> (ir.Type | None);
+
+    def _erased_slot(sp: uni.ParamVar, slot_type: ir.Type) -> bool;
+    def _erased_arg_want(nd: uni.FuncCall, sp: uni.ParamVar) -> (ir.Type | None);
+    def _box_erased_arg(
+        nd: uni.FuncCall, sp: uni.ParamVar, val: ir.Value, slot_type: ir.Type
+    ) -> ir.Value;
+
     def _erased_decl_names(tb: any) -> list[str];
     def _erased_unbox(
         ptr: ir.Value, want: (ir.Type | None), owned: bool = False

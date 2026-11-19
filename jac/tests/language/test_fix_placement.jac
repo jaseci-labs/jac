@@ -17,14 +17,17 @@ import from jaclang.cli.commands.fix {
 test "prefix markers strip and record claims" {
     src = (
         "sv def helper(x: int) -> int {\n    return x;\n}\n\n"
-        "cl def widget -> str {\n    return \"w\";\n}\n"
+        "cl def widget -> str {\n    return \"w\";\n}\n\n"
+        "cl async def load -> int {\n    return 1;\n}\n"
     );
     res = _strip_markers(src, "mod.jac");
     assert res.changed;
     assert "sv def" not in res.text and "cl def" not in res.text;
+    assert "cl async" not in res.text;
     assert "def helper" in res.text and "def widget" in res.text;
+    assert "async def load" in res.text;
     claimed = {c.name: c.space for c in res.claims};
-    assert claimed == {"helper": "server", "widget": "client"};
+    assert claimed == {"helper": "server", "widget": "client", "load": "client"};
 }
 
 
@@ -238,7 +241,7 @@ glob NOTES_STORE: str = (
      ),
      NOTES_HELPER: str = (
          "sv import from .store { list_notes }\n\n"
-         "cl def count_notes -> int {\n    return len(list_notes());\n}\n"
+         "cl def count_notes -> None {\n    list_notes();\n}\n"
      );
 
 
@@ -323,7 +326,7 @@ test "fix placement declares a service app only for a server-placed sv import" {
             "files": {
                 "notes/helper.jac": "sv import from .store { list_notes as client_list }\n"
                 "import from .store { list_notes as server_list }\n\n"
-                "cl def count_notes -> int {\n    return len(client_list());\n}\n\n"
+                "cl def count_notes -> None {\n    client_list();\n}\n\n"
                 "def:pub note_total -> int {\n    return len(server_list());\n}\n"
             },
             "services": [],

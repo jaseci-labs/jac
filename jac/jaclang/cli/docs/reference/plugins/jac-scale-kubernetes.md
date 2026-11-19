@@ -632,7 +632,7 @@ Controls the base images used for the application pod and init containers. Overr
 
 | TOML Key  | Default | Description |
 |----------|---------|-------------|
-| `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). Falls back to `python:3.12-slim` when the registry is unreachable and always on the local-binary channel |
+| `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). When Docker Hub cannot be reached, the image is used unpinned. When Docker Hub reports the tag unpublished, pods fall back to `python:3.12-slim`, except on the experimental channel, where the deploy stops. Always `python:3.12-slim` on the local-binary channel |
 | `wait_image` | `busybox:1.36` | Init container image used for dependency wait checks (Postgres readiness) |
 
 **To change in `jac.toml`:**
@@ -1170,8 +1170,9 @@ Instead, a deploy:
 3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or the
    tag matching the channel/version pin: `:dev`, `:experimental-<PR#>`,
    `:<x.y.z>`), pinned to an immutable `@sha256:` digest when Docker Hub is
-   reachable (experimental builds excepted) and falling back to
-   `python:3.12-slim` when it is not.
+   reachable (experimental builds excepted) and used unpinned when it is not.
+   A tag Docker Hub reports as unpublished falls back to `python:3.12-slim`;
+   on the experimental channel the deploy stops instead.
 
 Override the base image with `python_image` if you need your own:
 
@@ -1472,6 +1473,21 @@ kubectl get pvc                     # the bundle PVC must be Bound
 - `ImagePullBackOff` on the base image means the cluster cannot reach
   `jaseci/jaclang`; set `python_image` to a base it can pull.
 
+### Node Architecture
+
+The pod runtime is built for the nodes' architecture, which the deploy reads by
+listing the cluster's nodes. A kubeconfig bound to a namespace-scoped Role
+cannot list them, so the deploy stops with `Could not read the cluster's node
+architectures (HTTP 403 Forbidden)`. Grant the deploy identity `list` on `nodes`
+through a ClusterRole, or name the architecture:
+
+```bash
+JAC_NODE_ARCH=x86_64 jac scale deploy    # or aarch64; amd64 and arm64 also work
+```
+
+Set it too when the nodes report several architectures or none, or when a
+`jac-bootstrap` log shows `Exec format error` (the pods got the wrong one).
+
 ### General Debugging
 
 ```bash
@@ -1551,7 +1567,7 @@ with entry {
 | `domain`, `replicas`, `resources`, `autoscaler` | `[scale.kubernetes]` | `resources` takes `cpu_request`/`cpu_limit`/`memory_request`/`memory_limit`; `autoscaler` entries are raw config keys (`max_replicas`, `autoscaler_engine`, ...) |
 | `apps` | `[apps]` | the workspace's app tables; every serving app becomes a fleet member, per-app scale keys come from `[apps.<name>.scale]` |
 | `gateway` | `[scale.gateway]` | `ingress`, `cors`, `rate_limit`, timeouts, `shared_volumes`, ... |
-| `kube_context` | new | kubeconfig context to deploy through; empty = current context, falling back to in-cluster |
+| `kube_context` | new | kubeconfig context to deploy through; empty = current context, falling back to in-cluster; a set context that does not load is an error |
 | `labels` | new | stamped on every generated Deployment and Service (platform-owned tags) |
 | `extra` | any `[scale.kubernetes]` key | escape hatch merged last, e.g. `{"bundle_storage_class": "efs-sc"}` |
 

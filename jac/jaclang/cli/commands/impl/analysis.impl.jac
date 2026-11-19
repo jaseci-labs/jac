@@ -180,6 +180,7 @@ impl check(
             units.append(file_unit);
         }
     }
+    warn_unmet_project_pins(sorted({str(unit['root_dir']) for unit in units}));
     sharded = _shard_units(units);
     if sharded is None {
         console.error("Error: JAC_CHECK_SHARD must be K/N with 1 <= K <= N.");
@@ -572,6 +573,7 @@ impl lint(
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    warn_unmet_project_pins(sorted({str(Path(f).parent) for f in all_files}));
     if fix {
         all_files = _with_annex_owners(all_files, ignore_list);
     }
@@ -1514,6 +1516,22 @@ impl `test(
     jobs = jobs_setting("test", jobs, cfg.dev if cfg else None);
     rc = 0;
     try {
+        warn_unmet_project_pins(
+            sorted(
+                {
+                    str(Path(f).parent)
+                    for f in discover(
+                        paths,
+                        roots,
+                        [
+                            p
+                            for p in (ignore or [])
+                            if p
+                        ]
+                    ).files
+                }
+            )
+        );
         rc = run_tests(
             paths=paths,
             directory=roots,
@@ -1607,6 +1625,8 @@ impl grammar(output: str = "", strict: bool = False) -> int {
 def _iter_jac_files(
     paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool];
+
+def _build_dir_of(project_dir: Path) -> str;
 
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str];
 
@@ -2468,13 +2488,27 @@ impl _iter_jac_files(
                 explicit.add(os.path.realpath(path));
             }
         } elif path_obj.is_dir() {
+            build_dirs: set[str] = {_build_dir_of(path_obj.resolve())};
             walked: list[str] = [];
-            for jac_file in path_obj.`glob('**/*.jac') {
-                if not jac_file.is_file() {
-                    continue;
+            for (cur, dirnames, filenames) in os.walk(path) {
+                if "jac.toml" in filenames {
+                    build_dirs.add(_build_dir_of(Path(cur)));
                 }
-                if not _should_ignore(str(jac_file), ignore_list) {
-                    walked.append(str(jac_file));
+                kept = [
+                    d
+                    for d in sorted(dirnames)
+                    if not is_pruned_source_dir(d)
+                        and os.path.realpath(os.path.join(cur, d)) not in build_dirs
+                ];
+                dirnames.clear();
+                dirnames.extend(kept);
+                for fn in sorted(filenames) {
+                    jac_file = os.path.join(cur, fn);
+                    if fn.endswith('.jac')
+                        and os.path.isfile(jac_file)
+                        and not _should_ignore(jac_file, ignore_list) {
+                        walked.append(jac_file);
+                    }
                 }
             }
             if drop_git_ignored([str(path_obj)]) {
@@ -2491,6 +2525,16 @@ impl _iter_jac_files(
         result = _drop_covered_annexes(result, explicit);
     }
     return (result, had_errors);
+}
+
+impl _build_dir_of(project_dir: Path) -> str {
+    import os;
+    try {
+        config = JacConfig.resolve(start_path=project_dir);
+    } except Exception {
+        return "";
+    }
+    return os.path.realpath(str(config.get_build_dir())) if config is not None else "";
 }
 
 impl _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {

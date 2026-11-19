@@ -541,18 +541,6 @@ impl _child_tree_script(
     return fallback;
 }
 
-impl _legacy_sealer_script_for(
-    jac_path: Path, stage_root: Path, timeout_s: int
-) -> Path {
-    return _child_tree_script(
-        jac_path,
-        stage_root,
-        timeout_s,
-        ("dist/precompile_bytecode.jac", "utils/precompile_bytecode.jac"),
-        Path(str(__file__)).parent.parent.parent / "dist" / "precompile_bytecode.jac"
-    );
-}
-
 impl sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
     if fleet is None or not fleet.root_app {
         return "";
@@ -682,24 +670,6 @@ impl _precompile_app(
             env=seal_step_env(),
             cwd=str(stage_root)
         );
-        if (
-            result.returncode != 0
-            and "invalid choice: 'precompile'" in (result.stderr or "")
-        ) {
-            logger.warning(
-                "Seal binary predates 'jac precompile'; falling back to its "
-                "legacy sealer script."
-            );
-            script = _legacy_sealer_script_for(jac_path, stage_root, timeout_s);
-            result = subprocess.run(
-                [str(jac_path), "run", str(script), str(stage_root)] + seal_flags,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-                env=seal_step_env(),
-                cwd=str(stage_root)
-            );
-        }
         jac_path.unlink();
         if (
             result.returncode != 0
@@ -986,7 +956,8 @@ impl seal_input_digest(
         app_name,
         "fat" if fat else "thin",
         os.environ.get("JAC_SEAL_SKIP_VENV", ""),
-        sanitized or ""
+        sanitized or "",
+        active_profile_name(None)
     ];
     if bake_client {
         parts.append("client");
@@ -1007,7 +978,13 @@ impl client_input_digest(
         base,
         sources,
         jac_binary,
-        ["client", entry_rel, sanitized or "", *client_build_env()],
+        [
+            "client",
+            entry_rel,
+            sanitized or "",
+            active_profile_name(None),
+            *client_build_env()
+        ],
         tomls
     );
 }
@@ -1137,9 +1114,10 @@ impl _bundle_ships(raw: bytes, member: str) -> bool {
     }
 }
 
-impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool) -> bool {
+impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool, fat: bool) -> bool {
     return _bundle_ships(raw, manifest)
-        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX));
+        and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX))
+        and (not fat or _bundle_ships(raw, VENDORED_MANIFEST));
 }
 
 impl _remember_seal(
@@ -1232,8 +1210,10 @@ impl pack_jab(
     key = input_key(base, seal_sources);
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
     shared = seal_cache_setting(project_dir);
+    fat = fat_bundle_setting(project_dir)[0];
     cached = _cached_seal(_seal_cache_dir(base), key);
-    if cached is not None and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+    if cached is not None
+        and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client, fat) {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
@@ -1243,7 +1223,7 @@ impl pack_jab(
     } elif shared is not None {
         cached = _cached_seal(shared, key);
         if cached is not None
-            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client) {
+            and _seal_reusable(cached, SERVE_MANIFEST_REL, bake_client, fat) {
             logger.info(
                 f"Reusing the sealed bundle for unchanged inputs ({key[:12]}) from "
                 f"the shared seal cache {shared}; skipping the seal."
@@ -1287,7 +1267,9 @@ impl pack_jab(
                 logger.warning(
                     f"Fat bundle vendoring failed; shipping a thin bundle "
                     f"(pods will install python deps from PyPI at boot). "
-                    f"Set [scale] fat_bundle = true to make this fatal. {exc}"
+                    f"Set [scale] fat_bundle = true to make this fatal, or "
+                    f"fat_bundle = false to ship thin bundles that later "
+                    f"deploys reuse. {exc}"
                 );
             }
         }

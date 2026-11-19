@@ -20,19 +20,24 @@ impl KubernetesTargetBase._owner_labels -> dict[str, str] {
 }
 
 impl KubernetesTargetBase._load_cluster_config {
-    kubeconfig_failed: bool = False;
+    kube_context: str = self.k8s_config.kube_context;
+    kubeconfig: str = getattr(self.k8s_config, "kubeconfig", "");
+    kubeconfig_error: (ConfigException | None) = None;
     try {
         k8s_cluster_config.load_kube_config(
-            config_file=(getattr(self.k8s_config, "kubeconfig", "") or None),
-            context=(self.k8s_config.kube_context or None)
+            config_file=(kubeconfig or None), context=(kube_context or None)
         );
-    } except ConfigException {
-        kubeconfig_failed = True;
+    } except ConfigException as e {
+        if kube_context or kubeconfig {
+            raise ConfigException(
+                "Could not load the configured Kubernetes cluster "
+                f"(kube_context={kube_context!r}, kubeconfig={kubeconfig!r}): {e}"
+            ) from e;
+        }
+        kubeconfig_error = e;
     }
-    if not kubeconfig_failed {
-        self._kubectl = kubectl_cluster(
-            self.k8s_config.kube_context, getattr(self.k8s_config, "kubeconfig", "")
-        );
+    if kubeconfig_error is None {
+        self._kubectl = kubectl_cluster(kube_context, kubeconfig);
         return;
     }
     try {
@@ -50,7 +55,8 @@ impl KubernetesTargetBase._load_cluster_config {
             "If you're deploying from inside a pod, the pod needs a "
             "ServiceAccount with cluster API access (the default "
             "ServiceAccount usually does, but a restricted one may not).\n"
-            f"Original error from in-cluster load: {e}"
+            f"Error from kubeconfig load: {kubeconfig_error}\n"
+            f"Error from in-cluster load: {e}"
         );
     }
 }

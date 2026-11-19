@@ -1,5 +1,6 @@
 import io;
 import os;
+import subprocess;
 import sys;
 import tarfile;
 
@@ -60,32 +61,6 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
     delete_tree(work);
 }
 
-impl ship_wiring(package_root: str, site_package: str) {
-    for (dirpath, _dirs, filenames) in os.walk(package_root) {
-        if ARCH_FILE_NAME not in filenames {
-            continue;
-        }
-        source_path = os.path.join(dirpath, ARCH_FILE_NAME);
-        rel = os.path.relpath(source_path, package_root);
-        if skip_jaclang(rel.replace(os.sep, "/")) {
-            continue;
-        }
-        with open(source_path, encoding="utf-8") as f {
-            source = f.read();
-        }
-        shipped = prune_wiring_source(
-            source,
-            source_path,
-            lambda (path: str) { skip_jaclang(
-                os.path.relpath(path, package_root).replace(os.sep, "/")
-            ); }
-        );
-        target = os.path.join(site_package, rel);
-        make_dirs(os.path.dirname(target));
-        write_text(target, shipped);
-    }
-}
-
 impl resolve_python(python_dir: str) -> str {
     p1 = os.path.join(python_dir, "install", "bin", f"python{py_ver()}");
     if file_exists(p1) {
@@ -105,12 +80,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(site, "jaclang"),
             skip_jaclang
         );
-        ship_wiring(os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang"));
-        import from jaclang.compiler.driver.jir { write_compiler_identity }
-        _identity = write_compiler_identity(
-            os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang")
-        );
-        log(f"   compiler identity: {_identity}");
 
         copy_file(
             os.path.join(repo_root, "bootstrap", "pins.json"),
@@ -397,7 +366,31 @@ impl stage_python_bin(python_dir: str, stage: str) {
     copy_file(py, dst);
     os.chmod(dst, 0o755);
     strip_best_effort(dst, ["-x"] if sys.platform == "darwin" else ["--strip-debug"]);
+    home = os.path.dirname(os.path.dirname(py));
+    if interpreter_runs(py, home) and not interpreter_runs(dst, home) {
+        copy_file(py, dst);
+        os.chmod(dst, 0o755);
+        log(f"   stripped {bare} does not run; shipping it unstripped");
+    }
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
+}
+
+impl interpreter_runs(python: str, home: str) -> bool {
+    env = dict(os.environ);
+    env["PYTHONHOME"] = home;
+    try {
+        done = subprocess.run(
+            [python, "-I", "-c", "import encodings"],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=60
+        );
+    } except (OSError, subprocess.TimeoutExpired) {
+        return False;
+    }
+    return done.returncode == 0;
 }
 
 impl stage_tree(
