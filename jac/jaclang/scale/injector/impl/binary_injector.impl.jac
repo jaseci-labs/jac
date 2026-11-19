@@ -84,28 +84,49 @@ impl BinaryInjector.write_build(out_dir: str, app_name: str) -> dict[str, any] {
         "toolchain_object_key": self._toolchain_object_key,
         "config_sha256": config_digest(sealed_tomls(self._bundle_bytes))
     };
+    text = json.dumps(record, indent=2, sort_keys=True) + "\n";
     target = os.path.abspath(out_dir);
     parent = os.path.dirname(target);
+    base = os.path.basename(target);
+    if os.path.lexists(target) and not os.path.islink(target) {
+        if not os.path.isdir(target) or os.listdir(target) {
+            raise ValueError(
+                f"{target} already exists and is not a build `jac scale build` "
+                "published; remove it or choose another --out."
+            );
+        }
+        os.rmdir(target);
+    }
     os.makedirs(parent, exist_ok=True);
-    staging = tempfile.mkdtemp(prefix=f".{os.path.basename(target)}.", dir=parent);
-    outgoing = f"{staging}.outgoing";
+
+    published = f".{base}.{hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]}";
+    previous = str(os.readlink(target)) if os.path.islink(target) else "";
+    staging = tempfile.mkdtemp(prefix=f".{base}.tmp-", dir=parent);
+    link = f"{staging}.link";
     try {
         os.chmod(staging, 0o755);
         with open(os.path.join(staging, BUILD_BUNDLE), "wb") as f {
             f.write(self._bundle_bytes);
         }
         with open(os.path.join(staging, BUILD_RECORD), "w", encoding="utf-8") as f {
-            json.dump(record, f, indent=2, sort_keys=True);
-            f.write("\n");
+            f.write(text);
         }
-        if os.path.isdir(target) {
-            os.replace(target, outgoing);
+        if not os.path.isdir(os.path.join(parent, published)) {
+            os.replace(staging, os.path.join(parent, published));
         }
-        os.replace(staging, target);
+        os.symlink(published, link);
+        os.replace(link, target);
     } finally {
         shutil.rmtree(staging, ignore_errors=True);
+        if os.path.lexists(link) {
+            os.unlink(link);
+        }
     }
-    shutil.rmtree(outgoing, ignore_errors=True);
+    if previous != published
+        and os.path.basename(previous) == previous
+        and previous.startswith(f".{base}.") {
+        shutil.rmtree(os.path.join(parent, previous), ignore_errors=True);
+    }
     return record;
 }
 
@@ -119,8 +140,9 @@ impl BinaryInjector.from_build(
     access_mode: str = "ReadWriteMany",
     dry_run: bool = False
 ) -> BinaryInjector {
-    record_path = os.path.join(build_dir, BUILD_RECORD);
-    bundle_path = os.path.join(build_dir, BUILD_BUNDLE);
+    source = os.path.realpath(build_dir);
+    record_path = os.path.join(source, BUILD_RECORD);
+    bundle_path = os.path.join(source, BUILD_BUNDLE);
     if not os.path.isfile(record_path) or not os.path.isfile(bundle_path) {
         raise ValueError(
             f"{build_dir} holds no {BUILD_RECORD} and {BUILD_BUNDLE}; write them "

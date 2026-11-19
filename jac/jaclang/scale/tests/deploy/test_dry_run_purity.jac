@@ -608,3 +608,34 @@ test "a deploy refuses a mismatched build before it contacts the cluster" {
     assert "built by jac 0.0.1" in str(result.message) , result.message;
 }
 
+
+test "publishing builds into one --out keeps exactly one complete build" {
+    built = _built_app();
+    project = built["project"];
+    app = AppConfig(code_folder=project, file_name="main.jac");
+    injector = _apply_target(built["out"])._manifest_builder(app)._injector_from_build(
+        app, "x86_64"
+    );
+    parent = tempfile.mkdtemp(prefix="scale-publish-");
+    out = os.path.join(parent, "build");
+    injector.write_build(out, "shop");
+    injector.write_build(out, "shop");
+    injector._toolchain_object_key = "toolchain/shop/other.tar.gz";
+    injector.write_build(out, "shop");
+    assert os.path.islink(out);
+    assert sorted(os.listdir(parent)) == sorted(["build", os.readlink(out)]);
+    record = json.loads(Path(out, "build.json").read_text());
+    assert record["toolchain_object_key"] == "toolchain/shop/other.tar.gz";
+    assert Path(out, "bundle.jab").read_bytes() == injector._bundle_bytes;
+    foreign = os.path.join(parent, "mine");
+    os.mkdir(foreign);
+    Path(foreign, "keep.txt").write_text("not a build");
+    refusal = "";
+    try {
+        injector.write_build(foreign, "shop");
+    } except ValueError as e {
+        refusal = str(e);
+    }
+    assert "is not a build" in refusal , refusal;
+    assert os.listdir(foreign) == ["keep.txt"];
+}
