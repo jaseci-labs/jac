@@ -3219,9 +3219,7 @@ graph import {
         scale.tests.server.test_stream_ws._spawn_upstream.sse { StreamingResponse },
     ]
     server.serving.drain ++> [
-        runtime.builtin.on_drain | runtime.runtime.JacRuntime.after_fork_in_child {
-            DRAIN_HOOKS
-        },
+        runtime.runtime.JacRuntime.after_fork_in_child { DRAIN_HOOKS },
         scale.runtime.gateway.microservice_gateway { DrainState },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
             drain_middleware
@@ -3231,7 +3229,8 @@ graph import {
             DRAIN_HOOKS,
             DRAIN_TAKEN,
             DrainState,
-            drain_middleware
+            drain_middleware,
+            on_drain
         },
     ]
     server.serving.endpoint ++> [
