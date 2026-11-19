@@ -2424,7 +2424,10 @@ walker NaIRGenPass(CompilerPass) {
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
     def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
     def _is_runtime_class_value(target: (uni.UniNode | None)) -> bool;
-    def _class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None);
+    def _class_value_ctor_bound(
+        target: (uni.UniNode | None), direct: bool = False
+    ) -> (str | None);
+
     def _codegen_class_value_call(
         nd: uni.FuncCall,
         target: uni.Expr,

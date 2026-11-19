@@ -69,8 +69,10 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
     return self._class_expr_bound(target, unbounded="type") is not None;
 }
 
-impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None) {
-    if not self._is_runtime_class_value(target) {
+impl NaIRGenPass._class_value_ctor_bound(
+    target: (uni.UniNode | None), direct: bool = False
+) -> (str | None) {
+    if not direct and not self._is_runtime_class_value(target) {
         return None;
     }
     bound = self._class_expr_bound(target);
@@ -320,7 +322,9 @@ impl NaIRGenPass._codegen_class_value_call(
     (bound_args, spread) = binding;
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
-    cls = self._codegen_expr(target);
+    cls = self._codegen_expr(target)
+        if self._is_runtime_class_value(target)
+        else self._emit_class_name_const(bound);
     if cls is None or not isinstance(cls.type, ir.PointerType) {
         return None;
     }
