@@ -145,7 +145,7 @@ jobs:
     # The sealed, release-shaped kit: the 6-hourly schedule and manual runs
     # only, for the sealed lanes. Pull requests and pushes use dev-kit. Its
     # original condition was none (always on).
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
+    if: ${{ true }}
     # The compiler runs from the bytecode the same build precompiles.
     runs-on: ubuntu-24.04
     needs: changes
@@ -1163,7 +1163,7 @@ jobs:
     #    needs.changes.outputs.core == 'true' ||
     #    needs.changes.outputs.scale == 'true') &&
     #   !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
+    if: ${{ true }}
     runs-on: ubuntu-24.04
     env:
       # The opt-in flag test_deploy_k8s gates on: this is the lane with a
