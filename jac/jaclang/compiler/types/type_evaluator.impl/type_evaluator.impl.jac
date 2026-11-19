@@ -1150,13 +1150,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         return self._null_ok_attr_type(expr, base_type);
                     }
-                    self.emit_diag(
-                        E1099,
-                        expr.right,
-                        attr=expr.right.value,
-                        type=str(base_type),
-                        missing=", ".join(missing_types)
+                    # An operation on a union value that has not been narrowed is
+                    # checked when it runs (neojac): a `None` member alone warns.
+                    only_none = member_types and all(
+                        [m == "NoneType" or m == "None" for m in missing_types]
                     );
+                    if only_none {
+                        self.emit_diag(
+                            W1099, expr.right, attr=expr.right.value, type=str(base_type)
+                        );
+                    } else {
+                        self.emit_diag(
+                            E1099,
+                            expr.right,
+                            attr=expr.right.value,
+                            type=str(base_type),
+                            missing=", ".join(missing_types)
+                        );
+                    }
                     if member_types {
                         if decl_for_ide and decl_for_ide.sym {
                             decl_for_ide.sym.add_use(expr.right);

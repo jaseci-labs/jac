@@ -166,6 +166,23 @@ def compile_and_check(fixture_name: str) -> JacProgram {
     return program;
 }
 
+"""The lines where the checker reports a read off a value it could not narrow:
+E1099 for a union member that lacks the attribute, W1099 for one that may be None
+(checked when it runs, as neojac has it)."""
+def optional_read_lines(program: JacProgram) -> list[int] {
+    lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.loc and e.code is not None and e.code.code == "E1099"
+    ];
+    lines += [
+        w.loc.first_line
+        for w in program.warnings_had
+        if w.loc and w.code is not None and w.code.code == "W1099"
+    ];
+    return sorted(lines);
+}
+
 # =========================================================================
 # Bug #1: 'is'/'in' operators return UnknownType instead of bool
 #
@@ -942,12 +959,12 @@ test "bug_comprehension_block_tail_narrowing" {
 # =========================================================================
 test "bug_comprehension_block_tail_narrowing_negative" {
     program = compile_and_check("checker_bug_compr_block_tail_narrowing_negative.jac");
-    found = [str(e) for e in program.errors_had];
+    found = [str(e) for e in program.errors_had] + [str(w) for w in program.warnings_had];
     none_lines = [
         e.loc.first_line
         for e in program.errors_had
         if "NoneType" in str(e)
-    ];
+    ] + optional_read_lines(program);
 
     assert 21 in none_lines , (
         "After the `if`, with no guard, the name may still be None: the "
@@ -1785,15 +1802,11 @@ test "bug_blockann1_block_declaration_binds_the_function_local" {
 # =========================================================================
 test "bug_loopwiden1_body_reassign_forces_conservative_merge" {
     program = compile_and_check("checker_loop_body_widening.jac");
-    error_lines = [
-        e.loc.first_line
-        for e in program.errors_had
-        if e.loc
-    ];
-    assert len(program.errors_had) == 2 , (
+    error_lines = optional_read_lines(program);
+    assert len(error_lines) == 2 , (
         "Bug #LOOPWIDEN-1: exactly the two loop bodies that reassign `cur` "
         "may be diagnosed. "
-        f"Got errors: {[str(e) for e in program.errors_had]}"
+        f"Got: {error_lines}"
     );
     assert 35 in error_lines , (
         "Bug #LOOPWIDEN-1: `cur.val` at the top of a while body whose tail "
@@ -1973,15 +1986,11 @@ test "bug_typeis1_type_is_narrows_both_polarities" {
 # =========================================================================
 test "bug_typeis1_type_guard_is_positive_only" {
     program = compile_and_check("checker_bug_typeguard_narrowing.jac");
-    error_lines = [
-        e.loc.first_line
-        for e in program.errors_had
-        if e.loc
-    ];
-    assert len(program.errors_had) == 1 , (
+    error_lines = optional_read_lines(program);
+    assert len(error_lines) == 1 , (
         "Bug #TYPEIS-1: `TypeGuard` narrows the positive edge only, so the "
         "one diagnosed line must be the negative branch reading `.tag` off a "
-        f"still-optional value. Got errors: {[str(e) for e in program.errors_had]}"
+        f"still-optional value. Got: {error_lines}"
     );
     assert 44 in error_lines , (
         "Bug #TYPEIS-1: the negative branch of a TypeGuard keeps the declared "
@@ -2041,15 +2050,15 @@ test "bug_isect1_isinstance_narrows_each_union_member" {
 # =========================================================================
 test "bug_isect1_per_member_narrow_keeps_precision" {
     program = compile_and_check("checker_bug_isinstance_intersection_negative.jac");
-    error_lines = [
+    error_lines = optional_read_lines(program) + [
         e.loc.first_line
         for e in program.errors_had
-        if e.loc
+        if e.loc and e.code is not None and e.code.code != "E1099"
     ];
-    assert len(program.errors_had) == 2 , (
+    assert len(error_lines) == 2 , (
         "Bug #ISECT-1: the fallback to the filter class and the false edge "
         "must both survive. "
-        f"Got errors: {[str(e) for e in program.errors_had]}"
+        f"Got: {error_lines}"
     );
     assert 33 in error_lines , (
         "Bug #ISECT-1: subtracting Mid from `Base | None` leaves the None, "

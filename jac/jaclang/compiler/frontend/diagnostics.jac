@@ -661,6 +661,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot access attribute \"{attr}\" for type \"{type}\"; attribute is missing from {missing}"
      ),
+     W1099 = _warn(
+         "W1099",
+         Category.TYPE,
+         "Attribute \"{attr}\" is read on \"{type}\", which may be None",
+         help="The value has not been narrowed, so the read is checked when it runs and"
+         " raises AttributeError if the value is None then. Test it first (`if x is not"
+         " None`), or read it with `x?.{attr}`."
+     ),
      E1100 = _err(
          "E1100",
          Category.TYPE,
