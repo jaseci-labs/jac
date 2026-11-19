@@ -14206,6 +14206,7 @@ graph import scale {
     runtime.context.util ++> [
         admin.console_build.build_with_jac
             | deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
+            | tests.data.test_gateway_owned_identity
             | tests.deploy.test_client_build_deps
             | tests.deploy.test_client_build_fail_fast
             | tests.deploy.test_client_build_stage
@@ -14257,12 +14258,15 @@ graph import scale {
             solo_fleet
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_env {
-            FLEET_ENV
+            FLEET_ENV,
+            OWN_STORE_ENV,
+            owns_identity_store
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
         plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
         plugin.scale_local_serve { fleet_from_plans },
+        server.extensions { OWN_STORE_ENV },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
             FLEET_ENV,
@@ -14275,6 +14279,7 @@ graph import scale {
             order_by_edges,
             solo_fleet
         },
+        tests.data.test_gateway_owned_identity { owns_identity_store },
         tests.deploy.test_access_hint
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deployment_overlay
@@ -14284,7 +14289,7 @@ graph import scale {
             | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
-        tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
+        tests.deploy.test_pod_env { FLEET_ENV, OWN_STORE_ENV, fleet_of },
         tests.microservices.test_bundle_jacignore { solo_fleet },
     ]
     runtime.fleet --> [
@@ -15041,6 +15046,10 @@ graph import scale.runtime {
     fleet ++> [
         cli.plan { FleetSpec },
         orchestrator.orchestrator { FleetSpec, ROOT_PREFIX },
+        orchestrator.process_manager.ServiceProcessManager.start_service {
+            OWN_STORE_ENV,
+            owns_identity_store
+        },
         realizer.kubernetes_realizer {
             FleetSpec,
             fleet_from_config,
@@ -15277,6 +15286,7 @@ graph import scale.tests {
             register_user,
             start_server
         },
+        data.test_gateway_owned_identity { get_free_port, stop_server },
         deploy.test_client_build_fail_fast
             | microservices.test_app_precompile
             | microservices.test_fat_bundle { require_pod_binary },

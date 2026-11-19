@@ -106,6 +106,11 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         for (env_key, env_value) in `entry.env.items() {
             child_env[str(env_key)] = str(env_value);
         }
+        if owns_identity_store(`entry.env) {
+            child_env[OWN_STORE_ENV] = "1";
+        } else {
+            child_env.pop(OWN_STORE_ENV, None);
+        }
 
         for (peer_name, peer_entry) in self.registry.entries.items() {
             if peer_name != name and peer_entry.port > 0 {

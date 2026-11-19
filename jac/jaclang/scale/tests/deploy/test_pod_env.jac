@@ -1399,3 +1399,30 @@ test "a configured revision history limit reaches the deployment" {
 
     assert manifest["spec"]["revisionHistoryLimit"] == 3;
 }
+
+
+test "build_env marks an app whose own env sets JAC_DB_URL as holding its own identity store" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = ManifestBuilder(k8s_config=cfg);
+
+    shared = {e["name"]: e["value"] for e in builder._build_env("orders_app", {})};
+    assert OWN_STORE_ENV not in shared , "an app on the fleet's database must not provision";
+
+    own = builder._build_env(
+        "orders_app", {"env": {"JAC_DB_URL": "postgresql://db.ns/orders"}}
+    );
+    marks = [e for e in own if e["name"] == OWN_STORE_ENV];
+    assert len(marks) == 1 and marks[0]["value"] == "1" , own;
+}
+
+
+test "build_env ignores an own-store mark an operator sets directly" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = ManifestBuilder(k8s_config=cfg);
+
+    env = builder._build_env("orders_app", {"env": {OWN_STORE_ENV: "1"}});
+
+    assert OWN_STORE_ENV not in {e["name"] for e in env} , (
+        "only the launcher decides, from the app's own JAC_DB_URL"
+    );
+}

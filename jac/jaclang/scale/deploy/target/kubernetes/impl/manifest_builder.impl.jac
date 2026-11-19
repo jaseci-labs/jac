@@ -1378,8 +1378,18 @@ impl ManifestBuilder._build_env(
     env.extend(self._serve_env(svc_name, svc_cfg));
 
     extra: dict[str, any] = svc_cfg.get("env", {});
+    if owns_identity_store(extra) {
+        env.append({"name": OWN_STORE_ENV, "value": "1"});
+    }
     for (k, v) in extra.items() {
-        if k in ("JAC_SV_NAME", "JAC_SV_FILE", "JAC_SV_SIBLING", FLEET_ENV) {
+        if k
+            in (
+                "JAC_SV_NAME",
+                "JAC_SV_FILE",
+                "JAC_SV_SIBLING",
+                FLEET_ENV,
+                OWN_STORE_ENV
+            ) {
             continue;
         }
         if k.startswith("JAC_APP_") and (k.endswith("_URL") or k.endswith("_ROUTE")) {
