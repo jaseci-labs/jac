@@ -143,7 +143,8 @@ destroy_app() {
     export SDK_DEPLOY_APP_NAME="${app}" SDK_DEPLOY_NAMESPACE="${ns}"
     DESTROY_OUT="$(cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" destroy </dev/null 2>&1 || true)"
     printf '%s\n' "${DESTROY_OUT}" | tail -20 | grep -q "DESTROY_OK" \
-        || fail "${ns}" "destroy of '${app}' in '${ns}' errored (or prompted)"
+        || { printf '%s\n' "${DESTROY_OUT}" | tail -40 >&2
+             fail "${ns}" "destroy of '${app}' in '${ns}' errored (or prompted)"; }
 }
 
 # Console output wraps, so fold whitespace before matching a phrase.
