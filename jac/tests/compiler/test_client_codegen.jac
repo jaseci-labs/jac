@@ -149,12 +149,22 @@ test "def pub and endpoint effects" {
 
     # --- a server function that gives an iterator is a stream: the page reads it
     # with `async for` through __jacCallStream, never awaits it whole ---
-    with open(os.path.join(_client_tmp_dir, "stream_svc.jac"), "w") as svc {
+    stream_dir = os.path.join(_test_tmp_dir, "stream_app");
+    os.makedirs(stream_dir, exist_ok=True);
+    with open(os.path.join(stream_dir, "jac.toml"), "w") as toml {
+        toml.write('[project]\nname = "stream_app"\n\n[apps.web]\nkind = "web-app"\nentry-point = "page"\n\n[placement.pins]\n"stream_svc" = "server"\n');
+    }
+    with open(os.path.join(stream_dir, "stream_svc.jac"), "w") as svc {
         svc.write('def:pub ticks(n: int) -> Iterator[int] {\n    for i in range(n) {\n        yield i;\n    }\n}\n');
     }
-    stream_page = '"""A page reading a stream endpoint."""\n\nimport from stream_svc { ticks }\n\nasync def:pub app() -> Any {\n    seen: list[int] = [];\n    async for t in ticks(3) {\n        seen = seen + [t];\n    }\n    return <div>{seen}</div>;\n}\n';
-    mod = compile_inline(stream_page, prog, client=True);
+    page_path = os.path.join(stream_dir, "page.jac");
+    with open(page_path, "w") as page {
+        page.write('"""A page reading a stream endpoint."""\n\nimport from stream_svc { ticks }\n\nasync def:pub app() -> Any {\n    seen: list[int] = [];\n    async for t in ticks(3) {\n        seen = seen + [t];\n    }\n    return <div>{seen}</div>;\n}\n');
+    }
+    stream_prog = JacProgram();
+    mod = stream_prog.compile(page_path);
     js = mod.gen.js;
+    assert not stream_prog.errors_had , [str(e) for e in stream_prog.errors_had];
     assert '__jacCallStream("ticks"' in js , f"a stream endpoint is called through __jacCallStream, got: {js}";
     assert '__jacCallFunction("ticks"' not in js , "a stream endpoint is not fetched whole";
 

@@ -1352,6 +1352,7 @@ graph import {
             | runtime.builtin._get_archetype_alias.factory.decorator
             | server.endpoints.walkers
             | server.server
+            | server.serving.sse._sse_json_default
             | server.session.Session._expired
             | studio.session { Serializer },
         server.session { frozen_fields },
