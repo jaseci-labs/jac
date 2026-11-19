@@ -1,0 +1,1 @@
+- **Fix: `super.init()` compiles natively when the parent has fields with defaults**: a subclass initializer that called `super.init()` without passing every defaulted field fell back to Python, so every native construction of the subclass failed. Fields left out now take their declared defaults, as they do in Python.
