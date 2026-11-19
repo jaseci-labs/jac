@@ -38,3 +38,25 @@ def:protect read_doc(id: str) -> dict[str, any] {
     }
     return {"found": True, "body": (o as Doc).body};
 }
+
+def:protect add_child(parent_id: str) -> dict[str, any] {
+    parent = jobj(parent_id) as Doc;
+    child = Doc(body="child");
+    parent ++> child;
+    return {"id": jid(child)};
+}
+
+def:protect share(id: str, to_root: str, level: str) -> dict[str, any] {
+    set_access(jobj(id) as Doc, to_root, level);
+    return {"ok": True};
+}
+
+def:protect unshare(id: str, who: str) -> dict[str, any] {
+    clear_access(jobj(id) as Doc, who);
+    return {"ok": True};
+}
+
+"""Everything shared with the caller: the targets of their own Member edges."""
+def:protect shared_with_me -> dict[str, any] {
+    return {"ids": sorted([jid(n) for n in [root->:Member:->]])};
+}
