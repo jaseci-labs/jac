@@ -1,5 +1,6 @@
 """Example Jac program for REST API server."""
 
+import from datetime { datetime }
 import from "@jac/runtime" { renderJsxTree, }
 
 # Define some nodes
@@ -95,6 +96,11 @@ never binds.
 """
 def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
+}
+
+"""Report the type `when` arrived as, and the bound `seats`."""
+def:pub book_slot(when: datetime, seats: u8) -> list[any] {
+    return [type(when).__name__, seats];
 }
 
 glob _UNSET: object = object();
