@@ -139,7 +139,8 @@ impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
         holder = callee.shared.symbol_table;
         if not isinstance(holder, Archetype)
             or not str(holder.loc.mod_path).endswith(".jac") {
-            return not callee.is_builtin();
+            return not callee.is_builtin()
+                or callee.shared.class_name not in PURE_BUILTINS;
         }
         key = id(holder);
         if is_compiler_source_path(str(holder.loc.mod_path)) or key in self._active {
@@ -220,6 +221,13 @@ impl GraphEffectScan._fresh_local(expr: Expr) -> bool {
             or not made.is_instantiable_class()
             or made.is_node_type()
             or made.is_edge_type() {
+            return False;
+        }
+        holder = made.shared.symbol_table;
+        jac_class = isinstance(holder, Archetype)
+            and str(holder.loc.mod_path).endswith(".jac");
+        copied = made.is_builtin() and made.shared.class_name in PURE_BUILTINS;
+        if not jac_class and not copied {
             return False;
         }
     }

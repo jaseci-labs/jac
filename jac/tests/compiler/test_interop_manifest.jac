@@ -261,7 +261,8 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "node Note {\n"
                 "    has text: str = \"\",\n"
                 "        tags: list[str] = [],\n"
-                "        meta: dict[str, str] = {};\n"
+                "        meta: dict[str, str] = {},\n"
+                "        data: bytearray = bytearray(4);\n"
                 "    def rename(text: str) -> None {\n"
                 "        self.text = text;\n"
                 "    }\n"
@@ -354,6 +355,14 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "        }\n"
                 "    }\n"
                 "}\n"
+                "walker:pub buffer_view {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            view = memoryview(n.data);\n"
+                "            view[0] = 1;\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
                 "walker:pub uses_setattr {\n"
                 "    can start with Root entry {\n"
                 "        for n in [-->[?:Note]] {\n"
@@ -402,6 +411,7 @@ test "endpoint effects come from the types of what each endpoint changes" {
         ("walker", "spawn_writer"): True,
         ("walker", "helper_gets_field"): True,
         ("walker", "double_alias"): True,
+        ("walker", "buffer_view"): True,
         ("walker", "uses_setattr"): True,
         ("walker", "toucher"): True,
         ("func", "make_obj"): True,
