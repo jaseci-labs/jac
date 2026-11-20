@@ -245,8 +245,11 @@ impl call_binds_kwargs_spread(call: FuncCall) -> bool {
         return False;
     }
     owner = sym.decl.name_of;
-    return isinstance(owner, Archetype)
-        or (isinstance(owner, Ability) and isinstance(owner.signature, FuncSignature));
+    if isinstance(owner, Archetype) {
+        typ = tgt.type if isinstance(tgt, Expr) else None;
+        return isinstance(typ, ClassType) and not typ.is_builtin();
+    }
+    return isinstance(owner, Ability) and isinstance(owner.signature, FuncSignature);
 }
 
 impl call_constructs_class_value(call: FuncCall) -> bool {

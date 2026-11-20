@@ -221,7 +221,7 @@ impl NaIRGenPass._bind_class_ctor_args(
     args: list[uni.Expr | uni.KWPair],
     params: list[NativeCtorParam],
     bound: str
-) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None) {
+) -> (list[tuple[int, uni.Expr]] | None) {
     positional = [
         i
         for (i, p) in enumerate(params)
@@ -316,7 +316,7 @@ impl NaIRGenPass._bind_class_ctor_args(
         );
         return None;
     }
-    return (bound_args, spread);
+    return bound_args;
 }
 
 impl NaIRGenPass._codegen_class_value_call(
@@ -335,11 +335,10 @@ impl NaIRGenPass._codegen_class_value_call(
         );
         return None;
     }
-    binding = self._bind_class_ctor_args(nd, args, params, bound);
-    if binding is None {
+    bound_args = self._bind_class_ctor_args(nd, args, params, bound);
+    if bound_args is None {
         return None;
     }
-    (bound_args, _) = binding;
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     cls = self._codegen_expr(target)
