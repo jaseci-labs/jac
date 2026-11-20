@@ -1556,6 +1556,7 @@ impl ViteBundler._write_client_events_plugin(
         '// stdin, carrying that status and reload requests.\n'
         f'const PREFIX = "{CLIENT_EVENT_PREFIX}";\n'
         f'const COMMAND_PREFIX = "{DEV_COMMAND_PREFIX}";\n'
+        f'const COMMANDS_ENV = "{DEV_COMMANDS_ENV}";\n'
     )
         + r'''
 function emit(slot, payload) {
@@ -1588,9 +1589,10 @@ export function jacDevCommands() {
   if (globalThis.__jacDevCommands) return globalThis.__jacDevCommands;
   const state = { status: "", onStatus: null, onReload: null };
   globalThis.__jacDevCommands = state;
+  // Only a stdin jac opened for commands is read. Any other stdin is Vite's:
+  // reading one to its end would fire Vite's own shutdown on stdin "end".
+  if (process.env[COMMANDS_ENV] !== "stdin") return state;
   const stdin = process.stdin;
-  // A terminal on stdin belongs to Vite's own keyboard shortcuts.
-  if (!stdin || stdin.isTTY) return state;
   let buffered = "";
   try {
     stdin.setEncoding("utf8");
@@ -1748,6 +1750,7 @@ impl ViteBundler._start_vite_with_output_capture(
     process = subprocess.Popen(
         command,
         cwd=build_dir,
+        env={** os.environ, DEV_COMMANDS_ENV: "stdin"},
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

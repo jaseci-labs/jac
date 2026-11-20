@@ -2358,7 +2358,9 @@ update or a reload, the plugin asks it to transform the modules that failed
 again, and reports the slot clear only if they all transform.
 
 The jac process answers on the dev server's stdin, again one tagged JSON line
-per command:
+per command. The plugin reads stdin only when `JAC_DEV_COMMANDS=stdin` is set,
+which `jac run --dev` sets for the dev server it starts with a pipe of its
+own; a dev server started any other way keeps its stdin to itself:
 
 ```text
 @@jac-dev-command {"type": "status", "status": { ... }}

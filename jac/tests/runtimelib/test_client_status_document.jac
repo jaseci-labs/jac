@@ -595,6 +595,16 @@ const DEV_LOOP = ["jac-build-error-overlay", "jac-client-events", "jac-force-rel
 for (const plugin of config.plugins) {
   if (DEV_LOOP.includes(plugin.name)) plugin.configureServer(server);
 }
+const finish = () => {
+  print(failures.length ? `FAILED: ${failures.join(", ")}\n` : "OK\n");
+  process.exit(failures.length ? 1 : 0);
+};
+// A stdin jac did not open for commands is Vite's: reading it to its end
+// fires Vite's own shutdown, which is how an inherited /dev/null stopped it.
+const owned = process.env.JAC_DEV_COMMANDS === "stdin";
+check("stdin is read only when jac says the pipe is its own",
+  stdin.listenerCount("data") === (owned ? 1 : 0), String(stdin.listenerCount("data")));
+if (!owned) finish();
 const kind = (p) => (p.type === "error" ? "overlay:" + p.err.plugin : p.type + (p.jacTriggered ? ":jac" : ""));
 const since = (mark) => sent.slice(mark).map(kind).join();
 const viteError = { type: "error", err: { message: "unresolved import", id: MAIN, plugin: "vite" } };
@@ -640,8 +650,7 @@ await settle();
 check("the browser's clean load clears what was recorded",
   events().at(-1).slot === "ready", JSON.stringify(events().at(-1)));
 
-print(failures.length ? `FAILED: ${failures.join(", ")}\n` : "OK\n");
-process.exit(failures.length ? 1 : 0);
+finish();
 """;
 
 """The generated dev config's plugins, run against a stand-in dev server.
@@ -653,9 +662,10 @@ and reloaded again, forever. The status now arrives as a command on stdin, and
 a reload is only the moment to check: the error clears when the module that
 failed transforms again, or when the browser reports a clean load."""
 test "the dev plugins clear a Vite error on proof, never on a passing reload" {
+    import os;
     import subprocess;
     import from jaclang.testing.requires { require_tool }
-    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.vite_bundler { ViteBundler, DEV_COMMANDS_ENV }
     import from tests.support { js_runtime_or_none }
     require_tool("bun");
     bun = js_runtime_or_none();
@@ -680,10 +690,18 @@ test "the dev plugins clear a Vite error on proof, never on a passing reload" {
         }
         harness = config.parent / "harness.mjs";
         harness.write_text(_DEV_PLUGINS_HARNESS, encoding="utf-8");
-        run = subprocess.run(
-            [bun, str(harness)], capture_output=True, text=True, timeout=60
-        );
-        assert run.returncode == 0 , f"{run.stdout}\n{run.stderr}";
+        for owned in [False, True] {
+            env = dict(os.environ);
+            env.pop(DEV_COMMANDS_ENV, None);
+            if owned {
+                env[DEV_COMMANDS_ENV] = "stdin";
+            }
+            run = subprocess.run(
+                [bun, str(harness)], capture_output=True, text=True, timeout=60, env=env
+            );
+            assert run.returncode == 0 , f"owned={owned}\n{run.stdout}\n{run.stderr}";
+            assert ("PASS  the status jac sends" in run.stdout) == owned , run.stdout;
+        }
     }
 }
 
@@ -732,14 +750,15 @@ test "the suite leaves no dev-loop global behind" {
 test "a vite that exits before it is ready raises at once with its exit code and last line" {
     import sys;
     import time;
-    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.vite_bundler { ViteBundler, DEV_COMMANDS_ENV }
     import from jaclang.client.artifact { ClientBundleError }
     with TemporaryDirectory() as tmp {
         bundler = ViteBundler(Path(tmp));
         command = [
             sys.executable,
             "-c",
-            "print('vite: bad config'); raise SystemExit(3)"
+            "import os; print('vite: bad config, commands on', "
+            f"os.environ.get('{DEV_COMMANDS_ENV}')); raise SystemExit(3)"
         ];
         started = time.monotonic();
         raised = "";
@@ -749,7 +768,7 @@ test "a vite that exits before it is ready raises at once with its exit code and
             raised = str(e);
         }
         assert "exited with code 3" in raised , raised;
-        assert "vite: bad config" in raised , raised;
+        assert "vite: bad config, commands on stdin" in raised , raised;
         assert time.monotonic() - started < 20 , "waited out the ready timeout";
         # The dev server is gone: its command pipe and the thread that writes
         # to it are released, not held until the jac process exits.
