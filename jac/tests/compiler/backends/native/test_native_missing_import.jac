@@ -9,10 +9,10 @@ literal NULL, and the interpreter crashed at load.
 Native lowering refuses the binding itself: a name the bound Jac module's
 symbol table does not hold is `E1145`, naming the module and the name, and the
 build stops. The checker reports the same `E1145` once the source is a parsed
-`.jac` module whose names are closed (no module `__getattr__`, no `include` or `*`
-import, no `globals()`/`vars()`/`exec()` call, no platform variant, not named
-like a stdlib module) and the import has to bind (not typed, comptime, or caught as `ImportError`),
-since the Python runtime then fails the import at load. A
+`.jac` module whose names are closed (no module `__getattr__`, no `include` or
+`*` import, no `globals()`/`vars()`/`exec()` call, no platform variant, not part
+of the toolchain) and the import has to bind (not typed, comptime, or caught as
+`ImportError`), since the Python runtime then fails the import at load. A
 Python source, an open namespace, or a guarded import keeps `W1101` (#10740).
 """
 
@@ -54,11 +54,6 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
             "platform variant",
             "W1101",
             {"lib.jac": lib, "lib.linux.jac": lib, "lib.darwin.jac": lib}
-        ),
-        (
-            "stdlib name",
-            "W1101",
-            {"types.jac": lib, "main.jac": "import from types { MethodType }\n"}
         ),
         (
             "globals() write",

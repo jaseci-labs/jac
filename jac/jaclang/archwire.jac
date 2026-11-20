@@ -5579,8 +5579,7 @@ graph import compiler {
             NativeTestLayout,
             NativeTupleLayout
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value
-            | types.type_evaluator.TypeEvaluator._report_missing_import_name {
+        backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value {
             native_variant_of
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._find_source_ability
@@ -5766,6 +5765,10 @@ graph import compiler {
             is_selected_native_variant
         },
         tools.comment_attach_pass { NodeComments },
+        types.type_evaluator.TypeEvaluator._report_missing_import_name {
+            is_toolchain_unit,
+            native_variant_of
+        },
     ]
     frontend.codeinfo --> [
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs

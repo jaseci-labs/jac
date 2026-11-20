@@ -75,7 +75,7 @@ Renamed or retyped a `def:pub` param, a walker `has` field, or a report shape? R
   --> components/App.jac:1:33
 ```
 
-- `E1145` at a client's server-module import - the imported endpoint/type no longer exists on the server (rename or removal). It is `W1101`, a warning, only when the checker cannot rule the name out (a Python source module, a module named like a stdlib one, or a Jac module with `include`, `*`, a module-level `__getattr__`, a `globals()`/`vars()`/`exec()` call, or a platform variant).
+- `E1145` at a client's server-module import - the imported endpoint/type no longer exists on the server (rename or removal). It is `W1101`, a warning, only when the checker cannot rule the name out (a Python source module, a toolchain module, or a Jac module with `include`, `*`, a module-level `__getattr__`, a `globals()`/`vars()`/`exec()` call, or a platform variant).
 - `W1051` (unresolvable expression) at a client call or spawn site - the caller is still feeding the old contract.
 - A retyped param escalates to a hard `E1053` at the client call line (`Cannot assign Literal["world"] to parameter 'name' of type int`).
 
