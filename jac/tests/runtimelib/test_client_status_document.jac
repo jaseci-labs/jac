@@ -2,10 +2,12 @@
 
 `.jac-dev-status.json` (written by a Vite plugin, holding a `.js` module id)
 and `.jac-build-error.json` (written by the hot reloader, holding free text)
-are gone. Both are replaced by `.jac/client/.jac-status.json`, whose payload is
+are gone. Both are replaced by one status document,
 `{"status": ..., "diagnostics": [...]}` -- the same shape `/__build_status`
 returns on the core and the scale server, and the same diagnostic value the
-`/cl/__error__` endpoint logs.
+`/cl/__error__` endpoint logs. The jac process keeps it in memory and sends it
+to the dev server as a message. It is never a file: anything written into the
+folder Vite serves is a project change to Vite (#10799).
 """
 
 import from jaclang.server.build_status { BuildMonitor }
@@ -20,6 +22,7 @@ import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.build_status { get_build_status }
 import from jaclang.server.watcher { JacFileWatcher }
 import from jaclang.testing.testing { JacTestClient }
+import from tests.support { RecordingDevServer }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -85,6 +88,21 @@ def _reloader(base: Path) -> HotReloader {
     return HotReloader(base_path=str(base), module_name="app", watcher=watcher);
 }
 
+"""Everything the dev loop has ever used as a signal file under a client dir."""
+def _signal_files(client_dir: Path) -> list[str] {
+    return [
+        name
+        for name in [
+            ".jac-status.json",
+            ".jac-force-reload",
+            ".jac-build-error.json",
+            ".jac-dev-status.json",
+            ".jac-client-events.json"
+        ]
+        if (client_dir / name).exists()
+    ];
+}
+
 test "a real client compile failure becomes a located diagnostic" {
     with TemporaryDirectory() as tmpdir {
         proj = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
@@ -92,6 +110,8 @@ test "a real client compile failure becomes a located diagnostic" {
         app = proj / "app.jac";
         app.write_text("def app() -> any {\n    return <div UNCLOSED;\n}\n");
         reloader = _reloader(proj);
+        bundler = RecordingDevServer();
+        reloader.attach_client_bundler(bundler);
         try {
             reloader._recompile_client_code(str(app));
             status = reloader.build_status();
@@ -105,21 +125,16 @@ test "a real client compile failure becomes a located diagnostic" {
             assert first["code"] , "a compile diagnostic must carry the compiler's code";
             assert first["channel"] == "jac" , first["channel"];
             assert "-->" in first["rendered"] , first["rendered"];
-            # The status document is the only file written, and it carries the value.
+            # The dev server is sent the document; no file carries it.
             client_dir = proj / ".jac" / "client";
-            doc = client_dir / ".jac-status.json";
-            assert doc.exists() , ".jac-status.json was not written";
-            stored = json.loads(doc.read_text());
-            assert stored["status"] == "error";
-            assert stored["diagnostics"][0]["file"].endswith("app.jac");
-            assert not (client_dir / ".jac-build-error.json").exists() , ".jac-build-error.json must no longer be written";
-            assert not (client_dir / ".jac-dev-status.json").exists() , ".jac-dev-status.json must no longer be written";
+            assert bundler.statuses[-1] == status , bundler.statuses;
+            assert _signal_files(client_dir) == [] , _signal_files(client_dir);
             # Recovery empties the document.
             app.write_text("def app() -> any {\n    return <div>ok</div>;\n}\n");
             reloader._recompile_client_code(str(app));
             reloader.record_ok();
             assert reloader.build_status() == {"status": "ok", "diagnostics": []};
-            assert not doc.exists() , "a healthy build must leave no status document";
+            assert bundler.statuses[-1] == {"status": "ok", "diagnostics": []};
         } finally {
             # This test compiles into the long-lived global program; drop what
             # it left there so a pooled worker's later tests do not inherit it.
@@ -158,6 +173,8 @@ test "raw client events arrive on the callback and are classified once" {
         client_dir = proj / ".jac" / "client";
         (client_dir / "compiled").mkdir(parents=True);
         reloader = _reloader(proj);
+        bundler = RecordingDevServer();
+        reloader.attach_client_bundler(bundler);
         # The plugin forwards RAW payloads only; the Jac process classifies.
         reloader.record_client_event(
             "client",
@@ -179,10 +196,10 @@ test "raw client events arrive on the callback and are classified once" {
         # name an owner rather than an empty file field.
         assert diag["file"] != "" , diag;
         assert diag["unmapped_reason"] != "" , diag;
-        # Classification happened on arrival: the status document is already
-        # written, and no transport file is left behind.
-        assert (client_dir / ".jac-status.json").exists();
-        assert not (client_dir / ".jac-client-events.json").exists();
+        # Classification happened on arrival: the dev server already has the
+        # document, and no file was written to carry it.
+        assert bundler.statuses[-1] == status , bundler.statuses;
+        assert _signal_files(client_dir) == [] , _signal_files(client_dir);
         # The browser's clean-load beacon clears the browser slots.
         reloader.record_client_event("ready", None);
         assert reloader.build_status() == {"status": "ok", "diagnostics": []};
@@ -213,6 +230,10 @@ test "event slots rank vite over browser, and a jac failure over both" {
         # A null payload clears the slot the plugin sent it for.
         reloader.record_client_event("vite", None);
         assert reloader.build_status()["diagnostics"][0]["channel"] == "browser";
+        # The app came up: whatever Vite or the browser reported no longer blocks it.
+        reloader.record_client_event(
+            "vite", {"message": "still recorded", "id": "x.js"}
+        );
         reloader.record_client_event("ready", None);
         assert reloader.build_status() == {"status": "ok", "diagnostics": []};
     }
@@ -366,30 +387,51 @@ obj _FakeStream {
 }
 
 obj _FakeProc {
-    has stdout: any;
+    has stdout: any = None,
+        stdin: any = None;
 }
 
 obj _FakeOut {
-    has written: list[str] = [];
+    has written: list[str] = [],
+        closed: bool = False;
 
     def write(text: str) {
         self.written.append(text);
     }
 
     def flush {}
+    def close {
+        self.closed = True;
+    }
 }
 
 obj _FakeSys {
     has stdout: any;
 }
 
-test "a tagged stdout line reaches the callback and is never echoed" {
+"""Give the command writer's thread up to two seconds to get there."""
+def _wait_for(done: any) {
+    import time;
+    deadline = time.monotonic() + 2.0;
+    while not done() and time.monotonic() < deadline {
+        time.sleep(0.01);
+    }
+}
+
+obj _BrokenPipe(_FakeOut) {
+    override def write(text: str) {
+        raise BrokenPipeError("the dev server exited");
+    }
+}
+
+test "tagged lines cross the dev server's pipes both ways and are never echoed" {
     import json;
     import threading;
     import from jaclang.client.vite_bundler {
         ViteBundler,
         _forward_vite_output,
-        CLIENT_EVENT_PREFIX
+        CLIENT_EVENT_PREFIX,
+        DEV_COMMAND_PREFIX
     }
     with TemporaryDirectory() as tmp {
         seen: list[any] = [];
@@ -421,6 +463,34 @@ test "a tagged stdout line reaches the callback and is never echoed" {
         echoed = "".join(out.written);
         assert CLIENT_EVENT_PREFIX not in echoed , echoed;
         assert "ordinary vite chatter" in echoed , echoed;
+        # The other way: one tagged line per command on the dev server's stdin.
+        # They leave on the pipe's own thread, so the thread that reads the dev
+        # server's output can never block on writing to it. A status sent
+        # before the server exists is the first thing it gets.
+        broken = {"status": "error", "diagnostics": [{"code": "E7002"}]};
+        bundler.publish_dev_status({"status": "ok", "diagnostics": []});
+        bundler.publish_dev_status(broken);
+        bundler.request_dev_reload();
+        pipe = bundler.dev_commands;
+        stdin = _FakeOut();
+        pipe.attach(stdin);
+        bundler.request_dev_reload();
+        _wait_for(lambda -> bool { return len(stdin.written) == 2; });
+        assert [json.loads(line[len(DEV_COMMAND_PREFIX):]) for line in stdin.written]
+            == [{"type": "status", "status": broken}, {"type": "reload"}] , stdin.written;
+        assert all(line.endswith("\n") for line in stdin.written) , stdin.written;
+        # A dev server that went away, cleanly or not, is let go of: the pipe
+        # is closed, its writer ends, and later commands have nowhere to go.
+        for gone in [stdin, _BrokenPipe()] {
+            pipe.attach(gone);
+            writer = pipe._writer;
+            if gone is stdin {
+                pipe.detach(gone);
+            }
+            bundler.request_dev_reload();
+            _wait_for(lambda -> bool { return not writer.is_alive(); });
+            assert not writer.is_alive() and gone.closed and pipe._stream is None;
+        }
     }
 }
 
@@ -475,77 +545,187 @@ test "the shared client-error path classifies once and carries both stacks" {
     }
 }
 
-test "an unchanged status document is not rewritten" {
+glob _DEV_PLUGINS_HARNESS: str = r"""
+import { EventEmitter } from "events";
+
+const stdin = new EventEmitter();
+stdin.setEncoding = () => {};
+Object.defineProperty(process, "stdin", { value: stdin, configurable: true });
+const written = [];
+const print = process.stdout.write.bind(process.stdout);
+process.stdout.write = (text) => written.push(String(text));
+
+// The generated dev config, with its plugins in the order Vite would run them.
+const config = (await import("./vite.dev.config.js")).default;
+
+const failures = [];
+const check = (label, ok, detail) => {
+  print(`${ok ? "PASS" : "FAIL"}  ${label}${ok ? "" : "  -- " + detail}\n`);
+  if (!ok) failures.push(label);
+};
+const EVENT = "@@jac-client-event ";
+const events = () => written
+  .filter((line) => line.startsWith(EVENT))
+  .map((line) => JSON.parse(line.slice(EVENT.length)));
+const command = (body) => "@@jac-dev-command " + JSON.stringify(body) + "\n";
+const status = (state) => command({
+  type: "status",
+  status: { status: state, diagnostics: [{ rendered: "error[E7002]" }] },
+});
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+// A dev server with one connected tab and one module that fails to transform.
+const MAIN = "/app/.jac/client/compiled/main.js";
+let fails = true;
+const sent = [];
+const on = {};
+const ws = {
+  clients: new Set([{}]),
+  send: (payload) => sent.push(payload),
+  on: (name, listener) => { on[name] = listener; },
+};
+const server = {
+  ws: ws,
+  hot: ws,
+  watcher: { on: () => {} },
+  moduleGraph: { getModuleById: (id) => ({ url: id }) },
+  transformRequest: async () => { if (fails) throw new Error("unresolved import"); },
+};
+const DEV_LOOP = ["jac-build-error-overlay", "jac-client-events", "jac-force-reload"];
+for (const plugin of config.plugins) {
+  if (DEV_LOOP.includes(plugin.name)) plugin.configureServer(server);
+}
+const finish = () => {
+  print(failures.length ? `FAILED: ${failures.join(", ")}\n` : "OK\n");
+  process.exit(failures.length ? 1 : 0);
+};
+// A stdin jac did not open for commands is Vite's: reading it to its end
+// fires Vite's own shutdown, which is how an inherited /dev/null stopped it.
+const owned = process.env.JAC_DEV_COMMANDS === "stdin";
+check("stdin is read only when jac says the pipe is its own",
+  stdin.listenerCount("data") === (owned ? 1 : 0), String(stdin.listenerCount("data")));
+if (!owned) finish();
+const kind = (p) => (p.type === "error" ? "overlay:" + p.err.plugin : p.type + (p.jacTriggered ? ":jac" : ""));
+const since = (mark) => sent.slice(mark).map(kind).join();
+const viteError = { type: "error", err: { message: "unresolved import", id: MAIN, plugin: "vite" } };
+
+ws.send(viteError);
+// A pipe may deliver one command in pieces.
+stdin.emit("data", status("error").slice(0, 20));
+stdin.emit("data", status("error").slice(20));
+check("the status jac sends shows its rendered diagnostic",
+  since(0) === "overlay:vite,overlay:jac" && sent[1].err.frame === "error[E7002]", since(0));
+
+// #10799: Vite reloads for a file that merely appeared. Nothing was fixed.
+ws.send({ type: "full-reload" });
+await settle();
+check("a reload that fixed nothing is not reported as a recovery",
+  events().length === 1 && events()[0].payload.id === MAIN, JSON.stringify(events()));
+
+let mark = sent.length;
+ws.send(viteError);
+on.connection();
+check("Vite's own overlay and a new tab are both answered with the diagnostic",
+  since(mark) === "overlay:vite,overlay:jac,overlay:jac", since(mark));
+
+fails = false;
+ws.send({ type: "full-reload", jacTriggered: true });
+await settle();
+check("jac's own reload is not the moment to check",
+  events().every((event) => event.payload !== null), JSON.stringify(events()));
+ws.send({ type: "update" });
+await settle();
+check("the error clears once the module that failed transforms again",
+  events().at(-1).slot === "vite" && events().at(-1).payload === null, JSON.stringify(events().at(-1)));
+
+mark = sent.length;
+stdin.emit("data", status("ok") + status("ok") + command({ type: "reload" }));
+check("a change back to healthy reloads once, and so does a reload command",
+  since(mark) === "full-reload:jac,full-reload:jac", since(mark));
+
+ws.send(viteError);
+on["jac:client-ready"]();
+ws.send({ type: "update" });
+await settle();
+check("the browser's clean load clears what was recorded",
+  events().at(-1).slot === "ready", JSON.stringify(events().at(-1)));
+
+finish();
+""";
+
+"""The generated dev config's plugins, run against a stand-in dev server.
+
+#10799: jac reported a build error by creating a file in the folder Vite
+serves. Vite retries every unresolved import when a file appears and reloads
+the page, and the plugins took any reload for a recovery, cleared the error
+and reloaded again, forever. The status now arrives as a command on stdin, and
+a reload is only the moment to check: the error clears when the module that
+failed transforms again, or when the browser reports a clean load."""
+test "the dev plugins clear a Vite error on proof, never on a passing reload" {
     import os;
+    import subprocess;
+    import from jaclang.testing.requires { require_tool }
+    import from jaclang.client.vite_bundler { ViteBundler, DEV_COMMANDS_ENV }
+    import from tests.support { js_runtime_or_none }
+    require_tool("bun");
+    bun = js_runtime_or_none();
+    if bun is None {
+        testskip("bun is required but could not be located/installed");
+    }
     with TemporaryDirectory() as tmp {
-        proj = Path(tmp);
-        doc = proj / ".jac" / "client" / ".jac-status.json";
-        reloader = _reloader(proj);
-        try {
-            reloader.record_error(str(proj / "app.jac"), "boom");
-            written = doc.read_text();
-            os.utime(doc, ns=(1000000000, 1000000000));
-            reloader.record_client_event("ready", None);
-            reloader.record_client_event("runtime", None);
-            reloader._sync_status_file();
-            assert doc.stat().st_mtime_ns == 1000000000 , (
-                "an unchanged status document was written again"
+        config = ViteBundler(Path(tmp)).create_vite_config(
+            Path(tmp) / "main.js", is_dev=True
+        );
+        # The config's outside imports; nothing here needs the real packages.
+        modules = config.parent.parent / "node_modules";
+        for (name, source) in [
+            ("vite", "export const defineConfig = (c) => c;\n"),
+            ("@vitejs/plugin-react", "export default () => ({ name: 'react' });\n")
+        ] {
+            (modules / name).mkdir(parents=True);
+            (modules / name / "package.json").write_text(
+                '{"type": "module", "main": "index.js"}'
             );
-            reloader.record_error(str(proj / "app.jac"), "a different failure");
-            assert doc.read_text() != written;
-            reloader.record_ok();
-            assert not doc.exists();
-        } finally {
-            _reset_client_globals();
+            (modules / name / "index.js").write_text(source);
+        }
+        harness = config.parent / "harness.mjs";
+        harness.write_text(_DEV_PLUGINS_HARNESS, encoding="utf-8");
+        for owned in [False, True] {
+            env = dict(os.environ);
+            env.pop(DEV_COMMANDS_ENV, None);
+            if owned {
+                env[DEV_COMMANDS_ENV] = "stdin";
+            }
+            run = subprocess.run(
+                [bun, str(harness)], capture_output=True, text=True, timeout=60, env=env
+            );
+            assert run.returncode == 0 , f"owned={owned}\n{run.stdout}\n{run.stderr}";
+            assert ("PASS  the status jac sends" in run.stdout) == owned , run.stdout;
         }
     }
 }
 
-test "a workspace app's status document and reload signal sit where its dev config reads them" {
-    import from jaclang { JacRuntime as Jac }
-    import from jaclang.project.config { JacConfig, get_config, set_config }
-    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-    previous = get_config();
+test "an unchanged status document is not sent again" {
     with TemporaryDirectory() as tmp {
-        project = Path(tmp).resolve();
-        manifest = '[project]\nname = "status-paths"\ndefault-app = "web"\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n';
-        (project / "jac.toml").write_text(manifest);
-        target = project / "web" / "main.jac";
-        target.parent.mkdir();
-        target.write_text("def:pub app -> JsxElement {\n    return <div/>;\n}\n");
+        proj = Path(tmp);
+        reloader = _reloader(proj);
+        bundler = RecordingDevServer();
+        reloader.attach_client_bundler(bundler);
         try {
-            set_config(JacConfig.from_toml_str(manifest, project / "jac.toml"));
-            compiler = make_client_bundle_builder(
-                project, entry_path=str(target), program=Jac.get_program()
-            )._get_compiler();
-            compiled = Path(str(compiler.jac_client_compiler.compiled_dir));
-            config_path = compiler.vite_bundler.create_vite_config(target, is_dev=True);
-            generated = config_path.read_text();
-            build_dir = config_path.parent.parent;
-            assert compiled.parent != build_dir , (
-                f"not a workspace layout: {compiled} compiles beside the dev config"
+            reloader.record_error(str(proj / "app.jac"), "boom");
+            sent = len(bundler.statuses);
+            reloader.record_client_event("ready", None);
+            reloader.record_client_event("runtime", None);
+            reloader._publish_status();
+            assert len(bundler.statuses) == sent , (
+                "an unchanged status document was sent again"
             );
-            assert 'const buildDir = path.resolve(__dirname, "..");' in generated;
-            assert 'path.resolve(buildDir, ".jac-status.json")' in generated;
-            assert 'path.resolve(buildDir, ".jac-force-reload")' in generated;
-            _reset_client_globals();
-            reloader = HotReloader(
-                base_path=str(project),
-                module_name="app",
-                watcher=JacFileWatcher(watch_paths=[str(project)]),
-                client_compiler=compiler
-            );
-            reloader.record_error(str(target), "boom");
-            assert (build_dir / ".jac-status.json").exists() , (
-                "the overlay plugin never sees the status document"
-            );
-            assert not (compiled.parent / ".jac-status.json").exists();
-            reloader._signal_full_reload();
-            assert (build_dir / ".jac-force-reload").read_text() == "1";
+            reloader.record_error(str(proj / "app.jac"), "a different failure");
+            assert len(bundler.statuses) == sent + 1;
+            assert bundler.statuses[-1] != bundler.statuses[-2];
             reloader.record_ok();
-            assert not (build_dir / ".jac-status.json").exists();
+            assert bundler.statuses[-1] == {"status": "ok", "diagnostics": []};
         } finally {
-            set_config(previous);
             _reset_client_globals();
         }
     }
@@ -570,14 +750,15 @@ test "the suite leaves no dev-loop global behind" {
 test "a vite that exits before it is ready raises at once with its exit code and last line" {
     import sys;
     import time;
-    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.vite_bundler { ViteBundler, DEV_COMMANDS_ENV }
     import from jaclang.client.artifact { ClientBundleError }
     with TemporaryDirectory() as tmp {
         bundler = ViteBundler(Path(tmp));
         command = [
             sys.executable,
             "-c",
-            "print('vite: bad config'); raise SystemExit(3)"
+            "import os; print('vite: bad config, commands on', "
+            f"os.environ.get('{DEV_COMMANDS_ENV}')); raise SystemExit(3)"
         ];
         started = time.monotonic();
         raised = "";
@@ -587,7 +768,12 @@ test "a vite that exits before it is ready raises at once with its exit code and
             raised = str(e);
         }
         assert "exited with code 3" in raised , raised;
-        assert "vite: bad config" in raised , raised;
+        assert "vite: bad config, commands on stdin" in raised , raised;
         assert time.monotonic() - started < 20 , "waited out the ready timeout";
+        # The dev server is gone: its command pipe and the thread that writes
+        # to it are released, not held until the jac process exits.
+        pipe = bundler.dev_commands;
+        _wait_for(lambda -> bool { return not pipe._writer.is_alive(); });
+        assert not pipe._writer.is_alive() and pipe._stream is None;
     }
 }

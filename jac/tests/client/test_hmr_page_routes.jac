@@ -5,9 +5,9 @@ the route table it belongs to lives in a separate generated module
 (`_routes.js`) that the entry imports once. Regenerating that file is not
 enough on its own: the router in the page already captured its route array at
 mount, so the new URL keeps rendering nothing until someone restarts the
-server. The dev loop already owns a full-reload signal (`.jac-force-reload`,
-used when a module's export set changes); a changed route table is exactly the
-same class of change and must raise it.
+server. The dev loop already owns a full-reload signal (used when a module's
+export set changes); a changed route table is exactly the same class of change
+and must raise it.
 """
 
 import os;
@@ -20,6 +20,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
+import from tests.support { RecordingDevServer }
 
 
 def _write(path: str, body: str) {
@@ -56,13 +57,15 @@ def _booted_project -> tuple[(str, any, str)] {
         client_compiler=compiler
     );
     reloader._running = True;
+    reloader.attach_client_bundler(RecordingDevServer());
     routes_file = os.path.join(str(jcc.compiled_dir), "_routes.js");
     return (proj, reloader, routes_file);
 }
 
 
-def _reload_signal(project_dir: str) -> Path {
-    return Path(project_dir) / ".jac" / "client" / ".jac-force-reload";
+"""How many full reloads the reloader has asked the dev server for."""
+def _reloads(reloader: any) -> int {
+    return reloader._dev_bundler.reloads;
 }
 
 
@@ -90,16 +93,13 @@ test "a page created during the session joins the route table" {
 test "a changed route table forces a browser reload" {
     (proj, reloader, routes_file) = _booted_project();
     try {
-        signal = _reload_signal(proj);
-        if signal.exists() {
-            signal.unlink();
-        }
+        before = _reloads(reloader);
         new_page = os.path.join(proj, "pages", "about.jac");
         _write(
             new_page, 'def:pub page -> JsxPage {\n    return <div>about</div>;\n}\n'
         );
         reloader._process_change(new_page);
-        raised = signal.exists();
+        raised = _reloads(reloader) > before;
     } finally {
         shutil.rmtree(proj, ignore_errors=True);
     }
@@ -113,16 +113,13 @@ test "a changed route table forces a browser reload" {
 test "an edit that leaves the route table alone does not force a reload" {
     (proj, reloader, routes_file) = _booted_project();
     try {
-        signal = _reload_signal(proj);
-        if signal.exists() {
-            signal.unlink();
-        }
+        before = _reloads(reloader);
         index = os.path.join(proj, "pages", "index.jac");
         _write(
             index, 'def:pub page -> JsxPage {\n    return <div>home two</div>;\n}\n'
         );
         reloader._process_change(index);
-        raised = signal.exists();
+        raised = _reloads(reloader) > before;
     } finally {
         shutil.rmtree(proj, ignore_errors=True);
     }
@@ -139,14 +136,11 @@ test "removing a page drops its route and forces a reload" {
         extra = os.path.join(proj, "pages", "about.jac");
         _write(extra, 'def:pub page -> JsxPage {\n    return <div>about</div>;\n}\n');
         reloader._process_change(extra);
-        signal = _reload_signal(proj);
-        if signal.exists() {
-            signal.unlink();
-        }
+        before = _reloads(reloader);
         os.remove(extra);
         reloader._process_change(extra);
         after = Path(routes_file).read_text(encoding="utf-8");
-        raised = signal.exists();
+        raised = _reloads(reloader) > before;
     } finally {
         shutil.rmtree(proj, ignore_errors=True);
     }

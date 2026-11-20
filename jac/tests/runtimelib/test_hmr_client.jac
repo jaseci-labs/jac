@@ -497,9 +497,8 @@ test "jacjsx import added in real compilation" {
         );
         reloader._recompile_client_code(str(bad_file));
         assert not entry_file.exists() , "_entry.js must not be created just to display an error";
-        assert error_file.exists() , "build error must be mirrored to .jac-status.json for the Vite overlay";
-        import json;
-        error_data = json.loads(error_file.read_text());
+        assert not error_file.exists() , "a build error must not be written into the folder Vite serves";
+        error_data = reloader.build_status();
         assert error_data["status"] == "error";
         first = error_data["diagnostics"][0];
         assert first["message"] , "mirrored build error must carry a non-empty message";
@@ -512,7 +511,6 @@ test "jacjsx import added in real compilation" {
         );
         reloader._recompile_client_code(str(bad_file));
         reloader.record_ok();  # _process_change settles to ok after a clean rebuild
-        assert not error_file.exists() , ".jac-status.json must be removed on recovery";
         assert reloader.build_status()["status"] == "ok";
     }
 }
@@ -912,11 +910,10 @@ test "router entry survives an error then fix cycle" {
         reloader._refresh_routing(str(index_file));
         assert entry_file.stat().st_mtime_ns == entry_mtime , "a build error must not touch _entry.js";
         assert "BrowserRouter" in entry_file.read_text() , "router entry must survive a build error";
-        assert error_file.exists() , "build error must be mirrored for the Vite overlay";
-        # The mirror must carry the real compiler diagnostics, not just exist
+        assert not error_file.exists() , "a build error must not be written into the folder Vite serves";
+        # The status must carry the real compiler diagnostics, not just exist
         # (the removed bespoke overlay had regressed to rendering empty)
-        import json;
-        error_data = json.loads(error_file.read_text());
+        error_data = reloader.build_status();
         assert error_data["status"] == "error";
         located = error_data["diagnostics"][0];
         assert "index.jac" in str(located["file"]) , "mirrored error must name the failing file";
@@ -928,7 +925,7 @@ test "router entry survives an error then fix cycle" {
         reloader._recompile_client_code(str(index_file));
         reloader.record_ok();  # _process_change settles to ok after a clean rebuild
         assert "BrowserRouter" in entry_file.read_text();
-        assert not error_file.exists() , "mirrored error must be removed on recovery";
+        assert reloader.build_status()["status"] == "ok";
     }
 }
 

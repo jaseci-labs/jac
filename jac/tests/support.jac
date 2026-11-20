@@ -35,6 +35,22 @@ def js_runtime_or_none -> (str | None) {
     }
 }
 
+"""Stands in for the bundler that owns the dev server, recording what the hot
+reloader sends it."""
+obj RecordingDevServer {
+    has on_client_event: any = None,
+        statuses: list[dict[str, any]] = [],
+        reloads: int = 0;
+
+    def publish_dev_status(status: dict[str, any]) {
+        self.statuses.append(status);
+    }
+
+    def request_dev_reload {
+        self.reloads += 1;
+    }
+}
+
 """Environment overrides isolating every machine-wide cache family."""
 def cache_env(cache_dir: Path | str) -> dict[str, str] {
     import from jaclang.cache.registry { BUCKETS }
