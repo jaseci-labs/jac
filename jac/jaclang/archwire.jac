@@ -7125,10 +7125,8 @@ graph import compiler {
             ElseStmt,
             Enum,
             EventSignature,
-            Except,
             ExprAsItem,
             ExprStmt,
-            FinallyStmt,
             ForeverStmt,
             FuncCall,
             FuncSignature,
@@ -7153,7 +7151,6 @@ graph import compiler {
             ModulePath,
             Name,
             ParamVar,
-            RaiseStmt,
             ReturnStmt,
             SpecialVarRef,
             SwitchStmt,
@@ -7164,10 +7161,10 @@ graph import compiler {
             TypeAlias,
             UnaryExpr,
             UniNode,
-            UniScopeNode,
             WhileStmt,
             WithStmt,
-            YieldExpr
+            YieldExpr,
+            find_python_scope_node_of
         },
         passes.boundary_analysis_pass {
             Ability,

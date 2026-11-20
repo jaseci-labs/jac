@@ -3,6 +3,10 @@ import from scope_E2036_import_provider { Thing, Other, Setting as Knob }
 
 def Thing -> int;  # <-- Error E2036: the import binds 'Thing'
 
+impl Thing -> int {
+    return 7;
+}
+
 obj Other {}  # <-- Error E2036: the import binds 'Other'
 
 glob Knob: int = 1;  # <-- Error E2036: the import binds 'Knob'

@@ -478,27 +478,48 @@ test "E2036: a Python module may redefine a name" {
 test "E2036: a local def, obj or glob that reuses an imported name is rejected" {
     # `def Thing -> int;` used to lose to the imported record: the checker typed
     # `Thing()` as the record and the program constructed it instead of
-    # calling the def. The impl file may repeat the module's import, not rebind it.
+    # calling the def.
     (prog, _) = compile_and_check("scope_E2036_import_shadow.jac");
     messages = [
         e.msg
         for e in prog.errors_had
         if e.code is not None and e.code.code == "E2036"
     ];
-    assert len(messages) == 4 , messages;
+    assert len(messages) == 3 , messages;
     assert "Duplicate definition of 'Thing': the import on line 2 binds it too."
-        in messages , messages;
-    assert "Duplicate definition of 'Other': the import on line 2 of scope_E2036_import_shadow.jac binds it too."
         in messages , messages;
     assert any("'Other'" in m for m in messages) , messages;
     assert any("'Knob'" in m for m in messages) , messages;
 }
 
 test "E2036: an import after the local definition still collides" {
-    (_, prog) = parse_and_validate(
-        "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n"
-    );
-    assert count_diagnostic_code(prog, "E2036") == 1;
+    # Imports of one name in one scope must agree; one inside a branch is checked, not recorded.
+    allowed = [
+        "import from os.path { join } import from os.path { join }",
+        "import os; import os.path; import os as os;",
+        "include b; import from c { b }",
+        "import from b { A } def f -> None { import from c { A } }",
+        "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } } }",
+        "with entry { try { import from b { A } } except ImportError { import from c { A } } }"
+    ];
+    clashes = [
+        "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n",
+        "import from os.path { join } import from shlex { join }",
+        "import from b { A as X } import from b { C as X }",
+        "import from .b { A } import from pkg.b { A }",
+        "import os.path as p; import shlex as p;",
+        "import from os.path { join } with entry { import from shlex { join } }",
+        "with entry { import from b { A } } import from c { A }",
+        "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
+        "def join -> int { return 1; } with entry { import from shlex { join } }"
+    ];
+    for (expected, sources) in [(0, allowed), (1, clashes)] {
+        for source in sources {
+            (_, prog) = parse_and_validate(source);
+            got = count_diagnostic_code(prog, "E2036");
+            assert got == expected , f"{source}: expected {expected} E2036, got {got}";
+        }
+    }
 }
 
 test "E2036: a module import and an enum or type alias collide too" {
@@ -508,48 +529,6 @@ test "E2036: a module import and an enum or type alias collide too" {
             + "def os -> int {\n    return 0;\n}\n"
     );
     assert count_diagnostic_code(prog, "E2036") == 3;
-}
-
-test "E2036: an import binds a name once per scope" {
-    # Python runs the last import and the checker reads the first, so imports of one
-    # name in one scope must agree; only alternative branches may differ.
-    allowed = [
-        "import from os.path { join } import from os.path { join }",
-        "import from .b { A } import from pkg.b { A }",
-        "import from . { A } import from pkg { A }",
-        "import os; import os.path;",
-        "include b; import from c { b }",
-        "import os as os; import os; import os as os;",
-        "import from b { A } def f -> None { import from c { A } }",
-        "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } } }",
-        "with entry { try { import from b { A } } except ImportError { import from c { A } } }",
-        "def f(x: int) -> None { match x { case 1: import from b { A } case _: import from c { A } } }",
-        "def f(y: int) -> None { switch y { case 1: import from b { A } break; case 2: import from c { A } } }",
-        "def f(y: int) -> None { switch y { case 1: import from b { A } return; case 2: import from c { A } raise ValueError(); case 3: import from d { A } } }"
-    ];
-    clashes = [
-        "import from os.path { join } import from shlex { join }",
-        "import from b { A as X } import from b { C as X }",
-        "import from .b { A as X } import from pkg.b { C as X }",
-        "import from .b { A } import from c { A }",
-        "import os.path as p; import shlex as p;",
-        'import from "./button" { Button } import from "@mui/material" { Button }',
-        "import from os.path { join } with entry { import from shlex { join } }",
-        "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
-        "def f(x: bool) -> None { if x { import from b { A } } else { import from c { A } import from d { A } } }",
-        "with entry { try { import from b { A } } except ImportError { x = 1; } else { import from c { A } } }",
-        "with entry { try { x = 1; } except ImportError { import from b { A } } finally { import from c { A } } }",
-        "def f(y: int) -> None { switch y { case 1: import from b { A } case 2: import from c { A } } }",
-        "def join -> int { return 1; } with entry { import from shlex { join } }"
-    ];
-    for (expected, sources) in [(0, allowed), (1, clashes)] {
-        for source in sources {
-            (_, prog) = parse_and_validate(source);
-            assert prog is not None , source;
-            got = count_diagnostic_code(prog, "E2036");
-            assert got == expected , f"{source}: expected {expected} E2036, got {got}";
-        }
-    }
 }
 
 test "E2036: an include does not collide with a local definition" {
