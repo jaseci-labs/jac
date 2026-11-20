@@ -7,6 +7,7 @@ file-order-dependent narrowing and generic binding across compiler and
 application checks.
 """
 import os;
+import re;
 import subprocess;
 import sys;
 import tempfile;
@@ -39,6 +40,13 @@ glob IMPORTER: str = (
          "import jaclang\n"
          "from jaclang.cli.commands.analysis import check\n"
          "sys.exit(check(paths=sys.argv[1:], jobs='0', nowarn=True))\n"
+     ),
+     OS_FROM_IMPORT: str = (
+         "import from os { replace as move }\n"
+         "def:pub swap(src: str, dst: str) -> int {\n"
+         "    move(src, dst);\n"
+         "    return 1;\n"
+         "}\n"
      );
 
 def _write(dirname: str, stem: str, src: str) -> str {
@@ -203,6 +211,43 @@ test "None recognition survives a forced lens flip" {
         prog.release_compile_closure();
         state.restore();
     }
+}
+
+test "a from-imported os function lowers to its native implementation in both lenses" {
+    callees: dict[str, list[str]] = {};
+    for lens in ["catalog", "trees"] {
+        prog = JacProgram();
+        compiler = prog._get_compiler();
+        state = LensState(compiler=compiler, internal=prog);
+        try {
+            with tempfile.TemporaryDirectory() as d {
+                if lens == "trees" {
+                    state.deactivate_catalog();
+                    compiler.stub_catalog_disabled = True;
+                }
+                mod = prog.compile(
+                    file_path=_write(d, "os_from_import", OS_FROM_IMPORT),
+                    options=CompileOptions(native_required=True, no_ir_cache=True)
+                );
+                assert not prog.errors_had , (
+                    f"{lens}: {[str(e) for e in prog.errors_had][:3]}"
+                );
+                ir_text = str(mod.gen.llvm_ir) if mod.gen.llvm_ir is not None else "";
+                callees[lens] = sorted(
+                    set(
+                        re.findall(
+                            r'call [^@\n]*@"?([^"(\s]*replace[^"(\s]*)"?\(', ir_text
+                        )
+                    )
+                );
+            }
+        } finally {
+            prog.release_compile_closure();
+            state.restore();
+        }
+    }
+    assert callees["catalog"] , "the catalog lens must call the native os replace";
+    assert callees["trees"] == callees["catalog"] , f"lens-dependent lowering: {callees}";
 }
 
 test "a serial jac check over compiler-tree then client files stays clean" {

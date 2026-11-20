@@ -5779,7 +5779,8 @@ graph import compiler {
             native_unit_compile_active as _typed_nuc
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_module_call_target {
-            NATIVE_STDLIB_EXTENSIONS
+            NATIVE_STDLIB_EXTENSIONS,
+            bundled_stdlib_module_of
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
             native_display_text
