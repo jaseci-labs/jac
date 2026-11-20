@@ -189,34 +189,20 @@ RECORDER_PID=""
 
 check_cycle "${TRANSITIONS}"
 
-# The target is parked at 0 here, so turning activation off now is the case
-# where the HPA that takes over never scales it up (#10846).
-echo "=== turn http_activation off while idle at 0; the redeploy must bring it back ==="
-if [[ "$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" -o jsonpath='{.spec.replicas}')" != "0" ]]; then
-    echo "FAIL: ${SCALE_TARGET} is not parked at 0 before the redeploy" >&2
-    exit 1
-fi
-TOML_BACKUP="$(mktemp)"
-cp "${FIXTURE_DIR}/jac.toml" "${TOML_BACKUP}"
+# Parked at 0 here: turning activation off is the case the HPA never scales up from (#10846).
+echo "=== turn http_activation off while parked at 0; the redeploy must bring it back ==="
+fail() { echo "FAIL: $*" >&2; exit 1; }
+[[ "$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" -o jsonpath='{.spec.replicas}')" == "0" ]] \
+    || fail "${SCALE_TARGET} is not parked at 0"
 sed -i.bak 's/^enabled = true$/enabled = false/' "${FIXTURE_DIR}/jac.toml"
-rm -f "${FIXTURE_DIR}/jac.toml.bak"
 deploy_rc=0
 (cd "${FIXTURE_DIR}" && jac scale deploy app.jac) || deploy_rc=$?
-cp "${TOML_BACKUP}" "${FIXTURE_DIR}/jac.toml"
-rm -f "${TOML_BACKUP}"
-if [[ "${deploy_rc}" != "0" ]]; then
-    echo "FAIL: the redeploy with http_activation off failed (rc=${deploy_rc})" >&2
-    exit 1
-fi
+mv "${FIXTURE_DIR}/jac.toml.bak" "${FIXTURE_DIR}/jac.toml"
+[[ "${deploy_rc}" == "0" ]] || fail "the redeploy with http_activation off failed"
 if kubectl get scaledobject "${SCALE_TARGET}-http-scaledobject" -n "${NAMESPACE}" >/dev/null 2>&1; then
-    echo "FAIL: the http-activation ScaledObject outlived the redeploy" >&2
-    exit 1
+    fail "the http-activation ScaledObject outlived the redeploy"
 fi
-if ! kubectl wait --for=condition=Available "deployment/${SCALE_TARGET}" \
-        -n "${NAMESPACE}" --timeout="${READY_TIMEOUT:-180}s"; then
-    echo "FAIL: ${SCALE_TARGET} did not come back up after leaving scale-to-zero" >&2
-    exit 1
-fi
-echo "ok: ${SCALE_TARGET} back at $(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" -o jsonpath='{.status.readyReplicas}') ready replica(s)"
+kubectl wait --for=condition=Available "deployment/${SCALE_TARGET}" -n "${NAMESPACE}" \
+    --timeout="${READY_TIMEOUT:-180}s" || fail "${SCALE_TARGET} did not come back up"
 
 echo "=== KEDA observer REAL e2e PASSED ==="
