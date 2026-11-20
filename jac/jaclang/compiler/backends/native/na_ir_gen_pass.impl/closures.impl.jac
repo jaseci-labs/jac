@@ -165,30 +165,42 @@ impl NaIRGenPass._adapt_closure(
             self.builder.gep(inner, [ir.Constant(i32, 0), ir.Constant(i32, 1)]),
             name="adapt.env"
         );
+        given = list(adapter.args)[:-1];
         call_args = [
-            self._coerce_type(arg, src_args[i])
-            for (i, arg) in enumerate(list(adapter.args)[:-1])
+            self._coerce_type(arg, src_args[i]) for (i, arg) in enumerate(given)
+        ];
+        temps = [
+            conv
+            for (conv, arg) in zip(call_args, given)
+            if conv is not arg
         ];
         call_args.append(env);
         fn_ptr = self.builder.inttoptr(fn_i64, src_fnty.as_pointer(), name="adapt.fn");
         ret_ty = dst_fnty.return_type;
+        res: (ir.Value | None) = None;
         if isinstance(src_fnty.return_type, ir.VoidType) {
             self.builder.call(fn_ptr, call_args);
-            if isinstance(ret_ty, ir.VoidType) {
-                self.builder.ret_void();
-            } else {
-                self.builder.ret(ir.Constant(ret_ty, None));
-            }
         } else {
             res = self._mark_reference_owned(
                 self.builder.call(fn_ptr, call_args, name="adapt.call")
             );
-            if isinstance(ret_ty, ir.VoidType) {
+        }
+        self._release_owned_args(temps, op="adapt_arg");
+        if isinstance(ret_ty, ir.VoidType) {
+            if res is not None {
                 self._release_owned_args([res], op="adapt_result");
-                self.builder.ret_void();
-            } else {
-                self.builder.ret(self._coerce_type(res, ret_ty));
             }
+            self.builder.ret_void();
+        } elif res is None {
+            none_val: ir.Value = ir.Constant(ret_ty, None);
+            if self.jacval_type is not None and ret_ty == self.jacval_type {
+                none_val = self.builder.insert_value(
+                    none_val, ir.Constant(ir.IntType(8), 8), 0, name="adapt.none"
+                );
+            }
+            self.builder.ret(none_val);
+        } else {
+            self.builder.ret(self._coerce_type(res, ret_ty));
         }
         self._builder = saved_builder;
         self.closure_thunks[key] = adapter;
