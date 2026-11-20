@@ -5566,7 +5566,8 @@ graph import compiler {
             NativeTestLayout,
             NativeTupleLayout
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value {
+        backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value
+            | types.type_evaluator.TypeEvaluator._report_missing_import_name {
             native_variant_of
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._find_source_ability

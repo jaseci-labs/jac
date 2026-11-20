@@ -677,6 +677,7 @@ impl TypeEvaluator._import_must_bind(imp: Import) -> bool {
 impl TypeEvaluator._report_missing_import_name(
     item: ModuleItem, source: (UniScopeNode | None)
 ) -> None {
+    import sys;
     imp = item.parent_of_type(Import);
     if isinstance(source, Module)
         and source.stub_only
@@ -686,6 +687,8 @@ impl TypeEvaluator._report_missing_import_name(
     certain = isinstance(source, Module)
         and not (source.stub_only or source.parse_failed)
         and source.loc.mod_path.endswith(".jac")
+        and native_variant_of(source.loc.mod_path) == source.loc.mod_path
+        and imp.from_loc.dot_path_str.split(".")[0] not in sys.stdlib_module_names
         and source.lookup("__getattr__", deep=False) is None
         and not module_absorbs_names(source)
         and not any(
