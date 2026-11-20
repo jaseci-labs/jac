@@ -1,0 +1,24 @@
+[project]
+name = "gateway-owned-fleet-fixture"
+default-app = "main"
+
+# A gateway and one service app on one database, the shape every local fleet
+# has: an app receiving a gateway token for a subject the store lacks is
+# looking at a deleted or invented account, so it must refuse it, never
+# provision it. The fixed secret lets the test sign a token for an id that
+# never existed. The admin password comes from the suite's fixture policy.
+
+[apps.main]
+kind = "service"
+entry-point = "main"
+
+[apps.orders]
+kind = "service"
+entry-point = "orders"
+route = "/orders"
+
+[scale.gateway]
+colocate = false
+
+[serve.auth]
+secret = "gateway-owned-fleet-fixture-signing-secret-0123456789"

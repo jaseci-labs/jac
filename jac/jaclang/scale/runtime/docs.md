@@ -108,7 +108,7 @@ boot_max_wait = 90              # whole-fleet boot window
 health_monitor_interval = 10    # restart loop cadence
 
 [scale.gateway.identity]
-gateway_owned = true            # apps provision users the gateway minted
+gateway_owned = true            # an app with its own JAC_DB_URL provisions users the gateway minted
 
 [scale.gateway.rate_limit]
 enabled = true
@@ -250,9 +250,11 @@ owns identity) and `/cl/<sibling>/` bundles behave as they do colocated.
 3. orders calls get_cart(user_id) through the bridge
 4. jac-scale transport reads Authorization from the execution context and
    forwards it to cart
-5. cart validates the token (same JWT secret) and, with
-   [scale.gateway.identity] gateway_owned = true, provisions the user's root
-   on first sight
+5. cart validates the token (same JWT secret) against the fleet's identity
+   store, which it shares with the gateway. Only an app whose own env sets
+   JAC_DB_URL holds a store of its own; with [scale.gateway.identity]
+   gateway_owned = true (the default), that app provisions the user's root on
+   first sight
 ```
 
 ## Kubernetes Deployment

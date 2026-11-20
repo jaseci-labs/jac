@@ -8,8 +8,8 @@ impl validate_events_url(url: (str | None)) {
     }
 }
 
-impl fleet_provisions_unknown_users(sv_name: str) -> bool {
-    if not sv_name or sv_name == '__gateway__' {
+impl fleet_provisions_unknown_users(sv_name: str, own_store: bool = False) -> bool {
+    if not sv_name or sv_name == '__gateway__' or not own_store {
         return False;
     }
     identity_cfg = dict(get_scale_config().get_gateway_config().get('identity', {}));
@@ -19,7 +19,8 @@ impl fleet_provisions_unknown_users(sv_name: str) -> bool {
 impl FleetIdentityExtension.register(server: JacAPIServer) {
     import os;
     server.user_manager.provision_unknown_users = fleet_provisions_unknown_users(
-        os.environ.get('JAC_SV_NAME', '').strip()
+        os.environ.get('JAC_SV_NAME', '').strip(),
+        own_store=os.environ.get(OWN_STORE_ENV) == '1'
     );
 }
 
@@ -263,6 +264,7 @@ impl AdminExtension.register(server: JacAPIServer) -> None {
     self.server = server;
     self.user_manager = server.user_manager;
     self._metrics = server.metrics;
+    self.scheduler = server.scheduler;
     self.register_admin_surface();
 }
 
