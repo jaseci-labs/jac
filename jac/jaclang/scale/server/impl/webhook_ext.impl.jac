@@ -78,7 +78,7 @@ impl WebhookExtension.webhook_parameters(
             )
         ];
     }
-    wire_names = restspec_wire_names(server.introspector.route_spec(walker_name));
+    wire_names = server.introspector.route_spec(walker_name)?.params or {};
     fields = server.introspector.introspect_walker(
         server.introspector.target(walker_name)
     )['fields'];
@@ -148,7 +148,7 @@ impl WebhookExtension.run_walker(
     walker_kwargs: dict[str, any] = {};
     if isinstance(body_data, dict) {
         body_data = wire_to_fields(
-            restspec_wire_names(server.introspector.route_spec(walker_name)), body_data
+            server.introspector.route_spec(walker_name)?.params or {}, body_data
         );
         for (field_name, value) in body_data.items() {
             if field_name in fields and field_name != '_jac_spawn_node' {

@@ -172,7 +172,7 @@ impl walker_parameters(
 ) -> list[APIParameter] {
     restspec: any = target_restspec(walker_cls);
     path_names = path_param_names(str(restspec.path) if restspec?.path else None);
-    wire_names = restspec_wire_names(restspec);
+    wire_names = restspec?.params or {};
     fields = server.introspector.introspect_walker(walker_cls)['fields'];
     try {
         hints = get_type_hints(walker_cls.init);
@@ -355,7 +355,7 @@ impl function_parameters(
 ) -> list[APIParameter] {
     restspec: any = target_restspec(func_obj);
     path_names = path_param_names(str(restspec.path) if restspec?.path else None);
-    wire_names = restspec_wire_names(restspec);
+    wire_names = restspec?.params or {};
     fields = server.introspector.introspect_callable(func_obj)['parameters'];
     try {
         hints = get_type_hints(func_obj);

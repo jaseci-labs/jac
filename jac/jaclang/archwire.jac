@@ -3008,15 +3008,9 @@ graph import {
             JacAPIServer,
             JsonValue,
             ServerExtension,
-            restspec_wire_names,
             wire_to_fields
         },
-        scale.server.websocket_ext {
-            JacAPIServer,
-            ServerExtension,
-            restspec_wire_names,
-            wire_to_fields
-        },
+        scale.server.websocket_ext { JacAPIServer, ServerExtension, wire_to_fields },
         scale.tests.server.test_auth_policy_startup { EndpointHost, ServerExtension },
     ]
     server.server --> [
@@ -15586,12 +15580,7 @@ graph import server {
         endpoints.colocated { JacAPIServer, JsonValue, ModuleIntrospector },
         endpoints.introspection { JacAPIServer },
         endpoints.pages { JacAPIServer, JsonValue },
-        endpoints.walkers {
-            JacAPIServer,
-            JsonValue,
-            restspec_wire_names,
-            target_restspec
-        },
+        endpoints.walkers { JacAPIServer, JsonValue, target_restspec },
     ]
     serving.accesslog ++> server.JacAPIServer._prepare_to_serve {
         configure_access_logging

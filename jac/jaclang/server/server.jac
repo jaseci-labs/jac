@@ -57,8 +57,6 @@ def target_schedule_spec(target: any) -> any;
 
 def restspec_fields(specs: dict[str, any]) -> dict[str, any];
 
-def restspec_wire_names(spec: any) -> dict[str, str];
-
 def wire_to_fields(wire_names: dict[str, str], data: dict[str, any]) -> dict[str, any];
 
 

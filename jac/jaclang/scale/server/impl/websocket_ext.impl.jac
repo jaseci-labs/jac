@@ -229,7 +229,7 @@ impl WebSocketExtension.target_handler(
     ws_cfg = get_scale_config().get_websocket_config();
     restspec: any = server.introspector.route_spec(target_name);
     is_broadcast: bool = bool(restspec.broadcast) if restspec?.broadcast else False;
-    wire_names = restspec_wire_names(restspec);
+    wire_names = restspec?.params or {};
     user_manager = server.user_manager;
     settings = server.resolved_settings();
     max_bytes = settings.websocket.max_message_bytes
