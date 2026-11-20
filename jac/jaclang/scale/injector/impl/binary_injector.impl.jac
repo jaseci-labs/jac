@@ -8,9 +8,10 @@ impl BinaryInjector.prepare(app_name: str, namespace: str, project_dir: str) {
 
     pod_arch = self._pod_arch or node_arch();
     payload = self._fetch_pod_binary(project_dir, pod_arch, version);
-    self._adopt_pod_binary(app_name, pod_arch, payload);
+    self._pod_arch = pod_arch;
     self._seal_binary_bytes = self._resolve_seal_binary(payload, pod_arch, version);
     super.prepare(app_name, namespace, project_dir);
+    self._adopt_pod_binary(app_name, pod_arch, payload);
 }
 
 impl BinaryInjector._fetch_pod_binary(
