@@ -66,9 +66,10 @@ test "ws walker canonical path /ws/walker/{name} works" {
     try {
         tc = client.raw_client;
         with tc.websocket_connect("/ws/walker/EchoMessage") as ws {
-            ws.send_json({"message": "cw", "client_id": "c2"});
+            ws.send_json({"message": "cw", "client.id": "c2"});
             resp = ws.receive_json();
             assert resp["ok"] == True , f"expected ok, got {resp}";
+            assert resp["data"]["reports"][0]["client_id"] == "c2" , f"{resp}";
         }
     } finally {
         client.close();
@@ -100,6 +101,7 @@ test "ws walker legacy path /ws/{name} still works" {
             ws.send_json({"message": "lw", "client_id": "c3"});
             resp = ws.receive_json();
             assert resp["ok"] == True , f"expected ok, got {resp}";
+            assert resp["data"]["reports"][0]["client_id"] == "c3" , f"{resp}";
         }
     } finally {
         client.close();

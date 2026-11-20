@@ -266,6 +266,59 @@ test "undeclared query params ignored on walker" {
     }
 }
 
+test "a request key that is not a Jac name binds the field it maps to (#10750)" {
+    import from jaclang.server.server { fields_from_request_keys }
+
+    client = make_client("restspec_fixtures.jac");
+    try {
+        base = "/reports/2024-01-01";
+        for (query, want) in [
+            (
+                "?class=premium&hub.mode=subscribe",
+                {
+                    "from_date": "2024-01-01",
+                    "class_name": "premium",
+                    "hub_mode": "subscribe"
+                }
+            ),
+            ("?class_name=gold", {"class_name": "gold"}),
+            ("?class=premium&class_name=gold", {"class_name": "premium"})
+        ] {
+            response = client.get(base + query);
+            assert response.status_code == 200 , f"{query}: {response.text}";
+            got = extract_data(response.json())["reports"][0];
+            for (name, value) in want.items() {
+                assert got[name] == value , f"{query}: {name}={got[name]!r}";
+            }
+        }
+
+        for (body, want) in [
+            (
+                {"class": "a", "async": True},
+                {"kind": "a", "run_async": True, "label": ""}
+            ),
+            ({"kind": "b"}, {"kind": "b", "run_async": False, "label": ""}),
+            (
+                {"class": "c", "run_async": "x"},
+                {"kind": "c", "run_async": False, "label": "x"}
+            )
+        ] {
+            response = client.post("/function/reserved_keys_func", json=body);
+            assert response.status_code == 200 , f"{body}: {response.text}";
+            assert extract_data(response.json())["result"] == want , response.text;
+        }
+    } finally {
+        client.close();
+    }
+
+    for (request_keys, data, want) in [
+        ({"kind": "class"}, {"class": "y", "kind": "x", "n": 1}, {"kind": "y", "n": 1}),
+        ({"a": "b", "b": "a"}, {"a": 1, "b": 2}, {"a": 2, "b": 1})
+    ] {
+        assert fields_from_request_keys(request_keys, data) == want , f"{request_keys} {data}";
+    }
+}
+
 test "openapi specs" {
     client = make_client("restspec_fixtures.jac");
     try {
@@ -1025,6 +1078,25 @@ test "restspec decoration-time validation rejects bad specs (#8000 f3)" {
     # String coercion: 'ws' and 'get' normalize instead of degrading to HTTP.
     decorated = blt.restspec(method="get")(some_fn);
     assert decorated.restspec.method.value == "GET";
+
+    def keyed_fn(kind: str, run_async: bool = False) -> int {
+        return 1;
+    }
+    for (params, fragment) in [
+        (["from"], "its own request key"),
+        ({"kind": 1}, "its own request key"),
+        ({"kind": ""}, "its own request key"),
+        ({"kind": "class", "run_async": "class"}, "its own request key"),
+        ({"missing": "x"}, "not a parameter of the function"),
+        ({"kind": "run_async"}, "is also a parameter of the function")
+    ] {
+        with testraises(ValueError) as bad {
+            blt.restspec(params=params)(keyed_fn);
+        }
+        assert fragment in str(bad.value) , f"{params}: {bad.value}";
+    }
+    swapped = blt.restspec(params={"kind": "run_async", "run_async": "kind"})(keyed_fn);
+    assert swapped.restspec.params == {"kind": "run_async", "run_async": "kind"};
 }
 
 

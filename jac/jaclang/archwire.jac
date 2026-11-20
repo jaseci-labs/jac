@@ -2987,8 +2987,7 @@ graph import {
             | scale.server.extensions
             | scale.server.inprocess
             | scale.server.jobs_ext
-            | scale.server.sso_ext
-            | scale.server.websocket_ext { JacAPIServer, ServerExtension },
+            | scale.server.sso_ext { JacAPIServer, ServerExtension },
         runtime.builtin.restspec { restspec_fields },
         runtime.runtime.JacServe.get_api_server_class
             | scale.tests.data.test_eager_spawn
@@ -3009,7 +3008,17 @@ graph import {
             | scale.runtime.gateway.microservice_gateway
             | scale.tests.server.test_sso { EndpointHost },
         scale.admin.llm_telemetry { EndpointHost, JsonValue },
-        scale.server.webhook_ext { JacAPIServer, JsonValue, ServerExtension },
+        scale.server.webhook_ext {
+            JacAPIServer,
+            JsonValue,
+            ServerExtension,
+            fields_from_request_keys
+        },
+        scale.server.websocket_ext {
+            JacAPIServer,
+            ServerExtension,
+            fields_from_request_keys
+        },
         scale.tests.server.test_auth_policy_startup { EndpointHost, ServerExtension },
     ]
     server.server --> [
@@ -3017,6 +3026,7 @@ graph import {
         runtime.source_app.main | scale.tests.data.test_identity_fail_loud {
             JacAPIServer
         },
+        scale.tests.server.test_restspec { fields_from_request_keys },
         scale.tests.support { EndpointHost },
     ]
     type server.server ++> [

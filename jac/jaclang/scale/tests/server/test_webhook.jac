@@ -78,6 +78,11 @@ test "webhook - endpoint exists" {
         assert "/webhook/MinimalWebhook" in paths , (
             f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
         );
+        body_ref = paths["/webhook/PaymentReceived"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"];
+        body = schema["components"]["schemas"][body_ref.split("/")[-1]];
+        assert "currency.code" in body["properties"] , body;
     } finally {
         client.close();
     }
@@ -259,7 +264,7 @@ test "webhook - payment received with fields" {
                 "payment_id": "PAY-12345",
                 "order_id": "ORD-67890",
                 "amount": 99.99,
-                "currency": "USD"
+                "currency.code": "EUR"
             }
         );
         payload_bytes = payload.encode("utf-8");
@@ -289,7 +294,7 @@ test "webhook - payment received with fields" {
         assert rpt["payment_id"] == "PAY-12345";
         assert rpt["order_id"] == "ORD-67890";
         assert rpt["amount"] == 99.99;
-        assert rpt["currency"] == "USD";
+        assert rpt["currency"] == "EUR";
     } finally {
         client.close();
     }
@@ -521,7 +526,7 @@ test "webhook - unknown body fields dropped" {
                 "payment_id": "PAY-MA-1",
                 "order_id": "ORD-MA-1",
                 "amount": 5.0,
-                "currency": "USD",
+                "currency": "GBP",
                 "evil_field": "should-be-dropped"
             }
         );
@@ -548,6 +553,7 @@ test "webhook - unknown body fields dropped" {
         data = extract_data(response.json());
         rpt = data["reports"][0];
         assert rpt["payment_id"] == "PAY-MA-1";
+        assert rpt["currency"] == "GBP" , "a mapped field still binds by its own name";
         assert "evil_field" not in rpt , (
             f"evil_field leaked into walker report: {rpt}"
         );

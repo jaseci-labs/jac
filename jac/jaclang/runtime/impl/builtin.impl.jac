@@ -416,6 +416,31 @@ impl _validate_restspec_target(spec: any, target: any) {
             "walkers; walker responses always use the report envelope."
         );
     }
+    request_keys = spec?.params or {};
+    if not request_keys {
+        return;
+    }
+    names = set(inspect.signature(target).parameters);
+    owner = 'field of the walker' if is_walker else 'parameter of the function';
+    unknown = sorted(set(request_keys) - names);
+    if unknown {
+        raise ValueError(
+            f"@restspec params on '{name}' maps {unknown}, which is not a {owner}."
+        );
+    }
+    taken = sorted(
+        {
+            key
+            for key in request_keys.values()
+            if key in names and key not in request_keys
+        }
+    );
+    if taken {
+        raise ValueError(
+            f"@restspec params on '{name}' uses {taken} as a request key, but it "
+            f"is also a {owner}; map it to another request key as well."
+        );
+    }
 }
 
 impl _is_sized_type_name(name: str) -> bool {
