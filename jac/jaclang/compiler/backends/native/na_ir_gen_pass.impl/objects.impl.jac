@@ -1909,6 +1909,43 @@ impl NaIRGenPass._stack_only_bound(sym: uni.Symbol, type_name: str) -> bool {
     return True;
 }
 
+impl NaIRGenPass._codegen_field_default(
+    expr: uni.Expr, ftype: (ir.Type | None), fname: str
+) -> (ir.Value | None) {
+    bindings = self._enter_bindings();
+    scope = self.scope;
+    self.scope = scope.outermost();
+    val: (ir.Value | None) = None;
+    try {
+        val = self._codegen_expr(expr);
+        bound_by_walrus = bool(self.local_vars);
+        if val is not None
+            and bound_by_walrus
+            and self._is_reference_type(val.type)
+            and not self._is_owned(val) {
+            if self._nogc_headerless() {
+                self.emit(
+                    E5092,
+                    node_override=expr,
+                    kind="field default",
+                    name=fname,
+                    help_text="A headerless build cannot keep a value bound with `:=` in a field default alive after the default runs. Write the default without `:=`."
+                );
+                return None;
+            }
+            self._emit_take_ref(val, op="field_default");
+            self._mark_owned(val);
+        }
+    } finally {
+        self.scope = scope;
+        self._leave_bindings(bindings, release=True);
+    }
+    if val is None {
+        return self._empty_container_for_field(ftype, f"dflt.{fname}");
+    }
+    return val;
+}
+
 impl NaIRGenPass._empty_container_for_field(
     ftype: (ir.Type | None), label: str
 ) -> (ir.Value | None) {
@@ -2365,13 +2402,9 @@ impl NaIRGenPass._codegen_instantiation(
 
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
-            val = self._codegen_expr(default_expr);
-
-            if val is None {
-                val = self._empty_container_for_field(
-                    field_types.get(fname), f"dflt.{fname}"
-                );
-            }
+            val = self._codegen_field_default(
+                default_expr, field_types.get(fname), fname
+            );
             if val is not None
                 and fname in self.struct_field_inline.get(type_name, set()) {
                 _inl_fp = self.builder.gep(
@@ -4901,6 +4934,12 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     for kw_pair in keyword {
         pairs.append(kw_pair);
     }
+    given = {pair[0] for pair in pairs};
+    for (fname, default_expr) in self.struct_field_defaults.get(anc, {}).items() {
+        if fname not in given {
+            pairs.append((fname, default_expr));
+        }
+    }
     covered: set[str] = set();
     inline_fields = self.struct_field_inline.get(owner, set());
     for (fname, _expr) in pairs {
@@ -4914,11 +4953,6 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
         }
         covered.add(fname);
     }
-    for fname in self.struct_field_defaults.get(anc, {}) {
-        if fname not in covered {
-            return None;
-        }
-    }
     self_slot = self.local_vars.get("self");
     if self_slot is None {
         return None;
@@ -4928,7 +4962,9 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     field_types = self.struct_field_types.get(owner, {});
     borrow_fields = self.struct_field_borrow.get(owner, set());
     for (fname, expr) in pairs {
-        val = self._codegen_expr(expr);
+        val = self._codegen_expr(expr)
+            if fname in given
+            else self._codegen_field_default(expr, field_types.get(fname), fname);
         if val is None {
             return None;
         }
