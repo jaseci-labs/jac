@@ -5765,6 +5765,10 @@ graph import compiler {
             is_selected_native_variant
         },
         tools.comment_attach_pass { NodeComments },
+        types.type_evaluator.TypeEvaluator._report_missing_import_name {
+            is_toolchain_unit,
+            native_variant_of
+        },
     ]
     frontend.codeinfo --> [
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
@@ -6504,6 +6508,7 @@ graph import compiler {
             E1137,
             E1138,
             E1139,
+            E1145,
             E5094,
             W1050,
             W1051,
@@ -9283,7 +9288,8 @@ graph import compiler {
             expr_primitive_name
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._check_native_import_names {
-            lookup_symtab
+            lookup_symtab,
+            module_absorbs_names
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._is_boolean_result_expr {
             primitive_type_name_of
@@ -11745,6 +11751,7 @@ graph import compiler.types {
             convert_to_instance,
             get_declared_generator_return_type,
             lookup_symtab,
+            module_absorbs_names,
             shadowed_type_var_names,
             specialize_for_base_class,
             synthesize_self_type_var

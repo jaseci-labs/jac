@@ -53,6 +53,8 @@ def lookup_symtab(
     symtable: UniScopeNode, name: str, builtins_to_inject: Module | None
 ) -> (Symbol | None);
 
+def module_absorbs_names(mod: Module) -> bool;
+
 def types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool;
 
 def origin_of_local_name(nd: UniNode, local: str) -> tuple[str, (str | None)];
