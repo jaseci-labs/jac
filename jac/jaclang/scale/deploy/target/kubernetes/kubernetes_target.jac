@@ -1,4 +1,5 @@
 glob DB_DATA_PATH: str = '/var/lib/jac/pgdata',
+     DB_DISK_TIMEOUT_S: int = 10,
      DB_DISK_WARN_PERCENT: int = 80;
 
 obj KubernetesTargetBase(DeploymentTarget) {

@@ -321,6 +321,19 @@ done
 [ "${WARNED}" = "warned" ] \
     || fail "${OWNED_NS}" "the database volume is ${PCT}% full but status gave no warning"
 echo "  filled database: ${PCT}% used, status warns"
+STATUS_DIR="$(mktemp -d)"
+printf '[project]\nname = "%s"\nversion = "0.1.0"\nentry-point = "main"\n\n[scale.kubernetes]\napp_name = "%s"\nnamespace = "%s"\n' \
+    "${APP}" "${APP}" "${OWNED_NS}" > "${STATUS_DIR}/jac.toml"
+echo 'walker:pub hello { can go with Root entry { report "hi"; } }' > "${STATUS_DIR}/main.jac"
+STATUS_OUT="$(cd "${STATUS_DIR}" && jac scale status main.jac </dev/null 2>&1 || true)"
+rm -rf "${STATUS_DIR}"
+STATUS_FLAT="$(printf '%s\n' "${STATUS_OUT}" | tr -s '[:space:]' ' ')"
+if ! grep -q "Disk .* of .*%)" <<<"${STATUS_FLAT}" \
+    || ! grep -q "The database volume is .*% full" <<<"${STATUS_FLAT}"; then
+    printf '%s\n' "${STATUS_OUT}" | tail -40 >&2
+    fail "${OWNED_NS}" "jac scale status did not print the disk line and the warning"
+fi
+echo "  jac scale status prints the disk line and the warning"
 _t "G PASSED"
 destroy_app "${APP}" "${OWNED_NS}"
 

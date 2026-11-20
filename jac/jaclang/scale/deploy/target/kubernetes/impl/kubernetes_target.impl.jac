@@ -602,7 +602,9 @@ impl KubernetesTargetBase._database_disk(
     try {
         core_v1 = client.CoreV1Api();
         pvc = core_v1.read_namespaced_persistent_volume_claim(
-            name=f"{pg_name}-data-{pg_name}-0", namespace=namespace
+            name=f"{pg_name}-data-{pg_name}-0",
+            namespace=namespace,
+            _request_timeout=DB_DISK_TIMEOUT_S
         );
         size = (pvc.status.capacity or {}).get('storage')
             or pvc.spec.resources.requests['storage'];
@@ -616,7 +618,8 @@ impl KubernetesTargetBase._database_disk(
             stderr=False,
             stdin=False,
             stdout=True,
-            tty=False
+            tty=False,
+            _request_timeout=DB_DISK_TIMEOUT_S
         );
         used = int(str(out).split()[0]) * 1024;
         return {'used': used, 'total': total, 'percent': round(100 * used / total, 1)};
