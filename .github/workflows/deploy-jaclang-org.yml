@@ -1,0 +1,167 @@
+name: Deploy jaclang.org
+
+# Deploys jac/examples/jaclang_org to https://jaclang.org whenever the site
+# changes on main. It runs the site's own `jac scale deploy` against the live
+# namespace on production-cluster, with the production settings in
+# .github/jaclang_org/deploy.toml appended to a copy of the site's jac.toml.
+#
+# The site's [project] jac-version pin picks the jac release for this runner
+# and for the pods, so bumping the pin is what moves jaclang.org, and the docs
+# it bundles at /docs/latest, to a new release.
+#
+# Editing this workflow does not deploy. To deploy without a site change, run
+# it from the Actions tab; tick dry_run to render the plan and apply nothing.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "jac/examples/jaclang_org/**"
+      - ".github/jaclang_org/**"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Render the deploy plan only; apply nothing"
+        type: boolean
+        default: false
+
+# One deploy at a time. A push that lands mid-deploy waits, and only the newest
+# waiting run is kept, so a burst of merges ends on main's latest tree.
+concurrency:
+  group: deploy-jaclang-org
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # OIDC into AWS for the EKS credentials
+
+env:
+  SITE_DIR: jac/examples/jaclang_org
+  SITE_URL: https://jaclang.org
+  CLUSTER: production-cluster
+  NAMESPACE: jb-70d63706-jaclang-website
+  AWS_REGION: us-east-2
+
+jobs:
+  deploy:
+    if: github.repository == 'jaseci-labs/jac'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: jaclang-org
+      url: https://jaclang.org
+    steps:
+      - uses: actions/checkout@v5
+
+      # [dev] would point the pods at the rolling dev image and ignore the pin,
+      # so the deploy copy drops it. The copy lives outside the checkout, the
+      # same layout the hand deploys used.
+      - name: Stage the deploy copy
+        id: stage
+        run: |
+          pin=$(sed -n 's/^jac-version = "==\([0-9][0-9.]*\)"$/\1/p' "$SITE_DIR/jac.toml")
+          if [ -z "$pin" ]; then
+            echo "::error file=$SITE_DIR/jac.toml::jaclang.org deploys need an exact pin: jac-version = \"==X.Y.Z\""
+            exit 1
+          fi
+          stage="$RUNNER_TEMP/jaclang_org"
+          cp -R "$SITE_DIR" "$stage"
+          awk '/^\[/ { skip = ($0 == "[dev]") } !skip' "$SITE_DIR/jac.toml" > "$stage/jac.toml"
+          cat .github/jaclang_org/deploy.toml >> "$stage/jac.toml"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          echo "dir=$stage" >> "$GITHUB_OUTPUT"
+
+      - name: Install jac ${{ steps.stage.outputs.pin }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIN: ${{ steps.stage.outputs.pin }}
+        run: |
+          mkdir -p "$HOME/.local/bin" && cd "$RUNNER_TEMP"
+          gh release download "v$PIN" --repo jaseci-labs/jac \
+            --pattern "jac-$PIN-linux-x86_64" --pattern "jac-$PIN-linux-x86_64.sha256"
+          sha256sum -c "jac-$PIN-linux-x86_64.sha256"
+          install -m 0755 "jac-$PIN-linux-x86_64" "$HOME/.local/bin/jac"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/jac" --version
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsJaseciDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      # deploy.toml names the kube context, so the alias must match it.
+      - name: Connect kubectl
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION" --alias "$CLUSTER"
+          kubectl -n "$NAMESPACE" get deploy
+
+      - name: Install the site's dependencies
+        working-directory: ${{ steps.stage.outputs.dir }}
+        run: jac install
+
+      - name: Plan
+        working-directory: ${{ steps.stage.outputs.dir }}
+        run: jac scale deploy web --target kubernetes --dry-run
+
+      # A rollout undo restores pods, not rows. Keeps the newest 10 CI dumps
+      # on the database volume, beside any taken by hand.
+      - name: Back up the database
+        if: ${{ !inputs.dry_run }}
+        run: |
+          name="ci-$(date -u +%Y%m%dT%H%MZ)-${GITHUB_SHA::10}.dump"
+          kubectl -n "$NAMESPACE" exec jaclang-website-postgres-0 -c postgres -- sh -ec '
+            export PGPASSWORD="$POSTGRES_PASSWORD"
+            dir=/var/lib/jac/pgdata/backups
+            mkdir -p "$dir"
+            pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$dir/$1"
+            ls -la "$dir/$1"
+            ls -1t "$dir"/ci-*.dump | tail -n +11 | xargs -r rm -f
+          ' sh "$name"
+
+      - name: Deploy
+        if: ${{ !inputs.dry_run }}
+        working-directory: ${{ steps.stage.outputs.dir }}
+        run: jac scale deploy web --target kubernetes
+
+      - name: Wait for the rollout
+        if: ${{ !inputs.dry_run }}
+        env:
+          PIN: ${{ steps.stage.outputs.pin }}
+        run: |
+          for d in $(kubectl -n "$NAMESPACE" get deploy -l 'jac-scale.role in (gateway,microservice)' -o name); do
+            kubectl -n "$NAMESPACE" rollout status "$d" --timeout=15m
+          done
+          kubectl -n "$NAMESPACE" get deploy
+          kubectl -n "$NAMESPACE" exec deploy/web-deployment -c web -- jac --version | tee /dev/stderr | grep -qF "jac $PIN "
+
+      # The site re-ingests the docs bundled with its jac when that version
+      # changes, so /docs/latest should name the pin's release once it is up.
+      - name: Check the live site
+        if: ${{ !inputs.dry_run }}
+        env:
+          PIN: ${{ steps.stage.outputs.pin }}
+        run: |
+          failed=0
+          for path in / /docs/latest /jacyac /install.sh; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 --retry 3 "$SITE_URL$path")
+            echo "$path -> $code"
+            [ "$code" = 200 ] || failed=1
+          done
+          want="v${PIN%.*}"
+          for _ in $(seq 60); do
+            got=$(curl -s --max-time 30 -X POST -H 'Content-Type: application/json' -d '{}' \
+              "$SITE_URL/function/docs_status" | jq -r '.data.result.latest_label // empty' 2>/dev/null || true)
+            [ "$got" = "$want" ] && break
+            sleep 15
+          done
+          echo "docs latest: ${got:-none} (want $want)"
+          [ "$got" = "$want" ] || failed=1
+          echo "Deployed \`${GITHUB_SHA::10}\` on jac $PIN; /docs/latest is ${got:-unknown}." >> "$GITHUB_STEP_SUMMARY"
+          exit $failed
+
+      - name: Show the namespace on failure
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get deploy,pods -o wide || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -40 || true
+          echo "To roll the pods back: kubectl -n $NAMESPACE rollout undo deploy/<name> for each deployment above."
