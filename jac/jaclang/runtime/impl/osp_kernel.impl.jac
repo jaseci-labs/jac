@@ -58,17 +58,26 @@ impl _plan_for(
     return plan;
 }
 
+impl _ignore_key(target: any) -> int {
+    if isinstance(target, int) {
+        return target;
+    }
+    return id(target);
+}
+
 impl _dequeue(scope: OspWalkScope) -> (int | None) {
     while scope.front {
         candidate = scope.front.pop();
-        if (not scope.ignores) or (candidate not in scope.ignores) {
+        if (scope.ignored_count == 0)
+            or (_ignore_key(candidate) not in scope.ignores) {
             return candidate;
         }
     }
     while scope.next_head < len(scope.next) {
         candidate = scope.next[scope.next_head];
         scope.next_head += 1;
-        if (not scope.ignores) or (candidate not in scope.ignores) {
+        if (scope.ignored_count == 0)
+            or (_ignore_key(candidate) not in scope.ignores) {
             return candidate;
         }
     }
@@ -105,10 +114,10 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
         return False;
     }
     filtered = targets;
-    if scope.ignores {
+    if scope.ignored_count > 0 {
         kept: list[int] = [];
         for t in targets {
-            if t not in scope.ignores {
+            if _ignore_key(t) not in scope.ignores {
                 kept.append(t);
             }
         }
@@ -156,8 +165,10 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
 
 impl OspEngine.forget(target: int) {
     for scope in self.stack {
-        if target not in scope.ignores {
-            scope.ignores.append(target);
+        key = _ignore_key(target);
+        if key not in scope.ignores {
+            scope.ignores[key] = target;
+            scope.ignored_count += 1;
         }
     }
 }
@@ -189,7 +200,7 @@ impl OspEngine.begin(wlk: any, starts: list[int]) -> OspWalkScope {
         path=[],
         next=`list(starts),
         front=[],
-        ignores=[],
+        ignores={},
         reports=[],
         nested=(len(self.stack) > 0),
         held=[]
@@ -387,8 +398,8 @@ impl OspEngine.next_slot(
                         if scope.front {
                             candidate = scope.front.pop();
                             budget -= 1;
-                            if (not scope.ignores)
-                                or (candidate not in scope.ignores) {
+                            if (scope.ignored_count == 0)
+                                or (_ignore_key(candidate) not in scope.ignores) {
                                 child = candidate;
                                 found = True;
                             }

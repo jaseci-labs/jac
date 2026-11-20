@@ -271,7 +271,7 @@ impl JacWalker.`visit(
         return False;
     }
     scope = scope_of(`walker);
-    if scope is not None and not scope.ignores {
+    if scope is not None and scope.ignored_count == 0 {
         if insert_loc == 0 {
             scope.front.extend(reversed(targets));
             scope.fenced = True;

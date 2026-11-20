@@ -42,9 +42,10 @@ obj OspWalkScope {
         path: list[int],
         next: list[int],
         front: list[int],
-        ignores: list[int],
+        ignores: dict[int, any],
         reports: list[any],
         disengaged: bool = False,
+        ignored_count: int = 0,
         next_head: int = 0,
         nested: bool = False,
         fenced: bool = False,
@@ -80,6 +81,8 @@ def _plan_for(
 ) -> OspPlan;
 
 def _dequeue(scope: OspWalkScope) -> (int | None);
+
+def _ignore_key(target: any) -> int;
 
 obj OspEngine {
     has stack: list[OspWalkScope],

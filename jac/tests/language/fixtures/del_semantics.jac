@@ -15,14 +15,34 @@ node N {
     has t: str;
 }
 
-edge E : N --> N {
+edge E: N --> N {
     has w: int = 1;
 }
 
-edge F : N --> N {}
+edge F: N --> N {}
 
 obj Holder {
     has slot: N | None = None;
+}
+
+node EqN {
+    has v: int;
+
+    def __eq__(other: object) -> bool {
+        return isinstance(other, EqN) and other.v == self.v;
+    }
+}
+
+walker Prune {
+    has seen: list[int] = [];
+
+    can step with EqN entry {
+        self.seen.append(here.v);
+        for nxt in [here-->] {
+            del nxt;
+        }
+        visit [-->];
+    }
 }
 
 def nkids -> int {
@@ -342,6 +362,15 @@ def multi_targets {
     assert gone , "C3 a3c still bound";
 }
 
+"""E. A walk deletes a node whose type defines __eq__ without __hash__."""
+def walk_deletes_unhashable {
+    a = EqN(v=1);
+    root ++> a;
+    a ++> EqN(v=2);
+    w = Prune() spawn a;
+    assert w.seen == [1] , f"E1 walk saw {w.seen}";
+}
+
 """D. Root is never a valid destroy target."""
 def root_guard {
     r = root;
@@ -360,5 +389,6 @@ with entry {
     value_targets();
     multi_targets();
     root_guard();
+    walk_deletes_unhashable();
     print("del semantics: all cases ok");
 }
