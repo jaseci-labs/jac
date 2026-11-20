@@ -88,7 +88,7 @@ impl WebhookExtension.webhook_parameters(
         }
         parameters.append(
             APIParameter(
-                name=request_keys.get(field_name, field_name),
+                name=request_keys.get(field_name) or field_name,
                 field=field_name if field_name in request_keys else '',
                 data_type=fields[field_name]['type'],
                 required=fields[field_name]['required'],

@@ -193,7 +193,7 @@ impl walker_parameters(
         }
         key = 'nd'
             if field_name == '_jac_spawn_node'
-            else request_keys.get(field_name, field_name);
+            else request_keys.get(field_name) or field_name;
         kind = ParameterType.PATH
             if field_name == '_jac_spawn_node'
             else _param_kind(key, field_type, path_names, method, type_obj);
@@ -371,7 +371,7 @@ impl function_parameters(
         if type_obj is None {
             type_obj = hints.get(field_name);
         }
-        key = request_keys.get(field_name, field_name);
+        key = request_keys.get(field_name) or field_name;
         parameters.append(
             APIParameter(
                 name=key,
