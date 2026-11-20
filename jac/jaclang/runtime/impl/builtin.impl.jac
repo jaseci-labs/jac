@@ -416,13 +416,13 @@ impl _validate_restspec_target(spec: any, target: any) {
             "walkers; walker responses always use the report envelope."
         );
     }
-    wire_names = spec?.params or {};
-    if not wire_names {
+    request_keys = spec?.params or {};
+    if not request_keys {
         return;
     }
     names = set(inspect.signature(target).parameters);
     owner = 'field of the walker' if is_walker else 'parameter of the function';
-    unknown = sorted(set(wire_names) - names);
+    unknown = sorted(set(request_keys) - names);
     if unknown {
         raise ValueError(
             f"@restspec params on '{name}' maps {unknown}, which is not a {owner}."
@@ -430,9 +430,9 @@ impl _validate_restspec_target(spec: any, target: any) {
     }
     taken = sorted(
         {
-            wire
-            for wire in wire_names.values()
-            if wire in names and wire not in wire_names
+            key
+            for key in request_keys.values()
+            if key in names and key not in request_keys
         }
     );
     if taken {

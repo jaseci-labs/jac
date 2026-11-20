@@ -267,7 +267,7 @@ test "undeclared query params ignored on walker" {
 }
 
 test "a request key that is not a Jac name binds the field it maps to (#10750)" {
-    import from jaclang.server.server { wire_to_fields }
+    import from jaclang.server.server { fields_from_request_keys }
 
     client = make_client("restspec_fixtures.jac");
     try {
@@ -311,11 +311,11 @@ test "a request key that is not a Jac name binds the field it maps to (#10750)" 
         client.close();
     }
 
-    for (wire_names, data, want) in [
+    for (request_keys, data, want) in [
         ({"kind": "class"}, {"class": "y", "kind": "x", "n": 1}, {"kind": "y", "n": 1}),
         ({"a": "b", "b": "a"}, {"a": 1, "b": 2}, {"a": 2, "b": 1})
     ] {
-        assert wire_to_fields(wire_names, data) == want , f"{wire_names} {data}";
+        assert fields_from_request_keys(request_keys, data) == want , f"{request_keys} {data}";
     }
 }
 

@@ -57,7 +57,9 @@ def target_schedule_spec(target: any) -> any;
 
 def restspec_fields(specs: dict[str, any]) -> dict[str, any];
 
-def wire_to_fields(wire_names: dict[str, str], data: dict[str, any]) -> dict[str, any];
+def fields_from_request_keys(
+    request_keys: dict[str, str], data: dict[str, any]
+) -> dict[str, any];
 
 
 obj ExecutionManager {

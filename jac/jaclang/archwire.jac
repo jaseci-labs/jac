@@ -3008,9 +3008,13 @@ graph import {
             JacAPIServer,
             JsonValue,
             ServerExtension,
-            wire_to_fields
+            fields_from_request_keys
         },
-        scale.server.websocket_ext { JacAPIServer, ServerExtension, wire_to_fields },
+        scale.server.websocket_ext {
+            JacAPIServer,
+            ServerExtension,
+            fields_from_request_keys
+        },
         scale.tests.server.test_auth_policy_startup { EndpointHost, ServerExtension },
     ]
     server.server --> [
@@ -3018,7 +3022,7 @@ graph import {
         runtime.source_app.main | scale.tests.data.test_identity_fail_loud {
             JacAPIServer
         },
-        scale.tests.server.test_restspec { wire_to_fields },
+        scale.tests.server.test_restspec { fields_from_request_keys },
         scale.tests.support { EndpointHost },
     ]
     type server.server ++> [

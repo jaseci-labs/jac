@@ -229,7 +229,7 @@ impl WebSocketExtension.target_handler(
     ws_cfg = get_scale_config().get_websocket_config();
     restspec: any = server.introspector.route_spec(target_name);
     is_broadcast: bool = bool(restspec.broadcast) if restspec?.broadcast else False;
-    wire_names = restspec?.params or {};
+    request_keys = restspec?.params or {};
     user_manager = server.user_manager;
     settings = server.resolved_settings();
     max_bytes = settings.websocket.max_message_bytes
@@ -239,7 +239,7 @@ impl WebSocketExtension.target_handler(
         def make_awaitable(data: dict[str, any], user: str) -> any {
             return execute(
                 server.introspector.target(target_name),
-                wire_to_fields(wire_names, data),
+                fields_from_request_keys(request_keys, data),
                 user
             );
         }

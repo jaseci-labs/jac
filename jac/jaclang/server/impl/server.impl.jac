@@ -2173,8 +2173,8 @@ impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
         and (
             not isinstance(params, dict)
             or not all(
-                isinstance(field, str) and field and isinstance(wire, str) and wire
-                for (field, wire) in params.items()
+                isinstance(field, str) and field and isinstance(key, str) and key
+                for (field, key) in params.items()
             )
             or len(set(params.values())) < len(params)
         ) {
@@ -2186,10 +2186,10 @@ impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
     return specs;
 }
 
-impl wire_to_fields(
-    wire_names: dict[str, str], data: dict[str, any]
+impl fields_from_request_keys(
+    request_keys: dict[str, str], data: dict[str, any]
 ) -> dict[str, any] {
-    fields = {wire: field for (field, wire) in wire_names.items()};
+    fields = {key: field for (field, key) in request_keys.items()};
     bound = {
         key: value
         for (key, value) in data.items()
