@@ -31,7 +31,7 @@ glob PURE_BUILTINS: set[str] = {
          "keys",
          "values"
      },
-     FRESH_VALUES: tuple = (
+     FRESH_VALUES: tuple[type, ...] = (
          DictCompr,
          DictVal,
          FString,
