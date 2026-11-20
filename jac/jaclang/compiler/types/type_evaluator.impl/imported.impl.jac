@@ -682,6 +682,8 @@ impl TypeEvaluator._report_missing_import_name(
     item: ModuleItem, source: (UniScopeNode | None)
 ) -> None {
     imp = item.parent_of_type(Import);
+    binding = item.binding_name;
+    assert binding is not None and imp.from_loc is not None;
     if isinstance(source, Module)
         and source.stub_only
         and source.loc.mod_path.endswith(".jac") {
@@ -702,7 +704,7 @@ impl TypeEvaluator._report_missing_import_name(
         and self._import_must_bind(imp, name_missing=True);
     self.emit_diag(
         E1145 if certain else W1101,
-        item.binding_name,
+        binding,
         name=item.name.value,
         module=imp.from_loc.dot_path_str
     );
