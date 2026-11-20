@@ -5681,7 +5681,7 @@ graph import compiler {
             | driver.program.JacProgram.toolchain_dependency
             | driver.selfhost.SelfHostCache.owns
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish
-            | passes.graph_effects.GraphEffectScan._call_effect
+            | passes.graph_effects.GraphEffectScan._call_writes
             | passes.package_boundary_pass.PackageBoundaryPass.run_walk {
             is_compiler_source_path
         },
@@ -5742,8 +5742,7 @@ graph import compiler {
         passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
-        passes.graph_effects.effect_record { endpoint_descriptor },
-        passes.graph_effects.endpoint_effects { endpoint_key },
+        passes.graph_effects.endpoint_effects { endpoint_descriptor, endpoint_key },
         passes.layout_pass { real_path },
         passes.layout_pass._archetype_native_name { native_arch_name },
         passes.layout_pass.interface_class_native_name { native_arch_name },
@@ -7362,7 +7361,6 @@ graph import compiler {
             Ability,
             Archetype,
             Assignment,
-            AstSymbolNode,
             AtomTrailer,
             BinaryExpr,
             ConnectOp,
@@ -7371,17 +7369,11 @@ graph import compiler {
             Expr,
             FuncCall,
             ImplDef,
-            IndexSlice,
-            KWPair,
-            ListVal,
             Module,
             Name,
-            Symbol,
             Token,
-            TupleVal,
             UnaryExpr,
-            UniNode,
-            ability_of_symbol
+            UniNode
         },
         passes.import_wiring_pass {
             Ability,
@@ -9403,14 +9395,7 @@ graph import compiler {
             | passes.ownership_check_pass { ClassType, FunctionType, UnionType },
         native_bindings { ClassType, FunctionType, OverloadedType, TypeBase },
         passes.capability_check_pass._class_bounded_typevar { ClassType, TypeVarType },
-        passes.graph_effects {
-            AnyType,
-            ClassType,
-            TypeBase,
-            TypeVarType,
-            UnionType,
-            UnknownType
-        },
+        passes.graph_effects { AnyType, ClassType, TypeBase, UnionType, UnknownType },
         passes.layout_pass.class_form_enum_member { EnumMemberType },
         passes.layout_pass.native_type_key {
             ClassType,

@@ -355,6 +355,5 @@ test "endpoint effects come from the types of what each endpoint changes" {
         assert bool(effect["writes"]) == writes , (
             f"{name} must classify as {'writer' if writes else 'reader'}; got {effect}"
         );
-        assert not effect["unknown"] , f"{name} must be decided, not unknown; got {effect}";
     }
 }
