@@ -691,7 +691,10 @@ impl TypeEvaluator._report_missing_import_name(
         source = self._import_module_from_path(source.loc.mod_path, need_tree=True);
     }
     certain = isinstance(source, Module)
-        and module_names_closed(source)
+        and not (source.stub_only or source.parse_failed)
+        and source.loc.mod_path.endswith(".jac")
+        and source.lookup("__getattr__", deep=False) is None
+        and not module_absorbs_names(source)
         and self._import_must_bind(imp);
     self.emit_diag(E1145 if certain else W1101, binding, name=name, module=module);
 }

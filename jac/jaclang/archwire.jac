@@ -9271,7 +9271,8 @@ graph import compiler {
             expr_primitive_name
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._check_native_import_names {
-            lookup_symtab
+            lookup_symtab,
+            module_absorbs_names
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._is_boolean_result_expr {
             primitive_type_name_of
@@ -11733,7 +11734,7 @@ graph import compiler.types {
             convert_to_instance,
             get_declared_generator_return_type,
             lookup_symtab,
-            module_names_closed,
+            module_absorbs_names,
             shadowed_type_var_names,
             specialize_for_base_class,
             synthesize_self_type_var
