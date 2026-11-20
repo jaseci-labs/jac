@@ -40,6 +40,7 @@ def check_codes(path: Path) -> list[str] {
 
 test "the checker makes a name a Jac module does not define E1145 and keeps W1101 where it cannot be sure" {
     lib = "def present_fn(x: int) -> int {\n    return x + 1;\n}\n";
+    guarded = "def load {\n    try {\n        import from lib { missing_fn }\n    } except EXC { }\n}\n";
     cases = [
         ("package __init__.jac", "E1145", {"lib/__init__.jac": lib}),
         ("python module", "W1101", {"lib.py": "globals()['missing_fn'] = 1\n"}),
@@ -67,10 +68,12 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
         (
             "try/except ImportError",
             "W1101",
-            {
-                "lib.jac": lib,
-                "main.jac": "def load {\n    try {\n        import from lib { missing_fn }\n    } except ImportError { }\n}\n"
-            }
+            {"lib.jac": lib, "main.jac": guarded.replace("EXC", "ImportError")}
+        ),
+        (
+            "try/except ModuleNotFoundError",
+            "E1145",
+            {"lib.jac": lib, "main.jac": guarded.replace("EXC", "ModuleNotFoundError")}
         ),
         (
             "import type",

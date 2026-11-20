@@ -670,8 +670,12 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
     return imp is not None and self._import_must_bind(imp);
 }
 
-impl TypeEvaluator._import_must_bind(imp: Import) -> bool {
-    return not (imp.is_typed or imp.is_comptime or self._import_error_is_handled(imp));
+impl TypeEvaluator._import_must_bind(imp: Import, name_missing: bool = False) -> bool {
+    return not (
+        imp.is_typed
+        or imp.is_comptime
+        or self._import_error_is_handled(imp, name_missing)
+    );
 }
 
 impl TypeEvaluator._report_missing_import_name(
@@ -696,7 +700,7 @@ impl TypeEvaluator._report_missing_import_name(
                 and call.target.value in ("globals", "vars", "exec")
             for call in source.get_all_sub_nodes(FuncCall)
         )
-        and self._import_must_bind(imp);
+        and self._import_must_bind(imp, name_missing=True);
     self.emit_diag(
         E1145 if certain else W1101,
         item.binding_name,
@@ -773,8 +777,11 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
     return None;
 }
 
-impl TypeEvaluator._import_error_is_handled(imp: Import) -> bool {
-    caught = {'ImportError', 'ModuleNotFoundError', 'Exception', 'BaseException'};
+impl TypeEvaluator._import_error_is_handled(
+    imp: Import, name_missing: bool = False
+) -> bool {
+    caught = {'ImportError', 'ModuleNotFoundError', 'Exception', 'BaseException'}
+        - ({'ModuleNotFoundError'} if name_missing else set());
     prev: UniNode = imp;
     cur: (UniNode | None) = imp.parent;
     while cur is not None {
