@@ -13432,6 +13432,7 @@ graph import scale {
             reset_scale_config
         },
         tests.data.test_firebase_env
+            | tests.deploy.sdk_deploy_driver
             | tests.deploy.test_client_build_stage
             | tests.deploy.test_database_intent
             | tests.deploy.test_deploy_k8s
