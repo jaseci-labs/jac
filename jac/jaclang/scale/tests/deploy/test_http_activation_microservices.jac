@@ -1515,17 +1515,19 @@ test "discover_capabilities caches per (cluster, namespace, service-address, cli
 
     KEDAAutoscaler._preflight_cache.clear();
     preflight_api = unittest.mock.MagicMock();
-    preflight_api.list_namespaced_custom_object.side_effect = ApiException(status=403);
+    preflight_api.list_namespaced_custom_object.side_effect = denied_in_default;
+    preflight_keda = KEDAAutoscaler(_custom_api=preflight_api);
+    assert preflight_keda.preflight("team-a") == [];
     raised = False;
     warnings: list[str] = [];
     try {
-        warnings = KEDAAutoscaler(_custom_api=preflight_api).preflight("team-a");
+        warnings = preflight_keda.preflight("default");
     } except ApiException {
         raised = True;
     }
     assert not raised , "preflight must report a 403 as a warning, not an unhandled exception";
-    assert len(warnings) == 1 , warnings;
-    assert "'team-a'" in warnings[0] , "the 403 warning must name the namespace it was denied in";
+    assert len(warnings) == 1 , f"a pass cached for one namespace must not skip the probe in another; got: {warnings}";
+    assert "'default'" in warnings[0] , "the 403 warning must name the namespace it was denied in";
 }
 
 
