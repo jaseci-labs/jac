@@ -1,8 +1,4 @@
-"""Tests for A-05a's JacAPIServerLogs mixin. Verifies the 3 endpoint
-paths get registered correctly on the endpoint host; the actual
-handler bodies are integration-tested via the real-cluster e2e
-(scripts/k8s_microservice_real_e2e.sh) since they require a live
-Loki backend."""
+"""Tests for the admin logs endpoints and their Loki and pod-log backends."""
 
 obj LogsHost(JacAPIServerLogs) {
     has server: any = None;
@@ -83,6 +79,26 @@ test "flatten newest-first vs oldest-first via ascending flag" {
     # ts_ns must survive flattening so the listing endpoint can use
     # it as a `before` cursor for older-page pagination.
     assert desc[0].get("ts_ns") == "1716412355000000000" , f"ts_ns missing: {desc[0]}";
+
+    import from jaclang.scale.admin.logs { _pod_log_lines }
+
+    kubelet = (
+        "2024-05-22T21:12:25Z older\n"
+        + "not-a-stamp junk\n"
+        + "2024-05-22T21:12:35.000000001Z newer\n"
+    );
+    older = ("older", "1716412345000000000");
+    newer = ("newer", "1716412355000000001");
+    far = 2_000_000_000_000_000_000;
+    for (start_ns, end_ns, expected) in (
+        (0, far, [older, newer]),
+        (1716412350000000000, far, [newer]),
+        (0, 1716412355000000000, [older])
+    ) {
+        pod = _pod_log_lines(kubelet, {"pod": "p1"}, start_ns, end_ns, "", "", "");
+        got = [(line["msg"], line["ts_ns"]) for line in pod];
+        assert got == expected , f"window [{start_ns}, {end_ns}] kept {got}";
+    }
 }
 
 
@@ -101,6 +117,54 @@ test "trace filter renders bracket escapes Loki's parser accepts" {
     assert "\\\\]" in q , f"expected `\\\\]` in {q}";
     # And no bare `\[` (which would re-introduce the parser error).
     assert "\\[" not in q.replace("\\\\[", "") , f"bare `\\[` found in {q}";
+
+    import json;
+    import re;
+    import from jaclang.scale.admin.logs { _pod_log_lines }
+
+    tid = "abc12345-dead-beef-cafe-000000000001";
+    hex_tid = "0123456789abcdef0123456789abcdef";
+    json_line = json.dumps({"level": "ERROR", "trace_id": tid, "msg": "json"});
+    for (trace_id, body, expected) in (
+        (tid, json_line, True),
+        (tid, "[trace=abc12345] plain", True),
+        (hex_tid, f"[trace={hex_tid}] undashed", True),
+        (tid, "[trace=ffffffff] other", False)
+    ) {
+        pattern = _build_logql("ns", "", "", "", trace_id).split('|~ "', 1)[1][:-1];
+        matched = bool(re.search(json.loads('"' + pattern + '"'), body));
+        assert matched == expected , f"LogQL for {trace_id!r} on {body!r}: {matched}";
+    }
+
+    text = (
+        "2024-05-22T21:12:25Z [trace=abc12345] plain\n"
+        + f"2024-05-22T21:12:26Z {json_line}\n"
+        + f"2024-05-22T21:12:27Z [trace={hex_tid}] undashed\n"
+        + "2024-05-22T21:12:28Z [trace=ffffffff] other\n"
+    );
+    for (level, trace_id, expected) in (
+        ("", tid, ["[trace=abc12345] plain", "json"]),
+        ("error", tid, ["json"]),
+        ("", hex_tid, [f"[trace={hex_tid}] undashed"]),
+        (
+            "",
+            "",
+            [
+                "[trace=abc12345] plain",
+                "json",
+                f"[trace={hex_tid}] undashed",
+                "[trace=ffffffff] other"
+            ]
+        )
+    ) {
+        msgs = [
+            line["msg"]
+            for line in _pod_log_lines(
+                text, {"pod": "p1"}, 0, 2_000_000_000_000_000_000, level, "", trace_id
+            )
+        ];
+        assert msgs == expected , f"level={level!r} trace={trace_id!r} kept {msgs}";
+    }
 }
 
 
@@ -115,6 +179,14 @@ test "search filter doubles backslashes before escaping quotes" {
     q = _build_logql("ns", "", "", 'say "hi"', "");
     # The final LogQL fragment must read: |= "say \"hi\""
     assert '|= "say \\"hi\\""' in q , f"unexpected escape shape: {q}";
+
+    import from jaclang.scale.admin.logs { _pod_log_lines }
+
+    text = '2024-05-22T21:12:25Z they say "hi"\n2024-05-22T21:12:26Z they say hi\n';
+    pod = _pod_log_lines(
+        text, {"pod": "p1"}, 0, 2_000_000_000_000_000_000, "", 'say "hi"', ""
+    );
+    assert [line["msg"] for line in pod] == ['they say "hi"'] , f"search kept {pod}";
 }
 
 
@@ -153,4 +225,56 @@ test "pod regex drops -deployment- infix in monolith mode" {
     # Underscore-to-hyphen sanity (some users key services with `_`).
     assert _service_to_pod_regex_for_mode("Foo_Bar", True) == "foo-bar-deployment-.*";
     assert _service_to_pod_regex_for_mode("Foo_Bar", False) == "foo-bar-.*";
+}
+
+
+test "logs read the pods only in a cluster with Loki off and flag capped reads" {
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.scale.admin.logs { _use_pod_logs }
+
+    for (loki_url, cluster_host, logs_cfg, expected) in (
+        ("", "10.96.0.1", {}, True),
+        ("", "10.96.0.1", {"enabled": False}, True),
+        ("", "10.96.0.1", {"enabled": True}, False),
+        ("http://loki:3100", "10.96.0.1", {}, False),
+        ("", "", {}, False)
+    ) {
+        with patch.dict(os.environ) {
+            os.environ["LOKI_URL"] = loki_url;
+            os.environ["KUBERNETES_SERVICE_HOST"] = cluster_host;
+            assert _use_pod_logs(logs_cfg) == expected , (
+                f"LOKI_URL={loki_url!r} host={cluster_host!r} logs={logs_cfg}"
+            );
+        }
+    }
+
+    import from types { SimpleNamespace }
+    import from jaclang.scale.admin.logs { _collect_pod_logs, _POD_LOG_TAIL_LINES }
+
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(name="p1"),
+        spec=SimpleNamespace(containers=[SimpleNamespace(name="app")])
+    );
+    text = "";
+    def list_pods(**kw: any) -> any {
+        return SimpleNamespace(items=[pod]);
+    }
+    def read_log(**kw: any) -> str {
+        return text;
+    }
+    core = SimpleNamespace(
+        list_namespaced_pod=list_pods, read_namespaced_pod_log=read_log
+    );
+    for (count, expected) in (
+        (_POD_LOG_TAIL_LINES - 1, []),
+        (_POD_LOG_TAIL_LINES, ["p1/app"])
+    ) {
+        text = "2024-05-22T21:12:25Z line\n" * count;
+        (lines, capped) = _collect_pod_logs(
+            core, "ns", "", "", "", "", 0, 2_000_000_000_000_000_000
+        );
+        assert len(lines) == count , f"{count} lines read as {len(lines)}";
+        assert capped == expected , f"{count} lines reported capped={capped}";
+    }
 }

@@ -13321,13 +13321,18 @@ graph import scale {
         summarize_deployment,
         summarize_pod
     }
+    admin.k8s_ops ++> deploy.target.kubernetes.target { FLEET_SELECTOR }
     admin.llm_telemetry ++> tests.misc.test_llm_telemetry { TelemetryStore }
     admin.logs ++> tests.server.test_admin_logs { JacAPIServerLogs }
     admin.logs --> tests.server.test_admin_logs {
+        _POD_LOG_TAIL_LINES,
         _build_logql,
+        _collect_pod_logs,
         _flatten_loki_response,
+        _pod_log_lines,
         _service_to_pod_regex_for_mode,
-        _services_for_mode
+        _services_for_mode,
+        _use_pod_logs
     }
     admin.network ++> tests.deploy.test_ops_network {
         JacAPIServerNetwork,
@@ -14706,6 +14711,13 @@ graph import scale.admin {
             apps_api,
             core_api,
             k8s_available,
+            ops_namespace,
+            unavailable_detail
+        },
+        logs {
+            FLEET_SELECTOR,
+            api_error_detail,
+            core_api,
             ops_namespace,
             unavailable_detail
         },

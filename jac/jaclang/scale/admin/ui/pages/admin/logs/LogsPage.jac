@@ -41,7 +41,9 @@ def:pub LogsPage -> JsxElement {
         nextBefore: str = "",
         autoRefresh: bool = False,
         errorMsg: str = "",
+        errorDetail: str = "",
         backendOffline: bool = False,
+        cappedContainers: list[str] = [],
         # Side panel state. panelIdx = -1 means the drawer is closed.
         # When a row is clicked we copy the line dict into panelLine
         # for the header section, and if the line has a trace_id we
@@ -51,7 +53,8 @@ def:pub LogsPage -> JsxElement {
         traceId: str = "",
         traceLines: list[dict[str, any]] = [],
         traceServices: list[str] = [],
-        traceLoading: bool = False;
+        traceLoading: bool = False,
+        traceCapped: bool = False;
 
     auth = useAuth();
 
@@ -69,6 +72,8 @@ def:pub LogsPage -> JsxElement {
     async def loadLogs {
         isLoading = True;
         backendOffline = False;
+        errorDetail = "";
+        cappedContainers = [];
         nextBefore = "";
         try {
             result = await getLogs(
@@ -84,9 +89,11 @@ def:pub LogsPage -> JsxElement {
             if result["ok"] and result["data"] {
                 lines: list[dict[str, any]] = result["data"]["lines"] or [];
                 nextBefore = String(result["data"]["next_before"] or "");
+                cappedContainers = result["data"]["capped_containers"] or [];
                 errorMsg = "";
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load logs");
+                errorDetail = String(result["error"]["detail"] or "");
                 # 502 = Loki unreachable. Distinguish so we can show a
                 # helpful hint about logs.enabled / observability stack.
                 if "unavailable" in (errorMsg or "").lower() {
@@ -135,11 +142,13 @@ def:pub LogsPage -> JsxElement {
         traceLoading = True;
         traceLines = [];
         traceServices = [];
+        traceCapped = False;
         try {
             result = await getTraceLogs(auth["authToken"], tid);
             if result["ok"] and result["data"] {
                 traceLines: list[dict[str, any]] = result["data"]["lines"] or [];
                 traceServices: list[str] = result["data"]["services_touched"] or [];
+                traceCapped = len(result["data"]["capped_containers"] or []) > 0;
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load trace");
             }
@@ -349,7 +358,17 @@ def:pub LogsPage -> JsxElement {
                     <code className="mx-1 font-mono text-fg">
                         [scale.gateway.logs].enabled
                     </code>
-                    is true and the Loki + Alloy stack is running in the deployment namespace.
+                    is true and the Loki + Alloy stack is running in the deployment namespace, or keep it off and set
+                    <code className="mx-1 font-mono text-fg">
+                        [scale.kubernetes].ops_console
+                    </code>
+                    to true and add the
+                    <code className="mx-1 font-mono text-fg">kubernetes</code>
+                    package to the app's dependencies to read pod logs directly.
+                    {errorDetail
+                        and <span className="block mt-1 font-mono text-fg">
+                            {errorDetail}
+                        </span>}
                 </span>
             </div>}
         {errorMsg
@@ -376,6 +395,19 @@ def:pub LogsPage -> JsxElement {
             and len(lines) > 0
             and <div className="text-xs text-faint">
                 {len(lines)} log {"line" if len(lines) == 1 else "lines"}
+            </div>}
+        {not isLoading
+            and len(cappedContainers) > 0
+            and <div
+                className="flex items-start gap-2 bg-warning-weak border border-line rounded-lg p-3 text-sm text-muted"
+            >
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5"/>
+                <span>
+                    Only the newest lines of each container are read without Loki, so older lines in this window are missing for
+                    <span className="mx-1 font-mono text-fg">
+                        {", ".join(cappedContainers)}
+                    </span>
+                </span>
             </div>}
         {not isLoading
             and len(lines) > 0
@@ -523,6 +555,11 @@ def:pub LogsPage -> JsxElement {
                             {traceLoading
                                 and <div className="text-muted text-center py-3">
                                     Loading trace lines...
+                                </div>}
+                            {not traceLoading
+                                and traceCapped
+                                and <div className="text-warning pb-2">
+                                    Only the newest lines of each container were read, so earlier lines of this trace may be missing.
                                 </div>}
                             {not traceLoading
                                 and len(traceLines) == 0

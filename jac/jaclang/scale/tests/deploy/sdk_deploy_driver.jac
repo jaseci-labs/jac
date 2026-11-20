@@ -16,7 +16,7 @@ jac/examples/todo_app) through the programmatic SDK instead of
 Env: SDK_DEPLOY_SOURCE (required), SDK_DEPLOY_APP_NAME, SDK_DEPLOY_NAMESPACE,
 SDK_DEPLOY_STORAGE_CLASS, SDK_DEPLOY_GREETING, SDK_DEPLOY_SECRET,
 SDK_DEPLOY_COMPONENT (destroy only; empty tears down the whole app),
-SDK_DEPLOY_REVISION_HISTORY_LIMIT, E2E_POD_BASE_IMAGE.
+SDK_DEPLOY_REVISION_HISTORY_LIMIT, SDK_DEPLOY_OPS_CONSOLE, E2E_POD_BASE_IMAGE.
 """
 import json;
 import os;
@@ -30,6 +30,7 @@ glob SOURCE: str = os.environ.get("SDK_DEPLOY_SOURCE", ""),
      SECRET: str = os.environ.get("SDK_DEPLOY_SECRET", "s3cret-demo"),
      COMPONENT: str = os.environ.get("SDK_DEPLOY_COMPONENT", ""),
      HISTORY_LIMIT: str = os.environ.get("SDK_DEPLOY_REVISION_HISTORY_LIMIT", ""),
+     OPS_CONSOLE: bool = os.environ.get("SDK_DEPLOY_OPS_CONSOLE", "") == "1",
      POD_BASE_IMAGE: str = os.environ.get("E2E_POD_BASE_IMAGE", "");
 
 
@@ -40,6 +41,9 @@ def build_config -> dict[str, any] {
     };
     if HISTORY_LIMIT {
         extra["revision_history_limit"] = int(HISTORY_LIMIT);
+    }
+    if OPS_CONSOLE {
+        extra["ops_console"] = True;
     }
     return {
         "app_name": APP_NAME,
