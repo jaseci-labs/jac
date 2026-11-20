@@ -270,6 +270,7 @@ graph import {
     cli.errmap --> scale.tests.server.test_serve { humanize_error }
     cli.manifest_route ++> [
         scale.injector.binary.deploy_generation_refusal
+            | scale.injector.binary_injector
             | scale.tests.deploy.test_client_build_fail_fast
             | scale.tests.deploy.test_version_pin
             | server.sealed_serve.serve_manifest_stamp { resolve_cli_version },
@@ -1529,6 +1530,7 @@ graph import {
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
             | compiler.types.stubcat.build
+            | scale.deploy.target.kubernetes.target.KubernetesTarget.write_plan
             | scale.injector.binary { atomic_write },
         client.targets.desktop.desktop_build._native_build_cef
             | client.targets.node_tooling_common.run_manifest_install
@@ -2407,7 +2409,8 @@ graph import {
         scale.injector.binary { host_arch, host_os, release_arch },
         scale.injector.binary_injector
             | scale.tests.microservices.test_binary_injector { host_arch },
-        scale.utils.vendor_wheels { release_arch },
+        scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer.build
+            | scale.utils.vendor_wheels { release_arch },
         server.endpoints.pages.register_graph_endpoints.graph_neighbors {
             graph_neighbors_view,
             graph_type_named
@@ -13472,11 +13475,12 @@ graph import scale {
     config.config_loader as config_loader_mod --> tests.deploy.test_pod_env
         | tests.server.test_sv_auth_forward;
     config.dev_config ++> [
-        injector.binary.deploy_generation_refusal { Channel, resolve_dev_channel },
-        injector.binary.host_toolchain_path | injector.binary_injector.select_injector {
+        injector.binary.deploy_generation_refusal | injector.binary_injector {
+            Channel,
             resolve_dev_channel
         },
-        injector.binary.preflight_pod_runtime | injector.binary_injector { Channel },
+        injector.binary.host_toolchain_path { resolve_dev_channel },
+        injector.binary.preflight_pod_runtime { Channel },
         injector.binary.read_local_binary { local_pod_binary },
         injector.binary.resolve_console_version { Channel },
         injector.binary.resolve_deploy_version { Channel },
@@ -13651,7 +13655,7 @@ graph import scale {
         },
         tests.microservices.test_pvc_injector { KubernetesConfig },
     ]
-    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer
         | tests.deploy.test_database_intent { KubernetesTargetBase }
     deploy.target.kubernetes.kubernetes_target --> tests.microservices.test_pvc_injector {
         KubernetesTargetBase
@@ -13721,11 +13725,12 @@ graph import scale {
     }
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+        runtime.realizer.kubernetes_realizer
             | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
             | tests.deploy.test_crash_scan_fleet_guard
+            | tests.deploy.test_dry_run_purity
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_monitoring_switch
             | tests.deploy.test_pod_env
@@ -13821,8 +13826,12 @@ graph import scale {
     ]
     injector.binary ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
-            | runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac {
+            | runtime.realizer.kubernetes_realizer.KubernetesRealizer._pinned_jac {
             host_toolchain_path
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build
+            | deploy.target.kubernetes.target.KubernetesTarget._verify_build {
+            node_arch
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
             host_toolchain_path
@@ -13831,14 +13840,20 @@ graph import scale {
             OFFICIAL_IMAGE
         },
         deploy.target.kubernetes.runtime_bootstrap.image_pull_policy { OFFICIAL_IMAGE },
+        deploy.target.kubernetes.target.KubernetesTarget.build {
+            deploy_generation_refusal
+        },
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             deploy_generation_refusal
         },
         deploy.target.kubernetes.target.KubernetesTarget.generate_manifests {
             resolve_pod_base_image
         },
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer.build
             | sdk.client.ScaleClient.deploy { reset_deploy_version_cache },
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
+            reset_deploy_version_cache
+        },
         tests.deploy.test_version_pin { _resolve_target_version },
         tests.microservices.test_admin_console_source {
             admin_dist_source,
@@ -13876,12 +13891,14 @@ graph import scale {
     injector.binary as binary_mod --> tests.deploy.test_memory_trigger_guard;
     injector.binary as binmod --> tests.microservices.test_binary_cache;
     injector.binary_injector ++> [
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_pod_spec
+        deploy.target.kubernetes.manifest_builder
+            | deploy.target.kubernetes.target
             | tests.deploy.test_dry_run_purity
             | tests.microservices.test_binary_injector { BinaryInjector },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
             select_injector
         },
+        deploy.target.kubernetes.target.KubernetesTarget.build { build_output_names },
     ]
     injector.binary_injector as bi_mod --> tests.microservices.test_binary_injector;
     injector.binary_injector as binary_injector_mod ++> tests.deploy.test_dry_run_purity;
@@ -13903,8 +13920,12 @@ graph import scale {
             source_filter_for,
             unresolved_toml_references
         },
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
+            | deploy.target.kubernetes.target.KubernetesTarget.build {
             source_filter_for
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build {
+            shipped_tomls
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._pod_entrypoint {
             APP_MOUNT_PATH
@@ -13921,7 +13942,7 @@ graph import scale {
             JAC_HOME,
             TOOLCHAIN_SUBDIR
         },
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer._run_pinned
             | tests.deploy.test_client_build_fail_fast { release_binary_env },
         tests.deploy.test_client_build_stage { bundle_source_files, source_filter_for },
         tests.microservices.test_app_precompile {
@@ -13969,9 +13990,6 @@ graph import scale {
     ]
     injector.bundle as bundle --> tests.microservices.test_fat_bundle;
     injector.pvc_injector ++> [
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
-            PvcInjector
-        },
         deploy.target.kubernetes.runtime_bootstrap
             | tests.microservices.test_binary_injector {
             BUNDLE_MOUNT_PATH,
@@ -13983,6 +14001,7 @@ graph import scale {
             bundle_pvc_name
         },
         tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
+        tests.deploy.test_dry_run_purity { bundle_keys_from_pod_spec },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,
@@ -14063,6 +14082,9 @@ graph import scale {
             ResourceStatus,
             assess_workload,
             container_crashlooping
+        },
+        deploy.target.kubernetes.target.KubernetesTarget.write_plan {
+            replica_floor_of
         },
         sdk { ResourceStatus, ResourceStatusInfo },
         tests.deploy.test_http_activation_microservices {
@@ -14221,6 +14243,7 @@ graph import scale {
             | tests.deploy.test_client_build_fail_fast
             | tests.deploy.test_client_build_stage
             | tests.deploy.test_dry_run_plan_rate_limit
+            | tests.deploy.test_dry_run_purity
             | tests.server.test_acl_field_write._prewarm
             | tests.server.test_app_tokens._prewarm
             | tests.server.test_metrics_workers._serve_exported
@@ -14431,7 +14454,10 @@ graph import scale {
             pinned_deploy_argv
         },
     ]
-    runtime.realizer.kubernetes_realizer --> plugin.scale_deploy { KubernetesRealizer }
+    runtime.realizer.kubernetes_realizer --> [
+        plugin.scale_build { KubernetesRealizer },
+        plugin.scale_deploy { KubernetesRealizer },
+    ]
     runtime.realizer.kubernetes_realizer as realizer_mod ++> tests.deploy.test_deploy_banner
         | tests.deploy.test_dry_run_purity;
     runtime.routing ++> [
@@ -14934,7 +14960,7 @@ graph import scale.injector {
     }
     bundle ++> [
         binary { TOOLCHAIN_SUBDIR },
-        binary_injector { bundle_object_key, content_address },
+        binary_injector { bundle_object_key, content_address, sealed_tomls },
         pvc_injector {
             APP_MOUNT_PATH,
             APP_VOLUME_NAME,
@@ -15305,6 +15331,7 @@ graph import scale.tests {
         },
         data.test_gateway_owned_identity { get_free_port, stop_server },
         deploy.test_client_build_fail_fast
+            | deploy.test_dry_run_purity
             | microservices.test_app_precompile
             | microservices.test_fat_bundle { require_pod_binary },
         deploy.test_ops_deploy

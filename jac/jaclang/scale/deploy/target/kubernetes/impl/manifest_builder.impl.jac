@@ -293,7 +293,7 @@ impl ManifestBuilder._injector_object_key -> str {
     return self._bundle_object_key;
 }
 
-impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> PvcInjector {
+impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> BinaryInjector {
     proj = self.project_dir or app_config.code_folder;
     self.project_dir = proj;
     fleet = self._fleet(app_config);
@@ -314,7 +314,8 @@ impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> PvcInjector {
             access_mode=self.k8s_config.bundle_access_mode,
             fleet=fleet,
             client_ready=client_wait,
-            bake_client=bake
+            bake_client=bake,
+            pod_arch=self.pod_arch
         );
     } except Exception {
         if client_wait is not None {
@@ -325,10 +326,29 @@ impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> PvcInjector {
     if client_ready is not None {
         client_ready();
     }
-    injector: PvcInjector = selection[0];
-    self._toolchain_object_key = str(selection[1]);
-    self._pod_binary_sha256 = str(getattr(injector, "_pod_binary_sha256", ""));
-    return injector;
+    return selection[0];
+}
+
+impl ManifestBuilder._injector_from_build(
+    app_config: AppConfig, pod_arch: (str | None) = None
+) -> BinaryInjector {
+    import os;
+    arch = pod_arch if pod_arch is not None else self.pod_arch;
+    if pod_arch is None
+        and not arch
+        and (not self.dry_run or os.environ.get("JAC_NODE_ARCH")) {
+        arch = node_arch();
+    }
+    return BinaryInjector.from_build(
+        self.from_build,
+        k8s_safe_name(self.k8s_config.app_name),
+        self.project_dir,
+        shipped_tomls(self.project_dir, self._fleet(app_config)),
+        pod_arch=arch,
+        storage_class=self.k8s_config.bundle_storage_class,
+        access_mode=self.k8s_config.bundle_access_mode,
+        dry_run=self.dry_run
+    );
 }
 
 impl ManifestBuilder._install_app_deps(
@@ -696,8 +716,16 @@ impl ManifestBuilder.generate_manifests(
     self.project_dir = self.project_dir or app_config.code_folder;
     fleet = self._fleet(app_config);
     self._bundle_files();
-    injector = self._prepare_injector(app_config);
+    if self.injector is not None {
+        injector = self.injector;
+    } elif self.from_build {
+        injector = self._injector_from_build(app_config);
+    } else {
+        injector = self._prepare_injector(app_config);
+    }
     self._bundle_object_key = injector._object_key;
+    self._toolchain_object_key = injector._toolchain_object_key;
+    self._pod_binary_sha256 = injector._pod_binary_sha256;
 
     pod_specs = self.generate_service_pod_specs(app_config, image);
     deployments: dict[str, dict[str, any]] = {};
