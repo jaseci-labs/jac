@@ -270,6 +270,7 @@ graph import {
     cli.errmap --> scale.tests.server.test_serve { humanize_error }
     cli.manifest_route ++> [
         scale.injector.binary.deploy_generation_refusal
+            | scale.injector.binary_injector
             | scale.tests.deploy.test_client_build_fail_fast
             | scale.tests.deploy.test_version_pin
             | server.sealed_serve.serve_manifest_stamp { resolve_cli_version },
@@ -1529,6 +1530,7 @@ graph import {
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
             | compiler.types.stubcat.build
+            | scale.deploy.target.kubernetes.target.KubernetesTarget.write_plan
             | scale.injector.binary { atomic_write },
         client.targets.desktop.desktop_build._native_build_cef
             | client.targets.node_tooling_common.run_manifest_install
@@ -2407,7 +2409,8 @@ graph import {
         scale.injector.binary { host_arch, host_os, release_arch },
         scale.injector.binary_injector
             | scale.tests.microservices.test_binary_injector { host_arch },
-        scale.utils.vendor_wheels { release_arch },
+        scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer.build
+            | scale.utils.vendor_wheels { release_arch },
         server.endpoints.pages.register_graph_endpoints.graph_neighbors {
             graph_neighbors_view,
             graph_type_named
@@ -2996,6 +2999,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces
             | scale.admin.workloads
             | scale.runtime.gateway.microservice_gateway
@@ -3158,6 +3162,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.admin.traces { JSONResponse, Request },
         scale.observability.prometheus_metrics { Response },
         scale.runtime.context.errors
@@ -3253,6 +3258,7 @@ graph import {
             | scale.admin.network
             | scale.admin.ops
             | scale.admin.podenv
+            | scale.admin.schedules
             | scale.server.extensions
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_stream_ws._spawn_upstream {
@@ -3473,15 +3479,22 @@ graph import {
     ]
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
+        scale.admin.schedules { bridge_identity },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+            auth_headers
+        },
+        scale.runtime.orchestrator.process_manager.ServiceProcessManager.child_env
+            | scale.tests.deploy.test_pod_env { peer_url_env_key },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
             app_start_args,
-            headless_start_args,
-            peer_url_env_key
+            headless_start_args
         },
-        scale.tests.deploy.test_pod_env { peer_url_env_key },
+        scale.tests.microservices.test_gateway
+            | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
     server.task_scheduler ++> [
         runtime.builtin.schedule { ScheduleSpec },
+        scale.admin.schedules { Scheduler },
         scale.scheduler.scheduler { Scheduler, schedule_namespace, tick_of },
         scale.server.extensions { RunOutcome },
         scale.tests.server.test_scheduler_multipod { ScheduleSpec, Scheduler, tick_of },
@@ -13465,11 +13478,12 @@ graph import scale {
     config.config_loader as config_loader_mod --> tests.deploy.test_pod_env
         | tests.server.test_sv_auth_forward;
     config.dev_config ++> [
-        injector.binary.deploy_generation_refusal { Channel, resolve_dev_channel },
-        injector.binary.host_toolchain_path | injector.binary_injector.select_injector {
+        injector.binary.deploy_generation_refusal | injector.binary_injector {
+            Channel,
             resolve_dev_channel
         },
-        injector.binary.preflight_pod_runtime | injector.binary_injector { Channel },
+        injector.binary.host_toolchain_path { resolve_dev_channel },
+        injector.binary.preflight_pod_runtime { Channel },
         injector.binary.read_local_binary { local_pod_binary },
         injector.binary.resolve_console_version { Channel },
         injector.binary.resolve_deploy_version { Channel },
@@ -13644,7 +13658,7 @@ graph import scale {
         },
         tests.microservices.test_pvc_injector { KubernetesConfig },
     ]
-    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer
         | tests.deploy.test_database_intent { KubernetesTargetBase }
     deploy.target.kubernetes.kubernetes_target --> tests.microservices.test_pvc_injector {
         KubernetesTargetBase
@@ -13714,11 +13728,12 @@ graph import scale {
     }
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+        runtime.realizer.kubernetes_realizer
             | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
             | tests.deploy.test_crash_scan_fleet_guard
+            | tests.deploy.test_dry_run_purity
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_monitoring_switch
             | tests.deploy.test_pod_env
@@ -13814,8 +13829,12 @@ graph import scale {
     ]
     injector.binary ++> [
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
-            | runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac {
+            | runtime.realizer.kubernetes_realizer.KubernetesRealizer._pinned_jac {
             host_toolchain_path
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build
+            | deploy.target.kubernetes.target.KubernetesTarget._verify_build {
+            node_arch
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._seal_bakes_client {
             host_toolchain_path
@@ -13824,14 +13843,20 @@ graph import scale {
             OFFICIAL_IMAGE
         },
         deploy.target.kubernetes.runtime_bootstrap.image_pull_policy { OFFICIAL_IMAGE },
+        deploy.target.kubernetes.target.KubernetesTarget.build {
+            deploy_generation_refusal
+        },
         deploy.target.kubernetes.target.KubernetesTarget.deploy {
             deploy_generation_refusal
         },
         deploy.target.kubernetes.target.KubernetesTarget.generate_manifests {
             resolve_pod_base_image
         },
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer.build
             | sdk.client.ScaleClient.deploy { reset_deploy_version_cache },
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize {
+            reset_deploy_version_cache
+        },
         tests.deploy.test_version_pin { _resolve_target_version },
         tests.microservices.test_admin_console_source {
             admin_dist_source,
@@ -13869,12 +13894,14 @@ graph import scale {
     injector.binary as binary_mod --> tests.deploy.test_memory_trigger_guard;
     injector.binary as binmod --> tests.microservices.test_binary_cache;
     injector.binary_injector ++> [
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_pod_spec
+        deploy.target.kubernetes.manifest_builder
+            | deploy.target.kubernetes.target
             | tests.deploy.test_dry_run_purity
             | tests.microservices.test_binary_injector { BinaryInjector },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
             select_injector
         },
+        deploy.target.kubernetes.target.KubernetesTarget.build { build_output_names },
     ]
     injector.binary_injector as bi_mod --> tests.microservices.test_binary_injector;
     injector.binary_injector as binary_injector_mod ++> tests.deploy.test_dry_run_purity;
@@ -13896,8 +13923,12 @@ graph import scale {
             source_filter_for,
             unresolved_toml_references
         },
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel {
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._client_entry_rel
+            | deploy.target.kubernetes.target.KubernetesTarget.build {
             source_filter_for
+        },
+        deploy.target.kubernetes.manifest_builder.ManifestBuilder._injector_from_build {
+            shipped_tomls
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._pod_entrypoint {
             APP_MOUNT_PATH
@@ -13914,7 +13945,7 @@ graph import scale {
             JAC_HOME,
             TOOLCHAIN_SUBDIR
         },
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_pinned_jac
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer._run_pinned
             | tests.deploy.test_client_build_fail_fast { release_binary_env },
         tests.deploy.test_client_build_stage { bundle_source_files, source_filter_for },
         tests.microservices.test_app_precompile {
@@ -13962,9 +13993,6 @@ graph import scale {
     ]
     injector.bundle as bundle --> tests.microservices.test_fat_bundle;
     injector.pvc_injector ++> [
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._prepare_injector {
-            PvcInjector
-        },
         deploy.target.kubernetes.runtime_bootstrap
             | tests.microservices.test_binary_injector {
             BUNDLE_MOUNT_PATH,
@@ -13976,6 +14004,7 @@ graph import scale {
             bundle_pvc_name
         },
         tests.deploy.test_destroy_reclaim { bundle_loader_pod_name, bundle_pvc_name },
+        tests.deploy.test_dry_run_purity { bundle_keys_from_pod_spec },
         tests.microservices.test_pvc_injector {
             BUNDLE_MOUNT_PATH,
             PvcInjector,
@@ -14056,6 +14085,9 @@ graph import scale {
             ResourceStatus,
             assess_workload,
             container_crashlooping
+        },
+        deploy.target.kubernetes.target.KubernetesTarget.write_plan {
+            replica_floor_of
         },
         sdk { ResourceStatus, ResourceStatusInfo },
         tests.deploy.test_http_activation_microservices {
@@ -14209,10 +14241,12 @@ graph import scale {
     runtime.context.util ++> [
         admin.console_build.build_with_jac
             | deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
+            | tests.data.test_gateway_owned_identity
             | tests.deploy.test_client_build_deps
             | tests.deploy.test_client_build_fail_fast
             | tests.deploy.test_client_build_stage
             | tests.deploy.test_dry_run_plan_rate_limit
+            | tests.deploy.test_dry_run_purity
             | tests.server.test_acl_field_write._prewarm
             | tests.server.test_app_tokens._prewarm
             | tests.server.test_metrics_workers._serve_exported
@@ -14260,12 +14294,15 @@ graph import scale {
             solo_fleet
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_env {
-            FLEET_ENV
+            FLEET_ENV,
+            OWN_STORE_ENV,
+            owns_identity_store
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
         plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
         plugin.scale_local_serve { fleet_from_plans },
+        server.extensions { OWN_STORE_ENV },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
             FLEET_ENV,
@@ -14278,6 +14315,7 @@ graph import scale {
             order_by_edges,
             solo_fleet
         },
+        tests.data.test_gateway_owned_identity { OWN_STORE_ENV, owns_identity_store },
         tests.deploy.test_access_hint
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deployment_overlay
@@ -14287,7 +14325,7 @@ graph import scale {
             | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
-        tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
+        tests.deploy.test_pod_env { FLEET_ENV, OWN_STORE_ENV, fleet_of },
         tests.microservices.test_bundle_jacignore { solo_fleet },
     ]
     runtime.fleet --> [
@@ -14348,13 +14386,15 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
-        tests.data.test_session_epoch
-            | tests.microservices.test_gateway_docs_precedence
-            | tests.server.test_static_fallback { ServiceRegistry },
-        tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
+        tests.data.test_gateway_owned_identity
+            | tests.deploy.test_deployer
+            | tests.microservices.test_stop_signal_scope {
             ServiceEntry,
             ServiceRegistry
         },
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.server.test_static_fallback { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -14388,6 +14428,7 @@ graph import scale {
     runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         plugin._fleet_cmd
+            | tests.data.test_gateway_owned_identity
             | tests.deploy.test_deployer
             | tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -14416,7 +14457,10 @@ graph import scale {
             pinned_deploy_argv
         },
     ]
-    runtime.realizer.kubernetes_realizer --> plugin.scale_deploy { KubernetesRealizer }
+    runtime.realizer.kubernetes_realizer --> [
+        plugin.scale_build { KubernetesRealizer },
+        plugin.scale_deploy { KubernetesRealizer },
+    ]
     runtime.realizer.kubernetes_realizer as realizer_mod ++> tests.deploy.test_deploy_banner
         | tests.deploy.test_dry_run_purity;
     runtime.routing ++> [
@@ -14684,6 +14728,7 @@ graph import scale.admin {
     network ++> surface { JacAPIServerNetwork }
     ops ++> surface { JacAPIServerOps }
     podenv ++> surface { JacAPIServerPodEnv }
+    schedules ++> surface { JacAPIServerSchedules }
     service_urls ++> logs | ops | traces { service_base_url }
     traces ++> [
         ops { _tempo_base_url },
@@ -14918,7 +14963,7 @@ graph import scale.injector {
     }
     bundle ++> [
         binary { TOOLCHAIN_SUBDIR },
-        binary_injector { bundle_object_key, content_address },
+        binary_injector { bundle_object_key, content_address, sealed_tomls },
         pvc_injector {
             APP_MOUNT_PATH,
             APP_VOLUME_NAME,
@@ -15015,10 +15060,10 @@ graph import scale.runtime {
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
         },
-        gateway.microservice_gateway.MicroserviceGateway.forward_to {
+        gateway.microservice_gateway.MicroserviceGateway.ask_services {
             http_forward_timeout
         },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
+        gateway.microservice_gateway.MicroserviceGateway.forward_to {
             http_forward_timeout
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
@@ -15044,6 +15089,10 @@ graph import scale.runtime {
     fleet ++> [
         cli.plan { FleetSpec },
         orchestrator.orchestrator { FleetSpec, ROOT_PREFIX },
+        orchestrator.process_manager.ServiceProcessManager.child_env {
+            OWN_STORE_ENV,
+            owns_identity_store
+        },
         realizer.kubernetes_realizer {
             FleetSpec,
             fleet_from_config,
@@ -15100,9 +15149,9 @@ graph import scale.runtime {
         transport.transport.HttpTransport.call_walker { walker_call },
     ]
     transport.http_forward ++> [
-        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
-        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
+        gateway.microservice_gateway.MicroserviceGateway.ask_services
             | gateway.openapi_agg.fetch_service_spec { raw_forward },
+        gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },
@@ -15228,7 +15277,10 @@ graph import scale.storage {
 
 graph import scale.tests {
     fixture_policy ++> [
-        scale_test_client { ADMIN_BOOTSTRAP_PASSWORD, apply_fixture_policy },
+        data.test_gateway_owned_identity | scale_test_client {
+            ADMIN_BOOTSTRAP_PASSWORD,
+            apply_fixture_policy
+        },
         support { apply_fixture_policy },
     ]
     scale_test_client ++> [
@@ -15280,7 +15332,9 @@ graph import scale.tests {
             register_user,
             start_server
         },
+        data.test_gateway_owned_identity { get_free_port, stop_server },
         deploy.test_client_build_fail_fast
+            | deploy.test_dry_run_purity
             | microservices.test_app_precompile
             | microservices.test_fat_bundle { require_pod_binary },
         deploy.test_ops_deploy

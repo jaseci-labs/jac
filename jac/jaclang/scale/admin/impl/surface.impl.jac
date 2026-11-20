@@ -8,4 +8,5 @@ impl JacAPIServerAdminSurface.register_admin_surface -> None {
     self.register_deploy_health_endpoints();
     self.register_network_endpoints();
     self.register_podenv_endpoints();
+    self.register_schedules_endpoints();
 }

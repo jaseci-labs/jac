@@ -189,6 +189,12 @@ def sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str;
 def staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None);
 
 
+def shipped_jac_toml(project_dir: str, fleet: (FleetSpec | None)) -> (str | None);
+
+
+def shipped_tomls(project_dir: str, fleet: (FleetSpec | None)) -> dict[str, str];
+
+
 def require_serve_manifest(stage: Path, detail: str = "") -> Path;
 
 
@@ -292,6 +298,9 @@ def _cached_seal(cache: Path, key: str) -> (bytes | None);
 
 
 def _bundle_ships(raw: bytes, member: str) -> bool;
+
+
+def sealed_tomls(raw: bytes) -> dict[str, str];
 
 
 def _seal_reusable(raw: bytes, manifest: str, bake_client: bool, fat: bool) -> bool;

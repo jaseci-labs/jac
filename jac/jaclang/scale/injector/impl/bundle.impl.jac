@@ -596,6 +596,20 @@ impl staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None)
         or serialize_toml(new_doc);
 }
 
+impl shipped_jac_toml(project_dir: str, fleet: (FleetSpec | None)) -> (str | None) {
+    return staged_jac_toml(
+        sanitized_jac_toml(Path(project_dir).resolve()),
+        sealed_entry_module(project_dir, fleet)
+    );
+}
+
+impl shipped_tomls(project_dir: str, fleet: (FleetSpec | None)) -> dict[str, str] {
+    top = shipped_jac_toml(project_dir, fleet);
+    tomls = {"jac.toml": top} if top is not None else {};
+    tomls.update(nested_sanitized_tomls(Path(project_dir).resolve()));
+    return tomls;
+}
+
 impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
     serve_manifest = stage / SERVE_MANIFEST_REL;
     if not serve_manifest.is_file() {
@@ -1114,6 +1128,21 @@ impl _bundle_ships(raw: bytes, member: str) -> bool {
     }
 }
 
+impl sealed_tomls(raw: bytes) -> dict[str, str] {
+    tomls: dict[str, str] = {};
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as sealed {
+        for member in sealed.getmembers() {
+            if member.isfile() and Path(member.name).name == "jac.toml" {
+                handle = sealed.extractfile(member);
+                if handle is not None {
+                    tomls[member.name] = handle.read().decode("utf-8");
+                }
+            }
+        }
+    }
+    return tomls;
+}
+
 impl _seal_reusable(raw: bytes, manifest: str, bake_client: bool, fat: bool) -> bool {
     return _bundle_ships(raw, manifest)
         and (not bake_client or _bundle_ships(raw, BAKED_CLIENT_INDEX))
@@ -1184,7 +1213,7 @@ impl pack_jab(
             f"while staging the app bundle."
         );
     }
-    sanitized = staged_jac_toml(sanitized_jac_toml(base), entry_module);
+    sanitized = shipped_jac_toml(project_dir, fleet);
     app_name = sealed_app_name(project_dir, fleet);
     tomls = nested_sanitized_tomls(base);
     def input_key(tree: Path, files: list[Path]) -> str {

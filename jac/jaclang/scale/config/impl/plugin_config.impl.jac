@@ -785,7 +785,7 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                             "gateway_owned": {
                                 "type": "bool",
                                 "default": True,
-                                "description": "A fleet app that receives a signature-valid, unexpired token for a user it does not know provisions that user's root once, instead of rejecting the request. Set false when a deployment manages identity itself and an app should reject unknown subjects."
+                                "description": "An app that holds an identity store of its own (its own env sets JAC_DB_URL) and receives a signature-valid, unexpired token for a user it does not know provisions that user's root once, instead of rejecting the request. Apps on the fleet's database, the default, never provision: every real account is already there, so an unknown subject is refused. Set false when a deployment manages identity itself and no app should provision."
                             }
                         }
                     },
