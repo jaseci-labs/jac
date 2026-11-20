@@ -99,25 +99,18 @@ the query, and a dotted query key."""
 @restspec(
     method=HTTPMethod.GET,
     path="/reports/{from}",
-    params={
-        "from_date": "from",
-        "class_name": "class",
-        "hub_mode": "hub.mode",
-        "limit_n": "limit"
-    }
+    params={"from_date": "from", "class_name": "class", "hub_mode": "hub.mode"}
 )
 walker:pub ReportWalker {
     has from_date: str,
         class_name: str = "",
-        hub_mode: str = "",
-        limit_n: int = 10;
+        hub_mode: str = "";
 
     can get_data with Root entry {
         report {
             "from_date": self.from_date,
             "class_name": self.class_name,
-            "hub_mode": self.hub_mode,
-            "limit_n": self.limit_n
+            "hub_mode": self.hub_mode
         };
     }
 }

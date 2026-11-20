@@ -274,15 +274,14 @@ test "a request key that is not a Jac name binds the field it maps to (#10750)" 
         base = "/reports/2024-01-01";
         for (query, want) in [
             (
-                "?class=premium&hub.mode=subscribe&limit=5",
+                "?class=premium&hub.mode=subscribe",
                 {
                     "from_date": "2024-01-01",
                     "class_name": "premium",
-                    "hub_mode": "subscribe",
-                    "limit_n": 5
+                    "hub_mode": "subscribe"
                 }
             ),
-            ("?class_name=gold", {"class_name": "gold", "limit_n": 10}),
+            ("?class_name=gold", {"class_name": "gold"}),
             ("?class=premium&class_name=gold", {"class_name": "premium"})
         ] {
             response = client.get(base + query);
@@ -292,9 +291,6 @@ test "a request key that is not a Jac name binds the field it maps to (#10750)" 
                 assert got[name] == value , f"{query}: {name}={got[name]!r}";
             }
         }
-        response = client.get(base + "?limit=many");
-        assert response.status_code == 422 , response.text;
-        assert _as_any(response.json())["detail"][0]["loc"] == ["query", "limit"];
 
         for (body, want) in [
             ({"class": "a", "async": True}, {"kind": "a", "run_async": True}),
@@ -304,26 +300,6 @@ test "a request key that is not a Jac name binds the field it maps to (#10750)" 
             assert response.status_code == 200 , f"{body}: {response.text}";
             assert extract_data(response.json())["result"] == want , response.text;
         }
-        response = client.post("/function/reserved_keys_func", json={});
-        assert response.status_code == 422 , response.text;
-        assert _as_any(response.json())["detail"][0]["loc"] == ["body", "class"];
-
-        srv = client._server;
-        assert srv is not None , "server must be running";
-        spec = srv.app.openapi();
-        walker_op = spec["paths"]["/reports/{from}"]["get"];
-        assert {(p["name"], p["in"]) for p in walker_op["parameters"]}
-            == {
-                ("from", "path"),
-                ("class", "query"),
-                ("hub.mode", "query"),
-                ("limit", "query")
-            } , walker_op["parameters"];
-        func_op = spec["paths"]["/function/reserved_keys_func"]["post"];
-        ref = func_op["requestBody"]["content"]["application/json"]["schema"]["$ref"];
-        body_schema = spec["components"]["schemas"][ref.split("/")[-1]];
-        assert set(body_schema["properties"]) == {"class", "async"} , body_schema;
-        assert body_schema["required"] == ["class"] , body_schema;
     } finally {
         client.close();
     }

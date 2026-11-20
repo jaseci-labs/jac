@@ -2189,19 +2189,18 @@ impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
 impl wire_to_fields(
     wire_names: dict[str, str], data: dict[str, any]
 ) -> dict[str, any] {
-    if not wire_names {
-        return data;
-    }
-    wires = set(wire_names.values());
+    fields = {wire: field for (field, wire) in wire_names.items()};
     bound = {
         key: value
         for (key, value) in data.items()
-        if key not in wires
+        if key not in fields
     };
-    for (field, wire) in wire_names.items() {
-        if wire in data {
-            bound[field] = data[wire];
+    bound.update(
+        {
+            fields[key]: value
+            for (key, value) in data.items()
+            if key in fields
         }
-    }
+    );
     return bound;
 }
