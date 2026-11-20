@@ -1,3 +1,12 @@
+glob _FLEET_SEVERITY: list[ResourceStatus] = [
+         ResourceStatus.DEGRADED,
+         ResourceStatus.UNKNOWN,
+         ResourceStatus.ACTIVATING,
+         ResourceStatus.DEACTIVATING,
+         ResourceStatus.ACTIVE,
+         ResourceStatus.INACTIVE
+     ];
+
 obj KubernetesTargetBase(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
@@ -26,8 +35,14 @@ obj KubernetesTargetBase(DeploymentTarget) {
         sa_spec: dict[str, any], namespace: str, core_v1: any
     );
 
+    def _assert_own_app(app_name: str);
+    def _fleet_deployments(apps_v1: any, namespace: str, app_name: str) -> list[any];
+    def _fleet_health(
+        deployments: list[any], crashlooping_apps: set[str]
+    ) -> (ResourceStatusInfo | None);
+
     def get_status(app_name: str) -> ResourceStatusInfo;
-    def scale(app_name: str, replicas: int);
+    def scale(app_name: str, replicas: int, service: str = "");
     def _get_lb_endpoint(app_name: str) -> (str | None);
     def port_forward_hint -> str;
     def get_service_url(app_name: str) -> (str | None);
