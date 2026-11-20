@@ -55,6 +55,7 @@ obj ScaleClient {
         target: str = 'auto',
         service: str = ''
     );
+
     def _emit(
         sink: EventSink,
         phase: str,

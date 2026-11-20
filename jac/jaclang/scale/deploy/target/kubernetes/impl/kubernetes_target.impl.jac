@@ -216,11 +216,30 @@ impl KubernetesTargetBase._apply_provider_service_account(
     }
 }
 
-impl KubernetesTargetBase._fleet_deployments(apps_v1: any, namespace: str) -> list[any] {
-    listed = apps_v1.list_namespaced_deployment(
-        namespace=namespace, label_selector=FLEET_SELECTOR
-    );
-    return list(listed.items or []);
+impl KubernetesTargetBase._assert_own_app(app_name: str) {
+    mine = str(self.k8s_config.app_name or "");
+    if app_name and mine and str(app_name) != mine {
+        detail = f"configured for '{mine}', asked about '{app_name}'";
+        raise ValueError(
+            "This target cannot report on or change another app "
+                + f"({detail}). Build a target for that app."
+        );
+    }
+}
+
+impl KubernetesTargetBase._fleet_deployments(
+    apps_v1: any, namespace: str, app_name: str
+) -> list[any] {
+    legacy = f"managed=jac-scale,app={k8s_safe_name(app_name)},!jac-scale.role";
+    for selector in [FLEET_SELECTOR, legacy] {
+        listed = apps_v1.list_namespaced_deployment(
+            namespace=namespace, label_selector=selector
+        );
+        if listed.items {
+            return list(listed.items);
+        }
+    }
+    return [];
 }
 
 impl KubernetesTargetBase._fleet_health(
@@ -229,8 +248,7 @@ impl KubernetesTargetBase._fleet_health(
     members = [
         assess_workload(
             d, crashlooping=(d.metadata.labels or {}).get("app") in crashlooping_apps
-        )
-        for d in deployments
+        ) for d in deployments
     ];
     if not members {
         return None;
@@ -251,8 +269,11 @@ impl KubernetesTargetBase._fleet_health(
 
 impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
     try {
+        self._assert_own_app(app_name);
         self._load_cluster_config();
-        fleet = self._fleet_deployments(client.AppsV1Api(), self.k8s_config.namespace);
+        fleet = self._fleet_deployments(
+            client.AppsV1Api(), self.k8s_config.namespace, app_name
+        );
         return self._fleet_health(fleet, set()) or assess_workload(None);
     } except Exception as e {
         if self.logger {
@@ -263,6 +284,7 @@ impl KubernetesTargetBase.get_status(app_name: str) -> ResourceStatusInfo {
 }
 
 impl KubernetesTargetBase.scale(app_name: str, replicas: int, service: str = "") {
+    self._assert_own_app(app_name);
     member: str = k8s_safe_name(service or app_name);
     if self.logger {
         self.logger.info(f"Scaling '{member}' to {replicas} replicas");
@@ -273,10 +295,9 @@ impl KubernetesTargetBase.scale(app_name: str, replicas: int, service: str = "")
         apps_v1 = client.AppsV1Api();
         namespace = self.k8s_config.namespace;
 
-        fleet = self._fleet_deployments(apps_v1, namespace);
+        fleet = self._fleet_deployments(apps_v1, namespace, app_name);
         labels: list[str] = [
-            str((d.metadata.labels or {}).get("app", ""))
-            for d in fleet
+            str((d.metadata.labels or {}).get("app", "")) for d in fleet
         ];
         if member not in labels {
             raise ValueError(
@@ -483,6 +504,7 @@ impl KubernetesTargetBase.enable_tls(app_name: str) {
 
 impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
     try {
+        self._assert_own_app(app_name);
         self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
@@ -516,7 +538,7 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
 
     fleet: list[any] = [];
     try {
-        fleet = self._fleet_deployments(apps_v1, namespace);
+        fleet = self._fleet_deployments(apps_v1, namespace, app_name);
     } except Exception as e {
         if self.logger {
             self.logger.warning(f"Failed to list the fleet in '{namespace}': {e}");

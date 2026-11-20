@@ -35,7 +35,8 @@ obj KubernetesTargetBase(DeploymentTarget) {
         sa_spec: dict[str, any], namespace: str, core_v1: any
     );
 
-    def _fleet_deployments(apps_v1: any, namespace: str) -> list[any];
+    def _assert_own_app(app_name: str);
+    def _fleet_deployments(apps_v1: any, namespace: str, app_name: str) -> list[any];
     def _fleet_health(
         deployments: list[any], crashlooping_apps: set[str]
     ) -> (ResourceStatusInfo | None);

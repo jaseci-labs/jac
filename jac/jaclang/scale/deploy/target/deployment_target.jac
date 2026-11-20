@@ -11,6 +11,7 @@ class DeploymentTarget {
     def scale(
         self: DeploymentTarget, app_name: str, replicas: int, service: str = ""
     ) -> None abst;
+
     def get_service_url(self: DeploymentTarget, app_name: str) -> (str | None) abst;
     def get_full_status(self: DeploymentTarget, app_name: str) -> dict[str, any] abst;
 }
