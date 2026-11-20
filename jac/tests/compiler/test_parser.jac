@@ -231,6 +231,7 @@ test "pass keyword errors" {
             misplaced_tail_expr += 1;
         } elif "Python reserved word" in pretty {
             reserved_param += 1;
+            assert "@restspec(params={'<new name>': 'pass'})" in pretty , pretty;
         }
     }
     assert keyword_errors == 17;

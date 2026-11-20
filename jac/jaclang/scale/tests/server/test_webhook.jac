@@ -78,6 +78,13 @@ test "webhook - endpoint exists" {
         assert "/webhook/MinimalWebhook" in paths , (
             f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
         );
+        # The fixture maps `currency` to `currency.code`; OpenAPI shows the request key.
+        body_ref = paths["/webhook/PaymentReceived"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"];
+        body = schema["components"]["schemas"][body_ref.split("/")[-1]];
+        assert "currency.code" in body["properties"] , body;
+        assert "currency" not in body["properties"] , body;
     } finally {
         client.close();
     }
@@ -254,43 +261,49 @@ test "webhook - payment received with fields" {
         api_key_data = extract_data(api_key_response.json());
         api_key = api_key_data["api_key"];
 
-        # The fixture maps `currency` to the request key `currency.code`.
-        payload = json.dumps(
-            {
-                "payment_id": "PAY-12345",
-                "order_id": "ORD-67890",
-                "amount": 99.99,
-                "currency.code": "EUR"
-            }
-        );
-        payload_bytes = payload.encode("utf-8");
-        ts = str(int(time.time()));
-        signature = _generate_webhook_signature(
-            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
-        );
+        # The fixture maps `currency` to the request key `currency.code`; the
+        # field name still binds.
+        for (currency_key, currency) in [
+            ("currency.code", "EUR"),
+            ("currency", "GBP")
+        ] {
+            payload = json.dumps(
+                {
+                    "payment_id": "PAY-12345",
+                    "order_id": "ORD-67890",
+                    "amount": 99.99,
+                    currency_key: currency
+                }
+            );
+            payload_bytes = payload.encode("utf-8");
+            ts = str(int(time.time()));
+            signature = _generate_webhook_signature(
+                f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+            );
 
-        response = client.post(
-            "/webhook/PaymentReceived",
-            content=payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-API-Key": api_key,
-                "X-Webhook-Signature": signature,
-                "X-Webhook-Timestamp": ts
-            }
-        );
+            response = client.post(
+                "/webhook/PaymentReceived",
+                content=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": api_key,
+                    "X-Webhook-Signature": signature,
+                    "X-Webhook-Timestamp": ts
+                }
+            );
 
-        assert response.status_code == 200 , (
-            f"Expected 200, got {response.status_code}: {response.text}"
-        );
-        data = extract_data(response.json());
-        assert "reports" in data;
-        rpt = data["reports"][0];
-        assert rpt["status"] == "success";
-        assert rpt["payment_id"] == "PAY-12345";
-        assert rpt["order_id"] == "ORD-67890";
-        assert rpt["amount"] == 99.99;
-        assert rpt["currency"] == "EUR";
+            assert response.status_code == 200 , (
+                f"Expected 200, got {response.status_code}: {response.text}"
+            );
+            data = extract_data(response.json());
+            assert "reports" in data;
+            rpt = data["reports"][0];
+            assert rpt["status"] == "success";
+            assert rpt["payment_id"] == "PAY-12345";
+            assert rpt["order_id"] == "ORD-67890";
+            assert rpt["amount"] == 99.99;
+            assert rpt["currency"] == currency , f"{currency_key}: {rpt}";
+        }
     } finally {
         client.close();
     }
