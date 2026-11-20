@@ -21,11 +21,17 @@ glob PURE_BUILTINS: set[str] = {
          "sum",
          "tuple",
          "zip"
-     };
-
-glob READ_ONLY_METHODS: set[str] = {"copy", "count", "get", "index", "items", "keys", "values"};
-
-glob FRESH_VALUES: tuple = (
+     },
+     READ_ONLY_METHODS: set[str] = {
+         "copy",
+         "count",
+         "get",
+         "index",
+         "items",
+         "keys",
+         "values"
+     },
+     FRESH_VALUES: tuple = (
          DictCompr,
          DictVal,
          FString,

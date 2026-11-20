@@ -62,7 +62,13 @@ impl GraphEffectScan._scan(roots: list[UniNode]) -> bool {
         if self._node_writes(nd) {
             return True;
         }
-        pending.extend([kid for kid in [nd->:Kid:->] if kid]);
+        pending.extend(
+            [
+                kid
+                for kid in [nd->:Kid:->]
+                if kid
+            ]
+        );
         pending.extend(nd.own_impls);
     }
     return False;
@@ -84,7 +90,10 @@ impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
             inner = DeleteStmt.unwrap_target(target);
             if not DeleteStmt.is_location(target)
                 or DeleteStmt.type_may_hold_graph(self._type_of(inner))
-                or (isinstance(inner, AtomTrailer) and not self._fresh_local(inner.target)) {
+                or (
+                    isinstance(inner, AtomTrailer)
+                    and not self._fresh_local(inner.target)
+                ) {
                 return True;
             }
         }
@@ -102,7 +111,9 @@ impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
 impl GraphEffectScan._store_writes(target: Expr) -> bool {
     if isinstance(target, (TupleVal, ListVal)) {
         return any(
-            self._store_writes(item) for item in target.values if isinstance(item, Expr)
+            self._store_writes(item)
+            for item in target.values
+            if isinstance(item, Expr)
         );
     }
     if not isinstance(target, AtomTrailer) {
@@ -157,7 +168,9 @@ impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
     if isinstance(target, AtomTrailer) {
         named = target.right;
     }
-    if not isinstance(named, AstSymbolNode) or named.sym is None or not named.sym.defn {
+    if not isinstance(named, AstSymbolNode)
+        or named.sym is None
+        or not named.sym.defn {
         return True;
     }
     origin = str(named.sym.defn[0].loc.mod_path).replace("\\", "/");
@@ -172,7 +185,9 @@ impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
     return name not in READ_ONLY_METHODS
         and not (
             isinstance(receiver_type, ClassType)
-            and receiver_type.is_builtin(["str", "int", "float", "bool", "bytes", "tuple"])
+            and receiver_type.is_builtin(
+                ["str", "int", "float", "bool", "bytes", "tuple"]
+            )
         )
         and not self._fresh_local(target.target);
 }
@@ -187,7 +202,8 @@ impl GraphEffectScan._fresh_local(expr: Expr) -> bool {
     }
     for defn in sym.defn {
         bound = defn.parent;
-        if not isinstance(bound, Assignment) or not any(t is defn for t in bound.target) {
+        if not isinstance(bound, Assignment)
+            or not any(t is defn for t in bound.target) {
             return False;
         }
         value = bound.value;

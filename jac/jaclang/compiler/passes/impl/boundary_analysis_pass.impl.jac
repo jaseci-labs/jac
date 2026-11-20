@@ -1402,9 +1402,7 @@ impl BoundaryAnalysisPass.finish with exit {
     import from jaclang.compiler.frontend.diagnostics { E5115 }
     manifest = self.module.gen.interop_manifest;
     if not is_compiler_source_path(self.module.loc.mod_path) {
-        manifest.endpoint_effects.update(
-            endpoint_effects(self.module, self.prog)
-        );
+        manifest.endpoint_effects.update(endpoint_effects(self.module, self.prog));
     }
     self._export_mixed_native(manifest);
 
