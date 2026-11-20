@@ -80,14 +80,18 @@ test "a stored anchor carries a version that advances on write" {
 """A reads the counter and ends its transaction, B commits n=99, and A goes on
 by `mode`: "commit" or "rollback" name how A's transaction ended; "assign" and
 "in place" also have A write over its stale copy, which must report a conflict.
-Either way A then holds B's value, and an in-place edit on top of it is stored."""
-def _after_other_commit(td: str, mode: str) {
+Either way A then holds B's value, and an in-place edit on top of it is stored.
+`tags` is what the counter is created with: None leaves it with only frozen
+fields, a list gives it a per-field baseline, and the stale copy must be let
+go of either way."""
+def _after_other_commit(td: str, mode: str, tags: (list[str] | None)) {
+    label = mode if tags is None else f"{mode} holding a list";
     old = JacRuntime.exec_ctx;
     ctx1 = _ctx(td);
     JacRuntime.exec_ctx = ctx1;
     cid: UUID;
     try {
-        c = WCounter(n=1, tags=([] if mode == "in place" else None));
+        c = WCounter(n=1, tags=tags);
         root ++> c;
         ctx1.mem.commit();
         cid = c.__jac__.id;
@@ -103,7 +107,7 @@ def _after_other_commit(td: str, mode: str) {
         seen = _as_any(a).archetype.n;
         fetched = ctxa.mem.get_fetch_count();
         assert ctxa.mem.get(cid) is a and ctxa.mem.get_fetch_count() == fetched , (
-            f"{mode}: a second read in the same transaction must come from memory"
+            f"{label}: a second read in the same transaction must come from memory"
         );
         if mode == "rollback" {
             _as_any(ctxa.mem)._rollback_txn();
@@ -141,14 +145,14 @@ def _after_other_commit(td: str, mode: str) {
                 raised = True;
             }
             assert raised , (
-                f"{mode}: a write over a version that moved must report a "
+                f"{label}: a write over a version that moved must report a "
                 "conflict, not silently overwrite the winner or vanish"
             );
             # Reported once, then gone: the next read must not flush it again.
             ctxa.mem.read_barrier();
         }
-        assert ctxa.mem.get(cid) is a , f"{mode}: a held node was replaced";
-        assert _as_any(a).archetype.n == 99 , f"{mode}: A still sees its stale copy";
+        assert ctxa.mem.get(cid) is a , f"{label}: a held node was replaced";
+        assert _as_any(a).archetype.n == 99 , f"{label}: A still sees its stale copy";
         _as_any(a).archetype.tags.append("a");
         ctxa.mem.commit();
     } finally {
@@ -160,7 +164,7 @@ def _after_other_commit(td: str, mode: str) {
     try {
         r = ctxr.mem.get(cid);
         assert r is not None and _as_any(r).archetype.tags == ["b", "a"] , (
-            f"{mode}: A's in-place write over B's value was not stored"
+            f"{label}: A's in-place write over B's value was not stored"
         );
     } finally {
         JacRuntime.exec_ctx = old;
@@ -170,9 +174,18 @@ def _after_other_commit(td: str, mode: str) {
 
 
 test "a write over a stale read reports instead of vanishing" {
-    for mode in ["commit", "rollback", "assign", "in place"] {
+    rows: list[tuple[str, (list[str] | None)]] = [
+        ("commit", None),
+        ("commit", []),
+        ("rollback", None),
+        ("rollback", []),
+        ("assign", None),
+        ("assign", []),
+        ("in place", [])
+    ];
+    for (mode, tags) in rows {
         with TemporaryDirectory() as td {
-            _after_other_commit(td, mode);
+            _after_other_commit(td, mode, tags);
         }
     }
 }
