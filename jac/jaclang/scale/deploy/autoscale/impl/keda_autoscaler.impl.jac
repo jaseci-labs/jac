@@ -40,9 +40,9 @@ impl KEDAAutoscaler.preflight {
         "Install KEDA from the official docs, then redeploy: "
         "https://keda.sh/docs/latest/deploy/"
     ];
-    cluster_key = self._get_cluster_key();
-    if cluster_key in KEDAAutoscaler._preflight_cache {
-        if KEDAAutoscaler._preflight_cache[cluster_key] {
+    cache_key = f"{self._get_cluster_key()}::{namespace}";
+    if cache_key in KEDAAutoscaler._preflight_cache {
+        if KEDAAutoscaler._preflight_cache[cache_key] {
             return [];
         }
         return install_warning;
@@ -56,11 +56,11 @@ impl KEDAAutoscaler.preflight {
             plural="scaledobjects",
             limit=1
         );
-        KEDAAutoscaler._preflight_cache[cluster_key] = True;
+        KEDAAutoscaler._preflight_cache[cache_key] = True;
         return [];
     } except ApiException as e {
         if e.status in [404, 422] {
-            KEDAAutoscaler._preflight_cache[cluster_key] = False;
+            KEDAAutoscaler._preflight_cache[cache_key] = False;
             return install_warning;
         }
         if e.status == 403 {
