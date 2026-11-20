@@ -2169,24 +2169,19 @@ impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
         specs['scheme'] = '' if raw_s == 'jac' else raw_s;
     }
     params = specs.get('params');
-    if params is not None {
-        if not isinstance(params, dict)
+    if params is not None
+        and (
+            not isinstance(params, dict)
             or not all(
                 isinstance(field, str) and field and isinstance(wire, str) and wire
                 for (field, wire) in params.items()
-            ) {
-            raise ValueError(
-                f"@restspec params={params!r} must map field names to the "
-                "request keys they bind, e.g. params={'from_date': 'from'}."
-            );
-        }
-        if len(set(params.values())) < len(params) {
-            raise ValueError(
-                f"@restspec params={params!r} maps two fields to one request "
-                "key; a request key binds one field."
-            );
-        }
-        specs['params'] = dict(params);
+            )
+            or len(set(params.values())) < len(params)
+        ) {
+        raise ValueError(
+            f"@restspec params={params!r} must map each field name to its own "
+            "request key, e.g. params={'from_date': 'from'}."
+        );
     }
     return specs;
 }

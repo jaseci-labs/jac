@@ -420,32 +420,26 @@ impl _validate_restspec_target(spec: any, target: any) {
     if not wire_names {
         return;
     }
-    try {
-        signature = inspect.signature(target);
-    } except (TypeError, ValueError) {
-        return;
+    names = set(inspect.signature(target).parameters);
+    owner = 'field of the walker' if is_walker else 'parameter of the function';
+    unknown = sorted(set(wire_names) - names);
+    if unknown {
+        raise ValueError(
+            f"@restspec params on '{name}' maps {unknown}, which is not a {owner}."
+        );
     }
-    names = {
-        pname
-        for (pname, param) in signature.parameters.items()
-        if param.kind
-            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-    };
-    owner = 'a field of the walker' if is_walker else 'a parameter of the function';
-    for (field, wire) in wire_names.items() {
-        if field not in names {
-            raise ValueError(
-                f"@restspec params on '{name}' maps '{field}', which is not "
-                f"{owner}. Expected one of: {', '.join(sorted(names))}."
-            );
+    taken = sorted(
+        {
+            wire
+            for wire in wire_names.values()
+            if wire in names and wire not in wire_names
         }
-        if wire != field and wire in names and wire not in wire_names {
-            raise ValueError(
-                f"@restspec params on '{name}' binds the request key '{wire}' "
-                f"to '{field}', but '{wire}' is also {owner}; map '{wire}' "
-                "to another request key as well."
-            );
-        }
+    );
+    if taken {
+        raise ValueError(
+            f"@restspec params on '{name}' uses {taken} as a request key, but it "
+            f"is also a {owner}; map it to another request key as well."
+        );
     }
 }
 

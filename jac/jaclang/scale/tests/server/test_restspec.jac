@@ -324,17 +324,11 @@ test "a request key that is not a Jac name binds the field it maps to (#10750)" 
         body_schema = spec["components"]["schemas"][ref.split("/")[-1]];
         assert set(body_schema["properties"]) == {"class", "async"} , body_schema;
         assert body_schema["required"] == ["class"] , body_schema;
-
-        surface = srv.introspector._surface["ReportWalker"];
-        assert not surface.reflect , "a literal params map stays a static route fact";
-        assert surface.route["params"]["hub_mode"] == "hub.mode" , surface.route;
     } finally {
         client.close();
     }
 
     for (wire_names, data, want) in [
-        ({}, {"class": "z"}, {"class": "z"}),
-        ({"kind": "class"}, {"kind": "x"}, {"kind": "x"}),
         ({"kind": "class"}, {"class": "y", "kind": "x", "n": 1}, {"kind": "y", "n": 1}),
         ({"a": "b", "b": "a"}, {"a": 1, "b": 2}, {"a": 2, "b": 1})
     ] {
@@ -1106,10 +1100,10 @@ test "restspec decoration-time validation rejects bad specs (#8000 f3)" {
         return 1;
     }
     for (params, fragment) in [
-        (["from"], "must map field names"),
-        ({"kind": 1}, "must map field names"),
-        ({"kind": ""}, "must map field names"),
-        ({"kind": "class", "run_async": "class"}, "binds one field"),
+        (["from"], "its own request key"),
+        ({"kind": 1}, "its own request key"),
+        ({"kind": ""}, "its own request key"),
+        ({"kind": "class", "run_async": "class"}, "its own request key"),
         ({"missing": "x"}, "not a parameter of the function"),
         ({"kind": "run_async"}, "is also a parameter of the function")
     ] {

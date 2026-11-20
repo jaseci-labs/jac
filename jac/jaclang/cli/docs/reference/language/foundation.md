@@ -256,7 +256,7 @@ The escape is only for keywords: a backtick on a name that is *not* a keyword is
     Because `any` is a built-in type in Jac, the backtick escape is used as a convention to refer to the Python/Jac built-in **`any()` function**. Always use `` `any `` when you want to call the function and `any` (without a backtick) when referring to the type.
 
 !!! danger
-    Backtick escaping cannot smuggle **Python reserved words** (`class`, `lambda`, `import`, `def`, ...) into `has`-field or parameter names -- the compiler rejects them with error **E0067**, because they would break the generated Python underneath. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`). A served walker or function keeps the reserved word as its request key with `@restspec(params={"kind": "class"})`.
+    Backtick escaping cannot smuggle **Python reserved words** (`class`, `lambda`, `import`, `def`, ...) into `has`-field or parameter names -- the compiler rejects them with error **E0067**, because they would break the generated Python underneath. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
 !!! note "Special variable references don't need backtick escaping"
     The following are **built-in references**, not regular identifiers. Use them directly without backticks: `self`, `super`, `root`, `here`, `visitor`, `props`, `init`, `postinit`. `self` is the current instance. (`Self`, the enclosing type, is an ordinary type-system name, not a special reference.) For example, write `self.name`, `root ++> node`, and `def init()` -- never `` `self ``, `` `root ``, or `` `init ``.

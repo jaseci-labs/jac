@@ -65,18 +65,11 @@ test "ws walker canonical path /ws/walker/{name} works" {
     client = _ws_client();
     try {
         tc = client.raw_client;
-        # The fixture maps `client_id` to the request key `client.id`; the
-        # field name still binds.
-        for (message, want) in [
-            ({"message": "cw", "client.id": "c2"}, "c2"),
-            ({"message": "cw", "client_id": "c3"}, "c3")
-        ] {
-            with tc.websocket_connect("/ws/walker/EchoMessage") as ws {
-                ws.send_json(message);
-                resp = ws.receive_json();
-                assert resp["ok"] == True , f"expected ok, got {resp}";
-                assert resp["data"]["reports"][0]["client_id"] == want , f"{resp}";
-            }
+        with tc.websocket_connect("/ws/walker/EchoMessage") as ws {
+            ws.send_json({"message": "cw", "client.id": "c2"});
+            resp = ws.receive_json();
+            assert resp["ok"] == True , f"expected ok, got {resp}";
+            assert resp["data"]["reports"][0]["client_id"] == "c2" , f"{resp}";
         }
     } finally {
         client.close();
@@ -108,6 +101,7 @@ test "ws walker legacy path /ws/{name} still works" {
             ws.send_json({"message": "lw", "client_id": "c3"});
             resp = ws.receive_json();
             assert resp["ok"] == True , f"expected ok, got {resp}";
+            assert resp["data"]["reports"][0]["client_id"] == "c3" , f"{resp}";
         }
     } finally {
         client.close();

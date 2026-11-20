@@ -1696,21 +1696,5 @@ impl route_literal(expr: any) -> tuple[bool, any] {
         and isinstance(expr.right, Name) {
         return (True, expr.right.value);
     }
-    if isinstance(expr, DictVal) {
-        entries: dict[str, any] = {};
-        for kv in expr.kv_pairs {
-            if not isinstance(kv, KVPair)
-                or not isinstance(kv.key, (String, MultiString)) {
-                return (False, None);
-            }
-            (key_literal, key) = route_literal(kv.key);
-            (value_literal, value) = route_literal(kv.value);
-            if not key_literal or not value_literal {
-                return (False, None);
-            }
-            entries[key] = value;
-        }
-        return (True, entries);
-    }
     return (False, None);
 }
