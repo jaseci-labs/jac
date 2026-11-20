@@ -72,11 +72,15 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
 impl NaIRGenPass._class_value_ctor_bound(
     target: (uni.UniNode | None), direct: bool = False
 ) -> (str | None) {
-    if not direct and not self._is_runtime_class_value(target) {
+    runtime = self._is_runtime_class_value(target);
+    if not direct and not runtime {
         return None;
     }
     bound = self._class_expr_bound(target);
-    if bound is None or bound not in self.struct_types or self._is_enum_arch(bound) {
+    if bound is None
+        or bound not in self.struct_types
+        or self._is_enum_arch(bound)
+        or (not runtime and self._demoted_init_of(bound) is not None) {
         return None;
     }
     return bound;
@@ -225,6 +229,7 @@ impl NaIRGenPass._bind_class_ctor_args(
                     break;
                 }
                 spread = arg.value;
+                bound_args.append((-1, spread));
                 continue;
             }
             for (i, p) in enumerate(params) {
@@ -247,6 +252,7 @@ impl NaIRGenPass._bind_class_ctor_args(
                 break;
             }
             spread = arg.operand;
+            bound_args.append((-1, spread));
             continue;
         } elif isinstance(arg, uni.UnaryExpr)
             and isinstance(arg.op, uni.Token)
@@ -331,22 +337,22 @@ impl NaIRGenPass._codegen_class_value_call(
     cls = self._coerce_type(cls, i8p);
     values: dict[int, ir.Value] = {};
     mask = 0;
+    mapping: (ir.Value | None) = None;
     for (index, expr) in bound_args {
         value = self._codegen_expr(expr);
         if value is None {
             return None;
+        }
+        if index < 0 {
+            mapping = value;
+            continue;
         }
         values[index] = self._coerce_type(value, params[index].type);
         mask |= 1 << index;
     }
     owned = list(values.values());
     mask_value: ir.Value = ir.Constant(i64, mask);
-    mapping: (ir.Value | None) = None;
-    if spread is not None {
-        mapping = self._codegen_expr(spread);
-        if mapping is None {
-            return None;
-        }
+    if mapping is not None {
         spread_mask = self._bind_class_ctor_spread(
             nd, mapping, params, values, mask_value, bound
         );
@@ -393,7 +399,10 @@ impl NaIRGenPass._codegen_class_value_call(
     if mapping is not None {
         self._release_owned_args([mapping], op="class_ctor_kwargs");
     }
-    for (_, expr) in bound_args {
+    for (index, expr) in bound_args {
+        if index < 0 {
+            continue;
+        }
         self._nogc_consume_local(expr);
     }
     self._emit_pending_error_check();
