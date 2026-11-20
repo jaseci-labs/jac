@@ -40,6 +40,7 @@ obj MonitoringDeployer {
     def _deploy_grafana(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_tempo(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_loki(app_name: str, namespace: str, apps_v1: any, core_v1: any);
+    def _alloy_config(app_name: str, namespace: str) -> str;
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def deploy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
