@@ -119,7 +119,8 @@ jobs:
             native:
               - 'jac/jaclang/compiler/backends/native/**'
               - 'jac/tests/compiler/backends/native/**'
-              - 'jac/jaclang/compiler/tests/test_prim_equivalence.jac'
+              - 'jac/jaclang/compiler/tests/test_prim_equivalence*.jac'
+              - 'jac/jaclang/compiler/tests/prim_equiv_cases.jac'
               - 'jac/jaclang/compiler/tests/fixtures/prim_*.jac'
               - 'jac/native/**'
               - 'jac/build.zig'
@@ -1313,7 +1314,7 @@ jobs:
       - name: Native import shapes the stub relies on
         run: |
           jac test jac/tests/compiler/backends/native/test_walkup_imports.jac
-          jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac -f "environ"
+          jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac jac/jaclang/compiler/tests/test_prim_equivalence_b.jac jac/jaclang/compiler/tests/test_prim_equivalence_c.jac -f "environ"
       - name: Fused-runtime boot of a fresh na host
         run: jac test jac/tests/client/test_fused_runtime_boot.jac
 

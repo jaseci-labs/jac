@@ -36,7 +36,7 @@ equivalence fixture. Its native behavior, including an explicit
 operands): the key objects compare that result as a number, never as an
 integer bit pattern. `lru_order`/`lru_mixed`/`lru_churn` drive bounded
 caches past capacity so recency order and eviction agree entry for entry.
-Waived on na (declared in test_prim_equivalence.jac `allow_missing`):
+Waived on na (declared in prim_equiv_cases.jac `allow_missing`):
 `cmp_sort` -- `sorted(key=cmp_to_key(...))` demotes the whole native program
 (native sort compares only orderable primitive keys, never `__lt__` objects);
 `wraps_name` -- na `wraps`/`update_wrapper` are attribute-copy-free (native

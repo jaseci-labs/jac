@@ -94,6 +94,8 @@ jobs:
         # the libc-binding divergence (musl static vs libSystem).
         run: >-
           jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
+          jac/jaclang/compiler/tests/test_prim_equivalence_b.jac
+          jac/jaclang/compiler/tests/test_prim_equivalence_c.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
       - name: Provision managed Ruby, CocoaPods, and native Node
         run: |

@@ -1224,7 +1224,7 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
    below) instead of per-element container calls.
 3. Add a tri-backend equivalence fixture
    (`jac/jaclang/compiler/tests/fixtures/prim_<name>.jac`) and register it in
-   `test_prim_equivalence.jac` with `require=["na"]` so sv/na congruence is
+   `prim_equiv_cases.jac` with `require=["na"]` so sv/na congruence is
    enforced, not assumed. Keep the `na { }` block self-contained (a
    module-level helper called from native code lowers to an unregistered
    interop stub) and split a large case body across several small na helpers
