@@ -104,7 +104,7 @@ impl GraphEffectScan._scan(roots: list[UniNode]) -> bool {
     return False;
 }
 
-impl GraphEffectScan._walker_writes(walker: Archetype) -> bool {
+impl GraphEffectScan._walker_writes(spawned: Archetype) -> bool {
     if any(
         isinstance(mod, CatModule) and str(mod.loc.mod_path).endswith(".jac")
         for mod in self.modules
@@ -139,7 +139,7 @@ impl GraphEffectScan._walker_writes(walker: Archetype) -> bool {
         self._reactions = reactions;
     }
     for (ability, names) in reactions {
-        if (names is None or walker.name.sym_name in names) and self.writes(ability) {
+        if (names is None or spawned.name.sym_name in names) and self.writes(ability) {
             return True;
         }
     }
@@ -180,9 +180,9 @@ impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
 
 impl GraphEffectScan._spawn_writes(operands: list[Expr]) -> bool {
     for operand in operands {
-        walker = self._type_of(operand);
-        if isinstance(walker, ClassType) and walker.is_walker_type() {
-            holder = walker.shared.symbol_table;
+        operand_type = self._type_of(operand);
+        if isinstance(operand_type, ClassType) and operand_type.is_walker_type() {
+            holder = operand_type.shared.symbol_table;
             if isinstance(holder, Archetype) {
                 return self.writes(holder);
             }

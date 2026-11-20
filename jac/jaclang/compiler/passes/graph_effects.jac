@@ -65,7 +65,7 @@ obj GraphEffectScan {
 
     def writes(owner: UniNode) -> bool;
     def _scan(roots: list[UniNode]) -> bool;
-    def _walker_writes(walker: Archetype) -> bool;
+    def _walker_writes(spawned: Archetype) -> bool;
     def _spawn_writes(operands: list[Expr]) -> bool;
     def _node_writes(nd: UniNode) -> bool;
     def _store_writes(target: Expr) -> bool;
