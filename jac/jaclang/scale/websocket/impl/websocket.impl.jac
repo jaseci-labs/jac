@@ -282,22 +282,17 @@ impl _ws_stream_next(gen: any) -> any {
 
 impl _ws_close_stream(result: any, abandon: Callable[[], None]) -> None {
     try {
-        if isgenerator(result) {
-            await asyncio.get_running_loop().run_in_executor(None, result.close);
-        } else {
-            await result.aclose();
-        }
-    } except BaseException as e {
+        closed = await close_stream(result);
+    } except BaseException {
+        abandon();
+        raise;
+    }
+    if not closed {
         logger.warning(
-            f"WS stream could not be closed ({type(e).__name__}: {e}); aborting "
-            "its request's work so the request scope does not commit it. A "
-            "stream still running in its thread can write again before the "
-            "scope closes."
+            "WS stream could not be closed; aborting its request's work so the "
+            "request scope does not commit it"
         );
         abandon();
-        if not isinstance(e, Exception) {
-            raise;
-        }
     }
 }
 

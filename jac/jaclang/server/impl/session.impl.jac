@@ -1357,27 +1357,26 @@ def _session_pool -> any;
 
 async def _off_loop(work: Callable) -> any;
 
+async def _settled_off_loop(work: Callable) -> any;
+
 
 impl Session.acommit(anchor: (Anchor | None) = None) -> None {
     def settle {
         self.commit(anchor);
     }
-    await _off_loop(settle);
+    await _settled_off_loop(settle);
+}
+
+impl Session.aabort -> None {
+    await _settled_off_loop(self.abort);
+}
+
+impl Session.aunit_exit -> None {
+    await _settled_off_loop(self.unit_exit);
 }
 
 impl Session.aclose -> None {
-    import asyncio;
-    job = asyncio.ensure_future(_off_loop(self.close));
-    try {
-        await asyncio.shield(job);
-    } except asyncio.CancelledError {
-        while not job.done() {
-            try {
-                await asyncio.shield(job);
-            } except asyncio.CancelledError {}
-        }
-        raise;
-    }
+    await _settled_off_loop(self.close);
 }
 
 
@@ -1419,6 +1418,20 @@ impl Session.run_request(body: Callable) -> any {
             }
             self.abort();
             raise;
+        }
+    }
+}
+
+
+impl Session.apark_idle -> None {
+    await _settled_off_loop(self.park_idle);
+}
+
+
+impl Session.park_idle -> None {
+    with self._lock {
+        if self._store is not None {
+            self._store.park_idle();
         }
     }
 }
@@ -1643,6 +1656,21 @@ impl _off_loop(work: Callable) -> any {
     return await asyncio.get_running_loop().run_in_executor(
         _session_pool(), in_context
     );
+}
+
+impl _settled_off_loop(work: Callable) -> any {
+    import asyncio;
+    job = asyncio.ensure_future(_off_loop(work));
+    try {
+        return await asyncio.shield(job);
+    } except asyncio.CancelledError {
+        while not job.done() {
+            try {
+                await asyncio.shield(job);
+            } except asyncio.CancelledError {}
+        }
+        raise;
+    }
 }
 
 impl ro_units_enabled -> bool {

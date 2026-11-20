@@ -155,6 +155,10 @@ impl Memory.acommit(anchor: (Anchor | None) = None) {
     self.commit(anchor);
 }
 
+impl Memory.aabort {
+    self.abort();
+}
+
 impl Memory.on_commit(callback: Callable) {
     self._on_commit.append(callback);
 }
@@ -199,6 +203,10 @@ impl Memory.unit_enter(key: (str | None) = None) {}
 
 impl Memory.unit_exit {}
 
+impl Memory.aunit_exit {
+    self.unit_exit();
+}
+
 impl Memory.unit_depth -> int {
     return 0;
 }
@@ -216,6 +224,14 @@ impl Memory.run_request(body: Callable) -> any {
     self.commit();
     return result;
 }
+
+impl Memory.park_idle {}
+
+
+impl Memory.apark_idle {
+    self.park_idle();
+}
+
 
 impl Memory.close {
     self.commit();

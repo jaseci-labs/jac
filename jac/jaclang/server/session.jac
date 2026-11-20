@@ -208,6 +208,8 @@ obj Session(Memory) {
     def get(id: UUID) -> (Anchor | None);
     def delete(id: UUID) -> None;
     def close -> None;
+    override def park_idle -> None;
+    override async def apark_idle -> None;
     def `has(id: UUID) -> bool;
     def get_roots -> Generator[Root, None, None];
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -241,6 +243,8 @@ obj Session(Memory) {
     def wait_turn -> None;
     def _begin_txn(isolation: TxnIsolation) -> None;
     override async def acommit(anchor: (Anchor | None) = None) -> None;
+    override async def aabort -> None;
+    override async def aunit_exit -> None;
     override async def aclose -> None;
     def _leave_queue -> None;
     def _commit_txn -> None;
