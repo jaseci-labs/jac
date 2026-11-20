@@ -149,7 +149,9 @@ impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
         found = False;
         for member in holder._get_impl_resolved_body() {
             if isinstance(member, Ability) {
-                found = member.sym_name in ("init", "__init__", "postinit", "__post_init__") and self.writes(member);
+                found = member.sym_name
+                    in ("init", "__init__", "postinit", "__post_init__")
+                    and self.writes(member);
             } else {
                 found = self._scan([member]);
             }
