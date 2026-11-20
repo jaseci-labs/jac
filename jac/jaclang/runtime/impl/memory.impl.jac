@@ -4,6 +4,8 @@ impl Memory.postinit {
 
 impl Memory._init_memory {
     self._lock = threading.RLock();
+    self._durable_boundary = DurableBoundary();
+    self._unit_generations = [];
     self.__mem__ = {};
     self._dirty = {};
     self._deleted = set();
@@ -167,12 +169,14 @@ impl Memory._fire_on_commit {
     if not fired {
         return;
     }
+    self._durable_boundary.mark();
     self.unseal_scan();
     try {
         for cb in fired {
             try {
                 cb();
             } except Exception as e {
+                self.note_effect_failure(e);
                 logger.warning(f"on_commit callback failed: {type(e).__name__}: {e}");
             }
         }
@@ -195,12 +199,37 @@ impl Memory.get_fetch_count -> int {
     return 0;
 }
 
-impl Memory.unit_enter(key: (str | None) = None) {}
+impl Memory.unit_enter(key: (str | None) = None) {
+    with self._lock {
+        self._unit_generations.append(self._durable_boundary.current());
+    }
+}
 
-impl Memory.unit_exit {}
+impl Memory.unit_committed {
+    with self._lock {
+        if self._unit_generations {
+            self._unit_generations[-1] = self._durable_boundary.current();
+        }
+    }
+}
+
+impl Memory.has_durable_boundary -> bool {
+    with self._lock {
+        return bool(self._unit_generations)
+            and self._durable_boundary.current() != self._unit_generations[-1];
+    }
+}
+
+impl Memory.unit_exit {
+    with self._lock {
+        if self._unit_generations {
+            self._unit_generations.pop();
+        }
+    }
+}
 
 impl Memory.unit_depth -> int {
-    return 0;
+    return len(self._unit_generations);
 }
 
 impl Memory.take_ro_retry -> str | None {
@@ -226,4 +255,20 @@ impl Memory.close {
 
 impl Memory.aclose {
     self.close();
+}
+
+impl DurableBoundary.postinit {
+    self._lock = threading.RLock();
+}
+
+impl DurableBoundary.mark {
+    with self._lock {
+        self._generation += 1;
+    }
+}
+
+impl DurableBoundary.current -> int {
+    with self._lock {
+        return self._generation;
+    }
 }

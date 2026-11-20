@@ -6,6 +6,15 @@ import from uuid { UUID }
 glob logger = logging.getLogger(__name__),
      __all__ = ['Memory'];
 
+obj DurableBoundary {
+    has _generation: int = 0,
+        _lock: threading.RLock postinit;
+
+    def postinit;
+    def mark;
+    def current -> int;
+}
+
 
 obj Memory {
     has base_path: (str | None) = None,
@@ -14,7 +23,9 @@ obj Memory {
         _dirty: dict[UUID, None] postinit,
         _deleted: set[UUID] postinit,
         _on_commit: list[Callable] postinit,
-        _lock: threading.RLock postinit;
+        _lock: threading.RLock postinit,
+        _durable_boundary: DurableBoundary postinit,
+        _unit_generations: list[int] postinit;
 
     has store: (any | None) {
         getter {
@@ -66,6 +77,8 @@ obj Memory {
     def reset_fetch_count;
     def get_fetch_count -> int;
     def unit_enter(key: (str | None) = None);
+    def unit_committed;
+    def has_durable_boundary -> bool;
     def unit_exit;
     def unit_depth -> int;
     def take_ro_retry -> str | None;

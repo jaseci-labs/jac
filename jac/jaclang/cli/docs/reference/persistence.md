@@ -80,6 +80,39 @@ Under concurrency this is a race: two requests against the same `root` can both 
 
 **The losing unit of work is atomic.** Because everything a request staged rides in one transaction, a lost race rolls back completely -- no orphan child rows, no half-linked edges. This holds identically for a single local process and a multi-pod deployment sharing one database.
 
+Before the request commits, a serialization conflict invalidates the reads that led to those writes,
+including a query that found no matching node. The runtime replays the entire
+request rather than resubmitting its staged writes in a fresh transaction.
+The same rule applies to `Session.run_request` and to the final commit when a
+unit of work exits. If entering a nested unit fails, its frame is removed
+without committing or aborting the outer unit. A read-tier promotion still
+requires the outer request to replay its reads at writable isolation.
+After the request commits, the body and its `on_commit` effects cannot safely
+run again. A serialization conflict while saving the effects' remaining
+writes instead uses the bounded write-set retry; if it is exhausted, the
+request reports a failure after commit.
+Session callbacks run within that committed write-retry phase, including on
+explicit and nested commits. Completing a nested `run_request` settles its
+callback writes before returning. Callback failures that lose their database
+transaction produce a final failure instead of reporting a successful save.
+This also saves graph changes that a callback only staged in memory, without
+opening a transaction itself. Opaque SQL issued through `store.rows()` is not
+part of the graph write ledger: a rollback after such SQL cannot use a graph-only
+write-set retry. Before commit it requires request replay; after commit it is a
+final `failed_after_commit` failure. A raw write refused by a read-tier transaction
+requests the same safe writer replay as a graph write.
+If a nested unit, independent child session, explicit commit, or callback has
+already made work durable, a later conflict cannot safely replay the enclosing
+request. The request instead reports `failed_after_commit`; retrying it may
+repeat the work that already committed. A read-tier retry after a callback has
+started is also reported this way because the callback may have external effects.
+If the connection fails while confirming a commit, its outcome can be unknown;
+the request reports failure rather than assuming the commit was rolled back.
+Dispatching a remote writer is also treated as a possible durable boundary,
+since its outcome may be unknown if communication fails. Detached background
+work and independently managed database connections are outside this boundary;
+make those effects idempotent and wait for them before returning.
+
 **Side effects and replay: `on_commit`.** Because a losing request replays from scratch, an *external* side effect in the body (charging a card, sending mail, registering a token) would otherwise run more than once. Defer such effects with the `on_commit(...)` ambient builtin (no import needed): it registers a callback that runs only after the unit of work commits successfully, and is discarded on abort/replay -- so it fires exactly once, for the attempt that wins.
 
 ```jac
@@ -102,6 +135,21 @@ walker me {
 | `on_conflict` | `"retry"` | `"retry"` converges via replay; `"fail"` returns a typed `409 write_conflict` immediately (for clients that handle conflicts themselves) |
 | `conflict_max_attempts` | `5` | Max attempts under `"retry"` before giving up with a `409` |
 | `conflict_backoff_ms` | `0` | Linear backoff (ms x attempt) between replay attempts |
+
+### Request timeout and cancellation
+
+A positive `[serve.workers] request_timeout` (or `JAC_SERVE_REQUEST_TIMEOUT`)
+requests cancellation when the budget expires; `0` disables the timeout.
+It is not a hard response deadline. A synchronous walker or function already
+running in a worker thread cannot be interrupted. The server waits for that
+thread to finish and settles the request before answering, so the response
+can arrive after the configured budget.
+
+If cancellation reaches the request dispatcher, it returns HTTP 504. If the
+request already committed or may have made work durable, the response is
+instead a final HTTP 500 with error code `FAILED_AFTER_COMMIT`. The server
+does not automatically replay that request.
+Do not assume that a timeout or a client disconnect means no work was saved.
 
 ---
 

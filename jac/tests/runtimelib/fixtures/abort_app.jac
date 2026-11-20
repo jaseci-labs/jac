@@ -48,7 +48,9 @@ walker:protect CountItems {
 
 glob runs: list[int] = [],
      late_runs: list[int] = [],
-     peek_armed: list[int] = [];
+     peek_armed: list[int] = [],
+     cancel_started: any = None,
+     cancel_release: any = None;
 
 def late_save(home: Root, name: str, fault: str = "") {
     def late {
@@ -111,6 +113,46 @@ walker:protect LateWrite {
         runs.append(1);
         here ++> AbortItem(name=self.first);
         late_save(here, self.late, self.fault);
+        if self.fault in ("nested_serial", "child_serial", "explicit_serial") {
+            mem: any = Jac.get_context().mem;
+            def nested {
+                here ++> AbortItem(name="nested");
+                mem.on_commit(lambda() { late_runs.append(1); });
+            }
+            if self.fault == "nested_serial" {
+                mem.run_request(nested);
+            } elif self.fault == "child_serial" {
+                import from jaclang.runtime.context { ExecutionContext }
+                child = ExecutionContext(_parent=Jac.get_context(), _own_session=True);
+                try {
+                    def child_body {
+                        item = AbortItem(name="independent");
+                        anchor: any = item.__jac__;
+                        anchor.persistent = True;
+                        child.mem.put(anchor);
+                        child.mem.on_commit(lambda() { late_runs.append(1); });
+                    }
+                    child.mem.run_request(child_body);
+                } finally {
+                    child.close();
+                }
+            } else {
+                Jac.commit();
+            }
+            here ++> AbortItem(name="rolled-back");
+            store: any = mem.store;
+            real_commit = store.commit;
+            remaining = [1];
+            def fail_once {
+                if remaining[0] and store.in_txn() {
+                    remaining[0] -= 1;
+                    store.rollback();
+                    raise PgWireError({"C": "40001", "M": "serialization failure"});
+                }
+                real_commit();
+            }
+            store.commit = fail_once;
+        }
         if self.commit_first {
             commit();
         }
@@ -151,5 +193,19 @@ walker:protect LateFromReadTier {
     can go with Root entry {
         runs.append(1);
         late_save(here, "late");
+    }
+}
+
+walker:protect CancelDurable {
+    can go with Root entry {
+        runs.append(1);
+        mem: any = Jac.get_context().mem;
+        def nested {
+            here ++> AbortItem(name="nested");
+            mem.on_commit(lambda() { late_runs.append(1); });
+        }
+        mem.run_request(nested);
+        cancel_started.set();
+        assert cancel_release.wait(10);
     }
 }

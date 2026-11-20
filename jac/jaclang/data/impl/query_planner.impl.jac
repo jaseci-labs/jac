@@ -96,7 +96,7 @@ impl _sql_pairs(
     }
     cq.params['origin'] = [str(i) for i in origin_ids];
     out: list[tuple[(UUID | None), (UUID | None)]] = [];
-    for r in store.rows(cq.sql, cq.params) {
+    for r in store._read_rows(cq.sql, cq.params) {
         nid = UUID(str(r[0])) if r[0] is not None else None;
         eid = UUID(str(r[1])) if r[1] is not None else None;
         out.append((nid, eid));
@@ -386,7 +386,7 @@ impl resolve_query_count(mem: Session, q: GraphQuery) -> int {
         return len(_resolve_for(mem, q));
     }
     cq.params['origin'] = [str(i) for i in ids];
-    rows = store.rows(cq.sql, cq.params);
+    rows = store._read_rows(cq.sql, cq.params);
     total = int(rows[0][0]) if rows else 0;
     if (upto - 1) in residual {
         rq = compile_query(
@@ -403,7 +403,7 @@ impl resolve_query_count(mem: Session, q: GraphQuery) -> int {
             _unique_nodes(
                 [
                     (UUID(str(r[0])), None)
-                    for r in store.rows(rq.sql, rq.params)
+                    for r in store._read_rows(rq.sql, rq.params)
                     if r[0] is not None
                 ]
             )
@@ -938,7 +938,7 @@ impl _scan(
             edge_acl=edge_acl
         );
         cq.params['origin'] = [str(i) for i in ids];
-        rows = store.rows(cq.sql, cq.params);
+        rows = store._read_rows(cq.sql, cq.params);
         done = False;
         for (idx, r) in enumerate(rows) {
             for gone in held {
@@ -1130,7 +1130,7 @@ impl resolve_query_type_counts(
         raise ValueError('per-type counts need predicates the store can evaluate');
     }
     cq.params['origin'] = [str(i) for i in ids];
-    for r in store.rows(cq.sql, cq.params) {
+    for r in store._read_rows(cq.sql, cq.params) {
         counts[str(r[0])] = counts.get(str(r[0]), 0) + int(r[1]);
     }
     node_trust = residual.get(upto - 1);
@@ -1151,7 +1151,7 @@ impl resolve_query_type_counts(
     rq.params['origin'] = [str(i) for i in ids];
     rows = [
         r
-        for r in store.rows(rq.sql, rq.params)
+        for r in store._read_rows(rq.sql, rq.params)
         if r[0] is not None and r[1] is not None
     ];
     exact = len(rows) <= COUNT_CHECK_CAP;
@@ -1232,7 +1232,7 @@ impl resolve_query_type_counts(
             group_by='node_ids'
         );
         dq.params['origin'] = [str(i) for i in ids];
-        for r in store.rows(dq.sql, dq.params) {
+        for r in store._read_rows(dq.sql, dq.params) {
             seen.pop(str(r[0]), None);
         }
     }
@@ -1256,7 +1256,7 @@ impl _hop_by_origin(
     };
     params = dict(cq.params);
     params['origin'] = [str(o) for o in origins];
-    for r in store.rows(cq.sql, params) {
+    for r in store._read_rows(cq.sql, params) {
         nid = UUID(str(r[0])) if r[0] is not None else None;
         eid = UUID(str(r[1])) if r[1] is not None else None;
         by_origin[UUID(str(r[2]))].append((nid, eid));

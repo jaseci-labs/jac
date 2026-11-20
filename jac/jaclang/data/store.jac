@@ -86,7 +86,9 @@ obj ChannelMessage {
 
 
 obj Store {
-    has last_error: (Exception | None) = None;
+    has last_error: (Exception | None) = None,
+        _unit_guard: (Callable | None) = None,
+        _raw_rows_in_txn: bool = False;
 
     def new_session -> Store abst;
     def is_available -> bool abst;
@@ -111,6 +113,7 @@ obj Store {
     def root_ids -> list[UUID] abst;
     def subtype_names(type_name: str) -> list[str] abst;
     def rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] abst;
+    def _read_rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]];
     def queue_enter(ids: list[UUID]) -> bool abst;
     def queue_exit(ids: list[UUID]) -> None abst;
     def lock_rows(ids: list[UUID]) -> None abst;
@@ -135,6 +138,7 @@ obj Store {
 
 obj PgStore(Store) {
     override def new_session -> PgStore;
+    override def _read_rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]];
 
     has conninfo: ConnInfo,
         ensure_cb: (any | None) = None,

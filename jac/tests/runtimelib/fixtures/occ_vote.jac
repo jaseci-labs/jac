@@ -37,6 +37,12 @@ import from time { sleep, time }
 import from jaclang.runtime.runtime { JacRuntimeInterface as Jac }
 
 glob runs: list[int] = [],
+     profile_gate: any = None,
+     profile_runs: list[int] = [],
+     profile_effect_runs: list[int] = [],
+     profile_effect_faults: list[int] = [],
+     cancel_started: any = None,
+     cancel_release: any = None,
      rival_commits: list[int] = [],
      commit_faults: list[int] = [],
      failed_commits: list[int] = [],
@@ -99,7 +105,7 @@ def fail_commits(times: int) {
 
 def exhaust_queries(times: int) {
     store: any = request_store();
-    real_rows = store.rows;
+    real_rows = store._read_rows;
     left = [times];
     def exhausting_rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
         if left[0] > 0 and store.in_txn() {
@@ -113,7 +119,7 @@ def exhaust_queries(times: int) {
         }
         return real_rows(sql, params);
     }
-    store.rows = exhausting_rows;
+    store._read_rows = exhausting_rows;
 }
 
 
@@ -218,5 +224,72 @@ walker:pub Deliver {
         }
         Jac.on_commit(mark_sent);
         report status;
+    }
+}
+
+node OnceProfile {
+    has delivered: int = 0;
+}
+
+walker:pub EnsureProfile {
+    can ensure with Root entry {
+        profile_runs.append(1);
+        profiles = [here-->[?:OnceProfile]];
+        if profiles {
+            report jid(profiles[0]);
+        } else {
+            # Both requests must have read absence before either can insert.
+            profile_gate.wait(timeout=15);
+            profile = here ++> OnceProfile();
+            def deliver {
+                profile_effect_runs.append(1);
+                profile.delivered += 1;
+                if profile_effect_faults {
+                    fail_commits(profile_effect_faults.pop());
+                }
+            }
+            Jac.on_commit(deliver);
+            report jid(profile);
+        }
+    }
+}
+
+walker:pub CountProfiles {
+    can count with Root entry {
+        report len([here-->[?:OnceProfile]]);
+    }
+}
+
+walker:pub ProfileDeliveries {
+    can count with Root entry {
+        report [profile.delivered for profile in [here-->[?:OnceProfile]]];
+    }
+}
+
+walker:pub NestedDurableRetry {
+    can run with Root entry {
+        profile_runs.append(1);
+        mem: any = Jac.get_context().mem;
+        def nested {
+            here ++> OnceProfile();
+            mem.on_commit(lambda() { profile_effect_runs.append(1); });
+        }
+        mem.run_request(nested);
+        here ++> OnceProfile();
+        fail_commits(1);
+    }
+}
+
+walker:pub CancelAfterNestedCommit {
+    can run with Root entry {
+        profile_runs.append(1);
+        mem: any = Jac.get_context().mem;
+        def nested {
+            here ++> OnceProfile();
+            mem.on_commit(lambda() { profile_effect_runs.append(1); });
+        }
+        mem.run_request(nested);
+        cancel_started.set();
+        assert cancel_release.wait(10);
     }
 }

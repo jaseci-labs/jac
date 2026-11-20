@@ -130,6 +130,7 @@ impl ExecutionContext.run_pending_effects -> None {
     }
     effects = self.pending_effects;
     self.pending_effects = [];
+    self.mem._durable_boundary.mark();
     self.mem.unseal_scan();
     try {
         for effect in effects {
