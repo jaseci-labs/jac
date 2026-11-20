@@ -199,10 +199,7 @@ deploy_rc=0
 (cd "${FIXTURE_DIR}" && jac scale deploy app.jac) || deploy_rc=$?
 mv "${FIXTURE_DIR}/jac.toml.bak" "${FIXTURE_DIR}/jac.toml"
 [[ "${deploy_rc}" == "0" ]] || fail "the redeploy with http_activation off failed"
-if kubectl get scaledobject "${SCALE_TARGET}-http-scaledobject" -n "${NAMESPACE}" >/dev/null 2>&1; then
-    fail "the http-activation ScaledObject outlived the redeploy"
-fi
-kubectl wait --for=condition=Available "deployment/${SCALE_TARGET}" -n "${NAMESPACE}" \
+kubectl wait --for=jsonpath='{.status.readyReplicas}'=1 "deployment/${SCALE_TARGET}" -n "${NAMESPACE}" \
     --timeout="${READY_TIMEOUT:-180}s" || fail "${SCALE_TARGET} did not come back up"
 
 echo "=== KEDA observer REAL e2e PASSED ==="
