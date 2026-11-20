@@ -1,0 +1,34 @@
+.demo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    background: #141414;
+    color: #e6e6e6;
+    font: 14px system-ui, sans-serif;
+}
+
+.demo-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.demo-title {
+    color: #ff7a1a;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.demo-btn {
+    padding: 4px 10px;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    background: #222;
+    color: #e6e6e6;
+    font-size: 13px;
+    cursor: pointer;
+}

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="292" viewBox="0 0 880 292" role="img" aria-label="Terminal: install jac, create a web app, and serve it with three commands">
+  <style>
+    .t { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 12.5px; }
+    .fg { fill: #1f2328; }
+    .dim { fill: #57606a; }
+    .acc { fill: #bc4c00; }
+    .ok { fill: #1a7f37; }
+  </style>
+  <rect x="1" y="1" width="878" height="290" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+  <circle cx="24" cy="26" r="7" fill="#ff5f56"/>
+  <circle cx="46" cy="26" r="7" fill="#ffbd2e"/>
+  <circle cx="68" cy="26" r="7" fill="#27c93f"/>
+  <text class="t dim" x="440" y="31" text-anchor="middle">jac · zero to full-stack</text>
+  <line x1="1" y1="48" x2="879" y2="48" stroke="#eaeef2"/>
+
+  <text class="t" x="28" y="84"><tspan class="acc">$ </tspan><tspan class="fg">curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash</tspan></text>
+  <text class="t" x="28" y="110"><tspan class="ok">✓ </tspan><tspan class="dim">jac installed · one self-contained binary (no Python, no Node, no C toolchain)</tspan></text>
+
+  <text class="t" x="28" y="148"><tspan class="acc">$ </tspan><tspan class="fg">jac create myapp --kind web-app &amp;&amp; cd myapp &amp;&amp; jac install</tspan></text>
+
+  <text class="t" x="28" y="186"><tspan class="acc">$ </tspan><tspan class="fg">jac start</tspan></text>
+  <text class="t" x="28" y="212"><tspan class="acc">▸ </tspan><tspan class="dim">REST API + auth + Swagger docs + React frontend · no database, no glue code</tspan></text>
+  <text class="t" x="28" y="238"><tspan class="ok">✓ </tspan><tspan class="fg">serving at </tspan><tspan class="acc">http://localhost:8000</tspan></text>
+</svg>

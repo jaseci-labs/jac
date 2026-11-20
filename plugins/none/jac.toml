@@ -1,0 +1,16 @@
+# The standard `ui` plugin of a node space: no UI library. `has` and effects in a
+# function are errors, and a library's functions, if any, are ordinary imports.
+[project]
+name = "none"
+kind = "plugin"
+
+[plugin]
+fills = "ui"
+interface_ver = 1
+
+[ui]
+model = "none"
+hosts = ["browser", "hermes", "node"]
+
+[check.lint]
+select = []

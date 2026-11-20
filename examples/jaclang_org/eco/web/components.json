@@ -1,0 +1,17 @@
+{
+  "style": "nova",
+  "tailwind": {
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "iconLibrary": "hugeicons",
+  "aliases": {
+    "ui": "../../core/site/ui",
+    "utils": "../../core/utils"
+  },
+  "theme": "orange",
+  "font": "geist",
+  "radius": "default",
+  "menuAccent": "subtle",
+  "menuColor": "default"
+}

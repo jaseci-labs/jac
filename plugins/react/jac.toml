@@ -1,0 +1,35 @@
+# The standard `ui` plugin of a browser space: React, with react-router's routes.
+[project]
+name = "react"
+kind = "plugin"
+
+[plugin]
+fills = "ui"
+interface_ver = 1
+
+[ui]
+model = "rerender"
+hosts = ["browser"]
+owns = ["react", "react-dom", "react-router-dom"]
+bundler = "vite"
+runtime = "runtime.js"
+boot = "@jac/runtime"
+
+[ui.jsx]
+lowercase_tags = true
+
+[ui.state]
+from = "react"
+name = "useState"
+shape = "pair"
+
+[ui.ref]
+from = "react"
+name = "useRef"
+
+[ui.effect]
+from = "react"
+name = "useEffect"
+
+[check.lint]
+select = []

@@ -1,0 +1,35 @@
+# The standard `ui` plugin of a hermes space: React Native.
+[project]
+name = "react_native"
+kind = "plugin"
+
+[plugin]
+fills = "ui"
+interface_ver = 1
+
+[ui]
+model = "rerender"
+hosts = ["hermes"]
+owns = ["react", "react-native"]
+bundler = "expo"
+runtime = "runtime.js"
+
+[ui.jsx]
+lowercase_tags = false
+no_text_in = ["View", "ScrollView", "Pressable"]
+
+[ui.state]
+from = "react"
+name = "useState"
+shape = "pair"
+
+[ui.ref]
+from = "react"
+name = "useRef"
+
+[ui.effect]
+from = "react"
+name = "useEffect"
+
+[check.lint]
+select = []

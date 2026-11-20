@@ -1,0 +1,12 @@
+# The standard `llm` plugin: a model behind Anthropic's Messages API.
+[project]
+name = "anthropic"
+kind = "plugin"
+
+[plugin]
+fills = "llm"
+interface_ver = 1
+class = "anthropic.model.Anthropic"
+
+[check.lint]
+select = []

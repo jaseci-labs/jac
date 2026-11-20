@@ -3,12 +3,17 @@
 # pre-commit locally; the local git hook is `jac precommit --install`
 # (see jac-reference/CONTRIBUTING.md), and jac formatting in CI is enforced by the
 # Contribution Checks workflow's `jac fmt --check` gate.
+#
+# docs/, stdjac/, plugins/ and examples/ at the root are jac's, and are left
+# out: jac's own tests hold their pages to what the compiler prints, so a fix
+# made here would be undone there.
 
 exclude: |
     (?x)(
         ^jac-reference/jac/jaclang/vendor/|
         ^jac-reference/jac/jaclang/compiler/backends/native/llvm/|
         ^jac-reference/jac/jaclang/compiler/backends/native/wasm_rt/vendor/|
+        ^(docs|stdjac|plugins|examples)/|
         ^$
     )
 

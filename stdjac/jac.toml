@@ -1,0 +1,88 @@
+# stdjac: the library of the language's abstractions. What source says of
+# each (`root`, `by llm()`, `:protect`) is here, with the interface a plugin
+# of it conforms to; what carries each out is a plugin a project names in
+# its own jac.toml. `interface_ver` is the interface's version, a
+# number: it goes up when the interface changes so that a plugin written for
+# it would not survive, and a plugin says the one it was written for.
+[project]
+name = "stdjac"
+kind = "library"
+
+# Persistence: where a space's graph is kept.
+[abstractions.store]
+interface_ver = 1
+interface = "stdjac.graph.Store"
+per = "space"
+picked = "start"
+standard = "sqlite"
+
+# Who a caller is, and how one signs in.
+[abstractions.auth]
+interface_ver = 1
+interface = "stdjac.server.Auth"
+per = "project"
+picked = "start"
+standard = "accounts"
+
+# What carries a request between two apps, and answers the ones that come.
+[abstractions.transport]
+interface_ver = 1
+interface = "stdjac.remote.Transport"
+per = "project"
+picked = "start"
+standard = "http"
+
+# What speaks to a language model: what `by llm()` asks.
+[abstractions.llm]
+interface_ver = 1
+interface = "stdjac.llm.Model"
+per = "project"
+picked = "start"
+standard = "anthropic"
+
+# What runs a job apart from what started it.
+[abstractions.jobs]
+interface_ver = 1
+interface = "stdjac.server.Jobs"
+per = "project"
+picked = "start"
+standard = "process_jobs"
+
+# What runs a scheduled function when it is due.
+[abstractions.schedule]
+interface_ver = 1
+interface = "stdjac.server.Scheduler"
+per = "project"
+picked = "start"
+standard = "loop_schedule"
+
+# What counts uses against a limit.
+[abstractions.limits]
+interface_ver = 1
+interface = "stdjac.server.Limits"
+per = "project"
+picked = "start"
+standard = "memory_limits"
+
+# What a JavaScript space's components are written against: its state, its
+# effects, its JSX. Picked as the space is built, the standard one by the
+# space's host.
+[abstractions.ui]
+interface_ver = 1
+per = "space"
+picked = "build"
+
+[abstractions.ui.standard]
+browser = "react"
+hermes = "react_native"
+node = "none"
+
+# What makes a JavaScript space's compiled modules what its host loads. Picked
+# as the space is built: the standard one is the one its `ui` plugin names.
+[abstractions.bundler]
+interface_ver = 1
+per = "space"
+picked = "build"
+
+[check.lint]
+select = []
