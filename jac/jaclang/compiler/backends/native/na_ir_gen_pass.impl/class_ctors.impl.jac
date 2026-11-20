@@ -358,6 +358,10 @@ impl NaIRGenPass._codegen_class_value_call(
             return None;
         }
         if index < 0 {
+            if not self._is_owned(value) and not self._nogc_headerless() {
+                self._emit_take_ref(value, op="class_ctor_kwargs");
+                self._mark_owned(value);
+            }
             mapping = value;
             continue;
         }

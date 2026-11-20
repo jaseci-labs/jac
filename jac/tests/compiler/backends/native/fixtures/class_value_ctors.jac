@@ -129,6 +129,13 @@ def given_y -> int {
     return 2;
 }
 
+glob shift_opts: dict[str, int] = {"x": 3};
+
+def swap_opts -> int {
+    shift_opts = {"x": 50};
+    return 2;
+}
+
 def pick(big: bool) -> type[Shape] {
     return Square if big else Shape;
 }
@@ -168,6 +175,7 @@ with entry {
         Square(**{"size": 4}).area(),
         Shifted(**spread_x(), y=given_y()).x,
         Shifted(**{"x": 1}).y,
+        Shifted(**shift_opts, y=swap_opts()).x,
         calls
     );
 }
