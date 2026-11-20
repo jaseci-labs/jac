@@ -3543,8 +3543,6 @@ graph import {
     testing.test ++> [
         compiler.tests.test_pipeline_products
             | compiler.tests.test_prim_equivalence
-            | compiler.tests.test_prim_equivalence_b
-            | compiler.tests.test_prim_equivalence_c
             | scale.tests.deploy.test_k8s_utils { parametrize },
         runtime.runtime.JacTest.jac_test { JacTestCheck },
     ]
@@ -11282,11 +11280,7 @@ graph import compiler.placement {
 }
 
 graph import compiler.tests {
-    prim_equiv_cases ++> test_prim_equivalence
-        | test_prim_equivalence_b
-        | test_prim_equivalence_c { EQUIV_CASES, _equiv_case }
     xbackend_equiv ++> [
-        prim_equiv_cases | test_shared_types_equivalence { run_with_both },
         test_fixed_width_equivalence {
             call_py_fixture,
             compile_fixture_to_js,
@@ -11322,6 +11316,7 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
+        test_shared_types_equivalence { run_with_both },
         test_socket_equivalence | test_ssl_equivalence | test_urllib_equivalence {
             compile_native,
             get_func,
