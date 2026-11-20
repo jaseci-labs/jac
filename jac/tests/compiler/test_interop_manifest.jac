@@ -266,6 +266,17 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "    def rename(text: str) -> None {\n"
                 "        self.text = text;\n"
                 "    }\n"
+                "    can touched with toucher entry {\n"
+                "        self.text = \"t\";\n"
+                "    }\n"
+                "}\n"
+                "obj Maker {\n"
+                "    def postinit -> None {\n"
+                "        root ++> Note();\n"
+                "    }\n"
+                "}\n"
+                "def put(m: dict[str, str]) -> None {\n"
+                "    m[\"k\"] = \"v\";\n"
                 "}\n"
                 "obj Row {\n"
                 "    has text: str = \"\";\n"
@@ -326,6 +337,38 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "        }\n"
                 "    }\n"
                 "}\n"
+                "walker:pub helper_gets_field {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            put(n.meta);\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub double_alias {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            first = n.meta;\n"
+                "            second = first;\n"
+                "            second[\"k\"] = \"v\";\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub uses_setattr {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            setattr(n, \"text\", \"x\");\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub toucher {\n"
+                "    can start with Root entry {\n"
+                "        visit [-->];\n"
+                "    }\n"
+                "}\n"
+                "def:pub make_obj -> int {\n"
+                "    made = Maker();\n"
+                "    return 1;\n"
+                "}\n"
                 "walker:pub spawn_writer {\n"
                 "    can start with Root entry {\n"
                 "        root spawn set_field_item();\n"
@@ -347,7 +390,12 @@ test "endpoint effects come from the types of what each endpoint changes" {
         ("walker", "append_field"): True,
         ("walker", "alias_field"): True,
         ("walker", "call_node_method"): True,
-        ("walker", "spawn_writer"): True
+        ("walker", "spawn_writer"): True,
+        ("walker", "helper_gets_field"): True,
+        ("walker", "double_alias"): True,
+        ("walker", "uses_setattr"): True,
+        ("walker", "toucher"): True,
+        ("func", "make_obj"): True
     };
     for ((kind, name), writes) in expected.items() {
         effect = effects.get(endpoint_key(mod, kind, name));

@@ -5682,6 +5682,7 @@ graph import compiler {
             | driver.selfhost.SelfHostCache.owns
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish
             | passes.graph_effects.GraphEffectScan._call_writes
+            | passes.graph_effects.endpoint_effects
             | passes.package_boundary_pass.PackageBoundaryPass.run_walk {
             is_compiler_source_path
         },
@@ -7361,17 +7362,30 @@ graph import compiler {
             Ability,
             Archetype,
             Assignment,
+            AstSymbolNode,
             AtomTrailer,
             BinaryExpr,
+            BoolExpr,
             ConnectOp,
             DeleteStmt,
+            DictCompr,
+            DictVal,
             DisconnectOp,
+            EventSignature,
             Expr,
+            FString,
             FuncCall,
             ImplDef,
+            KWPair,
+            ListCompr,
+            ListVal,
+            Literal,
             Module,
+            MultiString,
             Name,
+            SetVal,
             Token,
+            TupleVal,
             UnaryExpr,
             UniNode
         },
@@ -9226,7 +9240,8 @@ graph import compiler {
     ]
     types.stubcat.reader ++> [
         driver.program.JacProgram.load_dependency_module
-            | driver.unit_products.dependency_span_rows {
+            | driver.unit_products.dependency_span_rows
+            | passes.graph_effects.GraphEffectScan._walker_writes {
             CatModule
         },
         native_bindings.is_owning_scope { CatScope },
@@ -9395,7 +9410,15 @@ graph import compiler {
             | passes.ownership_check_pass { ClassType, FunctionType, UnionType },
         native_bindings { ClassType, FunctionType, OverloadedType, TypeBase },
         passes.capability_check_pass._class_bounded_typevar { ClassType, TypeVarType },
-        passes.graph_effects { AnyType, ClassType, TypeBase, UnionType, UnknownType },
+        passes.graph_effects {
+            AnyType,
+            ClassType,
+            ModuleType,
+            TypeBase,
+            TypeVarType,
+            UnionType,
+            UnknownType
+        },
         passes.layout_pass.class_form_enum_member { EnumMemberType },
         passes.layout_pass.native_type_key {
             ClassType,
