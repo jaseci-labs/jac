@@ -96,19 +96,21 @@ permissions:
 
 jobs:
   # This repository's releases are of two kinds: the reference design's, built
-  # here, and the `jac` compiler's, published here by a workflow that lives
-  # elsewhere. The `release` trigger fires for both, and a build started by the
-  # other kind would attach reference-design binaries (and push a Docker image)
-  # under a release that is not the reference design's. So on that trigger the
-  # release is built only when its tag is the version jac-reference/jac.toml
-  # declares at that tag; any other release skips `plan`, and with it every
-  # job below. Calls and dispatches name what they build and always pass.
+  # here and tagged v<version>, and the `jac` compiler's, tagged jac-v<version>
+  # and published here by a workflow that lives elsewhere. The `release`
+  # trigger fires for both, and a build started by the other kind would attach
+  # reference-design binaries (and push a Docker image) under a release that
+  # is not the reference design's. So on that trigger a release is built only
+  # when its tag is v<version> and that version is the one
+  # jac-reference/jac.toml declares at that tag; any other release skips
+  # `plan`, and with it every job below. Calls and dispatches name what they
+  # build and always pass.
   scope:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.scope.outputs.build }}
     steps:
-      - if: github.event_name == 'release'
+      - if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ github.event.release.tag_name }}
@@ -127,6 +129,12 @@ jobs:
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # By its tag first: a jac release is jac-v<version>, never v<version>.
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::Release $TAG is not tagged v<version>, so it is not a reference-design release; nothing to build here."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           VERSION=""
           if [ -f jac-reference/jac.toml ]; then
             VERSION="$(grep -m1 '^version' jac-reference/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
@@ -135,7 +143,7 @@ jobs:
             echo "Release $TAG is reference design $VERSION; building its binaries."
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Release $TAG is not a reference-design release (jac-reference/jac.toml at that tag declares '${VERSION:-nothing}'); nothing to build here."
+            echo "::notice::Release $TAG is not the reference design that jac-reference/jac.toml declares at that tag ('${VERSION:-nothing}'); nothing to build here."
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 

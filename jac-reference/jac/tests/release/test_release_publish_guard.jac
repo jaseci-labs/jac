@@ -1,13 +1,12 @@
 """Tests for scripts/release_publish_guard.sh, the release pipeline's publish gate.
 
-The gate decides whether a finished draft release becomes one install.sh
+The gate decides whether a finished draft release becomes the one install.sh
 hands users. It is handed the platform list build-binaries.yml's `plan` job
 emits, which is the single source of truth for what a release must contain, and
 it has to tell three cases apart: every required binary attached is a publish, a
 required binary missing is a refusal that leaves the draft alone, and a platform
 that is not on the required list is simply absent from the release rather than a
-reason to withhold it. A published release is never marked GitHub's "latest":
-that pointer belongs to the `jac` compiler's releases in the same repository.
+reason to withhold it.
 
 `gh` is stubbed on PATH, so these exercise the real command lines the guard runs
 and record what it asked GitHub to do.
@@ -48,6 +47,10 @@ glob FAKE_GH: str = '#!/usr/bin/env bash\n'
          + '                exit 1\n'
          + '                ;;\n'
          + '        esac\n'
+         + '        ;;\n'
+         + '    api)\n'
+         + '        [ -s "$GH_LATEST" ] || exit 1\n'
+         + '        cat "$GH_LATEST"\n'
          + '        ;;\n'
          + '    *)\n'
          + '        echo "fake gh: unexpected command $1" >&2\n'
@@ -91,7 +94,9 @@ test "every automatic platform's binary and its checksum are required" {
 }
 
 """A stub `gh` on PATH plus the files that drive what it answers."""
-def scaffold(assets: list[str], is_draft: str = "true") -> dict[(str, str)] {
+def scaffold(
+    assets: list[str], is_draft: str = "true", latest: str = ""
+) -> dict[(str, str)] {
     base = tempfile.mkdtemp(prefix="jac-release-publish-guard-");
     bindir = os.path.join(base, "bin");
     os.makedirs(bindir);
@@ -103,10 +108,12 @@ def scaffold(assets: list[str], is_draft: str = "true") -> dict[(str, str)] {
         "bin": bindir,
         "log": os.path.join(base, "gh.log"),
         "assets": os.path.join(base, "assets.txt"),
-        "isdraft": os.path.join(base, "isdraft.txt")
+        "isdraft": os.path.join(base, "isdraft.txt"),
+        "latest": os.path.join(base, "latest.txt")
     };
     Path(fx["assets"]).write_text("".join([f"{a}\n" for a in assets]));
     Path(fx["isdraft"]).write_text(is_draft + "\n");
+    Path(fx["latest"]).write_text(f"{latest}\n" if latest else "");
     Path(fx["log"]).write_text("");
     return fx;
 }
@@ -130,6 +137,7 @@ def run_guard(
     env["GH_LOG"] = fx["log"];
     env["GH_ASSETS"] = fx["assets"];
     env["GH_ISDRAFT"] = fx["isdraft"];
+    env["GH_LATEST"] = fx["latest"];
     env["GH_REPO"] = "jaseci-labs/jac";
     env["GH_VIEW_FAILS"] = "1" if api_fails else "";
     env["RELEASE_ASSET_TIMEOUT"] = "1";
@@ -153,7 +161,7 @@ def publish_call(fx: dict[(str, str)]) -> str {
     return "";
 }
 
-test "every required asset attached: the draft is published, and not as latest" {
+test "every required asset attached: the draft is published as latest" {
     fx = scaffold(assets_for(ALL_PLATFORMS));
     try {
         res = run_guard(fx, ALL_PLATFORMS);
@@ -162,9 +170,8 @@ test "every required asset attached: the draft is published, and not as latest" 
         call = publish_call(fx);
         assert (VTAG in call) , "the guard must publish the release tag: " + call;
         assert ("--draft=false" in call) , "the draft must be revealed: " + call;
-        assert ("--latest=false" in call) , "a reference-design release must never take the latest pointer: "
+        assert ("--latest=false" not in call) , "a newest release must take the latest pointer: "
             + call;
-        assert ("releases/latest" not in Path(fx["log"]).read_text()) , "the guard must not ask GitHub which release is latest";
     } finally {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }
@@ -244,6 +251,35 @@ test "no required platforms given: refuse rather than publish an unchecked relea
     }
 }
 
+test "a backport release publishes without moving the latest pointer" {
+    fx = scaffold(assets_for(ALL_PLATFORMS), latest="v0.38.0");
+    try {
+        res = run_guard(fx, ALL_PLATFORMS);
+        out = res.stdout + res.stderr;
+        assert res.returncode == 0 , "a backport must still publish: " + out;
+        call = publish_call(fx);
+        assert ("--latest=false" in call) , "a newer release must keep the latest pointer: "
+            + call;
+    } finally {
+        shutil.rmtree(fx["base"], ignore_errors=True);
+    }
+}
+
+test "a jac release marked latest by mistake does not keep the pointer" {
+    fx = scaffold(assets_for(ALL_PLATFORMS), latest="jac-v0.70.0");
+    try {
+        res = run_guard(fx, ALL_PLATFORMS);
+        out = res.stdout + res.stderr;
+        assert res.returncode == 0 , out;
+        call = publish_call(fx);
+        assert ("--draft=false" in call) , call;
+        assert ("--latest=false" not in call) , "only a v<version> release can outrank a reference-design release: "
+            + call;
+    } finally {
+        shutil.rmtree(fx["base"], ignore_errors=True);
+    }
+}
+
 test "an already-published release is left exactly as it is" {
     fx = scaffold(assets_for(ALL_PLATFORMS), is_draft="false");
     try {
@@ -251,7 +287,7 @@ test "an already-published release is left exactly as it is" {
         out = res.stdout + res.stderr;
         assert res.returncode == 0 , "a re-run over a published release must converge: "
             + out;
-        assert publish_call(fx) == "" , "a published release must not be edited again";
+        assert publish_call(fx) == "" , "a published release's latest pointer must not be re-flipped";
     } finally {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }

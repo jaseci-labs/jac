@@ -4,9 +4,10 @@ name: Installer smoke
 # default and the reference design with --reference. Two jobs test it:
 #   - offline: scripts/test_install.sh, which serves fixture releases of both
 #     kinds from a local server and needs no network. Everything the script
-#     decides is tested there: which release it takes (never /releases/latest),
-#     switching between the kinds, --version, --uninstall, checksums, and a
-#     platform one kind has no build for.
+#     decides is tested there: which release it takes (by tag and assets:
+#     jac-v<version> for jac, v<version> for the reference design, never
+#     /releases/latest), switching between the kinds, --version, --uninstall,
+#     checksums, and a platform one kind has no build for.
 #   - installer: the documented `curl ... | bash -s -- --reference` path,
 #     exercised against the LIVE releases with the binary they ship.
 # Two callers share this one copy:
@@ -89,52 +90,33 @@ jobs:
         if: inputs.shellcheck && runner.os == 'Linux'
         run: shellcheck scripts/install.sh
 
-      # The newest reference-design release must hold this platform's binary.
-      # The installer itself would step back to an older release that has one,
-      # so a release that shipped without the asset is caught here: that is a
-      # release regression -- fail loudly instead of skipping. Unless the
+      # A missing asset on the latest release is a release regression that
+      # breaks `curl ... | bash -s -- --reference` -- fail loudly instead of skipping. Unless the
       # release itself marks the platform optional: then it is the declared
       # state, not a regression, and the lane says so and stands down.
       #
-      # "Newest" is read from the published releases' reference-design
-      # binaries, whose names carry the version (older releases' tags do not).
-      # GitHub's "latest" pointer is not asked: the `jac` compiler's releases
-      # share this repository, and the pointer is theirs.
-      - name: Require a native binary asset on the newest reference-design release
+      # The latest release is a reference design's: the `jac` compiler's
+      # releases in this repository (tags jac-v<version>) are published
+      # without that mark.
+      - name: Require a native binary asset on the latest release
         id: asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPTIONAL: ${{ matrix.optional || false }}
-          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          # "<version> <tag>" of the newest. Sorted by jq, numerically by
-          # component, so that this reads the same on Linux and macOS.
-          FOUND="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq '[.[] | select(.draft == false and .prerelease == false)
-                   | .tag_name as $tag | .assets[].name
-                   | capture("^jac-(?<v>[0-9][^/]*)-(linux|macos)-(x86_64|aarch64)$")
-                   | {v: .v, tag: $tag}]
-                  | unique | sort_by(.v | split(".") | map(tonumber? // 0)) | last
-                  | if . == null then empty else "\(.v) \(.tag)" end')"
-          if [ -z "$FOUND" ]; then
-            echo "::error::No published release carries a reference-design binary."
-            exit 1
-          fi
-          read -r NEWEST TAG <<<"$FOUND"
-          echo "Newest reference-design release: ${NEWEST} (${TAG})"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-               --json assets --jq '.assets[].name' \
-               | grep -qx "jac-${NEWEST}-${PLATFORM}"; then
+          if gh release view --repo "$GITHUB_REPOSITORY" \
+               --json assets --jq '.assets[].name' 2>/dev/null \
+               | grep -q "jac-.*-${{ matrix.platform }}$"; then
             echo "present=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "present=false" >> "$GITHUB_OUTPUT"
           if [ "$OPTIONAL" = "true" ]; then
-            echo "::warning::Release ${TAG} has no jac-${NEWEST}-${PLATFORM} asset. The release marks this platform optional (build-binaries.yml LEGS), so 'curl ... | bash -s -- --reference' installs an older release for it until that leg is green again; install steps skipped."
+            echo "::warning::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset. The release marks this platform optional (build-binaries.yml LEGS), so 'curl ... | bash -s -- --reference' has no new binary for it until that leg is green again; install steps skipped."
             exit 0
           fi
-          echo "::error::Release ${TAG} has no jac-${NEWEST}-${PLATFORM} asset; 'curl ... | bash -s -- --reference' installs an older release on this platform."
+          echo "::error::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset; 'curl ... | bash -s -- --reference' has no new binary for this platform."
           exit 1
 
       - name: "install: download + run the binary"
