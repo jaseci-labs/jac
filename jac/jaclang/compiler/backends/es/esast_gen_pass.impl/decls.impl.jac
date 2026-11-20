@@ -91,7 +91,8 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
         if is_pub or route_role {
             self.client_manifest.exports.append(name);
             self.client_manifest.params[name] = [
-                p.name.sym_name
+                ("*" if p.unpack is not None and p.unpack.name == Tok.STAR_MUL else "")
+                    + p.name.sym_name
                 for p in here.signature.params
                 if p is not ref_param
             ]

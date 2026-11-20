@@ -977,6 +977,17 @@ impl EsastGenPass._try_lower_server_rpc_call(
             );
         }
     }
+    if self._stream_item_type(inline_ret_type) is not None {
+        self._inject_runtime_import('__jacCallStream', nd);
+        return self._stream_call(
+            ability_node.sym_name,
+            args_obj,
+            rpc_options,
+            inline_ret_type,
+            inline_boundary,
+            nd
+        );
+    }
     result_expr: es.Expression = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacCallFunction'), jac_node=nd),
@@ -1012,6 +1023,81 @@ impl EsastGenPass._warn_rpc_callable_params(
             );
         }
     }
+}
+
+impl EsastGenPass._stream_item_type(ret_type: str) -> (str | None) {
+    label = ret_type.strip();
+    for head in ("Iterator[", "Generator[", "AsyncIterator[", "AsyncGenerator[") {
+        if label.startswith(head) and label.endswith("]") {
+            inner = label[len(head):-1];
+            depth = 0;
+            for (i, ch) in enumerate(inner) {
+                if ch == "[" {
+                    depth += 1;
+                } elif ch == "]" {
+                    depth -= 1;
+                } elif ch == "," and depth == 0 {
+                    return inner[:i].strip();
+                }
+            }
+            return inner.strip();
+        }
+    }
+    return None;
+}
+
+impl EsastGenPass._stream_call(
+    func_name: str,
+    args_obj: es.Expression,
+    opts: es.Expression,
+    ret_type: str,
+    boundary_types: dict[str, BoundaryTypeInfo],
+    jac_node: uni.UniNode
+) -> es.Expression {
+    arguments: list[es.Expression] = [
+        self.sync_loc(es.Literal(value=func_name), jac_node=jac_node),
+        args_obj,
+        opts
+    ];
+    item = self._stream_item_type(ret_type) or "";
+    if item in boundary_types and boundary_types[item].kind != "enum" {
+        decoded = self.sync_loc(
+            es.CallExpression(
+                callee=es.MemberExpression(
+                    object=es.Identifier(
+                        name=self._boundary_type_name(boundary_types[item])
+                    ),
+                    property=es.Identifier(name='__from_wire'),
+                    computed=False
+                ),
+                arguments=[
+                    self.sync_loc(es.Identifier(name='__item'), jac_node=jac_node)
+                ]
+            ),
+            jac_node=jac_node
+        );
+        arguments.append(
+            self.sync_loc(
+                es.ArrowFunctionExpression(
+                    params=[
+                        self.sync_loc(es.Identifier(name='__item'), jac_node=jac_node)
+                    ],
+                    body=decoded,
+                    expression=True
+                ),
+                jac_node=jac_node
+            )
+        );
+    }
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(
+                es.Identifier(name='__jacCallStream'), jac_node=jac_node
+            ),
+            arguments=arguments
+        ),
+        jac_node=jac_node
+    );
 }
 
 impl EsastGenPass._forwarder_ret_label(ability_node: uni.Ability) -> str {
@@ -1062,24 +1148,40 @@ impl EsastGenPass._build_server_forwarder(
             )
         );
     }
-    call_expr: es.Expression = self.sync_loc(
-        es.CallExpression(
-            callee=self.sync_loc(
-                es.Identifier(name='__jacCallFunction'), jac_node=jac_node
+    streams = self._stream_item_type(ret_type) is not None;
+    call_expr: es.Expression;
+    if streams {
+        call_expr = self._stream_call(
+            func_name,
+            self.sync_loc(es.ObjectExpression(properties=props), jac_node=jac_node),
+            self.sync_loc(es.ObjectExpression(properties=[]), jac_node=jac_node),
+            ret_type,
+            boundary,
+            jac_node
+        );
+        self._inject_runtime_import('__jacCallStream', jac_node);
+    } else {
+        call_expr = self.sync_loc(
+            es.CallExpression(
+                callee=self.sync_loc(
+                    es.Identifier(name='__jacCallFunction'), jac_node=jac_node
+                ),
+                arguments=[
+                    self.sync_loc(es.Literal(value=func_name), jac_node=jac_node),
+                    self.sync_loc(
+                        es.ObjectExpression(properties=props), jac_node=jac_node
+                    )
+                ]
             ),
-            arguments=[
-                self.sync_loc(es.Literal(value=func_name), jac_node=jac_node),
-                self.sync_loc(es.ObjectExpression(properties=props), jac_node=jac_node)
-            ]
-        ),
-        jac_node=jac_node
-    );
-    call_expr = self._wrap_return_with_boundary(
-        call_expr, ret_type, boundary, jac_node, pre_awaited=False
-    );
-    self._inject_runtime_import('__jacCallFunction', jac_node);
+            jac_node=jac_node
+        );
+        call_expr = self._wrap_return_with_boundary(
+            call_expr, ret_type, boundary, jac_node, pre_awaited=False
+        );
+        self._inject_runtime_import('__jacCallFunction', jac_node);
+    }
     ret_label = self._forwarder_ret_label(ability_node);
-    if ret_label {
+    if ret_label and not streams {
         import from jaclang.compiler.frontend.diagnostics { W6009 }
         self.ctx.emit(W6009, node_override=jac_node, name=func_name, ret=ret_label);
     }
@@ -1097,7 +1199,7 @@ impl EsastGenPass._build_server_forwarder(
                 ),
                 jac_node=jac_node
             ),
-            async_=True
+            async_=not streams
         ),
         jac_node=jac_node
     );

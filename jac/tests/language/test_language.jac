@@ -684,6 +684,7 @@ test "concurrency" {
     assert "All are done" in output;
     assert "11" in output;
     assert "13" in output;
+    assert "abab" in output;
 }
 
 test "async ability" {

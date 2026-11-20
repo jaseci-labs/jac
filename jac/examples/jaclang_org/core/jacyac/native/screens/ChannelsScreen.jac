@@ -8,9 +8,9 @@ def ChannelDetail(
     onBack: Callable[[], None],
     onJoin: Callable[[str], None],
     onLeave: Callable[[str], None],
-    onPost: Callable[[str], bool],
+    onPost: Callable[[str], Awaitable[bool]],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], bool],
+    onComment: Callable[[str, str], Awaitable[bool]],
     onDelete: Callable[[str], None],
 ) -> JsxElement;
 
@@ -26,8 +26,8 @@ def:pub ChannelsScreen(
     onLeave: Callable[[str], None],
     onSelect: Callable[[str], None],
     onBack: Callable[[], None],
-    onPost: Callable[[str], bool],
+    onPost: Callable[[str], Awaitable[bool]],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], bool],
+    onComment: Callable[[str, str], Awaitable[bool]],
     onDelete: Callable[[str], None],
 ) -> JsxElement;

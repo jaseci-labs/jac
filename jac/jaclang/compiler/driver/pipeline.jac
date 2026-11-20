@@ -122,7 +122,8 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.passes.jsx_intrinsic_guard_pass',
          'jaclang.compiler.passes.mtir_gen_pass',
          'jaclang.compiler.passes.comptime_resolve_pass',
-         'jaclang.project.mobui_scope'
+         'jaclang.project.mobui_scope',
+         'jaclang.project.spaces'
      ],
      ANALYSIS_LOADS: list[str] = [
          'jaclang.compiler.field_semantics',
@@ -142,6 +143,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.project.tomlio',
          'jaclang.project.mobui_scope',
          'jaclang.project.config',
+         'jaclang.project.spaces',
          'jaclang.compiler.passes.static_analysis_pass',
          'jaclang.compiler.passes.access_check_pass',
          'jaclang.compiler.passes.variant_agreement_pass',

@@ -45,7 +45,7 @@ impl OwnershipCheckPass._flow_reduce_shape(asgn: Assignment, sid: SymId) -> str 
     _fcsym = fc.target.sym;
     if _fcsym is not None and _fcsym.decl is not None {
         _fmod = _fcsym.decl.find_parent_of_type(Module);
-        if _fmod is None or _fmod.name != "builtins" {
+        if _fmod is None or _fmod.name not in ("builtins", "builtin_overrides") {
             return "";
         }
     }
@@ -352,6 +352,9 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
                 continue;
             }
             if nm.find_parent_of_type(OpenStmt) is not None {
+                continue;
+            }
+            if ownership == OwnershipKind.NONE and self._borrow_sym_of(nm) is None {
                 continue;
             }
             if self._borrow_sym_of(nm) is not None {

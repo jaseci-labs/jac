@@ -13,6 +13,6 @@ def:pub ProfileScreen(
     onCancelEdit: Callable[[], None],
     onLogout: Callable[[], None],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], bool],
+    onComment: Callable[[str, str], Awaitable[bool]],
     onDelete: Callable[[str], None],
 ) -> JsxElement;

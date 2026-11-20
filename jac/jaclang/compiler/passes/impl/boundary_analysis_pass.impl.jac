@@ -591,6 +591,9 @@ impl BoundaryAnalysisPass._register_type_import(
     caller_ctx: InteropContext,
     type_name: str = ""
 ) -> bool {
+    if nd.from_loc is not None and nd.from_loc.dot_path_str == "stdjac.remote" {
+        return True;
+    }
     type_name = type_name or item.name.value;
     info = self._collect_boundary_type(type_name, source_mod);
     if info is None or info.kind not in ('obj', 'enum', 'node', 'edge') {

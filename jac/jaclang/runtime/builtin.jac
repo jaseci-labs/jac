@@ -1,6 +1,7 @@
 import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
+import from concurrent.futures { Future as Task }
 import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
@@ -188,6 +189,7 @@ glob __all__ = [
          'PtrView',
          'Pinned',
          'pin',
+         'Task',
          'addressof',
          'VaList',
          '_jac_clib_bind',

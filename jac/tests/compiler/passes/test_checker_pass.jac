@@ -1124,6 +1124,14 @@ Cannot return int, expected bool
              []
          ),
          (
+             "with_block_narrowing",
+             "checker",
+             "checker_with_block_narrowing.jac",
+             0,
+             False,
+             []
+         ),
+         (
              "assignment_narrowing",
              "checker",
              "checker_assignment_narrowing.jac",
@@ -1522,7 +1530,7 @@ Cannot return int, expected bool
              "comprehension_in_ternary_narrowing",
              "checker",
              "checker_comprehension_in_ternary.jac",
-             1,
+             0,
              True,
              []
          ),
@@ -1558,6 +1566,20 @@ with entry {
         _checker_case,
         id_fn=lambda (c: tuple[any, ...]) { c[0]; }
     );
+}
+
+test "with_suppress_does_not_narrow_past_the_block" {
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_with_block_narrowing.jac"), options=None
+    );
+    assert len(program.errors_had) == 0 , [str(e) for e in program.errors_had];
+    lines = sorted(
+        w.loc.first_line
+        for w in program.warnings_had
+        if w.loc and w.code and w.code.code == "W1099"
+    );
+    assert lines == [44] , f"only the read after `with suppress(...)` may be None, got {lines}";
 }
 
 test "return_value_in_ability_warns" {
@@ -2901,9 +2923,10 @@ test "type_narrowing" {
         os.path.join(CHECKER_FIXTURES, "checker_type_narrowing.jac"), options=NO_TC
     );
 
-    # 13 errors: partial union member access now returns resolved types
-    # instead of Unknown, preventing one cascading E1002 error.
-    assert len(program.errors_had) == 13 , "Expected exactly 13 type errors, but got "
+    # 12 errors: partial union member access returns resolved types instead
+    # of Unknown (no cascading E1002), and reading an attribute off a value
+    # that may be None is W1099, checked when it runs, as neojac has it.
+    assert len(program.errors_had) == 12 , "Expected exactly 12 type errors, but got "
         + f"{len(program.errors_had)}:\n"
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -2951,10 +2974,6 @@ test "type_narrowing" {
         """
         to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
                           ^^
-        """,
-        """
-        return x.bark();  # <-- Error: x is still Dog | None here
-               ^^^^
         """,
         # The E1002 "Cannot return <Unknown>" for x.bark() is eliminated
         # because partial union member access now returns the resolved type
@@ -3915,13 +3934,23 @@ test "root_cause_7_nullable_attr_access" {
         for e in program.errors_had
         if e.loc and 316 <= e.loc.first_line <= 350
     ];
-    # 4 errors: 4 E1099 (attr missing from NoneType). Previously 8 because
-    # each E1099 returned Unknown, cascading to E1002 "return Unknown". Now
-    # partial union member access returns the resolved type, eliminating cascades.
-    assert len(rc7_errors) == 4 , f"Expected 4 nullable-access errors, got {len(
-        rc7_errors
-    )}:\n"
+    # A read off a value that may be None is checked when it runs: W1099, one
+    # per unguarded read, and no error (the read's type is the member's, so
+    # nothing cascades to E1002 either).
+    rc7_warnings = [
+        w
+        for w in program.warnings_had
+        if w.loc
+            and 316 <= w.loc.first_line <= 350
+            and w.code is not None
+            and w.code.code == "W1099"
+    ];
+    assert not rc7_errors , "nullable access is not an error:\n"
         + "\n---\n".join(e.pretty_print() for e in rc7_errors);
+    assert len(rc7_warnings) == 4 , f"Expected 4 nullable-access warnings, got {len(
+        rc7_warnings
+    )}:\n"
+        + "\n---\n".join(w.pretty_print() for w in rc7_warnings);
 }
 
 """Root Cause 8: Dynamic / runtime class attributes not recognized.
@@ -4077,9 +4106,10 @@ test "root_causes_total_error_count" {
         for e in program.errors_had
         if e.loc and str(e.loc.mod_path).endswith("checker_narrowing_root_causes.jac")
     ];
-    # Union member calls now preserve Any, removing Root Cause 9's last
-    # spurious error. The remaining negative cases still emit 13 errors.
-    assert len(_fixture_errors) == 13 , f"Expected 13 fixture errors, got {len(
+    # Union member calls preserve Any (Root Cause 9), and the four unguarded
+    # reads off a value that may be None are W1099 now (Root Cause 7), so the
+    # remaining negative cases emit 9 errors.
+    assert len(_fixture_errors) == 9 , f"Expected 9 fixture errors, got {len(
         _fixture_errors
     )}:\n"
         + "\n---\n".join(e.pretty_print() for e in _fixture_errors);

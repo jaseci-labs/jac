@@ -1284,3 +1284,42 @@ impl _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
         ]
     );
 }
+
+impl UnparsePass.exit_graph_spaces with uni.GraphSpaces exit {
+    head = "graph spaces";
+    if here.profile {
+        head = head + " " + here.profile.gen.jac;
+    }
+    body = " ".join([s.gen.jac for s in here.body]);
+    here.gen.jac = head + " { " + body + " }";
+}
+
+impl UnparsePass.exit_space_decl with uni.SpaceDecl exit {
+    lines: list[str] = [];
+    if here.entry_module {
+        lines.append("entry " + here.entry_module.gen.jac + ";");
+    }
+    if here.patterns {
+        lines.append(" | ".join([p.gen.jac for p in here.patterns]) + ";");
+    }
+    here.gen.jac = (
+        "space "
+        + here.name.gen.jac
+        + ": "
+        + here.host.gen.jac
+        + " { "
+        + " ".join(lines)
+        + " }"
+    );
+}
+
+impl UnparsePass.exit_app_decl with uni.AppDecl exit {
+    lines: list[str] = [];
+    if here.runs {
+        lines.append("run " + ", ".join([r.gen.jac for r in here.runs]) + ";");
+    }
+    if here.serves {
+        lines.append("serve " + ", ".join([r.gen.jac for r in here.serves]) + ";");
+    }
+    here.gen.jac = "app " + here.name.gen.jac + " { " + " ".join(lines) + " }";
+}

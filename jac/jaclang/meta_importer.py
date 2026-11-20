@@ -209,6 +209,19 @@ sys.modules["jaclang.project.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
+class _AliasLoader:
+    """Binds an import name to a module that already exists under another."""
+
+    def __init__(self, module: ModuleType) -> None:
+        self._module = module
+
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType:
+        return self._module
+
+    def exec_module(self, module: ModuleType) -> None:
+        return None
+
+
 class JacMetaImporter(MetaPathFinder, Loader):
     """Meta path importer to load .jac modules via Python's import system."""
 
@@ -250,6 +263,10 @@ class JacMetaImporter(MetaPathFinder, Loader):
         sealed_spec = self._sealed_spec(fullname)
         if sealed_spec is not None:
             return sealed_spec
+
+        stdjac_spec = self._stdjac_spec(fullname)
+        if stdjac_spec is not None:
+            return stdjac_spec
 
         if path is None:
             # Top-level import
@@ -308,6 +325,28 @@ class JacMetaImporter(MetaPathFinder, Loader):
                 )
 
         return None
+
+    def _stdjac_spec(self, fullname: str) -> importlib.machinery.ModuleSpec | None:
+        """`stdjac` and `stdjac.<module>`: neojac's app runtime library, which
+        ships as jaclang/stdjac. A program imports it by the short name, as
+        the compiler resolves it; the loader binds that name to the one
+        module `jaclang.stdjac...` already is, so both names share classes."""
+        if fullname != "stdjac" and not fullname.startswith("stdjac."):
+            return None
+        try:
+            module = importlib.import_module("jaclang." + fullname)
+        except ImportError:
+            return None
+        is_pkg = hasattr(module, "__path__")
+        spec = importlib.machinery.ModuleSpec(
+            fullname,
+            _AliasLoader(module),
+            origin=getattr(module, "__file__", None),
+            is_package=is_pkg,
+        )
+        if is_pkg:
+            spec.submodule_search_locations = list(module.__path__)
+        return spec
 
     def _sealed_spec(self, fullname: str) -> importlib.machinery.ModuleSpec | None:
         found = _sealed.find_module(fullname)

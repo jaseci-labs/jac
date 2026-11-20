@@ -6,7 +6,6 @@ site. This is the canonical pattern for React/JSX event handlers — a handler
 written `def click() { ... }` should satisfy `Callable[[MouseEvent], None]`.
 """
 
-
 class MouseEvent {
     button: int = 0;
 }
@@ -15,6 +14,15 @@ class MouseEvent {
 def no_args() -> None {}
 def one_int(x: int) -> None {}
 def two_ints(x: int, y: int) -> None {}
+
+
+async def fetch_it {}
+async def fetch_one(x: int) -> int {
+    return x;
+}
+async def source() -> AsyncIterator[int] {
+    yield 1;
+}
 
 
 def takes_mouse_handler(cb: Callable[[MouseEvent], None]) -> None {
@@ -26,7 +34,6 @@ class Widget {
     label: str = "";
 
     def click {}
-
     def click_one(x: int) {}
 }
 
@@ -44,7 +51,7 @@ with entry {
     f3: Callable[[int, int], None] = one_int;  # Ok
 
     # Zero-arg lambda -> Callable expecting an event
-    f4: Callable[[MouseEvent], None] = lambda { };  # Ok
+    f4: Callable[[MouseEvent], None] = lambda {};  # Ok
 
     # Pass shorter callable through a higher-order call site
     takes_mouse_handler(no_args);  # Ok
@@ -56,6 +63,12 @@ with entry {
 
     # Bound one-arg method -> two-arg Callable.
     f6: Callable[[int, int], None] = w.click_one;  # Ok
+
+    # An async function is a callable giving a coroutine: its declared result
+    # is what the coroutine delivers, so it satisfies a Coroutine-returning type.
+    f7: Callable[[], Coroutine[any, any, None]] = fetch_it;  # Ok
+    f8: Callable[[int], Coroutine[any, any, int]] = fetch_one;  # Ok
+    f9: Callable[[], AsyncIterator[int]] = source;  # Ok: an async generator's call is its iterator, not a coroutine
 
     # --- Invalid: longer source NOT assignable to shorter destination ---
 

@@ -3016,3 +3016,62 @@ impl DocIRGenPass.exit_wire_item with uni.WireItem exit {
     }
     here.gen.doc_ir = self.concat(parts, ast_node=here);
 }
+
+impl DocIRGenPass.exit_graph_spaces with uni.GraphSpaces exit {
+    parts: list[doc.DocType] = [];
+    body_parts: list[doc.DocType] = [];
+    in_body = False;
+    prev_body_item: (uni.UniNode | None) = None;
+    for i in [here->:Kid:->] {
+        if in_body or (here.body and (i == here.body[0])) {
+            if not in_body {
+                parts.pop();
+                body_parts.append(self.hard_line());
+            }
+            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
+            prev_body_item = i;
+            in_body = True;
+            if i == here.body[-1] {
+                in_body = False;
+                self.trim_trailing_line(body_parts);
+                parts.append(self.indent(self.concat(body_parts), ast_node=here));
+                parts.append(self.hard_line());
+            }
+        } elif (
+            isinstance(i, uni.Token) and (i.name == Tok.LBRACE) and not here.body
+        ) {
+            parts.append(i.gen.doc_ir);
+        } else {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    here.gen.doc_ir = self.group(self.concat(parts, ast_node=here), ast_node=here);
+}
+
+impl DocIRGenPass._spaces_stmt_doc_ir(nd: uni.UniNode) -> doc.DocType {
+    parts: list[doc.DocType] = [];
+    for i in [nd->:Kid:->] {
+        if isinstance(i, uni.Token) and (i.name in (Tok.SEMI, Tok.COLON, Tok.COMMA)) {
+            if parts {
+                parts.pop();
+            }
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif isinstance(i, uni.Token) and (i.name == Tok.RBRACE) {
+            parts.append(i.gen.doc_ir);
+        } else {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    return self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+}
+
+impl DocIRGenPass.exit_space_decl with uni.SpaceDecl exit {
+    here.gen.doc_ir = self._spaces_stmt_doc_ir(here);
+}
+
+impl DocIRGenPass.exit_app_decl with uni.AppDecl exit {
+    here.gen.doc_ir = self._spaces_stmt_doc_ir(here);
+}

@@ -4261,3 +4261,38 @@ impl UniNode.element_sub_nodes[T](typ: type[T]) -> list[T] {
     }
     return found;
 }
+
+impl GraphSpaces.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl GraphSpaces.profile_name.getter -> str {
+    p = self.profile;
+    return p.value if p is not None else "";
+}
+
+impl SpaceDecl.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl SpaceDecl.block.getter -> GraphSpaces {
+    if (not self.parent or not isinstance(self.parent, GraphSpaces)) {
+        raise ValueError('GraphSpaces parent not found. Not Possible.');
+    }
+    return self.parent;
+}
+
+impl SpaceDecl.pattern_texts.getter -> list[str] {
+    return [p.dotted + (".*" if p.is_glob else "") for p in self.patterns];
+}
+
+impl AppDecl.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl AppDecl.block.getter -> GraphSpaces {
+    if (not self.parent or not isinstance(self.parent, GraphSpaces)) {
+        raise ValueError('GraphSpaces parent not found. Not Possible.');
+    }
+    return self.parent;
+}

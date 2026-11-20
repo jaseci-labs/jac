@@ -7,6 +7,7 @@ import io;
 import from contextlib { redirect_stderr }
 import from jaclang.project.config { JacConfig }
 import from jaclang.client.npm_provider { app_npm_deps }
+import from jaclang.client.config_loader { _parse_vite_config }
 
 glob _TOML: str = (
          '[project]\nname = "acme"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.admin]\nkind = "web-app"\nentry-point = "admin.main"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n\n[dependencies.npm]\nreact = "^19"\n\n[apps.web.dependencies.npm]\nlucide-react = "^0.5"\nzustand = "^4"\n\n[apps.web.dependencies.npm.dev]\nvitest = "^2"\n\n[apps.admin.dependencies.npm]\nlucide-react = "^0.6"\nrecharts = "^3"\n\n[apps.admin.dependencies.npm.dev]\nvitest = "^2"\n\n[apps.tool.dependencies.npm]\nlucide-react = "^0.9"\n'
@@ -42,4 +43,54 @@ test "agreeing pins and disjoint apps are silent" {
     assert err == "" , err;
     names = [name for (name, _, _, _) in deps];
     assert names.count("lucide-react") == 1 , names;
+}
+
+"""A project written for neojac lists a space's packages as an npm tree,
+`[npm.<tree>]`, whose `dependencies` and `devDependencies` are the tree's
+package.json. The tree a client app's space names with `[spaces.<space>] npm`
+joins that app's packages; a project with one tree gives it to every client app."""
+test "an npm tree's packages are a client app's packages" {
+    toml = (
+        '[project]\nname = "acme"\ndefault-app = "web"\n\n'
+        '[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n'
+        '[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n\n'
+        '[npm.web]\nname = "acme"\nprivate = true\n\n'
+        '[npm.web.dependencies]\nmermaid = "^11"\nreact = "^19.1.0"\n\n'
+        '[npm.web.devDependencies]\n"@tailwindcss/vite" = "^4.1.17"\n'
+    );
+    (deps, err) = _resolve(toml);
+    by_name = {(name, dev): (version, origin) for (name, version, origin, dev) in deps};
+    assert by_name[("mermaid", False)] == ("^11", "npm.web") , by_name;
+    assert by_name[("@tailwindcss/vite", True)] == ("^4.1.17", "npm.web") , by_name;
+    assert err == "" , err;
+}
+
+"""An `eco/<tree>/vite.config.ts` written for neojac is read for what jac's bundler
+does not supply itself: its other imports, whatever form they take, and its plugins
+with their options intact."""
+test "a tree's vite config keeps named imports and nested plugin options" {
+    text = (
+        'import { defineConfig } from "vite";\n'
+        'import react from "@vitejs/plugin-react";\n'
+        'import tailwindcss from "@tailwindcss/vite";\n'
+        'import { visualizer } from "rollup-plugin-visualizer";\n'
+        'import * as path from "node:path";\n\n'
+        'export default defineConfig({\n'
+        '  plugins: [react(), tailwindcss(), visualizer({ include: ["src/**", "lib/**"], gzipSize: true })],\n'
+        '  resolve: { dedupe: ["react", "react-dom"] },\n'
+        '});\n'
+    );
+    got = _parse_vite_config(text);
+    assert got["lib_imports"]
+        == [
+            'import tailwindcss from "@tailwindcss/vite";',
+            'import { visualizer } from "rollup-plugin-visualizer";',
+            'import * as path from "node:path";'
+        ] , got;
+    assert got["plugins"]
+        == [
+            "tailwindcss()",
+            'visualizer({ include: ["src/**", "lib/**"], gzipSize: true })'
+        ] , got;
+    assert got["resolve"] == {"dedupe": ["react", "react-dom"]} , got;
 }

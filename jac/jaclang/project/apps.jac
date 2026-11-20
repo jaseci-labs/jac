@@ -1,10 +1,17 @@
+import importlib;
 import os;
+import re;
 
 glob APP_TABLE_KEYS: tuple[str, ...] = (
          "kind",
          "entry_point",
          "platform",
-         "route"
+         "route",
+         "name",
+         "identifier",
+         "version",
+         "profiles",
+         "local_users"
      ),
      REMOVED_APP_KEYS: dict[str, str] = {
          "path": "apps are identified by entry-point; use entry-point = \"directory.main\"",
@@ -22,6 +29,12 @@ obj AppConfig {
         entry_point: str = "",
         platform: str = "",
         route: str = "",
+        title: str = "",
+        identifier: str = "",
+        version: str = "",
+        profiles: list[str] = [],
+        local_users: bool = False,
+        spaces: list[str] = [],
         overlays: dict[str, any] = {},
         implicit: bool = False;
 
@@ -33,12 +46,23 @@ obj AppConfig {
 
 def validate_app_name(name: str) -> None;
 
+def has_spaces_block(root_dir: str) -> bool;
+def derived_apps(root_dir: str) -> dict[str, any];
+
+def app_npm_tree(raw_config: dict[str, any], app: AppConfig) -> str;
+
+def _desktop_overlay(
+    fields: dict[str, any], overlays: dict[str, any], arch_app: any
+) -> None;
+
 def validate_entry_point(module: str) -> str;
 
 def resolve_entry_path(module: str, project_root: str) -> str;
 
 def parse_apps(
-    project_data: dict[str, any], apps_data: dict[str, any]
+    project_data: dict[str, any],
+    apps_data: dict[str, any],
+    derived: dict[str, DerivedApp] | None = None
 ) -> dict[str, AppConfig];
 
 def implicit_app(config: any) -> AppConfig;

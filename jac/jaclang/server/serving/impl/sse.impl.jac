@@ -1,5 +1,10 @@
-impl _sse_json_default(o: any) -> str {
-    return str(o);
+impl _sse_json_default(o: any) -> any {
+    try {
+        encoded = Serializer.serialize(o, api_mode=True);
+    } except Exception {
+        return str(o);
+    }
+    return encoded if encoded is not o else str(o);
 }
 
 impl format_sse_event(data_text: str, event: (str | None) = None) -> str {

@@ -71,8 +71,40 @@ impl app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
                 _add(name, version, f"app:{app.name}", True);
             }
         }
+        tree = npm_tree_for(config, app);
+        if tree {
+            for (name, version) in npm_tree_deps(config, tree, False).items() {
+                _add(name, version, f"npm.{tree}", False);
+            }
+            for (name, version) in npm_tree_deps(config, tree, True).items() {
+                _add(name, version, f"npm.{tree}", True);
+            }
+        }
     }
     return out;
+}
+
+impl npm_tree_for(config: JacConfig, app: any) -> str {
+    raw = config._raw_data if isinstance(config._raw_data, dict) else {};
+    return app_npm_tree(raw, app);
+}
+
+impl npm_tree_deps(config: JacConfig, tree: str, dev: bool) -> dict[str, str] {
+    raw = config._raw_data if isinstance(config._raw_data, dict) else {};
+    trees = raw.get("npm");
+    table = trees.get(tree) if isinstance(trees, dict) else None;
+    if not isinstance(table, dict) {
+        return {};
+    }
+    section = table.get("devDependencies" if dev else "dependencies");
+    if not isinstance(section, dict) {
+        return {};
+    }
+    return {
+        str(k): str(v)
+        for (k, v) in section.items()
+        if isinstance(v, str)
+    };
 }
 
 impl regenerate_and_install(project_dir: Path) {

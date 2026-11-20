@@ -442,11 +442,15 @@ impl TypeEvaluator._validate_call_type(
             ret = specialized.return_type or UnknownType();
         }
 
-        if self._is_sv_async_call(expr)
-            or (
-                caller_type.is_async
-                and not (caller_type.function_flags & FunctionTypeFlags.Generator)
-            ) {
+        if self._is_sv_async_call(expr) {
+            in_page = self._is_client_bridge_call(expr);
+            if in_page and self._is_sync_iterator_type(ret) {
+                ret = self._make_async_iterator_type(ret);
+            } elif not (in_page and self._is_async_iterator_type(ret)) {
+                ret = self._make_coroutine_type(ret);
+            }
+        } elif caller_type.is_async
+            and not (caller_type.function_flags & FunctionTypeFlags.Generator) {
             ret = self._make_coroutine_type(ret);
         }
         return ret;

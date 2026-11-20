@@ -112,6 +112,9 @@ walker NormalizePass(TreePass) {
     can enter_token with uni.Token entry;
     can enter_string with uni.String entry;
     can enter_graph_import with uni.GraphImport entry;
+    can enter_graph_spaces with uni.GraphSpaces entry;
+    can enter_space_decl with uni.SpaceDecl entry;
+    can enter_app_decl with uni.AppDecl entry;
     can enter_import_wire with uni.ImportWire entry;
     can enter_wire_target with uni.WireTarget entry;
     can enter_import_rule with uni.ImportRule entry;

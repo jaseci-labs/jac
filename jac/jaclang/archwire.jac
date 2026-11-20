@@ -1,7 +1,7 @@
 graph import {
     edge Artifacts: artifacts.* --> cli.* | client.* | compiler.* | data.* | dist.* | project.* | server.* | toolchains.*;
     edge BootstrapManifest: bootstrap_manifest --> compiler.* | dist.* | project.*;
-    edge Byllm: byllm.* --> cli.* | runtime.* | scale.* | studio.*;
+    edge Byllm: byllm.* --> cli.* | runtime.* | scale.* | stdjac.* | studio.*;
     edge Cache: cache.* --> byllm.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | scale.* | server.* | toolchains.*;
     edge Cli: cli.* --> byllm.* | client.* | compiler.* | dist.* | jac0core.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Client: client.* --> cli.* | compiler.* | dist.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
@@ -14,10 +14,11 @@ graph import {
     edge Lsp: lsp.* --> cli.* | studio.*;
     edge MetaImporter: meta_importer --> client.*;
     edge Packages: packages.* --> cli.* | client.* | dist.* | project.*;
-    edge Project: project.* --> artifacts.* | byllm.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | lsp.* | packages.* | runtime.* | scale.* | server.* | studio.* | testing.* | toolchains.*;
-    edge Runtime: runtime.* --> byllm.* | cli.* | client.* | compiler.* | comptime | data.* | dist.* | lib.* | project.* | scale.* | server.* | studio.* | testing.*;
+    edge Project: project.* --> artifacts.* | byllm.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | lsp.* | packages.* | runtime.* | scale.* | server.* | stdjac.* | studio.* | testing.* | toolchains.*;
+    edge Runtime: runtime.* --> byllm.* | cli.* | client.* | compiler.* | comptime | data.* | dist.* | lib.* | project.* | scale.* | server.* | stdjac.* | studio.* | testing.*;
     edge Scale: scale.* --> cli.* | client.* | runtime.* | server.*;
     edge Server: server.* --> cli.* | client.* | compiler.* | data.* | dist.* | runtime.* | scale.* | testing.*;
+    edge Stdjac: stdjac.* --> stdjac.*;
     edge Studio: studio.* --> cli.*;
     edge Testing: testing.* --> cli.* | compiler.* | runtime.* | scale.*;
     edge Toolchains: toolchains.* --> client.* | compiler.* | data.* | dist.* | packages.* | scale.*;
@@ -110,6 +111,12 @@ graph import {
     byllm.config_loader --> runtime.runtime.JacLLM.default_llm
         | studio.native_agent.NativeAgentSession.resolve_llm { get_byllm_config }
     byllm.exceptions --> runtime.runtime.JacLLM.default_llm { ConfigurationError }
+    byllm.lib ++> stdjac.llm {
+        IterationAction as ByllmAction,
+        MTIR,
+        Model,
+        register_llm_call_hook
+    }
     byllm.llm ++> runtime.runtime.JacLLM.by_operator { BaseLLM }
     byllm.llm --> runtime.runtime.JacLLM.default_llm
         | studio.native_agent.NativeAgentSession.resolve_llm { Model }
@@ -858,6 +865,7 @@ graph import {
     compiler.driver.pipeline_runner ++> [
         client.compiler.ViteCompiler._compile_wasm_module { wasm_artifact_inputs },
         client.route_scanner.resolve_route_exports { route_exports },
+        client.route_scanner.resolve_route_params { route_params },
         dist.precompile_bytecode._application_sources { compile_application },
         dist.source.client.write_client { wasm_ir },
     ]
@@ -980,6 +988,7 @@ graph import {
         project.compiler_host.ProjectHost.place_wired_imports { place_wired_imports },
         project.compiler_host.ProjectHost.session { wiring_scope },
         project.compiler_host.ProjectHost.wiring_file { arch_file_for, is_arch_file },
+        project.spaces.archwire_apps { wiring_for_path },
         studio.gate {
             WireRec,
             WiringSpec,
@@ -993,6 +1002,7 @@ graph import {
         studio.model { ARCH_FILE_NAME, WiringSpec, wiring_for_path },
     ]
     compiler.driver.wiring as wiring_mod ++> studio.gate;
+    type compiler.driver.wiring ++> project.spaces { SpaceRec }
     compiler.frontend.codeinfo ++> [
         cli.check_report.print_native_coverage { effective_default_codespace },
         cli.commands.execution._count_jac_files
@@ -1342,6 +1352,7 @@ graph import {
             | runtime.builtin._get_archetype_alias.factory.decorator
             | server.endpoints.walkers
             | server.server
+            | server.serving.sse._sse_json_default
             | server.session.Session._expired
             | studio.session { Serializer },
         server.session { frozen_fields },
@@ -1732,6 +1743,7 @@ graph import {
         runtime.source_app.main { kind_has_server },
     ]
     project.apps ++> [
+        client.config_loader | client.npm_provider { app_npm_tree },
         scale.injector.bundle._entry_module_spec { resolve_entry_path },
         scale.injector.bundle.sealed_entry_module { resolve_entry_path },
     ]
@@ -1810,7 +1822,8 @@ graph import {
             | server.endpoints.colocated
             | server.endpoints.pages
             | server.server.JacAPIServer._ensure_client_bundle
-            | server.sv_client._read_cache_enabled { get_config },
+            | server.sv_client._read_cache_enabled
+            | stdjac.plan { get_config },
         cli.commands.analysis._build_dir_of
             | cli.commands.config
             | cli.commands.fix._ensure_workspace
@@ -2297,6 +2310,8 @@ graph import {
         },
         lib.jaclib { GenericEdge, ObjectSpatialFunction as DSFunc, Root },
         server.session { Anchor, EdgeAnchor, NodeAnchor, Root },
+        stdjac.codec { EdgeArchetype, NodeArchetype },
+        stdjac.graph { AccessLevel, Archetype, Root },
     ]
     runtime.build_services ++> [
         client.runtime_source.client_runtime_cl_basename
@@ -2575,6 +2590,7 @@ graph import {
             | scale.memory.context.JScaleExecutionContext.init
             | server.request_scope
             | server.sv_client._local_call
+            | stdjac.graph
             | studio.session
             | testing.cl_test_runner.module_is_client { JacRuntime },
         byllm.visit_routing.route_visit
@@ -2593,6 +2609,7 @@ graph import {
             | server.static_files { JacRuntime as Jac },
         cli.commands.execution._exec_file
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
+            | client.route_scanner.resolve_route_params
             | server.hmr.HotReloader._recompile_client_unified
             | server.server.ModuleIntrospector._resolve_declared { JacRuntime as Jac },
         cli.commands.execution._invoke_entrypoint
@@ -4219,6 +4236,14 @@ graph import client {
         BridgeTimeout as _BridgeTimeout,
         BridgeUnavailable as _BridgeUnavailable,
         ErrorFallback as ___ErrorFallback,
+        JacArrangement as _JacArrangement,
+        JacLocalUsers as _JacLocalUsers,
+        RemoteDecodeError as _RemoteDecodeError,
+        RemoteError as _RemoteError,
+        RemoteFailed as _RemoteFailed,
+        RemoteRejected as _RemoteRejected,
+        RemoteTimeout as _RemoteTimeout,
+        RemoteUnavailable as _RemoteUnavailable,
         __bridgeApiBase as ___bridgeApiBase,
         __bridgeErrorFor as ___bridgeErrorFor,
         __bridgeErrorFromFetch as ___bridgeErrorFromFetch,
@@ -4236,6 +4261,7 @@ graph import client {
         __invalidateEndpoint as ___invalidateEndpoint,
         __isFresh as ___isFresh,
         __jacCallFunction as ___jacCallFunction,
+        __jacCallStream as ___jacCallStream,
         __jacClearCache as ___jacClearCache,
         __jacDesktopBroker as ___jacDesktopBroker,
         __jacInstallErrorHandlers as ___jacInstallErrorHandlers,
@@ -4244,6 +4270,7 @@ graph import client {
         __jacReportError as ___jacReportError,
         __jacSleep as ___jacSleep,
         __jacSpawn as ___jacSpawn,
+        __jacUnsafeHtml as ___jacUnsafeHtml,
         __normalizeCredential as ___normalizeCredential,
         __normalizeIdentity as ___normalizeIdentity,
         __overlaps as ___overlaps,
@@ -4251,7 +4278,10 @@ graph import client {
         __setLocalStorage as ___setLocalStorage,
         __unwrapFormSchema as ___unwrapFormSchema,
         errorOverlay as ___errorOverlay,
+        jacArrangement as _jacArrangement,
         jacIsLoggedIn as _jacIsLoggedIn,
+        jacLeaveLocalUser as _jacLeaveLocalUser,
+        jacLocalUsers as _jacLocalUsers,
         jacLogin as _jacLogin,
         jacLogout as _jacLogout,
         jacSetToken as _jacSetToken,
@@ -4262,6 +4292,8 @@ graph import client {
         jacSsoDisconnect as _jacSsoDisconnect,
         jacSsoFinish as _jacSsoFinish,
         jacSsoLogin as _jacSsoLogin,
+        jacUseArrangement as _jacUseArrangement,
+        jacUseLocalUser as _jacUseLocalUser,
         navigate as _navigate
     }
     client_surface ++> jac_to_js.JacToJSCompiler.add_runtime_imports {
@@ -4353,7 +4385,11 @@ graph import client {
     ]
     plugin_config ++> desktop_plugin_config._load_desktop_template { _load_template }
     route_scanner ++> [
-        jac_client_compiler { RouteScanner, resolve_route_exports },
+        jac_client_compiler {
+            RouteScanner,
+            resolve_route_exports,
+            resolve_route_params
+        },
         jac_client_compiler.JacClientCompiler._check_entry_renders_routes {
             entry_drops_route_children
         },
@@ -6246,6 +6282,7 @@ graph import compiler {
         },
         passes.graph_lowering_pass { E0084, E0085 },
         passes.import_wiring_pass {
+            E0077,
             E1141,
             E1142,
             E1143,
@@ -6253,6 +6290,11 @@ graph import compiler {
             E1146,
             E1147,
             E1148,
+            E1226,
+            E1271,
+            E1272,
+            E1273,
+            E1275,
             E2088,
             E2089,
             E2090,
@@ -6505,6 +6547,7 @@ graph import compiler {
             W1050,
             W1051,
             W1053,
+            W1099,
             W1100,
             W1101,
             W1102,
@@ -6706,7 +6749,7 @@ graph import compiler {
         driver.compiler.JacCompiler._prepare_tool_program
             | driver.wiring.WiringSpec.wire_import { parse_woven },
         driver.wiring.canonical_wiring_source { parse_woven },
-        driver.wiring.parse_records { parse_woven },
+        driver.wiring.parse_arch_records { parse_woven },
         passes.variant_agreement_pass.VariantAgreementPass._parse_sibling
             | tests.test_module_exports { parse },
         placement.placement_solver._native_dep_scan
@@ -7028,10 +7071,12 @@ graph import compiler {
         driver.program.JacProgram.resolve_absorb_imports { find_python_scope_node_of },
         driver.wiring {
             Ability,
+            AppDecl,
             Archetype,
             EmptyToken,
             Enum,
             GraphImport,
+            GraphSpaces,
             ImplDef,
             Import,
             ImportRule,
@@ -7040,6 +7085,7 @@ graph import compiler {
             ModuleItem,
             ModulePath,
             ModulePattern,
+            SpaceDecl,
             String,
             Token,
             UniNode
@@ -7236,6 +7282,7 @@ graph import compiler {
             FuncCall,
             FuncSignature,
             GraphImport,
+            GraphSpaces,
             ImplDef,
             Import,
             KWPair,
@@ -7260,6 +7307,7 @@ graph import compiler {
             Archetype,
             AssertStmt,
             AstElseBodyNode,
+            AtomTrailer,
             AtomUnit,
             AwaitingClause,
             BoolExpr,
@@ -7274,6 +7322,7 @@ graph import compiler {
             Expr,
             FinallyStmt,
             ForeverStmt,
+            FuncCall,
             GenCompr,
             GlobalVars,
             IfElseExpr,
@@ -7390,9 +7439,11 @@ graph import compiler {
         },
         passes.import_wiring_pass {
             Ability,
+            AppDecl,
             AtomTrailer,
             EmptyToken,
             GraphImport,
+            GraphSpaces,
             ImplDef,
             Import,
             ImportRule,
@@ -7403,6 +7454,7 @@ graph import compiler {
             ModuleItem,
             ModulePath,
             Name,
+            SpaceDecl,
             SpecialVarRef,
             String,
             UniNode,
@@ -7768,6 +7820,7 @@ graph import compiler {
             ForeverStmt,
             FormattedValue,
             GraphImport,
+            GraphSpaces,
             HasVar,
             IfStmt,
             ImplDef,
@@ -7883,6 +7936,7 @@ graph import compiler {
             FuncSignature,
             GenCompr,
             GlobalVars,
+            GraphSpaces,
             HasVar,
             IfStmt,
             ImplDef,
@@ -10471,7 +10525,7 @@ graph import compiler.driver {
     ]
     pipeline_runner --> [
         application._prepare_revision { compile_application },
-        application.prepare_route_metadata { route_exports },
+        application.prepare_route_metadata { route_exports, route_params },
     ]
     pipeline_types ++> [
         compiler { AnalysisFact, CompilationProduct },
@@ -10730,6 +10784,7 @@ graph import compiler.frontend {
             ElseBodyRole,
             ElseValueRole,
             EndRole,
+            EntryRole,
             ErrorMsgRole,
             EventRole,
             ExTypeRole,
@@ -10745,6 +10800,7 @@ graph import compiler.frontend {
             FromTargetRole,
             GuardRole,
             HintRole,
+            HostRole,
             ImplOf,
             InsertLocRole,
             ItemsRole,
@@ -10777,7 +10833,9 @@ graph import compiler.frontend {
             RightRole,
             RightsRole,
             Role,
+            RunRole,
             ScopeRole,
+            ServeRole,
             SignatureRole,
             SlicesRole,
             SourcesRole,
@@ -10868,6 +10926,7 @@ graph import compiler.frontend {
         parser.frontend { CommentToken, Expr, Module, Source },
         parser.parser {
             Ability,
+            AppDecl,
             ArchHas,
             Archetype,
             AssertStmt,
@@ -10920,6 +10979,7 @@ graph import compiler.frontend {
             GlobalVars,
             GraphExpr,
             GraphImport,
+            GraphSpaces,
             HasVar,
             IfElseExpr,
             IfStmt,
@@ -10980,6 +11040,7 @@ graph import compiler.frontend {
             SetVal,
             Slice,
             Source,
+            SpaceDecl,
             SpecialVarRef,
             String,
             SubTag,
@@ -11028,6 +11089,7 @@ graph import compiler.frontend {
         },
         roles {
             Ability,
+            AppDecl,
             ArchHas,
             Archetype,
             AssertStmt,
@@ -11096,6 +11158,7 @@ graph import compiler.frontend {
             ProgramModule,
             RaiseStmt,
             Slice,
+            SpaceDecl,
             String,
             SubTag,
             SwitchCase,
@@ -12435,6 +12498,7 @@ graph import project {
     ]
     apps ++> [
         config { AppConfig, implicit_app, parse_apps },
+        config._parse_toml_data | workspace._build_workspace { derived_apps },
         kinds { AppConfig, implicit_app },
         template_loader.scaffold_app { APP_TABLE_KEYS, parse_apps, validate_app_name },
     ]
@@ -12555,6 +12619,7 @@ graph import project {
         tool_paths { get_venv_site_packages },
     ]
     source ++> textio { JACIGNORE_FILENAME, normalize_exclude_patterns }
+    type spaces ++> apps { DerivedApp }
     template_registry ++> template_loader { ProjectTemplate, template_kind_for }
     textio ++> [
         compiler_host.ProjectHost.read_source | template_loader.scaffold_app | tomlio {
@@ -15834,6 +15899,11 @@ graph import server.serving {
         client { parse_sse },
     ]
     ws ++> client | server { WebSocket, compute_accept_key }
+}
+
+graph import stdjac {
+    by ++> llm { ByEvent, ByEventKind, ByUsage }
+    plan ++> llm { setting_of }
 }
 
 graph import studio {

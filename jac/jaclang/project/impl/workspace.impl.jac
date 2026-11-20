@@ -68,10 +68,12 @@ impl _npm_names_of(raw: any) -> set[str] {
 impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
     stamps: list[float] = [];
     for proj_dir in project_root_chain(root_dir) {
-        try {
-            stamps.append(os.path.getmtime(os.path.join(proj_dir, 'jac.toml')));
-        } except OSError {
-            stamps.append(-1.0);
+        for name in ('jac.toml', 'archwire.jac') {
+            try {
+                stamps.append(os.path.getmtime(os.path.join(proj_dir, name)));
+            } except OSError {
+                stamps.append(-1.0);
+            }
         }
     }
     return tuple(stamps);
@@ -99,17 +101,21 @@ impl _build_workspace(
 ) -> WorkspaceSpec {
     project = _table(doc, 'project');
     apps_raw = doc.get('apps', {});
-    explicit = isinstance(apps_raw, dict) and len(apps_raw) > 0;
+    derived: dict[str, any] = derived_apps(root_dir);
+    explicit = (isinstance(apps_raw, dict) and len(apps_raw) > 0) or bool(derived);
     base_pins = _pins_of(_table(doc, 'placement', 'pins'));
     base_npm = _npm_names_of(_table(doc, 'dependencies', 'npm'));
     apps: dict[str, AppSpec] = {};
     if explicit {
         import from jaclang.project.apps { parse_apps }
-        declarations = parse_apps(project, apps_raw);
+        declarations = parse_apps(
+            project, apps_raw if isinstance(apps_raw, dict) else {}, derived
+        );
         entries: dict[str, str] = {};
         for (name, declaration) in declarations.items() {
             entry_abs = _real(declaration.entry_path(root_dir));
-            if entry_abs in entries {
+            shared = name in derived and entries.get(entry_abs, "") in derived;
+            if entry_abs in entries and not shared {
                 raise ValueError(
                     f"Apps '{name}' and '{entries[
                         entry_abs

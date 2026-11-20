@@ -6,7 +6,7 @@ def:pub TweetCard(
     avatars: dict[str, str],
     onViewProfile: Callable[[str], None],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], bool],
+    onComment: Callable[[str, str], Awaitable[bool]],
     onDelete: Callable[[str], None],
     onRepost: Callable[[str, str, str], None],
 ) -> JsxElement;

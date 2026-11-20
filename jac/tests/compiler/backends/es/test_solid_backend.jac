@@ -309,7 +309,10 @@ test "solid file-based-routing entry mounts via solid-js/web + router shim" {
     assert 'Router, Route, AuthGuard, __jacMakeLayoutRoot' in script;
     assert 'Routes,' not in script;
     assert 'from "./_routes.js"' in script;
-    assert '<Route path={r.path} component={r.element} />' in script;
+    assert '<Route path={r.path} component={routeComponent(r)} />' in script;
+    assert 'function JacRouteParams(props)' in script and 'useParams' in script , (
+        "a page's parameters reach it as props on Solid too"
+    );
     # AuthGuard nests the protected routes and renders the matched child
     # (`props.children`) when authenticated.
     assert 'function _AuthGuardRoute(props) { return AuthGuard({ redirect: "/login", children: props.children }); }'

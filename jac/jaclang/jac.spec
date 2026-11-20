@@ -260,6 +260,7 @@ element_stmt ::=
     | ability
     | global_var
     | comptime_element
+    | graph_spaces
     | graph_import
     | impl_def
     | sem_def
@@ -568,3 +569,11 @@ import_wire ::=
 wire_target ::= ("any" | "*" | STRING | wire_module_path ("." | "|")?) wire_payload?
 
 wire_payload ::= "{" (("*" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)* "}"
+
+graph_spaces ::= "graph" NAME (NAME | KWESC_NAME)? "{" (space_decl | app_decl)* "}"
+
+space_decl ::=
+    NAME (NAME | KWESC_NAME) ":" (NAME | KWESC_NAME) "{"
+    ("entry" wire_module_path ";" | module_pattern ("|" module_pattern)* ";")* "}"
+
+app_decl ::= NAME (NAME | KWESC_NAME) "{" (NAME (NAME | KWESC_NAME) ","? ";")* "}"

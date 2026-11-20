@@ -900,6 +900,68 @@ node WireItem(UniNode) {
     def __repr__ -> str;
 }
 
+node GraphSpaces(ElementStmt) {
+    has profile: (Name | None) { getter; }
+    has body: Sequence[SpaceDecl | AppDecl] { getter; }
+
+    def init(
+        *,
+        doc: (String | None) = None,
+        profile: (Name | None),
+        body: Sequence[SpaceDecl | AppDecl],
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has profile_name: str { getter; }
+
+    def __repr__ -> str;
+}
+
+node SpaceDecl(UniNode) {
+    has name: Name { getter; }
+    has host: Name { getter; }
+    has entry_module: (ModulePath | None) { getter; }
+    has patterns: Sequence[ModulePattern] { getter; }
+
+    def init(
+        *,
+        name: Name,
+        host: Name,
+        entry_module: (ModulePath | None),
+        patterns: Sequence[ModulePattern],
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has block: GraphSpaces { getter; }
+    has pattern_texts: list[str] { getter; }
+
+    def __repr__ -> str;
+}
+
+node AppDecl(UniNode) {
+    has name: Name { getter; }
+    has runs: Sequence[Name] { getter; }
+    has serves: Sequence[Name] { getter; }
+
+    def init(
+        *,
+        name: Name,
+        runs: Sequence[Name],
+        serves: Sequence[Name],
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has block: GraphSpaces { getter; }
+
+    def __repr__ -> str;
+}
+
 node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     has name: Name { getter; }
     has arch_type: Token { getter; }
