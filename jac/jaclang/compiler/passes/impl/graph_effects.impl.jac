@@ -100,6 +100,7 @@ impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
 }
 
 impl GraphEffectScan._store_writes(target: Expr) -> bool {
+    import from jaclang.compiler.types.types { ClassType }
     if isinstance(target, (TupleVal, ListVal)) {
         return any(
             self._store_writes(item) for item in target.values if isinstance(item, Expr)
@@ -119,6 +120,7 @@ impl GraphEffectScan._store_writes(target: Expr) -> bool {
 }
 
 impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
+    import from jaclang.compiler.types.types { ClassType }
     target = call.target;
     callee = self._type_of(target);
     if isinstance(callee, ClassType) and callee.is_instantiable_class() {
@@ -178,6 +180,7 @@ impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
 }
 
 impl GraphEffectScan._fresh_local(expr: Expr) -> bool {
+    import from jaclang.compiler.types.types { ClassType }
     if not isinstance(expr, Name) {
         return False;
     }

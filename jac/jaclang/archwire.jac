@@ -9406,7 +9406,6 @@ graph import compiler {
             | passes.ownership_check_pass { ClassType, FunctionType, UnionType },
         native_bindings { ClassType, FunctionType, OverloadedType, TypeBase },
         passes.capability_check_pass._class_bounded_typevar { ClassType, TypeVarType },
-        passes.graph_effects { ClassType, TypeBase },
         passes.layout_pass.class_form_enum_member { EnumMemberType },
         passes.layout_pass.native_type_key {
             ClassType,
@@ -9557,6 +9556,9 @@ graph import compiler {
         c_interop._ambient_c_call_returns { FunctionType, OverloadedType },
         c_interop.c_type_arg { AnyType, ClassType, UnknownType },
         passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_atom_trailer
+            | passes.graph_effects.GraphEffectScan._call_writes
+            | passes.graph_effects.GraphEffectScan._fresh_local
+            | passes.graph_effects.GraphEffectScan._store_writes
             | passes.ownership_check_pass.OwnershipCheckPass._handled_by_enclosing_try {
             ClassType
         },
@@ -9564,6 +9566,7 @@ graph import compiler {
     type types.types ++> [
         backends.native.primitives_native
             | frontend.unitree
+            | passes.graph_effects
             | passes.ownership_check_pass { TypeBase },
         c_interop { ClassType, TypeBase },
         driver.ifacecache { ClassDetailsShared },
