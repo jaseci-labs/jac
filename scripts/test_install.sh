@@ -3,7 +3,8 @@
 #
 # A local server stands in for GitHub: it answers the releases API from a
 # fixture list and serves fixture assets, both kinds of release in one
-# repository as on GitHub. The installer is pointed at it with
+# repository as on GitHub (jac's tagged jac-v<version>, the reference
+# design's v<version>). The installer is pointed at it with
 # JAC_RELEASES_API and JAC_RELEASES_DOWNLOAD, and runs in a HOME of its own
 # for each case. `uname` is stubbed, so the platform is the fixture's and not
 # the machine's. The installed "compilers" are shell scripts that answer
@@ -251,11 +252,14 @@ build_assets() {
     for p in $REF_PLATFORMS; do
         reference_asset v0.40.2 0.40.2 "$p"
         reference_asset v0.34.9 0.34.9 "$p"
-        jac_asset v0.70.0 0.70.0 "$p"
-        jac_asset v0.70.1 0.70.1 "$p"
+        jac_asset jac-v0.70.0 0.70.0 "$p"
+        jac_asset jac-v0.70.1 0.70.1 "$p"
     done
-    jac_asset v0.71.0-rc1 0.71.0-rc1 linux-x86_64
-    jac_asset v0.72.0 0.72.0 linux-x86_64
+    jac_asset jac-v0.71.0-rc1 0.71.0-rc1 linux-x86_64
+    jac_asset jac-v0.72.0 0.72.0 linux-x86_64
+    # One version number under both kinds' tags.
+    reference_asset v1.0.0 1.0.0 linux-x86_64
+    jac_asset jac-v1.0.0 1.0.0 linux-x86_64
 }
 
 # The usual releases. Newest first: a draft and a prerelease of jac, then a
@@ -265,12 +269,12 @@ build_assets() {
 usual_releases() {
     # shellcheck disable=SC2086
     cat > "${FIX}/releases.spec" <<EOF
-v0.72.0||true|false|$(jac_names 0.72.0 linux-x86_64)
-v0.71.0-rc1|2026-03-10T00:00:00Z|false|true|$(jac_names 0.71.0-rc1 linux-x86_64)
+jac-v0.72.0||true|false|$(jac_names 0.72.0 linux-x86_64)
+jac-v0.71.0-rc1|2026-03-10T00:00:00Z|false|true|$(jac_names 0.71.0-rc1 linux-x86_64)
 v0.34.9|2026-03-05T00:00:00Z|false|false|$(ref_names 0.34.9 $REF_PLATFORMS)
 v0.40.2|2026-03-01T00:00:00Z|false|false|$(ref_names 0.40.2 $REF_PLATFORMS)
-v0.70.1|2026-02-20T00:00:00Z|false|false|$(jac_names 0.70.1 $REF_PLATFORMS)
-v0.70.0|2026-02-01T00:00:00Z|false|false|$(jac_names 0.70.0 $REF_PLATFORMS)
+jac-v0.70.1|2026-02-20T00:00:00Z|false|false|$(jac_names 0.70.1 $REF_PLATFORMS)
+jac-v0.70.0|2026-02-01T00:00:00Z|false|false|$(jac_names 0.70.0 $REF_PLATFORMS)
 v0.40.1|2026-01-10T00:00:00Z|false|false|$(ref_names 0.40.1 $REF_PLATFORMS macos-x86_64)
 dev|2025-07-02T00:00:00Z|false|true|jac-dev-linux-x86_64,jac-dev-linux-x86_64.sha256,jac-dev-admin-dist.tar.gz
 EOF
@@ -418,21 +422,30 @@ case_version() {
     check "--version installs a prerelease when it is named" jac_is_installed 0.71.0-rc1
 
     new_home
+    mark_requests
     run --version 0.40.1
     check "--version of a reference-design release is refused without --reference" refused
-    check "the refusal says the release holds no jac archive for the platform" says "Release v0.40.1 holds no jac archive for linux-x86_64"
+    check "--version of jac asks for the tag jac-v<version>" asked "/releases/tags/jac-v0.40.1"
+    check "the refusal says jac has no such release" says "There is no release 0.40.1 of jac (no tag jac-v0.40.1)"
     check "the refusal names the reference design and how to get that release" says "bash -s -- --reference --version 0.40.1"
     check "a refused --version installs nothing" nothing_installed
 
+    mark_requests
     run --reference --version 0.70.0
     check "--reference --version of a jac release is refused" refused
-    check "the refusal says the release holds no reference-design binary" says "Release v0.70.0 holds no reference-design binary for linux-x86_64"
+    check "--version of the reference design asks for the tag v<version>" asked "/releases/tags/v0.70.0"
+    check "the refusal says the reference design has no such release" says "There is no release 0.70.0 of the Jac reference design (no tag v0.70.0)"
     check "the refusal names jac and how to get that release" says "bash -s -- --version 0.70.0"
     check "a refused --reference --version installs nothing" nothing_installed
 
     run --version 9.9.9
     check "a release that does not exist is refused" refused
-    check "the refusal says there is no such release" says "There is no release v9.9.9"
+    check "the refusal says there is no such release" says "There is no release 9.9.9 of jac"
+    check "a release neither kind has names no other kind" silent_on "To install that"
+
+    FAKE_OS=Darwin FAKE_ARCH=aarch64 run --version 0.71.0-rc1
+    check "a jac release without this platform's archive is refused" refused
+    check "the refusal says it holds no archive for the platform" says "Release jac-v0.71.0-rc1 holds no jac archive for macos-aarch64"
 
     FAKE_OS=Darwin FAKE_ARCH=x86_64 run --reference --version 0.40.2
     check "a release without this platform's binary is refused" refused
@@ -505,7 +518,7 @@ case_missing_platform() {
 }
 
 case_checksums() {
-    local archive="${FIX}/assets/v0.70.1/jac-0.70.1-linux-x86_64.tar.gz"
+    local archive="${FIX}/assets/jac-v0.70.1/jac-0.70.1-linux-x86_64.tar.gz"
     local binary="${FIX}/assets/v0.40.2/jac-0.40.2-linux-x86_64"
 
     cp "${archive}.sha256" "${WORK}/saved.sha256"
@@ -561,6 +574,44 @@ case_paging() {
     run --reference
     check "the reference design is found past releases without this platform" reference_is_installed 0.40.2
     check "it says newer releases have no build for the platform" says "The newest release, 0.50.35, has no build for linux-x86_64"
+    usual_releases
+}
+
+case_tags() {
+    # One version number released by both kinds: the tag says which is which.
+    {
+        echo "jac-v1.0.0|2026-05-02T00:00:00Z|false|false|$(jac_names 1.0.0 linux-x86_64)"
+        echo "v1.0.0|2026-05-01T00:00:00Z|false|false|$(ref_names 1.0.0 linux-x86_64)"
+        cat "${FIX}/releases.spec"
+    } > "${FIX}/releases.spec.new"
+    python3 "${WORK}/mkreleases.py" "${FIX}/releases.spec.new" "${FIX}/releases.json"
+    new_home
+    mark_requests
+    run
+    check "with one version under both tags, a bare install is jac" jac_is_installed 1.0.0
+    check "jac is downloaded from its jac-v tag" asked "/download/jac-v1.0.0/jac-1.0.0-linux-x86_64.tar.gz"
+    mark_requests
+    run --reference
+    check "with one version under both tags, --reference is the reference design" reference_is_installed 1.0.0
+    check "the reference design is downloaded from its v tag" asked "/download/v1.0.0/jac-1.0.0-linux-x86_64"
+    run --version 1.0.0
+    check "--version takes jac from the jac-v tag" jac_is_installed 1.0.0
+    run --reference --version 1.0.0
+    check "--reference --version takes the reference design from the v tag" reference_is_installed 1.0.0
+
+    # An asset under the other kind's tag is not that kind's release: an
+    # archive under a v tag, a binary under a jac-v tag, both newer than all.
+    {
+        echo "v3.0.0|2026-06-02T00:00:00Z|false|false|$(jac_names 3.0.0 linux-x86_64)"
+        echo "jac-v2.0.0|2026-06-01T00:00:00Z|false|false|$(ref_names 2.0.0 linux-x86_64)"
+        cat "${FIX}/releases.spec"
+    } > "${FIX}/releases.spec.new"
+    python3 "${WORK}/mkreleases.py" "${FIX}/releases.spec.new" "${FIX}/releases.json"
+    new_home
+    run
+    check "an archive under a v tag is not a jac release" jac_is_installed 0.70.1
+    run --reference
+    check "a binary under a jac-v tag is not a reference-design release" reference_is_installed 0.40.2
     usual_releases
 }
 
@@ -641,6 +692,7 @@ main() {
     case_missing_platform
     case_checksums
     case_paging
+    case_tags
     case_compact_json
     case_other_awks
     case_options

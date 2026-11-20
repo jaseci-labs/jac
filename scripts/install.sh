@@ -6,15 +6,17 @@
 # `jac`:
 #
 #   jac (the default)
-#       The Jac compiler. A release is an archive,
-#       jac-<version>-<platform>.tar.gz, unpacked under ~/.jac/<version>, with
-#       ~/.local/bin/jac linked to its bin/jac. jac finds its runtime, its
-#       standard library and its plugins beside its own executable.
+#       The Jac compiler. A release is tagged jac-v<version> and holds an
+#       archive, jac-<version>-<platform>.tar.gz, unpacked under
+#       ~/.jac/<version>, with ~/.local/bin/jac linked to its bin/jac. jac
+#       finds its runtime, its standard library and its plugins beside its own
+#       executable.
 #
 #   the reference design (--reference)
-#       The Jac language's reference design. A release is one self-contained
-#       binary, jac-<version>-<platform>, installed as ~/.local/bin/jac. It
-#       bundles its own runtime: no Python, pip or uv is needed.
+#       The Jac language's reference design. A release is tagged v<version>
+#       and holds one self-contained binary, jac-<version>-<platform>,
+#       installed as ~/.local/bin/jac. It bundles its own runtime: no Python,
+#       pip or uv is needed.
 #
 # Installing one where the other is installed replaces it.
 #
@@ -55,10 +57,13 @@ BIN_DIR="${JAC_BIN_DIR:-${HOME}/.local/bin}"
 INSTALL_MARKER=".jac-install"
 INSTALL_MARKER_VALUE="installed-by-jaseci-labs-install-script"
 
-# Both kinds publish to one repository, so GitHub's /releases/latest names
-# whichever was published last, and this script never asks for it. It lists
-# the releases instead, this many to a page and at most this many pages, and
-# reads which kind each one is from the assets it holds.
+# Both kinds publish to one repository. GitHub's /releases/latest names a
+# reference-design release (installed reference binaries rely on that), so it
+# is no way to find jac's, and this script never asks for it. It lists the
+# releases instead, this many to a page and at most this many pages, and reads
+# which kind each one is from its tag and the assets it holds: jac-v<version>
+# with an archive is jac's, v<version> with a bare binary the reference
+# design's.
 PER_PAGE=30
 MAX_PAGES=10
 
@@ -296,8 +301,10 @@ api_failed() {
 # (jac-<version>-<platform>.tar.gz) and `ref` that of its reference-design
 # binary (jac-<version>-<platform>). The -any columns are the version of an
 # archive or a binary for any platform. Each is "-" where the release holds
-# none. $2 is how deep a release object sits: 2 in a listing, 1 for one
-# release.
+# none, and where its tag is not that kind's: jac's releases are tagged
+# jac-v<version> and the reference design's v<version>, so an archive under a
+# v tag or a binary under a jac-v tag is neither. $2 is how deep a release
+# object sits: 2 in a listing, 1 for one release.
 #
 # This reads the JSON's structure, not its layout, with sed and awk alone. sed
 # rewrites the two escapes that can hide a quote, so that every quote left
@@ -315,6 +322,8 @@ scan_releases() {
             jv = "-"; jany = "-"; rv = "-"; rany = "-"
         }
         function flush() {
+            if (tag !~ /^jac-v[0-9]/) { jv = "-"; jany = "-" }
+            if (tag !~ /^v[0-9]/) { rv = "-"; rany = "-" }
             if (tag != "")
                 printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", tag, pub, draft, pre, jv, jany, rv, rany
             reset()
@@ -395,8 +404,8 @@ scan_releases() {
 # The highest version, not the latest date: a line that is still maintained
 # publishes after a newer one (0.34.28 came out three days after 0.38.0), and
 # a bare install is not for that line's users. Versions are only ever compared
-# within one kind, which the assets decide, so the two kinds' numbers are free
-# to drift apart or to overlap.
+# within one kind, which the tag and the assets decide, so the two kinds'
+# numbers are free to drift apart or to overlap.
 pick_release() {
     LC_ALL=C awk -F '\t' -v col="$1" -v all="${2:-}" '
         function vcmp(a, b,    x, y, n, m, i, p, q) {
@@ -430,6 +439,11 @@ kind_any_col() {
     if [[ "$1" == "reference" ]]; then echo 8; else echo 6; fi
 }
 
+# The tag of kind $1's release $2.
+kind_tag() {
+    if [[ "$1" == "reference" ]]; then echo "v$2"; else echo "jac-v$2"; fi
+}
+
 # Print column $3 of the line pick_release takes from the lines $1 for column
 # $2 (and $4, "any" to take drafts and prereleases too), or nothing.
 picked() {
@@ -441,25 +455,28 @@ picked() {
 # newest version for this platform and NEWEST_VERSION this kind's newest
 # version for any platform, each empty when there is none.
 resolve_release() {
-    local col anycol othercol body code rows page
+    local col anycol othercol body code rows page tag
     col="$(kind_col "$KIND")"
     anycol="$(kind_any_col "$KIND")"
     othercol="$(kind_col "$(other_kind "$KIND")")"
     body="${tmpdir}/releases.json"
 
     if [[ -n "$VERSION" ]]; then
-        code="$(api_get "${RELEASES_API}/releases/tags/v${VERSION}" "$body")"
+        tag="$(kind_tag "$KIND" "$VERSION")"
+        code="$(api_get "${RELEASES_API}/releases/tags/${tag}" "$body")"
         if [[ "$code" == "404" ]]; then
-            err "There is no release v${VERSION}. See https://github.com/${REPO}/releases"
-            exit 1
+            no_such_release "$tag"
         elif [[ "$code" != "200" ]]; then
             api_failed "$code"
         fi
         rows="$(scan_releases "$body" 1)"
         REL_TAG="$(picked "$rows" "$col" 1 any)"
         REL_VERSION="$(picked "$rows" "$col" "$col" any)"
-        OTHER_VERSION="$(picked "$rows" "$othercol" "$othercol" any)"
         NEWEST_VERSION="$(picked "$rows" "$anycol" "$anycol" any)"
+        if [[ -z "$REL_TAG" ]]; then
+            REL_TAG="$tag"
+            no_release
+        fi
         return 0
     fi
 
@@ -490,26 +507,49 @@ resolve_release() {
     done
 }
 
+# --version named a release this kind does not have (its tag, $1, is not
+# there). Say so, and when the other kind has a release of that version for
+# this platform, name it and how to get it. Then stop.
+no_such_release() {
+    local other othercol body code
+    other="$(other_kind "$KIND")"
+    othercol="$(kind_col "$other")"
+    body="${tmpdir}/other.json"
+    if [[ "$KIND" == "reference" ]]; then
+        err "There is no release ${VERSION} of the Jac reference design (no tag $1)."
+    else
+        err "There is no release ${VERSION} of jac (no tag $1)."
+    fi
+    code="$(api_get "${RELEASES_API}/releases/tags/$(kind_tag "$other" "$VERSION")" "$body")"
+    if [[ "$code" == "200" ]]; then
+        OTHER_VERSION="$(picked "$(scan_releases "$body" 1)" "$othercol" "$othercol" any)"
+    fi
+    if [[ -n "$OTHER_VERSION" ]]; then
+        err "${VERSION} is a release of $(kind_name "$other"). To install that:"
+        err ""
+        err "  $(install_command "$other" "$VERSION")"
+    else
+        err "The releases: https://github.com/${REPO}/releases"
+    fi
+    exit 1
+}
+
 # Nothing to install: say what there is instead, and stop.
 no_release() {
     local other
     other="$(other_kind "$KIND")"
     if [[ -n "$VERSION" ]]; then
         if [[ "$KIND" == "reference" ]]; then
-            err "Release v${VERSION} holds no reference-design binary for ${PLATFORM}."
+            err "Release ${REL_TAG} holds no reference-design binary for ${PLATFORM}."
         else
-            err "Release v${VERSION} holds no jac archive for ${PLATFORM}."
+            err "Release ${REL_TAG} holds no jac archive for ${PLATFORM}."
         fi
-        if [[ -n "$OTHER_VERSION" ]]; then
-            err "It is a release of $(kind_name "$other"). To install that:"
-            err ""
-            err "  $(install_command "$other" "$VERSION")"
-        elif [[ -n "$NEWEST_VERSION" ]]; then
+        if [[ -n "$NEWEST_VERSION" ]]; then
             err "It was not built for this platform. Its assets:"
             err ""
-            err "  https://github.com/${REPO}/releases/tag/v${VERSION}"
+            err "  https://github.com/${REPO}/releases/tag/${REL_TAG}"
         else
-            err "Its assets: https://github.com/${REPO}/releases/tag/v${VERSION}"
+            err "Its assets: https://github.com/${REPO}/releases/tag/${REL_TAG}"
         fi
         exit 1
     fi
@@ -761,7 +801,7 @@ install() {
     tmpdir="$(mktemp -d)"
 
     if [[ -n "$VERSION" ]]; then
-        info "Looking up release v${VERSION}..."
+        info "Looking up release $(kind_tag "$KIND" "$VERSION")..."
     else
         info "Finding the newest release of $(kind_name "$KIND")..."
     fi
