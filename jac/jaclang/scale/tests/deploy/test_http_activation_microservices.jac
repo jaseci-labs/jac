@@ -1425,7 +1425,7 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
     }
 }
 
-test "discover_capabilities caches per (cluster, service-address, client-identity) and only re-queries on refresh=True or invalidate_capabilities(); format_capabilities and preflight agree with the underlying state, and FQDN service addresses resolve to name and namespace" {
+test "discover_capabilities caches per (cluster, namespace, service-address, client-identity) and only re-queries on refresh=True or invalidate_capabilities(); format_capabilities and preflight agree with the underlying state, and FQDN service addresses resolve to name and namespace" {
     custom_api = _custom_api_for();
     keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
     keda.discover_capabilities();
@@ -1436,6 +1436,18 @@ test "discover_capabilities caches per (cluster, service-address, client-identit
     keda.invalidate_capabilities();
     keda.discover_capabilities();
     assert custom_api.list_namespaced_custom_object.call_count == 6 , "invalidate_capabilities must force the next call to requery";
+
+    ns_api = unittest.mock.MagicMock();
+    def denied_in_default(*args: any, **kwargs: any) -> any {
+        if kwargs.get("namespace") == "default" {
+            raise ApiException(status=403);
+        }
+        return {};
+    }
+    ns_api.list_namespaced_custom_object.side_effect = denied_in_default;
+    ns_keda = _keda_for(custom_api=ns_api, core_api=_core_api_for());
+    assert ns_keda.discover_capabilities().errors != [];
+    assert ns_keda.discover_capabilities(namespace="team-a").errors == [] , "a 403 cached for one namespace must not block a check in another";
 
     ready_keda = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
     ready_caps = ready_keda.discover_capabilities();

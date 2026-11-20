@@ -1151,9 +1151,11 @@ impl KEDAAutoscaler._capabilities_cache_key {
 }
 
 impl KEDAAutoscaler.discover_capabilities {
-    cluster_key = self._capabilities_cache_key();
-    if not refresh and cluster_key in self._capabilities_cache {
-        return self._capabilities_cache[cluster_key];
+    cached: dict[str, any] = self._capabilities_cache.setdefault(
+        self._capabilities_cache_key(), {}
+    );
+    if not refresh and namespace in cached {
+        return cached[namespace];
     }
 
     api = self._custom_api or client.CustomObjectsApi();
@@ -1278,7 +1280,7 @@ impl KEDAAutoscaler.discover_capabilities {
         }
     }
 
-    self._capabilities_cache[cluster_key] = caps;
+    cached[namespace] = caps;
     return caps;
 }
 
