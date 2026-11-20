@@ -272,7 +272,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ~/.cache/jac/jir/stubcat
-        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+        key: build-stubcat-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.stubcat }}
 
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'
@@ -352,7 +352,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ~/.cache/jac/jir/stubcat
-        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+        key: build-stubcat-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.stubcat }}
 
     - name: Save LLVMPY shim cache (trusted refs only)
       if: >-

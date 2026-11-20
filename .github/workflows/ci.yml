@@ -381,7 +381,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac/jir/stubcat
-          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+          key: dev-stubcat-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.stubcat }}
 
       # Built here, before any precompile shard: without it every unit's type
       # evaluator parses the typeshed stubs from source, about two thirds of
@@ -398,7 +398,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac/jir/stubcat
-          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+          key: dev-stubcat-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.stubcat }}
 
       - name: Upload the dev kit
         uses: actions/upload-artifact@v4
