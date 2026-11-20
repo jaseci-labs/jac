@@ -1836,7 +1836,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2036",
          Category.SEMANTIC,
          "Duplicate definition of '{name}': the {prior} binds it too.",
-         help="A module-level name is bound once, by one definition or by one import or wire. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
+         help="A module-level name is bound once, by one definition or by one import or wire, and in any scope (a module with its impl files, a function, an impl body, a test) an import binds a name to one thing; repeating the same import is fine. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
      ),
      E2037 = _err(
          "E2037",

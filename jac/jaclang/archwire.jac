@@ -7181,7 +7181,8 @@ graph import compiler {
             UniNode,
             WhileStmt,
             WithStmt,
-            YieldExpr
+            YieldExpr,
+            find_python_scope_node_of
         },
         passes.boundary_analysis_pass {
             Ability,
