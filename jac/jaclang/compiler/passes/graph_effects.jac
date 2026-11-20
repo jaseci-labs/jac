@@ -61,6 +61,7 @@ obj GraphEffectScan {
         modules: list[Module] = [],
         _memo: dict[int, bool] = {},
         _active: set[int] = set(),
+        _building: set[int] = set(),
         _reactions: (list[tuple[Ability, (set[str] | None)]] | None) = None;
 
     def writes(owner: UniNode) -> bool;

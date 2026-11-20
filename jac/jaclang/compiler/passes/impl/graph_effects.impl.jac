@@ -138,8 +138,18 @@ impl GraphEffectScan._walker_writes(spawned: Archetype) -> bool {
         }
         self._reactions = reactions;
     }
+    lineage: set[str] = {spawned.name.sym_name};
+    for base in spawned.base_classes {
+        base_type = self._type_of(base);
+        if not isinstance(base_type, ClassType) {
+            lineage = set();
+            break;
+        }
+        lineage.update(ancestor.shared.class_name for ancestor in base_type.shared.mro);
+    }
     for (ability, names) in reactions {
-        if (names is None or spawned.name.sym_name in names) and self.writes(ability) {
+        if (names is None or not lineage or not lineage.isdisjoint(names))
+            and self.writes(ability) {
             return True;
         }
     }
@@ -246,16 +256,23 @@ impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
     if isinstance(decl, Ability) {
         return self.writes(decl);
     }
+    if id(decl) in self._building {
+        return False;
+    }
+    self._building.add(id(decl));
+    found = False;
     for member in decl._get_impl_resolved_body() {
         if isinstance(member, Ability) {
-            if member.sym_name in ("init", "postinit") and self.writes(member) {
-                return True;
-            }
-        } elif self._scan([member]) {
-            return True;
+            found = member.sym_name in ("init", "postinit") and self.writes(member);
+        } else {
+            found = self._scan([member]);
+        }
+        if found {
+            break;
         }
     }
-    return False;
+    self._building.discard(id(decl));
+    return found;
 }
 
 impl GraphEffectScan._library_call_writes(

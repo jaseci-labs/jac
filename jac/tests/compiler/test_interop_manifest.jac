@@ -269,6 +269,13 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "    can touched with toucher entry {\n"
                 "        self.text = \"t\";\n"
                 "    }\n"
+                "    can based with Base entry {\n"
+                "        self.text = \"b\";\n"
+                "    }\n"
+                "}\n"
+                "walker Base {}\n"
+                "obj Branch {\n"
+                "    has children: list[Branch] = [Branch() for i in range(0)];\n"
                 "}\n"
                 "obj Maker {\n"
                 "    def postinit -> None {\n"
@@ -365,6 +372,15 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "        visit [-->];\n"
                 "    }\n"
                 "}\n"
+                "walker:pub child_walker(Base) {\n"
+                "    can start with Root entry {\n"
+                "        visit [-->];\n"
+                "    }\n"
+                "}\n"
+                "def:pub make_branch -> int {\n"
+                "    tree = Branch();\n"
+                "    return len(tree.children);\n"
+                "}\n"
                 "def:pub make_obj -> int {\n"
                 "    made = Maker();\n"
                 "    return 1;\n"
@@ -395,7 +411,9 @@ test "endpoint effects come from the types of what each endpoint changes" {
         ("walker", "double_alias"): True,
         ("walker", "uses_setattr"): True,
         ("walker", "toucher"): True,
-        ("func", "make_obj"): True
+        ("func", "make_obj"): True,
+        ("walker", "child_walker"): True,
+        ("func", "make_branch"): False
     };
     for ((kind, name), writes) in expected.items() {
         effect = effects.get(endpoint_key(mod, kind, name));
