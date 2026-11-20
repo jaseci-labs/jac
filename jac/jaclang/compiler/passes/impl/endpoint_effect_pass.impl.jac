@@ -382,9 +382,9 @@ impl EndpointEffectPass._declaration_effects(
         }
 
         found = callable_key(symbol);
-        if found.key != "effects"
-            or found.owner is None
-            or not ("/" + found.owner.loc.mod_path.replace("\\", "/")).endswith(
+        target = found.owner if found.key == "effects" else None;
+        if target is None
+            or not target.loc.mod_path.replace("\\", "/").endswith(
                 "/jaclang/lib/effects.jac"
             ) {
             continue;
