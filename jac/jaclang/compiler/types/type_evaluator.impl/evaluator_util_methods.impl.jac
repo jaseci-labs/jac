@@ -268,10 +268,7 @@ impl TypeEvaluator._typeddict_value_union(base_type: ClassType) -> TypeBase {
     if not field_types {
         return UnknownType();
     }
-    if len(field_types) == 1 {
-        return field_types[0];
-    }
-    return UnionType(types=field_types);
+    return self._union_of(field_types);
 }
 
 impl TypeEvaluator._get_typeddict_indexed_type(
@@ -1706,6 +1703,48 @@ impl TypeEvaluator.emit_diag(
     }
 }
 
+impl TypeEvaluator._typevar_magic_call(
+    tv: TypeVarType,
+    method_name: str,
+    arg_nodes: Sequence[Expr | KWPair],
+    site: UniNode,
+    diag: DiagnosticInfo,
+    via: CompileContext | None = None,
+    **diag_args: object
+) -> TypeBase {
+    def miss(type_name: str) {
+        if via is not None {
+            via.emit(diag, node_override=site, type=type_name, **diag_args);
+        } else {
+            self.emit_diag(diag, site, type=type_name, **diag_args);
+        }
+    }
+
+    if tv.constraints {
+        for constraint in tv.constraints {
+            if isinstance(constraint, ClassType)
+                and not self.get_type_of_magic_method_call(
+                    constraint, method_name, arg_nodes, None
+                ) {
+                miss(str(constraint));
+            }
+        }
+        return UnknownType();
+    }
+    if isinstance(tv.bound, ClassType) {
+        if result
+            := self.get_type_of_magic_method_call(
+                tv.bound, method_name, arg_nodes, None
+            ) {
+            return result;
+        }
+        miss(str(tv.bound));
+    } else {
+        miss(tv.name);
+    }
+    return UnknownType();
+}
+
 impl TypeEvaluator._invalidate_expr_type_cache(node_: UniNode) -> None {
     if isinstance(node_, Expr) {
         node_.type = None;
@@ -2482,11 +2521,7 @@ impl TypeEvaluator._infer_lambda_block_return_type(
         }
     }
 
-    if len(seen) == 1 {
-        return seen[0];
-    }
-
-    return UnionType(types=seen);
+    return self._union_of(seen);
 }
 
 impl TypeEvaluator._collect_return_types(

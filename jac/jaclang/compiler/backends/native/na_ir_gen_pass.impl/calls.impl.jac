@@ -1414,12 +1414,16 @@ impl NaIRGenPass._native_module_call_target(
         return (module_name, member_name);
     }
     if isinstance(nd.target, uni.Name) and nd.target.sym is not None {
-        import from jaclang.compiler.frontend.codeinfo { NATIVE_STDLIB_EXTENSIONS }
+        import from jaclang.compiler.frontend.codeinfo {
+            NATIVE_STDLIB_EXTENSIONS,
+            bundled_stdlib_module_of
+        }
         scope = nd.target.sym.parent_tab;
-        if isinstance(scope, uni.Module)
-            and scope.stub_only
-            and scope.name in NATIVE_STDLIB_EXTENSIONS {
-            return (scope.name, nd.target.sym.name);
+        if isinstance(scope, uni.Module) and scope.stub_only {
+            stub_module = bundled_stdlib_module_of(scope.loc.mod_path);
+            if stub_module is not None and stub_module in NATIVE_STDLIB_EXTENSIONS {
+                return (stub_module, nd.target.sym.name);
+            }
         }
     }
     trailer = nd.target;

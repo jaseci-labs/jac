@@ -1,6 +1,7 @@
 """Tests for the built-in scheduler engine."""
 
 import datetime;
+import json;
 import os;
 import socket;
 import threading;
@@ -1106,8 +1107,11 @@ test "each tick reports one outcome naming its task, tick and worker" {
             ("broken_fn", lambda { None; }, broken, "skipped", "claim_failed", "", "")
         ] {
             outcomes: list[RunOutcome] = [];
+            stored: dict[str, str] = {};
             sched = fresh_scheduler();
             sched.claim = claim_fn;
+            sched.record = stored.__setitem__;
+            sched.recall = stored.get;
             sched.namespace = "orders";
             sched.on_run("probe", outcomes.append);
             sched.register(name, target, ScheduleSpec(date=later), False);
@@ -1127,6 +1131,17 @@ test "each tick reports one outcome naming its task, tick and worker" {
             got = outcomes[0];
             assert (got.task, got.tick, got.worker) == (name, tick, worker) , got;
             assert (got.status, got.reason, got.error) == (status, reason, error) , got;
+            listed = sched.schedules();
+            assert [(r["name"], r["kind"], r["date"]) for r in listed]
+                == [(name, "function", later)] , listed;
+            last = listed[0]["last_run"];
+            if status == "skipped" {
+                assert last is None and not stored , (name, last, stored);
+            } else {
+                assert list(stored.keys()) == [f"sched-last:orders:{name}"] , stored;
+                assert (last["tick"], last["worker"], last["status"], last["error"])
+                    == (tick.isoformat(), worker, status, error) , last;
+            }
             if line {
                 assert any(
                     m.startswith(line) and worker in m for m in records.messages
@@ -1138,6 +1153,76 @@ test "each tick reports one outcome naming its task, tick and worker" {
         log.setLevel(level);
         log.disabled = disabled;
     }
+}
+
+
+test "a listing shows the newer of the shared record and this worker's own run, and warns once while the store fails" {
+    state: dict[str, any] = {"down": True, "shared": None};
+    def record(key: str, value: str) {
+        if state["down"] {
+            raise ConnectionError("standby is read only");
+        }
+        state["shared"] = value;
+    }
+    def recall(key: str) -> (str | None) {
+        if state["down"] {
+            raise ConnectionError("database is restarting");
+        }
+        return state["shared"];
+    }
+    def shared(tick: str) -> str {
+        return json.dumps({"worker": "pod-b:2", "tick": tick});
+    }
+    sched = fresh_scheduler();
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    def run {
+        sched._report(
+            RunOutcome(task="mailer", tick=tick, worker="pod-a:1", status="ok")
+        );
+    }
+    sched.namespace = "orders";
+    sched.record = record;
+    sched.recall = recall;
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    (level, disabled) = (log.level, log.disabled);
+    log.setLevel(logging.INFO);
+    log.disabled = False;
+    log.addHandler(records);
+    try {
+        assert sched.last_run_of("mailer") is None;
+        run();
+        run();
+        assert sched.last_run_of("mailer")["worker"] == "pod-a:1";
+        state["down"] = False;
+        for (stored, worker) in [
+            (None, "pod-a:1"),
+            (shared("2000-01-01T00:00:00+00:00"), "pod-a:1"),
+            (shared("9999-01-01T00:00:00+00:00"), "pod-b:2")
+        ] {
+            state["shared"] = stored;
+            shown = sched.last_run_of("mailer");
+            assert shown is not None and shown["worker"] == worker , (stored, shown);
+        }
+        run();
+    } finally {
+        log.removeHandler(records);
+        log.setLevel(level);
+        log.disabled = disabled;
+    }
+    assert json.loads(state["shared"])["worker"] == "pod-a:1" , state;
+    notes = [
+        m.split("'mailer'")[0]
+        for m in records.messages
+        if "last run" in m or "last-run" in m
+    ];
+    assert notes
+        == [
+            "WARNING could not read the last run of ",
+            "WARNING could not record the last run of ",
+            "INFO last-run reads for ",
+            "INFO last-run records for "
+        ] , records.messages;
 }
 
 
@@ -1271,6 +1356,9 @@ test "a served worker starts no runs once draining, and stops after its run in f
         } finally {
             stop();
             released = store.kv_get(lease);
+            recorded = store.kv_get_record(
+                f"sched-last:{schedule_namespace(server.module_name)}:quick"
+            );
             server.scheduler._tasks.clear();
             client.close();
         }
@@ -1278,4 +1366,5 @@ test "a served worker starts no runs once draining, and stops after its run in f
     assert long_run.finished == long_run.started , "the run in flight was abandoned";
     assert holder == server.scheduler._hold_owner() , f"run hold held by {holder}";
     assert released is None , f"run hold left behind by {released}";
+    assert recorded is not None and json.loads(recorded)["status"] == "ok" , recorded;
 }

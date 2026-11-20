@@ -3,8 +3,6 @@ import from pathlib { Path }
 
 import from typing { cast }
 
-import from typing { cast }
-
 obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
@@ -165,7 +163,7 @@ walker TypeEvaluator {
         _modules_in_compile: set[str] postinit,
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
-        _sv_async_syms_cache: dict[int, set[int]] = {},
+        _sv_async_syms_cache: dict[int, set[tuple[int, str]]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _type_guard_probes: set[int] = set(),
         _loop_written_keys_cache: dict[int, set[str]] = {},
@@ -380,6 +378,16 @@ walker TypeEvaluator {
         arg_nodes: (Sequence[Expr | KWPair] | None),
         node_for_error: UniNode | None = None
     ) -> TypeBase | None;
+
+    def _typevar_magic_call(
+        tv: TypeVarType,
+        method_name: str,
+        arg_nodes: Sequence[Expr | KWPair],
+        site: UniNode,
+        diag: DiagnosticInfo,
+        via: CompileContext | None = None,
+        **diag_args: object
+    ) -> TypeBase;
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
     def is_sub_class(
@@ -812,6 +820,8 @@ walker TypeEvaluator {
 
     def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list[TypeBase]) -> TypeBase;
+    def _union_of(types_list: list[TypeBase]) -> TypeBase;
+    def _join_types(types_list: list[TypeBase]) -> TypeBase | None;
     def _if_exit_type(
         target: NarrowingTarget,
         stmt: IfStmt,
