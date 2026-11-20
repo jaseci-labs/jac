@@ -58,9 +58,8 @@ def _selected(selector: str, labels: dict[str, str]) -> bool {
             matched = term[1:] not in labels;
         } elif " in " in term {
             (key, values) = term.split(" in ", 1);
-            matched = labels.get(key.strip()) in [
-                v.strip() for v in values.strip(" ()").split(",")
-            ];
+            matched = labels.get(key.strip())
+                in [v.strip() for v in values.strip(" ()").split(",")];
         } else {
             (key, value) = term.split("=", 1);
             matched = labels.get(key) == value;
@@ -85,7 +84,7 @@ obj FakeAppsV1 {
             items=[
                 item
                 for item in self.items
-                if _selected(selector, getattr(item.metadata, "labels", None) or {})
+                if _selected(selector, item.metadata?.labels or {})
             ]
         );
     }
