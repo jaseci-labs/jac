@@ -14143,7 +14143,7 @@ graph import scale {
     runtime.cli.diagnostics ++> tests.deploy.test_pdb_budget { PlanValidator }
     runtime.cli.plan ++> tests.deploy.test_ops_rbac { Plan }
     runtime.context.auth_ctx ++> [
-        server.extensions.ObservabilityExtension.register {
+        server.extensions.ObservabilityExtension.register | server.websocket_ext {
             reset_current_auth,
             set_current_auth
         },

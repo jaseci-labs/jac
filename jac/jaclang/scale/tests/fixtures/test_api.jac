@@ -124,6 +124,7 @@ walker:pub WalkerStream {
 }
 
 import from typing { Generator }
+import from jaclang.scale.runtime.context.auth_ctx { get_current_auth }
 # Streaming function test
 def:pub FunctionStream(count: int = 3) {
     import time;
@@ -419,7 +420,8 @@ def:pub ws_echo(message: str, client_id: str = "anonymous") -> dict[str, any] {
         "status": "success",
         "echo": message,
         "client_id": client_id,
-        "protocol": "websocket"
+        "protocol": "websocket",
+        "authorization": get_current_auth()
     };
 }
 
@@ -437,7 +439,23 @@ def:pub ws_stream(count: int = 3) {
 """Private WebSocket function (requires JWT auth); no `: pub` modifier."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
 def:protect ws_private_echo(message: str = "") -> dict[str, any] {
-    return {"status": "success", "message": message, "authenticated": True};
+    return {
+        "status": "success",
+        "message": message,
+        "authenticated": True,
+        "authorization": get_current_auth()
+    };
+}
+
+"""Private streaming WebSocket function; each chunk is the caller's bearer."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+def:protect ws_private_stream(count: int = 2) {
+    def stream -> Generator {
+        for _ in range(count) {
+            yield get_current_auth();
+        }
+    }
+    report stream();
 }
 
 # ============================================================================
