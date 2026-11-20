@@ -655,7 +655,7 @@ def _keda_apply_mocks -> tuple[any, any];
 impl _keda_apply_mocks -> tuple[any, any] {
     KEDAAutoscaler._preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.list_namespaced_custom_object.return_value = {};
     mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
     return (mock_api, unittest.mock.MagicMock());
 }
@@ -858,8 +858,29 @@ test "switching the autoscaler engine to keda deletes a competing HPA (a no-op w
     assert keda2.apply(spec) == True , "engine-switch HPA deletion must be a no-op, not a failure, when no HPA exists";
 
     KEDAAutoscaler._preflight_cache.clear();
+    scoped_api = unittest.mock.MagicMock();
+    scoped_api.list_cluster_custom_object.side_effect = ApiException(status=403);
+    scoped_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    keda_scoped = KEDAAutoscaler(_custom_api=scoped_api, _v2_api=mock_v2);
+    assert keda_scoped.apply(spec) == True , "a deployer scoped to its namespace must get its ScaledObject; the KEDA probe must not list cluster-wide";
+    scoped_api.list_namespaced_custom_object.assert_any_call(
+        group="keda.sh",
+        version="v1alpha1",
+        namespace="default",
+        plural="scaledobjects",
+        limit=1
+    );
+    created = [
+        c[1]["plural"]
+        for c in scoped_api.create_namespaced_custom_object.call_args_list
+    ];
+    assert created == ["scaledobjects"] , created;
+
+    KEDAAutoscaler._preflight_cache.clear();
     missing_crd_api = unittest.mock.MagicMock();
-    missing_crd_api.list_cluster_custom_object.side_effect = ApiException(status=404);
+    missing_crd_api.list_namespaced_custom_object.side_effect = ApiException(
+        status=404
+    );
     keda3 = KEDAAutoscaler(_custom_api=missing_crd_api, logger=_as_any(mock_logger));
     assert keda3.apply(spec) == False;
     missing_crd_api.create_namespaced_custom_object.assert_not_called();
@@ -867,8 +888,8 @@ test "switching the autoscaler engine to keda deletes a competing HPA (a no-op w
     warn_msg = mock_logger.warn.call_args[0][0];
     assert "KEDA CRDs not found" in warn_msg;
     assert "keda.sh/docs" in warn_msg;
-    keda3.preflight();
-    assert missing_crd_api.list_cluster_custom_object.call_count == 1 , "the missing-CRD result must be cached, not re-queried";
+    keda3.preflight("default");
+    assert missing_crd_api.list_namespaced_custom_object.call_count == 1 , "the missing-CRD result must be cached, not re-queried";
 }
 
 test "destroy sweeps the ScaledObject and every TriggerAuthentication it owns, tolerating an already-gone resource or an absent TriggerAuthentication CRD; destroy_collection also sweeps competing HPAs and is silent when KEDA itself is not installed" {
@@ -1163,7 +1184,7 @@ test "apply_http_activation returns False and creates nothing when the HTTP Add-
         }
         return {};
     }
-    core_missing_api.list_cluster_custom_object.side_effect = core_missing_side_effect;
+    core_missing_api.list_namespaced_custom_object.side_effect = core_missing_side_effect;
     keda2 = KEDAAutoscaler(
         _custom_api=core_missing_api,
         _core_api=unittest.mock.MagicMock(),
@@ -1311,7 +1332,8 @@ def _keda_for(
 def _custom_api_for(
     core: (int | None) = None,
     http_v1beta1: (int | None) = None,
-    legacy_v1alpha1: (int | None) = None
+    legacy_v1alpha1: (int | None) = None,
+    cluster: (int | None) = None
 ) -> any {
     api = unittest.mock.MagicMock();
     def side_effect(*args: any, **kwargs: any) -> any {
@@ -1328,7 +1350,10 @@ def _custom_api_for(
         }
         return {};
     }
-    api.list_cluster_custom_object.side_effect = side_effect;
+    api.list_namespaced_custom_object.side_effect = side_effect;
+    if cluster is not None {
+        api.list_cluster_custom_object.side_effect = ApiException(status=cluster);
+    }
     return api;
 }
 
@@ -1352,6 +1377,7 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
     # genuinely-absent must each report their own diagnosis -- an operator
     # debugging a broken activation reads this message, not the code.
     scenarios = [
+        ("namespace-scoped-deployer", _custom_api_for(cluster=403), _core_api_for()),
         (
             "core-only",
             _custom_api_for(http_v1beta1=404, legacy_v1alpha1=404),
@@ -1386,7 +1412,11 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
         caps = keda.discover_capabilities();
         msg = f"scenario '{label}' produced: warnings={caps.warnings} errors={caps.errors}";
 
-        if label == "core-only" {
+        if label == "namespace-scoped-deployer" {
+            assert caps.core_available == True , msg;
+            assert caps.http_addon_available == True , msg;
+            assert caps.errors == [] , msg;
+        } elif label == "core-only" {
             assert caps.core_available == True , msg;
             assert caps.http_addon_available == False , msg;
         } elif label == "full-install" {
@@ -1418,7 +1448,7 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
             ) , msg;
             legacy_calls = [
                 c
-                for c in custom_api.list_cluster_custom_object.call_args_list
+                for c in custom_api.list_namespaced_custom_object.call_args_list
                 if c[1].get("plural") == "httpscaledobjects"
             ];
             assert legacy_calls == [] , (
@@ -1439,17 +1469,29 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
     }
 }
 
-test "discover_capabilities caches per (cluster, service-address, client-identity) and only re-queries on refresh=True or invalidate_capabilities(); format_capabilities and preflight agree with the underlying state, and FQDN service addresses resolve to name and namespace" {
+test "discover_capabilities caches per (cluster, namespace, service-address, client-identity) and only re-queries on refresh=True or invalidate_capabilities(); format_capabilities and preflight agree with the underlying state, and FQDN service addresses resolve to name and namespace" {
     custom_api = _custom_api_for();
     keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
     keda.discover_capabilities();
     keda.discover_capabilities();
-    assert custom_api.list_cluster_custom_object.call_count == 2 , "a second call must hit the cache (2 calls = one discovery round: core + http)";
+    assert custom_api.list_namespaced_custom_object.call_count == 2 , "a second call must hit the cache (2 calls = one discovery round: core + http)";
     keda.discover_capabilities(refresh=True);
-    assert custom_api.list_cluster_custom_object.call_count == 4 , "refresh=True must bypass the cache";
+    assert custom_api.list_namespaced_custom_object.call_count == 4 , "refresh=True must bypass the cache";
     keda.invalidate_capabilities();
     keda.discover_capabilities();
-    assert custom_api.list_cluster_custom_object.call_count == 6 , "invalidate_capabilities must force the next call to requery";
+    assert custom_api.list_namespaced_custom_object.call_count == 6 , "invalidate_capabilities must force the next call to requery";
+
+    ns_api = unittest.mock.MagicMock();
+    def denied_in_default(*args: any, **kwargs: any) -> any {
+        if kwargs.get("namespace") == "default" {
+            raise ApiException(status=403);
+        }
+        return {};
+    }
+    ns_api.list_namespaced_custom_object.side_effect = denied_in_default;
+    ns_keda = _keda_for(custom_api=ns_api, core_api=_core_api_for());
+    assert ns_keda.discover_capabilities().errors != [];
+    assert ns_keda.discover_capabilities(namespace="team-a").errors == [] , "a 403 cached for one namespace must not block a check in another";
 
     ready_keda = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
     ready_caps = ready_keda.discover_capabilities();
@@ -1515,15 +1557,21 @@ test "discover_capabilities caches per (cluster, service-address, client-identit
             ("keda-add-ons-http-interceptor-proxy", "keda")
         ] , f"FQDN service addresses must parse as name.namespace; got: {lookups}";
 
+    KEDAAutoscaler._preflight_cache.clear();
     preflight_api = unittest.mock.MagicMock();
-    preflight_api.list_cluster_custom_object.side_effect = ApiException(status=403);
+    preflight_api.list_namespaced_custom_object.side_effect = denied_in_default;
+    preflight_keda = KEDAAutoscaler(_custom_api=preflight_api);
+    assert preflight_keda.preflight("team-a") == [];
     raised = False;
+    warnings: list[str] = [];
     try {
-        KEDAAutoscaler(_custom_api=preflight_api).preflight();
+        warnings = preflight_keda.preflight("default");
     } except ApiException {
         raised = True;
     }
     assert not raised , "preflight must report a 403 as a warning, not an unhandled exception";
+    assert len(warnings) == 1 , f"a pass cached for one namespace must not skip the probe in another; got: {warnings}";
+    assert "'default'" in warnings[0] , "the 403 warning must name the namespace it was denied in";
 }
 
 
