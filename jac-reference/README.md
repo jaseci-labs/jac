@@ -62,7 +62,7 @@ It's time to show and stop telling. See all of those features running in one sin
 Install the self-contained `jac` binary. No Python, pip, Node, or C toolchain required:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 Then scaffold and run the official **jaclang.org website** -- the site is a full technology demonstration and it ships inside the binary, built end to end in Jac (naturally):

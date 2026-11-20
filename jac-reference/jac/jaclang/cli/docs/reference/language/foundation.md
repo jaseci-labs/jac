@@ -88,7 +88,7 @@ obj Person {
 
 ```bash
 # Install the Jac toolchain
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 
 # byLLM, production deployment & scaling, and full-stack web + native-desktop
 # app building ship with the jac binary -- no separate install

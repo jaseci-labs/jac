@@ -116,6 +116,7 @@ jobs:
               - 'jac-reference/release_notes/**'
             installer:
               - 'scripts/install.sh'
+              - 'scripts/test_install.sh'
               # The lane's own definition lives here, so a change to what it
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
@@ -2093,9 +2094,11 @@ jobs:
             /tmp/site-journey-failure.png
           retention-days: 7
 
-  # Body lives in _installer.yml so the nightly lane runs the same test
-  # instead of a second copy of it. The PR lane lints install.sh; the nightly
-  # one does not (it exercises the published installer, not this checkout).
+  # Body lives in _installer.yml so the nightly lane runs the same tests
+  # instead of a second copy of them: the offline test of both compilers'
+  # installs, and the live install of the reference design. The PR lane lints
+  # install.sh; the nightly one does not (it exercises the published
+  # installer, not this checkout).
   installer-test:
     needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.installer == 'true') }}

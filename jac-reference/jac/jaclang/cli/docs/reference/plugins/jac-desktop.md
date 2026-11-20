@@ -26,7 +26,7 @@ renderer is `[desktop] engine`: `"native"` (the default, the OS webview) or
 The desktop target ships with `jaclang` core -- there is nothing extra to install. Just install the `jac` binary:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 Jac provisions the native webview wrapper and its build dependencies automatically.

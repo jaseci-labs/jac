@@ -1,7 +1,15 @@
 name: Installer smoke
 
-# The documented `curl ... | bash` path, exercised against the LIVE latest
-# release. Two callers share this one copy:
+# scripts/install.sh installs either of this repository's compilers: `jac` by
+# default and the reference design with --reference. Two jobs test it:
+#   - offline: scripts/test_install.sh, which serves fixture releases of both
+#     kinds from a local server and needs no network. Everything the script
+#     decides is tested there: which release it takes (never /releases/latest),
+#     switching between the kinds, --version, --uninstall, checksums, and a
+#     platform one kind has no build for.
+#   - installer: the documented `curl ... | bash -s -- --reference` path,
+#     exercised against the LIVE releases with the binary they ship.
+# Two callers share this one copy:
 #   - ci.yml  (installer-test): PR lane, gated on scripts/install.sh changing.
 #   - nightly.yml (installer-live): daily, so a release that ships a missing
 #     or broken asset is caught even when nobody touches the installer.
@@ -29,6 +37,20 @@ permissions:
 
 
 jobs:
+  offline:
+    name: installer (offline, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # GNU and BSD userlands: the script reads the releases API with sed
+        # and awk alone, and promises to run on both.
+        os: [ubuntu-latest, macos-15]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install both compilers from fixture releases (no network)
+        run: bash scripts/test_install.sh
+
   installer:
     # Named explicitly: a matrix key like `optional` would otherwise be
     # appended to the default job name and rename every leg's check.
@@ -42,15 +64,15 @@ jobs:
             platform: linux-x86_64
           - os: macos-15
             platform: macos-aarch64
-          # Mirrors `optional` in build-binaries.yml's LEGS: while the Intel
-          # binary aborts on `jac --version` (#8805) that leg is non-blocking
-          # there, so the latest release legitimately ships without a
+          # Mirrors `manual` in build-binaries.yml's LEGS: while the Intel
+          # binary aborts on `jac --version` (#8805) that leg is off the
+          # release matrix, so the newest release legitimately ships without a
           # macos-x86_64 asset. On this lane an optional leg whose asset is
           # missing reports a warning and skips the install steps (the release
           # said it may ship without one); an optional asset that IS shipped
           # still gets installed and run, and a broken one still shows red
-          # without blocking. Drop both `optional` flags together when the leg
-          # is green again.
+          # without blocking. Drop the `optional` flag when the leg carries a
+          # release again.
           - os: macos-15-intel
             platform: macos-x86_64
             optional: true
@@ -58,38 +80,61 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # This job installs the SHIPPED binary and must run it, not the
-      # checkout's compiler: the repo root's jac.toml would reroute it to the
-      # in-repo source, and the test would stop proving anything about the
-      # artifact users download.
+      # checkout's compiler: jac-reference/jac.toml would reroute a jac started
+      # under it to the in-repo source, and the test would stop proving
+      # anything about the artifact users download.
       - uses: ./.github/actions/seal-checkout
 
       - name: ShellCheck install.sh
         if: inputs.shellcheck && runner.os == 'Linux'
         run: shellcheck scripts/install.sh
 
-      # A missing asset on the latest release is a release regression that
-      # breaks `curl ... | bash` -- fail loudly instead of skipping. Unless the
+      # The newest reference-design release must hold this platform's binary.
+      # The installer itself would step back to an older release that has one,
+      # so a release that shipped without the asset is caught here: that is a
+      # release regression -- fail loudly instead of skipping. Unless the
       # release itself marks the platform optional: then it is the declared
       # state, not a regression, and the lane says so and stands down.
-      - name: Require a native binary asset on the latest release
+      #
+      # "Newest" is read from the published releases' reference-design
+      # binaries, whose names carry the version (older releases' tags do not).
+      # GitHub's "latest" pointer is not asked: the `jac` compiler's releases
+      # share this repository, and the pointer is theirs.
+      - name: Require a native binary asset on the newest reference-design release
         id: asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPTIONAL: ${{ matrix.optional || false }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          if gh release view --repo "$GITHUB_REPOSITORY" \
-               --json assets --jq '.assets[].name' 2>/dev/null \
-               | grep -q "jac-.*-${{ matrix.platform }}$"; then
+          # "<version> <tag>" of the newest. Sorted by jq, numerically by
+          # component, so that this reads the same on Linux and macOS.
+          FOUND="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '[.[] | select(.draft == false and .prerelease == false)
+                   | .tag_name as $tag | .assets[].name
+                   | capture("^jac-(?<v>[0-9][^/]*)-(linux|macos)-(x86_64|aarch64)$")
+                   | {v: .v, tag: $tag}]
+                  | unique | sort_by(.v | split(".") | map(tonumber? // 0)) | last
+                  | if . == null then empty else "\(.v) \(.tag)" end')"
+          if [ -z "$FOUND" ]; then
+            echo "::error::No published release carries a reference-design binary."
+            exit 1
+          fi
+          read -r NEWEST TAG <<<"$FOUND"
+          echo "Newest reference-design release: ${NEWEST} (${TAG})"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+               --json assets --jq '.assets[].name' \
+               | grep -qx "jac-${NEWEST}-${PLATFORM}"; then
             echo "present=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "present=false" >> "$GITHUB_OUTPUT"
           if [ "$OPTIONAL" = "true" ]; then
-            echo "::warning::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset. The release marks this platform optional (build-binaries.yml LEGS), so 'curl ... | bash' has no binary for it until that leg is green again; install steps skipped."
+            echo "::warning::Release ${TAG} has no jac-${NEWEST}-${PLATFORM} asset. The release marks this platform optional (build-binaries.yml LEGS), so 'curl ... | bash -s -- --reference' installs an older release for it until that leg is green again; install steps skipped."
             exit 0
           fi
-          echo "::error::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset; 'curl ... | bash' is broken for this platform."
+          echo "::error::Release ${TAG} has no jac-${NEWEST}-${PLATFORM} asset; 'curl ... | bash -s -- --reference' installs an older release on this platform."
           exit 1
 
       - name: "install: download + run the binary"
@@ -99,7 +144,7 @@ jobs:
           # shared runners (macOS especially) exhaust the unauthenticated
           # per-IP rate limit.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/install.sh
+        run: bash scripts/install.sh --reference
 
       - name: "install: verify jac"
         if: steps.asset.outputs.present == 'true'

@@ -89,7 +89,7 @@ This file declares the data model, categorization function, server endpoints, an
     Install Jac, set your API key, and run:
 
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
     export ANTHROPIC_API_KEY="your-key-here"
     jac run
     ```
@@ -148,7 +148,7 @@ For the *why* and *how* beneath them (codespaces, Object-Spatial Programming, an
 ### Step 1: Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler, the built-in full-stack frontend/desktop framework, and the built-in `scale` subsystem for serving and deployment. byLLM integration is included; scale's optional deps (Kubernetes, Prometheus, OpenTelemetry, ...) are pulled per-project by your `[scale.*]` config plus `jac install`.

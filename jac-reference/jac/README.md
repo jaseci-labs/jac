@@ -36,7 +36,7 @@ This is the main source code repository for the [Jac] programming language. It c
 Jac ships as a single self-contained native binary -- no Python, pip, or uv required. To install it, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 Run `jac` in the terminal to see whether it is installed correctly.

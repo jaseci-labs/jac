@@ -69,7 +69,7 @@ AI, deployment, and the full-stack frameworks. byLLM and Scale are **built into 
 
 ```bash
 # 1. Install the jac binary
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 
 # 2. Scaffold a new project (pick a kind -- see Build Anything)
 jac create myapp --kind web-app

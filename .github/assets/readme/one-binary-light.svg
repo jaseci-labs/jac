@@ -49,5 +49,5 @@
     <text class="acc" x="584" y="340">▸</text><text class="fg" x="602" y="340">Kubernetes deployments</text>
   </g>
 
-  <text class="mono dim" x="440" y="406" font-size="11" text-anchor="middle">curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash</text>
+  <text class="mono dim" x="440" y="406" font-size="11" text-anchor="middle">curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference</text>
 </svg>

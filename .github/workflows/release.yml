@@ -53,12 +53,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # PR preparation only needs a released Jac runtime, not a source build.
+      # PR preparation only needs a released Jac runtime, not a source build:
+      # the reference design's, which the release scripts are written for.
       - name: Install released jac binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          bash scripts/install.sh
+          bash scripts/install.sh --reference
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Validate version bump
@@ -258,7 +259,7 @@ jobs:
           {
             echo "## jac ${VERSION} (native \`jac\` binary)"
             echo ""
-            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash\`"
+            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference\`"
           } > release_notes.md
 
           if gh release view "$VTAG" >/dev/null 2>&1; then

@@ -149,7 +149,7 @@ friendzone-lite/
 1. **Install the `jac` binary** (see the [Jac install guide](https://docs.jaseci.org/)):
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
    ```
 
 2. **Set OpenAI API Key**:

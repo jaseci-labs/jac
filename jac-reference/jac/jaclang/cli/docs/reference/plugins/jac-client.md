@@ -11,7 +11,7 @@ You also get project scaffolding (`jac create --kind web-static`), npm dependenc
 jac-client ships with `jaclang` core -- there is nothing extra to install. Just install the `jac` binary:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 ---

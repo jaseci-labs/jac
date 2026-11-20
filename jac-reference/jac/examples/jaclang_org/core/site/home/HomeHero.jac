@@ -1,4 +1,4 @@
-glob HOME_INSTALL: str = "curl -fsSL https://jaclang.org/install.sh | bash",
+glob HOME_INSTALL: str = "curl -fsSL https://jaclang.org/install.sh | bash -s -- --reference",
      HOME_PROMPT: str = "Build [your idea] with the jac binary",
      _PILLARS: list[dict[str, str]] = [
          {"num": "01", "id": "one-language", "title": "One universal language"},

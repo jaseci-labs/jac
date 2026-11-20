@@ -84,7 +84,7 @@ impl update_self(release: str, current: str, verbose: bool) -> int {
                 "This session is not running from one (a plain interpreter or "
                 "a source checkout). Refresh with: curl -fsSL "
                 f"https://raw.githubusercontent.com/{SELF_UPDATE_REPO}/main/"
-                "scripts/install.sh | bash"
+                "scripts/install.sh | bash -s -- --reference"
             )
         );
         return 1;
@@ -120,7 +120,7 @@ impl update_self(release: str, current: str, verbose: bool) -> int {
             hint=(
                 "Install or reinstall with: curl -fsSL "
                 f"https://raw.githubusercontent.com/{SELF_UPDATE_REPO}/main/"
-                "scripts/install.sh | bash. Use your system package manager to "
+                "scripts/install.sh | bash -s -- --reference. Use your system package manager to "
                 "update Jac installations owned by another manager."
             )
         );

@@ -1,6 +1,6 @@
 import from "@jac/runtime" { Link }
 
-glob _INSTALL: str = "curl -fsSL https://jaclang.org/install.sh | bash",
+glob _INSTALL: str = "curl -fsSL https://jaclang.org/install.sh | bash -s -- --reference",
      _NEXT: list[dict[str, str]] = [
          {
              "to": "/tech-demo",

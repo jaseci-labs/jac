@@ -3,7 +3,7 @@
 Jac distributes its core compiler and development tools through a native binary. The bundled runtimes cover the standard Jac workflow; project dependencies, model weights, and platform-specific build tools may require additional downloads or setup.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 That's it. You now have a compiler, a runtime, a package manager, a server, a build system, and a native linker -- all behind one command.
@@ -157,7 +157,7 @@ When you run `jac install`, dependencies are resolved from PyPI or npm into an i
 
 ```bash
 # Install Jac (one self-contained binary)
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 
 # Verify
 jac --version

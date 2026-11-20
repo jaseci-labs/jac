@@ -9,10 +9,12 @@ Install Jac, verify the version, and run a first program. Download and setup tim
 Install Jac with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 This downloads the self-contained native `jac` binary and puts it on your PATH. The binary bundles its own runtime, so **no system Python, pip, or uv is required** -- at install time or afterward.
+
+`--reference` selects the compiler these docs describe: the Jac language's reference design. The same script without the flag installs the `jac` compiler's own releases instead. Both install as the command `jac`, so a machine has one of them, and installing one replaces the other.
 
 ### Installer Options
 
@@ -21,7 +23,7 @@ Pass flags after `--` to customize the install:
 **Specific version:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.34.1
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference --version 0.34.1
 ```
 
 **Uninstall:**
@@ -32,8 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 | Flag | Description |
 |------|-------------|
+| `--reference` | Install the reference design (the compiler these docs describe) |
 | `--version V` | Install a specific release version |
-| `--uninstall` | Remove Jac |
+| `--uninstall` | Remove Jac, whichever compiler is installed |
 
 ### Upgrading
 
@@ -231,7 +234,7 @@ Pin a version with `--use org/name@^1.2`, or pass a local template directory or 
 Re-run the one-line installer to upgrade the `jac` binary to the latest version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 Built-in subsystems (byLLM, MCP, scale) upgrade with the binary itself. To force-refresh a project's resolved dependencies, reinstall them:

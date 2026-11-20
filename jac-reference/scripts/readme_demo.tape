@@ -22,7 +22,7 @@ Set Padding 16
 Set TypingSpeed 35ms
 Set Theme "Builtin Dark"
 
-Type "curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash"
+Type "curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference"
 Enter
 Sleep 8s
 

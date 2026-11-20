@@ -7,7 +7,7 @@ For a first project, choose `cli` for a script, `service` for an API, or `web-ap
 Install once and follow any track:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
 ```
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
