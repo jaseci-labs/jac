@@ -1,0 +1,46 @@
+# Production deploy settings for jaclang.org, appended to a deploy copy of
+# jac/examples/jaclang_org/jac.toml by .github/workflows/deploy-jaclang-org.yml.
+# They live here, not in the site's jac.toml, because the site doubles as the
+# `jac create --awesome` template and scaffolded projects must not inherit them.
+
+# Targets the live namespace. app_name is load-bearing: without it jac derives
+# the name from [project] and provisions a second, empty Postgres. The ingress
+# class, host and TLS issuer match what jaclang.org's DNS already points at.
+[scale.kubernetes]
+app_name = "jaclang-website"
+namespace = "jb-70d63706-jaclang-website"
+kube_context = "production-cluster"
+domain = "jaclang.org"
+shared_ingress = true
+shared_ingress_class = "jb-custom"
+shared_ingress_tls = true
+shared_ingress_skip_reachability = true
+bundle_storage_class = "efs-sc"
+
+[scale.kubernetes.shared_ingress_annotations]
+"cert-manager.io/cluster-issuer" = "letsencrypt-prod"
+"nginx.ingress.kubernetes.io/ssl-redirect" = "true"
+"nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
+
+# Every serving app runs on on-demand `core` nodes, never spot (spot
+# interruptions took the site down twice on 2026-11-02), and web keeps two
+# replicas on separate nodes so a node drain never takes the site offline.
+[apps.web.scale.hpa]
+min = 2
+
+[apps.web.scale.deployment_overlay.spec.template.spec]
+nodeSelector = { "karpenter.sh/capacity-type" = "on-demand" }
+tolerations = [{ key = "jacbuilder.jaseci.org/pool", operator = "Equal", value = "core", effect = "NoSchedule" }]
+topologySpreadConstraints = [{ maxSkew = 1, topologyKey = "kubernetes.io/hostname", whenUnsatisfiable = "DoNotSchedule", labelSelector = { matchLabels = { app = "web" } }, matchLabelKeys = ["pod-template-hash"] }]
+
+[apps.social_graph.scale.deployment_overlay.spec.template.spec]
+nodeSelector = { "karpenter.sh/capacity-type" = "on-demand" }
+tolerations = [{ key = "jacbuilder.jaseci.org/pool", operator = "Equal", value = "core", effect = "NoSchedule" }]
+
+[apps.knowledge.scale.deployment_overlay.spec.template.spec]
+nodeSelector = { "karpenter.sh/capacity-type" = "on-demand" }
+tolerations = [{ key = "jacbuilder.jaseci.org/pool", operator = "Equal", value = "core", effect = "NoSchedule" }]
+
+[scale.gateway.deployment_overlay.spec.template.spec]
+nodeSelector = { "karpenter.sh/capacity-type" = "on-demand" }
+tolerations = [{ key = "jacbuilder.jaseci.org/pool", operator = "Equal", value = "core", effect = "NoSchedule" }]
