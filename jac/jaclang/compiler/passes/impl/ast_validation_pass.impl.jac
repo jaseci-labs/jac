@@ -55,13 +55,8 @@ impl ASTValidationPass.enter_module with Module entry {
 
 impl ASTValidationPass._import_bindings(mod: Module) -> dict[str, tuple[Import, Name]] {
     bound: dict[str, tuple[Import, Name]] = {};
-    entry_stmts = [
-        stmt
-        for code in mod.body
-        if isinstance(code, ModuleCode) for stmt in code.body
-    ];
-    for stmt in list(mod.body) + entry_stmts {
-        if not isinstance(stmt, Import) or stmt.is_absorb {
+    for stmt in mod.get_all_sub_nodes(Import) {
+        if stmt.is_absorb or find_python_scope_node_of(stmt) is not mod {
             continue;
         }
         for item in stmt.items {
@@ -86,7 +81,7 @@ impl ASTValidationPass._bound_name(item: (ModuleItem | ModulePath)) -> (Name | N
 
 impl ASTValidationPass._import_target(item: (ModuleItem | ModulePath)) -> str {
     if isinstance(item, ModuleItem) {
-        return item.from_mod_path.dot_path_str + ":" + item.name.value;
+        return item.from_mod_path.dot_path_str + "." + item.name.value;
     }
     return item.dot_path_str
         if item.alias and item.path
