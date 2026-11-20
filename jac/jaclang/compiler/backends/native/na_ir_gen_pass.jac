@@ -2428,6 +2428,7 @@ walker NaIRGenPass(CompilerPass) {
         target: (uni.UniNode | None), direct: bool = False
     ) -> (str | None);
 
+    def _has_kw_spread(nd: uni.FuncCall) -> bool;
     def _codegen_class_value_call(
         nd: uni.FuncCall,
         target: uni.Expr,

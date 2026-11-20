@@ -86,6 +86,20 @@ impl NaIRGenPass._class_value_ctor_bound(
     return bound;
 }
 
+impl NaIRGenPass._has_kw_spread(nd: uni.FuncCall) -> bool {
+    for arg in nd.params or [] {
+        if (isinstance(arg, uni.KWPair) and arg.key is None)
+            or (
+                isinstance(arg, uni.UnaryExpr)
+                and isinstance(arg.op, uni.Token)
+                and arg.op.name == Tok.STAR_POW
+            ) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl NaIRGenPass._class_ancestors(type_name: str) -> list[str] {
     ancestors: list[str] = [type_name];
     index = 0;
@@ -325,7 +339,7 @@ impl NaIRGenPass._codegen_class_value_call(
     if binding is None {
         return None;
     }
-    (bound_args, spread) = binding;
+    (bound_args, _) = binding;
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     cls = self._codegen_expr(target)

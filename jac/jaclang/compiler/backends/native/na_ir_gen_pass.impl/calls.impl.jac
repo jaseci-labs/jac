@@ -1911,10 +1911,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     _class_bound = self._class_value_ctor_bound(
-        nd.target,
-        direct=any(
-            isinstance(arg, uni.KWPair) and arg.key is None for arg in nd.params or []
-        )
+        nd.target, direct=self._has_kw_spread(nd)
     );
     if _class_bound is not None and isinstance(nd.target, uni.Expr) {
         return self._codegen_class_value_call(
