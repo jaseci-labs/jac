@@ -9,7 +9,8 @@ import textwrap;
 import from pathlib { Path }
 
 test "stable and dev matrices build one official binary per platform" {
-    repo_root = Path(__file__).resolve().parents[3];
+    # The workflows are in the repository root, above jac-reference/.
+    repo_root = Path(__file__).resolve().parents[4];
     workflow = (repo_root / ".github/workflows/build-binaries.yml").read_text();
     step = workflow.split("      - name: Select build legs for the channel\n", 1)[1];
     script = textwrap.dedent(

@@ -44,7 +44,7 @@ jobs:
       # Derive the required platforms from the original run, never from an
       # operator-supplied subset. GITHUB_TOKEN avoids a release.published run.
       - name: Test recovery guard
-        run: bash scripts/test_release_docker_recovery.sh
+        run: bash jac-reference/scripts/test_release_docker_recovery.sh
 
       - name: Verify original release and publish the draft
         env:
@@ -54,6 +54,6 @@ jobs:
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
         run: |
           set -euo pipefail
-          REQUIRED=$(bash scripts/release_docker_recovery.sh "$TAG" "$RELEASE_RUN_ID")
+          REQUIRED=$(bash jac-reference/scripts/release_docker_recovery.sh "$TAG" "$RELEASE_RUN_ID")
           read -r -a required <<<"$REQUIRED"
-          bash scripts/release_publish_guard.sh "${TAG#v}" "${required[@]}"
+          bash jac-reference/scripts/release_publish_guard.sh "${TAG#v}" "${required[@]}"

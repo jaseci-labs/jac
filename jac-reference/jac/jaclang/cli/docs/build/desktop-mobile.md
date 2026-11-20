@@ -53,7 +53,7 @@ jac build mobile --platform web                  # → the browser bundle
 
 If what you want is a home-screen install of an existing web app rather than native views, make the web app a PWA instead: a `[client.pwa]` table in `jac.toml` adds the manifest, service worker and install banner to its build, with no rewrite (see the [PWA section](../reference/plugins/jac-client.md#pwa) of the client reference).
 
-The flagship workspace's [`mobile/`](https://github.com/jaseci-labs/jaseci/tree/main/jac/examples/jaclang_org/mobile) app is the worked example: a React Native client for the same social graph the site serves at `/socialize`, with typed theme tokens, `.native.jac` platform-split icons, and `BridgeError` handling around every bridged call. `jac create <name> --awesome` scaffolds the whole workspace, mobile app included.
+The flagship workspace's [`mobile/`](https://github.com/jaseci-labs/jaseci/tree/main/jac-reference/jac/examples/jaclang_org/mobile) app is the worked example: a React Native client for the same social graph the site serves at `/socialize`, with typed theme tokens, `.native.jac` platform-split icons, and `BridgeError` handling around every bridged call. `jac create <name> --awesome` scaffolds the whole workspace, mobile app included.
 
 ## Your learning path
 

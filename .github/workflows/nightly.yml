@@ -4,6 +4,11 @@ name: Nightly
 # release-rehearsal.yml calls this daily at 03:00 Asia/Colombo, and a manual
 # dispatch runs it on demand.
 
+# The reference design lives under jac-reference/. Jobs that check it out run
+# their `run` steps from there (defaults.run.working-directory), so jac finds
+# jac-reference/jac.toml above it and paths read as the reference design's own
+# scripts name them; `uses` steps take paths from the workspace root.
+
 on:
   workflow_call:
   workflow_dispatch:
@@ -14,6 +19,9 @@ permissions:
 jobs:
   notes-app-cef-smoke:
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
     - uses: actions/checkout@v5
       with:
@@ -35,7 +43,7 @@ jobs:
         jac build   # [project] kind = "desktop", [desktop] engine = "cef"
 
     - name: Bundle existence audit
-      working-directory: jac/examples/notes-app
+      working-directory: jac-reference/jac/examples/notes-app
       run: |
         BUNDLE=.jac/client/desktop
         test -f $BUNDLE/libcef.so
@@ -47,7 +55,7 @@ jobs:
         ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
     - name: Headless smoke with timeout (X11)
-      working-directory: jac/examples/notes-app/.jac/client/desktop
+      working-directory: jac-reference/jac/examples/notes-app/.jac/client/desktop
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!
@@ -106,7 +114,7 @@ jobs:
 
   # Real-app microservice e2e on kind. Two pod-base legs: `slim` = the plain
   # python default; `official-image` = an image built from this checkout's
-  # binary via docker/jaclang.Dockerfile (baked-runtime path).
+  # binary via jac-reference/docker/jaclang.Dockerfile (baked-runtime path).
   k8s-real-e2e:
     name: microservice e2e (k8s, ${{ matrix.base }})
     runs-on: ubuntu-24.04
@@ -118,7 +126,10 @@ jobs:
     env:
       # The jac built from this checkout: the deploy driver here, and the
       # binary the e2e harness ships to the pods as [dev] pod_binary.
-      JAC_UNDER_TEST: ${{ github.workspace }}/jac/zig-out/bin/jac
+      JAC_UNDER_TEST: ${{ github.workspace }}/jac-reference/jac/zig-out/bin/jac
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:

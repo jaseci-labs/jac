@@ -279,7 +279,7 @@ jac create my-app --use <github-url>
 
 ## For Contributors
 
-Building Jac from source uses `./scripts/fresh_env.sh`, which builds the `jac` binary and puts it on your PATH. See the [Contributing Guide](../community/contributing.md) for the full development setup.
+Building Jac from source uses `./scripts/fresh_env.sh` (run from `jac-reference/` in a clone of the repository), which builds the `jac` binary and puts it on your PATH. See the [Contributing Guide](../community/contributing.md) for the full development setup.
 
 ---
 

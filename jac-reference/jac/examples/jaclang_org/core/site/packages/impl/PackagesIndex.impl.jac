@@ -37,7 +37,7 @@ impl Ecosystems -> JsxElement {
                             <CopyCommand command={e["cmd"]} className="w-full text-xs"/>
                         } else {
                             <a
-                                href="https://github.com/jaseci-labs/jac/tree/main/jac/examples/raylib_shooter"
+                                href="https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/examples/raylib_shooter"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs text-primary hover:underline"

@@ -30,14 +30,14 @@ module exports is small, stable, and exactly what importers consume.
 ## The three sections
 
 All three live in the module's cache JIR
-([`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac)),
+([`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/driver/jir.jac)),
 written through the same atomic merge-write funnel as the bytecode sections,
 and gated by the same `SEC_MODKEY`/`SEC_ENVKEY` freshness checks.
 
 ### `SEC_IFACE` -- the exported interface
 
 The module's exported surface in the **stubcat-generalized encoding**
-([`compiler/types/stubcat/`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/types/stubcat/)):
+([`compiler/types/stubcat/`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/types/stubcat/)):
 typed symbols with evaluated types, signatures, overloads, archetype
 layouts, enum members, plus the access, ownership, binding-kind, and native
 capability facts that the cross-module checkers read. The payload is a

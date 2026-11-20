@@ -1,14 +1,14 @@
 # Manifest for pre-commit.ci only: it lints markdown (with autofix pushed to
 # the PR) and bans em-dashes on every PR. Contributors do not install
 # pre-commit locally; the local git hook is `jac precommit --install`
-# (see CONTRIBUTING.md), and jac formatting in CI is enforced by the
+# (see jac-reference/CONTRIBUTING.md), and jac formatting in CI is enforced by the
 # Contribution Checks workflow's `jac fmt --check` gate.
 
 exclude: |
     (?x)(
-        ^jac/jaclang/vendor/|
-        ^jac/jaclang/compiler/backends/native/llvm/|
-        ^jac/jaclang/compiler/backends/native/wasm_rt/vendor/|
+        ^jac-reference/jac/jaclang/vendor/|
+        ^jac-reference/jac/jaclang/compiler/backends/native/llvm/|
+        ^jac-reference/jac/jaclang/compiler/backends/native/wasm_rt/vendor/|
         ^$
     )
 

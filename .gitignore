@@ -1,0 +1,28 @@
+# What tools leave in the repository root. The reference design's own ignore
+# rules are jac-reference/.gitignore and apply only under jac-reference/.
+
+# OS and editors
+.DS_Store
+.vscode
+.idea
+*.swp
+*Zone.Identifier
+
+# Local agent and IDE state
+CLAUDE.local.md
+.claude/
+.cursor/
+.mcp.json
+.gstack/
+
+# Zig's global cache (CI's setup-zig pins it to the workspace root) and what a
+# jac started in the root leaves there. A release's `git add` must never sweep
+# these in.
+.zig-cache/
+zig-out/
+zig-pkg/
+.xdg-cache/
+.jac/
+__pycache__/
+*.pyc
+node_modules/

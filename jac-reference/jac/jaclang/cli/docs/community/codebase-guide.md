@@ -48,16 +48,18 @@ Here's a quick map from contribution type to the right part of the codebase:
 
 ## Repository Layout
 
-The repo is a **monorepo**; the core language and all first-party subsystems live under `jac/`:
+The reference design lives in the repository's `jac-reference/` directory; the core language and all first-party subsystems live under `jac-reference/jac/`. The repository root holds what is shared: the workflows (`.github/`), the installer (`scripts/install.sh`), and the license.
 
 ```
-jaseci/
+jac-reference/
 ├── jac/                  # Core language + built-in subsystems: compiler, runtime, CLI, LSP,
 │                         #   MCP server (jaclang/cli/mcp/), byLLM (jaclang/byllm/),
 │                         #   full-stack client/desktop framework, scale subsystem (jaclang/scale/)
 ├── release_notes/        # Unreleased release-note fragments (one file per PR)
 └── scripts/              # Release, CI, and utility scripts
 ```
+
+Paths in this guide are relative to `jac-reference/`.
 
 ---
 
@@ -268,7 +270,7 @@ pins the manifest to the files on disk.
 
 ## CI/CD
 
-GitHub Actions workflows in `.github/workflows/`:
+GitHub Actions workflows in `.github/workflows/` (in the repository root, above `jac-reference/`):
 
 | Workflow | What it does |
 |----------|---------------|

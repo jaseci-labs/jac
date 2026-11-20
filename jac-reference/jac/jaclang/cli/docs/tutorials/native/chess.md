@@ -9,7 +9,7 @@ In this tutorial you will explore a fully playable chess engine written in idiom
 - How **`sys.argv`** enables command-line argument parsing in native programs
 - How **declaration/implementation separation** keeps large native programs organized
 
-The full source lives at [`jac/examples/chess/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/chess):
+The full source lives at [`jac/examples/chess/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-reference/jac/examples/chess):
 
 - `chess.jac` -- declarations (types, signatures, entry point)
 - `chess.impl.jac` -- all method implementations
@@ -471,4 +471,4 @@ This program exercises a wide range of native Jac features:
 - Add a minimax AI opponent using the existing `evaluate()` method
 - Try the benchmark with `./chess --benchmark` and compare Python vs native speed
 - Explore [C Library Interop](../../reference/language/native-pathway.md#c-library-interop) to add a graphical interface using a library like raylib
-- Read the full source: [`chess.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/examples/chess/chess.jac) and [`chess.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/examples/chess/chess.impl.jac)
+- Read the full source: [`chess.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/examples/chess/chess.jac) and [`chess.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/examples/chess/chess.impl.jac)

@@ -20,6 +20,12 @@ git remote add upstream https://github.com/jaseci-labs/jaseci.git
 git remote -v
 ```
 
+The reference design lives in the repository's `jac-reference/` directory. Every path and command in this guide is relative to it, so work from there:
+
+```bash
+cd jac-reference
+```
+
 **Setting Up Your Dev Environment**
 
 `jaclang` ships as the single `jac` binary (a native Jac launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
@@ -55,7 +61,7 @@ export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 **3. The editable dev loop (skip rebuilds for jaclang edits)**
 
-Without help, a change to `jac/jaclang` would only take effect after another `zig build`, because the binary runs its own bundled copy of jaclang. This repo's root `jac.toml` points `jac` at the in-repo source so you don't have to rebuild per edit:
+Without help, a change to `jac/jaclang` would only take effect after another `zig build`, because the binary runs its own bundled copy of jaclang. `jac-reference/jac.toml` points `jac` at the in-repo source so you don't have to rebuild per edit:
 
 ```toml
 [dev]
@@ -68,7 +74,7 @@ An edit recompiles what it touched, not the whole compiler. Every edit under jac
 
 **Faster builds: `zig build -Ddev`.** `fresh_env.sh` builds with `zig build -Ddev`, which *bakes* this link into the binary: the compiler is not bundled at all (no ~100 MB tree copy, no JIR precompile -- a much smaller, faster build), and the binary reroutes `import jaclang` to the build-root source from any directory, so the loop holds with no `[dev]` stanza in scope. It's the fastest build and the right default for compiler work; the tradeoff is the binary hard-depends on that source dir, so it's dev-only and not distributable. Use `-Djaclang-dir=PATH` to bake an explicit compiler dir, or a plain `zig build` for the fully self-contained release binary. Because the compiler imports the native passes at startup, a `-Ddev` binary still needs the LLVMPY_* shim **placed in the linked tree** (the same `zig build fetch-llvm` prerequisite as a release build -- `-Ddev` then compiles and places it automatically; without it the build stops with a clear message). `fresh_env.sh` runs `fetch-llvm` for you.
 
-The stanza is read from the **nearest ancestor `jac.toml`** (like every other config setting), so the single root `jac.toml` covers every directory in the repo -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To run the shipped binary's bundled + precompiled jaclang instead of your edits, start it from outside the repo (`cd "$(mktemp -d)"`): a jac started where no `[dev]` stanza is in scope runs its bundled compiler, and every process it starts inherits that choice. CI's sealed lanes get the same effect by dropping the stanza from their checkout (`.github/actions/seal-checkout`).
+The stanza is read from the **nearest ancestor `jac.toml`** (like every other config setting), so the single `jac-reference/jac.toml` covers every directory under `jac-reference/` -- the loop is active whether you work from `jac-reference/` or `cd jac` to run the suite. A `jac` started in the repository root, above `jac-reference/`, finds no `jac.toml` and runs its bundled compiler. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To run the shipped binary's bundled + precompiled jaclang instead of your edits, start it from outside the repo (`cd "$(mktemp -d)"`): a jac started where no `[dev]` stanza is in scope runs its bundled compiler, and every process it starts inherits that choice. CI's sealed lanes get the same effect by dropping the stanza from their checkout (`.github/actions/seal-checkout`).
 
 You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the bundled CPython version.
 
@@ -92,7 +98,7 @@ test_jobs = "auto"   # "auto" = one worker per core; "0" = serial; or a fixed co
 **Build something awesome, or fix something that's broken**
 
 See Rules below.
-Formatting and linting are enforced by `jac precommit` (staged `.jac` files by default; use `jac precommit --all` for the whole project), configured via `[check.lint]` in [`jac.toml`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac.toml); markdown lint and the em-dash ban run on every PR via pre-commit.ci ([`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml)).
+Formatting and linting are enforced by `jac precommit` (staged `.jac` files by default; use `jac precommit --all` for the whole project), configured via `[check.lint]` in [`jac.toml`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac.toml); markdown lint and the em-dash ban run on every PR via pre-commit.ci ([`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml)).
 
 **This is how the docs work.**
 
@@ -256,7 +262,7 @@ dispatch), dispatch **CI**, and fix what it finds.
 
 1. Go to **GitHub Actions** -> **Release**
 2. Click **Run workflow**, set `action` to `create-pr`, and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
-3. The workflow bumps the version in the root `jac.toml` (the single source of truth), updates `jac/examples/jaclang_org/jac.toml` to pin that exact Jac version, and opens a PR from a `release/*` branch
+3. The workflow bumps the version in `jac-reference/jac.toml` (the single source of truth), updates `jac/examples/jaclang_org/jac.toml` to pin that exact Jac version, and opens a PR from a `release/*` branch
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
@@ -288,6 +294,6 @@ A tag that points at a *different* commit is a refusal, not a re-run. The tag is
 | Auto-merge won't enable / PR won't merge | Auto-merge needs the PR's required status checks to be attached; do the close/reopen above first so the checks exist on the PR |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
 | Binaries missing from the release | Re-run **Build jac native binaries** via `workflow_dispatch` with the release tag (e.g. `v0.30.4`); it rebuilds and re-attaches idempotently. An empty tag builds artifacts only (a dry run that attaches nothing) |
-| Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from the root `jac.toml` |
+| Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from `jac-reference/jac.toml` |
 | `Refusing to release vX.Y.Z: the tag already exists and points at a different commit` | The version was cut once already, from a commit that is not the one you are releasing now (a reverted release, say). Either bump the version and release that instead, or, **only if `vX.Y.Z` was never published** (its Release is still a draft with no assets), retire the stale tag and draft with `gh release delete vX.Y.Z --cleanup-tag --yes` and re-run. Never move a tag whose release was published: its assets and notes describe the old commit, and users who installed it keep that build |
 | Need an Intel-Mac (macos-x86_64) binary for a release | The leg is manual: it is off the release matrix (broken since #8805, and it sat on every release's critical path on the slowest runners while shipping nothing). Dispatch **Build jac native binaries** with `only: macos-x86_64` and `tag: vX.Y.Z`; it builds that one leg and attaches the asset to the already-published release. `plan` refuses `only` + `tag` for any blocking leg, so this lane can never publish a partial release. A weekly probe in nightly.yml (`intel-mac-probe`) builds the leg with no tag so it keeps a signal |

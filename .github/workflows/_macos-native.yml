@@ -22,6 +22,11 @@ name: macOS native
 # Nightly runs on main, so it is also what seeds the shared macOS caches
 # (setup-jac gates every cache save to main).
 
+# The reference design lives under jac-reference/. Jobs that check it out run
+# their `run` steps from there (defaults.run.working-directory), so jac finds
+# jac-reference/jac.toml above it and paths read as the reference design's own
+# scripts name them; `uses` steps take paths from the workspace root.
+
 on:
   workflow_call:
 
@@ -31,6 +36,9 @@ permissions:
 jobs:
   build-kit-macos:
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
 
@@ -44,13 +52,13 @@ jobs:
           use-cache: false
 
       - name: Materialize typeshed + wasm libc floor
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-wasm-libc --summary all
 
       - name: Verify the kit is complete
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
@@ -63,9 +71,9 @@ jobs:
         with:
           name: jac-kit-macos
           path: |
-            jac/zig-out/bin/jac
-            jac/jaclang/vendor/typeshed/stdlib
-            jac/.pbs-build/wasm32/libc
+            jac-reference/jac/zig-out/bin/jac
+            jac-reference/jac/jaclang/vendor/typeshed/stdlib
+            jac-reference/jac/.pbs-build/wasm32/libc
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -73,6 +81,9 @@ jobs:
   test-native-macos:
     needs: build-kit-macos
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -111,6 +122,9 @@ jobs:
   desktop-macos:
     needs: build-kit-macos
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -124,11 +138,11 @@ jobs:
         run: jac create site --awesome
 
       - name: Build the desktop app (WKWebView bundle)
-        working-directory: site
+        working-directory: jac-reference/site
         run: jac build desktop
 
       - name: Desktop artifact audit
-        working-directory: site
+        working-directory: jac-reference/site
         run: |
           set -euo pipefail
           OUT=.jac/client/desktop/desktop
@@ -148,7 +162,7 @@ jobs:
             || { echo "::error::the bundle does not carry its remote backend"; exit 1; }
 
       - name: Desktop smoke (WKWebView)
-        working-directory: site/.jac/client/desktop/desktop
+        working-directory: jac-reference/site/.jac/client/desktop/desktop
         run: |
           LOG="$RUNNER_TEMP/site-desktop.log"
           ./jaclang-launch.sh > "$LOG" 2>&1 &

@@ -1,6 +1,7 @@
-# .dockerignore for the jaseci repo root. Keeps the docker build context
-# bounded - without this, `.git` (~860MB) + caches push past 2GB and the
-# build times out before any layer runs.
+# .dockerignore for a docker build whose context is this directory
+# (jac-reference/, the reference design's root). Keeps the build context
+# bounded - without this, caches push past 2GB and the build times out
+# before any layer runs.
 
 # Git + CI + editor + OS metadata
 .git

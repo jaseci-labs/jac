@@ -1,5 +1,5 @@
 <div align="center">
-  <img alt="Jac logo" src=".github/assets/logo.png" width="80px">
+  <img alt="Jac logo" src="../.github/assets/logo.png" width="80px">
 
   <h1>The Jac Programming Language</h1>
   <h3>The ultimate language for agents to build everything.</h3>
@@ -7,7 +7,7 @@
   <p>One self-contained binary. One Python-like language. One compiler that checks the whole program. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features, compiled to Python bytecode, JavaScript, and native machine code. No glue for your agent to write, and none for you to review.</p>
 
   <p>
-    <a href="https://github.com/jaseci-labs/jaseci/releases/latest">
+    <a href="https://github.com/jaseci-labs/jaseci/releases">
       <img src="https://img.shields.io/github/v/release/jaseci-labs/jaseci?style=flat-square" alt="Latest release">
     </a>
     <a href="https://github.com/jaseci-labs/jaseci/actions/workflows/ci.yml">
@@ -25,7 +25,7 @@
     <a href="https://discord.gg/6j3QNdtcN6">
       <img src="https://img.shields.io/discord/1105093583750574120?style=flat-square&logo=discord&logoColor=white&label=discord&color=5865F2" alt="Discord members online">
     </a>
-    <a href="LICENSE">
+    <a href="../LICENSE">
       <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
     </a>
   </p>
@@ -38,9 +38,9 @@
   </p>
 
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/demo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/demo-light.svg">
-    <img alt="Install jac, create a web app, and serve it in three commands" src=".github/assets/readme/demo-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/demo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/demo-light.svg">
+    <img alt="Install jac, create a web app, and serve it in three commands" src="../.github/assets/readme/demo-light.svg" width="880">
   </picture>
 </div>
 
@@ -159,9 +159,9 @@ None of this is required by computation. The pattern traces to two silent assump
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/synechic-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/synechic-light.svg">
-    <img alt="A conventional stack is three separate programs (TypeScript frontend, Python backend, C native) joined by hand across unchecked JSON and FFI boundaries, so renaming a field ships a stale copy that fails in production; Jac is one continuous checked medium spanning cl, sv, and na tiers, importing npm, PyPI, and the C world directly, with one compiler seeing both sides of every call, so the same rename is a compile error" src=".github/assets/readme/synechic-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/synechic-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/synechic-light.svg">
+    <img alt="A conventional stack is three separate programs (TypeScript frontend, Python backend, C native) joined by hand across unchecked JSON and FFI boundaries, so renaming a field ships a stale copy that fails in production; Jac is one continuous checked medium spanning cl, sv, and na tiers, importing npm, PyPI, and the C world directly, with one compiler seeing both sides of every call, so the same rename is a compile error" src="../.github/assets/readme/synechic-light.svg" width="880">
   </picture>
 </div>
 
@@ -171,9 +171,9 @@ Hand-written glue (serializers, route tables, ORM models, API clients) is most o
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/gradual-borrow-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/gradual-borrow-light.svg">
-    <img alt="In a conventional stack, outgrowing the garbage collector means rewriting the hot path in Rust or C++ across an FFI boundary; Jac's gradual borrow checking is one continuum in one language, from fully managed code through own and borrow annotations to enforced zero-RC native artifacts, with a checked membrane mediating every value that crosses between the regimes" src=".github/assets/readme/gradual-borrow-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/gradual-borrow-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/gradual-borrow-light.svg">
+    <img alt="In a conventional stack, outgrowing the garbage collector means rewriting the hot path in Rust or C++ across an FFI boundary; Jac's gradual borrow checking is one continuum in one language, from fully managed code through own and borrow annotations to enforced zero-RC native artifacts, with a checked membrane mediating every value that crosses between the regimes" src="../.github/assets/readme/gradual-borrow-light.svg" width="880">
   </picture>
 </div>
 
@@ -204,9 +204,9 @@ The checker tracks only what you tag, so `node`, `edge`, and `walker` stay fully
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/topokinetic-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/topokinetic-light.svg">
-    <img alt="A conventional stack keeps the program stationary while data commutes to it over query and write-back round trips, and persistence is a commit call you must remember to fire; in Jac data lives as a persistent topology of nodes and edges, a walker carries computation through the graph dispatched by arrival, everything reachable from root persists while unreachable nodes do not, and the database dissolves into the language" src=".github/assets/readme/topokinetic-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/topokinetic-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/topokinetic-light.svg">
+    <img alt="A conventional stack keeps the program stationary while data commutes to it over query and write-back round trips, and persistence is a commit call you must remember to fire; in Jac data lives as a persistent topology of nodes and edges, a walker carries computation through the graph dispatched by arrival, everything reachable from root persists while unreachable nodes do not, and the database dissolves into the language" src="../.github/assets/readme/topokinetic-light.svg" width="880">
   </picture>
 </div>
 
@@ -242,9 +242,9 @@ One download replaces the interpreter, the JS runtime, the compilers and linker,
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/one-binary-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/one-binary-light.svg">
-    <img alt="The jac binary links in CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src=".github/assets/readme/one-binary-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/one-binary-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/one-binary-light.svg">
+    <img alt="The jac binary links in CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="../.github/assets/readme/one-binary-light.svg" width="880">
   </picture>
 </div>
 
@@ -257,9 +257,9 @@ Here is the actual anatomy. The `jac` you download is a small native **launcher 
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/binary-anatomy-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/binary-anatomy-light.svg">
-    <img alt="Anatomy of the jac binary: a native launcher stub plus a runtime payload carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives" src=".github/assets/readme/binary-anatomy-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/binary-anatomy-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/binary-anatomy-light.svg">
+    <img alt="Anatomy of the jac binary: a native launcher stub plus a runtime payload carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives" src="../.github/assets/readme/binary-anatomy-light.svg" width="880">
   </picture>
 </div>
 
@@ -283,9 +283,9 @@ The anatomy records a design position. The components written in Jac (the compil
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/self-hosting-frontier-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/self-hosting-frontier-light.svg">
-    <img alt="The self-hosting frontier through the jac binary's payload: above the line, written in Jac, sit the compiler and runtime sealed as JIR, the type checker and dev tooling, and the linkers; below the line, carried in binary form for feature completeness, sit CPython, Bun, LLVM, and the C runtime archives; the frontier moves in one direction only, toward the operating system, the floor the artifact concedes" src=".github/assets/readme/self-hosting-frontier-light.svg" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/readme/self-hosting-frontier-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="../.github/assets/readme/self-hosting-frontier-light.svg">
+    <img alt="The self-hosting frontier through the jac binary's payload: above the line, written in Jac, sit the compiler and runtime sealed as JIR, the type checker and dev tooling, and the linkers; below the line, carried in binary form for feature completeness, sit CPython, Bun, LLVM, and the C runtime archives; the frontier moves in one direction only, toward the operating system, the floor the artifact concedes" src="../.github/assets/readme/self-hosting-frontier-light.svg" width="880">
   </picture>
 </div>
 
@@ -446,14 +446,14 @@ Your program text does not change with the shape of its deployment: this is **sc
 
 ## What's in this repo
 
-This is the Jaseci monorepo, home to everything that makes Jac work:
+This directory, `jac-reference/`, is the Jac language's reference design: everything that makes this compiler work. The paths below are relative to it.
 
 | Directory | What it is |
 |---|---|
 | [`jac/`](jac/) | **jaclang** -- the compiler, runtime, and everything inside the `jac` binary: the language, the full-stack client framework, the `scale` deployment subsystem, the MCP server, and the LLVM native pathway |
 | [`jac-byllm/`](jac-byllm/) | **byllm** -- AI/LLM integration via Meaning-Typed Programming (`jac install byllm`) |
 | [`jac/jaclang/cli/docs/`](jac/jaclang/cli/docs/) | The full documentation set -- bundled into the `jac` binary (`jac guide`), served as MCP resources, and rendered at [jaclang.org/docs](https://www.jaclang.org/docs) |
-| [`scripts/`](scripts/) | The installer and release tooling |
+| [`scripts/`](scripts/) | Release and CI tooling (the installer is [`scripts/install.sh`](../scripts/install.sh) in the repository root) |
 
 The official VS Code extension lives at [jaseci-labs/jac-vscode](https://github.com/jaseci-labs/jac-vscode).
 
@@ -485,13 +485,13 @@ We welcome contributions of every size, from typo fixes to compiler passes.
 
 - **Ask questions & share ideas** on our [Discord server](https://discord.gg/6j3QNdtcN6)
 - **Report bugs** via [GitHub issues](https://github.com/jaseci-labs/jaseci/issues)
-- **Send PRs**: start with the [contributing guide](https://www.jaclang.org/docs/latest/community/contributing) and [CONTRIBUTING.md](CONTRIBUTING.md); `bash scripts/fresh_env.sh` sets up a dev environment
+- **Send PRs**: start with the [contributing guide](https://www.jaclang.org/docs/latest/community/contributing) and [CONTRIBUTING.md](CONTRIBUTING.md); `bash jac-reference/scripts/fresh_env.sh` sets up a dev environment
 
 If Jac looks useful to you, [**star the repo**](https://github.com/jaseci-labs/jaseci/stargazers). It helps other developers discover the project.
 
 ## License
 
-Jac and the Jaseci stack are [MIT licensed](LICENSE). Vendored third-party components retain their own permissive licenses.
+Jac and the Jaseci stack are [MIT licensed](../LICENSE). Vendored third-party components retain their own permissive licenses.
 
 <div align="center">
   <a href="https://star-history.com/#jaseci-labs/jaseci&Date">

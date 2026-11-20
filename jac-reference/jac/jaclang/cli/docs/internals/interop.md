@@ -51,7 +51,7 @@ the discovery:
   `InteropManifest`.
 
 The results land in the schemas in
-[`compiler/frontend/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac).
+[`compiler/frontend/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/frontend/codeinfo.jac).
 Each backend codegen pass then reads that manifest and emits *its half* of
 every bridge it participates in. No global "target" flag exists -- selection
 is per-node, driven entirely by each node's `code_context` tag.
@@ -95,7 +95,7 @@ codespace simply reference each other directly:
   another `def` is an ordinary Python call; an `obj` handed to another
   function is the *same* object, not a copy. Plain (untagged) Jac `import`
   statements lower verbatim to Python `import` nodes (`exit_import` in
-  [`jcir_gen_pass.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/impl/jcir_gen_pass.impl.jac)),
+  [`jcir_gen_pass.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/backends/py/impl/jcir_gen_pass.impl.jac)),
   so resolution is the standard CPython import machinery.
 - **`cl → cl`** -- Client code becomes one JavaScript module graph; a `cl`
   function calling another is a direct JS call, bundled together by Vite.
@@ -619,7 +619,7 @@ CPython. The `jac` binary's launcher runs `import _jac_finder;
 _jac_finder.install()` at interpreter startup (see `launcher/launcher.zig`
 `BOOT_SRC`); on the first `.jac` import the lazy finder bootstraps jaclang and
 installs `JacMetaImporter`
-([`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py)).
+([`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/meta_importer.py)).
 Its `find_spec` probes for `__init__.jac` / `<name>.jac`,
 and `exec_module` runs `exec(codeobj, module.__dict__)` -- so a compiled Jac
 module becomes an ordinary Python module object in `sys.modules`, with Jac
@@ -818,17 +818,17 @@ RPC to the backend). It is the matrix in miniature.
 
 | Concern | Files |
 |---------|-------|
-| Boundary discovery | `compiler/passes/impl/boundary_analysis_pass.impl.jac`; `BoundaryAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
-| Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
+| Boundary discovery | `compiler/passes/impl/boundary_analysis_pass.impl.jac`; `BoundaryAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/frontend/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
+| Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/driver/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
 | `cl → sv` | `compiler/backends/es/esast_gen_pass.impl/{calls,osp}.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `client/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
 | `sv → cl` | `client/impl/{compiler,vite_bundler}.impl.jac`; `server/impl/server.impl.jac`; `backends/es/impl/jsx_processor.impl.jac` |
 | `sv ↔ na` | `runtime/interop_bridge.jac`; `backends/py/impl/jcir_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `backends/native/impl/na_compile_pass.impl.jac` |
 | `na ↔ C` | `compiler/backends/native/{foreign,abi}.jac`; `backends/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
 | `na → C host` | `backends/native/link_plan.jac` + `link_glue.jac`; `backends/native/native_link.jac` |
 | `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_artifact}.jac`; `client/impl/compiler.impl.jac` |
-| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `backends/py/impl/jcir_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
+| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `backends/py/impl/jcir_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
 | Marshalling | `data/impl/serializer.impl.jac`; `server/impl/{server,transport}.impl.jac` |
-| Capability boundary | `compiler/passes/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/diagnostics.jac) (`E5090`) |
+| Capability boundary | `compiler/passes/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/frontend/diagnostics.jac) (`E5090`) |
 | Desktop | `client/targets/desktop/desktop_target.jac` (+ impl); `client/targets/desktop/{webview_shell,cef_shell,_host_bootstrap}.jac`; `client/targets/desktop/native/webview/webview.jac`; `client/targets/registry.jac` |
 
 ---

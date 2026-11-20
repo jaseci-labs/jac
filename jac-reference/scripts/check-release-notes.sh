@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+# Every path below is relative to the reference design's root (jac-reference/
+# in the repository), found from this script's own place. `git diff --relative`
+# prints names relative to it and leaves out files outside it.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 # Maps code folders to their corresponding unreleased fragment directories.
 # byLLM and scale are folded into jac/jaclang/ (jaclang.byllm / jaclang.scale),
 # so their changes are covered by the jac/jaclang/ -> jaclang mapping below.
@@ -17,18 +22,18 @@ declare -A FOLDER_TO_FRAGMENTS=(
 if [ -n "${CI:-}" ] || [ -n "${PRE_COMMIT_FROM_REF:-}" ]; then
     # CI mode: compare against main branch
     if [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
-        CHANGED_FILES=$(git diff --name-only "$PRE_COMMIT_FROM_REF"..."$PRE_COMMIT_TO_REF" 2>/dev/null || true)
+        CHANGED_FILES=$(git diff --relative --name-only "$PRE_COMMIT_FROM_REF"..."$PRE_COMMIT_TO_REF" 2>/dev/null || true)
     else
         # Fallback: compare against origin/main
         MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo "")
         if [ -z "$MERGE_BASE" ]; then
             exit 0
         fi
-        CHANGED_FILES=$(git diff --name-only "$MERGE_BASE"...HEAD 2>/dev/null || true)
+        CHANGED_FILES=$(git diff --relative --name-only "$MERGE_BASE"...HEAD 2>/dev/null || true)
     fi
 else
     # Local mode: check staged files
-    CHANGED_FILES=$(git diff --cached --name-only 2>/dev/null || true)
+    CHANGED_FILES=$(git diff --relative --cached --name-only 2>/dev/null || true)
 fi
 
 if [ -z "$CHANGED_FILES" ]; then

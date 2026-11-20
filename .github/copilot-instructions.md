@@ -2,7 +2,7 @@
 
 ## Repository Structure
 
-This monorepo contains:
+The reference design lives under `jac-reference/`. The paths and commands below are relative to it:
 
 - `jac/`: Jac language compiler, runtime, language server, and the client/desktop runtimes (`jac/jaclang/client/`)
 - `jac-byllm/`: LLM integration and model-driven features
@@ -11,7 +11,7 @@ This monorepo contains:
 
 ## Common Workflows
 
-`jaclang` ships as the single `jac` binary (a Jac launcher + the bundled prebuilt CPython) -- there is no pip-installed jaclang. Build it and put it on PATH with `./scripts/fresh_env.sh` (see CONTRIBUTING.md).
+`jaclang` ships as the single `jac` binary (a Jac launcher + the bundled prebuilt CPython) -- there is no pip-installed jaclang. Build it and put it on PATH with `./scripts/fresh_env.sh`, run from `jac-reference/` (see `jac-reference/CONTRIBUTING.md`).
 
 Run tests through the binary's bundled runner (`JAC_TEST_JOBS=auto` runs them in parallel):
 

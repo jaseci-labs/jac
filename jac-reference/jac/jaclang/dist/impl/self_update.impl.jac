@@ -96,7 +96,7 @@ impl update_self(release: str, current: str, verbose: bool) -> int {
             hint=(
                 f"This launcher compiles the jaclang source at {linked}; "
                 "updating it would strand the dev loop. Pull and rebuild "
-                "instead: git pull && ./scripts/fresh_env.sh"
+                "instead: git pull && ./jac-reference/scripts/fresh_env.sh"
             )
         );
         return 1;

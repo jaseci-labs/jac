@@ -4,7 +4,7 @@
 with main. It adds no repeated builds, cache purges, benchmark jobs, or
 base-revision builds. GNU `time` records each foreground command once (wall,
 user and system CPU, peak RSS, exit status), and the existing readiness steps
-save Linux uptime stamps around each server start. `scripts/ci_perf.jac` reads
+save Linux uptime stamps around each server start. `jac-reference/scripts/ci_perf.jac` reads
 everything once at the end of the job, publishes the verdict as the step
 summary, and uploads the `pack-smoke-performance` artifact.
 
@@ -89,7 +89,7 @@ which the artifact history makes visible but this job does not alert on.
 
 ## Local use
 
-Run the accounting tests:
+Run the accounting tests, from `jac-reference/`:
 
 ```sh
 jac test scripts/ci_perf.jac

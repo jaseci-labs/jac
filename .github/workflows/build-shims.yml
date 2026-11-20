@@ -1,12 +1,12 @@
 name: Build LLVMPY shim assets
 
-# Prebuilds the target-pinned LLVMPY_* shim (jac/native statically linked
+# Prebuilds the target-pinned LLVMPY_* shim (jac-reference/jac/native statically linked
 # against the pinned LLVM slice) for every release platform and attaches it to
 # the rolling `deps` prerelease, named by the hash of its complete input set:
 #
-#   libjacllvm-<platform>-<hashFiles(jac/native/**, jac/build.zig,
-#                                    jac/build.zig.zon,
-#                                    jac/bootstrap/pins.json)>.<so|dylib>
+#   libjacllvm-<platform>-<hashFiles(jac-reference/jac/native/**, jac-reference/jac/build.zig,
+#                                    jac-reference/jac/build.zig.zon,
+#                                    jac-reference/jac/bootstrap/pins.json)>.<so|dylib>
 #
 # build-binaries.yml's release channel fetches the matching asset instead of
 # range-fetching the ~0.5 GB LLVM slice and re-linking the shim cold on every
@@ -28,10 +28,10 @@ on:
     # The shim's complete input set: a push touching none of these cannot
     # change the asset key, so skip the run entirely.
     paths:
-      - jac/native/**
-      - jac/build.zig
-      - jac/build.zig.zon
-      - jac/bootstrap/pins.json
+      - jac-reference/jac/native/**
+      - jac-reference/jac/build.zig
+      - jac-reference/jac/build.zig.zon
+      - jac-reference/jac/bootstrap/pins.json
       - .github/workflows/build-shims.yml
   workflow_dispatch:
 
@@ -61,6 +61,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       # SHA-pinned: this job holds contents:write and publishes artifacts that
       # release builds bundle into user-downloaded binaries.
@@ -72,7 +75,7 @@ jobs:
         id: asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
+          SHIM_KEY: ${{ hashFiles('jac-reference/jac/native/**', 'jac-reference/jac/build.zig', 'jac-reference/jac/build.zig.zon', 'jac-reference/jac/bootstrap/pins.json') }}
         run: |
           set -euo pipefail
           EXT=so
@@ -95,8 +98,8 @@ jobs:
         id: llvm-cache
         uses: actions/cache@v4
         with:
-          path: jac/.llvm-build
-          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+          path: jac-reference/jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/bootstrap/pins.json') }}
 
       # Same key as setup-jac / build-binaries: one shared entry per os/arch.
       - name: Cache the Zig package store
@@ -104,7 +107,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .zig-cache/p
-          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/build.zig.zon') }}
           restore-keys: |
             zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
@@ -118,12 +121,12 @@ jobs:
 
       - name: Fetch LLVM
         if: steps.asset.outputs.exists != 'true' && steps.llvm-cache.outputs.cache-hit != 'true'
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: zig build fetch-llvm $DTARGET --summary all
 
       - name: Build the shim
         if: steps.asset.outputs.exists != 'true'
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: zig build jacllvm $DTARGET --summary all
 
       # Hold the artifact to the same floors build-binaries enforces on release
@@ -131,7 +134,7 @@ jobs:
       # not at the next release. macOS-ARM is host-native (no pinned floor).
       - name: Verify glibc floor
         if: steps.asset.outputs.exists != 'true' && runner.os == 'Linux'
-        working-directory: jac
+        working-directory: jac-reference/jac
         env:
           ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
@@ -147,7 +150,7 @@ jobs:
 
       - name: Verify macOS floor
         if: steps.asset.outputs.exists != 'true' && runner.os == 'macOS' && matrix.zig_target
-        working-directory: jac
+        working-directory: jac-reference/jac
         env:
           ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
@@ -164,7 +167,7 @@ jobs:
       # passes on this runner and fails on a user's Mac without that library.
       - name: Verify the macOS shim loads only system libraries
         if: steps.asset.outputs.exists != 'true' && runner.os == 'macOS'
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           SHIM="jaclang/compiler/backends/native/llvm/libjacllvm.dylib"

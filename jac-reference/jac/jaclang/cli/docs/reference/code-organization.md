@@ -22,7 +22,7 @@ Before diving into the patterns themselves, let us first understand *why* this s
 
 When declarations live in their own files, every `.jac` file in a package reads like an **API specification**. You can open any declaration file and immediately see: what types exist, what fields they carry, what methods they expose, and what signatures those methods have -- all without wading through hundreds of lines of logic. The *architecture* of a system becomes visible from the file tree alone.
 
-To illustrate this, consider the Jac compiler's [type system](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/types):
+To illustrate this, consider the Jac compiler's [type system](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/types):
 
 ```
 compiler/types/
@@ -58,7 +58,7 @@ type_evaluator.impl/
     ...7 files total
 ```
 
-([Browse this example on GitHub](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/types))
+([Browse this example on GitHub](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/types))
 
 Each impl file becomes a focused, self-contained unit. A developer working on tuple code generation opens `tuples.impl.jac` and nothing else. They do not need to scroll past 2,000 lines of unrelated code, and their changes will not produce merge conflicts with a colleague working on exception handling in a different file. In a collaborative setting, this kind of isolation is invaluable.
 
@@ -80,11 +80,11 @@ Now that we understand the motivation, let us survey the five organizational pat
 
 | Pattern | File Layout | When to Use | Compiler Example |
 |---------|-------------|-------------|------------------|
-| **Inline** | Single `.jac` file, declarations + `impl` blocks together | Small modules (<100 lines) | [`lsp/server/rwlock.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/lsp/server/rwlock.jac) |
+| **Inline** | Single `.jac` file, declarations + `impl` blocks together | Small modules (<100 lines) | [`lsp/server/rwlock.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/lsp/server/rwlock.jac) |
 | **Side-by-Side** | `mod.jac` + `impl/mod.impl.jac` | Medium modules, clean interface/impl split | [`cli/command.jac`](https://github.com/Jaseci-Labs/jaseci/blob/7b0f5297ac87d7bf2cc06922d7e77cd979c3c7f2/jac/jaclang/cli/command.jac) |
 | **Shared impl/ Directory** | Multiple `.jac` files + one `impl/` directory | Package-level organization | [`cli/commands/`](https://github.com/Jaseci-Labs/jaseci/tree/7b0f5297ac87d7bf2cc06922d7e77cd979c3c7f2/jac/jaclang/cli/commands) |
-| **`.impl/` Directory** | `mod.jac` + `mod.impl/*.impl.jac` | Very large modules, many concerns | [`type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/types/type_evaluator.jac) |
-| **Pure Declarations** | `.jac` file with only type/object definitions | Data models, re-exports | [`estree.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/backends/es/estree.jac) |
+| **`.impl/` Directory** | `mod.jac` + `mod.impl/*.impl.jac` | Very large modules, many concerns | [`type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/compiler/types/type_evaluator.jac) |
+| **Pure Declarations** | `.jac` file with only type/object definitions | Data models, re-exports | [`estree.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/compiler/backends/es/estree.jac) |
 
 ---
 
@@ -127,7 +127,7 @@ Notice how the declaration block at the top still reads like a concise API summa
 
 ### Real example
 
-**[`jaclang/lsp/server/rwlock.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/lsp/server/rwlock.jac)** -- A read-write lock in 94 lines. The declaration block (lines 1-29) reads like an API summary, and the `impl` blocks follow immediately. At this size, introducing a second file would be unnecessary overhead.
+**[`jaclang/lsp/server/rwlock.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/lsp/server/rwlock.jac)** -- A read-write lock in 94 lines. The declaration block (lines 1-29) reads like an API summary, and the `impl` blocks follow immediately. At this size, introducing a second file would be unnecessary overhead.
 
 ### When to use
 
@@ -275,14 +275,14 @@ To appreciate how pervasive this pattern is, here is a sampling from across the 
 
 | Package | Declaration Files | impl/ Contents |
 |---------|-------------------|----------------|
-| [`cli/commands/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/cli/commands) | Command group files (`execution.jac`, `build.jac`, `project.jac`, etc.) | Matching impl files |
-| [`compiler/passes/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/passes) | The shared analysis passes (`sym_tab_build_pass.jac`, `semantic_analysis_pass.jac`, etc.) | Matching impl files |
-| [`compiler/tools/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/tools) | Formatter, linter, and doc tooling passes | Matching impl files |
-| [`compiler/frontend/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/frontend) | `unitree.jac`, `diagnostics.jac`, etc. | Matching impl files |
-| [`compiler/driver/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/driver) | `program.jac`, `compiler.jac`, etc. | Matching impl files |
-| [`lsp/server/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/lsp/server) | `server.jac`, `engine.jac`, `utils.jac`, etc. | Matching impl files |
-| [`runtime/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/runtime) | `context.jac`, `archetype.jac`, `runtime.jac`, etc. | Matching impl files |
-| [`project/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/project) | `config.jac`, `capabilities.jac`, etc. | Matching impl files |
+| [`cli/commands/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/cli/commands) | Command group files (`execution.jac`, `build.jac`, `project.jac`, etc.) | Matching impl files |
+| [`compiler/passes/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/passes) | The shared analysis passes (`sym_tab_build_pass.jac`, `semantic_analysis_pass.jac`, etc.) | Matching impl files |
+| [`compiler/tools/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/tools) | Formatter, linter, and doc tooling passes | Matching impl files |
+| [`compiler/frontend/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/frontend) | `unitree.jac`, `diagnostics.jac`, etc. | Matching impl files |
+| [`compiler/driver/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/driver) | `program.jac`, `compiler.jac`, etc. | Matching impl files |
+| [`lsp/server/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/lsp/server) | `server.jac`, `engine.jac`, `utils.jac`, etc. | Matching impl files |
+| [`runtime/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/runtime) | `context.jac`, `archetype.jac`, `runtime.jac`, etc. | Matching impl files |
+| [`project/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/project) | `config.jac`, `capabilities.jac`, etc. | Matching impl files |
 
 ### When to use
 
@@ -315,7 +315,7 @@ compiler/types/
 
 ### Real example
 
-**[`jaclang/compiler/types/type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/types/type_evaluator.jac)** -- The type evaluator. Let us examine how the declaration file defines a single `TypeEvaluator` object with 200+ method signatures, carefully organized by concern:
+**[`jaclang/compiler/types/type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/compiler/types/type_evaluator.jac)** -- The type evaluator. Let us examine how the declaration file defines a single `TypeEvaluator` object with 200+ method signatures, carefully organized by concern:
 
 ```jac
 obj TypeEvaluator {
@@ -342,7 +342,7 @@ impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: Name, tag_name: str) -> None
 }
 ```
 
-**Also worth studying:** [`jaclang/compiler/backends/native/na_ir_gen/`](https://github.com/jaseci-labs/jac/tree/main/jac/jaclang/compiler/backends/native/na_ir_gen) -- the native backend takes the next step past this pattern, splitting one 764-method object into 43 sibling modules that a composing `obj NaIRGenPass(...)` inherits, so each concern is its own compilation unit rather than one woven module.
+**Also worth studying:** [`jaclang/compiler/backends/native/na_ir_gen/`](https://github.com/jaseci-labs/jac/tree/main/jac-reference/jac/jaclang/compiler/backends/native/na_ir_gen) -- the native backend takes the next step past this pattern, splitting one 764-method object into 43 sibling modules that a composing `obj NaIRGenPass(...)` inherits, so each concern is its own compilation unit rather than one woven module.
 
 ### When to use
 
@@ -359,7 +359,7 @@ Some modules are primarily -- or entirely -- composed of declarations: type defi
 
 ### What it looks like
 
-**[`estree.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/backends/es/estree.jac)** -- 580 lines of ESTree AST node type definitions:
+**[`estree.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/compiler/backends/es/estree.jac)** -- 580 lines of ESTree AST node type definitions:
 
 ```jac
 """ESTree AST Node Definitions for ECMAScript."""
@@ -383,9 +383,9 @@ obj Identifier(Node) {
 # ... 60+ more node types
 ```
 
-Its impl file ([`impl/estree.impl.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/backends/es/impl/estree.impl.jac)) is only 33 lines -- a single utility function. The vast majority of the module's value is in the declarations themselves.
+Its impl file ([`impl/estree.impl.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/compiler/backends/es/impl/estree.impl.jac)) is only 33 lines -- a single utility function. The vast majority of the module's value is in the declarations themselves.
 
-**[`constructs.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/runtime/constructs.jac)** -- A 35-line re-export barrel:
+**[`constructs.jac`](https://github.com/jaseci-labs/jac/blob/main/jac-reference/jac/jaclang/runtime/constructs.jac)** -- A 35-line re-export barrel:
 
 <!-- jac-skip -->
 ```jac

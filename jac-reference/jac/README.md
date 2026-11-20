@@ -51,7 +51,7 @@ Read ["Getting Started"] from [Docs] for more information.
 The `jac` binary is built with [Zig](https://ziglang.org/) from this source tree (the build reads metadata from `jac.toml`; there is no `pyproject.toml` or pip install). For a full development environment, run the repository's bootstrap script:
 
 ```bash
-# from the repository root
+# from jac-reference/, the reference design's root
 ./scripts/fresh_env.sh
 ```
 
@@ -63,7 +63,7 @@ Submit and issue! Community links coming soon.
 
 ## Contributing
 
-See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## License
 

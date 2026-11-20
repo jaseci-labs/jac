@@ -146,7 +146,7 @@ The headline case: backend, frontend, and data model in **one file**. The compil
 
 The `na` runtime's other target: rather than a host binary, native-placed code compiles to **WebAssembly** and runs *in the browser*, driven by a `cl` page -- native-speed compute (a game loop, a simulation, a hot inner loop) executing client-side with no server round-trip. It's the mirror image of a [full-stack app](#full-stack-app): there the heavy lifting runs on the server (`sv`); here it runs in the browser (`na` -> wasm), with no emscripten and no `wasm-ld` -- Jac's own WebAssembly linker does the wiring.
 
-:octicons-arrow-right-24: Recipe & guided path: [Full-stack web apps](../build/fullstack-web.md#web-static) · Full example: [raylib cube shooter (web)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/raylib_shooter/web)
+:octicons-arrow-right-24: Recipe & guided path: [Full-stack web apps](../build/fullstack-web.md#web-static) · Full example: [raylib cube shooter (web)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-reference/jac/examples/raylib_shooter/web)
 
 ### Desktop app
 

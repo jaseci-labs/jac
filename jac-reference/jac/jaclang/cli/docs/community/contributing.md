@@ -3,8 +3,8 @@
 Jac development happens in the open at
 [github.com/jaseci-labs/jaseci](https://github.com/jaseci-labs/jaseci).
 
-The canonical contributor guide lives at the repository root:
-[CONTRIBUTING.md](https://github.com/jaseci-labs/jaseci/blob/main/CONTRIBUTING.md).
+The canonical contributor guide lives in the repository, under `jac-reference/`:
+[CONTRIBUTING.md](https://github.com/jaseci-labs/jaseci/blob/main/jac-reference/CONTRIBUTING.md).
 It covers the full workflow:
 
 - Forking, cloning, and setting up the Zig-built `jac` binary with the

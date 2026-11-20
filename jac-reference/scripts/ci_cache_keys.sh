@@ -3,7 +3,11 @@
 # Run once immediately after checkout; reuse these outputs for restore AND save.
 # This is intentionally not a local incremental-build key (which must read edits).
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+# The reference design's root (jac-reference/ in the repository), found from
+# this script's own place. Every path below is relative to it, and so is what
+# `git ls-tree` prints from here, so a fingerprint does not change with where
+# the tree sits in the repository.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 compiler_paths=(jac/jaclang/compiler_inputs.txt)
 while IFS= read -r entry || [ -n "$entry" ]; do

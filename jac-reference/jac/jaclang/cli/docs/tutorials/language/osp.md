@@ -456,7 +456,7 @@ walker trending {
 }
 ```
 
-The `deliver` ability fires exactly once, after every queued `Tweet` has been visited -- so the walker reports one sorted result instead of a stream of fragments. This is precisely how [littleX](https://github.com/jaseci-labs/jaseci/tree/main/jac/examples/littleX)'s feed works: two `visit` statements define *what* the feed is (my tweets, plus tweets of everyone I follow), entry abilities gather it, and a `with Root exit` ability sorts and delivers it.
+The `deliver` ability fires exactly once, after every queued `Tweet` has been visited -- so the walker reports one sorted result instead of a stream of fragments. This is precisely how [littleX](https://github.com/jaseci-labs/jaseci/tree/main/jac-reference/jac/examples/littleX)'s feed works: two `visit` statements define *what* the feed is (my tweets, plus tweets of everyone I follow), entry abilities gather it, and a `with Root exit` ability sorts and delivers it.
 
 The idiom generalizes beyond delivering at the spawn point. Exits unwind in last-in, first-out order, so over a tree every parent's exit runs *after* all of its children's -- a post-order fold. Give each node type its own exit ability that combines what its children computed, and the walker synthesizes a result bottom-up (serialize a tree, evaluate an expression graph, total a hierarchy) with no recursive function anywhere.
 

@@ -23,7 +23,9 @@
 # them globally below only if you want to run byLLM end-to-end from a fresh env.
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
+# The reference design's root (jac-reference/ in the repository), found from
+# this script's own place: every path below is relative to it.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Fetch the pinned LLVM once (idempotent; range-fetches only the ~84 MB subset the
 # shim needs from the llvm-slice zip -- not the ~1 GB upstream tarball -- into
@@ -65,6 +67,7 @@ jac install \
 # Local git hooks come from the jac binary itself: a pre-commit hook that
 # formats/lints staged .jac files and a commit-msg hook that blocks AI
 # co-author attribution. Markdown lint + the em-dash ban run on every PR via
-# pre-commit.ci (see .pre-commit-config.yaml); nothing extra to install here.
+# pre-commit.ci (see .pre-commit-config.yaml in the repository root); nothing
+# extra to install here.
 jac precommit --install
 echo "Done. Ensure 'jac' stays on PATH for the git hooks."

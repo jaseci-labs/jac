@@ -3,11 +3,12 @@
 # Records the install -> create -> start flow as an animated GIF.
 # Requires VHS (https://github.com/charmbracelet/vhs):  brew install vhs
 #
-# Record with:
-#   vhs scripts/readme_demo.tape
+# Record with, from the repository root:
+#   vhs jac-reference/scripts/readme_demo.tape
 #
-# Then swap the <picture> block at the top of README.md to point at the GIF:
-#   .github/assets/readme/demo.gif
+# Then swap the <picture> block at the top of jac-reference/README.md to point
+# at the GIF:
+#   ../.github/assets/readme/demo.gif
 #
 # Run this from a machine WITHOUT jac installed (or a container) so the
 # install step records honestly.

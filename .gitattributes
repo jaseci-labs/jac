@@ -1,2 +1,2 @@
 # Generated / vendored - don't count in diff stats, hide in review
-jac/jaclang/vendor/** linguist-vendored
+jac-reference/jac/jaclang/vendor/** linguist-vendored

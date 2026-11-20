@@ -1,6 +1,8 @@
-# jaclang project manifest AND repo-wide config, consolidated. Config resolves
-# to the nearest ANCESTOR jac.toml (walk-up, nearest wins, no merging), so this
-# single root file covers every cwd in the repo -- including `cd jac`. The
+# jaclang project manifest AND the reference design's config, consolidated.
+# Config resolves to the nearest ANCESTOR jac.toml (walk-up, nearest wins, no
+# merging), so this single file covers every cwd under jac-reference/ --
+# including `cd jac`. A jac started above it, in the repository root, finds no
+# jac.toml and runs its bundled compiler. The
 # single binary is built from this source tree; the build reads version/metadata
 # here (not from a Python pyproject backend).
 [project]

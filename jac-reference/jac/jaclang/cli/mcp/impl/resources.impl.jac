@@ -233,7 +233,7 @@ impl ResourceProvider._read_example(uri: str) -> str {
     if not example_name {
         return "Error: Invalid example URI";
     }
-    return _fetch_example_github(f"jac/examples/{example_name}");
+    return _fetch_example_github(f"jac-reference/jac/examples/{example_name}");
 }
 
 def _read_example_dir(dir_path: str) -> str;
@@ -274,7 +274,7 @@ impl ResourceProvider._index_examples_local(examples_dir: Path) -> None {
 }
 
 impl ResourceProvider._fetch_github_categories -> list[str] {
-    data = _github_api_get(f"{GITHUB_API_BASE}/contents/jac/examples");
+    data = _github_api_get(f"{GITHUB_API_BASE}/contents/jac-reference/jac/examples");
     if data is None or not isinstance(data, list) {
         return [];
     }
