@@ -416,6 +416,37 @@ impl _validate_restspec_target(spec: any, target: any) {
             "walkers; walker responses always use the report envelope."
         );
     }
+    wire_names = spec?.params or {};
+    if not wire_names {
+        return;
+    }
+    try {
+        signature = inspect.signature(target);
+    } except (TypeError, ValueError) {
+        return;
+    }
+    names = {
+        pname
+        for (pname, param) in signature.parameters.items()
+        if param.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    };
+    owner = 'a field of the walker' if is_walker else 'a parameter of the function';
+    for (field, wire) in wire_names.items() {
+        if field not in names {
+            raise ValueError(
+                f"@restspec params on '{name}' maps '{field}', which is not "
+                f"{owner}. Expected one of: {', '.join(sorted(names))}."
+            );
+        }
+        if wire != field and wire in names and wire not in wire_names {
+            raise ValueError(
+                f"@restspec params on '{name}' binds the request key '{wire}' "
+                f"to '{field}', but '{wire}' is also {owner}; map '{wire}' "
+                "to another request key as well."
+            );
+        }
+    }
 }
 
 impl _is_sized_type_name(name: str) -> bool {

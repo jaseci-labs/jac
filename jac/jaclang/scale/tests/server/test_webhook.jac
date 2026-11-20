@@ -254,12 +254,13 @@ test "webhook - payment received with fields" {
         api_key_data = extract_data(api_key_response.json());
         api_key = api_key_data["api_key"];
 
+        # The fixture maps `currency` to the request key `currency.code`.
         payload = json.dumps(
             {
                 "payment_id": "PAY-12345",
                 "order_id": "ORD-67890",
                 "amount": 99.99,
-                "currency": "USD"
+                "currency.code": "EUR"
             }
         );
         payload_bytes = payload.encode("utf-8");
@@ -289,7 +290,7 @@ test "webhook - payment received with fields" {
         assert rpt["payment_id"] == "PAY-12345";
         assert rpt["order_id"] == "ORD-67890";
         assert rpt["amount"] == 99.99;
-        assert rpt["currency"] == "USD";
+        assert rpt["currency"] == "EUR";
     } finally {
         client.close();
     }

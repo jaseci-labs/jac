@@ -94,6 +94,40 @@ def:protect get_func_with_params(name: str, age: int) -> dict[str, any] {
     return {"message": "get_func_with_params executed", "name": name, "age": age};
 }
 
+"""Walker whose request keys are not Jac names: a reserved word in the path and
+the query, and a dotted query key."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/reports/{from}",
+    params={
+        "from_date": "from",
+        "class_name": "class",
+        "hub_mode": "hub.mode",
+        "limit_n": "limit"
+    }
+)
+walker:pub ReportWalker {
+    has from_date: str,
+        class_name: str = "",
+        hub_mode: str = "",
+        limit_n: int = 10;
+
+    can get_data with Root entry {
+        report {
+            "from_date": self.from_date,
+            "class_name": self.class_name,
+            "hub_mode": self.hub_mode,
+            "limit_n": self.limit_n
+        };
+    }
+}
+
+"""Function whose JSON body keys are Python reserved words."""
+@restspec(method=HTTPMethod.POST, params={"kind": "class", "run_async": "async"})
+def:pub reserved_keys_func(kind: str, run_async: bool = False) -> dict[str, any] {
+    return {"kind": kind, "run_async": run_async};
+}
+
 # ============================================================================
 # Path Parameter Tests (regression for @restspec path param bug)
 # ============================================================================

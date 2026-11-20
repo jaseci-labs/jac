@@ -57,6 +57,10 @@ def target_schedule_spec(target: any) -> any;
 
 def restspec_fields(specs: dict[str, any]) -> dict[str, any];
 
+def restspec_wire_names(spec: any) -> dict[str, str];
+
+def wire_to_fields(wire_names: dict[str, str], data: dict[str, any]) -> dict[str, any];
+
 
 obj ExecutionManager {
     has base_path: str,
@@ -200,7 +204,8 @@ obj JacAPIServer(EndpointHost) {
             broadcast: bool = False,
             produces: str = "",
             envelope: bool = True,
-            scheme: str = "";
+            scheme: str = "",
+            params: dict[str, str] = {};
     }
 
     def postinit -> None;

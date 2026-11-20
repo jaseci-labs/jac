@@ -19,6 +19,7 @@ class ParameterType(StrEnum) {
 
 obj APIParameter {
     has name: str,
+        field: str = '',
         kind: ParameterType = ParameterType.QUERY,
         data_type: str = 'str',
         type_obj: any = None,

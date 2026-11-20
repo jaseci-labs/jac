@@ -172,6 +172,7 @@ impl walker_parameters(
 ) -> list[APIParameter] {
     restspec: any = target_restspec(walker_cls);
     path_names = path_param_names(str(restspec.path) if restspec?.path else None);
+    wire_names = restspec_wire_names(restspec);
     fields = server.introspector.introspect_walker(walker_cls)['fields'];
     try {
         hints = get_type_hints(walker_cls.init);
@@ -190,12 +191,16 @@ impl walker_parameters(
         if type_obj is None {
             type_obj = hints.get(field_name);
         }
+        wire = 'nd'
+            if field_name == '_jac_spawn_node'
+            else wire_names.get(field_name, field_name);
         kind = ParameterType.PATH
             if field_name == '_jac_spawn_node'
-            else _param_kind(field_name, field_type, path_names, method, type_obj);
+            else _param_kind(wire, field_type, path_names, method, type_obj);
         parameters.append(
             APIParameter(
-                name='nd' if field_name == '_jac_spawn_node' else field_name,
+                name=wire,
+                field=field_name if field_name in wire_names else '',
                 data_type=field_type,
                 type_obj=type_obj,
                 required=fields[field_name]['required'],
@@ -350,6 +355,7 @@ impl function_parameters(
 ) -> list[APIParameter] {
     restspec: any = target_restspec(func_obj);
     path_names = path_param_names(str(restspec.path) if restspec?.path else None);
+    wire_names = restspec_wire_names(restspec);
     fields = server.introspector.introspect_callable(func_obj)['parameters'];
     try {
         hints = get_type_hints(func_obj);
@@ -365,15 +371,17 @@ impl function_parameters(
         if type_obj is None {
             type_obj = hints.get(field_name);
         }
+        wire = wire_names.get(field_name, field_name);
         parameters.append(
             APIParameter(
-                name=field_name,
+                name=wire,
+                field=field_name if field_name in wire_names else '',
                 data_type=field_type,
                 type_obj=type_obj,
                 required=fields[field_name]['required'],
                 default_value=fields[field_name]['default'],
                 description=f"Field {field_name} for function {func_name}",
-                kind=_param_kind(field_name, field_type, path_names, method, type_obj)
+                kind=_param_kind(wire, field_type, path_names, method, type_obj)
             )
         );
     }

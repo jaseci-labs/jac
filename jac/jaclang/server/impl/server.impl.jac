@@ -2168,5 +2168,54 @@ impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
         }
         specs['scheme'] = '' if raw_s == 'jac' else raw_s;
     }
+    params = specs.get('params');
+    if params is not None {
+        if not isinstance(params, dict)
+            or not all(
+                isinstance(field, str) and field and isinstance(wire, str) and wire
+                for (field, wire) in params.items()
+            ) {
+            raise ValueError(
+                f"@restspec params={params!r} must map field names to the "
+                "request keys they bind, e.g. params={'from_date': 'from'}."
+            );
+        }
+        claimed: dict[str, str] = {};
+        for (field, wire) in params.items() {
+            if wire in claimed {
+                raise ValueError(
+                    f"@restspec params maps both '{claimed[wire]}' and "
+                    f"'{field}' to the request key '{wire}'; a request key "
+                    "binds one field."
+                );
+            }
+            claimed[wire] = field;
+        }
+        specs['params'] = dict(params);
+    }
     return specs;
+}
+
+impl restspec_wire_names(spec: any) -> dict[str, str] {
+    return dict(spec.params) if spec?.params else {};
+}
+
+impl wire_to_fields(
+    wire_names: dict[str, str], data: dict[str, any]
+) -> dict[str, any] {
+    if not wire_names {
+        return data;
+    }
+    wires = set(wire_names.values());
+    bound = {
+        key: value
+        for (key, value) in data.items()
+        if key not in wires
+    };
+    for (field, wire) in wire_names.items() {
+        if wire in data {
+            bound[field] = data[wire];
+        }
+    }
+    return bound;
 }

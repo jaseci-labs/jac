@@ -251,10 +251,11 @@ The `@restspec` decorator customizes how walkers and functions are exposed as RE
 | `path` | `str` | `""` (auto-generated) | Custom URL path for the endpoint |
 | `protocol` | `APIProtocol` | `APIProtocol.HTTP` | Protocol for the endpoint (`HTTP`, `WEBHOOK`, or `WEBSOCKET`) |
 | `broadcast` | `bool` | `False` | Broadcast responses to all connected WebSocket clients (only valid with `WEBSOCKET` protocol) |
+| `params` | `dict[str, str]` | `{}` | Request key for a field or parameter, as `{"field_name": "request_key"}`. See [Request Keys](#request-keys) |
 | `produces` | `str` | `""` (`text/plain`) | `Content-Type` of the response body. Only meaningful with `envelope=False` |
 | `envelope` | `bool` | `True` | When `False`, the function's return value becomes the response body verbatim instead of being wrapped in the JSON envelope. **Functions only** |
 
-The first four options shape the **request** (how the endpoint is reached);
+The first five options shape the **request** (how the endpoint is reached);
 `produces` and `envelope` shape the **response** (what comes back).
 
 > **Note:** `APIProtocol` and `restspec` are builtins and do not require an import statement. `HTTPMethod` must be imported with `import from http { HTTPMethod }`.
@@ -313,6 +314,51 @@ walker :pub get_user_orders {
 ```
 
 Parameters are classified as: **path** (matches `{name}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods).
+
+### Request Keys
+
+A request key binds the field or parameter of the same name. When the key
+cannot be a Jac name, such as a Python reserved word (`from`, `class`,
+`async`; error E0067) or a key with a dot (`hub.mode`), name the field
+something else and map it back with `params`:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(
+    method=HTTPMethod.GET,
+    path="/api/reports/{from}",
+    params={"from_date": "from", "class_name": "class", "hub_mode": "hub.mode"}
+)
+walker :pub payments_report {
+    has from_date: str,
+        class_name: str = "",
+        hub_mode: str = "";
+    can fetch with Root entry {
+        report {"from": self.from_date, "class": self.class_name};
+    }
+}
+```
+
+`GET /api/reports/2024-01-01?class=premium&hub.mode=subscribe` sets
+`from_date`, `class_name` and `hub_mode`. The request key is used everywhere
+the endpoint is described from the outside:
+
+- **Path, query, form, JSON body and file upload keys**, including the
+  `{name}` in `path`.
+- **Webhook bodies and WebSocket messages**, for walkers served with
+  `APIProtocol.WEBHOOK` or `APIProtocol.WEBSOCKET`.
+- **The OpenAPI schema and validation errors**, which name `from`, not
+  `from_date`.
+
+A request that sends the field name instead (`from_date`) still binds, so
+Jac client code that spawns the walker by its field names keeps working.
+If a request sends both, the request key wins.
+
+`@restspec` checks the map when the walker or function is defined. It
+raises `ValueError` if a key is not a field or parameter, if two fields map
+to the same request key, or if a request key is the name of another field
+that keeps its own name.
 
 ### Functions
 
