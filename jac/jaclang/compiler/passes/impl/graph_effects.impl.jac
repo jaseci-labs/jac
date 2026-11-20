@@ -1,29 +1,3 @@
-impl graph_typed(t: (TypeBase | None)) -> bool {
-    if t is None or isinstance(t, (AnyType, UnknownType)) {
-        return True;
-    }
-    if isinstance(t, TypeVarType) {
-        return t.bound is None or graph_typed(t.bound);
-    }
-    if isinstance(t, UnionType) {
-        return any(graph_typed(member) for member in t.types);
-    }
-    return isinstance(t, ClassType)
-        and (
-            t.is_node_type()
-            or t.is_edge_type()
-            or t.is_any_type()
-            or t.is_builtin("object")
-        );
-}
-
-impl immutable_type(t: (TypeBase | None)) -> bool {
-    if isinstance(t, UnionType) {
-        return all(immutable_type(member) for member in t.types);
-    }
-    return isinstance(t, ClassType) and t.is_builtin(IMMUTABLE_TYPES);
-}
-
 impl endpoint_effects(module: Module, program: any) -> dict[str, dict[str, any]] {
     endpoints: list[tuple[str, str, UniNode]] = [];
     for ability in module.get_all_sub_nodes(Ability) {
@@ -40,14 +14,7 @@ impl endpoint_effects(module: Module, program: any) -> dict[str, dict[str, any]]
             endpoints.append(("walker", arch.name.sym_name, arch));
         }
     }
-    scan = GraphEffectScan(
-        evaluator=program.get_type_evaluator(),
-        modules=[
-            mod
-            for mod in program.mod.hub.values()
-            if mod is not None and not is_compiler_source_path(mod.loc.mod_path)
-        ]
-    );
+    scan = GraphEffectScan(evaluator=program.get_type_evaluator());
     out: dict[str, dict[str, any]] = {};
     for (kind, name, owner) in endpoints {
         record: dict[str, any] = dict(endpoint_descriptor(module, kind, name));
@@ -81,9 +48,6 @@ impl GraphEffectScan.writes(owner: UniNode) -> bool {
     }
     self._active.add(key);
     found = self._scan(roots);
-    if not found and isinstance(owner, Archetype) and owner.arch_kind == "walker" {
-        found = self._walker_writes(owner);
-    }
     self._active.discard(key);
     if not self._active {
         self._memo[key] = found;
@@ -104,69 +68,16 @@ impl GraphEffectScan._scan(roots: list[UniNode]) -> bool {
     return False;
 }
 
-impl GraphEffectScan._walker_writes(spawned: Archetype) -> bool {
-    if any(
-        isinstance(mod, CatModule) and str(mod.loc.mod_path).endswith(".jac")
-        for mod in self.modules
-    ) {
+impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
+    if isinstance(nd, VisitStmt) {
         return True;
     }
-    reactions = self._reactions;
-    if reactions is None {
-        reactions = [];
-        for mod in self.modules {
-            for arch in mod.get_all_sub_nodes(Archetype) {
-                if arch.arch_kind not in ("node", "edge") {
-                    continue;
-                }
-                for ability in arch.get_all_sub_nodes(Ability) {
-                    sig = ability.signature;
-                    if not isinstance(sig, EventSignature) {
-                        continue;
-                    }
-                    tag = sig.arch_tag_info;
-                    names: (set[str] | None) = None;
-                    if isinstance(tag, Name) {
-                        names = {tag.sym_name};
-                    } elif isinstance(tag, BoolExpr)
-                        and all(isinstance(val, Name) for val in tag.values) {
-                        names = {val.sym_name for val in tag.values};
-                    }
-                    reactions.append((ability, names));
-                }
-            }
-        }
-        self._reactions = reactions;
-    }
-    lineage: set[str] = {spawned.name.sym_name};
-    for base in spawned.base_classes {
-        base_type = self._type_of(base);
-        if not isinstance(base_type, ClassType) {
-            lineage = set();
-            break;
-        }
-        lineage.update(ancestor.shared.class_name for ancestor in base_type.shared.mro);
-    }
-    for (ability, names) in reactions {
-        if (names is None or not lineage or not lineage.isdisjoint(names))
-            and self.writes(ability) {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
     if isinstance(nd, BinaryExpr) {
-        if isinstance(nd.op, (ConnectOp, DisconnectOp)) {
-            return True;
-        }
-        return isinstance(nd.op, Token)
-            and nd.op.name == Tok.KW_SPAWN
-            and self._spawn_writes([nd.left, nd.right]);
+        return isinstance(nd.op, (ConnectOp, DisconnectOp))
+            or (isinstance(nd.op, Token) and nd.op.name == Tok.KW_SPAWN);
     }
-    if isinstance(nd, UnaryExpr) and nd.op.name == Tok.KW_SPAWN {
-        return self._spawn_writes([nd.operand]);
+    if isinstance(nd, UnaryExpr) {
+        return nd.op.name == Tok.KW_SPAWN;
     }
     if isinstance(nd, DeleteStmt) {
         for target in nd.leaf_targets() {
@@ -186,19 +97,6 @@ impl GraphEffectScan._node_writes(nd: UniNode) -> bool {
         return self._call_writes(nd);
     }
     return False;
-}
-
-impl GraphEffectScan._spawn_writes(operands: list[Expr]) -> bool {
-    for operand in operands {
-        operand_type = self._type_of(operand);
-        if isinstance(operand_type, ClassType) and operand_type.is_walker_type() {
-            holder = operand_type.shared.symbol_table;
-            if isinstance(holder, Archetype) {
-                return self.writes(holder);
-            }
-        }
-    }
-    return True;
 }
 
 impl GraphEffectScan._store_writes(target: Expr) -> bool {
@@ -223,100 +121,60 @@ impl GraphEffectScan._store_writes(target: Expr) -> bool {
 impl GraphEffectScan._call_writes(call: FuncCall) -> bool {
     target = call.target;
     callee = self._type_of(target);
-    holder: any = None;
     if isinstance(callee, ClassType) and callee.is_instantiable_class() {
         if callee.is_node_type() or callee.is_edge_type() {
             return True;
         }
         holder = callee.shared.symbol_table;
-    }
-    decl: any = holder if holder is not None else call.callee_decl;
-    if not isinstance(decl, (Ability, Archetype)) {
-        decl = None;
-        named: any = target;
-        if isinstance(target, AtomTrailer) {
-            named = target.right;
+        if not isinstance(holder, Archetype)
+            or not str(holder.loc.mod_path).endswith(".jac") {
+            return not callee.is_builtin();
         }
-        sym = named.sym if isinstance(named, AstSymbolNode) else None;
-        if sym is None or not sym.defn {
-            return True;
+        key = id(holder);
+        if is_compiler_source_path(str(holder.loc.mod_path)) or key in self._active {
+            return key not in self._active;
         }
-        origin = str(sym.defn[0].loc.mod_path);
-        name = sym.sym_name;
-    } else {
-        origin = str(decl.loc.mod_path);
-        name = decl.sym_name;
+        self._active.add(key);
+        found = False;
+        for member in holder._get_impl_resolved_body() {
+            if isinstance(member, Ability) {
+                found = member.sym_name in ("init", "postinit") and self.writes(member);
+            } else {
+                found = self._scan([member]);
+            }
+            if found {
+                break;
+            }
+        }
+        self._active.discard(key);
+        return found;
     }
-    if not origin.endswith(".jac") {
-        return self._library_call_writes(call, origin.replace("\\", "/"), name);
+    decl = call.callee_decl;
+    if decl is not None and str(decl.loc.mod_path).endswith(".jac") {
+        return is_compiler_source_path(str(decl.loc.mod_path)) or self.writes(decl);
     }
-    if decl is None or is_compiler_source_path(origin) {
+    named: any = target;
+    if isinstance(target, AtomTrailer) {
+        named = target.right;
+    }
+    if not isinstance(named, AstSymbolNode) or named.sym is None or not named.sym.defn {
         return True;
     }
-    if isinstance(decl, Ability) {
-        return self.writes(decl);
-    }
-    if id(decl) in self._building {
-        return False;
-    }
-    self._building.add(id(decl));
-    found = False;
-    for member in decl._get_impl_resolved_body() {
-        if isinstance(member, Ability) {
-            found = member.sym_name in ("init", "postinit") and self.writes(member);
-        } else {
-            found = self._scan([member]);
-        }
-        if found {
-            break;
-        }
-    }
-    self._building.discard(id(decl));
-    return found;
-}
-
-impl GraphEffectScan._library_call_writes(
-    call: FuncCall, origin: str, name: str
-) -> bool {
-    if "/typeshed/" not in origin {
+    origin = str(named.sym.defn[0].loc.mod_path).replace("\\", "/");
+    if not origin.endswith("/builtins.pyi") {
         return True;
     }
-    target = call.target;
-    if isinstance(target, AtomTrailer)
-        and target.is_attr
-        and not isinstance(self._type_of(target.target), ModuleType) {
-        receiver = target.target;
-        return name not in READ_ONLY_METHODS and not self._safe_to_share(receiver);
+    name = named.sym.sym_name;
+    if not isinstance(target, AtomTrailer) {
+        return name not in PURE_BUILTINS;
     }
-    if origin.endswith("/builtins.pyi") and name in PURE_BUILTINS {
-        return False;
-    }
-    for param in call.params or [] {
-        arg: any = param;
-        if isinstance(param, KWPair) {
-            arg = param.value;
-        }
-        if isinstance(arg, Expr) and not self._safe_to_share(arg) {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl GraphEffectScan._safe_to_share(expr: Expr) -> bool {
-    found = self._type_of(expr);
-    if immutable_type(found) or isinstance(expr, FRESH_VALUES) or self._fresh_local(expr) {
-        return True;
-    }
-    if graph_typed(found)
-        or not isinstance(found, ClassType)
-        or found.is_builtin(["list", "dict", "set", "bytearray"]) {
-        return False;
-    }
-    sym = found.get_class_symbol();
-    return sym is None
-        or not sym.defn
-        or not str(sym.defn[0].loc.mod_path).endswith(".jac");
+    receiver_type = self._type_of(target.target);
+    return name not in READ_ONLY_METHODS
+        and not (
+            isinstance(receiver_type, ClassType)
+            and receiver_type.is_builtin(["str", "int", "float", "bool", "bytes", "tuple"])
+        )
+        and not self._fresh_local(target.target);
 }
 
 impl GraphEffectScan._fresh_local(expr: Expr) -> bool {

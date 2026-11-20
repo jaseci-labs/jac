@@ -258,7 +258,6 @@ test "endpoint effects come from the types of what each endpoint changes" {
     tmp = write_mods(
         {
             "main.jac": (
-                "import json;\n"
                 "node Note {\n"
                 "    has text: str = \"\",\n"
                 "        tags: list[str] = [],\n"
@@ -307,12 +306,7 @@ test "endpoint effects come from the types of what each endpoint changes" {
                 "            row.text = str(len(n.tags));\n"
                 "        }\n"
                 "        self.seen = count_of(rows);\n"
-                "        report json.dumps({\"rows\": rows});\n"
-                "    }\n"
-                "}\n"
-                "walker:pub spawn_reader {\n"
-                "    can start with Root entry {\n"
-                "        report root spawn read_local_values();\n"
+                "        report rows;\n"
                 "    }\n"
                 "}\n"
                 "walker:pub set_field_item {\n"
@@ -401,7 +395,6 @@ test "endpoint effects come from the types of what each endpoint changes" {
         ("func", "add_note"): True,
         ("func", "read_only"): False,
         ("walker", "read_local_values"): False,
-        ("walker", "spawn_reader"): False,
         ("walker", "set_field_item"): True,
         ("walker", "append_field"): True,
         ("walker", "alias_field"): True,
