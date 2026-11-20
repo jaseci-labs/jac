@@ -27,7 +27,6 @@ obj UnitProducts {
         iface: str = "",
         iface_shape: str = "",
         iface_jir: str = "",
-        effects: str = "",
         jac_deps: list[str] = [];
 }
 

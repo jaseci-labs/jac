@@ -500,9 +500,6 @@ impl unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
             manifest_record(module.gen.client_manifest)
         );
     }
-    if module.gen.callable_effects {
-        products.effects = json.dumps(module.gen.callable_effects, sort_keys=True);
-    }
     native_products(module, products);
     return products;
 }

@@ -3,8 +3,8 @@
 BoundaryAnalysisPass is the one producer of cross-codespace facts: bridged
 plain client imports record typed cl -> sv bindings, every native binding
 carries a real signature, unmappable ctypes wire types are compile
-diagnostics (E5093), and endpoint effects come from the dedicated
-EndpointEffectPass in the same schedule.
+diagnostics (E5093), and endpoint effects come from the graph effect
+analysis it runs over the typed tree.
 """
 
 import os;
@@ -12,7 +12,6 @@ import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.execution { run_walker }
 
 def write_mods(mods: dict[str, str]) -> str {
     tmp = tempfile.mkdtemp(prefix="jac_interop_manifest_");
@@ -255,18 +254,82 @@ test "native default codespace stamps the na->sv caller once" {
     assert binding.source_context.value == "server";
 }
 
-test "endpoint effects are recorded by the dedicated effect pass" {
+test "endpoint effects come from the types of what each endpoint changes" {
     tmp = write_mods(
         {
             "main.jac": (
+                "import json;\n"
                 "node Note {\n"
+                "    has text: str = \"\",\n"
+                "        tags: list[str] = [],\n"
+                "        meta: dict[str, str] = {};\n"
+                "    def rename(text: str) -> None {\n"
+                "        self.text = text;\n"
+                "    }\n"
+                "}\n"
+                "obj Row {\n"
                 "    has text: str = \"\";\n"
+                "}\n"
+                "def count_of(items: list[str]) -> int {\n"
+                "    return len(sorted(items));\n"
                 "}\n"
                 "def:pub add_note(text: str) -> None {\n"
                 "    root ++> Note(text=text);\n"
                 "}\n"
                 "def:pub read_only -> int {\n"
                 "    return 1;\n"
+                "}\n"
+                "walker:pub read_local_values {\n"
+                "    has seen: int = 0;\n"
+                "    can start with Root entry {\n"
+                "        rows: list[str] = [];\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            rows.append(n.text.lower());\n"
+                "            row = Row(text=n.meta.get(\"k\", \"\"));\n"
+                "            row.text = str(len(n.tags));\n"
+                "        }\n"
+                "        self.seen = count_of(rows);\n"
+                "        report json.dumps({\"rows\": rows});\n"
+                "    }\n"
+                "}\n"
+                "walker:pub spawn_reader {\n"
+                "    can start with Root entry {\n"
+                "        report root spawn read_local_values();\n"
+                "    }\n"
+                "}\n"
+                "walker:pub set_field_item {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            n.meta[\"k\"] = \"v\";\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub append_field {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            n.tags.append(\"x\");\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub alias_field {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            meta = n.meta;\n"
+                "            meta[\"k\"] = \"v\";\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub call_node_method {\n"
+                "    can start with Root entry {\n"
+                "        for n in [-->[?:Note]] {\n"
+                "            n.rename(\"x\");\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+                "walker:pub spawn_writer {\n"
+                "    can start with Root entry {\n"
+                "        root spawn set_field_item();\n"
+                "    }\n"
                 "}\n"
             )
         }
@@ -275,58 +338,23 @@ test "endpoint effects are recorded by the dedicated effect pass" {
     mod = prog.compile(os.path.join(tmp, "main.jac"));
     effects = mod.gen.interop_manifest.endpoint_effects;
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-    writer = effects.get(endpoint_key(mod, "func", "add_note"));
-    reader = effects.get(endpoint_key(mod, "func", "read_only"));
-    assert writer is not None and writer["writes"] , (
-        f"add_note connects a node and must classify as writer; got {effects}"
-    );
-    assert reader is not None and not reader["writes"] , (
-        f"read_only must classify as non-writer; got {effects}"
-    );
-}
-
-test "a call whose name lost its scope marks the endpoint unknown instead of crashing" {
-    import from unittest.mock { PropertyMock, patch }
-    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-    import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
-    tmp = write_mods(
-        {
-            "main.jac": (
-                "def helper -> int {\n"
-                "    return 1;\n"
-                "}\n"
-                "def:pub caller -> int {\n"
-                "    return helper();\n"
-                "}\n"
-            )
-        }
-    );
-    prog = JacProgram();
-    mod = prog.compile(os.path.join(tmp, "main.jac"));
-    key = endpoint_key(mod, "func", "caller");
-    before = mod.gen.interop_manifest.endpoint_effects.get(key);
-    assert before is not None and not before["unknown"] , (
-        f"caller resolves helper, so it starts out known; got {before}"
-    );
-    targets: list[uni.Name] = [];
-    for call in mod.get_all_sub_nodes(uni.FuncCall) {
-        target = call.target;
-        if isinstance(target, uni.Name) and target.sym_name == "helper" {
-            targets.append(target);
-        }
+    expected = {
+        ("func", "add_note"): True,
+        ("func", "read_only"): False,
+        ("walker", "read_local_values"): False,
+        ("walker", "spawn_reader"): False,
+        ("walker", "set_field_item"): True,
+        ("walker", "append_field"): True,
+        ("walker", "alias_field"): True,
+        ("walker", "call_node_method"): True,
+        ("walker", "spawn_writer"): True
+    };
+    for ((kind, name), writes) in expected.items() {
+        effect = effects.get(endpoint_key(mod, kind, name));
+        assert effect is not None , f"{name} must be classified; got {effects}";
+        assert bool(effect["writes"]) == writes , (
+            f"{name} must classify as {'writer' if writes else 'reader'}; got {effect}"
+        );
+        assert not effect["unknown"] , f"{name} must be decided, not unknown; got {effect}";
     }
-    assert len(targets) == 1 , f"expected one helper() call, got {len(targets)}";
-    targets[0].sym = None;
-    with patch.object(
-        uni.Name,
-        "sym_tab",
-        new_callable=PropertyMock,
-        side_effect=ValueError("No scope found")
-    ) {
-        run_walker(EndpointEffectPass, mod);
-    }
-    after = mod.gen.interop_manifest.endpoint_effects.get(key);
-    assert after is not None and after["unknown"] , (
-        f"a callee that cannot be resolved must mark the endpoint unknown; got {after}"
-    );
 }
