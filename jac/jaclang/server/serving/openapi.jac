@@ -1,6 +1,5 @@
-import inspect;
 import from types { UnionType }
-import from typing { Union, get_args, get_origin, get_type_hints }
+import from typing { Union, get_args, get_origin }
 
 
 glob _NAME_SCHEMAS: dict[str, dict[str, str]] = {

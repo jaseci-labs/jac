@@ -165,6 +165,7 @@ Each value is checked against the type declared for it, and a mismatch answers `
 
 - **A JSON body** already carries types, so a value must be the declared type. `"12"` is refused for an `int`, and `19.99` is refused rather than truncated. The conversions that lose nothing are allowed: `3.0` for an `int`, and `3` for a `float`.
 - **Query, path, header and form values** are always text, so they are parsed into the declared type. `?limit=20` binds `limit` as the integer `20`, and a lone value fills a `list[T]`.
+- **`datetime`, `date`, `time` and `UUID`** have no JSON type, so from either source they take an ISO 8601 or UUID string, and the OpenAPI schema lists them as strings with the matching `format`. A sized type such as `u8` or `f32` follows the `int` or `float` rules above, and a value outside its range is refused.
 
 Browser input values are strings, so convert them before sending them to a numeric field: `int(e.target.value)`.
 

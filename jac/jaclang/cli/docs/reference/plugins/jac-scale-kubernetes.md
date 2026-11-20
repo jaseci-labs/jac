@@ -621,6 +621,11 @@ postgres_storage = "10Gi"  # under [scale.database]
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.
 
+**Postgres disk usage:**
+
+- `jac scale status` shows how much of the Postgres data PVC is in use and warns once it passes 80%. Raise `postgres_storage` and redeploy before it fills: a full volume stops every write.
+- Not all of `postgres_storage` holds your data. Postgres keeps its write-ahead log on the same volume and lets it grow toward 2GB between checkpoints, plus some space for the empty database itself. On the `2Gi` default, your data gets much less than 2Gi.
+
 > **Note:** Postgres PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
 > **Note:** The application bundle PVC has a fixed size (1Gi) and is created once, never resized. Bundle contents are content-addressed, so an unchanged app is not re-uploaded on redeploy.
 
@@ -757,7 +762,7 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 When enabled, two additional components are deployed:
 
 - **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
-- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
+- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
 
 A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
 
@@ -1343,7 +1348,7 @@ enabled = true
 When enabled, `jac scale deploy` deploys:
 
 - **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
-- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
+- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods` for the pods in the app namespace only, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
 - **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[scale.monitoring] enabled = true` plus `[scale.kubernetes] loki_enabled = true` on the monolith target.
 
 A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
@@ -1362,7 +1367,7 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 
 <!-- -->
 
-> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy is planned.
+> **Multi-tenant note.** Each app's Alloy collects only the logs of its own namespace, so its Loki and Grafana do not show other apps on the cluster. Apps deployed into the same namespace share that namespace's logs; give each tenant its own `[scale.kubernetes] namespace` to keep them apart. An app deployed before this scoping keeps the other namespaces' logs its Loki already stored until the Loki pod restarts; `kubectl rollout restart deployment/<app>-loki -n <namespace>` clears them, along with the app's own earlier logs.
 
 ---
 

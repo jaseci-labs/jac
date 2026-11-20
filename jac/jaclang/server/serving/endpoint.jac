@@ -25,7 +25,8 @@ obj APIParameter {
         type_obj: any = None,
         required: bool = True,
         default_value: any = None,
-        description: str = '';
+        description: str = '',
+        takes_upload: (bool | None) = None;
 }
 
 obj JEndPoint {
