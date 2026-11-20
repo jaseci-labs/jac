@@ -2847,11 +2847,25 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     _clos_tgt = self._closure_struct_of(target_type);
     if _clos_tgt is not None {
+        _clos_src = self._closure_struct_of(val.type);
+        if _clos_src is not None and _clos_src != _clos_tgt {
+            return self._adapt_closure(val, _clos_src, _clos_tgt);
+        }
         _src_is_fn = isinstance(val.type, ir.FunctionType)
             or (
                 isinstance(val.type, ir.PointerType)
                 and isinstance(val.type.pointee, ir.FunctionType)
             );
+        if _src_is_fn {
+            (_src_name, _src_st, _) = self._closure_sig_struct(
+                val.type if isinstance(val.type, ir.FunctionType) else val.type.pointee
+            );
+            if _src_name != _clos_tgt {
+                return self._adapt_closure(
+                    self._coerce_type(val, _src_st.as_pointer()), _src_name, _clos_tgt
+                );
+            }
+        }
         if _src_is_fn {
             if self._pending_lambda_captures is not None {
                 self._pending_lambda_captures = None;
