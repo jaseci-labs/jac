@@ -996,12 +996,33 @@ test "a commit hashes no loaded anchor, and still finds every in-place change" {
                 ),
                 ("an object's field", lambda { held.label.name = "b"; }, "label", '"b"')
             ];
+            import from jaclang.data.serializer { Serializer }
+            label_forms: list[str] = [];
+            real_attrs = Serializer._serialize_attrs;
+            def counting_attrs(*args: any, **kwargs: any) -> any {
+                if isinstance(args[0], RLabel) {
+                    label_forms.append(args[0].name);
+                }
+                return real_attrs(*args, **kwargs);
+            }
             for (label, change, field, expected) in changes {
                 change();
-                ctx.mem.commit();
+                label_forms.clear();
+                Serializer._serialize_attrs = counting_attrs;
+                try {
+                    ctx.mem.commit();
+                } finally {
+                    Serializer._serialize_attrs = real_attrs;
+                }
                 stored = _stored(ctx, bin_id, field) or "";
                 assert expected in stored , f"{label} was not written: {field} is {stored}";
             }
+            assert label_forms == ["b", "b"] , (
+                f"the changed object was serialized {len(
+                    label_forms
+                )} times; once finds "
+                "the change, once makes the row, and the row is the new baseline"
+            );
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();

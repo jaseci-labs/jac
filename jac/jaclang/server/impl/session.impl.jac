@@ -1081,10 +1081,10 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
             continue;
         }
         written = anchor.__dict__.get('_field_written', 0);
-        if safe and runs_getters(anchor.archetype) {
+        getters = runs_getters(anchor.archetype);
+        if getters {
             safe = False;
         }
-        baseline = field_baseline(anchor);
         stored: (dict[str, object] | None) = None;
         try {
             stored = Serializer.stored_form(anchor);
@@ -1099,7 +1099,13 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
         }
         out.append(
             UnflushedAnchor(
-                anchor=anchor, stored=stored, hash=h, written=written, baseline=baseline
+                anchor=anchor,
+                stored=stored,
+                hash=h,
+                written=written,
+                baseline=None
+                    if stored is None
+                    else field_baseline(anchor, stored, getters)
             )
         );
     }

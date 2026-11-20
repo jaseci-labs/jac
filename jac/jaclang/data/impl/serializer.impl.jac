@@ -1443,14 +1443,30 @@ impl _baseline_entry(arch: object, name: str, value: object) -> tuple[int, objec
 }
 
 
-impl field_baseline(anchor: Anchor) -> (dict[str, tuple[int, object]] | None) {
+impl _stored_entry(value: object, row: object) -> tuple[int, object] {
+    if frozen_value(value) {
+        return (_BASE_FROZEN, value);
+    }
+    (detached, snapshot) = _plain_copy(row);
+    if not detached {
+        raise TypeError("the stored form is not plain data");
+    }
+    return (_BASE_PLAIN if _same_tree(value, snapshot) else _BASE_STORED, snapshot);
+}
+
+
+impl field_baseline(
+    anchor: Anchor,
+    stored: (dict[str, object] | None) = None,
+    getters: (bool | None) = None
+) -> (dict[str, tuple[int, object]] | None) {
     if not anchor.is_populated() {
         return None;
     }
     arch = anchor.archetype;
     cls = type(arch);
     if not cls.__dict__.get('__jac_tracked__', False)
-        or runs_getters(arch)
+        or (runs_getters(arch) if getters is None else getters)
         or not _instance_only(cls) {
         return None;
     }
@@ -1460,11 +1476,14 @@ impl field_baseline(anchor: Anchor) -> (dict[str, tuple[int, object]] | None) {
     }
     baseline: dict[str, tuple[int, object]] = {};
     try {
+        rows: any = None if stored is None else stored['archetype'];
         for (name, value) in fields.items() {
             if name.startswith('_') or callable(value) {
                 continue;
             }
-            baseline[name] = _baseline_entry(arch, name, value);
+            baseline[name] = _baseline_entry(arch, name, value)
+                if rows is None
+                else _stored_entry(value, rows[name]);
         }
     } except Exception {
         return None;

@@ -155,5 +155,11 @@ def _instance_only(cls: type) -> bool;
 def _plain_copy(value: object) -> tuple[bool, object];
 def _same_tree(live: object, snap: object) -> bool;
 def _baseline_entry(arch: object, name: str, value: object) -> tuple[int, object];
-def field_baseline(anchor: Anchor) -> (dict[str, tuple[int, object]] | None);
+def _stored_entry(value: object, row: object) -> tuple[int, object];
+def field_baseline(
+    anchor: Anchor,
+    stored: (dict[str, object] | None) = None,
+    getters: (bool | None) = None
+) -> (dict[str, tuple[int, object]] | None);
+
 def baseline_holds(anchor: Anchor) -> bool;
