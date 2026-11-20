@@ -11,7 +11,6 @@ backend. SCRAM-over-TCP is covered by the k8s path.
 """
 
 import select;
-import struct;
 import threading;
 import time;
 import from collections { OrderedDict }
@@ -44,6 +43,7 @@ obj _WriteProbe {
 
 
 test "bind frames preserve null empty binary and multibyte parameter lengths" {
+    import struct;
     conn: any = object.__new__(PgWireConnection);
     conn._closed = False;
     conn._stmts = OrderedDict();
@@ -112,6 +112,7 @@ test "bind frames preserve null empty binary and multibyte parameter lengths" {
 
 
 test "custom encoded chunks retain immutable prefix and framing operators" {
+    import struct;
     class NextValue {
         has value: str = 'plain';
 
