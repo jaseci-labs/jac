@@ -198,6 +198,17 @@ impl _print_deployment_status(status_data: dict[str, any]) -> None {
             f"  {comp.get('name', ''):18s}  {label:22s}  {pods_str:>6s}",
             style=status_style.get(s, 'muted')
         );
+        disk = comp.get('disk');
+        if disk {
+            console.print(
+                f"  {'':18s}  Disk {format_bytes(disk['used'])} of "
+                f"{format_bytes(disk['total'])} ({disk['percent']}%)",
+                style='muted'
+            );
+        }
+    }
+    for warning in status_data.get('warnings', []) {
+        console.warning(warning, emoji=False);
     }
 
     if urls {

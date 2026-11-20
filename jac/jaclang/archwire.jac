@@ -125,7 +125,7 @@ graph import {
     cache.home ++> cli.commands.cache { cache_home }
     cache.locking ++> scale.admin.console_build.AdminConsole._run { FileLock }
     cache.policy ++> [
-        cli.commands.cache { format_bytes },
+        cli.commands.cache | scale.plugin { format_bytes },
         cli.format_cache {
             DAY_SECONDS,
             Policy,
@@ -13265,7 +13265,8 @@ graph import scale {
             ApiException,
             ConfigException,
             client,
-            config as k8s_cluster_config
+            config as k8s_cluster_config,
+            stream
         },
         tests.deploy.observer_transition_recorder { ApiException, config },
         tests.misc.test_optional_deps { HAS_KUBERNETES, client as k8s_client },
@@ -14893,6 +14894,7 @@ graph import scale.deploy.target.kubernetes {
             KubectlCluster,
             create_k8s_secret,
             get_cluster_provider,
+            parse_storage_quantity,
             resize_pvc_if_needed
         },
         kubernetes_target.KubernetesTargetBase._load_cluster_config {
