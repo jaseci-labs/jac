@@ -73,8 +73,7 @@ enum ImportFallback {
 
 obj ProductRequest {
     has gen_mtir: bool = True,
-        native: bool = False,
-        endpoint_effects: bool = True;
+        native: bool = False;
 }
 
 enum TaskState {

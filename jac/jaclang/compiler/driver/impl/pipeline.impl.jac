@@ -84,10 +84,7 @@ impl declaration_passes(request: ProductRequest) -> PassSchedule {
 }
 
 impl boundary_passes(request: ProductRequest) -> PassSchedule {
-    if not request.endpoint_effects {
-        return [BoundaryFactsPass, BoundaryAnalysisPass];
-    }
-    return [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass];
+    return [BoundaryFactsPass, BoundaryAnalysisPass];
 }
 
 impl client_passes(request: ProductRequest) -> PassSchedule {
@@ -312,9 +309,7 @@ impl resolve(
         return (spec.bootstrap(req), False, False);
     }
     if req.native and PRODUCTS[CompilationProduct.NATIVE_LOWER].blocker() {
-        req = ProductRequest(
-            gen_mtir=req.gen_mtir, native=False, endpoint_effects=req.endpoint_effects
-        );
+        req = ProductRequest(gen_mtir=req.gen_mtir, native=False);
     }
     spec.precheck();
     token = _LOADING.set(_LOADING.get() + [product]);
