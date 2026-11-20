@@ -119,11 +119,10 @@ impl __doWalkerFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            dropped = __jacDropRejectedToken(str(token or ""));
+            if token or not app {
+                __jacResetRejectedSession(str(token or ""));
+            }
             if not app {
-                if dropped {
-                    window.location.reload();
-                }
                 return {};
             }
         }
@@ -161,11 +160,10 @@ impl __doFuncFetch(
     );
     if not response.ok {
         if response.status == 401 {
-            dropped = __jacDropRejectedToken(str(token or ""));
+            if token or not app {
+                __jacResetRejectedSession(str(token or ""));
+            }
             if not app {
-                if dropped {
-                    window.location.reload();
-                }
                 return {};
             }
         }
@@ -457,6 +455,23 @@ impl __jacDropRejectedToken(sent: str) -> bool {
     return True;
 }
 
+impl __jacResetRejectedSession(sent: str) -> None {
+    profiles: any = globalThis.__JAC_PROFILES__;
+    profile = str(profiles["active"] or "") if profiles else "";
+    store: any = globalThis.sessionStorage if profile else None;
+    if store
+        and store.getItem("jac_session_reset") == profile
+        and not __jacTokenExpired(sent) {
+        return;
+    }
+    if __jacDropRejectedToken(sent) {
+        if store {
+            store.setItem("jac_session_reset", profile);
+        }
+        window.location.reload();
+    }
+}
+
 impl __jacTokenExpired(token: str) -> bool {
     parts = token.split(".");
     if len(parts) != 3 {
@@ -574,7 +589,7 @@ impl __jacAuthedJson(
         response = await fetch(url, init);
         if not response.ok {
             if response.status == 401 {
-                __jacDropRejectedToken(token);
+                __jacResetRejectedSession(token);
             }
             return None;
         }
