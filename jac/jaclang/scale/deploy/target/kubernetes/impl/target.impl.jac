@@ -177,6 +177,82 @@ impl KubernetesTarget._gateway_cfg -> dict[str, any] {
     return get_scale_config().get_gateway_config();
 }
 
+impl KubernetesTarget.build(app_config: AppConfig, out_dir: str) -> dict[str, any] {
+    if not self.pod_arch {
+        raise ValueError(
+            "A build never asks the cluster for its node architecture; name it "
+            "with --arch amd64|arm64 or JAC_NODE_ARCH."
+        );
+    }
+    import from pathlib { Path }
+    base = Path(app_config.code_folder).resolve();
+    out = Path(out_dir).resolve();
+    excluded = source_filter_for(base);
+    if out.is_relative_to(base)
+        and not all(
+            excluded.excludes(out.relative_to(base) / name)
+            for name in build_output_names()
+        ) {
+        raise ValueError(
+            f"--out {out} is inside the project and its files would ship, so the "
+            "next build would seal this one. Write the build outside the project, "
+            "into a directory the bundle excludes such as build/ or dist/, or add "
+            "it to .jacignore."
+        );
+    }
+    refusal = deploy_generation_refusal(app_config.code_folder);
+    if refusal {
+        raise ValueError(refusal);
+    }
+    injector = self._manifest_builder(app_config)._prepare_injector(app_config);
+    return injector.write_build(out_dir, k8s_safe_name(self.k8s_config.app_name));
+}
+
+impl KubernetesTarget._verify_build(app_config: AppConfig) -> str {
+    import os;
+    pod_arch = self.pod_arch
+        or (node_arch() if os.environ.get("JAC_NODE_ARCH") else "");
+    try {
+        self._verified_injector = self._manifest_builder(
+            app_config
+        )._injector_from_build(
+            app_config, pod_arch
+        );
+    } except Exception as e {
+        return str(e);
+    }
+    return "";
+}
+
+impl KubernetesTarget.write_plan(bundle: dict[str, any]) {
+    if not self.plan_out {
+        return;
+    }
+    import json;
+    import from pathlib { Path }
+    deployments: dict[str, any] = {};
+    parked: list[str] = [];
+    for manifest in dict(bundle.get("deployments", {})).values() {
+        name = str(manifest["metadata"]["name"]);
+        deployments[name] = manifest;
+        if manifest.get("spec", {}).get("replicas") == 0
+            or replica_floor_of(manifest) == 0 {
+            parked.append(name);
+        }
+    }
+    plan = {
+        "expect": sorted(deployments),
+        "parked": sorted(parked),
+        "deployments": deployments
+    };
+    atomic_write(
+        Path(self.plan_out),
+        (json.dumps(plan, indent=2, sort_keys=True, `default=str) + "\n").encode(
+            "utf-8"
+        )
+    );
+}
+
 impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     app_name = app_config.app_name or self.k8s_config.app_name;
     if self.k8s_config.shared_ingress and not self.k8s_config.domain {
@@ -190,6 +266,15 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     refusal = deploy_generation_refusal(app_config.code_folder);
     if refusal {
         return DeploymentResult(success=False, message=refusal);
+    }
+    if self.from_build {
+        self._emit("build", "start", "Checking the saved build");
+        problem = self._verify_build(app_config);
+        if problem {
+            self._emit("build", "error", problem);
+            return DeploymentResult(success=False, message=problem);
+        }
+        self._emit("build", "ok", "The saved build matches this deploy");
     }
     if self.logger {
         self.logger.info(
@@ -208,10 +293,18 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
                 resolve_pod_base_image
             }
             self._load_cluster_config();
+            arch = node_arch();
+            verified = self._verified_injector;
+            if verified is not None and verified._pod_arch != arch {
+                raise ValueError(
+                    f"Refusing to deploy from {self.from_build}: it was built for "
+                    f"{verified._pod_arch} nodes and the cluster runs {arch}."
+                );
+            }
             pinned = preflight_pod_runtime(
                 app_config.code_folder,
                 resolve_dev_channel(app_config.code_folder).value,
-                node_arch()
+                arch
             );
             self.k8s_config.python_image = resolve_pod_base_image(
                 app_config.code_folder, self.k8s_config.python_image
@@ -256,6 +349,7 @@ impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
     self._emit("bundle", "start", "Generating manifests");
     try {
         bundle = self.generate_manifests(app_config);
+        self.write_plan(bundle);
     } except Exception as e {
         self._emit("bundle", "error", f"manifest generation failed: {e}");
         return DeploymentResult(
@@ -900,7 +994,10 @@ impl KubernetesTarget._manifest_builder(app_config: AppConfig) -> ManifestBuilde
         fleet=self.fleet,
         gateway_config=self.gateway_config,
         app_overrides=dict(self.app_overrides),
-        dry_run=self.dry_run
+        dry_run=self.dry_run,
+        from_build=self.from_build,
+        pod_arch=self.pod_arch,
+        injector=self._verified_injector
     );
 }
 

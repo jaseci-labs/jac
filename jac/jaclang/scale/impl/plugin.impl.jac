@@ -67,7 +67,9 @@ impl scale_deploy(
     enable_tls: bool,
     dry_run: bool,
     show_yaml: bool,
-    served_app: str = ""
+    served_app: str = "",
+    from_build: str = "",
+    plan_out: str = ""
 ) -> int {
     mark_scale_runtime();
     try {
@@ -78,10 +80,27 @@ impl scale_deploy(
             KubernetesRealizer
         }
         return KubernetesRealizer(served_app=served_app).realize(
-            filename, target, enable_tls, dry_run, show_yaml
+            filename, target, enable_tls, dry_run, show_yaml, from_build, plan_out
         );
     } except Exception as e {
         console.error(f"Deploy failed: {e}", emoji=False);
+        return 1;
+    }
+}
+
+impl scale_build(
+    filename: str, target: str, out: str, arch: str, served_app: str = ""
+) -> int {
+    mark_scale_runtime();
+    try {
+        import from jaclang.scale.runtime.realizer.kubernetes_realizer {
+            KubernetesRealizer
+        }
+        return KubernetesRealizer(served_app=served_app).build(
+            filename, target, out, arch
+        );
+    } except Exception as e {
+        console.error(f"Build failed: {e}", emoji=False);
         return 1;
     }
 }
@@ -300,16 +319,30 @@ impl scale_cmd(
     component: str = "",
     enable_tls: bool = False,
     dry_run: bool = False,
-    show_yaml: bool = False
+    show_yaml: bool = False,
+    from_build: str = "",
+    plan_out: str = "",
+    out: str = "",
+    arch: str = ""
 ) -> int {
-    if action == "deploy" {
+    if action in ("deploy", "build") {
         (app_file, served_app, problem) = _resolve_deploy_target(service_name);
         if problem {
             console.error(problem, emoji=False);
             return 1;
         }
+        if action == "build" {
+            return scale_build(app_file, target, out, arch, served_app=served_app);
+        }
         return scale_deploy(
-            app_file, target, enable_tls, dry_run, show_yaml, served_app=served_app
+            app_file,
+            target,
+            enable_tls,
+            dry_run,
+            show_yaml,
+            served_app=served_app,
+            from_build=from_build,
+            plan_out=plan_out
         );
     }
     if action in ("status", "destroy") and service_name.endswith(".jac") {

@@ -8,7 +8,8 @@ import from jaclang.server { sv_client }
 glob logger = logging.getLogger(__name__),
      FLEET_ENV: str = "JAC_SV_FLEET",
      ROOT_PREFIX: str = "/",
-     SERVICE_KINDS: tuple[str, ...] = ("service", "service-mesh");
+     SERVICE_KINDS: tuple[str, ...] = ("service", "service-mesh"),
+     OWN_STORE_ENV: str = "JAC_SV_OWN_STORE";
 
 
 obj FleetMember {
@@ -45,6 +46,9 @@ obj FleetSpec {
 
 
 def fleet_from_env -> FleetSpec | None;
+
+
+def owns_identity_store(app_env: dict[str, any]) -> bool;
 
 
 def fleet_of(
