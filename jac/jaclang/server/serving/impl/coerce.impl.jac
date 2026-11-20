@@ -361,14 +361,16 @@ impl bind_parameters(
     kwargs: dict[str, any] = {};
     errors: list[dict[str, any]] = [];
     declared: set[str] = set();
-    for param in ep.declared_parameters() {
+    params = ep.declared_parameters();
+    keys = {param.name for param in params};
+    for param in params {
         declared.add(param.name);
         loc = str(param.kind.value)
             if isinstance(param.kind, ParameterType)
             else str(param.kind);
         binds = param.field or param.name;
         (found, raw, text) = _extract_raw(param, param.name, request, body_json);
-        if not found and binds != param.name {
+        if not found and binds not in keys {
             (found, raw, text) = _extract_raw(param, binds, request, body_json);
         }
         if not found {

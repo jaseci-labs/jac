@@ -293,8 +293,15 @@ test "a request key that is not a Jac name binds the field it maps to (#10750)" 
         }
 
         for (body, want) in [
-            ({"class": "a", "async": True}, {"kind": "a", "run_async": True}),
-            ({"kind": "b"}, {"kind": "b", "run_async": False})
+            (
+                {"class": "a", "async": True},
+                {"kind": "a", "run_async": True, "label": ""}
+            ),
+            ({"kind": "b"}, {"kind": "b", "run_async": False, "label": ""}),
+            (
+                {"class": "c", "run_async": "x"},
+                {"kind": "c", "run_async": False, "label": "x"}
+            )
         ] {
             response = client.post("/function/reserved_keys_func", json=body);
             assert response.status_code == 200 , f"{body}: {response.text}";
