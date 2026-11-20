@@ -161,13 +161,20 @@ jobs:
           IMAGE=jaseci/jaclang
           TAGS="-t $IMAGE:$VERSION"
           if [ "$VERSION" != dev ]; then
-            # Preserve the release workflow's backport rule: latest never
-            # moves to an older version when an old image is rebuilt.
-            latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
-            if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
+            # The image's `latest` never moves to an older version when an
+            # old image is rebuilt. The newest version is read from the
+            # published releases' reference-design binaries (the bare linux
+            # binary's name carries it; older releases' tags do not): this
+            # repository also holds the `jac` compiler's releases, so
+            # GitHub's own "latest" pointer does not name it.
+            newest="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.draft == false and .prerelease == false)
+                    | .assets[].name | select(test("^jac-[0-9][^/]*-linux-x86_64$"))
+                    | capture("^jac-(?<v>.*)-linux-x86_64$").v' 2>/dev/null | sort -V | tail -1 || echo "")"
+            if [ "$(printf '%s\n%s\n' "$newest" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
               TAGS="$TAGS -t $IMAGE:latest"
             else
-              echo "Backport: $latest_tag stays latest; publishing $IMAGE:$VERSION only."
+              echo "Backport: $newest stays latest; publishing $IMAGE:$VERSION only."
             fi
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"

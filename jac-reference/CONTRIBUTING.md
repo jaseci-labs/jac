@@ -282,6 +282,8 @@ After the release PR is merged, the **Release** workflow triggers automatically:
    - Builds the native `jac` binary per platform (Linux x86_64 + aarch64 at a pinned glibc 2.17 floor, macOS arm64), smoke-tests each on real hardware, verifies the Linux glibc floors, and attaches the binaries + checksums to the Release
    - The Intel-Mac binary (macos-x86_64) is not part of the release matrix; it is a manual lane, see the troubleshooting table below
 
+The release is published with `--latest=false`. This repository also holds the releases of the `jac` compiler, and GitHub's "Latest" pointer is theirs; a reference-design release is found by the binaries it carries (`scripts/install.sh --reference` lists the releases and takes the newest that has one), never through `releases/latest`. For the same reason **Build jac native binaries** builds a published release only when its tag is the version `jac-reference/jac.toml` declares at that tag.
+
 Every step is idempotent: re-running a partial release converges instead of erroring (a tag already on the release commit is left in place, the release is updated in place, and asset uploads clobber).
 
 A tag that points at a *different* commit is a refusal, not a re-run. The tag is never moved (a published release's assets and notes describe the commit it was cut from), and the release stops rather than quietly rebuilding the old tree. See the troubleshooting table below for the two ways out.

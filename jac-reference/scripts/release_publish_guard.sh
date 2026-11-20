@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# A release becomes "latest" only once it carries every binary it is required
-# to carry, and it publishes without the ones it is not.
+# A release is published only once it carries every binary it is required to
+# carry, and it publishes without the ones it is not. It is never marked
+# GitHub's "latest": this repository also holds the `jac` compiler's releases,
+# and that pointer is theirs. A reference-design release is found by the
+# assets it carries (scripts/install.sh --reference), not by "latest".
 #
 # Usage: release_publish_guard.sh <version> <required-platform>...
 # Each required suffix names a platform, e.g. linux-x86_64; build-binaries.yml
@@ -17,9 +20,10 @@
 # would still have been demanded here, and the release would have hung on an
 # asset nothing was building any more.
 #
-# Refusing matters as much as publishing. install.sh resolves whatever
-# /releases/latest points at, so revealing a draft that is missing a binary
-# hands that platform's users a release they cannot install from.
+# Refusing matters as much as publishing. install.sh --reference takes the
+# newest published release that carries a reference-design binary, so
+# revealing a draft that is missing one hands that platform's users nothing
+# newer to install.
 #
 # RELEASE_ASSET_TIMEOUT / RELEASE_ASSET_POLL tune the poll that absorbs the
 # few-second lag between an upload and the assets API reporting it.
@@ -87,7 +91,7 @@ while :; do
         fail "Draft $VTAG is still missing after ${TIMEOUT}s: ${missing}; refusing to publish." \
             "" \
             "These platforms are required, so a release without them would hand" \
-            "their users a \`latest\` they cannot install from. The draft has NOT" \
+            "their users a release they cannot install from. The draft has NOT" \
             "been published and can be re-run once the missing legs upload." \
             "" \
             "If a platform is expected to be absent for a while, mark its leg" \
@@ -110,29 +114,15 @@ echo "Platform binaries attached to ${VTAG}: ${shipped:-none}"
 
 is_draft="$(gh release view "$VTAG" --json isDraft --jq '.isDraft' 2>/dev/null || echo true)"
 if [ "$is_draft" != "true" ]; then
-    echo "$VTAG is already published; leaving the latest pointer untouched."
+    echo "$VTAG is already published; leaving it as it is."
     exit 0
 fi
 
-# `--latest` must never move backwards: install.sh resolves latest, so a re-run
-# or a backport release (0.34.8 after 0.35.0) would silently downgrade users.
-# The draft is invisible to /releases/latest, so whatever that reports now is
-# the published newest.
-if [ -n "${GH_REPO:-}" ]; then
-    latest_endpoint="repos/${GH_REPO}/releases/latest"
-else
-    latest_endpoint="repos/{owner}/{repo}/releases/latest"
-fi
-latest_tag="$(gh api "$latest_endpoint" --jq .tag_name 2>/dev/null || echo "")"
-if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
-    latest_flag="--latest"
-else
-    latest_flag="--latest=false"
-    echo "Backport: ${latest_tag} stays latest, ${VTAG} publishes without the pointer."
-fi
-
+# Explicitly not latest. Left to its default, GitHub marks the release with
+# the newest date and highest version as latest, which would take the pointer
+# from the `jac` compiler's releases each time the reference design ships.
 gh release edit "$VTAG" \
     --verify-tag \
     --draft=false \
-    "$latest_flag"
-echo "Published ${VTAG} (${latest_flag}) with every required binary attached."
+    --latest=false
+echo "Published ${VTAG} (not marked latest) with every required binary attached."

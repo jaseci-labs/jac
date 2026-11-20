@@ -20,7 +20,7 @@ Use `tag=dev` for the rolling development image. The selected workflow ref
 provides the Dockerfile; the tag selects the binaries. Draft releases are
 supported once both Linux binaries and their checksums have been uploaded.
 By default this publishes Docker images only. Older versions do not replace
-`latest` when a newer GitHub release exists.
+the image's `latest` tag when a newer reference-design release exists.
 
 To finish an otherwise-complete release after Docker was its only failure, pass
 `-f release_run_id=34923635466` with the original Release run ID. After Docker

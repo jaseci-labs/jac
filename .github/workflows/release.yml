@@ -3,8 +3,10 @@ name: Release
 # The release lifecycle in one workflow:
 #   - action=create-pr (dispatch): bump versions and open the release PR.
 #   - merge of a release/* PR (or action=publish): tag, cut a DRAFT Release,
-#     attach every native binary (build-binaries.yml), then publish as latest --
-#     so "Latest" never appears mid-build with assets missing.
+#     attach every native binary (build-binaries.yml), then publish it -- so a
+#     release never appears mid-build with assets missing. It is published with
+#     --latest=false: this repository also holds the `jac` compiler's releases,
+#     and GitHub's "latest" pointer is theirs.
 #   - action=create-github-release (dispatch): recovery -- cut a bare Release
 #     for an existing version; binaries attach via the release.published event.
 # jaclang ships as the native `jac` binary, not PyPI.
@@ -239,10 +241,10 @@ jobs:
           COMMIT: ${{ needs.resolve.outputs.sha }}
         run: bash jac-reference/scripts/release_tag_guard.sh "$VERSION" "$COMMIT"
 
-      # Draft: hidden from /releases/latest with no downloadable assets, so
-      # install.sh can't resolve it until `publish` reveals it complete. NOT
-      # --latest here. Recovery re-runs only refresh notes: never revert a
-      # published release to draft.
+      # Draft: hidden from the public release list with no downloadable assets,
+      # so install.sh can't resolve it until `publish` reveals it complete.
+      # Recovery re-runs only refresh notes: never revert a published release
+      # to draft.
       - name: Create or update draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -291,7 +293,8 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  # Reveal draft as published + latest once every required asset is attached.
+  # Reveal the draft as published (never as latest) once every required asset
+  # is attached.
   # `needs: build-binaries` waits for the whole build; the guard then checks the
   # draft actually holds what that build was obliged to produce, since a leg
   # marked non-blocking can succeed without shipping a binary. GITHUB_TOKEN
@@ -315,7 +318,7 @@ jobs:
       # build-binaries.yml's `plan` job, which derives it from the same array
       # the build matrix comes from, so what gets verified is exactly what the
       # release was obliged to build. See jac-reference/scripts/release_publish_guard.sh.
-      - name: Verify the required assets are attached, then publish as latest
+      - name: Verify the required assets are attached, then publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -352,7 +355,7 @@ jobs:
             echo "|------|--------|"
             echo "| Draft tag + Release | $RELEASE |"
             echo "| Native binaries | $BINARIES |"
-            echo "| Publish (draft -> latest) | $PUBLISH |"
+            echo "| Publish (draft -> published) | $PUBLISH |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$RELEASE" != "success" ] || [ "$BINARIES" != "success" ] \
@@ -407,7 +410,7 @@ jobs:
           gh release create "v${{ steps.version.outputs.version }}" \
             --title "Jac v${{ steps.version.outputs.version }}" \
             --generate-notes \
-            --latest
+            --latest=false
           echo "Created release v${{ steps.version.outputs.version }}"
 
       - name: Summary
