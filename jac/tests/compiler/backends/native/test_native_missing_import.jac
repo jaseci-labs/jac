@@ -9,8 +9,9 @@ literal NULL, and the interpreter crashed at load.
 Native lowering refuses the binding itself: a name the bound Jac module's
 symbol table does not hold is `E1145`, naming the module and the name, and the
 build stops. The checker reports the same `E1145` once the source is a parsed
-`.jac` module whose names are closed (no module `__getattr__`, no `include`) and the import has to bind (not typed, comptime, or caught as
-`ImportError`), since the Python runtime then fails the import at load. A
+`.jac` module whose names are closed (no module `__getattr__`, no `include`)
+and the import has to bind (not typed, comptime, or caught as `ImportError`),
+since the Python runtime then fails the import at load. A
 Python source, an open namespace, or a guarded import keeps `W1101` (#10740).
 """
 
@@ -38,48 +39,23 @@ def check_codes(path: Path) -> list[str] {
 
 test "the checker makes a name a Jac module does not define E1145 and keeps W1101 where it cannot be sure" {
     lib = "def present_fn(x: int) -> int {\n    return x + 1;\n}\n";
-    guarded = (
-        "def load -> object {\n"
-        "    try {\n"
-        "        import from lib { missing_fn }\n"
-        "        return missing_fn;\n"
-        "    } except ImportError {\n"
-        "        return None;\n"
-        "    }\n"
-        "}\n"
-    );
     cases = [
-        (
-            "package __init__.jac",
-            "E1145",
-            {"pkg/__init__.jac": lib, "main.jac": "import from pkg { missing_fn }\n"}
-        ),
-        (
-            "python module",
-            "W1101",
-            {
-                "lib.py": "globals()['missing_fn'] = 1\n",
-                "main.jac": "import from lib { missing_fn }\n"
-            }
-        ),
+        ("package __init__.jac", "E1145", {"lib/__init__.jac": lib}),
+        ("python module", "W1101", {"lib.py": "globals()['missing_fn'] = 1\n"}),
         (
             "module __getattr__",
             "W1101",
-            {
-                "lib.jac": "def __getattr__(name: str) -> int {\n    return 42;\n}\n",
-                "main.jac": "import from lib { missing_fn }\n"
-            }
+            {"lib.jac": "def __getattr__(name: str) -> int {\n    return 42;\n}\n"}
         ),
+        ("include", "W1101", {"base.jac": lib, "lib.jac": "include base;\n"}),
         (
-            "include",
+            "try/except ImportError",
             "W1101",
             {
-                "base.jac": lib,
-                "lib.jac": "include base;\n",
-                "main.jac": "import from lib { missing_fn }\n"
+                "lib.jac": lib,
+                "main.jac": "def load {\n    try {\n        import from lib { missing_fn }\n    } except ImportError { }\n}\n"
             }
         ),
-        ("try/except ImportError", "W1101", {"lib.jac": lib, "main.jac": guarded}),
         (
             "import type",
             "W1101",
@@ -95,28 +71,21 @@ test "the checker makes a name a Jac module does not define E1145 and keeps W110
     failures: list[str] = [];
     with tempfile.TemporaryDirectory() as tmp {
         checks = [("absolute module", "E1145", FIXTURES / "missing_import_main.jac")];
-        for (idx, row) in enumerate(cases) {
-            (label, expected, files) = row;
+        for (idx, (label, expected, files)) in enumerate(cases) {
             base = Path(tmp) / str(idx);
             for (rel, text) in (
-                {"jac.toml": "[project]\nname = \"missingname\"\n"} | files
+                {
+                    "jac.toml": "[project]\nname = \"missingname\"\n",
+                    "main.jac": "import from lib { missing_fn }\n"
+                }
+                | files
             ).items() {
                 (base / rel).parent.mkdir(parents=True, exist_ok=True);
                 (base / rel).write_text(text);
             }
-            main_rel = [
-                rel
-                for rel in files
-                if rel.endswith("main.jac")
-            ][0];
-            checks.append((label, expected, base / main_rel));
+            checks.append((label, expected, base / "main.jac"));
         }
-        warm = [
-            c
-            for c in checks
-            if c[1] == "E1145"
-        ];
-        for (run, rows) in [("cold", checks), ("warm", warm)] {
+        for (run, rows) in [("cold", checks), ("warm", checks[:2])] {
             for (label, expected, path) in rows {
                 codes = check_codes(path);
                 other = "W1101" if expected == "E1145" else "E1145";

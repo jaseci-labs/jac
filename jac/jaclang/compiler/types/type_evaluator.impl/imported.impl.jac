@@ -140,9 +140,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     E1134, binding, module=f"{from_mod_name}{sep}{item_name}"
                 );
             } else {
-                self._report_missing_import_name(
-                    binding, import_node, searched_init, item_name, from_mod_name
-                );
+                self._report_missing_import_name(node_, searched_init);
             }
             return binding.type;
         } else {
@@ -212,13 +210,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
             binding.type = UnknownType(is_diagnosed=True);
-            self._report_missing_import_name(
-                binding,
-                import_node,
-                from_mod_type.symbol_table,
-                item_name,
-                from_mod_name
-            );
+            self._report_missing_import_name(node_, from_mod_type.symbol_table);
             return binding.type;
         }
     }
@@ -683,8 +675,9 @@ impl TypeEvaluator._import_must_bind(imp: Import) -> bool {
 }
 
 impl TypeEvaluator._report_missing_import_name(
-    binding: Name, imp: Import, source: (UniScopeNode | None), name: str, module: str
+    item: ModuleItem, source: (UniScopeNode | None)
 ) -> None {
+    imp = item.parent_of_type(Import);
     if isinstance(source, Module)
         and source.stub_only
         and source.loc.mod_path.endswith(".jac") {
@@ -696,7 +689,12 @@ impl TypeEvaluator._report_missing_import_name(
         and source.lookup("__getattr__", deep=False) is None
         and not module_absorbs_names(source)
         and self._import_must_bind(imp);
-    self.emit_diag(E1145 if certain else W1101, binding, name=name, module=module);
+    self.emit_diag(
+        E1145 if certain else W1101,
+        item.binding_name,
+        name=item.name.value,
+        module=imp.from_loc.dot_path_str
+    );
 }
 
 

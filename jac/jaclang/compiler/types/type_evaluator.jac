@@ -215,11 +215,7 @@ walker TypeEvaluator {
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
     def _import_must_bind(imp: Import) -> bool;
     def _report_missing_import_name(
-        binding: Name,
-        imp: Import,
-        source: (UniScopeNode | None),
-        name: str,
-        module: str
+        item: ModuleItem, source: (UniScopeNode | None)
     ) -> None;
 
     def _climbs_above_project(node_: ModulePath) -> bool;
