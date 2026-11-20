@@ -834,7 +834,9 @@ test "switching the autoscaler engine to keda deletes a competing HPA (a no-op w
 
     KEDAAutoscaler._preflight_cache.clear();
     missing_crd_api = unittest.mock.MagicMock();
-    missing_crd_api.list_namespaced_custom_object.side_effect = ApiException(status=404);
+    missing_crd_api.list_namespaced_custom_object.side_effect = ApiException(
+        status=404
+    );
     keda3 = KEDAAutoscaler(_custom_api=missing_crd_api, logger=_as_any(mock_logger));
     assert keda3.apply(spec) == False;
     missing_crd_api.create_namespaced_custom_object.assert_not_called();
@@ -1331,11 +1333,7 @@ test "discover_capabilities produces a distinct diagnostic for every install/per
     # genuinely-absent must each report their own diagnosis -- an operator
     # debugging a broken activation reads this message, not the code.
     scenarios = [
-        (
-            "namespace-scoped-deployer",
-            _custom_api_for(cluster=403),
-            _core_api_for()
-        ),
+        ("namespace-scoped-deployer", _custom_api_for(cluster=403), _core_api_for()),
         (
             "core-only",
             _custom_api_for(http_v1beta1=404, legacy_v1alpha1=404),
