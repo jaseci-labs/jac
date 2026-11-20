@@ -11,11 +11,13 @@ with entry {
         }
         import from kubernetes.client.exceptions { ApiException }
         import from kubernetes.config.config_exception { ConfigException }
+        import from kubernetes.stream { stream }
         HAS_KUBERNETES = True;
     } except ImportError {
         client = None;
         config = None;
         watch = None;
+        stream = None;
         ApiException = Exception;
         ConfigException = Exception;
         AutoscalingV2Api = None;

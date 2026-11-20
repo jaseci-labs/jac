@@ -467,6 +467,7 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
     namespace = self.k8s_config.namespace;
     components = [];
     urls = {};
+    warnings: list[str] = [];
 
     dep_map = {};
     try {
@@ -540,14 +541,26 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
             health = assess_workload(
                 resource_map[k8s_name], crashlooping=k8s_name in restarting_apps
             );
-            components.append(
-                {
-                    'name': display_name,
-                    'status': health.status.value,
-                    'ready': health.ready_replicas,
-                    'total': health.replicas
+            component = {
+                'name': display_name,
+                'status': health.status.value,
+                'ready': health.ready_replicas,
+                'total': health.replicas
+            };
+            disk = self._database_disk(app_name, namespace)
+                if display_name == 'PostgreSQL'
+                else None;
+            if disk is not None {
+                component['disk'] = disk;
+                if disk['percent'] >= DB_DISK_WARN_PERCENT {
+                    warnings.append(
+                        f"The database volume is {disk['percent']}% full. Raise "
+                        "[scale.database] postgres_storage and redeploy before "
+                        "writes fail."
+                    );
                 }
-            );
+            }
+            components.append(component);
             if display_name == 'Grafana' {
                 grafana_running = True;
             }
@@ -580,6 +593,43 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
         'app_name': app_name,
         'namespace': namespace,
         'components': components,
-        'urls': urls
+        'urls': urls,
+        'warnings': warnings
     };
+}
+
+impl KubernetesTargetBase._database_disk(
+    app_name: str, namespace: str
+) -> (dict[str, any] | None) {
+    pg_name = f"{app_name}-postgres";
+    try {
+        core_v1 = client.CoreV1Api();
+        pvc = core_v1.read_namespaced_persistent_volume_claim(
+            name=f"{pg_name}-data-{pg_name}-0",
+            namespace=namespace,
+            _request_timeout=DB_DISK_TIMEOUT_S
+        );
+        size = (pvc.status.capacity or {}).get('storage')
+            or pvc.spec.resources.requests['storage'];
+        total = parse_storage_quantity(str(size));
+        out = stream(
+            core_v1.connect_get_namespaced_pod_exec,
+            f"{pg_name}-0",
+            namespace,
+            container='postgres',
+            command=['du', '-sk', DB_DATA_PATH],
+            stderr=False,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _request_timeout=DB_DISK_TIMEOUT_S
+        );
+        used = int(str(out).split()[0]) * 1024;
+        return {'used': used, 'total': total, 'percent': round(100 * used / total, 1)};
+    } except Exception as e {
+        if self.logger {
+            self.logger.warning(f"Could not read the database disk usage: {e}");
+        }
+        return None;
+    }
 }

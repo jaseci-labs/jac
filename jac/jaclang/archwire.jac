@@ -125,7 +125,7 @@ graph import {
     cache.home ++> cli.commands.cache { cache_home }
     cache.locking ++> scale.admin.console_build.AdminConsole._run { FileLock }
     cache.policy ++> [
-        cli.commands.cache { format_bytes },
+        cli.commands.cache | scale.plugin { format_bytes },
         cli.format_cache {
             DAY_SECONDS,
             Policy,
@@ -2392,6 +2392,11 @@ graph import {
     type runtime.context ++> cli.commands.cli_helpers
         | scale.runtime.provider
         | scale.server.inprocess { ExecutionContext }
+    runtime.convert ++> [
+        data.serializer { ConvertMode, cache_for, cached_for, convert, type_shape },
+        server.serving.coerce { ConvertMode, convert },
+        server.serving.openapi { STRING_FORMATS, constructor_params },
+    ]
     runtime.debugger ++> cli.commands.execution.debug { debugger as db }
     runtime.exceptions ++> [
         data.store { WriteConflict },
@@ -2453,7 +2458,7 @@ graph import {
             | project.config._walk_table
             | server.serving.model
             | server.settings { fields, is_record },
-        byllm.schema | server.serving.coerce { is_record },
+        byllm.schema { is_record },
         byllm.systemone._record_fields | server.server {
             fields as record_fields,
             is_record
@@ -2701,7 +2706,6 @@ graph import {
         compiler.tests.test_fixed_width_equivalence
             | data.serializer.Serializer._declared_of { SIZED_TYPES },
         data.serializer.Serializer._serialize_value { json_wire_form },
-        data.serializer.Serializer.coerce { json_wire_read },
     ]
     runtime.source_app ++> dist.source.project.export_project { SOURCE_FORMAT }
     runtime.surface ++> compiler.driver.unit_products
@@ -5779,7 +5783,8 @@ graph import compiler {
             native_unit_compile_active as _typed_nuc
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_module_call_target {
-            NATIVE_STDLIB_EXTENSIONS
+            NATIVE_STDLIB_EXTENSIONS,
+            bundled_stdlib_module_of
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable {
             native_display_text
@@ -12817,6 +12822,7 @@ graph import runtime {
     ]
     semantic ++> runtime { Info }
     type semantic ++> prepared { Info }
+    sized ++> convert._to_sized { json_wire_form, json_wire_read }
     sized as _sized_mod --> builtin.__getattr__;
 }
 
@@ -13264,7 +13270,8 @@ graph import scale {
             ApiException,
             ConfigException,
             client,
-            config as k8s_cluster_config
+            config as k8s_cluster_config,
+            stream
         },
         tests.deploy.observer_transition_recorder { ApiException, config },
         tests.misc.test_optional_deps { HAS_KUBERNETES, client as k8s_client },
@@ -14893,6 +14900,7 @@ graph import scale.deploy.target.kubernetes {
             KubectlCluster,
             create_k8s_secret,
             get_cluster_provider,
+            parse_storage_quantity,
             resize_pvc_if_needed
         },
         kubernetes_target.KubernetesTargetBase._load_cluster_config {
