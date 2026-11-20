@@ -154,6 +154,7 @@ def _class_runs_getters(cls: type) -> bool;
 def _instance_only(cls: type) -> bool;
 def _plain_copy(value: object) -> tuple[bool, object];
 def _same_tree(live: object, snap: object) -> bool;
+def _stored_field(name: str, value: object) -> bool;
 def _baseline_entry(arch: object, name: str, value: object) -> tuple[int, object];
 def _stored_entry(value: object, row: object) -> tuple[int, object];
 def field_baseline(

@@ -1424,6 +1424,14 @@ impl _same_tree(live: object, snap: object) -> bool {
 }
 
 
+impl _stored_field(name: str, value: object) -> bool {
+    if name == ATTIC_KEY {
+        return isinstance(value, dict) and bool(value);
+    }
+    return not name.startswith('_') and not callable(value);
+}
+
+
 impl _baseline_entry(arch: object, name: str, value: object) -> tuple[int, object] {
     if frozen_value(value) {
         return (_BASE_FROZEN, value);
@@ -1478,7 +1486,7 @@ impl field_baseline(
     try {
         rows: any = None if stored is None else stored['archetype'];
         for (name, value) in fields.items() {
-            if name.startswith('_') or callable(value) {
+            if not _stored_field(name, value) {
                 continue;
             }
             baseline[name] = _baseline_entry(arch, name, value)
@@ -1508,7 +1516,7 @@ impl baseline_holds(anchor: Anchor) -> bool {
     }
     seen = 0;
     for (name, value) in fields.items() {
-        if name.startswith('_') or callable(value) {
+        if not _stored_field(name, value) {
             continue;
         }
         slot = baseline.get(name);

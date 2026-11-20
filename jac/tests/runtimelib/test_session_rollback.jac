@@ -890,6 +890,11 @@ test "a commit hashes no loaded anchor, and still finds every in-place change" {
                     label=RLabel(name="a")
                 )
             ).__jac__;
+            setattr(
+                filled.archetype,
+                "__jac_attic__",
+                {"legacy": {"value": 1, "reason": "dropped"}}
+            );
             filled.persistent = True;
             seed.mem.put(filled);
             bin_id = filled.ensure_id();
@@ -993,6 +998,12 @@ test "a commit hashes no loaded anchor, and still finds every in-place change" {
                     lambda { held.flex[0] = 1.0; },
                     "flex",
                     "[1.0]"
+                ),
+                (
+                    "a preserved field in the attic",
+                    lambda { held.__jac_attic__["legacy"]["value"] = 2; },
+                    "__jac_attic__",
+                    '"value": 2'
                 ),
                 ("an object's field", lambda { held.label.name = "b"; }, "label", '"b"')
             ];

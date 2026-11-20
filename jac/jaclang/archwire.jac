@@ -12074,6 +12074,7 @@ graph import data {
         },
         serializer.Serializer.register { collect_rules },
         serializer.Serializer.repair { apply_rules, merged_rules_for, repair_mode },
+        serializer._stored_field { ATTIC_KEY },
     ]
     schema_rules --> [
         serializer.Serializer._serialize_attrs { merged_rules_for, repair_mode },
