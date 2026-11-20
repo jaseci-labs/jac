@@ -107,13 +107,17 @@ impl WebTarget.build(
         entry_program = client_context_program(
             program, client_source_root(project_dir, entry_file)
         );
-        before = len(entry_program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(
-            str(entry_file.resolve()), entry_program
-        );
-        if len(entry_program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in entry_program.errors_had[before:]);
-            raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
+        import from jaclang.client.build_stages { stage }
+        compiler = program._get_compiler();
+        entry_path = str(entry_file.resolve());
+        compiled_in = compiler.product_program(entry_path, entry_program);
+        before = len(compiled_in.errors_had);
+        with stage("Entry module and its imports compiled") {
+            artifact = compiler.get_client_artifact(entry_path, entry_program);
+            if len(compiled_in.errors_had) > before {
+                errors = '\n'.join(str(e) for e in compiled_in.errors_had[before:]);
+                raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
+            }
         }
         inputs = builder.prepare(loaded_mod);
         exports = list(artifact.manifest.exports or []) if artifact is not None else [];
