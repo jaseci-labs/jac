@@ -3480,12 +3480,12 @@ graph import {
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
             auth_headers
         },
+        scale.runtime.orchestrator.process_manager.ServiceProcessManager.child_env
+            | scale.tests.deploy.test_pod_env { peer_url_env_key },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
             app_start_args,
-            headless_start_args,
-            peer_url_env_key
+            headless_start_args
         },
-        scale.tests.deploy.test_pod_env { peer_url_env_key },
         scale.tests.microservices.test_gateway
             | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
@@ -14216,6 +14216,7 @@ graph import scale {
     runtime.context.util ++> [
         admin.console_build.build_with_jac
             | deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
+            | tests.data.test_gateway_owned_identity
             | tests.deploy.test_client_build_deps
             | tests.deploy.test_client_build_fail_fast
             | tests.deploy.test_client_build_stage
@@ -14267,12 +14268,15 @@ graph import scale {
             solo_fleet
         },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_env {
-            FLEET_ENV
+            FLEET_ENV,
+            OWN_STORE_ENV,
+            owns_identity_store
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
         plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
         plugin.scale_local_serve { fleet_from_plans },
+        server.extensions { OWN_STORE_ENV },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
             FLEET_ENV,
@@ -14285,6 +14289,7 @@ graph import scale {
             order_by_edges,
             solo_fleet
         },
+        tests.data.test_gateway_owned_identity { OWN_STORE_ENV, owns_identity_store },
         tests.deploy.test_access_hint
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deployment_overlay
@@ -14294,7 +14299,7 @@ graph import scale {
             | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
-        tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
+        tests.deploy.test_pod_env { FLEET_ENV, OWN_STORE_ENV, fleet_of },
         tests.microservices.test_bundle_jacignore { solo_fleet },
     ]
     runtime.fleet --> [
@@ -14355,13 +14360,15 @@ graph import scale {
             ServiceRegistry,
             ServiceStatus
         },
-        tests.data.test_session_epoch
-            | tests.microservices.test_gateway_docs_precedence
-            | tests.server.test_static_fallback { ServiceRegistry },
-        tests.deploy.test_deployer | tests.microservices.test_stop_signal_scope {
+        tests.data.test_gateway_owned_identity
+            | tests.deploy.test_deployer
+            | tests.microservices.test_stop_signal_scope {
             ServiceEntry,
             ServiceRegistry
         },
+        tests.data.test_session_epoch
+            | tests.microservices.test_gateway_docs_precedence
+            | tests.server.test_static_fallback { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -14395,6 +14402,7 @@ graph import scale {
     runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         plugin._fleet_cmd
+            | tests.data.test_gateway_owned_identity
             | tests.deploy.test_deployer
             | tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -15052,6 +15060,10 @@ graph import scale.runtime {
     fleet ++> [
         cli.plan { FleetSpec },
         orchestrator.orchestrator { FleetSpec, ROOT_PREFIX },
+        orchestrator.process_manager.ServiceProcessManager.child_env {
+            OWN_STORE_ENV,
+            owns_identity_store
+        },
         realizer.kubernetes_realizer {
             FleetSpec,
             fleet_from_config,
@@ -15236,7 +15248,10 @@ graph import scale.storage {
 
 graph import scale.tests {
     fixture_policy ++> [
-        scale_test_client { ADMIN_BOOTSTRAP_PASSWORD, apply_fixture_policy },
+        data.test_gateway_owned_identity | scale_test_client {
+            ADMIN_BOOTSTRAP_PASSWORD,
+            apply_fixture_policy
+        },
         support { apply_fixture_policy },
     ]
     scale_test_client ++> [
@@ -15288,6 +15303,7 @@ graph import scale.tests {
             register_user,
             start_server
         },
+        data.test_gateway_owned_identity { get_free_port, stop_server },
         deploy.test_client_build_fail_fast
             | microservices.test_app_precompile
             | microservices.test_fat_bundle { require_pod_binary },
