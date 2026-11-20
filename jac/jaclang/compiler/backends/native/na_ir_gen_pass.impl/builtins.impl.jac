@@ -223,7 +223,9 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
                 return None;
             }
             fmt_parts.append("%s");
-            args.append(self.builder.call(_jv_s, [val], name="print.jv"));
+            args.append(
+                self._mark_owned(self.builder.call(_jv_s, [val], name="print.jv"))
+            );
         } elif isinstance(val.type, ir.LiteralStructType) {
             _tup_s = self._emit_container_repr(val, self._type_key_of(param));
             if _tup_s is None {
