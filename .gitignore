@@ -9,8 +9,6 @@
 *Zone.Identifier
 
 # Local agent and IDE state
-CLAUDE.local.md
-.claude/
 .cursor/
 .mcp.json
 .gstack/
