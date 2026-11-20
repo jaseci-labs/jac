@@ -512,7 +512,8 @@ test "E2036: an import after the local definition still collides" {
         "import from os.path { join } with entry { import from shlex { join } }",
         "with entry { import from b { A } } import from c { A }",
         "def f(x: bool) -> None { import from b { A } if x { import from c { A } } }",
-        "def join -> int { return 1; } with entry { if True { import from shlex { join } } }"
+        "def join -> int { return 1; } with entry { if True { import from shlex { join } } }",
+        "def join -> int { return 1; } with entry { if True { import from .test { join } } import from shlex { join } }"
     ];
     for (expected, sources) in [(0, allowed), (1, clashes)] {
         for source in sources {

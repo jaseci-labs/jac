@@ -17,8 +17,7 @@ impl ASTValidationPass.enter_module with Module entry {
             for declared in self._declared_names(item) {
                 binding = imported.get(declared.value);
                 if binding is not None
-                    and binding[0].code_context == item.code_context
-                    and not self._imports_itself(here, binding[0]) {
+                    and binding[0].code_context == item.code_context {
                     self.ctx.emit(
                         E2036,
                         node_override=declared,
@@ -56,7 +55,9 @@ impl ASTValidationPass.enter_module with Module entry {
 impl ASTValidationPass._import_bindings(mod: Module) -> dict[str, tuple[Import, Name]] {
     bound: dict[str, tuple[Import, Name]] = {};
     for stmt in mod.get_all_sub_nodes(Import) {
-        if stmt.is_absorb or find_python_scope_node_of(stmt) is not mod {
+        if stmt.is_absorb
+            or find_python_scope_node_of(stmt) is not mod
+            or self._imports_itself(mod, stmt) {
             continue;
         }
         for item in stmt.items {
