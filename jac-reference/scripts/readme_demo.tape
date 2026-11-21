@@ -1,0 +1,41 @@
+# VHS tape for the README hero demo GIF.
+#
+# Records the install -> create -> start flow as an animated GIF.
+# Requires VHS (https://github.com/charmbracelet/vhs):  brew install vhs
+#
+# Record with, from the repository root:
+#   vhs jac-reference/scripts/readme_demo.tape
+#
+# Then swap the <picture> block at the top of jac-reference/README.md to point
+# at the GIF:
+#   ../.github/assets/readme/demo.gif
+#
+# Run this from a machine WITHOUT jac installed (or a container) so the
+# install step records honestly.
+
+Output .github/assets/readme/demo.gif
+
+Set FontSize 16
+Set Width 1100
+Set Height 560
+Set Padding 16
+Set TypingSpeed 35ms
+Set Theme "Builtin Dark"
+
+Type "curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference"
+Enter
+Sleep 8s
+
+Type "jac create myapp --kind web-app"
+Enter
+Sleep 4s
+
+Type "cd myapp && jac install"
+Enter
+Sleep 10s
+
+Type "jac run"
+Enter
+Sleep 10s
+
+Sleep 3s

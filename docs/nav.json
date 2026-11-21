@@ -1,0 +1,1076 @@
+{
+  "version": 1,
+  "site_name": "jac",
+  "nav": [
+    {
+      "title": "Start here",
+      "items": [
+        {
+          "title": "What jac is",
+          "page": "start/index.md"
+        },
+        {
+          "title": "Install",
+          "page": "start/install.md"
+        },
+        {
+          "title": "A first program",
+          "page": "start/first-program.md"
+        },
+        {
+          "title": "The language in one page",
+          "page": "start/primer.md"
+        },
+        {
+          "title": "Coming from Python",
+          "page": "start/coming-from-python.md"
+        },
+        {
+          "title": "Coming from jac",
+          "page": "start/coming-from-the-reference-design.md"
+        }
+      ]
+    },
+    {
+      "title": "Language",
+      "items": [
+        {
+          "title": "Principles",
+          "page": "language/principles.md"
+        },
+        {
+          "title": "Basics",
+          "items": [
+            {
+              "title": "Lexical structure",
+              "page": "language/lexical-structure.md"
+            },
+            {
+              "title": "Modules",
+              "page": "language/modules.md"
+            },
+            {
+              "title": "Docstrings",
+              "page": "language/modules-docstrings.md"
+            },
+            {
+              "title": "Import wiring",
+              "page": "language/modules-wiring.md"
+            },
+            {
+              "title": "Layers",
+              "page": "language/modules-layers.md"
+            },
+            {
+              "title": "Variables",
+              "page": "language/variables.md"
+            },
+            {
+              "title": "Augmented assignment",
+              "page": "language/variables-augmented.md"
+            },
+            {
+              "title": "Types",
+              "page": "language/types.md"
+            },
+            {
+              "title": "The `any` type",
+              "page": "language/types-any.md"
+            },
+            {
+              "title": "Strings",
+              "page": "language/strings.md"
+            },
+            {
+              "title": "Collections",
+              "page": "language/collections.md"
+            },
+            {
+              "title": "Operators",
+              "page": "language/operators.md"
+            },
+            {
+              "title": "Control flow",
+              "page": "language/control-flow.md"
+            },
+            {
+              "title": "Pattern matching",
+              "page": "language/pattern-matching.md"
+            },
+            {
+              "title": "Functions",
+              "page": "language/functions.md"
+            },
+            {
+              "title": "Function values",
+              "page": "language/functions-values.md"
+            },
+            {
+              "title": "Exceptions",
+              "page": "language/exceptions.md"
+            },
+            {
+              "title": "Context managers",
+              "page": "language/context-managers.md"
+            },
+            {
+              "title": "Generators",
+              "page": "language/generators.md"
+            },
+            {
+              "title": "Async",
+              "page": "language/async.md"
+            },
+            {
+              "title": "Parallel loops: `flow for`",
+              "page": "language/flow-for.md"
+            },
+            {
+              "title": "Tests",
+              "page": "language/tests.md"
+            }
+          ]
+        },
+        {
+          "title": "Archetypes and types",
+          "items": [
+            {
+              "title": "Archetypes",
+              "page": "language/archetypes.md"
+            },
+            {
+              "title": "Fields",
+              "page": "language/fields.md"
+            },
+            {
+              "title": "Methods",
+              "page": "language/methods.md"
+            },
+            {
+              "title": "Special methods",
+              "page": "language/methods-special.md"
+            },
+            {
+              "title": "Access tags",
+              "page": "language/access.md"
+            },
+            {
+              "title": "Inheritance",
+              "page": "language/inheritance.md"
+            },
+            {
+              "title": "Impl blocks",
+              "page": "language/impl.md"
+            },
+            {
+              "title": "Enums",
+              "page": "language/enums.md"
+            },
+            {
+              "title": "Interfaces",
+              "page": "language/interfaces.md"
+            },
+            {
+              "title": "Builtin interfaces",
+              "page": "language/interfaces-builtin.md"
+            },
+            {
+              "title": "Where clauses",
+              "page": "language/interfaces-where.md"
+            },
+            {
+              "title": "Generics",
+              "page": "language/generics.md"
+            },
+            {
+              "title": "Generic classes",
+              "page": "language/generics-classes.md"
+            },
+            {
+              "title": "How generic code is compiled",
+              "page": "language/generics-compiling.md"
+            },
+            {
+              "title": "Reflection",
+              "page": "language/reflection.md"
+            },
+            {
+              "title": "By and sem",
+              "page": "language/by-and-sem.md"
+            }
+          ]
+        },
+        {
+          "title": "Object-spatial programming",
+          "items": [
+            {
+              "title": "Object-spatial programming",
+              "page": "language/object-spatial.md"
+            },
+            {
+              "title": "Nodes",
+              "page": "language/nodes.md"
+            },
+            {
+              "title": "Edges",
+              "page": "language/edges.md"
+            },
+            {
+              "title": "root",
+              "page": "language/root.md"
+            },
+            {
+              "title": "Connecting nodes",
+              "page": "language/connecting.md"
+            },
+            {
+              "title": "Edge references",
+              "page": "language/edge-references.md"
+            },
+            {
+              "title": "Walkers",
+              "page": "language/walkers.md"
+            },
+            {
+              "title": "visit",
+              "page": "language/visit.md"
+            },
+            {
+              "title": "Abilities",
+              "page": "language/abilities.md"
+            },
+            {
+              "title": "Walker control",
+              "page": "language/walker-control.md"
+            },
+            {
+              "title": "Graph queries",
+              "page": "language/graph-queries.md"
+            }
+          ]
+        },
+        {
+          "title": "Numbers and structs",
+          "items": [
+            {
+              "title": "Numbers",
+              "page": "language/numbers.md"
+            },
+            {
+              "title": "Wrapping and saturating arithmetic",
+              "page": "language/numbers-wrapping.md"
+            },
+            {
+              "title": "128-bit ints",
+              "page": "language/numbers-128.md"
+            },
+            {
+              "title": "Narrow floats",
+              "page": "language/numbers-floats.md"
+            },
+            {
+              "title": "Small float formats",
+              "page": "language/numbers-float-formats.md"
+            },
+            {
+              "title": "Atomic integers",
+              "page": "language/numbers-atomics.md"
+            },
+            {
+              "title": "Structs",
+              "page": "language/structs.md"
+            },
+            {
+              "title": "Where structs are held",
+              "page": "language/structs-storage.md"
+            },
+            {
+              "title": "Packed lists",
+              "page": "language/packed-lists.md"
+            }
+          ]
+        },
+        {
+          "title": "Compile time",
+          "items": [
+            {
+              "title": "Compile-time evaluation",
+              "page": "language/compile-time.md"
+            },
+            {
+              "title": "Compile-time values",
+              "page": "language/compile-time-values.md"
+            },
+            {
+              "title": "Decorators",
+              "page": "language/decorators.md"
+            },
+            {
+              "title": "Compile-time parameters",
+              "page": "language/comptime-parameters.md"
+            }
+          ]
+        },
+        {
+          "title": "Memory and ownership",
+          "items": [
+            {
+              "title": "Memory",
+              "page": "language/memory.md"
+            },
+            {
+              "title": "Memory regions",
+              "page": "language/memory-regions.md"
+            },
+            {
+              "title": "Ownership",
+              "page": "language/ownership.md"
+            },
+            {
+              "title": "Borrows and owned places",
+              "page": "language/ownership-borrows.md"
+            },
+            {
+              "title": "The nogc contract",
+              "page": "language/ownership-contract.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Library",
+      "items": [
+        {
+          "title": "The library",
+          "page": "library/index.md"
+        },
+        {
+          "title": "Standard-library modules",
+          "page": "library/stdlib.md"
+        },
+        {
+          "title": "Builtins and builtin types",
+          "items": [
+            {
+              "title": "Builtin functions",
+              "page": "library/builtins.md"
+            },
+            {
+              "title": "Builtin conversions",
+              "page": "library/builtins-conversions.md"
+            },
+            {
+              "title": "Builtin exceptions",
+              "page": "library/exceptions.md"
+            },
+            {
+              "title": "str methods",
+              "page": "library/str-methods.md"
+            },
+            {
+              "title": "bytes, bytearray and memoryview methods",
+              "page": "library/bytes-methods.md"
+            },
+            {
+              "title": "list methods",
+              "page": "library/list-methods.md"
+            },
+            {
+              "title": "dict methods",
+              "page": "library/dict-methods.md"
+            },
+            {
+              "title": "set and frozenset methods",
+              "page": "library/set-methods.md"
+            },
+            {
+              "title": "tuple, range and slice",
+              "page": "library/tuple-methods.md"
+            },
+            {
+              "title": "int, float, complex and bool methods",
+              "page": "library/number-methods.md"
+            }
+          ]
+        },
+        {
+          "title": "Modules",
+          "items": [
+            {
+              "title": "argparse, getopt, configparser and getpass",
+              "page": "library/argparse.md"
+            },
+            {
+              "title": "asyncio",
+              "page": "library/asyncio.md"
+            },
+            {
+              "title": "base64 and binascii",
+              "page": "library/base64.md"
+            },
+            {
+              "title": "codecs and unicodedata",
+              "page": "library/codecs.md"
+            },
+            {
+              "title": "collections",
+              "page": "library/collections.md"
+            },
+            {
+              "title": "Compression and archives",
+              "page": "library/compression.md"
+            },
+            {
+              "title": "copy",
+              "page": "library/copy.md"
+            },
+            {
+              "title": "csv",
+              "page": "library/csv.md"
+            },
+            {
+              "title": "datetime and zoneinfo",
+              "page": "library/datetime.md"
+            },
+            {
+              "title": "decimal, fractions, statistics and numbers",
+              "page": "library/decimal.md"
+            },
+            {
+              "title": "email and quopri",
+              "page": "library/email.md"
+            },
+            {
+              "title": "Files and directories: shutil, tempfile, glob, ...",
+              "page": "library/files.md"
+            },
+            {
+              "title": "functools",
+              "page": "library/functools.md"
+            },
+            {
+              "title": "hashlib and hmac",
+              "page": "library/hashlib.md"
+            },
+            {
+              "title": "heapq and bisect",
+              "page": "library/heapq.md"
+            },
+            {
+              "title": "http",
+              "page": "library/http.md"
+            },
+            {
+              "title": "io",
+              "page": "library/io.md"
+            },
+            {
+              "title": "itertools",
+              "page": "library/itertools.md"
+            },
+            {
+              "title": "json",
+              "page": "library/json.md"
+            },
+            {
+              "title": "logging",
+              "page": "library/logging.md"
+            },
+            {
+              "title": "math and cmath",
+              "page": "library/math.md"
+            },
+            {
+              "title": "os and os.path",
+              "page": "library/os.md"
+            },
+            {
+              "title": "pathlib",
+              "page": "library/pathlib.md"
+            },
+            {
+              "title": "The POSIX modules: signal, errno, pwd, ...",
+              "page": "library/posix.md"
+            },
+            {
+              "title": "random",
+              "page": "library/random.md"
+            },
+            {
+              "title": "re",
+              "page": "library/re.md"
+            },
+            {
+              "title": "smtplib, poplib, imaplib and ftplib",
+              "page": "library/mailclients.md"
+            },
+            {
+              "title": "socket, select, selectors, socketserver and ssl",
+              "page": "library/socket.md"
+            },
+            {
+              "title": "sqlite3",
+              "page": "library/sqlite3.md"
+            },
+            {
+              "title": "struct",
+              "page": "library/struct.md"
+            },
+            {
+              "title": "subprocess",
+              "page": "library/subprocess.md"
+            },
+            {
+              "title": "sys",
+              "page": "library/sys.md"
+            },
+            {
+              "title": "Text: string, textwrap, difflib, ...",
+              "page": "library/text.md"
+            },
+            {
+              "title": "threading, queue and concurrent.futures",
+              "page": "library/threading.md"
+            },
+            {
+              "title": "time",
+              "page": "library/time.md"
+            },
+            {
+              "title": "urllib",
+              "page": "library/urllib.md"
+            },
+            {
+              "title": "The Windows modules: msvcrt and winreg",
+              "page": "library/windows.md"
+            },
+            {
+              "title": "xml and plistlib",
+              "page": "library/xml.md"
+            },
+            {
+              "title": "Jac's own modules",
+              "page": "library/jaclang.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Apps",
+      "items": [
+        {
+          "title": "Apps",
+          "page": "apps/index.md"
+        },
+        {
+          "title": "The archwire's spaces",
+          "page": "apps/archwire.md"
+        },
+        {
+          "title": "Crossings",
+          "page": "apps/crossings.md"
+        },
+        {
+          "title": "Serving a space",
+          "page": "apps/server.md"
+        },
+        {
+          "title": "An app's data",
+          "page": "apps/data.md"
+        },
+        {
+          "title": "Pages",
+          "page": "apps/pages.md"
+        },
+        {
+          "title": "Components and JSX",
+          "page": "apps/components.md"
+        },
+        {
+          "title": "Forms and events",
+          "page": "apps/components-forms.md"
+        },
+        {
+          "title": "UI plugins and bundlers",
+          "page": "apps/ui-bindings.md"
+        },
+        {
+          "title": "Plugins",
+          "page": "apps/plugins.md"
+        },
+        {
+          "title": "Hosts",
+          "page": "apps/hosts.md"
+        },
+        {
+          "title": "Building apps",
+          "page": "apps/building.md"
+        },
+        {
+          "title": "stdjac",
+          "page": "apps/stdjac.md"
+        },
+        {
+          "title": "stdjac.server",
+          "page": "apps/stdjac-server.md"
+        }
+      ]
+    },
+    {
+      "title": "Other languages",
+      "items": [
+        {
+          "title": "Using other languages",
+          "page": "interop/index.md"
+        },
+        {
+          "title": "Python",
+          "page": "interop/python.md"
+        },
+        {
+          "title": "Python values",
+          "page": "interop/python-values.md"
+        },
+        {
+          "title": "A project's own Python modules",
+          "page": "interop/python-modules.md"
+        },
+        {
+          "title": "npm and Node",
+          "page": "interop/npm.md"
+        },
+        {
+          "title": "C libraries",
+          "page": "interop/c-libraries.md"
+        },
+        {
+          "title": "Naming and linking a C library",
+          "page": "interop/c-libraries-linking.md"
+        },
+        {
+          "title": "C modules",
+          "page": "interop/c-modules.md"
+        },
+        {
+          "title": "Pointers and native memory",
+          "page": "interop/pointers-and-native-memory.md"
+        },
+        {
+          "title": "Raw memory intrinsics",
+          "page": "interop/pointers-and-native-memory-intrinsics.md"
+        },
+        {
+          "title": "Opening a C library as the program runs",
+          "page": "interop/dl.md"
+        },
+        {
+          "title": "C and C++",
+          "page": "interop/c-and-cpp.md"
+        },
+        {
+          "title": "Rust modules",
+          "page": "interop/rust-modules.md"
+        },
+        {
+          "title": "Rust",
+          "page": "interop/rust.md"
+        },
+        {
+          "title": "Porting C",
+          "page": "interop/port-c.md"
+        },
+        {
+          "title": "Porting C++",
+          "page": "interop/port-cxx.md"
+        },
+        {
+          "title": "Porting Rust",
+          "page": "interop/port-rust.md"
+        },
+        {
+          "title": "Porting Python",
+          "page": "interop/port-python.md"
+        },
+        {
+          "title": "Porting JavaScript and TypeScript",
+          "page": "interop/port-javascript.md"
+        }
+      ]
+    },
+    {
+      "title": "Accelerators",
+      "items": [
+        {
+          "title": "Devices, tensors and kernels",
+          "page": "accel/index.md"
+        },
+        {
+          "title": "What code needs from the place it runs",
+          "page": "accel/requirements.md"
+        },
+        {
+          "title": "What crosses into a place",
+          "page": "accel/crossing.md"
+        },
+        {
+          "title": "Devices",
+          "page": "accel/devices.md"
+        },
+        {
+          "title": "Tensors",
+          "page": "accel/tensors.md"
+        },
+        {
+          "title": "Views and layouts",
+          "page": "accel/views.md"
+        },
+        {
+          "title": "Arrays and values held in place",
+          "page": "accel/arrays.md"
+        },
+        {
+          "title": "Kernels",
+          "page": "accel/kernels.md"
+        },
+        {
+          "title": "A kernel's math",
+          "page": "accel/kernel-math.md"
+        },
+        {
+          "title": "Parallel loops over tensors",
+          "page": "accel/parallel-loops.md"
+        },
+        {
+          "title": "Grid kernels",
+          "page": "accel/grid-kernels.md"
+        },
+        {
+          "title": "Streams, events and copies",
+          "page": "accel/streams.md"
+        },
+        {
+          "title": "Printing from a kernel",
+          "page": "accel/kernel-printing.md"
+        },
+        {
+          "title": "Vectors",
+          "page": "accel/vectors.md"
+        },
+        {
+          "title": "Vector methods",
+          "page": "accel/vector-methods.md"
+        },
+        {
+          "title": "Tensor elements as vectors",
+          "page": "accel/vector-memory.md"
+        }
+      ]
+    },
+    {
+      "title": "Toolchain",
+      "items": [
+        {
+          "title": "Projects",
+          "page": "toolchain/projects.md"
+        },
+        {
+          "title": "Packages",
+          "page": "toolchain/packages.md"
+        },
+        {
+          "title": "Writing a package manager",
+          "page": "toolchain/package-managers.md"
+        },
+        {
+          "title": "build",
+          "page": "toolchain/build.md"
+        },
+        {
+          "title": "check",
+          "page": "toolchain/check.md"
+        },
+        {
+          "title": "test",
+          "page": "toolchain/test.md"
+        },
+        {
+          "title": "fmt",
+          "page": "toolchain/fmt.md"
+        },
+        {
+          "title": "port",
+          "page": "toolchain/port.md"
+        },
+        {
+          "title": "Lint rules",
+          "page": "toolchain/lint.md"
+        },
+        {
+          "title": "The build cache",
+          "page": "toolchain/cache.md"
+        },
+        {
+          "title": "Inspect: parse, grammar, emit-js, emit-py",
+          "page": "toolchain/inspect.md"
+        },
+        {
+          "title": "lsp and query",
+          "page": "toolchain/lsp.md"
+        },
+        {
+          "title": "browse",
+          "page": "toolchain/browse.md"
+        },
+        {
+          "title": "arch",
+          "page": "toolchain/arch.md"
+        },
+        {
+          "title": "docs and skills",
+          "page": "toolchain/docs.md"
+        }
+      ]
+    },
+    {
+      "title": "Reference",
+      "items": [
+        {
+          "title": "Commands",
+          "page": "reference/commands.md"
+        },
+        {
+          "title": "Grammar",
+          "page": "reference/grammar.md"
+        },
+        {
+          "title": "jac.toml",
+          "page": "reference/jac-toml.md"
+        },
+        {
+          "title": "Environment variables",
+          "page": "reference/environment.md"
+        },
+        {
+          "title": "Diagnostics",
+          "items": [
+            {
+              "title": "E0001 to E0048: syntax",
+              "page": "reference/diagnostics/e00-1.md"
+            },
+            {
+              "title": "E0050 to E0099: declarations and wiring",
+              "page": "reference/diagnostics/e00-2.md"
+            },
+            {
+              "title": "E0100 to E0117: tokens, compile-time values and archwire blocks",
+              "page": "reference/diagnostics/e01-1.md"
+            },
+            {
+              "title": "E0120 to E0167: parameters, assignments, patterns, spellings, layers and connects",
+              "page": "reference/diagnostics/e01-2.md"
+            },
+            {
+              "title": "E1001 to E1041: values and their types",
+              "page": "reference/diagnostics/e10-1.md"
+            },
+            {
+              "title": "E1050 to E1098: calls and statements",
+              "page": "reference/diagnostics/e10-2.md"
+            },
+            {
+              "title": "E1110 to E1147: operators, walkers, numbers and imports",
+              "page": "reference/diagnostics/e11-1.md"
+            },
+            {
+              "title": "E1150 to E1170: C data and type expressions",
+              "page": "reference/diagnostics/e11-2.md"
+            },
+            {
+              "title": "E1173 to E1199: expressions, edge references and assignment",
+              "page": "reference/diagnostics/e11-3.md"
+            },
+            {
+              "title": "E1200-E1209: special methods, casts and patterns",
+              "page": "reference/diagnostics/e12-1.md"
+            },
+            {
+              "title": "E1210-E1228: spaces, UI plugins and pages",
+              "page": "reference/diagnostics/e12-2.md"
+            },
+            {
+              "title": "E1229-E1248: specialization, fields, tensors and reflection",
+              "page": "reference/diagnostics/e12-3.md"
+            },
+            {
+              "title": "E1263-E1289: archwire rules, reports, coroutines, interfaces, npm trees and phone apps",
+              "page": "reference/diagnostics/e12-4.md"
+            },
+            {
+              "title": "E1301-E1311: moves, borrows, regions and imm",
+              "page": "reference/diagnostics/e13-1.md"
+            },
+            {
+              "title": "E1313-E1330: parallel loops, views and borrowed places",
+              "page": "reference/diagnostics/e13-2.md"
+            },
+            {
+              "title": "E1401 to E1421: the ownership contract, kernels, vectors and arrays",
+              "page": "reference/diagnostics/e14-1.md"
+            },
+            {
+              "title": "E1431 to E1467: math forms, tensor views, a local's type and pointer access",
+              "page": "reference/diagnostics/e14-2.md"
+            },
+            {
+              "title": "E1475 to E1484: float formats, compile-time parameters and interfaces",
+              "page": "reference/diagnostics/e14-3.md"
+            },
+            {
+              "title": "E1490 to E1496: decorators",
+              "page": "reference/diagnostics/e14-4.md"
+            },
+            {
+              "title": "E1500 to E1521: structs",
+              "page": "reference/diagnostics/e15-1.md"
+            },
+            {
+              "title": "E1540 to E1576: places, Shared, compile-time type functions, abilities that never run, a choice with no nodes, an undeclared import, and a C module wired whole",
+              "page": "reference/diagnostics/e15-2.md"
+            },
+            {
+              "title": "E2009 to E2088: declarations, impls and misplaced statements",
+              "page": "reference/diagnostics/e20-1.md"
+            },
+            {
+              "title": "E2089 to E2099: archwire.jac and its edge rules",
+              "page": "reference/diagnostics/e20-2.md"
+            },
+            {
+              "title": "E2101 to E2118: bases, edge endpoints and special names",
+              "page": "reference/diagnostics/e21-1.md"
+            },
+            {
+              "title": "E2119 to E2200: statements, async functions, overrides, walks, compile-time names, sems and initialization order",
+              "page": "reference/diagnostics/e21-2.md"
+            },
+            {
+              "title": "E2201 to E2213: layers, and what an edge rule says",
+              "page": "reference/diagnostics/e22.md"
+            },
+            {
+              "title": "E2214 to E2225: plugins, libraries, jobs, module names and `pass`",
+              "page": "reference/diagnostics/e22-2.md"
+            },
+            {
+              "title": "E2226 on: a package's `[packages]`, its version and what it was written for",
+              "page": "reference/diagnostics/e22-3.md"
+            },
+            {
+              "title": "E30xx: lint",
+              "page": "reference/diagnostics/e30.md"
+            },
+            {
+              "title": "E40xx: port",
+              "page": "reference/diagnostics/e40.md"
+            },
+            {
+              "title": "E50xx: refusals",
+              "page": "reference/diagnostics/e50.md"
+            },
+            {
+              "title": "E5114 to E5166: tail calls, C and Rust modules, the native library, programs, manifests and installed packages",
+              "page": "reference/diagnostics/e51.md"
+            },
+            {
+              "title": "W0060 to W2001: stray strings, inference, modules and names",
+              "page": "reference/diagnostics/w00-w20.md"
+            },
+            {
+              "title": "W3001 to W3013: one spelling for each form",
+              "page": "reference/diagnostics/w30-1.md"
+            },
+            {
+              "title": "W3021 to W3056: lint rules and probable mistakes",
+              "page": "reference/diagnostics/w30-2.md"
+            },
+            {
+              "title": "W5021: a C library the target does not have",
+              "page": "reference/diagnostics/w50.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Skills",
+      "items": [
+        {
+          "title": "Writing Jac with jac",
+          "page": "skills/writing-jac/SKILL.md"
+        },
+        {
+          "title": "Resolving jac diagnostics",
+          "page": "skills/resolving-diagnostics/SKILL.md"
+        },
+        {
+          "title": "Starting a jac project",
+          "page": "skills/starting-a-project/SKILL.md"
+        },
+        {
+          "title": "Testing and formatting",
+          "page": "skills/testing-and-formatting/SKILL.md"
+        },
+        {
+          "title": "Modelling with graphs",
+          "page": "skills/modelling-with-graphs/SKILL.md"
+        },
+        {
+          "title": "Building an app from spaces",
+          "page": "skills/building-an-app/SKILL.md"
+        },
+        {
+          "title": "Pages and components",
+          "page": "skills/pages-and-components/SKILL.md"
+        },
+        {
+          "title": "Language models and agents",
+          "page": "skills/language-models-and-agents/SKILL.md"
+        },
+        {
+          "title": "Writing a plugin",
+          "page": "skills/writing-a-plugin/SKILL.md"
+        },
+        {
+          "title": "Using Python packages",
+          "page": "skills/using-python-packages/SKILL.md"
+        },
+        {
+          "title": "Using npm packages",
+          "page": "skills/using-npm-packages/SKILL.md"
+        },
+        {
+          "title": "Calling C and Rust",
+          "page": "skills/using-c-and-rust/SKILL.md"
+        },
+        {
+          "title": "Kernels and tensors",
+          "page": "skills/kernels-and-tensors/SKILL.md"
+        },
+        {
+          "title": "Memory profiles and ownership",
+          "page": "skills/memory-and-ownership/SKILL.md"
+        },
+        {
+          "title": "Porting a jac program to jac",
+          "page": "skills/porting-from-the-reference-design/SKILL.md"
+        },
+        {
+          "title": "Porting Python to Jac",
+          "page": "skills/porting-from-python/SKILL.md"
+        }
+      ]
+    }
+  ]
+}

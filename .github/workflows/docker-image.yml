@@ -86,7 +86,7 @@ jobs:
           ( cd "ctx/$ARCH" && sha256sum --check "$asset.sha256" )
           mv "ctx/$ARCH/$asset" "ctx/$ARCH/jac"
           chmod +x "ctx/$ARCH/jac"
-          cp docker/jaclang.Dockerfile ctx/Dockerfile
+          cp jac-reference/docker/jaclang.Dockerfile ctx/Dockerfile
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         if: env.DOCKERHUB_USERNAME != ''
@@ -164,6 +164,9 @@ jobs:
             # Preserve the release workflow's backport rule: latest never
             # moves to an older version when an old image is rebuilt.
             latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
+            # Only a reference design's release (v<version>) can outrank this
+            # one; the jac compiler's (jac-v<version>) are never latest.
+            case "$latest_tag" in v[0-9]*) ;; *) latest_tag="" ;; esac
             if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
               TAGS="$TAGS -t $IMAGE:latest"
             else

@@ -1,0 +1,127 @@
+# jaclang project manifest AND the reference design's config, consolidated.
+# Config resolves to the nearest ANCESTOR jac.toml (walk-up, nearest wins, no
+# merging), so this single file covers every cwd under jac-reference/ --
+# including `cd jac`. A jac started above it, in the repository root, finds no
+# jac.toml and runs its bundled compiler. The
+# single binary is built from this source tree; the build reads version/metadata
+# here (not from a Python pyproject backend).
+[project]
+name = "jaclang"
+version = "0.40.1"
+description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
+license = "MIT"
+readme = "jac/README.md"
+requires_python = ">=3.14"
+# No runtime PyPI deps: native LLVM is the in-tree LLVMPY_* shim, statically
+# linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/jaseci-labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://www.jaclang.org/docs"
+
+# Editable dev loop: reroute `import jaclang` to the in-repo source under jac/
+# so the `jac` binary runs your latest edits with no rebuild. Enabled here so
+# building from this repo always runs the in-tree compiler source; this skips
+# the binary's precompiled JIR bundle (the per-module cache is content-keyed, so
+# edits still self-invalidate). A one-time `zig build` is needed first, since
+# sitecustomize.py -- which reads this key -- ships inside the binary payload.
+# Comment this stanza out to fall back to the binary's bundled jaclang.
+# Run jac from outside the repo to use its bundled compiler for one command.
+[dev]
+jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
+
+# `jac test` discovers the suite here (mirrors pytest's testpaths); relative to
+# this file, so a bare `jac test` works from any directory in the repo. The
+# in-package suites are part of the standard plan on purpose: enumerating them
+# in workflow YAML let files rot out of coverage silently. Their optional deps
+# (litellm, kubernetes, ...) turn into per-file skips where absent; CI lanes
+# that install them set JAC_TEST_STRICT=1 so those skips fail there instead.
+[test]
+directories = [
+    "jac/tests",
+    "jac/jaclang/compiler/tests",
+    "jac/jaclang/byllm/tests",
+    "jac/jaclang/scale/tests",
+]
+# The scale suite relies on per-file process isolation (servers, sockets,
+# module-level config); each of these files gets a dedicated worker.
+isolate = ["jac/jaclang/scale/tests/*"]
+# These share one shelf_db_path SQLite file, so they additionally run one at
+# a time after the parallel phase.
+serial = [
+    "jac/jaclang/scale/tests/data/test_gcs_storage.jac",
+    "jac/jaclang/scale/tests/server/test_firebase_auth_sso.jac",
+    "jac/jaclang/scale/tests/data/test_identity_password.jac",
+    "jac/jaclang/scale/tests/data/test_firebase_env.jac",
+]
+
+[check]
+# Modules excluded from the `jac check` gate. `jac check` reads this list, so
+# CI, the precommit hook and a local run all apply the same policy; --ignore
+# adds to it. This replaces the old .jacignore, which now only governs what a
+# `jac build` bundle ships.
+#
+# Matching (project/source.jac:path_matches_exclude): an entry containing `/`
+# is fnmatched against the whole path; a bare entry is fnmatched against EVERY
+# path component, so a bare `types.jac` silences every file of that basename
+# repo-wide. Every path entry below is path-qualified for that reason -- one
+# line per excluded module, so a fix deletes exactly one line.
+exclude = [
+    # Test trees and the fixtures that hold deliberate diagnostics: a checker
+    # fixture exists to fail `jac check`, so checking it proves nothing and
+    # blocks every commit that touches it.
+    "tests",
+    "checker_*.jac",
+    "*_err.jac",
+
+    # Examples and benchmarks are not shipped compiler or runtime code.
+    "jac/examples/*",
+    "scripts/bench*",
+]
+
+[check.lint]
+# "all" enables every autolint rule, including the ones "default" leaves off:
+# the "deslop" rules (W3050/W3051) that remove all comments and docstrings, and
+# separate-impls (W3055), which moves every function, method and ability body
+# into an impl at the bottom of its module, and impls-in-annex (W3056), which
+# then moves every impl into the module's annex under impl/. `jac fmt --lintfix`,
+# `jac precommit`, and CI's `jac fmt --check --lintfix` apply them to every
+# non-excluded .jac file.
+select = ["all"]
+exclude = [
+    "docs/*",
+    "*/examples/*",
+    "*/tests/*",
+    # Ops scripts keep their usage docstrings; CI's fmt sweep skips ^scripts/
+    # for the same reason -- this entry keeps the precommit hook consistent
+    # with that (without it, any commit touching a script is blocked on deslop).
+    "scripts/*",
+    # Excluded for the no-print rule, not deslop (exclusion is file-level across
+    # all lint rules): console.impl.jac IS the console implementation, and
+    # cli_boot.jac is the minimal boot path that must run (an app binary's
+    # embedded image) before the full CLI/console can load -- bare print() is
+    # their mechanism.
+    # Both were deslopped once by hand and should stay comment/docstring-free.
+    "console.impl.jac",
+    "cli_boot.jac",
+    # Same reason for the fused runtime's diagnostics: report.jac narrates the
+    # single binary's cold start and its failures to stderr before CPython (and
+    # so the console) exists -- bare print() is its mechanism too.
+    "fused/report.jac",
+    # wheel_archive.jac is exported as the sdist build backend, which runs
+    # without jaclang: an impl in an annex compiles to a jaclib decorator, so
+    # its impls stay in the module and impls-in-annex must not move them.
+    "dist/publish/wheel_archive.jac",
+    # llvm/*.jac is the vendored llvmlite port (ir + binding); its comments are
+    # load-bearing, so it is NOT deslopped -- it keeps upstream's
+    # docstring/property style so diffs against llvmlite stay reviewable.
+    "*/llvm/ir/*",
+    "*/llvm/binding/*",
+]
+
+[byllm.model]
+default_model = "anthropic/claude-sonnet-4-6"
+#default_model = "ollama/gemma4:31b"
+#default_model = "ollama/qwen3-coder"

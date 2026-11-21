@@ -1,0 +1,15 @@
+# The standard `bundler` plugin of `react_native`: Expo, which makes a phone app of a hermes space.
+[project]
+name = "expo"
+kind = "plugin"
+
+[plugin]
+fills = "bundler"
+interface_ver = 1
+
+[bundler]
+build = "expo.mjs"
+serve = "expo.serve.mjs"
+
+[check.lint]
+select = []

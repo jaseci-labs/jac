@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Anatomy of the jac binary: a native launcher stub with a runtime payload appended to it, carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives; it replaces the whole development toolchain">
+  <style>
+    .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+    .fg { fill: #e6edf3; }
+    .dim { fill: #8b949e; }
+    .acc { fill: #ff9100; }
+  </style>
+
+  <!-- Left panel: anatomy of the one file -->
+  <rect x="16" y="32" width="380" height="384" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text class="mono acc" x="32" y="66" font-size="20" font-weight="bold">jac<tspan class="dim" font-size="12" font-weight="normal"> · one file on disk</tspan></text>
+
+  <!-- Launcher stub -->
+  <rect x="32" y="84" width="348" height="40" rx="6" fill="#21262d" stroke="#30363d"/>
+  <text class="sans fg" x="44" y="101" font-size="11" font-weight="bold">launcher stub</text>
+  <text class="sans dim" x="368" y="101" font-size="11" text-anchor="end">native code · links libc only</text>
+  <text class="sans dim" x="44" y="116" font-size="10">jac ninja editor (Neovim fork) statically linked in</text>
+
+  <!-- Payload container -->
+  <rect x="32" y="136" width="348" height="260" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4 3"/>
+  <text class="sans dim" x="44" y="156" font-size="10.5">runtime payload · appended, unpacked once to a cache</text>
+
+  <g font-size="11" class="sans">
+    <rect x="44" y="168" width="324" height="30" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="fg" x="56" y="187">CPython 3.14</text><text class="dim" x="356" y="187" text-anchor="end">dlopened at boot</text>
+    <rect x="44" y="204" width="324" height="30" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="fg" x="56" y="223">Jac compiler + runtime</text><text class="dim" x="356" y="223" text-anchor="end">precompiled JIR</text>
+    <rect x="44" y="240" width="324" height="30" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="fg" x="56" y="259">LLVM 22 · jacllvm shim</text><text class="dim" x="356" y="259" text-anchor="end">statically linked</text>
+    <rect x="44" y="276" width="324" height="30" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="fg" x="56" y="295">Bun</text><text class="dim" x="356" y="295" text-anchor="end">own executable · off PATH</text>
+    <rect x="44" y="312" width="324" height="30" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="fg" x="56" y="331">typeshed stdlib stubs</text><text class="dim" x="356" y="331" text-anchor="end">vendored · pinned</text>
+    <rect x="44" y="348" width="324" height="30" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="fg" x="56" y="367">libc · musl · wasm32 floors</text><text class="dim" x="356" y="367" text-anchor="end">static archives</text>
+  </g>
+
+  <!-- Center: arrow -->
+  <text class="mono acc" x="480" y="192" font-size="12" text-anchor="middle">replaces</text>
+  <line x1="412" y1="210" x2="530" y2="210" stroke="#ff9100" stroke-width="2"/>
+  <path d="M530,203 L548,210 L530,217 Z" fill="#ff9100"/>
+  <text class="mono dim" x="480" y="238" font-size="10.5" text-anchor="middle">install nothing else</text>
+
+  <!-- Right panel: what you can uninstall -->
+  <rect x="564" y="32" width="300" height="384" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text class="sans acc" x="580" y="66" font-size="13" font-weight="bold" letter-spacing="1">YOU CAN UNINSTALL</text>
+  <g font-size="13" class="sans">
+    <text class="acc" x="584" y="100">✕</text><text class="fg" x="602" y="100" text-decoration="line-through">Python · pyenv · conda</text>
+    <text class="acc" x="584" y="129">✕</text><text class="fg" x="602" y="129" text-decoration="line-through">venv · virtualenv</text>
+    <text class="acc" x="584" y="158">✕</text><text class="fg" x="602" y="158" text-decoration="line-through">pip · pipx · uv · poetry</text>
+    <text class="acc" x="584" y="187">✕</text><text class="fg" x="602" y="187" text-decoration="line-through">Node.js · npm · yarn</text>
+    <text class="acc" x="584" y="216">✕</text><text class="fg" x="602" y="216" text-decoration="line-through">gcc · clang · make · cmake</text>
+    <text class="acc" x="584" y="245">✕</text><text class="fg" x="602" y="245" text-decoration="line-through">ld · lld · emscripten</text>
+    <text class="acc" x="584" y="274">✕</text><text class="fg" x="602" y="274" text-decoration="line-through">mypy · black · pytest</text>
+    <text class="acc" x="584" y="303">✕</text><text class="fg" x="602" y="303" text-decoration="line-through">Flask · FastAPI · Express</text>
+    <text class="acc" x="584" y="332">✕</text><text class="fg" x="602" y="332" text-decoration="line-through">Docker · kubectl · Helm</text>
+  </g>
+  <text class="sans dim" x="580" y="372" font-size="10.5">(keep them for your non-Jac projects)</text>
+
+  <text class="mono dim" x="440" y="438" font-size="11" text-anchor="middle">first run unpacks the payload once into a per-version cache · every run after is instant</text>
+</svg>

@@ -6,13 +6,13 @@ name: CI
 # from). Every lane runs through that binary. Most are sealed (jac-kit
 # `sealed: "true"` drops the checkout's `[dev] jaclang_source`), so the compiler
 # under test is the one the PR would ship. The lanes that must see the checkout
-# as the compiler's own tree keep the root jac.toml's reroute instead:
+# as the compiler's own tree keep jac-reference/jac.toml's reroute instead:
 # `jac-check`, the equivalence chunk of `test-compiler`, `test-launcher-jac`,
 # and the in-package suites under jaclang/byllm and jaclang/scale
 # (`test-packages-and-docs`, `test-scale`).
 #
 # A reroute lane compiles nothing. jac-kit seeds `jac-precompiled` into the
-# checkout at jac/jaclang/_precompiled and requires `jac native status
+# checkout at jac-reference/jac/jaclang/_precompiled and requires `jac native status
 # --require precompiled`, so a bundled unit this compiler will not reuse fails
 # the lane instead of quietly recompiling the ~1300-module tree. Adding a reroute lane costs a download, not
 # a compile -- but adding one that needs a DIFFERENT compiler generation than
@@ -59,6 +59,14 @@ permissions:
 
 # A lane is sealed or rerouted once, by its jac-kit step's `sealed` input:
 # sealing edits the checkout, so a per-step choice could not undo it.
+#
+# The reference design lives under jac-reference/, and its jac.toml is found by
+# walking up from the working directory. Every job that checks the tree out
+# therefore sets `defaults.run.working-directory: jac-reference`, so its `run`
+# steps name paths as the reference design's own scripts and docs do (jac/...,
+# scripts/...). `uses` steps take paths from the workspace root, so theirs
+# carry the jac-reference/ prefix. Jobs with a step before (or without) a
+# checkout have no such default: the directory would not exist yet.
 
 jobs:
   # Path filter used ONLY to skip jobs on PRs; push/dispatch runs everything.
@@ -83,31 +91,32 @@ jobs:
         with:
           filters: |
             core:
-              - 'jac/**'
-              - 'jac.toml'
+              - 'jac-reference/jac/**'
+              - 'jac-reference/jac.toml'
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
-              - 'scripts/ci_cache_keys.sh'
-              - 'scripts/test_ci_cache_keys.sh'
-              - 'scripts/ci_carry_verdict.sh'
-              - 'scripts/test_ci_carry_verdict.sh'
+              - 'jac-reference/scripts/ci_cache_keys.sh'
+              - 'jac-reference/scripts/test_ci_cache_keys.sh'
+              - 'jac-reference/scripts/ci_carry_verdict.sh'
+              - 'jac-reference/scripts/test_ci_carry_verdict.sh'
             scale:
-              - 'jac/jaclang/scale/**'
+              - 'jac-reference/jac/jaclang/scale/**'
             byllm:
-              - 'jac/jaclang/byllm/**'
+              - 'jac-reference/jac/jaclang/byllm/**'
             site_journey:
-              - 'scripts/site-browse-journey.sh'
+              - 'jac-reference/scripts/site-browse-journey.sh'
             pack_smoke:
-              - 'scripts/ci_perf.jac'
-              - 'scripts/ci_perf.test.jac'
+              - 'jac-reference/scripts/ci_perf.jac'
+              - 'jac-reference/scripts/ci_perf.test.jac'
               - '.github/pack-smoke-perf.json'
             docs:
-              - 'jac/jaclang/cli/docs/**'
-              - 'jac/jaclang/cli/skills/**'
-              - 'release_notes/**'
+              - 'jac-reference/jac/jaclang/cli/docs/**'
+              - 'jac-reference/jac/jaclang/cli/skills/**'
+              - 'jac-reference/release_notes/**'
             installer:
               - 'scripts/install.sh'
+              - 'scripts/test_install.sh'
               # The lane's own definition lives here, so a change to what it
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
@@ -117,28 +126,28 @@ jobs:
             # lane no longer reads this filter -- it is nightly + `macos`-label
             # only.
             native:
-              - 'jac/jaclang/compiler/backends/native/**'
-              - 'jac/tests/compiler/backends/native/**'
-              - 'jac/jaclang/compiler/tests/test_prim_equivalence.jac'
-              - 'jac/jaclang/compiler/tests/fixtures/prim_*.jac'
-              - 'jac/native/**'
-              - 'jac/build.zig'
-              - 'jac/build.zig.zon'
-              - 'jac/bootstrap/**'
-              - 'jac/launcher/**'
-              - 'jac/jaclang/dist/fused/**'
-              - 'jac/jaclang/runtime/na_stdlib/**'
-              - 'jac/jaclang/dist/payload/**'
+              - 'jac-reference/jac/jaclang/compiler/backends/native/**'
+              - 'jac-reference/jac/tests/compiler/backends/native/**'
+              - 'jac-reference/jac/jaclang/compiler/tests/test_prim_equivalence.jac'
+              - 'jac-reference/jac/jaclang/compiler/tests/fixtures/prim_*.jac'
+              - 'jac-reference/jac/native/**'
+              - 'jac-reference/jac/build.zig'
+              - 'jac-reference/jac/build.zig.zon'
+              - 'jac-reference/jac/bootstrap/**'
+              - 'jac-reference/jac/launcher/**'
+              - 'jac-reference/jac/jaclang/dist/fused/**'
+              - 'jac-reference/jac/jaclang/runtime/na_stdlib/**'
+              - 'jac-reference/jac/jaclang/dist/payload/**'
               - '.github/workflows/ci.yml'
               # Payload-baked inputs the launcher lane must see.
-              - 'jac/launcher/**'
-              - 'jac/_jac_finder.py'
-              - 'jac/sitecustomize.py'
-              - 'jac/jaclang/dist/precompile_bytecode.jac'
-              - 'jac/jaclang/cli/commands/precompile.jac'
-              - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
+              - 'jac-reference/jac/launcher/**'
+              - 'jac-reference/jac/_jac_finder.py'
+              - 'jac-reference/jac/sitecustomize.py'
+              - 'jac-reference/jac/jaclang/dist/precompile_bytecode.jac'
+              - 'jac-reference/jac/jaclang/cli/commands/precompile.jac'
+              - 'jac-reference/jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
-              - 'scripts/ci_cache_keys.sh'
+              - 'jac-reference/scripts/ci_cache_keys.sh'
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -149,6 +158,9 @@ jobs:
     # The compiler runs from the bytecode the same build precompiles.
     runs-on: ubuntu-24.04
     needs: changes
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
 
@@ -185,7 +197,7 @@ jobs:
       # Both restores above can miss independently of the binary cache, and the
       # steps below cannot build the shim themselves (they only consume it).
       - name: Ensure the LLVMPY shim is present
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
@@ -201,7 +213,7 @@ jobs:
       # function of cache state -- present on a miss, missing on a hit, with
       # if-no-files-found blind to it because the other paths matched.
       - name: Materialize typeshed + vendored runtimes
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-musl --summary all
@@ -209,7 +221,7 @@ jobs:
           zig build vendor-wasm-libc --summary all
 
       - name: Hermeticity + smoke (no system Python)
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
@@ -230,7 +242,7 @@ jobs:
           grep -q 49 <<<"$out"
 
       - name: Run real jac programs (end-to-end execution)
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
@@ -248,7 +260,7 @@ jobs:
           grep -q "0, 1, 4, 9, 16" <<<"$out"
 
       - name: jac test runner (self-contained test file)
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
@@ -263,7 +275,7 @@ jobs:
       # if-no-files-found only fires when NO path matches, so a single missing
       # tree ships a quietly incomplete kit to every consumer. Assert each one.
       - name: Verify the kit is complete
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
@@ -278,11 +290,11 @@ jobs:
         with:
           name: jac-kit
           path: |
-            jac/zig-out/bin/jac
-            jac/jaclang/vendor/typeshed/stdlib
-            jac/.pbs-build/linux-x86_64/musl/lib
-            jac/.pbs-build/linux-aarch64/musl/lib
-            jac/.pbs-build/wasm32/libc
+            jac-reference/jac/zig-out/bin/jac
+            jac-reference/jac/jaclang/vendor/typeshed/stdlib
+            jac-reference/jac/.pbs-build/linux-x86_64/musl/lib
+            jac-reference/jac/.pbs-build/linux-aarch64/musl/lib
+            jac-reference/jac/.pbs-build/wasm32/libc
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -293,7 +305,7 @@ jobs:
       # reason. Every reroute lane requires this tree to serve every unit and
       # recompiles nothing.
       - name: Verify the precompile bundle is complete
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           DIR="$(find .precompiled-build/cpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
@@ -308,7 +320,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jac-precompiled
-          path: jac/.precompiled-build/cpython
+          path: jac-reference/jac/.precompiled-build/cpython
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -322,6 +334,9 @@ jobs:
   dev-kit:
     runs-on: ubuntu-24.04
     needs: changes
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
 
@@ -358,7 +373,7 @@ jobs:
           use-cache: false
 
       - name: Ensure the LLVMPY shim is present
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
@@ -368,7 +383,7 @@ jobs:
           zig build jacllvm --summary all
 
       - name: Materialize typeshed, bun + vendored runtimes
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           zig build fetch-typeshed --summary all
           zig build fetch-bun --summary all
@@ -381,7 +396,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac/jir/stubcat
-          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/compiler/types/**', 'jac-reference/jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/frontend/unitree.jac', 'jac-reference/jac/jaclang/compiler/frontend/helpers.jac', 'jac-reference/jac/jaclang/compiler/symbol_utils.jac', 'jac-reference/jac/jaclang/vendor/typeshed/PIN') }}
 
       # Built here, before any precompile shard: without it every unit's type
       # evaluator parses the typeshed stubs from source, about two thirds of
@@ -389,7 +404,7 @@ jobs:
       - name: Build the stub catalog
         run: |
           set -euo pipefail
-          export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/jac-reference/jac/zig-out/bin:$PATH"
           jac native build stubcat
           ls "$XDG_CACHE_HOME/jac/jir/stubcat"/*.bin
 
@@ -398,21 +413,21 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac/jir/stubcat
-          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+          key: dev-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/compiler/types/**', 'jac-reference/jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/frontend/unitree.jac', 'jac-reference/jac/jaclang/compiler/frontend/helpers.jac', 'jac-reference/jac/jaclang/compiler/symbol_utils.jac', 'jac-reference/jac/jaclang/vendor/typeshed/PIN') }}
 
       - name: Upload the dev kit
         uses: actions/upload-artifact@v4
         with:
           name: jac-dev-kit
           path: |
-            jac/zig-out/bin/jac
-            jac/jaclang/vendor/typeshed/stdlib
-            jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-            jac/jaclang/client/_bun
-            jac/.pbs-build/linux-x86_64/python/build/lib
-            jac/.pbs-build/linux-x86_64/musl/lib
-            jac/.pbs-build/linux-aarch64/musl/lib
-            jac/.pbs-build/wasm32/libc
+            jac-reference/jac/zig-out/bin/jac
+            jac-reference/jac/jaclang/vendor/typeshed/stdlib
+            jac-reference/jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
+            jac-reference/jac/jaclang/client/_bun
+            jac-reference/jac/.pbs-build/linux-x86_64/python/build/lib
+            jac-reference/jac/.pbs-build/linux-x86_64/musl/lib
+            jac-reference/jac/.pbs-build/linux-aarch64/musl/lib
+            jac-reference/jac/.pbs-build/wasm32/libc
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -456,6 +471,9 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
 
@@ -465,7 +483,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: jac-dev-kit
-          path: jac
+          path: jac-reference/jac
 
       - uses: actions/download-artifact@v4
         with:
@@ -485,7 +503,7 @@ jobs:
         id: cache
         uses: actions/cache/restore@v4
         with:
-          path: jac/jaclang/_precompiled
+          path: jac-reference/jac/jaclang/_precompiled
           key: jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
             jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-
@@ -498,7 +516,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x jac/zig-out/bin/jac
-          export PATH="$GITHUB_WORKSPACE/jac/zig-out/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/jac-reference/jac/zig-out/bin:$PATH"
           jac precompile ./jac
           DIR="$(find jac/jaclang/_precompiled -maxdepth 1 -type d -name 'cpython-*' | head -1)"
           [ -n "$DIR" ] || { echo "::error::no jac/jaclang/_precompiled/cpython-<ver> tree"; exit 1; }
@@ -511,14 +529,14 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: jac/jaclang/_precompiled
+          path: jac-reference/jac/jaclang/_precompiled
           key: jac-dev-precompiled-s${{ matrix.shard }}of3-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
       - name: Upload this leg's precompile bundle
         uses: actions/upload-artifact@v4
         with:
           name: jac-dev-precompiled-${{ matrix.shard }}
-          path: jac/jaclang/_precompiled
+          path: jac-reference/jac/jaclang/_precompiled
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -541,6 +559,9 @@ jobs:
       JAC_CHECK_SHARD: ${{ matrix.shard }}/3
     permissions:
       contents: write
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -565,7 +586,9 @@ jobs:
           fi
           git fetch --no-tags --quiet origin "${{ github.base_ref }}"
           BASE="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
-          git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- '*.jac' > changed-jac.txt || true
+          # --relative: names as jac fmt takes them from jac-reference/, and
+          # only files under it.
+          git diff --relative --name-only --diff-filter=ACMR "$BASE" HEAD -- '*.jac' > changed-jac.txt || true
           echo "mode=scoped" >> "$GITHUB_OUTPUT"
           if [ -s changed-jac.txt ]; then
             echo "any=true" >> "$GITHUB_OUTPUT"
@@ -606,7 +629,7 @@ jobs:
           dev: "true"
 
       - name: Install plugin deps so jac check resolves scale/byllm imports
-        # Pins mirror jac/jaclang/project/capabilities.jac.
+        # Pins mirror jac-reference/jac/jaclang/project/capabilities.jac.
         run: |
           jac install \
             "python-dotenv>=1.2.1,<2.0.0" \
@@ -753,6 +776,9 @@ jobs:
       && (needs.changes.result == 'success' || github.event.action == 'labeled')
       && (github.event_name != 'push' || needs.changes.outputs.docs == 'true')
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -773,8 +799,12 @@ jobs:
           github.event_name == 'pull_request' &&
           !contains(github.event.pull_request.labels.*.name, 'skip-no-python-check')
         run: |
+          # The reference design's rule, so only its files are looked at. They
+          # are picked out of the whole diff by name, not with a pathspec or
+          # --relative: either would hide where a moved file came from and
+          # list it as added.
           if git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
-            | grep -P '\.py$'; then
+            | grep -P '^jac-reference/.*\.py$'; then
             echo "::error::New Python (.py) files detected in this PR. This codebase does not allow adding Python files."
             echo "To skip this check, add the 'skip-no-python-check' label to your PR."
             exit 1
@@ -866,6 +896,9 @@ jobs:
             # Peaks near 3.5 GB a worker with native analysis and ES child
             # processes; three leave headroom on the 16 GB runner.
             jobs: "3"
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit
@@ -882,7 +915,7 @@ jobs:
           version: "0.16.0"
           use-cache: false
       - name: Run ${{ matrix.chunk }} chunk
-        working-directory: jac
+        working-directory: jac-reference/jac
         env:
           JAC_IFACE_VERIFY: ${{ matrix.iface_verify || '' }}
           JAC_TEST_ARTIFACTS: ${{ runner.temp }}/native-test-artifacts
@@ -918,6 +951,9 @@ jobs:
           - leg: rest
             paths: tests/
             ignore: tests/compiler tests/client tests/runtimelib tests/language tests/dist
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
       # The deps installed below with --global land in the binary's runtime
@@ -944,7 +980,7 @@ jobs:
       # so a new jsdom suite is covered the moment it exists instead of when
       # someone remembers to name it in this file.
       - name: Runtime suite via the binary
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
@@ -973,6 +1009,9 @@ jobs:
     # if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1029,6 +1068,9 @@ jobs:
     needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1069,6 +1111,9 @@ jobs:
     needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1105,20 +1150,23 @@ jobs:
       fail-fast: false
       matrix:
         group: [server, data, microservices, deploy, misc]
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: true
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
-      # The bundle tests read the pod binary from jac/zig-out/bin via a
+      # The bundle tests read the pod binary from jac-reference/jac/zig-out/bin via a
       # __file__-relative lookup and silently self-skip when it is missing.
       # Reroute lane for the same reason as test-packages-and-docs above.
       - uses: ./.github/actions/jac-kit
         with:
           dev: "true"
       - name: Install scale deps + test deps
-        # Pins mirror jac/jaclang/project/capabilities.jac.
+        # Pins mirror jac-reference/jac/jaclang/project/capabilities.jac.
         run: |
           jac install \
             "python-dotenv>=1.2.1,<2.0.0" \
@@ -1132,8 +1180,8 @@ jobs:
       - name: Install scale firebase deps
         if: matrix.group == 'data' || matrix.group == 'server'
         run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
-      # One process per file comes from the [test] isolate marks in the root
-      # jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
+      # One process per file comes from the [test] isolate marks in
+      # jac-reference/jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
       # files sequential the way the old shell loop ran them. The HMR test in
       # server/test_serve.jac runs in test-in-package-sealed. Every test file
       # lives in one of the five group directories; deploy/test_deploy_k8s.jac
@@ -1172,6 +1220,9 @@ jobs:
       # Deploys look release assets up through the GitHub API, and a hosted
       # runner's shared IP exhausts the anonymous quota.
       GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1224,7 +1275,7 @@ jobs:
           cd "$(mktemp -d)"
           printf '[project]\nname = "first"\nversion = "0.1.0"\nentry-point = "main"\n\n[scale.kubernetes]\napp_name = "first"\nnamespace = "first-deploy"\nbundle_storage_class = "microk8s-hostpath"\n' > jac.toml
           echo 'walker:pub hello { can go with Root entry { report "hi"; } }' > main.jac
-          source "$GITHUB_WORKSPACE/jac/jaclang/scale/scripts/e2e_lib.sh"
+          source "$GITHUB_WORKSPACE/jac-reference/jac/jaclang/scale/scripts/e2e_lib.sh"
           ship_checkout_binary "$PWD"
           first_run "jac scale deploy main.jac"
           first_run "echo y | jac scale destroy main.jac"
@@ -1271,6 +1322,9 @@ jobs:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.native == 'true') }}
     # ubuntu-latest (26.04) no longer ships qemu-user-static as an installable package.
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1297,6 +1351,9 @@ jobs:
     needs: [changes, dev-kit, dev-precompile]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1330,6 +1387,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
       - name: Set up Zig 0.16.0
@@ -1338,7 +1398,7 @@ jobs:
           version: 0.16.0
           use-cache: false
       - name: Bootstrap unit tests (zig build test)
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: zig build test --summary all
       - name: Cache key mutation tests
         run: bash scripts/test_ci_cache_keys.sh
@@ -1364,8 +1424,11 @@ jobs:
       contents: read
       actions: read
     env:
-      JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.jac
+      JAC_CI_PERF: ${{ github.workspace }}/jac-reference/scripts/ci_perf.jac
       JAC_CI_PERF_POLICY: ${{ github.workspace }}/.github/pack-smoke-perf.json
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1417,7 +1480,7 @@ jobs:
 
       # Fullstack smoke on the jaclang.org site, scaffolded the way the README
       # quickstart tells a user to. `jac create <name> --awesome` dumps the copy
-      # of jac/examples/jaclang_org that the payload bundles beside the jaclang
+      # of jac-reference/jac/examples/jaclang_org that the payload bundles beside the jaclang
       # package (awesome_template) and pulls its npm deps. Running the
       # scaffolded copy instead of the checkout is what exercises the bundling
       # step and the template resolver (the [dev] stanza is dropped, the
@@ -1453,7 +1516,7 @@ jobs:
           echo "scaffold matches the README quickstart"
 
       - name: Type check the site
-        working-directory: site
+        working-directory: jac-reference/site
         run: |
           hang=$(jq -er '.phases."site-check".hang_seconds' "$JAC_CI_PERF_POLICY")
           LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/site-check.time.json" \
@@ -1490,7 +1553,7 @@ jobs:
           exit 1
 
       - name: Build the desktop app
-        working-directory: site
+        working-directory: jac-reference/site
         run: |
           hang=$(jq -er '.phases."desktop-build".hang_seconds' "$JAC_CI_PERF_POLICY")
           LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/desktop-build.time.json" \
@@ -1498,7 +1561,7 @@ jobs:
             timeout --kill-after=5s "${hang}s" jac build desktop
 
       - name: Desktop artifact audit
-        working-directory: site
+        working-directory: jac-reference/site
         run: |
           OUT=.jac/client/desktop/desktop
           test -x $OUT/jaclang || { echo "::error::no desktop binary"; exit 1; }
@@ -1512,7 +1575,7 @@ jobs:
       # serves the bundle and the broker there, and answers no walker locally
       # because its backend is remote.
       - name: Desktop smoke (Xvfb)
-        working-directory: site/.jac/client/desktop/desktop
+        working-directory: jac-reference/site/.jac/client/desktop/desktop
         run: |
           Xvfb :99 -screen 0 1280x800x24 &
           XVFB_PID=$!
@@ -1551,7 +1614,7 @@ jobs:
       # process per service app behind the gateway) gets its own pass over
       # the same journey below.
       - name: Start the quickstart with bare jac run
-        working-directory: site
+        working-directory: jac-reference/site
         run: |
           cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/quickstart-ready.start"
           timeout 1200 jac run > /tmp/site-server.log 2>&1 &
@@ -1681,7 +1744,7 @@ jobs:
           fi
 
       - name: Build the production artifact
-        working-directory: site
+        working-directory: jac-reference/site
         run: |
           hang=$(jq -er '.phases."production-build".hang_seconds' "$JAC_CI_PERF_POLICY")
           LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/production-build.time.json" \
@@ -1692,7 +1755,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/production-ready.start"
-          timeout 1200 jac run --port 8000 "${{ github.workspace }}/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
+          timeout 1200 jac run --port 8000 "${{ github.workspace }}/jac-reference/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
           echo "ARTIFACT_PID=$!" >> $GITHUB_ENV
 
       - name: Wait for the production artifact
@@ -1734,9 +1797,9 @@ jobs:
       # ran, so the two lanes assert the same site, including the closing
       # console-error sweep.
       - name: Start the site behind the fleet gateway
-        working-directory: jac/examples/jaclang_org
+        working-directory: jac-reference/jac/examples/jaclang_org
         env:
-          JAC_DOCS_LOCAL: ${{ github.workspace }}
+          JAC_DOCS_LOCAL: ${{ github.workspace }}/jac-reference
         run: |
           cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/fleet-ready.start"
           timeout 1800 jac run --serve --fleet --port 8000 web \
@@ -1921,6 +1984,9 @@ jobs:
     # if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true')) }}
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:sealed') }}
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1973,7 +2039,7 @@ jobs:
           cd site
           jac build replay --as source -o dist/replay
       - name: Build the standalone tool image
-        run: docker build -t jac-source-tools .github/actions/polyglot-source
+        run: docker build -t jac-source-tools "$GITHUB_WORKSPACE/.github/actions/polyglot-source"
       - name: Build and execute native C without Jac
         run: |
           docker run --rm -v "$PWD/site/dist/replay:/app" jac-source-tools \
@@ -2028,9 +2094,11 @@ jobs:
             /tmp/site-journey-failure.png
           retention-days: 7
 
-  # Body lives in _installer.yml so the nightly lane runs the same test
-  # instead of a second copy of it. The PR lane lints install.sh; the nightly
-  # one does not (it exercises the published installer, not this checkout).
+  # Body lives in _installer.yml so the nightly lane runs the same tests
+  # instead of a second copy of them: the offline test of both compilers'
+  # installs, and the live install of the reference design. The PR lane lints
+  # install.sh; the nightly one does not (it exercises the published
+  # installer, not this checkout).
   installer-test:
     needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.installer == 'true') }}
@@ -2065,6 +2133,9 @@ jobs:
     timeout-minutes: 45
     env:
       JAC_ACCEPT_ANDROID_LICENSES: "1"
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit
@@ -2161,12 +2232,12 @@ jobs:
     steps:
       # A label-only run skips every suite, and the newest Everything Passed on
       # a commit is the one that gates it, so that run repeats the verdict of
-      # an earlier run (scripts/ci_carry_verdict.sh says which).
+      # an earlier run (jac-reference/scripts/ci_carry_verdict.sh says which).
       - name: Check out the carry-over script
         if: needs.changes.result == 'skipped'
         uses: actions/checkout@v5
         with:
-          sparse-checkout: scripts/ci_carry_verdict.sh
+          sparse-checkout: jac-reference/scripts/ci_carry_verdict.sh
           sparse-checkout-cone-mode: false
       - name: Carry the previous run's verdict over a label-only run
         if: needs.changes.result == 'skipped'
@@ -2174,7 +2245,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
           SKIP_K8S: ${{ contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
-        run: bash scripts/ci_carry_verdict.sh
+        run: bash jac-reference/scripts/ci_carry_verdict.sh
       - name: Fail if any dependency failed or was cancelled
         if: >-
           contains(needs.*.result, 'failure') ||

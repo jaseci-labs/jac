@@ -1,0 +1,12 @@
+# The standard `jobs` plugin: a program's jobs, each in a copy of the program.
+[project]
+name = "process_jobs"
+kind = "plugin"
+
+[plugin]
+fills = "jobs"
+interface_ver = 1
+class = "process_jobs.jobs.ProcessJobs"
+
+[check.lint]
+select = []

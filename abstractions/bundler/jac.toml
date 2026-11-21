@@ -1,0 +1,30 @@
+# The `bundler` abstraction: what makes a JavaScript space's compiled modules
+# what its host loads. Source says nothing of it: a JavaScript space is
+# bundled as it is built. Its plugin is picked as the space is built, and the
+# standard one is the one the space's `ui` plugin names.
+[project]
+name = "bundler"
+kind = "abstraction"
+
+# `interface_ver` is the version of what a plugin of it says (below): a number
+# that goes up when that changes so that a plugin written for it would not
+# survive. A plugin says the one it was written for. `per` is what has one
+# plugin of it, and `picked` when that plugin is chosen. It names no
+# `standard`: a space's is the one its `ui` plugin's `[ui] bundler` names, and
+# each jac ships is in this directory.
+[abstraction]
+interface_ver = 1
+per = "space"
+picked = "build"
+
+# The contract: `bundler` has no interface class, since nothing of its plugin
+# runs with the program. A plugin of it is a `jac.toml` with a `[bundler]`
+# table and the scripts the table names, which jac's own Node runs with a job
+# file that says what to bundle and where to write it:
+#
+#   [bundler]
+#   build = "bundle.mjs"       # the script that bundles a space
+#   serve = "serve.mjs"        # the script that serves it under `jac dev`
+#   settings = ["config"]      # the settings a project may give the plugin
+[check.lint]
+select = []

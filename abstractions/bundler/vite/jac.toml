@@ -1,0 +1,17 @@
+# The standard `bundler` plugin of the browser's `ui` plugins: Vite, run in the space's npm tree.
+[project]
+name = "vite"
+kind = "plugin"
+
+[plugin]
+fills = "bundler"
+interface_ver = 1
+
+[bundler]
+build = "vite.mjs"
+serve = "vite.serve.mjs"
+# The project's own Vite configuration, from its root.
+settings = ["config"]
+
+[check.lint]
+select = []

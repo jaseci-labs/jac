@@ -1,0 +1,2839 @@
+# jac-client Reference
+
+jac-client adds client-side compilation to Jac so you can write React-style UI components in ordinary `.jac` files. The compiler separates your code automatically: declarations with client-only syntax (JSX, npm imports) -- plus anything client code references -- compile to JavaScript with React as the rendering engine, while the rest compiles to Python on the server. You never mark the split in source; when a placement decision must be forced, pin it in `jac.toml` under `[placement.pins]`.
+
+You also get project scaffolding (`jac create --kind web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
+
+---
+
+## Installation
+
+jac-client ships with `jaclang` core -- there is nothing extra to install. Just install the `jac` binary:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
+```
+
+---
+
+## Project Setup
+
+### Create New Project
+
+```bash
+jac create myapp --kind web-static
+cd myapp
+```
+
+### Project Structure
+
+```
+myapp/
+├── jac.toml           # Project configuration
+├── main.jac           # Entry point with app() function
+├── README.md          # Project readme
+├── AGENTS.md          # Agent guide for the project
+├── components/        # Reusable components
+│   └── Button.jac     # Example component (client-side by inference)
+├── assets/            # Static assets (images, fonts)
+└── public/            # Files served at the site root (robots.txt, favicon.ico)
+```
+
+TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
+a `.css` file anywhere in the project and import it from your Jac code.
+
+Files under `assets/` are served at `/static/assets/<path>` and compiled into
+the client bundle. In a workspace the directory is the app's own `assets/` by
+default; when several apps share one UI, point them at the shared directory
+(relative to the project root) and list any extra file types to carry along:
+
+```toml
+[client.assets]
+dir = "core/site/assets"
+custom_extensions = [".pdf"]
+```
+
+Files under `public/` are served at the site root: `public/robots.txt` at
+`/robots.txt`, `public/img/logo.png` at `/img/logo.png`. `jac build` copies them
+into `dist/` unchanged, so a deployment that serves only `dist/` answers the same
+URLs as `jac run --serve`. Only the file types the site root serves are copied:
+images, fonts, audio and video, `.css`, `.js`, `.json`, `.pdf`, `.txt` and `.xml`.
+Other files, such as `.html` or `.webmanifest`, are left out and the build names
+them; hidden files such as `.env` and `.DS_Store` are left out without a mention.
+In a workspace, the app's own `public/` is read first and the project root's
+second; for a path in both, the app's file wins. Links are followed when they point
+inside the same `public/`, as when serving, and links that leave it are skipped. A
+file whose path matches one the build writes, such as `manifest.json` in a PWA
+build, or a path that would need a folder where a file already is, fails the build
+before anything is copied.
+
+### robots.txt and sitemap.xml
+
+Set the site's public URL and `jac build` writes both files into `dist/`:
+
+```toml
+[client.seo]
+site_url = "https://example.org"   # required: nothing is generated without it
+site_hosts = ["www.example.org"]   # other hosts that serve production
+
+[client.seo.sitemap]
+exclude = ["/preview-auth"]        # paths to leave out
+extra = ["/blog/launch"]           # paths the route scanner can't see
+
+[client.seo.robots]
+disallow = ["/internal"]           # paths to block, on top of the (auth) routes
+```
+
+- The sitemap lists the routes under `pages/`, except routes in an `(auth)` group,
+  catch-all routes and routes with a dynamic segment (`[id].jac`), which can't be
+  listed. An app without `pages/` lists `/`. It has no `<lastmod>`.
+- `robots.txt` disallows the `(auth)` routes and everything in `disallow`, always
+  allows the client bundle and stylesheet so crawlers can render the app, and
+  points at the sitemap. An `(auth)` route `/admin` becomes `Disallow: /admin$` and
+  `Disallow: /admin/`, so a public `/administrators-guide` stays crawlable, and an
+  `(auth)` home page becomes `Disallow: /$`. A sitemap URL is never blocked: one that
+  an `(auth)` rule would cover gets its own `Allow:` line, and one that `disallow`
+  covers leaves the sitemap.
+- Paths are percent-encoded (`/café menu` becomes `/caf%C3%A9%20menu`).
+- Every list must be a list of strings, and an unknown key is an error.
+- A file of the same name in `public/` wins: the build uses it instead and says so.
+
+`jac run --serve` and the jac-scale gateways compare the host of a `/robots.txt`
+request with the host of `site_url` and the hosts in `site_hosts`, ignoring case,
+the port and a trailing dot. The host is the `Host` header, or `X-Forwarded-Host` when
+the request comes from a proxy listed in `[serve.proxy] trusted`. Behind a proxy
+that rewrites `Host`, list the proxy there, or the production host is not
+recognized either. On any other host, such as a preview or staging deployment, they
+answer `User-agent: *` / `Disallow: /` ahead of any route the app declares, whether
+the file was generated or hand-written, so previews are not indexed, and log a
+warning naming the host the first time. A CDN that sends its own origin name as
+`Host` is such a host: add that name to `site_hosts`. In a
+microservice deployment only the gateway checks: the apps behind it see the
+gateway's address, not the public host, so a `/robots.txt` it forwards to them is
+answered as is. Both files are served with `Cache-Control: no-cache`. In a
+workspace, `[client.seo]` applies to every app; `[apps.<name>.client.seo]`
+overrides it for one app. The build reads the settings of the app it builds, and a
+gateway those of the app it serves at `/`.
+
+### Client Code Is Inferred
+
+A component file needs no marker at all -- JSX and npm imports are client-only syntax, so the compiler places these declarations (and any helpers they use) in the client bundle automatically:
+
+```jac
+# components/Header.jac -- client-side by inference
+def:pub Header() -> JsxElement {
+    <header>My App</header>
+}
+```
+
+If you prefer the placement to be visible in the filename, the `.jac` extension still works and pins the whole file client-side:
+
+```jac
+# components/Header.jac -- explicitly client-side
+def:pub Header() -> JsxElement {
+    <header>My App</header>
+}
+```
+
+---
+
+## Module System
+
+Jac's module system bridges Python and JavaScript ecosystems. You can import from PyPI packages on the server and npm packages on the client using familiar syntax. The `include` statement (like C's `#include`) merges code directly, which is useful for splitting large files.
+
+### Import Statements
+
+```jac
+# Simple import
+import math;
+import sys, json;
+
+# Aliased import
+import datetime as dt;
+
+# From import
+import from math { sqrt, pi, log as logarithm }
+
+# Relative imports
+import from . { sibling_module }
+import from .. { parent_module }
+import from .utils { helper_function }
+
+# npm package imports (client-side)
+import from react { useState, useEffect }
+import from "@mui/material" { Button, TextField }
+
+# CSS and asset imports
+import "./styles.css";
+import "./global.css";
+```
+
+### npm import type checking (`jac check`)
+
+Client npm imports are type-checked from each package's TypeScript declarations. During `jac check`, Jac locates the `.d.ts` for a specifier (via `package.json` `types`/`typings`, the `exports` `types` condition, a sibling declaration file next to the resolved entry, or `@types/<package>` fallback) and ingests a pragmatic subset:
+
+- **Functions, constants, and type aliases** get their declared signatures.
+- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types, and **method calls** (`c.onChange(v)`) are checked against their declared parameter and return types.
+- **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
+
+```jac
+import from "cfgpkg" { getConfig, Config }
+
+def:pub use() -> str {
+    c: Config = getConfig();
+    theme: str = c.theme;   # field access is checked
+    c.onChange("ready");    # method call is checked against its signature
+    return theme;
+}
+```
+
+Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Synthesized interface values use their declared structure: field access and matching interface annotations are checked precisely; whole-object assignment into an unrelated Jac type is rejected. Individual `any` fields on an interface still flow gradually, like other foreign sources. Assignments *into* an imported interface annotation remain strict.
+
+This is a type-checker feature only; bundling under `jac run` / `jac build` is unchanged.
+
+### Include Statements
+
+Include merges code directly (like C's `#include`):
+
+```jac
+include utils;  # Merges utils.jac into current scope
+```
+
+### Export and Visibility
+
+```jac
+# Private by default: an in-process helper, never an endpoint
+def helper -> int { return 42; }
+
+# Anonymous endpoint, exported to client code
+def:pub api_function -> None { }
+
+# Authenticated endpoint, importable by client code of this project
+def:protect user_function -> None { }
+
+# Explicitly private (same as the default for endpoints)
+def:priv internal_helper -> None { }
+
+# Public walker (anonymous API endpoint with jac run)
+walker:pub GetUsers { }
+
+# Protected walker (authenticated API endpoint)
+walker:protect SyncUser { }
+
+# Private walker (not served)
+walker InternalProcess { }
+```
+
+---
+
+## Server-Side Development
+
+### Server Sections
+
+```jac
+# Server-only section
+node User {
+    has email: str;
+}
+
+# Single-statement form (no header, no braces)
+import from .database { connect_db }
+node SecretData { has value: str; }
+```
+
+> **Note on imports between two server modules.** When the importer and the importee belong to different **apps** of a workspace (the importee is a walker or `def:pub` owned by an `[apps.<name>]` service app), the import generates a typed-async bridge stub instead of pulling the provider into the consumer's process -- `await` the call. The same source runs colocated or as a fleet. See [Service apps](jac-scale-http.md#service-apps-cross-app-bridging) in the Scale reference and [Workspaces & Apps](../apps.md).
+
+### REST API with jac run
+
+Public walkers automatically become REST endpoints:
+
+```jac
+walker:pub GetUsers {
+    can get with Root entry {
+        users = [-->][?:User];
+        report users;
+    }
+}
+
+# Endpoint: POST /walker/GetUsers
+```
+
+Start the server:
+
+!!! note
+    `main.jac` is the default entry point. All `jac run` commands below omit the filename. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac run app.jac`.
+
+```bash
+jac run --port 8000
+```
+
+### Typed Object Passing
+
+Objects crossing the server/client boundary are automatically serialized and hydrated as typed instances. You can return typed objects directly from server functions and walkers instead of manually constructing dicts:
+
+```jac
+node Task {
+    has title: str,
+        done: bool = False;
+}
+
+# Server: return typed objects directly
+def:pub get_tasks -> list[Task] {
+    return [root-->][?:Task];
+}
+
+def:pub create_task(title: str) -> Task {
+    task = root ++> Task(title=title);
+    return task;
+}
+
+# Client: receives hydrated Task instances
+import from .main { get_tasks, create_task }
+
+def:pub app -> JsxElement {
+    has tasks: list = [];
+
+    async can with entry {
+        tasks = await get_tasks();  # list of Task objects
+    }
+
+    async def addTask(title: str) -> None {
+        task = await create_task(title);  # a Task object
+        tasks = tasks + [task];
+    }
+
+    <div>
+        {[<span key={t.title}>{t.title} - {t.done}</span> for t in tasks]}
+    </div>
+}
+```
+
+The compiler generates JavaScript class stubs with `__from_wire`/`__to_wire` methods for each type that crosses the boundary. This works for:
+
+- **`obj` types** -- fields are hydrated recursively (nested objects are also typed)
+- **`node` types** -- same as obj, plus graph identity is preserved (access via `jid(node)`)
+- **`enum` types** -- emitted as frozen JavaScript objects
+- **`list[T]` returns** -- each element is individually hydrated
+- **Bidirectional** -- typed objects sent as function arguments or walker `has` fields are serialized with `__type__` metadata and deserialized on the server
+
+Walker reports also benefit from typed hydration:
+
+```jac
+walker:pub create_todo {
+    has text: str;
+
+    can create with Root entry {
+        new_todo = here ++> Task(title=self.text);
+        report new_todo;  # Client receives a typed Task, not a raw dict
+    }
+}
+```
+
+### Module Introspection
+
+```jac
+with entry {
+    # List all walkers in module
+    walkers = get_module_walkers();
+
+    # List all functions
+    functions = get_module_functions();
+}
+```
+
+---
+
+## Client Placement
+
+Client placement is inferred, so mixing client and server code in one file needs no wrapper -- a component sits next to server logic and each lands on its own side:
+
+```jac
+def:pub app() -> JsxElement {           # JSX -> client
+    <div>
+        <h1>Hello, World!</h1>
+    </div>
+}
+
+def:pub get_greeting() -> str {         # unmarked -> server endpoint
+    return "Hello from the server";
+}
+```
+
+The same inference covers whole components -- JSX alone decides:
+
+```jac
+def:pub app() -> JsxElement {
+    <div>
+        <h1>Hello, World!</h1>
+    </div>
+}
+```
+
+Placement propagates from those seeds: helpers, globals, and imports that client code references join the bundle with it. Inference never overrides a `[placement.pins]` entry, so a pin is the way to hold something on the server (or force a signal-less module client).
+
+### Other Client Seeds
+
+npm imports and reactive globals are client seeds in their own right:
+
+```jac
+import from react { useState }
+glob THEME: str = "dark";
+```
+
+A lone component inside a mostly-server file needs nothing extra either:
+
+```jac
+def:pub app -> JsxElement {
+    has count: int = 0;
+    <div>Count: {count}</div>
+}
+```
+
+### Export Requirement
+
+The entry `app()` function must be exported with `:pub`:
+
+```jac
+def:pub app() -> JsxElement {  # :pub required
+    <App />
+}
+```
+
+---
+
+## Components
+
+### Function Components
+
+Declare each prop as a named, typed parameter -- the type-checker validates
+every JSX call site per attribute. `children` is the special prop that holds
+the JSX nested between a component's tags:
+
+```jac
+def:pub Button(
+    className: str = "",
+    onClick: MouseEventHandler = None,
+    children: any = None
+) -> JsxElement {
+    <button className={className} onClick={onClick}>
+        {children}
+    </button>
+}
+```
+
+### Using Props
+
+```jac
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
+    <div className="card">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
+    </div>
+}
+```
+
+### Composition
+
+```jac
+def:pub app() -> JsxElement {
+    <div>
+        <Card title="Welcome" description="Hello!">
+            <Button onClick={lambda -> None { print("clicked"); }}>
+                Click Me
+            </Button>
+        </Card>
+    </div>
+}
+```
+
+---
+
+## Reactive State
+
+### The `has` Keyword
+
+Inside client-placed code, `has` creates reactive state:
+
+```jac
+def:pub Counter() -> JsxElement {
+    has count: int = 0;  # Compiles to useState(0)
+
+    <div>
+        <p>Count: {count}</p>
+        <button onClick={lambda -> None { count = count + 1; }}>
+            Increment
+        </button>
+    </div>
+}
+```
+
+### How It Works
+
+On the React-family backends each state field lowers to a per-field store cell whose reads are synchronous and whose writes notify rendering through `useSyncExternalStore`; on Solid it lowers to a signal. Both implement the same contract.
+
+| Jac Syntax | Lowered (react/preact) |
+|------------|------------------------|
+| `has count: int = 0` | `const __jacS_count = useJacState(0)` |
+| `count` (read) | `__jacS_count.val` |
+| `count = count + 1` | `__jacS_count.set(__jacS_count.val + 1)` |
+
+### The State Contract
+
+1. **Reads always return the most recent write** - in the same ability, in helper methods, in lambdas and deferred callbacks, and after `await`s. `x = v; if x { ... }` branches on `v`.
+2. **Rendering is reactive and batched** - the *render* is what's deferred, never the value. Writing the identical value (`Object.is`) skips the re-render, like `useState`.
+3. **`can with [deps] entry` re-runs when a dep's value changes** between committed renders.
+4. **Assigning a state field in the component body is a compile error (`E0082`)** - body statements run on every render, so an immediate write there would re-render forever. Write from abilities, event handlers, or methods.
+
+### Complex State
+
+```jac
+def:pub Form() -> JsxElement {
+    has name: str = "";
+    has items: list = [];
+    has data: dict = {"key": "value"};
+
+    # Create new references for lists/objects
+    def add_item(item: str) -> None {
+        items = items + [item];  # Concatenate to new list
+    }
+
+    <div>Form</div>
+}
+```
+
+!!! warning "Immutable Updates for Lists and Objects"
+    State updates must produce new references to trigger re-renders. Mutating in place will not work.
+
+    ```jac
+    # Correct - creates new list
+    todos = todos + [new_item];
+    todos = [t for t in todos if t["id"] != target_id];
+
+    # Wrong - mutates in place (no re-render)
+    todos.append(new_item);
+    ```
+
+---
+
+## React Hooks
+
+### useEffect (Automatic)
+
+Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax automatically generates `useEffect` hooks:
+
+| Jac Syntax | React Equivalent |
+|------------|------------------|
+| `can with entry { ... }` | `useEffect(() => { ... }, [])` |
+| `async can with entry { ... }` | `useEffect(() => { (async () => { ... })(); }, [])` |
+| `can with exit { ... }` | `useEffect(() => { return () => { ... }; }, [])` |
+| `can with [dep] entry { ... }` | `useEffect(() => { ... }, [dep])` |
+| `can with (a, b) entry { ... }` | `useEffect(() => { ... }, [a, b])` |
+
+```jac
+def:pub DataLoader() -> JsxElement {
+    has data: list = [];
+    has loading: bool = True;
+
+    # Run once on mount (async with IIFE wrapping)
+    async can with entry {
+        data = await fetch_data();
+        loading = False;
+    }
+
+    # Cleanup on unmount
+    can with exit {
+        cleanup_subscriptions();
+    }
+
+    <div>...</div>
+}
+
+def:pub UserProfile(userId: str) -> JsxElement {
+    has user: dict = {};
+
+    # Re-run when userId changes (dependency array)
+    async can with [userId] entry {
+        user = await fetch_user(userId);
+    }
+
+    # Multiple dependencies using tuple syntax
+    async can with (userId, refresh) entry {
+        user = await fetch_user(userId);
+    }
+
+    <div>{user.name}</div>
+}
+```
+
+### useEffect (Manual)
+
+You can also use `useEffect` manually by importing it from React:
+
+```jac
+import from react { useEffect }
+
+def:pub DataLoader() -> JsxElement {
+    has data: list = [];
+    has loading: bool = True;
+
+    # Run once on mount
+    useEffect(lambda -> None {
+        fetch_data();
+    }, []);
+
+    # Run when dependency changes
+    useEffect(lambda -> None {
+        refresh_data();
+    }, [some_dep]);
+
+    <div>...</div>
+}
+```
+
+### useContext
+
+```jac
+import from react { createContext, useContext }
+
+glob AppContext = createContext(None);
+
+def:pub AppProvider(children: any = None) -> JsxElement {
+    has theme: str = "light";
+
+    <AppContext.Provider value={{"theme": theme}}>
+        {children}
+    </AppContext.Provider>
+}
+
+def:pub ThemedComponent() -> JsxElement {
+    ctx = useContext(AppContext);
+    <div className={ctx.theme}>Content</div>
+}
+```
+
+### Custom Hooks
+
+Create reusable state logic by defining functions that use `has`:
+
+```jac
+import from react { useEffect }
+
+def use_local_storage(key: str, initial_value: any) -> tuple[any, any] {
+    has value: any = initial_value;
+
+    useEffect(lambda -> None {
+        stored = localStorage.getItem(key);
+        if stored {
+            value = JSON.parse(stored);
+        }
+    }, []);
+
+    useEffect(lambda -> None {
+        localStorage.setItem(key, JSON.stringify(value));
+    }, [value]);
+
+    return (value, lambda (v: any) -> None { value = v; });
+}
+
+def:pub Settings() -> JsxElement {
+    (theme, set_theme) = use_local_storage("theme", "light");
+    <div>
+        <p>Current: {theme}</p>
+        <button onClick={lambda -> None { set_theme("dark"); }}>Dark</button>
+    </div>
+}
+```
+
+---
+
+## Backend Integration
+
+### Calling Walkers from Client
+
+Use native Jac `spawn` syntax to call walkers from client code. Import the walkers -- the compiler bridges them over HTTP -- then spawn them:
+
+```jac
+# Import walkers from backend
+import from ...main { get_tasks, create_task }
+
+def:pub TaskList() -> JsxElement {
+    has tasks: list = [];
+    has loading: bool = True;
+
+    # Fetch data on component mount
+    async can with entry {
+        result = root spawn get_tasks();
+        if result.reports and result.reports.length > 0 {
+            tasks = result.reports[0];
+        }
+        loading = False;
+    }
+
+    if loading {
+        return <p>Loading...</p>;
+    }
+
+    <ul>
+        {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
+    </ul>
+}
+```
+
+### Walker Response
+
+The `spawn` call returns a result object:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `result.reports` | list | Data reported by walker via `report` |
+| `result.status` | int | HTTP status code |
+
+### Spawn Syntax
+
+| Syntax | Description |
+|--------|-------------|
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
+| `node_id spawn WalkerName()` | Spawn from specific node |
+
+The spawn call returns a result object with:
+
+- `result.reports` - Data reported by the walker
+- `result.status` - HTTP status code
+
+### Mutations (Create, Update, Delete)
+
+```jac
+import from ...main { add_task, toggle_task, delete_task }
+
+def:pub TaskManager() -> JsxElement {
+    has tasks: list = [];
+
+    # Create
+    async def handle_add(title: str) -> None {
+        result = root spawn add_task(title=title);
+        if result.reports and result.reports.length > 0 {
+            tasks = tasks + [result.reports[0]];
+        }
+    }
+
+    # Update
+    async def handle_toggle(task_id: str) -> None {
+        result = root spawn toggle_task(task_id=task_id);
+        if result.reports and result.reports[0]["success"] {
+            tasks = [
+                {**t, "completed": not t["completed"]} if t["id"] == task_id else t
+                for t in tasks
+            ];
+        }
+    }
+
+    # Delete
+    async def handle_delete(task_id: str) -> None {
+        result = root spawn delete_task(task_id=task_id);
+        if result.reports and result.reports[0]["success"] {
+            tasks = [t for t in tasks if t["id"] != task_id];
+        }
+    }
+
+    <div>...</div>
+}
+```
+
+### Error Handling Pattern
+
+Wrap spawn calls in try/catch and track loading/error state:
+
+```jac
+def:pub SafeDataView() -> JsxElement {
+    has data: any = None;
+    has loading: bool = True;
+    has error: str = "";
+
+    async can with entry {
+        loading = True;
+        try {
+            result = root spawn get_data();
+            if result.reports and result.reports.length > 0 {
+                data = result.reports[0];
+            }
+        } except Exception as e {
+            error = f"Failed to load: {e}";
+        }
+        loading = False;
+    }
+
+    if loading { return <p>Loading...</p>; }
+    if error {
+        return <div>
+            <p>{error}</p>
+            <button onClick={lambda -> None { location.reload(); }}>Retry</button>
+        </div>;
+    }
+    <div>{JSON.stringify(data)}</div>
+}
+```
+
+### Polling for Real-Time Updates
+
+Use `setInterval` with effect cleanup for periodic data refresh:
+
+```jac
+import from react { useEffect }
+
+def:pub LiveData() -> JsxElement {
+    has data: any = None;
+
+    async def fetch_data() -> None {
+        result = root spawn get_live_data();
+        if result.reports and result.reports.length > 0 {
+            data = result.reports[0];
+        }
+    }
+
+    async can with entry { await fetch_data(); }
+
+    # The outer lambda must NOT be annotated `-> None` -- a cleanup effect
+    # returns a function, so `-> None` would be a type error.
+    useEffect(lambda {
+        interval = setInterval(lambda { fetch_data(); }, 5000);
+        return lambda { clearInterval(interval); };
+    }, []);
+
+    <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>
+}
+```
+
+---
+
+## Routing
+
+### File-Based Routing (Recommended)
+
+jac-client supports file-based routing using a `pages/` directory:
+
+```
+
+myapp/
+├── main.jac
+└── pages/
+    ├── index.jac          # /
+    ├── about.jac          # /about
+    ├── users/
+    │   ├── index.jac      # /users
+    │   └── [id].jac       # /users/:id (dynamic route)
+    └── (auth)/            # Route group (parentheses)
+        ├── layout.jac     # Shared layout for auth routes
+        ├── login.jac      # /login
+        └── signup.jac     # /signup
+
+```
+
+**Route mapping:**
+
+| File | Route | Description |
+|------|-------|-------------|
+| `pages/index.jac` | `/` | Home page |
+| `pages/about.jac` | `/about` | Static page |
+| `pages/users/index.jac` | `/users` | Users list |
+| `pages/users/[id].jac` | `/users/:id` | Dynamic parameter |
+| `pages/[...notFound].jac` | `*` | Catch-all (404) |
+| `pages/(auth)/dashboard.jac` | `/dashboard` | Route group (no URL segment) |
+| `pages/layout.jac` | -- | Wraps child routes with `<Outlet />` |
+
+A page is any export that returns `JsxPage`; a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed. Route membership comes from the return type alone -- both the export name and the filename are free, and the filename only decides the URL. Because the URL comes from the filename, a file defines at most one page and one layout: if several exports return `JsxPage`, only the first is used, so keep one page export per file. Naming the layout file `layout.jac` is a convention: any file whose export returns `JsxLayout` becomes the layout for its directory, and two layout exports in one directory is a build error. A co-located component that returns `JsxElement` is simply not a route.
+
+```jac
+# pages/users/[id].jac
+import from "@jac/runtime" { useParams, Link }
+
+def:pub UserDetail() -> JsxPage {
+    params = useParams();
+    <div>
+        <Link to="/users">Back</Link>
+        <h1>User {params["id"]}</h1>
+    </div>
+}
+```
+
+**Route groups** organize pages without affecting the URL. A layout file can wrap them with authentication:
+
+```jac
+# pages/(auth)/layout.jac -- protects all pages in this group
+import from "@jac/runtime" { AuthGuard, Outlet }
+
+def:pub AuthShell() -> JsxLayout {
+    <AuthGuard redirect="/login">
+        <Outlet />
+    </AuthGuard>
+}
+```
+
+### Manual Routes
+
+For manual routing, import components from `@jac/runtime`:
+
+```jac
+import from "@jac/runtime" { Router, Routes, Route, Link }
+
+def:pub app() -> JsxElement {
+    <Router>
+        <nav>
+            <Link to="/">Home</Link>
+            <Link to="/about">About</Link>
+        </nav>
+
+        <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/about" element={<About />} />
+        </Routes>
+    </Router>
+}
+```
+
+### URL Parameters
+
+```jac
+import from "@jac/runtime" { useParams }
+
+def:pub UserProfile() -> JsxElement {
+    params = useParams();
+    user_id = params["id"];
+
+    <div>User: {user_id}</div>
+}
+
+# Route: /user/:id
+```
+
+### Programmatic Navigation
+
+```jac
+import from "@jac/runtime" { useNavigate }
+
+def:pub LoginForm() -> JsxElement {
+    navigate = useNavigate();
+
+    async def handle_login() -> None {
+        success = await do_login();
+        if success {
+            navigate("/dashboard");
+        }
+    }
+
+    <button onClick={lambda -> None { handle_login(); }}>
+        Login
+    </button>
+}
+```
+
+### Nested Routes with Outlet
+
+```jac
+import from "@jac/runtime" { Outlet }
+
+# pages/layout.jac -- root layout wrapping all pages
+def:pub RootShell() -> JsxLayout {
+    <>
+        <nav>...</nav>
+        <main><Outlet /></main>
+        <footer>...</footer>
+    </>
+}
+
+# pages/dashboard/layout.jac -- nested dashboard layout
+def:pub DashboardLayout() -> JsxLayout {
+    # Child routes render where Outlet is placed
+    <div>
+        <Sidebar />
+        <main>
+            <Outlet />
+        </main>
+    </div>
+}
+```
+
+### Routing Hooks Reference
+
+Import from `@jac/runtime`:
+
+| Hook | Returns | Usage |
+|------|---------|-------|
+| `useParams()` | dict | Access URL parameters: `params["id"]` |
+| `useNavigate()` | function | Navigate programmatically: `navigate("/path")`, `navigate(-1)` |
+| `useLocation()` | object | Current location: `location.pathname`, `location.search` |
+| `Link` | component | Navigation: `<Link to="/path">Text</Link>` |
+| `Outlet` | component | Render child routes in layouts |
+| `AuthGuard` | component | Protect routes: `<AuthGuard redirect="/login">`; renders its children, or the matched child route when given none |
+
+---
+
+## Authentication
+
+jac-client provides built-in authentication functions via `@jac/runtime`.
+
+### Available Functions
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `jacLogin(username, password)` | `bool` | Login user, returns True on success |
+| `jacSignup(username, password)` | `dict` | Register user, returns `{success: bool, error?: str}` |
+| `jacLogout()` | `void` | Clear auth token |
+| `jacIsLoggedIn()` | `bool` | Check if user is authenticated |
+
+**Additional user management operations** (available via API endpoints when serving with the built-in scale subsystem):
+
+| Operation | Description |
+|-----------|-------------|
+| Update Username | Change username via API endpoint |
+| Update Password | Change password via API endpoint |
+| Guest Access | Anonymous user support via `__guest__` account |
+
+### jacLogin
+
+```jac
+import from "@jac/runtime" { jacLogin, useNavigate }
+
+def:pub LoginForm() -> JsxElement {
+    has username: str = "";
+    has password: str = "";
+    has error: str = "";
+
+    navigate = useNavigate();
+
+    async def handleLogin(e: FormEvent) -> None {
+        e.preventDefault();
+        # jacLogin returns bool (True = success, False = failure)
+        success = await jacLogin(username, password);
+        if success {
+            navigate("/dashboard");
+        } else {
+            error = "Invalid credentials";
+        }
+    }
+
+    <form onSubmit={handleLogin}>...</form>
+}
+```
+
+### jacSignup
+
+```jac
+import from "@jac/runtime" { jacSignup }
+
+async def handleSignup() -> None {
+    # jacSignup returns dict with success key
+    result = await jacSignup(username, password);
+    if result["success"] {
+        # User registered and logged in
+        navigate("/dashboard");
+    } else {
+        error = result["error"] or "Signup failed";
+    }
+}
+```
+
+When the server sets `[serve.auth.registration] challenge = true`, `jacSignup` fetches the proof-of-work challenge from `POST /user/register/challenge`, solves it, and sends the proof with the registration, so no extra client code is needed. It works the same in the browser and in React Native. If the challenge cannot be fetched, solved, or expires first, the result has `success` false and `error` says why (for example "Verification expired. Please try again.").
+
+### jacLogout / jacIsLoggedIn
+
+```jac
+import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
+
+def:pub NavBar() -> JsxElement {
+    isLoggedIn = jacIsLoggedIn();
+
+    def handleLogout() -> None {
+        jacLogout();
+        # Redirect to login
+    }
+
+    <nav>
+        {isLoggedIn and (
+            <button onClick={lambda -> None { handleLogout(); }}>Logout</button>
+        ) or (
+            <a href="/login">Login</a>
+        )}
+    </nav>
+}
+```
+
+### Per-User Graph Isolation
+
+Each authenticated user gets an isolated root node:
+
+```jac
+walker:pub GetMyData {
+    can get with Root entry {
+        # 'here' is the user-specific root node
+        my_data = [-->][?:MyData];
+        report my_data;
+    }
+}
+```
+
+### Single Sign-On (SSO)
+
+Configure in `jac.toml`:
+
+```toml
+[scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+```
+
+**SSO Endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `/sso/{platform}/login` | Initiate SSO login |
+| `/sso/{platform}/register` | Initiate SSO registration |
+| `/sso/{platform}/login/callback` | OAuth callback |
+
+### AuthGuard for Protected Routes
+
+`AuthGuard(redirect: str = "/login", children: any = None)` redirects
+unauthenticated visitors to `redirect`. Given children it renders them; given
+none it renders `<Outlet />`, i.e. the matched child route.
+
+In file-based routing, a group layout protects everything under it:
+
+```jac
+import from "@jac/runtime" { AuthGuard, Outlet }
+
+# pages/(auth)/layout.jac
+def:pub AuthShell() -> JsxLayout {
+    <AuthGuard redirect="/login">
+        <Outlet />
+    </AuthGuard>
+}
+```
+
+In manual routing, use it as a pathless parent route to protect a group:
+
+<!-- jac-skip -->
+```jac
+<Route element={<AuthGuard redirect="/login" />}>
+    <Route path="/dashboard" element={<Dashboard />} />
+</Route>
+```
+
+...or wrap a single page:
+
+<!-- jac-skip -->
+```jac
+<Route path="/dashboard"
+       element={<AuthGuard redirect="/login"><Dashboard /></AuthGuard>} />
+```
+
+---
+
+## Styling
+
+### Inline Styles
+
+```jac
+def:pub StyledComponent() -> JsxElement {
+    <div style={{"color": "blue", "padding": "10px"}}>
+        Styled content
+    </div>
+}
+```
+
+### CSS Classes
+
+```jac
+def:pub Card() -> JsxElement {
+    <div className="card card-primary">
+        Content
+    </div>
+}
+```
+
+### CSS Files
+
+```css
+/* styles/main.css */
+.card {
+    padding: 1rem;
+    border-radius: 8px;
+}
+```
+
+```jac
+import "./styles/main.css";
+```
+
+### Scoped CSS (`.style.css` annexes)
+
+A `.style.css` file that **shares a base name** with a `.jac` module is
+treated as a scoped-style annex -- the two files form one logical module. The
+compiler hashes every class selector the annex declares with a per-module
+digest, rewrites the CSS rule selectors, and rewrites JSX `className`/`class`
+literals in the module that reference a declared class to the same hashed
+form. Class names are scoped to the component automatically, so two modules
+can both declare `.card` without colliding.
+
+Given `Card.style.css` beside `Card.jac`:
+
+```css
+/* Card.style.css */
+.card {
+    padding: 1rem;
+    border: 1px solid #ccc;
+}
+.card-title { font-weight: 600; }
+
+/* :global(...) opts out of scoping -- the inner selector is kept verbatim. */
+:global(html) { box-sizing: border-box; }
+```
+
+```jac
+# Card.jac
+def:pub Card(title: str, body: str) -> JsxElement {
+    <article className="card">
+        <h2 className="card-title">{title}</h2>
+        <p>{body}</p>
+    </article>
+}
+```
+
+the compiler hashes the selectors and rewrites the matching `className`
+literals to agree (hashes are stable per module):
+
+```js
+import "./Card.css";
+function Card(props) {
+  const {title, body} = props;
+  return __jacJsx("article", {"className": "card-1419142b"},
+    [__jacJsx("h2", {"className": "card-title-769bf254"}, [title]),
+     __jacJsx("p", {}, [body])]);
+}
+```
+
+```css
+/* emitted sidecar Card.css */
+.card-1419142b { padding: 1rem; border: 1px solid #ccc; }
+.card-title-769bf254 { font-weight: 600; }
+html { box-sizing: border-box; }   /* :global(...) unwrapped */
+```
+
+Key points:
+
+- **No import needed.** The annex is paired by base name; the compiler injects
+  the side-effect `import "./<base>.css";` for you.
+- **Only declared classes are rewritten.** A `className` token with no matching
+  selector in the annex is left untouched, so you can mix scoped and global
+  (e.g. Tailwind) classes in the same `className`.
+- **`:global(...)` is the escape hatch** for selectors that must stay
+  unscoped (resets, third-party class targets, element selectors).
+- Scoped styles are per-module; for app-wide styles (themes, resets, Tailwind)
+  use a plain shared `import "./global.css";` instead.
+
+### cn() Utility (Tailwind/shadcn)
+
+```jac
+# cn() from local lib/utils.ts (shadcn/ui pattern)
+import from "../lib/utils" { cn }
+
+def:pub StylingExamples() -> JsxElement {
+    has condition: bool = True;
+    has hasError: bool = False;
+    has isSuccess: bool = True;
+
+    className = cn(
+        "base-class",
+        condition and "active",
+        {"error": hasError, "success": isSuccess}
+    );
+
+    <div>
+        <div className="p-4 bg-blue-500 text-white">Tailwind</div>
+        <div className={className}>Dynamic</div>
+    </div>
+}
+```
+
+> **Note:** In jac-shadcn projects `jac install --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
+>
+> ```jac
+> # lib/utils.jac
+> import from "clsx" { clsx }
+> import from "tailwind-merge" { twMerge }
+>
+> def:pub cn(*inputs: any) -> str {
+>     return twMerge(clsx(inputs));
+> }
+> ```
+>
+> Requires `clsx` and `tailwind-merge` in `[dependencies.npm]`.
+
+### JSX Syntax Reference
+
+```jac
+def:pub JsxExamples() -> JsxElement {
+    has variable: str = "text";
+    has condition: bool = True;
+    has items: list = [];
+    has props: dict = {};
+
+    <div>
+        <input type="text" value={variable} />
+
+        {condition and <div>Shown if true</div>}
+
+        {items}
+
+        <button {**props} {variable}>Click</button>
+    </div>
+}
+```
+
+Two brace forms appear in attribute position. `{**props}` is a **spread** -- it forwards every key of `props` as an attribute. The JS-idiomatic `{...props}` spread is also accepted but emits `W0063` ("prefer `{**expr}`"), so `{**props}` is the canonical Jac form. `{variable}` is the **`{name}` shorthand** -- when an attribute's value is a variable of the same name it expands to `variable={variable}`, so `<Box {title} {count} {onClick}/>` is sugar for `<Box title={title} count={count} onClick={onClick}/>`. The shorthand is still validated per-attribute against the component signature.
+
+### Suspense Fallbacks: `try` with `awaiting`
+
+A `try` slot whose body needs to wait on async work can name its loading state with an `awaiting` clause. The client lowering wraps the slot in `<JacAwaiting fallback={...}>{...}</JacAwaiting>` from `@jac/runtime` -- a `React.Suspense` shim -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body takes over once it settles. On server and native targets the `awaiting` body is dropped with a `W2020` warning until the streaming-SSR and native-thread lowerings land.
+
+```jac
+def:pub Profile(user_id: int) -> JsxElement {
+    <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        }}
+    </article>
+}
+```
+
+Add an `except` arm to name the error state. On the cl target the slot then lowers to a `<JacClientErrorBoundary fallback={...}>` (auto-imported from `@jac/runtime`, where it re-exports [`react-error-boundary`'s `ErrorBoundary`](#jacclienterrorboundary)) **wrapping** the `<JacAwaiting>` node, so a throw in the resolved `try` body -- including from data the suspense shim awaited -- is caught and the `except` body renders in its place:
+
+```jac
+def:pub Profile(user_id: int) -> JsxElement {
+    <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        } except Exception {
+            <p>Could not load profile.</p>
+        }}
+    </article>
+}
+```
+
+Because a JS error boundary catches every error regardless of declared type, per-type dispatch and the optional `except ... as <name>` binding are not modeled -- the except bodies are concatenated in source order into the boundary's fallback. See the [components tutorial](../../tutorials/fullstack/components.md#try-with-awaiting-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`).
+
+### Comments inside JSX
+
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac fmt`:
+
+```jac
+def:pub App() -> JsxElement {
+    <div>
+        <h1>Hello</h1>
+        {#* TODO: replace with a custom Button component *#}
+        <button>Click me</button>
+    </div>
+}
+```
+
+A few rules to keep in mind:
+
+- **Line comments don't work in JSX text.** A `#` outside an expression slot is treated as literal text -- HTML allows `#` in content, so the lexer can't reinterpret it. Wrap the note in `{#* ... *#}` instead.
+- **The standard React form `{/* ... */}` is not supported.** Inside an expression slot, `/` and `*` parse as Jac operators, so a JSX comment must use Jac-native `{#* ... *#}`.
+- **`{#* ... *#}` is the only no-op JSX slot.** An empty `{}` is still a parse error -- the slot must contain either a real expression or a block comment.
+
+---
+
+## TypeScript Integration
+
+TypeScript/TSX files are automatically supported:
+
+```tsx
+// components/Button.tsx
+import React from 'react';
+
+interface ButtonProps {
+    label: string;
+    onClick: () => void;
+}
+
+export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
+    return <button onClick={onClick}>{label}</button>;
+};
+```
+
+```jac
+import from "./components/Button" { Button }
+
+def:pub app() -> JsxElement {
+    <Button label="Click" onClick={lambda -> None { }} />
+}
+```
+
+---
+
+## Configuration
+
+### jac.toml
+
+```toml
+[project]
+name = "myapp"
+version = "0.1.0"
+
+[serve]
+port = 8000                   # the served app's client is at /; sibling apps at /cl/<app>/
+
+[client]
+enabled = true
+
+# Import path aliases
+[client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+
+[client.configs.tailwind]
+# Generates tailwind.config.js
+content = ["./src/**/*.{jac,tsx,jsx}"]
+
+# Private/scoped npm registries
+[client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+
+[client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${NODE_AUTH_TOKEN}"
+
+# Global npm settings
+[client.npm.settings]
+always-auth = true
+```
+
+### NPM Registry Configuration
+
+The `[client.npm]` section configures custom npm registries and authentication for private or scoped packages. This generates an `.npmrc` file automatically during dependency installation, eliminating the need to manage `.npmrc` files manually.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `settings` | `dict` | Global `.npmrc` key-value settings (registry, always-auth, strict-ssl, proxy, etc.) |
+| `scoped_registries` | `dict` | Maps npm scopes to registry URLs |
+| `auth` | `dict` | Registry authentication tokens |
+| `min_release_age_days` | `float` | Skip package versions published fewer than this many days ago (default `1`) |
+| `min_release_age_excludes` | `list` | Package names the age limit does not apply to |
+
+**Global settings** emit arbitrary `.npmrc` key-value pairs:
+
+```toml
+[client.npm.settings]
+registry = "https://registry.internal.example.com"
+always-auth = true
+strict-ssl = false
+proxy = "http://proxy.company.com:8080"
+```
+
+**Scoped registries** map `@scope` prefixes to custom registry URLs:
+
+```toml
+[client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+"@internal" = "https://registry.internal.example.com"
+```
+
+**Auth tokens** configure authentication for each registry. Use environment variables to avoid committing secrets:
+
+```toml
+[client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${NODE_AUTH_TOKEN}"
+```
+
+The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
+
+The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac run`, or `jac build`).
+
+**Minimum release age.** When Jac installs npm dependencies (client builds, global tools, desktop and mobile setup), it skips any package version published less than a day ago and installs an older version that still matches. Brand-new versions can fail to download for several minutes after they are published, and waiting a day also gives the npm community time to catch a bad release. Versions already in your lockfile are not affected.
+
+```toml
+[client.npm]
+min_release_age_days = 3               # 0 turns it off
+min_release_age_excludes = ["react"]   # package names only
+```
+
+If the only version that matches a dependency is too new, for example when you pin a version released today, the install fails with a `minimum-release-age` error. Add the package name to `min_release_age_excludes` to install it anyway. Both settings apply to every install in the project, including desktop and mobile setup, and `jac install --npm --global` uses the project it is run from. A client build also honours an app's own `[apps.<name>.client.npm]` values. If the install folder already has its own `bunfig.toml`, Jac leaves it alone and does not add the excludes to it.
+
+### Import Path Aliases
+
+The `[client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
+
+```toml
+[client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+"@shared" = "./shared/index"
+```
+
+With the above config, you can use aliases in your client code:
+
+```jac
+import from "@components/Button" { Button }
+import from "@utils/format" { formatDate }
+import from "@shared" { constants }
+```
+
+| Feature | How It's Applied |
+|---------|-----------------|
+| **Vite** | Added to `resolve.alias` in `vite.config.js` - resolves `@components/Button` to `./components/Button` at build time |
+| **TypeScript** | Added to `compilerOptions.paths` in `tsconfig.json` with `baseUrl: "."` - enables IDE autocompletion and type checking |
+| **Module resolver** | The Jac compiler resolves aliases during compilation, so `import from "@components/Button"` finds the correct file |
+
+**Wildcard patterns** (`@alias/*` -> `./path/*`) match any sub-path under the prefix. **Exact patterns** (`@alias` -> `./path`) match only the alias itself.
+
+### Vite Plugin Integration
+
+The `[client.vite]` section lets you extend the Vite build with any npm-based Vite plugin. All external tool integration follows the same two-step pattern:
+
+1. Declare the npm package in `[dependencies.npm]`
+2. Wire the plugin in `[client.vite]`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `plugins` | list of strings | Vite plugin function calls, written as JS expressions |
+| `lib_imports` | list of strings | ES import statements for each plugin |
+
+These are written directly into the generated `vite.config.js` - `lib_imports` become top-level imports and `plugins` populate the `plugins: []` array.
+
+**Example: Tailwind CSS v4**
+
+```bash
+jac install --npm --dev tailwindcss @tailwindcss/vite
+```
+
+```toml
+[client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm.dev]
+tailwindcss = "^4.0.0"
+"@tailwindcss/vite" = "^4.0.0"
+```
+
+Then import Tailwind in your entry CSS and use `className=` in components:
+
+```jac
+import "./assets/main.css";  # contains: @import "tailwindcss";
+
+def:pub app() -> JsxElement {
+    <div className="min-h-screen bg-gray-100 p-8">
+        <h1 className="text-3xl font-bold">Hello</h1>
+    </div>
+}
+```
+
+**Example: Multiple plugins**
+
+```toml
+[client.vite]
+plugins = ["tailwindcss()", "myPlugin({ option: 'value' })"]
+lib_imports = [
+    "import tailwindcss from '@tailwindcss/vite'",
+    "import myPlugin from 'my-vite-plugin'"
+]
+```
+
+#### Build Options
+
+Override Vite build options via `[client.vite.build]`:
+
+```toml
+[client.vite.build]
+sourcemap = true
+minify = "esbuild"
+
+# Split vendor libraries into their own chunk
+[client.vite.build.rollupOptions.output.manualChunks]
+vendor = ["react", "react-dom", "react-router-dom"]
+```
+
+`rollupOptions` entries are merged into Jac's own build settings. Jac always sets `outDir`, `emptyOutDir`, `rollupOptions.input` and the `entryFileNames`, `assetFileNames` and `sourcemapPathTransform` outputs, because it needs them to find and serve the bundle; if you set them, they are ignored with a warning.
+
+#### Dev Server Options
+
+Configure the Vite dev server via `[client.vite.server]`:
+
+```toml
+[client.vite.server]
+port = 3000
+open = true
+host = "0.0.0.0"
+cors = true
+```
+
+### Generic Config File Generation
+
+`[client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
+
+**Example: Tailwind CSS v3 + PostCSS**
+
+```bash
+jac install --npm --dev tailwindcss autoprefixer postcss
+```
+
+```toml
+[client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
+plugins = []
+
+[client.configs.tailwind.theme.extend.colors]
+primary = "#3490dc"
+
+[dependencies.npm.dev]
+tailwindcss = "^3.4.0"
+autoprefixer = "^10.4.0"
+postcss = "^8.4.0"
+```
+
+This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/tailwind.config.js` automatically.
+
+| Use case | Config section |
+|---|---|
+| Vite plugins (Tailwind v4, custom plugins) | `[client.vite]` |
+| PostCSS / Tailwind v3 / ESLint / Prettier | `[client.configs]` |
+
+### shadcn/ui Configuration
+
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided as a built-in feature of jaclang core. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jaclang`:
+
+- `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
+- `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
+- `jac install --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
+
+```toml
+[jac-shadcn]
+style = "nova"            # Component style variant (read by `jac install --shadcn`)
+baseColor = "neutral"     # Base color palette
+theme = "amber"           # Accent color theme
+font = "inter"            # Font family
+radius = "default"        # Border radius preset
+menuAccent = "subtle"     # Menu accent style
+menuColor = "default"     # Menu color scheme
+```
+
+| Key | Description | Examples |
+|-----|-------------|---------|
+| `style` | Component style variant -- read by `jac install --shadcn` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"`, `"luma"`, `"rhea"`, `"sera"` |
+| `baseColor` | Base neutral color palette | `"neutral"`, `"stone"`, `"zinc"`, `"gray"` |
+| `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
+| `font` | Typography font family | `"figtree"` (default), `"inter"`, `"geist"`, `"outfit"` |
+| `radius` | Border radius preset | `"default"`, `"none"`, `"small"`, `"medium"`, `"large"` |
+
+shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `border-border`) that automatically adapt to the configured theme. See the [NPM Packages & UI Libraries tutorial](../../tutorials/fullstack/npm-and-libraries.md) for component authoring patterns.
+
+### TypeScript Configuration
+
+Override the generated `tsconfig.json` via `[client.ts]`:
+
+```toml
+[client.ts.compilerOptions]
+strict = false
+target = "ES2022"
+noUnusedLocals = false
+noUnusedParameters = false
+
+[client.ts]
+include = ["components/**/*", "lib/**/*", "types/**/*"]
+```
+
+`compilerOptions` values override defaults. `include` and `exclude` replace defaults entirely when provided.
+
+### App Metadata
+
+Set HTML `<head>` tags for the client app via `[client.app_meta_data]`:
+
+```toml
+[client.app_meta_data]
+title = "My App"
+description = "App description"
+keywords = "jac, fullstack"
+author = "Your Name"
+theme_color = "#3490dc"
+robots = "index, follow"
+og_title = "My App"
+og_description = "App description"
+og_image = "/assets/og-image.png"
+```
+
+#### Head Scripts
+
+Add `<script>` tags to the generated `<head>` with the `scripts` key, for
+analytics snippets, third-party SDKs, and anything that must be available before
+the app bundle boots:
+
+```toml
+[[client.app_meta_data.scripts]]
+src = "https://js.stripe.com/v3"
+defer = true
+
+[[client.app_meta_data.scripts]]
+src = "https://cdn.example.com/lib.js"
+onerror = "loadLocalFallback()"
+
+[[client.app_meta_data.scripts]]
+content = """
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+"""
+```
+
+Each entry takes either `src` or an inline `content` body, and `src` wins if
+both are given. The inline array `scripts = [{ src = "...", defer = true }]` and
+a bare string `scripts = ["https://..."]` are equivalent shorthands.
+
+Every other key becomes an attribute, so `type`, `crossorigin`, `integrity`,
+`nonce`, `data-*`, event handlers, and any attribute the platform adds later all
+work without special-casing:
+
+| Rule | Example |
+|------|---------|
+| Underscores fold to hyphens. | `data_site_id = "abc"` renders `data-site-id="abc"` |
+| `true` renders a bare flag, `false` omits the attribute. | `defer = true` renders `defer` |
+| Any other value renders escaped, including `0` and `""`. | `tabindex = 0` renders `tabindex="0"` |
+
+Keys that do not fold to a well-formed lowercase attribute name are dropped, so
+a stray space or quote cannot forge extra attributes, and a literal `</script>`
+in an inline body is escaped so it cannot close the tag early.
+
+Scripts are emitted after the title, meta, and link tags, in `jac build` output,
+`jac run`, and `jac run --dev` alike.
+
+### API Base URL
+
+Set the backend API base URL used by client-side requests:
+
+```toml
+[client.api]
+base_url = "https://api.example.com"
+```
+
+Useful for production deployments where the API lives on a different domain than the frontend.
+
+### Minification
+
+Control minification in production builds:
+
+```toml
+[client]
+minify = true
+```
+
+Defaults to `true` for `jac build` and `false` for `jac run --dev`.
+
+### Base Path
+
+Control the base path for asset resolution (JS/CSS) in the generated `index.html`. Useful for deploying the app on a subpath (e.g., `https://example.com/myapp/`).
+
+```toml
+[client]
+base_path = "/myapp/"
+```
+
+Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if needed.
+
+---
+
+## CLI Commands
+
+### Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `jac create myapp --kind web-static` | Create new full-stack project |
+| `jac create --app mobile --kind mobile` | Add a mobile app to the current project (`[apps.mobile]`) |
+| `jac run [app]` | Start dev server (the app's kind decides the client) |
+| `jac run --dev [app]` | Dev server with HMR |
+| `jac run desktop_app` | Start a `kind = "desktop"` app (see [jac-desktop](jac-desktop.md)) |
+| `jac run mobile` | Serve a `kind = "mobile"` app to Expo Go: scan the QR code on your phone (Metro Fast Refresh) |
+| `jac run --tunnel mobile` | The same through an Expo tunnel, for a phone that can't reach this machine |
+| `jac run --platform web mobile` | The mobile app in a browser through react-native-web |
+| `jac build [app]` | Build for production (web) |
+| `jac build --all` | Build every app of the workspace into `dist/<app>/` |
+| `jac build --as client [app]` | Build only the app's client bundle |
+| `jac build desktop_app` | Build a desktop app (see [jac-desktop](jac-desktop.md)) |
+| `jac build mobile --platform android` | Build a mobile app (`android`, `ios`, or `web` for a browser bundle) |
+| `jac setup mobile` | Provision the `mobile` app's client ahead of time (the Expo scaffold at `.jac/mobile-rn/`; `jac run` / `jac build` do this on first use) |
+| `jac setup [app]` | Provision an app's client ahead of time; for a web app with `[client.pwa]`, the `pwa_icons/` directory |
+| `jac install --npm <pkg>` | Add npm package |
+| `jac install --npm --dev <pkg>` | Add npm dev dependency |
+| `jac install --npm` | Install all npm dependencies from jac.toml |
+| `jac remove --npm <pkg>` | Remove npm package |
+
+npm dependencies can also be declared in `jac.toml`:
+
+```toml
+[dependencies.npm]
+lodash = "^4.17.21"
+axios = "^1.6.0"
+```
+
+**Core Dependencies**: The `jac-client-node` and `@jac-client/dev-deps` packages are required for all jac-client projects. If missing or outdated in `jac.toml`, they are automatically added or updated when the config is loaded (e.g., during `jac run`).
+
+For private packages from custom registries, see [NPM Registry Configuration](#npm-registry-configuration) above.
+
+### jac build
+
+Build an app's client for its kind.
+
+```bash
+jac build [target] [--as client] [-p PLATFORM]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `target` | App name from `[apps]`, or a `.jac` entry file | (default app) |
+| `--as client` | Build only the client bundle (skip the server artifact of a kind that has one) | (the kind's artifact) |
+| `-p, --platform` | Platform for **mobile** apps (`android`, `ios`, or `web` for a browser bundle via react-native-web) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | the app's `platform`, else the current platform |
+
+The app's kind decides the client: `web-app` (and `js-package`) render React DOM served by their own server, `web-static` renders React DOM with no server, `desktop` renders React DOM inside an OS webview shell, and `mobile` renders native views through React Native. So a `web-static` app is built as a static page and a `desktop` app as its native shell, with no flag (see [Client-only apps](#client-only-apps)). `[dependencies.npm.<client>]` tables (`web`, `static`, `desktop`, `mobile`) scope packages to one client, and an app's `[apps.<name>.dependencies.npm]` overlay is merged in.
+
+For desktop builds, see the [jac-desktop Reference](jac-desktop.md): the desktop target compiles your client UI into a single native binary that embeds the OS webview. In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
+
+**Examples:**
+
+```bash
+# Build the default app
+jac build
+
+# Build a named app / a specific file
+jac build web
+jac build main.jac
+
+# Only the browser bundle of the web app
+jac build --as client web
+
+# Build a desktop app (sidecar for current OS; use --platform windows for .exe name)
+jac build desktop_app
+
+# Name sidecar jac-sidecar.exe (build on Windows for a Windows binary)
+jac build desktop_app --platform windows
+
+# Build a mobile app for Android / iOS, or as a browser bundle
+jac build mobile --platform android
+jac build mobile --platform ios
+jac build mobile --platform web
+```
+
+### Client-only apps
+
+A **client-only** app runs entirely in the browser with no backend -- all of
+its code is client-placed (optionally with a native-placed section compiled
+to in-browser WebAssembly). Declare it once in `jac.toml`:
+
+```toml
+[project]
+name = "browser-app"
+entry-point = "main"
+kind = "web-static"
+
+[client]
+```
+
+With `kind = "web-static"` set, `jac build` and `jac run` take the portable
+path -- the kind is the whole declaration.
+
+**`jac build` produces a portable dist.** After the normal Vite build, the
+generated `index.html` has its JS bundle and CSS **inlined**, making it fully
+self-contained:
+
+```bash
+jac build                      # kind = "web-static"
+# -> .jac/client/dist/index.html  (open directly from disk)
+```
+
+Inlining is what makes disk-open work: a browser refuses to load an external
+`<script type="module" src=...>` over the `file://` protocol (it is treated as
+a cross-origin request), so a dist that references its bundle by URL renders a
+blank page when double-clicked. The inlined `index.html` carries the bundle in
+the document itself, so it runs straight off disk -- e.g. attach it to an email
+or drop it on a USB stick.
+
+**`jac run` serves it with a minimal static server.** Because there is no
+backend, a `web-static` app skips the full API server (no walkers, auth,
+database, or scheduler) and serves the dist with a tiny stdlib HTTP server:
+
+```bash
+jac run                        # builds, then serves on http://localhost:8000/
+jac run -p 3000                # choose the port
+```
+
+The static server also maps the conventional `/static/<name>.wasm` mount onto
+the dist, so a native-placed section compiled to WebAssembly (fetched client-side at
+runtime) is served correctly.
+
+!!! note "file:// vs. served"
+    A pure client app opens straight from disk. An app that fetches a resource at
+    runtime -- e.g. a native->wasm module at `/static/main.wasm` -- must be
+    *served* (`jac run` or any static host), because the browser cannot fetch
+    that resource over `file://`. `jac build` warns when code-splitting leaves
+    chunks that the inlined page would need to fetch.
+
+For dev work, `jac run --dev` runs the Vite dev server with HMR exactly as for
+a web app (no API server).
+
+### jac setup
+
+Provision an app's client ahead of time. It is optional: `jac run`, `jac run --dev` and `jac build` ask the client target for readiness first (`ensure_ready`) and provision whatever is missing on first use, narrating each step. `jac setup` runs the same sequence explicitly, for CI images, offline preparation, or anyone who wants the tools in place before the first run.
+
+```bash
+jac setup [app]
+```
+
+| Option | Description |
+|--------|-------------|
+| `app` | An app name from `[apps]`. Omit to set up the default app |
+
+What setup does follows the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/` and its packages installed; a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup. In an offline project (`[network] offline = true` in `jac.toml`) a run cannot provision, so a missing mobile scaffold or stale packages stop with `jac setup <app>` as the hint.
+
+**Examples:**
+
+```bash
+# Set up the default app's client
+jac setup
+
+# The Expo scaffold for the app named `mobile`
+jac setup mobile
+```
+
+### Extended Core Commands
+
+jac-client extends several core commands:
+
+| Command | Added Option | Description |
+|---------|-------------|-------------|
+| `jac create` | `--kind web-static` | Create full-stack project template |
+| `jac create` | `--app <name> --kind <kind>` | Add a client app to the current project |
+| `jac create` | `--skip` | Skip npm package installation |
+| `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs |
+| `jac run` | `--tunnel` | Reach a mobile dev server through an Expo tunnel |
+| `jac build` | `--as client` | Build only the app's client bundle |
+| `jac install` | `--npm` | Add npm (client-side) dependency |
+| `jac install` | `--npm --dev` | Add npm dev dependency |
+| `jac remove` | `--npm` | Remove npm (client-side) dependency |
+
+---
+
+## Client Kinds
+
+jac-client builds every client from a single codebase; the **kind** of the app decides what its client is. In a workspace, one shared `core/` typically feeds a `web-app`, a `mobile` app and a `desktop` app side by side (see [Workspaces & Apps](../apps.md)).
+
+| Kind | UI | Command | Output | Setup Required |
+|------|----|---------|--------|----------------|
+| `web-app` | React DOM, served by its own server | `jac build web` | `.jac/client/dist/` (a PWA when `[client.pwa]` is set) | No |
+| `web-static` | React DOM, no server | `jac build` | a portable, inlined `.jac/client/dist/index.html` | No |
+| `desktop` | React DOM inside an OS webview (or CEF with `[desktop] engine = "cef"`) | `jac build desktop_app` | Single binary under `.jac/client/desktop/` | No |
+| `mobile` | Native views through React Native (`@jac/mobui`) | `jac build mobile --platform android` | Android APK / iOS `.app` bundle (`.ipa` via EAS); a browser bundle with `--platform web` | Yes |
+| `js-package` | React DOM | `jac build` | npm tarball | No |
+
+### Web
+
+Standard browser deployment using Vite:
+
+```bash
+jac build                    # Build for web
+jac run --dev                # Dev server with HMR
+```
+
+**Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
+
+### Desktop
+
+The desktop target ships with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac build --native`) that renders your client UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
+
+```bash
+jac build desktop_app
+jac run desktop_app
+jac run --dev desktop_app    # HMR (engine = "native" only)
+```
+
+The renderer is the OS-native webview by default. For a bundled Chromium Embedded Framework renderer:
+
+```toml
+[desktop]
+engine = "cef"
+```
+
+Both engines build into `.jac/client/desktop/`. See the **[jac-desktop Reference](jac-desktop.md)** for architecture, `[desktop]` configuration, and CEF runtime flags.
+
+Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
+
+### Mobile
+
+Native mobile applications for Android and iOS using [React Native](https://reactnative.dev/). A `mobile` app compiles your client UI to **platform-native views** via Expo/Metro/Hermes, giving native gesture/scroll performance and access to the RN ecosystem.
+
+A mobile app is a **mobUI** app: one source tree that compiles to both native (Android/iOS) and web (via `react-native-web`). mobUI apps use Jac's `@jac/mobui` component vocabulary instead of HTML -- see [The `@jac/mobui` vocabulary](#the-jacmobui-vocabulary) below.
+
+**Prerequisites:**
+
+- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
+- **Android**: JDK 21 and Android SDK are provisioned automatically; SDK license acceptance is required
+- **iOS** (macOS only): Xcode and its Command Line Tools; Jac provisions Ruby and CocoaPods
+
+**Declaring the app:** `jac create --app mobile --kind mobile` writes an `[apps.mobile]` table; `jac create myapp --kind mobile` writes the single-app form:
+
+```toml
+[apps.mobile]
+kind = "mobile"
+entry-point = "mobile.main"
+platform = "android"      # optional default for `jac build mobile` (and the device `jac run mobile` opens)
+```
+
+The kind is an **app** property: it turns on the `@jac/mobui` host-tag guard for every module the app claims (its directory, or its entry file for a file-rooted app) and nothing outside it, so a workspace can hold a mobile app next to an HTML-based web app over the same shared `core/`.
+
+**Run & Build:**
+
+```bash
+# 1. Run it on your phone: scan the QR code with Expo Go (Android) or the
+#    Camera app (iOS). Fast Refresh on save. The first run scaffolds the
+#    Expo/Metro project at .jac/mobile-rn/ and installs its packages (narrated
+#    as a one-time setup); `jac setup mobile` does the same ahead of time.
+jac run mobile
+# Metro serves both platforms; press `a` / `i` in the Expo CLI to open an
+# emulator or simulator, or pass --platform android|ios to open one up front.
+
+# Phone on another network (or this machine behind NAT, e.g. WSL2)? Tunnel it.
+# The API rides the same tunnel through Metro.
+jac run --tunnel mobile
+
+# The same UI in a browser, through react-native-web
+jac run --platform web mobile
+
+# 2. Build for Android (provisions the scaffold too if this is the first native run)
+jac build mobile --platform android
+
+# 3. Build for iOS (macOS only; non-macOS points at EAS Build)
+jac build mobile --platform ios
+
+# 4. Build the browser bundle (dist/mobile/ under `jac build --all --platform web`)
+jac build mobile --platform web
+```
+
+`jac run` never builds the app: an installable APK or `.app` comes from `jac build`.
+
+**Dev-loop knobs:** Metro defaults to port `8081` (override with `JAC_RN_METRO_PORT`); the device-visible host is auto-detected from your LAN IPv4 (override with `--host` or `JAC_RN_DEV_HOST`) and handed to Expo, so the QR code points at the same host. `--tunnel` swaps the LAN for an Expo tunnel (Expo installs `@expo/ngrok` on first use) and routes the API through Metro at `/__jac_api`. Each run starts Metro with `--clear`, so warm starts re-bundle from scratch.
+
+**Output:**
+
+- Android: APK via `gradlew assembleDebug` (or EAS Build with `android_builder = "eas"`)
+- iOS: simulator `.app` bundle via `xcodebuild` on macOS -- `jac build` prints the
+  `xcrun simctl install booted <app>` command; a distributable `.ipa` comes from the
+  EAS Build path (`ios_builder = "eas"`)
+- Web: a browser bundle through the Vite pipeline, `dist/mobile/` under `jac build --all --platform web`, mounted by the served web app at `/cl/mobile/`
+
+**Configuration** via `[client.react_native]` in `jac.toml`:
+
+```toml
+[client.react_native]
+project_dir = ".jac/mobile-rn"   # Expo project location (under the .jac build root; override to relocate)
+release = false                  # true for release variants
+default_platform = "android"     # platform used by a plain `jac build <app>` ([apps.<name>] platform wins)
+android_builder = "gradle"       # "gradle" (local) or "eas" (EAS Build)
+ios_builder = "xcodebuild"       # "xcodebuild" (local, macOS) or "eas" (EAS Build)
+eas_profile = ""                 # "" -> "production" (release) / "preview" (debug)
+# EAS Update (OTA) -- opt-in, see "EAS Update (OTA)" below
+eas_update = false               # true to publish an update after each build
+eas_update_branch = ""           # "" -> "production" (release) / "preview" (debug)
+eas_update_message = ""          # "" -> pass --auto to `eas update`
+```
+
+Packages only the Expo project needs go under `[dependencies.npm.native]`; `jac setup` merges them into the scaffold's `package.json`. Packages the web platform needs go under `[dependencies.npm]` (or `[dependencies.npm.mobile]` to scope them to mobile apps).
+
+**Notes:**
+
+- The Expo project lives at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). The first native `jac run` / `jac run --dev` / `jac build` scaffolds it and installs its packages (narrated as a one-time setup); later runs re-sync the packages only when the manifest or lockfile changed, and `--platform web` never touches it. `jac setup mobile` provisions the same ahead of time; under `[network] offline = true` in `jac.toml` a missing scaffold stops with that hint.
+- Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit; under `--tunnel` the app derives it from Metro's own origin instead.
+- `jac run <app>` always serves the Expo dev server; `--platform android|ios` (or `[apps.<name>] platform`) also opens the app in Expo Go on an emulator or simulator. Expo Go loads only the native modules it ships with; an app that adds its own needs a build (`jac build <app> --platform android`).
+- iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
+- Release/debug variants via `[client.react_native].release = true`.
+- EAS Update integration for OTA updates is opt-in via config -- see [EAS Update (OTA)](#eas-update-ota) below.
+
+#### EAS Update (OTA)
+
+`jac setup <app>` scaffolds a baseline `eas.json` with `preview` and `production` build profiles, so `eas build` and `eas update` work once the project is linked. OTA publishing is wired into the `jac build` flow: when `eas_update = true`, a successful build runs `eas update --branch <branch> --platform <plat>` against the scaffolded Expo project.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `eas_update` | bool | `false` | Run `eas update` after a successful build. Also accepts the legacy alias `ota_update`. |
+| `eas_update_branch` | str | `""` | Update branch name. Empty falls back to `production` for release builds, `preview` for debug. Legacy alias: `ota_update_branch`. |
+| `eas_update_message` | str | `""` | Commit message for the update. Empty passes `--auto` (EAS derives one from the git log). |
+| `eas_profile` | str | `""` | Build profile for `eas build`. Empty falls back to `production` for release builds, `preview` for debug. |
+
+**One-time setup** (run inside `.jac/mobile-rn/`):
+
+```bash
+# 1. Install expo-updates (resolves the SDK-matched version automatically).
+npx expo install expo-updates
+
+# 2. Link an EAS project and write expo.updates.url into app.json.
+#    `eas update:configure` adds the updates block pointing at u.expo.dev.
+eas update:configure
+```
+
+`expo-updates` is intentionally **not** pinned in the scaffold's `package.json` -- `npx expo install expo-updates` resolves the version matched to your Expo SDK, which is more reliable than a hand-pinned pin that drifts. Without `expo-updates` installed and `expo.updates.url` set, `eas update` publishes but the app never checks for updates.
+
+**Then opt in via `jac.toml`:**
+
+```toml
+[client.react_native]
+eas_update = true
+eas_update_branch = "production"   # or leave "" for the release/debug default
+```
+
+Every subsequent `jac build <app> --platform android|ios` publishes an OTA update to the configured branch after the native artifact is produced. `eas_update_message` lets you pin a fixed message; leave it empty to let EAS derive one (`--auto`).
+
+#### Mobile app or PWA?
+
+Reach for a `mobile` app when you want native views -- platform gesture and scroll behaviour, the React Native ecosystem, an APK or `.ipa` for the stores. Its UI is written in `@jac/mobui`, so an existing HTML-based web app is not reused as-is; in a workspace the two share `core/` and the server, not the screens.
+
+When the goal is a home-screen install of an existing web app, make the web app a [PWA](#pwa) instead: a `[client.pwa]` table in `jac.toml` adds the manifest, service worker and install banner to its build, with no rewrite and no store.
+
+#### The `@jac/mobui` vocabulary
+
+`@jac/mobui` is Jac's UI standard library for mobUI apps -- a sealed, Jac-owned component vocabulary whose semantics are React Native's component/style model. It is **not** "re-exported React Native." mobUI apps import **nothing** from `react-native` or `react` directly; the vocabulary is the entire authoring surface, and RN / `react-native-web` are swappable implementation backends behind it.
+
+| `@jac/mobui` | Replaces HTML | Native backend (RN) | Web backend (RNW) |
+|-----------|---------------|---------------------|-------------------|
+| `View` | `div`, `section`, `main`, `article`, `header`, `footer`, `nav`, `aside` | `View` | RNW `View` |
+| `Text` | `span`, `p`, `h1`-`h6`, `label`, `strong`, `em`, `small` | `Text` | RNW `Text` |
+| `Pressable` | `button`, `a` | `Pressable` | RNW `Pressable` |
+| `TextInput` | `input`, `textarea` | `TextInput` | RNW `TextInput` |
+| `Image` | `img` | `Image` | RNW `Image` |
+| `ScrollView` | `ul`, `ol`, scroll areas | `ScrollView` | RNW `ScrollView` |
+| `FlatList` / `SectionList` | long/grouped lists (virtualized) | `FlatList` / `SectionList` | RNW `FlatList` / `SectionList` |
+| `RefreshControl` | (pull-to-refresh) | `RefreshControl` | RNW `RefreshControl` |
+| `Modal` | `dialog` | `Modal` | RNW `Modal` |
+| `Switch` | `input type="checkbox"` | `Switch` | RNW `Switch` |
+| `Animated` / `Easing` | (CSS transitions) | `Animated` / `Easing` | RNW `Animated` / `Easing` |
+| `useWindowDimensions` / `Dimensions` | (media queries) | `useWindowDimensions` / `Dimensions` | RNW equivalents |
+| `StatusBar` | (`theme-color` meta) | `StatusBar` | RNW `StatusBar` |
+| `Alert` | `window.alert` | `Alert` | RNW `Alert` |
+| `Linking` | `window.open` | `Linking` | RNW `Linking` |
+| `StyleSheet` | CSS / `className` | `StyleSheet.create` | RNW `StyleSheet` |
+
+Styling is React Native's model only: `style={{...}}` objects over a flexbox subset, plus an optional design-token/theme object. HTML tags are rejected at compile time (E1105); CSS imports are warned about and stripped from native builds (`.css` files never reach Metro).
+
+!!! note "Web builds need `react-native-web`"
+    On the web platform, `@jac/mobui` lowers to DOM through `react-native-web`. Declare it under `[dependencies.npm]` in `jac.toml` (the mobUI examples do); the bundler only aliases `react-native` to `react-native-web` when the dependency is present, so plain web projects that never touch `@jac/mobui` are unaffected.
+
+```jac
+import from "@jac/mobui" {
+    View, Text, Pressable, TextInput, Image, ScrollView, StyleSheet
+}
+
+glob styles = StyleSheet.create({
+    card: {padding: 16, borderRadius: 16, backgroundColor: "#1b2030", gap: 12},
+    title: {fontSize: 22, fontWeight: "bold", color: "#f4f5fb"},
+});
+
+def:pub app -> JsxElement {
+    has name: str = "";
+    <ScrollView style={{flex: 1, backgroundColor: "#10131c"}}>
+        <View style={styles.card}>
+            <Text style={styles.title}>Hello, {name or "stranger"}</Text>
+            <Pressable onPress={lambda { name = "Jac"; }}>
+                <Text>Tap me</Text>
+            </Pressable>
+        </View>
+    </ScrollView>
+}
+```
+
+#### Compile-time enforcement (E1105)
+
+In a mobile app, raw HTML host tags are **compile errors** with a fix-it pointing at the `@jac/mobui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
+
+```
+error[E1105]: JSX tag '<div>' is not in scope in a mobUI project; use View instead
+```
+
+- **Uppercase components** (`<Card>`, `<Image>`) are always allowed.
+- **Lowercase components that resolve to an in-scope symbol are allowed** (e.g. a local `counter` component used as `<counter .../>`).
+- Only unresolved lowercase names (`div`, `span`, ...) are rejected.
+- **`.jac` web-boundary files are exempt** (raw HTML stays valid where the code can only run in a browser) -- but `.native.jac` files are not, since they target React Native. Modules outside the project root (framework and third-party code) are exempt too. The app's UI is an app fact: the driver stamps it from the `[apps.<name>]` table that claims each module, never from the process cwd, so only the mobile app's own modules are guarded.
+
+See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics reference. Apps of every other kind are unaffected -- HTML tags remain valid there.
+
+#### Platform divergence
+
+Platform differences are handled in priority order:
+
+1. **The vocabulary absorbs divergence** (primary). Components own their platform differences internally -- `ScrollView`, `Image`, and future additions present one API and branch inside `@jac/mobui`. Authors see a single component.
+2. **`.native.jac` platform files** (rare). For wrapping platform-exclusive native modules -- see the flagship mobile app's `icon.jac` / `icon.native.jac` split in [`jac/examples/jaclang_org/mobile`](https://github.com/jaseci-labs/jaseci/tree/main/jac-reference/jac/examples/jaclang_org/mobile). The variant is selected by the app's platform, not by the filename: the compiler picks `.native.jac` for the app's native platforms (android / ios) and the base `.jac` for its web platform. The two files must agree on their public surface -- the same names, kinds, parameters and annotations -- and every disagreement is a build error (`E5105`, reported on the variant). Reach for a file pair only when the two platforms need *different imports*; for branching on values, `Platform` is already part of the vocabulary, so `Platform.OS` and `Platform.select({ios: ..., android: ..., default: ...})` work inline.
+
+#### What carries over from web
+
+A mobile app reuses the same Jac -> JS compilation pipeline, the same `JacForm` / `useJacForm` form system (adapted to RN `TextInput`), the same auth helpers (`jacSignup`, `jacLogin`, `jacLogout` backed by `expo-secure-store`), and the same walker-call API (`jacSpawn`, `__jacCallFunction`). Routing is adapted to React Navigation: `Router` -> `NavigationContainer`, `Routes` + `Route` -> `Stack.Navigator` + `Stack.Screen`, `Link` -> `Pressable` with `useNavigate`.
+
+For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullstack/mobile.md).
+
+### PWA
+
+A `web-app` becomes a Progressive Web App -- offline support, installability, a native-like experience -- by declaring a `[client.pwa]` table in `jac.toml`. There is no separate kind and no flag: when the table exists, `jac build` writes the manifest, the service worker, the icons and the install banner into the bundle.
+
+**Features:**
+
+- Offline support via Service Worker
+- Installable on devices
+- Auto-generated `manifest.json`
+- Automatic icon generation (with Pillow)
+
+**Setup & Build:**
+
+```toml
+[client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+cache_name = "my-app-cache-v1"
+
+[client.pwa.manifest]
+name = "My App"
+short_name = "App"
+description = "My awesome Jac app"
+```
+
+```bash
+# Optional: create pwa_icons/ with placeholder icons
+jac setup
+
+# Build (includes manifest + service worker)
+jac build
+
+# Development (Vite dev server; the service worker is part of the production build)
+jac run --dev
+
+# Production (builds, then serves)
+jac run
+```
+
+**Output:** Web bundle + `manifest.json` + `sw.js` (service worker)
+
+**Custom Icons:** Add `pwa-192x192.png` and `pwa-512x512.png` to the `pwa_icons/` directory.
+
+### PWA Install Banner
+
+With `[client.pwa]` declared, your app automatically shows a native-style install prompt to users. No manual code changes required.
+
+**Features:**
+
+- **Automatic display** -- Glassmorphic dark banner with slide-up animation appears after configurable delay
+- **Chrome/Edge integration** -- Uses `beforeinstallprompt` for native install flow
+- **iOS Safari support** -- Detects iOS and shows step-by-step "Add to Home Screen" instructions
+- **Smart re-prompting** -- Exponential backoff after dismiss (7 → 14 → 28 days), max 3 prompts total
+
+**Banner Configuration in jac.toml:**
+
+```toml
+[client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+
+# Install banner settings
+install_banner = true                    # Enable/disable (default: true)
+install_banner_delay = 3000              # Delay before showing in ms (default: 3000)
+install_banner_position = "bottom"       # "bottom" or "top" (default: bottom)
+install_title = "Install My App"         # Banner title
+install_description = "Add to home screen for the best experience"
+install_button_text = "Install"          # Custom install button text
+install_dismiss_text = "Not Now"         # Custom dismiss button text
+```
+
+**Programmatic Control (Optional):**
+
+For advanced use cases, import the PWA runtime module:
+
+```jac
+import from "@jac/pwa" { usePwaInstall, PwaInstallButton }
+
+def:pub CustomInstallUI() -> JsxElement {
+    (canInstall, triggerInstall) = usePwaInstall();
+
+    <div>
+        {canInstall and (
+            <button onClick={lambda -> None { triggerInstall(); }}>
+                Get the App
+            </button>
+        )}
+    </div>
+}
+```
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `usePwaInstall()` | hook | Returns `(canInstall: bool, triggerInstall: () -> void)` |
+| `PwaInstallButton` | component | Pre-styled install button component |
+
+---
+
+## Automatic Endpoint Caching
+
+The client runtime automatically caches responses from reader endpoints and invalidates caches when writer endpoints are called. This uses compiler-provided `endpoint_effects` metadata -- no manual cache annotations or `jacInvalidate()` calls needed.
+
+**How it works:**
+
+1. The compiler classifies each walker/function endpoint as a **reader** (no side effects) or **writer** (modifies state)
+2. Reader responses are stored in an LRU cache (500 entries, 60-second TTL)
+3. Concurrent identical requests are deduplicated (only one network call)
+4. When a writer endpoint is called, all cached reader responses are automatically invalidated
+5. Auth state changes (login/logout) clear the entire cache
+
+This means spawning the same walker twice in quick succession only makes one API call, and creating/updating data automatically refreshes any cached reads.
+
+---
+
+## BrowserRouter (Clean URLs)
+
+jac-client uses `BrowserRouter` for client-side routing, producing clean URLs like `/about` and `/users/123` instead of hash-based URLs like `#/about`.
+
+For this to work in production, your server must return the SPA HTML for all non-API routes. When using `jac run`, this is handled automatically -- the server's catch-all route serves the SPA HTML for extensionless paths, excluding API prefixes (`cl/`, `walker/`, `function/`, `user/`, `static/`).
+
+The Vite dev server is configured with `appType: 'spa'` for history API fallback during development.
+
+---
+
+## Build Error Diagnostics
+
+When the client bundle fails to build at server startup, Jac classifies the raw Vite/Rollup output with the same engine the dev loop uses and renders each error with the `jac check` renderer. Errors include:
+
+- **Error codes** from the `E7xxx` runtime catalog, the same ones the dev loop reports
+- **A Jac location** -- the `.jac` line the compiled artifact was lowered from -- or a note saying why one could not be derived
+- **The registry's help text**, including the `[dependencies.npm]` guidance for an undeclared package
+
+| Code | Issue | Example Fix |
+|------|-------|-------------|
+| `E7001` | Module has no such export | Import it with `import type`, or check the export name |
+| `E7002` | Unresolved import | Verify the path, or declare the package and run `jac install` |
+| `E7004` | Vite rejected a module | Read the location the diagnostic names |
+| `E7005` | The build could not produce a loadable module | Run `jac check` on the file it names |
+
+Run `jac guide reference/diagnostics` for the full catalog.
+
+To see raw error output alongside formatted diagnostics, set `debug = true` under `[client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
+
+> **Note:** Debug mode is enabled by default for a better development experience. For production deployments, set `debug = false` in `jac.toml`.
+
+### Dev Loop Diagnostics
+
+Once the dev server is up, every failure the loop can see -- a Jac compile
+error, a Vite resolve failure, a module-link error in the browser, an uncaught
+exception with a stack -- is resolved back to a Jac location and reported as one
+diagnostic value. The terminal line uses the same renderer as `jac check`:
+
+```text
+error[E7001]: The module 'mermaid' has no export named 'Mermaid'
+  --> docs/MermaidDiagram.jac:1:44
+    1 | import from "mermaid" { default as mermaid, Mermaid }
+      |                                             ^
+help: ... import it with 'import type' ...
+```
+
+The Vite plugins forward raw payloads only, over the channel the jac process
+already reads: the dev server's stdout. Each event is one tagged JSON line --
+
+```text
+@@jac-client-event {"slot": "vite", "payload": { ... }}
+```
+
+-- in slot `vite`, `client` (a module-load failure), `runtime` (anything thrown
+after the app came up) or `ready` (the browser's clean-load beacon). A `null`
+payload clears its slot, and `ready` clears both browser slots. The jac process
+consumes those lines (they are never echoed to the terminal), classifies each
+one on arrival, renders it, and keeps the result in memory. The only file
+involved is the status document it writes:
+
+| File | Written by | Contents |
+|------|-----------|----------|
+| `.jac/client/.jac-status.json` | the jac dev server | the status document (below); absent when the build is healthy |
+
+A `runtime` event is reported to the terminal but does not mark the build
+broken, so it does not appear in the status document.
+
+The status document is also what `GET /__build_status` returns, on both the core
+server and the scale gateway:
+
+```json
+{
+  "status": "ok" | "compiling" | "error" | "unavailable",
+  "diagnostics": [
+    {
+      "code": "E7001",
+      "severity": "error",
+      "category": "runtime",
+      "message": "The module 'mermaid' has no export named 'Mermaid'",
+      "help": "...",
+      "file": "docs/MermaidDiagram.jac",
+      "line": 1,
+      "column": 44,
+      "channel": "browser",
+      "raw_location": "/.vite/deps/mermaid.js?v=0926aa4f",
+      "unmapped_reason": "",
+      "related": [{"label": "...", "file": "jac.toml", "line": 6, "column": 1}],
+      "stack": "",
+      "component_stack": "",
+      "resolved_stack": "",
+      "resolved_component_stack": "",
+      "rendered": "error[E7001]: ...\n  --> docs/MermaidDiagram.jac:1:44\n..."
+    }
+  ]
+}
+```
+
+`file` is relative to the project root and is never empty: when nothing on disk
+claims the reported location, it names the best-known Jac owner and
+`unmapped_reason` says why the mapping failed. `channel` is `jac`, `vite`,
+`browser` or `server`, and `raw_location` keeps the compiled/Vite/browser
+location the diagnostic was mapped from. A stack-bearing error carries both the
+browser's raw `stack` and the `resolved_stack` whose frames were mapped onto
+`.jac` files (and the same pair for React's component stack). The browser overlay renders the same
+value, and the `/cl/__error__` endpoint logs it through the same renderer in
+production. See [Errors and Warnings](../diagnostics.md#dev-loop-and-client-runtime-errors-e7xxx)
+for the code catalog.
+
+The endpoint limits each client on its own, so one page reporting in a loop
+cannot hide other users' errors:
+
+- **Rate:** a client gets 20 reports a minute. Past that, every request is
+  answered `429` (`RATE_LIMITED`, the same envelope as the login and
+  registration limits) with `Retry-After` until its minute is up. The count is
+  kept in the shared database (the embedded one the server provisions, or the
+  one `[scale.database] url` names), so it holds across every worker of
+  `jac run --serve` and every replica of a deployment. If that database cannot
+  be reached, each worker process counts on its own, so a server with N workers
+  accepts up to N x 20 a minute from one client.
+- **Repeats:** the same message from the same client within 10 seconds is
+  accepted (`{"ok": true, "throttled": true}`) but not logged again. This check
+  is per worker process.
+- **Size:** a report over 64 KiB is refused with `413` before it is parsed.
+- **Browser extensions:** a report whose stack frames all point into a browser
+  extension (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`,
+  `safari-extension://`) is logged at INFO as a browser extension's error,
+  not at ERROR. The client runtime drops these itself; this covers pages still
+  running an older runtime.
+
+Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
+20) applies the same per-client limit before a report reaches any service, even
+when the gateway's general rate limit is off. Set it to `0` to turn it off.
+The gateway applies it only when it can see each browser's own address. In a
+cluster with nothing in `[serve.proxy] trusted` (`JAC_SERVE_PROXY_TRUSTED`),
+which is what `jac scale deploy` sets on the gateway, every browser arrives from
+the ingress address, so the gateway skips the limit and logs that at startup.
+The services behind it still limit each browser, because they trust the
+cluster's private ranges and read the address the gateway forwards. List the
+ingress controller's address in the gateway's `[serve.proxy] trusted` to refuse
+floods at the gateway too.
+
+Locations come from the per-file source maps the client compiler writes beside
+each `compiled/*.js`. They are segment-level -- generated line *and* column,
+with a `names` array -- so a stack frame or an import specifier resolves to an
+exact `.jac` column, not merely to a line.
+
+---
+
+## Build-Time Constants
+
+Define global variables that are replaced at compile time using the `[client.vite.define]` section in `jac.toml`:
+
+```toml
+[client.vite.define]
+"globalThis.API_URL" = "\"https://api.example.com\""
+"globalThis.FEATURE_ENABLED" = true
+"globalThis.BUILD_VERSION" = "\"1.2.3\""
+```
+
+These values are inlined by Vite during bundling. String values must be double-quoted (JSON-encoded). Access them in client code:
+
+```jac
+def:pub Footer() -> JsxElement {
+    <p>Version: {globalThis.BUILD_VERSION}</p>
+}
+```
+
+---
+
+## Development Server
+
+### Prerequisites
+
+jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary for package management and bundling. Native build subprocesses use managed Node.js 22 for Expo/React Native compatibility; no manual Node.js/npm installation is needed. Set `JAC_BUN` to substitute a specific bun binary.
+
+### Start Server
+
+```bash
+# Basic
+jac run
+
+# With hot module replacement
+jac run --dev
+
+# HMR without client bundling (API only)
+jac run --dev --no-client
+
+# Dev server for a desktop app
+jac run --dev desktop_app
+```
+
+### API Proxy
+
+In dev mode, API routes are automatically proxied:
+
+- `/walker/*` → Backend
+- `/function/*` → Backend
+- `/user/*` → Backend
+
+---
+
+## Event Handlers
+
+Jac provides ambient DOM types (`ChangeEvent`, `KeyboardEvent`, `MouseEvent`, `FormEvent`, etc.) that are available without import. Use these for type-safe event handling:
+
+```jac
+def:pub Form() -> JsxElement {
+    has value: str = "";
+
+    <div>
+        <input
+            value={value}
+            onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+            onKeyPress={lambda (e: KeyboardEvent) {
+                if e.key == "Enter" { submit(); }
+            }}
+        />
+        <button onClick={lambda -> None { submit(); }}>
+            Submit
+        </button>
+    </div>
+}
+```
+
+### Ambient DOM Types
+
+The following event and element types are available in all Jac modules without any import statement. Use them for type-safe event handlers in JSX:
+
+**Event Types:**
+
+| Type | Fires On | Key Properties |
+|------|----------|----------------|
+| `Event` | Base event | `target`, `type`, `preventDefault()` |
+| `ChangeEvent` | `onChange` | `target.value`, `target.checked` |
+| `InputEvent` | `onInput` | `data`, `inputType` |
+| `KeyboardEvent` | `onKeyDown`, `onKeyUp`, `onKeyPress` | `key`, `code`, `ctrlKey`, `shiftKey` |
+| `MouseEvent` | `onClick`, `onMouseDown`, etc. | `clientX`, `clientY`, `button` |
+| `PointerEvent` | `onPointerDown`, `onPointerUp` | `pointerId`, `pointerType`, `pressure` |
+| `FocusEvent` | `onFocus`, `onBlur` | `relatedTarget` |
+| `DragEvent` | `onDrag`, `onDrop` | `dataTransfer` |
+| `TouchEvent` | `onTouchStart`, `onTouchEnd` | `touches`, `changedTouches` |
+| `ClipboardEvent` | `onCopy`, `onCut`, `onPaste` | `clipboardData` |
+| `FormEvent` | `onSubmit`, `onReset` | `target` (HTMLFormElement) |
+| `WheelEvent` | `onWheel` | `deltaX`, `deltaY` |
+| `AnimationEvent` | `onAnimationStart`, `onAnimationEnd` | `animationName`, `elapsedTime` |
+| `TransitionEvent` | `onTransitionEnd` | `propertyName`, `elapsedTime` |
+| `ScrollEvent` | `onScroll` | Inherits from UIEvent |
+
+**Element Types:**
+
+| Type | For Element |
+|------|-------------|
+| `HTMLElement` | Base (any element) |
+| `HTMLInputElement` | `<input>` -- adds `value`, `checked`, `files`, `type` |
+| `HTMLTextAreaElement` | `<textarea>` -- adds `value`, `rows`, `cols` |
+| `HTMLSelectElement` | `<select>` -- adds `value`, `selectedIndex`, `options` |
+| `HTMLFormElement` | `<form>` -- adds `submit()`, `reset()`, `elements` |
+| `HTMLButtonElement` | `<button>` -- adds `disabled`, `type` |
+| `HTMLAnchorElement` | `<a>` -- adds `href`, `target`, `pathname` |
+| `HTMLImageElement` | `<img>` -- adds `src`, `alt`, `naturalWidth` |
+| `HTMLCanvasElement` | `<canvas>` -- adds `getContext()`, `toDataURL()` |
+| `HTMLVideoElement` | `<video>` -- adds `play()`, `pause()`, `currentTime` |
+| `HTMLAudioElement` | `<audio>` -- adds `play()`, `pause()`, `volume` |
+
+**Usage examples:**
+
+```jac
+def:pub TypedForm() -> JsxElement {
+    has text: str = "";
+    has checked: bool = False;
+
+    <div>
+        <input
+            value={text}
+            onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+            onKeyDown={lambda (e: KeyboardEvent) {
+                if e.key == "Enter" and not e.shiftKey { submit(); }
+            }}
+        />
+        <input
+            type="checkbox"
+            checked={checked}
+            onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
+        />
+        <form onSubmit={lambda (e: FormEvent) {
+            e.preventDefault();
+            handleSubmit();
+        }}>
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+}
+```
+
+!!! tip "Migrating from `any`"
+    If you have existing event handlers using `e: any`, you can update them to use ambient types for better type safety and IDE support:
+
+    ```jac
+    # Before
+    onChange={lambda (e: any) -> None { value = e.target.value; }}
+
+    # After (no import needed)
+    onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+    ```
+
+---
+
+## Conditional Rendering
+
+```jac
+def:pub ConditionalComponent() -> JsxElement {
+    has show: bool = False;
+    has items: list = [];
+
+    if show {
+        content = <p>Visible</p>;
+    } else {
+        content = <p>Hidden</p>;
+    }
+    <div>
+        {content}
+
+        {show and <p>Only when true</p>}
+
+        {[<li key={item["id"]}>{item["name"]}</li> for item in items]}
+    </div>
+}
+```
+
+---
+
+## Error Handling
+
+### JacClientErrorBoundary
+
+`JacClientErrorBoundary` is a specialized error boundary component that catches rendering errors in your component tree, logs them, and displays a fallback UI, preventing the entire app from crashing when a descendant component fails.
+
+### Quick Start
+
+Import and wrap `JacClientErrorBoundary` around any subtree where you want to catch render-time errors:
+
+```jac
+import from "@jac/runtime" { JacClientErrorBoundary }
+
+def:pub app() -> JsxElement {
+    <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
+        <MainAppComponents />
+    </JacClientErrorBoundary>
+}
+```
+
+### Built-in Wrapping
+
+By default, jac-client internally wraps your entire application with `JacClientErrorBoundary`. This means:
+
+- You don't need to manually wrap your root app component
+- Errors in any component are caught and handled gracefully
+- The app continues to run and displays a fallback UI instead of crashing
+
+### Props
+
+| Prop               | Type              | Description                          |
+|--------------------|-------------------|--------------------------------------|
+| `fallback`         | JsxElement        | Custom fallback UI to show on error  |
+| `FallbackComponent`| Component         | Show default fallback UI with error  |
+| `children`         | JsxElement        | Components to protect                |
+
+### Example with Custom Fallback
+
+```jac
+def:pub App() -> JsxElement {
+    <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
+        <ExpensiveWidget />
+    </JacClientErrorBoundary>
+}
+```
+
+### Nested Boundaries
+
+You can nest multiple error boundaries for fine-grained error isolation:
+
+```jac
+def:pub App() -> JsxElement {
+    <JacClientErrorBoundary fallback={<div>App error</div>}>
+        <Header />
+        <JacClientErrorBoundary fallback={<div>Content error</div>}>
+            <MainContent />
+        </JacClientErrorBoundary>
+        <Footer />
+    </JacClientErrorBoundary>
+}
+```
+
+If `MainContent` throws an error, only that boundary's fallback is shown, while `Header` and `Footer` continue rendering normally.
+
+### Use Cases
+
+1. **Isolate Failure-Prone Widgets**: Protect sections that fetch data, embed third-party code, or are unstable
+2. **Per-Page Protection**: Wrap top-level pages/routes to prevent one error from failing the whole app
+3. **Micro-Frontend Boundaries**: Nest boundaries around embeddables for fault isolation
+
+---
+
+## Memory & Persistence
+
+### The Session
+
+Each unit of work runs against a `Session`: an in-memory view of the graph
+backed by the project's Postgres store (embedded locally, external via
+`JAC_DB_URL`). Reads materialize anchors into the session; writes commit in
+one serializable transaction at the end of the unit of work.
+
+```jac
+# Objects are automatically persisted
+node User {
+    has name: str;
+}
+
+with entry {
+    user_node = User(name="Alice");
+    # Manual save
+    save(user_node);
+    commit();
+}
+```
+
+### ExecutionContext
+
+Manages runtime context:
+
+- `system_root` -- System-level root node
+- `user_root` -- User-specific root node
+- `entry_node` -- Current entry point
+- `Memory` -- Storage backend
+
+### Anchor Management
+
+Anchors provide persistent object references across sessions, allowing nodes and edges to be retrieved by stable identifiers after server restarts or session changes.
+
+---
+
+## JavaScript Interop
+
+### Primitive Conversions
+
+In client code, `Boolean(value)`, `Number(value)`, and `String(value)` call the
+JavaScript conversion functions and return primitive values. For example,
+`Boolean(False)` is `false`, `Number("0")` is `0`, and `String("")` is an empty
+string. `Boolean` follows JavaScript truthiness, so empty arrays and objects are
+true. Aliases such as `convert = Boolean; convert(value);` keep the same behavior,
+and static helpers such as `Number.isFinite(value)` remain available.
+
+An `as bool` annotation does not perform a runtime conversion in client code;
+use `Boolean(value)` when conversion is needed.
+
+### Constructing Browser Objects
+
+Jac does not have a JavaScript-style `new` keyword. Use the `new(...)` ambient builtin to instantiate browser built-in constructors; the compiler lowers it to `Reflect.construct(Cls, [args])` in the emitted JavaScript:
+
+<!-- jac-skip -->
+```jac
+# WebSocket
+ws = new(WebSocket, url);
+
+# URL
+url = new(URL, String(baseUrl));
+
+# Date
+now = new(Date);
+
+# Promise
+p = new(Promise, lambda(resolve: any, reject: any) {
+    resolve.call(None, "done");
+});
+
+# CustomEvent
+evt = new(CustomEvent, "my-event", {"detail": data});
+```
+
+`new(Cls, ...args)` is portable: it works in any codespace. On the server it is a thin wrapper for `Cls(*args)`; in client code the compiler rewrites the call into `Reflect.construct(Cls, [args])` so it can drive JS class constructors that require `new`.
+
+### Callback Invocations
+
+When passing callbacks to be invoked later, use `.call(None, ...)`:
+
+<!-- jac-skip -->
+```jac
+handler = myCallback;
+ws.onmessage = lambda(e: any) {
+    handler.call(None, JSON.parse(e.data));
+};
+```
+
+### Module-Level State
+
+Use `glob` for state shared across a module:
+
+```jac
+glob initialized: bool = False;
+glob cache: any = None;
+```
+
+For more patterns, see the [Advanced Patterns & JS Interop tutorial](../../tutorials/fullstack/advanced-patterns.md).
+
+---
+
+## Development Tools
+
+### Hot Module Replacement (HMR)
+
+```bash
+# Enable with --dev flag
+jac run --dev
+```
+
+Changes to `.jac` files automatically reload without restart.
+
+### Debug Mode
+
+```bash
+jac run --debug main.jac
+```
+
+Provides:
+
+- Step-through execution
+- Variable inspection
+- Breakpoints
+- Graph visualization
+
+---
+
+## Related Resources
+
+- [Fullstack Setup Tutorial](../../tutorials/fullstack/setup.md)
+- [Components Tutorial](../../tutorials/fullstack/components.md)
+- [State Management Tutorial](../../tutorials/fullstack/state.md)
+- [NPM Packages & UI Libraries](../../tutorials/fullstack/npm-and-libraries.md)
+- [Advanced Patterns & JS Interop](../../tutorials/fullstack/advanced-patterns.md)
+- [Backend Integration Tutorial](../../tutorials/fullstack/backend.md)
+- [Authentication Tutorial](../../tutorials/fullstack/auth.md)
+- [Routing Tutorial](../../tutorials/fullstack/routing.md)
+- [Building a Desktop App](../../tutorials/fullstack/desktop.md)
+- [jac-desktop Reference](jac-desktop.md)

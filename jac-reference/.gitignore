@@ -1,0 +1,111 @@
+# Python / Jac artifacts
+*.log
+*.pyc
+__pycache__
+venv
+.jac/
+*.jir
+*.jbc
+_precompiled/
+_dist/
+_planning/
+jac-seal/
+
+# Distribution / packaging
+.Python
+play/
+build/
+develop-eggs/
+/dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+
+# Others #
+.coverage
+.session
+*.session.db
+*.session.*.json
+.DS_Store
+.vscode
+build
+*Zone.Identifier
+codegen_output*
+.pytest_cache/
+
+*.rdb
+node_modules
+out.dot
+out.txt
+
+# Mypy files #
+.mypy_cache*
+
+# Jaclang session files
+*.session
+demo/
+
+# session files
+*.bak
+*.dat
+*.dir
+.env
+
+# Zig build artifacts. jac/.gitignore covers the in-tree binary build under jac/,
+# but `jac run` invoking the native backend emits a .zig-cache/ at the *repo
+# root* (its cwd) too -- and a release `git add -A` (release.yml) will
+# otherwise sweep in the >100 MB outputs and get rejected by GitHub's file-size
+# limit. These patterns are path-anchored to any depth, so they catch both.
+.zig-cache/
+zig-out/
+
+# Local CPython reference sources.
+/reference/
+
+# Agent / IDE working notes (not repo artifacts)
+/AGENTS.md
+PLAN.md
+IMPLEMENTATION.md
+RUNTIME_SPLIT_PROGRESS.md
+CURRENT.md
+FIXME.md
+INTEGRATION_PLAN.md
+PROGRESS.md
+PR_SPLIT_PLAN.md
+TASK.md
+SKILL.md
+AUDIT-*.md
+.cursor/
+.pi/
+.ralph/
+
+# Claude Code local instructions
+CLAUDE.local.md
+.claude/
+
+jactastic/**
+.mcp.json
+.gstack/
+
+# Docs "Build Anything" track pages live under jac/jaclang/cli/docs/build/ --
+# the bare `build` rule above would otherwise ignore them. Keep this content
+# tracked.
+!jac/jaclang/cli/docs/build/
+!jac/jaclang/cli/docs/build/**
+
+# Zig 0.16 project-local package cache (fetched, hash-pinned deps)
+zig-pkg/
+
+.xdg-cache/

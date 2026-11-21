@@ -1,0 +1,33 @@
+# A `ui` plugin: Preact, with its own hooks.
+[project]
+name = "preact"
+kind = "plugin"
+
+[plugin]
+fills = "ui"
+interface_ver = 1
+
+[ui]
+model = "rerender"
+hosts = ["browser"]
+owns = ["preact"]
+bundler = "vite"
+
+[ui.jsx]
+lowercase_tags = true
+
+[ui.state]
+from = "preact/hooks"
+name = "useState"
+shape = "pair"
+
+[ui.ref]
+from = "preact/hooks"
+name = "useRef"
+
+[ui.effect]
+from = "preact/hooks"
+name = "useEffect"
+
+[check.lint]
+select = []

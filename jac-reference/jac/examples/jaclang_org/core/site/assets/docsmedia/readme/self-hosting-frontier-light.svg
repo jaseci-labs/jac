@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="428" viewBox="0 0 880 428" role="img" aria-label="Diagram: the self-hosting frontier through the jac binary's payload. Above the line, written in Jac: the compiler and runtime sealed as JIR, the type checker and tooling, and the linkers. Below the line, carried in binary form for feature completeness and outside the verifier's jurisdiction: CPython, Bun, LLVM, and the C runtime archives. The frontier moves in one direction only, toward the operating system, the floor the artifact concedes">
+  <style>
+    .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+    .fg { fill: #1f2328; }
+    .dim { fill: #57606a; }
+    .acc { fill: #bc4c00; }
+    .bad { fill: #cf222e; }
+    .good { fill: #1a7f37; }
+  </style>
+
+  <rect x="16" y="16" width="848" height="396" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <text class="sans acc" x="32" y="44" font-size="13" font-weight="bold" letter-spacing="1" xml:space="preserve">THE SELF-HOSTING FRONTIER<tspan class="sans dim" font-size="12" font-weight="normal" letter-spacing="0">  ·  the goal: everything above the OS, written in the language it ships</tspan></text>
+
+  <!-- Settled rows: written in Jac -->
+  <g text-anchor="middle">
+    <rect x="160" y="64" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#1a7f37" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="84" font-size="11.5">compiler and runtime, sealed as JIR (~190,000 lines)</text>
+    <rect x="160" y="100" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#1a7f37" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="120" font-size="11.5">type checker · formatter · test runner · language server</text>
+    <rect x="160" y="136" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#1a7f37" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="156" font-size="11.5">linkers: ELF · Mach-O · PE · WebAssembly</text>
+  </g>
+  <text class="sans good" x="148" y="119" font-size="11" font-weight="bold" text-anchor="end">written in Jac</text>
+
+  <!-- The frontier -->
+  <line x1="160" y1="180" x2="720" y2="180" stroke="#bc4c00" stroke-width="8" stroke-opacity="0.15" stroke-linecap="round"/>
+  <line x1="160" y1="180" x2="720" y2="180" stroke="#bc4c00" stroke-width="2"/>
+  <text class="sans acc" x="148" y="184" font-size="11" font-weight="bold" text-anchor="end">the self-hosting frontier</text>
+
+  <!-- Carried rows -->
+  <g opacity="0.65" text-anchor="middle">
+    <rect x="160" y="194" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="214" font-size="11.5">private CPython 3.14 (the Python interpreter)</text>
+    <rect x="160" y="230" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="250" font-size="11.5">Bun (the JavaScript runtime)</text>
+    <rect x="160" y="266" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="286" font-size="11.5">LLVM 22 (the code generator back end)</text>
+    <rect x="160" y="302" width="560" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.25"/>
+    <text class="sans fg" x="440" y="322" font-size="11.5">static libc · crt · musl · wasm libc</text>
+  </g>
+  <g class="sans dim" font-size="11" text-anchor="end">
+    <text x="148" y="256">carried for</text>
+    <text x="148" y="270">feature completeness</text>
+  </g>
+
+  <!-- One-way arrow -->
+  <line x1="770" y1="140" x2="770" y2="296" stroke="#bc4c00" stroke-width="1.5"/>
+  <path d="M766,296 L774,296 L770,305 Z" fill="#bc4c00"/>
+  <g class="sans dim" font-size="9.5" text-anchor="start">
+    <text x="780" y="216">moves in one</text>
+    <text x="780" y="229">direction only</text>
+  </g>
+
+  <!-- The floor -->
+  <line x1="160" y1="352" x2="720" y2="352" stroke="#57606a" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text class="sans dim" x="440" y="372" font-size="10.5" text-anchor="middle">the operating system: the floor the artifact concedes</text>
+
+  <text x="440" y="398" font-size="11.5" text-anchor="middle" xml:space="preserve"><tspan class="sans dim">the compiler crossed first, then the linkers, displacing </tspan><tspan class="mono fg">ld</tspan><tspan class="sans dim"> and </tspan><tspan class="mono fg">lld</tspan><tspan class="sans dim">: </tspan><tspan class="sans good" font-weight="bold">no component has moved the other way</tspan></text>
+</svg>

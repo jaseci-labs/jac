@@ -95,6 +95,58 @@ permissions:
   contents: write
 
 jobs:
+  # This repository's releases are of two kinds: the reference design's, built
+  # here and tagged v<version>, and the `jac` compiler's, tagged jac-v<version>
+  # and published here by a workflow that lives elsewhere. The `release`
+  # trigger fires for both, and a build started by the other kind would attach
+  # reference-design binaries (and push a Docker image) under a release that
+  # is not the reference design's. So on that trigger a release is built only
+  # when its tag is v<version> and that version is the one
+  # jac-reference/jac.toml declares at that tag; any other release skips
+  # `plan`, and with it every job below. Calls and dispatches name what they
+  # build and always pass.
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.scope.outputs.build }}
+    steps:
+      - if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          sparse-checkout: jac-reference/jac.toml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Decide whether this is a reference-design release
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "release" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # By its tag first: a jac release is jac-v<version>, never v<version>.
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::Release $TAG is not tagged v<version>, so it is not a reference-design release; nothing to build here."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION=""
+          if [ -f jac-reference/jac.toml ]; then
+            VERSION="$(grep -m1 '^version' jac-reference/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          fi
+          if [ -n "$VERSION" ] && [ "$TAG" = "v$VERSION" ]; then
+            echo "Release $TAG is reference design $VERSION; building its binaries."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Release $TAG is not the reference design that jac-reference/jac.toml declares at that tag ('${VERSION:-nothing}'); nothing to build here."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # Emits the per-channel leg list the build matrix consumes. A matrix
   # `exclude` cannot drop a leg here: exclude keys must name matrix *vector*
   # keys, and this matrix is include-only, so strategy evaluation fails
@@ -134,6 +186,8 @@ jobs:
   # here is one array: adding or dropping a platform is an edit to LEGS and
   # nowhere else.
   plan:
+    needs: scope
+    if: needs.scope.outputs.build == 'true'
     runs-on: ubuntu-latest
     outputs:
       include: ${{ steps.legs.outputs.include }}
@@ -225,6 +279,9 @@ jobs:
       # -Dtarget flag for zig build: set on release-channel Linux legs, empty
       # (host-native) on the dev channel and macOS.
       DTARGET: ${{ inputs.channel != 'dev' && matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       # Check out the commit the release resolved (release channel, when the
       # caller names one), else the release tag, else the pushed commit (dev
@@ -269,8 +326,8 @@ jobs:
         id: shim-cache
         uses: actions/cache@v4
         with:
-          path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
+          path: jac-reference/jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/native/**', 'jac-reference/jac/build.zig', 'jac-reference/jac/build.zig.zon', 'jac-reference/jac/bootstrap/pins.json') }}
 
       # Keyed on bootstrap/pins.json to match the entries setup-jac seeds (the
       # old release-dev key hashed the payload tool, so it never matched them and
@@ -280,8 +337,8 @@ jobs:
         id: llvm-cache
         uses: actions/cache@v4
         with:
-          path: jac/.llvm-build
-          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+          path: jac-reference/jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/bootstrap/pins.json') }}
 
       # mkpayload re-validates every seeded .jir per module, so a stale tree
       # from the previous push is safe and exactly what restore-keys is for --
@@ -299,7 +356,7 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build/cpython
+          path: jac-reference/jac/.precompiled-build/cpython
           key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
             jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
@@ -308,15 +365,15 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.pbs-build/*/python
+          path: jac-reference/jac/.pbs-build/*/python
           key: pbs-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.python }}
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.bun-build
-          key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/js_runtime.jac') }}
+          path: jac-reference/jac/.bun-build
+          key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/client/js_runtime.jac') }}
 
       # The payload's compressed deps-layer frame (mkpayload --layer-cache):
       # content-addressed and verified by decompress + byte-compare before
@@ -326,7 +383,7 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/cpython
+          path: jac-reference/jac/.payload-layers/cpython
           key: payload-layers-cpython-zstd19-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
             payload-layers-cpython-zstd19-${{ runner.os }}-${{ runner.arch }}-
@@ -346,7 +403,7 @@ jobs:
         id: shim-fetch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
+          SHIM_KEY: ${{ hashFiles('jac-reference/jac/native/**', 'jac-reference/jac/build.zig', 'jac-reference/jac/build.zig.zon', 'jac-reference/jac/bootstrap/pins.json') }}
         run: |
           set -euo pipefail
           EXT=so
@@ -359,7 +416,7 @@ jobs:
              && [ -f ".shim-fetch/$ASSET" ] && [ -f ".shim-fetch/$ASSET.sha256" ] \
              && ( cd .shim-fetch && shasum -a 256 -c "$ASSET.sha256" ); then
             echo "hit=true" >> "$GITHUB_OUTPUT"
-            echo "file=$GITHUB_WORKSPACE/.shim-fetch/$ASSET" >> "$GITHUB_OUTPUT"
+            echo "file=$PWD/.shim-fetch/$ASSET" >> "$GITHUB_OUTPUT"
           else
             echo "No usable prebuilt shim asset $ASSET; falling back to the cold from-source build."
             echo "hit=false" >> "$GITHUB_OUTPUT"
@@ -378,7 +435,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .zig-cache/p
-          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/build.zig.zon') }}
           restore-keys: |
             zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
@@ -410,7 +467,7 @@ jobs:
           steps.shim-cache.outputs.cache-hit != 'true' &&
           steps.llvm-cache.outputs.cache-hit != 'true' &&
           steps.shim-fetch.outputs.hit != 'true'
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: zig build fetch-llvm $DTARGET --summary all
 
       # The shipped macOS binary's launcher stub is linked by Jac's own Mach-O
@@ -433,7 +490,7 @@ jobs:
           exit 0
 
       - name: Build the jac binary (one command)
-        working-directory: jac
+        working-directory: jac-reference/jac
         # A dev-channel shim-cache hit restored the shim, record included, to
         # its in-tree place, and the build reuses it there. The release
         # channel's prebuilt asset is named by the hash of the same inputs, so
@@ -456,7 +513,7 @@ jobs:
       # job so they gate every PR on Linux + macOS, not just release time. The
       # smoke tests below validate the actually-shipped cross-compiled binary.
       - name: Smoke test (no system Python)
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
@@ -479,7 +536,7 @@ jobs:
           grep -qx ok <<<"$out"
 
       - name: Verify the shipped Python is the pinned CPython 3.14
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           WORK="$(mktemp -d)"
@@ -504,7 +561,7 @@ jobs:
       # by a jac program must run with its OWN stdlib, and the user's ambient
       # PYTHONHOME/PYTHONPATH must pass through to children untouched.
       - name: Smoke test (no env leak into subprocesses)
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
@@ -539,7 +596,7 @@ jobs:
       - name: Name the macOS crash (crash reports + header dump + lldb replay)
         if: failure() && runner.os == 'macOS'
         continue-on-error: true
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set +e
           REPORTS="$HOME/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports"
@@ -593,7 +650,7 @@ jobs:
           for d in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
             [ -d "$d" ] && cp -f "$d"/*.ips "$d"/*.crash "$OUT"/ 2>/dev/null
           done
-          BIN="$GITHUB_WORKSPACE/jac/zig-out/bin/jac"
+          BIN="$GITHUB_WORKSPACE/jac-reference/jac/zig-out/bin/jac"
           if [ -f "$BIN" ]; then
             otool -l "$BIN" > "$OUT/jac.otool" 2>/dev/null
             nm -n "$BIN" > "$OUT/jac.nm" 2>/dev/null
@@ -615,7 +672,7 @@ jobs:
       # dev binaries are host-native with no pinned floor.
       - name: Verify glibc floor (from zig_target)
         if: runner.os == 'Linux' && inputs.channel != 'dev'
-        working-directory: jac
+        working-directory: jac-reference/jac
         env:
           ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
@@ -642,7 +699,7 @@ jobs:
       # Release channel only: dev binaries are host-native with no pinned floor.
       - name: Verify macOS floor (from zig_target)
         if: runner.os == 'macOS' && inputs.channel != 'dev' && matrix.zig_target
-        working-directory: jac
+        working-directory: jac-reference/jac
         env:
           ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
@@ -666,7 +723,7 @@ jobs:
       # on a user's Mac that does not.
       - name: Verify the macOS binary and shim load only system libraries
         if: runner.os == 'macOS'
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           for f in zig-out/bin/jac jaclang/compiler/backends/native/llvm/libjacllvm.dylib; do
@@ -704,7 +761,7 @@ jobs:
 
       - name: Package asset (+ checksum)
         id: pkg
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euxo pipefail
           if [ "${{ inputs.channel }}" = "dev" ]; then
@@ -724,7 +781,7 @@ jobs:
         if: github.event_name == 'release' || inputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        working-directory: jac
+        working-directory: jac-reference/jac
         run: |
           set -euo pipefail
           TAG="${{ inputs.tag }}"
@@ -750,7 +807,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.pkg.outputs.asset }}
-          path: jac/dist/*
+          path: jac-reference/jac/dist/*
 
       # Non-blocking must not shade into unnoticed. continue-on-error reports
       # the leg as a success to `needs:`, so without this the only trace of a
@@ -786,6 +843,9 @@ jobs:
     # builds the console too and skips only the upload.
     if: (github.event_name == 'release' || inputs.tag != '' || inputs.channel == 'release') && inputs.only == ''
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jac-reference
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -802,7 +862,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
-          path: jacbin
+          path: jac-reference/jacbin
 
       - name: Build the console and package the dist
         id: pkg

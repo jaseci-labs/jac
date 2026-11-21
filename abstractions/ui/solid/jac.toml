@@ -1,0 +1,47 @@
+# A `ui` plugin: Solid, whose state is fine-grained.
+[project]
+name = "solid"
+kind = "plugin"
+
+[plugin]
+fills = "ui"
+interface_ver = 1
+
+[ui]
+model = "fine-grained"
+hosts = ["browser"]
+owns = ["solid-js"]
+bundler = "vite"
+
+[ui.jsx]
+lowercase_tags = true
+keys = false
+
+[ui.state]
+from = "solid-js"
+name = "createSignal"
+shape = "pair"
+
+[ui.computed]
+from = "solid-js"
+name = "createMemo"
+
+[ui.effect]
+from = "solid-js"
+name = "createEffect"
+
+[ui.cleanup]
+from = "solid-js"
+name = "onCleanup"
+
+[ui.untrack]
+from = "solid-js"
+name = "untrack"
+
+[ui.each]
+from = "solid-js"
+tag = "For"
+prop = "each"
+
+[check.lint]
+select = []

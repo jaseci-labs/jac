@@ -1,0 +1,12 @@
+# The standard `schedule` plugin: a program's scheduled functions, run by the thread it listens on.
+[project]
+name = "loop_schedule"
+kind = "plugin"
+
+[plugin]
+fills = "schedule"
+interface_ver = 1
+class = "loop_schedule.schedule.LoopSchedule"
+
+[check.lint]
+select = []

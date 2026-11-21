@@ -1,0 +1,292 @@
+# Installation and First Run
+
+Install Jac, verify the version, and run a first program. Download and setup time depend on your platform and connection.
+
+---
+
+## One-Line Install (Recommended)
+
+Install Jac with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
+```
+
+This downloads the self-contained native `jac` binary and puts it on your PATH. The binary bundles its own runtime, so **no system Python, pip, or uv is required** -- at install time or afterward.
+
+`--reference` selects the compiler these docs describe: the Jac language's reference design. The same script without the flag installs the `jac` compiler's own releases instead. Both install as the command `jac`, so a machine has one of them, and installing one replaces the other.
+
+### Installer Options
+
+Pass flags after `--` to customize the install:
+
+**Specific version:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference --version 0.34.1
+```
+
+**Uninstall:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --uninstall
+```
+
+| Flag | Description |
+|------|-------------|
+| `--reference` | Install the reference design (the compiler these docs describe) |
+| `--version V` | Install a specific release version |
+| `--uninstall` | Remove Jac, whichever compiler is installed |
+
+### Upgrading
+
+Re-run the install command to upgrade to the latest version. The installer replaces the binary in place.
+
+---
+
+## Other installation options
+
+### AUR (Arch Linux)
+
+Jac is available in the Arch User Repository. Install it with your AUR helper of choice.
+
+```bash
+paru -S jaclang
+```
+
+### Docker
+
+Pull the official image:
+
+```bash
+docker pull jaseci/jaclang
+```
+
+Tags: `jaseci/jaclang:latest` (stable), `jaseci/jaclang:<version>` (specific), `jaseci/jaclang:dev` (main HEAD).
+
+Run a project from your working directory:
+
+```bash
+docker run --rm -v "$(pwd):/app" -w /app jaseci/jaclang run main.jac
+```
+
+Or drop into an interactive shell:
+
+```bash
+docker run --rm -it --entrypoint bash jaseci/jaclang
+```
+
+---
+
+## Built-in Subsystems & Optional Dependencies
+
+The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:
+
+```bash
+# AI/LLM integration: byLLM is built in; in a project with a [byllm] section,
+# a plain install pulls its optional deps (litellm, pillow, ...):
+jac install
+
+# The MCP server and the production deployment & scaling subsystem ship built
+# into the jac binary (no install): run `jac mcp`, and use `jac run` /
+# `jac scale deploy`. Scale's optional deps install per-project via jac.toml.
+```
+
+The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](../reference/agent-skills-and-mcp.md)).
+
+`jac install` resolves packages from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See [One Binary, Build Anything](one-binary.md) for the full picture of what the binary bundles, and the [CLI reference](../reference/cli/index.md#jac-install) for all options.
+
+!!! note "Deployment & scaling is built in"
+    Production serving and Kubernetes deployment (`jac run`, `jac scale deploy`) ship inside the `jac` binary as the built-in `scale` subsystem -- there is no separate `jac-scale` package to install. Scale's optional heavier dependencies (Kubernetes, Prometheus, OpenTelemetry, ...) are pulled into your project on demand: declare the matching `[scale.*]` config in `jac.toml`, then run `jac install` to resolve them into `.jac/venv`.
+
+---
+
+## IDE Setup
+
+The **Jac Language Support** extension is available on both major extension marketplaces:
+
+| Marketplace | Link |
+|-------------|------|
+| VS Code Marketplace | [jaseci-labs.jaclang-extension](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension) |
+| Open VSX Registry | [jaseci-labs/jaclang-extension](https://open-vsx.org/extension/jaseci-labs/jaclang-extension) |
+
+### Supported IDEs
+
+- [VS Code](https://code.visualstudio.com/)
+- [Cursor](https://www.cursor.com/)
+- [Windsurf](https://codeium.com/windsurf)
+- [Antigravity](https://antigravity.google/)
+- [VSCodium](https://vscodium.com/)
+- [Gitpod](https://gitpod.io/)
+- [Eclipse Theia](https://theia-ide.org/)
+- [Void](https://voideditor.com/)
+
+### Install the Extension
+
+In any of the IDEs above, installing is the same:
+
+1. Open the Extensions panel - `Ctrl+Shift+X` / `Cmd+Shift+X`
+2. Search **`jaclang`**
+3. Click **Install** on "Jac Language Support" by Jaseci Labs
+
+### Manual Install (VSIX)
+
+For IDEs without marketplace access or for offline installs:
+
+1. Download the latest `.vsix` from [GitHub Releases](https://github.com/Jaseci-Labs/jac-vscode/releases/latest)
+2. Open the Command Palette - `Ctrl+Shift+P` / `Cmd+Shift+P`
+3. Select **"Extensions: Install from VSIX..."**
+4. Choose the downloaded file
+
+### Extension Features
+
+- Syntax highlighting for `.jac` files
+- Intelligent autocomplete
+- Real-time error detection
+- Hover documentation
+- Go to definition
+- Graph visualization
+
+---
+
+## Verify Installation
+
+```bash
+jac --version
+```
+
+Expected output:
+
+```
+   _
+  (_) __ _  ___     Jac Language
+  | |/ _` |/ __|
+  | | (_| | (__     Version:  0.X.X
+ _/ |\__,_|\___|    Python 3.14.1
+|__/                Platform: Linux x86_64
+
+📚 Documentation: https://www.jaclang.org/docs
+💬 Community:     https://discord.gg/6j3QNdtcN6
+🐛 Issues:        https://github.com/Jaseci-Labs/jaseci/issues
+```
+
+Run your first program to confirm everything works. Create `hello.jac`:
+
+```jac
+with entry {
+    print("Hello from Jac!");
+}
+```
+
+```bash
+jac hello.jac
+```
+
+You should see `Hello from Jac!` printed to the console.
+
+---
+
+## Scaffold a Full-Stack App
+
+The full-stack client framework ships with `jaclang` core, so you can scaffold a complete full-stack project in one command:
+
+```bash
+jac create example --kind web-app
+cd example
+jac install
+jac run
+```
+
+!!! note
+    `main.jac` is the default entry point. All `jac run` commands in this guide omit the filename. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac run app.jac`.
+
+This creates a project with a Jac backend and a React frontend, ready to go at `http://localhost:8000`.
+
+---
+
+## Community Templates
+
+Project templates (jacpacks) are published to the [Jac package index](https://github.com/jaseci-labs/jac-index) like any other package. `jac create --use` takes a template's `org/name` and fetches the newest version that works with your `jac`:
+
+```bash
+jac create my-todo --use jaseci/mini_todo
+cd my-todo
+jac install
+jac run
+```
+
+`jaseci/mini_todo` is a full-stack todo app whose AI features run through byLLM. For a multi-user app with sign-up, login and per-user data, try `jaseci/day_planner`, an AI day planner (set an API key for your model provider first):
+
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+jac create planner --use jaseci/day_planner
+cd planner
+jac install
+jac run
+```
+
+Pin a version with `--use org/name@^1.2`, or pass a local template directory or `.jab` file. See [Packages](../reference/packages.md#templates) for publishing your own.
+
+---
+
+## Upgrading Jac
+
+Re-run the one-line installer to upgrade the `jac` binary to the latest version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference
+```
+
+Built-in subsystems (byLLM, MCP, scale) upgrade with the binary itself. To force-refresh a project's resolved dependencies, reinstall them:
+
+```bash
+jac install --force-reinstall
+```
+
+---
+
+## Creating a Project
+
+Use `jac create` to scaffold a new project:
+
+```bash
+# Client-only web app (no backend, runs in the browser)
+jac create my-app --kind web-static
+
+# Start the development server
+cd my-app
+jac run
+```
+
+The `web-static` kind sets up a complete project with:
+
+- `main.jac` -- Entry point with client code
+- `jac.toml` -- Project configuration
+- `styles.css` -- Default stylesheet
+- Bundled frontend dependencies (via Bun)
+
+Available templates:
+
+| Template | Command | What It Creates |
+|----------|---------|-----------------|
+| Web app | `--kind web-app` | Full-stack web app with frontend and backend |
+| Web static | `--kind web-static` | Client-only app that runs in the browser (no backend) |
+
+You can also use community templates (Jacpacks):
+
+```bash
+jac create my-app --use <github-url>
+```
+
+---
+
+## For Contributors
+
+Building Jac from source uses `./scripts/fresh_env.sh` (run from `jac-reference/` in a clone of the repository), which builds the `jac` binary and puts it on your PATH. See the [Contributing Guide](../community/contributing.md) for the full development setup.
+
+---
+
+## Next Steps
+
+- [Core Concepts](what-makes-jac-different.md) - Codespaces, OSP, and compiler-integrated AI
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) - Build a complete full-stack application

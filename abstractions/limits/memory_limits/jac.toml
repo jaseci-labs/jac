@@ -1,0 +1,12 @@
+# The standard `limits` plugin: uses counted in one program's memory.
+[project]
+name = "memory_limits"
+kind = "plugin"
+
+[plugin]
+fills = "limits"
+interface_ver = 1
+class = "memory_limits.limits.MemoryLimits"
+
+[check.lint]
+select = []

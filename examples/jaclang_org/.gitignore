@@ -1,0 +1,6 @@
+.jac/
+server.log
+dist/
+eco/*/package.json
+eco/*/package-lock.json
+eco/*/node_modules/

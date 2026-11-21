@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="420" viewBox="0 0 880 420" role="img" aria-label="Diagram: in a conventional stack, outgrowing the garbage collector means rewriting the hot path in a different systems language across an FFI boundary; Jac's gradual borrow checking is one continuum in one language, from fully managed code through own and borrow annotations to enforced zero-RC native artifacts, with a checked membrane mediating every crossing">
+  <style>
+    .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+    .fg { fill: #e6edf3; }
+    .dim { fill: #8b949e; }
+    .acc { fill: #ff9100; }
+    .bad { fill: #f85149; }
+    .good { fill: #3fb950; }
+  </style>
+
+  <!-- Top panel: the rewrite cliff -->
+  <rect x="16" y="16" width="848" height="152" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text class="sans dim" x="32" y="44" font-size="13" font-weight="bold" letter-spacing="1">OUTGROW THE LANGUAGE, REWRITE THE PROGRAM</text>
+
+  <g text-anchor="middle">
+    <rect x="48" y="64" width="310" height="56" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="sans fg" x="203" y="88" font-size="13" font-weight="bold">Your app</text>
+    <text class="mono dim" x="203" y="106" font-size="10.5">Python · GC · quick to write</text>
+
+    <rect x="522" y="64" width="310" height="56" rx="6" fill="#21262d" stroke="#30363d"/>
+    <text class="sans fg" x="677" y="88" font-size="13" font-weight="bold">The hot path</text>
+    <text class="mono dim" x="677" y="106" font-size="10.5">Rust / C++ · fast · another world</text>
+
+    <line x1="366" y1="92" x2="514" y2="92" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text class="mono dim" x="440" y="82" font-size="10">the rewrite</text>
+    <text class="mono dim" x="440" y="110" font-size="10">FFI · two toolchains</text>
+  </g>
+
+  <text x="440" y="150" font-size="12" text-anchor="middle" xml:space="preserve"><tspan class="mono fg"># TODO: rewrite the hot path in Rust</tspan><tspan class="sans dim"> · the ceiling of a managed language is </tspan><tspan class="sans bad" font-weight="bold">a different language</tspan></text>
+
+  <!-- Bottom panel: Jac, gradual borrow checking -->
+  <rect x="16" y="188" width="848" height="216" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text class="sans acc" x="32" y="216" font-size="13" font-weight="bold" letter-spacing="1" xml:space="preserve">JAC · GRADUAL BORROW CHECKING<tspan class="sans dim" font-size="12" font-weight="normal" letter-spacing="0">  ·  one memory discipline, adopted by degrees</tspan></text>
+
+  <text class="sans dim" x="440" y="236" font-size="9.5" font-style="italic" text-anchor="middle">unannotated code is untouched; opt in one declaration at a time</text>
+
+  <rect x="48" y="244" width="784" height="64" rx="8" fill="#21262d" stroke="#30363d"/>
+  <g text-anchor="middle">
+    <text class="sans fg" x="179" y="272" font-size="12.5" font-weight="bold">fully managed</text>
+    <text class="sans dim" x="179" y="292" font-size="10.5">unannotated · RC/GC</text>
+    <text class="mono acc" x="440" y="272" font-size="13" font-weight="bold">own · &amp; · &amp;mut</text>
+    <text class="sans dim" x="440" y="292" font-size="10.5">moves · borrows · deterministic drop</text>
+    <text class="sans fg" x="701" y="272" font-size="12.5" font-weight="bold">enforced native</text>
+    <text class="sans dim" x="701" y="292" font-size="10.5">no refcounts · no collector</text>
+  </g>
+  <line x1="309" y1="248" x2="309" y2="304" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text class="sans good" x="309" y="324" font-size="10" font-weight="bold" text-anchor="middle">the membrane · every crossing checked</text>
+
+  <text class="sans acc" x="440" y="352" font-size="12" font-weight="bold" text-anchor="middle">no rewrite cliff: a gradient walked by degrees, never crossed</text>
+
+  <text x="440" y="380" font-size="12" text-anchor="middle" xml:space="preserve"><tspan class="mono fg">b = a; print(a);</tspan><tspan class="sans dim"> is </tspan><tspan class="mono good" font-weight="bold">error[E1301]: use after move</tspan><tspan class="sans dim">, in the same file, in the same language</tspan></text>
+</svg>

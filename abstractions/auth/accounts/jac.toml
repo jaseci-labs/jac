@@ -1,0 +1,17 @@
+# The standard `auth` plugin: accounts of a username and a password,
+# and their sessions, in a SQLite file.
+[project]
+name = "accounts"
+kind = "plugin"
+
+[plugin]
+fills = "auth"
+interface_ver = 1
+class = "accounts.auth.Accounts"
+
+# What opens its file at a layout, and upgrades an older one.
+[packages]
+sqlfile = { path = "../../../libraries/sqlfile" }
+
+[check.lint]
+select = []

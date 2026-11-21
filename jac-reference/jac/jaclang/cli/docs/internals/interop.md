@@ -1,0 +1,841 @@
+# Cross-Codespace & Foreign Interop
+
+## Overview
+
+Jac compiles one source language to three first-class **codespaces** --
+**`sv`** (server / Python), **`cl`** (client / JavaScript), and **`na`**
+(native / LLVM) -- and a single `.jac` file may mix all three. Whenever a
+call crosses from one codespace into another, or out to a foreign runtime
+(CPython, C, or a WebAssembly host), the compiler has to *bridge* the gap:
+discover the boundary, agree on a wire format, and synthesise the glue on
+both sides.
+
+This document is the reference for every one of those boundaries. It
+assumes the codespace model from
+[Compiler Architecture](compiler_architecture.md) -- read that first if the
+terms `CodeContext`, `EsastGenPass`, `NaIRGenPass`, or "coercion" are new.
+Here we go one level deeper: the *full* interop matrix, the mechanism behind
+each cell, the marshalling format, and how desktop apps stitch several
+boundaries into a single shippable binary.
+
+### Two kinds of boundary
+
+Every interop edge is one of two fundamentally different things:
+
+- **Free boundaries** -- both sides live in the *same* runtime and address
+  space, so a call is a direct function call and a value is passed by
+  reference with no copy. Same-codespace calls (`sv→sv`, `cl→cl`, `na→na`)
+  and Jac↔Python (`sv↔py`) are free.
+- **Marshalled boundaries** -- the two sides are different runtimes
+  (CPython ↔ V8, CPython ↔ machine code, machine code ↔ a wasm host). A call
+  becomes an RPC or an FFI thunk, and every value that crosses must be
+  *serialised* into a representation both sides understand. `cl↔sv`,
+  `sv↔na`, `na↔C`, `na↔cl`, and the `sv→sv` crossing between two apps of a
+  workspace are marshalled.
+
+The compiler decides which is which automatically. One analysis pass does
+the discovery:
+
+- **`BoundaryAnalysisPass`** detects a cross-runtime import (a
+  server-module import in client-placed code -- whether that placement is
+  inferred or comes from a `.jac` variant file -- a `clib` import in
+  native code, etc.) and re-reads the *provider* module's AST to extract
+  the public surface -- walker `has`-fields, `def` signatures, struct
+  layouts -- into an `InteropBinding`. On an import, service-boundary
+  status is an **app fact**: the target element's `app` (stamped by
+  the driver from `[apps]` in `jac.toml`) differs from the importing
+  module's; the import's own `code_context` is its
+  placement, which determines the caller side of the binding. The same pass
+  walks call sites, records the caller's and callee's `CodeContext` plus
+  the boundary types, and accumulates every binding into an
+  `InteropManifest`.
+
+The results land in the schemas in
+[`compiler/frontend/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/frontend/codeinfo.jac).
+Each backend codegen pass then reads that manifest and emits *its half* of
+every bridge it participates in. No global "target" flag exists -- selection
+is per-node, driven entirely by each node's `code_context` tag.
+
+---
+
+## The full interop matrix
+
+The three codespaces give nine ordered pairs; the three same-codespace
+pairs are free, the six crossings are marshalled. Two external runtimes
+(CPython for Python interop, and C / a wasm host for foreign FFI) add the
+remaining rows.
+
+| # | Direction | Boundary kind | Mechanism | What crosses | Synthesised by |
+|---|-----------|---------------|-----------|--------------|----------------|
+| 1 | **`sv → sv`** (in-process) | Free | Direct Python call | Live CPython objects (by ref) | -- (plain `import`) |
+| 2 | **`sv → sv`** (cross-app) | Marshalled | Typed-async stub keyed by provider app: in-process when colocated, HTTP `POST` when the provider app runs apart | JSON (`_to_wire`/`_from_wire`) | `JcirGenPass` (service bridge stub) + `jaclang.server.sv_client` + `jaclang.scale` |
+| 3 | **`cl → cl`** | Free | Direct JS call | JS values (by ref) | -- (plain client-side `import`) |
+| 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
+| 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jaclang.scale` |
+| 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `JcirGenPass` static route + Vite/Bun bundler |
+| 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `JcirGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
+| 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
+| 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + wasm-ld exports |
+| 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | wasm-ld import table + cl host shim |
+| 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live CPython objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
+| 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars, C-layout structs (by value or by address), `ptr[T]` addresses, pinned payloads | `NaIRGenPass` clib marshaller (`ctypes` on the Python backend) |
+| 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | the link plan's glue object (`backends/native/link_glue.jac`) + LLD (`native_link.jac`) |
+
+The rest of the document is one section per group of rows.
+
+---
+
+## Free boundaries (rows 1, 3, 4, 11)
+
+A free boundary is "interop" only in the bookkeeping sense -- there is no
+wire format, no copy, and no generated glue. Two declarations in the *same*
+codespace simply reference each other directly:
+
+- **`sv → sv`** -- Jac server code is CPython bytecode. A `def` calling
+  another `def` is an ordinary Python call; an `obj` handed to another
+  function is the *same* object, not a copy. Plain (untagged) Jac `import`
+  statements lower verbatim to Python `import` nodes (`exit_import` in
+  [`jcir_gen_pass.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/backends/py/impl/jcir_gen_pass.impl.jac)),
+  so resolution is the standard CPython import machinery.
+- **`cl → cl`** -- Client code becomes one JavaScript module graph; a `cl`
+  function calling another is a direct JS call, bundled together by Vite.
+- **`na → na`** -- Two native modules are two native units. An import is a
+  direct symbol reference to the defining unit's module-qualified symbol
+  (recorded in its `SEC_NIFACE`), and the link plan
+  (`backends/native/link_plan.jac`) brings the unit's object into the
+  artifact. Two units defining one Jac name never collide; `E5026` remains
+  for two `:pub` exports of one name in one link.
+- **`sv ↔ py`** -- Because `sv` *is* the Python target, server code and
+  imported Python share one interpreter, one `sys.modules`, and one object
+  model. This is covered in full under [Python interop](#python-interop-row-11)
+  below.
+
+> The single most important consequence: **values only need a wire format
+> when they cross a marshalled boundary.** Inside one codespace (or between
+> `sv` and Python) you pass live objects around for free.
+
+---
+
+## `cl → sv`: the full-stack RPC (row 5)
+
+This is the boundary that makes a Jac app full-stack: client-side
+JavaScript calling server-side walkers and functions over HTTP.
+
+### Declaring the contract
+
+A client component imports its server contract with a plain import:
+
+```jac
+import from endpoints { Message, PostMessage, ListMessages }
+```
+
+The placement solver leaves the endpoints module's API surface
+server-placed (`def:pub` endpoints and walkers never relocate), so the
+client-consumed import is recognized as a boundary import rather than a
+relocation. The server side defines these as **public walkers**
+(`walker:pub`) and **boundary types** (`node`/`obj`) with typed
+`reports`/return signatures, e.g.:
+
+```jac
+walker:pub PostMessage {
+    has author: str,
+        text: str,
+        reports: list[Message] = [];   # typed result the client sees
+
+    can post with Root entry {
+        report here ++> Message(author=self.author, text=self.text);
+    }
+}
+```
+
+`BoundaryAnalysisPass` sees the boundary import, re-reads
+`endpoints.jac`, and records each walker's fields and each function's
+signature into an `InteropBinding`. The client gets full type information
+by reading the server's source directly -- there is no shared type-checker
+round-trip.
+
+### Lowering the call site
+
+`EsastGenPass` rewrites client call sites into runtime stubs:
+
+| Client source | Lowered to | Runtime helper |
+|---------------|------------|----------------|
+| `root spawn PostMessage(...)` | `await __jacSpawn("PostMessage", <target>, {fields})` | `__doWalkerFetch` |
+| `someServerFn(...)` (a `def:pub`) | `await __jacCallFunction("someServerFn", {args})` | `__doFuncFetch` |
+
+The function path is gated in `_try_lower_server_rpc_call`: the callee must
+be a non-client `def` whose access tag is `KW_PUB`. Typed arguments are
+wrapped with `__to_wire()` on the way out, and the return is rehydrated on
+the way back -- a `list[Message]` becomes
+`(await call).map(x => Message.__from_wire(x))`, a bare `Message` becomes
+`Message.__from_wire(await call)`.
+
+### The HTTP call
+
+The runtime helpers live in
+`client/impl/client_runtime.impl.jac`. The base URL comes from a Vite
+build-time define (`globalThis.__JAC_API_BASE_URL__`, defaulting to
+same-origin). A walker call resolves to:
+
+```text
+POST {base}/walker/{WalkerName}            # root-targeted
+POST {base}/walker/{WalkerName}/{nodeId}   # node-targeted
+POST {base}/function/{funcName}            # public function
+```
+
+with a `Bearer` token from `localStorage["jac_token"]` and a
+`JSON.stringify`d body. A `401` drops the token and reloads. Calls route
+through `__cachedEndpointCall`, an LRU+TTL cache driven by compiler-emitted
+`__jacEndpointEffects__` metadata: endpoints tagged *reader* are cached and
+deduped, *writer* endpoints fetch then invalidate overlapping readers
+(auth walkers always bypass the cache).
+
+### The server endpoint
+
+The HTTP server is **not** in the compiler -- it is the built-in `scale` subsystem
+(`jac/jaclang/scale/server/`, built on the Jac-native asyncio HTTP stack in
+`jaclang/server/serving/`).
+`jac run` brings it up. For every public walker it registers two routes
+(`register_walkers_endpoints`):
+
+```text
+POST /walker/<name>/{nd}   # node-targeted
+POST /walker/<name>        # root-targeted
+```
+
+The callback runs `execution_manager.spawn_walker(...)` (or
+`execute_function(...)`) inside the caller's graph context. A `restspec` on
+the walker can override the path/method; `/webhook/<name>` (HMAC-signed) and
+`/ws/<name>` (WebSocket) are alternative protocols on the same machinery.
+
+---
+
+## `sv → cl`: client delivery (row 6)
+
+There is **no runtime call from server to client.** The client is
+client-side-rendered (CSR): the server compiles, bundles, and serves the
+client JavaScript plus a one-shot bootstrap payload; the browser mounts
+React itself. There is no SSR/hydration path -- the runtime contains
+`createRoot(...).render(...)` but never `renderToString`/`hydrateRoot`.
+
+### JSX lowering
+
+JSX is context-neutral AST. `EsJsxProcessor` lowers each element to a
+`__jacJsx(tag, props, children)` call -- a thin wrapper over
+`React.createElement` (capitalised tag → component identifier, lowercase →
+intrinsic HTML string). Reactivity maps onto React: a `has` becomes
+`useState`, `can ... with entry` becomes `useEffect`.
+
+### Bundle and serve
+
+The pipeline lives in `client/`:
+
+1. **Jac → JS** -- `ViteCompiler.compile` runs the normal compile and reads
+   each module's `mod.gen.js`, plus compiles the client runtime.
+2. **Entry** -- writes an `_entry.js` with the `createRoot(...).render(...)`
+   mount.
+3. **Bundle** -- `ViteBundler.build` resolves Bun (pinned, auto-downloaded),
+   runs `bun install` then `bun x vite build` with `@vitejs/plugin-react`,
+   producing a content-hashed `client.<hash>.js` (+ `styles.css`).
+4. **Serve** -- the Python server serves the JS from memory at
+   `GET /static/client.js`; other assets from `.jac/client/dist/`.
+
+The HTML shell embeds a bootstrap `<script type="application/json">`
+payload (module name, render function, args, client globals, `argOrder`,
+and the `endpointEffects` map that powers the RPC cache) plus a
+`<script type="module" src="/static/client.js?hash=...">`. The `?hash`
+busts the cache on every bundle change. The browser reads the payload and
+mounts React; **the server never renders DOM.**
+
+---
+
+## `sv ↔ na`: the Python ⇄ native JIT bridge (rows 7, 8)
+
+When one program mixes server (the default) and native-placed code, the
+compiler auto-generates a **bidirectional ctypes bridge** -- there is no
+manual FFI. The two directions are derived from the `InteropManifest`:
+`native_exports` (native function, Python caller) and `native_imports`
+(Python function, native caller).
+
+### `sv → na` -- Python calls native
+
+`JcirGenPass._gen_native_interop_stubs` emits a Python wrapper per native
+export. At call time it resolves the JIT address and builds a typed ctypes
+trampoline:
+
+```python
+_addr = __jac_native_engine__.get_function_address('add')
+_fn   = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(_addr)
+return _fn(a, b)
+```
+
+### `na → sv` -- native calls Python
+
+`interop_bridge.register_py_callbacks` wraps each referenced Python function
+in a `ctypes.CFUNCTYPE`, keeps the reference alive, and calls
+`llvm.add_symbol(name, cb_addr)` so MCJIT resolves the *native* call
+straight into CPython. The scalar type map (`JAC_TO_CTYPES`) is
+`int→c_int64`, `float→c_double`, `bool→c_bool`, `str→c_char_p`.
+
+### The engine and the in-process model
+
+`NativeCompilePass.transform` parses and verifies the IR, **registers the
+Python callbacks before creating the engine**, links na↔na imports at the
+IR level, then `llvm.create_mcjit_compiler(...)` and stores the engine on
+`module.gen.native_engine`. This is the key fact: in the mixed-file case
+the native code is **JIT-compiled into the same process** as the Python
+runtime, so the "bridge" is two ctypes hops within one address space -- not
+a separate shared object loaded across a process boundary.
+
+### Crossing whole Jac values
+
+Whole-value crossings are **one-way and total**: the native side rebuilds
+the value as real CPython objects before it returns, and nothing native
+outlives the call. There is no view layer -- the earlier zero-copy
+`NativeStructView`/`NativeListView` machinery was deleted with #8139 Step 2
+once measurement showed per-access view reads losing to outright
+materialization for every real consumer.
+
+No whole-value crossing ships today. The worked example used to be the
+compiler's own sealed parser, whose generated materializer root returned
+fully Python-owned trees, envelopes and all; it went with the native seal
+in #8735 (#8732). What crosses now is narrower: scalars, through the ctypes
+trampolines above, or -- on the `na → C host` path (row 13 below) -- opaque
+`void*` handles the host reference-counts with `@jac_retain` /
+`@jac_release` and must never dereference. The rule above is the contract
+the next crossing has to meet; the entries that meet it are its own to write.
+
+### AOT alternative
+
+`jac run` JITs `jac_entry` directly when a markerless module infers
+native, which is the default codespace preference (demoting gracefully
+to the Python path when it cannot lower). The
+*ahead-of-time* counterpart is the **`na → C host`** native-lib export
+path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
+it across the process boundary.
+
+---
+
+## `na ↔ C`: foreign function interface (row 12)
+
+Native Jac calls C the way C calls C -- by implementing the platform calling
+convention exactly. This is the most ABI-intensive boundary in the system.
+
+### Declaring foreign code
+
+<!-- jac-skip -->
+```jac
+import from "libm.so"  { def sqrt(x: float) -> float; }   # literal path, verbatim
+import from raylib     { def InitWindow(w: int, h: int, title: str); obj Color { has r: int; ... } }
+import from .mylib     { ... }                              # relative
+```
+
+The parser sets `is_clib_import` when the from-path is a string literal or
+the block opens with a declaration keyword, populates `Import.clib_decls`,
+and stamps `CodeContext.NATIVE`. A logical name (`raylib`) is mapped to
+`libraylib.so` / `.dylib` / `raylib.dll` per target triple, and the runpath
+is emitted as ELF `DT_RUNPATH=$ORIGIN` (or Mach-O `@loader_path`). A `str`
+parameter lowers to `i8*`.
+
+The block is the C boundary in both directions. A declaration without a body
+or initializer names something C defines; with one, Jac defines it under that
+exact symbol. `glob name: T = value;` is C-layout data built from a C constant
+initializer (`ptr(f)` is the address of the named function `f`, for an
+untyped function-pointer field), and `def name(...) -> R { ... }` is a C function with the C
+calling convention: callers in the same module call the Jac body directly,
+while C code and other modules reach it through a generated C-ABI entry point
+that unpacks struct-by-value arguments and returns (register pieces, `byval`
+memory, `sret`) with the same classification the call side uses. A C variadic
+definition (`*args: VaList`) is emitted directly under the C name, since its
+fixed parameters are scalars or pointers.
+
+### The three-layer ABI implementation
+
+| Layer | File | Responsibility |
+|-------|------|----------------|
+| **Declaration model** | `compiler/backends/native/foreign.jac` | What the user declared: scalar sizes (`FOREIGN_SCALARS`), C struct layout (`foreign_struct_layout` -- byte offsets, alignment, tail padding, nested-by-value flattening), which parameters are borrows |
+| **psABI classifier** | `compiler/backends/native/abi.jac` | Pure calling-convention logic: `classify_struct` dispatches on the triple -- `aarch64`/`arm64` → AAPCS, else System V AMD64 |
+| **Backend marshaller** | `na_ir_gen_pass.impl/clib_abi.impl.jac`, `na_ir_gen_pass.impl/c_interop.impl.jac` | Emits the actual call: applies the plan, splits by-value structs into their register pieces, passes borrowed storage and pointers as addresses |
+
+The facts every consumer shares -- which `obj` is a foreign struct or an
+opaque C type, which read copies a struct out of C storage, what `ptr[T]`,
+`PtrView[T]` and `Pinned[T]` denote -- live in one module,
+`compiler/c_interop.jac`, read by the checker, the ownership pass and both
+backends.
+
+### How structs cross
+
+The classifier returns a *plan* that the marshaller applies at the call
+site. Whether a struct travels by pointer or by value differs for
+*Jac-native* structs vs *foreign C* structs (see the contrast note below).
+
+- **System V AMD64** (`classify_struct_sysv`): a struct > 16 bytes is
+  **MEMORY** class -- passed via a `byval` pointer (the backend copies),
+  returned via an `sret` hidden pointer. A struct ≤ 16 bytes is split into
+  *eightbytes*, each classed INTEGER or SSE and lowered to a register
+  **coerce** piece (`iN`, `float`, `double`, or `<2 x float>`). So a small
+  C struct is passed *by value, in registers*, not by pointer.
+- **AAPCS (arm64)**: HFAs (≤ 4 same-type floats) ride a `[N x float/double]`
+  coerce; ≤ 16-byte aggregates ride `i64`/`[2 x i64]`; larger aggregates
+  pass indirectly via a **caller-made copy** (a plain pointer, not `byval`).
+
+The marshaller marks `byval`/`sret` on **both** the function declaration and
+the call instruction -- omit either and LLVM passes the pointer in a register
+instead of copying the aggregate, silently violating the ABI.
+
+A foreign struct's Jac storage **is** its C layout: nested structs are
+embedded by value (the LLVM struct `%Camera = {%Vector3, %Vector3, float,
+i32}`), so the object pointer is already the `T*` C expects and no call
+copies between a Jac shape and a C shape. A managed or RC object keeps that
+payload behind its header, at an address that never moves; under headerless
+`nogc` codegen the payload is a bare allocation, or is flattened into an
+owner like other acyclic owned fields. Reading a nested struct field (or a
+view element) as a value copies its bytes into a fresh object; reaching
+through it (`cam.position.x`, `&mut cam.position`, `cam.position = v`)
+works in place. `foreign_read_copies` in `compiler/c_interop.jac` is the one
+rule both backends lower.
+
+### Pointers, borrows and pinned payloads
+
+- **`&T` / `&mut T` parameters** are declared as a plain pointer. A foreign
+  struct argument passes its payload address; a scalar argument passes the
+  address of its slot (spilled to a slot of the C type and copied back after
+  the call when the Jac slot differs, e.g. `bool`). The borrow's lifetime is
+  the call, so the ownership checker needs no new rule, and a clib call
+  never consumes its arguments.
+- **`&mut x` for a `ptr[T]` parameter.** Passed positionally to a `ptr[T]`
+  parameter of a C-ABI function (a clib declaration, or a function a C
+  block defines in this module or another), `&mut x` (or `&x`) lends x's
+  address for the call, as C's `&x` does, when x is a local or field of
+  exactly `T` (a C scalar other than `bool`, a C pointer or a foreign
+  struct): `PySlice_Unpack(item, &mut start, &mut stop, &mut step)`. The
+  native backend passes the variable's slot or the struct's storage; the
+  Python backend passes a C cell's address and reads it back, or the
+  foreign struct's own storage. Anywhere else the argument is an ordinary
+  mismatch (`E1053`). `c_lent_arg_elem` in `compiler/c_interop.jac` is the
+  rule the checker and both backends share.
+- **`ptr[T]`** lowers to an `i64` in Jac values (locals, fields, container
+  elements, foreign struct fields), so no reference-count or cycle-collector
+  path ever sees it; the marshaller converts at the call boundary.
+- **`PtrView[T]`** is a by-value `{address, length}` pair. Indexing
+  normalises a negative index, checks the bounds (raising `IndexError`) and
+  addresses the element; a struct element read in value position is copied.
+- **`Pinned[T]`** is a pointer to a box of `T` -- a heap object whose
+  address is stable because nothing moves heap objects. Under `rc`/`managed`
+  it is reference counted like the struct itself; under `nogc` it is an owned
+  allocation dropped at its static point, and it is never flattened into an
+  owner (flattening would copy the payload). A `&Pinned[T]` parameter
+  receives the box's payload address; `| None` passes NULL.
+
+### The Python backend
+
+When the Python backend is requested (`jac run --backend python`, a forced
+`server` codespace), a clib import is no longer seeded native: `JcirGenPass`
+serialises the block (library, structs, opaque types, function signatures
+as type specs) into one `_jac_clib_bind(globals(), <json>)` call, and
+`jaclang/runtime/cinterop.jac` builds `ctypes.Structure` subclasses with the
+same layout and `ctypes` function wrappers from it. Scalar `&mut` arguments
+travel as cells written back to their place after the call, and the same
+foreign-storage reads copy, so a program prints identically on both
+backends.
+
+> **Contrast with Jac-native structs.** A user-defined Jac `obj` is a
+> reference-counted heap allocation and lowers to *pointer-to-struct*
+> everywhere, so it is always passed **by pointer**. The by-value register
+> splitting above applies **only** to foreign C structs crossing the FFI,
+> because the C ABI demands it.
+
+### C → Jac callbacks (vtables)
+
+For C APIs whose structs hold function-pointer fields (CEF, libuv), a Jac
+`def` stored into such a slot is wrapped in a **C-ABI trampoline**
+(`_emit_clib_c_trampoline`) that coerces each argument to the Jac parameter
+type (sign-extend/truncate per C signedness), calls the Jac function, and
+coerces the result back. Trampolines are cached as `{fn}.__clibcb.{n}`.
+Vtable instances are `calloc`'d as flat C memory with **no RC header** --
+the C runtime owns their lifetime.
+
+---
+
+## `na → C host`: shared libraries (row 13)
+
+The inverse of FFI-in. `jac build --native mathlib.jac --lib` packages a
+native module as a C-ABI `.so` / `.dylib` / `.dll` that any host (a C
+program, or Python via `ctypes`) can load across a process/module boundary.
+
+- **Export surface** -- only `:pub` symbols. `def:pub` / `glob:pub` names are
+  recorded into `gen._exported_symbols` (re-exported transitively from
+  imported native modules). Methods are *not* exported (class-qualified
+  symbol) -- wrap them in a `:pub` free function.
+- **Initialisation** -- the link plan's glue object defines `@__jac_shared_init`,
+  hooked via ELF `DT_INIT_ARRAY` / Mach-O `__mod_init_func` / PE `DllMain`,
+  so global initialisers run on load with no `jac_init()` call required.
+- **Object lifetime** -- Jac objects cross the ABI as **opaque `void*`
+  handles**; the host must not dereference them. `@jac_retain` / `@jac_release`
+  (public wrappers over the RC primitives) let the host manage their
+  lifetime.
+- **Scalars** pass by value (`int → int64`, `float → double`). `--lib`
+  forces PIC and skips `internalize` so the public symbols survive.
+
+---
+
+## `na ↔ cl`: WebAssembly (rows 9, 10)
+
+Native code reaches the *client* by compiling to wasm.
+`jac build --native --target wasm32` (and the client bundler's `_emit_na_wasm`,
+which serves `/static/<stem>.wasm`) both route through
+`wasm_build.compile_to_wasm`: it sets the `wasm32-unknown-unknown` triple,
+compiles AOT, honors the project's `[memory]` settings (`profile = "nogc"`
+builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
+**without** `internalize` (so defined functions stay exported), and links
+with the wasm-ld that ships inside the compiler's LLVM shim (no emscripten).
+
+The language-level spelling of the crossing is a plain import of a
+native-placed module (inferred from its extern-decl surface, or pinned
+`"native"`) from client code:
+
+```jac
+import from .arena { init, frame }    # arena.jac places native
+```
+
+This is the cl → na twin of the client-to-server RPC bridge. The interop
+manifest records the target as NATIVE with a CLIENT caller
+(`import_binds_client_native` in `compiler/driver/compiler.jac`), which is the
+discovery signal (the client build compiles the target module to
+`/static/<stem>.wasm`; the module never has to be imported anywhere else),
+and it binds each name to a generated stub: `exit_import` in `EsastGenPass`
+emits a `__na_bind` call carrying the serialized export and host contracts, where
+`__na_bind` (in `@jac/wasm_host`) lazily instantiates the module on first
+call and dispatches to its exports. Calls to the bound names type-check as
+async in client code (the same coroutine-wrapping that client calls to
+server endpoints get), so `await init()` is the natural call shape. On the
+Python side the client-consumed import compiles to **nothing** -- it never
+executes the native module under CPython, which is what distinguishes it
+from a server-consumed import of the same native module (row 7's ctypes
+crossing). A module that declares app FFI
+registers its host implementations before the first call with
+`bind_na_host(native_export, typed_host)`; an FFI-free module needs no
+setup at all.
+
+Underneath, the interop model is the standard wasm import/export contract:
+
+- **`cl → na`** (exports) -- the module exports `memory`, the
+  `__stack_pointer`/`__heap_base` globals, and **every defined function**
+  (or an explicit `export_funcs` list). JS calls these directly after
+  `WebAssembly.instantiate`.
+- **`na → cl`** (imports) -- the vendored libc floor is linked *into* the
+  module, so what remains as wasm **imports** is the versioned `jac_host1`
+  host surface (syscall-ish: `write`, `clock_gettime`, ...) plus the app's
+  own extern decls (e.g. raylib) under module `"env"`. The JS host satisfies
+  them at instantiate time; native code calls back into JS through these
+  imported functions.
+
+---
+
+## One cross-app import rule
+
+Every import that reaches across modules is classified exactly once, by
+`classify_cross_app_import(nd, manifest)` in
+`compiler/driver/boundary_classify.jac`, from the app facts the driver stamps
+on each module before any pass runs (`app`, `app_root`, `app_kind`,
+`app`; see [Placement -- App facts](../reference/placement.md#app-facts)):
+
+| `CrossAppKind` | When | Transport |
+|---|---|---|
+| `LOCAL` | same app, or shared code, in the same codespace | a plain import (rows 1, 3, 4) |
+| `CLIENT_BRIDGE` | a `CLIENT`-context consumer importing server-placed elements (same app or another) | HTTP from the browser (row 5) |
+| `SERVICE_BRIDGE` | a `SERVER` (or `NATIVE`) consumer importing server-placed elements whose `app` differs from its own | the typed-async `__jac_sv_client` stub (row 2) |
+| `NATIVE_BIND` | a client consumer binding a decidedly-native module | the wasm edge (rows 9, 10) |
+
+`Import.is_client_boundary_import` and `Import.is_service_import` are thin
+predicates over the classifier. There is no routes table, no import form, and
+no module-stem vocabulary: one rule, three transports, all keyed by **app
+name**. `BoundaryAnalysisPass` records each `consumer app → provider app`
+edge into the `InteropManifest`; the driver checks the edges for cycles
+(`E5104`) and every bridged binding for a `pub` provider element (`E5106`).
+
+## `sv → sv` across apps (row 2)
+
+By default an import between two server modules is a free, in-process
+Python import. When the imported element is **compiled in a different app context** of
+the workspace (a walker or `def:pub` in a file-rooted `service` app, or a
+server-placed shared module compiled in another serving app context), the same
+import is a `SERVICE_BRIDGE`:
+
+```jac
+import from core.billing { ChargeCard }   # core/billing.jac is [apps.billing]'s entry file
+```
+
+`exit_import` asks the classifier and calls `_generate_sv_to_sv_stubs`,
+replacing the import with generated Python keyed by the **provider app name**:
+
+- functions → `async def f(a, b): return T._from_wire(await
+  __jac_sv_client.call('<app>', '<fn>', {...}))`, with boundary types
+  serialised via `_to_wire()` / `<Type>._from_wire(...)`;
+- walkers → a stub class carrying `__jac_fields__`, `__jac_walker_name__`,
+  `__jac_provider_app__` and `__jac_boundary_types__`, whose construction
+  returns the coroutine from `__jac_sv_client.spawn_walker('<app>',
+  '<Walker>', kwargs, cls)`, so `await Greet(name=x)` yields the rehydrated
+  instance with `reports` attached; plus a `_deferred(**kwargs)` classmethod.
+- an expression statement that spawns a bridged walker and is not awaited
+  lowers to `Stub._deferred(**kwargs)` -- an outbox enqueue, delivered
+  at-least-once with an idempotency key (`jaclang.server.outbox`).
+
+The type evaluator treats every `SERVICE_BRIDGE` and `CLIENT_BRIDGE` symbol as
+coroutine-returning, so a missing `await` is `E1042` in server code exactly as
+in client code. At runtime `jaclang.server.sv_client` resolves the provider by
+app name: a locally registered module when the app is colocated
+(`register_local`, no HTTP), else a registered URL, else `JAC_APP_<APP>_URL`;
+failures raise the `BridgeError` family from `jaclang.server.bridge`. This is
+the only place a `.jac` → Python lowering converts an import into an RPC; the
+built-in `scale` subsystem boots providers before consumers from the
+manifest's app edges.
+
+---
+
+## Python interop (row 11)
+
+`sv` *is* the Python codegen target, so Python interop is the same
+execution substrate -- free and unmarshalled -- in both directions.
+
+### Jac importing Python
+
+A plain Jac `import` lowers verbatim to a Python import node:
+
+| Jac | Python AST |
+|-----|------------|
+| `import math;` | `Import(names=[alias('math')])` |
+| `import from os.path { join }` | `ImportFrom(module='os.path', names=[alias('join')], level=0)` |
+| `include foo;` | `ImportFrom(..., names=[alias('*')])` |
+| `import type X;` | wrapped in `if TYPE_CHECKING:` |
+
+Because these are real Python imports, `pandas`/`numpy`/`sklearn` "just
+work." Untyped Python return values arrive in Jac as `any`.
+
+### Python importing Jac
+
+A lazily-installed meta-path finder makes `.jac` modules first-class to
+CPython. The `jac` binary's launcher runs `import _jac_finder;
+_jac_finder.install()` at interpreter startup (see `launcher/launcher.zig`
+`BOOT_SRC`); on the first `.jac` import the lazy finder bootstraps jaclang and
+installs `JacMetaImporter`
+([`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/meta_importer.py)).
+Its `find_spec` probes for `__init__.jac` / `<name>.jac`,
+and `exec_module` runs `exec(codeobj, module.__dict__)` -- so a compiled Jac
+module becomes an ordinary Python module object in `sys.modules`, with Jac
+archetypes appearing as plain Python classes (`obj → class X(Obj)`). Pure
+Python callers reach the runtime via
+`from jaclang.lib import Node, Walker, connect, spawn, root`.
+
+`.py` / `.pyi` files inside a Jac program take the reverse bridge: they are
+loaded through `PyastBuildPass`, which builds a UniTree `Module` from a
+Python AST so they participate in the same compilation hub.
+
+---
+
+## The marshalling format
+
+Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
+`sv→sv` split) or a **C-ABI value** (for `na`). The wire serialiser is
+`data/impl/serializer.impl.jac`.
+
+### JSON wire format (`cl↔sv`, `sv→sv`)
+
+- **Request** -- the client sends `JSON.stringify(args)`; typed boundary
+  args are pre-wrapped with `__to_wire()`. On the server,
+  `_deserialize_wire_args` rehydrates any dict/list element carrying a
+  `__type__` tag back into a Jac object via `Serializer.deserialize` before
+  the walker/function runs.
+- **Response** -- after execution, `_finalize_call_response` serialises the
+  result and `reports` with `api_mode=True`. In `api_mode`, nodes/edges
+  carry graph metadata (`_jac_type`, `_jac_id`, `_jac_archetype`), and
+  custom objects are tagged with `__type__` -- the exact shape the client's
+  `__from_wire` and the server's `_deserialize_wire_args` read back.
+- **Envelope** -- the outer HTTP body is a `TransportResponse`:
+
+  ```json
+  { "ok": true, "type": "...", "data": { "result": ..., "reports": [...] },
+    "error": null, "meta": { } }
+  ```
+
+  The client unwraps `payload.data` (walkers) or `payload.data.result`
+  (functions), then runs typed values through `__from_wire`. Errors come
+  back `{ "ok": false, "error": { "code", "message", "details" } }`.
+
+  A function declared `@restspec(envelope=False, produces=...)` skips this
+  wrapper: its return value is written to the body verbatim under the
+  declared content type, for callers that are not Jac clients (a
+  `curl | bash` installer, `robots.txt`, a feed, a file download). The
+  execution manager leaves the return value unserialised on this path, so a
+  `bytes` return reaches the wire as those bytes; error paths keep the
+  envelope. Walkers always keep it, having no single value to project. See
+  [jac-scale HTTP](../reference/plugins/jac-scale-http.md#raw-response-bodies).
+
+- **What may cross** -- `compiler/boundary_rules.jac` judges the declared
+  signature of every function and walker a client reaches, and
+  `BoundaryAnalysisPass` reports `E5115` for a type with no wire form. The
+  rule mirrors the two halves above. The request binder builds scalars
+  (`str`, `int`, `float`, `bool`, `bytes`, `None`), lists, tuples and sets,
+  dicts, enums and objects from JSON, and the serializer writes the same
+  shapes back, so those cross, as does an archetype whose fields all cross
+  and a union of types that cross. A dict crosses only with `str` keys,
+  because a JSON object has no other kind and neither side converts them
+  back. An upload is a part of a request, so it crosses only as a parameter
+  of a server function. A generator crosses only as a result, which is
+  streamed. A callable, an awaitable, a file handle or a native handle is
+  behaviour or a resource, not data, and does not cross.
+
+### C-ABI wire format (`na`)
+
+Scalars use the `JAC_TO_CTYPES` map (`int→c_int64`, `float→c_double`,
+`bool→c_bool`, `str→c_char_p`). Whole Jac values cross by
+**materialization** -- the native side constructs real CPython objects
+through libpython externs and hands over ownership (see "Crossing whole
+Jac values" above). Foreign C structs cross by the platform ABI
+(`byval`/`sret`/register coerce) as described above.
+
+### What is allowed to cross
+
+The **primitive contract** guarantees that `int`, `str`, `list[str]`, etc.
+mean the same thing on both sides. Non-primitive types must be **reachable
+in both codespaces** -- typically a plain `obj`/`node` archetype that travels
+as JSON with `__type__`/`_jac_type` metadata (`cl↔sv`) or as a zero-copy
+view (`na`). Live runtime resources (open file handles, sockets) do not
+serialise and cannot cross.
+
+For `na`, an additional hard limit applies: the **native capability
+boundary**. `native_capability_violations` (the single authority behind
+`E5090`, run identically at `jac check` and `jac build --native`) rejects
+constructs the native backend cannot lower -- non-allowlisted imports
+(allowlist: `sys`, `os`, `random`, `struct`, `enum`,
+`collections.abc`; `math`, `cmath`, `time`, and the other bundled
+`na_stdlib` modules are supported through bundling rather than the allowlist),
+structural match patterns, generators (`yield`), `by llm()`, and a handful of edge-traversal forms. Anything `E5090` rejects
+can never reach, let alone cross, the native boundary. See
+[Native Compilation](../reference/language/native-pathway.md) for the full
+list.
+
+---
+
+## Desktop apps: stitching the boundaries together
+
+A Jac **desktop app** is the most integrated use of the matrix: it bundles
+the `cl` UI, a native (`na`) host binary, the OS's own webview, and an
+embedded CPython into a single shippable artefact. The desktop target is
+built into `jaclang` core (`jac/jaclang/client/targets/desktop/`).
+
+> **Status note.** Older release notes mention a "PyTauri shell +
+> PyInstaller sidecar" and a `jac desktop` CLI -- those are **stale**. The
+> shipping architecture is a native host binary + the OS webview, and there
+> is no dedicated `jac desktop` command. The `sv` walkers and functions run
+> **in-process** on the embedded CPython (shipped via #7045): the webview
+> binds `__jac_invoke` to `inprocess_dispatch`, so walker/function calls
+> never leave the binary. A stdlib loopback broker still serves the bundle
+> and brokers SSO/session/logout over `/__jac`. Only per-OS packaging and
+> code-signing remain open (issue #6436, phase 5).
+
+### Developer workflow
+
+Configuration is declarative in `jac.toml`:
+
+```toml
+[desktop]
+name = "my-app"
+[desktop.window]
+title  = "My App"
+width  = 1000
+height = 700
+```
+
+```bash
+jac build <app>         # -> .jac/client/desktop/<app> (binary + dist/ + libwebview.so)
+jac run <app>           # build if needed, then launch the native window
+jac run --dev <app>     # HMR: Vite on 127.0.0.1 + recompile on .jac saves
+(cd .jac/client/desktop && ./my-app)   # or run the binary directly
+```
+
+The client follows the app's kind: `target_for_kind` in
+`client/targets/registry.jac` maps `kind = "desktop"` to the core-registered
+`DesktopTarget`, and `[desktop] engine` (`"native"`, the default, or `"cef"`)
+picks the shell it builds. There is no separate CLI verb -- the core
+`build`/`run` commands delegate to the target.
+
+### How the targets combine
+
+| Layer | Codespace / tech | Role |
+|-------|------------------|------|
+| UI | `cl` (Vite/React bundle) | `DesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
+| Host binary | `na` (LLVM, linked by the bundled LLD) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
+| Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
+| Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
+| Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
+
+The generated host wires it all together (paraphrasing
+`_host_bootstrap.jac` and `webview_shell.jac`):
+
+<!-- jac-skip -->
+```jac
+import from webview { Webview, new_webview }
+import from "libpython3.x.so" { Py_Initialize, PyRun_SimpleString, ... }
+
+with entry {
+    Py_Initialize();
+    PyRun_SimpleString(BOOT_PY);      # host_boot.boot(): plugins + runtime + loopback broker
+    url = f"http://127.0.0.1:{port}/";
+    wv  = new_webview(False);
+    wv.title(...); wv.size(...); wv.on_load(BOOTSTRAP_JS);
+    wv.navigate(url);
+    ts = PyEval_SaveThread(); wv.run(); PyEval_RestoreThread(ts);   # GIL released while the window blocks
+    Py_Finalize();
+}
+```
+
+So a desktop app exercises, in one process, the chain:
+
+```text
+cl bundle  ──(served by)──▶  embedded CPython (loopback broker)
+   ▲                                   │
+   │ rendered in                       │ na host binary
+OS webview  ◀──(C FFI: libwebview)── na  ──(C FFI: libpython)── CPython
+   │
+   └──(HTTP: cl → sv RPC)──▶  sv backend (api_base)
+```
+
+The loopback port is deterministic -- `49152 + sha1(app_name) % 16000` -- so
+the webview's per-origin `localStorage` (login/session) survives restarts.
+
+### Boundary chain summary
+
+Reading the diagram as interop rows: a desktop app combines
+**`sv → cl`** (bundle delivery, served locally), **`na ↔ C`** (the host
+binding `libwebview` and `libpython`), **`na → C host`** inverted (the host
+*embeds* CPython rather than exporting to it), and **`cl → sv`** (the UI's
+RPC to the backend). It is the matrix in miniature.
+
+---
+
+## Where to look in the source
+
+| Concern | Files |
+|---------|-------|
+| Boundary discovery | `compiler/passes/impl/boundary_analysis_pass.impl.jac`; `BoundaryAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/frontend/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
+| Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/driver/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
+| `cl → sv` | `compiler/backends/es/esast_gen_pass.impl/{calls,osp}.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `client/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
+| `sv → cl` | `client/impl/{compiler,vite_bundler}.impl.jac`; `server/impl/server.impl.jac`; `backends/es/impl/jsx_processor.impl.jac` |
+| `sv ↔ na` | `runtime/interop_bridge.jac`; `backends/py/impl/jcir_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `backends/native/impl/na_compile_pass.impl.jac` |
+| `na ↔ C` | `compiler/backends/native/{foreign,abi}.jac`; `backends/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
+| `na → C host` | `backends/native/link_plan.jac` + `link_glue.jac`; `backends/native/native_link.jac` |
+| `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_artifact}.jac`; `client/impl/compiler.impl.jac` |
+| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `backends/py/impl/jcir_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
+| Marshalling | `data/impl/serializer.impl.jac`; `server/impl/{server,transport}.impl.jac` |
+| Capability boundary | `compiler/passes/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-reference/jac/jaclang/compiler/frontend/diagnostics.jac) (`E5090`) |
+| Desktop | `client/targets/desktop/desktop_target.jac` (+ impl); `client/targets/desktop/{webview_shell,cef_shell,_host_bootstrap}.jac`; `client/targets/desktop/native/webview/webview.jac`; `client/targets/registry.jac` |
+
+---
+
+## See also
+
+- [Compiler Architecture: Three Codespaces](compiler_architecture.md) -- the codespace model and pipeline.
+- [Jac Client Import Patterns](jac_import_patterns.md) -- the client-side import surface.
+- [Native Compilation](../reference/language/native-pathway.md) -- the `na` pathway and the capability roadmap.
+- [Python Integration](../reference/language/python-integration.md) -- the five Jac/Python adoption patterns.

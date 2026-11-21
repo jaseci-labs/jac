@@ -54,7 +54,7 @@ runs:
     - name: Fingerprint immutable build inputs
       id: inputs
       shell: bash
-      run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+      run: bash jac-reference/scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
 
     # typeshed stdlib stubs are vendored as plain files now (no submodule);
     # third-party stubs are installed per-project by `jac install` (PEP 561 types-*).
@@ -89,17 +89,17 @@ runs:
         # entry below stays prefix-matched, because seeding an incremental
         # BUILD from a near-miss tree is exactly what it is for.
         path: |
-          jac/zig-out/bin/jac
-          jac/jaclang/vendor/typeshed/stdlib
-          jac/.precompiled-build/cpython
+          jac-reference/jac/zig-out/bin/jac
+          jac-reference/jac/jaclang/vendor/typeshed/stdlib
+          jac-reference/jac/.precompiled-build/cpython
         key: jac-bin-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
       uses: actions/cache@v4
       with:
-        path: jac/jaclang/vendor/typeshed/stdlib
-        key: typeshed-stdlib-${{ hashFiles('jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256', 'jac/launcher/payload.zig') }}
+        path: jac-reference/jac/jaclang/vendor/typeshed/stdlib
+        key: typeshed-stdlib-${{ hashFiles('jac-reference/jac/jaclang/vendor/typeshed/PIN', 'jac-reference/jac/jaclang/vendor/typeshed/TARBALL_SHA256', 'jac-reference/jac/launcher/payload.zig') }}
 
     # The four caches below (Python, shim, LLVM, bun) are big (0.2-0.6 GB each).
     # They use restore/save split with SAVES GATED TO MAIN: PR
@@ -117,7 +117,7 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.pbs-build/*/python
+        path: jac-reference/jac/.pbs-build/*/python
         key: pbs-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.python }}
 
     # The LLVMPY_* shim is the single most expensive build artifact (statically
@@ -134,8 +134,8 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
+        path: jac-reference/jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/native/**', 'jac-reference/jac/build.zig', 'jac-reference/jac/build.zig.zon', 'jac-reference/jac/bootstrap/pins.json') }}
 
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
@@ -148,8 +148,8 @@ runs:
       if: (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true') && steps.shim-cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+        path: jac-reference/jac/.llvm-build
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/bootstrap/pins.json') }}
 
     # The contained bun runtime is fetched + sha256-verified and bundled into the
     # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
@@ -161,8 +161,8 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/js_runtime.jac') }}
+        path: jac-reference/jac/.bun-build
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/client/js_runtime.jac') }}
 
     # The JIR precompile is mkpayload's single most expensive stage (~24 min:
     # it compiles every bundled jaclang module). ONE tree per code version
@@ -189,7 +189,7 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.precompiled-build/cpython
+        path: jac-reference/jac/.precompiled-build/cpython
         key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
         restore-keys: |
           jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
@@ -209,7 +209,7 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
-        path: jac/.payload-layers/cpython
+        path: jac-reference/jac/.payload-layers/cpython
         key: payload-layers-cpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
         restore-keys: |
           payload-layers-cpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-
@@ -230,7 +230,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: .zig-cache/p
-        key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+        key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/build.zig.zon') }}
         restore-keys: |
           zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
@@ -243,20 +243,20 @@ runs:
         # for the payload step, so leave it off and rebuild from scratch on a miss.
         use-cache: false
 
-    # Download + extract the pinned LLVM into jac/.llvm-build (idempotent: a no-op
+    # Download + extract the pinned LLVM into jac-reference/jac/.llvm-build (idempotent: a no-op
     # when the cache above restored it). Must run before `zig build` so the shim's
     # static archives exist when build.zig configures the jacllvm step. Skipped
     # entirely when a cached shim was restored (a current shim needs no LLVM).
     - name: Fetch LLVM for the jacllvm shim
       if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
       shell: bash
-      working-directory: jac
+      working-directory: jac-reference/jac
       run: zig build fetch-llvm --summary all
 
     - name: Fetch typeshed stdlib stubs
       if: steps.typeshed-cache.outputs.cache-hit != 'true'
       shell: bash
-      working-directory: jac
+      working-directory: jac-reference/jac
       # Load-bearing on a binary-cache hit, where no full build ran to fetch
       # the stubs otherwise.
       run: zig build fetch-typeshed --summary all
@@ -272,12 +272,12 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ~/.cache/jac/jir/stubcat
-        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/compiler/types/**', 'jac-reference/jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/frontend/unitree.jac', 'jac-reference/jac/jaclang/compiler/frontend/helpers.jac', 'jac-reference/jac/jaclang/compiler/symbol_utils.jac', 'jac-reference/jac/jaclang/vendor/typeshed/PIN') }}
 
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      working-directory: jac
+      working-directory: jac-reference/jac
       # On a shim-cache hit the build reuses the restored shim in place. On a
       # miss it links the shim from source, the place step writes it in-tree,
       # and the shim cache saves it at job end.
@@ -325,9 +325,9 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: |
-          jac/zig-out/bin/jac
-          jac/jaclang/vendor/typeshed/stdlib
-          jac/.precompiled-build/cpython
+          jac-reference/jac/zig-out/bin/jac
+          jac-reference/jac/jaclang/vendor/typeshed/stdlib
+          jac-reference/jac/.precompiled-build/cpython
         key: jac-bin-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ inputs.dev == 'true' && steps.inputs.outputs.devbinary || steps.inputs.outputs.binary }}${{ inputs.bytecode-kit == 'true' && '-bytecode' || '' }}${{ inputs.dev == 'true' && '-dev' || '' }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
@@ -340,7 +340,7 @@ runs:
         steps.python-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.pbs-build/*/python
+        path: jac-reference/jac/.pbs-build/*/python
         key: pbs-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.python }}
 
     - name: Save the build's stub catalog (trusted refs only)
@@ -352,7 +352,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ~/.cache/jac/jir/stubcat
-        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/compiler/types/**', 'jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac/jaclang/compiler/frontend/unitree.jac', 'jac/jaclang/compiler/frontend/helpers.jac', 'jac/jaclang/compiler/symbol_utils.jac', 'jac/jaclang/vendor/typeshed/PIN') }}
+        key: build-stubcat-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/compiler/types/**', 'jac-reference/jac/jaclang/compiler/passes/pyast_load_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/passes/sym_tab_build_pass.jac', 'jac-reference/jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac', 'jac-reference/jac/jaclang/compiler/frontend/unitree.jac', 'jac-reference/jac/jaclang/compiler/frontend/helpers.jac', 'jac-reference/jac/jaclang/compiler/symbol_utils.jac', 'jac-reference/jac/jaclang/vendor/typeshed/PIN') }}
 
     - name: Save LLVMPY shim cache (trusted refs only)
       if: >-
@@ -361,8 +361,8 @@ runs:
         steps.shim-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
+        path: jac-reference/jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/native/**', 'jac-reference/jac/build.zig', 'jac-reference/jac/build.zig.zon', 'jac-reference/jac/bootstrap/pins.json') }}
 
     - name: Save LLVM cache (trusted refs only)
       if: >-
@@ -372,8 +372,8 @@ runs:
         steps.llvm-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+        path: jac-reference/jac/.llvm-build
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/bootstrap/pins.json') }}
 
     - name: Save bun cache (trusted refs only)
       if: >-
@@ -382,8 +382,8 @@ runs:
         steps.bun-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/js_runtime.jac') }}
+        path: jac-reference/jac/.bun-build
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/jaclang/client/js_runtime.jac') }}
 
     # cache-hit is only 'true' on an exact-key match, so a restore-keys prefix
     # hit still saves here -- that is what keeps the entry tracking HEAD (each
@@ -401,7 +401,7 @@ runs:
         steps.precompiled-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.precompiled-build/cpython
+        path: jac-reference/jac/.precompiled-build/cpython
         key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
     # Same prefix-hit re-save logic as the precompile cache above.
@@ -412,7 +412,7 @@ runs:
         steps.layers-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: jac/.payload-layers/cpython
+        path: jac-reference/jac/.payload-layers/cpython
         key: payload-layers-cpython-zstd${{ inputs.bytecode-kit == 'true' && '3' || '19' }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
 
     # Seed the Zig package store from trusted refs only (see the restore note).
@@ -428,7 +428,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: .zig-cache/p
-        key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+        key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac-reference/jac/build.zig.zon') }}
 
     # Binary cache hits skip `zig build`, which is what normally runs fetch-typeshed.
     # Older cache entries only stored the binary, so materialize stubs when missing.
@@ -436,7 +436,7 @@ runs:
       if: steps.cache.outputs.cache-hit == 'true'
       shell: bash
       run: |
-        if [ -f jac/jaclang/vendor/typeshed/stdlib/VERSIONS ]; then
+        if [ -f jac-reference/jac/jaclang/vendor/typeshed/stdlib/VERSIONS ]; then
           echo "needed=false" >> "$GITHUB_OUTPUT"
         else
           echo "needed=true" >> "$GITHUB_OUTPUT"
@@ -452,12 +452,12 @@ runs:
     - name: Materialize typeshed stdlib stubs
       if: steps.cache.outputs.cache-hit == 'true' && steps.typeshed_check.outputs.needed == 'true'
       shell: bash
-      working-directory: jac
+      working-directory: jac-reference/jac
       run: zig build fetch-typeshed
 
     - name: Put jac on PATH
       shell: bash
       run: |
         mkdir -p "$HOME/.jacbin"
-        ln -sf "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" "$HOME/.jacbin/jac"
+        ln -sf "$GITHUB_WORKSPACE/jac-reference/jac/zig-out/bin/jac" "$HOME/.jacbin/jac"
         echo "$HOME/.jacbin" >> "$GITHUB_PATH"

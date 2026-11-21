@@ -1,0 +1,13 @@
+# The standard `transport` plugin: requests between apps over HTTP,
+# and the server that answers them.
+[project]
+name = "http"
+kind = "plugin"
+
+[plugin]
+fills = "transport"
+interface_ver = 1
+class = "http.transport.HttpTransport"
+
+[check.lint]
+select = []

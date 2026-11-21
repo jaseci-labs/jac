@@ -1,0 +1,23 @@
+# The `transport` abstraction: what carries a request between two apps, and
+# answers the ones that come. Source says a call from outside, and a call to
+# another app.
+[project]
+name = "transport"
+kind = "abstraction"
+
+# `interface` is the class a plugin of it implements, and `interface_ver` that
+# interface's version: a number that goes up when the interface changes so
+# that a plugin written for it would not survive. A plugin says the one it was
+# written for. `per` is what has one plugin of it (a project, or each of its
+# spaces), `picked` when that plugin is chosen (as a program starts, or as a
+# space is built), and `standard` the plugin a project has until it names
+# another: it is in this directory.
+[abstraction]
+interface = "transport.contract.Transport"
+interface_ver = 1
+per = "project"
+picked = "start"
+standard = "http"
+
+[check.lint]
+select = []

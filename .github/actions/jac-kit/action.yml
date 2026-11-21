@@ -11,7 +11,7 @@ inputs:
   sealed:
     description: >
       "true" runs the kit's bundled compiler (seal-checkout); anything else
-      runs this checkout's source through the root jac.toml's [dev] reroute.
+      runs this checkout's source through jac-reference/jac.toml's [dev] reroute.
     required: false
     default: "false"
   name:
@@ -40,15 +40,15 @@ runs:
     - uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.dev == 'true' && 'jac-dev-kit' || inputs.name }}
-        path: jac
+        path: jac-reference/jac
 
     - shell: bash
       run: |
-        chmod +x "$GITHUB_WORKSPACE/jac/zig-out/bin/jac"
-        if [ -f "$GITHUB_WORKSPACE/jac/jaclang/client/_bun/bun" ]; then
-          chmod +x "$GITHUB_WORKSPACE/jac/jaclang/client/_bun/bun"
+        chmod +x "$GITHUB_WORKSPACE/jac-reference/jac/zig-out/bin/jac"
+        if [ -f "$GITHUB_WORKSPACE/jac-reference/jac/jaclang/client/_bun/bun" ]; then
+          chmod +x "$GITHUB_WORKSPACE/jac-reference/jac/jaclang/client/_bun/bun"
         fi
-        echo "$GITHUB_WORKSPACE/jac/zig-out/bin" >> "$GITHUB_PATH"
+        echo "$GITHUB_WORKSPACE/jac-reference/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Resolve lane mode
       id: mode
@@ -92,7 +92,7 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.precompiled-name }}
-        path: jac/jaclang/_precompiled
+        path: jac-reference/jac/jaclang/_precompiled
 
     # The dev bundle comes from ci.yml's three dev-precompile legs, each a
     # disjoint share of the same tree.
@@ -102,7 +102,7 @@ runs:
       with:
         pattern: jac-dev-precompiled-*
         merge-multiple: true
-        path: jac/jaclang/_precompiled
+        path: jac-reference/jac/jaclang/_precompiled
 
     # The dev kit's stub catalog, into the cache-home slot the compiler looks
     # it up in (stubcat/locate.jac dev_catalog_path, under the pinned
@@ -119,7 +119,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        BUNDLE="$GITHUB_WORKSPACE/jac/jaclang/_precompiled"
+        BUNDLE="$GITHUB_WORKSPACE/jac-reference/jac/jaclang/_precompiled"
         # MANIFEST.json marks a SEALED image, and a sealed bundle is trusted by
         # manifest instead of by per-module key. That trust is unreachable here
         # (sealed.image_for_bundle_dir only answers for an image the runtime
@@ -133,8 +133,12 @@ runs:
     # serially, and to fail the lane here rather than inside the first worker of
     # a parallel pool. `jac --version` is not enough: it touches a tenth of the
     # modules a real compile does, so it would not exercise the bundle.
+    # From inside jac-reference/: a jac started in the workspace root finds no
+    # jac.toml above it, so a reroute lane would warm (and check) the kit's
+    # bundled compiler instead of this checkout's.
     - name: Warm the runtime cache
       shell: bash
+      working-directory: jac-reference
       env:
         REROUTE: ${{ steps.mode.outputs.reroute }}
         REQUIRE: ${{ inputs.dev == 'true' && 'precompiled,llvm-shim,typeshed,stubcat,musl,wasm-libc,c-floor,bun' || 'kit' }}

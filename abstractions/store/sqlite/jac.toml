@@ -1,0 +1,17 @@
+# The standard `store` plugin: a space's graph, as rows in a SQLite
+# file beside the program.
+[project]
+name = "sqlite"
+kind = "plugin"
+
+[plugin]
+fills = "store"
+interface_ver = 1
+class = "sqlite.store.SqliteStore"
+
+# What opens its file at a layout, and upgrades an older one.
+[packages]
+sqlfile = { path = "../../../libraries/sqlfile" }
+
+[check.lint]
+select = []

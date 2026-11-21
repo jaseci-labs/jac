@@ -4,7 +4,11 @@ name: Release
 #   - action=create-pr (dispatch): bump versions and open the release PR.
 #   - merge of a release/* PR (or action=publish): tag, cut a DRAFT Release,
 #     attach every native binary (build-binaries.yml), then publish as latest --
-#     so "Latest" never appears mid-build with assets missing.
+#     so "Latest" never appears mid-build with assets missing. The reference
+#     design's releases (tags v<version>) are this repository's "latest": the
+#     `jac` compiler's releases, tagged jac-v<version>, are published here
+#     without that mark, so reference binaries already installed, which ask
+#     /releases/latest and list the v-tagged releases, see only their own.
 #   - action=create-github-release (dispatch): recovery -- cut a bare Release
 #     for an existing version; binaries attach via the release.published event.
 # jaclang ships as the native `jac` binary, not PyPI.
@@ -26,7 +30,7 @@ on:
         default: skip
         options: [skip, patch, minor, major]
       version:
-        description: "[create-github-release] version (reads jac.toml if empty)"
+        description: "[create-github-release] version (reads jac-reference/jac.toml if empty)"
         required: false
         type: string
 
@@ -51,31 +55,32 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # PR preparation only needs a released Jac runtime, not a source build.
+      # PR preparation only needs a released Jac runtime, not a source build:
+      # the reference design's, which the release scripts are written for.
       - name: Install released jac binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          bash scripts/install.sh
+          bash scripts/install.sh --reference
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Validate version bump
-        # From outside the checkout, so the published compiler runs: the root
-        # jac.toml would reroute it to this checkout's jaclang. The scripts find
-        # the repository from their own path.
+        # From outside the checkout, so the published compiler runs:
+        # jac-reference/jac.toml would reroute it to this checkout's jaclang.
+        # The scripts find the reference design's tree from their own path.
         working-directory: ${{ runner.temp }}
         run: |
-          jac run "$GITHUB_WORKSPACE/scripts/validate_release.jac" \
+          jac run "$GITHUB_WORKSPACE/jac-reference/scripts/validate_release.jac" \
             --jaclang "${{ inputs.jaclang }}"
 
       - name: Bump versions
         id: release
-        # From outside the checkout, so the published compiler runs: the root
-        # jac.toml would reroute it to this checkout's jaclang. The scripts find
-        # the repository from their own path.
+        # From outside the checkout, so the published compiler runs:
+        # jac-reference/jac.toml would reroute it to this checkout's jaclang.
+        # The scripts find the reference design's tree from their own path.
         working-directory: ${{ runner.temp }}
         run: |
-          jac run "$GITHUB_WORKSPACE/scripts/release.jac" \
+          jac run "$GITHUB_WORKSPACE/jac-reference/scripts/release.jac" \
             --jaclang "${{ inputs.jaclang }}"
 
       - name: Configure git
@@ -90,7 +95,7 @@ jobs:
           PR_TITLE: ${{ steps.release.outputs.pr_title }}
         run: |
           git checkout -b "$BRANCH_NAME"
-          git add -A
+          git add -A -- jac-reference
           git commit -m "$PR_TITLE"
           git push origin "$BRANCH_NAME"
 
@@ -110,8 +115,8 @@ jobs:
 
           # GITHUB_TOKEN-authored PRs never trigger CI (GitHub anti-recursion):
           # a maintainer must close & reopen the PR to attach checks. See
-          # CONTRIBUTING.md "Release Flow".
-          echo "::notice::Close & reopen this PR to run its checks, then enable auto-merge (see CONTRIBUTING.md)"
+          # jac-reference/CONTRIBUTING.md "Release Flow".
+          echo "::notice::Close & reopen this PR to run its checks, then enable auto-merge (see jac-reference/CONTRIBUTING.md)"
 
   resolve:
     if: |
@@ -168,14 +173,14 @@ jobs:
           ref: ${{ steps.commit.outputs.sha }}
           persist-credentials: false
 
-      # The root jac.toml is the source of truth for the jaclang version.
+      # jac-reference/jac.toml is the source of truth for the jaclang version.
       - name: Resolve version
         id: ver
         run: |
           set -euo pipefail
-          VERSION="$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          VERSION="$(grep -m1 '^version' jac-reference/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           if [ -z "$VERSION" ]; then
-            echo "::error::Could not read version from jac.toml"
+            echo "::error::Could not read version from jac-reference/jac.toml"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -232,17 +237,18 @@ jobs:
       # Never move an existing tag: a published release's assets and notes
       # describe the commit it was cut from. So a version whose tag already
       # names another commit is refused outright rather than quietly released
-      # from the old one (#8793). See scripts/release_tag_guard.sh.
+      # from the old one (#8793). See jac-reference/scripts/release_tag_guard.sh.
       - name: Create and push tag
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           COMMIT: ${{ needs.resolve.outputs.sha }}
-        run: bash scripts/release_tag_guard.sh "$VERSION" "$COMMIT"
+        run: bash jac-reference/scripts/release_tag_guard.sh "$VERSION" "$COMMIT"
 
-      # Draft: hidden from /releases/latest with no downloadable assets, so
-      # install.sh can't resolve it until `publish` reveals it complete. NOT
-      # --latest here. Recovery re-runs only refresh notes: never revert a
-      # published release to draft.
+      # Draft: hidden from /releases/latest and the public release list, with
+      # no downloadable assets, so neither install.sh nor an installed jac can
+      # resolve it until `publish` reveals it complete. NOT --latest here.
+      # Recovery re-runs only refresh notes: never revert a published release
+      # to draft.
       - name: Create or update draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -256,7 +262,7 @@ jobs:
           {
             echo "## jac ${VERSION} (native \`jac\` binary)"
             echo ""
-            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash\`"
+            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --reference\`"
           } > release_notes.md
 
           if gh release view "$VTAG" >/dev/null 2>&1; then
@@ -314,7 +320,7 @@ jobs:
       # The platform list is not restated here. It arrives from
       # build-binaries.yml's `plan` job, which derives it from the same array
       # the build matrix comes from, so what gets verified is exactly what the
-      # release was obliged to build. See scripts/release_publish_guard.sh.
+      # release was obliged to build. See jac-reference/scripts/release_publish_guard.sh.
       - name: Verify the required assets are attached, then publish as latest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -324,7 +330,7 @@ jobs:
         run: |
           set -euo pipefail
           read -r -a required <<<"$REQUIRED"
-          bash scripts/release_publish_guard.sh "$VERSION" "${required[@]}"
+          bash jac-reference/scripts/release_publish_guard.sh "$VERSION" "${required[@]}"
 
   # install.sh's real `curl | bash` path is verified out-of-band -- nightly.yml
   # `installer-live` and ci.yml `installer-test` -- not as a blocking release
@@ -382,7 +388,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             VERSION="${{ inputs.version }}"
           else
-            VERSION="$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+            VERSION="$(grep -m1 '^version' jac-reference/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
