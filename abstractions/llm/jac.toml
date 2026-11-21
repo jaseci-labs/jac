@@ -12,7 +12,7 @@ kind = "abstraction"
 # space is built), and `standard` the plugin a project has until it names
 # another: it is in this directory.
 [abstraction]
-interface = "stdjac.llm.Model"
+interface = "llm.contract.Model"
 interface_ver = 1
 per = "project"
 picked = "start"

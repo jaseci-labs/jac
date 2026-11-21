@@ -10,9 +10,9 @@ programs may open at once.
 
 import os;
 import sqlite3;
-import from stdjac.graph { Changed, Row, Store, StoreConflict, Writing }
-import from stdjac.plan { data_dir }
-import from stdjac.sqlfile { Upgrade, open_db }
+import from common.contract { Host }
+import from sqlfile { Upgrade, open_db }
+import from store.contract { Changed, Row, Store, StoreConflict, Writing }
 
 """The layout of the file, as its `user_version`: 3, each row with its
 version and the mark it was written at, how many rows there are of each
@@ -79,17 +79,21 @@ obj SqliteStore(Store) {
     has path: str = "";
 
     has db: any postinit;
+    # The app's data directory, as the program it was opened in says.
+    has data_dir: str postinit;
 
     def postinit {
         self.db = None;
+        self.data_dir = "";
     }
 
     def kept_as -> str {
-        return self.path if self.path != "" else os.path.join(data_dir(), "graph.db");
+        return self.path if self.path != "" else os.path.join(self.data_dir, "graph.db");
     }
 
-    def open {
-        self.db = open_db(self.kept_as(), STORE_FORMAT, STORE_TABLES, STORE_UPGRADES);
+    def open(host: dyn Host) {
+        self.data_dir = host.data_dir();
+        self.db = open_db(self.kept_as(), STORE_FORMAT, STORE_TABLES, STORE_UPGRADES, host);
         # (Its writers wait their turn at the file, and a reader reads beside
         # a writer.)
         self.db.execute("pragma busy_timeout = 30000");

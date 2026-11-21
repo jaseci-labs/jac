@@ -8,9 +8,21 @@ import json;
 import time;
 import urllib.request;
 import from urllib.error { HTTPError }
-import from stdjac.bound { Secret }
-import from stdjac.by { ByError, ByEvent, ByEventKind, ByUsage }
-import from stdjac.llm { Effort, Message, Model, ModelReply, ModelRequest, Part, PartKind, Stop }
+import from common.contract { Host, Secret }
+import from llm.contract {
+    ByError,
+    ByEvent,
+    ByEventKind,
+    ByUsage,
+    Effort,
+    Message,
+    Model,
+    ModelReply,
+    ModelRequest,
+    Part,
+    PartKind,
+    Stop,
+}
 
 glob FALLBACK_BETA: str = "server-side-fallback-2026-07-01";
 
@@ -148,9 +160,23 @@ obj Anthropic(Model) {
         # seconds.
         retries: int = 0;
 
+    # The API's key, as the program it was opened in gives it: "" where it
+    # gives none.
+    has given_key: str postinit;
+
+    def postinit {
+        self.given_key = "";
+    }
+
+    """It takes its key from the program, and reaches the API when it is
+    asked (`ask`)."""
+    def open(host: dyn Host) {
+        self.given_key = host.secret(self.key);
+    }
+
     """One request, made: the API's response to read."""
     def post(body: dict[str, any]) -> any {
-        if not self.key.given() {
+        if self.given_key == "" {
             raise ByError(self.key.variable + " isn't set");
         }
         data = json.dumps(body).encode("utf-8");
@@ -161,7 +187,7 @@ obj Anthropic(Model) {
                 data=data,
                 headers={
                     "content-type": "application/json",
-                    "x-api-key": self.key.get(),
+                    "x-api-key": self.given_key,
                     "anthropic-version": "2026-10-21",
                     "anthropic-beta": FALLBACK_BETA,
                 },

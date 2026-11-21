@@ -17,8 +17,16 @@ import threading;
 import time;
 import urllib.request;
 import from urllib.error { HTTPError }
-import from stdjac.remote { CannotListen, Claim, Request, Response, Tick, Transport }
-import from stdjac.server { json_fail }
+import from common.contract { Host }
+import from transport.contract {
+    CannotListen,
+    Claim,
+    Request,
+    Response,
+    Tick,
+    Transport,
+    json_fail,
+}
 
 # The most a request's head and body may be.
 glob MAX_HEAD: int = 1048576,
@@ -388,6 +396,10 @@ obj HttpTransport(Transport) {
         self.work = [];
         self.wake = [];
     }
+
+    """Nothing to open: it asks nothing of the program, and takes its address
+    when it is told to (`claim`)."""
+    def open(host: dyn Host) {}
 
     """`r`, sent to the app at `address` (`http://host:port`): its reply. A
     status that says the request failed is still a reply."""

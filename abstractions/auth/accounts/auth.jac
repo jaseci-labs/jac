@@ -29,19 +29,18 @@ import threading;
 import time;
 import urllib.request;
 import from urllib.parse { urlencode }
-import from stdjac.bound { Secret }
-import from stdjac.plan { data_dir, plan }
-import from stdjac.server {
+import from auth.contract {
     Auth,
+    AuthHost,
     Rejected,
     Session,
     SignIn,
     SignInAction,
     SignInField,
     bearer_token,
-    consume_limit,
 }
-import from stdjac.sqlfile { Upgrade, open_db }
+import from common.contract { Secret }
+import from sqlfile { Upgrade, open_db }
 
 glob USERNAME: str = "[a-z0-9][a-z0-9._-]{2,31}",
      ACCOUNTS_FORMAT: int = 1,
@@ -95,18 +94,37 @@ obj Accounts(Auth) {
     # What signs the `state` a caller sent to another service carries there
     # and back: this process's alone, so one who left comes back to it.
     has away_key: bytes postinit;
+    # The program it was opened in, and what that says of it: the app's
+    # data directory, and whether the app shows itself in a window.
+    has host: dyn AuthHost | None postinit;
+    has data_dir: str postinit;
+    has windowed: bool postinit;
+    # The GitHub OAuth app's client ID and secret, as the program gives
+    # them: "" for one it gives none of.
+    has github_client: str postinit;
+    has github_client_secret: str postinit;
 
     def postinit {
         self.db = None;
         self.turn = threading.RLock();
         self.away_key = secrets.token_bytes(32);
+        self.host = None;
+        self.data_dir = "";
+        self.windowed = False;
+        self.github_client = "";
+        self.github_client_secret = "";
     }
 
     def kept_as -> str {
-        return self.path if self.path != "" else os.path.join(data_dir(), "accounts.db");
+        return self.path if self.path != "" else os.path.join(self.data_dir, "accounts.db");
     }
 
-    def open {
+    def open(host: dyn AuthHost) {
+        self.host = host;
+        self.data_dir = host.data_dir();
+        self.windowed = host.windowed();
+        self.github_client = host.secret(self.github_id);
+        self.github_client_secret = host.secret(self.github_secret);
         self.db = open_db(
             self.kept_as(),
             ACCOUNTS_FORMAT,
@@ -118,18 +136,29 @@ obj Accounts(Auth) {
                 "create table sessions (token_hash text primary key, user_id text not null, expires real not null)",
             ],
             ACCOUNTS_UPGRADES,
+            host,
         );
+    }
+
+    """Counts a use of `scope` by `actor` with the program's limits: how many
+    seconds until it is within `limit` uses in `seconds`, 0 while it is."""
+    def tried(scope: str, actor: str, limit: int, seconds: int) -> int {
+        host = self.host;
+        if host is None {
+            raise RuntimeError("accounts was asked before it was opened");
+        }
+        return host.consume_limit(scope, actor, limit, seconds);
     }
 
     """Whether this app takes the people at its machine as its users: one in
     a window of its own, asked to."""
     def local -> bool {
-        return self.local_users and plan().window is not None;
+        return self.local_users and self.windowed;
     }
 
     """Where an app with local users keeps who is using it now."""
     def local_file -> str {
-        return os.path.join(data_dir(), "local-user");
+        return os.path.join(self.data_dir, "local-user");
     }
 
     """Who of the app's local users is using it now: "" for no one."""
@@ -210,7 +239,7 @@ obj Accounts(Auth) {
     """Whether a caller may sign in through GitHub: where the program runs
     gives the OAuth app's client ID and its secret."""
     def github_offered -> bool {
-        return self.github_id.given() and self.github_secret.given();
+        return self.github_client != "" and self.github_client_secret != "";
     }
 
     """Where GitHub sends a caller back to, when this app says where it is
@@ -238,7 +267,7 @@ obj Accounts(Auth) {
             hashlib.sha256(verifier.encode("ascii")).digest()
         ).decode("ascii").rstrip("=");
         query: dict[str, str] = {
-            "client_id": self.github_id.get(),
+            "client_id": self.github_client,
             "state": str(expires) + "." + self.away_mark(expires, verifier),
             "code_challenge": challenge,
             "code_challenge_method": "S256",
@@ -275,8 +304,8 @@ obj Accounts(Auth) {
             raise Rejected(detail="this sign-in took too long: try again");
         }
         exchange: dict[str, str] = {
-            "client_id": self.github_id.get(),
-            "client_secret": self.github_secret.get(),
+            "client_id": self.github_client,
+            "client_secret": self.github_client_secret,
             "code": given.get("code", ""),
             "code_verifier": verifier,
         };
@@ -319,7 +348,7 @@ obj Accounts(Auth) {
         if action == "local" and self.local() {
             who = given.get("name", "").strip();
             s = self.external("local", who, who);
-            os.makedirs(data_dir(), exist_ok=True);
+            os.makedirs(self.data_dir, exist_ok=True);
             with open(self.local_file(), "w") as f {
                 f.write(who + "\n");
             }
@@ -331,9 +360,9 @@ obj Accounts(Auth) {
             # (its address, which holds no space, ahead of the name): a
             # username's attempts from elsewhere are their own, so guessing
             # wrong locks no one else out.
-            retry = consume_limit("login", "client " + client, LOGIN_PER_CLIENT, LIMIT_SECONDS);
+            retry = self.tried("login", "client " + client, LOGIN_PER_CLIENT, LIMIT_SECONDS);
             if retry == 0 {
-                retry = consume_limit(
+                retry = self.tried(
                     "login",
                     "user " + client + " " + name.strip().lower(),
                     LOGIN_PER_USER,
@@ -341,10 +370,10 @@ obj Accounts(Auth) {
                 );
             }
         } elif action == "register" {
-            retry = consume_limit("register", client, REGISTER_PER_CLIENT, LIMIT_SECONDS);
+            retry = self.tried("register", client, REGISTER_PER_CLIENT, LIMIT_SECONDS);
         } elif action == "github" and self.github_offered() {
             # (Each costs two requests of GitHub.)
-            retry = consume_limit("github", client, LOGIN_PER_CLIENT, LIMIT_SECONDS);
+            retry = self.tried("github", client, LOGIN_PER_CLIENT, LIMIT_SECONDS);
         } else {
             raise Rejected(detail=f"no way of signing in is '{action}'");
         }

@@ -1,0 +1,8 @@
+# What every plugin may use, whatever abstraction it fills: `common.contract`.
+# It is no abstraction, and nothing fills it.
+[project]
+name = "common"
+kind = "contract"
+
+[check.lint]
+select = []

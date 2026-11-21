@@ -7,8 +7,7 @@ import json;
 import os;
 import subprocess;
 import sys;
-import from stdjac.plan { data_dir }
-import from stdjac.server { JobState, Jobs, job_command, job_owner, run_job, run_space_job }
+import from jobs.contract { JobState, Jobs, JobsHost }
 
 """A job a copy of the program runs: the copy, its files, and how much of
 what it wrote was read."""
@@ -55,14 +54,31 @@ obj ProcessJobs(Jobs) {
 
     has runs: dict[str, Run] postinit;
     has made: int postinit;
+    # The program it was opened in.
+    has host: dyn JobsHost | None postinit;
 
     def postinit {
         self.runs = {};
         self.made = 0;
+        self.host = None;
+    }
+
+    def open(host: dyn JobsHost) {
+        self.host = host;
+    }
+
+    """The program it was opened in."""
+    def program -> dyn JobsHost {
+        host = self.host;
+        if host is None {
+            raise RuntimeError("process_jobs was asked before it was opened");
+        }
+        return host;
     }
 
     def start(name: str, input: any) -> str {
-        d = self.dir if self.dir != "" else os.path.join(data_dir(), "jobs");
+        program = self.program();
+        d = self.dir if self.dir != "" else os.path.join(program.data_dir(), "jobs");
         os.makedirs(d, exist_ok=True);
         self.made += 1;
         id = f"{name}-{os.getpid()}-{self.made}";
@@ -73,7 +89,7 @@ obj ProcessJobs(Jobs) {
             f.write(json.dumps(input));
         }
         proc = subprocess.Popen(
-            job_command() + ["--job", job_owner() or "-", name, in_path, log_path]
+            program.command() + ["--job", program.owner() or "-", name, in_path, log_path]
         );
         self.runs[id] = Run(proc=proc, in_path=in_path, log_path=log_path);
         return id;
@@ -132,14 +148,15 @@ obj ProcessJobs(Jobs) {
         }
         owner = sys.argv[2];
         name = sys.argv[3];
+        program = self.program();
         run_to_log(
             sys.argv[4],
             sys.argv[5],
             lambda (input: any, note: Callable[[str, str], None]) -> any {
                 if owner == "-" {
-                    return run_job(name, input, note);
+                    return program.run(name, input, note);
                 }
-                return run_space_job(owner, name, input, note);
+                return program.run_space(owner, name, input, note);
             },
         );
         return True;

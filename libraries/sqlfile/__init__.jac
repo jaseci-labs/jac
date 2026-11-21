@@ -5,24 +5,15 @@ store and the `accounts` auth each keep one."""
 import os;
 import shutil;
 import sqlite3;
+import from common.contract { DataError, Host }
 
 """One step of bringing a file up to the layout its reader
 reads: `apply`, given the open database, makes a file of layout `since` one
 of layout `since` + 1. A layout that changes ships the step from the one
 before it, so that no one's data stops at a release."""
-obj:pub Upgrade {
+obj Upgrade {
     has since: int,
         apply: Callable[[any], None];
-}
-
-"""What open_db upgraded as this program started, for what starts it to say:
-each a sentence without its subject ("upgraded accounts.db from layout 1 to
-2; the file as it was is kept as accounts.db.layout1")."""
-glob _upgraded: list[str] = [];
-
-"""The upgrades open_db made since the program started."""
-def:pub upgrades_made -> list[str] {
-    return _upgraded;
 }
 
 """Open the SQLite file at `path`, made with `tables` if it is new: one of
@@ -32,12 +23,21 @@ A file of an older layout is upgraded, when `upgrades` has the step from each
 layout between its own and `format`: the file is first copied beside itself
 (`<path>.layout<n>`, the file as it was), then every step runs in one
 transaction, so a step that fails leaves the file as it was. What was done is
-kept for upgrades_made.
+told to `host`, the program the plugin was opened in, when it is given: a
+sentence without its subject ("upgraded accounts.db from layout 1 to 2; the
+file as it was is kept as accounts.db.layout1"), which the program says as
+it starts.
 
-DataError for a file that can't be brought to `format`: one of a newer
-layout, one of an older layout no steps lead from, and one whose upgrade
-failed."""
-def:pub open_db(path: str, format: int, tables: list[str], upgrades: list[Upgrade] = []) -> any {
+DataError (`common.contract`) for a file that can't be brought to `format`:
+one of a newer layout, one of an older layout no steps lead from, and one
+whose upgrade failed."""
+def open_db(
+    path: str,
+    format: int,
+    tables: list[str],
+    upgrades: list[Upgrade] = [],
+    host: dyn Host | None = None,
+) -> any {
     d = os.path.dirname(path);
     if d != "" {
         os.makedirs(d, exist_ok=True);
@@ -103,8 +103,10 @@ def:pub open_db(path: str, format: int, tables: list[str], upgrades: list[Upgrad
             problem=f"could not be upgraded {reads}, and is as it was: {type(e).__name__}: {e}",
         );
     }
-    _upgraded.append(
-        f"upgraded {os.path.basename(path)} from layout {version} to {format}; the file as it was is kept as {os.path.basename(kept)}",
-    );
+    if host is not None {
+        host.upgraded(
+            f"upgraded {os.path.basename(path)} from layout {version} to {format}; the file as it was is kept as {os.path.basename(kept)}",
+        );
+    }
     return db;
 }

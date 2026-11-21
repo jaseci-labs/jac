@@ -4,7 +4,8 @@ count apart."""
 
 import threading;
 import time;
-import from stdjac.server { Limits }
+import from common.contract { Host }
+import from limits.contract { Limits }
 
 """The uses of one scope by one actor within its window."""
 obj Uses {
@@ -26,6 +27,10 @@ obj MemoryLimits(Limits) {
         self.turn = threading.Lock();
         self.next_sweep = self.sweep_at;
     }
+
+    """Nothing to open: it keeps its counts in memory, and asks nothing of
+    the program."""
+    def open(host: dyn Host) {}
 
     """How many actors' uses are kept now."""
     def held -> int {

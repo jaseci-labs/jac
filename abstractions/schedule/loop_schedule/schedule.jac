@@ -7,11 +7,16 @@ holds up no other's clock."""
 
 import threading;
 import time;
-import from stdjac.server { Scheduled, Scheduler }
+import from common.contract { Host }
+import from schedule.contract { Scheduled, Scheduler }
 
 obj LoopSchedule(Scheduler) {
     """How often the clock looks for a function that is due, in seconds."""
     has tick: float = 0.25;
+
+    """Nothing to open: it asks nothing of the program until it is given
+    what to run (`start`)."""
+    def open(host: dyn Host) {}
 
     def start(work: list[Scheduled], on_loop: Callable[[Callable[[], None]], None]) {
         tick = self.tick;

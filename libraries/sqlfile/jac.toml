@@ -1,0 +1,9 @@
+# sqlfile: a SQLite file a plugin keeps beside the program, at a layout. A
+# library: the plugins that keep one declare it in their own [packages], as
+# jac's `sqlite` and `accounts` do.
+[project]
+name = "sqlfile"
+kind = "library"
+
+[check.lint]
+select = []
