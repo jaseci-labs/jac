@@ -138,6 +138,8 @@ impl NaIRGenPass._maybe_declare_ability(
         }
     }
 
+    _c_entry = False;
+    _c_name = "";
     if _dec_names {
         func = ir.Function(self.llvm_module, fnty, name=f"__jac_dec_raw_{name}");
         func.linkage = "private";
@@ -150,12 +152,17 @@ impl NaIRGenPass._maybe_declare_ability(
     } else {
         _def_m = nd.find_parent_of_type(uni.Module);
         _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+        _c_name = symbol
+            if symbol is not None
+            else self._symbol_for(name, _def_m, _is_pub);
+        _c_entry = symbol is None
+            and va_param is None
+            and nd.method_owner is None
+            and name not in self.generator_fns
+            and self._exports_bare(_def_m, _is_pub)
+            and self._carries_jac_str(fnty);
         func = ir.Function(
-            self.llvm_module,
-            fnty,
-            name=symbol
-                if symbol is not None
-                else self._symbol_for(name, _def_m, _is_pub)
+            self.llvm_module, fnty, name=f"{_c_name}.jac" if _c_entry else _c_name
         );
         func.calling_convention = self._calling_convention_of(nd.decorators);
     }
@@ -179,9 +186,14 @@ impl NaIRGenPass._maybe_declare_ability(
         }
     }
     if _fdm is None or _fdm is self.module {
+        _export_symbol = func.name;
+        if _c_entry {
+            self._emit_c_string_entry(func, _c_name);
+            _export_symbol = _c_name;
+        }
         self._record_export(
             name,
-            func.name,
+            _export_symbol,
             "function",
             bool(nd.access and nd.access.tag.name == Tok.KW_PUB)
         );
@@ -268,6 +280,63 @@ impl NaIRGenPass._imported_string_adapter(
         builder.ret(result);
     }
     return wrapper;
+}
+
+impl NaIRGenPass._carries_jac_str(fnty: ir.FunctionType) -> bool {
+    return any(
+        isinstance(t, ir.IdentifiedStructType) and t.name.split(".")[0] == "JacStr"
+        for t in [fnty.return_type, *fnty.args]
+    );
+}
+
+impl NaIRGenPass._emit_c_string_entry(body: ir.Function, c_name: str) -> None {
+    if c_name in self.llvm_module.globals {
+        return;
+    }
+    if self.str_import_fn is None {
+        self._emit_str_desc_helpers();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    desc = self._str_desc_type();
+    ret_type = body.function_type.return_type;
+    c_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(
+            i8p if ret_type == desc else ret_type,
+            [i8p if t == desc else t for t in body.function_type.args]
+        ),
+        name=c_name
+    );
+    state = self._enter_function(c_fn);
+    try {
+        b = self.builder;
+        args: list[ir.Value] = [];
+        copies: list[ir.Value] = [];
+        for (arg, want) in zip(c_fn.args, body.function_type.args) {
+            if want != desc {
+                args.append(arg);
+            } elif self._nogc_headerless() {
+                args.append(b.call(self.str_wrap_raw_fn, [arg], name="c.str.view"));
+            } else {
+                copy = b.call(self.str_import_fn, [arg], name="c.str.copy");
+                copies.append(copy);
+                args.append(b.call(self.str_wrap_fn, [copy], name="c.str.desc"));
+            }
+        }
+        result = b.call(body, args, name="c.call");
+        for copy in copies {
+            self._emit_rc_release_simple(copy, op="c_str_arg");
+        }
+        if isinstance(ret_type, ir.VoidType) {
+            b.ret_void();
+        } elif ret_type == desc {
+            b.ret(self._str_materialize(self._mark_owned(result)));
+        } else {
+            b.ret(result);
+        }
+    } finally {
+        self._leave_function(state);
+    }
 }
 
 impl NaIRGenPass._normalize_type_key(key: str) -> str {

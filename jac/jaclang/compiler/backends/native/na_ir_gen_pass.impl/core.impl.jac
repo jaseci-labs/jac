@@ -467,13 +467,18 @@ impl NaIRGenPass._symbol_for(
 ) -> str {
     module = owner if owner is not None else self.module;
     name = native_unit_spelling(name, module.loc.mod_path);
-    bundled_library = native_unit_identity(module.loc.mod_path).startswith(
-        "jaclang/runtime/na_stdlib/"
-    );
-    if is_pub and not bundled_library {
+    if self._exports_bare(module, is_pub) {
         return native_def_symbol(name);
     }
     return native_symbol_name(self._prefix_of_module(owner), name);
+}
+
+impl NaIRGenPass._exports_bare(owner: (uni.Module | None), is_pub: bool) -> bool {
+    module = owner if owner is not None else self.module;
+    return is_pub
+        and not native_unit_identity(module.loc.mod_path).startswith(
+            "jaclang/runtime/na_stdlib/"
+        );
 }
 
 impl NaIRGenPass._record_export(

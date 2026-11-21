@@ -265,6 +265,14 @@ test "ELF shared object loads and runs through the C ABI" {
             assert lib.point_sum(p) == 7 , "opaque object handle round-trip failed";
             lib.jac_release.argtypes = [ctypes.c_void_p];
             lib.jac_release(p);  # public RC wrapper over __rc_release_simple
+            lib.name_length.restype = ctypes.c_int64;
+            lib.name_length.argtypes = [ctypes.c_char_p];
+            assert lib.name_length(b"hello") == 5 , "a str parameter is a C string";
+            lib.greet.restype = ctypes.c_void_p;
+            lib.greet.argtypes = [ctypes.c_char_p];
+            greeting = lib.greet(b"jac");
+            assert ctypes.string_at(greeting) == b"hi jac" , "a str return is a C string";
+            lib.jac_release(greeting);
         }
     }
 }
