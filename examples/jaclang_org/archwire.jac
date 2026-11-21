@@ -503,6 +503,13 @@ graph import {
         world_new,
     }
     type core.site.game.sim ++> core.site.game.webgl_host { Game }
+    core.site.game.webgl ++> core.site.game.webgl_host {
+        WebGLHost,
+        _init_gl,
+        _install_input,
+        _m_ident,
+        _remove_input,
+    }
     core.site.game.webgl_host ++> core.site.landing.WasmGame { run_game }
     core.site.home.AgentNative ++> core.site.home.Home { AgentNative }
     core.site.home.Home ++> pages.index { Home }

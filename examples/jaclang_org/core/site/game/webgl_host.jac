@@ -1,5 +1,4 @@
 import from "@jac/wasm_host" { bind_na_host }
-import from stdjac.browser.webgl { WebGLHost, _m_ident, _init_gl, _install_input, _remove_input }
 
 obj Shim(WebGLHost) {
     has game: Game | None = None,

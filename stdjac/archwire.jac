@@ -15,7 +15,7 @@ graph layers {
     layer sqlfile { sqlfile; }
     layer window { window; }
     """What no wire joins to the rest."""
-    layer apart { browser.* | jsx | py.*; }
+    layer apart { jsx; }
 }
 
 graph import {
@@ -108,5 +108,4 @@ graph import {
         node_space { Scheduled, SpaceHost, register_space_host },
     ]
     window ++> desktop { run_window }
-    py._jac --> py.__main__;
 }

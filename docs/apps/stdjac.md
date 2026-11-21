@@ -1,6 +1,6 @@
 ---
 description: stdjac, the library of the language's abstractions that jac compiles into every app - which of its modules a program imports and what each exports, the interfaces its plugins conform to, and which modules the build adds by itself.
-keywords: stdjac, stdjac.remote, stdjac.graph, stdjac.codec, stdjac.plan, stdjac.app, stdjac.window, stdjac.desktop, stdjac.crossing, stdjac.cpython_space, stdjac.node_space, stdjac.jsx, stdjac.archwire, stdjac.browser.webgl, RemoteError, RemoteUnavailable, RemoteTimeout, RemoteRejected, RemoteDecodeError, RemoteFailed, Transport, Claim, CannotListen, CodecError, jobj, grant, AccessLevel, DataError
+keywords: stdjac, stdjac.remote, stdjac.graph, stdjac.codec, stdjac.plan, stdjac.app, stdjac.window, stdjac.desktop, stdjac.crossing, stdjac.cpython_space, stdjac.node_space, stdjac.jsx, stdjac.archwire, RemoteError, RemoteUnavailable, RemoteTimeout, RemoteRejected, RemoteDecodeError, RemoteFailed, Transport, Claim, CannotListen, CodecError, jobj, grant, AccessLevel, DataError
 ---
 # stdjac
 
@@ -32,7 +32,6 @@ A program imports a stdjac module as it imports any module, with no wire in the 
 | `stdjac.llm` | `by llm()`: a language model (an LLM) that answers a `by` function, runs its tools and streams its answer; it conforms to all three. And `Model`, the interface of the `llm` plugin | [By and sem](../language/by-and-sem.md) |
 | `stdjac.bound` | `Secret`, a plugin's setting that is never written down | [Plugins](plugins.md#secrets) |
 | `stdjac.sqlfile` | `open_db`, a SQLite file at a layout, for a plugin that keeps one | [Plugins](plugins.md#writing-a-plugin) |
-| `stdjac.browser.webgl` | `WebGLHost`, which draws a wasm space's OpenGL calls on a page's canvas | Below |
 
 A browser, hermes or node space compiles a stdjac module it imports with its own modules, all of
 it, so it may import only one its host can run. `stdjac.codec` is one. `stdjac.remote`,
@@ -268,11 +267,3 @@ with entry {
 JAC_MY_SITE_LISTEN
 '' []
 ```
-
-## stdjac.browser.webgl
-
-For a browser space whose page shows a wasm space's drawing: `WebGLHost(canvas=...)` holds a
-page's `<canvas>` and its WebGL context, `_init_gl(host)` sets the context up, and
-`_install_input(host)` and `_remove_input(host)` connect and disconnect the keyboard. The page hands
-the host to the wasm module with `bind_na_host` from `"@jac/wasm_host"`. jaclang.org's game, in
-`examples/jaclang_org/core/site/game/`, shows the whole arrangement.
