@@ -1,0 +1,1 @@
+- **Fix: CEF desktop apps ship their font config again**: `jac build` for a `[desktop] engine = "cef"` app left `minimal-fonts.conf` out of the built app folder, so the app started without its bundled font setup. The file is now copied next to the app binary.
