@@ -5583,6 +5583,7 @@ graph import compiler {
             NativeTestLayout,
             NativeTupleLayout
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._exports_bare { native_unit_identity },
         backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value {
             native_variant_of
         },
@@ -5639,7 +5640,6 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._symbol_for {
             native_def_symbol,
             native_symbol_name,
-            native_unit_identity,
             native_unit_spelling
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._sys_stream_of {

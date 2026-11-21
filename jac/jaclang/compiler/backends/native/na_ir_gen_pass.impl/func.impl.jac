@@ -324,8 +324,8 @@ impl NaIRGenPass._emit_c_string_entry(body: ir.Function, c_name: str) -> None {
             }
         }
         result = b.call(body, args, name="c.call");
-        for copy in copies {
-            self._emit_rc_release_simple(copy, op="c_str_arg");
+        for owned in copies {
+            self._emit_rc_release_simple(owned, op="c_str_arg");
         }
         if isinstance(ret_type, ir.VoidType) {
             b.ret_void();

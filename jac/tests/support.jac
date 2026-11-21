@@ -130,7 +130,19 @@ def native_str_func(eng: any, name: str, restype: type | None, *argtypes: type) 
     # slots, so str args pass as (root, data, len) built via
     # jac_str_new, and str returns read back as a two-pointer pair with
     # the payload NUL-bounded at data
-    addr = native_address(eng, name);
+    symbol = native_symbol(eng, name);
+    addr = 0;
+    # a :pub function's bare symbol is its C entry; <symbol>.jac is its Jac body
+    for candidate in (f"{symbol}.jac", symbol) {
+        try {
+            addr = eng.get_function_address(candidate);
+        } except Exception {
+            addr = 0;
+        }
+        if addr {
+            break;
+        }
+    }
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list[bool] = [];
