@@ -1545,7 +1545,7 @@ graph import {
             | toolchains.cef
             | toolchains.desktop
             | toolchains.store { FileLock },
-        compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
+        compiler.backends.es.client_kernel_cache._primary_dir { get_jir_cache_dir },
         compiler.driver.jir { FileLock, atomic_write, stat_note },
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
         compiler.driver.jir.read_jir { file_identity },
@@ -5148,7 +5148,7 @@ graph import compiler {
     }
     type driver.ifacecache ++> frontend.host { IfaceRegistry }
     driver.jir ++> [
-        backends.es.client_kernel_cache._artifact_path
+        backends.es.client_kernel_cache._artifact_name
             | backends.native.link_plan.LinkPlan.plan_digest {
             running_compiler_digest
         },
