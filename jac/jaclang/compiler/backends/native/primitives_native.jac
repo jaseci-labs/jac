@@ -226,6 +226,10 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, cfunc_name: str
     ) -> (ir.Value | None);
 
+    def _emit_case_transform_helper(
+        self: NativeStrEmitter, ctx: NativeEmitCtx, cfunc_name: str
+    ) -> ir.Function;
+
     def emit_title(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
