@@ -367,7 +367,20 @@ jobs:
           zig build fetch-llvm --summary all
           zig build jacllvm --summary all
 
+      - name: Restore the materialized runtimes
+        id: dev-vendor-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            jac/jaclang/vendor/typeshed/stdlib
+            jac/jaclang/client/_bun
+            jac/.pbs-build/linux-x86_64/musl/lib
+            jac/.pbs-build/linux-aarch64/musl/lib
+            jac/.pbs-build/wasm32/libc
+          key: dev-vendor-v1-zig0.16.0-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.vendor }}
+
       - name: Materialize typeshed, bun + vendored runtimes
+        if: steps.dev-vendor-cache.outputs.cache-hit != 'true'
         working-directory: jac
         run: |
           zig build fetch-typeshed --summary all
@@ -375,6 +388,18 @@ jobs:
           zig build vendor-musl --summary all
           zig build vendor-musl-linux-aarch64 --summary all
           zig build vendor-wasm-libc --summary all
+
+      - name: Save the materialized runtimes
+        if: steps.dev-vendor-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            jac/jaclang/vendor/typeshed/stdlib
+            jac/jaclang/client/_bun
+            jac/.pbs-build/linux-x86_64/musl/lib
+            jac/.pbs-build/linux-aarch64/musl/lib
+            jac/.pbs-build/wasm32/libc
+          key: dev-vendor-v1-zig0.16.0-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.vendor }}
 
       - name: Restore the dev stub catalog
         id: dev-stubcat-cache
@@ -719,7 +744,7 @@ jobs:
         run: jac check . --nowarn
 
       - name: Save JIR analysis cache
-        if: success()
+        if: success() && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
