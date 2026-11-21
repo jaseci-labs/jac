@@ -196,7 +196,8 @@ impl _native_build_cef(
             f"-Wl,-rpath-link,{runtime}",
             "-Wl,-rpath,$ORIGIN"
         ];
-        cmd += ["-lcef", "-ldl"] if shared else [f"-L{cef_dir}", "-lcef_dispatch"];
+        cmd += ["-Wl,--no-as-needed", "-lcef"];
+        cmd += ["-ldl"] if shared else [f"-L{cef_dir}", "-lcef_dispatch"];
         res = subprocess.run(cmd);
         if res.returncode != 0 or not output.exists() {
             raise RuntimeError(f"cc failed for {output.name} (source {source_name}).");
