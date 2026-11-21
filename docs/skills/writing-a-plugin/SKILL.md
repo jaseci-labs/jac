@@ -22,27 +22,30 @@ Load `writing-jac` first. Using the plugins jac ships, in an app: `building-an-a
 ## Before you start
 
 ```sh
-jac docs plugins            # the abstractions, binding, settings, secrets, what is refused
-jac docs stdjac.server      # the interfaces Auth, Jobs, Scheduler, Limits
+jac docs plugins            # the abstractions, their contracts, binding, settings, what is refused
+jac docs stdjac.server      # the interfaces Auth, Jobs, Scheduler, Limits, and their hosts
 jac docs apps/ui-bindings   # ui and bundler plugins: their tables, a bundler's job
 jac docs principles         # why a plugin is never imported
 ```
 
-Find the abstraction's row first: its interface is what the plugin's class conforms to.
+Find the abstraction's row first: its interface is what the plugin's class conforms to, and its
+contract the one module of jac's the plugin imports it from.
 
-| Abstraction | Interface | Picked | A worked example in jac's repository |
+| Abstraction | Interface | Picked | The plugin jac ships |
 |---|---|---|---|
-| `store` | `stdjac.graph.Store` | As the program starts | `tests/plugins/jsonstore` |
-| `auth` | `stdjac.server.Auth` | As the program starts | `tests/plugins/ticket_auth` |
-| `transport` | `stdjac.remote.Transport` | As the program starts | `tests/plugins/line_transport` |
-| `llm` | `stdjac.llm.Model` | As the program starts | `tests/plugins/chat_model` |
-| `jobs` | `stdjac.server.Jobs` | As the program starts | `tests/plugins/queue_jobs` |
-| `schedule` | `stdjac.server.Scheduler` | As the program starts | `tests/plugins/timer_schedule` |
-| `limits` | `stdjac.server.Limits` | As the program starts | `tests/plugins/file_limits` |
-| `ui` | A `[ui]` table | As a space is built | `plugins/solid` |
-| `bundler` | A `[bundler]` table | As a space is built | `plugins/vite` |
+| `store` | `store.contract.Store` | As the program starts | `abstractions/store/sqlite` |
+| `auth` | `auth.contract.Auth` | As the program starts | `abstractions/auth/accounts` |
+| `transport` | `transport.contract.Transport` | As the program starts | `abstractions/transport/http` |
+| `llm` | `llm.contract.Model` | As the program starts | `abstractions/llm/anthropic` |
+| `jobs` | `jobs.contract.Jobs` | As the program starts | `abstractions/jobs/process_jobs` |
+| `schedule` | `schedule.contract.Scheduler` | As the program starts | `abstractions/schedule/loop_schedule` |
+| `limits` | `limits.contract.Limits` | As the program starts | `abstractions/limits/memory_limits` |
+| `ui` | A `[ui]` table | As a space is built | `abstractions/ui/solid` |
+| `bundler` | A `[bundler]` table | As a space is built | `abstractions/bundler/vite` |
 
-The plugins jac ships are in `plugins/`, each the standard one of its abstraction.
+Each abstraction is a directory of jac's `abstractions/`, beside `rt/` in a release: its
+`jac.toml` declares it, its `contract.jac` is the contract, and the plugins jac ships for it are
+the directories beside those, each a worked example.
 
 ## Steps
 
@@ -70,7 +73,8 @@ class = "window_limits.limits.WindowLimits"
 <!-- example: not checked: a plugin is a package of its own, with a jac.toml that names this class -->
 ```jac
 import time;
-import from stdjac.server { Limits }
+import from common.contract { Host }
+import from limits.contract { Limits }
 
 obj WindowLimits(Limits) {
     """How many seconds a refused caller is told to wait, at most."""
@@ -82,6 +86,9 @@ obj WindowLimits(Limits) {
         self.began = {};
         self.used = {};
     }
+
+    """Nothing to open: it keeps its counts in memory."""
+    def open(host: dyn Host) {}
 
     def consume(scope: str, actor: str, limit: int, seconds: int) -> int {
         key = scope + "|" + actor;
@@ -105,16 +112,22 @@ obj WindowLimits(Limits) {
      value is E1050.
    - **State of its own is a `postinit` field,** which no constructor takes and no project sets.
    - **Do nothing in `postinit` but make empty state.** The plugin is made with `jac.toml`'s
-     settings, then given the environment's, and only then used. Reach a file, a service or an
-     address where the interface says to (`Store.open`, `Auth.open`, `Transport.claim`), or the
-     first time a method needs it.
+     settings, then given the environment's, and only then opened: `open(host)` is the first
+     thing asked of it. Reach a file or a service there, an address where the interface says to
+     (`Transport.claim`), or the first time a method needs it.
+   - **Ask the host for what is the program's.** `open` is given the program as a `Host`
+     (`common.contract`): `host.data_dir()` is where a program keeps its files. `Auth.open` and
+     `Jobs.open` are given a host of their own, which has more (`AuthHost`, `JobsHost`). Keep
+     what you asked, or the host itself, in a `postinit` field.
    - **A key or a password is a `Secret`**, never a `str`:
      `has key: Secret = Secret(variable="CHAT_API_KEY");` with
-     `import from stdjac.bound { Secret }`. It is read with `self.key.get()` when it is needed,
-     is not in the program, and cannot be written in `jac.toml` (E1053).
-   - **Import stdjac and libraries, never a plugin** (E2218). A Jac library that is not jac's
-     own goes in the plugin's own `[packages]`. `stdjac.plan`'s `data_dir()` is where a program
-     keeps its files, and `stdjac.sqlfile`'s `open_db` opens a SQLite file at a layout.
+     `import from common.contract { Secret }`. It names a variable, and the host gives what the
+     variable holds: `host.secret(self.key)`, `""` where it is not set. It is not in the program,
+     and cannot be written in `jac.toml` (E1053).
+   - **Import the abstraction's contract, `common.contract`, your libraries and the standard
+     library**: nothing of stdjac, no other abstraction's contract (E2232), and never a plugin
+     (E2218). A Jac library goes in the plugin's own `[packages]`: jac's `sqlfile`, whose
+     `open_db` opens a SQLite file at a layout, is one, in `libraries/sqlfile` of its tree.
    - **It is compiled for every host its abstraction runs on**, a `cpython` space among them.
      There a class imported from a Python module is no type: do not annotate with one.
 
@@ -195,8 +208,8 @@ minify = true
    - A `bundler`'s `build` script is run as `jac node <script> <job>`, the job a JSON file
      with where the space's compiled modules are, where to write, and the `settings` given.
    - A `ui` plugin's `[ui]` table names the library's functions for state, derived values and
-     effects, its hosts and the npm packages it owns. Copy `plugins/solid/jac.toml` or
-     `plugins/preact/jac.toml` and change the names.
+     effects, its hosts and the npm packages it owns. Copy `abstractions/ui/solid/jac.toml` or
+     `abstractions/ui/preact/jac.toml` and change the names.
    - A space is built with one plugin of each: there is no `JAC_UI`, and its settings are
      `jac.toml`'s alone. Test it by building one space under each plugin
      (`jac emit-js <space> -o js`, then `jac build <app>`).
@@ -226,7 +239,8 @@ minify = true
 | E1053 at a line of `jac.toml` | A value of another type than the field's, or a `Secret` written down | Fix the value; give a secret by its variable where the program runs |
 | E1050 at the plugin's table | A field with no default is given no value | Give it in `jac.toml`, or give the field a default |
 | E2218 in a module | A module imports the plugin | Delete the import: use the abstraction (`root`, `by llm()`, `consume_limit`) |
-| E2217 | The plugin's `jac.toml` has `[abstractions]` | Remove it: a plugin fills an abstraction and adds none |
+| E2217 | The plugin's `jac.toml` declares an abstraction (`kind = "abstraction"`, or an `[abstraction]` table) | Remove it: a plugin fills an abstraction and adds none |
+| E2232 in the plugin, or in a library it declares | An import of a stdjac module, or of another abstraction's contract | Take it from the plugin's own contract or `common.contract`, or ask the host `open` was given |
 | E5158 in a space's `ui` or `bundler` table | A second plugin's table there, or a setting the plugin's `settings` does not list | One plugin for a space; list the setting in the plugin's `jac.toml` |
 | E2018 `unknown type` in the plugin, only in an app with a `cpython` space | A class of a Python module used as a type there | Leave such a value unannotated |
 | The program ends with status 1 naming a variable | `JAC_<ABSTRACTION>` names an unlisted plugin, or `JAC_<ABSTRACTION>_<FIELD>` holds a value that is not of the field's type | List the plugin; a `str` is taken as written, any other type as JSON |
@@ -236,8 +250,8 @@ minify = true
 - `jac docs plugins`: binding, picking where a program runs, settings, secrets, the standard
   plugins, what is refused.
 - `jac docs apps/ui-bindings`: a `[ui]` table's keys, a bundler's job and its `serve` script.
-- `jac docs stdjac.server`, `jac docs stdjac`: the interfaces, and `stdjac.bound`,
-  `stdjac.plan`, `stdjac.sqlfile`.
+- `jac docs stdjac.server`, `jac docs stdjac`: the interfaces and their hosts, and every
+  contract with what it holds.
 - `jac docs toolchain/packages`: libraries, and a package declared by a repository
   (`{ git = "...", rev = "..." }`), which `jac install` fetches.
 - `jac docs E2216`: any code above.

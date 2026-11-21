@@ -108,6 +108,14 @@ numpy = ">=2"
 - **A plugin declares libraries the same way,** in its own `[packages]`, and no plugin: only a
   project declares one (E2221), and a plugin it declares is one it binds or lists (E2227,
   [Plugins](../apps/plugins.md#binding-a-plugin)).
+- **A plugin's modules import its abstraction's contract, `common.contract`, the libraries it
+  declares and the standard library,** and nothing else of jac's: no module of stdjac, and no
+  other abstraction's contract (E2232). A library a plugin declares is held to the same, with
+  `common.contract` the one contract it imports
+  ([Plugins](../apps/plugins.md#what-a-plugin-imports)). jac's own library `sqlfile`, which its
+  `sqlite` and `accounts` plugins declare by its place in jac's tree, is such a library.
+- **No package declares an abstraction** (E2217). The abstractions are jac's own, each a directory
+  of its `abstractions/` ([Plugins](../apps/plugins.md#the-abstractions)).
 - **`[libraries]` and `[plugins]` are no tables of a `jac.toml`** (E2226): a package's packages
   are in `[packages]`.
 
@@ -452,4 +460,5 @@ be taken whole is not taken at all: nothing is written and nothing moves.
 | `install --frozen: jac.lock pins nothing for the package 'units' as jac.toml asks for it; run jac install` | `--frozen` after `jac.toml` came to ask for a package, or for another `git` or `rev` of one |
 | E2216, E2219, E2220, E2221, E2222 | A package that is not where it is declared or is neither a library nor a plugin, a library imported that the package does not declare, a declaration that does not hold of the copy the program holds (another place, or a version that does not satisfy it), a library or a plugin that declares or binds a plugin, a library whose name the project's tree also has: `jac docs E2219` |
 | E2226, E2227, E2228, E2229 | A `[libraries]` or a `[plugins]` table, a plugin a project declares and never uses, a version or a requirement that is not one, a package that needs a later jac |
+| E2217, E2232 | A package that declares an abstraction; a plugin, or a library a plugin declares, that imports a module of stdjac or the contract of an abstraction it does not fill |
 | E1287, E1288 | A space's tree is not declared, or not named among several |

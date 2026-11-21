@@ -1,5 +1,5 @@
 ---
-description: Every jac.toml key jac reads, table by table - memory, check.lint, check, fmt, test, dependencies.pypi, npm, cargo, c, libraries, plugins, an abstraction's binding, spaces and apps - each with its type, default and meaning, and what goes wrong.
+description: Every jac.toml key jac reads, table by table - memory, check.lint, check, fmt, test, dependencies.pypi, npm, cargo, c, packages, an abstraction's own declaration, an abstraction's binding, spaces and apps - each with its type, default and meaning, and what goes wrong.
 keywords: jac.toml, memory.profile, check.lint, check.lint.select, check.lint.ignore, check.lint.exclude, check.exclude, fmt.exclude, test.directories, test.directory, test.exclude, spaces.<space>.ui, spaces.<space>.bundler, spaces.<space>.base, spaces.<space>.npm, npm.<tree>, apps.<app>.window, apps.<app>.profiles
 ---
 # jac.toml
@@ -167,7 +167,7 @@ The Jac packages a package uses, libraries and plugins alike, each by its versio
 | Code | Cause |
 |---|---|
 | E2216 | No package is at the path, its `jac.toml` says it is neither a library nor a plugin, or it has another name there. For a plugin: its `jac.toml` does not say what it fills |
-| E2217 | The package declares an abstraction |
+| E2217 | The package declares an abstraction: its `kind` is `"abstraction"`, or it has an `[abstraction]` table. The abstractions are jac's own ([below](#abstraction-an-abstractions-own)) |
 | E2219 | A module imports a library its own package does not declare |
 | E2220 | A declaration does not hold of the copy the program holds: it names another place, or a version the copy's does not satisfy |
 | E2221 | A library or a plugin declares a plugin, or a library's `jac.toml` binds one |
@@ -185,6 +185,31 @@ A table of another program's. jac defines no key under `[tool]` and reads none, 
 ```toml
 [tool.jacpm]
 registry = "https://packages.example.org"
+```
+
+## [abstraction], an abstraction's own
+
+An abstraction's own declaration. It is a table of jac's own files, the `jac.toml` of each directory of its `abstractions/` (`abstractions/store/jac.toml`), whose `[project]` says `kind = "abstraction"`. No project and no package writes one (E2217): a project binds a plugin to an abstraction ([next](#abstraction)), and a package fills one or is a library. See [Plugins](../apps/plugins.md#the-abstractions).
+
+| Key | Type | Meaning |
+|---|---|---|
+| `abstraction.interface` | string | The class a plugin of it implements, in the abstraction's own contract: `<abstraction>.contract.<Interface>` (`store.contract.Store`). `ui` and `bundler` have none: their contract is the `[ui]` or `[bundler]` table of a plugin's `jac.toml` |
+| `abstraction.interface_ver` | integer | The interface's version: what a plugin's `plugin.interface_ver` has to be (E2230) |
+| `abstraction.per` | string | What has one plugin of it: `"project"` or `"space"` |
+| `abstraction.picked` | string | When that plugin is chosen: `"start"`, as a program starts, or `"build"`, as a space is built |
+| `abstraction.standard` | string or table | The plugin a project has until it names another, a directory beside this file. For `ui`, a table of one for each host (`browser = "react"`) |
+
+```toml
+[project]
+name = "store"
+kind = "abstraction"
+
+[abstraction]
+interface = "store.contract.Store"
+interface_ver = 1
+per = "space"
+picked = "start"
+standard = "sqlite"
 ```
 
 ## [\<abstraction\>]

@@ -1,16 +1,23 @@
 ---
-description: stdjac, the library of the language's abstractions that jac compiles into every app - which of its modules a program imports and what each exports, the interfaces its plugins conform to, and which modules the build adds by itself.
-keywords: stdjac, stdjac.remote, stdjac.graph, stdjac.codec, stdjac.plan, stdjac.app, stdjac.window, stdjac.desktop, stdjac.crossing, stdjac.cpython_space, stdjac.node_space, stdjac.jsx, stdjac.archwire, RemoteError, RemoteUnavailable, RemoteTimeout, RemoteRejected, RemoteDecodeError, RemoteFailed, Transport, Claim, CannotListen, CodecError, jobj, grant, AccessLevel, DataError
+description: stdjac, the library of the language's abstractions that jac compiles into every app - which of its modules a program imports and what each exports, the contracts it shares with the plugins, the transport's contract, and which modules the build adds by itself.
+keywords: stdjac, stdjac.remote, stdjac.graph, stdjac.codec, stdjac.plan, stdjac.app, stdjac.window, stdjac.desktop, stdjac.crossing, stdjac.cpython_space, stdjac.node_space, stdjac.jsx, stdjac.archwire, RemoteError, RemoteUnavailable, RemoteTimeout, RemoteRejected, RemoteDecodeError, RemoteFailed, transport.contract, Transport, Request, Response, Tick, Claim, CannotListen, json_fail, CodecError, jobj, grant, AccessLevel, DataError
 ---
 # stdjac
 
 stdjac is the library of the language's abstractions, written in Jac and shipped in jac's
 `rt/stdjac/`. It holds what source says of each (`root`, a call to another space, `:protect`,
-`by llm()`, `@job`), the interface a plugin of it conforms to, and what is the same whatever the
-plugin: it starts an app, hands each request to what answers it, knows the graph's nodes and
-what changed, and runs a model's tools. It holds no mechanism: where a graph is kept, who a
-caller is, what carries a request and which model answers are each a [plugin](plugins.md) the
-project names in `jac.toml`, the standard one where it names none.
+`by llm()`, `@job`), and what is the same whatever the plugin: it starts an app, hands each
+request to what answers it, knows the graph's nodes and what changed, and runs a model's tools.
+It holds no mechanism: where a graph is kept, who a caller is, what carries a request and which
+model answers are each a [plugin](plugins.md) the project names in `jac.toml`, the standard one
+where it names none.
+
+**stdjac and a plugin meet at a contract.** Each abstraction's contract is a module of its own,
+`<abstraction>.contract` in jac's `abstractions/` ([Plugins](plugins.md#the-abstractions)): the
+interface a plugin implements, and the types that cross it. stdjac imports the contracts, a
+plugin imports its own, and neither imports the other. A type a program names too (`Message`,
+`ByEvent`, `Request`, `DataError`) is the contract's, and a program imports it from the stdjac
+module that uses it, as before.
 
 Nothing of it is generated per project; each app is its spaces' modules, stdjac's and its
 plugins', and what differs between apps is the plan the build bakes in
@@ -23,15 +30,26 @@ A program imports a stdjac module as it imports any module, with no wire in the 
 
 | Module | For | Page |
 |---|---|---|
-| `stdjac.server` | `@restspec`, `@schedule`, `@job` and `@limit`, a job's handle, `consume_limit`; and the interfaces of the `auth`, `jobs`, `schedule` and `limits` plugins | [stdjac.server](stdjac-server.md) |
-| `stdjac.remote` | The exceptions a failed crossing raises; and `Transport`, the interface of the `transport` plugin, with the `Request` and `Response` it carries | Below, and [Crossings](crossings.md) |
-| `stdjac.graph` | A kept graph by id, and writing it: `jobj`, `remove`, `allroots`, `grant`, `commit`, `sweep`, and `StoreConflict`, what a write another's got ahead of raises; and `Store`, the interface of the `store` plugin | Below, and [An app's data](data.md) |
+| `stdjac.server` | `@restspec`, `@schedule`, `@job` and `@limit`, a job's handle, `consume_limit` | [stdjac.server](stdjac-server.md) |
+| `stdjac.remote` | The exceptions a failed crossing raises, and the `Request` a program that answers one itself is given | Below, and [Crossings](crossings.md) |
+| `stdjac.graph` | A kept graph by id, and writing it: `jobj`, `remove`, `allroots`, `grant`, `commit`, `sweep`, and `StoreConflict`, what a write another's got ahead of raises | Below, and [An app's data](data.md) |
 | `stdjac.codec` | Values to JSON's values and back, by their types, as a crossing sends them | Below |
 | `stdjac.plan` | The program's plan and its deployment values | Below |
 | `stdjac.by` | What `by` calls: the interfaces of what gives a result (`By`), of what answers as it goes (`ByStreams`) and of what chooses a walker's way (`ByChooser`) | [By and sem](../language/by-and-sem.md) |
-| `stdjac.llm` | `by llm()`: a language model (an LLM) that answers a `by` function, runs its tools and streams its answer; it conforms to all three. And `Model`, the interface of the `llm` plugin | [By and sem](../language/by-and-sem.md) |
-| `stdjac.bound` | `Secret`, a plugin's setting that is never written down | [Plugins](plugins.md#secrets) |
-| `stdjac.sqlfile` | `open_db`, a SQLite file at a layout, for a plugin that keeps one | [Plugins](plugins.md#writing-a-plugin) |
+| `stdjac.llm` | `by llm()`: a language model (an LLM) that answers a `by` function, runs its tools and streams its answer; it conforms to all three | [By and sem](../language/by-and-sem.md) |
+
+The contracts, which a plugin imports and a program does not:
+
+| Contract | Its interface | What else it holds | Page |
+|---|---|---|---|
+| `store.contract` | `Store` | `Row`, `Changed`, `Writing`, `StoreConflict` | [Plugins](plugins.md#what-a-store-is-asked) |
+| `auth.contract` | `Auth` | `SignIn`, `SignInField`, `SignInAction`, `Session`, `Rejected`, `AuthHost`, `bearer_token` | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
+| `transport.contract` | `Transport` | `Request`, `Response`, `Tick`, `Claim`, `CannotListen`, `json_fail` | [Below](#transport) |
+| `llm.contract` | `Model` | `ModelRequest`, `ModelReply`, `ModelTool`, `Message`, `Part`, `PartKind`, `Stop`, `Effort`, and `ByEvent`, `ByEventKind`, `ByUsage`, `ByError` | [By and sem](../language/by-and-sem.md) |
+| `jobs.contract` | `Jobs` | `JobState`, `JobsHost` | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
+| `schedule.contract` | `Scheduler` | `Scheduled` | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
+| `limits.contract` | `Limits` | | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
+| `common.contract` | None: every plugin may use it | `Host`, `Secret`, `DataError` | [Plugins](plugins.md#what-a-plugin-imports) |
 
 A browser, hermes or node space compiles a stdjac module it imports with its own modules, all of
 it, so it may import only one its host can run. `stdjac.codec` is one. `stdjac.remote`,
@@ -95,11 +113,12 @@ stream, whose items travel one by one ([Crossings](crossings.md#calling-a-stream
 ### Transport
 
 What carries a call between apps is the project's `transport` plugin ([Plugins](plugins.md)),
-which conforms to `Transport`. It carries a `Request` and gives a `Response`, and knows nothing
-of endpoints:
+which conforms to `transport.contract`'s `Transport`. It carries a `Request` and gives a
+`Response`, and knows nothing of endpoints:
 
 | Method | Is |
 |---|---|
+| `open(host: dyn Host)` | The first thing asked of it, given the program it runs in ([Plugins](plugins.md#what-a-plugin-imports)). It takes no address yet |
 | `send(address: str, r: Request, seconds: float) -> Response` | `r` carried to the app at `address`, and its reply: one with `events` for a stream. `TimeoutError` for an app that says nothing for `seconds`, `OSError` for one that can't be reached |
 | `claim(address: str) -> Claim` | `address` (`host:port`; port `0`, one the system picks) taken for the program, so that no other program can take it. `CannotListen`, with the reason, where it can't be |
 | `listen(claim: Claim, handle: Callable[[Request], Response], ticks: list[Tick], listening: Callable[[int], None] \| None)` | The requests that come to the address `claim` took answered with `handle`, several at once, until the program ends. The thread that called it runs each of `ticks` when it is due, and tells `listening` the port it took |
@@ -134,6 +153,10 @@ of endpoints:
 | `Claim` | No fields of its own: a transport's subclass holds what it listens with |
 | `CannotListen` | An exception: `reason: str` |
 
+`json_fail(status: int, kind: str, detail: str) -> Response` is the reply that says a request
+failed, in the form every reply to a call has: what a transport answers with when it is the one
+that fails a request.
+
 ## stdjac.graph
 
 The graph a serving app keeps, by the id each node and edge carries (`jid(x)`):
@@ -145,7 +168,7 @@ The graph a serving app keeps, by the id each node and edge carries (`jid(x)`):
 | `allroots() -> list[Root]` | Every caller's root, never the shared one |
 | `grant(n: Node, level: AccessLevel = AccessLevel.READ)` | Records a level of access to `n` (`NO_ACCESS`, `READ`, `CONNECT`, `WRITE`), kept with it |
 | `commit()` | Writes what changed in the graph since it was last written, now. A server writes it when each call returns; a call that runs long, or a stream, calls this where its work so far should be kept ([An app's data](data.md#when-the-graph-is-written)) |
-| `DataError` | What kept data an app cannot start with is reported as: `path` and `problem` |
+| `DataError` | What kept data an app cannot start with is reported as: `path` and `problem`. It is `common.contract`'s, which a plugin raises |
 
 They work in any program; in one that keeps no graph, they see the program's own, and `commit()`
 does nothing:

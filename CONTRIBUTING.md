@@ -2,17 +2,24 @@
 
 This repository holds two things, and a change is to one of them.
 
-## The standard library, the plugins, the documentation and the examples
+## The abstractions, the plugins, the libraries, the documentation and the examples
 
-`stdjac/`, `plugins/`, `docs/` and `examples/` at the top are what `jac` (0.70.0 and on) is
-released with. This repository holds the real copy of each: a change to one is a pull request
+`abstractions/`, `libraries/`, `docs/` and `examples/` at the top are what `jac` (0.70.0 and on)
+is released with. This repository holds the real copy of each: a change to one is a pull request
 here, and a release of `jac` ships the commit of this repository it was built with.
 
-- **`stdjac/`** declares the language's abstractions in its `jac.toml`, each with the interface a
-  plugin of it implements and the version of that interface (`interface_ver`). A change that a
-  plugin written for an interface would not survive raises that version.
-- **`plugins/`** holds the standard plugins, each a package with its own `jac.toml`.
-  [Writing a plugin](docs/skills/writing-a-plugin/SKILL.md) says what one is made of.
+- **`abstractions/`** holds the language's abstractions, a directory each. Its `jac.toml` declares
+  the abstraction: the interface a plugin of it implements, the version of that interface
+  (`interface_ver`), and its standard plugin. Its `contract.jac` is the contract: that interface
+  and the types that cross it. A change that a plugin written for an interface would not survive
+  raises its version. `common/contract.jac` is what every plugin may use, whatever it fills.
+- **The standard plugins** are the directories beside those two files
+  (`abstractions/store/sqlite`), each a package with its own `jac.toml`. A plugin imports its
+  abstraction's contract, `common.contract`, the libraries it declares and the standard library,
+  and nothing else of jac's. [Writing a plugin](docs/skills/writing-a-plugin/SKILL.md) says what
+  one is made of.
+- **`libraries/`** holds the libraries those plugins declare, each a package of
+  `kind = "library"`: `sqlfile`.
 - **`docs/`** is what `jac docs` prints. A page's `jac` examples are whole programs that `jac`
   compiles as the page says, and a page is listed in `docs/nav.json`.
 - **`examples/`** holds programs written in Jac.
@@ -24,13 +31,15 @@ a project uses a copy of a plugin by declaring it by its directory,
 
 ```toml
 [packages]
-sqlite_mine = { path = "../jac/plugins/sqlite_mine" }
+sqlite_mine = { path = "../jac/abstractions/store/sqlite_mine" }
 
 [store]
 plugin = "sqlite_mine"
 ```
 
-with the copy's `[project] name` and its class's path changed to match.
+with the copy's `[project] name` and its class's path changed to match. A plugin declares the
+libraries it uses by their place from its own directory (`sqlfile`, in `sqlite`'s `[packages]`),
+so a copy made elsewhere says where they are from there.
 
 ## The reference design
 

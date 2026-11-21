@@ -465,8 +465,10 @@ fallback model.
 
 ### Writing a model plugin
 
-A plugin for another provider conforms to `stdjac.llm`'s `Model`:
-`def ask(request: ModelRequest) -> Iterator[ByEvent] abst;`. It makes one
+A plugin for another provider conforms to `llm.contract`'s `Model`
+([Plugins](../apps/plugins.md#what-a-plugin-imports)):
+`def ask(request: ModelRequest) -> Iterator[ByEvent] abst;`, after
+`def open(host: dyn Host) abst;`, the first thing asked of it. `ask` makes one
 request and gives its events: each piece of the answer's text as a `TEXT`
 event, for a `live` request, and last a `DONE` whose `value` is the
 `ModelReply`. The rounds of tool calls, the retries of a reply that does not

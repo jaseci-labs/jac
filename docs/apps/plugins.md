@@ -1,6 +1,6 @@
 ---
-description: Plugins, the mechanisms behind the language's abstractions - the abstractions that take one, binding a plugin in jac.toml, the plugins jac ships, listing several and picking one where the program runs, the two that are picked as a space is built, settings and secrets, a project's own plugin by its path, writing one, and what is refused.
-keywords: binding a plugin, standard plugin, store, sqlite, Store, Secret, settle, stdjac.bound, stdjac.sqlfile, JAC_STORE, auth plugin, transport, http plugin, process_jobs, loop_schedule, memory_limits
+description: Plugins, the mechanisms behind the language's abstractions - the abstractions that take one and where each declares itself, binding a plugin in jac.toml, the plugins jac ships, listing several and picking one where the program runs, the two that are picked as a space is built, settings and secrets, a project's own plugin by its path, writing one against its abstraction's contract, what a plugin imports and what its host gives it, and what is refused.
+keywords: binding a plugin, standard plugin, contract, store.contract, common.contract, Host, store, sqlite, Store, Secret, settle, sqlfile, open_db, JAC_STORE, auth plugin, transport, http plugin, process_jobs, loop_schedule, memory_limits
 ---
 # Plugins
 
@@ -22,18 +22,61 @@ which jac ships and a project uses until it names another.
 
 | Abstraction | What source says | Its interface | One for each | Picked | Standard plugin |
 |---|---|---|---|---|---|
-| `store` | `root`, `root.shared`, `++>` | `stdjac.graph.Store` | Space | As the program starts | `sqlite` |
-| `auth` | `:protect`, the caller's `root`, a page's `sign_in()` | `stdjac.server.Auth` | Project | As the program starts | `accounts` |
-| `transport` | A call from outside, and a call to another app | `stdjac.remote.Transport` | Project | As the program starts | `http` |
-| `llm` | `by llm()` | `stdjac.llm.Model` | Project | As the program starts | `anthropic` |
-| `jobs` | `@job`, `flow f(x)`, `wait j` | `stdjac.server.Jobs` | Project | As the program starts | `process_jobs` |
-| `schedule` | `@schedule` | `stdjac.server.Scheduler` | Project | As the program starts | `loop_schedule` |
-| `limits` | `@limit`, `consume_limit` | `stdjac.server.Limits` | Project | As the program starts | `memory_limits` |
+| `store` | `root`, `root.shared`, `++>` | `store.contract.Store` | Space | As the program starts | `sqlite` |
+| `auth` | `:protect`, the caller's `root`, a page's `sign_in()` | `auth.contract.Auth` | Project | As the program starts | `accounts` |
+| `transport` | A call from outside, and a call to another app | `transport.contract.Transport` | Project | As the program starts | `http` |
+| `llm` | `by llm()` | `llm.contract.Model` | Project | As the program starts | `anthropic` |
+| `jobs` | `@job`, `flow f(x)`, `wait j` | `jobs.contract.Jobs` | Project | As the program starts | `process_jobs` |
+| `schedule` | `@schedule` | `schedule.contract.Scheduler` | Project | As the program starts | `loop_schedule` |
+| `limits` | `@limit`, `consume_limit` | `limits.contract.Limits` | Project | As the program starts | `memory_limits` |
 | `ui` | A component: `has` in a function, `can with entry`, JSX | A `[ui]` table of the plugin's `jac.toml` | Space | As the space is built | Its host's: `react` in a browser, `react_native` on hermes, `none` on node |
 | `bundler` | Nothing: a JavaScript space is bundled as it is built | A `[bundler]` table of the plugin's `jac.toml` | Space | As the space is built | The one the space's `ui` plugin names: `vite`, `expo` |
 
-The abstractions are the language's and stdjac's: a project chooses a plugin for one, and does not
-declare one.
+The abstractions are the language's: a project chooses a plugin for one, and does not declare
+one (E2217).
+
+**Each abstraction declares itself,** in a directory of its own in jac's `abstractions/`, which a
+release holds beside `rt/`:
+
+```text
+abstractions/
+  store/
+    jac.toml        the abstraction: its interface, its version, its standard plugin
+    contract.jac    the contract: `Store`, and the types that cross it
+    sqlite/         the standard plugin
+  auth/  transport/  llm/  jobs/  schedule/  limits/     each the same
+  ui/               jac.toml, and react/ preact/ solid/ react_native/ none/
+  bundler/          jac.toml, and vite/ expo/
+  common/           contract.jac: what every plugin may use, whatever it fills
+```
+
+```toml
+[project]
+name = "store"
+kind = "abstraction"
+
+[abstraction]
+interface = "store.contract.Store"
+interface_ver = 1
+per = "space"
+picked = "start"
+standard = "sqlite"
+```
+
+- **`interface`** is the class a plugin implements, in the abstraction's own contract:
+  `<abstraction>.contract.<Interface>`. `ui` and `bundler` have none: their contract is a table of
+  the plugin's `jac.toml`, which their own `jac.toml` describes.
+- **`interface_ver`** is the interface's version (below).
+- **`per`** is what has one plugin of it, `"project"` or `"space"`, and **`picked`** when that
+  plugin is chosen, `"start"` or `"build"`.
+- **`standard`** is the plugin a project has until it names another, in the abstraction's own
+  directory. `ui` names one for each host (`[abstraction.standard]`), and `bundler` none: a
+  space's is the one its `ui` plugin names.
+
+**The contract is what a plugin and the program meet at.** `store.contract` holds `Store` and
+every type that crosses it (`Row`, `Writing`, `StoreConflict`). A plugin imports it, the program
+above the plugin imports it, and it imports nothing of either
+([What a plugin imports](#what-a-plugin-imports)).
 
 **Each interface has a version,** a number that goes up when the interface changes so that a
 plugin written for it would not survive. Every interface is at 1 in this jac. A plugin says
@@ -130,9 +173,10 @@ JAC_STORE=jsonstore JAC_STORE_FILE=/var/lib/api/notes.json JAC_STORE_INDENT=0 di
 ### Secrets
 
 A setting of type `Secret` is never written in `jac.toml`, and is not in the program: it names a
-variable of the environment, read where the program runs when the plugin asks for it. A plugin's
-field says which variable (`ANTHROPIC_API_KEY`), and `JAC_<ABSTRACTION>_<FIELD>`, when it is set,
-is read in its place. Giving one a value in `jac.toml` is E1053.
+variable of the environment, read where the program runs when the plugin asks its host for it
+(`host.secret(self.key)`, [below](#what-a-plugin-imports)). A plugin's field says which variable
+(`ANTHROPIC_API_KEY`), and `JAC_<ABSTRACTION>_<FIELD>`, when it is set, is read in its place.
+Giving one a value in `jac.toml` is E1053.
 
 ## The standard plugins
 
@@ -192,23 +236,26 @@ class = "jsonstore.store.JsonStore"
 ```jac
 import json;
 import os;
-import from stdjac.graph { Row, Store }
-import from stdjac.plan { data_dir }
+import from common.contract { Host }
+import from store.contract { Row, Store }
 
 obj JsonStore(Store) {
     has file: str = "graph.json",
         indent: int = 0;
     has rows: dict[str, list[any]] postinit;
+    has data_dir: str postinit;
 
     def postinit {
         self.rows = {};
+        self.data_dir = "";
     }
 
     def kept_as -> str {
-        return os.path.join(data_dir(), self.file);
+        return os.path.join(self.data_dir, self.file);
     }
 
-    def open {
+    def open(host: dyn Host) {
+        self.data_dir = host.data_dir();
         if os.path.exists(self.kept_as()) {
             with open(self.kept_as()) as f {
                 self.rows = json.load(f);
@@ -224,26 +271,70 @@ obj JsonStore(Store) {
 - **Its fields are its settings.** `file` and `indent` are what `[store.jsonstore]` may give.
 - **What it keeps for itself is a `postinit` field,** which no constructor takes: `rows` is no
   setting, and `[store.jsonstore] rows = ...` is E1052.
-- **It does nothing until its abstraction asks.** The plugin is made with `jac.toml`'s settings,
-  then given the environment's, and only then used: `Store.open` is where a store reaches its
-  file, and `Transport.claim` where a transport takes its address, raising `CannotListen` with
-  the reason where it can't. Work done in `postinit` would be done with settings that may still
-  change.
-- **It imports what it needs of stdjac** and of any library, and nothing imports it. A library
-  that is not jac's own is declared in the plugin's own `[packages]`
-  ([Packages](../toolchain/packages.md#jac-packages)). A plugin declares no plugin (E2221).
-  `stdjac.plan`'s `data_dir()` is where a program keeps files beside itself, and
-  `stdjac.sqlfile`'s `open_db` opens a SQLite file at a layout, upgrading an older one.
+- **`open(host)` is the first thing asked of it,** once, before anything else. The plugin is made
+  with `jac.toml`'s settings, then given the environment's, and only then opened: `Store.open` is
+  where a store reaches its file. Work done in `postinit` would be done with settings that may
+  still change. A plugin with nothing to open writes `def open(host: dyn Host) {}`.
+- **It does nothing more until its abstraction asks.** `Transport.claim` is where a transport
+  takes its address, raising `CannotListen` with the reason where it can't.
+- **Nothing imports it,** and it declares no plugin (E2221).
+
+### What a plugin imports
+
+A plugin's modules import four things, and nothing else of jac's (E2232):
+
+| Import | What it gives |
+|---|---|
+| `<abstraction>.contract` | The contract of the abstraction it fills: the interface its class implements, and every type and function that crosses it |
+| `common.contract` | What every plugin may use: `Host`, `Secret` and `DataError` |
+| The libraries its own `jac.toml` declares | Any library, in the plugin's own `[packages]` ([Packages](../toolchain/packages.md#jac-packages)) |
+| The standard library | `os`, `json`, `sqlite3`, `urllib`, and a Python or C package of its own |
+
+It imports nothing of stdjac, and no other abstraction's contract. A library a plugin declares is
+held to the same rule, with `common.contract` the one contract it may import: a plugin reaches
+stdjac through nothing.
+
+**What a plugin needs of the program that runs it, the program gives it.** `open` is handed the
+program as a host, an interface the contract declares and the program implements:
+
+| Host | Whose `open` is given it | What a plugin asks it |
+|---|---|---|
+| `common.contract`'s `Host` | `Store`, `Transport`, `Model`, `Scheduler`, `Limits` | `data_dir()`, where the program keeps files beside itself, its app's data directory ([An app's data](data.md#where-it-is-kept)); `secret(s)`, what the place the program runs gives a `Secret`, or `""`; `upgraded(what)`, to have the program say as it starts what the plugin did to data it keeps |
+| `auth.contract`'s `AuthHost` | `Auth` | A `Host`'s, and `windowed()`, whether the app shows itself in a window of its own; `consume_limit(scope, actor, limit, seconds)`, a use counted by the project's `limits` |
+| `jobs.contract`'s `JobsHost` | `Jobs` | A `Host`'s, and `command()`, the command that runs the program again; `owner()`, the space whose jobs a copy's are; `run(name, input, note)` and `run_space(owner, name, input, note)`, which run a job where the plugin has it run |
+
+A plugin that asks its host later keeps it in a `postinit` field
+(`has host: dyn JobsHost | None postinit;`), or keeps what it asked (`data_dir`, above).
+
+**A contract declares, and reaches nothing:** no file, and no variable of the environment. What
+needs nothing of the program is in the contract itself, a function or a class a plugin imports:
+
+| Name | In | What it is |
+|---|---|---|
+| `Secret` | `common.contract` | A setting that is never written down: the name of its variable, whose value the host gives ([Secrets](#secrets)) |
+| `DataError` | `common.contract` | What `open` raises for data the plugin keeps that it can't start with: the file, and what is wrong with it. The program says it in words, and stops |
+| `bearer_token(headers)` | `auth.contract` | The credential a request carries as a bearer token |
+| `json_fail(status, kind, detail)` | `transport.contract` | The reply that says a request failed, for a transport that fails one the program never saw |
+
+**`sqlfile` is a library,** not a part of any contract: `open_db` opens a SQLite file at a layout,
+makes a new one, and upgrades an older one by the steps the plugin gives, telling the plugin's
+host what it upgraded. jac's `sqlite` and `accounts` plugins declare it, by its place in jac's
+tree, as a plugin declares any library:
+
+```toml
+[packages]
+sqlfile = { path = "../../../libraries/sqlfile" }
+```
 
 ### What a store is asked
 
-`stdjac.graph.Store` is rows by their ids, with no query language: a graph database is used as
-rows too. The runtime above it owns which node is which object, what of the graph is in memory
+`store.contract`'s `Store` is rows by their ids, with no query language: a graph database is used
+as rows too. The runtime above it owns which node is which object, what of the graph is in memory
 and what a call changed ([An app's data](data.md#what-of-the-graph-is-in-memory)).
 
 | Method | Gives or does |
 |---|---|
-| `open()`, `kept_as()` | Makes ready to hold rows; what its data is called, where an app says what is wrong with what it kept |
+| `open(host)`, `kept_as()` | Makes ready to hold rows, in the program `host`; what its data is called, where an app says what is wrong with what it kept |
 | `rows(ids)` | The rows of those ids, those it holds: a `Row` is a node or an edge, with its type's name, its fields as JSON text, an edge's two ends and its place in the order edges were made, and its `version` |
 | `edges(id)` | Every edge at a node, out of it and into it, in the order they were made |
 | `write(w)` | Keeps what one commit writes, all of it or none: the rows to keep and those to take out, each at the version it was read at, the roots first given to users, and the shared root. `StoreConflict` when a row is at another version, or a user has a root already. Gives the store's new mark |
@@ -311,11 +402,12 @@ example of its interface:
 | E2214 | `jac.toml` names a plugin that `[packages]` does not declare and jac does not ship |
 | E2215 | A plugin is bound to an abstraction it does not fill |
 | E2216 | A plugin's package is not where `[packages]` says, or its manifest does not say what it fills: its `class`, or for `ui` and `bundler` its table |
-| E2217 | A package declares an abstraction: only stdjac does |
+| E2217 | A package declares an abstraction: the abstractions are jac's own |
 | E2218 | A module imports a plugin |
 | E2221 | A library or a plugin declares a plugin: only a project does |
 | E2227 | The project declares a plugin that no binding names and no abstraction lists |
 | E2230 | A plugin was written for another version of its abstraction's interface than this jac's |
+| E2232 | A plugin, or a library a plugin declares, imports a module of stdjac or the contract of an abstraction it does not fill |
 | E1050, E1052, E1053 | A setting left out, a key that is no setting, a value of another type |
 | E1281 | The plugin's class does not conform to the abstraction's interface |
 | E5158 | An abstraction's table holds something other than `plugin` and plugins' tables, or `[packages]` an entry that is no source. For `ui` and `bundler`: the table of a plugin the space is not built with, a setting the plugin does not list, or a form `jac.toml` had before (`ui = "preact"`, `bundler_config`) |

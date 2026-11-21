@@ -1,13 +1,14 @@
 ---
-description: The stdjac.server module - the decorators that give a function a path of its own, a schedule, a limit or make it a job, what a job's handle offers, consume_limit, the interfaces a plugin for auth, jobs, schedules or limits conforms to, and static_file - with each name's signature.
-keywords: stdjac.server, schedule, job, Job, JobNote, JobFailed, restspec, HTTPMethod, limit, consume_limit, Auth, SignIn, SignInField, SignInAction, Session, Rejected, Jobs, JobState, Scheduler, Scheduled, Limits, static_file
+description: The stdjac.server module - the decorators that give a function a path of its own, a schedule, a limit or make it a job, what a job's handle offers, consume_limit, and static_file - with each name's signature; and the contracts a plugin for auth, jobs, schedules or limits conforms to, with what each asks of the program that runs it.
+keywords: stdjac.server, schedule, job, Job, JobNote, JobFailed, restspec, HTTPMethod, limit, consume_limit, auth.contract, jobs.contract, schedule.contract, limits.contract, Auth, AuthHost, SignIn, SignInField, SignInAction, Session, Rejected, bearer_token, Jobs, JobsHost, JobState, Scheduler, Scheduled, Limits, static_file
 ---
 # stdjac.server
 
 `stdjac.server` is what a served program is made of, beside its endpoints
 ([Serving a space](server.md), `jac docs apps/server`): the functions it serves at paths of
 their own, the ones it runs on a schedule, its jobs and its limits. A program imports the
-decorators that say so of a function, and a [plugin](plugins.md) the interface it carries out.
+decorators that say so of a function. A [plugin](plugins.md) imports the contract it carries
+out, which is a module of its own ([below](#what-a-plugin-conforms-to)).
 
 ```jac
 import from stdjac.server { HTTPMethod, restspec, schedule }
@@ -55,15 +56,20 @@ its own ([Serving a space](server.md#calls-at-once)).
 
 ## What a plugin conforms to
 
-Each of these is the interface of an abstraction ([Plugins](plugins.md)). A plugin's class
-conforms to one, and a program never names it.
+Each of these is the interface of an abstraction ([Plugins](plugins.md)), in that abstraction's
+contract: a plugin imports it from there (`import from auth.contract { Auth, Session }`), its
+class conforms to it, and a program never names it.
 
-| Interface | Abstraction | Methods |
+| Interface | Contract | Methods |
 |---|---|---|
-| `Auth` | `auth` | `open()`; `caller(headers: dict[str, str]) -> str \| None`, who a request's caller is; `asks(headers) -> SignIn`, what signing in takes; `answer(action: str, given: dict[str, str], client: str) -> Session`, a caller signed in, or `Rejected`; `leave(headers)`, a session ended |
-| `Limits` | `limits` | `consume(scope: str, actor: str, limit: int, seconds: int) -> int` |
-| `Scheduler` | `schedule` | `start(work: list[Scheduled], on_loop: Callable[[Callable[[], None]], None])`: run each of `work` when it is due, from now on |
-| `Jobs` | `jobs` | `start(name: str, input: any) -> str`, a job started, by what names its run; `read(id: str) -> JobState`, what it has said since it was last read and whether it has ended; `work() -> bool`, asked as a program starts: run the job this process was started for, if any |
+| `Auth` | `auth.contract` | `open(host: dyn AuthHost)`; `caller(headers: dict[str, str]) -> str \| None`, who a request's caller is; `asks(headers) -> SignIn`, what signing in takes; `answer(action: str, given: dict[str, str], client: str) -> Session`, a caller signed in, or `Rejected`; `leave(headers)`, a session ended |
+| `Limits` | `limits.contract` | `open(host: dyn Host)`; `consume(scope: str, actor: str, limit: int, seconds: int) -> int` |
+| `Scheduler` | `schedule.contract` | `open(host: dyn Host)`; `start(work: list[Scheduled], on_loop: Callable[[Callable[[], None]], None])`: run each of `work` when it is due, from now on |
+| `Jobs` | `jobs.contract` | `open(host: dyn JobsHost)`; `start(name: str, input: any) -> str`, a job started, by what names its run; `read(id: str) -> JobState`, what it has said since it was last read and whether it has ended; `work() -> bool`, asked as a program starts: run the job this process was started for, if any |
+
+`open` is the first thing asked of a plugin, and it is given the program it runs in: a `Host`
+(`common.contract`), or the host of its own abstraction, which is one
+([Plugins](plugins.md#what-a-plugin-imports)).
 
 What they are given and give:
 
@@ -77,14 +83,26 @@ What they are given and give:
 | `Scheduled` | `name: str`, `every: float`, `run: Callable[[], None]` |
 | `JobState` | `notes: list[tuple[str, str]]`, `done: bool`, `result: any`, `failed: str` |
 
-A plugin runs a job with `run_job(name: str, input: any, note: Callable[[str, str], None]) -> any`,
-which calls the program's job `name` and gives its result as JSON's values, and one of a space
-the program runs in its own process with `run_space_job(owner, name, input, note)`.
-`job_command()` is the command that runs the program again, and `job_owner()` the space its jobs
-are for.
+What a plugin asks of the program, through the host its `open` was given:
 
-`Transport`, the interface of what carries requests between apps, is `stdjac.remote`'s
-([stdjac](stdjac.md#stdjacremote)).
+| Host | Method | Gives or does |
+|---|---|---|
+| `Host` | `data_dir() -> str` | Where the program keeps files beside itself: its app's data directory |
+| `Host` | `secret(s: Secret) -> str` | What the place the program runs gives the secret `s`: what its variable holds, or `""` |
+| `Host` | `upgraded(what: str)` | Has the program say, as it starts, what the plugin did to data it keeps |
+| `AuthHost` | `windowed() -> bool` | Whether the app shows itself in a window of its own |
+| `AuthHost` | `consume_limit(scope: str, actor: str, limit: int, seconds: int) -> int` | Counts a use with the project's `limits`: 0 within the limit, else the seconds to wait |
+| `JobsHost` | `command() -> list[str]` | The command that runs the program again, before its arguments |
+| `JobsHost` | `owner() -> str` | The space whose jobs the program's are, to a copy started for one: `""` for its own |
+| `JobsHost` | `run(name: str, input: any, note: Callable[[str, str], None]) -> any` | Runs the program's job `name` and gives its result as JSON's values |
+| `JobsHost` | `run_space(owner: str, name: str, input: any, note: Callable[[str, str], None]) -> any` | The same for a job of a space the program runs in its own process |
+
+An `AuthHost` and a `JobsHost` are each a `Host`. `auth.contract`'s
+`bearer_token(headers: dict[str, str]) -> str` is the credential a request carries as a bearer
+token, or `""`.
+
+`Transport`, the interface of what carries requests between apps, is `transport.contract`'s
+([stdjac](stdjac.md#transport)).
 
 ## static_file
 

@@ -156,8 +156,9 @@ mylib = { path = "ui/mylib" }
 plugin = "mylib"
 ```
 
-`ui/mylib/jac.toml` has the keys the shipped plugins' have (jac's `plugins/solid/jac.toml` is
-this one, under the name `solid`):
+`ui/mylib/jac.toml` has the keys the shipped plugins' have (jac's
+`abstractions/ui/solid/jac.toml` is this one, under the name `solid`). The table is `ui`'s
+contract, which `abstractions/ui/jac.toml` states:
 
 ```toml
 [project]
@@ -220,7 +221,7 @@ A plugin whose host has no page to draw on shows the sign-in form itself: its ru
 `__showSignIn(show)` of `session.js`, and `show(asks, answer)` is then given what the app's auth
 asks for (its fields and its ways of signing in) and `answer(action, given)`, which tries one way
 and gives `{ok: true}` or `{ok: false, detail}`. It gives a promise of whether the caller signed
-in, or `null` to leave the form to the page. `plugins/react_native/runtime.js` is one.
+in, or `null` to leave the form to the page. `abstractions/ui/react_native/runtime.js` is one.
 
 A plugin's `jac.toml` with no `[ui]` table, or one that is not at the path `[packages]` gives, is
 E2216.

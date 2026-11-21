@@ -76,7 +76,7 @@ jac_asset() {
     mkdir -p "$dir"
     rm -rf "${stage:?}"
     mkdir -p "${stage}/${name}/bin" "${stage}/${name}/lib" "${stage}/${name}/rt" \
-        "${stage}/${name}/stdjac" "${stage}/${name}/plugins" "${stage}/${name}/docs"
+        "${stage}/${name}/abstractions" "${stage}/${name}/libraries" "${stage}/${name}/docs"
     cat > "${stage}/${name}/bin/jac" <<EOF
 #!/bin/sh
 if [ "\${1:-}" = "--version" ]; then
@@ -352,7 +352,7 @@ jac_is_installed() {
     is_link "${H}/.local/bin/jac" \
         && [[ "$(readlink "${H}/.local/bin/jac")" == "${H}/.jac/current/bin/jac" ]] \
         && [[ "$(readlink "${H}/.jac/current")" == "${H}/.jac/${version}" ]] \
-        && [[ -d "${H}/.jac/${version}/stdjac" && -d "${H}/.jac/${version}/plugins" ]] \
+        && [[ -d "${H}/.jac/${version}/abstractions" && -d "${H}/.jac/${version}/libraries" ]] \
         && missing "${H}/.local/bin/.jac-install" \
         && reports "jac ${version} ("
 }

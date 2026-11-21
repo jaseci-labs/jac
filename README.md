@@ -26,8 +26,8 @@ also here, in [`docs/`](docs/), starting at [docs/start](docs/start/index.md).
 | | |
 |---|---|
 | [`docs/`](docs/) | The documentation `jac docs` prints, and the skills an agent loads |
-| [`stdjac/`](stdjac/) | The standard library of the language's abstractions: what `root`, `by llm()`, `:protect`, `@job` and the rest mean, and the interface a plugin of each implements |
-| [`plugins/`](plugins/) | The standard plugins, which carry those abstractions out: `sqlite`, `accounts`, `http`, `anthropic`, `react`, `vite` and the others |
+| [`abstractions/`](abstractions/) | The language's abstractions, a directory each: what carries out `root`, `by llm()`, `:protect`, `@job` and the rest. Each declares itself (`jac.toml`), holds the contract a plugin of it implements (`contract.jac`), and holds its standard plugins: `sqlite`, `accounts`, `http`, `anthropic`, `react`, `vite` and the others |
+| [`libraries/`](libraries/) | Libraries the standard plugins declare: `sqlfile`, a SQLite file at a layout |
 | [`examples/`](examples/) | Programs written in Jac |
 | [`jac-reference/`](jac-reference/) | The reference design: the open-source Jac compiler, with its own documentation, tests and releases |
 | [`scripts/install.sh`](scripts/install.sh) | The install script, for both compilers |
@@ -35,8 +35,9 @@ also here, in [`docs/`](docs/), starting at [docs/start](docs/start/index.md).
 ## The two compilers
 
 `jac` is released here from version 0.70.0. Its compiler is not in this repository; what it is
-built on that a program meets is: `stdjac/` and `plugins/` are compiled into the programs it
-builds, and a release ships them, and `docs/`, as they are here.
+built on that a program meets is: the contracts and the plugins of `abstractions/`, and the
+libraries of `libraries/`, are compiled into the programs it builds, and a release ships them,
+and `docs/`, as they are here.
 
 The reference design, in [`jac-reference/`](jac-reference/), is the open-source compiler that Jac
 was first released as. It is built, tested and released from this repository at its own versions

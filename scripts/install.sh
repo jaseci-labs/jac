@@ -9,8 +9,8 @@
 #       The Jac compiler. A release is tagged jac-v<version> and holds an
 #       archive, jac-<version>-<platform>.tar.gz, unpacked under
 #       ~/.jac/<version>, with ~/.local/bin/jac linked to its bin/jac. jac
-#       finds its runtime, its standard library and its plugins beside its own
-#       executable.
+#       finds its runtime, the abstractions with their plugins and its
+#       libraries beside its own executable.
 #
 #   the reference design (--reference)
 #       The Jac language's reference design. A release is tagged v<version>
