@@ -7,7 +7,6 @@ name: Nightly
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
 
 permissions:
   contents: read
@@ -47,26 +46,6 @@ jobs:
         test -f $BUNDLE/app.jab
         ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
-    - name: Debug backtrace (temporary)
-      working-directory: jac/examples/notes-app/.jac/client/desktop
-      run: |
-        sudo apt-get install -y gdb >/dev/null
-        file notes-app libcef_dispatch.so
-        for sym in cef_dispatch_startup cef_dispatch_settings_create; do
-          echo "=== $sym (libcef_dispatch.so)"
-          objdump -d --no-show-raw-insn --disassemble=$sym libcef_dispatch.so | sed -n '7,140p'
-        done
-        echo "=== cef_startup (notes-app)"
-        objdump -d --no-show-raw-insn --disassemble=cef_startup notes-app | sed -n '7,140p'
-        nm -D --defined-only libcef_dispatch.so | grep -v " cef_" | head -40
-        Xvfb :98 -screen 0 1280x720x24 &
-        DISPLAY=:98 FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
-        JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 \
-        timeout 180s gdb -batch -ex "set pagination off" \
-          -ex "handle SIGPIPE nostop noprint" -ex run -ex bt \
-          -ex "info symbol \$pc" -ex "x/8i \$pc" -ex "info registers" \
-          ./notes-app 2>&1 | tail -120 || true
-
     - name: Headless smoke with timeout (X11)
       working-directory: jac/examples/notes-app/.jac/client/desktop
       run: |
@@ -97,7 +76,6 @@ jobs:
   # when scripts/install.sh changes; this runs it daily, so a release that
   # ships a missing or broken asset is caught without an installer PR.
   installer-live:
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/_installer.yml
 
   # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
@@ -107,7 +85,6 @@ jobs:
   # This is also the only caller that runs on main, so it is what seeds the
   # shared macOS caches -- setup-jac gates every cache save to main.
   macos-native:
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/_macos-native.yml
 
   # The Intel-Mac leg left the release matrix: it is `manual` in
@@ -118,7 +95,6 @@ jobs:
   # weeks the way it once did inside the matrix. No tag, so nothing is
   # uploaded and the post-build jobs stay skipped.
   intel-mac-probe:
-    if: github.event_name != 'pull_request'
     permissions:
       contents: write
     uses: ./.github/workflows/build-binaries.yml
@@ -132,7 +108,6 @@ jobs:
   # python default; `official-image` = an image built from this checkout's
   # binary via docker/jaclang.Dockerfile (baked-runtime path).
   k8s-real-e2e:
-    if: github.event_name != 'pull_request'
     name: microservice e2e (k8s, ${{ matrix.base }})
     runs-on: ubuntu-24.04
     timeout-minutes: 40
