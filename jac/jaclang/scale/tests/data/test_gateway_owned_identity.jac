@@ -16,6 +16,7 @@ import time;
 import requests;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
+import from tempfile { mkdtemp }
 
 glob _SV_ENV: str = "JAC_SV_NAME",
      _FLEET_DIR: Path = Path(__file__).parent.parent
@@ -384,4 +385,130 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
     } finally {
         stop_server(proc);
     }
+}
+
+
+"""A gateway manager whose identity store is a fresh embedded Postgres, so a
+bulk clean-up sees only this test's records. None if Postgres is absent."""
+def _isolated_gateway -> (tuple[any, any, any] | None) {
+    manager = _manager("__gateway__");
+    if manager is None {
+        return None;
+    }
+    try {
+        rt = PgRuntime(data_dir=mkdtemp(prefix='jacprov_') + '/data');
+        store = PgStore(conninfo=rt.ensure());
+    } except Exception as e {
+        print(f"[skip] embedded postgres unavailable: {e}");
+        return None;
+    }
+    storage = PgIdentityStorage(store=store);
+    manager._identity_storage = storage;
+    return (manager, storage, store);
+}
+
+
+test "the gateway's clean-up removes provisioned records, so a deleted account's old token dies" {
+    made = _isolated_gateway();
+    if made is None {
+        return;
+    }
+    (gw, storage, store) = made;
+    pw = f"Pw-{uuid.uuid4().hex}!a1";
+    real = storage.create_user(
+        identities=[{"type": "username", "value": f"real_{uuid.uuid4().hex[:8]}"}],
+        credential={"type": "password", "password": pw}
+    );
+
+    # A deleted account whose record a fleet app recreated before #10738's fix.
+    gone = storage.create_user(
+        identities=[{"type": "username", "value": f"gone_{uuid.uuid4().hex[:8]}"}],
+        credential={"type": "password", "password": pw}
+    )["user_id"];
+    token = gw.create_jwt_token(gone, session_epoch=gw.current_epoch(gone));
+    storage.delete_user(gone);
+    storage.ensure_user_by_id(gone);
+    assert gw.validate_jwt_token_detail(token)["status"] == "ok";
+
+    # Another recreated record, with data written under its root since.
+    used = str(uuid.uuid4());
+    used_root = storage.ensure_user_by_id(used);
+    store.ensure_schema({});
+    store.rows(
+        "INSERT INTO anchors (id, kind, root_id) VALUES (CAST(:i AS uuid), 'node', CAST(:r AS uuid))",
+        {"i": str(uuid.uuid4()), "r": used_root}
+    );
+
+    # A blank record linked to an SSO account is a real account, not provisioned.
+    linked = str(uuid.uuid4());
+    storage.ensure_user_by_id(linked);
+    store.rows(
+        "INSERT INTO sso_lookups (provider, external_id, user_id) VALUES ('google', :e, :u)",
+        {"e": uuid.uuid4().hex, "u": linked}
+    );
+
+    listed = gw.list_provisioned_users();
+    by_id = {r["user_id"]: r for r in listed["users"]};
+    assert set(by_id) == {gone, used} , f"listed {sorted(by_id)}";
+    assert by_id[gone]["holds_data"] is False;
+    assert by_id[used]["holds_data"] is True;
+
+    result = gw.delete_provisioned_users();
+    assert result == {"deleted": [gone], "kept_with_data": [used]} , str(result);
+    assert gw.validate_jwt_token_detail(token)["status"] == "unknown_user";
+    assert gw.refresh_jwt_token(token) is None;
+    assert storage.get_user_by_id(used) is not None;
+    assert storage.get_user_by_id(linked) is not None;
+    assert storage.get_user_by_id(real["user_id"]) is not None;
+    assert gw.list_provisioned_users()["users"] == [by_id[used]];
+}
+
+
+test "the admin endpoints list and delete provisioned records, admin only" {
+    made = _isolated_gateway();
+    if made is None {
+        return;
+    }
+    (gw, storage, store) = made;
+    admin_id = storage.create_user(
+        identities=[{"type": "username", "value": f"ops_{uuid.uuid4().hex[:8]}"}],
+        credential={"type": "password", "password": f"Pw-{uuid.uuid4().hex}!a1"}
+    )["user_id"];
+    storage.set_user_role(admin_id, "admin");
+    bearer = f"Bearer {gw.create_jwt_token(admin_id, session_epoch=0)}";
+    stray = str(uuid.uuid4());
+    storage.ensure_user_by_id(stray);
+    portal = JacAPIServerAdmin(user_manager=gw);
+
+    refused = portal.admin_delete_provisioned_users(Authorization=None);
+    assert refused.ok is False;
+    assert storage.get_user_by_id(stray) is not None;
+
+    listed = portal.admin_list_provisioned_users(Authorization=bearer);
+    assert listed.ok , str(listed.error);
+    assert [r["user_id"] for r in listed.data["users"]] == [stray];
+
+    removed = portal.admin_delete_provisioned_users(Authorization=bearer);
+    assert removed.ok , str(removed.error);
+    assert removed.data["deleted"] == [stray];
+    assert storage.get_user_by_id(stray) is None;
+}
+
+
+test "an app that provisions on its own store refuses the clean-up" {
+    manager = _manager("orders_app", own_store=True);
+    if manager is None {
+        return;
+    }
+    assert "error" in manager.list_provisioned_users();
+    assert "error" in manager.delete_provisioned_users();
+    admin = manager.create_internal_user(
+        f"ops_{uuid.uuid4().hex[:8]}", f"Pw-{uuid.uuid4().hex}!a1", role="admin"
+    );
+    bearer = f"Bearer {manager.create_jwt_token(admin['user_id'], session_epoch=0)}";
+    refused = JacAPIServerAdmin(user_manager=manager).admin_delete_provisioned_users(
+        Authorization=bearer
+    );
+    assert refused.ok is False;
+    assert refused.meta.extra["http_status"] == 409;
 }

@@ -547,6 +547,47 @@ impl PgIdentityStorage.list_all_users(limit: int, offset: int) -> list[dict[str,
     return [_pg_public(r[0]) for r in rows];
 }
 
+impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
+    rows = self.store.rows(
+        """
+        SELECT u.user_id, u.doc->>'root_id', u.doc->>'created_at'
+        FROM identity_users u
+        WHERE COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
+          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
+          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
+        ORDER BY u.doc->>'created_at'
+        """,
+        {}
+    );
+    anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
+    has_graph = bool(anchors_table and anchors_table[0][0]);
+    found: list[dict[str, any]] = [];
+    for (user_id, root_id, created_at) in rows {
+        holds_data = False;
+        if has_graph and root_id {
+            holds_data = bool(
+                self.store.rows(
+                    """
+                    SELECT 1 FROM anchors
+                    WHERE root_id = CAST(:r AS uuid) AND id <> CAST(:r AS uuid)
+                    LIMIT 1
+                    """,
+                    {'r': str(root_id)}
+                )
+            );
+        }
+        found.append(
+            {
+                'user_id': str(user_id),
+                'root_id': root_id,
+                'created_at': created_at,
+                'holds_data': holds_data
+            }
+        );
+    }
+    return found;
+}
+
 impl _pg_json_default(o: object) -> str {
     return str(o);
 }

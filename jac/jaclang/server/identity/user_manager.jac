@@ -8,6 +8,7 @@ glob logger = logging.getLogger(__name__),
      SESSION_EPOCH_CLAIM: str = 'sep',
      LOGIN_SCOPE: str = 'login-attempt',
      RETIRED_ADMIN_PASSWORD: str = 'changeme',
+     PROVISIONED_HERE: str = 'This app provisions accounts on its own store, where blank records are expected; run the clean-up on the gateway',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );
@@ -140,6 +141,8 @@ obj UserManager {
 
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
+    def list_provisioned_users -> dict[str, any];
+    def delete_provisioned_users -> dict[str, any];
     def create_user_as_admin(
         identities: list[dict[str, any]],
         password: str,

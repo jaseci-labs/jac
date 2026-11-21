@@ -48,6 +48,7 @@ obj IdentityStorage {
     def rename_username(user_id: str, new_username: str) -> dict[str, any];
     def identity_taken(value: str) -> bool abst;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]] abst;
+    def list_provisioned_users -> list[dict[str, any]] abst;
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None abst;
     def create_user(
         identities: list[dict[str, any]],
@@ -80,6 +81,7 @@ obj IdentityStorage {
 
     def reset_password(user_id: str, new_password: str) -> dict[str, any];
     def expire_legacy_credentials(user_id: (str | None) = None) -> list[str];
+    def delete_provisioned_users -> dict[str, list[str]];
     def get_root_id(user_id: str) -> str | None;
     def get_username(user_id: str) -> str | None;
     def update_user_fields(user_id: str, fields: dict[str, any]) -> bool;
@@ -124,5 +126,6 @@ obj PgIdentityStorage(IdentityStorage) {
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
+    def list_provisioned_users -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
 }
