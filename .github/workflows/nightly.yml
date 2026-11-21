@@ -52,6 +52,13 @@ jobs:
       run: |
         sudo apt-get install -y gdb >/dev/null
         file notes-app libcef_dispatch.so
+        for sym in cef_dispatch_startup cef_dispatch_settings_create; do
+          echo "=== $sym (libcef_dispatch.so)"
+          objdump -d --no-show-raw-insn --disassemble=$sym libcef_dispatch.so | sed -n '7,140p'
+        done
+        echo "=== cef_startup (notes-app)"
+        objdump -d --no-show-raw-insn --disassemble=cef_startup notes-app | sed -n '7,140p'
+        nm -D --defined-only libcef_dispatch.so | grep -v " cef_" | head -40
         Xvfb :98 -screen 0 1280x720x24 &
         DISPLAY=:98 FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
         JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 \
