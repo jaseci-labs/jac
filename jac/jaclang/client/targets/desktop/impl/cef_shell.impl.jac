@@ -1,41 +1,18 @@
-impl _is_stale(output: Path, inputs: list[Path]) -> bool {
-    if not output.exists() {
-        return True;
-    }
-    out_mtime = output.stat().st_mtime;
-    for src in inputs {
-        if src.exists() and src.stat().st_mtime > out_mtime {
-            return True;
-        }
-    }
-    return False;
-}
-
 impl _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
-    src = cef_dir / "cef_dispatch.jac";
-    stale = _is_stale(
-        lib, module_files(src) + module_files(cef_dir / "cef_platform.jac")
-    );
-    if not stale {
+    if lib.is_file() {
         return lib;
     }
-    console.print(
-        "  Building libcef_dispatch.so (jac build --native --lib)...", style="muted"
-    );
+    console.print("  Building libcef_dispatch.so (cc)...", style="muted");
     return build_cef_dispatch(cef_dir);
 }
 
 impl _ensure_cef_subprocess(cef_dir: Path) -> Path {
     helper = cef_dir / "cef-subprocess";
-    src = cef_dir / "cef_subprocess.jac";
-    stale = _is_stale(
-        helper, module_files(src) + module_files(cef_dir / "cef_platform.jac")
-    );
-    if not stale {
+    if helper.is_file() {
         return helper;
     }
-    console.print("  Building cef-subprocess (jac build --native)...", style="muted");
+    console.print("  Building cef-subprocess (cc)...", style="muted");
     return build_cef_subprocess(cef_dir);
 }
 

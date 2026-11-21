@@ -79,7 +79,7 @@ test "native source workspaces never write into installed package assets" {
     }
 }
 
-test "source workspaces carry each module's impl annexes" {
+test "source workspaces carry impl annexes and source assets, not build outputs" {
     with TemporaryDirectory() as tmp {
         base = Path(tmp);
         source = base / "source";
@@ -88,9 +88,15 @@ test "source workspaces carry each module's impl annexes" {
         (source / "impl" / "binding.impl.jac").write_text(
             "impl value -> int { return 1; }"
         );
+        (source / "shim.c").write_text("int value;");
+        (source / "README.md").write_text("docs");
         with patch.dict(os.environ, {"JAC_CACHE_HOME": str(base / "cache")}) {
             first = source_workspace(source, "binding");
             assert (first / "impl" / "binding.impl.jac").is_file();
+            assert (first / "shim.c").is_file();
+            assert not (first / "README.md").exists();
+            (first / "libshim.so").write_text("built");
+            assert source_workspace(first, "binding") == first;
             (source / "impl" / "binding.impl.jac").write_text(
                 "impl value -> int { return 2; }"
             );

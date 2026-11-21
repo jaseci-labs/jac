@@ -1,0 +1,72 @@
+name: CEF smoke
+
+# Builds the notes-app example with the CEF engine and launches it headless.
+# nightly.yml runs it daily; ci.yml runs it on PRs that touch the CEF engine.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  notes-app-cef-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install display deps
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+          libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+          libasound2t64 patchelf
+
+    - name: Build notes-app example
+      run: |
+        cd jac/examples/notes-app
+        jac build   # [project] kind = "desktop", [desktop] engine = "cef"
+
+    - name: Bundle existence audit
+      working-directory: jac/examples/notes-app
+      run: |
+        BUNDLE=.jac/client/desktop
+        for f in libcef.so libcef_dispatch.so cef-subprocess minimal-fonts.conf icudtl.dat app.jab; do
+          test -f "$BUNDLE/$f" || { echo "::error::missing $f"; exit 1; }
+        done
+        test -d $BUNDLE/locales || { echo "::error::missing locales/"; exit 1; }
+        for f in notes-app libcef_dispatch.so cef-subprocess; do
+          ldd "$BUNDLE/$f" | grep 'not found' && exit 1 || true
+        done
+
+    - name: Headless smoke with timeout (X11)
+      working-directory: jac/examples/notes-app/.jac/client/desktop
+      run: |
+        Xvfb :99 -screen 0 1280x720x24 &
+        XVFB_PID=$!
+        DISPLAY=:99 \
+        FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
+        JAC_CEF_DISABLE_GPU=1 \
+        OZONE_PLATFORM=x11 \
+        timeout 40s ./notes-app 2>&1 | tee /tmp/notes-app.log &
+        SMOKE_PID=$!
+        for _ in $(seq 30); do
+          grep -q "render: bootstrap injected" /tmp/notes-app.log && break
+          sleep 1
+        done
+        kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
+        grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
+          && grep -q "render: bootstrap injected" /tmp/notes-app.log \
+          || { cat /tmp/notes-app.log; exit 1; }
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: notes-app-logs
+        path: /tmp/notes-app.log

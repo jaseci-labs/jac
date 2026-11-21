@@ -1,13 +1,5 @@
-"""Dependency-free tests for the Jac-native CEF binding.
-
-Compile-only: these need ONLY the jac toolchain - no CEF runtime, no
-libpython-dev, no display. `jac build --native` records the needed shared libraries
-(DT_NEEDED) and an $ORIGIN runpath without dlopening them, so a host that binds
-libcef_dispatch.so (or libpython) links cleanly with nothing installed. This
-catches binding-signature drift, wrong/missing externs, wrong soname, and
-codegen regressions. The webview binding has a sibling suite in
-`test_desktop_binding.jac`.
-"""
+"""Compile-only tests for the CEF host binding: no CEF runtime, libpython-dev or
+display needed, since `jac build --native` records needed libraries without loading them."""
 import os;
 import re;
 import shutil;
@@ -161,60 +153,12 @@ test "a native build invokes a zero-arg function called from entry with parenthe
     }
 }
 
-"""Regression: the CEF subprocess + dispatch lifecycle functions must be invoked
-with `()`. Guards against re-introducing the bare-name no-op that left the
-cef-subprocess entry and `g_exe_dir_buf` initialization dead."""
-test "cef native lifecycle functions are invoked with parentheses" {
-    cef = _cef_dir();
-    sub = unit_source(cef / "cef_subprocess.jac");
-    disp = unit_source(cef / "cef_dispatch.jac");
-    # Required paren-form invocations.
-    for needle in [
-        "_subprocess_main()",
-        "_subprocess_bootstrap()",
-        "cef_main_args_create()"
-    ] {
-        assert needle in sub , f"cef_subprocess.jac must invoke {needle}";
-    }
-    assert "_init_exe_dir()" in disp , "cef_dispatch.jac must invoke _init_exe_dir()";
-    # No bare no-op invocation (name followed directly by `;`, not `(`).
-    checks = [
-        (
-            "cef_subprocess.jac",
-            sub,
-            ["_subprocess_main", "_subprocess_bootstrap", "cef_main_args_create"]
-        ),
-        ("cef_dispatch.jac", disp, ["_init_exe_dir"]),
-
-    ];
-    for (fname, body, fns) in checks {
-        for fn in fns {
-            bare = re.search(
-                r"(?:^|[=({;,]|(?<!def)(?<!can)\s)" + fn + r"\s*;", body, re.M
-            );
-            assert bare is None , f"{fn} is invoked without parentheses (no-op) in {fname}";
-        }
-    }
-}
-
-"""Regression: JAC_CEF_DISABLE_GPU is the documented GPU fallback (QA.md §3/§5,
-notes-app/README.md). It must append `disable-gpu` in `_on_before_cmdline`.
-Previously the env var was a silent no-op -- the GPU process still spawned and
-crashed on hosts with no usable GL. Pins the wiring so it cannot regress."""
+"""JAC_CEF_DISABLE_GPU, the documented GPU fallback, must append the disable-gpu
+switch; it was once a silent no-op that left the GPU process crashing."""
 test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
-    cef = _cef_dir();
-    disp = unit_source(cef / "cef_dispatch.jac");
-    # The env var must be read inside the cmdline handler ...
-    assert 'cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU")' in disp , (
-        "cef_dispatch.jac must read JAC_CEF_DISABLE_GPU in _on_before_cmdline"
-    );
-    # ... and it must append the disable-gpu switch (not just rely on HEADLESS).
-    block = re.search(
-        r'cef_dispatch_getenv_set\("JAC_CEF_DISABLE_GPU"\).*?disable-gpu', disp, re.S
-    );
-    assert block is not None , (
-        "JAC_CEF_DISABLE_GPU branch must append the \"disable-gpu\" switch"
-    );
+    shim = (_cef_dir() / "cef_dispatch.c").read_text();
+    block = re.search(r'env_set\("JAC_CEF_DISABLE_GPU"\).*?"disable-gpu"', shim, re.S);
+    assert block is not None , "JAC_CEF_DISABLE_GPU must append the disable-gpu switch";
 }
 
 # String-only (no native build / CEF / display): the generated CEF host boots

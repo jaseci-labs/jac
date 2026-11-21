@@ -3,22 +3,22 @@ import from "libcef.so" {
 }
 
 import from "libcef_dispatch.so" {
-    def cef_dispatch_browser_get_main_frame(browser: int) -> int;  def cef_dispatch_frame_load_url(
-        frame: int, url: str
-    ) -> None;  def cef_dispatch_execute_process -> i32;  def cef_dispatch_startup(
+    def cef_dispatch_execute_process -> i32;  def cef_dispatch_startup(
         cache_path: str, no_sandbox: int
     ) -> i32;  def cef_dispatch_set_pending_browser(
         url: str, title: str, width: int, height: int
     ) -> None;  def cef_dispatch_open_browser(
         url: str, title: str, width: int, height: int
-    ) -> None;
+    ) -> None;  def cef_dispatch_navigate(url: str) -> None;  def cef_dispatch_window_set_title(
+        title: str
+    ) -> i32;  def cef_dispatch_window_set_size(width: int, height: int) -> i32;
 }
 
 obj:pub CefBrowser {
     has browser_handle: int = 0;
 
-    def title(_text: str);
-    def size(_width: int, _height: int, _hint: int = 0);
+    def title(text: str);
+    def size(width: int, height: int, _hint: int = 0);
     def navigate(url: str);
     def run;
     def terminate;

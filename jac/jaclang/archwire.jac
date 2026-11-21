@@ -187,7 +187,6 @@ graph import {
             | client.targets.client_dev_common
             | client.targets.desktop.cef_shell
             | client.targets.desktop.desktop_build
-            | client.targets.desktop.native.cef.build
             | client.targets.desktop.webview_shell
             | client.targets.mobile_target
             | client.targets.node_tooling_common
@@ -3586,9 +3585,6 @@ graph import {
     }
     toolchains.cef ++> client.targets.desktop.cef_shell { ensure_cef }
     toolchains.desktop ++> [
-        client.targets.desktop.cef_shell._ensure_cef_subprocess
-            | client.targets.desktop.desktop_build._unit_source { module_files },
-        client.targets.desktop.cef_shell._ensure_libcef_dispatch { module_files },
         client.targets.desktop.cef_shell.cef_build
             | client.targets.desktop.desktop_build._stage_fused_runtime
             | client.targets.desktop.webview_shell._assemble_native_host {
@@ -4572,7 +4568,6 @@ graph import client.targets.desktop {
             stage_postgres,
             stage_program
         },
-        native.cef.build { build_cef_dispatch, build_cef_subprocess },
         webview_shell {
             _bundle_runtime,
             _find_webview_dir,
@@ -4616,20 +4611,6 @@ graph import client.targets.desktop.native {
         host_boot.boot { ProfileStore },
     ]
     webview.webview ++> plugin_bridge { respond }
-}
-
-graph import client.targets.desktop.native.cef {
-    cef ++> [
-        cef_smoke { cef_cleanup, new_cef_browser },
-        cef_test_host {
-            cef_cleanup,
-            cef_execute_subprocess,
-            cef_open_browser,
-            cef_run_loop,
-            cef_startup
-        },
-    ]
-    include cef_platform ++> cef_dispatch | cef_subprocess;
 }
 
 graph import client.targets.react_native {

@@ -6,8 +6,6 @@ import stat;
 
 import from pathlib { Path }
 
-def _is_stale(output: Path, inputs: list[Path]) -> bool;
-
 def _ensure_libcef_dispatch(cef_dir: Path) -> Path;
 
 def _ensure_cef_subprocess(cef_dir: Path) -> Path;

@@ -1,13 +1,14 @@
-impl CefBrowser.title(_text: str) {}
+impl CefBrowser.title(text: str) {
+    cef_dispatch_window_set_title(text);
+}
 
-impl CefBrowser.size(_width: int, _height: int, _hint: int = 0) {}
+impl CefBrowser.size(width: int, height: int, _hint: int = 0) {
+    cef_dispatch_window_set_size(width, height);
+}
 
 impl CefBrowser.navigate(url: str) {
     if self.browser_handle != 0 {
-        frame = cef_dispatch_browser_get_main_frame(self.browser_handle);
-        if frame != 0 {
-            cef_dispatch_frame_load_url(frame, url);
-        }
+        cef_dispatch_navigate(url);
     }
 }
 

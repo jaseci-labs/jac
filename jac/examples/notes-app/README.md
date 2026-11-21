@@ -48,9 +48,9 @@ and localStorage probe results.
 
 ## First-time CEF fetch
 
-The first build downloads ~1.4 GB of CEF binaries (in-process, via
-`desktop_build.fetch_cef_dist`) and compiles `libcef_dispatch.so` +
-`cef-subprocess` (`jac run .../native/cef/build.jac`).
+The first build downloads ~1.4 GB of CEF binaries and compiles
+`libcef_dispatch.so` and `cef-subprocess` from the C sources in
+`jaclang/client/targets/desktop/native/cef/` with `cc`.
 
 ## Troubleshooting
 

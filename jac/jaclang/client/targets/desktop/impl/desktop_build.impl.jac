@@ -165,94 +165,42 @@ impl _jac_bin -> str {
     raise RuntimeError("jac CLI not found on PATH.");
 }
 
-impl _cef_bootstrap_js -> str {
-    src = (_find_cef_dir() / "cef_dispatch.jac").read_text();
-    anchor = "glob BOOTSTRAP_JS: str = \"";
-    i = src.find(anchor);
-    if i < 0 {
-        raise RuntimeError("BOOTSTRAP_JS glob not found in cef_dispatch.jac");
-    }
-    start = i + len(anchor);
-    end = src.find("\";", start);
-    if end < 0 {
-        raise RuntimeError("BOOTSTRAP_JS glob literal is not terminated");
-    }
-    return src[start:end];
-}
-
-impl _jac_sdk_js -> str {
-    boot = _cef_bootstrap_js();
-    start = boot.find("(function(){var _l={}");
-    end = boot.find("(function(){try{");
-    if start < 0 or end < 0 or end <= start {
+impl _native_build_cef(
+    cef_dir: Path, source_name: str, output: Path, shared: bool
+) -> Path {
+    headers = cef_dir / "cef_headers";
+    runtime = cef_dir / "cef_dist";
+    if not (headers / "include").is_dir() or not (runtime / "libcef.so").is_file() {
         raise RuntimeError(
-            "could not locate the shared JS SDK within BOOTSTRAP_JS "
-            "(cef_dispatch.jac bootstrap boundaries changed)"
+            f"jac-desktop: building {output.name} needs the CEF distribution that ensure_cef stages in {cef_dir}."
         );
     }
-    return boot[start:end];
-}
-
-impl _top_level_import_boundary(lines: list[str]) -> int {
-    depth = 0;
-    idx = 0;
-    for line in lines {
-        stripped = line.strip();
-        if (
-            depth == 0
-            and stripped != ""
-            and (not stripped.startswith("#"))
-            and (not stripped.startswith("import"))
-        ) {
-            return idx;
-        }
-        depth += line.count("{") - line.count("}");
-        idx += 1;
-    }
-    return len(lines);
-}
-
-impl _unit_source(module: Path, keep_imports: bool = True) -> str {
-    parts: list[str] = [];
-    for part in module_files(module) {
-        lines = part.read_text().rstrip("\n").split("\n");
-        if not keep_imports {
-            lines = lines[_top_level_import_boundary(lines):];
-        }
-        parts.append("\n".join(lines));
-    }
-    return "\n".join(parts) + "\n";
-}
-
-impl _inject_platform(host_src: str, platform_src: str) -> str {
-    plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
-    lines = host_src.split("\n");
-    at = _top_level_import_boundary(lines);
-    return "\n".join(lines[:at] + [plat] + lines[at:]);
-}
-
-impl _native_build_cef(
-    cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
-) -> Path {
     with FileLock(cef_dir / ".native-build.lock") {
         build_dir = cef_dir / ".build";
         build_dir.mkdir(parents=True, exist_ok=True);
-        build_src = build_dir / build_name;
-        host_src = _unit_source(cef_dir / source_name);
-        platform_src = _unit_source(cef_dir / "cef_platform.jac", keep_imports=False);
-        build_src.write_text(_inject_platform(host_src, platform_src));
-        cmd = [_jac_bin(), "build", "--native"];
+        script = (cef_dir / "bootstrap.js").read_text().strip();
+        (build_dir / "bootstrap_js.h").write_text(
+            f"static const char JAC_BOOTSTRAP_JS[] = {json.dumps(script)};\n"
+        );
+        cmd = ["cc", "-std=gnu11", "-O2", "-Wall"];
         if shared {
-            cmd.append("--lib");
+            cmd += ["-shared", "-fPIC", "-fvisibility=hidden"];
         }
-        cmd += [str(build_src), "-o", str(output)];
+        cmd += [
+            f"-I{headers}",
+            f"-I{build_dir}",
+            str(cef_dir / source_name),
+            "-o",
+            str(output),
+            f"-L{runtime}",
+            f"-Wl,-rpath-link,{runtime}",
+            "-Wl,-rpath,$ORIGIN"
+        ];
+        cmd += ["-lcef", "-ldl"] if shared else [f"-L{cef_dir}", "-lcef_dispatch"];
         res = subprocess.run(cmd);
         if res.returncode != 0 or not output.exists() {
-            raise RuntimeError(
-                f"jac build --native failed for {output.name} (source {source_name})."
-            );
+            raise RuntimeError(f"cc failed for {output.name} (source {source_name}).");
         }
-        _patchelf_rpath(output, "$ORIGIN");
         return output;
     }
 }
@@ -260,22 +208,14 @@ impl _native_build_cef(
 impl build_cef_dispatch(cef_dir: Path) -> Path {
     cef_dir = source_workspace(cef_dir, "cef");
     return _native_build_cef(
-        cef_dir,
-        "cef_dispatch.jac",
-        "cef_dispatch_build.jac",
-        cef_dir / "libcef_dispatch.so",
-        True,
+        cef_dir, "cef_dispatch.c", cef_dir / "libcef_dispatch.so", True
     );
 }
 
 impl build_cef_subprocess(cef_dir: Path) -> Path {
     cef_dir = source_workspace(cef_dir, "cef");
     return _native_build_cef(
-        cef_dir,
-        "cef_subprocess.jac",
-        "cef_subprocess_build.jac",
-        cef_dir / "cef-subprocess",
-        False,
+        cef_dir, "cef_subprocess.c", cef_dir / "cef-subprocess", False
     );
 }
 

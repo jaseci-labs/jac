@@ -73,6 +73,7 @@ jobs:
       byllm: ${{ steps.filter.outputs.byllm }}
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
+      cef: ${{ steps.filter.outputs.cef }}
       native: ${{ steps.filter.outputs.native }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
@@ -112,6 +113,14 @@ jobs:
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
               - '.github/workflows/_installer.yml'
+            cef:
+              - 'jac/jaclang/client/targets/desktop/native/cef/**'
+              - 'jac/jaclang/client/targets/desktop/cef_shell.jac'
+              - 'jac/jaclang/client/targets/desktop/impl/cef_shell.impl.jac'
+              - 'jac/jaclang/toolchains/cef.jac'
+              - 'jac/jaclang/toolchains/impl/cef.impl.jac'
+              - 'jac/examples/notes-app/**'
+              - '.github/workflows/_cef_smoke.yml'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
             # path that can move them changes (or on push/dispatch). The darwin
             # lane no longer reads this filter -- it is nightly + `macos`-label
@@ -1047,7 +1056,6 @@ jobs:
       - name: Run all client tests
         # Was serial for a collection race in the old pytest-xdist runner,
         # which jac test's own worker pool does not have.
-        # test_cef_dispatch_build.jac (the old test-cef-build job) runs here.
         env:
           JAC_TEST_JOBS: "2"
           JAC_TEST_RSS_LOG: "1"
@@ -1345,8 +1353,11 @@ jobs:
       - name: Carry-over verdict tests
         run: bash scripts/test_ci_carry_verdict.sh
 
-  # The CEF dispatch build + export/runpath/deps audit lives in the suite
-  # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
+  # Builds and launches a CEF desktop app; nightly.yml runs the same body daily.
+  cef-smoke:
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.cef == 'true') }}
+    uses: ./.github/workflows/_cef_smoke.yml
 
   test-jac-pack-smoke:
     needs: [changes, build-kit]
@@ -2155,6 +2166,7 @@ jobs:
       - test-jac-pack-smoke
       - test-jac-pack-eject
       - installer-test
+      - cef-smoke
     runs-on: ubuntu-latest
     permissions:
       actions: read

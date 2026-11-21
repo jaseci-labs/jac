@@ -17,12 +17,13 @@ impl source_workspace(source: Path, name: str) -> Path {
     real_source = source.resolve();
     files: list[Path] = [];
     for p in sorted(source.iterdir()) {
-        if p.is_file() and p.name == "cef_sums.lock" {
-            files.append(p);
-        } elif p.is_file()
-            and p.suffix == ".jac"
-            and not p.name.endswith(".impl.jac") {
+        if not p.is_file() or p.name.startswith(".") {
+            continue;
+        }
+        if p.suffix == ".jac" and not p.name.endswith(".impl.jac") {
             files.extend(module_files(p));
+        } elif p.suffix in (".c", ".js", ".conf", ".lock") {
+            files.append(p);
         }
     }
     rels = sorted({str(p.resolve().relative_to(real_source)) for p in files});

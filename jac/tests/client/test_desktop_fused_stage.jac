@@ -53,27 +53,3 @@ test "staging carries each fused module's impl annex" {
         shutil.rmtree(out, ignore_errors=True);
     }
 }
-
-test "a spliced CEF unit takes the bodies from its annexes but not the fragment's imports" {
-    src = Path(tempfile.mkdtemp(prefix="cef_src_"));
-    try {
-        (src / "impl").mkdir();
-        (src / "host.jac").write_text(
-            'import from "libc.so.6" {\n    def abort -> None;\n}\n\ndef run;\n'
-        );
-        (src / "impl" / "host.impl.jac").write_text("impl run {\n    plat();\n}\n");
-        (src / "plat.jac").write_text("def plat;\n");
-        (src / "impl" / "plat.impl.jac").write_text(
-            'import from "libc.so.6" {\n    def abort -> None;\n}\n\nimpl plat {\n    abort();\n}\n'
-        );
-        unit = desktop_build._inject_platform(
-            desktop_build._unit_source(src / "host.jac"),
-            desktop_build._unit_source(src / "plat.jac", keep_imports=False)
-        );
-    } finally {
-        shutil.rmtree(src, ignore_errors=True);
-    }
-    assert unit.count('import from "libc.so.6"') == 1 , unit;
-    assert "impl run {" in unit and "impl plat {" in unit , unit;
-    assert unit.index("def plat;") < unit.index("def run;") , unit;
-}
