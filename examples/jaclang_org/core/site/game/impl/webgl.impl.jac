@@ -257,7 +257,7 @@ impl _setcur(sh: WebGLHost, m: list[float]) {
     }
 }
 
-impl _flush(sh: WebGLHost) -> None {
+impl _flush(sh: WebGLHost) {
     if len(sh.verts) == 0 {
         return;
     }

@@ -86,7 +86,7 @@ def _cur(sh: WebGLHost) -> list[float];
 
 def _setcur(sh: WebGLHost, m: list[float]);
 
-def _flush(sh: WebGLHost) -> None;
+def _flush(sh: WebGLHost);
 
 def _compile_shader(gl: any, kind: int, source: str) -> any;
 
