@@ -1,0 +1,61 @@
+# The `ui` abstraction: what a JavaScript space's components are written
+# against. Source says a component: `has` in a function, `can with entry`,
+# JSX. Its plugin is picked as the space is built, the standard one by the
+# space's host.
+[project]
+name = "ui"
+kind = "abstraction"
+
+# `interface_ver` is the version of what a plugin of it says (below): a number
+# that goes up when that changes so that a plugin written for it would not
+# survive. A plugin says the one it was written for. `per` is what has one
+# plugin of it, `picked` when that plugin is chosen, and `standard` the plugin
+# a space has until its project names another, by the space's host: each is
+# in this directory.
+[abstraction]
+interface_ver = 1
+per = "space"
+picked = "build"
+
+[abstraction.standard]
+browser = "react"
+hermes = "react_native"
+node = "none"
+
+# The contract: `ui` has no interface class, since nothing of its plugin runs
+# with the program. A plugin of it is a `jac.toml` with a `[ui]` table, which
+# says which library's functions the language's state, derived values and
+# effects become:
+#
+#   [ui]
+#   model = "rerender"      # rerender, fine-grained or none
+#   hosts = ["browser"]     # the hosts the library runs on: browser, hermes, node
+#   owns = ["react"]        # npm packages only this plugin's spaces may import
+#   bundler = "vite"        # the `bundler` plugin of a space that names none
+#   runtime = "runtime.js"  # a file of the plugin that is `@jac/runtime` in its spaces
+#   boot = "@jac/runtime"   # the module whose `startApp` starts a routed app
+#
+#   [ui.jsx]
+#   lowercase_tags = true   # whether <div> exists
+#   no_text_in = []         # tags that show no bare text
+#   keys = true             # whether the library reads an element's `key`
+#
+#   [ui.state]              # `has`
+#   from = "react"          # the npm module the function is imported from
+#   name = "useState"       # the function
+#   shape = "pair"          # pair: the value and its setter; object: one object
+#
+#   [ui.ref]                # a value kept across renders: a rerender plugin's
+#   [ui.effect]             # `can with ... entry`
+#   [ui.computed]           # a derived value: a fine-grained plugin's
+#   [ui.cleanup]            # `can with ... exit`: a fine-grained plugin's
+#   [ui.untrack]            # what an effect reads without depending on it
+#   from = "..."            # each of the five: the npm module, and
+#   name = "..."            # the function
+#
+#   [ui.each]               # a keyed list: a fine-grained plugin's
+#   from = "solid-js"
+#   tag = "For"             # the component that draws it
+#   prop = "each"           # the prop that takes the list
+[check.lint]
+select = []
