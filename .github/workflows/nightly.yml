@@ -47,6 +47,19 @@ jobs:
         test -f $BUNDLE/app.jab
         ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
+    - name: Debug backtrace (temporary)
+      working-directory: jac/examples/notes-app/.jac/client/desktop
+      run: |
+        sudo apt-get install -y gdb >/dev/null
+        file notes-app libcef_dispatch.so
+        Xvfb :98 -screen 0 1280x720x24 &
+        DISPLAY=:98 FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
+        JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 \
+        timeout 180s gdb -batch -ex "set pagination off" \
+          -ex "handle SIGPIPE nostop noprint" -ex run -ex bt \
+          -ex "info symbol \$pc" -ex "x/8i \$pc" -ex "info registers" \
+          ./notes-app 2>&1 | tail -120 || true
+
     - name: Headless smoke with timeout (X11)
       working-directory: jac/examples/notes-app/.jac/client/desktop
       run: |
