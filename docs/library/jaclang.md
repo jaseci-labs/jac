@@ -15,7 +15,7 @@ name would shadow them.
 | `atomics` | `Atomic[T]`, an integer that threads change in one step | [Atomics](../language/numbers-atomics.md) (`jac docs atomics`) |
 | `dl` | C libraries opened as the program runs | [dl](../interop/dl.md) (`jac docs dl`) |
 | `accel` | Devices, tensors and kernels | [accel](../accel/index.md) (`jac docs accel`) |
-| `stdjac` and its modules | The app runtime: servers, remote calls, the codec, UI | [stdjac](../apps/stdjac.md) (`jac docs stdjac`) |
+| `stdjac` | The app runtime: servers, remote calls, the codec, UI | [stdjac](../apps/stdjac.md) (`jac docs stdjac`) |
 
 `jaclang.comptime`'s functions run as the program compiles: code written with them is unrolled for
 each type into straight-line code, and nothing is reflected on as the program runs.

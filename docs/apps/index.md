@@ -203,8 +203,8 @@ A second `jac build web` with nothing changed runs nothing and says the app is u
 | [UI plugins and bundlers](ui-bindings.md) | The `ui` plugins (React, Preact, Solid, React Native, `none`) and the `bundler` plugins (Vite, Expo); a project's own | `jac docs apps/ui-bindings` |
 | [Hosts](hosts.md) | What each host runs, reaches and refuses; desktop apps, their arrangements and local users; phone apps | `jac docs host` |
 | [Building apps](building.md) | `jac build` and `run`, artifacts, several arrangements in one artifact, incremental builds, deployment values | `jac docs apps/building` |
-| [stdjac](stdjac.md) | The app runtime library a program imports | `jac docs stdjac` |
-| [stdjac.server](stdjac-server.md) | The decorators for routes, schedules, jobs and limits, and the contracts their plugins conform to | `jac docs stdjac.server` |
+| [stdjac](stdjac.md) | The app runtime library: the words of it that are built in, and what a program imports from it | `jac docs stdjac` |
+| [The server's words](stdjac-server.md) | The decorators for routes, schedules, jobs and limits, and the contracts their plugins conform to | `jac docs restspec` |
 | [By and sem](../language/by-and-sem.md) | A function a language model (an LLM) answers, `by llm()`: an agent's tools, an answer streamed to a page, a kept conversation; the skill `language-models-and-agents` is the playbook | `jac docs by-and-sem` |
 
 The wires in `graph import` (`++>`, `-->`, `edge`) are the module system's and apply to every

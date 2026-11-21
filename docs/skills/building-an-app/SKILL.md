@@ -160,7 +160,7 @@ def count_notes -> Summary {
 
 <!-- example: not checked: its names come from another space through the archwire's wires -->
 ```jac
-import from stdjac.remote { RemoteError }
+import from stdjac { RemoteError }
 
 with entry {
     try {
@@ -201,7 +201,7 @@ kill $API_PID
    The server answers its calls at once, each on a thread of its own, on one graph and the
    module's globals. Guard state that a call reads and then writes with a
    `threading.Lock` (`with lock { ... }`). A call that runs long, or a stream, calls `commit()`
-   from `stdjac.graph` where its work so far should be kept.
+   from `stdjac` where its work so far should be kept.
 
    For progress, or an answer that comes in pieces, return an iterator in place of having the
    caller poll: `def:pub steps(count: int) -> Iterator[Step]` is a stream, whose items the server

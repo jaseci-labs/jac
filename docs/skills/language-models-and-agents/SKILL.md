@@ -11,7 +11,7 @@ a user, or to act as an agent that calls the program's functions and drives its 
 
 A model call is part of the language: a function declared `by llm()` in place of a body is
 answered by the model, which is sent the function's `sem` strings, its arguments and its tools,
-and whose answer comes back as the declared type or as a stream of events. `stdjac.llm` makes the
+and whose answer comes back as the declared type or as a stream of events. The built-in `llm` makes the
 requests, reads the streamed reply and runs the tool loop: write none of that over `urllib`, and
 install no model's SDK from PyPI or npm for it.
 
@@ -30,7 +30,7 @@ jac docs crossings       # how a page reads a stream: "Calling a stream"
 ## Steps
 
 1. **A function the model answers.** `def read_expense(receipt: str) -> Expense by llm();`
-   gives an `Expense`, decoded and checked, or raises `ByError` (from `stdjac.by`). The model is
+   gives an `Expense`, decoded and checked, or raises `ByError` (from `stdjac`). The model is
    sent the arguments and the result's schema, and its instructions are the `sem`s: the
    function's (`sem read_expense = "...";`), its parameters' (`sem read_expense.receipt = "...";`)
    and the result's fields' (`sem Expense.currency = "Its ISO code, such as EUR.";`). A docstring
@@ -55,8 +55,7 @@ jac docs crossings       # how a page reads a stream: "Calling a stream"
 
 ```jac
 import sys;
-import from stdjac.by { ByError, ByEvent, ByEventKind }
-import from stdjac.llm { Message, llm }
+import from stdjac { ByError, ByEvent, ByEventKind, Message }
 
 node Task {
     has title: str,
@@ -175,7 +174,7 @@ the tool's arguments.
 | E0033 | A `by` function with no result type | Declare `-> T`, or `-> Iterator[ByEvent]` |
 | E1229, E0109 | A result type with no JSON schema: `any`, a `tuple`, a function type | An `obj` of fields that have one |
 | E5090 | `by` on a method | A function; the method becomes a tool, `tools=[r.method]` |
-| W2001 on `llm` | `llm` is not imported | `import from stdjac.llm { llm }` |
+| E2233 on `llm` | `llm` is imported | Drop the import: `llm` is built in |
 | E1308 on an endpoint | It streams `ByEvent`s, which do not cross | Stream a type of your own (step 5) |
 | `ByError`: `ANTHROPIC_API_KEY isn't set` | No key where the call runs | Step 4 |
 | The model never calls a tool | It is not in the list written in the `by` call, or its `sem` does not say when to use it | List it there, and say when in its `sem` |

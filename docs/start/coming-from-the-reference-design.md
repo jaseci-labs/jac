@@ -270,13 +270,13 @@ kept, who a caller is, which model answers, which UI library a component becomes
 names it in `jac.toml`, and no module imports it (`jac docs plugins`). What the reference design's plugins add
 is the language's, with a standard plugin behind it:
 
-- **`by llm()`** comes from `stdjac.llm`, not from `byllm` or `mtllm`: `import from stdjac.llm { llm }`, then
-  `def f(text: str) -> Ticket by llm();`. Which model answers is not said in source: it is the
-  project's `llm` plugin and its settings (`[llm.anthropic] model`, `JAC_LLM_MODEL` where the
-  program runs, the key from `ANTHROPIC_API_KEY`). Only a module-level function may be `by`, its
-  return type is required and must have a JSON schema, and the reply is decoded and checked as
-  that type. Any class conforming to `stdjac.by`'s `By` interface may answer a `by` function. See
-  `jac docs by`.
+- **`by llm()`** is the language's, not `byllm`'s or `mtllm`'s: `llm` is built in, so a program
+  imports nothing for it and writes `def f(text: str) -> Ticket by llm();`. Which model answers is
+  not said in source: it is the project's `llm` plugin and its settings (`[llm.anthropic] model`,
+  `JAC_LLM_MODEL` where the program runs, the key from `ANTHROPIC_API_KEY`). Only a module-level
+  function may be `by`, its return type is required and must have a JSON schema, and the reply is
+  decoded and checked as that type. Any class conforming to the `By` interface, imported from
+  `stdjac`, may answer a `by` function. See `jac docs by`.
 - **What byllm's `by llm(...)` does besides** has its form here. A tool may be a method of one of
   the function's parameters (`tools=[r.read_file]`), and a class, a method and a method's
   parameter take a `sem`. A function declared `-> Iterator[ByEvent]` is answered as the model
@@ -284,10 +284,9 @@ is the language's, with a standard plugin behind it:
   `system_prompt` and a `conversation`, a list of `Message` the call adds its turn to. What a
   request used is given to the function `on_usage` registers.
 - **`visit [-->] by llm(...);`** carries over, with two differences. The nodes are a list of one
-  node type (E1574 otherwise), and the chooser is any class conforming to `stdjac.by`'s
-  `ByChooser`, `llm` among them: `visit [-->] by llm(select=(1, 3), intent="...");`. The walker
-  visits the nodes chosen, in the order chosen, and `else` runs when none is. See
-  `jac docs visit`.
+  node type (E1574 otherwise), and the chooser is any class conforming to `ByChooser` (imported from
+  `stdjac`), `llm` among them: `visit [-->] by llm(select=(1, 3), intent="...");`. The walker visits
+  the nodes chosen, in the order chosen, and `else` runs when none is. See `jac docs visit`.
 - **`cl` code** has no keyword. A project's `archwire.jac` declares spaces (a `browser` space for
   pages, a `native` or `cpython` space for the server) and which modules each holds; a page that
   calls a server function makes a request. A component takes its attributes as typed keyword
@@ -296,10 +295,10 @@ is the language's, with a standard plugin behind it:
   component becomes (React unless `jac.toml` says otherwise) and what bundles the page are the
   space's `ui` and `bundler` plugins, named in `jac.toml` and in no module. See
   `jac docs space`, `jac docs apps/pages` and `jac docs apps/ui-bindings`.
-- **jac-scale's decorators** (`@schedule`, `@restspec`, `@job`) are `stdjac.server`'s
-  decorators, which record a note on the function as the program compiles:
-  `@schedule(interval=60.0)`, `@restspec(method=HTTPMethod.GET, path="/status")`, and `@job`,
-  whose function is started with `flow f(x)` and its result taken with `wait`. See
+- **jac-scale's decorators** (`@schedule`, `@restspec`, `@job`) are built-in decorators, said
+  without an import, which record a note on the function as the program compiles:
+  `@schedule(interval=60.0)`, `@restspec(method=HTTPMethod.GET, path="/status")`, and `@job`, whose
+  function is started with `flow f(x)` and its result taken with `wait`. See
   `jac docs apps/stdjac-server`.
 
 ## Porting a program
@@ -320,7 +319,7 @@ is the language's, with a standard plugin behind it:
 4. **Review the walkers.** Look for abilities that override a base's by name, `skip` that relied on
    the node's abilities still running, `report` relied on for printing, and graphs expected to
    persist between runs (see [Same code, another meaning](#same-code-another-meaning)).
-5. **Replace the reference design's plugins** with `stdjac.llm` and an `archwire.jac`, then `jac build` and
+5. **Replace the reference design's plugins** with the built-in `llm` and an `archwire.jac`, then `jac build` and
    `jac test`. `jac test` runs a module's plain `with entry` blocks before its tests, and
    not its `with entry:__main__`, so a module with tests keeps the program's main code in
    `with entry:__main__` ([Tests](../language/tests.md#a-programs-main-code-and-its-tests)).

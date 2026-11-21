@@ -1,18 +1,17 @@
 ---
-description: The stdjac.server module - the decorators that give a function a path of its own, a schedule, a limit or make it a job, what a job's handle offers, consume_limit, and static_file - with each name's signature; and the contracts a plugin for auth, jobs, schedules or limits conforms to, with what each asks of the program that runs it.
-keywords: stdjac.server, schedule, job, Job, JobNote, JobFailed, restspec, HTTPMethod, limit, consume_limit, auth.contract, jobs.contract, schedule.contract, limits.contract, Auth, AuthHost, SignIn, SignInField, SignInAction, Session, Rejected, bearer_token, Jobs, JobsHost, JobState, Scheduler, Scheduled, Limits, static_file
+description: The server's words - the built-in decorators that give a function a path of its own, a schedule, a limit or make it a job, what a job's handle offers, and JobFailed, consume_limit and static_file, which a program imports from stdjac - with each name's signature; and the contracts a plugin for auth, jobs, schedules or limits conforms to, with what each asks of the program that runs it.
+keywords: restspec, HTTPMethod, schedule, job, Job, JobNote, JobFailed, limit, consume_limit, stdjac.server, auth.contract, jobs.contract, schedule.contract, limits.contract, Auth, AuthHost, SignIn, SignInField, SignInAction, Session, Rejected, bearer_token, Jobs, JobsHost, JobState, Scheduler, Scheduled, Limits, static_file
 ---
-# stdjac.server
+# The server's words
 
-`stdjac.server` is what a served program is made of, beside its endpoints
+These are the words for what a served program is made of, beside its endpoints
 ([Serving a space](server.md), `jac docs apps/server`): the functions it serves at paths of
-their own, the ones it runs on a schedule, its jobs and its limits. A program imports the
-decorators that say so of a function. A [plugin](plugins.md) imports the contract it carries
-out, which is a module of its own ([below](#what-a-plugin-conforms-to)).
+their own, the ones it runs on a schedule, its jobs and its limits. The decorators that say so
+of a function are built in: a program says them without importing them. A [plugin](plugins.md)
+imports the contract it carries out, which is a module of its own
+([below](#what-a-plugin-conforms-to)).
 
 ```jac
-import from stdjac.server { HTTPMethod, restspec, schedule }
-
 glob beats: int = 0;
 
 @schedule(interval=60.0)
@@ -31,6 +30,12 @@ Each decorator records a note on its function as the program compiles
 function that carries one. Nothing is registered as a module starts, so no `with entry` is needed.
 
 ## What a program imports
+
+`restspec`, `HTTPMethod`, `schedule`, `limit`, `job`, `JobNote` and `Job` are built in, and a
+name of the program's own with the same spelling is the one the program means. `consume_limit`,
+`JobFailed` and `static_file` ([below](#static_file)) are imported from `stdjac`:
+`import from stdjac { JobFailed, consume_limit }`. A built-in word that is imported, or one of
+the three imported from a module of stdjac, is E2233.
 
 | Name | Signature | Does |
 |---|---|---|
@@ -113,7 +118,7 @@ token, or `""`.
 ```jac
 import os;
 import tempfile;
-import from stdjac.server { static_file }
+import from stdjac { static_file }
 
 with entry {
     site = tempfile.mkdtemp();
@@ -148,5 +153,6 @@ with entry {
 
 ## What else is in the module
 
-The rest of `stdjac.server` (`auth_route`, `route_of`, `scheduled`, and the functions an app's
-start calls) is what `stdjac.app` serves a program with. A program does not call it.
+The rest of what stdjac holds of the server (`auth_route`, `route_of`, `scheduled`, and the
+functions an app's start calls) is what `stdjac.app` serves a program with. A program does not
+import it.

@@ -20,7 +20,7 @@ In a program that serves, `root` depends on who is calling.
 |---|---|
 | `root` | The signed-in caller's own root. Each account has one, made the first time it calls. |
 | `root.shared` | The one root that belongs to no caller: public data, and what anonymous callers and scheduled functions work on |
-| `allroots()` | Every caller's root (never the shared one), from `stdjac.graph` |
+| `allroots()` | Every caller's root (never the shared one), from `stdjac` |
 
 Which of them a call has:
 
@@ -40,7 +40,7 @@ So a `:pub` walker that connects to `here` at `Root` gives every signed-in calle
 and all anonymous callers one common list:
 
 ```jac
-import from stdjac.graph { allroots }
+import from stdjac { allroots }
 
 node Note {
     has text: str;
@@ -94,7 +94,7 @@ The calls a server answers at once work on one graph in memory. It is written:
   scheduled function ends.** What is in memory is compared with what was read, and what changed is written: each node and edge whose fields
   changed, and each made since that a kept node leads to. The write is of everything in memory, so
   it takes with it what a call still running has changed so far.
-- **Where the program calls `commit()`**, from `stdjac.graph`: the same write, now. It is for a
+- **Where the program calls `commit()`**, from `stdjac`: the same write, now. It is for a
   call that runs long, or a stream, whose work so far should be kept whatever happens next.
 - **What is taken out of what is kept:** an edge the program deleted, and a node with no edge into
   it that is no root, with its edges out, and so on down from it. Nodes that lead to each other
@@ -117,11 +117,11 @@ all reach, as the standard one's file is for the programs of one machine.
   on what the other wrote. So an endpoint's body may run more than once: what it does outside the
   graph (a request it sends, a file it writes) is done each time.
 - **After 4 tries the call fails:** its caller gets `409` with `"kind": "conflict"`. `commit()`
-  called by the program raises `stdjac.graph`'s `StoreConflict` instead, since what a stream has
+  called by the program raises `StoreConflict` (from `stdjac`) instead, since what a stream has
   sent cannot be run again.
 
 ```jac
-import from stdjac.graph { commit }
+import from stdjac { commit }
 
 node Line {
     has text: str;
@@ -149,7 +149,7 @@ Every node and edge has an id, `jid(x)`: 32 hex digits given when it is made, ke
 back when it comes from the store. An id names the same node across restarts, so a client can hold one.
 An id is never given again: once a node is removed, `jobj` of its id is `None`, and a node made
 after it gets an id of its own.
-`stdjac.graph` works with ids:
+These functions, from `stdjac`, work with ids:
 
 | Function | Does |
 |---|---|
@@ -160,7 +160,7 @@ after it gets an id of its own.
 | `sweep()` | Takes out of what is kept every node and edge no root leads to, and gives how many rows went. It reads the id of everything kept, so its cost grows with the store: it is for a quiet hour, from a scheduled function or by hand |
 
 ```jac
-import from stdjac.graph { jobj, remove }
+import from stdjac { jobj, remove }
 
 node Note {
     has text: str;

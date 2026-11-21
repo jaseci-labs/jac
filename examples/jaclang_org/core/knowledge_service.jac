@@ -1,7 +1,6 @@
 import logging;
 import os;
-import from stdjac.server { Job, JobFailed, JobNote, job, schedule }
-import from stdjac.graph { jobj }
+import from stdjac { JobFailed, jobj }
 import from datetime { datetime, UTC }
 
 comptime REPO_TICK_S: float = 60.0,

@@ -23,7 +23,7 @@ Load `writing-jac` first. Using the plugins jac ships, in an app: `building-an-a
 
 ```sh
 jac docs plugins            # the abstractions, their contracts, binding, settings, what is refused
-jac docs stdjac.server      # the interfaces Auth, Jobs, Scheduler, Limits, and their hosts
+jac docs auth.contract      # the interfaces Auth, Jobs, Scheduler, Limits, and their hosts
 jac docs apps/ui-bindings   # ui and bundler plugins: their tables, a bundler's job
 jac docs principles         # why a plugin is never imported
 ```
@@ -156,7 +156,7 @@ longest_wait = 30
 
 <!-- example: not checked: needs the project above, with the plugin beside it -->
 ```jac
-import from stdjac.server { consume_limit }
+import from stdjac { consume_limit }
 
 with entry {
     print([consume_limit("try", "amy", 2, 60) for i in range(3)]);
@@ -250,7 +250,7 @@ minify = true
 - `jac docs plugins`: binding, picking where a program runs, settings, secrets, the standard
   plugins, what is refused.
 - `jac docs apps/ui-bindings`: a `[ui]` table's keys, a bundler's job and its `serve` script.
-- `jac docs stdjac.server`, `jac docs stdjac`: the interfaces and their hosts, and every
+- `jac docs auth.contract`, `jac docs stdjac`: the interfaces and their hosts, and every
   contract with what it holds.
 - `jac docs toolchain/packages`: libraries, and a package declared by a repository
   (`{ git = "...", rev = "..." }`), which `jac install` fetches.

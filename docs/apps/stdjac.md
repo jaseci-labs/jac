@@ -1,5 +1,5 @@
 ---
-description: stdjac, the library of the language's abstractions that jac compiles into every app - which of its modules a program imports and what each exports, the contracts it shares with the plugins, the transport's contract, and which modules the build adds by itself.
+description: stdjac, the library of the language's abstractions that jac compiles into every app - the words of it that are built in and the names a program imports from it, the contracts it shares with the plugins, the transport's contract, and which modules the build adds by itself.
 keywords: stdjac, stdjac.remote, stdjac.graph, stdjac.codec, stdjac.plan, stdjac.app, stdjac.window, stdjac.desktop, stdjac.crossing, stdjac.cpython_space, stdjac.node_space, stdjac.jsx, stdjac.archwire, RemoteError, RemoteUnavailable, RemoteTimeout, RemoteRejected, RemoteDecodeError, RemoteFailed, transport.contract, Transport, Request, Response, Tick, Claim, CannotListen, json_fail, CodecError, jobj, grant, AccessLevel, DataError
 ---
 # stdjac
@@ -16,47 +16,69 @@ where it names none.
 `<abstraction>.contract` in jac's `abstractions/` ([Plugins](plugins.md#the-abstractions)): the
 interface a plugin implements, and the types that cross it. stdjac imports the contracts, a
 plugin imports its own, and neither imports the other. A type a program names too (`Message`,
-`ByEvent`, `Request`, `DataError`) is the contract's, and a program imports it from the stdjac
-module that uses it, as before.
+`ByEvent`, `Request`, `DataError`) is the contract's, and a program imports it from `stdjac`, as
+it imports the rest.
 
 Nothing of it is generated per project; each app is its spaces' modules, stdjac's and its
 plugins', and what differs between apps is the plan the build bakes in
 ([Building apps](building.md), `jac docs apps/building`).
 
-A program imports a stdjac module as it imports any module, with no wire in the archwire:
-`import from stdjac.server { schedule }`. Any program may import them, in an app or not.
+A program says eight of stdjac's names with no import, and imports the rest from `stdjac`
+itself, as it imports from any module, with no wire in the archwire:
+`import from stdjac { grant, AccessLevel }`. Any program may, in an app or not. A program never
+names the module of stdjac a name is in: where a name lives is stdjac's to change.
 
-## The modules a program imports
+## The words that are built in
 
-| Module | For | Page |
+A program says these without importing them, as it says `root` and `print`:
+
+| Word | Abstraction | Page |
 |---|---|---|
-| `stdjac.server` | `@restspec`, `@schedule`, `@job` and `@limit`, a job's handle, `consume_limit` | [stdjac.server](stdjac-server.md) |
-| `stdjac.remote` | The exceptions a failed crossing raises, and the `Request` a program that answers one itself is given | Below, and [Crossings](crossings.md) |
-| `stdjac.graph` | A kept graph by id, and writing it: `jobj`, `remove`, `allroots`, `grant`, `commit`, `sweep`, and `StoreConflict`, what a write another's got ahead of raises | Below, and [An app's data](data.md) |
-| `stdjac.codec` | Values to JSON's values and back, by their types, as a crossing sends them | Below |
-| `stdjac.plan` | The program's plan and its deployment values | Below |
-| `stdjac.by` | What `by` calls: the interfaces of what gives a result (`By`), of what answers as it goes (`ByStreams`) and of what chooses a walker's way (`ByChooser`) | [By and sem](../language/by-and-sem.md) |
-| `stdjac.llm` | `by llm()`: a language model (an LLM) that answers a `by` function, runs its tools and streams its answer; it conforms to all three | [By and sem](../language/by-and-sem.md) |
+| `llm` | `llm` | [By and sem](../language/by-and-sem.md#asking-a-model-llm) |
+| `job`, `Job`, `JobNote` | `jobs` | [The server's words](stdjac-server.md) |
+| `schedule` | `schedule` | [The server's words](stdjac-server.md) |
+| `limit` | `limits` | [The server's words](stdjac-server.md) |
+| `restspec`, `HTTPMethod` | `transport` | [The server's words](stdjac-server.md) |
+
+A name of the program's own with the same spelling (a parameter, a local, a global, a function,
+an import) is the one the program means.
+
+## What a program imports
+
+Every other name a program uses of stdjac is imported from `stdjac` itself:
+
+| For | Names | Page |
+|---|---|---|
+| The kept graph | `jobj`, `remove`, `allroots`, `grant`, `AccessLevel`, `commit`, `sweep`, `DataError`, and `StoreConflict`, what a write another's got ahead of raises | [Below](#the-kept-graph), and [An app's data](data.md) |
+| The server | `JobFailed`, `consume_limit`, `static_file` | [The server's words](stdjac-server.md) |
+| Crossings | The exceptions a failed crossing raises (`RemoteError`, `RemoteUnavailable`, `RemoteTimeout`, `RemoteRejected`, `RemoteDecodeError`, `RemoteFailed`), and the `Request` a program that answers one itself is given | [Below](#crossings), and [Crossings](crossings.md) |
+| The codec | `encode`, `decode`, `CodecError`: values to JSON's values and back, by their types, as a crossing sends them | [Below](#the-codec) |
+| The plan and the deployment values | `plan`, `keep_arrangement`, `remote_url`, `env_name`, `data_dir` | [Below](#the-plan) |
+| `by` | What `by` calls: the interfaces of what gives a result (`By`), of what answers as it goes (`ByStreams`) and of what chooses a walker's way (`ByChooser`), with `ByCall`, `ByChoice`, `ByError`, `ByEvent`, `ByEventKind`, `ByUsage` | [By and sem](../language/by-and-sem.md) |
+| The language model | What `llm` is made of and given: `LLM`, `Effort`, `Message`, `IterationAction`, `IterationContext`, `on_usage` | [By and sem](../language/by-and-sem.md) |
+
+A built-in word that is imported, or one of these names imported from a module of stdjac, is
+E2233.
 
 The contracts, which a plugin imports and a program does not:
 
 | Contract | Its interface | What else it holds | Page |
 |---|---|---|---|
 | `store.contract` | `Store` | `Row`, `Changed`, `Writing`, `StoreConflict` | [Plugins](plugins.md#what-a-store-is-asked) |
-| `auth.contract` | `Auth` | `SignIn`, `SignInField`, `SignInAction`, `Session`, `Rejected`, `AuthHost`, `bearer_token` | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
+| `auth.contract` | `Auth` | `SignIn`, `SignInField`, `SignInAction`, `Session`, `Rejected`, `AuthHost`, `bearer_token` | [The server's words](stdjac-server.md#what-a-plugin-conforms-to) |
 | `transport.contract` | `Transport` | `Request`, `Response`, `Tick`, `Claim`, `CannotListen`, `json_fail` | [Below](#transport) |
 | `llm.contract` | `Model` | `ModelRequest`, `ModelReply`, `ModelTool`, `Message`, `Part`, `PartKind`, `Stop`, `Effort`, and `ByEvent`, `ByEventKind`, `ByUsage`, `ByError` | [By and sem](../language/by-and-sem.md) |
-| `jobs.contract` | `Jobs` | `JobState`, `JobsHost` | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
-| `schedule.contract` | `Scheduler` | `Scheduled` | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
-| `limits.contract` | `Limits` | | [stdjac.server](stdjac-server.md#what-a-plugin-conforms-to) |
+| `jobs.contract` | `Jobs` | `JobState`, `JobsHost` | [The server's words](stdjac-server.md#what-a-plugin-conforms-to) |
+| `schedule.contract` | `Scheduler` | `Scheduled` | [The server's words](stdjac-server.md#what-a-plugin-conforms-to) |
+| `limits.contract` | `Limits` | | [The server's words](stdjac-server.md#what-a-plugin-conforms-to) |
 | `common.contract` | None: every plugin may use it | `Host`, `Secret`, `DataError` | [Plugins](plugins.md#what-a-plugin-imports) |
 
-A browser, hermes or node space compiles a stdjac module it imports with its own modules, all of
-it, so it may import only one its host can run. `stdjac.codec` is one. `stdjac.remote`,
-`stdjac.graph`, `stdjac.plan` and `stdjac.server` need the native runtime, and an import of one
-there is E1540 (`the module 'stdjac.plan' needs the native runtime's own definitions, which a node
-space does not provide`). Such a space imports its runtime from `"@jac/runtime"` instead
-([Pages](pages.md#jacruntime)).
+A browser, hermes or node space compiles the stdjac module a name it imports is in with its own
+modules, all of it, so it may import only a name whose module its host can run. The codec's are
+such. The names of crossings' failures, the kept graph, the plan and the server need the native
+runtime, and an import of one there is E1540 (`the module 'stdjac.plan' needs the native
+runtime's own definitions, which a node space does not provide`). Such a space imports its
+runtime from `"@jac/runtime"` instead ([Pages](pages.md#jacruntime)).
 
 ## The modules the build adds
 
@@ -71,7 +93,7 @@ These are part of an app's program because of what the app is. A program never i
 | `stdjac.jsx` | The names JSX gives a JavaScript host's modules: `JsxElement`, `JsxPage`, `JsxLayout`, `Ref`, `new` ([Components](components.md)) |
 | `stdjac.archwire` | stdjac's own wiring |
 
-## stdjac.remote
+## Crossings
 
 The exceptions of a failed crossing, each with `space`, `endpoint` (`module.name`) and `detail`,
 and printing as its `detail`:
@@ -86,7 +108,7 @@ and printing as its `detail`:
 | `RemoteFailed` | The endpoint raised, or does not exist; a stream called on a space the process runs itself |
 
 ```jac
-import from stdjac.remote { RemoteError, RemoteFailed, RemoteRejected }
+import from stdjac { RemoteError, RemoteFailed, RemoteRejected }
 
 with entry {
     e = RemoteRejected(
@@ -104,11 +126,12 @@ api notes.MyNotes
 This needs a signed-in caller.
 ```
 
-The rest of the module is what the build's code calls. Each endpoint of a space is handed over
-as its module starts, with the decoding of its arguments and the encoding of its result made from
-its signature at compile time; a call of another space's function is compiled to a call of this
-module's, typed by the callee's signature. A function that gives an iterator is handed over as a
-stream, whose items travel one by one ([Crossings](crossings.md#calling-a-stream)).
+The rest of what stdjac holds of crossings is what the build's code calls. Each endpoint of a
+space is handed over as its module starts, with the decoding of its arguments and the encoding
+of its result made from its signature at compile time; a call of another space's function is
+compiled to a call of stdjac's, typed by the callee's signature. A function that gives an
+iterator is handed over as a stream, whose items travel one by one
+([Crossings](crossings.md#calling-a-stream)).
 
 ### Transport
 
@@ -157,7 +180,7 @@ which conforms to `transport.contract`'s `Transport`. It carries a `Request` and
 failed, in the form every reply to a call has: what a transport answers with when it is the one
 that fails a request.
 
-## stdjac.graph
+## The kept graph
 
 The graph a serving app keeps, by the id each node and edge carries (`jid(x)`):
 
@@ -174,7 +197,7 @@ They work in any program; in one that keeps no graph, they see the program's own
 does nothing:
 
 ```jac
-import from stdjac.graph { allroots, commit, jobj, remove }
+import from stdjac { allroots, commit, jobj, remove }
 
 node Note {
     has text: str;
@@ -199,7 +222,7 @@ None 0
 [An app's data](data.md) for roots, ids and when the graph is written, and
 [root](../language/root.md) (`jac docs root.shared`).
 
-## stdjac.codec
+## The codec
 
 `encode(v)` turns a value into JSON's values by its declared type, and `decode[T](v)` turns them
 back into a `T`, as a crossing sends arguments and results
@@ -207,7 +230,7 @@ back into a `T`, as a crossing sends arguments and results
 
 ```jac
 import json;
-import from stdjac.codec { CodecError, decode, encode }
+import from stdjac { CodecError, decode, encode }
 
 enum Size {
     SMALL,
@@ -266,7 +289,7 @@ never coerced:
 
 A node encodes with its id as `__jid`, and decodes as a copy that has that id.
 
-## stdjac.plan
+## The plan
 
 What the build baked into the program ([Building apps](building.md#deployment-values)):
 
@@ -278,7 +301,7 @@ What the build baked into the program ([Building apps](building.md#deployment-va
 | `env_name(app: str, what: str) -> str` | The environment variable for `what` of `app` |
 
 ```jac
-import from stdjac.plan { env_name, plan, remote_url }
+import from stdjac { env_name, plan, remote_url }
 
 with entry {
     print(env_name("my-site", "LISTEN"));

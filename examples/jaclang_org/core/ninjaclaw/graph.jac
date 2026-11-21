@@ -1,4 +1,4 @@
-import from stdjac.graph { jobj, grant, AccessLevel }
+import from stdjac { jobj, grant, AccessLevel }
 import os;
 import re;
 import from datetime { datetime, UTC, timedelta }

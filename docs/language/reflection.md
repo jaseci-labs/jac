@@ -299,7 +299,7 @@ hi cy hi cy
   { ... } }`, `apply(Greeter.greet, args, Greeter(greeting="hello"))` is
   `Greeter(greeting="hello").greet(...)`. A `by` function's tool that is a
   method is called this way ([By and sem](by-and-sem.md)).
-- `stdjac.codec`'s `encode` and `decode` are written with these functions:
+- `encode` and `decode`, from `stdjac`, are written with these functions:
   `decode` restores objects without running `init` or `postinit`.
 
 ## What is rejected

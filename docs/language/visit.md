@@ -203,7 +203,7 @@ is ordinary code:
 
 `visit <nodes> by <chooser>;` has a chooser pick where the walker goes: of the nodes, it queues
 the ones the chooser picks, in the order it picks them. The chooser is a value of a class
-conforming to `ByChooser`, an [interface](interfaces.md) of `stdjac.by`:
+conforming to `ByChooser`, an [interface](interfaces.md) imported from `stdjac`:
 
 | Name | What it is |
 |---|---|
@@ -225,7 +225,7 @@ This chooser asks no model: it takes the two options whose roads are shortest, a
 it was given.
 
 ```jac
-import from stdjac.by { ByChoice, ByChooser }
+import from stdjac { ByChoice, ByChooser }
 
 node City {
     has name: str;
@@ -321,13 +321,11 @@ has `"edges": []`.
 
 ### Choosing with a model
 
-`llm(...)` from `stdjac.llm` is a chooser: it shows the model the choice and asks for the
-options' numbers ([By and sem](by-and-sem.md#asking-a-model-stdjacllm)).
+`llm(...)`, which is built in, is a chooser: it shows the model the choice and asks for the
+options' numbers ([By and sem](by-and-sem.md#asking-a-model-llm)).
 
 <!-- example: not checked: it asks a model, which needs a key and the network -->
 ```jac
-import from stdjac.llm { llm }
-
 node City {
     has name: str;
 }
@@ -479,7 +477,7 @@ chooser that conforms to `ByChooser` (E1053), in an ability triggered by a node 
 
 ```jac
 # expect: E1574 x2, E1053, E5090
-import from stdjac.by { ByChoice, ByChooser }
+import from stdjac { ByChoice, ByChooser }
 
 node Stop {}
 

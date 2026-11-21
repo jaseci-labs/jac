@@ -106,7 +106,7 @@ An app's served space (a `space` on the `native` or `cpython` host that an
 
 - **The graph is stored.** After each call the space answers, the nodes and
   edges reachable from its roots are written to the app's data directory
-  (`graph.db`); `commit()`, from `stdjac.graph`, writes them before a long
+  (`graph.db`); `commit()`, from `stdjac`, writes them before a long
   call returns. When the app starts again they are loaded, each with the `jid`
   it had, and each node's edges in the order they were made.
 - **Each signed-in user has a root.** During a call made by a signed-in user,
@@ -119,7 +119,7 @@ An app's served space (a `space` on the `native` or `cpython` host that an
   a schedule, reading `root` raises `RuntimeError`. `root.shared` works there,
   and a walker the call spawns on `root` (`root spawn W()`, or a walker endpoint
   the client spawns) starts at the shared root.
-- **`allroots()`**, from `stdjac.graph`, returns every user's root as a
+- **`allroots()`**, from `stdjac`, returns every user's root as a
   `list[Root]`. It does not include the shared root.
 
 A walker served as an endpoint is the usual way to work on the caller's graph:

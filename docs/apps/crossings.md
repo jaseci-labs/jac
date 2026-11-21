@@ -58,7 +58,7 @@ walker:pub AddNote {
 
 <!-- example: not checked: its names come from another space through the archwire's wires -->
 ```jac
-import from stdjac.remote { RemoteError }
+import from stdjac { RemoteError }
 
 with entry {
     try {
@@ -173,7 +173,7 @@ With `def:pub steps(count: int) -> Iterator[Step]` in the space `api`, a native 
 
 <!-- example: not checked: its names come from another space through the archwire's wires -->
 ```jac
-import from stdjac.remote { RemoteError }
+import from stdjac { RemoteError }
 
 with entry {
     try {
@@ -393,13 +393,13 @@ A walker's reports cross as JSON's own values (numbers, strings, booleans, `None
 dicts with `str` keys), unless the walker declares their type with a field
 `has reports: list[T] = [];`, in which case they cross as `T`.
 
-`stdjac.codec` is the module that does this; a program can use it directly ([stdjac](stdjac.md)).
+stdjac's codec does this; a program can use it directly, with `encode` and `decode` from `stdjac` ([stdjac](stdjac.md#the-codec)).
 
 ## How a crossing fails
 
 A failed crossing raises a subclass of `RemoteError` in the caller. Import the classes from
-`stdjac.remote` in a native or cpython space, and from `"@jac/runtime"` in a browser, hermes or
-node space. `stdjac.remote` is native code's and CPython's: a JavaScript space that imports it is
+`stdjac` in a native or cpython space, and from `"@jac/runtime"` in a browser, hermes or
+node space. stdjac's are native code's and CPython's: a JavaScript space that imports one is
 refused at the import, with E1540
 (`the module 'stdjac.remote' needs a graph, which a browser space does not provide`).
 
@@ -423,7 +423,7 @@ endpoint failed; the server prints the exception to its own output. A failure th
 to handle is a return value: `def post(text: str) -> Denied | None`.
 
 ```jac
-import from stdjac.remote { RemoteError, RemoteUnavailable }
+import from stdjac { RemoteError, RemoteUnavailable }
 
 with entry {
     try {

@@ -1,5 +1,5 @@
 import time;
-import from stdjac.llm { llm, Effort, IterationAction, IterationContext }
+import from stdjac { Effort, IterationAction, IterationContext }
 
 enum AskKind {
     JAC_QUESTION,

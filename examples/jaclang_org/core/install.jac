@@ -1,5 +1,3 @@
-import from stdjac.server { restspec, HTTPMethod }
-
 obj InstallStatus {
     has updated: bool = False,
         building: bool = False,

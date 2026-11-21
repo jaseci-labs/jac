@@ -1,4 +1,3 @@
-import from stdjac.server { schedule }
 import logging;
 import os;
 import re;

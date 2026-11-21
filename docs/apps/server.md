@@ -390,8 +390,6 @@ seconds. A call past that is refused: 429 `rejected`, saying how long to wait, w
 `Retry-After` header.
 
 ```jac
-import from stdjac.server { limit }
-
 @limit(5, per=900.0)
 def:pub post(text: str) -> str {
     return "posted " + text;
@@ -407,7 +405,7 @@ def:pub post(text: str) -> str {
 returns 0 while `actor` is within `limit` uses of `scope` in `seconds`, else the seconds to wait.
 
 ```jac
-import from stdjac.server { consume_limit }
+import from stdjac { consume_limit }
 
 with entry {
     print([consume_limit("mail", "amy", 2, 60) for i in range(3)]);
@@ -426,8 +424,6 @@ program's memory: two instances of an app count apart.
 `@restspec` serves a function at a path the project chooses, beside its `/__jac/call/` URL.
 
 ```jac
-import from stdjac.server { HTTPMethod, restspec }
-
 @restspec(method=HTTPMethod.GET, path="/robots.txt", envelope=False)
 def:pub robots -> str {
     return "User-agent: *";
@@ -476,8 +472,6 @@ api can't start with the transport it was given: it serves `svc.robots` at /robo
 `@schedule` has a server run a function every so many seconds.
 
 ```jac
-import from stdjac.server { schedule }
-
 glob beats: int = 0;
 
 @schedule(interval=60.0)
@@ -513,8 +507,6 @@ server and its graph. `@job` marks the function, `flow` starts it, and `wait` ta
 
 <!-- example: not checked: a job is declared in a module other than the one a program starts at -->
 ```jac
-import from stdjac.server { Job, JobNote, job }
-
 @job
 def double(n: int, note: JobNote) -> int {
     note("working", "on " + str(n));
@@ -547,7 +539,7 @@ Calling `doubled` with `{"args": {"n": 21}}` answers `"running"` until the job h
 - **`j.done()`** is whether it has ended, without waiting. **`j.notes()`** gives the notes made
   since it was last called.
 - **`wait j`** waits for the job and gives its result. A job that failed raises `JobFailed`, from
-  `stdjac.server`, with what it failed with.
+  `stdjac`, with what it failed with.
 - A job does not see the server's graph and does not change it. It returns what the server should
   keep.
 - A job of the module a program starts at cannot be started (E5090): put it in a module of its

@@ -1,5 +1,5 @@
 import sys;
-import from stdjac.remote { RemoteError, RemoteRejected, RemoteTimeout, RemoteUnavailable }
+import from stdjac { RemoteError, RemoteRejected, RemoteTimeout, RemoteUnavailable }
 
 glob EXIT_OK: int = 0,
      EXIT_FAILURE: int = 1,

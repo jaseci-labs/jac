@@ -129,12 +129,12 @@ to `isinstance`, `repr` and `type(c).__name__` there too.
 
 Compile-time [reflection](reflection.md) sees the type as its arguments say:
 `fields(Box[int])` gives `item` as an `int`, and `restore(Box[int])` makes
-one. So [`stdjac.codec`](../apps/stdjac.md) sends a `Box[int]` typed, and it
+one. So [stdjac's codec](../apps/stdjac.md#the-codec) sends a `Box[int]` typed, and it
 is sendable where its arguments are.
 
 ```jac
 import from jaclang.comptime { fields, kind, set_field, restore }
-import from stdjac.codec { CodecError, decode, encode }
+import from stdjac { CodecError, decode, encode }
 
 obj Box[T] {
     has item: T;

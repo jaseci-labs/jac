@@ -553,8 +553,6 @@ that type. `llm(tools=[f, g])` lets the model call the program's functions befor
 a function declared `-> Iterator[ByEvent]` gives the answer as it is written.
 
 ```jac
-import from stdjac.llm { llm }
-
 obj Contact {
     has name: str,
         email: str = "";

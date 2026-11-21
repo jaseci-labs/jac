@@ -2,8 +2,7 @@ import re;
 import base64;
 import datetime;
 import os;
-import from stdjac.graph { AccessLevel, allroots, grant, jobj, remove }
-import from stdjac.server { schedule }
+import from stdjac { AccessLevel, allroots, grant, jobj, remove }
 
 def _now -> str;
 

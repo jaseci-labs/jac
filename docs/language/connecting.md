@@ -258,7 +258,7 @@ Deleting a node does not take it out of a walker's queue. A walker that has
 already queued the node still arrives at it and runs its abilities; from there
 `[-->]` is empty. See [visit](visit.md).
 
-In an app that keeps its graph, `remove(n)` from `stdjac.graph` takes a node
+In an app that keeps its graph, `remove(n)` from `stdjac` takes a node
 out with its edges and also forgets its id ([root](root.md)).
 
 ## What is rejected

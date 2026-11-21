@@ -99,7 +99,7 @@ What each host's spaces become:
 Each caller has their own `root` in a space, `root.shared` is everyone's, and an
 anonymous caller starts at `root.shared`. `root spawn W()` starts at the root of
 `W`'s space. The graph commits after every call, to SQLite by default
-(`stdjac.graph`'s `Store`).
+(the `store` abstraction's standard plugin).
 
 The modules name abstractions and no mechanism: `root` for what is kept, `:protect` and
 `sign_in()` for who is calling, `by llm()` for the model, `@job` for work too long for the

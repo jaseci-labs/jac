@@ -1,6 +1,6 @@
 ---
 description: Functions a language model (an LLM) or another value answers (def f(...) -> T by llm();), the tools that make one an agent, a by function that streams its answer, the By, ByStreams and ByChooser interfaces such a value conforms to, llm() and the plugin that speaks to a model, its conversations and usage, and sem strings that describe declarations to them.
-keywords: by, sem, semantic string, llm, language model, LLM, AI, agent, tool use, stdjac.llm, stdjac.by, By, ByCall, ByTool, ByError, ByStreams, ByEvent, ByEventKind, ByUsage, ByChooser, ByChoice, on_usage, IterationContext, ANTHROPIC_API_KEY, JAC_LLM_ADDRESS, Effort, Model, ModelRequest, ModelReply, anthropic, JAC_LLM_MODEL
+keywords: by, sem, semantic string, llm, language model, LLM, AI, agent, tool use, By, ByCall, ByTool, ByError, ByStreams, ByEvent, ByEventKind, ByUsage, ByChooser, ByChoice, on_usage, IterationContext, ANTHROPIC_API_KEY, JAC_LLM_ADDRESS, Effort, Model, ModelRequest, ModelReply, anthropic, JAC_LLM_MODEL
 grammar: sem_def, by_expr
 ---
 # By and sem
@@ -54,10 +54,9 @@ and gives it a string; several adjacent strings are joined (`sem f = "One "
 
 1. evaluates `e`, which must give a value of a class conforming to the
    interface `By` (below), once per call. `e` is an expression of the
-   module like any other: what it names is what the module imports
-   (`import from stdjac.llm { llm }`), and a name it does not have is
-   W2001;
-2. encodes the arguments by their types, as `stdjac.codec`'s `encode` does,
+   module like any other: `llm` is built in, any other answerer is a
+   name the module has, and a name it does not have is W2001;
+2. encodes the arguments by their types, as `encode` (from `stdjac`) does,
    into a dict from parameter name to JSON value (an enum member by its name,
    an object as a dict of its fields). A parameter `e` hands the answerer whole
    is not among them ([below](#a-parameter-the-answerer-takes-whole));
@@ -95,7 +94,7 @@ Here `r` is an argument and the owner of a tool, and `notes` is the
 answerer's, which adds to the caller's list:
 
 ```jac
-import from stdjac.by { By, ByCall }
+import from stdjac { By, ByCall }
 
 """An answerer without a model: it calls its tool, and notes what
 the tool gave."""
@@ -175,7 +174,7 @@ The function returns the iterator at once, and the answerer works as the
 caller reads it:
 
 ```jac
-import from stdjac.by { ByCall, ByEvent, ByEventKind, ByStreams, ByUsage }
+import from stdjac { ByCall, ByEvent, ByEventKind, ByStreams, ByUsage }
 
 """An answerer that answers as it goes, without a model: a word at a time."""
 obj Echo(ByStreams) {
@@ -233,8 +232,7 @@ as it comes is a stream of a type of its own
 ([Serving a space](../apps/server.md#streams)), here of the answer's pieces:
 
 ```jac
-import from stdjac.by { ByEvent, ByEventKind }
-import from stdjac.llm { llm }
+import from stdjac { ByEvent, ByEventKind }
 
 def answer(question: str) -> Iterator[ByEvent] by llm();
 
@@ -249,10 +247,12 @@ def:pub ask(question: str) -> Iterator[str] {
 }
 ```
 
-## Writing an answerer: `stdjac.by`
+## Writing an answerer: `By`
 
 An answerer is a class that conforms to `By`, an
-[interface](interfaces.md) with one method:
+[interface](interfaces.md) with one method. A program imports the interfaces,
+`ByCall`, `ByChoice`, `ByEvent`, `ByEventKind`, `ByUsage` and `ByError` from
+`stdjac` (`import from stdjac { By, ByCall }`):
 
 | Name | What it is |
 |---|---|
@@ -268,9 +268,9 @@ An answerer is a class that conforms to `By`, an
 | `schema[T]()` | The JSON schema of type `T`, as `result_schema` is made |
 
 `invoke` returns the result through `call.decode`, which decodes a JSON value
-as the declared type and raises `CodecError` (from `stdjac.codec`) when it
+as the declared type and raises `CodecError` (from `stdjac`) when it
 does not fit. An answerer that takes `tools` declares a `tools` field for them.
-One class may conform to several of the interfaces, as `stdjac.llm`'s does.
+One class may conform to several of the interfaces, as `llm`'s does.
 
 `ByUsage` counts what an answerer used, a model's requests for one:
 
@@ -288,7 +288,7 @@ counts to `total`'s, and takes its `model` when it names one.
 This answerer has no model, and prints what the call carries:
 
 ```jac
-import from stdjac.by { By, ByCall }
+import from stdjac { By, ByCall }
 
 enum Mood {
     HAPPY,
@@ -349,8 +349,7 @@ Verdict(mood=<Mood.HAPPY: 1>, score=7) HAPPY
 A reply that does not fit the result type is refused when it is decoded:
 
 ```jac
-import from stdjac.by { By, ByCall }
-import from stdjac.codec { CodecError }
+import from stdjac { By, ByCall, CodecError }
 
 obj Wrong(By) {
     def invoke(call: ByCall) -> any {
@@ -377,22 +376,24 @@ with entry {
 CodecError: .n: expected an int, got 'seven'
 ```
 
-## Asking a model: `stdjac.llm`
+## Asking a model: `llm`
 
-`llm(...)` from `stdjac.llm` asks a language model. It sends the function's
+`llm(...)` asks a language model. `llm` is built in: a program says it
+without importing it. It sends the function's
 `sem` and its parameters' as the instructions and the arguments as JSON, asks
 for a reply in the result's schema, runs the tools the model calls and gives
 it their results, and decodes the final reply as the result type. It conforms
 to `By`, to `ByStreams` and to `ByChooser`, so it gives a typed result,
-streams an answer, and chooses a walker's way.
+streams an answer, and chooses a walker's way. What a program names beside
+it is imported from `stdjac`: `Effort`, `Message`, `IterationAction`,
+`IterationContext`, `on_usage`, and `LLM`, the class of what `llm(...)` gives.
 
 Which model answers is not said in source. `llm` is an abstraction, and what
 speaks to a model is the project's `llm` [plugin](../apps/plugins.md), named
 in `jac.toml`: a function written `by llm()` is the same function under each.
 
 ```jac
-import from stdjac.by { ByError }
-import from stdjac.llm { llm }
+import from stdjac { ByError }
 
 obj Ticket {
     has title: str,
@@ -472,7 +473,7 @@ A plugin for another provider conforms to `llm.contract`'s `Model`
 request and gives its events: each piece of the answer's text as a `TEXT`
 event, for a `live` request, and last a `DONE` whose `value` is the
 `ModelReply`. The rounds of tool calls, the retries of a reply that does not
-fit and conversations are `stdjac.llm`'s, the same for every plugin.
+fit and conversations are stdjac's, the same for every plugin.
 
 | Type | Holds |
 |---|---|
@@ -494,8 +495,8 @@ as it is written. The events of one call, in order:
 
 ### Conversations
 
-`conversation` is the turns before the call, a `list[Message]` from
-`stdjac.llm`. The model is sent them before the call's arguments, and when
+`conversation` is the turns before the call, a `list[Message]`
+(`Message` is imported from `stdjac`). The model is sent them before the call's arguments, and when
 the call has answered, its own messages are appended to the list: the
 arguments, each round of tool calls and their results, and the answer. The
 caller that keeps the list keeps the conversation.
@@ -511,8 +512,7 @@ conversation in a node's field, and send it across a crossing.
 
 <!-- example: not checked: it asks a model, which needs a key and the network -->
 ```jac
-import from stdjac.by { ByEvent, ByEventKind, ByUsage }
-import from stdjac.llm { Message, llm, on_usage }
+import from stdjac { ByEvent, ByEventKind, ByUsage, Message, on_usage }
 
 def lookup(word: str) -> str {
     return word.upper();
@@ -612,15 +612,11 @@ for its reader, and a `sem` describes the declaration to an answerer.
 
 ```jac
 # expect: E0033
-import from stdjac.llm { llm }
-
 def summarize(text: str) by llm();
 ```
 
 ```jac
 # expect: E5090 x2
-import from stdjac.llm { llm }
-
 obj Agent {
     def answer(q: str) -> str by llm();
 }
@@ -632,8 +628,6 @@ impl plain(q: str) -> str by llm();
 
 ```jac
 # expect: E1229 x2, E0109 x2
-import from stdjac.llm { llm }
-
 def pair(text: str) -> tuple[int, int] by llm();
 
 def scorer(text: str) -> Callable[[int], int] by llm();
@@ -654,8 +648,6 @@ sem getcwd = "Declared in another module.";
 
 ```jac
 # expect: E2018 x2, E5090
-import from stdjac.llm { llm }
-
 enum Mood {
     HAPPY,
     SAD,
@@ -675,7 +667,7 @@ def ask(d: Desk | None, word: str) -> str by llm(tools=[d.look]);
 
 ```jac
 # expect: E1053
-import from stdjac.by { By, ByCall, ByEvent }
+import from stdjac { By, ByCall, ByEvent }
 
 obj Plain(By) {
     def invoke(call: ByCall) -> any {
@@ -697,7 +689,7 @@ sem Doc.title is "The document's title.";
 
 ```jac
 # expect: W2001, E5090
-def title(text: str) -> str by llm();
+def title(text: str) -> str by Plain();
 
 with entry {
     y = 3 by 4;
@@ -709,7 +701,7 @@ with entry {
 - **Python has no counterpart in the language**; a library call does this
   there, and its result is whatever the library returns. Here the result is
   decoded and checked as the declared type.
-- **Here `llm` is imported from `stdjac.llm`**, and any class conforming to
+- **Here `llm` is built in**, and any class conforming to
   `By` may answer a `by` function. Which model `llm()` asks is the project's
   `llm` plugin, in `jac.toml`, where the reference design's byllm names a model in source.
 - **In the reference design a method may be declared `by llm()`; here only a function may**

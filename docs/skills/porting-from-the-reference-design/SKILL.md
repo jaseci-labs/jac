@@ -169,9 +169,9 @@ These compile in both and mean something else. Search the code for each:
 
 - Running `fmt --fix` before reading the first report: fine, but read the second report in full; the hand edits are there.
 - Editing to restore the reference design's meaning (a shim, a flag): port the program to jac's meaning instead.
-- Porting the reference design's server decorators (`@schedule`, `@job`, `@restspec`) as they were: they are `stdjac.server`'s decorators here, with other arguments (`@schedule(interval=60.0)`), and a job is started with `flow` (`jac docs apps/stdjac-server`).
+- Porting the reference design's server decorators (`@schedule`, `@job`, `@restspec`) as they were: they are built-in decorators here, said without an import, with other arguments (`@schedule(interval=60.0)`), and a job is started with `flow` (`jac docs apps/stdjac-server`).
 - Porting a `by llm()` method as a method: only a function may be `by`. Make it a function that takes the object, with the object's methods as its tools (`tools=[r.read_file]`), described by `sem Reviewer.read_file = "...";`.
-- Porting `visit [-->] by llm(...)` over mixed nodes: the nodes are a list of one node type (E1574), so filter them (`[-->][?:City]`); `llm` comes from `stdjac.llm`, and takes `select` and `intent`.
+- Porting `visit [-->] by llm(...)` over mixed nodes: the nodes are a list of one node type (E1574), so filter them (`[-->][?:City]`); `llm` is built in, and takes `select` and `intent`.
 - Porting a streamed model answer as polling: a `by` function declared `-> Iterator[ByEvent]` gives the answer as it is written, and a server function that returns an iterator sends it on as a stream.
 
 ## Where to look things up
