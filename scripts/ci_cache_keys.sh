@@ -39,6 +39,19 @@ emit() {
 }
 
 compiler_tree | emit compiler
+# The stub catalog's inputs: TYPE_SYSTEM_ROOTS and DIGEST_SUFFIXES in stubcat/locate.jac.
+tree jac/jaclang/compiler/types \
+  jac/jaclang/compiler/passes/pyast_load_pass.jac \
+  jac/jaclang/compiler/passes/impl/pyast_load_pass.impl.jac \
+  jac/jaclang/compiler/passes/sym_tab_build_pass.jac \
+  jac/jaclang/compiler/passes/impl/sym_tab_build_pass.impl.jac \
+  jac/jaclang/compiler/frontend/unitree.jac jac/jaclang/compiler/frontend/helpers.jac \
+  jac/jaclang/compiler/symbol_utils.jac jac/jaclang/vendor/typeshed/PIN |
+  awk -F '\t' '$2 ~ /(\.(jac|pyi|py)|PIN)$/' | emit stubcat
+# The dev kit's materialized typeshed, bun, musl and wasm libc: the tools and pins that make them.
+tree jac/build.zig jac/build.zig.zon jac/bootstrap jac/jaclang/dist/payload \
+  jac/jaclang/client/js_runtime.jac jac/jaclang/vendor/typeshed/PIN \
+  jac/jaclang/compiler/backends/native/wasm_rt | emit vendor
 # The prebuilt CPython tree: its pin and the seed that fetches it.
 tree jac/bootstrap/fetch_pbs.zig jac/bootstrap/seed.zig jac/bootstrap/pins.json |
   emit python
