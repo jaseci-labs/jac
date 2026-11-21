@@ -976,7 +976,8 @@ walker NaIRGenPass(CompilerPass) {
         spread: ir.Value,
         helpers: dict[str, any],
         bind_records: list[dict[str, any]],
-        loc: str
+        loc: str,
+        release_on_error: list[ir.Value] = []
     ) -> ir.Value;
 
     def _kw_spread_value_fits(value_type: ir.Type, slot_type: ir.Type) -> bool;
@@ -2436,7 +2437,11 @@ walker NaIRGenPass(CompilerPass) {
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
     def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
     def _is_runtime_class_value(target: (uni.UniNode | None)) -> bool;
-    def _class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None);
+    def _class_value_ctor_bound(
+        target: (uni.UniNode | None), direct: bool = False
+    ) -> (str | None);
+
+    def _has_kw_spread(nd: uni.FuncCall) -> bool;
     def _codegen_class_value_call(
         nd: uni.FuncCall,
         target: uni.Expr,
@@ -2449,7 +2454,7 @@ walker NaIRGenPass(CompilerPass) {
         args: list[uni.Expr | uni.KWPair],
         params: list[NativeCtorParam],
         bound: str
-    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
+    ) -> (list[tuple[int, uni.Expr]] | None);
 
     def _bind_class_ctor_spread(
         nd: uni.FuncCall,

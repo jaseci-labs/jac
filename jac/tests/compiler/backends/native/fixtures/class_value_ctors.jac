@@ -117,6 +117,25 @@ def total_area(kinds: list[type[Shape]], size: int) -> int {
     return total;
 }
 
+glob calls: list[str] = [];
+
+def spread_x -> dict[str, int] {
+    calls.append("spread");
+    return {"x": 3};
+}
+
+def given_y -> int {
+    calls.append("y");
+    return 2;
+}
+
+glob shift_opts: dict[str, int] = {"x": 3};
+
+def swap_opts -> int {
+    shift_opts = {"x": 50};
+    return 2;
+}
+
 def pick(big: bool) -> type[Shape] {
     return Square if big else Shape;
 }
@@ -152,4 +171,11 @@ with entry {
     );
     print(make_link(Heavy, 4).weight, make_link(Link, 2).weight);
     print(make_tile(Wall).cost, make_tile(Tile).cost, pick(True)(size=2).area());
+    print(
+        Square(**{"size": 4}).area(),
+        Shifted(**spread_x(), y=given_y()).x,
+        Shifted(**{"x": 1}).y,
+        Shifted(**shift_opts, y=swap_opts()).x,
+        calls
+    );
 }
