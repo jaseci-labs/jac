@@ -16,6 +16,7 @@ import time;
 import requests;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
+import from shutil { rmtree }
 import from tempfile { mkdtemp }
 
 glob _SV_ENV: str = "JAC_SV_NAME",
@@ -390,21 +391,36 @@ test "a real fleet: an app on the gateway's store refuses a deleted or invented 
 
 """A gateway manager whose identity store is a fresh embedded Postgres, so a
 bulk clean-up sees only this test's records. None if Postgres is absent."""
-def _isolated_gateway -> (tuple[any, any, any] | None) {
+def _isolated_gateway -> (tuple[any, any, any, any, str] | None) {
     manager = _manager("__gateway__");
     if manager is None {
         return None;
     }
+    base = mkdtemp(prefix='jacprov_');
+    rt = PgRuntime(data_dir=base + '/data');
     try {
-        rt = PgRuntime(data_dir=mkdtemp(prefix='jacprov_') + '/data');
         store = PgStore(conninfo=rt.ensure());
     } except Exception as e {
         print(f"[skip] embedded postgres unavailable: {e}");
+        _close_isolated(None, rt, base);
         return None;
     }
     storage = PgIdentityStorage(store=store);
     manager._identity_storage = storage;
-    return (manager, storage, store);
+    return (manager, storage, store, rt, base);
+}
+
+
+# Stop the private Postgres and remove its files, so a run leaves none behind.
+def _close_isolated(store: any, rt: any, base: str) -> None {
+    try {
+        if store is not None {
+            store.close();
+        }
+        rt.stop();
+    } finally {
+        rmtree(base, ignore_errors=True);
+    }
 }
 
 
@@ -413,54 +429,58 @@ test "the gateway's clean-up removes provisioned records, so a deleted account's
     if made is None {
         return;
     }
-    (gw, storage, store) = made;
-    pw = f"Pw-{uuid.uuid4().hex}!a1";
-    real = storage.create_user(
-        identities=[{"type": "username", "value": f"real_{uuid.uuid4().hex[:8]}"}],
-        credential={"type": "password", "password": pw}
-    );
+    (gw, storage, store, rt, base) = made;
+    try {
+        pw = f"Pw-{uuid.uuid4().hex}!a1";
+        real = storage.create_user(
+            identities=[{"type": "username", "value": f"real_{uuid.uuid4().hex[:8]}"}],
+            credential={"type": "password", "password": pw}
+        );
 
-    # A deleted account whose record a fleet app recreated before #10738's fix.
-    gone = storage.create_user(
-        identities=[{"type": "username", "value": f"gone_{uuid.uuid4().hex[:8]}"}],
-        credential={"type": "password", "password": pw}
-    )["user_id"];
-    token = gw.create_jwt_token(gone, session_epoch=gw.current_epoch(gone));
-    storage.delete_user(gone);
-    storage.ensure_user_by_id(gone);
-    assert gw.validate_jwt_token_detail(token)["status"] == "ok";
+        # A deleted account whose record a fleet app recreated before #10738's fix.
+        gone = storage.create_user(
+            identities=[{"type": "username", "value": f"gone_{uuid.uuid4().hex[:8]}"}],
+            credential={"type": "password", "password": pw}
+        )["user_id"];
+        token = gw.create_jwt_token(gone, session_epoch=gw.current_epoch(gone));
+        storage.delete_user(gone);
+        storage.ensure_user_by_id(gone);
+        assert gw.validate_jwt_token_detail(token)["status"] == "ok";
 
-    # Another recreated record, with data written under its root since.
-    used = str(uuid.uuid4());
-    used_root = storage.ensure_user_by_id(used);
-    store.ensure_schema({});
-    store.rows(
-        "INSERT INTO anchors (id, kind, root_id) VALUES (CAST(:i AS uuid), 'node', CAST(:r AS uuid))",
-        {"i": str(uuid.uuid4()), "r": used_root}
-    );
+        # Another recreated record, with data written under its root since.
+        used = str(uuid.uuid4());
+        used_root = storage.ensure_user_by_id(used);
+        store.ensure_schema({});
+        store.rows(
+            "INSERT INTO anchors (id, kind, root_id) VALUES (CAST(:i AS uuid), 'node', CAST(:r AS uuid))",
+            {"i": str(uuid.uuid4()), "r": used_root}
+        );
 
-    # A blank record linked to an SSO account is a real account, not provisioned.
-    linked = str(uuid.uuid4());
-    storage.ensure_user_by_id(linked);
-    store.rows(
-        "INSERT INTO sso_lookups (provider, external_id, user_id) VALUES ('google', :e, :u)",
-        {"e": uuid.uuid4().hex, "u": linked}
-    );
+        # A blank record linked to an SSO account is a real account, not provisioned.
+        linked = str(uuid.uuid4());
+        storage.ensure_user_by_id(linked);
+        store.rows(
+            "INSERT INTO sso_lookups (provider, external_id, user_id) VALUES ('google', :e, :u)",
+            {"e": uuid.uuid4().hex, "u": linked}
+        );
 
-    listed = gw.list_provisioned_users();
-    by_id = {r["user_id"]: r for r in listed["users"]};
-    assert set(by_id) == {gone, used} , f"listed {sorted(by_id)}";
-    assert by_id[gone]["holds_data"] is False;
-    assert by_id[used]["holds_data"] is True;
+        listed = gw.list_provisioned_users();
+        by_id = {r["user_id"]: r for r in listed["users"]};
+        assert set(by_id) == {gone, used} , f"listed {sorted(by_id)}";
+        assert by_id[gone]["holds_data"] is False;
+        assert by_id[used]["holds_data"] is True;
 
-    result = gw.delete_provisioned_users();
-    assert result == {"deleted": [gone], "kept_with_data": [used]} , str(result);
-    assert gw.validate_jwt_token_detail(token)["status"] == "unknown_user";
-    assert gw.refresh_jwt_token(token) is None;
-    assert storage.get_user_by_id(used) is not None;
-    assert storage.get_user_by_id(linked) is not None;
-    assert storage.get_user_by_id(real["user_id"]) is not None;
-    assert gw.list_provisioned_users()["users"] == [by_id[used]];
+        result = gw.delete_provisioned_users();
+        assert result == {"deleted": [gone], "kept_with_data": [used]} , str(result);
+        assert gw.validate_jwt_token_detail(token)["status"] == "unknown_user";
+        assert gw.refresh_jwt_token(token) is None;
+        assert storage.get_user_by_id(used) is not None;
+        assert storage.get_user_by_id(linked) is not None;
+        assert storage.get_user_by_id(real["user_id"]) is not None;
+        assert gw.list_provisioned_users()["users"] == [by_id[used]];
+    } finally {
+        _close_isolated(store, rt, base);
+    }
 }
 
 
@@ -469,29 +489,80 @@ test "the admin endpoints list and delete provisioned records, admin only" {
     if made is None {
         return;
     }
-    (gw, storage, store) = made;
-    admin_id = storage.create_user(
-        identities=[{"type": "username", "value": f"ops_{uuid.uuid4().hex[:8]}"}],
-        credential={"type": "password", "password": f"Pw-{uuid.uuid4().hex}!a1"}
-    )["user_id"];
-    storage.set_user_role(admin_id, "admin");
-    bearer = f"Bearer {gw.create_jwt_token(admin_id, session_epoch=0)}";
-    stray = str(uuid.uuid4());
-    storage.ensure_user_by_id(stray);
-    portal = JacAPIServerAdmin(user_manager=gw);
+    (gw, storage, store, rt, base) = made;
+    try {
+        admin_id = storage.create_user(
+            identities=[{"type": "username", "value": f"ops_{uuid.uuid4().hex[:8]}"}],
+            credential={"type": "password", "password": f"Pw-{uuid.uuid4().hex}!a1"}
+        )["user_id"];
+        storage.set_user_role(admin_id, "admin");
+        bearer = f"Bearer {gw.create_jwt_token(admin_id, session_epoch=0)}";
+        stray = str(uuid.uuid4());
+        storage.ensure_user_by_id(stray);
+        portal = JacAPIServerAdmin(user_manager=gw);
 
-    refused = portal.admin_delete_provisioned_users(Authorization=None);
-    assert refused.ok is False;
-    assert storage.get_user_by_id(stray) is not None;
+        refused = portal.admin_delete_provisioned_users(Authorization=None);
+        assert refused.ok is False;
+        assert storage.get_user_by_id(stray) is not None;
 
-    listed = portal.admin_list_provisioned_users(Authorization=bearer);
-    assert listed.ok , str(listed.error);
-    assert [r["user_id"] for r in listed.data["users"]] == [stray];
+        listed = portal.admin_list_provisioned_users(Authorization=bearer);
+        assert listed.ok , str(listed.error);
+        assert [r["user_id"] for r in listed.data["users"]] == [stray];
 
-    removed = portal.admin_delete_provisioned_users(Authorization=bearer);
-    assert removed.ok , str(removed.error);
-    assert removed.data["deleted"] == [stray];
-    assert storage.get_user_by_id(stray) is None;
+        removed = portal.admin_delete_provisioned_users(Authorization=bearer);
+        assert removed.ok , str(removed.error);
+        assert removed.data["deleted"] == [stray];
+        assert storage.get_user_by_id(stray) is None;
+    } finally {
+        _close_isolated(store, rt, base);
+    }
+}
+
+
+test "the clean-up leaves a record that gained an identity or data after it was listed" {
+    made = _isolated_gateway();
+    if made is None {
+        return;
+    }
+    (gw, storage, store, rt, base) = made;
+    try {
+        named = str(uuid.uuid4());
+        storage.ensure_user_by_id(named);
+        filled = str(uuid.uuid4());
+        filled_root = storage.ensure_user_by_id(filled);
+        listed = storage.list_provisioned_users();
+        assert sorted(r["user_id"] for r in listed) == sorted([named, filled]);
+
+        # Between the listing and the delete, one token holder attaches an
+        # identity (/user/add-identity accepts a blank record's token) and an
+        # app writes data under the other's root.
+        value = f"late_{uuid.uuid4().hex[:8]}@example.com";
+        assert storage._add_identity(
+            named,
+            {
+                "type": "email",
+                "value_raw": value,
+                "value_normalized": value,
+                "verified": False,
+                "is_recovery": False
+            }
+        );
+        store.ensure_schema({});
+        store.rows(
+            "INSERT INTO anchors (id, kind, root_id) VALUES (CAST(:i AS uuid), 'node', CAST(:r AS uuid))",
+            {"i": str(uuid.uuid4()), "r": filled_root}
+        );
+
+        # The clean-up works from that earlier listing.
+        storage.list_provisioned_users = lambda { return listed; };
+        result = gw.delete_provisioned_users();
+        assert result == {"deleted": [], "kept_with_data": []} , str(result);
+        assert storage.get_user_by_id(named) is not None;
+        assert storage.find_user_by_identity(value) is not None;
+        assert storage.get_user_by_id(filled) is not None;
+    } finally {
+        _close_isolated(store, rt, base);
+    }
 }
 
 

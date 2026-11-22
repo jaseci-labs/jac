@@ -555,6 +555,7 @@ impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
         WHERE COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
           AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
           AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
+          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)
         ORDER BY u.doc->>'created_at'
         """,
         {}
@@ -586,6 +587,36 @@ impl PgIdentityStorage.list_provisioned_users -> list[dict[str, any]] {
         );
     }
     return found;
+}
+
+impl PgIdentityStorage.delete_if_provisioned(user_id: str) -> bool {
+    anchors_table = self.store.rows("SELECT to_regclass('anchors') IS NOT NULL", {});
+    no_data = '';
+    if anchors_table and anchors_table[0][0] {
+        no_data = """
+          AND NOT EXISTS (
+              SELECT 1 FROM anchors a
+              WHERE a.root_id = CAST(u.doc->>'root_id' AS uuid)
+                AND a.id <> CAST(u.doc->>'root_id' AS uuid)
+          )""";
+    }
+    # One statement, so the record is still blank and holds no data at the
+    # moment it goes; a concurrent update makes Postgres re-check the row.
+    rows = self.store.rows(
+        """
+        DELETE FROM identity_users u
+        WHERE u.user_id = :u
+          AND COALESCE(u.doc->'identities', '[]'::jsonb) = '[]'::jsonb
+          AND COALESCE(u.doc->'credentials', '[]'::jsonb) = '[]'::jsonb
+          AND NOT EXISTS (SELECT 1 FROM sso_lookups s WHERE s.user_id = u.user_id)
+          AND NOT EXISTS (SELECT 1 FROM identity_lookups l WHERE l.user_id = u.user_id)"""
+            + no_data
+            + """
+        RETURNING u.user_id
+        """,
+        {'u': user_id}
+    );
+    return bool(rows);
 }
 
 impl _pg_json_default(o: object) -> str {
