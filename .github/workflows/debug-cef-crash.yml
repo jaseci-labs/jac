@@ -45,6 +45,8 @@ jobs:
           -ex 'bt 40' \
           -ex 'info registers' \
           -ex 'x/16i $pc-32' \
+          -ex 'frame 1' -ex 'x/40i $pc-100' \
+          -ex 'frame 6' -ex 'x/60i $pc-200' \
           -ex 'info sharedlibrary' \
           ./notes-app 2>&1 | tee /tmp/gdb.log || true
 
@@ -53,6 +55,9 @@ jobs:
       run: |
         mkdir -p /tmp/dbg
         cp /tmp/gdb.log /tmp/dbg/ 2>/dev/null || true
+        B=jac/examples/notes-app/.jac/client/desktop
+        cp $B/notes-app $B/libcef_dispatch.so $B/cef-subprocess /tmp/dbg/ 2>/dev/null || true
+        find jac/jaclang/client/targets/desktop/native/cef ~/.cache/jac -name '*.ll' -path '*cef*' 2>/dev/null | head -20 | xargs -r -I{} cp {} /tmp/dbg/ || true
         find jac/examples/notes-app/.jac -maxdepth 4 \( -name '*.jac' -o -name '*.ll' \) -newer jac/examples/notes-app/jac.toml -exec cp --parents {} /tmp/dbg/ \; 2>/dev/null || true
         find ~/.cache/jac -path '*cef*' -name '*.jac' -newer jac/examples/notes-app/jac.toml 2>/dev/null | head -50
 
