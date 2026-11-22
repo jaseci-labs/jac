@@ -50,6 +50,23 @@ jobs:
           -ex 'info sharedlibrary' \
           ./notes-app 2>&1 | tee /tmp/gdb.log || true
 
+    - name: Headless smoke (same as Nightly)
+      working-directory: jac/examples/notes-app/.jac/client/desktop
+      run: |
+        Xvfb :98 -screen 0 1280x720x24 &
+        XVFB_PID=$!
+        DISPLAY=:98 \
+        FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
+        JAC_CEF_DISABLE_GPU=1 \
+        OZONE_PLATFORM=x11 \
+        timeout 30s ./notes-app 2>&1 | tee /tmp/notes-app.log &
+        SMOKE_PID=$!
+        sleep 10
+        cp /tmp/notes-app.log /tmp/dbg-smoke.log || true
+        grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
+          || (cat /tmp/notes-app.log && exit 1)
+        kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
+
     - name: Collect generated host source
       if: always()
       run: |
