@@ -6,10 +6,6 @@ import stat;
 
 import from pathlib { Path }
 
-def _ensure_libcef_dispatch(cef_dir: Path) -> Path;
-
-def _ensure_cef_subprocess(cef_dir: Path) -> Path;
-
 def _generate_host_source(
     title: str,
     width: int,

@@ -1,21 +1,3 @@
-impl _ensure_libcef_dispatch(cef_dir: Path) -> Path {
-    lib = cef_dir / "libcef_dispatch.so";
-    if lib.is_file() {
-        return lib;
-    }
-    console.print("  Building libcef_dispatch.so (cc)...", style="muted");
-    return build_cef_dispatch(cef_dir);
-}
-
-impl _ensure_cef_subprocess(cef_dir: Path) -> Path {
-    helper = cef_dir / "cef-subprocess";
-    if helper.is_file() {
-        return helper;
-    }
-    console.print("  Building cef-subprocess (cc)...", style="muted");
-    return build_cef_subprocess(cef_dir);
-}
-
 impl _generate_host_source(
     title: str,
     width: int,
@@ -181,8 +163,8 @@ impl cef_build(
         shutil.copy2(fonts_conf, out_dir / "minimal-fonts.conf");
     }
     cef_dist = ensure_cef(cef_dir);
-    libcef_dispatch = _ensure_libcef_dispatch(cef_dir);
-    cef_subprocess = _ensure_cef_subprocess(cef_dir);
+    libcef_dispatch = build_cef_dispatch(cef_dir);
+    cef_subprocess = build_cef_subprocess(cef_dir);
     shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");
     shutil.copy2(cef_subprocess, out_dir / "cef-subprocess");
     (out_dir / "cef-subprocess").chmod(0o755);

@@ -198,10 +198,18 @@ impl _native_build_cef(
         ];
         cmd += ["-Wl,--no-as-needed", "-lcef"];
         cmd += ["-ldl"] if shared else [f"-L{cef_dir}", "-lcef_dispatch"];
+        recipe = build_dir / f"{output.name}.cmd";
+        if output.is_file()
+            and recipe.is_file()
+            and recipe.read_text() == "\n".join(cmd) {
+            return output;
+        }
+        console.print(f"  Building {output.name} (cc)...", style="muted");
         res = subprocess.run(cmd);
         if res.returncode != 0 or not output.exists() {
             raise RuntimeError(f"cc failed for {output.name} (source {source_name}).");
         }
+        recipe.write_text("\n".join(cmd));
         return output;
     }
 }
