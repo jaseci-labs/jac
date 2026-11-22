@@ -315,6 +315,8 @@ impl cef_dispatch_browser_settings_create -> int {
 }
 
 impl cef_dispatch_set_pending_browser(url: int, title: int, width: int, height: int) {
+    free(g_pending_url);
+    free(g_pending_title);
     g_pending_url = strdup(url);
     g_pending_title = strdup(title);
     if width > 0 {

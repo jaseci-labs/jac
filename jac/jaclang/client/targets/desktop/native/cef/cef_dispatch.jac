@@ -9,23 +9,25 @@ import from "libcef.so" {
 }
 
 import from "libc.so.6" {
-    def strdup(s: int) -> int;  def setenv(name: str, value: str, overwrite: i32) -> i32;  def getenv(
-        name: str
-    ) -> int;  def readlink(path: str, buf: int, bufsiz: int) -> int;  def access(
-        path: str, mode: i32
-    ) -> i32;  def strlen(s: str) -> int;  def strcpy(dst: int, src: str) -> int;  def strcat(
+    def strdup(s: int) -> int;  def setenv(
+        name: str, value: str, overwrite: i32
+    ) -> i32;  def getenv(name: str) -> int;  def readlink(
+        path: str, buf: int, bufsiz: int
+    ) -> int;  def access(path: str, mode: i32) -> i32;  def strlen(s: str) -> int;  def strcpy(
         dst: int, src: str
-    ) -> int;  def strrchr(s: int, c: i32) -> int;  def calloc(
-        n: int, size: int
-    ) -> int;  def malloc(size: int) -> int;  def free(ptr: int) -> None;  def write(
-        fd: i32, buf: int, count: int
-    ) -> int;  def memset(s: int, c: i32, n: int) -> int;  def memcpy(
-        dst: int, src: int, n: int
-    ) -> int;  def strncpy(dst: int, src: str, n: int) -> int;  def abort -> None;  def signal(
-        signum: i32, handler: int
-    ) -> int;  def open(path: str, flags: i32) -> i32;  def read(
-        fd: i32, buf: int, count: int
-    ) -> int;  def close(fd: i32) -> i32;
+    ) -> int;  def strcat(dst: int, src: str) -> int;  def strrchr(
+        s: int, c: i32
+    ) -> int;  def calloc(n: int, size: int) -> int;  def malloc(size: int) -> int;  def free(
+        ptr: int
+    ) -> None;  def write(fd: i32, buf: int, count: int) -> int;  def memset(
+        s: int, c: i32, n: int
+    ) -> int;  def memcpy(dst: int, src: int, n: int) -> int;  def strncpy(
+        dst: int, src: str, n: int
+    ) -> int;  def abort -> None;  def signal(signum: i32, handler: int) -> int;  def open(
+        path: str, flags: i32
+    ) -> i32;  def read(fd: i32, buf: int, count: int) -> int;  def close(
+        fd: i32
+    ) -> i32;
 }
 
 import from "libdl.so.2" { def dlsym(handle: int, symbol: str) -> int;  }
