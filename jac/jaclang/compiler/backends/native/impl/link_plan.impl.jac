@@ -1229,11 +1229,12 @@ impl link_artifact(
         }
     }
     if (shared or (is_linux_exec and not static_musl)) and platform == "elf" {
-        for lib in ("libc.so.6", "libm.so.6") {
-            if lib not in needed_libs {
-                needed_libs.append(lib);
-            }
-        }
+        needed_libs = [
+            lib
+            for lib in needed_libs
+            if lib not in LIBC_SHARED_NAMES
+        ]
+            + list(LIBC_SHARED_NAMES);
     }
     inputs.needed_libs = needed_libs;
     inputs.symbol_lib_map = clib_symbol_lib_map(
