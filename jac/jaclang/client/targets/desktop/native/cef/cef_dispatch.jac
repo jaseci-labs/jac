@@ -388,6 +388,8 @@ def:pub cef_dispatch_window_info_create(title: int, width: int, height: int) -> 
 
 def:pub cef_dispatch_browser_settings_create -> int;
 
+def _clear_pending_browser;
+
 def:pub cef_dispatch_set_pending_browser(
     url: int, title: int, width: int, height: int
 );

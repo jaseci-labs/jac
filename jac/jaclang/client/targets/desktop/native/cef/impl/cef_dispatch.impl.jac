@@ -105,7 +105,7 @@ impl _on_context_initialized(self: int) {
     bs: int = cef_dispatch_browser_settings_create();
     ok: i32 = cef_dispatch_create_browser(wi, g_cli, g_pending_url, bs);
     _log("context initialized: browser created");
-    g_browser_pending = 0;
+    _clear_pending_browser();
 }
 
 impl _on_context_created(self: int, browser: int, frame: int, context: int) {
@@ -314,6 +314,14 @@ impl cef_dispatch_browser_settings_create -> int {
     return buf;
 }
 
+impl _clear_pending_browser {
+    free(g_pending_url);
+    free(g_pending_title);
+    g_pending_url = 0;
+    g_pending_title = 0;
+    g_browser_pending = 0;
+}
+
 impl cef_dispatch_set_pending_browser(url: int, title: int, width: int, height: int) {
     free(g_pending_url);
     free(g_pending_title);
@@ -340,7 +348,7 @@ impl cef_dispatch_open_browser(url: int, title: int, width: int, height: int) {
     ok: i32 = cef_dispatch_create_browser(wi, g_cli, url, bs);
     _log("open_browser: done");
     free(bs);
-    g_browser_pending = 0;
+    _clear_pending_browser();
 }
 
 impl cef_dispatch_execute_process -> i32 {
