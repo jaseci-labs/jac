@@ -600,8 +600,7 @@ impl PgIdentityStorage.delete_if_provisioned(user_id: str) -> bool {
                 AND a.id <> CAST(u.doc->>'root_id' AS uuid)
           )""";
     }
-    # One statement, so the record is still blank and holds no data at the
-    # moment it goes; a concurrent update makes Postgres re-check the row.
+
     rows = self.store.rows(
         """
         DELETE FROM identity_users u

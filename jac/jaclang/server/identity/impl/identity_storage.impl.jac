@@ -415,8 +415,6 @@ impl IdentityStorage.delete_provisioned_users -> dict[str, list[str]] {
         if record.get('holds_data') {
             kept.append(uid);
         } elif self.delete_if_provisioned(uid) {
-            # Checked again as it is deleted: a record that gained an
-            # identity, credential or data since the listing is left alone.
             deleted.append(uid);
         }
     }

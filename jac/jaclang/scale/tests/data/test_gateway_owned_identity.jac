@@ -412,7 +412,7 @@ def _isolated_gateway -> (tuple[any, any, any, any, str] | None) {
 
 
 # Stop the private Postgres and remove its files, so a run leaves none behind.
-def _close_isolated(store: any, rt: any, base: str) -> None {
+def _close_isolated(store: any, rt: any, base: str) {
     try {
         if store is not None {
             store.close();
