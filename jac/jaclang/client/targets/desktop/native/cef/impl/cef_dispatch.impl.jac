@@ -227,7 +227,7 @@ impl cef_dispatch_main_args_create -> int {
     return buf2;
 }
 
-impl cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
+impl cef_dispatch_settings_create(no_sandbox: i32, cache_path: int) -> int {
     _init_exe_dir();
     g_settings.size = 440;
     g_settings.no_sandbox = no_sandbox;
@@ -276,7 +276,7 @@ impl cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
     return g_settings;
 }
 
-impl cef_dispatch_window_info_create(title: str, width: int, height: int) -> int {
+impl cef_dispatch_window_info_create(title: int, width: int, height: int) -> int {
     g_wi.wn_ptr = 0;
     g_wi.wn_len = 0;
     g_wi.wn_dtor = 0;
@@ -314,9 +314,9 @@ impl cef_dispatch_browser_settings_create -> int {
     return buf;
 }
 
-impl cef_dispatch_set_pending_browser(url: str, title: str, width: int, height: int) {
-    g_pending_url = url;
-    g_pending_title = title;
+impl cef_dispatch_set_pending_browser(url: int, title: int, width: int, height: int) {
+    g_pending_url = strdup(url);
+    g_pending_title = strdup(title);
     if width > 0 {
         g_pending_w = width;
     } else {
@@ -330,7 +330,7 @@ impl cef_dispatch_set_pending_browser(url: str, title: str, width: int, height: 
     g_browser_pending = 1;
 }
 
-impl cef_dispatch_open_browser(url: str, title: str, width: int, height: int) {
+impl cef_dispatch_open_browser(url: int, title: int, width: int, height: int) {
     cef_dispatch_set_pending_browser(url, title, width, height);
     _init_vtables();
     wi: int = cef_dispatch_window_info_create(title, width, height);
@@ -359,7 +359,7 @@ impl cef_dispatch_execute_process -> i32 {
     return code;
 }
 
-impl cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
+impl cef_dispatch_startup(cache_path: int, no_sandbox: int) -> i32 {
     _assert_cef_abi();
     cef_platform_bootstrap();
     _init_vtables();
@@ -395,7 +395,7 @@ impl cef_dispatch_frame_is_main(frame: int) -> i32 {
     return f.is_main(f);
 }
 
-impl cef_dispatch_frame_load_url(frame: int, url: str) {
+impl cef_dispatch_frame_load_url(frame: int, url: int) {
     f: cef_frame_t = frame;
     s: cef_string_t = cef_string_t();
     cef_string_utf8_to_utf16(url, strlen(url), s);
@@ -438,7 +438,7 @@ impl cef_dispatch_cmdline_append_switch_value(cmd: int, name: str, value: str) {
 impl cef_dispatch_base_release(handle: int) {}
 
 impl cef_dispatch_create_browser(
-    window_info: int, client: int, url: str, settings: int
+    window_info: int, client: int, url: int, settings: int
 ) -> i32 {
     url_str: cef_string_t = cef_string_t();
     cef_string_utf8_to_utf16(url, strlen(url), url_str);
