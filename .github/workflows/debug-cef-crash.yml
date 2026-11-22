@@ -1,8 +1,9 @@
 name: Debug CEF crash
 
 on:
-  push:
-    branches: [debug/cef-crash]
+  pull_request:
+    paths:
+      - .github/workflows/debug-cef-crash.yml
 
 permissions:
   contents: read
