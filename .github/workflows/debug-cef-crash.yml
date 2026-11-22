@@ -1,0 +1,62 @@
+name: Debug CEF crash
+
+on:
+  push:
+    branches: [debug/cef-crash]
+
+permissions:
+  contents: read
+
+jobs:
+  cef-gdb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install display deps and gdb
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+          libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+          libasound2t64 patchelf gdb
+
+    - name: Build notes-app example
+      run: |
+        cd jac/examples/notes-app
+        jac build
+
+    - name: Run under gdb
+      working-directory: jac/examples/notes-app/.jac/client/desktop
+      run: |
+        ls -la
+        Xvfb :99 -screen 0 1280x720x24 &
+        export DISPLAY=:99 FONTCONFIG_FILE=$PWD/minimal-fonts.conf JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11
+        timeout 120s gdb -q -batch \
+          -ex 'set pagination off' \
+          -ex 'handle SIGPIPE nostop noprint' \
+          -ex run \
+          -ex 'bt 40' \
+          -ex 'info registers' \
+          -ex 'x/16i $pc-32' \
+          -ex 'info sharedlibrary' \
+          ./notes-app 2>&1 | tee /tmp/gdb.log || true
+
+    - name: Collect generated host source
+      if: always()
+      run: |
+        mkdir -p /tmp/dbg
+        cp /tmp/gdb.log /tmp/dbg/ 2>/dev/null || true
+        find jac/examples/notes-app/.jac -maxdepth 4 \( -name '*.jac' -o -name '*.ll' \) -newer jac/examples/notes-app/jac.toml -exec cp --parents {} /tmp/dbg/ \; 2>/dev/null || true
+        find ~/.cache/jac -path '*cef*' -name '*.jac' -newer jac/examples/notes-app/jac.toml 2>/dev/null | head -50
+
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: cef-gdb
+        path: /tmp/dbg
